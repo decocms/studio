@@ -1,6 +1,7 @@
 import { ProviderV3 } from "@ai-sdk/provider";
 import type { ModelCapability } from "@decocms/mesh-sdk";
 import type { ProviderId } from "./provider-ids";
+export { AsyncResearchTerminalError } from "../shared/async-research-terminal-error";
 export type { ProviderKeyInfo } from "../storage/types";
 
 export interface ProviderInfo {
@@ -49,13 +50,6 @@ export interface AsyncResearchResult {
  * the provider-side job may still be running; the handle should be kept for
  * a future reconnect.
  */
-export class AsyncResearchTerminalError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AsyncResearchTerminalError";
-  }
-}
-
 /**
  * Generic capability for "research" jobs that don't fit streamText — they're
  * submit-then-poll, take minutes, and need to survive pod death. Each adapter

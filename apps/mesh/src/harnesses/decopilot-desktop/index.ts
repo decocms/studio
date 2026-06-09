@@ -35,7 +35,7 @@ import type {
   HarnessStreamInput,
 } from "../types";
 import { openMcpSource } from "../sources";
-import { createProviderFromSecret } from "./provider-from-secret";
+import { createProviderFromSecret } from "../decopilot/provider-from-secret";
 import { toolsFromMCP } from "../decopilot/mcp-tools";
 import { buildLocalTools } from "./local-tools";
 import { processConversation } from "../decopilot/conversation";
@@ -66,7 +66,11 @@ export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
   mcpSource: DecopilotHttpMcpSource;
 } {
   const modelSource =
-    input.modelSource?.kind === "secret" ? input.modelSource : null;
+    input.modelSources?.primary?.kind === "secret"
+      ? input.modelSources.primary
+      : input.modelSource?.kind === "secret"
+        ? input.modelSource
+        : null;
   if (!modelSource) {
     throw new Error(
       "decopilot-desktop requires a secret modelSource. The cluster must inject " +

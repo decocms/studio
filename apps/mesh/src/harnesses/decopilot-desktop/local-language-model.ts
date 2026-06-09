@@ -2,9 +2,9 @@
  * local-language-model — portable language-model factory for the desktop tree.
  *
  * Mirrors `apps/mesh/src/ai-providers/language-model.ts:createLanguageModel`
- * but takes a STRUCTURALLY-typed provider (`{ aiSdk: { languageModel } }`,
- * satisfied by `provider-from-secret`'s `DesktopProvider`) instead of importing
- * `@/ai-providers/types`'s `MeshProvider`. That severs the cluster type chain.
+ * but takes a structurally typed provider (`{ aiSdk: { languageModel } }`)
+ * instead of importing `@/ai-providers/types`'s `MeshProvider`. That severs
+ * the cluster type chain.
  *
  * Behaviour parity: when the model advertises the "reasoning" capability (i.e.
  * `capabilities.reasoning !== false`) we forward the provider-specific
@@ -13,7 +13,7 @@
 
 import type { LanguageModel } from "ai";
 
-/** Minimal provider shape — a subset of `MeshProvider` / `DesktopProvider`. */
+/** Minimal provider shape — a subset of Decopilot's resolved provider. */
 export interface LanguageModelProvider {
   aiSdk: {
     // biome-ignore lint/suspicious/noExplicitAny: provider-specific settings pass-through

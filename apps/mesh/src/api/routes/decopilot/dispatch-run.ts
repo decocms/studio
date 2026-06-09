@@ -25,7 +25,6 @@
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
-import type { MeshProvider } from "@/ai-providers/types";
 import { tryResolveTier, type ResolvedTier } from "@/core/resolve-tier";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
@@ -53,11 +52,13 @@ import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type {
   DecopilotRuntime,
   DecopilotSecretModelSource,
+  DecopilotSecretModelSources,
   HarnessId,
   HarnessProcessLocal,
   HarnessStreamInput,
 } from "@/harnesses";
 import { createSecretModelSource } from "@/harnesses";
+import { createProviderFromSecret } from "@/harnesses/decopilot/provider-from-secret";
 import {
   sanitizeStreamError,
   stringifyError,
@@ -291,7 +292,10 @@ function modelInfoFromResolvedTier(
 async function resolveDecopilotTitleConfig(
   ctx: StudioContext,
   organizationId: string,
-): Promise<{ provider: MeshProvider; model: ModelsConfig["thinking"] } | null> {
+): Promise<{
+  modelSource: DecopilotSecretModelSource;
+  model: ModelsConfig["thinking"];
+} | null> {
   const resolved = await tryResolveTier(ctx, "fast");
   if (!resolved) return null;
 
@@ -311,15 +315,35 @@ async function resolveDecopilotTitleConfig(
     return null;
   }
 
-  const provider = await ctx.aiProviders
-    .activate(resolved.credentialId, organizationId)
-    .catch((err) => {
-      console.warn("[decopilot:title] failed to activate title provider", err);
-      return null;
-    });
-  if (!provider) return null;
+  const modelSource = await resolveSecretModelSource(
+    ctx,
+    organizationId,
+    resolved.credentialId,
+    resolved.modelId,
+  ).catch((err) => {
+    console.warn("[decopilot:title] failed to resolve title model", err);
+    return null;
+  });
+  if (!modelSource) return null;
 
-  return { provider, model: modelInfoFromResolvedTier(resolved) };
+  return { modelSource, model: modelInfoFromResolvedTier(resolved) };
+}
+
+async function resolveSecretModelSource(
+  ctx: StudioContext,
+  organizationId: string,
+  credentialId: string,
+  modelId: string,
+): Promise<DecopilotSecretModelSource> {
+  const { keyInfo, apiKey } = await ctx.storage.aiProviderKeys.resolve(
+    credentialId,
+    organizationId,
+  );
+  return createSecretModelSource({
+    providerId: keyInfo.providerId,
+    apiKey,
+    modelId,
+  });
 }
 
 /**
@@ -676,57 +700,90 @@ async function prepareRun(
       throw new Error("dispatchRunAndWait: taskId is required");
     }
 
-    // 2. Load entities and create/load memory in parallel.
-    // Activate per-tool providers when their tier resolves to a different
-    // credential than the chat tier (image, deep research). Skip the extra
-    // activation when the credential matches — the chat provider is reused.
+    // 2. Load entities, create/load memory, and resolve Decopilot model
+    // credentials in parallel. The harness receives serializable secret
+    // sources and reconstructs SDK providers locally in both cluster and
+    // desktop execution.
     const chatCredId = input.models.credentialId;
     const imageCredId = input.models.image?.credentialId;
     const deepResearchCredId = input.models.deepResearch?.credentialId;
-    const needsImageProvider =
-      harnessId === "decopilot" && !!imageCredId && imageCredId !== chatCredId;
-    const needsDeepResearchProvider =
+    const [
+      virtualMcp,
+      primaryModelSource,
+      imageModelSource,
+      deepResearchModelSource,
+      mem,
+    ] = await Promise.all([
+      ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
+      harnessId === "decopilot"
+        ? resolveSecretModelSource(
+            ctx,
+            input.organizationId,
+            chatCredId,
+            input.models.thinking.id,
+          )
+        : Promise.resolve(undefined),
+      harnessId === "decopilot" && input.models.image && imageCredId
+        ? resolveSecretModelSource(
+            ctx,
+            input.organizationId,
+            imageCredId,
+            input.models.image.id,
+          )
+        : Promise.resolve(undefined),
       harnessId === "decopilot" &&
-      !!deepResearchCredId &&
-      deepResearchCredId !== chatCredId;
-
-    const [virtualMcp, provider, imageProvider, deepResearchProvider, mem] =
-      await Promise.all([
-        ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
-        harnessId === "decopilot"
-          ? ctx.aiProviders.activate(chatCredId, input.organizationId)
-          : Promise.resolve(null),
-        needsImageProvider
-          ? ctx.aiProviders.activate(imageCredId, input.organizationId)
-          : Promise.resolve(null),
-        needsDeepResearchProvider
-          ? ctx.aiProviders.activate(deepResearchCredId, input.organizationId)
-          : Promise.resolve(null),
-        createMemory(ctx.storage.threads, {
-          organization_id: input.organizationId,
-          thread_id: input.taskId,
-          userId: input.userId,
-          defaultWindowSize: windowSize,
-        }),
-      ]);
+      input.models.deepResearch &&
+      deepResearchCredId
+        ? resolveSecretModelSource(
+            ctx,
+            input.organizationId,
+            deepResearchCredId,
+            input.models.deepResearch.id,
+          )
+        : Promise.resolve(undefined),
+      createMemory(ctx.storage.threads, {
+        organization_id: input.organizationId,
+        thread_id: input.taskId,
+        userId: input.userId,
+        defaultWindowSize: windowSize,
+      }),
+    ]);
 
     const decopilotTitleConfig =
       harnessId === "decopilot"
         ? await resolveDecopilotTitleConfig(ctx, input.organizationId)
         : null;
 
-    // Diagnostic (resume only): record whether the provider activated and
+    const modelSource = primaryModelSource;
+    const modelSources: DecopilotSecretModelSources | undefined = modelSource
+      ? {
+          primary: modelSource,
+          ...(imageModelSource ? { image: imageModelSource } : {}),
+          ...(deepResearchModelSource
+            ? { deepResearch: deepResearchModelSource }
+            : {}),
+          ...(decopilotTitleConfig?.modelSource
+            ? { title: decopilotTitleConfig.modelSource }
+            : {}),
+        }
+      : undefined;
+
+    const primaryProvider = modelSource
+      ? createProviderFromSecret(modelSource)
+      : null;
+
+    // Diagnostic (resume only): record whether the model secret resolved and
     // whether the optional model slots are present. Paired with the log in
     // routes.ts:/attach orphan-resume; together they pinpoint whether tool
-    // dropout on resume is a persistence-side or provider-activation issue.
+    // dropout on resume is a persistence-side or model-resolution issue.
     // Drop once the resume-tool-dropout issue is root-caused.
     if (input.isResume) {
       console.log("[decopilot:stream] resume — runtime state", {
         taskId: input.taskId,
         harnessId,
-        providerActivated: !!provider,
-        imageProviderActivated: !!imageProvider,
-        deepResearchProviderActivated: !!deepResearchProvider,
+        modelSourceResolved: !!modelSource,
+        imageModelSourceResolved: !!imageModelSource,
+        deepResearchModelSourceResolved: !!deepResearchModelSource,
         thinkingModelId: input.models.thinking.id,
         hasImage: !!input.models.image,
         hasDeepResearch: !!input.models.deepResearch,
@@ -748,7 +805,7 @@ async function prepareRun(
     // routed through the `web_search` tool. Detect early and surface a clear
     // error instead of letting Google's opaque "This model only supports
     // Interactions API" bubble up from deep inside the agent loop.
-    if (provider?.asyncResearch) {
+    if (primaryProvider?.asyncResearch) {
       const slots: Array<["thinking" | "coding" | "fast" | "image", string]> = [
         ["thinking", input.models.thinking.id],
       ];
@@ -756,7 +813,7 @@ async function prepareRun(
       if (input.models.fast) slots.push(["fast", input.models.fast.id]);
       if (input.models.image) slots.push(["image", input.models.image.id]);
       for (const [slot, modelId] of slots) {
-        if (provider.asyncResearch.canHandle(modelId)) {
+        if (primaryProvider.asyncResearch.canHandle(modelId)) {
           throw new Error(
             `Model "${modelId}" can only be used as a Deep Research model. ` +
               `It is not usable as the ${slot} model — set it in the Deep Research slot instead.`,
@@ -1000,31 +1057,11 @@ async function prepareRun(
             target.sandboxProviderKind,
           );
 
-    // ⚠️ SECURITY: Inject the resolved main chat-model source into the wire
-    // input for user-desktop decopilot. Secret sources transit to the desktop
-    // daemon over HTTPS so it can activate the provider locally without vault
-    // access. Scoped to the single main chat-completion credential only —
-    // sub-provider keys (image, deep-research) are never included; those
-    // built-ins stay cluster-side. Hardening follow-up: cluster model-proxy.
-    let modelSource: DecopilotSecretModelSource | undefined;
-    if (
-      target.sandboxProviderKind === "user-desktop" &&
-      harnessId === "decopilot"
-    ) {
-      // Read the raw credential from storage (vault-backed) — the same path
-      // AIProviderFactory.activate() uses internally. Never log this variable.
-      const resolved = await ctx.storage.aiProviderKeys
-        .resolve(chatCredId, input.organizationId)
-        .catch(() => null);
-      if (resolved) {
-        const { keyInfo, apiKey } = resolved;
-        modelSource = createSecretModelSource({
-          providerId: keyInfo.providerId,
-          apiKey,
-          modelId: input.models.thinking.id,
-        });
-      }
-    }
+    // ⚠️ SECURITY: Decopilot receives resolved model secret sources, never
+    // activated provider objects. For hosted cluster execution these stay
+    // in-process; for user-desktop execution they transit to the daemon over
+    // the link transport so the same harness contract works in both places.
+    // Never log `modelSource` or `modelSources`.
 
     const mcp: HarnessStreamInput["mcp"] = mcpBase;
     const mcpSource: HarnessStreamInput["mcpSource"] =
@@ -1045,6 +1082,7 @@ async function prepareRun(
       messages: materializedMessages,
       models: input.models,
       modelSource,
+      modelSources,
       mcpSource,
       mcp,
       mode: input.mode,
@@ -1108,10 +1146,6 @@ async function prepareRun(
           currentThreadTitle: mem.thread.title,
           registrySignal,
           runRegistry,
-          provider,
-          imageProvider: imageProvider ?? provider,
-          deepResearchProvider: deepResearchProvider ?? provider,
-          titleProvider: decopilotTitleConfig?.provider ?? provider,
           titleModel:
             decopilotTitleConfig?.model ??
             input.models.fast ??

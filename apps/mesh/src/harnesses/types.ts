@@ -1,13 +1,19 @@
 import type { UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
-import type { DecopilotMcpSource, DecopilotModelSource } from "./sources";
+import type {
+  DecopilotMcpSource,
+  DecopilotModelSource,
+  DecopilotModelSources,
+} from "./sources";
 
 export { createSecretModelSource } from "./sources";
 export type {
   DecopilotMcpSource,
   DecopilotModelSource,
+  DecopilotModelSources,
   DecopilotSandboxSource,
   DecopilotHttpMcpSource,
   DecopilotSecretModelSource,
+  DecopilotSecretModelSources,
   McpClientLike,
   OpenMcpSourceOptions,
   OpenedMcpSource,
@@ -115,30 +121,6 @@ export interface DecopilotRuntime {
    *  the package treats it as opaque. */
   runRegistry: unknown;
 
-  /** Already-activated MeshProvider — the caller has resolved the
-   *  credential id to a key/headers and called `ctx.aiProviders.activate`
-   *  before invoking us. The decopilot harness rejects `null`; CLI
-   *  harnesses don't read this field. Cluster-only type. */
-  provider: unknown | null;
-
-  /** Already-activated MeshProvider for the `generate_image` tool. May
-   *  alias `provider` when the org's `image` tier uses the same credential
-   *  as the chat (or no image tier is configured). Distinct activation
-   *  when admin pairs image with a different key. Cluster-only type. */
-  imageProvider?: unknown | null;
-
-  /** Already-activated MeshProvider for the `web_search` tool's deep
-   *  research path. May alias `provider` when the org's `web_research`
-   *  tier uses the same credential as the chat (or no tier is
-   *  configured). Decoupling lets web_search keep using Gemini's async
-   *  research API even when the chat model is routed via LiteLLM/OpenRouter.
-   *  Cluster-only type. */
-  deepResearchProvider?: unknown | null;
-
-  /** Already-activated provider/model used only for Decopilot auto-title.
-   *  May differ from the chat provider when the org fast tier is backed by a
-   *  different credential. Cluster-only type. */
-  titleProvider?: unknown | null;
   titleModel?: unknown | null;
 
   /** Push callback for title-generation work. The streamText loop
@@ -204,6 +186,11 @@ export interface HarnessStreamInput {
    *  vault/aiProviders. Secret sources are serializable and may cross the link
    *  protocol; in-process model sources are local-only and must not cross it. */
   modelSource?: DecopilotModelSource;
+  /** Resolved Decopilot model sources by slot. The primary slot mirrors
+   *  `modelSource`; optional slots let built-ins and auto-title use the
+   *  credential already selected by the cluster without receiving cluster
+   *  provider objects. */
+  modelSources?: DecopilotModelSources;
   /** Resolved MCP source. HTTP sources are serializable; in-process clients are
    *  local-only and stripped before remote dispatch. */
   mcpSource?: DecopilotMcpSource;

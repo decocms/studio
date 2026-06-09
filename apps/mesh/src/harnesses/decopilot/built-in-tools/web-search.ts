@@ -377,7 +377,10 @@ async function runAsyncResearch({
       throw err;
     }
     const msg = (err as Error).message ?? String(err);
-    if (err instanceof AsyncResearchTerminalError) {
+    if (
+      err instanceof AsyncResearchTerminalError ||
+      (err instanceof Error && err.name === "AsyncResearchTerminalError")
+    ) {
       // Provider says the job is dead. Mark failed so a retry won't reuse
       // the same interaction id.
       await ctx.storage.asyncResearchJobs.markFailed(toolCallId, msg);

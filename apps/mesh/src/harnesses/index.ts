@@ -32,6 +32,7 @@ export type {
   ChatMode,
   DecopilotRuntime,
   DecopilotSecretModelSource,
+  DecopilotSecretModelSources,
   Harness,
   HarnessContext,
   HarnessFactory,

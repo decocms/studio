@@ -22,9 +22,9 @@
  *
  * The helper is intentionally CLI-agent-free — the claude-code / codex
  * branches that live inline in `stream-core.ts` belong to their own
- * harnesses (see Tasks 9 + 10). Everything here assumes a regular,
- * activated `MeshProvider` and the full tool set assembled by
- * `assembleDecopilotTools`.
+ * harnesses (see Tasks 9 + 10). Everything here assumes a regular provider
+ * surface reconstructed from a resolved Decopilot model source and the full
+ * tool set assembled by `assembleDecopilotTools`.
  *
  * Today this code lives inline inside `stream-core.ts`; the helper here
  * is unused until Task 12 wires it through the harness factory. Behavior
@@ -94,13 +94,8 @@ import {
  */
 export interface RunDecopilotStreamExtras {
   /**
-   * Already-activated MeshProvider — the caller has resolved the
-   * credential id to a key/headers and called `ctx.aiProviders.activate`
-   * before invoking us. `null` is rejected (decopilot, unlike CLI
-   * harnesses, always has a provider).
-   *
-   * Source in the inline original: the `provider` local declared at
-   * line ~288 via `Promise.all([... ctx.aiProviders.activate(...) ...])`.
+   * Provider reconstructed from `input.modelSources.primary`. Decopilot,
+   * unlike CLI harnesses, always has a provider.
    */
   provider: MeshProvider;
 

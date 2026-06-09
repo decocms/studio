@@ -49,6 +49,21 @@ export type DecopilotSecretModelSource = Extract<
   { kind: "secret" }
 >;
 
+export interface DecopilotModelSources {
+  primary: DecopilotModelSource;
+  image?: DecopilotModelSource;
+  deepResearch?: DecopilotModelSource;
+  title?: DecopilotModelSource;
+}
+
+export type DecopilotSecretModelSources = {
+  [K in keyof DecopilotModelSources]: DecopilotModelSources[K] extends
+    | DecopilotModelSource
+    | undefined
+    ? Extract<NonNullable<DecopilotModelSources[K]>, { kind: "secret" }>
+    : never;
+};
+
 export type DecopilotSandboxSource =
   | { kind: "none" }
   | {

@@ -138,6 +138,49 @@ describe("harnessStreamInputSchema", () => {
     }
   });
 
+  it("round-trips resolved Decopilot model sources for tool and title slots", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      modelSources: {
+        primary: {
+          kind: "secret",
+          providerId: "anthropic",
+          apiKey: "sk-main",
+          modelId: "claude-sonnet-4",
+        },
+        image: {
+          kind: "secret",
+          providerId: "openrouter",
+          apiKey: "sk-image",
+          modelId: "google/gemini-2.5-flash-image-preview",
+        },
+        deepResearch: {
+          kind: "secret",
+          providerId: "google",
+          apiKey: "sk-google",
+          modelId: "gemini-2.5-pro-deep-research",
+        },
+        title: {
+          kind: "secret",
+          providerId: "openai-compatible",
+          apiKey: "sk-title",
+          modelId: "gpt-4.1-mini",
+          baseUrl: "https://litellm.example.com/v1",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.modelSources?.primary.providerId).toBe("anthropic");
+      expect(result.data.modelSources?.image?.providerId).toBe("openrouter");
+      expect(result.data.modelSources?.deepResearch?.providerId).toBe("google");
+      expect(result.data.modelSources?.title?.baseUrl).toBe(
+        "https://litellm.example.com/v1",
+      );
+    }
+  });
+
   it("rejects legacy nested mcp model secrets", () => {
     const result = harnessStreamInputSchema.safeParse({
       ...minimalInput,

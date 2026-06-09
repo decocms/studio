@@ -32,12 +32,12 @@ import type { UIMessageChunk } from "ai";
 import type { HarnessContext } from "../../core/harness-context";
 import type { StudioContext } from "../../core/studio-context";
 import type {
+  DecopilotModelSource,
   DecopilotRuntime,
   Harness,
   HarnessFactory,
   HarnessStreamInput,
 } from "../types";
-import type { MeshProvider } from "../../ai-providers/types";
 import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
 import type { ChatMessage, ModelInfo } from "../../api/routes/decopilot/types";
 import type { ChatMode } from "../../api/routes/decopilot/mode-config";
@@ -53,14 +53,12 @@ import {
   findStudioPackAgentByMcpId,
   resolveStudioPackRuntime,
 } from "../../tools/virtual/studio-pack";
+import { createProviderFromSecret } from "./provider-from-secret";
+import type { DecopilotSecretModelSource } from "../types";
 
 type ClusterDecopilotRuntime = DecopilotRuntime & {
   pendingImages: PendingImage[];
   runRegistry: RunRegistry;
-  provider: MeshProvider | null;
-  imageProvider: MeshProvider | null;
-  deepResearchProvider: MeshProvider | null;
-  titleProvider?: MeshProvider | null;
   titleModel?: ModelInfo | null;
   htmlPageBuffer: HtmlPageBuffer;
 };
@@ -71,6 +69,33 @@ interface ClusterInputView {
   messages: ChatMessage[];
   mode: ChatMode;
   virtualMcp: VirtualMCPEntity;
+}
+
+function resolveSecretModelSource(
+  input: HarnessStreamInput,
+): DecopilotSecretModelSource {
+  const source =
+    input.modelSources?.primary ??
+    (input.modelSource?.kind === "secret" ? input.modelSource : null);
+  if (!source || source.kind !== "secret") {
+    throw new Error(
+      "Decopilot harness requires a secret modelSource. Dispatch must resolve " +
+        "the selected model credential before invoking Decopilot.",
+    );
+  }
+  return source;
+}
+
+function optionalSecretModelSource(
+  source: DecopilotModelSource | undefined,
+): DecopilotSecretModelSource | undefined {
+  if (!source) return undefined;
+  if (source.kind !== "secret") {
+    throw new Error(
+      "Decopilot harness requires secret modelSources for all resolved slots.",
+    );
+  }
+  return source;
 }
 
 export const decopilotHarnessFactory: HarnessFactory = {
@@ -103,11 +128,18 @@ export const decopilotHarnessFactory: HarnessFactory = {
               "Remote dispatch is not yet supported.",
           );
         }
-        if (!runtime.provider) {
-          throw new Error(
-            "Decopilot harness requires decopilotRuntime.provider to be activated.",
-          );
-        }
+        const modelSource = resolveSecretModelSource(input);
+        const provider = createProviderFromSecret(modelSource);
+        const imageProvider = createProviderFromSecret(
+          optionalSecretModelSource(input.modelSources?.image) ?? modelSource,
+        );
+        const deepResearchProvider = createProviderFromSecret(
+          optionalSecretModelSource(input.modelSources?.deepResearch) ??
+            modelSource,
+        );
+        const titleProvider = createProviderFromSecret(
+          optionalSecretModelSource(input.modelSources?.title) ?? modelSource,
+        );
 
         // Studio pack agents (Brand Manager, etc.) resolve their prompt
         // and tool allowlist at request time based on org state — e.g. Brand
@@ -147,10 +179,9 @@ export const decopilotHarnessFactory: HarnessFactory = {
           toolOutputMap: runtime.toolOutputMap,
           pendingImages: runtime.pendingImages,
           threadId: runtime.threadId,
-          provider: runtime.provider,
-          imageProvider: runtime.imageProvider ?? runtime.provider,
-          deepResearchProvider:
-            runtime.deepResearchProvider ?? runtime.provider,
+          provider,
+          imageProvider,
+          deepResearchProvider,
           htmlPageBuffer: runtime.htmlPageBuffer,
         });
 
@@ -190,8 +221,8 @@ export const decopilotHarnessFactory: HarnessFactory = {
           );
 
           yield* runDecopilotStream(effectiveInput, ctx, tools, prompt, {
-            provider: runtime.provider,
-            titleProvider: runtime.titleProvider ?? runtime.provider,
+            provider,
+            titleProvider,
             titleModel:
               runtime.titleModel ?? input.models.fast ?? input.models.thinking,
             registrySignal: runtime.registrySignal,

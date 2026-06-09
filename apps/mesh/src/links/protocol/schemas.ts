@@ -54,6 +54,13 @@ const secretModelSourceSchema = z.object({
   extraHeaders: z.record(z.string(), z.string()).optional(),
 });
 
+const modelSourcesSchema = z.object({
+  primary: secretModelSourceSchema,
+  image: secretModelSourceSchema.optional(),
+  deepResearch: secretModelSourceSchema.optional(),
+  title: secretModelSourceSchema.optional(),
+});
+
 const httpMcpSourceSchema = z.object({
   kind: z.literal("http"),
   url: z.string().url(),
@@ -70,6 +77,7 @@ export const harnessStreamInputSchema = z
     messages: z.array(chatMessageSchema),
     models: modelsConfigSchema,
     modelSource: secretModelSourceSchema.optional(),
+    modelSources: modelSourcesSchema.optional(),
     mcpSource: httpMcpSourceSchema.optional(),
     // Wire input is intentionally HTTP-only. In-process MCP clients are allowed
     // only inside local cluster dispatch and must be normalized to this shape

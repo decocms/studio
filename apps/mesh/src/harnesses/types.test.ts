@@ -38,12 +38,29 @@ describe("Harness types", () => {
 
 describe("HarnessStreamInput sources", () => {
   test("accepts mcp without embedded model secrets", () => {
-    const input: Pick<HarnessStreamInput, "mcp" | "modelSource"> = {
+    const input: Pick<
+      HarnessStreamInput,
+      "mcp" | "modelSource" | "modelSources"
+    > = {
       modelSource: {
         kind: "secret",
         providerId: "anthropic",
         apiKey: "sk-ant-test",
         modelId: "claude-3-5-sonnet",
+      },
+      modelSources: {
+        primary: {
+          kind: "secret",
+          providerId: "anthropic",
+          apiKey: "sk-ant-test",
+          modelId: "claude-3-5-sonnet",
+        },
+        image: {
+          kind: "secret",
+          providerId: "openrouter",
+          apiKey: "sk-or-test",
+          modelId: "google/gemini-2.5-flash-image-preview",
+        },
       },
       mcp: {
         url: "https://cluster/mcp",
@@ -52,6 +69,7 @@ describe("HarnessStreamInput sources", () => {
       },
     };
     expect(input.modelSource?.kind).toBe("secret");
+    expect(input.modelSources?.image?.kind).toBe("secret");
     expect(input.mcp.url).toBe("https://cluster/mcp");
   });
 
