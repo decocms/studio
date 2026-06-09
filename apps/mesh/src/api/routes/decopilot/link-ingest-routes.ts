@@ -11,12 +11,13 @@
  * that phase: also org-scope the fence lookup (`getRunFence` currently resolves
  * any thread id) and enforce thread ownership.
  */
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { parseDispatchSSEStream } from "@/harnesses/parse-dispatch-sse";
 import { fenceMatches } from "@/storage/run-fence";
 import { isCancelRequested } from "@/storage/cancel-flag";
 import { PartEmitter } from "./part-emitter";
 import { consumePartStream } from "./consume-part-stream";
+import { linkIngestBatchSchema } from "./link-ingest-batch-schema";
 import type { StreamBuffer } from "./stream-buffer";
 import type { Env } from "../../hono-env";
 
@@ -39,7 +40,7 @@ async function drain(stream: ReadableStream): Promise<void> {
 export function createLinkIngestRoutes(deps: LinkIngestDeps) {
   const app = new Hono<Env>();
 
-  app.post("/links/runs/:runId/stream", async (c) => {
+  async function validateRunAccess(c: Context<Env>) {
     const ctx = c.get("meshContext");
 
     // resolveOrgFromPath does NOT require a principal — enforce auth here.
@@ -47,6 +48,9 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     if (!userId) return c.json({ error: "unauthorized" }, 401);
 
     const runId = c.req.param("runId");
+    if (!runId) {
+      return c.json({ error: "invalid runId" }, 400);
+    }
     if (!/^[A-Za-z0-9_-]+$/.test(runId)) {
       return c.json({ error: "invalid runId" }, 400);
     }
@@ -68,6 +72,14 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     if (!fenceMatches(current, presented)) {
       return c.json({ error: "fenced" }, 409);
     }
+
+    return { ctx, runId };
+  }
+
+  app.post("/links/runs/:runId/stream", async (c) => {
+    const access = await validateRunAccess(c);
+    if (access instanceof Response) return access;
+    const { ctx, runId } = access;
 
     const body = c.req.raw.body;
     if (!body) return c.json({ error: "missing body" }, 400);
@@ -121,6 +133,64 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     deps.streamBuffer.purge(runId);
 
     return c.json({ ok: true });
+  });
+
+  app.post("/links/runs/:runId/parts", async (c) => {
+    const access = await validateRunAccess(c);
+    if (access instanceof Response) return access;
+    const { ctx, runId } = access;
+
+    let json: unknown;
+    try {
+      json = await c.req.json();
+    } catch (error) {
+      return c.json(
+        {
+          error: "bad batch",
+          detail: error instanceof Error ? error.message : "Invalid JSON",
+        },
+        400,
+      );
+    }
+
+    const parsed = linkIngestBatchSchema.safeParse(json);
+    if (!parsed.success) {
+      return c.json({ error: "bad batch", detail: parsed.error.message }, 400);
+    }
+
+    const rows = parsed.data.rows;
+    const orgId = ctx.organization!.id;
+    if (
+      rows.some(
+        (row) =>
+          row.run_id !== runId ||
+          row.thread_id !== runId ||
+          row.org_id !== orgId,
+      )
+    ) {
+      return c.json({ error: "row run mismatch" }, 400);
+    }
+
+    await ctx.storage.threads.messageParts().appendParts(rows);
+    if (rows.length > 0) {
+      ctx.storage.threads.bumpProgress(runId).catch(() => {});
+    }
+
+    if (parsed.data.done) {
+      await ctx.storage.threads.update(runId, {
+        status: "completed",
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
+      });
+      deps.streamBuffer.purge(runId);
+    }
+
+    return c.json({
+      ok: true,
+      appended: rows.length,
+      done: parsed.data.done,
+    });
   });
 
   return app;
