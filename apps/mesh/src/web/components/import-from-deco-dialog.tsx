@@ -10,6 +10,7 @@ import {
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { resolveDecoSiteGithubRepo } from "@/shared/deco-sites-github";
+import { getOrgGithubConnections } from "@/shared/github-repo-scope";
 import {
   fetchGithubInstallations,
   findGithubInstallation,
@@ -87,11 +88,12 @@ export function ImportFromDecoDialog({
     orgSlug: org.slug,
   });
 
-  const githubConnections = useConnections({ slug: "mcp-github" });
+  const allGithubConnections = useConnections({ slug: "mcp-github" });
+  const orgGithubConnections = getOrgGithubConnections(allGithubConnections);
   const autoInstall = useAutoInstallGitHub({
-    enabled: open && githubConnections.length === 0,
+    enabled: open && orgGithubConnections.length === 0,
   });
-  const githubConnection = githubConnections[0] ?? null;
+  const githubConnection = orgGithubConnections[0] ?? null;
   const githubClient = useMCPClient({
     connectionId: githubConnection?.id ?? "",
     orgId: org.id,
@@ -100,7 +102,7 @@ export function ImportFromDecoDialog({
 
   const githubSetupPending =
     open &&
-    githubConnections.length === 0 &&
+    orgGithubConnections.length === 0 &&
     (autoInstall.status === "installing" ||
       autoInstall.status === "authenticating" ||
       autoInstall.status === "idle");

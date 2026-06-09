@@ -61,3 +61,14 @@ export function getRepoScope(connection: {
       GITHUB_SCOPED_PERMISSIONS,
   };
 }
+
+/**
+ * Org-level mcp-github connections (broad user OAuth). Per-agent repo-scoped
+ * children carry `metadata.repoScope` and must not be used for listing
+ * installations or minting new repo tokens.
+ */
+export function getOrgGithubConnections<
+  T extends { metadata: Record<string, unknown> | null },
+>(connections: T[]): T[] {
+  return connections.filter((c) => getRepoScope(c) === null);
+}

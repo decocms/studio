@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { getRepoScope, GITHUB_SCOPED_PERMISSIONS } from "./github-repo-scope";
+import {
+  getOrgGithubConnections,
+  getRepoScope,
+  GITHUB_SCOPED_PERMISSIONS,
+} from "./github-repo-scope";
 
 describe("getRepoScope", () => {
   it("returns the recipe for a well-formed repoScope", () => {
@@ -65,5 +69,28 @@ describe("getRepoScope", () => {
         },
       }),
     ).toBeNull();
+  });
+});
+
+describe("getOrgGithubConnections", () => {
+  const orgConn = { id: "conn_org", metadata: { source: "store" } };
+  const scopedConn = {
+    id: "conn_scoped",
+    metadata: {
+      repoScope: {
+        sourceConnectionId: "conn_org",
+        installationId: 1,
+        owner: "deco-sites",
+        repo: "demo-linkedin",
+      },
+    },
+  };
+
+  it("drops repo-scoped child connections", () => {
+    expect(getOrgGithubConnections([scopedConn, orgConn])).toEqual([orgConn]);
+  });
+
+  it("returns an empty array when every connection is repo-scoped", () => {
+    expect(getOrgGithubConnections([scopedConn])).toEqual([]);
   });
 });
