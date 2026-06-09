@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { getSectionPreviewImageSrc } from "./section-preview-image";
 import { parseSections } from "./parse-sections";
 
 describe("parseSections", () => {
@@ -74,34 +73,5 @@ describe("parseSections", () => {
       {},
     );
     expect(parsed[0]?.isHidden).toBe(true);
-  });
-
-  it("lazy BannerCollection preview uses admin getItemImageSrc path", () => {
-    const rt = "site/sections/Images/BannerCollection.tsx";
-    const desktopImage = "https://example.com/banner.jpg";
-    const meta = {
-      manifest: { blocks: {} },
-      schema: {
-        definitions: {
-          [btoa(rt)]: {
-            allOf: [{ $ref: "#/definitions/BannerCollectionProps" }],
-          },
-          BannerCollectionProps: {
-            image: "{{{banners.0.desktop.image}}}",
-          },
-        },
-      },
-    };
-    const raw = {
-      __resolveType: "website/sections/Rendering/Lazy.tsx",
-      section: {
-        __resolveType: rt,
-        banners: [{ desktop: { image: desktopImage } }],
-      },
-    };
-    const parsed = parseSections([raw], {});
-    expect(parsed[0]?.isLazy).toBe(true);
-    expect(parsed[0]?.label).toBe("BannerCollection");
-    expect(getSectionPreviewImageSrc(raw, meta)).toBe(desktopImage);
   });
 });

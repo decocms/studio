@@ -1,5 +1,6 @@
 import { extractUrl } from "./fields/extract-url";
 import type { SchemaProperty } from "./resolve-schema";
+import { safeEditorImageUrl } from "./safe-editor-image-url";
 
 function resolveResolvable(obj: Record<string, unknown>): string | undefined {
   if (Array.isArray(obj.variants)) {
@@ -164,5 +165,6 @@ export function getArrayItemImageSrc(
     item as Record<string, unknown>,
   );
   if (!rendered) return undefined;
-  return extractUrl(rendered) || rendered;
+  const candidate = extractUrl(rendered) || rendered;
+  return safeEditorImageUrl(candidate);
 }

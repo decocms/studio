@@ -49,6 +49,17 @@ describe("getArrayItemImageSrc", () => {
     );
   });
 
+  test("rejects non-https rendered URLs", () => {
+    const item = {
+      image: { mobile: "http://example.com/mobile.jpg" },
+    };
+    const schema: SchemaProperty = {
+      type: "object",
+      image: "{{{image.mobile}}}",
+    };
+    expect(getArrayItemImageSrc(item, schema)).toBeUndefined();
+  });
+
   test("defaults to image.mobile when image is a nested object", () => {
     const item = {
       image: {

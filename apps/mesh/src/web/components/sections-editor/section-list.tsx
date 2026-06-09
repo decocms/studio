@@ -107,6 +107,7 @@ function SectionRowContent({
         <img
           src={imageSrc}
           alt=""
+          referrerPolicy="no-referrer"
           className="h-12 max-w-[100px] shrink-0 rounded object-cover"
         />
       )}
@@ -246,7 +247,12 @@ function SortableSectionItem({
           variant="ghost"
           size="icon"
           aria-label={section.isHidden ? "Show section" : "Hide section"}
-          className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
+          className={cn(
+            "h-7 w-7 shrink-0",
+            section.isHidden
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100",
+          )}
           onClick={(e) => {
             e.stopPropagation();
             onToggleHidden();

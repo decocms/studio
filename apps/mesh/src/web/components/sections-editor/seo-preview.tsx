@@ -1,4 +1,5 @@
 import { Image01 } from "@untitledui/icons";
+import { safeEditorImageUrl } from "./safe-editor-image-url";
 
 /**
  * Live, multi-platform preview of how a page's SEO/Open-Graph metadata renders
@@ -21,19 +22,20 @@ function str(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v : undefined;
 }
 
-/** Only allow remote https images in the editor preview (blocks javascript:, data:, etc.). */
 function safePreviewImageUrl(
   raw: string | undefined,
   baseUrl: string | null | undefined,
 ): string | undefined {
   if (!raw) return undefined;
-  try {
-    const url = baseUrl ? new URL(raw, baseUrl) : new URL(raw);
-    if (url.protocol !== "https:") return undefined;
-    return url.href;
-  } catch {
-    return undefined;
+  if (baseUrl) {
+    try {
+      const resolved = new URL(raw, baseUrl).href;
+      return safeEditorImageUrl(resolved);
+    } catch {
+      return undefined;
+    }
   }
+  return safeEditorImageUrl(raw);
 }
 
 function readSeo(seo: Record<string, unknown> | null | undefined): SeoValues {

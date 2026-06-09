@@ -6,6 +6,9 @@ import {
 import type { LiveMeta } from "./resolve-schema";
 
 const BANNER_COLLECTION_RT = "site/sections/Images/BannerCollection.tsx";
+const LAZY = "website/sections/Rendering/Lazy.tsx";
+const MV = "website/flags/multivariate/section.ts";
+const NEVER = "website/matchers/never.ts";
 
 function bannerCollectionMeta(): LiveMeta {
   return {
@@ -27,21 +30,6 @@ function bannerCollectionMeta(): LiveMeta {
   };
 }
 
-const farmrioLazyBanner = {
-  __resolveType: "website/sections/Rendering/Lazy.tsx",
-  section: {
-    __resolveType: BANNER_COLLECTION_RT,
-    banners: [
-      {
-        desktop: {
-          image:
-            "https://cf.farmriosoma.farmrio.com.br/site/2026/06_JUNHO/09_VITRINE/desktop/home-banner-2-sec-vestidos-desktop.jpg?authuser=1",
-        },
-      },
-    ],
-  },
-};
-
 describe("resolveSectionImageTemplate", () => {
   test("reads @image from btoa(resolveType) Props schema via allOf", () => {
     expect(
@@ -52,18 +40,41 @@ describe("resolveSectionImageTemplate", () => {
 
 describe("getSectionPreviewImageSrc", () => {
   test("returns undefined without meta", () => {
-    expect(getSectionPreviewImageSrc(farmrioLazyBanner, null)).toBeUndefined();
+    const raw = {
+      __resolveType: LAZY,
+      section: {
+        __resolveType: BANNER_COLLECTION_RT,
+        banners: [{ desktop: { image: "https://example.com/banner.jpg" } }],
+      },
+    };
+    expect(getSectionPreviewImageSrc(raw, null)).toBeUndefined();
   });
 
   test("renders lazy BannerCollection like admin getItemImageSrc", () => {
-    const src = getSectionPreviewImageSrc(
-      farmrioLazyBanner,
-      bannerCollectionMeta(),
+    const desktopImage = "https://example.com/banner.jpg";
+    const raw = {
+      __resolveType: LAZY,
+      section: {
+        __resolveType: BANNER_COLLECTION_RT,
+        banners: [{ desktop: { image: desktopImage } }],
+      },
+    };
+    expect(getSectionPreviewImageSrc(raw, bannerCollectionMeta())).toBe(
+      desktopImage,
     );
+  });
 
-    expect(src).toBe(
-      "https://cf.farmriosoma.farmrio.com.br/site/2026/06_JUNHO/09_VITRINE/desktop/home-banner-2-sec-vestidos-desktop.jpg?authuser=1",
-    );
+  test("rejects non-https image URLs", () => {
+    const raw = {
+      __resolveType: LAZY,
+      section: {
+        __resolveType: BANNER_COLLECTION_RT,
+        banners: [{ desktop: { image: "http://example.com/banner.jpg" } }],
+      },
+    };
+    expect(
+      getSectionPreviewImageSrc(raw, bannerCollectionMeta()),
+    ).toBeUndefined();
   });
 
   test("visible lazy and hidden lazy produce the same preview path", () => {
@@ -71,7 +82,7 @@ describe("getSectionPreviewImageSrc", () => {
     const desktopImage = "https://example.com/banner.jpg";
 
     const visibleLazy = {
-      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      __resolveType: LAZY,
       section: {
         __resolveType: BANNER_COLLECTION_RT,
         banners: [{ desktop: { image: desktopImage } }],
@@ -79,11 +90,11 @@ describe("getSectionPreviewImageSrc", () => {
     };
 
     const hiddenLazy = {
-      __resolveType: "website/flags/multivariate/section.ts",
+      __resolveType: MV,
       variants: [
         {
           value: visibleLazy,
-          rule: { __resolveType: "website/matchers/never.ts" },
+          rule: { __resolveType: NEVER },
         },
       ],
     };
@@ -92,21 +103,44 @@ describe("getSectionPreviewImageSrc", () => {
     expect(getSectionPreviewImageSrc(hiddenLazy, meta)).toBe(desktopImage);
   });
 
+  test("renders lazy-outside hidden section (legacy shape)", () => {
+    const desktopImage = "https://example.com/legacy-hidden.jpg";
+    const raw = {
+      __resolveType: LAZY,
+      section: {
+        __resolveType: MV,
+        variants: [
+          {
+            value: {
+              __resolveType: BANNER_COLLECTION_RT,
+              banners: [{ desktop: { image: desktopImage } }],
+            },
+            rule: { __resolveType: NEVER },
+          },
+        ],
+      },
+    };
+
+    expect(getSectionPreviewImageSrc(raw, bannerCollectionMeta())).toBe(
+      desktopImage,
+    );
+  });
+
   test("renders hidden multivariate with lazy inner section", () => {
     const desktopImage = "https://example.com/hidden-banner.jpg";
     const src = getSectionPreviewImageSrc(
       {
-        __resolveType: "website/flags/multivariate/section.ts",
+        __resolveType: MV,
         variants: [
           {
             value: {
-              __resolveType: "website/sections/Rendering/Lazy.tsx",
+              __resolveType: LAZY,
               section: {
                 __resolveType: BANNER_COLLECTION_RT,
                 banners: [{ desktop: { image: desktopImage } }],
               },
             },
-            rule: { __resolveType: "website/matchers/never.ts" },
+            rule: { __resolveType: NEVER },
           },
         ],
       },

@@ -19,7 +19,9 @@ export function unwrapLazySection(raw: RawSection): RawSection {
   return raw;
 }
 
-function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
+export function readHiddenNeverVariantValue(
+  raw: RawSection,
+): RawSection | null {
   const outerLazy = isLazyResolveType(raw.__resolveType ?? "");
   const mvObj = (outerLazy ? raw.section : raw) as
     | Record<string, unknown>
@@ -69,31 +71,71 @@ export function toggleSectionLazyRender(raw: RawSection): RawSection | null {
   }
 
   const hiddenInner = readHiddenNeverVariantValue(raw);
-  const core = hiddenInner ? unwrapLazySection(hiddenInner) : raw;
+  if (hiddenInner) {
+    // Legacy multivariate(never(lazy(core))) — drop hidden, keep existing lazy shell.
+    if (isLazyResolveType(hiddenInner.__resolveType ?? "")) {
+      return hiddenInner;
+    }
+    return {
+      __resolveType: LAZY_RENDER_RESOLVE_TYPE,
+      section: unwrapLazySection(hiddenInner),
+    };
+  }
 
   return {
     __resolveType: LAZY_RENDER_RESOLVE_TYPE,
-    section: core,
+    section: raw,
   };
+}
+
+export interface SectionPreviewContext {
+  resolveType: string;
+  data: Record<string, unknown>;
+}
+
+function resolveCoreSectionContent(
+  section: RawSection,
+): SectionPreviewContext | null {
+  const rt = section.__resolveType ?? "";
+  if (!rt) return null;
+
+  if (isLazyResolveType(rt)) {
+    const nested = section.section as Record<string, unknown> | undefined;
+    const resolveType = (nested?.__resolveType as string) ?? "";
+    if (!resolveType || !nested) return null;
+    return { resolveType, data: nested };
+  }
+
+  return { resolveType: rt, data: section as Record<string, unknown> };
+}
+
+/** Resolve inner section content for list thumbnails (lazy/hidden/legacy shapes). */
+export function resolveSectionPreviewContext(
+  raw: RawSection,
+): SectionPreviewContext | null {
+  const hiddenInner = readHiddenNeverVariantValue(raw);
+  if (hiddenInner) {
+    return resolveCoreSectionContent(hiddenInner);
+  }
+
+  const outerLazy = isLazyResolveType(raw.__resolveType ?? "");
+  if (outerLazy) {
+    const inner = raw.section as RawSection | undefined;
+    if (!inner) return null;
+
+    const hiddenInLazy = readHiddenNeverVariantValue(inner);
+    if (hiddenInLazy) {
+      return resolveCoreSectionContent(hiddenInLazy);
+    }
+    return resolveCoreSectionContent(inner);
+  }
+
+  return resolveCoreSectionContent(raw);
 }
 
 /** Unwrap a hidden section back to the section it was hiding, or null. */
 export function showSection(raw: RawSection): RawSection | null {
-  const outerLazy = isLazyResolveType(raw.__resolveType);
-  const mvObj = (outerLazy ? raw.section : raw) as
-    | Record<string, unknown>
-    | undefined;
-  const variants = mvObj?.variants as
-    | Array<Record<string, unknown>>
-    | undefined;
-  const first = variants?.[0];
-  const rule = first?.rule as Record<string, unknown> | undefined;
-  if (
-    (rule?.__resolveType as string | undefined) !== NEVER_MATCHER_RESOLVE_TYPE
-  ) {
-    return null;
-  }
-  return (first?.value as RawSection | undefined) ?? null;
+  return readHiddenNeverVariantValue(raw);
 }
 
 export interface SectionFlagVariant {

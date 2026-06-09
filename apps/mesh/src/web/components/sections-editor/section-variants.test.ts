@@ -336,6 +336,24 @@ describe("section-variants", () => {
     });
   });
 
+  it("toggleSectionLazyRender on legacy hidden+lazy keeps the lazy shell", () => {
+    const lazyHero = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: { __resolveType: "site/sections/Hero.tsx", title: "Hero" },
+    };
+    const legacyHidden = {
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          value: lazyHero,
+          rule: { __resolveType: "website/matchers/never.ts" },
+        },
+      ],
+    };
+
+    expect(toggleSectionLazyRender(legacyHidden as never)).toEqual(lazyHero);
+  });
+
   it("showSection unwraps a lazy-outer hidden section (outerLazy branch)", () => {
     // Data shape: lazy(multivariate(never(section))) — the multivariate lives
     // inside the lazy shell rather than outside. showSection's outerLazy branch

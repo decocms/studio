@@ -148,6 +148,7 @@ export function ArrayField({
                     <img
                       src={imageSrc}
                       alt=""
+                      referrerPolicy="no-referrer"
                       className="h-12 max-w-[100px] shrink-0 rounded object-cover"
                     />
                   )}
