@@ -67,6 +67,28 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
               threadStatus = data.status;
             }
           },
+          completeRunIfNotCompleted: async () => {
+            if (threadStatus === "completed") return null;
+            const update = {
+              status: "completed",
+              run_owner_pod: null,
+              run_config: null,
+              run_started_at: null,
+            };
+            updates.push(update);
+            threadStatus = "completed";
+            return {
+              id: "run_1",
+              status: threadStatus,
+              virtual_mcp_id: "vmcp_1",
+              created_by: "user_1",
+              trigger_id: null,
+              title: "Test thread",
+              branch: null,
+              created_at: "2026-06-09T00:00:00.000Z",
+              updated_at: "2026-06-09T00:00:01.000Z",
+            };
+          },
           messageParts: () => ({
             appendParts: async (rows: ThreadMessagePart[]) => {
               const inserted = rows.filter((row) => !insertedIds.has(row.id));
@@ -87,6 +109,8 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
       streamBuffer: {
         init: async () => undefined,
         pump: (stream: ReadableStream) => {
+          const index = pumped.length;
+          pumped.push([]);
           const promise = (async () => {
             const reader = stream.getReader();
             const chunks: UIMessageChunk[] = [];
@@ -99,7 +123,7 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
             } finally {
               reader.releaseLock();
             }
-            pumped.push(chunks);
+            pumped[index] = chunks;
           })();
           pumpPromises.push(promise);
         },
@@ -230,8 +254,8 @@ describe("link ingest parts route", () => {
         { type: "text-delta", id: "run_1:0", delta: "hello" },
         { type: "text-end", id: "run_1:0" },
         { type: "finish-step" },
-        { type: "finish" },
       ],
+      [{ type: "finish" }],
     ]);
   });
 
@@ -249,7 +273,7 @@ describe("link ingest parts route", () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(pumped).toHaveLength(1);
+    expect(pumped).toHaveLength(2);
     expect(updates).toHaveLength(1);
     expect(sseEvents.map(({ event }) => event.type)).toEqual([
       "decopilot.thread.status",

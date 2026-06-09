@@ -36,6 +36,15 @@ export interface ThreadStoragePort {
     data: Partial<Thread>,
   ): Promise<Thread>;
   /**
+   * Atomically transition a thread to completed unless it is already completed.
+   * Returns the updated row when this call won the transition, or null when the
+   * run was already completed by another caller.
+   */
+  completeRunIfNotCompleted(
+    id: string,
+    organizationId: string,
+  ): Promise<Thread | null>;
+  /**
    * Atomically transitions a thread to "failed" only when its current
    * persisted status is "in_progress". Safe to call concurrently — the
    * conditional WHERE clause prevents clobbering a terminal status.

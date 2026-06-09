@@ -319,11 +319,6 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
       return c.json({ error: "row run mismatch" }, 400);
     }
 
-    const threadBeforeDone = parsed.data.done
-      ? await ctx.storage.threads.get(runId)
-      : null;
-    const shouldComplete =
-      parsed.data.done && threadBeforeDone?.status !== "completed";
     const insertedRows = await ctx.storage.threads
       .messageParts()
       .appendParts(rows);
@@ -334,30 +329,36 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
       deps,
       runId,
       orgId,
-      liveChunksForRows(insertedRows, shouldComplete),
+      liveChunksForRows(insertedRows, false),
       c.req.raw.signal,
     );
 
-    if (shouldComplete) {
-      await ctx.storage.threads.update(runId, {
-        status: "completed",
-        run_owner_pod: null,
-        run_config: null,
-        run_started_at: null,
-      });
+    const mayComplete =
+      parsed.data.done && (rows.length === 0 || insertedRows.length > 0);
+    const completedThread = mayComplete
+      ? await ctx.storage.threads.completeRunIfNotCompleted(runId)
+      : null;
+
+    if (completedThread) {
+      await publishLiveChunks(
+        deps,
+        runId,
+        orgId,
+        liveChunksForRows([], true),
+        c.req.raw.signal,
+      );
       deps.streamBuffer.purge(runId);
       if (deps.sseHub) {
-        const thread = threadBeforeDone;
         deps.sseHub.emit(
           orgId,
           createDecopilotThreadStatusEvent(runId, "completed", {
-            virtualMcpId: thread?.virtual_mcp_id ?? undefined,
-            createdBy: thread?.created_by,
-            triggerId: thread?.trigger_id,
-            title: thread?.title,
-            branch: thread?.branch ?? null,
-            createdAt: thread?.created_at,
-            updatedAt: thread?.updated_at,
+            virtualMcpId: completedThread.virtual_mcp_id ?? undefined,
+            createdBy: completedThread.created_by,
+            triggerId: completedThread.trigger_id,
+            title: completedThread.title,
+            branch: completedThread.branch ?? null,
+            createdAt: completedThread.created_at,
+            updatedAt: completedThread.updated_at,
           }),
         );
         deps.sseHub.emit(orgId, createDecopilotFinishEvent(runId, "completed"));
