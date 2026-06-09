@@ -443,19 +443,21 @@ async function handleProxyRequest(
         url,
         elapsedMs: Date.now() - startedAt,
       });
-      const res = await fetcher(url, {
+      const replyPostInit: RequestInit & {
+        duplex: "half";
+        verbose: boolean;
+      } = {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
           "content-type": "application/x-ndjson",
         },
         body,
-        // @ts-expect-error — `duplex: "half"` is required by the Fetch spec for
-        // streaming request bodies; supported by Node/Bun/undici but not yet in
-        // all TS DOM typings (see handle-local-dispatch.ts).
         duplex: "half",
+        verbose: true,
         signal: combined,
-      });
+      };
+      const res = await fetcher(url, replyPostInit);
       if (!res.ok && res.status !== 204) {
         console.warn(
           `[proxy-poller] reply POST reqId=${reqId} → ${res.status}`,

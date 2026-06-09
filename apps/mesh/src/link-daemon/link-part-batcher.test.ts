@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { sleep } from "@decocms/std";
 import type { UIMessageChunk } from "ai";
 import type { LinkIngestBatch } from "../api/routes/decopilot/link-ingest-batch-schema";
 import { relayDispatchSSEAsPartBatches } from "./link-part-batcher";
@@ -34,6 +35,35 @@ function dispatchSSE(chunks: UIMessageChunk[]): ReadableStream<Uint8Array> {
   });
 }
 
+function openDispatchSSE(): {
+  stream: ReadableStream<Uint8Array>;
+  enqueue: (chunks: UIMessageChunk[]) => void;
+  close: () => void;
+} {
+  const encoder = new TextEncoder();
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  return {
+    stream: new ReadableStream<Uint8Array>({
+      start(c) {
+        controller = c;
+      },
+    }),
+    enqueue(chunks) {
+      for (const chunk of chunks) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: "ui-message-chunk", chunk })}\n\n`,
+          ),
+        );
+      }
+    },
+    close() {
+      controller.enqueue(encoder.encode(`data: {"type":"done"}\n\n`));
+      controller.close();
+    },
+  };
+}
+
 function errorDispatchSSE(): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
@@ -62,6 +92,13 @@ async function relayForTest(input: {
     orgId: "org_1",
     postBatch: input.postBatch,
   });
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let i = 0; i < 20; i++) {
+    if (predicate()) return;
+    await sleep(5);
+  }
 }
 
 const successfulTextChunks = [
@@ -109,6 +146,48 @@ function manyTextPartsInOneStep(count: number): UIMessageChunk[] {
 }
 
 describe("relayDispatchSSEAsPartBatches", () => {
+  it("posts a closed step before waiting for the next step or final answer", async () => {
+    const batches: LinkIngestBatch[] = [];
+    const dispatch = openDispatchSSE();
+
+    const relayPromise = relayForTest({
+      dispatchBody: dispatch.stream,
+      postBatch: async (batch) => {
+        batches.push(batch);
+      },
+    });
+
+    dispatch.enqueue([
+      { type: "start" },
+      { type: "start-step" },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "first step" },
+      { type: "text-end", id: "t1" },
+      { type: "finish-step" },
+    ] as UIMessageChunk[]);
+
+    await waitFor(() => batches.length > 0);
+    const batchesAfterFirstStep = batches.map((batch) => ({
+      done: batch.done,
+      rowIds: batch.rows.map((row) => row.id),
+    }));
+
+    dispatch.enqueue([
+      { type: "start-step" },
+      { type: "text-start", id: "t2" },
+      { type: "text-delta", id: "t2", delta: "final answer" },
+      { type: "text-end", id: "t2" },
+      { type: "finish-step" },
+      { type: "finish" },
+    ] as UIMessageChunk[]);
+    dispatch.close();
+    await relayPromise;
+
+    expect(batchesAfterFirstStep).toEqual([
+      { done: false, rowIds: ["run_1:0"] },
+    ]);
+  });
+
   it("posts one rows batch and final done for a successful text stream", async () => {
     const batches: LinkIngestBatch[] = [];
 
@@ -119,7 +198,7 @@ describe("relayDispatchSSEAsPartBatches", () => {
       },
     });
 
-    expect(batches).toHaveLength(2);
+    expect(batches).toHaveLength(3);
     expect(batches[0]?.batchId).toBe("run_1:0");
     expect(batches[0]?.done).toBe(false);
     expect(
@@ -134,13 +213,11 @@ describe("relayDispatchSSEAsPartBatches", () => {
         kind: "text",
         payload: expect.objectContaining({ type: "text", text: "hello" }),
       },
-      {
-        id: "run_1:1",
-        kind: "finish",
-        payload: {},
-      },
     ]);
-    expect(batches[1]).toEqual({
+    expect(batches[1]?.rows.map((row) => [row.id, row.kind])).toEqual([
+      ["run_1:1", "finish"],
+    ]);
+    expect(batches[2]).toEqual({
       batchId: "run_1:done",
       rows: [],
       done: true,
@@ -215,13 +292,12 @@ describe("relayDispatchSSEAsPartBatches", () => {
     expect(batches.map((batch) => batch.batchId)).toEqual([
       "run_1:0",
       "run_1:1",
+      "run_1:2",
       "run_1:done",
     ]);
     expect(batches[0]?.rows.map((row) => row.id)).toEqual(["run_1:0"]);
-    expect(batches[1]?.rows.map((row) => row.id)).toEqual([
-      "run_1:1",
-      "run_1:2",
-    ]);
+    expect(batches[1]?.rows.map((row) => row.id)).toEqual(["run_1:1"]);
+    expect(batches[2]?.rows.map((row) => row.id)).toEqual(["run_1:2"]);
     expect(
       batches
         .filter((batch) => !batch.done)
@@ -258,6 +334,7 @@ describe("relayDispatchSSEAsPartBatches", () => {
       "run_1:0",
       "run_1:1",
       "run_1:2",
+      "run_1:3",
       "run_1:done",
     ]);
     const rowIds = batches
@@ -280,15 +357,19 @@ describe("relayDispatchSSEAsPartBatches", () => {
     expect(batches.map((batch) => batch.batchId)).toEqual([
       "run_1:0",
       "run_1:1",
+      "run_1:2",
       "run_1:done",
     ]);
     expect(batches[0]?.done).toBe(false);
     expect(batches[1]?.done).toBe(false);
+    expect(batches[2]?.done).toBe(false);
     expect(batches[0]?.rows).toHaveLength(512);
-    expect(batches[1]?.rows).toHaveLength(2);
+    expect(batches[1]?.rows).toHaveLength(1);
+    expect(batches[2]?.rows).toHaveLength(1);
     expect(batches[0]?.rows.length).toBeLessThanOrEqual(512);
     expect(batches[1]?.rows.length).toBeLessThanOrEqual(512);
-    expect(batches[2]).toEqual({
+    expect(batches[2]?.rows.length).toBeLessThanOrEqual(512);
+    expect(batches[3]).toEqual({
       batchId: "run_1:done",
       rows: [],
       done: true,

@@ -57,6 +57,7 @@ describe("runProxyPollLoop — request ack", () => {
     const calls: string[] = [];
     const frame = reqFrame("r-ack");
     let pollCount = 0;
+    let streamVerbose: unknown;
 
     const fetchImpl = (async (input, init) => {
       const url = String(input);
@@ -82,6 +83,7 @@ describe("runProxyPollLoop — request ack", () => {
 
       if (method === "POST" && url.endsWith("/stream")) {
         calls.push("stream");
+        streamVerbose = (init as RequestInit & { verbose?: boolean }).verbose;
         return await new Promise<Response>((resolve) => {
           init?.signal?.addEventListener(
             "abort",
@@ -133,6 +135,7 @@ describe("runProxyPollLoop — request ack", () => {
     expect(calls.indexOf("ack")).toBeGreaterThan(-1);
     expect(calls.indexOf("stream")).toBeGreaterThan(-1);
     expect(calls.indexOf("ack")).toBeLessThan(calls.indexOf("stream"));
+    expect(streamVerbose).toBe(true);
   });
 });
 
