@@ -1,21 +1,5 @@
-/**
- * local-helpers — lean port of `api/routes/decopilot/helpers.ts`.
- *
- * Copies `toolNeedsApproval`, the name-sanitization helpers, and `toolsFromMCP`,
- * dropping the cluster-coupled pieces so this stays daemon-portable:
- *   - `resolveArgsStorageRefs` / `file-materializer` — guarded behind
- *     `ctx?.objectStorage` (always absent on the desktop, so the branch is dead
- *     here); kept out entirely to avoid the `@/object-storage/*` import.
- *   - `posthog` analytics — dropped (cluster-only `@/posthog`).
- *   - `MCP_TOOL_CALL_TIMEOUT_MS` (`@/core/constants`) — inlined as a local
- *     constant to keep the import graph free of `@/`.
- *
- * Truncation reuses the genuinely-portable `read-tool-output` leaf by relative
- * path. The narrow `DesktopToolCtx` replaces `StudioContext` everywhere.
- */
-
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
   jsonSchema,
@@ -29,21 +13,13 @@ import {
   MAX_RESULT_TOKENS,
   createOutputPreview,
   estimateJsonTokens,
-} from "../decopilot/built-in-tools/read-tool-output";
-import type { DesktopToolCtx } from "./types";
+} from "./built-in-tools/read-tool-output";
 
-/** Mirrors `@/core/constants:MCP_TOOL_CALL_TIMEOUT_MS`. Inlined to avoid the
- *  cluster `@/core` import. Keep in sync if the cluster value changes. */
-const MCP_TOOL_CALL_TIMEOUT_MS = 120_000;
+const DEFAULT_MCP_TOOL_CALL_TIMEOUT_MS = 120_000;
 
-/** Tool approval levels determine which tools require user approval. */
 export type ToolApprovalLevel = "auto" | "readonly";
 
-/**
- * Determine if a tool needs approval based on approval level and readOnlyHint.
- * Copy of `helpers.ts:toolNeedsApproval` (pure — no cluster deps).
- */
-function toolNeedsApproval(
+export function toolNeedsApproval(
   level: ToolApprovalLevel,
   readOnlyHint?: boolean,
   options?: { isPlanMode?: boolean },
@@ -56,8 +32,7 @@ function toolNeedsApproval(
   return readOnlyHint !== true;
 }
 
-/** Sanitize a tool name so it's accepted by all known LLM providers. */
-function sanitizeToolName(name: string): string {
+export function sanitizeToolName(name: string): string {
   let safe = name.replace(/[^a-zA-Z0-9_.\-:]/g, "_");
   if (safe.length === 0 || !/^[a-zA-Z_]/.test(safe)) {
     safe = `_${safe}`;
@@ -68,7 +43,25 @@ function sanitizeToolName(name: string): string {
   return safe;
 }
 
-/** Strip the GatewayClient namespace prefix from a tool name. */
+export function buildSanitizedNameMap(names: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  const usedNames = new Set<string>();
+  for (const name of names) {
+    let safeName = sanitizeToolName(name);
+    if (usedNames.has(safeName)) {
+      const maxBase = 128 - 4;
+      const base =
+        safeName.length > maxBase ? safeName.slice(0, maxBase) : safeName;
+      let i = 2;
+      while (usedNames.has(`${base}_${i}`)) i++;
+      safeName = `${base}_${i}`;
+    }
+    usedNames.add(safeName);
+    map.set(name, safeName);
+  }
+  return map;
+}
+
 function stripGatewayPrefix(
   namespacedName: string,
   gatewayClientId: string,
@@ -83,16 +76,10 @@ function stripGatewayPrefix(
     : namespacedName;
 }
 
-/** Same as sanitizeToolName but also converts hyphens to underscores. */
 function sanitizeForLlm(name: string): string {
   return sanitizeToolName(name).replace(/-/g, "_");
 }
 
-/**
- * Build a collision-aware name map from MCP tools. Uses the short name when
- * unique; prepends the connection prefix only on collision. Copy of
- * `helpers.ts:buildShortNameMap`.
- */
 function buildShortNameMap(
   tools: Array<{ name: string; _meta?: Record<string, unknown> }>,
 ): Map<string, string> {
@@ -133,18 +120,10 @@ function buildShortNameMap(
   return map;
 }
 
-/** Cluster relay tools the desktop re-exposes through a LOCAL built-in wrapper
- *  (e.g. `subtask` wraps `SUBTASK_MCP` to inject credential/model ids). The raw
- *  relay tool is hidden from the model so it only sees the clean wrapper. */
-const LOCALLY_WRAPPED_RELAY_TOOLS = new Set<string>(["SUBTASK_MCP"]);
-
-/** MCP Apps visibility check — default (no visibility) = visible to model. */
-function isToolVisibleToModel(t: {
-  name: string;
+function defaultToolVisibility(tool: {
   _meta?: Record<string, unknown>;
 }): boolean {
-  if (LOCALLY_WRAPPED_RELAY_TOOLS.has(t.name)) return false;
-  const ui = t._meta?.ui as { visibility?: string | string[] } | undefined;
+  const ui = tool._meta?.ui as { visibility?: string | string[] } | undefined;
   const visibility = ui?.visibility;
   if (visibility == null) return true;
   if (typeof visibility === "string") return visibility === "model";
@@ -152,29 +131,45 @@ function isToolVisibleToModel(t: {
   return true;
 }
 
-/**
- * Convert MCP tools to an AI SDK ToolSet. Lean port of `helpers.ts:toolsFromMCP`:
- *  - no `resolveArgsStorageRefs` (storage-ref resolution is cluster-only; on the
- *    desktop `ctx.objectStorage` is always null, so the original branch was dead)
- *  - no posthog `tool_called` capture (cluster-only analytics)
- * The `data-tool-metadata` write + the output-truncation `toModelOutput` are
- * preserved byte-for-byte so the UI's latency badge + read_tool_output flow keep
- * working.
- */
+export interface ToolCallAnalytics {
+  toolName: string;
+  toolSafeName: string;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  };
+  latencyMs: number;
+  isError: boolean;
+}
+
+export interface ToolsFromMcpOptions {
+  disableOutputTruncation?: boolean;
+  isPlanMode?: boolean;
+  timeoutMs?: number;
+  isToolVisible?: (tool: {
+    name: string;
+    _meta?: Record<string, unknown>;
+  }) => boolean;
+  resolveArgs?: (
+    input: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  onToolCalled?: (event: ToolCallAnalytics) => void;
+}
+
 export async function toolsFromMCP(
   client: Client,
   toolOutputMap: Map<string, string>,
   writer?: UIMessageStreamWriter,
   toolApprovalLevel: ToolApprovalLevel = "auto",
-  options?: {
-    disableOutputTruncation?: boolean;
-    ctx?: DesktopToolCtx;
-    isPlanMode?: boolean;
-  },
+  options: ToolsFromMcpOptions = {},
 ): Promise<{ tools: ToolSet; nameMap: Map<string, string> }> {
-  const truncate = !options?.disableOutputTruncation;
+  const truncate = !options.disableOutputTruncation;
   const list = await client.listTools();
-  const visibleTools = list.tools.filter(isToolVisibleToModel);
+  const visibleTools = list.tools.filter((t) =>
+    (options.isToolVisible ?? defaultToolVisibility)(t),
+  );
 
   const nameMap = buildShortNameMap(visibleTools);
   const toolEntries = visibleTools.map((t) => {
@@ -190,29 +185,37 @@ export async function toolsFromMCP(
         outputSchema: undefined,
         needsApproval:
           toolNeedsApproval(toolApprovalLevel, annotations?.readOnlyHint, {
-            isPlanMode: options?.isPlanMode,
+            isPlanMode: options.isPlanMode,
           }) !== false,
         execute: async (input, callOptions) => {
           const startTime = performance.now();
+          let isError = false;
           let outputBytes: number | undefined;
           try {
+            const resolvedInput = options.resolveArgs
+              ? await options.resolveArgs(input as Record<string, unknown>)
+              : (input as Record<string, unknown>);
             const result = await client.callTool(
               {
                 name: t.name,
-                arguments: input as Record<string, unknown>,
+                arguments: resolvedInput,
               },
               CallToolResultSchema,
               {
                 signal: callOptions.abortSignal,
-                timeout: MCP_TOOL_CALL_TIMEOUT_MS,
+                timeout: options.timeoutMs ?? DEFAULT_MCP_TOOL_CALL_TIMEOUT_MS,
               },
             );
+            isError = Boolean((result as { isError?: boolean })?.isError);
             try {
               outputBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
             } catch {
               outputBytes = undefined;
             }
             return result as unknown as CallToolResult;
+          } catch (err) {
+            isError = true;
+            throw err;
           } finally {
             const latencyMs = performance.now() - startTime;
             if (writer) {
@@ -227,6 +230,13 @@ export async function toolsFromMCP(
                 },
               });
             }
+            options.onToolCalled?.({
+              toolName: t.name,
+              toolSafeName: safeName,
+              annotations,
+              latencyMs,
+              isError,
+            });
           }
         },
         toModelOutput: async ({ output, toolCallId }) => {

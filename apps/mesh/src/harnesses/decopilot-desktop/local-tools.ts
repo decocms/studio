@@ -45,7 +45,7 @@ import {
 } from "../decopilot/built-in-tools/sandbox";
 import { BROWSERLESS_BASE_URL } from "../decopilot/built-in-tools/constants";
 import type { DesktopToolCtx } from "./types";
-import type { ToolApprovalLevel } from "./local-helpers";
+import type { ToolApprovalLevel } from "../decopilot/mcp-tools";
 
 // ─────────────────────────────────────────────────────────────────────
 // read_resource (lean) — no mesh-storage:// blob path (cluster-only)

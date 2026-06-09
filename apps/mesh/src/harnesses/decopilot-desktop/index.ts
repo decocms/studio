@@ -34,14 +34,29 @@ import type {
 } from "../types";
 import { openMcpSource } from "../sources";
 import { createProviderFromSecret } from "./provider-from-secret";
-import { toolsFromMCP } from "./local-helpers";
+import { toolsFromMCP } from "../decopilot/mcp-tools";
 import { buildLocalTools } from "./local-tools";
-import { processConversation } from "./local-conversation";
+import { processConversation } from "../decopilot/conversation";
 import { runDesktopAgentLoop } from "./local-agent-loop";
 import { DEFAULT_WINDOW_SIZE } from "./local-prompt";
 import type { ConnectionsBlockTool } from "../decopilot/connections-block";
 import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
 import type { DesktopToolCtx } from "./types";
+
+const LOCALLY_WRAPPED_RELAY_TOOLS = new Set<string>(["SUBTASK_MCP"]);
+
+function isDesktopToolVisible(tool: {
+  name: string;
+  _meta?: Record<string, unknown>;
+}): boolean {
+  if (LOCALLY_WRAPPED_RELAY_TOOLS.has(tool.name)) return false;
+  const ui = tool._meta?.ui as { visibility?: string | string[] } | undefined;
+  const visibility = ui?.visibility;
+  if (visibility == null) return true;
+  if (typeof visibility === "string") return visibility === "model";
+  if (Array.isArray(visibility)) return visibility.includes("model");
+  return true;
+}
 
 export const decopilotDesktopHarnessFactory: HarnessFactory = {
   id: "decopilot",
@@ -93,7 +108,10 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
             toolOutputMap,
             undefined,
             input.toolApprovalLevel,
-            { isPlanMode: input.mode === "plan" },
+            {
+              isPlanMode: input.mode === "plan",
+              isToolVisible: isDesktopToolVisible,
+            },
           );
 
           // 4. Collect the connections-block list + read-only annotations from

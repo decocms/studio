@@ -1,21 +1,3 @@
-/**
- * local-conversation — lean port of the PURE functions in
- * `api/routes/decopilot/conversation.ts`.
- *
- * Copies `processConversation`, `denyPendingApprovals`, and `splitMessages`.
- * Drops the cluster `Memory` / `ThreadMessage` VALUE paths (loadMemory,
- * mergeMessages, loadAndMergeMessages) — the desktop already has the full
- * message array in `HarnessStreamInput.messages`, so there's no DB load.
- *
- * The only type imports are `import type` (`ModelsConfig` from the cluster
- * decopilot types, `ChatMessage` = AI SDK `UIMessage`) — types erase at
- * compile time and never pull a runtime module into the bundle. The behaviour
- * (validate → deny-pending → convertToModelMessages with the real tool set →
- * split system → keep-last-todo → prune reasoning/metadata) is byte-for-byte
- * identical to the cluster path so prior-turn tool outputs transform the same
- * way (the three desktop tools with `toModelOutput` rely on this).
- */
-
 import {
   convertToModelMessages,
   type ModelMessage,
@@ -25,23 +7,17 @@ import {
   type UIMessage,
   validateUIMessages,
 } from "ai";
-import type { ModelsConfig } from "../types";
 import { keepLastTodoWrite } from "../../api/routes/decopilot/todo-write-context";
 
-type ChatMessage = UIMessage;
-
-export interface ProcessedConversation {
+export interface ProcessedConversation<TMessage extends UIMessage = UIMessage> {
   systemMessages: SystemModelMessage[];
   messages: ReturnType<typeof pruneMessages>;
-  originalMessages: ChatMessage[];
+  originalMessages: TMessage[];
 }
 
-/**
- * Convert any still-pending tool approvals into denials. When the user sends a
- * new message without approving a prior tool call, the call is marked denied so
- * the conversation can proceed. Copy of `conversation.ts:denyPendingApprovals`.
- */
-function denyPendingApprovals(messages: ChatMessage[]): ChatMessage[] {
+export function denyPendingApprovals<TMessage extends UIMessage>(
+  messages: TMessage[],
+): TMessage[] {
   let patched = false;
   const result = messages.map((msg) => {
     if (msg.role !== "assistant") return msg;
@@ -73,7 +49,7 @@ function denyPendingApprovals(messages: ChatMessage[]): ChatMessage[] {
           },
         };
       }),
-    } as ChatMessage;
+    } as TMessage;
   });
 
   return patched ? result : messages;
@@ -100,23 +76,17 @@ function splitMessages(messages: ModelMessage[]): {
   };
 }
 
-/**
- * Process the full message array for the conversation. Copy of
- * `conversation.ts:processConversation` (memory is supplied externally — the
- * desktop already has every message).
- */
-export async function processConversation(
-  allMessages: ChatMessage[],
-  config: { windowSize: number; models: ModelsConfig; tools?: ToolSet },
-): Promise<ProcessedConversation> {
-  // Filter out empty-parts assistant messages before validation; an
-  // empty-parts assistant message (LLM error before content) bricks
-  // `validateUIMessages`.
+export async function processConversation<TMessage extends UIMessage>(
+  allMessages: TMessage[],
+  config: { windowSize: number; models: unknown; tools?: ToolSet },
+): Promise<ProcessedConversation<TMessage>> {
+  // Filter out messages with empty parts before validation. Assistant messages
+  // saved after an LLM error can otherwise brick the entire thread.
   const sanitizedMessages = allMessages.filter(
     (m) => m.role !== "assistant" || (m.parts && m.parts.length > 0),
   );
 
-  const validUIMessages = await validateUIMessages<ChatMessage>({
+  const validUIMessages = await validateUIMessages<TMessage>({
     messages: sanitizedMessages,
   });
 
@@ -136,7 +106,7 @@ export async function processConversation(
   const todoTrimmedMessages = keepLastTodoWrite(nonSystemModelMessages);
 
   // Strip reasoning + provider metadata from prior assistant messages to avoid
-  // "Invalid signature in thinking block" across load-balanced backends.
+  // stale thinking signatures across load-balanced providers.
   const prunedModelMessages = pruneMessages({
     messages: todoTrimmedMessages,
     reasoning: "all",
@@ -163,8 +133,8 @@ export async function processConversation(
                 providerMetadata: _pm,
                 ...rest
               } = p;
-              // Keep Google's thoughtSignature on tool-call parts (Gemini needs
-              // it on subsequent turns when thinking is enabled).
+              // Keep Google's thoughtSignature on tool-call parts; Gemini
+              // needs it on subsequent turns when thinking is enabled.
               if (p.type === "tool-call") {
                 const googleMeta = (_pm as Record<string, unknown>)?.google;
                 const googleOpts = (_po as Record<string, unknown>)?.google;
