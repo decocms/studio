@@ -17,6 +17,7 @@
  */
 
 import { mkdirSync } from "node:fs";
+import * as net from "node:net";
 import { join, isAbsolute } from "node:path";
 import { safePath } from "../paths";
 // Portable serve-layer leaves from the mesh workspace (same cross-package
@@ -24,6 +25,7 @@ import { safePath } from "../paths";
 import { OrgFsClient } from "../../../../apps/mesh/src/file-storage/mount/client";
 import { createWebdavHandler } from "../../../../apps/mesh/src/file-storage/mount/webdav";
 import type { OrgFsMountConfig } from "./config";
+import { makeRcForget, runInvalidator } from "./invalidator";
 
 export type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
 
@@ -32,16 +34,73 @@ export interface MountHandle {
   unmount(): Promise<void>;
 }
 
-/** Has the OS mount the loopback WebDAV URL at `mountPath` (impl in mounter.ts). */
+/**
+ * Has the OS mount the loopback WebDAV URL at `mountPath` (impl in mounter.ts).
+ * `rcAddr`, when set, is where rclone should expose its control API so the
+ * invalidator can drive `vfs/forget`.
+ */
 export interface Mounter {
-  mount(opts: { webdavUrl: string; mountPath: string }): Promise<MountHandle>;
+  mount(opts: {
+    webdavUrl: string;
+    mountPath: string;
+    rcAddr?: string;
+  }): Promise<MountHandle>;
 }
+
+/** Background cache-invalidation for one mounted volume. */
+export interface VolumeInvalidator {
+  stop(): void;
+}
+
+/**
+ * Starts near-realtime invalidation for a freshly-mounted volume. Injected so
+ * MountManager's orchestration is unit-testable without a real rclone rc or
+ * mesh (mirrors the `Mounter` seam).
+ */
+export type InvalidatorFactory = (opts: {
+  client: OrgFsClient;
+  rcUrl: string;
+  volume: string;
+  log: (msg: string, err?: unknown) => void;
+}) => VolumeInvalidator;
+
+/** Real factory: poll the change feed → rclone `vfs/forget` (see invalidator.ts). */
+const defaultInvalidatorFactory: InvalidatorFactory = ({
+  client,
+  rcUrl,
+  log,
+}) => {
+  const ac = new AbortController();
+  void runInvalidator({
+    changes: (since) => client.changes(since),
+    forget: makeRcForget(rcUrl),
+    signal: ac.signal,
+    log,
+  });
+  return { stop: () => ac.abort() };
+};
 
 interface ActiveMount {
   volume: string;
   mountPath: string;
   stopServer: () => void;
   handle: MountHandle;
+  invalidator: VolumeInvalidator;
+}
+
+/** Bind :0 to grab a free loopback port for rclone's rc, then release it. */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const addr = srv.address();
+      const port = addr && typeof addr === "object" ? addr.port : 0;
+      srv.close((err) =>
+        err || !port ? reject(err ?? new Error("no free port")) : resolve(port),
+      );
+    });
+  });
 }
 
 /**
@@ -64,6 +123,7 @@ export class MountManager {
     private readonly mounter: Mounter,
     private readonly log: (msg: string, err?: unknown) => void = (m, e) =>
       e ? console.warn(`[org-fs] ${m}`, e) : console.log(`[org-fs] ${m}`),
+    private readonly startInvalidator: InvalidatorFactory = defaultInvalidatorFactory,
   ) {}
 
   /** Serve + mount every configured volume. Never throws. */
@@ -92,12 +152,25 @@ export class MountManager {
         const webdavUrl = `http://127.0.0.1:${server.port}`;
 
         try {
-          const handle = await this.mounter.mount({ webdavUrl, mountPath });
+          const rcAddr = `127.0.0.1:${await freePort()}`;
+          const handle = await this.mounter.mount({
+            webdavUrl,
+            mountPath,
+            rcAddr,
+          });
+          // Near-realtime freshness: feed-driven vfs/forget against rclone's rc.
+          const invalidator = this.startInvalidator({
+            client,
+            rcUrl: `http://${rcAddr}`,
+            volume: m.volume,
+            log: this.log,
+          });
           this.active.push({
             volume: m.volume,
             mountPath,
             stopServer: () => server.stop(true),
             handle,
+            invalidator,
           });
           this.log(`mounted ${m.volume} at ${mountPath}`);
         } catch (err) {
@@ -116,6 +189,11 @@ export class MountManager {
     this.active = [];
     await Promise.all(
       mounts.map(async (a) => {
+        try {
+          a.invalidator.stop();
+        } catch {
+          // already stopped
+        }
         try {
           await a.handle.unmount();
         } catch (err) {

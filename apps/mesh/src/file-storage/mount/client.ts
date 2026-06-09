@@ -31,6 +31,25 @@ function toNode(e: ApiEntry): OrgFsNode {
   return { path: e.path, kind: e.kind, size: e.size, updatedAt: e.updatedAt };
 }
 
+/** One entry from the change feed (a live row or a tombstone). */
+export interface OrgFsChange {
+  path: string;
+  /** Parent dir of `path` ("" = volume root) — the dir to invalidate. */
+  parent: string;
+  kind: "file" | "dir";
+  /** Set when this change is a deletion. */
+  deletedAt: string | null;
+}
+
+/** A page of the change feed. */
+export interface OrgFsChangePage {
+  entries: OrgFsChange[];
+  /** Cursor to pass as `since` on the next poll. */
+  cursor: string;
+  /** A full page came back — poll again immediately rather than waiting. */
+  hasMore: boolean;
+}
+
 /**
  * Daemon-side client for the mesh org-fs HTTP contract. One instance per
  * (org, volume). Used by the WebDAV serve layer; never touches the DB.
@@ -133,5 +152,20 @@ export class OrgFsClient implements OrgFsApi {
       body: JSON.stringify({ from, to }),
     });
     if (!res.ok) return this.fail(res);
+  }
+
+  /**
+   * Poll the change feed from `since` ("0" = beginning). Drives the mount's
+   * cache invalidation (see the daemon invalidator) — not part of OrgFsApi
+   * since the WebDAV serve layer never needs it.
+   */
+  async changes(since: string, limit?: number): Promise<OrgFsChangePage> {
+    const params: Record<string, string> = { since };
+    if (limit != null) params.limit = String(limit);
+    const res = await this.fetch(this.url("changes", params), {
+      headers: this.headers,
+    });
+    if (!res.ok) return this.fail(res);
+    return (await res.json()) as OrgFsChangePage;
   }
 }
