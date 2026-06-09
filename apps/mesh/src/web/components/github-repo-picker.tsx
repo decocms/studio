@@ -39,6 +39,7 @@ import {
   setupStorefrontGithubAutomations,
 } from "@/tools/virtual/storefront-github-automations";
 import { fetchGithubInstallations } from "@/web/lib/github-installations";
+import { getOrgGithubConnections } from "@/shared/github-repo-scope";
 import { provisionRepoScopedGithubConnection } from "@/web/lib/provision-repo-scoped-github-connection";
 
 export interface GitHubInstallation {
@@ -127,6 +128,7 @@ export function GitHubRepoPicker({
             }
           >
             <PickerContent
+              open={open}
               onComplete={() => onOpenChange(false)}
               selectedInstallation={selectedInstallation}
               onSelectInstallation={setSelectedInstallation}
@@ -141,12 +143,14 @@ export function GitHubRepoPicker({
 }
 
 function PickerContent({
+  open,
   onComplete,
   selectedInstallation,
   onSelectInstallation,
   hideAutoRespondCheckbox,
   onImportComplete,
 }: {
+  open: boolean;
   onComplete: () => void;
   selectedInstallation: GitHubInstallation | null;
   onSelectInstallation: (inst: GitHubInstallation | null) => void;
@@ -178,15 +182,16 @@ function PickerContent({
       ? selectedAutomationKeys
       : new Set<string>();
 
-  const githubConnections = useConnections({ slug: "mcp-github" });
+  const allGithubConnections = useConnections({ slug: "mcp-github" });
+  const orgGithubConnections = getOrgGithubConnections(allGithubConnections);
 
   const autoInstall = useAutoInstallGitHub({
-    enabled: githubConnections.length === 0,
+    enabled: open && orgGithubConnections.length === 0,
   });
 
   const effectiveConnection =
-    githubConnections.length === 1
-      ? (githubConnections[0] ?? null)
+    orgGithubConnections.length === 1
+      ? (orgGithubConnections[0] ?? null)
       : selectedConnection;
 
   const githubClient = useMCPClient({
@@ -446,7 +451,7 @@ function PickerContent({
     );
   }
 
-  if (githubConnections.length === 0 && autoInstall.status === "idle") {
+  if (orgGithubConnections.length === 0 && autoInstall.status === "idle") {
     return (
       <AutoInstallGitHubUI
         status="installing"
@@ -456,7 +461,7 @@ function PickerContent({
     );
   }
 
-  if (githubConnections.length > 1 && !effectiveConnection) {
+  if (orgGithubConnections.length > 1 && !effectiveConnection) {
     return (
       <div className="flex flex-col py-2">
         <div className="px-4 py-2">
@@ -464,7 +469,7 @@ function PickerContent({
             Select a connection
           </p>
         </div>
-        {githubConnections.map((conn) => (
+        {orgGithubConnections.map((conn) => (
           <button
             key={conn.id}
             type="button"
@@ -498,7 +503,7 @@ function PickerContent({
         orgId={org.id}
         orgSlug={org.slug}
         onSelect={onSelectInstallation}
-        showBackButton={githubConnections.length > 1}
+        showBackButton={orgGithubConnections.length > 1}
         onBack={() => setSelectedConnection(null)}
       />
     );

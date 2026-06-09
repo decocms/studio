@@ -77,6 +77,52 @@ test.describe("GitHub import repo-scoped connections", () => {
     }
   });
 
+  test("GITHUB_LIST_USER_ORGS rejects repo-scoped child connections", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+
+      const orgConn = await createHttpConnection(ctx, org, {
+        title: `Org GitHub ${Date.now()}`,
+        url: "https://example.com/mcp",
+      });
+
+      const child = await callSelfMcpTool<{ item: { id: string } }>(
+        ctx,
+        org,
+        "COLLECTION_CONNECTIONS_CREATE",
+        {
+          data: {
+            title: `GitHub: deco-sites/demo ${Date.now()}`,
+            app_name: "mcp-github",
+            connection_type: "HTTP",
+            connection_url: "https://example.com/mcp",
+            metadata: {
+              repoScope: {
+                sourceConnectionId: orgConn.id,
+                installationId: 1,
+                owner: "deco-sites",
+                repo: "demo",
+                permissions: { contents: "write" },
+              },
+            },
+          },
+        },
+      );
+
+      await expect(
+        callSelfMcpTool(ctx, org, "GITHUB_LIST_USER_ORGS", {
+          connectionId: child.item.id,
+        }),
+      ).rejects.toThrow(/Repo-scoped connections cannot list installations/);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   /**
    * Scenario 2 — teardown removes the child connection + token.
    *

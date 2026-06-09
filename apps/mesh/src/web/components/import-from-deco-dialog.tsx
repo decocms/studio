@@ -6,10 +6,12 @@ import {
   useConnections,
   useMCPClient,
   useProjectContext,
+  type ConnectionEntity,
 } from "@decocms/mesh-sdk";
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { resolveDecoSiteGithubRepo } from "@/shared/deco-sites-github";
+import { getOrgGithubConnections } from "@/shared/github-repo-scope";
 import {
   fetchGithubInstallations,
   findGithubInstallation,
@@ -29,6 +31,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { generateSlug } from "@/web/lib/slug";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
+import { GitHubIcon } from "@/web/components/icons/github-icon";
 import { track } from "@/web/lib/posthog-client";
 
 interface DecoSite {
@@ -79,6 +82,8 @@ export function ImportFromDecoDialog({
   const { data: session } = authClient.useSession();
 
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
+  const [selectedGithubConnection, setSelectedGithubConnection] =
+    useState<ConnectionEntity | null>(null);
   const [search, setSearch] = useState("");
 
   const client = useMCPClient({
@@ -87,20 +92,26 @@ export function ImportFromDecoDialog({
     orgSlug: org.slug,
   });
 
-  const githubConnections = useConnections({ slug: "mcp-github" });
+  const allGithubConnections = useConnections({ slug: "mcp-github" });
+  const orgGithubConnections = getOrgGithubConnections(allGithubConnections);
   const autoInstall = useAutoInstallGitHub({
-    enabled: open && githubConnections.length === 0,
+    enabled: open && orgGithubConnections.length === 0,
   });
-  const githubConnection = githubConnections[0] ?? null;
+  const effectiveGithubConnection =
+    orgGithubConnections.length === 1
+      ? (orgGithubConnections[0] ?? null)
+      : selectedGithubConnection;
+  const needsGithubConnectionSelection =
+    orgGithubConnections.length > 1 && !effectiveGithubConnection;
   const githubClient = useMCPClient({
-    connectionId: githubConnection?.id ?? "",
+    connectionId: effectiveGithubConnection?.id ?? "",
     orgId: org.id,
     orgSlug: org.slug,
   });
 
   const githubSetupPending =
     open &&
-    githubConnections.length === 0 &&
+    orgGithubConnections.length === 0 &&
     (autoInstall.status === "installing" ||
       autoInstall.status === "authenticating" ||
       autoInstall.status === "idle");
@@ -122,6 +133,7 @@ export function ImportFromDecoDialog({
   const handleClose = (nextOpen: boolean) => {
     if (!nextOpen) {
       setSelectedSite(null);
+      setSelectedGithubConnection(null);
       setSearch("");
     }
     onOpenChange(nextOpen);
@@ -139,7 +151,7 @@ export function ImportFromDecoDialog({
 
   const importMutation = useMutation({
     mutationFn: async (siteName: string) => {
-      if (!githubConnection) {
+      if (!effectiveGithubConnection) {
         throw new Error(
           "GitHub is not connected. Complete GitHub setup and try again.",
         );
@@ -149,7 +161,7 @@ export function ImportFromDecoDialog({
 
       const { installations, appSlug } = await fetchGithubInstallations(
         (req) => client.callTool(req),
-        githubConnection.id,
+        effectiveGithubConnection.id,
       );
       const site = sites.find((s) => s.name === siteName);
       if (!site) {
@@ -229,7 +241,7 @@ export function ImportFromDecoDialog({
         const { childConnectionId } = await provisionRepoScopedGithubConnection(
           {
             orgSlug: org.slug,
-            sourceConnection: githubConnection,
+            sourceConnection: effectiveGithubConnection,
             installationId: githubInstallation.installationId,
             owner: githubRepo.owner,
             repo: githubRepo.name,
@@ -411,6 +423,39 @@ export function ImportFromDecoDialog({
             </div>
           )}
 
+          {needsGithubConnectionSelection &&
+            !githubSetupPending &&
+            autoInstall.status !== "error" && (
+              <div className="flex flex-col py-2">
+                <div className="px-8 py-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Select a GitHub connection
+                  </p>
+                </div>
+                {orgGithubConnections.map((conn) => (
+                  <button
+                    key={conn.id}
+                    type="button"
+                    onClick={() => setSelectedGithubConnection(conn)}
+                    className="flex items-center gap-3 px-8 py-3 hover:bg-accent transition-colors text-left"
+                  >
+                    {conn.icon ? (
+                      <img
+                        src={conn.icon}
+                        alt={conn.title}
+                        className="size-7 rounded-full shrink-0"
+                      />
+                    ) : (
+                      <div className="size-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+                        <GitHubIcon className="size-3.5 text-muted-foreground" />
+                      </div>
+                    )}
+                    <span className="text-sm font-medium">{conn.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
           {isLoading &&
             !githubSetupPending &&
             autoInstall.status !== "error" && (
@@ -421,6 +466,7 @@ export function ImportFromDecoDialog({
 
           {!isLoading &&
             !githubSetupPending &&
+            !needsGithubConnectionSelection &&
             autoInstall.status !== "error" &&
             !sitesError &&
             sites.length === 0 && (
@@ -431,6 +477,7 @@ export function ImportFromDecoDialog({
 
           {!isLoading &&
             !githubSetupPending &&
+            !needsGithubConnectionSelection &&
             autoInstall.status !== "error" &&
             sites.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-h-[420px] overflow-y-auto py-4 px-8 [scrollbar-gutter:stable]">
@@ -502,7 +549,8 @@ export function ImportFromDecoDialog({
               importMutation.isPending ||
               isLoading ||
               githubSetupPending ||
-              !githubConnection ||
+              needsGithubConnectionSelection ||
+              !effectiveGithubConnection ||
               autoInstall.status === "error"
             }
             onClick={() => selectedSite && importMutation.mutate(selectedSite)}
