@@ -104,6 +104,14 @@ const PREVIEW_DEVICE_WIDTHS: Record<PreviewDeviceSize, number | null> = {
   desktop: null,
 };
 
+const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
+
+const DEVICE_LABELS: Record<PreviewDeviceSize, string> = {
+  mobile: "Mobile (375px)",
+  tablet: "Tablet (768px)",
+  desktop: "Desktop",
+};
+
 export function PreviewContent() {
   const inset = useInsetContext();
   const { currentBranch: branch } = useChatTask();
@@ -545,7 +553,7 @@ export function PreviewContent() {
               {/* Group 2: nav + url (hidden in code mode) */}
               <div
                 className={cn(
-                  "flex min-w-0 flex-1 items-center gap-0.5",
+                  "flex min-w-0 flex-1 items-center gap-0.5 ml-2",
                   viewMode === "code" && "hidden",
                 )}
               >
@@ -558,29 +566,38 @@ export function PreviewContent() {
                   <TooltipContent side="bottom">Refresh</TooltipContent>
                 </Tooltip>
 
-                <ViewModeToggle
-                  value={previewDeviceSize}
-                  onValueChange={setPreviewDeviceSize}
-                  options={[
-                    {
-                      value: "mobile",
-                      icon: <Phone02 size={14} />,
-                      tooltip: "Mobile",
-                    },
-                    {
-                      value: "tablet",
-                      icon: <Tablet01 size={14} />,
-                      tooltip: "Tablet",
-                    },
-                    {
-                      value: "desktop",
-                      icon: <Monitor04 size={14} />,
-                      tooltip: "Desktop",
-                    },
-                  ]}
-                  size="sm"
-                  className="shrink-0 bg-foreground/4.5"
-                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
+                        setPreviewDeviceSize(
+                          DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!,
+                        );
+                      }}
+                    >
+                      <span
+                        key={previewDeviceSize}
+                        className="flex items-center justify-center animate-device-icon-pop"
+                      >
+                        {previewDeviceSize === "mobile" && (
+                          <Phone02 size={14} />
+                        )}
+                        {previewDeviceSize === "tablet" && (
+                          <Tablet01 size={14} />
+                        )}
+                        {previewDeviceSize === "desktop" && (
+                          <Monitor04 size={14} />
+                        )}
+                      </span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {DEVICE_LABELS[previewDeviceSize]}
+                  </TooltipContent>
+                </Tooltip>
 
                 <div
                   ref={pagesContainerRef}
