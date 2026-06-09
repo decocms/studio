@@ -510,13 +510,28 @@ export class AgentSandboxProvider implements SandboxProvider {
       if (row && token) {
         const adoptedName = state?.adoptedSandboxName ?? handle;
         const daemonUrl = `http://${adoptedName}.${this.namespace}.svc.cluster.local:${DAEMON_CONTAINER_PORT}`;
-        return proxyDaemonRequest(daemonUrl, token, path, init);
+        try {
+          const resp = await proxyDaemonRequest(daemonUrl, token, path, init);
+          if (resp.status !== 404) {
+            return resp;
+          }
+          try {
+            await resp.body?.cancel();
+          } catch {
+            /* ignore */
+          }
+        } catch {
+          // Stale adoptedSandboxName after operator eviction — fall through
+          // to resurrection, same as `proxyPreviewRequest`.
+        }
       }
     }
 
-    // Operator may have evicted the claim+pod (15-min idle TTL) since the record
-    // was cached. Resurrect from the persisted ensureOpts before giving up, so the
-    // proxy request path recovers and avoids surfacing a false 404.
+    // Preview traffic can resurrect autonomously (gateway fetch retry) while
+    // daemon/git/exec paths still hit a cold records map. `exec` already
+    // routes through `requireRecord`; mirror that here so Save-changes/git
+    // APIs don't 410 while the iframe preview is live. The operator may have
+    // evicted the claim+pod (15-min idle TTL) since the record was cached.
     // resurrectByHandle returns null only for genuine not-found cases (no
     // state-store / no row / row predates ensureOpts) — those fall through to the
     // 404 below. A real ensure() failure (K8s/provisioning/bootstrap) THROWS and
@@ -535,6 +550,7 @@ export class AgentSandboxProvider implements SandboxProvider {
     let activeRec = rec;
     const start = performance.now();
     let status = 0;
+    const canRetryBody = !(init.body instanceof ReadableStream);
     try {
       let resp = await proxyDaemonRequest(rec.daemonUrl, rec.token, path, init);
       // A 401 means the cached record is stale — the pool pod was recreated
@@ -543,9 +559,11 @@ export class AgentSandboxProvider implements SandboxProvider {
       // body is re-sendable: of the BodyInit variants only a ReadableStream is
       // one-shot (consumed by the first fetch); strings, buffers,
       // URLSearchParams, FormData and Blobs are re-read from memory on retry.
-      if (resp.status === 401 && !(init.body instanceof ReadableStream)) {
+      if (resp.status === 401 && canRetryBody) {
         this.invalidateRecord(handle);
-        const fresh = await this.getRecord(handle).catch(() => null);
+        const fresh =
+          (await this.getRecord(handle).catch(() => null)) ??
+          (await this.resurrectByHandle(handle).catch(() => null));
         if (fresh) {
           activeRec = fresh;
           resp = await proxyDaemonRequest(
@@ -558,6 +576,24 @@ export class AgentSandboxProvider implements SandboxProvider {
       }
       status = resp.status;
       return resp;
+    } catch (err) {
+      // Stale port-forward / dead pod after idle eviction — same recovery
+      // path as preview's fetch-retry arm.
+      if (!canRetryBody) throw err;
+      this.invalidateRecord(handle);
+      const fresh =
+        (await this.resurrectByHandle(handle)) ??
+        (await this.getRecord(handle).catch(() => null));
+      if (!fresh) throw err;
+      activeRec = fresh;
+      const resp = await proxyDaemonRequest(
+        fresh.daemonUrl,
+        fresh.token,
+        path,
+        init,
+      );
+      status = resp.status;
+      return resp;
     } finally {
       this.recordProxyDuration(
         "daemon",
@@ -566,6 +602,45 @@ export class AgentSandboxProvider implements SandboxProvider {
         performance.now() - start,
       );
     }
+  }
+
+  /**
+   * Repopulate mesh's records cache from a SandboxClaim that already exists
+   * in the cluster. Preview gateway traffic can keep serving while mesh's
+   * daemon/git proxy still holds a cold cache or missing state-store row.
+   */
+  async adoptLiveClaim(id: SandboxId, handle: string): Promise<boolean> {
+    if (this.records.has(handle)) return true;
+    const existing = await getSandboxClaim(
+      this.kubeConfig,
+      this.namespace,
+      handle,
+    ).catch(() => undefined);
+    if (!existing || existing.metadata?.deletionTimestamp) return false;
+
+    // The inflight map is keyed on handle and typed to return `Sandbox`, so a
+    // concurrent ensure/adopt for the same handle dedupes onto one promise.
+    // Throw (not return false) on failure so the callback stays `Sandbox`;
+    // the catch below maps any failure back to `false`.
+    const sandbox = await this.inflight
+      .run(handle, async () => {
+        const cached = this.records.get(handle);
+        if (cached) return this.toSandbox(cached);
+        const adopted = await this.adopt(id, handle, existing);
+        if (!adopted) throw new Error(`cannot adopt live claim ${handle}`);
+        return withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
+          this.finish(
+            adopted,
+            ops,
+            /* persistNow */ true,
+            /* patchTtl */ true,
+            "adopt",
+          ),
+        );
+      })
+      .catch(() => null);
+
+    return sandbox != null;
   }
 
   /**

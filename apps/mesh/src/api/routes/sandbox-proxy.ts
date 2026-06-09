@@ -204,7 +204,7 @@ async function proxyDaemon(
   const runner = requireRunner(c);
   if (runner instanceof Response) return runner;
 
-  const { claimName } = c.get("vmClaim");
+  const { claimName, userId, projectRef } = c.get("vmClaim");
   const method = opts?.method ?? "POST";
   let body: string | null = null;
   const headers = new Headers();
@@ -214,14 +214,20 @@ async function proxyDaemon(
     headers.set("content-type", "application/json");
   }
 
+  const requestInit = {
+    method,
+    headers,
+    body,
+    ...(opts?.signal ? { signal: opts.signal } : {}),
+  };
+
   let upstream: Response;
   try {
-    upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
-      method,
-      headers,
-      body,
-      ...(opts?.signal ? { signal: opts.signal } : {}),
-    });
+    upstream = await runner.proxyDaemonRequest(
+      claimName,
+      daemonPath,
+      requestInit,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return c.json({ error: `Daemon unreachable: ${message}` }, 502);
@@ -233,14 +239,32 @@ async function proxyDaemon(
     } catch {
       /* ignore */
     }
-    return c.json(
-      {
-        error:
-          "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
-      },
-      410,
-      SANDBOX_PROXY_CACHE_HEADERS,
+    const adopted = await runner.adoptLiveClaim?.(
+      { userId, projectRef },
+      claimName,
     );
+    if (adopted) {
+      try {
+        upstream = await runner.proxyDaemonRequest(
+          claimName,
+          daemonPath,
+          requestInit,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: `Daemon unreachable: ${message}` }, 502);
+      }
+    }
+    if (upstream.status === 404) {
+      return c.json(
+        {
+          error:
+            "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
+        },
+        410,
+        SANDBOX_PROXY_CACHE_HEADERS,
+      );
+    }
   }
 
   const text = await upstream.text();
@@ -257,12 +281,29 @@ async function fetchDaemonJson<T>(
   claimName: string,
   daemonPath: string,
   method: "GET" | "POST" = "GET",
+  sandboxId?: { userId: string; projectRef: string },
 ): Promise<T> {
-  const upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
+  let upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
     method,
     headers: new Headers(),
     body: null,
   });
+
+  if (upstream.status === 404 && sandboxId) {
+    try {
+      await upstream.body?.cancel();
+    } catch {
+      /* ignore */
+    }
+    const adopted = await runner.adoptLiveClaim?.(sandboxId, claimName);
+    if (adopted) {
+      upstream = await runner.proxyDaemonRequest(claimName, daemonPath, {
+        method,
+        headers: new Headers(),
+        body: null,
+      });
+    }
+  }
 
   if (upstream.status === 404) {
     try {
@@ -497,7 +538,7 @@ export const createSandboxRoutes = () => {
       const runner = requireRunner(c);
       if (runner instanceof Response) return runner;
 
-      const { claimName } = c.get("vmClaim");
+      const { claimName, userId, projectRef } = c.get("vmClaim");
       const ctx = c.var.meshContext;
 
       try {
@@ -522,12 +563,14 @@ export const createSandboxRoutes = () => {
                   claimName,
                   "/_sandbox/git/status",
                   "GET",
+                  { userId, projectRef },
                 ),
                 fetchDaemonJson<GitDiffLike>(
                   runner,
                   claimName,
                   "/_sandbox/git/diff",
                   "GET",
+                  { userId, projectRef },
                 ),
               ]);
         const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
