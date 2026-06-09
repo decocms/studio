@@ -112,6 +112,13 @@ const DEVICE_LABELS: Record<PreviewDeviceSize, string> = {
   desktop: "Desktop",
 };
 
+/** Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`). */
+function withDeviceHint(url: string, device: PreviewDeviceSize): string {
+  const parsed = new URL(url, window.location.href);
+  parsed.searchParams.set("deviceHint", device);
+  return parsed.href;
+}
+
 export function PreviewContent() {
   const inset = useInsetContext();
   const { currentBranch: branch } = useChatTask();
@@ -241,7 +248,11 @@ export function PreviewContent() {
 
   const iframeSrc =
     previewState.kind === "iframe"
-      ? (directPreviewUrl ?? new URL(currentPath, previewState.previewUrl).href)
+      ? withDeviceHint(
+          directPreviewUrl ??
+            new URL(currentPath, previewState.previewUrl).href,
+          previewDeviceSize,
+        )
       : null;
 
   // Reset navigation when the VM preview base URL changes (branch switch, etc.)
@@ -420,6 +431,11 @@ export function PreviewContent() {
     previewIframeRef.current.src = `${iframeSrc}${sep}_r=${Date.now()}`;
   };
 
+  const handleDeviceToggle = () => {
+    const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
+    setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
+  };
+
   const handleCopyUrl = () => {
     const url =
       previewIframeRef.current?.contentWindow?.location?.href ??
@@ -571,12 +587,7 @@ export function PreviewContent() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => {
-                        const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
-                        setPreviewDeviceSize(
-                          DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!,
-                        );
-                      }}
+                      onClick={handleDeviceToggle}
                     >
                       <span
                         key={previewDeviceSize}
