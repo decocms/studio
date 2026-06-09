@@ -35,6 +35,15 @@ describe("linkIngestBatchSchema", () => {
     expect(parsed.done).toBe(true);
   });
 
+  it("rejects terminal batches with rows", () => {
+    const parsed = linkIngestBatchSchema.safeParse({
+      batchId: "batch_final_with_rows",
+      rows: [row],
+      done: true,
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("accepts row shape without path-level run matching", () => {
     const parsed = linkIngestBatchSchema.safeParse({
       batchId: "batch_bad",

@@ -333,9 +333,7 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
       c.req.raw.signal,
     );
 
-    const mayComplete =
-      parsed.data.done && (rows.length === 0 || insertedRows.length > 0);
-    const completedThread = mayComplete
+    const completedThread = parsed.data.done
       ? await ctx.storage.threads.completeRunIfNotCompleted(runId)
       : null;
 

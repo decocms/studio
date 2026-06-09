@@ -41,10 +41,15 @@ export const linkIngestPartRowSchema = z.object({
   created_at: z.string().datetime(),
 });
 
-export const linkIngestBatchSchema = z.object({
-  batchId: z.string().min(1),
-  rows: z.array(linkIngestPartRowSchema).max(512),
-  done: z.boolean().default(false),
-});
+export const linkIngestBatchSchema = z
+  .object({
+    batchId: z.string().min(1),
+    rows: z.array(linkIngestPartRowSchema).max(512),
+    done: z.boolean().default(false),
+  })
+  .refine((batch) => !batch.done || batch.rows.length === 0, {
+    message: "done batches must not contain rows",
+    path: ["rows"],
+  });
 
 export type LinkIngestBatch = z.infer<typeof linkIngestBatchSchema>;

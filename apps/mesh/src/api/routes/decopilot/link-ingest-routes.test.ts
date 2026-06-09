@@ -213,14 +213,14 @@ describe("link ingest parts route", () => {
 
     const res = await postParts(app, {
       batchId: "batch_1",
-      rows: [makeRow()],
+      rows: [],
       done: true,
     });
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       ok: true,
-      appended: 1,
+      appended: 0,
       done: true,
     });
     expect(updates).toEqual([
@@ -259,14 +259,20 @@ describe("link ingest parts route", () => {
   test("publishes appended rows and finish to the live stream buffer", async () => {
     const { app, pumped, pumpPromises } = appWithContext();
 
-    const res = await postParts(app, {
+    const rowRes = await postParts(app, {
       batchId: "batch_1",
       rows: [makeRow()],
+      done: false,
+    });
+    const doneRes = await postParts(app, {
+      batchId: "batch_done",
+      rows: [],
       done: true,
     });
     await Promise.all(pumpPromises);
 
-    expect(res.status).toBe(200);
+    expect(rowRes.status).toBe(200);
+    expect(doneRes.status).toBe(200);
     expect(pumped).toEqual([
       [
         { type: "start", messageId: "assistant_1" },
@@ -282,18 +288,27 @@ describe("link ingest parts route", () => {
 
   test("does not republish live chunks for a retried batch", async () => {
     const { app, pumped, pumpPromises, updates, sseEvents } = appWithContext();
-    const body = {
+    const rowBatch = {
       batchId: "batch_1",
       rows: [makeRow()],
+      done: false,
+    };
+    const doneBatch = {
+      batchId: "batch_done",
+      rows: [],
       done: true,
     };
 
-    const first = await postParts(app, body);
-    const second = await postParts(app, body);
+    const firstRow = await postParts(app, rowBatch);
+    const secondRow = await postParts(app, rowBatch);
+    const firstDone = await postParts(app, doneBatch);
+    const secondDone = await postParts(app, doneBatch);
     await Promise.all(pumpPromises);
 
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
+    expect(firstRow.status).toBe(200);
+    expect(secondRow.status).toBe(200);
+    expect(firstDone.status).toBe(200);
+    expect(secondDone.status).toBe(200);
     expect(pumped).toHaveLength(2);
     expect(updates).toHaveLength(1);
     expect(sseEvents.map(({ event }) => event.type)).toEqual([
