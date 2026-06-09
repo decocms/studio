@@ -28,7 +28,6 @@ import { readCachedTaskBranch } from "../lib/read-cached-task-branch";
 import { useOptionalThreadManager } from "@/web/components/chat/store/hooks";
 import { isPerThreadTab } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useOrganizationSettingsNonBlocking } from "../hooks/use-organization-settings";
-import { usePwaManifest } from "../hooks/use-pwa-manifest";
 import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
@@ -296,21 +295,6 @@ function ShellLayoutContent() {
   const orgId = activeOrg?.id;
   const orgSlug = activeOrg?.slug;
   const { data: ssoStatus } = useOrgSsoStatus(orgId, orgSlug);
-
-  // Per-org PWA install: override the manifest / apple-touch-icon / title while
-  // inside an active (non-archived) org so "Add to Home Screen" produces an
-  // org-branded app. Null (no org / archived) keeps the generic Studio defaults
-  // so power users can still install Studio itself. Must run before the early
-  // returns below to satisfy the Rules of Hooks.
-  usePwaManifest(
-    activeOrg && !isOrgArchived(activeOrg)
-      ? {
-          name: activeOrg.name,
-          slug: activeOrg.slug,
-          logo: activeOrg.logo ?? null,
-        }
-      : null,
-  );
 
   if (!activeOrg) {
     // Not a member: figure out which screen to show (no-access / pending

@@ -1,20 +1,26 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Studio-itself PWA install.
+ * PWA install prompt capture.
  *
- * Per-org install works via the browser's native "Add to Home Screen" while
- * inside an org (see use-pwa-manifest.ts). But Studio always redirects "/" into
- * an org, so a logged-in user is never on a route where the generic "deco
- * Studio" manifest is active — there's no neutral page to install the app
- * itself from. The /install route (routes/install.tsx) is that neutral page:
- * it lives outside the org shell, so the static Studio manifest + apple-touch
- * defaults from index.html are active there.
+ * Studio ships a single static "deco Studio" manifest (index.html +
+ * public/manifest.webmanifest) that stays active on every route. So the
+ * browser's own "Add to Home Screen" / "Install" menu always installs Studio
+ * itself — no JS required.
  *
- * This module captures the Chromium `beforeinstallprompt` event as early as
- * possible (it fires once, shortly after load) so the install page can trigger
- * the native prompt on demand. iOS has no programmatic install — the page
- * falls back to "Share → Add to Home Screen" instructions there.
+ * Installing a single *org* as its own home-screen app is an explicit action:
+ * the org install page (routes/org-install.tsx, at /:org/install) swaps the
+ * document manifest to an org-branded one (see use-pwa-manifest.ts) and offers
+ * an install button. This module captures the Chromium `beforeinstallprompt`
+ * event as early as possible (it fires once, shortly after load) so that button
+ * can trigger the native prompt on demand. iOS has no programmatic install —
+ * the page falls back to "Share → Add to Home Screen" instructions there.
+ *
+ * The captured prompt is bound to whichever manifest was active when it fired,
+ * so `clearPwaInstallPrompt()` drops it whenever the active manifest changes
+ * (org manifest applied / restored) — the global listener then re-captures the
+ * fresh prompt Chromium fires for the new manifest, so the button can never
+ * install the wrong app.
  */
 
 interface BeforeInstallPromptEvent extends Event {
@@ -54,6 +60,17 @@ export function initPwaInstallCapture(): void {
     deferredPrompt = null;
     emit();
   });
+}
+
+/**
+ * Drop any captured install prompt. Call when the active manifest changes so a
+ * prompt bound to the previous manifest can't install the wrong app; the global
+ * listener re-captures the prompt Chromium fires for the new manifest.
+ */
+export function clearPwaInstallPrompt(): void {
+  if (deferredPrompt === null) return;
+  deferredPrompt = null;
+  emit();
 }
 
 function subscribe(callback: () => void): () => void {

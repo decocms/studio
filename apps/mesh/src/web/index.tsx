@@ -154,14 +154,6 @@ const homeRoute = createRoute({
   },
 });
 
-// Install route — neutral page (outside the org shell) for installing deco
-// Studio itself as a PWA. See routes/install.tsx and lib/pwa-install.ts.
-const installRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/install",
-  component: lazyRouteComponent(() => import("./routes/install.tsx")),
-});
-
 // Onboarding route (for users with no orgs)
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -253,6 +245,17 @@ const settingsLayout = createRoute({
   getParentRoute: () => orgLayout,
   path: "/settings",
   component: lazyRouteComponent(() => import("./layouts/settings-layout.tsx")),
+});
+
+// Per-org install page (/$org/install) — swaps the document manifest to an
+// org-branded one so installing here produces a distinct home-screen app for
+// the org. Studio itself is installed via the browser's native "Add to Home
+// Screen" (the default manifest stays active everywhere else). See
+// routes/org-install.tsx and lib/pwa-install.ts.
+const orgInstallRoute = createRoute({
+  getParentRoute: () => orgLayout,
+  path: "/install",
+  component: lazyRouteComponent(() => import("./routes/org-install.tsx")),
 });
 
 // Settings index → redirect to /general
@@ -589,6 +592,7 @@ const orgShellWithChildren = orgShellLayout.addChildren([
 const orgLayoutWithChildren = orgLayout.addChildren([
   orgShellWithChildren,
   settingsWithChildren,
+  orgInstallRoute,
 ]);
 
 const shellRouteTree = shellLayout.addChildren([
@@ -598,7 +602,6 @@ const shellRouteTree = shellLayout.addChildren([
 
 const routeTree = rootRoute.addChildren([
   shellRouteTree,
-  installRoute,
   onboardingRoute,
   loginRoute,
   cliAuthSuccessRoute,

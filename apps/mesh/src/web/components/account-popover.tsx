@@ -571,14 +571,25 @@ export function AccountPopover() {
         });
       },
     },
-    {
-      key: "install-app",
-      label: "Install deco Studio app",
-      icon: <Download01 size={16} />,
-      onClick: () => {
-        navigate({ to: "/install" });
-      },
-    },
+    // Per-org install: opens the org install page, which swaps to an
+    // org-branded manifest so installing produces a home-screen app for this
+    // org. (Studio itself installs via the browser's native "Add to Home
+    // Screen".) Only shown while inside an org.
+    ...(currentOrg
+      ? [
+          {
+            key: "install-app",
+            label: `Add ${currentOrg.name} to Home Screen`,
+            icon: <Download01 size={16} />,
+            onClick: () => {
+              navigate({
+                to: "/$org/install",
+                params: { org: currentOrg.slug },
+              });
+            },
+          } satisfies MenuItem,
+        ]
+      : []),
     {
       key: "terms",
       label: "Terms of Use",

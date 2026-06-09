@@ -1,22 +1,29 @@
 import { useLayoutEffect } from "react";
+import { clearPwaInstallPrompt } from "@/web/lib/pwa-install";
 
 /**
  * Per-organization PWA install.
  *
  * Studio ships a single static manifest ("deco Studio", see
- * apps/mesh/public/manifest.webmanifest) so power users can install the app
- * itself from neutral routes. This hook OVERRIDES that manifest while the user
- * is inside an org so that "Add to Home Screen" produces a distinct,
- * org-branded app: named after the org, opening straight into /{slug}, with the
- * org's logo as the icon. Each org gets a different manifest `id`/`start_url`,
- * so browsers treat them as separate installable apps — one home-screen app per
- * org. On unmount (leaving the org) the original Studio defaults are restored.
+ * apps/mesh/public/manifest.webmanifest) that stays active on every route, so
+ * the browser's own "Add to Home Screen" installs Studio itself. This hook is
+ * used ONLY on the dedicated org install page (routes/org-install.tsx, at
+ * /{slug}/install): it OVERRIDES that manifest while the page is mounted so an
+ * install taken there produces a distinct, org-branded app — named after the
+ * org, opening straight into /{slug}, with the org's logo as the icon. Each org
+ * gets a different manifest `id`/`start_url`, so browsers treat them as separate
+ * installable apps — one home-screen app per org. On unmount (leaving the page)
+ * the original Studio defaults are restored.
  *
  * The manifest is generated client-side as a `data:` URL — no server route —
  * which behaves identically in dev and prod. iOS ignores the web manifest for
  * home-screen installs, so the icon and title also flow through the
  * `apple-touch-icon` link and `apple-mobile-web-app-title` meta tag, which we
  * update alongside the manifest.
+ *
+ * Swapping the manifest invalidates any `beforeinstallprompt` Chromium captured
+ * for the previous manifest, so we clear it on both apply and restore (see
+ * clearPwaInstallPrompt) — the captured prompt always matches the active app.
  *
  * DOM mutation in a layout effect matches the established pattern in
  * theme-provider.tsx (useLayoutEffect, not the banned useEffect).
@@ -136,6 +143,11 @@ export function usePwaManifest(org: PwaOrg | null): void {
     appleTitle.setAttribute("content", name);
     document.title = name;
 
+    // The Studio prompt captured at startup is bound to the old manifest; drop
+    // it so the install button can only fire the org prompt Chromium re-fires
+    // for the manifest we just applied.
+    clearPwaInstallPrompt();
+
     return () => {
       // Restore prior values. setAttribute(null) isn't valid, so remove the
       // attribute when there was no prior value.
@@ -147,6 +159,8 @@ export function usePwaManifest(org: PwaOrg | null): void {
         appleTitle.setAttribute("content", prev.appleTitle);
       }
       document.title = prev.title;
+      // Org manifest is gone; drop its captured prompt too.
+      clearPwaInstallPrompt();
     };
   }, [name, slug, logo]);
 }
