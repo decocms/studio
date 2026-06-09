@@ -387,7 +387,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .where("status", "!=", "completed")
+      .where("status", "=", "in_progress")
       .returningAll()
       .execute();
 

@@ -34,7 +34,10 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
   const pumpPromises: Promise<void>[] = [];
   const sseEvents: Array<{ orgId: string; event: SSEEvent }> = [];
   const insertedIds = new Set<string>();
-  let threadStatus = "in_progress";
+  let threadStatus =
+    typeof ctx.initialThreadStatus === "string"
+      ? ctx.initialThreadStatus
+      : "in_progress";
   const app = new Hono<Env>();
   app.use("*", async (c, next) => {
     c.set("meshContext", {
@@ -68,7 +71,7 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
             }
           },
           completeRunIfNotCompleted: async () => {
-            if (threadStatus === "completed") return null;
+            if (threadStatus !== "in_progress") return null;
             const update = {
               status: "completed",
               run_owner_pod: null,
@@ -233,6 +236,24 @@ describe("link ingest parts route", () => {
       "decopilot.thread.status",
       "decopilot.finish",
     ]);
+  });
+
+  test("does not complete or publish finish for a late done batch after failure", async () => {
+    const { app, pumped, pumpPromises, updates, purged, sseEvents } =
+      appWithContext({ initialThreadStatus: "failed" });
+
+    const res = await postParts(app, {
+      batchId: "batch_1",
+      rows: [],
+      done: true,
+    });
+    await Promise.all(pumpPromises);
+
+    expect(res.status).toBe(200);
+    expect(pumped).toEqual([]);
+    expect(updates).toEqual([]);
+    expect(purged).toEqual([]);
+    expect(sseEvents).toEqual([]);
   });
 
   test("publishes appended rows and finish to the live stream buffer", async () => {

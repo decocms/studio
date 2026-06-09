@@ -36,9 +36,9 @@ export interface ThreadStoragePort {
     data: Partial<Thread>,
   ): Promise<Thread>;
   /**
-   * Atomically transition a thread to completed unless it is already completed.
+   * Atomically transition an in-progress thread to completed.
    * Returns the updated row when this call won the transition, or null when the
-   * run was already completed by another caller.
+   * run was already terminal or no longer active.
    */
   completeRunIfNotCompleted(
     id: string,
