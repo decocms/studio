@@ -239,13 +239,6 @@ const inboxRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/orgs/inbox.tsx")),
 });
 
-// Redesign: a live preview of the storefront (/$org/preview) — inside the shell.
-const previewRoute = createRoute({
-  getParentRoute: () => orgShellLayout,
-  path: "/preview",
-  component: lazyRouteComponent(() => import("./routes/orgs/preview.tsx")),
-});
-
 // Redesign: the storefront content / CMS (/$org/content) — inside the shell.
 const contentRoute = createRoute({
   getParentRoute: () => orgShellLayout,
@@ -684,7 +677,6 @@ const agentShellWithChildren = agentShellLayout.addChildren([
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
   inboxRoute,
-  previewRoute,
   contentRoute,
   goalRoute,
   agentShellWithChildren,

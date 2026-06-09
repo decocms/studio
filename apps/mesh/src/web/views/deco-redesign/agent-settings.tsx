@@ -11,13 +11,21 @@
 
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import {
+  BarChart10,
   Bell01,
+  BookOpen01,
+  Building02,
   ChevronRight,
+  CpuChip01,
   Database01,
   File02,
   FileCode01,
+  Key01,
   Lock01,
+  PackageCheck,
   Settings04,
+  Shield01,
+  Users03,
   Zap,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -29,6 +37,7 @@ import {
   SettingsSection,
 } from "@/web/components/settings/settings-section";
 import { Button } from "@deco/ui/components/button.tsx";
+import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
 import { resolveAgent } from "./agent-data";
 
 const AGENT_REPO_URL = "https://github.com/decocms/studio";
@@ -77,6 +86,122 @@ const DEFINITION: DefinitionRow[] = [
     icon: <Zap size={16} />,
     path: "automations/",
     to: "/$org/settings/agent/automations",
+  },
+];
+
+interface AdminRow {
+  key: string;
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  to: string;
+  requires?: CapabilityId;
+  privilegedOnly?: boolean;
+}
+
+interface AdminSection {
+  title: string;
+  rows: AdminRow[];
+}
+
+// Org = agent, so the agent's settings include the org admin surfaces.
+const ADMIN_SECTIONS: AdminSection[] = [
+  {
+    title: "Knowledge & access",
+    rows: [
+      {
+        key: "brand-context",
+        label: "Brand context",
+        description: "What the agent knows about your brand and voice",
+        icon: <BookOpen01 size={16} />,
+        to: "/$org/settings/brand-context",
+        requires: "org:manage",
+      },
+      {
+        key: "ai-providers",
+        label: "AI providers",
+        description: "Models the agent is allowed to use",
+        icon: <CpuChip01 size={16} />,
+        to: "/$org/settings/ai-providers",
+        requires: "ai-providers:manage",
+      },
+      {
+        key: "secrets",
+        label: "Secrets",
+        description: "API keys and tokens the agent holds",
+        icon: <Key01 size={16} />,
+        to: "/$org/settings/secrets",
+        requires: "secrets:manage",
+      },
+      {
+        key: "agents",
+        label: "Subagents",
+        description: "Specialized workers the agent orchestrates",
+        icon: <Users03 size={16} />,
+        to: "/$org/settings/agents",
+      },
+    ],
+  },
+  {
+    title: "Manage",
+    rows: [
+      {
+        key: "general",
+        label: "General",
+        description: "Name, identifier, timezone, and broader settings",
+        icon: <Building02 size={16} />,
+        to: "/$org/settings/general",
+        requires: "org:manage",
+      },
+      {
+        key: "monitor",
+        label: "Monitoring",
+        description: "Traces, audit log, and activity",
+        icon: <BarChart10 size={16} />,
+        to: "/$org/settings/monitor",
+        requires: "monitoring:view",
+      },
+      {
+        key: "members",
+        label: "Members",
+        description: "Who can work with this agent",
+        icon: <Users03 size={16} />,
+        to: "/$org/settings/members",
+        requires: "members:manage",
+      },
+      {
+        key: "roles",
+        label: "Roles & permissions",
+        description: "Permission roles for this agent",
+        icon: <Shield01 size={16} />,
+        to: "/$org/settings/roles",
+        privilegedOnly: true,
+      },
+      {
+        key: "sso",
+        label: "Security",
+        description: "SSO and access policies",
+        icon: <Lock01 size={16} />,
+        to: "/$org/settings/sso",
+        requires: "org:manage",
+      },
+      {
+        key: "store",
+        label: "Store",
+        description: "Install more capabilities from the registry",
+        icon: <PackageCheck size={16} />,
+        to: "/$org/settings/store",
+        requires: "registry:manage",
+      },
+      {
+        key: "features",
+        label: "Plugins",
+        description: "Extensions enabled for this agent",
+        icon: <Zap size={16} />,
+        to: "/$org/settings/features",
+        requires: "org:manage",
+      },
+    ],
   },
 ];
 
@@ -134,6 +259,18 @@ export function AgentSettings() {
     name: organization.name,
     logo: organization.logo,
   });
+
+  const { capabilities, isPrivileged, loading, error } = useCapabilities();
+  const canSee = (row: AdminRow) => {
+    if (loading || error) return true;
+    if (row.privilegedOnly) return isPrivileged;
+    if (!row.requires) return true;
+    return isPrivileged || capabilities[row.requires] === true;
+  };
+  const visibleAdmin = ADMIN_SECTIONS.map((s) => ({
+    ...s,
+    rows: s.rows.filter(canSee),
+  })).filter((s) => s.rows.length > 0);
 
   const initial = profile.name?.[0]?.toUpperCase() ?? "A";
   const rowClass =
@@ -252,6 +389,28 @@ export function AgentSettings() {
                 )}
               </SettingsCard>
             </SettingsSection>
+
+            {/* Org-admin surfaces — org = agent */}
+            {visibleAdmin.map((section) => (
+              <SettingsSection key={section.title} title={section.title}>
+                <SettingsCard>
+                  {section.rows.map((row) => (
+                    <Link
+                      key={row.key}
+                      to={row.to}
+                      params={{ org }}
+                      className={rowClass}
+                    >
+                      <RowBody
+                        icon={row.icon}
+                        label={row.label}
+                        description={row.description}
+                      />
+                    </Link>
+                  ))}
+                </SettingsCard>
+              </SettingsSection>
+            ))}
           </SettingsPage>
         </Page.Body>
       </Page.Content>

@@ -23,15 +23,9 @@ import {
   SidebarProvider,
 } from "@deco/ui/components/sidebar.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Loading01, Monitor04 } from "@untitledui/icons";
-import {
-  Outlet,
-  useNavigate,
-  useParams,
-  useRouterState,
-} from "@tanstack/react-router";
+import { Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { SidebarResizeHandle } from "@/web/components/sidebar/sidebar-resize-handle";
 import { useSidebarResize } from "@/web/hooks/use-sidebar-resize";
 import { StudioSidebar, StudioSidebarMobile } from "@/web/components/sidebar";
@@ -47,19 +41,27 @@ import { useLocalStorage } from "@/web/hooks/use-local-storage";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 
-/** Top-right entry to the storefront preview. */
+/**
+ * Top-right entry to the storefront preview. Opens the REAL agent shell — the
+ * normal chat panel on the left and the main panel's Preview tab on the right
+ * (`?main=preview`), defaulting to the org's agent. Same surface the GitHub
+ * import opens. A fresh task id is fine; the thread row is created idempotently.
+ */
 function PreviewButton() {
   const { org } = useParams({ from: "/shell/$org" });
   const navigate = useNavigate();
-  const active = useRouterState({
-    select: (s) => s.location.pathname === `/${org}/preview`,
-  });
   return (
     <Button
       variant="ghost"
       size="sm"
-      onClick={() => navigate({ to: "/$org/preview", params: { org } })}
-      className={cn("shrink-0 gap-1.5", active && "bg-muted text-foreground")}
+      onClick={() =>
+        navigate({
+          to: "/$org/$taskId",
+          params: { org, taskId: crypto.randomUUID() },
+          search: { main: "preview" },
+        })
+      }
+      className="shrink-0 gap-1.5"
     >
       <Monitor04 size={14} />
       Preview

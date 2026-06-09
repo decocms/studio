@@ -234,7 +234,7 @@ function SettingsFullButton() {
       tooltip="Settings"
       onClick={() =>
         navigate({
-          to: "/$org/settings",
+          to: "/$org/settings/profile",
           params: { org: org.slug },
         })
       }
@@ -255,7 +255,7 @@ function SettingsIconButton() {
           aria-label="Settings"
           onClick={() =>
             navigate({
-              to: "/$org/settings",
+              to: "/$org/settings/profile",
               params: { org: org.slug },
             })
           }
