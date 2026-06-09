@@ -370,10 +370,6 @@ export const withRuntime = <
         toolCallInput,
       });
 
-      if (result instanceof Response) {
-        return result;
-      }
-
       return new Response(JSON.stringify(result), {
         headers: {
           "Content-Type": "application/json",

@@ -169,31 +169,15 @@ Tools públicas permitem acesso não autenticado e ignoram as verificações de 
 | `500` | Internal Server Error | Erro inesperado durante o processamento da requisição |
 | `503` | Service Unavailable | A connection está inativa ou o servidor upstream está inacessível |
 
-## Suporte a streaming
-
-O Connection Proxy suporta **respostas de tool em streaming** para connections baseadas em HTTP:
-
-### Endpoint de tool streamable
-
-```
-POST https://your-mesh-instance.com/api/:org/mcp/:connectionId/call-tool/:toolName
-```
-
-Esse endpoint permite que tools enviem respostas em streaming ao cliente, útil para operações de longa duração ou transferências grandes de dados.
-
-<Callout type="warning">
-  Streaming só é suportado em connections HTTP. Connections STDIO e VIRTUAL fazem fallback para chamadas de tool regulares.
-</Callout>
-
 ## Monitoramento e observabilidade
 
 Cada requisição pelo Connection Proxy gera:
 
 ### Métricas
 
-- **Histogramas de duração**: `connection.proxy.duration` e `connection.proxy.streamable.duration`
-- **Contadores de requisição**: `connection.proxy.requests` e `connection.proxy.streamable.requests`
-- **Contadores de erro**: `connection.proxy.errors` e `connection.proxy.streamable.errors`
+- **Histogramas de duração**: `connection.proxy.duration`
+- **Contadores de requisição**: `connection.proxy.requests`
+- **Contadores de erro**: `connection.proxy.errors`
 
 Todas as métricas incluem labels:
 - `connection.id`: o UUID da connection
@@ -203,8 +187,7 @@ Todas as métricas incluem labels:
 ### Traces
 
 Spans OpenTelemetry são criados para:
-- `mcp.proxy.callTool`: invocações regulares de tool
-- `mcp.proxy.callStreamableTool`: invocações de tool em streaming
+- `mcp.proxy.callTool`: invocações de tool
 
 Os traces incluem atributos:
 - `connection.id`: identificador da connection
