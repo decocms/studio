@@ -1073,6 +1073,15 @@ async function prepareRun(
             expiresAt: mcp.expiresAt,
           }
         : undefined;
+    const objectStorageSource: HarnessStreamInput["objectStorageSource"] =
+      target.sandboxProviderKind === "user-desktop" && organization.slug
+        ? {
+            kind: "http",
+            baseUrl: `${getPublicUrl()}/api/${encodeURIComponent(organization.slug)}/object-storage`,
+            headers: mcp.headers,
+            expiresAt: mcp.expiresAt,
+          }
+        : undefined;
 
     const wireHarnessInput: WireHarnessInput = {
       harnessId,
@@ -1084,6 +1093,7 @@ async function prepareRun(
       modelSource,
       modelSources,
       mcpSource,
+      objectStorageSource,
       mcp,
       mode: input.mode,
       temperature: input.temperature,
@@ -1091,6 +1101,7 @@ async function prepareRun(
       toolAllowlist: input.toolAllowlist ?? null,
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
+      organizationSlug: organization.slug,
       projectSlug: organization.slug,
       virtualMcp,
       agent: { id: input.agent.id },

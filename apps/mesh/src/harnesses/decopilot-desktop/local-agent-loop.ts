@@ -25,6 +25,7 @@
 import {
   type ModelMessage,
   stepCountIs,
+  type StreamTextOnStepFinishCallback,
   type SystemModelMessage,
   type ToolSet,
   type UIMessageChunk,
@@ -91,6 +92,8 @@ export interface RunDesktopAgentLoopOptions {
   /** Current persisted thread title — title gen only runs on the default. */
   currentThreadTitle: string;
   agentIdForMetadata: string;
+  onStepFinish?: StreamTextOnStepFinishCallback<ToolSet>;
+  sideChunks?: AsyncIterable<UIMessageChunk>;
 }
 
 /**
@@ -217,6 +220,7 @@ export async function* runDesktopAgentLoop(
     maxOutputTokens: models.thinking.limits?.maxOutputTokens ?? 32768,
     stopWhen: stepCountIs(PARENT_STEP_LIMIT),
     abortSignal,
+    onStepFinish: opts.onStepFinish,
     onError: (_message, error) => {
       console.error("[decopilot-desktop] stream error", stringifyError(error));
     },
@@ -270,30 +274,41 @@ export async function* runDesktopAgentLoop(
   // ── Merge the main UI stream with the background title result. ────────
   type Settled =
     | { kind: "main"; value: IteratorResult<UIMessageChunk> }
-    | { kind: "title"; value: UIMessageChunk | null };
+    | { kind: "title"; value: UIMessageChunk | null }
+    | { kind: "side"; value: IteratorResult<UIMessageChunk> };
 
   const iter = uiMessageStream[Symbol.asyncIterator]();
+  const sideIter = opts.sideChunks?.[Symbol.asyncIterator]();
   let mainDone = false;
   let titleDone = false;
+  let sideDone = sideIter === undefined;
   let mainPromise: Promise<Settled> = iter
     .next()
     .then((value) => ({ kind: "main" as const, value }));
+  let sidePromise: Promise<Settled> | null = sideIter
+    ? sideIter.next().then((value) => ({ kind: "side" as const, value }))
+    : null;
   const titleResultPromise: Promise<Settled> = titlePromise.then((value) => ({
     kind: "title" as const,
     value,
   }));
 
   try {
-    while (!mainDone || !titleDone) {
+    while (!mainDone || !titleDone || !sideDone) {
       const pending: Promise<Settled>[] = [];
       if (!mainDone) pending.push(mainPromise);
       if (!titleDone) pending.push(titleResultPromise);
+      if (!sideDone && sidePromise) pending.push(sidePromise);
 
       const settled = await Promise.race(pending);
       if (settled.kind === "main") {
         if (settled.value.done) {
           mainDone = true;
           if (!titleDone) titleHandle.finish();
+          if (!sideDone) {
+            void sideIter?.return?.();
+            sideDone = true;
+          }
           continue;
         }
         yield settled.value.value;
@@ -302,10 +317,23 @@ export async function* runDesktopAgentLoop(
           .then((value) => ({ kind: "main" as const, value }));
         continue;
       }
+      if (settled.kind === "side") {
+        if (settled.value.done) {
+          sideDone = true;
+          continue;
+        }
+        yield settled.value.value;
+        sidePromise =
+          sideIter
+            ?.next()
+            .then((value) => ({ kind: "side" as const, value })) ?? null;
+        continue;
+      }
       titleDone = true;
       if (settled.value) yield settled.value;
     }
   } finally {
     if (!titleDone) titleHandle.finish();
+    void sideIter?.return?.();
   }
 }

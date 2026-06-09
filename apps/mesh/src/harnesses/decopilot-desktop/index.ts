@@ -23,7 +23,7 @@
  * is deferred.
  */
 
-import type { UIMessageChunk } from "ai";
+import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type {
@@ -41,10 +41,12 @@ import { buildLocalTools } from "./local-tools";
 import { processConversation } from "../decopilot/conversation";
 import { runDesktopAgentLoop } from "./local-agent-loop";
 import { DEFAULT_WINDOW_SIZE } from "./local-prompt";
+import { createRemoteObjectStorage } from "./object-storage";
 import type { ConnectionsBlockTool } from "../decopilot/connections-block";
 import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
 import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
 import type { DesktopToolCtx } from "./types";
+import { createHtmlPageBufferFromStorage } from "../decopilot/built-in-tools/vm-tools/html-page-buffer-core";
 
 const LOCALLY_WRAPPED_RELAY_TOOLS = new Set<string>(["SUBTASK_MCP"]);
 
@@ -59,6 +61,75 @@ function isDesktopToolVisible(tool: {
   if (typeof visibility === "string") return visibility === "model";
   if (Array.isArray(visibility)) return visibility.includes("model");
   return true;
+}
+
+function createSideChannelWriter(): {
+  writer: UIMessageStreamWriter;
+  stream: AsyncIterable<UIMessageChunk>;
+  close: () => void;
+} {
+  const queue: UIMessageChunk[] = [];
+  let closed = false;
+  let wake: (() => void) | null = null;
+  const notify = () => {
+    const current = wake;
+    wake = null;
+    current?.();
+  };
+  const push = (chunk: UIMessageChunk) => {
+    if (closed) return;
+    queue.push(chunk);
+    notify();
+  };
+  const stream = (async function* () {
+    try {
+      while (!closed || queue.length > 0) {
+        const chunk = queue.shift();
+        if (chunk) {
+          yield chunk;
+          continue;
+        }
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+    } finally {
+      closed = true;
+      notify();
+    }
+  })();
+
+  return {
+    writer: {
+      write: (chunk) => push(chunk as UIMessageChunk),
+      merge: async (source) => {
+        const maybeIterable =
+          source as unknown as AsyncIterable<UIMessageChunk>;
+        if (typeof maybeIterable[Symbol.asyncIterator] === "function") {
+          for await (const chunk of maybeIterable) {
+            push(chunk);
+          }
+          return;
+        }
+        const reader = (source as ReadableStream<UIMessageChunk>).getReader();
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) return;
+            push(value);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      },
+      onError: () => {},
+    } as UIMessageStreamWriter,
+    stream,
+    close: () => {
+      closed = true;
+      notify();
+    },
+  };
 }
 
 export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
@@ -119,6 +190,7 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
         try {
           const toolOutputMap = new Map<string, string>();
           const pendingImages: PendingImage[] = [];
+          const sideChannel = createSideChannelWriter();
 
           // 3. Build passthrough tools from the MCP endpoint.
           const { tools: passthroughTools, nameMap } = await toolsFromMCP(
@@ -158,19 +230,32 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
           }
 
           // 5. Build the LOCAL-OK built-in tools.
+          const objectStorage =
+            input.objectStorageSource?.kind === "http"
+              ? createRemoteObjectStorage({
+                  baseUrl: input.objectStorageSource.baseUrl,
+                  headers: input.objectStorageSource.headers,
+                })
+              : null;
+          const orgSlug = input.organizationSlug ?? input.projectSlug;
+          const baseUrl = input.objectStorageSource
+            ? new URL(input.objectStorageSource.baseUrl).origin
+            : "";
+          const htmlPageBuffer = createHtmlPageBufferFromStorage({
+            storage: objectStorage,
+            baseUrl,
+            orgSlug,
+            writer: sideChannel.writer,
+            logPrefix: "decopilot-desktop:html-page-buffer",
+          });
           const ctx: DesktopToolCtx = {
-            objectStorage: null,
-            organization: { id: input.organizationId },
+            objectStorage,
+            organization: { id: input.organizationId, slug: orgSlug },
             auth: { user: { id: input.user.id } },
+            baseUrl,
           };
           const localTools = buildLocalTools({
-            // No in-process UIMessageStreamWriter on the desktop — tool latency
-            // metadata is best-effort via this no-op writer.
-            writer: {
-              write: () => {},
-              merge: async () => {},
-              onError: () => {},
-            },
+            writer: sideChannel.writer,
             toolOutputMap,
             passthroughClient: mcpClient as unknown as VirtualClient,
             toolApprovalLevel: input.toolApprovalLevel,
@@ -186,6 +271,7 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
             threadId: input.threadId,
             virtualMcpId: input.agent.id,
             branch: input.branch,
+            htmlPageBuffer,
           });
 
           // 6. Process the conversation with the REAL tool set so prior-turn
@@ -206,36 +292,49 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
           >[0]["processedMessages"];
 
           // 7. Run the lean agent loop.
-          yield* runDesktopAgentLoop({
-            provider,
-            models: input.models,
-            mode: input.mode,
-            temperature: input.temperature,
-            isDecopilotAgent: isDecopilot(input.agent.id) !== null,
-            agentId: input.agent.id,
-            agentInstructions:
-              typeof (input.virtualMcp.metadata as { instructions?: string })
-                ?.instructions === "string"
-                ? (input.virtualMcp.metadata as { instructions?: string })
-                    .instructions
-                : undefined,
-            processedMessages: narrowedMessages,
-            processedSystemMessages,
-            originalMessages: originalMessages as Array<{
-              role: string;
-              parts: ReadonlyArray<unknown>;
-            }>,
-            passthroughTools,
-            localTools,
-            connectionsBlockTools,
-            connectionTitleMap: new Map(),
-            toolAnnotations,
-            pendingImages,
-            abortSignal: input.signal,
-            threadId: input.threadId,
-            currentThreadTitle: input.currentThreadTitle ?? "",
-            agentIdForMetadata: input.agent.id,
-          });
+          try {
+            yield* runDesktopAgentLoop({
+              provider,
+              models: input.models,
+              mode: input.mode,
+              temperature: input.temperature,
+              isDecopilotAgent: isDecopilot(input.agent.id) !== null,
+              agentId: input.agent.id,
+              agentInstructions:
+                typeof (input.virtualMcp.metadata as { instructions?: string })
+                  ?.instructions === "string"
+                  ? (input.virtualMcp.metadata as { instructions?: string })
+                      .instructions
+                  : undefined,
+              processedMessages: narrowedMessages,
+              processedSystemMessages,
+              originalMessages: originalMessages as Array<{
+                role: string;
+                parts: ReadonlyArray<unknown>;
+              }>,
+              passthroughTools,
+              localTools,
+              connectionsBlockTools,
+              connectionTitleMap: new Map(),
+              toolAnnotations,
+              pendingImages,
+              abortSignal: input.signal,
+              threadId: input.threadId,
+              currentThreadTitle: input.currentThreadTitle ?? "",
+              agentIdForMetadata: input.agent.id,
+              onStepFinish: async () => {
+                await htmlPageBuffer.flush().catch((err) => {
+                  console.error(
+                    "[decopilot-desktop] html-page flush failed",
+                    err,
+                  );
+                });
+              },
+              sideChunks: sideChannel.stream,
+            });
+          } finally {
+            sideChannel.close();
+          }
         } finally {
           await openedMcp.close();
         }

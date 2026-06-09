@@ -15,10 +15,8 @@ import {
 } from "../decopilot/built-in-tools/portable-built-ins";
 import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
 import { createVmTools } from "../decopilot/built-in-tools/vm-tools";
-import type {
-  HtmlPageBuffer,
-  PendingImage,
-} from "../decopilot/built-in-tools/vm-tools/types";
+import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
+import type { HtmlPageBuffer } from "../decopilot/built-in-tools/vm-tools/html-page-buffer-core";
 import type { ToolApprovalLevel } from "../decopilot/mcp-tools";
 import type { DesktopToolCtx } from "./types";
 

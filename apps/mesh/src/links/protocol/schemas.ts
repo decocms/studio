@@ -68,6 +68,13 @@ const httpMcpSourceSchema = z.object({
   expiresAt: z.number().int().positive(),
 });
 
+const objectStorageSourceSchema = z.object({
+  kind: z.literal("http"),
+  baseUrl: z.string().url(),
+  headers: z.record(z.string(), z.string()),
+  expiresAt: z.number().int().positive(),
+});
+
 export const harnessStreamInputSchema = z
   .object({
     threadId: z.string(),
@@ -79,6 +86,7 @@ export const harnessStreamInputSchema = z
     modelSource: secretModelSourceSchema.optional(),
     modelSources: modelSourcesSchema.optional(),
     mcpSource: httpMcpSourceSchema.optional(),
+    objectStorageSource: objectStorageSourceSchema.optional(),
     // Wire input is intentionally HTTP-only. In-process MCP clients are allowed
     // only inside local cluster dispatch and must be normalized to this shape
     // before remote dispatch to the link daemon.

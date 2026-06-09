@@ -3,6 +3,7 @@ import type {
   DecopilotMcpSource,
   DecopilotModelSource,
   DecopilotModelSources,
+  DecopilotObjectStorageSource,
 } from "./sources";
 
 export { createSecretModelSource } from "./sources";
@@ -10,6 +11,7 @@ export type {
   DecopilotMcpSource,
   DecopilotModelSource,
   DecopilotModelSources,
+  DecopilotObjectStorageSource,
   DecopilotSandboxSource,
   DecopilotHttpMcpSource,
   DecopilotSecretModelSource,
@@ -194,6 +196,9 @@ export interface HarnessStreamInput {
   /** Resolved MCP source. HTTP sources are serializable; in-process clients are
    *  local-only and stripped before remote dispatch. */
   mcpSource?: DecopilotMcpSource;
+  /** HTTP object-storage API source for runtimes that cannot access
+   *  cluster-local object-storage clients. */
+  objectStorageSource?: DecopilotObjectStorageSource;
   /** Decopilot-only in-process runtime, local to cluster execution. */
   decopilotRuntime?: DecopilotRuntime;
 
@@ -227,6 +232,7 @@ export interface HarnessStreamInput {
   // ===== Identity context (for prompts, audit) =====
   user: { id: string; email: string };
   organizationId: string;
+  organizationSlug?: string;
   /** Optional project slug for agents pinned to a project. */
   projectSlug?: string;
 

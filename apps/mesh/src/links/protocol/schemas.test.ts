@@ -112,6 +112,28 @@ describe("harnessStreamInputSchema", () => {
     }
   });
 
+  it("round-trips an HTTP object-storage source", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalInput,
+      objectStorageSource: {
+        kind: "http",
+        baseUrl: "https://mesh.example.com/api/acme/object-storage",
+        headers: { Authorization: "Bearer fixture" },
+        expiresAt: 9999999999000,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.objectStorageSource).toEqual({
+        kind: "http",
+        baseUrl: "https://mesh.example.com/api/acme/object-storage",
+        headers: { Authorization: "Bearer fixture" },
+        expiresAt: 9999999999000,
+      });
+    }
+  });
+
   it("round-trips a resolved secret model source", () => {
     const result = harnessStreamInputSchema.safeParse({
       ...minimalInput,

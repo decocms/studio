@@ -16,14 +16,14 @@
  * `DesktopToolCtx` is the narrow, structurally-typed context the lean tools
  * read. It mirrors the small subset of `StudioContext` the LOCAL-OK built-ins
  * actually touch (`objectStorage`, `organization`, `auth`, `metadata`), and
- * deliberately leaves `objectStorage` as `null` on the desktop so the
- * blob-offload branches in scrape/inspect short-circuit.
+ * objectStorage may be backed by Studio's HTTP object-storage API on the
+ * desktop so shared storage-aware built-ins can run without S3 credentials.
  */
 
+import type { BoundObjectStorage } from "../../object-storage/bound-object-storage";
+
 export interface DesktopToolCtx {
-  /** Object storage is cluster-only — always `null`/absent on the desktop, so
-   *  every `if (ctx?.objectStorage)` branch short-circuits to inline output. */
-  objectStorage?: null;
+  objectStorage?: BoundObjectStorage | null;
   organization?: { id: string; slug?: string };
   auth?: { user?: { id: string } };
   baseUrl?: string;

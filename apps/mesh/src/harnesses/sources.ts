@@ -29,6 +29,13 @@ export type DecopilotHttpMcpSource = Extract<
   { kind: "http" }
 >;
 
+export type DecopilotObjectStorageSource = {
+  kind: "http";
+  baseUrl: string;
+  headers: Record<string, string>;
+  expiresAt: number;
+};
+
 export type DecopilotModelSource =
   | {
       kind: "in-process";
