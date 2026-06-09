@@ -129,7 +129,6 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: "stale-deps-org",
       getClusterToken: async () => {
         clusterTokenCalls++;
         return CLUSTER_TOKEN;
@@ -210,7 +209,6 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: ORG_SLUG,
       getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     };
@@ -252,7 +250,6 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: ORG_SLUG,
       getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     };
@@ -293,7 +290,6 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: ORG_SLUG,
       getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     };
@@ -334,7 +330,6 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: ORG_SLUG,
       getClusterToken: async () => CLUSTER_TOKEN,
       harnessId: "codex",
       fetchImpl: fetchImpl as unknown as typeof fetch,
@@ -383,7 +378,6 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: ORG_SLUG,
       getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     };
@@ -445,7 +439,6 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: ORG_SLUG,
       getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     };
@@ -495,7 +488,6 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: ORG_SLUG,
       getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     };
@@ -537,7 +529,6 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: ORG_SLUG,
       getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       signal: ac.signal,

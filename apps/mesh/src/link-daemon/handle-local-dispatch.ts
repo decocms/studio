@@ -1,6 +1,11 @@
 /**
  * handleLocalDispatch — relay a pulled work item to the local sandbox and
- * append the SSE result back to the cluster ingest as short JSON batches.
+ * return completed message parts to the cluster via short JSON append requests.
+ *
+ * The local sandbox still streams SSE over loopback. The desktop link daemon
+ * consumes that stream locally, assembles stable message part rows, and POSTs
+ * small idempotent batches to the cluster. This avoids holding a multi-hour
+ * streaming upload open through proxies/CDNs.
  *
  * Flow:
  *   1. POST ${sandboxDispatchUrl}/_sandbox/dispatch with a JSON body whose
@@ -19,9 +24,8 @@
  * ⚠️ ORG SLUG vs ID NOTE:
  *   WorkItem carries `orgId` (the DB UUID) and `orgSlug` (the URL-safe slug).
  *   The ingest route uses `resolveOrgFromPath` which looks up the org by slug
- *   (the `:org` path segment in `/api/:org/links/runs/...`). The `orgSlug`
- *   field on the work item is required and must be passed to
- *   `LocalDispatchDeps.orgSlug` so it is available for the ingest URL.
+ *   (the `:org` path segment in `/api/:org/links/runs/...`). The work item's
+ *   `orgSlug` is authoritative for the ingest URL.
  *
  * ⚠️ HARNESS ID NOTE:
  *   `WorkItem.harnessInput` is a `HarnessStreamInputWire` — a plain JSON
@@ -57,12 +61,6 @@ export interface LocalDispatchDeps {
    * to `${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/parts`.
    */
   clusterBaseUrl: string;
-  /**
-   * Org SLUG for the ingest URL path segment. MUST be the slug, not the
-   * UUID orgId — resolveOrgFromPath looks up by slug. Sourced from the work
-   * item's required `orgSlug` field.
-   */
-  orgSlug: string;
   /**
    * Returns the bearer token for the cluster ingest endpoint. Called once
    * per dispatch so that a refreshed token is used (mirrors work-poller's
@@ -108,8 +106,9 @@ function deriveHarnessId(work: WorkItem, depsHarnessId?: string): string {
 }
 
 /**
- * Run a pulled work item against the local sandbox and append the SSE result
- * to the cluster ingest. Resolves when all batch POSTs complete. Throws on:
+ * Run a pulled work item against the local sandbox and append completed part
+ * batches to the cluster ingest. Resolves when all batch POSTs complete.
+ * Throws on:
  *   - A non-2xx response from the sandbox dispatch (JSON error is extracted
  *     and included in the thrown Error, mirroring remote-dispatch.ts).
  *   - A non-2xx response from any cluster append.

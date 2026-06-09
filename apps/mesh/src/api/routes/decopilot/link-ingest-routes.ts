@@ -1,8 +1,11 @@
 /**
  * Link ingest — the RETURN path of the pull-inverted local link.
- * The desktop daemon runs the harness and POSTs its UIMessageChunk SSE stream
- * here; this endpoint commits completed parts to `thread_message_parts` (via
- * PartEmitter) and republishes chunks to the JetStream live edge.
+ *
+ * Preferred path: desktop posts deterministic `thread_message_parts` rows to
+ * `/links/runs/:runId/parts` in short JSON batches.
+ *
+ * Transitional path: `/links/runs/:runId/stream` still accepts the old
+ * long-lived SSE upload until all shipped daemons have moved to batched parts.
  *
  * SECURITY POSTURE (this phase): run fences are not minted yet, so the endpoint
  * is deliberately INERT — it requires an authenticated principal AND a non-null
