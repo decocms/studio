@@ -84,106 +84,113 @@ export function SystemHealthFixPart({ part }: { part: ToolUIPart }) {
     setIncidentState(fix.incidentId, state);
   };
 
+  const hasActions =
+    outcome !== null || base === "needs_review" || base === "resolved";
+
   return (
-    <div className="my-3 flex max-w-[600px] flex-col gap-3">
-      <div className="overflow-hidden rounded-lg border border-border bg-card">
-        {/* What: the change, in plain language. */}
-        <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-          <Tool01 size={14} className="shrink-0 text-muted-foreground" />
-          <span className="truncate text-sm font-medium text-foreground">
-            {fix.title}
+    <div className="my-3 max-w-[600px] overflow-hidden rounded-xl border border-border bg-card card-shadow">
+      {/* What: the change, in plain language. */}
+      <div className="flex items-center gap-2.5 px-4 pt-3.5">
+        <Tool01 size={15} className="shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {fix.title}
+        </span>
+        {published ? (
+          <span className="shrink-0 rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
+            Published
           </span>
-          {published ? (
-            <span className="ml-auto shrink-0 rounded-full bg-success/15 px-2 py-0.5 text-xs text-success">
-              Published
-            </span>
-          ) : (
-            <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
-              Change #{fix.pr}
-            </span>
-          )}
+        ) : base === "needs_review" ? (
+          <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+            Needs review
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+            #{fix.pr}
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3.5 px-4 pb-4 pt-3">
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {fix.summary}
+        </p>
+
+        {/* Trust: the checks that justify shipping, scannable up front. */}
+        <div className="flex flex-wrap gap-1.5">
+          <Signal
+            icon={
+              fix.qa === "passed"
+                ? CheckCircle
+                : fix.qa === "failed"
+                  ? XCircle
+                  : Loading01
+            }
+            tone={
+              fix.qa === "passed"
+                ? "success"
+                : fix.qa === "failed"
+                  ? "destructive"
+                  : "warning"
+            }
+            spin={qaRunning}
+            label={
+              fix.qa === "passed"
+                ? "QA passed"
+                : fix.qa === "failed"
+                  ? "QA failed"
+                  : "QA running"
+            }
+          />
+          <Signal
+            icon={fix.aiReview === "passed" ? CheckCircle : XCircle}
+            tone={fix.aiReview === "passed" ? "success" : "warning"}
+            label={
+              fix.aiReview === "passed"
+                ? "AI review passed"
+                : "AI review flagged"
+            }
+          />
+          <Signal icon={RefreshCw01} tone="muted" label="Revertible" />
         </div>
 
-        <div className="flex flex-col gap-3 px-4 py-3">
-          <p className="text-sm text-muted-foreground">{fix.summary}</p>
-
-          {/* Trust: the checks that justify shipping, scannable up front. */}
-          <div className="flex flex-wrap gap-2">
-            <Signal
-              icon={
-                fix.qa === "passed"
-                  ? CheckCircle
-                  : fix.qa === "failed"
-                    ? XCircle
-                    : Loading01
-              }
-              tone={
-                fix.qa === "passed"
-                  ? "success"
-                  : fix.qa === "failed"
-                    ? "destructive"
-                    : "warning"
-              }
-              spin={qaRunning}
-              label={
-                fix.qa === "passed"
-                  ? "QA passed"
-                  : fix.qa === "failed"
-                    ? "QA failed"
-                    : "QA running"
-              }
+        {/* Detail: the diff, collapsed by default so it doesn't dominate. */}
+        <div className="overflow-hidden rounded-lg border border-border">
+          <button
+            type="button"
+            onClick={() => setShowDiff((v) => !v)}
+            className="flex w-full cursor-pointer items-center gap-2 bg-muted/60 px-3 py-2 text-xs transition-colors hover:bg-muted"
+          >
+            <ChevronDown
+              size={13}
+              className={cn(
+                "shrink-0 text-muted-foreground transition-transform",
+                !showDiff && "-rotate-90",
+              )}
             />
-            <Signal
-              icon={fix.aiReview === "passed" ? CheckCircle : XCircle}
-              tone={fix.aiReview === "passed" ? "success" : "warning"}
-              label={
-                fix.aiReview === "passed"
-                  ? "AI review passed"
-                  : "AI review flagged"
-              }
-            />
-            <Signal
-              icon={RefreshCw01}
-              tone="muted"
-              label="Reverts in one click"
-            />
-          </div>
-
-          {/* Detail: the diff, collapsed by default so it doesn't dominate. */}
-          <div className="overflow-hidden rounded-md border border-border">
-            <button
-              type="button"
-              onClick={() => setShowDiff((v) => !v)}
-              className="flex w-full items-center gap-2 bg-muted px-3 py-2 text-xs hover:text-foreground"
-            >
-              <ChevronDown
-                size={13}
-                className={cn(
-                  "shrink-0 text-muted-foreground transition-transform",
-                  !showDiff && "-rotate-90",
-                )}
-              />
-              <span className="font-medium text-foreground">View change</span>
-              <span className="ml-auto flex items-center gap-2 text-muted-foreground">
-                <span>{fix.filesChanged} files</span>
-                <span className="text-success">+{fix.additions}</span>
-                <span className="text-destructive">−{fix.deletions}</span>
-              </span>
-            </button>
-            {showDiff && (
-              <pre className="overflow-x-auto bg-card p-3 text-xs leading-relaxed text-foreground">
-                <code>{fix.diff}</code>
-              </pre>
-            )}
-          </div>
+            <span className="font-medium text-foreground">View change</span>
+            <span className="ml-auto flex items-center gap-2 text-muted-foreground">
+              <span>{fix.filesChanged} files</span>
+              <span className="text-success">+{fix.additions}</span>
+              <span className="text-destructive">−{fix.deletions}</span>
+            </span>
+          </button>
+          {showDiff && (
+            <pre className="overflow-x-auto bg-card p-3 text-xs leading-relaxed text-foreground">
+              <code>{fix.diff}</code>
+            </pre>
+          )}
         </div>
       </div>
 
-      {/* Decide. */}
-      {outcome === null ? (
-        <FixActions base={base} qaRunning={qaRunning} onAct={act} />
-      ) : (
-        <p className="text-sm text-foreground">{followupText(outcome)}</p>
+      {/* Decide — in a footer, part of the card (not floating below it). */}
+      {hasActions && (
+        <div className="border-t border-border bg-muted/20 px-4 py-3">
+          {outcome === null ? (
+            <FixActions base={base} qaRunning={qaRunning} onAct={act} />
+          ) : (
+            <p className="text-sm text-foreground">{followupText(outcome)}</p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -234,6 +241,7 @@ function FixActions({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="success"
+            size="sm"
             onClick={() => onAct("approved", "in_progress")}
           >
             <Check size={14} />
@@ -241,12 +249,14 @@ function FixActions({
           </Button>
           <Button
             variant="outline"
+            size="sm"
             onClick={() => onAct("handed", "in_progress")}
           >
             Hand to a developer
           </Button>
           <Button
             variant="ghost"
+            size="sm"
             className="ml-auto text-muted-foreground"
             onClick={() => onAct("dismissed", "dismissed")}
           >
@@ -262,10 +272,20 @@ function FixActions({
     );
   }
   if (base === "resolved") {
+    // Already live — a quiet revert affordance, not a loud standalone button.
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={() => onAct("undone", "watching")}>
-          Undo this change
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">
+          Live in production.
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto text-muted-foreground"
+          onClick={() => onAct("undone", "watching")}
+        >
+          <RefreshCw01 size={14} />
+          Undo
         </Button>
       </div>
     );
