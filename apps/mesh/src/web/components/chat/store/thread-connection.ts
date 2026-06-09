@@ -17,7 +17,7 @@
  *   dispose() aborts everything.
  *
  * Mutation:
- *   Exactly one entry point: submit(action). Three action kinds:
+ *   Public entry point: submit(action). Three action kinds:
  *     • { kind: "message",    message }              — new user turn
  *     • { kind: "toolOutput", toolCallId, output }   — tool call response
  *     • { kind: "approval",   approvalId, approved } — approval response
@@ -28,11 +28,17 @@
  *   No silent no-ops: if a toolOutput / approval target isn't found in
  *   the current `messages`, submit() throws.
  *
+ * Message writes:
+ *   All mutations of `messages` go through `publishMessages` or
+ *   `mergeServerMessages` — both apply the ordering contract in
+ *   `sortMessageList` / `mergeAndSort`. Live SSE, optimistic submit,
+ *   stop(), and server refetch therefore share one sort invariant.
+ *
  * Server reconciliation:
  *   On every SSE reconnect the connection re-fetches the latest page via
- *   COLLECTION_THREAD_MESSAGES_LIST and merges via mergeAndSort. The
- *   merge is upsert-by-id then sort by (created_at, id), so optimistic
- *   local rows and in-flight streaming rows are preserved correctly.
+ *   COLLECTION_THREAD_MESSAGES_LIST and merges via mergeServerMessages.
+ *   Upsert-by-id then sort by the ordering contract preserves optimistic
+ *   local rows and in-flight streaming rows correctly.
  */
 
 import {
@@ -301,6 +307,53 @@ export class ThreadConnection {
     this.abort.abort();
   }
 
+  // ── Message store writes (single gate) ──────────────────────────────────
+
+  /**
+   * Mutate the current list and publish a sorted snapshot. Use for local
+   * edits (submit, streaming upsert, stop anchor) — not server page merges.
+   */
+  private publishMessages(mutator: (curr: UIMessage[]) => UIMessage[]): void {
+    this.messages.set(sortMessageList(mutator(this.messages.get())));
+  }
+
+  /** Upsert server rows, then sort. Use for list/refetch/pagination. */
+  private mergeServerMessages(incoming: UIMessage[]): void {
+    this.messages.update((curr) => mergeAndSort(curr, incoming));
+  }
+
+  private async listMessagesPage(offset: number): Promise<{
+    items: UIMessage[];
+    hasMore: boolean;
+  }> {
+    const result = await this.client!.callTool({
+      name: "COLLECTION_THREAD_MESSAGES_LIST",
+      arguments: {
+        thread_id: this.threadId,
+        limit: this.pageSize,
+        offset,
+        orderBy: [{ field: ["created_at"], direction: "desc" }],
+      },
+    });
+    if ((result as { isError?: boolean }).isError) {
+      throw new Error(
+        extractToolErrorMessage(
+          result,
+          "COLLECTION_THREAD_MESSAGES_LIST failed",
+        ),
+      );
+    }
+    const payload = ((result as { structuredContent?: unknown })
+      .structuredContent ?? result) as {
+      items?: UIMessage[];
+      hasMore?: boolean;
+    };
+    return {
+      items: payload.items ?? [],
+      hasMore: payload.hasMore ?? false,
+    };
+  }
+
   // ── Public mutator (single entry point) ─────────────────────────────────
 
   async submit(action: SubmitAction, opts: RequestOptions): Promise<void> {
@@ -313,10 +366,7 @@ export class ThreadConnection {
     if (!next) {
       throw new Error(`submit: target not found for ${describe(action)}`);
     }
-    // Same sort pass refresh uses (mergeAndSort + DB `created_at`). Without
-    // it, an in-flight SSE assistant row can sit above the user we just
-    // appended because foldSubStream only upserts by id.
-    this.messages.set(mergeAndSort(next, []));
+    this.publishMessages(() => next);
 
     // A new user turn always POSTs. For approval / toolOutput actions, only
     // POST once the assistant turn has no remaining client-side resolutions
@@ -364,19 +414,7 @@ export class ThreadConnection {
     if (this.subController) {
       this.forceCloseSubStream(true);
     }
-    // Anchor the frozen assistant so mergeAndSort on the next submit doesn't
-    // pull a timestamp-less user row ahead of it (role tiebreak or +Infinity).
-    this.messages.update((msgs) => {
-      const last = msgs.at(-1);
-      if (last?.role !== "assistant") return msgs;
-      const row = last as UIMessage & { created_at?: string };
-      if (row.created_at != null) return msgs;
-      const anchored = {
-        ...last,
-        created_at: new Date().toISOString(),
-      } as UIMessage;
-      return [...msgs.slice(0, -1), anchored];
-    });
+    this.publishMessages(anchorStoppedAssistant);
     this.waitingForNewRun = true;
   }
 
@@ -410,36 +448,14 @@ export class ThreadConnection {
       return;
     }
     try {
-      const result = await this.client.callTool({
-        name: "COLLECTION_THREAD_MESSAGES_LIST",
-        arguments: {
-          thread_id: this.threadId,
-          limit: this.pageSize,
-          offset: 0,
-          orderBy: [{ field: ["created_at"], direction: "desc" }],
-        },
-      });
+      const { items, hasMore } = await this.listMessagesPage(0);
       if (this.abort.signal.aborted) {
         this.resolveReady();
         return;
       }
-      if ((result as { isError?: boolean }).isError) {
-        throw new Error(
-          extractToolErrorMessage(
-            result,
-            "COLLECTION_THREAD_MESSAGES_LIST failed",
-          ),
-        );
-      }
-      const payload = ((result as { structuredContent?: unknown })
-        .structuredContent ?? result) as {
-        items?: UIMessage[];
-        hasMore?: boolean;
-      };
-      const items = payload.items ?? [];
-      this.messages.update((curr) => mergeAndSort(curr, items));
+      this.mergeServerMessages(items);
       this.serverFetchedCount = items.length;
-      this.hasMoreOlder.set(payload.hasMore ?? false);
+      this.hasMoreOlder.set(hasMore);
       if (this.status.get().kind === "loading") {
         this.status.set({ kind: "ready" });
       }
@@ -469,33 +485,10 @@ export class ThreadConnection {
   private async refetchLatestPage(): Promise<void> {
     if (!this.client) return;
     try {
-      const result = await this.client.callTool({
-        name: "COLLECTION_THREAD_MESSAGES_LIST",
-        arguments: {
-          thread_id: this.threadId,
-          limit: this.pageSize,
-          offset: 0,
-          orderBy: [{ field: ["created_at"], direction: "desc" }],
-        },
-      });
+      const { items, hasMore } = await this.listMessagesPage(0);
       if (this.abort.signal.aborted) return;
-      if ((result as { isError?: boolean }).isError) {
-        console.warn(
-          "[chat-store] refetchLatestPage:",
-          extractToolErrorMessage(result, "tool error"),
-        );
-        return;
-      }
-      const payload = ((result as { structuredContent?: unknown })
-        .structuredContent ?? result) as {
-        items?: UIMessage[];
-        hasMore?: boolean;
-      };
-      const items = payload.items ?? [];
-      this.messages.update((curr) => mergeAndSort(curr, items));
-      if (payload.hasMore !== undefined) {
-        this.hasMoreOlder.set(payload.hasMore);
-      }
+      this.mergeServerMessages(items);
+      this.hasMoreOlder.set(hasMore);
     } catch (err) {
       console.warn("[chat-store] refetchLatestPage failed:", err);
     }
@@ -520,33 +513,13 @@ export class ThreadConnection {
     if (this.isFetchingOlder.get()) return;
     this.isFetchingOlder.set(true);
     try {
-      const result = await this.client.callTool({
-        name: "COLLECTION_THREAD_MESSAGES_LIST",
-        arguments: {
-          thread_id: this.threadId,
-          limit: this.pageSize,
-          offset: this.serverFetchedCount,
-          orderBy: [{ field: ["created_at"], direction: "desc" }],
-        },
-      });
+      const { items, hasMore } = await this.listMessagesPage(
+        this.serverFetchedCount,
+      );
       if (this.abort.signal.aborted) return;
-      if ((result as { isError?: boolean }).isError) {
-        throw new Error(
-          extractToolErrorMessage(
-            result,
-            "COLLECTION_THREAD_MESSAGES_LIST failed",
-          ),
-        );
-      }
-      const payload = ((result as { structuredContent?: unknown })
-        .structuredContent ?? result) as {
-        items?: UIMessage[];
-        hasMore?: boolean;
-      };
-      const items = payload.items ?? [];
-      this.messages.update((curr) => mergeAndSort(curr, items));
+      this.mergeServerMessages(items);
       this.serverFetchedCount += items.length;
-      this.hasMoreOlder.set(payload.hasMore ?? false);
+      this.hasMoreOlder.set(hasMore);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn("[chat-store] fetchOlderMessages failed:", msg);
@@ -884,9 +857,7 @@ export class ThreadConnection {
       if (!pending) return;
       const msg = pending;
       pending = null;
-      this.messages.update((curr) =>
-        mergeAndSort(dropRedundantStubs(upsertById(curr, msg)), []),
-      );
+      this.publishMessages((curr) => upsertById(curr, msg));
     };
     for await (const msg of iter) {
       last = msg;
@@ -926,6 +897,19 @@ export class ThreadConnection {
     this.status.set({ kind: "error", error: err });
     this.observer?.onError?.(err);
   }
+}
+
+/** Stamp a client-only `created_at` on a stopped in-flight assistant. */
+function anchorStoppedAssistant(msgs: UIMessage[]): UIMessage[] {
+  const last = msgs.at(-1);
+  if (last?.role !== "assistant") return msgs;
+  const row = last as UIMessage & { created_at?: string };
+  if (row.created_at != null) return msgs;
+  const anchored = {
+    ...last,
+    created_at: new Date().toISOString(),
+  } as UIMessage;
+  return [...msgs.slice(0, -1), anchored];
 }
 
 function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {
@@ -1002,15 +986,28 @@ export function dropRedundantStubs(messages: UIMessage[]): UIMessage[] {
 }
 
 /**
- * Merge `incoming` rows into `prev` (upsert by id), then sort the result
- * ascending by `(created_at, id)`. The id tiebreaker mirrors
- * `storage.threads.listMessages`'s `ORDER BY created_at, id` for stability
- * across batched inserts.
+ * Message ordering contract — shared by every write gate (`publishMessages`,
+ * `mergeServerMessages`) and by server reload.
  *
- * Messages without a `created_at` (an in-flight optimistic message before
- * the server has persisted it) sort to the end (treated as +Infinity).
- * They are the newest by construction; once the persisted row arrives,
- * the upsert replaces them and the sort resettles.
+ * Sort key (ascending):
+ *   1. `readTimestamp(message)` — see below
+ *   2. role tiebreak (client-only): user < assistant < system
+ *   3. `id` lexicographic (stability; mirrors server `ORDER BY created_at, id`
+ *      except the server has no role dimension)
+ *
+ * `readTimestamp` precedence:
+ *   1. Top-level `created_at` (persisted DB row — authoritative)
+ *   2. `metadata.created_at` (optimistic user send, in-flight assistant
+ *      run-start from SSE `messageMetadata`)
+ *   3. `+Infinity` (no timestamp yet — newest in-flight row of its turn)
+ */
+export function sortMessageList(messages: UIMessage[]): UIMessage[] {
+  return mergeAndSort(messages, []);
+}
+
+/**
+ * Merge `incoming` rows into `prev` (upsert by id), then sort ascending by
+ * the ordering contract above.
  */
 export function mergeAndSort(
   prev: UIMessage[],
@@ -1023,8 +1020,6 @@ export function mergeAndSort(
     const ta = readTimestamp(a);
     const tb = readTimestamp(b);
     if (ta !== tb) return ta - tb;
-    // Mirrors `listMessages` role tiebreak: user before assistant on equal
-    // timestamps (in-flight rows with no top-level `created_at` yet).
     const roleRank = (m: UIMessage) =>
       m.role === "user" ? 0 : m.role === "assistant" ? 1 : 2;
     const ra = roleRank(a);
@@ -1035,26 +1030,21 @@ export function mergeAndSort(
   return dropRedundantStubs(merged);
 }
 
-/**
- * Persisted messages from COLLECTION_THREAD_MESSAGES_LIST carry the DB row's
- * `created_at` at the top level. AI-SDK UIMessages don't declare that field,
- * so we read it via a defensive cast. Some assistant messages additionally
- * stamp a `metadata.created_at` at run-start. Once the row is persisted the
- * top-level `created_at` is authoritative — using metadata then would sort
- * the assistant too early. In-flight assistants (no top-level yet) may fall
- * back to metadata so a still-streaming turn-1 reply doesn't leap behind a
- * newly-submitted turn-2 user row during live mergeAndSort.
- */
+function toEpochMs(value: string | number | Date): number {
+  const ts = new Date(value).getTime();
+  return Number.isFinite(ts) ? ts : Number.POSITIVE_INFINITY;
+}
+
 function readTimestamp(m: UIMessage): number {
   const withTs = m as unknown as { created_at?: string | number | Date };
   if (withTs.created_at != null) {
-    return new Date(withTs.created_at).getTime();
+    return toEpochMs(withTs.created_at);
   }
   const meta = m.metadata as
     | { created_at?: string | number | Date }
     | undefined;
   if (meta?.created_at != null) {
-    return new Date(meta.created_at).getTime();
+    return toEpochMs(meta.created_at);
   }
   return Number.POSITIVE_INFINITY;
 }

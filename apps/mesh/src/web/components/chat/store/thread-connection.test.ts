@@ -227,6 +227,10 @@ describe("stop", () => {
     // User clicks Stop mid-stream.
     conn.stop();
     expect(conn.status.get().kind).toBe("ready");
+    const stopped = conn.messages.get().find((m) => m.id === "m-1") as {
+      created_at?: string;
+    };
+    expect(stopped?.created_at).toBeDefined();
 
     // User immediately sends a new message before the cancelled run's tail
     // chunks have a chance to drain through the SSE.
@@ -748,6 +752,44 @@ describe("mergeAndSort", () => {
       "u2",
       "a2",
     ]);
+  });
+
+  test("role tiebreak places user before assistant when timestamps tie", () => {
+    const tied = [
+      {
+        id: "a2",
+        role: "assistant",
+        parts: [],
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "u2",
+        role: "user",
+        parts: [{ type: "text", text: "second" }],
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+    ];
+    expect(mergeAndSort(tied, []).map((m) => m.id)).toEqual(["u2", "a2"]);
+  });
+
+  test("malformed created_at sorts to end (+Infinity)", () => {
+    const msgs = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [],
+        created_at: "2026-01-01T00:00:00.000Z",
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "bad",
+        role: "assistant",
+        parts: [],
+        metadata: { created_at: "not-a-date" },
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+    ];
+    expect(mergeAndSort(msgs, []).map((m) => m.id)).toEqual(["u1", "bad"]);
   });
 
   test("metadata.created_at is ignored for assistant — only top-level created_at is used", () => {
