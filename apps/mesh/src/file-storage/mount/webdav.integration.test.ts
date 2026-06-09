@@ -85,6 +85,8 @@ async function seed(db: StudioDatabase) {
 describe("WebDAV serve layer (integration, full chain)", () => {
   let db: StudioDatabase;
   let dav: (req: Request) => Promise<Response>;
+  /** Same backing fs, NOT behind the WebDAV junk filter (external writer). */
+  let api: OrgFsClient;
 
   const req = (path: string, init?: RequestInit) =>
     dav(new Request(`http://dav${path}`, init));
@@ -98,14 +100,14 @@ describe("WebDAV serve layer (integration, full chain)", () => {
     await seed(db);
     rmSync(ASSETS_DIR, { recursive: true, force: true });
     const app = buildMeshApp(db);
-    const client = new OrgFsClient({
+    api = new OrgFsClient({
       baseUrl: "http://test",
       orgSlug: SLUG,
       volume: VOLUME,
       token: "test-token",
       fetch: (url, reqInit) => Promise.resolve(app.request(url, reqInit)),
     });
-    dav = createWebdavHandler(client);
+    dav = createWebdavHandler(api);
   });
 
   afterAll(async () => {
@@ -206,5 +208,64 @@ describe("WebDAV serve layer (integration, full chain)", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-length")).toBe("6");
     expect(await res.text()).toBe("");
+  });
+
+  describe("mac junk filter (._* / .DS_Store)", () => {
+    it("accepts-and-drops AppleDouble and .DS_Store PUTs", async () => {
+      // 201 keeps Finder copies working (rclone #7503) — but nothing stored.
+      expect(
+        (await req("/._sidecar.txt", { method: "PUT", body: "xattr blob" }))
+          .status,
+      ).toBe(201);
+      expect(
+        (await req("/.DS_Store", { method: "PUT", body: "finder" })).status,
+      ).toBe(201);
+      expect(await api.stat("._sidecar.txt")).toBeNull();
+      expect(await api.stat(".DS_Store")).toBeNull();
+    });
+
+    it("404s junk reads and no-ops junk DELETE/MOVE", async () => {
+      expect((await req("/._x")).status).toBe(404);
+      expect((await req("/._x", { method: "HEAD" })).status).toBe(404);
+      expect(
+        (await req("/._x", { method: "PROPFIND", headers: { depth: "0" } }))
+          .status,
+      ).toBe(404);
+      expect((await req("/._x", { method: "DELETE" })).status).toBe(204);
+      expect(
+        (
+          await req("/._x", {
+            method: "MOVE",
+            headers: { destination: "http://dav/real.txt" },
+          })
+        ).status,
+      ).toBe(201);
+      expect(await api.stat("real.txt")).toBeNull();
+    });
+
+    it("hides junk that leaked into the volume from listings", async () => {
+      // Written by an external (non-mount) client — pre-filter leftovers.
+      await api.write("._leaked.txt", new TextEncoder().encode("old"));
+      await api.write("real.txt", new TextEncoder().encode("keep"));
+      const res = await req("/", {
+        method: "PROPFIND",
+        headers: { depth: "1" },
+      });
+      const xml = await res.text();
+      expect(xml).toContain("/real.txt");
+      expect(xml).not.toContain("._leaked.txt");
+    });
+
+    it("does not treat dot-files or mid-name underscores as junk", async () => {
+      expect(
+        (await req("/.gitignore", { method: "PUT", body: "node_modules" }))
+          .status,
+      ).toBe(201);
+      expect(
+        (await req("/a._b.txt", { method: "PUT", body: "fine" })).status,
+      ).toBe(201);
+      expect(await (await req("/.gitignore")).text()).toBe("node_modules");
+      expect(await (await req("/a._b.txt")).text()).toBe("fine");
+    });
   });
 });

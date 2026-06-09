@@ -32,6 +32,18 @@ function basename(path: string): string {
   return i === -1 ? path : path.slice(i + 1);
 }
 
+/**
+ * macOS metadata noise: AppleDouble xattr sidecars (`._*`) and Finder's
+ * `.DS_Store`. Written through the NFS mount on every mac file operation —
+ * without this they'd sync into the org volume for every other consumer to
+ * see. PUTs are accepted-and-dropped rather than rejected: a failing
+ * AppleDouble write breaks the whole Finder copy (rclone #7503).
+ */
+function isMacJunk(path: string): boolean {
+  const name = basename(path);
+  return name.startsWith("._") || name === ".DS_Store";
+}
+
 /** WebDAV href for a node: leading slash, per-segment encoded, trailing slash for dirs. */
 function hrefFor(path: string, isDir: boolean): string {
   const segs = path === "" ? [] : path.split("/").map(encodeURIComponent);
@@ -124,6 +136,26 @@ export function createWebdavHandler(
     const path = pathFromUrl(req);
     const method = req.method.toUpperCase();
 
+    // mac junk never reaches the backing fs: pretend writes/deletes succeed
+    // (nothing stored), report reads as absent. A MOVE whose *source* is junk
+    // is equally a no-op; a real file moved TO a junk name falls through (a
+    // deliberate rename must not silently lose data).
+    if (isMacJunk(path)) {
+      switch (method) {
+        case "PUT":
+        case "MKCOL":
+        case "MOVE":
+          return new Response(null, { status: 201 });
+        case "DELETE":
+          return new Response(null, { status: 204 });
+        case "GET":
+        case "HEAD":
+        case "PROPFIND":
+          return new Response("Not Found", { status: 404 });
+        // OPTIONS/PROPPATCH/default fall through to the normal handling below.
+      }
+    }
+
     try {
       switch (method) {
         case "OPTIONS":
@@ -139,6 +171,8 @@ export function createWebdavHandler(
           const out = [propResponse(node)];
           if (depth !== "0" && node.kind === "dir") {
             for (const child of await api.listDir(path)) {
+              // Hide junk that leaked into the volume before this filter.
+              if (isMacJunk(child.path)) continue;
               out.push(propResponse(child));
             }
           }
