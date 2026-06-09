@@ -15,6 +15,7 @@ import { readConfig } from "./persistence";
 import { MountManager } from "./org-fs/mount-manager";
 import { createRcloneMounter } from "./org-fs/mounter";
 import { parseOrgFsConfig } from "./org-fs/config";
+import { repointOutputLink } from "./org-fs/output-link";
 import { createPortSniffer } from "./process/port-sniffer";
 import { TaskManager } from "./process/task-manager";
 import { PhaseManager } from "./process/phase-manager";
@@ -436,7 +437,16 @@ const lookupDispatchHarness = (id: string, input: unknown) => {
     },
   };
   const harness = factory.create(ctx);
-  return { stream: () => harness.stream(harnessInput) };
+  return {
+    // Share-files-back: point `org/output` at this run's thread subtree of the
+    // outputs volume before the harness can touch it. Awaited so the link is
+    // correct from the run's first write; failures degrade to no link (never
+    // block the run).
+    stream: async function* () {
+      await repointOutputLinkForRun(harnessInput.threadId);
+      yield* harness.stream(harnessInput);
+    },
+  };
 };
 const wsProxy = makeWsUpgrader(getDevPort, { onClientMessage: bumpActivity });
 
@@ -714,6 +724,24 @@ let mountManager: MountManager | null = null;
       .start(orgFs, bootConfig.appRoot)
       .catch((err) => console.warn("[org-fs] mount start failed", err));
   }
+}
+
+/**
+ * Per-run share-files-back link (`org/output` → `.outputs/<threadId>`, see
+ * org-fs/output-link.ts). Gated on the outputs volume being ACTUALLY mounted —
+ * its mount-point dir exists locally even when the mount failed, and linking
+ * into that would silently strand files on local disk. Hoisted declaration:
+ * called from `lookupDispatchHarness` above, which only runs post-boot.
+ */
+async function repointOutputLinkForRun(threadId: string): Promise<void> {
+  const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
+  const mounted = mountManager
+    ?.list()
+    .some((m) => m.mountPath === outputsMountPath);
+  if (!mounted) return;
+  await repointOutputLink(bootConfig.appRoot, threadId, (msg, err) =>
+    err ? console.warn(`[org-fs] ${msg}`, err) : console.log(`[org-fs] ${msg}`),
+  );
 }
 
 process.on("SIGTERM", async () => {
