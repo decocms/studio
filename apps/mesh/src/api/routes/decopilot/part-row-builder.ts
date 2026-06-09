@@ -75,10 +75,14 @@ export class PartRowBuilder {
   private readonly base: number;
   /** `${messageId}#${index}` → assigned seq (stable per logical part). */
   private readonly seqByPart = new Map<string, number>();
-  /** Logical part keys that have already been returned by this builder. */
+  /** Logical part keys that have been successfully handed off by this builder. */
   private readonly emitted = new Set<string>();
-  /** Message ids for which the `finish` anchor has already been emitted. */
+  /** Message ids for which the `finish` anchor has been successfully handed off. */
   private readonly finished = new Set<string>();
+  /** Row id → logical part key, used to commit pending rows after persistence. */
+  private readonly partKeyByRowId = new Map<string, string>();
+  /** Row id → message id, used to commit pending finish anchors after persistence. */
+  private readonly finishMessageIdByRowId = new Map<string, string>();
   private nextSeq = 0;
 
   constructor(private readonly ctx: PartRowBuilderCtx) {
@@ -119,8 +123,8 @@ export class PartRowBuilder {
   }
 
   /**
-   * Emit the FINAL parts of a message that are not yet returned. Walks the
-   * cumulative `parts` array; idempotent by logical part key within this builder.
+   * Emit the FINAL parts of a message that have not been acknowledged. Walks the
+   * cumulative `parts` array; pending rows repeat until `acknowledge` is called.
    */
   private emitMessageParts(message: AnyMessage): ThreadMessagePart[] {
     const parts = (message.parts ?? []) as AnyPart[];
@@ -133,23 +137,44 @@ export class PartRowBuilder {
       if (this.emitted.has(key)) continue;
 
       const seq = this.seqFor(key);
-      rows.push(
-        this.row(message.id, message.role, seq, kindForPart(part), part),
+      const row = this.row(
+        message.id,
+        message.role,
+        seq,
+        kindForPart(part),
+        part,
       );
-      this.emitted.add(key);
+      this.partKeyByRowId.set(row.id, key);
+      rows.push(row);
     }
     return rows;
   }
 
-  /** Append the single `finish` anchor for a message (idempotent). */
+  /** Return the single `finish` anchor for a message until it is acknowledged. */
   private markFinished(
     messageId: string,
     role: AnyMessage["role"],
   ): ThreadMessagePart[] {
     if (this.finished.has(messageId)) return [];
-    this.finished.add(messageId);
     const seq = this.seqFor(`${messageId}#finish`);
-    return [this.row(messageId, role, seq, "finish", {})];
+    const row = this.row(messageId, role, seq, "finish", {});
+    this.finishMessageIdByRowId.set(row.id, messageId);
+    return [row];
+  }
+
+  /**
+   * Commit rows that have been successfully handed off to durable storage or a
+   * desktop batcher. Rows are intentionally not committed during `emit*` so a
+   * failed handoff can retry and receive the same deterministic rows again.
+   */
+  acknowledge(rows: ThreadMessagePart[]): void {
+    for (const row of rows) {
+      const partKey = this.partKeyByRowId.get(row.id);
+      if (partKey !== undefined) this.emitted.add(partKey);
+
+      const finishMessageId = this.finishMessageIdByRowId.get(row.id);
+      if (finishMessageId !== undefined) this.finished.add(finishMessageId);
+    }
   }
 
   /**
@@ -192,13 +217,12 @@ export class PartRowBuilder {
     const rows: ThreadMessagePart[] = [];
     if (!this.emitted.has(key)) {
       const seq = this.seqFor(key);
-      rows.push(
-        this.row(messageId, "assistant", seq, "error", {
-          type: "text",
-          text: `Error: ${errorText}`,
-        }),
-      );
-      this.emitted.add(key);
+      const row = this.row(messageId, "assistant", seq, "error", {
+        type: "text",
+        text: `Error: ${errorText}`,
+      });
+      this.partKeyByRowId.set(row.id, key);
+      rows.push(row);
     }
     return [...rows, ...this.markFinished(messageId, "assistant")];
   }

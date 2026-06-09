@@ -41,6 +41,7 @@
  */
 
 import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
+import type { ThreadMessagePart } from "@/storage/fold-parts";
 import {
   type AnyMessage,
   isFinalPart,
@@ -69,12 +70,17 @@ export class PartEmitter {
     this.builder = new PartRowBuilder(ctx);
   }
 
+  private async appendBuiltRows(rows: ThreadMessagePart[]): Promise<void> {
+    await this.ctx.storage.appendParts(rows);
+    this.builder.acknowledge(rows);
+  }
+
   /**
    * Initial user-message save: persist the user's parts + a `finish` anchor so
    * the message is immediately complete in the v2 read path.
    */
   async emitUserMessage(message: AnyMessage): Promise<void> {
-    await this.ctx.storage.appendParts(this.builder.emitUserMessage(message));
+    await this.appendBuiltRows(this.builder.emitUserMessage(message));
   }
 
   /**
@@ -82,7 +88,7 @@ export class PartEmitter {
    * No `finish` marker yet — the message may continue in later steps.
    */
   async emitStepParts(message: AnyMessage): Promise<void> {
-    await this.ctx.storage.appendParts(this.builder.emitStepParts(message));
+    await this.appendBuiltRows(this.builder.emitStepParts(message));
   }
 
   /**
@@ -90,7 +96,7 @@ export class PartEmitter {
    * message with a single `finish` anchor.
    */
   async emitFinal(message: AnyMessage): Promise<void> {
-    await this.ctx.storage.appendParts(this.builder.emitFinal(message));
+    await this.appendBuiltRows(this.builder.emitFinal(message));
   }
 
   /**
@@ -99,8 +105,6 @@ export class PartEmitter {
    * dangling in-progress message.
    */
   async emitError(messageId: string, errorText: string): Promise<void> {
-    await this.ctx.storage.appendParts(
-      this.builder.emitError(messageId, errorText),
-    );
+    await this.appendBuiltRows(this.builder.emitError(messageId, errorText));
   }
 }
