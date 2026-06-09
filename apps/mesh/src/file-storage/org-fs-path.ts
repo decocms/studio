@@ -9,7 +9,7 @@ import { sanitizeKey } from "../object-storage/key-utils";
 const VOLUME_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 
 /** Storage-key prefix that isolates fs objects from other primitive-fs keys. */
-export const FS_KEY_NAMESPACE = "_fs";
+const FS_KEY_NAMESPACE = "_fs";
 
 export function isValidVolume(volume: string): boolean {
   return VOLUME_RE.test(volume);
