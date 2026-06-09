@@ -20,11 +20,11 @@ import {
 } from "@decocms/mesh-sdk";
 import type { HarnessId } from "@/harnesses";
 import { AgentAvatar } from "@/web/components/agent-icon";
-import { useCurrentLink } from "@/web/hooks/use-current-link";
-import { usePublicConfig } from "@/web/hooks/use-public-config";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { track } from "@/web/lib/posthog-client";
 import { useOptionalChatTask } from "../chat-context";
+import { useAgentOptionAvailability } from "../use-agent-availability";
+import type { AgentOptionAvailability } from "./agent-options";
 import { ClaudeCodeIcon, CodexIcon } from "../agent-icons";
 import {
   type AgentMode,
@@ -57,12 +57,7 @@ function DecopilotIcon({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export interface ModePickerAvailability {
-  agentSandbox: boolean;
-  userDesktop: boolean;
-  claudeCode: boolean;
-  codex: boolean;
-}
+export type ModePickerAvailability = AgentOptionAvailability;
 
 interface PureProps {
   mode: AgentMode;
@@ -343,8 +338,6 @@ export function ModePicker({
 }: SmartProps) {
   const selectedMode = useAgentMode();
   const setAgentMode = useSetAgentMode();
-  const link = useCurrentLink();
-  const publicConfig = usePublicConfig();
   const { org } = useProjectContext();
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -360,12 +353,9 @@ export function ModePicker({
   const taskCtx = useOptionalChatTask();
   const lockedHarness = taskCtx?.lockedHarness ?? null;
 
-  const availability: ModePickerAvailability = {
-    agentSandbox: publicConfig.runtime.agentSandbox,
-    userDesktop: link.online,
-    claudeCode: link.online && link.capabilities.includes("claude-code"),
-    codex: link.online && link.capabilities.includes("codex"),
-  };
+  // Same availability source `chat-context` resolves the submit pins from, so
+  // the displayed mode and the dispatched runtime stay in lockstep.
+  const availability = useAgentOptionAvailability();
   const mode = fallbackMode(selectedMode, availability);
 
   const handleSelect = (next: AgentMode) => {

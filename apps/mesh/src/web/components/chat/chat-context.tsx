@@ -45,8 +45,10 @@ import type { HarnessId } from "@/harnesses";
 import {
   AGENT_OPTION_PINS,
   agentOptionFor,
+  resolveAvailableAgentOption,
   type AgentOption,
 } from "./pills/agent-options";
+import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
   pickSimpleModeDefaults,
@@ -490,33 +492,22 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // `Codex desktop`). Persisted to localStorage so the choice survives
   // page reloads.
   //
+  // Scoped per `locator` (like the image-model and tier prefs) so a desktop
+  // pick made in one org doesn't leak into another — runtime availability is
+  // org/link-specific, and a "Claude Code desktop" pick carried across orgs
+  // used to mis-route to an offline link. A fresh org starts with no pick
+  // (`null`), letting the server choose its default.
+  //
   // Everything else (`pendingHarnessId`, `pendingSandboxProviderKind`,
   // the request body's harnessId/sandboxProviderKind) derives from this
   // through `AGENT_OPTION_PINS`, so the pill display and the submit can
   // never disagree.
-  const [pendingAgentOption, setPendingAgentOptionState] =
-    useState<AgentOption | null>(() => {
-      try {
-        const stored = localStorage.getItem(
-          "chat:lastAgentOption",
-        ) as AgentOption | null;
-        return stored && stored in AGENT_OPTION_PINS ? stored : null;
-      } catch {
-        return null;
-      }
-    });
-  const setPendingAgentOption = (option: AgentOption | null) => {
-    setPendingAgentOptionState(option);
-    try {
-      if (option === null) {
-        localStorage.removeItem("chat:lastAgentOption");
-      } else {
-        localStorage.setItem("chat:lastAgentOption", option);
-      }
-    } catch {
-      // ignore storage errors (private browsing, quota exceeded, etc.)
-    }
-  };
+  const [pendingAgentOption, setPendingAgentOption] =
+    useLocalStorage<AgentOption | null>(
+      LOCALSTORAGE_KEYS.chatLastAgentOption(locator),
+      (existing) =>
+        existing && existing in AGENT_OPTION_PINS ? existing : null,
+    );
 
   // Provider-tree wiring: `ChatPrefsProvider` is mounted INSIDE
   // `ChatTaskCtx.Provider` (see `ChatContextProvider` below), so the optional
@@ -535,9 +526,24 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
         )
       : null;
 
+  // Resolve the persisted pick against what's actually runnable right now,
+  // applying the same availability fallback the mode picker uses for display.
+  // A pick that points to an offline runtime — e.g. "Claude Code desktop"
+  // carried over from another org while this org's desktop link is offline —
+  // falls back to cloud Decopilot instead of dispatching to the dead desktop
+  // link (which 409s with `user_desktop_link_offline`). Because the picker's
+  // displayed mode is derived from `effectiveAgentOption` (exposed as
+  // `pendingAgentOption` below), this keeps the runtime the user sees selected
+  // and the runtime the message dispatches to in lockstep.
+  const availability = useAgentOptionAvailability();
+  const availableAgentOption = resolveAvailableAgentOption(
+    pendingAgentOption,
+    availability,
+  );
+
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's
-  // global picker.
+  // availability-resolved global picker.
   //
   // When the thread is locked but the (harness, sandbox) tuple doesn't map
   // to a known AgentOption (legacy/trigger-created rows), we intentionally
@@ -546,7 +552,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // should consult isThreadLocked for the "locked" affordance and avoid
   // showing the global selection on a locked thread.
   const effectiveAgentOption: AgentOption | null =
-    taskCtxForLock?.isThreadLocked ? lockedAgentOption : pendingAgentOption;
+    taskCtxForLock?.isThreadLocked ? lockedAgentOption : availableAgentOption;
 
   const effectivePins = effectiveAgentOption
     ? AGENT_OPTION_PINS[effectiveAgentOption]
