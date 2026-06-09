@@ -170,6 +170,22 @@ describe("WebDAV serve layer (integration, full chain)", () => {
     expect(await (await req("/to.txt")).text()).toBe("payload");
   });
 
+  it("MOVE onto itself is 403; cross-host destination is 502", async () => {
+    await req("/x.txt", { method: "PUT", body: "y" });
+    const self = await req("/x.txt", {
+      method: "MOVE",
+      headers: { destination: "http://dav/x.txt" },
+    });
+    expect(self.status).toBe(403);
+    const cross = await req("/x.txt", {
+      method: "MOVE",
+      headers: { destination: "http://elsewhere.example/x.txt" },
+    });
+    expect(cross.status).toBe(502);
+    // The file is untouched after both rejected moves.
+    expect(await (await req("/x.txt")).text()).toBe("y");
+  });
+
   it("DELETE removes a file", async () => {
     await req("/gone.txt", { method: "PUT", body: "x" });
     expect((await req("/gone.txt", { method: "DELETE" })).status).toBe(204);

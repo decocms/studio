@@ -116,7 +116,7 @@ export function createWebdavHandler(
           path: "",
           kind: "dir" as const,
           size: 0,
-          updatedAt: new Date().toUTCString(),
+          updatedAt: new Date().toISOString(), // OrgFsNode.updatedAt is ISO
         })
       : api.stat(p);
 
@@ -209,11 +209,20 @@ export function createWebdavHandler(
           // Destination may be an absolute URL or a path; take the pathname.
           let destPath: string;
           try {
-            destPath = decodeURIComponent(new URL(dest).pathname);
+            const destUrl = new URL(dest);
+            // Cross-server MOVE is unsupported (RFC 4918 §9.9.2 → 502).
+            if (destUrl.origin !== new URL(req.url).origin) {
+              return new Response("Bad Gateway", { status: 502 });
+            }
+            destPath = decodeURIComponent(destUrl.pathname);
           } catch {
             destPath = decodeURIComponent(dest);
           }
           destPath = destPath.replace(/^\/+/, "").replace(/\/+$/, "");
+          // Identical source/destination MUST be 403 (RFC 4918 §9.9.2).
+          if (destPath === path) {
+            return new Response("Forbidden", { status: 403 });
+          }
           await api.move(path, destPath);
           return new Response(null, { status: 201 });
         }
