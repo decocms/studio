@@ -35,7 +35,7 @@ function resolveImageValue(value: unknown): unknown {
   return resolveImageValues(obj);
 }
 
-export function resolveImageValues(
+function resolveImageValues(
   data: Record<string, unknown>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -136,7 +136,7 @@ export function getArrayItemLabel(
   return `Item ${index + 1}`;
 }
 
-export function getArrayItemImageTemplate(
+function getArrayItemImageTemplate(
   itemSchema?: SchemaProperty,
 ): string | undefined {
   if (!itemSchema) return undefined;

@@ -11,7 +11,7 @@ export type { RawSection };
 // wrappers — a section may have one or the other, never both nested together.
 
 /** Strip a top-level Lazy / SingleDeferred wrapper when present. */
-export function unwrapLazySection(raw: RawSection): RawSection {
+function unwrapLazySection(raw: RawSection): RawSection {
   const rt = raw.__resolveType ?? "";
   if (isLazyResolveType(rt)) {
     return (raw.section as RawSection | undefined) ?? raw;
@@ -19,9 +19,7 @@ export function unwrapLazySection(raw: RawSection): RawSection {
   return raw;
 }
 
-export function readHiddenNeverVariantValue(
-  raw: RawSection,
-): RawSection | null {
+function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
   const outerLazy = isLazyResolveType(raw.__resolveType ?? "");
   const mvObj = (outerLazy ? raw.section : raw) as
     | Record<string, unknown>
