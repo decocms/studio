@@ -53,7 +53,7 @@ export function useCreateAgentFromTemplate() {
       description: template.description,
       icon: template.icon ?? null,
       status: "active",
-      pinned: true,
+      pinned: false,
       connections: [],
       metadata: {
         githubRepo: {

@@ -8,7 +8,6 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useAutoInstallGitHub } from "@/web/hooks/use-auto-install-github";
-import { useCanPinAgentsForOrg } from "@/web/hooks/use-can-pin-agents-for-org";
 import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
 import { resolveDecoSiteGithubRepo } from "@/shared/deco-sites-github";
 import {
@@ -78,7 +77,6 @@ export function ImportFromDecoDialog({
   const navigateToAgent = useNavigateToAgent();
   const queryClient = useQueryClient();
   const { data: session } = authClient.useSession();
-  const canPinForOrg = useCanPinAgentsForOrg();
 
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -251,7 +249,7 @@ export function ImportFromDecoDialog({
             data: {
               title: siteName,
               description: "Imported from deco.cx",
-              pinned: canPinForOrg,
+              pinned: false,
               icon: projectIcon ?? null,
               subtype: "project",
               metadata: {

@@ -311,7 +311,7 @@ function PickerContent({
             data: {
               title: repo.name,
               description: repo.description || "Imported from GitHub",
-              pinned: true,
+              pinned: false,
               icon: null,
               metadata: {
                 githubRepo: {
