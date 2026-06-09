@@ -175,7 +175,7 @@ export async function handleLocalDispatch(
 
   // ── Step 2: append parsed part batches to the cluster ingest ───────────
   const clusterToken = await deps.getClusterToken();
-  const ingestUrl = `${deps.clusterBaseUrl}/api/${deps.orgSlug}/links/runs/${work.runId}/parts`;
+  const ingestUrl = `${deps.clusterBaseUrl}/api/${work.orgSlug}/links/runs/${work.runId}/parts`;
 
   await relayDispatchSSEAsPartBatches({
     dispatchBody: dispatchRes.body,

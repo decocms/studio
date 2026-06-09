@@ -129,7 +129,7 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
-      orgSlug: ORG_SLUG,
+      orgSlug: "stale-deps-org",
       getClusterToken: async () => {
         clusterTokenCalls++;
         return CLUSTER_TOKEN;
