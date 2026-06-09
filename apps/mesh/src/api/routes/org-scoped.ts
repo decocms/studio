@@ -11,6 +11,7 @@ import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
 import type { Env } from "../hono-env";
 
 import { createAutomationWebhookRoutes } from "./automation-webhooks";
+import { createChannelWebhookRoutes } from "./channel-webhooks";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createDownstreamTokenRoutes } from "./downstream-token";
@@ -97,6 +98,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     }),
   ); // /api/:org/trigger-callback
   app.route("/webhooks", createAutomationWebhookRoutes()); // /api/:org/webhooks/:triggerId[/:token]
+  app.route("/channels", createChannelWebhookRoutes()); // /api/:org/channels/:channelId/{teams,discord}
   app.route(
     "/",
     createLinkIngestRoutes({

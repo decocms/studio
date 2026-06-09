@@ -155,6 +155,7 @@ import {
   sweepOrphanedWorkflows,
 } from "../dispatch-queue/dbos-orphan-recovery";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
+import { setChannelRuntime } from "../channels/runtime";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
   dispatchRunAndWait,
@@ -1423,6 +1424,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     storage: automationsStorage,
     meshContextFactory: automationContextFactory,
   });
+
+  // Channel inbound webhooks build a bot-scoped context the same way
+  // automations do (background context factory, no HTTP session).
+  setChannelRuntime({ meshContextFactory: automationContextFactory });
 
   // Same deps shape as automations — the per-thread gate calls
   // `dispatchRunAndWait` once the queue lets a message through. Wiring
