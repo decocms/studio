@@ -32,7 +32,16 @@
     <meta name="twitter:description" content="Hire specialized agents, give them access to your tools, and let them deliver real projects — with planning, verification, and observability built in." />
     <meta name="twitter:image" content="/og-image.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- PWA install. The manifest + apple-touch-icon below are the generic
+         "deco Studio" defaults (installable by power users from neutral
+         routes). On an org route, usePwaManifest swaps these for per-org
+         values so installing produces a "Beto" app, then restores the
+         defaults on leaving the org. -->
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="deco Studio" />
   </head>
   <body>
     <div id="root"></div>
