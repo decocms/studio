@@ -23,6 +23,12 @@ export interface ThreadManagerStoreOptions {
    * shared with `useDecopilotEvents`.
    */
   sse?: SSESubscription;
+  /**
+   * Redesign mock: local-only rows merged into the thread list on every load
+   * (and reconnect) so System Health findings appear as ordinary tasks. No
+   * server round-trip — see `views/deco-redesign/mock-threads.ts`.
+   */
+  seedTasks?: Task[];
 }
 
 export type ThreadsStatus =
@@ -74,6 +80,8 @@ export class ThreadManagerStore {
    */
   private archivedTombstones = new Map<string, number>();
   private client: MCPClient | null;
+  private seedTasks: Task[];
+  private seeded = false;
   private nextOffset = 0;
   private readonly pageSize = 10;
   /**
@@ -91,6 +99,7 @@ export class ThreadManagerStore {
   ) {
     this.key = `${orgSlug}::${locator}`;
     this.client = opts.client ?? null;
+    this.seedTasks = opts.seedTasks ?? [];
     const sse = opts.sse ?? decopilotSSE;
     this.watchUnsubscribe = sse.subscribe(
       this.orgSlug,
@@ -200,6 +209,19 @@ export class ThreadManagerStore {
     );
   }
 
+  /**
+   * Redesign mock: ensure the seed rows (System Health findings) are present
+   * exactly once, using the latest set from the provider. Idempotent across
+   * renders/HMR — safe to call on every render; it merges only on the first
+   * call per instance, so it can't loop.
+   */
+  ensureSeeded(tasks: Task[]): void {
+    this.seedTasks = tasks;
+    if (this.seeded) return;
+    this.seeded = true;
+    if (tasks.length) this.mergeThreads(tasks);
+  }
+
   private async optimisticUpdate(
     id: string,
     patch: ThreadUpdateData,
@@ -279,6 +301,7 @@ export class ThreadManagerStore {
       // No MCP client — drain the buffer immediately so SSE events are
       // dispatched live (store stays in "loading" status until a client
       // is provided).
+      if (this.seedTasks.length) this.mergeThreads(this.seedTasks);
       this.drainEventBuffer();
       return;
     }
@@ -301,6 +324,7 @@ export class ThreadManagerStore {
         .structuredContent ?? result) as { items?: Task[]; hasMore?: boolean };
       const items = payload.items ?? [];
       this.threads.set(items);
+      if (this.seedTasks.length) this.mergeThreads(this.seedTasks);
       this.hasMore.set(payload.hasMore ?? false);
       this.nextOffset = items.length;
       this.threadsStatus.set({ kind: "ready" });

@@ -88,7 +88,7 @@ export default function AgentsListPage() {
       <Page.Content>
         <Page.Body>
           <div className="flex flex-col gap-6">
-            <Page.Title>Agents</Page.Title>
+            <Page.Title>Subagents</Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SearchInput
                 value={search}

@@ -52,7 +52,8 @@ export default function OrgShellLayout() {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     SIDEBAR_OPEN_STORAGE_KEY,
-    false,
+    // Redesign: default the rail expanded so the working set of tasks is visible.
+    true,
   );
   const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
 

@@ -167,6 +167,15 @@ const onboardingRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/onboarding.tsx")),
 });
 
+// Redesign: the USER's personal space (/me) — above any org, like chatgpt.com.
+// Standalone full-screen (under rootRoute, no org/ProjectContext needed). Your
+// personal agent + your connections + your Agents (entering one → /$org).
+const personalHomeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/me",
+  component: lazyRouteComponent(() => import("./routes/me.tsx")),
+});
+
 // ============================================
 // ORG LAYOUT
 // ============================================
@@ -175,6 +184,14 @@ const orgLayout = createRoute({
   getParentRoute: () => shellLayout,
   path: "/$org",
   component: lazyRouteComponent(() => import("./layouts/org-layout.tsx")),
+});
+
+// Redesign mock: a standalone onboarding flow at /$org/onboarding (full-screen,
+// no shell chrome). Static path → never collides with /$org/$taskId.
+const onboardingDemoRoute = createRoute({
+  getParentRoute: () => orgLayout,
+  path: "/onboarding",
+  component: lazyRouteComponent(() => import("./routes/orgs/onboarding.tsx")),
 });
 
 // ============================================
@@ -233,7 +250,35 @@ const unifiedChatRoute = createRoute({
 const orgIndexRoute = createRoute({
   getParentRoute: () => orgShellLayout,
   path: "/",
+  validateSearch: z.lazy(() =>
+    z.object({
+      // Redesign: when set, the home opens this finding as an incident task in place.
+      task: z.string().optional(),
+      // Redesign: when "1", the home opens the New Task composer dialog.
+      new: z.string().optional(),
+    }),
+  ),
   component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
+});
+
+// Redesign: the Inbox / Findings page (/$org/inbox) — inside the org shell, so
+// it has the sidebar + toolbar. Static path, never collides with /$org/$taskId.
+const inboxRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/inbox",
+  component: lazyRouteComponent(() => import("./routes/orgs/inbox.tsx")),
+});
+
+// Redesign: a goal's closed-loop detail (/$org/goal?g=<id>) — inside the org
+// shell. SINGLE static segment + a search param for the id, so it ranks like
+// `/inbox` and never collides with the 2-segment `/$taskId/$pluginId` chat route
+// (a `/goal/$goalId` path loses that precedence fight and falls through to the
+// empty task view).
+const goalRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/goal",
+  validateSearch: z.lazy(() => z.object({ g: z.string().optional() })),
+  component: lazyRouteComponent(() => import("./routes/orgs/goal.tsx")),
 });
 
 // ============================================
@@ -319,12 +364,85 @@ const monitoringRoute = createRoute({
   ),
 });
 
+// Agent settings overview — the home of everything about one agent
+// `?agent` selects which of the user's agents to show (current org by default).
+const agentSearchSchema = z.lazy(() =>
+  z.object({ agent: z.string().optional() }),
+);
+
+const settingsAgentRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/agent",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/agent.tsx"),
+  ),
+  validateSearch: agentSearchSchema,
+});
+
+// Agent personalization — the editable user layer (guidance, skills, connections)
+const settingsAgentPersonalizationRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/agent/personalization",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/agent-personalization.tsx"),
+  ),
+  validateSearch: agentSearchSchema,
+});
+
+// Agent automations — Studio automations split System (managed) / Yours
+const settingsAgentAutomationsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/agent/automations",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/agent-automations.tsx"),
+  ),
+  validateSearch: agentSearchSchema,
+});
+
+// Agent findings — what the agent watches and how far it acts (agent-wide)
+const settingsAgentFindingsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/agent/findings",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/agent-findings.tsx"),
+  ),
+  validateSearch: agentSearchSchema,
+});
+
+// Agent memory — what the agent remembers about you and the work
+const settingsAgentMemoryRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/agent/memory",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/agent-memory.tsx"),
+  ),
+  validateSearch: agentSearchSchema,
+});
+
+// Agent files — what the agent reads and what it produces
+const settingsAgentFilesRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/agent/files",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/agent-files.tsx"),
+  ),
+  validateSearch: agentSearchSchema,
+});
+
 // Organization settings pages
 const settingsGeneralRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/general",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/general.tsx"),
+  ),
+});
+
+const settingsFindingsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/findings",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/findings.tsx"),
   ),
 });
 
@@ -540,12 +658,19 @@ const unifiedPluginWithChildren = unifiedPluginRoute.addChildren(pluginRoutes);
 
 const settingsWithChildren = settingsLayout.addChildren([
   settingsIndexRoute,
+  settingsAgentRoute,
+  settingsAgentPersonalizationRoute,
+  settingsAgentAutomationsRoute,
+  settingsAgentFindingsRoute,
+  settingsAgentMemoryRoute,
+  settingsAgentFilesRoute,
   connectionsRoute,
   connectionDetailRoute,
   collectionDetailRoute,
   settingsAgentsRoute,
   settingsAutomationsRoute,
   monitoringRoute,
+  settingsFindingsRoute,
   settingsGeneralRoute,
   settingsFeaturesRoute,
   settingsBrandContextRoute,
@@ -574,12 +699,15 @@ const agentShellWithChildren = agentShellLayout.addChildren([
 
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
+  inboxRoute,
+  goalRoute,
   agentShellWithChildren,
 ]);
 
 const orgLayoutWithChildren = orgLayout.addChildren([
   orgShellWithChildren,
   settingsWithChildren,
+  onboardingDemoRoute,
 ]);
 
 const shellRouteTree = shellLayout.addChildren([
@@ -590,6 +718,7 @@ const shellRouteTree = shellLayout.addChildren([
 const routeTree = rootRoute.addChildren([
   shellRouteTree,
   onboardingRoute,
+  personalHomeRoute,
   loginRoute,
   cliAuthSuccessRoute,
   resetPasswordRoute,

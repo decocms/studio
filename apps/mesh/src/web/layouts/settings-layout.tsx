@@ -32,27 +32,15 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { PageContentClassNameProvider } from "@/web/components/page";
 import {
-  BarChart10,
-  BookOpen01,
-  Building02,
+  Bell01,
   ZapSquare,
-  CpuChip01,
   Loading01,
-  Lock01,
   LogOut01,
-  PackageCheck,
-  Shield01,
   User01,
-  Users03,
-  Zap,
-  Key01,
-  HardDrive,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Suspense } from "react";
-import { pluginSettingsSidebarItems } from "@/web/index";
 import { useStatusSounds } from "../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
@@ -62,191 +50,80 @@ import {
   MobileSidebarSheet,
   SidebarTriggerButton,
 } from "@/web/layouts/shell-controls";
+import { USER_AGENTS } from "@/web/views/deco-redesign/mock-user";
+
+/** The agents shown in the settings sidebar — the current org plus the
+ *  other agents the user has (mock). */
+function useSidebarAgents(currentName: string, currentLogo: string | null) {
+  return [
+    { id: "current", name: currentName, logo: currentLogo, current: true },
+    ...USER_AGENTS.map((a) => ({
+      id: a.id,
+      name: a.name,
+      logo: a.icon ?? null,
+      current: false,
+    })),
+  ];
+}
 
 interface SettingsNavItem {
   key: string;
   label: string;
   icon: React.ReactNode;
   to: string;
-  /** Capability required to see this item. Omitted = visible to every member. */
-  requires?: CapabilityId;
-  /** Restrict to privileged built-in roles (owner/admin). For screens backed
-   *  by owner/admin-only APIs (e.g. role management). */
-  privilegedOnly?: boolean;
 }
 
-interface SettingsNavGroup {
-  label: string;
-  items: SettingsNavItem[];
-}
+/**
+ * Settings are organized around the teammate model:
+ *  - USER scope (top): what belongs to you and carries across every agent —
+ *    your connections, profile, and how the teammate notifies you.
+ *  - AGENT scope (below): each agent (org-as-teammate) is a single item; its
+ *    own config — connections, subagents, knowledge, etc. — lives one level in,
+ *    on the agent overview page (`/$org/settings/agent`).
+ */
+const USER_ITEMS: SettingsNavItem[] = [
+  {
+    key: "connections",
+    label: "Connections",
+    icon: <ZapSquare size={14} />,
+    to: "/$org/settings/connections",
+  },
+  {
+    key: "profile",
+    label: "Profile & Preferences",
+    icon: <User01 size={14} />,
+    to: "/$org/settings/profile",
+  },
+  {
+    key: "findings",
+    label: "Findings & notifications",
+    icon: <Bell01 size={14} />,
+    to: "/$org/settings/findings",
+  },
+];
 
-function useSettingsSidebarGroups(): SettingsNavGroup[] {
-  const currentProject = useProjectContext().project;
-  const enabledPlugins = currentProject.enabledPlugins ?? [];
-  const { capabilities, isPrivileged, loading, error } = useCapabilities();
+const AGENT_OVERVIEW_TO = "/$org/settings/agent";
 
-  const enabledSettingsItems = pluginSettingsSidebarItems
-    .filter((item) => enabledPlugins.includes(item.pluginId))
-    .map(({ key, label, icon, to }) => ({ key, label, icon, to }));
-
-  const groups: SettingsNavGroup[] = [
-    {
-      label: "Organization",
-      items: [
-        {
-          key: "general",
-          label: "General",
-          icon: <Building02 size={14} />,
-          to: "/$org/settings/general",
-          requires: "org:manage",
-        },
-        {
-          key: "brand-context",
-          label: "Brand Context",
-          icon: <BookOpen01 size={14} />,
-          to: "/$org/settings/brand-context",
-          requires: "org:manage",
-        },
-        {
-          key: "ai-providers",
-          label: "AI Providers",
-          icon: <CpuChip01 size={14} />,
-          to: "/$org/settings/ai-providers",
-          requires: "ai-providers:manage",
-        },
-        {
-          key: "secrets",
-          label: "Secrets",
-          icon: <Key01 size={14} />,
-          to: "/$org/settings/secrets",
-          requires: "secrets:manage",
-        },
-        {
-          key: "files",
-          label: "Files",
-          icon: <HardDrive size={14} />,
-          to: "/$org/settings/files",
-          requires: "file-configs:manage",
-        },
-      ],
-    },
-    {
-      label: "Build",
-      items: [
-        // connections + agents stay visible to every member — viewing them is
-        // basic-usage. The create/update/delete affordances inside those pages
-        // are gated in-page by connections:manage / agents:manage.
-        {
-          key: "connections",
-          label: "Connections",
-          icon: <ZapSquare size={14} />,
-          to: "/$org/settings/connections",
-        },
-        {
-          key: "agents",
-          label: "Agents",
-          icon: <Users03 size={14} />,
-          to: "/$org/settings/agents",
-        },
-        {
-          key: "automations",
-          label: "Automations",
-          icon: <Zap size={14} />,
-          to: "/$org/settings/automations",
-          requires: "automations:manage",
-        },
-        {
-          key: "store",
-          label: "Store",
-          icon: <PackageCheck size={14} />,
-          to: "/$org/settings/store",
-          requires: "registry:manage",
-        },
-      ],
-    },
-    {
-      label: "Manage",
-      items: [
-        {
-          key: "monitor",
-          label: "Monitor",
-          icon: <BarChart10 size={14} />,
-          to: "/$org/settings/monitor",
-          requires: "monitoring:view",
-        },
-        {
-          key: "members",
-          label: "Members",
-          icon: <Users03 size={14} />,
-          to: "/$org/settings/members",
-          requires: "members:manage",
-        },
-        {
-          key: "roles",
-          label: "Roles",
-          icon: <Shield01 size={14} />,
-          to: "/$org/settings/roles",
-          // Role management uses owner/admin-only Better Auth APIs.
-          privilegedOnly: true,
-        },
-        {
-          key: "sso",
-          label: "Security",
-          icon: <Lock01 size={14} />,
-          to: "/$org/settings/sso",
-          requires: "org:manage",
-        },
-      ],
-    },
-    {
-      label: "Extensions",
-      items: [
-        {
-          key: "features",
-          label: "Plugins",
-          icon: <Zap size={14} />,
-          to: "/$org/settings/features",
-          requires: "org:manage",
-        },
-        ...enabledSettingsItems,
-      ],
-    },
-    {
-      label: "Account",
-      items: [
-        {
-          key: "profile",
-          label: "Profile & Preferences",
-          icon: <User01 size={14} />,
-          to: "/$org/settings/profile",
-        },
-      ],
-    },
-  ];
-
-  // While capabilities load — or if the lookup errored — show every item
-  // optimistically. This avoids a flicker for the common privileged case and
-  // ensures a transient failure never hides nav from owners/admins. Once
-  // resolved, hide items the member's role can't open and drop any group left
-  // empty. Items without a `requires` (Profile, plugin items) are always shown.
-  if (loading || error) {
-    return groups;
+function AgentAvatar({ name, logo }: { name: string; logo: string | null }) {
+  if (logo) {
+    return (
+      <img
+        src={logo}
+        alt=""
+        className="size-5 shrink-0 rounded-md border border-border object-cover"
+      />
+    );
   }
-  return groups
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) => {
-        if (item.privilegedOnly) return isPrivileged;
-        if (!item.requires) return true;
-        return isPrivileged || capabilities[item.requires];
-      }),
-    }))
-    .filter((group) => group.items.length > 0);
+  return (
+    <span className="grid size-5 shrink-0 place-items-center rounded-md bg-foreground/10 text-[10px] font-semibold text-foreground">
+      {name?.[0]?.toUpperCase() ?? "A"}
+    </span>
+  );
 }
 
 export function SettingsSidebar() {
-  const groups = useSettingsSidebarGroups();
   const { org } = useParams({ from: "/shell/$org" });
+  const { org: organization } = useProjectContext();
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
@@ -256,51 +133,83 @@ export function SettingsSidebar() {
     return pathname.startsWith(resolved);
   };
 
+  // Any settings path that isn't a user-scoped page belongs to the agent, so
+  // the active agent stays highlighted while you're deep in its sub-pages.
+  const userActive = USER_ITEMS.some((item) => isActive(item.to));
+  const agentActive = !userActive && pathname.includes("/settings");
+  const agents = useSidebarAgents(organization.name, organization.logo);
+  const activeAgentId = useRouterState({
+    select: (s) => (s.location.search as { agent?: string }).agent ?? "current",
+  });
+
   return (
     <Sidebar variant="sidebar">
       <SidebarContent className="flex flex-col flex-1 mt-2 px-2 pb-2 gap-0 overflow-y-auto">
-        {groups.map((group, i) => (
-          <SidebarGroup
-            key={`${group.label}-${i}`}
-            className="pt-0 pr-0 pb-0 pl-0"
-          >
-            {group.label && (
-              <p
-                className={cn(
-                  "px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60",
-                  i > 0 && "mt-3",
-                )}
-              >
-                {group.label}
-              </p>
-            )}
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-0.5">
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.key}>
-                    <SidebarMenuButton asChild isActive={isActive(item.to)}>
-                      <Link
-                        to={item.to}
-                        params={{ org }}
-                        onClick={() =>
-                          track("settings_nav_clicked", {
-                            section_key: item.key,
-                            section_label: item.label,
-                            group_label: group.label || "main",
-                          })
-                        }
-                        className="flex items-center gap-2.5 text-sm"
-                      >
-                        <span className="shrink-0">{item.icon}</span>
-                        <span className="truncate">{item.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {/* User scope */}
+        <SidebarGroup className="pt-0 pr-0 pb-0 pl-0">
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-0.5">
+              {USER_ITEMS.map((item) => (
+                <SidebarMenuItem key={item.key}>
+                  <SidebarMenuButton asChild isActive={isActive(item.to)}>
+                    <Link
+                      to={item.to}
+                      params={{ org }}
+                      onClick={() =>
+                        track("settings_nav_clicked", {
+                          section_key: item.key,
+                          section_label: item.label,
+                          group_label: "user",
+                        })
+                      }
+                      className="flex items-center gap-2.5 text-sm"
+                    >
+                      <span className="shrink-0">{item.icon}</span>
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Agent scope — each agent is one item; its config lives one level in */}
+        <div className="mx-2 my-2 border-t border-border/50" />
+        <SidebarGroup className="pt-0 pr-0 pb-0 pl-0">
+          <p className="px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60">
+            Agents
+          </p>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-0.5">
+              {agents.map((agent) => (
+                <SidebarMenuItem key={agent.id}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={agentActive && agent.id === activeAgentId}
+                  >
+                    <Link
+                      to={AGENT_OVERVIEW_TO}
+                      params={{ org }}
+                      search={agent.current ? {} : { agent: agent.id }}
+                      onClick={() =>
+                        track("settings_nav_clicked", {
+                          section_key: "agent",
+                          section_label: agent.name,
+                          group_label: "agents",
+                        })
+                      }
+                      className="flex items-center gap-2.5 text-sm"
+                    >
+                      <AgentAvatar name={agent.name} logo={agent.logo} />
+                      <span className="truncate">{agent.name}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         {/* Sign Out */}
         <SidebarGroup className="pt-0 pr-0 pb-0 pl-0">
@@ -338,8 +247,8 @@ export function SettingsSidebar() {
 }
 
 export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
-  const groups = useSettingsSidebarGroups();
   const { org } = useParams({ from: "/shell/$org" });
+  const { org: organization } = useProjectContext();
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
@@ -349,39 +258,56 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
     return pathname.startsWith(resolved);
   };
 
+  const userActive = USER_ITEMS.some((item) => isActive(item.to));
+  const agentActive = !userActive && pathname.includes("/settings");
+  const agents = useSidebarAgents(organization.name, organization.logo);
+  const activeAgentId = useRouterState({
+    select: (s) => (s.location.search as { agent?: string }).agent ?? "current",
+  });
+
+  const rowBase =
+    "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm";
+  const rowOn = "bg-sidebar-accent text-sidebar-accent-foreground font-medium";
+  const rowOff =
+    "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground";
+
   return (
     <div className="flex flex-col h-full bg-sidebar">
       <div className="flex flex-col flex-1 overflow-y-auto px-2 py-2 gap-0.5">
-        {groups.map((group, i) => (
-          <div key={`${group.label}-${i}`} className="flex flex-col gap-0.5">
-            {group.label && (
-              <p
-                className={cn(
-                  "px-3 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60",
-                  i > 0 && "mt-3",
-                )}
-              >
-                {group.label}
-              </p>
+        {/* User scope */}
+        {USER_ITEMS.map((item) => (
+          <Link
+            key={item.key}
+            to={item.to}
+            params={{ org }}
+            onClick={onClose}
+            className={cn(rowBase, isActive(item.to) ? rowOn : rowOff)}
+          >
+            <span className="shrink-0">{item.icon}</span>
+            <span className="truncate">{item.label}</span>
+          </Link>
+        ))}
+
+        {/* Agent scope */}
+        <div className="mx-3 my-2 border-t border-border/50" />
+        <p className="px-3 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60">
+          Agents
+        </p>
+        {agents.map((agent) => (
+          <Link
+            key={agent.id}
+            to={AGENT_OVERVIEW_TO}
+            params={{ org }}
+            search={agent.current ? {} : { agent: agent.id }}
+            onClick={onClose}
+            className={cn(
+              rowBase,
+              agentActive && agent.id === activeAgentId ? rowOn : rowOff,
             )}
-            {group.items.map((item) => (
-              <Link
-                key={item.key}
-                to={item.to}
-                params={{ org }}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm",
-                  isActive(item.to)
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                )}
-              >
-                <span className="shrink-0">{item.icon}</span>
-                <span className="truncate">{item.label}</span>
-              </Link>
-            ))}
-          </div>
+          >
+            <AgentAvatar name={agent.name} logo={agent.logo} />
+            <span className="truncate">{agent.name}</span>
+          </Link>
         ))}
 
         {/* Sign Out */}

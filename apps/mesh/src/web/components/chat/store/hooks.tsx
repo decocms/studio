@@ -14,10 +14,12 @@
  */
 
 import {
+  getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
 } from "@decocms/mesh-sdk";
+import { buildMockTasks } from "@/web/views/deco-redesign/mock-threads";
 import {
   createContext,
   type ReactNode,
@@ -40,7 +42,15 @@ export function ThreadManagerProvider({ children }: { children: ReactNode }) {
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const manager = getOrOpenManager(org.slug, locator, { client });
+  // Redesign mock: System Health findings as real tasks under the Deco agent.
+  const seeds = buildMockTasks(getWellKnownDecopilotVirtualMCP(org.id).id);
+  const manager = getOrOpenManager(org.slug, locator, {
+    client,
+    seedTasks: seeds,
+  });
+  // Ensure the findings are present even if this manager instance predates the
+  // seeds (HMR / earlier construction). Idempotent — merges once.
+  manager.ensureSeeded(seeds);
   return (
     <ManagerContext.Provider value={manager}>
       {children}

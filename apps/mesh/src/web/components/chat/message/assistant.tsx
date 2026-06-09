@@ -27,6 +27,9 @@ import {
   AgentCreatePart,
   AgentListPart,
   ConnectionListPart,
+  SystemHealthSpikePart,
+  SystemHealthFixPart,
+  CmsContentEditPart,
 } from "./parts/tool-call-part/index.ts";
 import { NextActionChip } from "./next-action-chip.tsx";
 import { ThreadHtmlPreviews } from "./thread-html-previews.tsx";
@@ -559,6 +562,15 @@ function MessagePart({
             latency={getMeta(fallback.toolCallId)?.latencySeconds}
           />
         );
+      }
+      if (fallback.type === "tool-system_health_spike") {
+        return <SystemHealthSpikePart part={fallback} />;
+      }
+      if (fallback.type === "tool-system_health_fix") {
+        return <SystemHealthFixPart part={fallback} />;
+      }
+      if (fallback.type === "tool-cms_content") {
+        return <CmsContentEditPart part={fallback} />;
       }
       if (fallback.type.startsWith("tool-")) {
         const toolCallId = (fallback as ToolUIPart).toolCallId;

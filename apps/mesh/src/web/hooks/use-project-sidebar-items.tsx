@@ -4,14 +4,7 @@ import type {
   SidebarSection,
 } from "@/web/components/sidebar/types";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Home01 } from "@untitledui/icons";
-import {
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarMenu,
-  useSidebar,
-} from "@deco/ui/components/sidebar.tsx";
-import { BrowseAgentsButton } from "@/web/components/sidebar/browse-agents-button";
+import { Home01, Inbox01, Target04 } from "@untitledui/icons";
 
 export function useProjectSidebarItems(): SidebarSection[] {
   const { org } = useProjectContext();
@@ -19,8 +12,6 @@ export function useProjectSidebarItems(): SidebarSection[] {
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
   const slug = org.slug;
-  const { state, isMobile } = useSidebar();
-  const isCollapsed = !isMobile && state === "collapsed";
 
   const homeItem: NavigationSidebarItem = {
     key: "home",
@@ -32,23 +23,25 @@ export function useProjectSidebarItems(): SidebarSection[] {
     },
   };
 
-  const sections: SidebarSection[] = [{ type: "items", items: [homeItem] }];
+  const goalsItem: NavigationSidebarItem = {
+    key: "goals",
+    label: "Goals",
+    icon: <Target04 className="size-4!" />,
+    isActive: pathname.startsWith(`/${slug}/goal`),
+    onClick: () => {
+      navigate({ to: "/$org/goal", params: { org: slug }, search: {} });
+    },
+  };
 
-  if (isCollapsed) {
-    sections.push({
-      type: "custom",
-      key: "new-task",
-      content: (
-        <SidebarGroup className="pt-0 pr-0 pb-0 pl-0">
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-1.5">
-              <BrowseAgentsButton />
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ),
-    });
-  }
+  const inboxItem: NavigationSidebarItem = {
+    key: "inbox",
+    label: "Inbox",
+    icon: <Inbox01 className="size-4!" />,
+    isActive: pathname === `/${slug}/inbox`,
+    onClick: () => {
+      navigate({ to: "/$org/inbox", params: { org: slug } });
+    },
+  };
 
-  return sections;
+  return [{ type: "items", items: [homeItem, goalsItem, inboxItem] }];
 }

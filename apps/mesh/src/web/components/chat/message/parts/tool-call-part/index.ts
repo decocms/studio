@@ -13,3 +13,8 @@ export {
 export { AgentCreatePart } from "./agent-create.tsx";
 export { AgentListPart } from "./agent-list.tsx";
 export { ConnectionListPart } from "./connection-list.tsx";
+export {
+  SystemHealthSpikePart,
+  SystemHealthFixPart,
+} from "./system-health.tsx";
+export { CmsContentEditPart } from "./cms.tsx";

@@ -52,6 +52,12 @@ import type { ChatMode } from "../types";
 import { toast } from "sonner";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
+// Redesign mock: System Health findings are served locally (no backend) so the
+// real chat renders their seeded messages verbatim. See mock-threads.ts.
+import {
+  getMockMessages,
+  isMockThread,
+} from "@/web/views/deco-redesign/mock-threads";
 
 export { Store };
 
@@ -309,6 +315,13 @@ export class ThreadConnection {
     }
     this.messages.set(next);
 
+    // Redesign mock: local threads have no server — apply optimistically and
+    // stop (no POST to /messages, which would 404 for a non-persisted id).
+    if (isMockThread(this.threadId)) {
+      this.status.set({ kind: "ready" });
+      return;
+    }
+
     // A new user turn always POSTs. For approval / toolOutput actions, only
     // POST once the assistant turn has no remaining client-side resolutions
     // (other pending approvals or unresolved local tool inputs). The two
@@ -366,6 +379,19 @@ export class ThreadConnection {
   // ── Internal: bootstrap ─────────────────────────────────────────────────
 
   private async bootstrap(): Promise<void> {
+    // Redesign mock: a System Health finding is a local thread. Seed its
+    // messages and skip all backend I/O (no /messages list, no /stream SSE).
+    if (isMockThread(this.threadId)) {
+      const seed = (getMockMessages(this.threadId) ?? []) as UIMessage[];
+      this.messages.set(seed);
+      this.serverFetchedCount = seed.length;
+      this.hasMoreOlder.set(false);
+      if (this.status.get().kind === "loading") {
+        this.status.set({ kind: "ready" });
+      }
+      this.resolveReady();
+      return;
+    }
     // Initial-page fetch and SSE loop run concurrently. Chunks arriving
     // before the page resolves are queued via `chunkBuffer` and drained
     // through `handleChunk` after the page lands.
