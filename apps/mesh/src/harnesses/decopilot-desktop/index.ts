@@ -185,6 +185,7 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
             pendingImages,
             threadId: input.threadId,
             virtualMcpId: input.agent.id,
+            branch: input.branch,
           });
 
           // 6. Process the conversation with the REAL tool set so prior-turn

@@ -34,6 +34,7 @@ export interface BuildLocalToolsParams {
   pendingImages: PendingImage[];
   threadId: string;
   virtualMcpId: string;
+  branch?: string | null;
   mcpClient?: Client;
   models?: DesktopSubtaskModels;
   selfAgentId?: string;
@@ -46,24 +47,64 @@ export function createDesktopLocalSandboxProvider(): SandboxProvider {
     process.env.DAEMON_PORT ?? process.env.PROXY_PORT ?? 9000,
   );
   const token = process.env.DAEMON_TOKEN ?? "";
+  const controlUrl =
+    process.env.DESKTOP_SANDBOX_CONTROL_URL ??
+    process.env.SANDBOX_CONTROL_URL ??
+    "";
+  let sandboxApiUrl = `http://127.0.0.1:${port}`;
+  const defaultHandle = process.env.SANDBOX_HANDLE ?? "local";
 
   return {
     kind: "user-desktop",
-    ensure: async () => ({
-      handle: "local",
-      workdir: process.cwd(),
-      previewUrl: null,
-    }),
-    delete: async () => {},
+    ensure: async () => {
+      if (!controlUrl) {
+        return {
+          handle: defaultHandle,
+          workdir: process.cwd(),
+          previewUrl: null,
+        };
+      }
+      const res = await fetch(`${controlUrl}/api/sandboxes`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ handle: defaultHandle }),
+      });
+      if (!res.ok) {
+        throw new Error(`local sandbox ensure failed (${res.status})`);
+      }
+      const body = (await res.json()) as {
+        sandboxApiUrl?: unknown;
+        previewUrl?: unknown;
+      };
+      if (typeof body.sandboxApiUrl !== "string") {
+        throw new Error("local sandbox ensure did not return sandboxApiUrl");
+      }
+      sandboxApiUrl = body.sandboxApiUrl;
+      return {
+        handle: defaultHandle,
+        workdir: sandboxApiUrl,
+        previewUrl:
+          typeof body.previewUrl === "string" ? body.previewUrl : sandboxApiUrl,
+      };
+    },
+    delete: async (handle) => {
+      if (!controlUrl) return;
+      await fetch(`${controlUrl}/api/sandboxes/${encodeURIComponent(handle)}`, {
+        method: "DELETE",
+      }).catch(() => {});
+    },
     alive: async () => true,
     getPreviewUrl: async () => null,
     watchClaimLifecycle: async function* () {
       yield { kind: "ready" as const };
     },
-    proxyDaemonRequest: async (_handle, path, init) => {
+    proxyDaemonRequest: async (handle, path, init) => {
       const headers = new Headers(init.headers);
       if (token) headers.set("authorization", `Bearer ${token}`);
-      return fetch(`http://127.0.0.1:${port}${path}`, {
+      const target = controlUrl
+        ? `${controlUrl}/_sandbox/${encodeURIComponent(handle)}${path.startsWith("/_sandbox/") ? path.slice("/_sandbox".length) : path}`
+        : `${sandboxApiUrl}${path}`;
+      return fetch(target, {
         method: init.method,
         headers,
         body: init.body,
@@ -100,10 +141,35 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
 
   const vmNeedsApproval =
     params.isPlanMode || params.toolApprovalLevel !== "auto";
+  const runner = params.runner ?? createDesktopLocalSandboxProvider();
+  let cachedHandle: Promise<string> | null = null;
+  const ensureHandle = () => {
+    if (!cachedHandle) {
+      cachedHandle = runner
+        .ensure(
+          {
+            userId: params.ctx.auth?.user?.id ?? "desktop",
+            projectRef: params.virtualMcpId,
+          },
+          params.branch ? { branch: params.branch } : undefined,
+        )
+        .then((sandbox) => sandbox.handle);
+      cachedHandle.catch(() => {
+        cachedHandle = null;
+      });
+    }
+    return cachedHandle;
+  };
   const vmTools = createVmTools({
-    runner: params.runner ?? createDesktopLocalSandboxProvider(),
-    ensureHandle: async () => "local",
-    invalidateHandle: async () => {},
+    runner,
+    ensureHandle,
+    invalidateHandle: async () => {
+      const handlePromise = cachedHandle;
+      cachedHandle = null;
+      if (!handlePromise) return;
+      const handle = await handlePromise.catch(() => null);
+      if (handle) await runner.delete(handle);
+    },
     canAutoRestart: false,
     htmlPageBuffer: params.htmlPageBuffer ?? createNoopHtmlPageBuffer(),
     toolOutputMap: params.toolOutputMap,
