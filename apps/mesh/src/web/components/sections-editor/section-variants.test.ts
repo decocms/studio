@@ -9,6 +9,7 @@ import {
   parseSectionFlagVariants,
   pickVariantToKeepIndex,
   showSection,
+  toggleSectionLazyRender,
   unwrapVariantSectionValue,
   updateMultivariateSectionVariantValue,
   writeVariantSectionValue,
@@ -258,18 +259,9 @@ describe("section-variants", () => {
     expect(parseSections([hidden], {})[0]?.isHidden).toBe(true);
   });
 
-  it("hideSection/showSection round-trips normal, lazy-outer, and saved-block sections", () => {
-    // hideSection wraps outside the lazy shell, so the lazy section is stored
-    // verbatim as variants[0].value — showSection extracts it directly without
-    // touching the outerLazy branch.
+  it("hideSection/showSection round-trips normal and saved-block sections", () => {
     const cases = [
       { __resolveType: "site/sections/Hero.tsx", title: "Hero" },
-      {
-        __resolveType: "website/sections/Rendering/Lazy.tsx",
-        section: { __resolveType: "site/sections/Hero.tsx", title: "Lazy" },
-      },
-      // saved-block: bare resolve-type key with no "/"; showSection has no
-      // special saved-block logic — it extracts variants[0].value like any section.
       { __resolveType: "Header" },
     ];
 
@@ -277,6 +269,71 @@ describe("section-variants", () => {
       const restored = showSection(hideSection(original as never));
       expect(restored).toEqual(original as never);
     }
+  });
+
+  it("hideSection on lazy sections stores the core section, not the lazy wrapper", () => {
+    const lazy = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: { __resolveType: "site/sections/Hero.tsx", title: "Lazy" },
+    };
+    const hidden = hideSection(lazy as never);
+
+    expect(hidden).toEqual({
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          value: { __resolveType: "site/sections/Hero.tsx", title: "Lazy" },
+          rule: { __resolveType: "website/matchers/never.ts" },
+        },
+      ],
+    });
+    expect(showSection(hidden as never)).toEqual({
+      __resolveType: "site/sections/Hero.tsx",
+      title: "Lazy",
+    });
+  });
+
+  it("lazy and hidden wrappers are mutually exclusive", () => {
+    const hero = { __resolveType: "site/sections/Hero.tsx", title: "Hero" };
+    const lazy = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: hero,
+    };
+
+    expect(
+      toggleSectionLazyRender(hideSection(hero as never) as never),
+    ).toEqual(lazy);
+    expect(hideSection(lazy as never)).toEqual({
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          value: hero,
+          rule: { __resolveType: "website/matchers/never.ts" },
+        },
+      ],
+    });
+  });
+
+  it("toggleSectionLazyRender wraps and unwraps plain sections", () => {
+    const hero = { __resolveType: "site/sections/Hero.tsx", title: "Hi" };
+    const lazy = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: hero,
+    };
+
+    expect(toggleSectionLazyRender(hero as never)).toEqual(lazy);
+    expect(toggleSectionLazyRender(lazy as never)).toEqual(hero);
+    expect(toggleSectionLazyRender({} as never)).toBeNull();
+  });
+
+  it("toggleSectionLazyRender on hidden unwraps never-matcher before lazy-wrapping", () => {
+    const hero = { __resolveType: "site/sections/Hero.tsx" };
+    const hidden = hideSection(hero as never);
+
+    expect(toggleSectionLazyRender(hidden as never)).toEqual({
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: hero,
+    });
   });
 
   it("showSection unwraps a lazy-outer hidden section (outerLazy branch)", () => {

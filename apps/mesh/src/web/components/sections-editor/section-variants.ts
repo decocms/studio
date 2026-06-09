@@ -1,4 +1,4 @@
-import { isLazyResolveType } from "./section-lazy";
+import { isLazyResolveType, LAZY_RENDER_RESOLVE_TYPE } from "./section-lazy";
 import {
   NEVER_MATCHER_RESOLVE_TYPE,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
@@ -7,19 +7,74 @@ import {
 
 export type { RawSection };
 
+// Lazy (Lazy.tsx) and hidden (multivariate + never matcher) are mutually exclusive
+// wrappers — a section may have one or the other, never both nested together.
+
+/** Strip a top-level Lazy / SingleDeferred wrapper when present. */
+export function unwrapLazySection(raw: RawSection): RawSection {
+  const rt = raw.__resolveType ?? "";
+  if (isLazyResolveType(rt)) {
+    return (raw.section as RawSection | undefined) ?? raw;
+  }
+  return raw;
+}
+
+function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
+  const outerLazy = isLazyResolveType(raw.__resolveType ?? "");
+  const mvObj = (outerLazy ? raw.section : raw) as
+    | Record<string, unknown>
+    | undefined;
+  const variants = mvObj?.variants as
+    | Array<Record<string, unknown>>
+    | undefined;
+  const first = variants?.[0];
+  const rule = first?.rule as Record<string, unknown> | undefined;
+  if (
+    (rule?.__resolveType as string | undefined) !== NEVER_MATCHER_RESOLVE_TYPE
+  ) {
+    return null;
+  }
+  return (first?.value as RawSection | undefined) ?? null;
+}
+
 /**
  * Wrap a section in a multivariate block gated by a `never` matcher so it never
- * renders on the live site. Parses back as `isHidden`. The original section is
- * preserved verbatim as the variant value, so {@link showSection} can restore
- * it exactly — works for normal, lazy, and saved-block sections alike.
+ * renders on the live site. Parses back as `isHidden`.
+ *
+ * Lazy and hidden are mutually exclusive — hiding unwraps lazy first so the
+ * stored variant value is always the core section.
  */
 export function hideSection(raw: RawSection): RawSection {
+  const core = unwrapLazySection(raw);
   return {
     __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
     variants: [
-      { value: raw, rule: { __resolveType: NEVER_MATCHER_RESOLVE_TYPE } },
+      { value: core, rule: { __resolveType: NEVER_MATCHER_RESOLVE_TYPE } },
     ],
   } as RawSection;
+}
+
+/**
+ * Toggle `website/sections/Rendering/Lazy.tsx` on a page section.
+ *
+ * Lazy and hidden are mutually exclusive — enabling lazy on a hidden section
+ * drops the never-matcher wrapper and lazy-wraps the core section instead.
+ */
+export function toggleSectionLazyRender(raw: RawSection): RawSection | null {
+  const rt = raw.__resolveType ?? "";
+  if (!rt) return null;
+
+  if (isLazyResolveType(rt)) {
+    return (raw.section as RawSection | undefined) ?? null;
+  }
+
+  const hiddenInner = readHiddenNeverVariantValue(raw);
+  const core = hiddenInner ? unwrapLazySection(hiddenInner) : raw;
+
+  return {
+    __resolveType: LAZY_RENDER_RESOLVE_TYPE,
+    section: core,
+  };
 }
 
 /** Unwrap a hidden section back to the section it was hiding, or null. */

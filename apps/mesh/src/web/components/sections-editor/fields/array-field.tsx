@@ -7,22 +7,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
-
-function getItemLabel(item: unknown, index: number): string {
-  if (typeof item === "string") return item || `Item ${index + 1}`;
-  if (typeof item === "number" || typeof item === "boolean")
-    return String(item);
-  if (item && typeof item === "object" && !Array.isArray(item)) {
-    const obj = item as Record<string, unknown>;
-    for (const key of ["name", "label", "title", "alt", "text", "href", "id"]) {
-      if (typeof obj[key] === "string" && obj[key]) return obj[key] as string;
-    }
-  }
-  return `Item ${index + 1}`;
-}
 
 export function ArrayField({
   schema,
@@ -36,6 +24,9 @@ export function ArrayField({
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  const itemLabel = (item: unknown, index: number) =>
+    getArrayItemLabel(item, index, itemSchema);
 
   const addItem = () => {
     const t = itemSchema?.type;
@@ -63,10 +54,7 @@ export function ArrayField({
     onChange(next);
     const nextIndex = next.length - 1;
     setSelectedIndex(nextIndex);
-    onBreadcrumbChange?.([
-      ...breadcrumbPath,
-      getItemLabel(defaultVal, nextIndex),
-    ]);
+    onBreadcrumbChange?.([...breadcrumbPath, itemLabel(defaultVal, nextIndex)]);
   };
 
   const removeItem = (index: number) => {
@@ -82,7 +70,7 @@ export function ArrayField({
     next[index] = val;
     onChange(next);
     if (selectedIndex === index) {
-      onBreadcrumbChange?.([...breadcrumbPath, getItemLabel(val, index)]);
+      onBreadcrumbChange?.([...breadcrumbPath, itemLabel(val, index)]);
     }
   };
 
@@ -90,7 +78,7 @@ export function ArrayField({
     const item = items[selectedIndex];
     const itemBreadcrumbPath = [
       ...breadcrumbPath,
-      getItemLabel(item, selectedIndex),
+      itemLabel(item, selectedIndex),
     ];
     return (
       <div className="min-w-0 space-y-4">
@@ -138,51 +126,59 @@ export function ArrayField({
 
       {items.length > 0 && (
         <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
-          {items.map((item, i) => (
-            <div
-              key={`${path}.${i}`}
-              className="group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground"
-            >
-              <DotsGrid className="size-3.5 shrink-0 cursor-grab text-muted-foreground/40" />
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedIndex(i);
-                  onBreadcrumbChange?.([
-                    ...breadcrumbPath,
-                    getItemLabel(item, i),
-                  ]);
-                }}
-                className="min-w-0 flex-1 truncate text-left text-sm"
-                title={getItemLabel(item, i)}
+          {items.map((item, i) => {
+            const labelText = itemLabel(item, i);
+            const imageSrc = getArrayItemImageSrc(item, itemSchema);
+            return (
+              <div
+                key={`${path}.${i}`}
+                className="group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground"
               >
-                {getItemLabel(item, i)}
-              </button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Open actions for ${getItemLabel(item, i)}`}
-                    className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <DotsHorizontal size={14} />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => removeItem(i)}
-                  >
-                    <Trash01 size={14} />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          ))}
+                <DotsGrid className="size-3.5 shrink-0 cursor-grab text-muted-foreground/40" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedIndex(i);
+                    onBreadcrumbChange?.([...breadcrumbPath, labelText]);
+                  }}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left text-sm"
+                  title={labelText}
+                >
+                  {imageSrc && (
+                    <img
+                      src={imageSrc}
+                      alt=""
+                      className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+                    />
+                  )}
+                  <span className="min-w-0 truncate">{labelText}</span>
+                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Open actions for ${labelText}`}
+                      className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <DotsHorizontal size={14} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => removeItem(i)}
+                    >
+                      <Trash01 size={14} />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -33,21 +33,3 @@ export function labelFromResolveType(rt: string): string {
       .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
   );
 }
-
-export function sectionsDisplayKey(
-  sections: Array<{
-    resolveType: string;
-    label: string;
-    isHidden?: boolean;
-    isSavedBlock?: boolean;
-    isMultivariate?: boolean;
-    isLazy?: boolean;
-  }>,
-): string {
-  return sections
-    .map(
-      (section) =>
-        `${section.resolveType}|${section.label}|${section.isHidden ?? false}|${section.isSavedBlock ?? false}|${section.isMultivariate ?? false}|${section.isLazy ?? false}`,
-    )
-    .join("\n");
-}

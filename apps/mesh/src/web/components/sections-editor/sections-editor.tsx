@@ -33,6 +33,7 @@ import { extractPages, globalSectionLabel } from "./page-list";
 import { normalizePagePath } from "./page-path-utils";
 import { SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
+import { unwrapSection } from "./unwrap-section";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
@@ -88,6 +89,7 @@ import {
   parseSectionFlagVariants,
   rebuildSectionWithMultivariate,
   showSection,
+  toggleSectionLazyRender,
   unwrapVariantSectionValue,
   updateMultivariateSectionVariantRule,
   updateMultivariateSectionVariantValue,
@@ -372,69 +374,6 @@ function PageHeaderInputs({
       />
     </div>
   );
-}
-
-/**
- * Unwrap a raw section to get the actual editable data and its resolveType.
- * Handles lazy wrappers, hidden (multivariate+never), saved blocks, and
- * multivariate sections — mirrors admin-mcp's handleCmsSelectSection.
- */
-function unwrapSection(
-  raw: RawSection,
-  parsed: ParsedSection,
-  decofile: Record<string, unknown>,
-): { data: Record<string, unknown>; resolveType: string } | null {
-  // Multivariate: don't load form data (would need variant selector)
-  if (parsed.isMultivariate) {
-    return null;
-  }
-
-  // Saved block: load from decofile entry
-  // May be direct (rt = "Header") or lazy-wrapped (rt = "Lazy.tsx", section.rt = "Header")
-  if (parsed.isSavedBlock) {
-    const blockKey = parsed.isLazy
-      ? ((raw.section?.__resolveType as string) ?? raw.__resolveType)
-      : raw.__resolveType;
-    const blockData = (decofile[blockKey] as Record<string, unknown>) ?? {};
-    const rt = (blockData.__resolveType as string) ?? blockKey;
-    return { data: { ...blockData }, resolveType: rt };
-  }
-
-  // Hidden section: unwrap multivariate → variants[0].value → possibly lazy
-  if (parsed.isHidden) {
-    const isLazy = isLazyResolveType(raw.__resolveType);
-    const mvObj = isLazy ? (raw.section as RawSection | undefined) : raw;
-    const innerValue =
-      (mvObj?.variants?.[0]?.value as Record<string, unknown>) ??
-      (raw as Record<string, unknown>);
-    const innerRt = (innerValue.__resolveType as string) ?? "";
-    // Inner value might itself be lazy-wrapped
-    if (isLazyResolveType(innerRt)) {
-      const nested = (innerValue.section as Record<string, unknown>) ?? {};
-      return {
-        data: { ...nested },
-        resolveType: (nested.__resolveType as string) ?? innerRt,
-      };
-    }
-    return { data: { ...innerValue }, resolveType: innerRt };
-  }
-
-  // Lazy section: unwrap .section
-  if (parsed.isLazy) {
-    const inner =
-      (raw.section as Record<string, unknown>) ??
-      (raw as Record<string, unknown>);
-    return {
-      data: { ...inner },
-      resolveType: (inner.__resolveType as string) ?? raw.__resolveType,
-    };
-  }
-
-  // Normal section
-  return {
-    data: { ...(raw as Record<string, unknown>) },
-    resolveType: raw.__resolveType,
-  };
 }
 
 /**
@@ -1138,6 +1077,21 @@ export function SectionsEditor({
     const next = parsed.isHidden
       ? showSection(rawSection)
       : hideSection(rawSection);
+    if (!next) return;
+
+    const updatedSections = [...rawSections];
+    updatedSections[index] = next;
+    if (selectedSectionIndex === index) clearSectionEditing();
+    savePageSections(updatedSections);
+  };
+
+  const handleToggleLazy = (index: number) => {
+    if (!activePageKey) return;
+    const rawSection = rawSections[index];
+    const parsed = parsedSections[index];
+    if (!rawSection || !parsed || parsed.isMultivariate) return;
+
+    const next = toggleSectionLazyRender(rawSection);
     if (!next) return;
 
     const updatedSections = [...rawSections];
@@ -2336,7 +2290,9 @@ export function SectionsEditor({
           <div className="p-2 pt-3">
             <SectionList
               listKey={`${activePageKey ?? ""}-${safeVariantIndex}`}
+              rawSections={rawSections}
               sections={parsedSections}
+              meta={meta}
               selectedIndex={selectedSectionIndex}
               onSelect={handleSelectSection}
               onReorder={handleReorder}
@@ -2344,6 +2300,7 @@ export function SectionsEditor({
               onDuplicate={handleDuplicateSection}
               onMakeReusable={setMakeReusableIndex}
               onToggleHidden={handleToggleHidden}
+              onToggleLazy={handleToggleLazy}
               onAddSection={() => setAddSectionOpen(true)}
               canAddSection={canAddSection}
             />
