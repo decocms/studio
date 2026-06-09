@@ -51,6 +51,7 @@ DBOS.setConfig({
   // N workers all call DBOS.launch(); the admin server would otherwise fight
   // over port 3001. Re-enable per-process once we need workflow admin HTTP.
   runAdminServer: false,
+  executorID: settings.podName,
 });
 
 const { createApp } = await import("./api/app");
