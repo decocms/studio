@@ -60,7 +60,6 @@ import { makeTitleResultChunk } from "../title-chunk";
 import { createLanguageModel } from "@/ai-providers/language-model";
 import { genTitle } from "./title-generator";
 import type { ChatMessage, ModelInfo } from "../../api/routes/decopilot/types";
-import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
 import type { HarnessStreamInput } from "../types";
 import type { AssembledTools } from "./tools";
 import type { AssembledPrompt } from "./prompt";
@@ -112,21 +111,11 @@ export interface RunDecopilotStreamExtras {
    * `onFinish`/`onAbort` callbacks to distinguish a real model finish
    * from a user-cancel.
    *
-   * Source: `runRegistry.getAbortSignal(mem.thread.id)` — the registry
-   * owns the AbortController so the cancellation signal propagates to
-   * everyone listening (close-clients, MCP passthrough, title gen, etc.).
+   * Source: `HarnessStreamInput.signal`. Hosted dispatch wires this to
+   * `runRegistry.getAbortSignal(mem.thread.id)`; remote runners receive their
+   * equivalent transport abort signal.
    */
   registrySignal: AbortSignal;
-
-  /**
-   * The run-registry itself. Today this is unused inside `runDecopilotStream`
-   * but is forwarded from the outer dispatch in case future deferred-finish
-   * recovery paths need it. Kept on `DecopilotRuntime` so the cluster
-   * dispatch layer owns run lifecycle state.
-   *
-   * Source: passed in through `dispatchRun`'s `deps.runRegistry`.
-   */
-  runRegistry: RunRegistry;
 
   /**
    * The Anthropic-cached system messages produced by
@@ -182,49 +171,6 @@ export interface RunDecopilotStreamExtras {
   currentThreadTitle: string;
 
   /**
-   * Push callback for title-generation work. The streamText loop
-   * registers `titleHandle.promise.then(...)` as a pending op so the
-   * outer createUIMessageStream's `onFinish` can `await
-   * Promise.allSettled(pendingOps)` before tearing down the writer.
-   * Without this hook the title generation would race with stream
-   * teardown.
-   *
-   * Source in the inline original: `pendingOps.push(titleOp)` at line
-   * ~829, where `pendingOps` is a local in the outer scope.
-   */
-  registerPendingOp: (op: Promise<void>) => void;
-
-  /**
-   * Fired when the outer onFinish runs — used to gate the auto-title
-   * chunk emission against late title resolutions that arrive after
-   * the SSE channel has already been closed. Mirrors the inline
-   * `if (!streamFinished)` check at line ~805.
-   *
-   * Source in the inline original: a `streamFinished` boolean local
-   * declared at line 471, flipped to true in `createUIMessageStream`'s
-   * `onFinish`/`onError` callbacks (lines 1588, 1675).
-   */
-  isStreamFinished: () => boolean;
-
-  /**
-   * Called once per `streamText.onFinish` to report the cumulative
-   * totalUsage of the LLM call. The outer scope uses this to populate
-   * `posthog`'s `chat_message_completed` event with input/output/total
-   * token counts. Called with `{0,0,0}` when totalUsage is undefined —
-   * mirroring the inline original where `aggregatedUsage` only grew on
-   * successful finish events.
-   *
-   * Source in the inline original: the `aggregatedUsage` local at
-   * line 519, mutated in streamText.onFinish (line ~1160) and read by
-   * the outer createUIMessageStream.onFinish posthog emit (line 1644).
-   */
-  onUsageAggregated: (totalUsage: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  }) => void;
-
-  /**
    * Screenshot images captured by `take_screenshot` during tool execution.
    * The list is mutated in place by the built-in tool (it pushes when a
    * screenshot succeeds) and by `prepareStep` (it splices the list out
@@ -238,18 +184,6 @@ export interface RunDecopilotStreamExtras {
    * built-in tools setup and the inline `prepareStep`.
    */
   pendingImages: PendingImage[];
-
-  /**
-   * Called after the auto-titler commits a new title to the DB.
-   * Implementations emit a `decopilot.thread.status` SSE event so tabs
-   * that are NOT subscribed to this thread's `/stream` see the new title.
-   * Optional — callers that cannot supply sseHub (e.g. test harnesses,
-   * orphan-recovery without a buffer) may omit it; the omission is safe.
-   *
-   * Source: wired by `dispatch-run.ts`'s `prepareRun` when `deps.sseHub`
-   * is available.
-   */
-  onTitleUpdated?: (title: string) => void | Promise<void>;
 
   /**
    * UIMessageStreamWriter forwarded from the outer createUIMessageStream.
@@ -576,11 +510,6 @@ export async function* runDecopilotStream(
         outputTokens: totalUsage.outputTokens,
         cacheReadTokens: cacheTotals.read,
         cacheWriteTokens: cacheTotals.write,
-      });
-      extras.onUsageAggregated({
-        inputTokens: totalUsage.inputTokens ?? 0,
-        outputTokens: totalUsage.outputTokens ?? 0,
-        totalTokens: totalUsage.totalTokens ?? 0,
       });
       monitorLlmCall({
         ctx,

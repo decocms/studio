@@ -30,7 +30,6 @@ export { createSecretModelSource } from "./types";
 export type {
   ChatMessage,
   ChatMode,
-  DecopilotRuntime,
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
   Harness,

@@ -37,6 +37,17 @@ describe("Harness types", () => {
 });
 
 describe("HarnessStreamInput sources", () => {
+  test("Decopilot stream input has no decopilotRuntime backchannel", () => {
+    type HasBackchannel = "decopilotRuntime" extends keyof HarnessStreamInput
+      ? true
+      : false;
+    const hasBackchannel: HasBackchannel = false;
+    const input = {} as HarnessStreamInput;
+
+    expect(hasBackchannel).toBe(false);
+    expect("decopilotRuntime" in input).toBe(false);
+  });
+
   test("accepts mcp without embedded model secrets", () => {
     const input: Pick<
       HarnessStreamInput,

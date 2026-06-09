@@ -88,6 +88,12 @@ describe("harnessStreamInputSchema", () => {
           title: "Deep Research",
           provider: "google",
         },
+        title: {
+          id: "openai/gpt-4.1-mini",
+          title: "GPT 4.1 Mini",
+          provider: "openai",
+          limits: { maxOutputTokens: 2048 },
+        },
       },
     });
 
@@ -113,6 +119,12 @@ describe("harnessStreamInputSchema", () => {
           id: "google/gemini-deep-research",
           title: "Deep Research",
           provider: "google",
+        },
+        title: {
+          id: "openai/gpt-4.1-mini",
+          title: "GPT 4.1 Mini",
+          provider: "openai",
+          limits: { maxOutputTokens: 2048 },
         },
       });
     }

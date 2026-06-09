@@ -53,6 +53,7 @@ const modelsConfigSchema = z.object({
   thinking: modelSelectionSchema.extend({ title: z.string() }),
   coding: modelSelectionSchema.optional(),
   fast: modelSelectionSchema.optional(),
+  title: modelSelectionSchema.optional(),
   image: modelSelectionWithCredentialSchema.optional(),
   deepResearch: modelSelectionWithCredentialSchema.optional(),
 });

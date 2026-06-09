@@ -1,16 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { decopilotHarnessFactory } from "./index";
-import type { DecopilotRuntime, HarnessStreamInput } from "../types";
+import type { HarnessStreamInput } from "../types";
 
 function makeInput(overrides: Partial<HarnessStreamInput>): HarnessStreamInput {
-  const runtime = {
-    registrySignal: new AbortController().signal,
-    runRegistry: {},
-    registerPendingOp: () => {},
-    isStreamFinished: () => false,
-    onUsageAggregated: () => {},
-  } satisfies DecopilotRuntime;
-
   return {
     threadId: "thread-1",
     runId: "run-1",
@@ -33,7 +25,6 @@ function makeInput(overrides: Partial<HarnessStreamInput>): HarnessStreamInput {
     agent: { id: "agent-1" },
     signal: new AbortController().signal,
     taskId: "thread-1",
-    decopilotRuntime: runtime,
     ...overrides,
   };
 }

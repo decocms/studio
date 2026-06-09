@@ -14,11 +14,6 @@
  * `ctx` so the `HarnessStreamInput` shape stays serializable for a
  * future remote transport.
  *
- * REQUIRES `input.decopilotRuntime` — decopilot reads runRegistry, title
- * model selection, mutable-state bridges, and other in-process extras out of
- * that field. Remote dispatch will need a different bridge; today the harness
- * throws if processLocal is missing.
- *
  * Owns `processConversation` itself (rather than receiving its outputs
  * through processLocal) because `convertToModelMessages` needs the real
  * tool set — three decopilot tools define `toModelOutput` handlers
@@ -33,13 +28,11 @@ import type { HarnessContext } from "../../core/harness-context";
 import type { StudioContext } from "../../core/studio-context";
 import type {
   DecopilotModelSource,
-  DecopilotRuntime,
   Harness,
   HarnessFactory,
   HarnessStreamInput,
 } from "../types";
-import type { RunRegistry } from "../../api/routes/decopilot/run-registry";
-import type { ChatMessage, ModelInfo } from "../../api/routes/decopilot/types";
+import type { ChatMessage } from "../../api/routes/decopilot/types";
 import { processConversation } from "../../api/routes/decopilot/conversation";
 import { DEFAULT_WINDOW_SIZE } from "../../api/routes/decopilot/constants";
 import { assembleDecopilotTools } from "./tools";
@@ -50,11 +43,6 @@ import { createHtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer
 import { createProviderFromSecret } from "./provider-from-secret";
 import type { DecopilotSecretModelSource } from "../types";
 import { createSideChannelWriter } from "../side-channel-writer";
-
-type ClusterDecopilotRuntime = DecopilotRuntime & {
-  runRegistry: RunRegistry;
-  titleModel?: ModelInfo | null;
-};
 
 /** Narrowed view of the cluster's richer input fields, mirroring what
  *  `dispatch-run.ts` actually builds. */
@@ -92,12 +80,6 @@ function optionalSecretModelSource(
 export const decopilotHarnessFactory: HarnessFactory = {
   id: "decopilot",
   create(harnessCtx: HarnessContext): Harness {
-    // `stream()` refuses to run without decopilotRuntime, so any cluster-only
-    // ctx field reads only happen on a real StudioContext value. The widening
-    // cast here is a TS-level erasure; the defensive check below catches a
-    // narrow HarnessContext smuggled in via misuse (e.g. a non-decopilot
-    // caller mistakenly invoking this factory on the desktop).
-    //
     // `storage` and `db` are required fields on StudioContext but absent
     // from HarnessContext. The desktop daemon runs decopilot via the
     // import-isolated `decopilotDesktopHarnessFactory`
@@ -107,18 +89,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
     return {
       id: "decopilot",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
-        // Package types are intentionally loose so the harness package
-        // is daemon-portable; narrow back to cluster-rich types here.
-        const runtime = input.decopilotRuntime as
-          | ClusterDecopilotRuntime
-          | undefined;
         const clusterInput = input as HarnessStreamInput & ClusterInputView;
-        if (!runtime) {
-          throw new Error(
-            "Decopilot harness requires HarnessStreamInput.decopilotRuntime in this build. " +
-              "Remote dispatch is not yet supported.",
-          );
-        }
         const modelSource = resolveSecretModelSource(input);
         const provider = createProviderFromSecret(modelSource);
         const imageProvider = createProviderFromSecret(
@@ -128,8 +99,11 @@ export const decopilotHarnessFactory: HarnessFactory = {
           optionalSecretModelSource(input.modelSources?.deepResearch) ??
             modelSource,
         );
+        const titleModelSource = optionalSecretModelSource(
+          input.modelSources?.title,
+        );
         const titleProvider = createProviderFromSecret(
-          optionalSecretModelSource(input.modelSources?.title) ?? modelSource,
+          titleModelSource ?? modelSource,
         );
         const toolOutputMap = new Map<string, string>();
         const pendingImages: PendingImage[] = [];
@@ -184,19 +158,14 @@ export const decopilotHarnessFactory: HarnessFactory = {
             provider,
             titleProvider,
             titleModel:
-              runtime.titleModel ?? input.models.fast ?? input.models.thinking,
-            registrySignal: runtime.registrySignal,
-            runRegistry: runtime.runRegistry,
+              input.models.title ?? input.models.fast ?? input.models.thinking,
+            registrySignal: input.signal ?? new AbortController().signal,
             processedSystemMessages,
             processedMessages: narrowedMessages,
             originalMessages,
             threadId: input.threadId,
             currentThreadTitle: input.currentThreadTitle ?? "",
-            registerPendingOp: runtime.registerPendingOp,
-            isStreamFinished: runtime.isStreamFinished,
-            onUsageAggregated: runtime.onUsageAggregated,
             pendingImages,
-            onTitleUpdated: runtime.onTitleUpdated,
             writer: sideChannel.writer,
             sideChunks: sideChannel.stream,
             closeSideChunks: sideChannel.close,

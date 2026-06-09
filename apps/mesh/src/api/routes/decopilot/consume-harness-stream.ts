@@ -19,6 +19,11 @@ export interface HarnessStreamConsumerHooks {
   onStep?: (message: UIMessage) => void | Promise<void>;
   onFinish?: (message: UIMessage) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
+  onUsage?: (totals: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }) => void | Promise<void>;
 }
 
 export interface HarnessStreamTitleOptions {
@@ -52,6 +57,26 @@ function asReadableStream<T>(source: AsyncIterable<T>): ReadableStream<T> {
       await iter.return?.(reason);
     },
   });
+}
+
+function extractUsage(message: { metadata?: unknown }): {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+} | null {
+  const usage = (message.metadata as { usage?: unknown } | undefined)?.usage as
+    | {
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+      }
+    | undefined;
+  if (!usage) return null;
+  return {
+    inputTokens: usage.inputTokens ?? 0,
+    outputTokens: usage.outputTokens ?? 0,
+    totalTokens: usage.totalTokens ?? 0,
+  };
 }
 
 export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
@@ -112,6 +137,12 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
         (e) =>
           console.error("[consume-harness-stream] onFinish hook failed", e),
       );
+      const usage = extractUsage(responseMessage);
+      if (usage) {
+        await Promise.resolve(options.hooks?.onUsage?.(usage)).catch((e) =>
+          console.error("[consume-harness-stream] onUsage hook failed", e),
+        );
+      }
       resolveComplete();
     },
     onError: (error) => {

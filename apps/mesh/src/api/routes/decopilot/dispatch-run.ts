@@ -54,7 +54,6 @@ import type { WorkItemSandbox } from "./link-work-queue";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 import type {
-  DecopilotRuntime,
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
   HarnessId,
@@ -230,37 +229,6 @@ function lookupResumeSessionRef(
   return undefined;
 }
 
-function modelInfoFromResolvedTier(
-  resolved: ResolvedTier,
-): ModelsConfig["thinking"] {
-  return {
-    id: resolved.modelId,
-    title: resolved.modelMeta.title ?? resolved.modelId,
-    provider: resolved.modelMeta.providerId ?? null,
-    capabilities:
-      resolved.modelMeta.capabilities &&
-      resolved.modelMeta.capabilities.length > 0
-        ? {
-            vision:
-              resolved.modelMeta.capabilities.includes("vision") ||
-              resolved.modelMeta.capabilities.includes("image") ||
-              undefined,
-            text: resolved.modelMeta.capabilities.includes("text") || undefined,
-            reasoning:
-              resolved.modelMeta.capabilities.includes("reasoning") ||
-              undefined,
-          }
-        : undefined,
-    limits: resolved.modelMeta.limits
-      ? {
-          contextWindow: resolved.modelMeta.limits.contextWindow,
-          maxOutputTokens:
-            resolved.modelMeta.limits.maxOutputTokens ?? undefined,
-        }
-      : undefined,
-  };
-}
-
 async function resolveDecopilotTitleConfig(
   ctx: StudioContext,
   organizationId: string,
@@ -299,6 +267,37 @@ async function resolveDecopilotTitleConfig(
   if (!modelSource) return null;
 
   return { modelSource, model: modelInfoFromResolvedTier(resolved) };
+}
+
+function modelInfoFromResolvedTier(
+  resolved: ResolvedTier,
+): ModelsConfig["thinking"] {
+  return {
+    id: resolved.modelId,
+    title: resolved.modelMeta.title ?? resolved.modelId,
+    provider: resolved.modelMeta.providerId ?? null,
+    capabilities:
+      resolved.modelMeta.capabilities &&
+      resolved.modelMeta.capabilities.length > 0
+        ? {
+            vision:
+              resolved.modelMeta.capabilities.includes("vision") ||
+              resolved.modelMeta.capabilities.includes("image") ||
+              undefined,
+            text: resolved.modelMeta.capabilities.includes("text") || undefined,
+            reasoning:
+              resolved.modelMeta.capabilities.includes("reasoning") ||
+              undefined,
+          }
+        : undefined,
+    limits: resolved.modelMeta.limits
+      ? {
+          contextWindow: resolved.modelMeta.limits.contextWindow,
+          maxOutputTokens:
+            resolved.modelMeta.limits.maxOutputTokens ?? undefined,
+        }
+      : undefined,
+  };
 }
 
 async function resolveSecretModelSource(
@@ -550,7 +549,7 @@ export async function dispatchRunAndWait(
  */
 export type WireHarnessInput = Omit<
   HarnessStreamInput,
-  "signal" | "processLocal" | "decopilotRuntime"
+  "signal" | "processLocal"
 > & { harnessId: HarnessId };
 
 interface PreparedRun {
@@ -993,7 +992,6 @@ async function prepareRun(
       }
     }
 
-    let streamFinished = false;
     const pendingOps: Promise<void>[] = [];
 
     // Pre-load conversation (no system messages — those are built separately)
@@ -1097,7 +1095,12 @@ async function prepareRun(
       runId: mem.thread.id, // RunRegistry keys runs by taskId today
       resumeSessionRef,
       messages: materializedMessages,
-      models: input.models,
+      models: {
+        ...input.models,
+        ...(decopilotTitleConfig?.model
+          ? { title: decopilotTitleConfig.model }
+          : {}),
+      },
       modelSource,
       modelSources,
       mcpSource,
@@ -1125,9 +1128,8 @@ async function prepareRun(
       execute: async ({ writer }) => {
         // The wire input (mcp endpoint + materialized messages + all
         // serializable fields) was already assembled eagerly above. Here we
-        // only build the non-serializable in-process extras that decopilot
-        // needs to participate in the surrounding `createUIMessageStream`
-        // scope. CLI harnesses ignore this field.
+        // only build the generic in-process extras used by local CLI
+        // harnesses for usage reporting. Remote dispatch strips this field.
         const onUsageAggregated = (totalUsage: {
           inputTokens: number;
           outputTokens: number;
@@ -1148,20 +1150,6 @@ async function prepareRun(
               organizationId: input.organizationId,
             })
           : undefined;
-        const decopilotRuntime: DecopilotRuntime = {
-          registrySignal,
-          runRegistry,
-          titleModel:
-            decopilotTitleConfig?.model ??
-            input.models.fast ??
-            input.models.thinking,
-          registerPendingOp: (op) => {
-            pendingOps.push(op);
-          },
-          isStreamFinished: () => streamFinished,
-          onUsageAggregated,
-          onTitleUpdated,
-        };
         const processLocal: HarnessProcessLocal = {
           onUsageAggregated,
         };
@@ -1174,7 +1162,6 @@ async function prepareRun(
           ...wireHarnessInput,
           signal: registrySignal,
           processLocal,
-          decopilotRuntime,
         };
 
         // claude-code cwd resolution: with the `host` runner gone, the
@@ -1325,6 +1312,9 @@ async function prepareRun(
               } as ChatMessage);
             },
           },
+          hooks: {
+            onUsage: harnessId === "decopilot" ? onUsageAggregated : undefined,
+          },
         });
         pendingOps.push(consumed.whenComplete);
 
@@ -1334,13 +1324,6 @@ async function prepareRun(
         writer.merge(consumed.uiStream as Parameters<typeof writer.merge>[0]);
       },
       onFinish: async ({ responseMessage, finishReason }) => {
-        console.log(
-          "[decopilot:title-debug] onFinish called, setting streamFinished=true threadId=%s pendingOps=%d",
-          mem.thread.id,
-          pendingOps.length,
-        );
-        streamFinished = true;
-
         await Promise.allSettled(pendingOps);
 
         if (registrySignal.aborted) return;
@@ -1410,7 +1393,6 @@ async function prepareRun(
         }
       },
       onError: (error) => {
-        streamFinished = true;
         if (registrySignal.aborted) {
           // User cancelled (frontend stop button), tab closed mid-stream, or
           // run was force-failed. Frontend chat_message_stopped covers the

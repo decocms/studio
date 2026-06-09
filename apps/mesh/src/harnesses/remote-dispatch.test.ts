@@ -126,7 +126,7 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
     expect(env.input.messages).toEqual([{ role: "user", content: "hi" }]);
   });
 
-  it("strips local-only runtime fields before dispatching to a daemon", async () => {
+  it("strips local-only fields before dispatching to a daemon", async () => {
     const captured: { body?: string } = {};
     const proxy = async (_h: string, _p: string, init: { body?: string }) => {
       captured.body = init.body;

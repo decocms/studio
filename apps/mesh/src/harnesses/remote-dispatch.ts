@@ -53,10 +53,10 @@ export function remoteDispatch(
   const {
     signal,
     processLocal: _processLocal,
-    decopilotRuntime: _decopilotRuntime,
+    decopilotRuntime: _legacyDecopilotRuntime,
     mcpSource,
     ...baseWireInput
-  } = input;
+  } = input as HarnessStreamInput & { decopilotRuntime?: unknown };
   const wireInput =
     mcpSource?.kind === "http"
       ? { ...baseWireInput, mcpSource }

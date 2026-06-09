@@ -239,10 +239,9 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
           throw err;
         } finally {
           // Report cumulative usage to the surrounding scope for
-          // posthog's `chat_message_completed` event. Mirrors what the
-          // decopilot harness does via `extras.onUsageAggregated` —
-          // without this, posthog shows zeroed token counts for CLI
-          // threads. CLI harnesses may be invoked without
+          // posthog's `chat_message_completed` event. Decopilot reports
+          // through final stream metadata consumed by Studio; CLI harnesses
+          // still need this local callback. CLI harnesses may be invoked without
           // `processLocal` (e.g., from a remote runner), so the call is
           // conditional.
           const totals = cliMetadata.totalTokens();

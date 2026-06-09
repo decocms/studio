@@ -29,6 +29,26 @@ function textChunks(): AsyncIterable<UIMessageChunk> {
   })();
 }
 
+function textChunksWithUsage(): AsyncIterable<UIMessageChunk> {
+  return (async function* () {
+    yield { type: "start" } as UIMessageChunk;
+    yield {
+      type: "message-metadata",
+      messageMetadata: {
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+      },
+    } as UIMessageChunk;
+    yield { type: "text-start", id: "txt" } as UIMessageChunk;
+    yield { type: "text-delta", id: "txt", delta: "hello" } as UIMessageChunk;
+    yield { type: "text-end", id: "txt" } as UIMessageChunk;
+    yield {
+      type: "finish",
+      finishReason: "stop",
+      totalUsage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+    } as UIMessageChunk;
+  })();
+}
+
 describe("consumeHarnessStream", () => {
   test("persists final assistant message after consuming chunks", async () => {
     const finals: Array<{ id: string; parts?: unknown[] }> = [];
@@ -101,5 +121,35 @@ describe("consumeHarnessStream", () => {
     expect(exposed.some((chunk) => chunk.type === "data-title-result")).toBe(
       false,
     );
+  });
+
+  test("reports final usage from response message metadata", async () => {
+    const usage: unknown[] = [];
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: textChunksWithUsage(),
+      originalMessages: [],
+      title: {
+        currentThreadTitle: "Existing title",
+        threadId: "thread-1",
+        persistTitle: async () => {},
+      },
+      persistence: {
+        emitFinal: async () => {},
+        emitStepParts: async () => {},
+        emitError: async () => {},
+      },
+      hooks: {
+        onUsage: (totals) => {
+          usage.push(totals);
+        },
+      },
+    });
+
+    await drain(uiStream);
+    await whenComplete;
+
+    expect(usage).toEqual([
+      { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+    ]);
   });
 });

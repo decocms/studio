@@ -64,6 +64,7 @@ export interface ModelsConfig {
   thinking: ModelSelection;
   coding?: ModelSelection;
   fast?: ModelSelection;
+  title?: ModelSelection;
   image?: ModelSelection & { credentialId: string };
   deepResearch?: ModelSelection & { credentialId: string };
 }
@@ -80,49 +81,7 @@ export interface UsageTotals {
   totalTokens: number;
 }
 
-/** Decopilot-only in-process runtime. This never crosses remote dispatch. */
-export interface DecopilotRuntime {
-  /** Run-registry abort signal for this run. Listened to by streamText
-   *  (`abortSignal`), by genTitle (`abortSignal`), and queried from
-   *  `onFinish`/`onAbort` callbacks to distinguish a real model finish
-   *  from a user-cancel. */
-  registrySignal: AbortSignal;
-
-  /** The run-registry itself, used by `streamText.onFinish` to dispatch
-   *  a deferred `FINISH` event when the HTTP consumer cut early but the
-   *  model has now actually completed server-side. Cluster-only type;
-   *  the package treats it as opaque. */
-  runRegistry: unknown;
-
-  titleModel?: unknown | null;
-
-  /** Push callback for title-generation work. The streamText loop
-   *  registers `titleHandle.promise.then(...)` as a pending op so the
-   *  outer createUIMessageStream's `onFinish` can `await
-   *  Promise.allSettled(pendingOps)` before tearing down the writer. */
-  registerPendingOp: (op: Promise<void>) => void;
-
-  /** Fired when the outer onFinish runs — used to gate the auto-title
-   *  chunk emission against late title resolutions that arrive after
-   *  the SSE channel has already been closed. */
-  isStreamFinished: () => boolean;
-
-  /** Called once per `streamText.onFinish` to report the cumulative
-   *  totalUsage of the LLM call. The outer scope uses this to populate
-   *  posthog's `chat_message_completed` event with input/output/total
-   *  token counts. */
-  onUsageAggregated: (totalUsage: UsageTotals) => void;
-
-  /** Called after the auto-titler commits a new title to the DB.
-   *  Implementations emit a `decopilot.thread.status` SSE event so tabs
-   *  that are NOT subscribed to this thread's `/stream` see the new title.
-   *  Optional — callers that cannot supply sseHub (e.g. orphan-recovery
-   *  path without a buffer) may omit it; the omission is safe and silent. */
-  onTitleUpdated?: (title: string) => void | Promise<void>;
-}
-
-/** Generic in-process hooks used by CLI harnesses. Decopilot runtime state
- *  lives in `decopilotRuntime`, not here. */
+/** Generic in-process hooks used by CLI harnesses. */
 export interface HarnessProcessLocal {
   /** Cluster-side cwd resolver for github-linked agents. Returns the
    *  per-branch sandbox workdir; CLI harnesses use this when running
@@ -164,8 +123,6 @@ export interface HarnessStreamInput {
   /** HTTP object-storage API source for runtimes that cannot access
    *  cluster-local object-storage clients. */
   objectStorageSource?: DecopilotObjectStorageSource;
-  /** Decopilot-only in-process runtime, local to cluster execution. */
-  decopilotRuntime?: DecopilotRuntime;
 
   // ===== Tool gateway =====
   /** Serializable HTTP MCP endpoint the harness should connect to.
@@ -233,8 +190,7 @@ export interface HarnessStreamInput {
   runFenceToken?: string;
 
   /** Non-serializable generic extras for in-process dispatch. Remote dispatch
-   *  strips this field. Decopilot-specific runtime state lives in
-   *  `decopilotRuntime`; CLI harnesses read the generic hooks here. */
+   *  strips this field. CLI harnesses read the generic hooks here. */
   processLocal?: HarnessProcessLocal;
 }
 
