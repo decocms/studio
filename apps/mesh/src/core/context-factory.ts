@@ -821,8 +821,28 @@ async function authenticateRequest(
         };
       }
     } catch (error) {
-      const err = error as Error;
-      console.error("[Auth] API key check failed:", err);
+      const err = error as Error & { body?: { code?: string } };
+      // INVALID_API_KEY is expected here (any Bearer token is probed as an API
+      // key). Better Auth's noisy ERROR+stack is suppressed in its logger; emit
+      // one concise line with caller context so a flood can be traced to its
+      // source. Token prefix only — never the full secret.
+      const isInvalidKey =
+        err.body?.code === "INVALID_API_KEY" ||
+        err.message?.includes("Invalid API key");
+      if (isInvalidKey) {
+        console.warn("[Auth] invalid API key (Bearer)", {
+          path: new URL(req.url).pathname,
+          method: req.method,
+          ua: req.headers.get("user-agent") ?? undefined,
+          ip:
+            req.headers.get("x-forwarded-for") ??
+            req.headers.get("x-real-ip") ??
+            undefined,
+          tokenPrefix: token.slice(0, 8),
+        });
+      } else {
+        console.error("[Auth] API key check failed:", err);
+      }
     }
   }
 

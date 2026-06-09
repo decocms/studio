@@ -449,6 +449,20 @@ const MAX_INLINE_AVATAR_LENGTH = 256 * 1024;
 export const auth = betterAuth({
   secret: settings.betterAuthSecret || "deco-default-secret-k7x9m2p4q8w3n5v6",
 
+  // customAPIKeyGetter probes every `Authorization: Bearer …` as an API key,
+  // so OAuth tokens, mesh JWTs and stale keys routinely miss and Better Auth
+  // logs an ERROR + full source-mapped stack on each one — flooding prod logs.
+  // Drop only that expected 401; forward everything else with the same format.
+  logger: {
+    log: (level, message, ...args) => {
+      if (level === "error" && message.includes("validate API key")) return;
+      const line = `${new Date().toISOString()} ${level.toUpperCase()} [Better Auth]: ${message}`;
+      if (level === "error") console.error(line, ...args);
+      else if (level === "warn") console.warn(line, ...args);
+      else console.log(line, ...args);
+    },
+  },
+
   // Base URL for OAuth - will be overridden by request context
   baseURL: baseUrl,
 
