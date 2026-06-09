@@ -26,7 +26,7 @@ const payloadSchema = z.custom<unknown>(
   },
 );
 
-export const linkIngestPartRowSchema = z.object({
+const linkIngestPartRowSchema = z.object({
   id: z.string().min(1),
   seq: z.number().int().nonnegative(),
   org_id: z.string().min(1),
