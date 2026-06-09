@@ -24,6 +24,7 @@ import {
   OrganizationOptions,
 } from "better-auth/plugins";
 import { emailOTP } from "better-auth/plugins/email-otp";
+import { APIError } from "better-auth/api";
 import {
   adminAc as systemAdminAc,
   defaultRoles as systemDefaultRoles,
@@ -337,6 +338,18 @@ const plugins = [
     jwt: {
       // Short expiration for proxy tokens (5 minutes)
       expirationTime: "5m",
+      // Only emit identity fields. The default payload is the entire user
+      // row, and this plugin attaches the signed JWT to every /get-session
+      // response via the `set-auth-jwt` header. A base64 `image` data URL
+      // (avatars can be megabytes) blows the header past the edge's limit, so
+      // the response is rejected and login breaks. Same class of bug as the
+      // mesh-token fix (#3716) — never put `image` in a header-bound JWT.
+      definePayload: ({ user }) => ({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: (user as { role?: string }).role,
+      }),
     },
   }),
 
@@ -425,6 +438,13 @@ function getTrustedOrigins(): string[] {
 }
 
 const settings = getSettings();
+
+// Hard cap on inline base64 avatars stored in `user.image`. Avatar upload is
+// disabled in the UI, so `image` should only ever be a short OAuth provider
+// URL; this cap is a backstop against direct API callers. Oversized data: URLs
+// bloat every /get-session response and previously broke login via the
+// set-auth-jwt header.
+const MAX_INLINE_AVATAR_LENGTH = 256 * 1024;
 
 export const auth = betterAuth({
   secret: settings.betterAuthSecret || "deco-default-secret-k7x9m2p4q8w3n5v6",
@@ -571,6 +591,24 @@ export const auth = betterAuth({
                 return;
               }
             }
+          }
+        },
+      },
+      update: {
+        // Defense in depth: never persist an oversized base64 avatar. Upload
+        // is disabled in the UI, but a direct API caller could still send a
+        // multi-megabyte data: URL. See MAX_INLINE_AVATAR_LENGTH.
+        before: async (data) => {
+          const image = (data as { image?: unknown }).image;
+          if (
+            typeof image === "string" &&
+            image.startsWith("data:") &&
+            image.length > MAX_INLINE_AVATAR_LENGTH
+          ) {
+            throw new APIError("PAYLOAD_TOO_LARGE", {
+              message:
+                "Avatar image is too large. Upload an image smaller than 5MB.",
+            });
           }
         },
       },
