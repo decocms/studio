@@ -30,6 +30,13 @@ export function createRcloneMounter(rclonePath: string): Mounter {
           ...args,
           "--vfs-cache-mode",
           "full",
+          // WebDAV has no ChangeNotify, so freshness for *external* writes is
+          // bounded by this dir-cache TTL (rclone defaults to 5m — far too
+          // stale for a shared fs). 10s is the interim; a change-feed-driven
+          // `vfs/forget` over rclone's rc API will make it near-instant and let
+          // this relax back to a long safety net.
+          "--dir-cache-time",
+          "10s",
           "--daemon",
           "--daemon-timeout=30s",
         ],
