@@ -784,7 +784,7 @@ async function prepareRun(
     // dropout on resume is a persistence-side or model-resolution issue.
     // Drop once the resume-tool-dropout issue is root-caused.
     if (input.isResume) {
-      console.log("[decopilot:stream] resume — runtime state", {
+      console.log("[decopilot:stream] resume — resolved source state", {
         taskId: input.taskId,
         harnessId,
         modelSourceResolved: !!modelSource,
