@@ -8,6 +8,46 @@ import {
   type OrgFsMountConfig,
   resolveMountPath,
 } from "./mount-manager";
+import { parseOrgFsConfig } from "./config";
+
+describe("parseOrgFsConfig", () => {
+  const valid = JSON.stringify({
+    baseUrl: "http://m",
+    orgSlug: "acme",
+    token: "t",
+    mounts: [{ volume: "skills", path: "skills" }],
+  });
+  it("parses a valid config", () => {
+    expect(parseOrgFsConfig(valid)).toEqual({
+      baseUrl: "http://m",
+      orgSlug: "acme",
+      token: "t",
+      mounts: [{ volume: "skills", path: "skills" }],
+    });
+  });
+  it("returns null for absent / malformed / incomplete / empty-mounts", () => {
+    expect(parseOrgFsConfig(undefined)).toBeNull();
+    expect(parseOrgFsConfig("")).toBeNull();
+    expect(parseOrgFsConfig("{not json")).toBeNull();
+    expect(parseOrgFsConfig(JSON.stringify({ baseUrl: "x" }))).toBeNull();
+    expect(
+      parseOrgFsConfig(
+        JSON.stringify({ baseUrl: "m", orgSlug: "a", token: "t", mounts: [] }),
+      ),
+    ).toBeNull();
+  });
+  it("drops malformed mount entries", () => {
+    const c = parseOrgFsConfig(
+      JSON.stringify({
+        baseUrl: "m",
+        orgSlug: "a",
+        token: "t",
+        mounts: [{ volume: "ok", path: "ok" }, { volume: 1 }, "nope"],
+      }),
+    );
+    expect(c?.mounts).toEqual([{ volume: "ok", path: "ok" }]);
+  });
+});
 
 /** Records mount/unmount calls; never touches the OS. */
 function fakeMounter(opts: { failVolumes?: Set<string> } = {}) {
