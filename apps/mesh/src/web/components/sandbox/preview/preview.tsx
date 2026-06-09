@@ -993,7 +993,7 @@ export function PreviewContent() {
           {previewState.kind === "iframe" && iframeSrc && (
             <div
               className={cn(
-                "h-full",
+                "h-full transition-[width] duration-250 [transition-timing-function:var(--ease-in-out-cubic)]",
                 previewDeviceSize !== "desktop" &&
                   viewMode !== "code" &&
                   "w-full max-w-full border-x border-border bg-background shadow-sm",
