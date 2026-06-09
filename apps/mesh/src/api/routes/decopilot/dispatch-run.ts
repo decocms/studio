@@ -24,7 +24,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
-import { type UIMessageChunk, createUIMessageStream } from "ai";
+import { createUIMessageStream } from "ai";
 import { tryResolveTier, type ResolvedTier } from "@/core/resolve-tier";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
@@ -80,7 +80,7 @@ export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
 import { buildOnTitleUpdated } from "./on-title-updated";
-import { interceptTitleChunks } from "./title-interceptor";
+import { consumeHarnessStream } from "./consume-harness-stream";
 import {
   checkModelPermission,
   fetchModelPermissions,
@@ -200,37 +200,6 @@ export function resolveHarnessId(providerId: string | undefined): HarnessId {
   if (providerId === "claude-code") return "claude-code";
   if (providerId === "codex") return "codex";
   return "decopilot";
-}
-
-/**
- * Adapt an AsyncIterable<UIMessageChunk> (the harness output) into a
- * ReadableStream<UIMessageChunk> so it can flow through `writer.merge()`.
- */
-function asReadableStream(
-  source: AsyncIterable<UIMessageChunk>,
-): ReadableStream<UIMessageChunk> {
-  const iter = source[Symbol.asyncIterator]();
-  return new ReadableStream<UIMessageChunk>({
-    async pull(controller) {
-      try {
-        const { value, done } = await iter.next();
-        if (done) {
-          controller.close();
-          return;
-        }
-        controller.enqueue(value);
-      } catch (err) {
-        controller.error(err);
-      }
-    },
-    async cancel(reason) {
-      // Best-effort: notify the source so a generator can run its
-      // `finally` block (e.g. closing the codex provider subprocess).
-      if (typeof iter.return === "function") {
-        await iter.return(reason).catch(() => {});
-      }
-    },
-  });
 }
 
 /**
@@ -1333,22 +1302,51 @@ async function prepareRun(
           rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);
         }
 
-        // Tap harness-generated title result chunks so mesh can keep
-        // persistence/SSE ownership while each harness owns title generation.
-        const harnessChunks = interceptTitleChunks(rawHarnessChunks, {
-          ctx,
-          isStreamFinished: decopilotRuntime.isStreamFinished,
-          currentThreadTitle: mem.thread.title,
-          threadId: mem.thread.id,
-          writer,
-          onTitleUpdated,
+        const consumed = consumeHarnessStream({
+          chunks: rawHarnessChunks,
+          originalMessages: allMessages,
+          title: {
+            currentThreadTitle: mem.thread.title,
+            threadId: mem.thread.id,
+            persistTitle: async (threadId, title) => {
+              await ctx.storage.threads.update(threadId, { title });
+            },
+            onTitleUpdated,
+          },
+          persistence: {
+            emitStepParts: async (responseMessage) => {
+              if (!partEmitter) return;
+              await partEmitter.emitStepParts(responseMessage);
+            },
+            emitFinal: async (responseMessage) => {
+              if (partEmitter) {
+                await partEmitter.emitFinal(responseMessage);
+                return;
+              }
+              await saveMessagesToThread(responseMessage as ChatMessage);
+            },
+            emitError: async (messageId, errorText) => {
+              if (registrySignal.aborted) return;
+              const sanitized = sanitizeStreamError(errorText);
+              if (partEmitter) {
+                await partEmitter.emitError(messageId, sanitized);
+                return;
+              }
+              await saveMessagesToThread({
+                id: messageId,
+                role: "assistant",
+                parts: [{ type: "text", text: `Error: ${sanitized}` }],
+                metadata: { errorCategory: classifyStreamError(errorText) },
+              } as ChatMessage);
+            },
+          },
         });
-        const harnessStream = asReadableStream(harnessChunks);
+        pendingOps.push(consumed.whenComplete);
 
         // Cast: the outer createUIMessageStream is typed via ChatMessage so
         // writer.merge expects ChatMessage-shaped chunks, but the harness
         // emits the structurally-equivalent generic UIMessageChunk shape.
-        writer.merge(harnessStream as Parameters<typeof writer.merge>[0]);
+        writer.merge(consumed.uiStream as Parameters<typeof writer.merge>[0]);
       },
       onFinish: async ({ responseMessage, finishReason }) => {
         console.log(
@@ -1359,15 +1357,6 @@ async function prepareRun(
         streamFinished = true;
 
         await Promise.allSettled(pendingOps);
-        if (partEmitter) {
-          // v2: persist any remaining final parts + close the assistant
-          // message with a finish anchor.
-          await partEmitter.emitFinal(responseMessage).catch((error) => {
-            console.error("[decopilot:stream] v2 onFinish emit failed", error);
-          });
-        } else {
-          await saveMessagesToThread(responseMessage);
-        }
 
         if (registrySignal.aborted) return;
 
@@ -1434,19 +1423,7 @@ async function prepareRun(
             }),
           );
         }
-        if (partEmitter) {
-          // v2: a finished step's parts are FINAL — persist any newly-final
-          // parts every step (the durable incremental write). No finish
-          // anchor yet; the assistant message may continue in later steps.
-          pendingOps.push(
-            partEmitter.emitStepParts(responseMessage).catch((e) => {
-              console.error(
-                "[decopilot:stream] v2 onStepFinish emit failed",
-                e,
-              );
-            }),
-          );
-        } else {
+        if (!partEmitter) {
           // v1 (unchanged): coarse whole-message checkpoints — every step on
           // resume, every 5th step otherwise.
           const stepEvent = transitions[0]?.event;
@@ -1505,29 +1482,6 @@ async function prepareRun(
             is_resume: input.isResume ?? false,
           },
         });
-
-        // Persist the error as a synthetic assistant message so the thread
-        // doesn't render a confusing "No response was generated" — the UI
-        // pairs user/assistant by created_at and drops orphan assistants.
-        // Particularly important for background runs (cron/webhook/event
-        // automations) where the user has no console to read the error from.
-        if (partEmitter) {
-          // v2: emit an `error` part + finish anchor for a fresh assistant
-          // message id.
-          partEmitter.emitError(generateMessageId(), sanitized).catch((e) => {
-            console.error("[decopilot:stream] v2 error emit failed", e);
-          });
-        } else {
-          saveMessagesToThread({
-            id: crypto.randomUUID(),
-            role: "assistant",
-            parts: [{ type: "text", text: `Error: ${sanitized}` }],
-            metadata: { errorCategory: classifyStreamError(error) },
-          } as ChatMessage).catch((e) => {
-            saveErrorsCounter.add(1, { "org.id": input.organizationId });
-            console.error("[decopilot:stream] error-message save failed", e);
-          });
-        }
 
         runRegistry
           .execute({
