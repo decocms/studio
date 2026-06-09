@@ -166,7 +166,7 @@ describe("handleLocalDispatch", () => {
     const ingestCalls = capturedRequests.filter((r) =>
       r.url.includes("/links/runs/"),
     );
-    expect(ingestCalls).toHaveLength(2);
+    expect(ingestCalls).toHaveLength(3);
     expect(ingestCalls.every((call) => call.url.endsWith("/parts"))).toBe(true);
     expect(ingestCalls[0]!.url).toBe(
       `${CLUSTER_BASE}/api/${ORG_SLUG}/links/runs/${RUN_ID}/parts`,
@@ -537,9 +537,7 @@ describe("handleLocalDispatch", () => {
     await handleLocalDispatch(validWorkItem, deps);
 
     // Dispatch plus every cluster append fetch should receive the abort signal.
-    expect(capturedSignals.length).toBe(3);
-    expect(capturedSignals[0]).toBe(ac.signal);
-    expect(capturedSignals[1]).toBe(ac.signal);
-    expect(capturedSignals[2]).toBe(ac.signal);
+    expect(capturedSignals.length).toBe(4);
+    expect(capturedSignals.every((signal) => signal === ac.signal)).toBe(true);
   });
 });

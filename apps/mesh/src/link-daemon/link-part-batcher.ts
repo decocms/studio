@@ -21,7 +21,6 @@ export interface RelayDispatchSSEAsPartBatchesInput {
 
 class RowBatchEmitter implements PartEmitterLike {
   private readonly builder: PartRowBuilder;
-  private pendingStepRows: ThreadMessagePart[] = [];
   private batchIndex = 0;
   private firstFailure: unknown = null;
   private queue: Promise<void> = Promise.resolve();
@@ -76,29 +75,22 @@ class RowBatchEmitter implements PartEmitterLike {
 
   async emitStepParts(message: AnyMessage): Promise<void> {
     return this.enqueue(async () => {
-      await this.postRows(this.pendingStepRows);
-      this.pendingStepRows = this.builder.emitStepParts(message);
+      await this.postRows(this.builder.emitStepParts(message));
     });
   }
 
   async emitFinal(message: AnyMessage): Promise<void> {
     return this.enqueue(async () => {
-      const rows = this.uniqueRows([
-        ...this.pendingStepRows,
-        ...this.builder.emitFinal(message),
-      ]);
-      this.pendingStepRows = [];
+      const rows = this.uniqueRows(this.builder.emitFinal(message));
       await this.postRows(rows);
     });
   }
 
   async emitError(messageId: string, errorText: string): Promise<void> {
     return this.enqueue(async () => {
-      const rows = this.uniqueRows([
-        ...this.pendingStepRows,
-        ...this.builder.emitError(messageId, errorText),
-      ]);
-      this.pendingStepRows = [];
+      const rows = this.uniqueRows(
+        this.builder.emitError(messageId, errorText),
+      );
       await this.postRows(rows);
     });
   }
