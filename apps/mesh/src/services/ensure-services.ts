@@ -354,6 +354,10 @@ async function ensurePostgres(home: string): Promise<ServiceInfo> {
     user: PG_USER,
     password: PG_PASSWORD,
     persistent: true,
+    // Force UTF-8 encoding regardless of OS locale. On Windows the system
+    // locale (e.g. Portuguese_Brazil.1252) causes initdb to pick WIN1252,
+    // which breaks non-Latin1 characters in seeded data (→ chars, etc.).
+    initdbFlags: ["--encoding=UTF8", "--locale=C", "--locale-provider=libc"],
     onLog: (msg: string) => {
       if (process.env.DEBUG_SERVICES) console.log(`[pg] ${msg}`);
     },
