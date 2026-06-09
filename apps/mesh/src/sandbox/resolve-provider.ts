@@ -15,9 +15,9 @@
  *
  *   3. **Recorded sandboxMap kind.** The post-provision source of truth: a
  *      sandbox provisioned via `user-desktop` stays addressable through
- *      `user-desktop` even on a cluster whose env kind is `cluster`. This
- *      is what the events/proxy route uses — no ctx hint, just the recorded
- *      entry.
+ *      `user-desktop` even when env/default policy points at hosted
+ *      `agent-sandbox`. This is what the events/proxy route uses — no ctx
+ *      hint, just the recorded entry.
  *
  *   4. **Default policy** (`resolveDefaultSandboxProviderKind`). Pre-
  *      provision fall-through: live link → `user-desktop`, else env kind.
@@ -34,7 +34,7 @@ import {
   type SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 import { readSandboxMap } from "../tools/sandbox/sandbox-map";
 import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
 import { resolveDefaultSandboxProviderKind } from "./resolve-default-provider-kind";
@@ -61,7 +61,7 @@ export interface ResolvedSandboxProvider {
 }
 
 export async function resolveSandboxProvider(
-  ctx: MeshContext,
+  ctx: StudioContext,
   args: ResolveSandboxProviderArgs,
 ): Promise<ResolvedSandboxProvider> {
   const { userId, branch, virtualMcpMetadata, explicitKind } = args;
@@ -73,8 +73,14 @@ export async function resolveSandboxProvider(
   }
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
-  //    without touching sandboxMap. `user-desktop` carries its link inline;
-  //    `cluster-default` means "use the cluster runner the env points to".
+  //    without touching sandboxMap. `agent-sandbox` is explicit hosted
+  //    execution; `user-desktop` carries its link inline; `cluster-default`
+  //    means "use the provider the env/default policy points to" (legacy
+  //    automation/default behavior).
+  if (ctx.sandboxPreference === "agent-sandbox") {
+    const provider = await bindProviderForKind(ctx, userId, "agent-sandbox");
+    return { provider, kind: "agent-sandbox" };
+  }
   if (ctx.sandboxPreference === "user-desktop" && ctx.linkForCurrentRun) {
     const provider = await buildDesktopProvider(ctx, userId);
     return { provider, kind: "user-desktop" };
@@ -142,7 +148,7 @@ function readRecordedKinds(
  * SANDBOX_START with no explicit kind would have used.
  */
 async function pickRecordedKind(
-  ctx: MeshContext,
+  ctx: StudioContext,
   userId: string,
   first: SandboxProviderKind,
   rest: SandboxProviderKind[],
@@ -153,7 +159,7 @@ async function pickRecordedKind(
 }
 
 async function resolveDefaultKind(
-  ctx: MeshContext,
+  ctx: StudioContext,
   userId: string,
 ): Promise<SandboxProviderKind> {
   if (!ctx.linkClaimRegistry) return resolveSandboxProviderKindFromEnv();
@@ -164,7 +170,7 @@ async function resolveDefaultKind(
 }
 
 async function bindProviderForKind(
-  ctx: MeshContext,
+  ctx: StudioContext,
   userId: string,
   kind: SandboxProviderKind,
 ): Promise<SandboxProvider> {
@@ -172,7 +178,7 @@ async function bindProviderForKind(
 
   if (!ctx.linkClaimRegistry) {
     throw new Error(
-      "user-desktop sandbox provider requires ctx.linkClaimRegistry to be wired (set on MeshContextConfig).",
+      "user-desktop sandbox provider requires ctx.linkClaimRegistry to be wired (set on StudioContextConfig).",
     );
   }
   const link = await ctx.linkClaimRegistry.get(userId);

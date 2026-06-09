@@ -14,7 +14,7 @@
 
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolSet, UIMessageStreamWriter } from "ai";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import {
   toolsFromMCP,
   type ToolApprovalLevel,
@@ -35,7 +35,7 @@ export const EXCLUDED_FOR_SUBAGENT = [
 
 export interface AssembleAgentToolsOptions {
   kind: "agent" | "subagent";
-  ctx: MeshContext;
+  ctx: StudioContext;
   mcpClient: Client;
   writer: UIMessageStreamWriter;
   planMode: boolean;

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BranchMeta, LifecycleState } from "@decocms/sandbox/shared";
 import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-context";
+import { mergeBranchMetaWithGitStatus } from "./sandbox-git-api.ts";
 import { selectHeaderButton } from "./panel-state";
 import type { CheckRun, PrSummary } from "./use-pr-data";
 import type { PrReviewSignals } from "./use-pr-reviews";
@@ -297,11 +298,31 @@ describe("selectHeaderButton", () => {
     expect(r.disabled).toBeFalsy();
   });
 
-  test("unpushed commits → Save changes", () => {
+  test("unpushed commits ahead of base with no PR → Submit for review", () => {
     const r = selectHeaderButton(
-      happyInput({ branch: ready({ unpushed: 2 }) }),
+      happyInput({ branch: ready({ unpushed: 2, aheadOfBase: 2 }) }),
+    );
+    expect(r.label).toBe("Submit for review");
+    expect(r.action).toBe("create-pr");
+  });
+
+  test("unpushed commits without base divergence and no PR → Submit for review", () => {
+    const r = selectHeaderButton(
+      happyInput({ branch: ready({ unpushed: 2, aheadOfBase: 0 }) }),
+    );
+    expect(r.label).toBe("Submit for review");
+    expect(r.action).toBe("create-pr");
+  });
+
+  test("unpushed commits with open PR → Save changes", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ unpushed: 2, aheadOfBase: 2 }),
+        pr: pr(),
+      }),
     );
     expect(r.label).toBe("Save changes");
+    expect(r.action).toBe("commit-and-push");
   });
 
   test("ahead of base + closed non-merged PR → Reopen PR", () => {
@@ -347,6 +368,37 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Continue");
     expect(r.action).toBe("create-pr");
     expect(r.variant).toBe("special");
+  });
+
+  test("refresh: unknown SSE + git aheadOfBase → Submit for review", () => {
+    const branch = mergeBranchMetaWithGitStatus(
+      { kind: "unknown" },
+      {
+        not_added: [],
+        conflicted: [],
+        created: [],
+        deleted: [],
+        modified: [],
+        renamed: [],
+        files: [],
+        staged: [],
+        ahead: 0,
+        behind: 0,
+        current: "deco/young-trail",
+        tracking: "origin/deco/young-trail",
+        detached: false,
+        aheadOfBase: 2,
+        behindBase: 0,
+        base: "main",
+        headSha: "abc",
+        unpushed: 0,
+      },
+    );
+    const r = selectHeaderButton(
+      happyInput({ branch, pr: null, checks: [], reviews: null }),
+    );
+    expect(r.label).toBe("Submit for review");
+    expect(r.action).toBe("create-pr");
   });
 
   test("ahead of base + no PR → Submit for review", () => {
@@ -442,9 +494,35 @@ describe("selectHeaderButton", () => {
         reviews: reviews(),
       }),
     );
-    expect(r.label).toBe("Publish");
+    expect(r.label).toBe("Publish to production");
     expect(r.action).toBe("merge-split");
     expect(r.variant).toBe("success");
+  });
+
+  test("PR open + reviews still loading → Publish to production (main base)", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ aheadOfBase: 3 }),
+        pr: pr(),
+        checks: [check()],
+        reviews: null,
+      }),
+    );
+    expect(r.label).toBe("Publish to production");
+    expect(r.action).toBe("merge-split");
+  });
+
+  test("PR open + all clear + base develop → Publish", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ aheadOfBase: 3, base: "develop" }),
+        pr: pr({ base: "develop" }),
+        checks: [check()],
+        reviews: reviews(),
+      }),
+    );
+    expect(r.label).toBe("Publish");
+    expect(r.action).toBe("merge-split");
   });
 
   test("priority: dirty beats everything else", () => {

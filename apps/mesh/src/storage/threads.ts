@@ -5,10 +5,11 @@
  * Threads are organization-scoped, messages are thread-scoped.
  */
 
-import { type Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type { ThreadStoragePort } from "./ports";
+import { SqlThreadMessagePartStorage } from "./thread-message-parts";
 import type {
   Database,
   Thread,
@@ -82,6 +83,10 @@ export class OrgScopedThreadStorage {
     return this.inner.update(id, this.requireOrg(), data);
   }
 
+  completeRunIfNotCompleted(id: string): Promise<Thread | null> {
+    return this.inner.completeRunIfNotCompleted(id, this.requireOrg());
+  }
+
   forceFailIfInProgress(id: string): Promise<boolean> {
     return this.inner.forceFailIfInProgress(id, this.requireOrg());
   }
@@ -115,8 +120,30 @@ export class OrgScopedThreadStorage {
     return this.inner.listByTriggerIds(this.requireOrg(), triggerIds, options);
   }
 
+  findLastUsedByVirtualMcpIds(
+    virtualMcpIds: string[],
+  ): Promise<Map<string, { last_used_at: string; last_used_by: string }>> {
+    return this.inner.findLastUsedByVirtualMcpIds(
+      this.requireOrg(),
+      virtualMcpIds,
+    );
+  }
+
   saveMessages(data: ThreadMessage[]): Promise<void> {
     return this.inner.saveMessages(data, this.requireOrg());
+  }
+
+  /** Stamp `last_progress_at = now()` (progress-liveness heartbeat). */
+  bumpProgress(taskId: string): Promise<void> {
+    return this.inner.bumpProgress(taskId, this.requireOrg());
+  }
+
+  /** Read progress-liveness columns (epoch-ms). */
+  getProgress(taskId: string): Promise<{
+    lastProgressAt: number | null;
+    runStartedAt: number | null;
+  } | null> {
+    return this.inner.getProgress(taskId, this.requireOrg());
   }
 
   listMessages(
@@ -137,6 +164,54 @@ export class OrgScopedThreadStorage {
   }): Promise<Array<{ thread: Thread; lastMessage: ThreadMessage }>> {
     return this.inner.listWithLastMessage(this.requireOrg(), options);
   }
+
+  /**
+   * Stream-of-record part storage on the same connection. The v2 read path
+   * folds these into history. Access is org-guarded by the caller's prior
+   * org-scoped thread fetch (R23) — the part storage itself is not org-bound.
+   */
+  messageParts(): SqlThreadMessagePartStorage {
+    return this.inner.messageParts();
+  }
+
+  /**
+   * Current fence token for a run (thread id == run id today). Returns null
+   * if no fence has been minted, which means any token (including null) is
+   * accepted by `fenceMatches`.
+   */
+  getRunFence(threadId: string): Promise<string | null> {
+    return this.inner.getRunFence(threadId);
+  }
+
+  /**
+   * Set (or clear) the fence token for a run. Minted by `prepareRun` after
+   * the run is claimed (Phase B). Cleared by the ingest finish handler so
+   * late-arriving duplicate appends are rejected with 409.
+   */
+  setRunFence(threadId: string, token: string | null): Promise<void> {
+    return this.inner.setRunFence(threadId, token);
+  }
+
+  /**
+   * Stamp `cancel_requested_at = now()` for the given thread (Phase C).
+   * Org-scoped: only updates rows matching both id AND organization_id.
+   */
+  setCancelRequested(threadId: string, organizationId: string): Promise<void> {
+    return this.inner.setCancelRequested(threadId, organizationId);
+  }
+
+  /**
+   * Read `cancel_requested_at` for a thread by id (not org-scoped, mirrors
+   * `getRunFence` which is also unscoped — callers guard via ownership check).
+   */
+  getCancelRequestedAt(threadId: string): Promise<Date | null> {
+    return this.inner.getCancelRequestedAt(threadId);
+  }
+
+  /** Clear `cancel_requested_at` (set to NULL) for a thread by id. */
+  clearCancelRequested(threadId: string): Promise<void> {
+    return this.inner.clearCancelRequested(threadId);
+  }
 }
 
 // ============================================================================
@@ -145,6 +220,16 @@ export class OrgScopedThreadStorage {
 
 export class SqlThreadStorage implements ThreadStoragePort {
   constructor(private db: Kysely<Database>) {}
+
+  /**
+   * Stream-of-record part storage backed by the same connection. Used by the
+   * v2 read path (`Memory.loadHistory`) to fold `thread_message_parts`.
+   * Part rows are not org-scoped here — callers MUST guard access with an
+   * org-scoped thread fetch first (the R23 predicate).
+   */
+  messageParts(): SqlThreadMessagePartStorage {
+    return new SqlThreadMessagePartStorage(this.db);
+  }
 
   // ==========================================================================
   // Thread Operations
@@ -269,6 +354,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (data.harness_id !== undefined) {
       updateData.harness_id = data.harness_id;
     }
+    if (data.message_storage_version !== undefined) {
+      updateData.message_storage_version = data.message_storage_version;
+    }
     await this.db
       .updateTable("threads")
       .set(updateData)
@@ -282,6 +370,29 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
 
     return thread;
+  }
+
+  async completeRunIfNotCompleted(
+    id: string,
+    organizationId: string,
+  ): Promise<Thread | null> {
+    const rows = await this.db
+      .updateTable("threads")
+      .set({
+        status: "completed",
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .returningAll()
+      .execute();
+
+    const row = rows[0];
+    return row ? this.threadFromDbRow(row) : null;
   }
 
   async forceFailIfInProgress(
@@ -466,6 +577,35 @@ export class SqlThreadStorage implements ThreadStoragePort {
       threads: rows.map((row) => this.threadFromDbRow(row)),
       total: Number(countResult?.count || 0),
     };
+  }
+
+  async findLastUsedByVirtualMcpIds(
+    organizationId: string,
+    virtualMcpIds: string[],
+  ): Promise<Map<string, { last_used_at: string; last_used_by: string }>> {
+    const result = new Map<
+      string,
+      { last_used_at: string; last_used_by: string }
+    >();
+    if (virtualMcpIds.length === 0) return result;
+
+    const rows = await this.db
+      .selectFrom("threads")
+      .distinctOn("virtual_mcp_id")
+      .select(["virtual_mcp_id", "created_by", "created_at"])
+      .where("organization_id", "=", organizationId)
+      .where("virtual_mcp_id", "in", virtualMcpIds)
+      .orderBy("virtual_mcp_id")
+      .orderBy("created_at", "desc")
+      .execute();
+
+    for (const row of rows) {
+      result.set(row.virtual_mcp_id, {
+        last_used_at: toIsoString(row.created_at),
+        last_used_by: row.created_by,
+      });
+    }
+    return result;
   }
 
   /**
@@ -782,6 +922,104 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return rows.map((r) => r.id);
   }
 
+  async bumpProgress(taskId: string, organizationId: string): Promise<void> {
+    // Single-column heartbeat write — intentionally does NOT touch
+    // `updated_at` (that's the user-facing "last activity" timestamp; a
+    // per-chunk bump would churn the thread list ordering). `now()` is
+    // evaluated server-side so it's monotonic with the DB clock the reaper
+    // reads against.
+    await this.db
+      .updateTable("threads")
+      .set({ last_progress_at: sql`now()` })
+      .where("id", "=", taskId)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
+  async getProgress(
+    taskId: string,
+    organizationId: string,
+  ): Promise<{
+    lastProgressAt: number | null;
+    runStartedAt: number | null;
+  } | null> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select(["last_progress_at", "run_started_at"])
+      .where("id", "=", taskId)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row) return null;
+    const toMs = (v: Date | string | null | undefined): number | null => {
+      if (v == null) return null;
+      const ms = (v instanceof Date ? v : new Date(v)).getTime();
+      return Number.isNaN(ms) ? null : ms;
+    };
+    return {
+      lastProgressAt: toMs(row.last_progress_at),
+      runStartedAt: toMs(row.run_started_at),
+    };
+  }
+
+  /** Current fence token for a run (thread id == run id today). */
+  async getRunFence(threadId: string): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select("run_fence_token")
+      .where("id", "=", threadId)
+      .executeTakeFirst();
+    return row?.run_fence_token ?? null;
+  }
+
+  /** Set (or clear) the fence token. Minted in a later phase. */
+  async setRunFence(threadId: string, token: string | null): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ run_fence_token: token })
+      .where("id", "=", threadId)
+      .execute();
+  }
+
+  /**
+   * Stamp `cancel_requested_at = now()` for the given thread (Phase C).
+   * Org-scoped: only updates rows matching both id AND organization_id.
+   */
+  async setCancelRequested(
+    threadId: string,
+    organizationId: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ cancel_requested_at: sql`now()` })
+      .where("id", "=", threadId)
+      .where("organization_id", "=", organizationId)
+      .execute();
+  }
+
+  /**
+   * Read `cancel_requested_at` for a thread by id.
+   * Not org-scoped — mirrors `getRunFence` (callers guard via ownership check).
+   */
+  async getCancelRequestedAt(threadId: string): Promise<Date | null> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select("cancel_requested_at")
+      .where("id", "=", threadId)
+      .executeTakeFirst();
+    const v = row?.cancel_requested_at;
+    if (v == null) return null;
+    return v instanceof Date ? v : new Date(v);
+  }
+
+  /** Clear `cancel_requested_at` (set to NULL) for a thread by id. */
+  async clearCancelRequested(threadId: string): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ cancel_requested_at: null })
+      .where("id", "=", threadId)
+      .execute();
+  }
+
   // ==========================================================================
   // Private Helper Methods
   // ==========================================================================
@@ -807,6 +1045,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
     created_by: string;
     updated_by: string | null;
     hidden: boolean | number | null;
+    message_storage_version?: number | null;
+    link_transport?: string | null;
   }): Thread {
     let metadata: ThreadMetadata = {};
     if (row.metadata != null) {
@@ -848,6 +1088,10 @@ export class SqlThreadStorage implements ThreadStoragePort {
       created_by: row.created_by,
       updated_by: row.updated_by ?? undefined,
       hidden: !!row.hidden,
+      // Defaults to 1 (legacy) when the column is absent/null so existing
+      // threads keep reading from `thread_messages`.
+      message_storage_version: row.message_storage_version ?? 1,
+      link_transport: row.link_transport ?? null,
     };
   }
 

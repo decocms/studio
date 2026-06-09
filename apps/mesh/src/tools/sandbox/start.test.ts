@@ -1,6 +1,6 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import type {
   LinkClaimRegistry,
   LinkClaim,
@@ -13,9 +13,9 @@ import type {
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 
-// Pin runner kind — the dev env flips STUDIO_SANDBOX_PROVIDER and SANDBOX_START
+// Pin provider kind — the dev env flips STUDIO_SANDBOX_PROVIDER and SANDBOX_START
 // reads it at handler time.
-process.env.STUDIO_SANDBOX_PROVIDER = "cluster";
+process.env.STUDIO_SANDBOX_PROVIDER = "agent-sandbox";
 
 // Mock runner BEFORE importing SANDBOX_START — handler is runner-agnostic.
 
@@ -35,9 +35,8 @@ async function* readyOnly() {
 }
 
 const mockClusterRunner: SandboxProvider = {
-  kind: "cluster",
+  kind: "agent-sandbox",
   ensure: (id, opts) => mockEnsure(id, opts),
-  exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
   delete: (handle) => mockClusterDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
@@ -50,7 +49,6 @@ const mockDesktopDelete = mock(async (_handle: string) => {});
 const mockDesktopRunner: SandboxProvider = {
   kind: "user-desktop",
   ensure: (id, opts) => mockEnsure(id, opts),
-  exec: async () => ({ stdout: "", stderr: "", exitCode: 0, timedOut: false }),
   delete: (handle) => mockDesktopDelete(handle),
   alive: async () => true,
   getPreviewUrl: async () => "https://stub.preview/",
@@ -59,11 +57,11 @@ const mockDesktopRunner: SandboxProvider = {
 };
 
 mock.module("../../sandbox/lifecycle", () => ({
-  // Only ever invoked for the cluster kind — the desktop path goes through
+  // Only ever invoked for the agent-sandbox kind — the desktop path goes through
   // `buildDesktopProvider` (below); user-desktop is never instantiated here.
   getSandboxProviderByKind: (
     _ctx: unknown,
-    _kind: "cluster" | "user-desktop",
+    _kind: "agent-sandbox" | "user-desktop",
   ) => mockClusterRunner,
   // The unified resolver in `resolve-provider.ts` calls
   // `buildDesktopProvider` directly (no ctx side-effects), so a mock
@@ -77,6 +75,10 @@ mock.module("../../sandbox/lifecycle", () => ({
   // complete so subsequent loads don't hit "Export named ... not found".
   subscribeLifecycle: () => ({ unsubscribe: () => {} }),
   __resetSharedLifecyclesForTesting: () => {},
+}));
+
+mock.module("../../settings", () => ({
+  getSettings: () => ({ nodeEnv: "test" }),
 }));
 
 const { DownstreamTokenStorage: RealDownstreamTokenStorage } = await import(
@@ -206,7 +208,7 @@ function makeCtx(overrides: {
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
   linkClaimRegistry?: LinkClaimRegistry;
-}): MeshContext {
+}): StudioContext {
   const {
     orgId = ORG_ID,
     userId = USER_ID,
@@ -235,6 +237,13 @@ function makeCtx(overrides: {
     },
     storage: {
       virtualMcps: { findById, update: updateSpy },
+      // Non-repo-scoped org connection: getRepoScope() returns null, so the
+      // repo-scoped mint path in provisionSandbox is skipped and these tests
+      // exercise the clone/token path unchanged. (Minting is covered by the
+      // e2e suite, github-import-repo-scope.spec.ts.)
+      connections: {
+        findById: mock(async (_id: string) => ({ metadata: null })),
+      },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
@@ -269,7 +278,7 @@ function makeCtx(overrides: {
     pendingRevalidations: [],
     monitoring: null as never,
     linkClaimRegistry,
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 }
 
 describe("SANDBOX_START", () => {
@@ -351,7 +360,7 @@ describe("SANDBOX_START", () => {
     expect(result.previewUrl).toBe("https://stub.preview/");
     expect(result.branch).toBe(BRANCH);
     expect(result.isNewVm).toBe(true);
-    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
 
     expect(updateSpy).toHaveBeenCalledTimes(1);
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
@@ -360,11 +369,11 @@ describe("SANDBOX_START", () => {
     // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["cluster"];
+    )?.["agent-sandbox"];
     expect(stored).toMatchObject({
       sandboxHandle: "vm_xyz",
       previewUrl: "https://stub.preview/",
-      sandboxProviderKind: "cluster",
+      sandboxProviderKind: "agent-sandbox",
     });
     // Server-stamped; assert recency, not exact value.
     expect(typeof (stored as SandboxRecord)?.createdAt).toBe("number");
@@ -396,7 +405,7 @@ describe("SANDBOX_START", () => {
     // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["cluster"] as SandboxRecord | undefined;
+    )?.["agent-sandbox"] as SandboxRecord | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: "pnpm",
       port: "4321",
@@ -436,7 +445,7 @@ describe("SANDBOX_START", () => {
     // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["cluster"] as SandboxRecord | undefined;
+    )?.["agent-sandbox"] as SandboxRecord | undefined;
     expect(stored?.startedWith).toEqual({
       packageManager: null,
       port: null,
@@ -452,8 +461,10 @@ describe("SANDBOX_START", () => {
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
-      // 3-level: kind (cluster) → entry
-      sandboxMap: { [USER_ID]: { [BRANCH]: { cluster: CACHED_ENTRY } } },
+      // 3-level: kind (agent-sandbox) → entry
+      sandboxMap: {
+        [USER_ID]: { [BRANCH]: { "agent-sandbox": CACHED_ENTRY } },
+      },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const ctx = makeCtx({ virtualMcp });
@@ -575,19 +586,19 @@ describe("SANDBOX_START", () => {
     expect(opts.repo?.cloneUrl).not.toContain("ghu_stale_token");
   });
 
-  it("provisions a new desktop VM even when a cluster entry exists under the same branch — kinds are siblings", async () => {
+  it("provisions a new desktop VM when user-desktop is explicit even when an agent-sandbox entry exists", async () => {
     // With kind-in-key, different kinds coexist — no teardown occurs.
-    const clusterEntry: SandboxRecord = {
-      sandboxHandle: "vm_cluster_existing",
-      previewUrl: "https://cluster.preview/",
-      sandboxProviderKind: "cluster",
+    const agentSandboxEntry: SandboxRecord = {
+      sandboxHandle: "vm_agent-sandbox_existing",
+      previewUrl: "https://agent-sandbox.preview/",
+      sandboxProviderKind: "agent-sandbox",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
-      // 3-level: cluster entry lives under its own key
+      // 3-level: agent-sandbox entry lives under its own key
       sandboxMap: {
         [USER_ID]: {
-          [BRANCH]: { cluster: clusterEntry },
+          [BRANCH]: { "agent-sandbox": agentSandboxEntry },
         },
       },
     };
@@ -608,30 +619,100 @@ describe("SANDBOX_START", () => {
     };
     const ctx = makeCtx({ virtualMcp, linkClaimRegistry });
 
-    // Link is online → kind resolves to desktop; no desktop entry → provision a new one
+    // Explicit user-desktop override wins over the recorded hosted entry.
     const result = await SANDBOX_START.handler(
-      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      {
+        virtualMcpId: VMCP_ID,
+        branch: BRANCH,
+        sandboxProviderKind: "user-desktop",
+      },
       ctx,
     );
 
-    // No teardown of the cluster entry (kinds are siblings)
+    // No teardown of the agent-sandbox entry (kinds are siblings)
     expect(mockClusterDelete).not.toHaveBeenCalled();
     expect(mockEnsure).toHaveBeenCalledTimes(1);
     expect(result.sandboxProviderKind).toBe("user-desktop");
     expect(result.isNewVm).toBe(true);
   });
 
+  it("SANDBOX_START with no sandboxProviderKind honors an existing recorded kind even when link is online", async () => {
+    const agentSandboxEntry: SandboxRecord = {
+      sandboxHandle: "vm_agent-sandbox_existing",
+      previewUrl: "https://agent-sandbox.preview/",
+      sandboxProviderKind: "agent-sandbox",
+      createdAt: 123,
+    };
+    mockEnsure.mockImplementation(async () => ({
+      handle: agentSandboxEntry.sandboxHandle,
+      workdir: "/app",
+      previewUrl: agentSandboxEntry.previewUrl,
+    }));
+    const metadata: Metadata = {
+      ...BASE_METADATA,
+      sandboxMap: {
+        [USER_ID]: {
+          [BRANCH]: { "agent-sandbox": agentSandboxEntry },
+        },
+      },
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
+    const linkClaimRegistry: LinkClaimRegistry = {
+      get: async (_userId: string) => ({
+        podId: "pod_1",
+        machineId: "machine_1",
+        cliVersion: "1.0.0",
+        previewPort: 5174,
+        connectedAt: Date.now(),
+        capabilities: [],
+      }),
+      put: async () => {},
+      delete: async () => {},
+      watch: () => () => {},
+    };
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
+
+    const result = await SANDBOX_START.handler(
+      { virtualMcpId: VMCP_ID, branch: BRANCH },
+      ctx,
+    );
+
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
+    expect(result.isNewVm).toBe(false);
+    expect(mockDesktopDelete).not.toHaveBeenCalled();
+    const sandboxMapCall = (updateSpy.mock.calls as unknown[][]).find(
+      (call) => {
+        const meta = (call[2] as { metadata?: { sandboxMap?: SandboxMap } })
+          .metadata;
+        return meta?.sandboxMap?.[USER_ID]?.[BRANCH] !== undefined;
+      },
+    );
+    expect(sandboxMapCall).toBeDefined();
+    const updated = (
+      sandboxMapCall![2] as { metadata: { sandboxMap: SandboxMap } }
+    ).metadata;
+    const branchMap = updated.sandboxMap[USER_ID]?.[BRANCH] as
+      | Record<string, unknown>
+      | undefined;
+    expect(branchMap?.["agent-sandbox"]).toMatchObject({
+      sandboxHandle: agentSandboxEntry.sandboxHandle,
+      sandboxProviderKind: "agent-sandbox",
+    });
+    expect(branchMap?.["user-desktop"]).toBeUndefined();
+  });
+
   it("does not tear down anything when the existing entry is on the same runner", async () => {
     const sameRunnerEntry: SandboxRecord = {
-      sandboxHandle: "vm_cluster_existing",
-      previewUrl: "https://cluster.preview/",
-      sandboxProviderKind: "cluster",
+      sandboxHandle: "vm_agent-sandbox_existing",
+      previewUrl: "https://agent-sandbox.preview/",
+      sandboxProviderKind: "agent-sandbox",
     };
     const metadata: Metadata = {
       ...BASE_METADATA,
       sandboxMap: {
         [USER_ID]: {
-          [BRANCH]: { cluster: sameRunnerEntry },
+          [BRANCH]: { "agent-sandbox": sameRunnerEntry },
         },
       },
     };
@@ -685,7 +766,7 @@ describe("SANDBOX_START", () => {
   });
 
   it("SANDBOX_START with no sandboxProviderKind picks env kind when no link", async () => {
-    // STUDIO_SANDBOX_PROVIDER is "cluster" at module load time (top of file)
+    // STUDIO_SANDBOX_PROVIDER is "agent-sandbox" at module load time (top of file)
     const linkClaimRegistry: LinkClaimRegistry = {
       get: async (_userId: string) => null,
       put: async () => {},
@@ -701,19 +782,50 @@ describe("SANDBOX_START", () => {
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
       .metadata;
     // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["cluster"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("cluster");
+    )?.["agent-sandbox"] as SandboxRecord | undefined;
+    expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
   });
 
   it("SANDBOX_START with explicit sandboxProviderKind ignores defaults", async () => {
-    // Link is online, env is "cluster" — but explicit "cluster" must win (and user-desktop would also be overrideable).
+    // Link is online, env is "agent-sandbox" — but explicit "agent-sandbox" must win (and user-desktop would also be overrideable).
+    const linkClaimRegistry: LinkClaimRegistry = {
+      get: async (_userId: string) => STUB_LINK,
+      put: async () => {},
+      delete: async () => {},
+      watch: () => () => {},
+    };
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
+
+    const result = await SANDBOX_START.handler(
+      {
+        virtualMcpId: VMCP_ID,
+        branch: BRANCH,
+        sandboxProviderKind: "agent-sandbox",
+      },
+      ctx,
+    );
+
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
+    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
+    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
+      .metadata;
+    // 3-level key: sandboxMap[userId][branch][kind]
+    const stored = (
+      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
+    )?.["agent-sandbox"] as SandboxRecord | undefined;
+    expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
+  });
+
+  it("normalizes legacy cluster input to agent-sandbox", async () => {
     const linkClaimRegistry: LinkClaimRegistry = {
       get: async (_userId: string) => STUB_LINK,
       put: async () => {},
@@ -729,19 +841,18 @@ describe("SANDBOX_START", () => {
         virtualMcpId: VMCP_ID,
         branch: BRANCH,
         sandboxProviderKind: "cluster",
-      },
+      } as unknown as Parameters<typeof SANDBOX_START.handler>[0],
       ctx,
     );
 
-    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
     const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
     const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
       .metadata;
-    // 3-level key: sandboxMap[userId][branch][kind]
     const stored = (
       updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["cluster"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("cluster");
+    )?.["agent-sandbox"] as SandboxRecord | undefined;
+    expect(stored?.sandboxProviderKind).toBe("agent-sandbox");
   });
 
   it("throws RECONNECT_ERROR when refreshing an expired token fails", async () => {

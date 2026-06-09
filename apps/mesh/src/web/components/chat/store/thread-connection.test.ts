@@ -681,7 +681,76 @@ describe("mergeAndSort", () => {
     expect(out[0]?.role).toBe("assistant");
   });
 
-  test("metadata.created_at is ignored — only top-level created_at is used", () => {
+  test("in-flight turn-1 assistant (metadata only) stays before turn-2 user", () => {
+    const wrongOrder = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "hello" }],
+        created_at: "2026-06-09T12:00:00.000Z",
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "u2",
+        role: "user",
+        parts: [{ type: "text", text: "second" }],
+        metadata: { created_at: "2026-06-09T12:00:05.000Z" },
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: "Hello!" }],
+        metadata: { created_at: "2026-06-09T12:00:01.000Z" },
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+    ];
+    expect(mergeAndSort(wrongOrder, []).map((m) => m.id)).toEqual([
+      "u1",
+      "a1",
+      "u2",
+    ]);
+  });
+
+  test("user metadata.created_at sorts before in-flight assistant (+Infinity)", () => {
+    const wrongOrder = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [],
+        created_at: "2026-06-09T12:00:00.000Z",
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [],
+        created_at: "2026-06-09T12:00:01.000Z",
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "a2",
+        role: "assistant",
+        parts: [{ type: "reasoning", text: "thinking" }],
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "u2",
+        role: "user",
+        parts: [{ type: "text", text: "second" }],
+        metadata: { created_at: "2026-06-09T12:00:02.000Z" },
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+    ];
+    expect(mergeAndSort(wrongOrder, []).map((m) => m.id)).toEqual([
+      "u1",
+      "a1",
+      "u2",
+      "a2",
+    ]);
+  });
+
+  test("metadata.created_at is ignored for assistant — only top-level created_at is used", () => {
     // Regression: persisted assistant rows in the wild carry
     // `metadata.created_at` stamped at the run-start time, which is EARLIER
     // than the user message they answer. If readTimestamp pulled from
@@ -902,6 +971,45 @@ describe("boot buffering", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(conn.status.get().kind).toBe("error");
+  });
+
+  // G3 regression test: live SSE chunks that arrive while loadInitialPage is
+  // in-flight must NOT get stuck in the buffer when loadInitialPage fails.
+  // Previously the catch branch called failTo() without draining chunkBuffer,
+  // so handleChunk kept buffering indefinitely and the chunks were never folded.
+  test("G3: initial-page error drains chunk buffer so live chunks are rendered", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const ctrl = makeControllableClient();
+    const conn = getOrOpenStream("acme", "thread-g3-drain", {
+      client: ctrl.client as never,
+    });
+
+    // Wait for loadInitialPage to reach the MCP callTool (and for SSE to open).
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Live chunks arrive while the initial page is still pending.
+    stream.enqueue({ type: "start", messageId: "m-live-g3" });
+    stream.enqueue({ type: "text-start", id: "p-g3" });
+    stream.enqueue({ type: "text-delta", id: "p-g3", delta: "live content" });
+    stream.enqueue({ type: "text-end", id: "p-g3" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Status is still loading — the page hasn't resolved yet, chunks are buffered.
+    expect(conn.status.get().kind).toBe("loading");
+
+    // Initial page FAILS.
+    ctrl.reject(new Error("MCP load failed"));
+    await new Promise((r) => setTimeout(r, 30));
+
+    // The buffer must have been drained: the live chunks folded into messages
+    // and the assistant message is visible despite the initial-page failure.
+    const ids = conn.messages.get().map((m) => m.id);
+    expect(ids).toContain("m-live-g3");
   });
 
   test("a stray non-chunk SSE event is silently ignored", async () => {

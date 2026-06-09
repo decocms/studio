@@ -55,19 +55,27 @@ export async function buildSettings(flags: CliFlags): Promise<BuildResult> {
     await migrateToLatest({ keepOpen: true, database, skipBetterAuth: true });
   }
 
-  // 4b. ClickHouse rollup DDL (non-blocking — queries fall back to raw table)
-  if (config.settings.clickhouseUrl) {
-    const { ensureClickHouseRollup } = await import(
-      "../monitoring/clickhouse-schema"
-    );
-    await ensureClickHouseRollup(config.settings.clickhouseUrl);
-  }
+  // NOTE: the ClickHouse `studio_monitoring_logs` view the dashboard reads is
+  // NOT created here — it's a one-time manual provisioning step (the app only
+  // needs read access). See apps/mesh/src/monitoring/clickhouse-setup.md.
 
-  // 5. Assemble and freeze
+  // 5. Assemble and freeze. Thread the resolved S3 config (managed MinIO or an
+  // external store) into the frozen Settings so the in-process serve path
+  // resolves the real S3Service. ensureServices also mirrors these into
+  // process.env so a spawned `dev:servers` child re-derives the same config.
   const settings: Settings = {
     ...config.settings,
     databaseUrl: serviceOutputs.databaseUrl,
     natsUrls: serviceOutputs.natsUrls,
+    ...(serviceOutputs.s3
+      ? {
+          s3Endpoint: serviceOutputs.s3.endpoint,
+          s3Bucket: serviceOutputs.s3.bucket,
+          s3AccessKeyId: serviceOutputs.s3.accessKeyId,
+          s3SecretAccessKey: serviceOutputs.s3.secretAccessKey,
+          s3ForcePathStyle: serviceOutputs.s3.forcePathStyle,
+        }
+      : {}),
   };
 
   setGlobalSettings(settings);

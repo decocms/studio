@@ -17,7 +17,7 @@ import { Hono } from "hono";
 import { slugify } from "@decocms/mcp-utils/aggregate";
 import { getHomeTiles, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { getPrompts } from "@/tools/guides";
 import {
@@ -31,7 +31,7 @@ const MAX_PROMPTS_PER_AGENT = 10;
 const LIST_PROMPTS_TIMEOUT_MS = 5000;
 
 type Variables = {
-  meshContext: MeshContext;
+  meshContext: StudioContext;
 };
 interface PromptEntry {
   agentId: string;
@@ -87,7 +87,7 @@ function indexPromptsByName() {
  */
 async function defaultHomeAgentNextActions(
   orgId: string,
-  ctx: MeshContext,
+  ctx: StudioContext,
   skipAgentIds: Set<string>,
 ): Promise<{ prompts: PromptEntry[]; tiles: TileEntry[] }> {
   const settings = await ctx.storage.organizationSettings.get(orgId);
@@ -112,13 +112,17 @@ async function defaultHomeAgentNextActions(
             maxHeight: t.maxHeight,
           }));
 
+        // Quick-access agent card (no prompt). The home chip shows the
+        // agent name as the title and its description as the subtitle, so
+        // map the fields that way rather than hoisting the description up
+        // into the title slot.
         const fallback = (): PromptEntry => ({
           agentId: id,
           agentName: virtualMcp.title,
           agentIcon: virtualMcp.icon,
           promptName: "",
-          title: virtualMcp.description || "Start a new chat",
-          description: "",
+          title: virtualMcp.title,
+          description: virtualMcp.description || "Start a new chat",
           hasArguments: false,
         });
 
@@ -250,6 +254,22 @@ export function createHomeNextActionsRoutes() {
     const { prompts: defaultPrompts, tiles } =
       await defaultHomeAgentNextActions(orgId, mesh, studioPackAgentIds);
     prompts.push(...defaultPrompts);
+
+    const settings = await mesh.storage.organizationSettings.get(orgId);
+    const pinnedIds = new Set(settings?.default_home_agents?.ids ?? []);
+    const agentIdsWithCard = new Set(prompts.map((p) => p.agentId));
+    for (const { agent, agentId } of perAgent) {
+      if (!pinnedIds.has(agentId) || agentIdsWithCard.has(agentId)) continue;
+      prompts.push({
+        agentId,
+        agentName: agent.title,
+        agentIcon: agent.icon,
+        promptName: "",
+        title: agent.title,
+        description: "Start a new chat",
+        hasArguments: false,
+      });
+    }
 
     c.header("Cache-Control", "private, max-age=10");
     return c.json({ prompts, tiles });

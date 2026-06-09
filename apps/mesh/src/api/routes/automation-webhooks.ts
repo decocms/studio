@@ -21,7 +21,7 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { auth } from "@/auth";
 import { enqueueAutomationFire } from "@/automations";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { webhookPermissionResource } from "@/tools/automations/webhook-trigger";
 import type { Env } from "../hono-env";
 
@@ -51,7 +51,7 @@ interface VerifyApiKeyResponse {
 }
 
 async function verifyWebhookToken(
-  ctx: MeshContext,
+  ctx: StudioContext,
   triggerId: string,
   token: string,
 ): Promise<VerifyResult> {

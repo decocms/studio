@@ -17,6 +17,7 @@
  */
 
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { addSidebarPersonalAgentOrderInitScriptForSlug } from "../fixtures/sidebar-order";
 import { expect, test } from "../fixtures/test";
 
 test.describe("Sidebar per-group Show more", () => {
@@ -69,7 +70,16 @@ test.describe("Sidebar per-group Show more", () => {
 
     // -------------------------------------------------------------------------
     // 3. Navigate to the org home page — the sidebar loads here.
+    //    Seed personal sidebar order so the agent group is listed (threads
+    //    alone no longer auto-add agents to the sidebar).
     // -------------------------------------------------------------------------
+    await addSidebarPersonalAgentOrderInitScriptForSlug(
+      page,
+      orgSlug,
+      user.userId,
+      [agentId],
+    );
+
     await page.goto(`/${orgSlug}`);
     // Wait until the org home content has settled (URL confirmed, shell rendered).
     await page.waitForURL(new RegExp(`/${orgSlug}(/|$)`), { timeout: 15_000 });

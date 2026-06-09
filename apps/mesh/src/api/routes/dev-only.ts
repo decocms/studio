@@ -18,7 +18,7 @@
 
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { createLogDeprecatedRoute } from "../middleware/log-deprecated-route";
 import { createDevAssetsRoutes } from "./dev-assets";
 import devAssetsMcpRoutes, {
@@ -45,7 +45,7 @@ export function mountDevRoutes(
     mcpAuth,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (c: Context<any>) => {
-      const ctx = c.get("meshContext") as MeshContext;
+      const ctx = c.get("meshContext") as StudioContext;
       const url = new URL(c.req.url);
       const baseUrl = `${url.protocol}//${url.host}`;
       return handleDevAssetsMcpRequest(c.req.raw, ctx, baseUrl);
@@ -58,7 +58,7 @@ export function mountDevRoutes(
     mcpAuth,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (c: Context<any>) => {
-      const ctx = c.get("meshContext") as MeshContext;
+      const ctx = c.get("meshContext") as StudioContext;
       const url = new URL(c.req.url);
       const baseUrl = `${url.protocol}//${url.host}`;
       const toolName = c.req.param("toolName");

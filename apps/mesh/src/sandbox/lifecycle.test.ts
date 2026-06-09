@@ -55,14 +55,8 @@ function makeFakeWatchable(): FakeWatchableHandle {
   }
 
   const runner: SandboxProvider = {
-    kind: "cluster",
+    kind: "agent-sandbox",
     ensure: async () => ({ handle: "h", workdir: "/app", previewUrl: null }),
-    exec: async () => ({
-      stdout: "",
-      stderr: "",
-      exitCode: 0,
-      timedOut: false,
-    }),
     delete: async () => {},
     alive: async () => true,
     getPreviewUrl: async () => null,

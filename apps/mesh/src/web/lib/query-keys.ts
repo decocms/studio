@@ -29,6 +29,10 @@ export const KEYS = {
   organizationRoles: (locator: ProjectLocator) =>
     [locator, "organization-roles"] as const,
 
+  // Current user's resolved capability bitmap within the active org
+  myCapabilities: (locator: ProjectLocator) =>
+    [locator, "my-capabilities"] as const,
+
   // Connections (scoped by project)
   connections: (locator: ProjectLocator) => [locator, "connections"] as const,
   connectionsByBinding: (locator: ProjectLocator, binding: string) =>
@@ -74,16 +78,6 @@ export const KEYS = {
 
   // Home tile-board layout (positions/sizes/hidden), KV-backed per org.
   boardLayout: (orgSlug: string) => ["board-layout", orgSlug] as const,
-
-  // Per-agent presence probe for the add-tile drawer (UI tools + prompts).
-  agentSummary: (orgId: string, agentId: string) =>
-    ["agent-summary", orgId, agentId] as const,
-
-  // One-shot timer the add-tile drawer uses to stop waiting on slow
-  // agent probes after a grace period (avoids a single hung gateway
-  // holding the whole list on skeleton).
-  agentSummaryDeadline: (orgId: string, ms: number) =>
-    ["agent-summary-deadline", orgId, ms] as const,
 
   // Prompts exposed by an agent's gateway (drawer's prompt list).
   agentPrompts: (orgId: string, agentId: string) =>
@@ -158,6 +152,12 @@ export const KEYS = {
 
   // Monitoring queries
   monitoringStats: () => ["monitoring", "stats"] as const,
+  monitoringStatsToolCalls: (orgId: string, paramsKey: string) =>
+    ["MONITORING_STATS", orgId, "tool-calls", paramsKey] as const,
+  monitoringStatsLlm: (orgId: string, paramsKey: string) =>
+    ["MONITORING_STATS", orgId, "llm", paramsKey] as const,
+  monitoringThreadUsage: (locator: string, paramsKey: string) =>
+    ["MONITORING_THREAD_USAGE", locator, paramsKey] as const,
   monitoringLogs: (filters: {
     connectionId?: string;
     toolName?: string;
@@ -304,6 +304,8 @@ export const KEYS = {
 
   // AI provider stored keys (scoped by org)
   aiProviderKeys: (orgId: string) => ["ai-provider-keys", orgId] as const,
+  aiProviderKeyPreview: (keyId: string) =>
+    ["ai-provider-key-preview", keyId] as const,
 
   // Secrets (scoped by org; user-scope filtering happens server-side)
   secrets: (orgId: string) => ["secrets", orgId] as const,
@@ -354,6 +356,8 @@ export const KEYS = {
   // Deco sections editor (sandbox preview)
   decofile: (previewUrl: string) => ["decofile", previewUrl] as const,
   liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
+  sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
+    ["sandbox-invoke", sandboxKey, loaderKey] as const,
 
   // Link daemon status (user-scoped; the cluster derives the userSub
   // from the bearer session, so we don't include it in the key).

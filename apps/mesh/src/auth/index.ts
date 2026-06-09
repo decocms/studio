@@ -10,7 +10,7 @@
  */
 
 import { getSettings } from "../settings";
-import { getToolsByCategory } from "@/tools/registry-metadata";
+import { getToolsByCategory, USER_ROLE_TOOLS } from "@/tools/registry-metadata";
 import { sso } from "@better-auth/sso";
 import { organization } from "@decocms/better-auth/plugins";
 import { betterAuth, BetterAuthOptions } from "better-auth";
@@ -24,6 +24,7 @@ import {
   OrganizationOptions,
 } from "better-auth/plugins";
 import { emailOTP } from "better-auth/plugins/email-otp";
+import { APIError } from "better-auth/api";
 import {
   adminAc as systemAdminAc,
   defaultRoles as systemDefaultRoles,
@@ -31,6 +32,7 @@ import {
 import {
   adminAc,
   defaultStatements,
+  memberAc,
 } from "@decocms/better-auth/plugins/organization/access";
 
 import { getConfig } from "@/core/config";
@@ -99,18 +101,44 @@ const statement = { ...defaultStatements, self: ["*", ...allTools] };
 
 const ac = createAccessControl(statement);
 
+// The role-creating built-in roles (owner/admin) must enumerate every `self`
+// tool, not just `["*"]`. Better Auth's access-control `authorize()` matches
+// actions literally — `["*"]` authorizes only a request for the literal action
+// "*", NOT specific tools. Runtime checks bypass this for owner/admin, but
+// `create-role` gates the *creator* on whether they hold each permission they
+// grant; with `self: ["*"]` an owner is reported as "missing self:SOME_TOOL"
+// and can't create a capability-scoped custom role at all. Enumerating the full
+// tool list fixes that.
+//
+// `user`'s `self` is exactly USER_ROLE_TOOLS — the gated tools granted to every
+// member beyond basic-usage (empty by default; see registry-metadata). It is
+// enforced at runtime: only owner/admin bypass (see ADMIN_ROLES), so this grant
+// IS consulted. It must NEVER contain `"*"` — `createBoundAuthClient` falls back
+// to a `{ self: ["*"] }` wildcard probe when the exact check misses, and a `"*"`
+// here would satisfy it and hand every member full access (the bypass we removed).
+// Specific tool names match only via the exact check. A member otherwise gets
+// only basic-usage (granted out-of-band in AccessControl) plus connection-scoped
+// grants, and can't create roles (allowedRolesToCreateResources = ADMIN_ROLES).
+const creatorSelf = ["*", ...allTools];
+
+// `user` spreads `memberAc` (the org plugin's member role), NOT `adminAc`. These
+// org statements (organization/member/invitation/team/ac) gate Better Auth's
+// native org-plugin endpoints — not MCP tools, which our AccessControl checks on
+// `self`/connection buckets. `adminAc` grants org:update + member/invitation/team
+// management; spreading it here would let a plain member manage the org via those
+// endpoints. `memberAc` grants only `ac: ["read"]` (read roles for the UI).
 const user = ac.newRole({
-  self: ["*"],
-  ...adminAc.statements,
+  self: [...USER_ROLE_TOOLS],
+  ...memberAc.statements,
 }) as Role;
 
 const admin = ac.newRole({
-  self: ["*"],
+  self: creatorSelf,
   ...adminAc.statements,
 }) as Role;
 
 const owner = ac.newRole({
-  self: ["*"],
+  self: creatorSelf,
   ...adminAc.statements,
 }) as Role;
 
@@ -310,6 +338,18 @@ const plugins = [
     jwt: {
       // Short expiration for proxy tokens (5 minutes)
       expirationTime: "5m",
+      // Only emit identity fields. The default payload is the entire user
+      // row, and this plugin attaches the signed JWT to every /get-session
+      // response via the `set-auth-jwt` header. A base64 `image` data URL
+      // (avatars can be megabytes) blows the header past the edge's limit, so
+      // the response is rejected and login breaks. Same class of bug as the
+      // mesh-token fix (#3716) — never put `image` in a header-bound JWT.
+      definePayload: ({ user }) => ({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: (user as { role?: string }).role,
+      }),
     },
   }),
 
@@ -398,6 +438,13 @@ function getTrustedOrigins(): string[] {
 }
 
 const settings = getSettings();
+
+// Hard cap on inline base64 avatars stored in `user.image`. Avatar upload is
+// disabled in the UI, so `image` should only ever be a short OAuth provider
+// URL; this cap is a backstop against direct API callers. Oversized data: URLs
+// bloat every /get-session response and previously broke login via the
+// set-auth-jwt header.
+const MAX_INLINE_AVATAR_LENGTH = 256 * 1024;
 
 export const auth = betterAuth({
   secret: settings.betterAuthSecret || "deco-default-secret-k7x9m2p4q8w3n5v6",
@@ -544,6 +591,24 @@ export const auth = betterAuth({
                 return;
               }
             }
+          }
+        },
+      },
+      update: {
+        // Defense in depth: never persist an oversized base64 avatar. Upload
+        // is disabled in the UI, but a direct API caller could still send a
+        // multi-megabyte data: URL. See MAX_INLINE_AVATAR_LENGTH.
+        before: async (data) => {
+          const image = (data as { image?: unknown }).image;
+          if (
+            typeof image === "string" &&
+            image.startsWith("data:") &&
+            image.length > MAX_INLINE_AVATAR_LENGTH
+          ) {
+            throw new APIError("PAYLOAD_TOO_LARGE", {
+              message:
+                "Avatar image is too large. Upload an image smaller than 5MB.",
+            });
           }
         },
       },

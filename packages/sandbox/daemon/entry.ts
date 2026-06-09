@@ -31,12 +31,19 @@ import {
   makeConfigUpdateHandler,
 } from "./routes/config";
 import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
-// Import CLI factories from their subpaths (rather than the barrel
+// Import harness factories from their subpaths (rather than the barrel
 // `apps/mesh/src/harnesses/index.ts`) to avoid pulling in the cluster-only
 // `decopilotHarnessFactory` and its dependency tree (which references
-// `@/...` path aliases that only exist under apps/mesh).
+// cluster modules that cause a TS stack overflow in the daemon bundle).
+//
+// `decopilotDesktopHarnessFactory` is the IMPORT-ISOLATED decopilot runtime
+// (`harnesses/decopilot-desktop/`): it activates its provider from the injected
+// `mcp.modelSecret`, reaches cluster-coupled tools via `mcp.url`, and imports
+// only portable leaves — so it bundles here without dragging in StudioContext /
+// storage / vault. See that subtree's `index.ts` for the isolation contract.
 import { claudeCodeHarnessFactory } from "../../../apps/mesh/src/harnesses/claude-code";
 import { codexHarnessFactory } from "../../../apps/mesh/src/harnesses/codex";
+import { decopilotDesktopHarnessFactory } from "../../../apps/mesh/src/harnesses/decopilot-desktop";
 import type {
   HarnessContext,
   HarnessFactory,
@@ -93,6 +100,21 @@ const bootConfig = {
   appRoot: APP_ROOT,
   repoDir: join(APP_ROOT, "repo"),
   proxyPort: parseInt(resolvedDaemonPort, 10),
+  // Offload re-inflate config for `/dispatch`. These gate which hosts an
+  // offloaded `messagesRef.url` may be fetched from (the SSRF allowlist) and
+  // whether http:// loopback is permitted for local dev. They come from the
+  // daemon's boot env, NEVER from the request frame.
+  //
+  // CONTRACT: mesh must populate these when spawning the daemon —
+  //   OFFLOAD_ALLOWED_HOSTS      comma-separated hostnames (object-store host(s))
+  //   OFFLOAD_ALLOW_SAME_HOST_DEV "1" to allow http:// loopback (dev only)
+  // The default is an EMPTY allowlist, which fails CLOSED: with no env wired,
+  // every offload fetch is rejected (safe — no SSRF surface).
+  offloadAllowedHosts: (process.env.OFFLOAD_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter((h) => h.length > 0),
+  offloadAllowSameHostDev: process.env.OFFLOAD_ALLOW_SAME_HOST_DEV === "1",
 };
 // Ensure repoDir exists so bash commands with the default cwd don't fail with
 // ENOENT when no repo has been cloned yet (tool-only sandboxes, no-repo agents).
@@ -311,7 +333,11 @@ const bashH = makeBashHandler({
   repoDir,
   taskManager,
 });
-const gitDeps = { appRoot, repoDir };
+const gitDeps = {
+  appRoot,
+  repoDir,
+  getCloneUrl: () => store.read()?.git?.repository?.cloneUrl ?? null,
+};
 const gitStatusH = makeGitStatusHandler(gitDeps);
 const gitDiffH = makeGitDiffHandler(gitDeps);
 const gitPublishH = makeGitPublishHandler(gitDeps);
@@ -376,12 +402,15 @@ const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 // loopback by the link daemon's control handler; the daemon spawns the
 // named factory's CLI in-process and streams `UIMessageChunk` back as SSE.
 //
-// Only the CLI factories live in the daemon — decopilot pulls in
-// cluster-only modules (RunRegistry, run-stream internals) and is never
-// invoked over the wire.
+// The CLI factories plus the import-isolated desktop decopilot factory live in
+// the daemon. The cluster `decopilotHarnessFactory` (RunRegistry, run-stream
+// internals, StudioContext) is NOT here — desktop decopilot runs via
+// `decopilotDesktopHarnessFactory`, which activates from `mcp.modelSecret` and
+// reaches cluster-coupled tools through `mcp.url`.
 const dispatchHarnessRegistry: Map<string, HarnessFactory> = new Map([
   ["claude-code", claudeCodeHarnessFactory],
   ["codex", codexHarnessFactory],
+  ["decopilot", decopilotDesktopHarnessFactory],
 ]);
 const dispatchTracer = trace.getTracer("link-daemon");
 const dispatchMeter = metrics.getMeter("link-daemon");
@@ -390,7 +419,7 @@ const lookupDispatchHarness = (id: string, input: unknown) => {
   if (!factory) throw new Error(`unknown harness: ${id}`);
   // Build a minimal HarnessContext. CLI harnesses don't read storage,
   // db, vault, or aiProviders — they only need tracer/meter for OTel
-  // and metadata for span attributes. The cluster's richer MeshContext
+  // and metadata for span attributes. The cluster's richer StudioContext
   // is structurally compatible with this shape (see
   // `apps/mesh/src/core/harness-context.ts`).
   const harnessInput = input as HarnessStreamInput;
@@ -581,6 +610,8 @@ async function vmRouteH(
     return handleDispatchRequest(req, {
       daemonToken: bootConfig.daemonToken,
       lookupHarness: lookupDispatchHarness,
+      allowedHosts: bootConfig.offloadAllowedHosts,
+      allowSameHostDev: bootConfig.offloadAllowSameHostDev,
     });
   }
   if (method === "DELETE" && vmPath.startsWith("/runs/")) {

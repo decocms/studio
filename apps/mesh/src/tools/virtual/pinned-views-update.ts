@@ -10,7 +10,7 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 import { VirtualMCPEntitySchema } from "./schema";
 
 const pinnedViewSchema = z.object({

@@ -13,7 +13,25 @@ export function assertSafeDecoBlockKey(blockKey: string): void {
   }
 }
 
-export function decoBlockFilePath(blockKey: string): string {
+function decodeDecoBlockKey(blockKey: string): string {
+  try {
+    return decodeURIComponent(blockKey);
+  } catch {
+    return blockKey;
+  }
+}
+
+/** Filename stem for `.deco/blocks/<stem>.json` (decode then encode to avoid `%2520`). */
+export function blockKeyToFileStem(blockKey: string): string {
   assertSafeDecoBlockKey(blockKey);
-  return `.deco/blocks/${blockKey}.json`;
+  return encodeURIComponent(decodeDecoBlockKey(blockKey));
+}
+
+export function decoBlockFilePath(blockKey: string): string {
+  return `.deco/blocks/${blockKeyToFileStem(blockKey)}.json`;
+}
+
+/** Path shape used by the sandbox file explorer deep-link (`openPath`). */
+export function decoBlockFileViewPath(blockKey: string): string {
+  return `/${decoBlockFilePath(blockKey)}`;
 }

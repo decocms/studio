@@ -6,7 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import {
   TierUnavailableError,
   resolveTier,
@@ -52,7 +52,33 @@ import {
   type SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 import { resolveDefaultSandboxProviderKind } from "@/sandbox/resolve-default-provider-kind";
+import { shouldPinV2FromEnv } from "./v2-canary";
 import type { HarnessId } from "@/harnesses";
+import type { Thread } from "@/storage/types";
+
+// ============================================================================
+// Canonical serialization helper
+// ============================================================================
+
+/**
+ * Deterministic JSON serialization with sorted object keys. Arrays keep
+ * their original order; primitives are passed through as-is.
+ *
+ * Used by computeIdempotencyKey so that a re-serialized assistant
+ * continuation message (approval / tool-output round) always hashes to the
+ * same value regardless of the order in which JS inserted object keys at
+ * runtime.
+ */
+function canonicalStringify(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(canonicalStringify).join(",")}]`;
+  const keys = Object.keys(v as object).sort();
+  const pairs = keys.map(
+    (k) =>
+      `${JSON.stringify(k)}:${canonicalStringify((v as Record<string, unknown>)[k])}`,
+  );
+  return `{${pairs.join(",")}}`;
+}
 
 // ============================================================================
 // Idempotency
@@ -73,7 +99,7 @@ export function computeIdempotencyKey(
 ): string | undefined {
   if (!lastMsg) return undefined;
   if (lastMsg.role === "user" && lastMsg.id) return lastMsg.id;
-  return createHash("sha1").update(JSON.stringify(lastMsg)).digest("hex");
+  return createHash("sha1").update(canonicalStringify(lastMsg)).digest("hex");
 }
 
 // ============================================================================
@@ -81,7 +107,7 @@ export function computeIdempotencyKey(
 // ============================================================================
 
 async function validateRequest(
-  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  c: Context<{ Variables: { meshContext: StudioContext } }>,
 ) {
   const organization = ensureOrganization(c);
   const rawPayload = await c.req.json();
@@ -111,7 +137,7 @@ async function validateRequest(
  * to "decopilot" (matches the existing prepareRun behavior).
  */
 async function resolveProviderId(
-  ctx: MeshContext,
+  ctx: StudioContext,
   credentialId: string,
   organizationId: string,
 ): Promise<string | undefined> {
@@ -167,7 +193,7 @@ function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
  * duplicating the tier-resolution + tryResolve fallback logic.
  */
 async function resolvePerRequestModels(
-  ctx: MeshContext,
+  ctx: StudioContext,
   tier: SimpleModeTier | undefined,
   harnessId: HarnessId | null | undefined,
 ): Promise<ModelsConfig> {
@@ -221,6 +247,76 @@ async function resolvePerRequestModels(
 // ============================================================================
 
 /**
+ * Resolve the effective (harnessId, sandboxProviderKind, branch) for a
+ * dispatch, given the values the client supplied and the (possibly
+ * locked) thread row.
+ *
+ * Once a thread row carries a non-null `harness_id`, the thread's
+ * runtime is pinned for life: the row's values win and any
+ * client-provided override is silently dropped. If the row is unlocked
+ * (`harness_id == null`) or there's no thread at all (first message of
+ * a freshly-created thread, or `taskIdInput === undefined`) we fall
+ * back to the client values.
+ *
+ * Exported so the guard can be unit-tested without standing up the rest
+ * of `validate()` (model resolution, permission checks, Hono context).
+ *
+ * See spec:
+ * docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
+ */
+export function applyThreadLock(args: {
+  taskIdInput: string | undefined;
+  thread: Pick<
+    Thread,
+    "harness_id" | "sandbox_provider_kind" | "branch"
+  > | null;
+  requestedHarnessId: HarnessId | null | undefined;
+  requestedSandboxProviderKind: SandboxProviderKind | null | undefined;
+  requestedBranch: string | null | undefined;
+}): {
+  harnessId: HarnessId | null | undefined;
+  sandboxProviderKind: SandboxProviderKind | null | undefined;
+  branch: string | null | undefined;
+  locked: boolean;
+} {
+  const {
+    taskIdInput,
+    thread,
+    requestedHarnessId,
+    requestedSandboxProviderKind,
+    requestedBranch,
+  } = args;
+
+  if (!taskIdInput || !thread?.harness_id) {
+    return {
+      harnessId: requestedHarnessId,
+      sandboxProviderKind: requestedSandboxProviderKind,
+      branch: requestedBranch,
+      locked: false,
+    };
+  }
+
+  if (requestedHarnessId && requestedHarnessId !== thread.harness_id) {
+    console.warn(
+      "decopilot.submit: ignored harness override on locked thread",
+      {
+        threadId: taskIdInput,
+        requested: requestedHarnessId,
+        locked: thread.harness_id,
+      },
+    );
+  }
+
+  return {
+    harnessId: thread.harness_id as HarnessId,
+    sandboxProviderKind:
+      (thread.sandbox_provider_kind as SandboxProviderKind | null) ?? undefined,
+    branch: thread.branch ?? null,
+    locked: true,
+  };
+}
+
+/**
  * Parse + permission-check an HTTP request into a `DispatchRunInput`
  * ready to hand to `enqueueThreadRun` (POST /messages).
  *
@@ -234,7 +330,7 @@ async function resolvePerRequestModels(
  * Legacy callers that supply the id in the body alone are unaffected.
  */
 async function validate(
-  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  c: Context<{ Variables: { meshContext: StudioContext } }>,
   threadIdParam: string | undefined,
 ): Promise<
   DispatchRunInput & {
@@ -273,7 +369,34 @@ async function validate(
     throw new HTTPException(401, { message: "User ID is required" });
   }
 
-  const resolvedModels = await resolvePerRequestModels(ctx, tier, harnessId);
+  // Lock guard: once a thread row carries a non-null `harness_id`, the
+  // thread's runtime (harness, sandbox provider, branch) is pinned for
+  // life. Any client-provided override is silently dropped, and the
+  // per-request model resolution below uses the locked harness so we
+  // never dispatch with mismatched (harness, models).
+  //
+  // See spec:
+  // docs/superpowers/specs/2026-06-03-lock-thread-harness-and-branch-design.md
+  const lockedThread = taskIdInput
+    ? await ctx.storage.threads.get(taskIdInput)
+    : null;
+  const {
+    harnessId: effectiveHarnessId,
+    sandboxProviderKind: effectiveSandboxProviderKind,
+    branch: effectiveBranch,
+  } = applyThreadLock({
+    taskIdInput,
+    thread: lockedThread,
+    requestedHarnessId: harnessId,
+    requestedSandboxProviderKind: sandboxProviderKind,
+    requestedBranch: branch,
+  });
+
+  const resolvedModels = await resolvePerRequestModels(
+    ctx,
+    tier,
+    effectiveHarnessId,
+  );
 
   const allowedModels = await fetchModelPermissions(
     ctx.db,
@@ -309,9 +432,9 @@ async function validate(
     userId,
     taskId: taskIdInput,
     windowSize: memoryConfig?.windowSize ?? DEFAULT_WINDOW_SIZE,
-    branch: branch ?? null,
-    sandboxProviderKind: sandboxProviderKind ?? null,
-    harnessId: harnessId ?? null,
+    branch: effectiveBranch ?? null,
+    sandboxProviderKind: effectiveSandboxProviderKind ?? null,
+    harnessId: effectiveHarnessId ?? null,
   };
 }
 
@@ -335,7 +458,7 @@ export interface DecopilotDeps {
 export function createDecopilotRoutes(deps: DecopilotDeps) {
   const { cancelBroadcast, streamBuffer, runRegistry, linkClaimRegistry } =
     deps;
-  const app = new Hono<{ Variables: { meshContext: MeshContext } }>();
+  const app = new Hono<{ Variables: { meshContext: StudioContext } }>();
 
   // ============================================================================
   // Allowed Models Endpoint
@@ -429,7 +552,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // agents with no clonable repo, where the branch is purely an
       // isolation key.
       const branch = existingThread?.branch ?? input.branch ?? "ephemeral";
-      const branchWasDefaulted = !existingThread?.branch && !input.branch;
 
       // Determine the pinned (kind, harness). If the thread row has them,
       // use those. Otherwise this is the first message — derive defaults and
@@ -447,7 +569,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       let pinnedHarness = (existingThread?.harness_id ??
         null) as HarnessId | null;
 
-      if (!pinnedKind || !pinnedHarness || branchWasDefaulted) {
+      if (!pinnedKind || !pinnedHarness) {
         pinnedKind =
           pinnedKind ??
           input.sandboxProviderKind ??
@@ -458,11 +580,45 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         pinnedHarness = pinnedHarness ?? input.harnessId ?? credentialHarness;
 
         if (existingThread) {
+          // Stream-of-record v2 canary (DEFAULTS OFF via
+          // STREAM_OF_RECORD_V2_PERCENT). Pin v2 ONLY when (a) the thread has
+          // no prior messages and is not already v2, AND (b) the deterministic
+          // canary predicate selects this thread id. Off by default → every
+          // thread stays message_storage_version=1 and the v1 path is
+          // byte-for-byte unchanged. The message-count probe runs only when
+          // the canary would otherwise fire, so the default path adds no DB
+          // read.
+          let pinV2 = false;
+          if (
+            existingThread.message_storage_version !== 2 &&
+            shouldPinV2FromEnv(taskId)
+          ) {
+            try {
+              const { total } = await ctx.storage.threads.listMessages(taskId, {
+                limit: 1,
+              });
+              pinV2 = total === 0;
+            } catch {
+              pinV2 = false;
+            }
+          }
           try {
+            // Persist `branch` unconditionally on the initial pin write so
+            // the thread row is the single source of truth the lock guard
+            // (validate() / applyThreadLock) reads on every follow-up.
+            // Previously we only stored the synthetic "ephemeral" fallback
+            // (`branchWasDefaulted` path); a user who explicitly picked
+            // "main" on the first message would have it dropped here, and
+            // the lock would later resolve to null and dispatch against
+            // "ephemeral" instead. The lock contract (spec
+            // 2026-06-03-lock-thread-harness-and-branch-design.md) says
+            // all three locked fields are pinned together — branch is no
+            // exception.
             await ctx.storage.threads?.update?.(taskId, {
               sandbox_provider_kind: pinnedKind,
               harness_id: pinnedHarness,
-              ...(branchWasDefaulted ? { branch } : {}),
+              branch,
+              ...(pinV2 ? { message_storage_version: 2 } : {}),
             });
           } catch (err) {
             console.warn(
@@ -550,7 +706,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // ============================================================================
 
   app.post("/:org/decopilot/cancel/:threadId", async (c) => {
-    const { taskId, thread, organization } = await validateThreadOwnership(c);
+    const { ctx, taskId, thread, organization, userId } =
+      await validateThreadOwnership(c);
+
+    // Persist durable cancel flag so the ingest backstop rejects 409.
+    await ctx.storage.threads.setCancelRequested(taskId, organization.id);
 
     // Try to cancel locally first
     const cancelTransitions = await runRegistry.execute({
@@ -558,11 +718,19 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       taskId,
     });
     if (cancelTransitions.some((t) => t.event.type === "RUN_FAILED")) {
+      cancelBroadcast.publishControlFrame(userId, {
+        type: "cancel",
+        runId: taskId,
+      });
       return c.json({ cancelled: true });
     }
 
     // Not on this pod — broadcast to all pods
     cancelBroadcast.broadcast(taskId);
+    cancelBroadcast.publishControlFrame(userId, {
+      type: "cancel",
+      runId: taskId,
+    });
 
     // Ghost run: server restarted while a run was in progress. No pod has this
     // run in memory, so the broadcast will never resolve. Force-fail the thread

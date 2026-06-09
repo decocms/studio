@@ -1,9 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import {
+  embeddedUnionBlockId,
   isAutoPreviewBlockKey,
+  isEmbeddedUnionResolveType,
   isManifestSectionResolveType,
   isSavedBlockResolveType,
   parseSavedBlockSchemaTitle,
+  unionRefMatchesValue,
 } from "./block-type-utils";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -55,5 +58,25 @@ describe("block-type-utils", () => {
     );
     expect(isAutoPreviewBlockKey("Header")).toBe(false);
     expect(isAutoPreviewBlockKey("%")).toBe(false);
+  });
+
+  it("isEmbeddedUnionResolveType detects inline module@blockId enums", () => {
+    expect(
+      isEmbeddedUnionResolveType("ZmlsZTovLy9...Carousel.tsx==@ImageBanner"),
+    ).toBe(true);
+    expect(
+      isEmbeddedUnionResolveType("site/sections/Images/Carousel.tsx"),
+    ).toBe(false);
+    expect(isEmbeddedUnionResolveType("Header")).toBe(false);
+  });
+
+  it("unionRefMatchesValue matches embedded union ids by suffix", () => {
+    const ref = "ZmlsZ...Carousel.tsx==@ImageBanner";
+    expect(unionRefMatchesValue(ref, ref)).toBe(true);
+    expect(unionRefMatchesValue(ref, "ImageBanner")).toBe(true);
+    expect(
+      unionRefMatchesValue(ref, "ZmlsZ...Carousel.tsx==@VideoBanner"),
+    ).toBe(false);
+    expect(embeddedUnionBlockId(ref)).toBe("ImageBanner");
   });
 });

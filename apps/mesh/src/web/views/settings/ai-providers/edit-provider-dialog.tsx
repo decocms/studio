@@ -239,7 +239,7 @@ export function EditProviderKeyDialog({
   const displayName = preset?.name ?? provider.name;
 
   const { data: preview, isLoading } = useQuery({
-    queryKey: ["ai-provider-key-preview", providerKey.id],
+    queryKey: KEYS.aiProviderKeyPreview(providerKey.id),
     queryFn: async () => {
       const result = (await client.callTool({
         name: "AI_PROVIDER_KEY_PREVIEW",

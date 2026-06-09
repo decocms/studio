@@ -9,7 +9,8 @@ import { Suspense } from "react";
 import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ArrowRight, X } from "@untitledui/icons";
+import { ArrowRight } from "@untitledui/icons";
+import { toast } from "sonner";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { ErrorBoundary } from "@/web/components/error-boundary";
@@ -18,6 +19,10 @@ import {
   type HomeTileEntry,
   useHomeNextActions,
 } from "@/web/hooks/use-home-next-actions";
+import {
+  useDefaultHomeAgents,
+  useHomeAgentsWriter,
+} from "@/web/hooks/use-organization-settings";
 import { useStartThreadFromPrompt } from "@/web/hooks/use-start-thread-from-prompt";
 import { TileBoard } from "./tile-board/tile-board";
 import { useBoardLayout } from "./tile-board/use-board-layout";
@@ -43,6 +48,13 @@ function tileCandidateId(t: HomeTileEntry): string {
   // Disambiguates multiple tiles pinned to the same agent by including
   // the resource URI — each (agent, resource) pair is its own grid tile.
   return `tile:${t.agentId}:${t.resourceUri}`;
+}
+
+/** Secondary line under the card title. Quick-access agent cards (no
+ *  promptName) put the agent name in the title slot, so their subtitle is
+ *  the agent description; prompt cards keep the owning agent's name. */
+function entrySubtitle(entry: HomePromptEntry): string {
+  return entry.promptName ? entry.agentName : entry.description;
 }
 
 function entryToPrompt(entry: HomePromptEntry): Prompt {
@@ -115,7 +127,7 @@ function PromptTile({
             {entry.title}
           </div>
           <div className="truncate text-xs text-muted-foreground mt-0.5">
-            {entry.agentName}
+            {entrySubtitle(entry)}
           </div>
         </div>
         {!isEditMode && (
@@ -126,70 +138,6 @@ function PromptTile({
           />
         )}
       </button>
-      {dialog}
-    </>
-  );
-}
-
-function PromptChip({
-  entry,
-  isEditMode,
-  onHide,
-}: {
-  entry: HomePromptEntry;
-  isEditMode: boolean;
-  onHide: () => void;
-}) {
-  const { open, dialog, starting } = usePromptEntryAction(entry.agentId);
-
-  return (
-    <>
-      <div className="group/chip relative">
-        <button
-          type="button"
-          onClick={() => !isEditMode && open(entry)}
-          disabled={starting || isEditMode}
-          aria-busy={starting}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-2xl bg-card card-shadow px-3 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            !isEditMode &&
-              "transition-colors hover:bg-accent/40 cursor-pointer",
-            isEditMode && "cursor-default",
-            starting && "opacity-60",
-          )}
-        >
-          <AgentAvatar
-            icon={entry.agentIcon}
-            name={entry.agentName}
-            size="sm+"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="line-clamp-2 text-sm font-medium text-foreground leading-snug">
-              {entry.title}
-            </div>
-            <div className="truncate text-xs text-muted-foreground mt-0.5">
-              {entry.agentName}
-            </div>
-          </div>
-          {!isEditMode && (
-            <ArrowRight
-              size={16}
-              className="shrink-0 text-muted-foreground opacity-0 -translate-x-1 transition-all duration-200 group-hover/chip:opacity-100 group-hover/chip:translate-x-0"
-              aria-hidden
-            />
-          )}
-        </button>
-        {isEditMode && (
-          <button
-            type="button"
-            onClick={onHide}
-            aria-label="Remove tile"
-            className="absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full bg-background border border-border text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
-          >
-            <X size={12} />
-          </button>
-        )}
-      </div>
       {dialog}
     </>
   );
@@ -265,15 +213,20 @@ function AgentUITile({
       </button>
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border">
-          <MCPAppRenderer
-            resourceURI={tile.resourceUri}
-            orgId={org.id}
-            client={client}
-            displayMode="fullscreen"
-            minHeight={tile.minHeight ?? 200}
-            maxHeight={tile.maxHeight ?? 4000}
-            className="h-full"
-          />
+          {/* Inner boundary so the slow resource read only blocks the embedded
+              panel — the tile chrome (agent name, Open chat, prompt chips)
+              renders immediately and stays interactive while the app loads. */}
+          <Suspense fallback={<TilePanelSkeleton />}>
+            <MCPAppRenderer
+              resourceURI={tile.resourceUri}
+              orgId={org.id}
+              client={client}
+              displayMode="fullscreen"
+              minHeight={tile.minHeight ?? 200}
+              maxHeight={tile.maxHeight ?? 4000}
+              className="h-full"
+            />
+          </Suspense>
         </div>
         {promptChips.length > 0 && !isEditMode && tileWidth >= 2 && (
           // Right-side column of action chips. `overflow-hidden` clips
@@ -295,6 +248,18 @@ function AgentUITile({
         )}
       </div>
       {dialog}
+    </div>
+  );
+}
+
+/** Fallback for just the embedded app panel — keeps the tile chrome visible
+ *  while the (potentially slow) resource read is in flight. */
+function TilePanelSkeleton() {
+  return (
+    <div className="flex h-full w-full flex-col gap-2 p-4">
+      <Skeleton className="h-3 w-2/3" />
+      <Skeleton className="h-3 w-1/2" />
+      <Skeleton className="mt-1 h-full w-full rounded-md" />
     </div>
   );
 }
@@ -392,6 +357,9 @@ function TileErrorFallback({
 export function HomeGrid({ isEditMode }: HomeGridProps) {
   const { org } = useProjectContext();
   const { isLoading, prompts, tiles } = useHomeNextActions(org.slug);
+  const homeIds = useDefaultHomeAgents()?.ids ?? [];
+  const pinnedAgentIds = new Set(homeIds);
+  const homeWriter = useHomeAgentsWriter();
 
   // Agents that have a UI tile own their prompts — those prompts render
   // inline inside the tile, not as their own grid cards.
@@ -428,8 +396,29 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
       // under the header — at 1 row the embedded UI collapses to a
       // sliver. Prompt tiles can stay at 1×1.
       minSize: c.kind === "tile" ? TILE_MIN_SIZE : undefined,
+      pinned: pinnedAgentIds.has(c.data.agentId),
     })),
   );
+
+  // Removing a card. For a pinned agent (managed by the drawer) we drop it
+  // from default_home_agents so it actually leaves home — the board's old
+  // `hidden` list no longer suppresses pinned agents, so hiding alone would
+  // be a no-op. Onboarding/suggestion cards (not pinned) still just hide.
+  const removeAgentFromHome = (agentId: string) => {
+    void homeWriter
+      .apply((ids) => ids.filter((id) => id !== agentId))
+      .catch(() =>
+        toast.error("Couldn't remove from home — please try again."),
+      );
+  };
+  const removeCandidate = (id: string) => {
+    const candidate = candidatesById.get(id);
+    if (candidate && pinnedAgentIds.has(candidate.data.agentId)) {
+      removeAgentFromHome(candidate.data.agentId);
+    } else {
+      layout.hideTile(id);
+    }
+  };
 
   const renderTile = (instance: TileInstance) => {
     const candidate = candidatesById.get(instance.id);
@@ -472,35 +461,10 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
   const isEmpty = layout.snapshot.visible.length === 0;
   if (isEmpty && !isEditMode) return null;
 
-  // If the visible board is "just prompts" (no agent UI tiles), bypass the
-  // absolute-positioned grid and render content-hugging chips in a wrapping
-  // row — the grid's fixed cells make small tiles look clipped/empty.
-  const visibleHasUITile = layout.snapshot.visible.some((t) => {
-    const cand = candidatesById.get(t.id);
-    return cand?.kind === "tile";
-  });
-
-  if (!visibleHasUITile) {
-    const visiblePrompts = layout.snapshot.visible
-      .map((t) => candidatesById.get(t.id))
-      .filter((c): c is PromptCandidate => c?.kind === "prompt");
-    return (
-      // Same container width / column count as the tile board. Keeps
-      // chip columns aligned with whatever a future agent-UI tile would
-      // occupy, so nothing shifts when the user adds their first tile.
-      <div className="mt-4 grid w-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {visiblePrompts.map((c) => (
-          <PromptChip
-            key={c.id}
-            entry={c.data}
-            isEditMode={isEditMode}
-            onHide={() => layout.hideTile(c.id)}
-          />
-        ))}
-      </div>
-    );
-  }
-
+  // Everything renders through the same absolute-positioned grid board —
+  // prompts as 1×1 tiles, agent UI as larger tiles. One path means the
+  // edit-mode drag handle + size/remove menu show up consistently, whether
+  // or not the home has an agent-UI tile.
   return (
     <div className="mt-4 flex w-full max-w-7xl flex-col gap-4">
       <TileBoard
@@ -509,7 +473,7 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
         renderTile={renderTile}
         onMove={layout.moveTile}
         onResize={layout.resizeTile}
-        onRemove={layout.hideTile}
+        onRemove={removeCandidate}
       />
     </div>
   );

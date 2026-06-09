@@ -1,8 +1,8 @@
 import { OBJECT_STORAGE_BINDING } from "@decocms/bindings/object-storage";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import type { BoundObjectStorage } from "../../object-storage/bound-object-storage";
 
-export function requireObjectStorage(ctx: MeshContext): BoundObjectStorage {
+export function requireObjectStorage(ctx: StudioContext): BoundObjectStorage {
   if (!ctx.objectStorage) {
     throw new Error(
       "Object storage is not configured. Ensure S3 credentials are set.",

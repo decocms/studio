@@ -12,6 +12,7 @@
  */
 
 import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
@@ -23,7 +24,7 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-} from "../../core/mesh-context";
+} from "../../core/studio-context";
 import type { Env } from "../hono-env";
 import { handleVmEvents } from "./sandbox-events-handler";
 import { resolveAndPushEnv } from "../../tools/sandbox/resolve-env";
@@ -31,8 +32,18 @@ import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
 import {
   type GitDiffLike,
   type GitStatusLike,
+  isGitStatusLike,
   suggestCommitMessageWithLlm,
 } from "../../lib/suggest-commit-message";
+import {
+  buildLoaderInvokeUrl,
+  parseLoaderInvokeRequest,
+} from "../../lib/loader-invoke";
+import {
+  GitPushAuthError,
+  parseGithubRepoFromMetadata,
+  refreshSandboxGitCredentials,
+} from "../../tools/sandbox/sync-git-credentials";
 
 // ---- Middleware types -------------------------------------------------------
 
@@ -45,9 +56,29 @@ interface VmClaim {
   userId: string;
   projectRef: string;
   virtualMcpMetadata: Record<string, unknown> | null;
+  connectionIds: string[];
 }
 
 type VmEnv = Env & { Variables: Env["Variables"] & { vmClaim: VmClaim } };
+
+const SANDBOX_BRANCH_NAME = /^[a-zA-Z0-9][a-zA-Z0-9/._-]*$/;
+
+function assertSandboxBranchParam(branch: string): void {
+  if (
+    !branch ||
+    branch.length > 255 ||
+    branch.includes("..") ||
+    branch.startsWith("/") ||
+    branch.endsWith("/") ||
+    branch.endsWith(".lock") ||
+    !SANDBOX_BRANCH_NAME.test(branch)
+  ) {
+    throw new Error(`Invalid branch name: ${branch}`);
+  }
+}
+
+const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
+const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
 // ---- Shared middleware ------------------------------------------------------
 
@@ -77,6 +108,13 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   const branch = c.req.param("branch");
   if (!virtualMcpId || !branch) {
     return c.json({ error: "virtualMcpId and branch are required" }, 400);
+  }
+
+  try {
+    assertSandboxBranchParam(branch);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ error: message }, 400);
   }
 
   const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
@@ -129,6 +167,8 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     userId,
     projectRef,
     virtualMcpMetadata,
+    connectionIds:
+      virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
   });
   return next();
 });
@@ -419,6 +459,7 @@ export const createSandboxRoutes = () => {
       ctx: c.var.meshContext,
       claimName: claim.claimName,
       runner: claim.runner,
+      virtualMcpId: claim.virtualMcpId,
       branch: claim.branch,
       userId: claim.userId,
       projectRef: claim.projectRef,
@@ -442,12 +483,34 @@ export const createSandboxRoutes = () => {
       map404to410: true,
     }),
   );
-  app.post("/:virtualMcpId/:branch/git/publish", (c) =>
-    proxyDaemon(c, "/_sandbox/git/publish", {
+  app.post("/:virtualMcpId/:branch/git/publish", async (c) => {
+    const runner = requireRunner(c);
+    if (runner instanceof Response) return runner;
+
+    const { claimName, virtualMcpMetadata, connectionIds } = c.get("vmClaim");
+    const ctx = c.var.meshContext;
+
+    try {
+      const githubRepo = parseGithubRepoFromMetadata(
+        virtualMcpMetadata,
+        connectionIds,
+      );
+      if (githubRepo) {
+        await refreshSandboxGitCredentials(ctx, runner, claimName, githubRepo);
+      }
+    } catch (err) {
+      if (err instanceof GitPushAuthError) {
+        return c.json({ error: err.message }, 403, SANDBOX_PROXY_CACHE_HEADERS);
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+    }
+
+    return proxyDaemon(c, "/_sandbox/git/publish", {
       forwardJsonBody: true,
       map404to410: true,
-    }),
-  );
+    });
+  });
   app.post("/:virtualMcpId/:branch/git/discard", (c) =>
     proxyDaemon(c, "/_sandbox/git/discard", {
       forwardJsonBody: true,
@@ -460,68 +523,74 @@ export const createSandboxRoutes = () => {
       map404to410: true,
     }),
   );
-  app.post("/:virtualMcpId/:branch/git/suggest-commit", async (c) => {
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
+  app.post(
+    "/:virtualMcpId/:branch/git/suggest-commit",
+    bodyLimit({
+      maxSize: SUGGEST_COMMIT_MAX_BODY_BYTES,
+      onError: (c) =>
+        c.json(
+          { error: "Payload too large" },
+          413,
+          SANDBOX_PROXY_CACHE_HEADERS,
+        ),
+    }),
+    async (c) => {
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
 
-    const { claimName, userId, projectRef } = c.get("vmClaim");
-    const ctx = c.var.meshContext;
+      const { claimName, userId, projectRef } = c.get("vmClaim");
+      const ctx = c.var.meshContext;
 
-    let body: { status?: GitStatusLike; diff?: GitDiffLike } = {};
-    try {
-      const text = await c.req.text();
-      if (text.trim()) {
-        body = JSON.parse(text) as {
+      try {
+        const body = (await c.req.json().catch(() => ({}))) as {
           status?: GitStatusLike;
           diff?: GitDiffLike;
         };
-      }
-    } catch {
-      return c.json(
-        { error: "Invalid JSON body" },
-        400,
-        SANDBOX_PROXY_CACHE_HEADERS,
-      );
-    }
 
-    try {
-      let status = body.status;
-      let diff = body.diff;
-      if (!status || !diff) {
-        [status, diff] = await Promise.all([
-          fetchDaemonJson<GitStatusLike>(
-            runner,
-            claimName,
-            "/_sandbox/git/status",
-            "GET",
-            { userId, projectRef },
-          ),
-          fetchDaemonJson<GitDiffLike>(
-            runner,
-            claimName,
-            "/_sandbox/git/diff",
-            "GET",
-            { userId, projectRef },
-          ),
-        ]);
+        const clientStatus = body.status;
+        const clientDiff = body.diff;
+        const hasClientDiff =
+          clientDiff != null &&
+          typeof clientDiff.diffs === "object" &&
+          clientDiff.diffs !== null;
+
+        const [status, diff] =
+          isGitStatusLike(clientStatus) && hasClientDiff
+            ? [clientStatus, clientDiff]
+            : await Promise.all([
+                fetchDaemonJson<GitStatusLike>(
+                  runner,
+                  claimName,
+                  "/_sandbox/git/status",
+                  "GET",
+                  { userId, projectRef },
+                ),
+                fetchDaemonJson<GitDiffLike>(
+                  runner,
+                  claimName,
+                  "/_sandbox/git/diff",
+                  "GET",
+                  { userId, projectRef },
+                ),
+              ]);
+        const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
+        return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message === "SANDBOX_GONE") {
+          return c.json(
+            {
+              error:
+                "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
+            },
+            410,
+            SANDBOX_PROXY_CACHE_HEADERS,
+          );
+        }
+        return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
       }
-      const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
-      return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message === "SANDBOX_GONE") {
-        return c.json(
-          {
-            error:
-              "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
-          },
-          410,
-          SANDBOX_PROXY_CACHE_HEADERS,
-        );
-      }
-      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
-    }
-  });
+    },
+  );
 
   // -- Preview fetch (CORS proxy) -------------------------------------------
   app.get("/:virtualMcpId/:branch/preview-fetch", async (c) => {
@@ -559,6 +628,65 @@ export const createSandboxRoutes = () => {
       },
     });
   });
+
+  // -- Preview invoke (loader/action resolution) ------------------------------
+  app.post(
+    "/:virtualMcpId/:branch/preview-invoke",
+    bodyLimit({
+      maxSize: PREVIEW_INVOKE_MAX_BODY_BYTES,
+      onError: (c) => c.json({ error: "Payload too large" }, 413),
+    }),
+    async (c) => {
+      const runner = requireRunner(c);
+      if (runner instanceof Response) return runner;
+
+      const { claimName } = c.get("vmClaim");
+      const previewUrl = await runner.getPreviewUrl(claimName);
+      if (!previewUrl) {
+        return c.json({ error: "Preview not available" }, 502);
+      }
+
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+
+      const invoke = parseLoaderInvokeRequest(body as Record<string, unknown>);
+      if (!invoke) {
+        return c.json({ error: "Invalid or missing __resolveType" }, 400);
+      }
+
+      let upstream: Response;
+      try {
+        upstream = await fetch(
+          buildLoaderInvokeUrl(previewUrl, invoke.resolveType),
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(invoke.payload),
+            signal: AbortSignal.timeout(30_000),
+          },
+        );
+      } catch {
+        return c.json({ error: "Preview unreachable" }, 502);
+      }
+
+      const text = await upstream.text();
+      return new Response(text, {
+        status: upstream.status,
+        headers: {
+          "content-type":
+            upstream.headers.get("content-type") ?? "application/json",
+        },
+      });
+    },
+  );
 
   return app;
 };

@@ -8,9 +8,18 @@ import {
 
 describe("agentOptionFromMode <-> agentModeFromOption", () => {
   const cases: Array<
-    [AgentMode, "decopilot" | "claude-code-desktop" | "codex-desktop"]
+    [
+      AgentMode,
+      (
+        | "decopilot"
+        | "decopilot-desktop"
+        | "claude-code-desktop"
+        | "codex-desktop"
+      ),
+    ]
   > = [
     ["cloud-decopilot", "decopilot"],
+    ["local-decopilot", "decopilot-desktop"],
     ["local-claude-code", "claude-code-desktop"],
     ["local-codex", "codex-desktop"],
   ];
@@ -50,8 +59,8 @@ describe("resolveTierSubtitle", () => {
     it("fast → GPT-5.4 Mini", () => {
       expect(resolveTierSubtitle("local-codex", "fast")).toBe("GPT-5.4 Mini");
     });
-    it("smart → GPT-5.3 Codex", () => {
-      expect(resolveTierSubtitle("local-codex", "smart")).toBe("GPT-5.3 Codex");
+    it("smart → GPT-5.4", () => {
+      expect(resolveTierSubtitle("local-codex", "smart")).toBe("GPT-5.4");
     });
     it("thinking → GPT-5.5", () => {
       expect(resolveTierSubtitle("local-codex", "thinking")).toBe("GPT-5.5");
@@ -71,6 +80,24 @@ describe("resolveTierSubtitle", () => {
     });
     it("thinking → Deeper reasoning", () => {
       expect(resolveTierSubtitle("cloud-decopilot", "thinking")).toBe(
+        "Deeper reasoning",
+      );
+    });
+  });
+
+  describe("local-decopilot: returns the intent description", () => {
+    it("fast → Quicker responses", () => {
+      expect(resolveTierSubtitle("local-decopilot", "fast")).toBe(
+        "Quicker responses",
+      );
+    });
+    it("smart → Balanced quality", () => {
+      expect(resolveTierSubtitle("local-decopilot", "smart")).toBe(
+        "Balanced quality",
+      );
+    });
+    it("thinking → Deeper reasoning", () => {
+      expect(resolveTierSubtitle("local-decopilot", "thinking")).toBe(
         "Deeper reasoning",
       );
     });

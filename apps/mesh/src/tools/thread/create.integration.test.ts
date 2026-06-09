@@ -138,14 +138,14 @@ describe("COLLECTION_THREADS_CREATE", () => {
           sandboxMap: {
             [env.userId]: {
               "deco/old-branch": {
-                cluster: {
+                "agent-sandbox": {
                   sandboxHandle: "vm_old",
                   previewUrl: null,
                   createdAt: 1000,
                 },
               },
               "deco/new-branch": {
-                cluster: {
+                "agent-sandbox": {
                   sandboxHandle: "vm_new",
                   previewUrl: null,
                   createdAt: 2000,

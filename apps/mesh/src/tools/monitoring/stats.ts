@@ -5,7 +5,7 @@
  * Supports both summary stats (backward-compatible) and timeseries queries.
  */
 
-import { requireOrganization } from "@/core/mesh-context";
+import { requireOrganization } from "@/core/studio-context";
 import { flushMonitoringData } from "@/observability";
 import { defineTool } from "../../core/define-tool";
 import { z } from "zod";
@@ -67,6 +67,19 @@ export const MONITORING_STATS = defineTool({
       .describe(
         "When provided with interval, also return top tools and their timeseries",
       ),
+    userIds: z
+      .array(z.string())
+      .max(100)
+      .optional()
+      .describe(
+        "Filter LLM usage by user IDs (only applied when llmUsage is true)",
+      ),
+    llmUsage: z
+      .boolean()
+      .optional()
+      .describe(
+        "Aggregate LLM-call usage (tokens + USD cost) from raw log rows for the given connection. Returns token/cost totals and timeseries. Requires interval.",
+      ),
   }),
   outputSchema: z.object({
     totalCalls: z.number().describe("Total number of tool calls"),
@@ -100,12 +113,33 @@ export const MONITORING_STATS = defineTool({
       )
       .optional()
       .describe("Per-connection metric breakdown"),
+    totalInputTokens: z
+      .number()
+      .optional()
+      .describe("Total input tokens (LLM usage mode)"),
+    totalOutputTokens: z
+      .number()
+      .optional()
+      .describe("Total output tokens (LLM usage mode)"),
+    totalTokens: z
+      .number()
+      .optional()
+      .describe("Total tokens (LLM usage mode)"),
+    totalCostUsd: z
+      .number()
+      .optional()
+      .describe(
+        "Total USD cost (LLM usage mode; only non-zero for providers that report cost)",
+      ),
     topTools: z
       .array(
         z.object({
           toolName: z.string(),
           connectionId: z.string().nullable(),
           calls: z.number(),
+          inputTokens: z.number().optional(),
+          outputTokens: z.number().optional(),
+          costUsd: z.number().optional(),
         }),
       )
       .optional()
@@ -133,6 +167,10 @@ export const MONITORING_STATS = defineTool({
           avg: z.number(),
           p50: z.number(),
           p95: z.number(),
+          inputTokens: z.number().optional(),
+          outputTokens: z.number().optional(),
+          totalTokens: z.number().optional(),
+          costUsd: z.number().optional(),
         }),
       )
       .optional()
@@ -142,6 +180,18 @@ export const MONITORING_STATS = defineTool({
     const org = requireOrganization(ctx);
     await ctx.access.check();
     await flushMonitoringData();
+
+    if (input.interval && input.llmUsage) {
+      return ctx.storage.monitoring.queryLlmUsageStats({
+        organizationId: org.id,
+        interval: input.interval,
+        connectionId: input.connectionIds?.[0] ?? "decopilot",
+        startDate: input.startDate ? new Date(input.startDate) : undefined,
+        endDate: input.endDate ? new Date(input.endDate) : undefined,
+        userIds: input.userIds,
+        topN: input.topN,
+      });
+    }
 
     if (input.interval) {
       const stats = await ctx.storage.monitoring.queryMetricTimeseries({

@@ -121,7 +121,7 @@ Note: The bindings schema (`packages/bindings/src/well-known/workflow.ts`) defin
 | File | Purpose |
 |------|---------|
 | `server/index.ts` | Plugin registration + startup recovery |
-| `server/types.ts` | Type definitions, MeshContext interface |
+| `server/types.ts` | Type definitions, StudioContext interface |
 | `server/engine/orchestrator.ts` | Core orchestration: claim, dispatch, complete, forEach |
 | `server/engine/code-step.ts` | QuickJS sandbox execution (TS transpilation via sucrase) |
 | `server/engine/tool-step.ts` | MCP proxy tool calls + transformCode |
@@ -213,3 +213,4 @@ LLM-driven workflow building: start an empty execution → LLM calls tools natur
 #### No migration needed
 - `output: null` already supported in step results
 - `skipped` flag is optional metadata on the step result (no new column required)
+

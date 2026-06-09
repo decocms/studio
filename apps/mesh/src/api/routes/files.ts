@@ -11,17 +11,18 @@
  * annotation for uploaded files. Authenticated clients (UI <img> tags) can use
  * it instead of presigned URLs and it always works.
  *
- * Requires an authenticated session (MeshContext) — the org ID in the
+ * Requires an authenticated session (StudioContext) — the org ID in the
  * URL is only used to extract the file key, not to bypass auth.
  */
 
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { generatePresignedGetUrl } from "./decopilot/file-materializer";
 import { usesLocalObjectStorage } from "@/tools/connection/dev-assets";
+import { isBrowserNavigation } from "../utils/browser-navigation";
 
-type Variables = { meshContext: MeshContext };
+type Variables = { meshContext: StudioContext };
 
 const app = new Hono<{ Variables: Variables }>();
 
@@ -31,6 +32,12 @@ app.get("/:org/files/*", async (c) => {
   const orgId = ctx.organization?.id;
 
   if (!ctx.auth?.user?.id) {
+    // A logged-out person opening a file link in the browser should land on
+    // login (and return to this org afterward), not a raw JSON 401. API
+    // clients (no `Accept: text/html`) still get the 401.
+    if (isBrowserNavigation(c)) {
+      return c.redirect(`/login?next=${encodeURIComponent(c.req.path)}`, 302);
+    }
     throw new HTTPException(401, { message: "Authentication required" });
   }
 

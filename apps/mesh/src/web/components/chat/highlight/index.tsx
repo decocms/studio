@@ -15,6 +15,7 @@ import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
 import { useHighlightFlags } from "./use-highlight-count";
+import { parseErrorMessage } from "./parse-error-message";
 import type { UserAskToolPart } from "../types";
 
 // ============================================================================
@@ -28,53 +29,6 @@ const WARNING_DESCRIPTIONS: Record<string, string> = {
   "tool-calls":
     "Response paused after tool execution to prevent infinite loops and save costs. Click continue to keep working.",
 };
-
-// Raw error.message strings can be anything: a clean string, an HTML page
-// from an upstream proxy (Cloudflare 5xx), a JSON blob, a network failure.
-// Classify to pick a human summary + recovery hint; preserve the original
-// payload so devs can still inspect it under "Show technical details".
-function parseErrorMessage(message: string): {
-  summary: string;
-  rawDetails: string | null;
-} {
-  const trimmed = message.trim();
-  const looksLikeHtml =
-    trimmed.startsWith("<") && /<[a-z][\s\S]*>/i.test(trimmed);
-  const isCloudflare =
-    /cloudflare|cf-[a-z-]+|error[\s_-]?code[\s_-]?5\d\d/i.test(trimmed);
-  const isNetwork = /failed to fetch|networkerror|load failed|offline/i.test(
-    trimmed,
-  );
-  const isTimeout = /timeout|timed out|aborted|deadline/i.test(trimmed);
-  const isTooLong = trimmed.length > 240;
-
-  if (isCloudflare || (looksLikeHtml && isTooLong)) {
-    return {
-      summary:
-        "Our servers are having a moment. Try sending again in a few seconds.",
-      rawDetails: message,
-    };
-  }
-  if (isNetwork) {
-    return {
-      summary: "Lost connection. Check your network and try again.",
-      rawDetails: message,
-    };
-  }
-  if (isTimeout) {
-    return {
-      summary: "That took longer than expected. Try again.",
-      rawDetails: message,
-    };
-  }
-  if (looksLikeHtml || isTooLong) {
-    return {
-      summary: "Something unexpected came back from the server. Try again.",
-      rawDetails: message,
-    };
-  }
-  return { summary: message, rawDetails: null };
-}
 
 type StatusHighlightProps =
   | {

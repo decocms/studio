@@ -1,5 +1,10 @@
 import { OrgSsoPage } from "@/web/views/settings/org-sso";
+import { RequireCapability } from "@/web/components/require-capability";
 
 export default function SsoRoute() {
-  return <OrgSsoPage />;
+  return (
+    <RequireCapability capability="org:manage" area="security">
+      <OrgSsoPage />
+    </RequireCapability>
+  );
 }

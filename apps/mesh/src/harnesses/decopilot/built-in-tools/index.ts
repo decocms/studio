@@ -5,7 +5,7 @@
  * These use AI SDK tool() function and are registered directly in the decopilot API.
  */
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import type { UIMessageStreamWriter } from "ai";
 import {
@@ -31,6 +31,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   propose_plan: { readOnly: true, destructive: false },
   enable_tool: { readOnly: true, destructive: false },
   todo_write: { readOnly: false, destructive: false },
+  update_interests: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "./read-tool-output";
 import { createReadPromptTool } from "./prompts";
@@ -44,6 +45,7 @@ import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import { todoWriteTool } from "./todo-write";
+import { createUpdateInterestsTool } from "./update-interests";
 import { proposePlanTool } from "./propose-plan";
 import { createGenerateImageTool } from "./generate-image";
 import { createWebSearchTool } from "./web-search";
@@ -115,6 +117,9 @@ export interface BuiltinToolParams {
   /** Thread (task) id of the current run — needed by tools that persist
    *  thread-scoped state (e.g. web_search reconnecting to Gemini Deep Research). */
   taskId: string;
+  /** Current agent (virtual MCP) id — scopes the per-agent interests memory
+   *  written by `update_interests`. */
+  agentId: string;
 }
 
 export type { PendingImage };
@@ -129,7 +134,7 @@ export type BuiltInToolSet = Awaited<ReturnType<typeof buildAllTools>>;
 async function buildAllTools(
   writer: UIMessageStreamWriter,
   params: BuiltinToolParams,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ) {
   const {
     provider,
@@ -145,12 +150,24 @@ async function buildAllTools(
     vmContext,
     htmlPageBuffer,
     taskId,
+    agentId,
   } = params;
   const approvalOpts = { isPlanMode };
+  const userId = ctx.auth?.user?.id;
   const tools: Record<string, unknown> = {
     user_ask: userAskTool,
     todo_write: todoWriteTool,
     propose_plan: proposePlanTool,
+    ...(userId
+      ? {
+          update_interests: createUpdateInterestsTool({
+            ctx,
+            orgId: organization.id,
+            agentId,
+            userId,
+          }),
+        }
+      : {}),
     read_tool_output: createReadToolOutputTool({
       toolOutputMap,
     }),
@@ -205,12 +222,13 @@ async function buildAllTools(
       }
       return cached;
     };
-    // Ephemeral agents (no GitHub repo) run on a synthetic "ephemeral"
-    // branch — they have no server-button UI for the user to restart a
-    // dead sandbox, so the call layer is allowed to auto-restart on
-    // proxy failure. GitHub-linked agents keep the manual-recovery
-    // behavior; the user may have paused the sandbox intentionally.
-    const canAutoRestart = vmContext.branch === "ephemeral";
+    // Ephemeral agents have no restart button, so the call layer auto-restarts on
+    // proxy failure. user-desktop sandboxes also auto-restart: the local daemon
+    // can drop/relink under the user at any time, and the iframe + ingress already
+    // render the reconnecting state, so a dead-daemon proxy error should reap +
+    // respawn rather than surface a sticky failure.
+    const canAutoRestart =
+      vmContext.branch === "ephemeral" || providerKind === "user-desktop";
     const invalidateHandle = async () => {
       // Capture before clearing — we need the dead handle to flush the
       // captured runner's cache below.
@@ -262,7 +280,7 @@ async function buildAllTools(
       }),
     );
   }
-  // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code)
+  // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
   if (provider) {
     tools.subtask = createSubtaskTool(
       writer,
@@ -270,6 +288,9 @@ async function buildAllTools(
         provider,
         organization,
         models,
+        // Pass the caller's own agent id so the model can clone itself by
+        // omitting agent_id (heavy discovery → fresh, isolated context).
+        self: { id: agentId },
         needsApproval:
           toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
       },
@@ -300,7 +321,7 @@ async function buildAllTools(
       taskId,
     });
   }
-  // take_screenshot and scrape_url require Browserless API token
+  // take_screenshot, scrape_url, inspect_page require Browserless API token.
   if (process.env.BROWSERLESS_TOKEN) {
     tools.take_screenshot = createTakeScreenshotTool(writer, {
       ctx,
@@ -320,6 +341,7 @@ async function buildAllTools(
     user_ask: typeof userAskTool;
     todo_write: typeof todoWriteTool;
     propose_plan: typeof proposePlanTool;
+    update_interests: ReturnType<typeof createUpdateInterestsTool>;
     subtask: ReturnType<typeof createSubtaskTool>;
     read_tool_output: ReturnType<typeof createReadToolOutputTool>;
     sandbox: ReturnType<typeof createSandboxTool>;
@@ -342,7 +364,7 @@ async function buildAllTools(
 export function instrumentBuiltIns<T extends Record<string, unknown>>(
   tools: T,
   params: BuiltinToolParams,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): T {
   const orgId = params.organization.id;
   const userId = ctx.auth?.user?.id;
@@ -421,7 +443,7 @@ export function instrumentBuiltIns<T extends Record<string, unknown>>(
 export async function getBuiltInTools(
   writer: UIMessageStreamWriter,
   params: BuiltinToolParams,
-  ctx: MeshContext,
+  ctx: StudioContext,
 ) {
   const raw = await buildAllTools(writer, params, ctx);
   const tools = instrumentBuiltIns(raw, params, ctx) as typeof raw;
@@ -446,7 +468,7 @@ export async function getBuiltInTools(
  * these tools that don't apply for the current agent kind.
  */
 export interface BuildBuiltInToolsOptions {
-  ctx: MeshContext;
+  ctx: StudioContext;
   writer: UIMessageStreamWriter;
   toolOutputMap: Map<string, string>;
   subtaskParams: import("./subtask").SubtaskParams;

@@ -40,7 +40,9 @@ export {
   parseSandboxRecord,
   parseBranchMap,
   normalizeSandboxMap,
+  normalizeSandboxProviderKind,
   type SandboxProviderKind,
+  type LegacySandboxProviderKind,
 } from "./virtual-mcp";
 
 export {

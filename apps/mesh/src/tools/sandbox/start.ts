@@ -12,6 +12,7 @@ import { z } from "zod";
 import type { SandboxRecord } from "@decocms/mesh-sdk";
 import {
   composeSandboxRef,
+  normalizeSandboxProviderKind,
   type SandboxProvider,
   type SandboxProviderKind,
   type Workload,
@@ -21,15 +22,15 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-  type MeshContext,
-} from "../../core/mesh-context";
-import {
-  requireVmEntry,
-  resolveRuntimeConfig,
-  type RuntimeConfigMeta,
-} from "./helpers";
+  type StudioContext,
+} from "../../core/studio-context";
+import { resolveRuntimeConfig, type RuntimeConfigMeta } from "./helpers";
 import { resolveAndPushEnv } from "./resolve-env";
-import { readSandboxMap, resolveVm } from "./sandbox-map";
+import {
+  readSandboxMap,
+  removeSandboxMapEntry,
+  resolveVm,
+} from "./sandbox-map";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
@@ -39,8 +40,12 @@ import {
   detectRepoRuntimeAnonymous,
 } from "../../shared/github-runtime-detect";
 import { generateBranchName } from "../../shared/branch-name";
+import { ensureRepoScopedToken } from "@/oauth/github-mint";
+import { getRepoScope } from "@/shared/github-repo-scope";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
+import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
+import { getSettings } from "../../settings";
 import { setSandboxMapEntry } from "./sandbox-map";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
@@ -53,6 +58,12 @@ type GithubRepo = {
 type GithubRepoMeta = {
   githubRepo?: GithubRepo | null;
 };
+
+const sandboxProviderKindInputSchema = z.enum([
+  "agent-sandbox",
+  "user-desktop",
+  "cluster",
+]);
 
 export const SANDBOX_START = defineTool({
   name: "SANDBOX_START",
@@ -74,13 +85,10 @@ export const SANDBOX_START = defineTool({
       .describe(
         "Optional git branch to check out. When omitted the handler generates `deco/<adjective>-<noun>` and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
-    // Canonical-only. Migrations 092/097 swept persisted legacy values;
-    // clients ship canonical strings after the SDK narrowed its union.
-    sandboxProviderKind: z
-      .enum(["cluster", "user-desktop"])
+    sandboxProviderKind: sandboxProviderKindInputSchema
       .optional()
       .describe(
-        "Explicit runtime choice. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the cluster env kind.",
+        "Explicit runtime choice. Hosted provider is `agent-sandbox`; legacy `cluster` input is accepted only for compatibility and normalized to `agent-sandbox`. When omitted, defaults to `user-desktop` if the acting user's link daemon is online, else the env kind.",
       ),
   }),
   outputSchema: z.object({
@@ -88,17 +96,27 @@ export const SANDBOX_START = defineTool({
     sandboxHandle: z.string(),
     branch: z.string(),
     isNewVm: z.boolean(),
-    sandboxProviderKind: z.enum(["cluster", "user-desktop"]),
+    sandboxProviderKind: z.enum(["agent-sandbox", "user-desktop"]),
   }),
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
+    const organization = requireOrganization(ctx);
+    await ctx.access.check();
     const resolvedBranch = input.branch ?? generateBranchName();
 
-    // Resolve kind before requireVmEntry so the 3-level lookup uses the right key.
-    // getUserId may return null here; requireVmEntry will throw if so.
-    const earlyUserId = getUserId(ctx);
-    if (!earlyUserId) throw new Error("User ID required");
+    // Resolve kind after loading metadata so recorded sandboxMap entries can
+    // pin the provider when the caller did not pass an explicit kind.
+    const userId = getUserId(ctx);
+    if (!userId) throw new Error("User ID required");
+
+    const virtualMcp = await ctx.storage.virtualMcps.findById(
+      input.virtualMcpId,
+    );
+    if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
+      throw new Error("Virtual MCP not found");
+    }
+    const metadata = (virtualMcp.metadata ?? {}) as Record<string, unknown>;
 
     // Resolve the runner once. `resolveSandboxProvider` returns the
     // existing kind when sandboxMap already has an entry for (user, branch),
@@ -106,26 +124,22 @@ export const SANDBOX_START = defineTool({
     // otherwise applies the link-or-env default policy. We bind the
     // provider here so the kind we record in sandboxMap matches the runner
     // that actually `ensure`d the sandbox.
+    const explicitKind = input.sandboxProviderKind
+      ? normalizeSandboxProviderKind(input.sandboxProviderKind)
+      : undefined;
     const { provider: runner, kind: providerKind } =
       await resolveSandboxProvider(ctx, {
-        userId: earlyUserId,
+        userId,
         branch: resolvedBranch,
-        virtualMcpMetadata: null,
-        explicitKind: input.sandboxProviderKind,
+        virtualMcpMetadata: metadata,
+        explicitKind,
       });
 
-    const {
-      metadata,
+    const existing: SandboxRecord | null = resolveVm(
+      readSandboxMap(metadata),
       userId,
-      organization,
-      entry: existing,
-    } = await requireVmEntry(
-      {
-        virtualMcpId: input.virtualMcpId,
-        branch: resolvedBranch,
-        sandboxProviderKind: providerKind,
-      },
-      ctx,
+      resolvedBranch,
+      providerKind,
     );
 
     const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
@@ -167,7 +181,7 @@ export async function ensureSandbox(
     branch: string;
     sandboxProviderKind: SandboxProviderKind;
   },
-  ctx: MeshContext,
+  ctx: StudioContext,
 ): Promise<SandboxRecord> {
   // Inline auth + lookup; the standard `requireVmEntry` runs
   // `ctx.access.check()`, which expects resource scoping that the
@@ -192,23 +206,39 @@ export async function ensureSandbox(
 
   const providerKind = input.sandboxProviderKind;
 
-  // Fast path: sandboxMap already has an entry under the requested kind.
-  // No reap needed: with kind in the key, there's no stale-kind entry to
-  // tear down. Different kinds coexist as siblings.
-  if (existing) {
-    return existing;
-  }
-
-  // ensureSandbox is called from the always-on VM tools path which doesn't
-  // pre-resolve the runner. `resolveSandboxProvider` here honors the
-  // explicit kind from the caller (POST /messages already decided) and
-  // binds the user's link for `desktop`.
+  // Resolve the runner up front: for user-desktop we must verify the cached
+  // entry against the live daemon before trusting it (the daemon may have
+  // restarted via `deco link` relink, leaving the sandboxMap pointing at a
+  // dead handle). resolveSandboxProvider is cheap and idempotent.
   const { provider: runner } = await resolveSandboxProvider(ctx, {
     userId,
     branch: input.branch,
     virtualMcpMetadata: metadata,
     explicitKind: providerKind,
   });
+
+  // Fast path: trust an agent-sandbox entry directly. For user-desktop, probe the
+  // daemon first — a relinked daemon has an empty sandbox map and answers the
+  // liveness probe with 404, which means we must reap the stale entry and
+  // re-provision (runner.ensure spawns a fresh sandbox on the new daemon).
+  if (existing) {
+    if (providerKind !== "user-desktop") return existing;
+    const alive = await runner.alive(existing.sandboxHandle).catch(() => false);
+    if (alive) return existing;
+    await removeSandboxMapEntry(
+      ctx.storage.virtualMcps,
+      input.virtualMcpId,
+      userId,
+      userId,
+      input.branch,
+      providerKind,
+    ).catch((err) => {
+      console.warn(
+        "[ensureSandbox] failed to reap stale user-desktop entry",
+        err,
+      );
+    });
+  }
 
   const githubRepo = (metadata as GithubRepoMeta).githubRepo ?? null;
   const { entry } = await provisionSandbox({
@@ -227,7 +257,7 @@ export async function ensureSandbox(
 }
 
 type StartParams = {
-  ctx: MeshContext;
+  ctx: StudioContext;
   userId: string;
   orgId: string;
   virtualMcpId: string;
@@ -270,6 +300,29 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
+    // Repo-scoped child connections carry a minted token with no refresh path,
+    // so re-mint it now if expired before it gets baked into the clone URL or
+    // used for the lockfile probe. No-op for org connections and public repos.
+    if (githubRepo.connectionId) {
+      const repoConn = await ctx.storage.connections.findById(
+        githubRepo.connectionId,
+        orgId,
+      );
+      if (repoConn && getRepoScope(repoConn)) {
+        try {
+          await ensureRepoScopedToken(ctx, repoConn);
+        } catch (err) {
+          // Swallow + log: a failed mint intentionally falls through to
+          // buildCloneInfo's own "No GitHub token found" throw below (sandbox
+          // start fails loudly — never an unauthenticated clone).
+          console.error("[provisionSandbox] repo-scoped token mint failed", {
+            connectionId: githubRepo.connectionId,
+            error: (err as Error).message,
+          });
+        }
+      }
+    }
+
     // Connection-backed (authenticated) vs public-clone (anonymous). The
     // daemon's clone behavior is identical — only the URL and identity
     // change. Push-back fails in the anonymous case; that's the documented
@@ -345,12 +398,37 @@ async function provisionSandbox(
     branch,
   });
 
+  // Message-offload SSRF allowlist. The user-desktop daemon fails closed
+  // (empty allowlist) unless the control plane pushes the object-storage host
+  // it mints presigned offload URLs against. Derive it from the control
+  // plane's OWN trusted S3 config (never a request frame) and pass it through
+  // the ensure control channel so it lands in the spawned daemon's boot env.
+  // Only relevant for `user-desktop`; hosted execution reads its own S3 env.
+  const offload =
+    runner.kind === "user-desktop"
+      ? await deriveOffloadAllowlist(ctx.objectStorage, {
+          isProduction: getSettings().nodeEnv === "production",
+        })
+      : null;
+
   const sandbox = await runner.ensure(
     { userId, projectRef },
     {
+      // Pass branch explicitly so the runner-side `computeHandle` agrees with
+      // the sandbox-proxy's `computeClaimHandle`. Without it, a repo-less
+      // VM falls back to `s-<hash>` while the proxy looks up `<branch>-<hash>`
+      // and every proxy call 404s with `unknown handle` (see resilience
+      // scenarios `link-dispatch-ws-partition` / `link-dispatch-log-replay`).
+      branch,
       repo: repoOpts,
       workload,
       tenant: { orgId, userId },
+      ...(offload
+        ? {
+            offloadAllowedHosts: offload.hosts,
+            offloadAllowSameHostDev: offload.allowSameHostDev,
+          }
+        : {}),
     },
   );
 
@@ -413,7 +491,7 @@ async function provisionSandbox(
  * readers (resolveRuntimeConfig, any client inspectors) keep working.
  */
 async function persistDetectedRuntime(
-  ctx: MeshContext,
+  ctx: StudioContext,
   virtualMcpId: string,
   actingUserId: string,
   packageManager: string,

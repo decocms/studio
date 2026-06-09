@@ -23,7 +23,7 @@ function makeFakeMeter(calls: CounterCall[]) {
 }
 
 function makeCtx(meter: ReturnType<typeof makeFakeMeter>) {
-  // biome-ignore lint/suspicious/noExplicitAny: test fixture mocks MeshContext shape
+  // biome-ignore lint/suspicious/noExplicitAny: test fixture mocks StudioContext shape
   return { meter } as any;
 }
 

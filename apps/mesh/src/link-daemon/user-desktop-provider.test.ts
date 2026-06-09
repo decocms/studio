@@ -188,6 +188,54 @@ describe("desktop sandbox provider", () => {
     }
   });
 
+  it("throws a marked, user-facing error when the health check fails", async () => {
+    const dataDir = tmpDataDir();
+    try {
+      let portCounter = 31000;
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        postConfig: async () => {},
+        waitForHealth: async () => {
+          throw new Error("did not respond on /health within 5s");
+        },
+        pickPort: () => portCounter++,
+      });
+      const err = (await provider
+        .ensureSandbox({ handle: "h1", repo: undefined })
+        .catch((e) => e)) as Error;
+      expect(err.message).toContain("sandbox failed to start");
+      expect(err.message.toLowerCase()).toContain("come online");
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws a marked error identifying the config step on a config timeout", async () => {
+    const dataDir = tmpDataDir();
+    try {
+      let portCounter = 32000;
+      const timeout = new Error("The operation timed out.");
+      timeout.name = "TimeoutError";
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        waitForHealth: async () => {},
+        postConfig: async () => {
+          throw timeout;
+        },
+        pickPort: () => portCounter++,
+      });
+      const err = (await provider
+        .ensureSandbox({ handle: "h2", repo: undefined })
+        .catch((e) => e)) as Error;
+      expect(err.message).toContain("sandbox failed to start");
+      expect(err.message.toLowerCase()).toContain("config");
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("clears the map entry when the daemon process exits unexpectedly", async () => {
     let exitResolver: (() => void) | null = null;
     const exitPromise = new Promise<void>((r) => {

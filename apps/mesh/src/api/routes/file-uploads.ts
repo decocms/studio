@@ -21,7 +21,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { buildPublicUrl } from "@/file-storage/file-config-s3";
 import {
   MAX_UPLOAD_BYTES,
@@ -30,7 +30,7 @@ import {
   buildObjectKey,
 } from "@/file-storage/upload-policy";
 
-type Variables = { meshContext: MeshContext };
+type Variables = { meshContext: StudioContext };
 
 export const createFileUploadRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();

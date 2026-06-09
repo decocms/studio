@@ -1,9 +1,9 @@
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import type { SSEEvent } from "@/event-bus";
 import { createDecopilotThreadStatusEvent } from "@decocms/mesh-sdk";
 
 export interface BuildOnTitleUpdatedDeps {
-  ctx: MeshContext;
+  ctx: StudioContext;
   sseHub: { emit(orgId: string, event: SSEEvent): void };
   threadId: string;
   organizationId: string;

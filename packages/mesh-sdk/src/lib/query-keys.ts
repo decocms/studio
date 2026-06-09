@@ -81,6 +81,10 @@ export const KEYS = {
   // Models list (scoped by organization)
   modelsList: (orgId: string) => ["models-list", orgId] as const,
 
+  // Virtual MCP last-used info (most recent thread per agent)
+  virtualMcpLastUsed: (orgId: string, ids: string[]) =>
+    ["virtual-mcp", "last-used", orgId, ids] as const,
+
   // Collections (scoped by connection)
   connectionCollections: (connectionId: string) =>
     [connectionId, "collections", "discovery"] as const,

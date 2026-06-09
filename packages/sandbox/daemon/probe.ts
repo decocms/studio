@@ -8,7 +8,7 @@ import {
   PROBE_HEAD_TIMEOUT_MS,
   PROBE_SLOW_MS,
 } from "./constants";
-import { fetchLoopback } from "./upstream-fetch";
+import { fetchLoopback } from "../proxy/http";
 
 export type UpstreamStatus = "booting" | "online" | "offline";
 

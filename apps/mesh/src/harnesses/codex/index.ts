@@ -38,7 +38,10 @@
 
 import { streamText, type UIMessageChunk } from "ai";
 import { createCodexModel, resolveCodexModelId } from "./model";
-import { prepCliMessages } from "../cli-message-prep";
+import { resolveCliCwd } from "../cli-cwd";
+import { extractUserText, prepCliMessages } from "../cli-message-prep";
+import { makeTitleResultChunk } from "../title-chunk";
+import { genTitle } from "../decopilot/title-generator";
 import type {
   Harness,
   HarnessContext,
@@ -47,6 +50,57 @@ import type {
 } from "../types";
 import { createUsageAccumulator } from "../usage-accumulator";
 
+async function* mergeTitleResult(
+  uiStream: AsyncIterable<UIMessageChunk>,
+  titleHandle: ReturnType<typeof genTitle>,
+): AsyncIterable<UIMessageChunk> {
+  type Settled =
+    | { kind: "main"; value: IteratorResult<UIMessageChunk> }
+    | { kind: "title"; value: UIMessageChunk | null };
+
+  const iter = uiStream[Symbol.asyncIterator]();
+  let mainDone = false;
+  let titleDone = false;
+  let mainPromise: Promise<Settled> = iter
+    .next()
+    .then((value) => ({ kind: "main" as const, value }));
+  const titlePromise: Promise<Settled> = titleHandle.promise
+    .then((title) => ({
+      kind: "title" as const,
+      value: title ? (makeTitleResultChunk(title) as UIMessageChunk) : null,
+    }))
+    .catch((err) => {
+      console.warn("[codex:title] title generation failed", err);
+      return { kind: "title" as const, value: null };
+    });
+
+  try {
+    while (!mainDone || !titleDone) {
+      const pending: Promise<Settled>[] = [];
+      if (!mainDone) pending.push(mainPromise);
+      if (!titleDone) pending.push(titlePromise);
+
+      const settled = await Promise.race(pending);
+      if (settled.kind === "main") {
+        if (settled.value.done) {
+          mainDone = true;
+          if (!titleDone) titleHandle.finish();
+          continue;
+        }
+        yield settled.value.value;
+        mainPromise = iter
+          .next()
+          .then((value) => ({ kind: "main" as const, value }));
+        continue;
+      }
+
+      titleDone = true;
+      if (settled.value) yield settled.value;
+    }
+  } finally {
+    if (!titleDone) titleHandle.finish();
+  }
+}
 export const codexHarnessFactory: HarnessFactory = {
   id: "codex",
   create(_ctx: HarnessContext): Harness {
@@ -57,7 +111,26 @@ export const codexHarnessFactory: HarnessFactory = {
         //    name (e.g. `gpt-5.4`). Mirrors stream-core line 922.
         const sdkModelId = resolveCodexModelId(input.models.thinking.id);
 
-        // 2. Build the Codex language model. The MCP URL + headers are
+        // 2. Compute the working directory for the codex app-server
+        //    subprocess. Shared with the Claude Code harness via
+        //    `../cli-cwd` — github-linked agents resolve to the sandbox's
+        //    `<appRoot>/repo` checkout, ephemeral agents fall through to
+        //    undefined (SDK default = process.cwd()). Without this, the
+        //    codex CLI ran in the daemon's own cwd and file edits landed
+        //    outside the user's repo.
+        const cwd = await resolveCliCwd(input);
+
+        // Diagnostics: on the user-desktop path this runs inside the spawned
+        // sandbox daemon (stdout inherited by `deco link`), so these lines
+        // surface in the link terminal. They pin the three most common
+        // failure causes for a `decopilot.finish: failed` with no other
+        // signal — wrong cwd (CLI runs outside the checkout), an
+        // unreachable MCP endpoint, or a bad model id.
+        console.log(
+          `[codex] stream start model=${sdkModelId} cwd=${cwd ?? "(default)"} mcpUrl=${input.mcp.url} mode=${input.mode}`,
+        );
+
+        // 3. Build the Codex language model. The MCP URL + headers are
         //    already minted by the shared layer (it owns the
         //    temp-API-key lifecycle); the harness just forwards them.
         //    Mirrors stream-core lines 921–937 — all three options
@@ -82,6 +155,7 @@ export const codexHarnessFactory: HarnessFactory = {
           },
           toolApprovalLevel: input.toolApprovalLevel,
           isPlanMode: input.mode === "plan",
+          cwd,
         });
 
         try {
@@ -93,6 +167,24 @@ export const codexHarnessFactory: HarnessFactory = {
           //    details — a previous `as never` cast hid this mismatch
           //    and would have thrown `InvalidPromptError` at runtime.
           const messages = await prepCliMessages(input.messages);
+
+          // 3a. Start title generation with Codex's fast model. This uses a
+          //     separate app-server process so title generation can run in
+          //     parallel with the main Codex stream and close independently.
+          const { model: titleModel, provider: titleProvider } =
+            createCodexModel(resolveCodexModelId("codex:gpt-5.4-mini"), {
+              toolApprovalLevel: "readonly",
+              isPlanMode: true,
+              cwd,
+            });
+          const titleHandle = genTitle({
+            abortSignal: input.signal,
+            model: titleModel,
+            userMessage: extractUserText(messages),
+          });
+          const titleProviderClosed = titleHandle.promise.finally(() =>
+            titleProvider.close().catch(() => {}),
+          );
 
           // 4. Run streamText. Codex's CLI manages its own tools and
           //    system prompt, so we explicitly DO NOT pass `tools` or
@@ -191,10 +283,12 @@ export const codexHarnessFactory: HarnessFactory = {
           });
 
           try {
-            for await (const chunk of uiStream) {
+            for await (const chunk of mergeTitleResult(uiStream, titleHandle)) {
               yield chunk;
             }
           } finally {
+            titleHandle.finish();
+            await titleProviderClosed.catch(() => {});
             // Report cumulative usage to the surrounding scope for
             // posthog's `chat_message_completed` event. Mirrors what
             // the decopilot harness does via

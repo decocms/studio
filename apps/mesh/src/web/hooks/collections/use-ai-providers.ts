@@ -18,8 +18,29 @@ import {
 
 export type { AiProviderKey, AiProviderModel, AiProviderInfo };
 import { z } from "zod";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { KEYS } from "../../lib/query-keys";
+
+/**
+ * Query options for the org's AI provider keys. Shared with parallel-prefetch
+ * batches so they warm the exact cache entry useAiProviderKeys reads.
+ */
+export function aiProviderKeysQueryOptions(client: Client, orgId: string) {
+  return {
+    queryKey: KEYS.aiProviderKeys(orgId),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const result = (await client.callTool({
+        name: "AI_PROVIDER_KEY_LIST",
+        arguments: {},
+      })) as {
+        structuredContent?: { keys: AiProviderKey[] };
+      };
+      return result.structuredContent ?? null;
+    },
+  };
+}
 
 // LLM type matching ModelSchema from @decocms/bindings
 export type LLM = z.infer<typeof ModelCollectionEntitySchema>;
@@ -61,19 +82,7 @@ export function useAiProviderKeys() {
     orgSlug: org.slug,
   });
 
-  const { data } = useSuspenseQuery({
-    queryKey: KEYS.aiProviderKeys(org.id),
-    staleTime: 60_000,
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_KEY_LIST",
-        arguments: {},
-      })) as {
-        structuredContent?: { keys: AiProviderKey[] };
-      };
-      return result.structuredContent ?? null;
-    },
-  });
+  const { data } = useSuspenseQuery(aiProviderKeysQueryOptions(client, org.id));
   return data?.keys ?? [];
 }
 

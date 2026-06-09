@@ -4,13 +4,16 @@ import {
   duplicateMultivariateSectionVariant,
   flattenMultivariateSection,
   getMultivariateSectionObject,
+  hideSection,
   isDefaultVariantRule,
   parseSectionFlagVariants,
   pickVariantToKeepIndex,
+  showSection,
   unwrapVariantSectionValue,
   updateMultivariateSectionVariantValue,
   writeVariantSectionValue,
 } from "./section-variants";
+import { parseSections } from "./parse-sections";
 
 describe("section-variants", () => {
   it("getMultivariateSectionObject unwraps lazy multivariate sections", () => {
@@ -244,5 +247,86 @@ describe("section-variants", () => {
         title: "Default",
       },
     });
+  });
+
+  it("hideSection produces a section parsed as hidden", () => {
+    const hidden = hideSection({
+      __resolveType: "site/sections/Hero.tsx",
+      title: "Hero",
+    });
+
+    expect(parseSections([hidden], {})[0]?.isHidden).toBe(true);
+  });
+
+  it("hideSection/showSection round-trips normal, lazy-outer, and saved-block sections", () => {
+    // hideSection wraps outside the lazy shell, so the lazy section is stored
+    // verbatim as variants[0].value — showSection extracts it directly without
+    // touching the outerLazy branch.
+    const cases = [
+      { __resolveType: "site/sections/Hero.tsx", title: "Hero" },
+      {
+        __resolveType: "website/sections/Rendering/Lazy.tsx",
+        section: { __resolveType: "site/sections/Hero.tsx", title: "Lazy" },
+      },
+      // saved-block: bare resolve-type key with no "/"; showSection has no
+      // special saved-block logic — it extracts variants[0].value like any section.
+      { __resolveType: "Header" },
+    ];
+
+    for (const original of cases) {
+      const restored = showSection(hideSection(original as never));
+      expect(restored).toEqual(original as never);
+    }
+  });
+
+  it("showSection unwraps a lazy-outer hidden section (outerLazy branch)", () => {
+    // Data shape: lazy(multivariate(never(section))) — the multivariate lives
+    // inside the lazy shell rather than outside. showSection's outerLazy branch
+    // handles this by peering into raw.section before reading variants.
+    const lazyOuter = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: {
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          {
+            value: { __resolveType: "site/sections/Hero.tsx", title: "Inner" },
+            rule: { __resolveType: "website/matchers/never.ts" },
+          },
+        ],
+      },
+    };
+    expect(showSection(lazyOuter as never)).toEqual({
+      __resolveType: "site/sections/Hero.tsx",
+      title: "Inner",
+    });
+  });
+
+  it("showSection returns null when the section is not hidden (no never rule)", () => {
+    expect(
+      showSection({ __resolveType: "site/sections/Hero.tsx" } as never),
+    ).toBeNull();
+  });
+
+  it("showSection returns null when the variant rule is not a never matcher", () => {
+    expect(
+      showSection({
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          {
+            value: { __resolveType: "site/sections/Hero.tsx" },
+            rule: { __resolveType: "website/matchers/always.ts" },
+          },
+        ],
+      } as never),
+    ).toBeNull();
+  });
+
+  it("showSection returns null when there are no variants", () => {
+    expect(
+      showSection({
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [],
+      } as never),
+    ).toBeNull();
   });
 });

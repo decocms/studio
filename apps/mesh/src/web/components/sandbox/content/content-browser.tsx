@@ -1,16 +1,22 @@
 import { Suspense, lazy, useState } from "react";
 import {
   AlertCircle,
+  BookOpen01,
+  Code01,
   Copy01,
   DotsHorizontal,
   Edit01,
+  File02,
   Flag01,
   Globe02,
   LayoutAlt01,
   Loading01,
   Plus,
   SearchLg,
+  Tag01,
+  CreditCardSearch,
   Trash01,
+  Users01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -64,20 +70,15 @@ import {
   getPageVariantSectionsAt,
 } from "@/web/components/sections-editor/page-variants";
 import type { SectionCatalogEntry } from "@/web/components/sections-editor/section-catalog";
-import { useNavigate } from "@tanstack/react-router";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
   sandboxUserStop,
-  useIsSandboxStartPending,
   useSandboxStart,
   type SandboxStartArgs,
 } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { SandboxStateCard } from "@/web/components/sandbox/preview/state-card";
 import { derivePhaseProgress } from "@/web/components/sandbox/preview/derive-phase-progress";
-import {
-  computePreviewState,
-  type LifecycleFailure,
-} from "@/web/components/sandbox/preview/preview-state";
+import { computePreviewState } from "@/web/components/sandbox/preview/preview-state";
 import {
   buildDuplicatePage,
   buildEmptyPage,
@@ -88,10 +89,41 @@ import {
 } from "./content-mutations";
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
+import {
+  type BlogEntry,
+  type BlogKind,
+  BLOG_KINDS,
+  BLOG_SINGULAR,
+  buildBlogBlock,
+  emptyBlogPayload,
+  generateBlogKey,
+  getBlogPayload,
+  isBlogKind,
+  scanBlogEntries,
+} from "./blog/blog-data";
+import {
+  useDeleteBlogBlock,
+  useSaveBlogBlock,
+} from "./blog/use-blog-mutations";
+import { PageJsonDialog } from "@/web/components/sections-editor/page-json-dialog";
+
+const PostEditor = lazy(() =>
+  import("./blog/post-editor").then((m) => ({ default: m.PostEditor })),
+);
+
+const RecordEditor = lazy(() =>
+  import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
+);
 
 const SectionsEditor = lazy(() =>
   import("@/web/components/sections-editor/sections-editor").then((m) => ({
     default: m.SectionsEditor,
+  })),
+);
+
+const SeoEditor = lazy(() =>
+  import("@/web/components/sections-editor/seo-editor").then((m) => ({
+    default: m.SeoEditor,
   })),
 );
 
@@ -103,11 +135,12 @@ const AddSectionModal = lazy(() =>
 
 const VARIANT_GREEN = "oklch(0.65 0.15 160)";
 
-type CollectionId = "pages" | "sections";
+type CollectionId = "pages" | "sections" | "seo" | BlogKind;
 
 type Selection =
   | { collection: "pages"; key: string; path: string }
   | { collection: "sections"; key: string }
+  | { collection: BlogKind; key: string }
   | null;
 
 type PageDialogState = {
@@ -120,6 +153,7 @@ type PageDialogState = {
 type DeleteTarget =
   | { kind: "page"; key: string; label: string }
   | { kind: "section"; key: string; label: string }
+  | { kind: "blog"; blogKind: BlogKind; key: string; label: string }
   | null;
 
 export function ContentBrowser() {
@@ -142,7 +176,6 @@ export function ContentBrowser() {
   const previewUrl = vmEntry?.previewUrl ?? null;
 
   const vmEvents = useSandboxEvents();
-  const lifecyclePhase = vmEvents.lifecycle.phase;
 
   const mcpClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -150,11 +183,6 @@ export function ContentBrowser() {
     orgSlug: org.slug,
   });
   const startVm = useSandboxStart(mcpClient);
-  const vmStartPending = useIsSandboxStartPending(
-    virtualMcpId ?? undefined,
-    branch ?? undefined,
-  );
-  const navigate = useNavigate();
 
   const triggerStart = () => {
     if (!virtualMcpId) return;
@@ -164,66 +192,25 @@ export function ContentBrowser() {
   };
 
   // Mirror Preview's state machine so both tabs agree on what the
-  // sandbox is doing. Without this Content would always show
-  // "never-started" even when the sandbox is suspended/crashed/errored.
-  const lifecycleFailure: LifecycleFailure | null =
-    lifecyclePhase === "start-failed" ||
-    lifecyclePhase === "install-failed" ||
-    lifecyclePhase === "clone-failed"
-      ? lifecyclePhase
-      : null;
-  const lifecycleFailureError =
-    lifecycleFailure && "error" in vmEvents.lifecycle
-      ? (vmEvents.lifecycle.error ?? null)
-      : null;
-  const upstreamStatus =
-    lifecyclePhase === "running"
-      ? "online"
-      : lifecyclePhase === "crashed"
-        ? "offline"
-        : "booting";
+  // sandbox is doing. Without this Content would always show "starting"
+  // even when the sandbox is suspended.
   const userStopped =
     !!virtualMcpId &&
     !!branch &&
     sandboxUserStop.isStopped(virtualMcpId, branch);
   const sandboxState = computePreviewState({
     previewUrl,
-    status: upstreamStatus,
-    // Content doesn't render an iframe, so the iframe/no-html branches
-    // are dead. Pass `true` to short-circuit them to "iframe" (= ready).
-    htmlSupport: true,
-    suspended: vmEvents.suspended,
     appPaused: vmEvents.status.state === "paused",
-    vmStartPending,
-    lastStartError: startVm.error?.message ?? null,
-    lifecycleFailure,
-    lifecycleFailureError,
-    claimPhase: vmEvents.phase,
-    notFound: vmEvents.notFound,
     userStopped,
   });
 
-  // Send the user to Preview for terminal/file inspection — Content has
-  // neither surface, so the dev-script-failed / crashed buttons would be
-  // dead ends here.
-  const openPreview = () =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({ ...prev, main: "preview" }),
-      replace: true,
-    });
-
-  // `no-html` can't happen here — htmlSupport is hard-coded to true so
-  // computePreviewState routes "dev server is up" to `iframe`. Keep both
-  // in the guard so TS narrows correctly.
-  if (sandboxState.kind !== "iframe" && sandboxState.kind !== "no-html") {
+  if (sandboxState.kind !== "iframe") {
     return (
       <SandboxStateRenderer
         state={sandboxState}
         claimPhase={vmEvents.phase}
         lifecycle={vmEvents.lifecycle}
         onStart={triggerStart}
-        onOpenPreview={openPreview}
       />
     );
   }
@@ -260,10 +247,14 @@ function ContentBrowserReady({
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
+  const saveBlogBlock = useSaveBlogBlock(fetchParams);
+  const deleteBlogBlock = useDeleteBlogBlock(fetchParams);
 
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
   const [selection, setSelection] = useState<Selection>(null);
+  // Page that should open with the inline SEO form in SectionsEditor.
+  const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   // Reset search when switching collections (derived-state sync pattern)
   const [prevCollection, setPrevCollection] = useState(activeCollection);
@@ -278,6 +269,7 @@ function ContentBrowserReady({
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
+  const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
 
   if (decofileLoading || metaLoading) {
     return (
@@ -295,8 +287,13 @@ function ContentBrowserReady({
     a.name.localeCompare(b.name),
   );
   const globalSections = extractGlobalSections(decofile, meta);
+  const allBlogEntries = scanBlogEntries(decofile);
+  const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
+  const blogEntries = isBlogKind(activeCollection)
+    ? allBlogEntries[activeCollection]
+    : [];
 
-  if (pages.length === 0 && globalSections.length === 0) {
+  if (pages.length === 0 && globalSections.length === 0 && !showBlog) {
     return (
       <EmptyMessage
         icon={AlertCircle}
@@ -306,9 +303,15 @@ function ContentBrowserReady({
     );
   }
 
-  const counts: Record<CollectionId, number> = {
+  const counts: Record<
+    "pages" | "sections" | "posts" | "authors" | "categories",
+    number
+  > = {
     pages: pages.length,
     sections: globalSections.length,
+    posts: allBlogEntries.posts.length,
+    authors: allBlogEntries.authors.length,
+    categories: allBlogEntries.categories.length,
   };
   const takenPaths = new Set(pages.map((p) => normalizePagePath(p.path)));
   const takenPageNames = new Set(pages.map((p) => p.name));
@@ -505,21 +508,55 @@ function ContentBrowserReady({
     }
   };
 
+  // ------------------ Blog CRUD ------------------
+  const handleCreateBlog = async (kind: BlogKind) => {
+    const key = generateBlogKey(decofile, kind);
+    const data = buildBlogBlock(key, kind, emptyBlogPayload(kind));
+    try {
+      await saveBlogBlock.mutateAsync({ blockKey: key, data });
+      toast.success(`Created ${BLOG_SINGULAR[kind]}`);
+      setSelection({ collection: kind, key });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create");
+    }
+  };
+
+  const handleDuplicateBlog = async (entry: BlogEntry) => {
+    const source = decofile[entry.key] as Record<string, unknown> | undefined;
+    if (!source) {
+      toast.error("Record not found.");
+      return;
+    }
+    const key = generateBlogKey(decofile, entry.kind);
+    const labelKey = entry.kind === "posts" ? "title" : "name";
+    const payload = {
+      ...structuredClone(getBlogPayload(source, entry.kind)),
+      [labelKey]: `${entry.label} (copy)`,
+    };
+    try {
+      await saveBlogBlock.mutateAsync({
+        blockKey: key,
+        data: buildBlogBlock(key, entry.kind, payload),
+      });
+      toast.success(`Duplicated "${entry.label}"`);
+      setSelection({ collection: entry.kind, key });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Duplicate failed");
+    }
+  };
+
   // ------------------ Delete ------------------
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     const { kind, key, label } = deleteTarget;
     try {
-      await deleteBlock.mutateAsync({ blockKey: key });
+      if (kind === "blog") {
+        await deleteBlogBlock.mutateAsync({ blockKey: key });
+      } else {
+        await deleteBlock.mutateAsync({ blockKey: key });
+      }
       toast.success(`Deleted "${label}"`);
-      if (kind === "page") {
-        if (selection?.collection === "pages" && selection.key === key) {
-          setSelection(null);
-        }
-      } else if (
-        selection?.collection === "sections" &&
-        selection.key === key
-      ) {
+      if (selection && selection.key === key) {
         setSelection(null);
       }
       setDeleteTarget(null);
@@ -529,95 +566,165 @@ function ContentBrowserReady({
   };
 
   // ------------------ Render ------------------
+  const isDeleting = deleteBlock.isPending || deleteBlogBlock.isPending;
+  const deleteNoun =
+    deleteTarget?.kind === "blog"
+      ? BLOG_SINGULAR[deleteTarget.blogKind]
+      : (deleteTarget?.kind ?? "item");
   return (
     <div className="flex h-full w-full">
       <CollectionsSidebar
         active={activeCollection}
         counts={counts}
+        showBlog={showBlog}
         onSelect={(id) => {
           setActiveCollection(id);
           setSelection(null);
+          setOpenPageSeoKey(null);
         }}
       />
-      <ItemList
-        activeCollection={activeCollection}
-        pages={pages}
-        sections={globalSections}
-        decofile={decofile}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        selection={selection}
-        onSelect={setSelection}
-        previewUrl={previewUrl}
-        onCreate={() => {
-          if (activeCollection === "pages") {
-            openCreatePage();
-          } else if (!previewUrl) {
-            toast.error("Start the preview dev server to add sections.");
-          } else {
-            setAddSectionOpen(true);
-          }
-        }}
-        onDuplicatePage={openDuplicatePage}
-        onRenamePage={openRenamePage}
-        onAddPageVariant={handleAddPageVariant}
-        onDeletePage={(page) =>
-          setDeleteTarget({ kind: "page", key: page.key, label: page.name })
-        }
-        onDuplicateSection={handleDuplicateSection}
-        onRenameSection={(s) => setRenameSectionKey(s.key)}
-        onDeleteSection={(s) =>
-          setDeleteTarget({ kind: "section", key: s.key, label: s.name })
-        }
-      />
-      <div className="flex-1 min-w-0">
-        {selection ? (
-          <Suspense
-            fallback={
-              <div className="h-full flex items-center justify-center">
-                <Loading01
-                  size={20}
-                  className="animate-spin text-muted-foreground"
-                />
-              </div>
+      {activeCollection !== "seo" && (
+        <ItemList
+          activeCollection={activeCollection}
+          pages={pages}
+          sections={globalSections}
+          blogEntries={blogEntries}
+          decofile={decofile}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          selection={selection}
+          onSelect={(next) => {
+            setSelection(next);
+            setOpenPageSeoKey(null);
+          }}
+          previewUrl={previewUrl}
+          onCreate={() => {
+            if (activeCollection === "pages") {
+              openCreatePage();
+            } else if (isBlogKind(activeCollection)) {
+              void handleCreateBlog(activeCollection);
+            } else if (!previewUrl) {
+              toast.error("Start the preview dev server to add sections.");
+            } else {
+              setAddSectionOpen(true);
             }
-          >
-            <SectionsEditor
-              key={
-                selection.collection === "pages"
-                  ? `page:${selection.key}`
-                  : `section:${selection.key}`
-              }
+          }}
+          onDuplicatePage={openDuplicatePage}
+          onRenamePage={openRenamePage}
+          onAddPageVariant={handleAddPageVariant}
+          onDeletePage={(page) =>
+            setDeleteTarget({ kind: "page", key: page.key, label: page.name })
+          }
+          onEditPageSeo={(page) => {
+            setSelection({
+              collection: "pages",
+              key: page.key,
+              path: page.path,
+            });
+            setOpenPageSeoKey(page.key);
+          }}
+          onViewPageJson={(page) => setJsonPageKey(page.key)}
+          onDuplicateSection={handleDuplicateSection}
+          onRenameSection={(s) => setRenameSectionKey(s.key)}
+          onDeleteSection={(s) =>
+            setDeleteTarget({ kind: "section", key: s.key, label: s.name })
+          }
+          onDuplicateBlog={handleDuplicateBlog}
+          onDeleteBlog={(e) =>
+            setDeleteTarget({
+              kind: "blog",
+              blogKind: e.kind,
+              key: e.key,
+              label: e.label,
+            })
+          }
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <Suspense
+          fallback={
+            <div className="h-full flex items-center justify-center">
+              <Loading01
+                size={20}
+                className="animate-spin text-muted-foreground"
+              />
+            </div>
+          }
+        >
+          {activeCollection === "seo" ? (
+            <SeoEditor
               orgSlug={orgSlug}
               virtualMcpId={virtualMcpId}
               branch={branch}
-              previewReady
-              previewUrl={previewUrl ?? undefined}
-              currentPath={
-                selection.collection === "pages" ? selection.path : "/"
-              }
-              activePageBlockKey={
-                selection.collection === "pages" ? selection.key : null
-              }
-              activeGlobalBlockKey={
-                selection.collection === "sections" ? selection.key : null
-              }
+              decofile={decofile}
+              meta={meta}
+              target={{ kind: "site" }}
+              previewBaseUrl={previewUrl}
             />
-          </Suspense>
-        ) : (
-          <EmptyMessage
-            title={
-              activeCollection === "pages"
-                ? "Select a page to edit"
-                : "Select a section to edit"
-            }
-            description={
-              activeCollection === "pages"
-                ? 'Pick a page from the list, or click "+ New" to create one.'
-                : 'Pick a section from the list, or click "+ New" to create one.'
-            }
-          />
-        )}
+          ) : selection ? (
+            selection.collection === "posts" ? (
+              <PostEditor
+                key={`post:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+                decofile={decofile}
+                meta={meta}
+              />
+            ) : selection.collection === "authors" ||
+              selection.collection === "categories" ? (
+              <RecordEditor
+                key={`${selection.collection}:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                kind={selection.collection}
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+              />
+            ) : (
+              <SectionsEditor
+                key={
+                  selection.collection === "pages"
+                    ? `page:${selection.key}`
+                    : `section:${selection.key}`
+                }
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                previewReady
+                previewUrl={previewUrl ?? undefined}
+                currentPath={
+                  selection.collection === "pages" ? selection.path : "/"
+                }
+                activePageBlockKey={
+                  selection.collection === "pages" ? selection.key : null
+                }
+                activeGlobalBlockKey={
+                  selection.collection === "sections" ? selection.key : null
+                }
+                initialEditSeo={
+                  selection.collection === "pages" &&
+                  openPageSeoKey === selection.key
+                }
+                onExitSeo={() => setOpenPageSeoKey(null)}
+              />
+            )
+          ) : (
+            <EmptyMessage
+              title={`Select ${
+                isBlogKind(activeCollection)
+                  ? `a ${BLOG_SINGULAR[activeCollection]}`
+                  : activeCollection === "pages"
+                    ? "a page"
+                    : "a section"
+              } to edit`}
+              description='Pick an item from the list, or click "+" to create one.'
+            />
+          )}
+        </Suspense>
       </div>
 
       {/* Page create/duplicate/rename dialog */}
@@ -671,39 +778,47 @@ function ContentBrowserReady({
         </Suspense>
       )}
 
+      {/* Page JSON dialog */}
+      {jsonPageKey && (
+        <PageJsonDialog
+          open={!!jsonPageKey}
+          onOpenChange={(open) => {
+            if (!open) setJsonPageKey(null);
+          }}
+          pageKey={jsonPageKey}
+          decofile={decofile}
+        />
+      )}
+
       {/* Delete confirmation */}
       <AlertDialog
         open={!!deleteTarget}
         onOpenChange={(next) => {
-          if (!next && !deleteBlock.isPending) setDeleteTarget(null);
+          if (!next && !isDeleting) setDeleteTarget(null);
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {deleteTarget?.kind === "page" ? "page" : "section"}?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Delete {deleteNoun}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget?.kind === "page"
-                ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
-                : deleteTarget?.kind === "section"
-                  ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
+              {deleteTarget?.kind === "section"
+                ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
+                : deleteTarget
+                  ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
                   : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteBlock.isPending}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
                 void confirmDelete();
               }}
-              disabled={deleteBlock.isPending}
+              disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleteBlock.isPending ? (
+              {isDeleting ? (
                 <>
                   <Loading01 size={14} className="animate-spin" />
                   Deleting…
@@ -722,10 +837,15 @@ function ContentBrowserReady({
 function CollectionsSidebar({
   active,
   counts,
+  showBlog,
   onSelect,
 }: {
   active: CollectionId;
-  counts: Record<CollectionId, number>;
+  counts: Record<
+    "pages" | "sections" | "posts" | "authors" | "categories",
+    number
+  >;
+  showBlog: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
   return (
@@ -750,6 +870,45 @@ function CollectionsSidebar({
           active={active === "sections"}
           onSelect={onSelect}
         />
+        {showBlog && (
+          <>
+            <div className="mt-3 flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70">
+              <BookOpen01 size={13} className="shrink-0" />
+              Blog
+            </div>
+            <CollectionRow
+              id="posts"
+              icon={File02}
+              label="Posts"
+              count={counts.posts}
+              active={active === "posts"}
+              onSelect={onSelect}
+            />
+            <CollectionRow
+              id="authors"
+              icon={Users01}
+              label="Authors"
+              count={counts.authors}
+              active={active === "authors"}
+              onSelect={onSelect}
+            />
+            <CollectionRow
+              id="categories"
+              icon={Tag01}
+              label="Categories"
+              count={counts.categories}
+              active={active === "categories"}
+              onSelect={onSelect}
+            />
+          </>
+        )}
+        <CollectionRow
+          id="seo"
+          icon={CreditCardSearch}
+          label="SEO"
+          active={active === "seo"}
+          onSelect={onSelect}
+        />
       </nav>
     </div>
   );
@@ -766,7 +925,7 @@ function CollectionRow({
   id: CollectionId;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   label: string;
-  count: number;
+  count?: number;
   active: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
@@ -783,14 +942,16 @@ function CollectionRow({
     >
       <Icon size={16} className="shrink-0" />
       <span className="flex-1 truncate">{label}</span>
-      <span
-        className={cn(
-          "shrink-0 text-xs tabular-nums",
-          active ? "text-accent-foreground/70" : "text-muted-foreground/70",
-        )}
-      >
-        {count}
-      </span>
+      {count !== undefined && (
+        <span
+          className={cn(
+            "shrink-0 text-xs tabular-nums",
+            active ? "text-accent-foreground/70" : "text-muted-foreground/70",
+          )}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }
@@ -799,6 +960,7 @@ function ItemList({
   activeCollection,
   pages,
   sections,
+  blogEntries,
   decofile,
   previewUrl,
   searchQuery,
@@ -810,13 +972,18 @@ function ItemList({
   onRenamePage,
   onAddPageVariant,
   onDeletePage,
+  onEditPageSeo,
+  onViewPageJson,
   onDuplicateSection,
   onRenameSection,
   onDeleteSection,
+  onDuplicateBlog,
+  onDeleteBlog,
 }: {
   activeCollection: CollectionId;
   pages: PageEntry[];
   sections: GlobalSectionEntry[];
+  blogEntries: BlogEntry[];
   decofile: Record<string, unknown>;
   previewUrl: string | null;
   searchQuery: string;
@@ -828,9 +995,13 @@ function ItemList({
   onRenamePage: (page: PageEntry) => void;
   onAddPageVariant: (page: PageEntry) => void;
   onDeletePage: (page: PageEntry) => void;
+  onEditPageSeo: (page: PageEntry) => void;
+  onViewPageJson: (page: PageEntry) => void;
   onDuplicateSection: (section: GlobalSectionEntry) => void;
   onRenameSection: (section: GlobalSectionEntry) => void;
   onDeleteSection: (section: GlobalSectionEntry) => void;
+  onDuplicateBlog: (entry: BlogEntry) => void;
+  onDeleteBlog: (entry: BlogEntry) => void;
 }) {
   const q = searchQuery.toLowerCase();
   const filteredPages = pages.filter(
@@ -846,11 +1017,19 @@ function ItemList({
       s.key.toLowerCase().includes(q) ||
       s.resolveType.toLowerCase().includes(q),
   );
+  const filteredBlog = blogEntries.filter(
+    (e) =>
+      !q ||
+      e.label.toLowerCase().includes(q) ||
+      e.subtitle.toLowerCase().includes(q),
+  );
 
-  const placeholder =
-    activeCollection === "pages" ? "Search pages…" : "Search sections…";
-  const createTooltip =
-    activeCollection === "pages" ? "Create new page" : "Create new section";
+  const placeholder = `Search ${activeCollection}…`;
+  const createTooltip = isBlogKind(activeCollection)
+    ? `Create new ${BLOG_SINGULAR[activeCollection]}`
+    : activeCollection === "pages"
+      ? "Create new page"
+      : "Create new section";
   const sectionCreateBlocked = activeCollection === "sections" && !previewUrl;
   const createDisabledReason = sectionCreateBlocked
     ? "Start the preview dev server to add sections"
@@ -892,7 +1071,9 @@ function ItemList({
           </TooltipContent>
         </Tooltip>
       </div>
-      <ScrollArea className="flex-1 min-h-0">
+      {/* Force Radix's inner `display:table` content wrapper back to block so
+          long titles truncate instead of widening the viewport. */}
+      <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="flex flex-col gap-1 p-1.5">
           {activeCollection === "pages" ? (
             filteredPages.length === 0 ? (
@@ -927,6 +1108,8 @@ function ItemList({
                         onDuplicate={() => onDuplicatePage(page)}
                         onRename={() => onRenamePage(page)}
                         onAddVariant={() => onAddPageVariant(page)}
+                        onEditSeo={() => onEditPageSeo(page)}
+                        onViewJson={() => onViewPageJson(page)}
                         onDelete={() => onDeletePage(page)}
                       />
                     }
@@ -934,36 +1117,78 @@ function ItemList({
                 );
               })
             )
-          ) : filteredSections.length === 0 ? (
+          ) : activeCollection === "sections" ? (
+            filteredSections.length === 0 ? (
+              <ListEmpty
+                hasItems={sections.length > 0}
+                emptyLabel="No saved sections yet."
+                emptyHint='Click "+" to create one, or save a section from a page.'
+              />
+            ) : (
+              filteredSections.map((section) => {
+                const isActive =
+                  selection?.collection === "sections" &&
+                  selection.key === section.key;
+                const typeLabel = section.resolveType
+                  .split("/")
+                  .pop()
+                  ?.replace(/\.tsx?$/, "");
+                return (
+                  <ItemRow
+                    key={section.key}
+                    icon={Globe02}
+                    title={section.name}
+                    subtitle={typeLabel ?? section.resolveType}
+                    active={isActive}
+                    onClick={() =>
+                      onSelect({ collection: "sections", key: section.key })
+                    }
+                    menu={
+                      <ItemActions
+                        onDuplicate={() => onDuplicateSection(section)}
+                        onRename={() => onRenameSection(section)}
+                        onDelete={() => onDeleteSection(section)}
+                      />
+                    }
+                  />
+                );
+              })
+            )
+          ) : filteredBlog.length === 0 ? (
             <ListEmpty
-              hasItems={sections.length > 0}
-              emptyLabel="No saved sections yet."
-              emptyHint='Click "+" to create one, or save a section from a page.'
+              hasItems={blogEntries.length > 0}
+              emptyLabel={`No ${activeCollection} yet.`}
+              emptyHint={`Click "+" to create your first ${
+                isBlogKind(activeCollection)
+                  ? BLOG_SINGULAR[activeCollection]
+                  : "item"
+              }.`}
             />
           ) : (
-            filteredSections.map((section) => {
+            filteredBlog.map((entry) => {
               const isActive =
-                selection?.collection === "sections" &&
-                selection.key === section.key;
-              const typeLabel = section.resolveType
-                .split("/")
-                .pop()
-                ?.replace(/\.tsx?$/, "");
+                selection?.collection === entry.kind &&
+                selection.key === entry.key;
               return (
                 <ItemRow
-                  key={section.key}
-                  icon={Globe02}
-                  title={section.name}
-                  subtitle={typeLabel ?? section.resolveType}
+                  key={entry.key}
+                  icon={
+                    entry.kind === "posts"
+                      ? File02
+                      : entry.kind === "authors"
+                        ? Users01
+                        : Tag01
+                  }
+                  title={entry.label}
+                  subtitle={entry.subtitle}
                   active={isActive}
                   onClick={() =>
-                    onSelect({ collection: "sections", key: section.key })
+                    onSelect({ collection: entry.kind, key: entry.key })
                   }
                   menu={
                     <ItemActions
-                      onDuplicate={() => onDuplicateSection(section)}
-                      onRename={() => onRenameSection(section)}
-                      onDelete={() => onDeleteSection(section)}
+                      onDuplicate={() => onDuplicateBlog(entry)}
+                      onDelete={() => onDeleteBlog(entry)}
                     />
                   }
                 />
@@ -1000,7 +1225,7 @@ function ItemRow({
   return (
     <div
       className={cn(
-        "group relative flex items-center rounded-md transition-colors",
+        "group relative flex min-w-0 items-center rounded-md transition-colors",
         active ? "bg-accent text-accent-foreground" : "hover:bg-muted",
       )}
     >
@@ -1061,11 +1286,15 @@ function ItemActions({
   onDuplicate,
   onRename,
   onAddVariant,
+  onEditSeo,
+  onViewJson,
   onDelete,
 }: {
   onDuplicate: () => void;
-  onRename: () => void;
+  onRename?: () => void;
   onAddVariant?: () => void;
+  onEditSeo?: () => void;
+  onViewJson?: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -1081,10 +1310,12 @@ function ItemActions({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem onClick={onRename}>
-          <Edit01 size={14} />
-          Rename
-        </DropdownMenuItem>
+        {onRename && (
+          <DropdownMenuItem onClick={onRename}>
+            <Edit01 size={14} />
+            Rename
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={onDuplicate}>
           <Copy01 size={14} />
           Duplicate
@@ -1100,6 +1331,23 @@ function ItemActions({
               <Flag01 size={14} style={{ color: VARIANT_GREEN }} />
               Add variant
             </DropdownMenuItem>
+          </>
+        )}
+        {(onEditSeo || onViewJson) && (
+          <>
+            <DropdownMenuSeparator />
+            {onEditSeo && (
+              <DropdownMenuItem onClick={onEditSeo}>
+                <CreditCardSearch size={14} />
+                Edit SEO
+              </DropdownMenuItem>
+            )}
+            {onViewJson && (
+              <DropdownMenuItem onClick={onViewJson}>
+                <Code01 size={14} />
+                View JSON
+              </DropdownMenuItem>
+            )}
           </>
         )}
         <DropdownMenuSeparator />
@@ -1141,70 +1389,32 @@ function ListEmpty({
 /**
  * Renders the SandboxStateCard variant that matches the current
  * sandbox state. Mirrors Preview's switch so Content shows the same
- * "Sandbox is paused" / "Sandbox crashed" / etc. cards instead of
- * always falling back to "never-started".
- *
- * For card actions that don't make sense in Content (View logs,
- * Browse files), we redirect the user to the Preview tab — Content
- * has no terminal or file explorer of its own.
+ * "Starting your sandbox" / "Sandbox is paused" cards. The daemon's
+ * HTTP proxy serves every other "not live" case as auto-reloading
+ * HTML through the iframe, so Content only needs these two overlays.
  */
 function SandboxStateRenderer({
   state,
   claimPhase,
   lifecycle,
   onStart,
-  onOpenPreview,
 }: {
-  state: Exclude<
-    ReturnType<typeof computePreviewState>,
-    { kind: "iframe" } | { kind: "no-html" }
-  >;
+  state: { kind: "starting" } | { kind: "suspended" };
   claimPhase: ReturnType<typeof useSandboxEvents>["phase"];
   lifecycle: ReturnType<typeof useSandboxEvents>["lifecycle"];
   onStart: () => void;
-  onOpenPreview: () => void;
 }) {
-  const progress = derivePhaseProgress({ claimPhase, lifecycle });
-
   switch (state.kind) {
-    case "never-started":
-      return <SandboxStateCard kind="never-started" onStart={onStart} />;
-    case "starting-now":
+    case "starting":
       return (
         <SandboxStateCard
-          kind="starting-now"
-          progress={progress}
+          kind="starting"
+          progress={derivePhaseProgress({ claimPhase, lifecycle })}
           claimPhase={claimPhase}
         />
       );
     case "suspended":
       return <SandboxStateCard kind="suspended" onResume={onStart} />;
-    case "crashed":
-      return <SandboxStateCard kind="crashed" onOpenTerminal={onOpenPreview} />;
-    case "errored":
-      return (
-        <SandboxStateCard
-          kind="errored"
-          progress={progress}
-          logSource="setup"
-          errorLine={state.error.split("\n")[0] ?? "Failed to start"}
-          onRetry={onStart}
-          drawerOpen
-        />
-      );
-    case "dev-script-failed":
-      return (
-        <SandboxStateCard
-          kind="dev-script-failed"
-          progress={progress}
-          logSource={state.failure === "start-failed" ? "dev" : "setup"}
-          errorLine={state.error.split("\n")[0] ?? "Dev script exited"}
-          onRetry={onStart}
-          onOpenTerminal={onOpenPreview}
-          onBrowseFiles={onOpenPreview}
-          drawerOpen
-        />
-      );
   }
 }
 

@@ -9,11 +9,11 @@ import { describe, expect, it, vi } from "bun:test";
 import { z } from "zod";
 import { AccessControl } from "./access-control";
 import { defineTool } from "./define-tool";
-import type { MeshContext } from "./mesh-context";
+import type { StudioContext } from "./studio-context";
 import type { EventBus } from "../event-bus/interface";
 
-// Mock MeshContext
-const createMockContext = (): MeshContext => ({
+// Mock StudioContext
+const createMockContext = (): StudioContext => ({
   timings: {
     measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
   },
@@ -63,6 +63,8 @@ const createMockContext = (): MeshContext => ({
     registry: null as never,
     brandContext: null as never,
     organizationDomains: null as never,
+    kv: null as never,
+    interests: null as never,
   },
   vault: null as never,
   authInstance: null as never,

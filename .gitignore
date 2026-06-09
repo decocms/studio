@@ -85,9 +85,8 @@ apps/mesh/screenshots/
 # so we can un-ignore specific subdirs below — git won't traverse into an
 # ignored directory.
 /docs/*
-# Hand-written specs/plans (superpowers brainstorming + writing-plans output)
-# are first-class engineering artifacts and should be tracked.
-!/docs/superpowers/
+# Superpowers workspace artifacts (brainstorming + writing-plans output)
+# are kept local to the working tree, not committed.
 
 # Local dev data directory
 .deco

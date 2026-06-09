@@ -138,7 +138,7 @@ Critique this implementation plan from the ARCHITECTURE perspective.
 **Your role:** Assess fit with existing patterns, dependencies, and layering.
 
 **Check:**
-- Does it follow project conventions (e.g., defineTool, MeshContext)?
+- Does it follow project conventions (e.g., defineTool, StudioContext)?
 - Are dependencies on the right layers (no direct DB in tools)?
 - Does it integrate with existing systems correctly?
 - New dependencies justified?
@@ -175,3 +175,4 @@ Critique this implementation plan from the SCOPE perspective.
 - Recommendations
 - Verdict: Ready / Needs changes / High risk
 ```
+

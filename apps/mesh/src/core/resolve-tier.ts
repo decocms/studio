@@ -1,4 +1,4 @@
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import type { SimpleModeTier } from "@/tools/organization/schema";
 import {
   pickSimpleModeDefaults,
@@ -33,7 +33,7 @@ export interface ResolvedTier {
 const METADATA_FETCH_TIMEOUT_MS = 5_000;
 
 async function fetchModelList(
-  ctx: MeshContext,
+  ctx: StudioContext,
   keyId: string,
   orgId: string,
 ): Promise<AiProviderModel[]> {
@@ -89,7 +89,7 @@ function metaFromCatalogEntry(
 }
 
 export async function resolveTier(
-  ctx: MeshContext,
+  ctx: StudioContext,
   tier: SimpleModeTier,
 ): Promise<ResolvedTier> {
   const orgId = ctx.organization?.id;
@@ -153,7 +153,7 @@ export async function resolveTier(
 }
 
 export async function tryResolveTier(
-  ctx: MeshContext,
+  ctx: StudioContext,
   tier: SimpleModeTier,
 ): Promise<ResolvedTier | null> {
   try {

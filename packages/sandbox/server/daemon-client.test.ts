@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import {
-  daemonBash,
-  probeDaemonHealth,
-  proxyDaemonRequest,
-} from "./daemon-client";
+import { probeDaemonHealth, proxyDaemonRequest } from "./daemon-client";
 
 type FetchCall = {
   input: string;
@@ -94,115 +90,6 @@ describe("probeDaemonHealth", () => {
         }),
     );
     expect(await probeDaemonHealth("http://daemon:9000")).toBeNull();
-  });
-});
-
-describe("daemonBash", () => {
-  it("sends POST to {daemonUrl}/_sandbox/bash with auth and JSON body", async () => {
-    const { calls } = installFetch(
-      () =>
-        new Response(
-          JSON.stringify({
-            stdout: "hi",
-            stderr: "",
-            exitCode: 0,
-            timedOut: false,
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-    );
-
-    await daemonBash("http://daemon:9000", "tok-123", {
-      command: "echo hi",
-      cwd: "/work",
-      env: { A: "1" },
-    });
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.input).toBe("http://daemon:9000/_sandbox/bash");
-    expect(calls[0]!.init.method).toBe("POST");
-
-    const headers = new Headers(calls[0]!.init.headers as HeadersInit);
-    expect(headers.get("authorization")).toBe("Bearer tok-123");
-    expect(headers.get("content-type")).toBe("application/json");
-
-    const body = JSON.parse(String(calls[0]!.init.body));
-    expect(body.command).toBe("echo hi");
-    expect(body.cwd).toBe("/work");
-    expect(body.env).toEqual({ A: "1" });
-    expect(typeof body.timeout).toBe("number");
-  });
-
-  it("parses { stdout, stderr, exitCode, timedOut } on 200", async () => {
-    installFetch(
-      () =>
-        new Response(
-          JSON.stringify({
-            stdout: "out",
-            stderr: "err",
-            exitCode: 2,
-            timedOut: true,
-          }),
-          { status: 200 },
-        ),
-    );
-
-    const out = await daemonBash("http://d", "t", { command: "x" });
-    expect(out).toEqual({
-      stdout: "out",
-      stderr: "err",
-      exitCode: 2,
-      timedOut: true,
-    });
-  });
-
-  it("throws an Error containing status code when response not ok", async () => {
-    installFetch(() => new Response("nope", { status: 502 }));
-
-    await expect(daemonBash("http://d", "t", { command: "x" })).rejects.toThrow(
-      /502/,
-    );
-  });
-
-  it("uses default 60_000ms timeout when input.timeoutMs not provided", async () => {
-    const { calls } = installFetch(
-      () =>
-        new Response(JSON.stringify({ stdout: "", stderr: "", exitCode: 0 }), {
-          status: 200,
-        }),
-    );
-    await daemonBash("http://d", "t", { command: "x" });
-    const body = JSON.parse(String(calls[0]!.init.body));
-    expect(body.timeout).toBe(60_000);
-    // AbortSignal must be present too (timeoutMs + 5_000 wired via AbortSignal.timeout).
-    expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it("uses provided timeoutMs in body and passes an AbortSignal", async () => {
-    const { calls } = installFetch(
-      () =>
-        new Response(JSON.stringify({ stdout: "", stderr: "", exitCode: 0 }), {
-          status: 200,
-        }),
-    );
-    await daemonBash("http://d", "t", { command: "x", timeoutMs: 12_000 });
-    const body = JSON.parse(String(calls[0]!.init.body));
-    expect(body.timeout).toBe(12_000);
-    // The implementation composes AbortSignal.timeout(timeoutMs + 5_000);
-    // we can't read the numeric deadline back, but we can at least confirm a
-    // signal was attached (the module is the only source of it).
-    expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it("defaults missing fields in the response (stdout/stderr='', exitCode=-1)", async () => {
-    installFetch(() => new Response(JSON.stringify({}), { status: 200 }));
-    const out = await daemonBash("http://d", "t", { command: "x" });
-    expect(out).toEqual({
-      stdout: "",
-      stderr: "",
-      exitCode: -1,
-      timedOut: false,
-    });
   });
 });
 

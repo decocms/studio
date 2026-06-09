@@ -32,12 +32,14 @@ import {
 } from "./github-pr-api.ts";
 import type { PrSummary } from "./use-pr-data.ts";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
+import { publishToBaseLabel } from "./publish-label.ts";
 import {
   countGitChanges,
   discardGitFiles,
   fetchGitDiff,
   fetchGitStatus,
   fetchSuggestCommitMessage,
+  hasLocalWorkToPush,
   hasUnpublishedWork,
   isDecoOnlyDiff,
   isSandboxUnreachable,
@@ -60,6 +62,8 @@ class PublishFlowError extends Error {
   }
 }
 
+export type PublishDialogIntent = "publish" | "open-pr";
+
 export interface PublishDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -72,6 +76,13 @@ export interface PublishDialogProps {
   owner: string;
   repo: string;
   previewUrl?: string | null;
+  /**
+   * `open-pr` — commits are already on the branch; open a PR from them.
+   * `publish` — commit/push local changes (default).
+   */
+  dialogIntent?: PublishDialogIntent;
+  /** Branch HEAD for base…head diff when `dialogIntent` is `open-pr`. */
+  headSha?: string | null;
   /** When set, the dialog commits to the branch and updates this open PR. */
   openPullRequest?: PrSummary | null;
   /** Called after commit/push or PR open/merge so the header can refresh. */
@@ -112,6 +123,8 @@ function PublishDialogBody({
   owner,
   repo,
   previewUrl,
+  dialogIntent = "publish",
+  headSha = null,
   openPullRequest = null,
   onPullRequestChanged,
   onPublished,
@@ -129,6 +142,9 @@ function PublishDialogBody({
   const startSandbox = useSandboxStart(selfClient);
 
   const commitToOpenPr = openPullRequest?.state === "open";
+  /** Header "Save changes" — commit/push only, no new PR / merge. */
+  const isSaveChangesFlow = dialogIntent === "publish";
+  const openPrFromCommits = dialogIntent === "open-pr" && !commitToOpenPr;
 
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
   const [gitDiff, setGitDiff] = useState<GitDiffResult | null>(null);
@@ -149,10 +165,16 @@ function PublishDialogBody({
   const reprovisionAttemptedRef = useRef(false);
 
   const loadGitState = async () => {
-    const [status, diff] = await Promise.all([
-      fetchGitStatus(orgSlug, virtualMcpId, branch),
-      fetchGitDiff(orgSlug, virtualMcpId, branch),
-    ]);
+    const status = await fetchGitStatus(orgSlug, virtualMcpId, branch);
+    const needsBaseDiff =
+      openPrFromCommits || (!commitToOpenPr && (status.aheadOfBase ?? 0) > 0);
+    const diffOpts = needsBaseDiff
+      ? {
+          base: baseBranch,
+          ...(headSha ? { headSha } : {}),
+        }
+      : undefined;
+    const diff = await fetchGitDiff(orgSlug, virtualMcpId, branch, diffOpts);
     setGitStatus(status);
     setGitDiff(diff);
     setPublishTitle(`Changes from ${status.current ?? branch}`);
@@ -215,6 +237,7 @@ function PublishDialogBody({
   }
 
   const githubHeadBranch = readGitHeadBranch(gitStatus) ?? branch;
+  const publishLabel = publishToBaseLabel(baseBranch);
 
   const regenerateSuggestion = () => {
     if (!gitStatus || !gitDiff) return;
@@ -236,12 +259,27 @@ function PublishDialogBody({
   const changesCount = countGitChanges(gitStatus);
   const diffCount = gitDiff ? Object.keys(gitDiff.diffs).length : changesCount;
 
-  const canSubmit = !isLoadingGitDiff && hasUnpublishedWork(gitStatus, gitDiff);
+  const hasLocalUnpublished = openPrFromCommits
+    ? hasLocalWorkToPush(gitStatus)
+    : hasUnpublishedWork(gitStatus, gitDiff);
+  const canSubmit =
+    !isLoadingGitDiff &&
+    (isSaveChangesFlow
+      ? hasLocalUnpublished
+      : hasLocalUnpublished || openPrFromCommits);
   const canPublish = canSubmit && isDecoOnlyDiff(gitDiff);
   const publishDisabledReason =
     canSubmit && !isDecoOnlyDiff(gitDiff)
       ? PUBLISH_REQUIRES_SUBMIT_TOOLTIP
       : null;
+
+  /** Push + open PR — open-pr dialog, or save dialog with commits vs base. */
+  const showSubmitForReviewButton =
+    openPrFromCommits || (!commitToOpenPr && (gitStatus?.aheadOfBase ?? 0) > 0);
+  const canSubmitForReview =
+    !isLoadingGitDiff &&
+    (showSubmitForReviewButton || hasLocalUnpublished) &&
+    (diffCount > 0 || hasLocalUnpublished);
 
   const commitMessage = () =>
     [publishTitle.trim(), publishBody.trim()].filter(Boolean).join("\n\n");
@@ -356,7 +394,8 @@ function PublishDialogBody({
         toast.error(msg, {
           action: {
             label: "View PR",
-            onClick: () => window.open(error.pr!.htmlUrl, "_blank", "noopener"),
+            onClick: () =>
+              window.open(error.pr!.htmlUrl, "_blank", "noopener,noreferrer"),
           },
         });
         await onPullRequestChanged?.();
@@ -419,6 +458,8 @@ function PublishDialogBody({
       const prBody = publishBody.trim() || undefined;
       const message = commitMessage() || prTitle;
 
+      // GitHub requires head on the remote; push even when commits are already
+      // local-only (unpushed can read 0 until origin/<branch> exists).
       await publishGitChanges(orgSlug, virtualMcpId, branch, message);
 
       const pr = await openPullRequestForBranch(githubClient, {
@@ -433,7 +474,8 @@ function PublishDialogBody({
       toast.success(`Submitted pull request #${pr.number} for review`, {
         action: {
           label: "View on GitHub",
-          onClick: () => window.open(pr.htmlUrl, "_blank", "noopener"),
+          onClick: () =>
+            window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
         },
       });
       handleOpenChange(false);
@@ -453,12 +495,20 @@ function PublishDialogBody({
         <div className="shrink-0 space-y-3 px-6 pt-5 pb-4">
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">
-              {commitToOpenPr ? "Save changes" : "Publish"}
+              {isSaveChangesFlow
+                ? "Save changes"
+                : openPrFromCommits
+                  ? "Submit for review"
+                  : publishLabel}
             </p>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-green-500" />
               {diffCount} {diffCount === 1 ? "change" : "changes"}{" "}
-              {commitToOpenPr ? "to save" : "to publish"}
+              {isSaveChangesFlow
+                ? "to save"
+                : openPrFromCommits
+                  ? "in this PR"
+                  : "to publish"}
             </div>
           </div>
           {discardAllConfirm ? (
@@ -500,7 +550,7 @@ function PublishDialogBody({
                   Changes
                 </TabsTrigger>
               </TabsList>
-              {diffCount > 0 && (
+              {diffCount > 0 && !openPrFromCommits && (
                 <button
                   type="button"
                   className="text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
@@ -527,7 +577,9 @@ function PublishDialogBody({
               <TabsContent value="description" className="mt-0 px-6 py-5">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">Commit message</p>
+                    <p className="text-sm font-medium">
+                      {openPrFromCommits ? "Pull request" : "Commit message"}
+                    </p>
                     <button
                       type="button"
                       className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
@@ -598,12 +650,13 @@ function PublishDialogBody({
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Branch: <span className="font-mono">{branch}</span>
-                    {commitToOpenPr ? (
+                    {isSaveChangesFlow ? (
                       <>
                         {" · "}
                         <span className="text-foreground/80">
-                          Commits and pushes to update open PR #
-                          {openPullRequest.number}.
+                          {commitToOpenPr
+                            ? `Commits and pushes to update open PR #${openPullRequest.number}.`
+                            : "Commits and pushes to the branch without opening a pull request."}
                         </span>
                       </>
                     ) : (
@@ -612,8 +665,8 @@ function PublishDialogBody({
                         <span className="font-mono">{baseBranch}</span>
                         {" · "}
                         <span className="text-foreground/80">
-                          Submit for review keeps changes on the branch; Publish
-                          squash-merges into {baseBranch}.
+                          Submit for review keeps changes on the branch;{" "}
+                          {publishLabel} squash-merges into {baseBranch}.
                         </span>
                       </>
                     )}
@@ -648,7 +701,7 @@ function PublishDialogBody({
         </div>
 
         <div className="shrink-0 border-t px-6 py-3">
-          {commitToOpenPr ? (
+          {isSaveChangesFlow && !showSubmitForReviewButton ? (
             <>
               <Button
                 type="button"
@@ -667,6 +720,52 @@ function PublishDialogBody({
                 </p>
               )}
             </>
+          ) : isSaveChangesFlow ? (
+            <>
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={handleSaveChanges}
+                  disabled={
+                    !canSubmit || isSavingChanges || isSubmittingForReview
+                  }
+                >
+                  {isSavingChanges ? (
+                    <Loading01 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Save changes
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1"
+                  onClick={handleSubmitForReview}
+                  disabled={
+                    !canSubmitForReview ||
+                    isSubmittingForReview ||
+                    isSavingChanges
+                  }
+                >
+                  {isSubmittingForReview ? (
+                    <Loading01 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <GitBranch01 className="h-4 w-4" />
+                  )}
+                  Submit for review
+                </Button>
+              </div>
+              {saveChangesError && (
+                <p className="mt-2 text-xs text-destructive">
+                  {saveChangesError}
+                </p>
+              )}
+              {submitForReviewError && (
+                <p className="mt-2 text-xs text-destructive">
+                  {submitForReviewError}
+                </p>
+              )}
+            </>
           ) : (
             <>
               <div className="flex items-center gap-3">
@@ -675,7 +774,9 @@ function PublishDialogBody({
                   variant="outline"
                   className="flex-1"
                   onClick={handleSubmitForReview}
-                  disabled={!canSubmit || isSubmittingForReview || isPublishing}
+                  disabled={
+                    !canSubmitForReview || isSubmittingForReview || isPublishing
+                  }
                 >
                   {isSubmittingForReview ? (
                     <Loading01 className="h-4 w-4 animate-spin" />
@@ -685,6 +786,7 @@ function PublishDialogBody({
                   Submit for review
                 </Button>
                 <PublishButton
+                  label={publishLabel}
                   canPublish={canPublish}
                   disabledReason={publishDisabledReason}
                   isPublishing={isPublishing}
@@ -709,12 +811,14 @@ function PublishDialogBody({
 }
 
 function PublishButton({
+  label,
   canPublish,
   disabledReason,
   isPublishing,
   isSubmittingForReview,
   onPublish,
 }: {
+  label: string;
   canPublish: boolean;
   disabledReason: string | null;
   isPublishing: boolean;
@@ -730,7 +834,7 @@ function PublishButton({
       disabled={!canPublish || isPublishing || isSubmittingForReview}
     >
       {isPublishing ? <Loading01 className="h-4 w-4 animate-spin" /> : null}
-      Publish
+      {label}
     </Button>
   );
 

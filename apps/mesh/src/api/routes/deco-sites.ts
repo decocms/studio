@@ -11,17 +11,18 @@
  */
 
 import { Hono } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
-import { getUserId } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
+import { getUserId, requireOrganization } from "../../core/studio-context";
 import { generatePrefixedId } from "../../shared/utils/generate-id";
 import { fetchToolsFromMCP } from "../../tools/connection/fetch-tools";
 
-type Variables = { meshContext: MeshContext };
+type Variables = { meshContext: StudioContext };
 
 interface SupabaseSite {
   name: string;
   domains: { domain: string; production: boolean }[] | null;
   thumb_url: string | null;
+  metadata: Record<string, unknown> | null;
 }
 
 async function supabaseGet<T>(
@@ -123,7 +124,7 @@ async function getOrCreateDecoApiKey(
 }
 
 const SERVICE_ACCOUNT_EMAIL_PREFIX = "deco-team-";
-const SERVICE_ACCOUNT_EMAIL_DOMAIN = "deco.cx";
+const SERVICE_ACCOUNT_EMAIL_DOMAIN = "service.deco.cx";
 
 function serviceAccountEmail(teamId: number): string {
   return `${SERVICE_ACCOUNT_EMAIL_PREFIX}${teamId}@${SERVICE_ACCOUNT_EMAIL_DOMAIN}`;
@@ -140,6 +141,27 @@ async function resolveTeamIdForSite(
     `sites?name=eq.${encodeURIComponent(siteName)}&select=team&limit=1`,
   );
   return sites[0]?.team ?? null;
+}
+
+async function resolveSupabaseAuthUserIdByEmail(
+  supabaseUrl: string,
+  serviceKey: string,
+  email: string,
+): Promise<string | null> {
+  const res = await fetch(
+    `${supabaseUrl}/auth/v1/admin/users?filter=${encodeURIComponent(`email.eq.${email}`)}`,
+    {
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+      },
+    },
+  );
+  if (!res.ok) {
+    return null;
+  }
+  const data = (await res.json()) as { users?: Array<{ id: string }> };
+  return data.users?.[0]?.id ?? null;
 }
 
 /**
@@ -164,15 +186,29 @@ async function createSupabaseAuthUser(
       app_metadata: { mesh_service_account: true },
     }),
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    console.error(
-      `[deco-sites] Auth admin create user error (${res.status}): ${text}`,
-    );
-    throw new Error(`Failed to create auth user (${res.status})`);
+  if (res.ok) {
+    const user = (await res.json()) as { id: string };
+    return user.id;
   }
-  const user = (await res.json()) as { id: string };
-  return user.id;
+
+  // Idempotent retry: a prior run may have created the auth user but failed
+  // before the profile/member rows were written.
+  if (res.status === 422 || res.status === 409) {
+    const existing = await resolveSupabaseAuthUserIdByEmail(
+      supabaseUrl,
+      serviceKey,
+      email,
+    );
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const text = await res.text().catch(() => res.statusText);
+  console.error(
+    `[deco-sites] Auth admin create user error (${res.status}): ${text}`,
+  );
+  throw new Error(`Failed to create auth user (${res.status})`);
 }
 
 /**
@@ -203,7 +239,7 @@ async function getOrCreateTeamServiceAccount(
     const existingMember = await supabaseGet<{ id: number }>(
       supabaseUrl,
       serviceKey,
-      `members?user_id=eq.${encodeURIComponent(authUserId)}&team_id=eq.${teamId}&select=id&limit=1`,
+      `members?user_id=eq.${encodeURIComponent(authUserId)}&team_id=eq.${teamId}&deleted_at=is.null&select=id&limit=1`,
     );
 
     if (!existingMember[0]?.id) {
@@ -282,7 +318,7 @@ const requireAuth = async (
   return next();
 };
 
-const ADMIN_MCP = "https://sites-admin-mcp.decocache.com/api/mcp";
+const ADMIN_MCP = "https://sites-admin-mcp.deco.site/api/mcp";
 const ADMIN_API = "https://admin.deco.cx";
 
 /**
@@ -362,7 +398,7 @@ export async function provisionDecoAssetsCredentials(
  * the user. Caller treats this as best-effort.
  */
 export async function provisionDecoAssetsFileConfig(params: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   orgId: string;
   userId: string;
   siteName: string;
@@ -475,9 +511,8 @@ export const createDecoSitesOrgRoutes = () => {
   app.get("/", async (c) => {
     const ctx = c.get("meshContext");
 
-    // FIXME(dev-only): local-auth email doesn't match a deco.cx profile — revert before shipping
-    const email = "pedrofrxncx@deco.cx";
-    if (!ctx.auth.user?.id) {
+    const email = ctx.auth.user?.email;
+    if (!email) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
@@ -511,7 +546,7 @@ export const createDecoSitesOrgRoutes = () => {
       const sites = await supabaseGet<SupabaseSite>(
         supabaseUrl,
         serviceKey,
-        `sites?team=in.(${teamIds.join(",")})&select=name,domains,thumb_url&order=id`,
+        `sites?team=in.(${teamIds.join(",")})&select=name,domains,thumb_url,metadata&order=id`,
       );
 
       return c.json({ sites });
@@ -530,42 +565,36 @@ export const createDecoSitesOrgRoutes = () => {
    */
   app.post("/connection", async (c) => {
     const ctx = c.get("meshContext");
+    const organization = requireOrganization(ctx);
 
-    // FIXME(dev-only): local-auth email doesn't match a deco.cx profile — revert before shipping
-    const email = "pedrofrxncx@deco.cx";
+    const email = ctx.auth.user?.email;
     const userId = getUserId(ctx);
-    if (!userId) {
+    if (!email || !userId) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    let body: { siteName: string; orgId: string };
+    let body: { siteName: string; orgId?: string };
     try {
       body = await c.req.json();
     } catch {
       return c.json({ error: "Invalid request body" }, 400);
     }
 
-    const { siteName, orgId } = body;
-    if (!siteName || !orgId) {
-      return c.json({ error: "siteName and orgId are required" }, 400);
+    const { siteName } = body;
+    if (!siteName) {
+      return c.json({ error: "siteName is required" }, 400);
     }
 
+    if (body.orgId && body.orgId !== organization.id) {
+      return c.json({ error: "orgId does not match organization in URL" }, 400);
+    }
+
+    const orgId = organization.id;
     const connId = generatePrefixedId("conn");
 
     // Validate siteName is a safe DNS subdomain label to prevent SSRF.
     if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(siteName)) {
       return c.json({ error: "Invalid siteName" }, 400);
-    }
-
-    const membership = await ctx.db
-      .selectFrom("member")
-      .select("member.id")
-      .where("member.userId", "=", userId)
-      .where("member.organizationId", "=", orgId)
-      .executeTakeFirst();
-
-    if (!membership) {
-      return c.json({ error: "Forbidden" }, 403);
     }
 
     const config = getSupabaseConfig();
@@ -591,7 +620,7 @@ export const createDecoSitesOrgRoutes = () => {
         return c.json({ error: "Site not found or has no team" }, 404);
       }
 
-      // Verify the user is a member of the site's team.
+      // Verify the user is a member of the site's deco.cx team.
       const decoMembership = await supabaseGet<{ id: number }>(
         supabaseUrl,
         serviceKey,

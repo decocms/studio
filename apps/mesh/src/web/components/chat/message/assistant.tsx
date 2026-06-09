@@ -24,9 +24,11 @@ import {
   BrandContextPart,
   BrandContextGetPart,
   BrandContextListPart,
+  AgentCreatePart,
+  AgentListPart,
+  ConnectionListPart,
 } from "./parts/tool-call-part/index.ts";
 import { NextActionChip } from "./next-action-chip.tsx";
-import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
 import { ThreadHtmlPreviews } from "./thread-html-previews.tsx";
 import { ThreadOutputs } from "./thread-outputs.tsx";
 import {
@@ -38,7 +40,7 @@ import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
 import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
 import { GridLoader } from "../../grid-loader.tsx";
-import { formatDuration } from "../../../lib/format-time.ts";
+import { formatDuration, toEpochMs } from "../../../lib/format-time.ts";
 
 type ThinkingStage = "planning" | "thinking";
 
@@ -221,7 +223,8 @@ function collapsedCounts(
         messages++;
       } else if (
         (type === "dynamic-tool" || type?.startsWith("tool-")) &&
-        type !== "tool-todo_write"
+        type !== "tool-todo_write" &&
+        type !== "tool-update_interests"
       ) {
         toolCalls++;
       }
@@ -314,6 +317,15 @@ function CollapsedSection({
 
 interface MessageAssistantProps {
   message: ChatMessage | null;
+  /**
+   * Top-level `created_at` of the user message that opened this turn. Used as
+   * the anchor for the live elapsed-time chronometer so the value is stable
+   * across page reload, thread switch, and SSE resume (the user row is
+   * inserted once and never re-stamped). Null when there's no preceding user
+   * message in the pair (assistant-initiated welcomes, async-research stubs),
+   * in which case the chronometer falls back to `Date.now()` at mount.
+   */
+  turnStartedAt?: string | Date | null;
   status?: "streaming" | "submitted" | "ready" | "error";
   className?: string;
   isLast: boolean;
@@ -427,6 +439,8 @@ function MessagePart({
       );
     case "tool-todo_write":
       return null;
+    case "tool-update_interests":
+      return null;
     case "tool-user_ask":
       return (
         <UserAskPart
@@ -522,6 +536,30 @@ function MessagePart({
           />
         );
       }
+      if (fallback.type === "tool-COLLECTION_VIRTUAL_MCP_CREATE") {
+        return (
+          <AgentCreatePart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (fallback.type === "tool-COLLECTION_VIRTUAL_MCP_LIST") {
+        return (
+          <AgentListPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
+      if (fallback.type === "tool-COLLECTION_CONNECTIONS_LIST") {
+        return (
+          <ConnectionListPart
+            part={fallback}
+            latency={getMeta(fallback.toolCallId)?.latencySeconds}
+          />
+        );
+      }
       if (fallback.type.startsWith("tool-")) {
         const toolCallId = (fallback as ToolUIPart).toolCallId;
         const meta = dataParts.toolMetadata.get(toolCallId);
@@ -597,6 +635,7 @@ function Container({
 
 export function MessageAssistant({
   message,
+  turnStartedAt,
   status,
   className,
   isLast = false,
@@ -607,19 +646,31 @@ export function MessageAssistant({
   const isSubmitted = status === "submitted";
   const isLoading = isStreaming || isSubmitted;
 
-  // Track when this message's generation started for the live elapsed timer
-  const [startedAt, setStartedAt] = useState<number | null>(() =>
-    isLoading ? Date.now() : null,
-  );
+  // Track when this turn started for the live elapsed-time chronometer.
+  //
+  // Anchor on the user message's top-level `created_at` (passed in via
+  // `turnStartedAt` from MessagePair). This timestamp is set once when the
+  // user row is inserted on the server and never re-stamped, so it survives
+  // page reload, thread switch, and SSE resume cleanly — the chronometer
+  // resumes counting from the real turn-start instead of restarting on
+  // remount. It's also the most semantically meaningful anchor: the chron
+  // shows how long the user has been waiting since *they* submitted.
+  //
+  // Client fallback (`Date.now()`) covers two cases:
+  //   1. The brief optimistic-submit window where the user row exists locally
+  //      but the server hasn't yet inserted it (no top-level `created_at`).
+  //   2. Assistant-only pairs (welcomes, async-research stubs) where there's
+  //      no preceding user message at all.
+  const turnEpochMs = toEpochMs(turnStartedAt);
+  const [clientFallbackStartedAt, setClientFallbackStartedAt] = useState<
+    number | null
+  >(() => (isLoading ? Date.now() : null));
   const [prevIsLoading, setPrevIsLoading] = useState(isLoading);
   if (prevIsLoading !== isLoading) {
     setPrevIsLoading(isLoading);
-    if (isLoading) {
-      setStartedAt(Date.now());
-    } else {
-      setStartedAt(null);
-    }
+    setClientFallbackStartedAt(isLoading ? Date.now() : null);
   }
+  const startedAt = turnEpochMs ?? clientFallbackStartedAt;
 
   // Handle null message or empty parts
   const hasContent = message !== null && message.parts.length > 0;
@@ -739,8 +790,6 @@ export function MessageAssistant({
       ) : (
         <EmptyAssistantState isRunInProgress={isLast && isRunInProgress} />
       )}
-      {/* Smart auto-scroll sentinel - only rendered for the last message during streaming */}
-      {isLast && isStreaming && <SmartAutoScroll parts={message?.parts} />}
     </Container>
   );
 }

@@ -46,3 +46,6 @@ docs
 .turbo
 .next
 .cache
+
+# Re-include the resilience link-daemon entrypoint (run inside the link-daemon container)
+!tests/resilience/link-daemon-entrypoint.ts

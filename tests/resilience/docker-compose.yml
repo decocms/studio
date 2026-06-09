@@ -71,6 +71,7 @@ services:
     build:
       context: ../../
       dockerfile: tests/resilience/Dockerfile.studio
+    image: deco-resilience-studio:latest
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -82,6 +83,7 @@ services:
       BETTER_AUTH_URL: http://localhost:3000
       BASE_URL: http://localhost:3000
       DECOCMS_LOCAL_MODE: "true"
+      STUDIO_SANDBOX_PROVIDER: user-desktop
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
       DATA_DIR: /app/data
     ports:
@@ -96,3 +98,24 @@ services:
       start_period: 60s
       retries: 20
     volumes: []
+
+  link-daemon:
+    # Reuse the studio image (built once by the `studio` service); only override
+    # the command to run the headless link-daemon entrypoint. Behind the `link`
+    # profile so the default `up --wait` does NOT start it — the resilience
+    # scenarios start it explicitly with the test user's freshly-minted API key.
+    image: deco-resilience-studio:latest
+    profiles: ["link"]
+    working_dir: /app
+    command: ["bun", "run", "/app/tests/resilience/link-daemon-entrypoint.ts"]
+    environment:
+      NODE_ENV: production
+      MESH_CLUSTER_URL: http://toxiproxy:3010
+      DAEMON_API_KEY: "${DAEMON_API_KEY:-}"
+      DATA_DIR: /app/data/link-daemon
+      LINK_DAEMON_PORT: "4500"
+    depends_on:
+      studio:
+        condition: service_healthy
+      toxiproxy:
+        condition: service_healthy

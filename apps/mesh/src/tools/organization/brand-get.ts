@@ -5,7 +5,7 @@ import {
   BrandListOutputSchema,
 } from "@decocms/bindings/brand";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { requireAuth } from "../../core/studio-context";
 import type { BrandContext } from "../../storage/types";
 
 function toBrandOutput(brand: BrandContext) {

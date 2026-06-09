@@ -9,7 +9,7 @@
  * validation / MCP-client creation (subagent-wrapper concerns).
  */
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import type { MeshProvider } from "@/ai-providers/types";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
@@ -43,7 +43,7 @@ import type { SubtaskParams } from "./built-in-tools/subtask";
 import type { ConnectionsBlockTool } from "./connections-block";
 
 export interface RunAgentLoopOptions {
-  ctx: MeshContext;
+  ctx: StudioContext;
   organization: OrganizationScope;
   virtualMcp: {
     id: string;
@@ -55,6 +55,8 @@ export interface RunAgentLoopOptions {
   models: ModelsConfig;
   messages: ModelMessage[];
   systemAgentInstructions?: string;
+  /** Current thread id — excluded from the user-context "history" recall. */
+  currentThreadId?: string;
   kind: "agent" | "subagent";
   stepLimit?: number;
   toolApprovalLevel?: ToolApprovalLevel;
@@ -150,6 +152,7 @@ export async function runAgentLoop(
     planMode,
     isDecopilot: opts.isDecopilot,
     agentInstructions: opts.systemAgentInstructions,
+    currentThreadId: opts.currentThreadId,
     passthroughClient: opts.passthroughClient,
     connectionsData: opts.connectionsData,
   });

@@ -18,7 +18,7 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../src/database/test-db-pg";
-import type { MeshDatabase } from "../src/database";
+import type { StudioDatabase } from "../src/database";
 import { up as up089 } from "./089-rename-remote-user-to-desktop";
 
 const USER = "user_test";
@@ -29,7 +29,7 @@ interface ConnectionRow {
 }
 
 async function getMetadata(
-  database: MeshDatabase,
+  database: StudioDatabase,
   id: string,
 ): Promise<Record<string, unknown>> {
   const row = (await sql<ConnectionRow>`
@@ -41,7 +41,7 @@ async function getMetadata(
 }
 
 async function insertVirtualConnection(
-  database: MeshDatabase,
+  database: StudioDatabase,
   id: string,
   metadata: Record<string, unknown>,
 ): Promise<void> {
@@ -59,7 +59,7 @@ async function insertVirtualConnection(
 }
 
 describe("migration 089 — rename remote-user → desktop", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();

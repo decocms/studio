@@ -16,6 +16,9 @@ node_modules/
 dist/
 build/
 
+# Local `npm pack` output (produced by build-dist / local image validation)
+decocms-*.tgz
+
 # Environment
 .env
 .env.local

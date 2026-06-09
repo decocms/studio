@@ -26,7 +26,15 @@ export interface Settings {
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
 
   // Observability
+  // HTTP URL of the ClickHouse instance holding the OTel-native `otel_logs`
+  // table. When set, the monitoring dashboard queries it (logs AND metrics are
+  // derived from those rows) instead of the local NDJSON files via DuckDB.
+  // Traces/metrics tables are not read.
   clickhouseUrl: string | undefined;
+  // Dedicated OTLP collector base URL for monitoring/audit logs. Falls back to
+  // OTEL_EXPORTER_OTLP_ENDPOINT (shared with infra logs) when unset. The "/v1/logs"
+  // signal path is appended automatically.
+  monitoringOtlpEndpoint: string | undefined;
   otelServiceName: string;
 
   // Event Bus & Networking
@@ -50,10 +58,25 @@ export interface Settings {
   s3SecretAccessKey: string | undefined;
   s3ForcePathStyle: boolean;
 
+  // Monitoring object storage (OTLP-JSON over GCS S3-compatible endpoint).
+  // When monitoringS3Bucket is set and clickhouseUrl is not, the dashboard reads
+  // OTLP-JSON log files from this bucket via embedded DuckDB + httpfs. Endpoint /
+  // region / credentials fall back to the matching s3* value when unset.
+  monitoringS3Bucket: string | undefined;
+  monitoringS3Endpoint: string | undefined;
+  monitoringS3Region: string | undefined;
+  monitoringS3AccessKeyId: string | undefined;
+  monitoringS3SecretAccessKey: string | undefined;
+  monitoringS3Prefix: string | undefined;
+  // Absolute path to the DuckDB extension directory baked into the image
+  // (contains httpfs). Required for the GCS OTLP monitoring path.
+  duckdbExtensionDirectory: string | undefined;
+
   // Runtime flags (set by CLI)
   isCli: boolean;
   noTui: boolean;
   podName: string;
+  sandboxProviderKind: "agent-sandbox" | "user-desktop";
 
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;
@@ -76,9 +99,28 @@ export interface ServiceInputs {
   home: string;
   externalDatabaseUrl: string | null;
   externalNatsUrl: string | null;
+  /**
+   * When true, skip auto-provisioning MinIO (e.g. an external S3 store is
+   * already configured via S3_* env). Defaults to provisioning MinIO.
+   */
+  skipMinio?: boolean;
 }
 
 export interface ServiceOutputs {
   databaseUrl: string;
   natsUrls: string[];
+  /**
+   * S3 object-storage config for the managed/external store, if any. Null when
+   * object storage is not configured (no managed MinIO, no external S3 env).
+   * Threaded into the frozen Settings so the in-process serve path resolves the
+   * real S3Service; also mirrored into process.env for spawned child servers.
+   */
+  s3: {
+    endpoint: string;
+    bucket: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    /** true for managed MinIO; reflects operator's S3_FORCE_PATH_STYLE for external S3. */
+    forcePathStyle: boolean;
+  } | null;
 }

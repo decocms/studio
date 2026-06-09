@@ -55,6 +55,100 @@ export async function writeTestNDJSON(
   });
 }
 
+/** OTLP AnyValue JSON forms (protojson): int64 is string-encoded. */
+type OtlpValue =
+  | { stringValue: string }
+  | { boolValue: boolean }
+  | { intValue: string }
+  | { doubleValue: number };
+
+/**
+ * Build a single OTLP-JSON logRecord (the shape inside
+ * resourceLogs[].scopeLogs[].logRecords[]) from a partial MonitoringRow.
+ * Mirrors makeTestMonitoringRow defaults so OTLP and NDJSON fixtures align.
+ *
+ * Attribute value types match what Studio actually emits (see emit.ts): most
+ * are `stringValue`, but `is_error` is a `boolValue` and `duration_ms` is an
+ * `intValue`/`doubleValue` — so the flat-source `coalesce(...)` over the typed
+ * AnyValue fields is exercised, not just the string path.
+ */
+export function makeTestOtlpLogRecord(row: Partial<MonitoringRow> = {}): {
+  timeUnixNano: string;
+  spanId: string;
+  attributes: Array<{ key: string; value: OtlpValue }>;
+} {
+  const A = MONITORING_LOG_ATTR;
+  const id = row.id ?? `span_${Math.random().toString(36).slice(2)}`;
+  const tsMs = Date.parse(row.timestamp ?? "2026-03-05T12:00:00.000Z");
+  const durationMs = row.duration_ms ?? 150;
+  const attrs: Record<string, OtlpValue | undefined> = {
+    [A.TYPE]: { stringValue: row.type ?? MONITORING_LOG_TYPE_VALUE },
+    [A.ORGANIZATION_ID]: { stringValue: row.organization_id ?? "org_test" },
+    [A.CONNECTION_ID]: { stringValue: row.connection_id ?? "conn_1" },
+    [A.CONNECTION_TITLE]: {
+      stringValue: row.connection_title ?? "Test Server",
+    },
+    [A.TOOL_NAME]: { stringValue: row.tool_name ?? "EXAMPLE_TOOL" },
+    [A.INPUT]: { stringValue: row.input ?? '{"query":"hello"}' },
+    [A.OUTPUT]: { stringValue: row.output ?? '{"tokens":100}' },
+    // boolean, like production
+    [A.IS_ERROR]: { boolValue: !!(row.is_error ?? 0) },
+    [A.ERROR_MESSAGE]:
+      row.error_message != null
+        ? { stringValue: row.error_message }
+        : undefined,
+    // numeric, like production: int64 → intValue (string), fractional → doubleValue
+    [A.DURATION_MS]: Number.isInteger(durationMs)
+      ? { intValue: String(durationMs) }
+      : { doubleValue: durationMs },
+    [A.USER_ID]: { stringValue: row.user_id ?? "user_1" },
+    [A.REQUEST_ID]: { stringValue: row.request_id ?? "req_1" },
+    [A.USER_AGENT]: { stringValue: row.user_agent ?? "cursor/1.0" },
+    [A.VIRTUAL_MCP_ID]:
+      row.virtual_mcp_id != null
+        ? { stringValue: row.virtual_mcp_id }
+        : undefined,
+    [A.PROPERTIES]:
+      row.properties != null ? { stringValue: row.properties } : undefined,
+  };
+  const attributes = Object.entries(attrs)
+    .filter(([, v]) => v != null)
+    .map(([key, value]) => ({ key, value: value as OtlpValue }));
+  return {
+    timeUnixNano: String(BigInt(tsMs) * 1_000_000n),
+    spanId: id,
+    attributes,
+  };
+}
+
+/**
+ * Write OTLP log records to a `.json` file as a single
+ * `ExportLogsServiceRequest` (resourceLogs -> scopeLogs -> logRecords), the
+ * shape an OTel collector's google_cloud_storage exporter (OTLP JSON) produces.
+ */
+export async function writeTestOtlpJson(
+  dir: string,
+  records: Array<ReturnType<typeof makeTestOtlpLogRecord>>,
+): Promise<void> {
+  const request = {
+    resourceLogs: [
+      {
+        resource: {
+          attributes: [
+            { key: "service.name", value: { stringValue: "studio" } },
+          ],
+        },
+        scopeLogs: [{ scope: {}, logRecords: records }],
+      },
+    ],
+  };
+  await writeFile(
+    join(dir, `otlp-${crypto.randomUUID()}.json`),
+    JSON.stringify(request),
+    { mode: 0o600 },
+  );
+}
+
 /**
  * Creates a minimal ReadableLogRecord-like object for testing.
  * Used by NDJSONLogExporter tests and pipeline integration tests.

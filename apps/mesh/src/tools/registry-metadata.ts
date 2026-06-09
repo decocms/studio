@@ -86,6 +86,7 @@ const ALL_TOOL_NAMES = [
   "MONITORING_LOG_GET",
   "MONITORING_LOGS_LIST",
   "MONITORING_STATS",
+  "MONITORING_THREAD_USAGE",
   // API Key tools
   "API_KEY_CREATE",
   "API_KEY_LIST",
@@ -128,6 +129,7 @@ const ALL_TOOL_NAMES = [
   "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
   "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
   "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
+  "VIRTUAL_MCP_LAST_USED_LIST",
 
   // Ai providers tools
   "AI_PROVIDERS_LIST",
@@ -209,6 +211,14 @@ const ALL_TOOL_NAMES = [
 
   // Search tools
   "GLOBAL_SEARCH",
+
+  // Decopilot cluster MCP tools — exposed on the management MCP server so the
+  // desktop daemon can call them via the injected mcp.url token.
+  "UPDATE_INTERESTS_MCP",
+  "SUBTASK_MCP",
+  "TAKE_SCREENSHOT_MCP",
+  "GENERATE_IMAGE_MCP",
+  "WEB_SEARCH_MCP",
 ] as const;
 
 /**
@@ -451,6 +461,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Monitoring",
   },
   {
+    name: "MONITORING_THREAD_USAGE",
+    description: "View per-thread token usage and cost",
+    category: "Monitoring",
+  },
+  {
     name: "API_KEY_CREATE",
     description: "Create API key",
     category: "API Keys",
@@ -633,6 +648,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
     description: "Update virtual MCP pinned sidebar views",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "VIRTUAL_MCP_LAST_USED_LIST",
+    description: "Get last-used info for one or more virtual MCPs",
     category: "Virtual MCPs",
   },
   {
@@ -967,6 +987,38 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
       "Search across organization resources (currently threads). Returns a typed union of matches.",
     category: "Search",
   },
+
+  // Decopilot cluster MCP tools
+  {
+    name: "UPDATE_INTERESTS_MCP",
+    description:
+      "Record what the user is durably working toward (goals/interests) — desktop decopilot cluster relay",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "SUBTASK_MCP",
+    description:
+      "Delegate a focused sub-task to a specialized agent — desktop decopilot cluster relay (cluster-side recursive dispatch)",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "TAKE_SCREENSHOT_MCP",
+    description:
+      "Capture a screenshot of a web page via Browserless — desktop decopilot cluster relay (object storage stays cluster-side)",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "GENERATE_IMAGE_MCP",
+    description:
+      "Generate an image using the configured image model — desktop decopilot cluster relay (image-provider key stays cluster-side)",
+    category: "Virtual MCPs",
+  },
+  {
+    name: "WEB_SEARCH_MCP",
+    description:
+      "Search the web and synthesize a report via streaming research model — desktop decopilot cluster relay (streaming path only)",
+    category: "Virtual MCPs",
+  },
 ];
 
 // ============================================================================
@@ -1005,23 +1057,55 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
       "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
+      "VIRTUAL_MCP_LAST_USED_LIST",
       // View automations
       "AUTOMATION_GET",
       "AUTOMATION_LIST",
-      // View AI providers
+      // View AI providers (read-only — every member needs to know which
+      // providers are configured so chat / agents can use them). KEY_LIST
+      // returns metadata only (no secret material); CREDITS is the balance
+      // shown in the chat header. TOPUP_URL returns a checkout link surfaced
+      // in the chat credits-exhausted banner so any member can self-serve.
       "AI_PROVIDERS_LIST",
       "AI_PROVIDERS_LIST_MODELS",
       "AI_PROVIDERS_ACTIVE",
+      "AI_PROVIDER_KEY_LIST",
+      "AI_PROVIDER_CREDITS",
+      "AI_PROVIDER_TOPUP_URL",
       // Object storage access
       "LIST_OBJECTS",
       "GET_OBJECT_METADATA",
       "GET_PRESIGNED_URL",
       "PUT_PRESIGNED_URL",
+      // Browse files in a configured bucket (file picker in the sandbox /
+      // content editor). Lists object keys only — no credentials returned.
+      "FILE_OBJECTS_LIST",
       // Sandbox previews
       "SANDBOX_START",
       "SANDBOX_DELETE",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
+      // App-shell essentials (read-only) — every member hits these on first
+      // paint or in the global chrome:
+      //   SETTINGS_GET → sidebar / plugins / model tiers loaded at shell boot
+      //   USER_GET     → resolve member display ("created by" on agents, etc.);
+      //                  handler scopes to shared-org members, no secrets
+      //   LINK_CURRENT_GET → caller's own desktop-link status (header poll)
+      //   BRAND_CONTEXT_LIST → org branding for the chat empty state
+      "ORGANIZATION_SETTINGS_GET",
+      "USER_GET",
+      "LINK_CURRENT_GET",
+      "BRAND_CONTEXT_LIST",
+      // Chat threads — talking to an agent is the most basic usage of the
+      // product, so every member can CRUD their OWN threads. Per-thread access
+      // is scoped at the handler level (you only see your own threads unless
+      // you also hold the threads:view-all capability).
+      "COLLECTION_THREADS_CREATE",
+      "COLLECTION_THREADS_LIST",
+      "COLLECTION_THREADS_GET",
+      "COLLECTION_THREADS_UPDATE",
+      "COLLECTION_THREADS_DELETE",
+      "COLLECTION_THREAD_MESSAGES_LIST",
     ],
   },
   // Organization
@@ -1114,7 +1198,12 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
     label: "View monitoring",
     description: "Access logs and usage statistics",
     section: "Monitoring",
-    tools: ["MONITORING_LOG_GET", "MONITORING_LOGS_LIST", "MONITORING_STATS"],
+    tools: [
+      "MONITORING_LOG_GET",
+      "MONITORING_LOGS_LIST",
+      "MONITORING_STATS",
+      "MONITORING_THREAD_USAGE",
+    ],
   },
   // Secrets
   {
@@ -1284,6 +1373,34 @@ export const BASIC_USAGE_TOOLS: ReadonlySet<string> = new Set(
     ?.tools ?? [],
 );
 
+/**
+ * Gated capability ids additionally granted to the built-in `user` role, beyond
+ * basic-usage. EMPTY by default — every member is otherwise enforced down to
+ * basic-usage only. Add a capability id here (e.g. "agents:manage") to grant ALL
+ * of its tools to every member of every org. This is a GLOBAL change with no
+ * migration; for per-org grants use a custom role instead.
+ */
+const USER_ROLE_CAPABILITY_IDS: string[] = [
+  "agents:manage",
+  "connections:manage",
+];
+
+/**
+ * Tools the built-in `user` role gets beyond basic-usage, derived from
+ * USER_ROLE_CAPABILITY_IDS. Single source of truth for the two layers that must
+ * stay in sync:
+ *   - enforcement: baked into the `user` role's `self` grant (auth/index.ts)
+ *   - UI gating: the MY_CAPABILITIES endpoint (api/routes/auth.ts)
+ *
+ * List specific tool names only — never `"*"` — so the wildcard fallback in
+ * `createBoundAuthClient` can't be tricked into granting everything.
+ */
+export const USER_ROLE_TOOLS: ReadonlySet<string> = new Set(
+  PERMISSION_CAPABILITIES.filter((c) =>
+    USER_ROLE_CAPABILITY_IDS.includes(c.id),
+  ).flatMap((c) => c.tools),
+);
+
 export function getCapabilitySections(): Array<{
   section: string;
   capabilities: PermissionCapability[];
@@ -1323,6 +1440,66 @@ export function toggleCapabilityInTools(
   const toolSet = new Set(currentTools);
   for (const tool of cap.tools) toolSet.delete(tool);
   return Array.from(toolSet);
+}
+
+/**
+ * Map of gated capability id → granted, for the privileged built-in roles
+ * (owner / admin) which bypass every permission check. The hidden basic-usage
+ * capability is never part of the map — it's always-on and not UI-gated.
+ */
+export function allCapabilitiesGranted(): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const cap of PERMISSION_CAPABILITIES) {
+    if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
+    out[cap.id] = true;
+  }
+  return out;
+}
+
+/**
+ * Resolve which gated capabilities a stored role permission grants, as a
+ * capability id → boolean map. Pure: mirrors the wildcard rules AccessControl
+ * applies, so the UI can gate actions without re-deriving role logic.
+ *
+ * A capability is granted when every tool it lists appears in some resource
+ * bucket of the permission, or when the role holds an org-wide / self wildcard.
+ * The hidden basic-usage capability is excluded (always-on, never gated).
+ *
+ * Defensive by design: `permission` is JSON stored on the role, so buckets may
+ * be malformed despite the type — non-array buckets are treated as empty and
+ * never throw.
+ */
+export function resolveCapabilities(
+  permission: Record<string, string[]>,
+): Record<string, boolean> {
+  const perm = permission as Record<string, unknown>;
+  const arrayBucket = (key: string): string[] => {
+    const value = perm[key];
+    return Array.isArray(value) ? (value as string[]) : [];
+  };
+
+  // ONLY an org-wide (`*`) or full org-tool (`self`) wildcard is a GLOBAL grant
+  // across every capability. A `["*"]` inside any other bucket (e.g. a
+  // connection id) means "all tools on that resource" and must NOT light up
+  // unrelated management capabilities.
+  const hasGlobalGrant =
+    arrayBucket("*").includes("*") || arrayBucket("self").includes("*");
+
+  const grantedActions = new Set<string>();
+  if (!hasGlobalGrant) {
+    for (const actions of Object.values(perm)) {
+      if (!Array.isArray(actions)) continue;
+      for (const action of actions) grantedActions.add(action);
+    }
+  }
+
+  const out: Record<string, boolean> = {};
+  for (const cap of PERMISSION_CAPABILITIES) {
+    if (cap.id === BASIC_USAGE_CAPABILITY_ID) continue;
+    out[cap.id] =
+      hasGlobalGrant || cap.tools.every((tool) => grantedActions.has(tool));
+  }
+  return out;
 }
 
 // ============================================================================

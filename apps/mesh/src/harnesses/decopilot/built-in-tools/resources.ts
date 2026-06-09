@@ -1,7 +1,7 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { VirtualClient } from "./sandbox";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import {
   MAX_RESULT_TOKENS,
   createOutputPreview,
@@ -16,7 +16,7 @@ const INLINE_RESOURCE_BYTE_LIMIT = 1_048_576; // 1 MiB
 export interface ResourceToolParams {
   readonly passthroughClient: VirtualClient;
   readonly toolOutputMap: Map<string, string>;
-  readonly ctx: MeshContext;
+  readonly ctx: StudioContext;
 }
 
 export function createReadResourceTool(params: ResourceToolParams) {

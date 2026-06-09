@@ -42,6 +42,11 @@ export interface BucketPoint {
   avg: number;
   p50: number;
   p95: number;
+  // LLM-usage series (only populated for AI Usage charts)
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  costUsd?: number;
 }
 
 export interface DateRange {
@@ -194,7 +199,16 @@ export interface MonitoringStatsData {
 
 export interface KPIChartProps {
   data: BucketPoint[];
-  dataKey: "calls" | "errors" | "avg" | "p50" | "p95";
+  dataKey:
+    | "calls"
+    | "errors"
+    | "avg"
+    | "p50"
+    | "p95"
+    | "inputTokens"
+    | "outputTokens"
+    | "totalTokens"
+    | "costUsd";
   colorNum: number;
   chartHeight: string;
   variant?: "bar" | "area";
@@ -231,11 +245,14 @@ function KPITooltipContent({
   const rawValue = first?.value;
   const value = typeof rawValue === "number" ? rawValue : 0;
   const isLatency = dataKey === "avg" || dataKey === "p50" || dataKey === "p95";
-  const formatted = isLatency
-    ? value >= 10000
-      ? `${(value / 1000).toFixed(1)}s`
-      : `${Math.round(value)}ms`
-    : value.toLocaleString();
+  const isCost = dataKey === "costUsd";
+  const formatted = isCost
+    ? `$${value.toFixed(value < 1 ? 4 : 2)}`
+    : isLatency
+      ? value >= 10000
+        ? `${(value / 1000).toFixed(1)}s`
+        : `${Math.round(value)}ms`
+      : value.toLocaleString();
 
   return (
     <div className="rounded-lg border bg-background px-3 py-2 shadow-md">
@@ -261,7 +278,7 @@ export function KPIChart({
   const colorVar = `var(--chart-${colorNum})`;
   const gradientId = `kpi-gradient-${dataKey}-${colorNum}`;
 
-  const maxVal = Math.max(...data.map((d) => d[dataKey]), 0);
+  const maxVal = Math.max(...data.map((d) => d[dataKey] ?? 0), 0);
   const tickCount = 5;
 
   if (variant === "area") {
@@ -396,8 +413,12 @@ export function KPIChart({
           {data.map((entry, index) => (
             <Cell
               key={`cell-${index}`}
-              fill={entry[dataKey] === 0 ? "var(--muted-foreground)" : colorVar}
-              fillOpacity={entry[dataKey] === 0 ? 0.15 : 0.85}
+              fill={
+                (entry[dataKey] ?? 0) === 0
+                  ? "var(--muted-foreground)"
+                  : colorVar
+              }
+              fillOpacity={(entry[dataKey] ?? 0) === 0 ? 0.15 : 0.85}
             />
           ))}
         </Bar>

@@ -3,6 +3,7 @@ import type { ClaimPhase } from "@/web/components/sandbox/hooks/sandbox-events-c
 import { CLAIM_PHASE_COPY } from "@/web/components/sandbox/claim-phase-copy";
 import type { CheckRun, PrSummary } from "./use-pr-data.ts";
 import type { PrReviewSignals } from "./use-pr-reviews.ts";
+import { publishToBaseLabel } from "./publish-label.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
 
 /**
@@ -161,13 +162,29 @@ export function selectHeaderButton(
   }
   const ready = branch;
 
-  const hasLocalWork = ready.workingTreeDirty || ready.unpushed > 0;
-  if (hasLocalWork) {
+  if (ready.workingTreeDirty) {
     return {
       label: "Save changes",
       action: "commit-and-push",
       variant: "default",
       tooltip: "Commit and push local changes",
+    };
+  }
+
+  if (ready.unpushed > 0) {
+    if (!pr) {
+      return {
+        label: "Submit for review",
+        action: "create-pr",
+        variant: "default",
+        tooltip: `Push and open a PR for ${ready.branch} → ${ready.base}`,
+      };
+    }
+    return {
+      label: "Save changes",
+      action: "commit-and-push",
+      variant: "default",
+      tooltip: "Push local commits",
     };
   }
 
@@ -293,7 +310,7 @@ export function selectHeaderButton(
     }
 
     return {
-      label: "Publish",
+      label: publishToBaseLabel(pr.base),
       action: "merge-split",
       variant: "success",
       tooltip: `Squash-merge PR #${pr.number} into ${pr.base}`,

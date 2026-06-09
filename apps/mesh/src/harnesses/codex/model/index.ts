@@ -27,6 +27,11 @@ export function createCodexModel(
     toolApprovalLevel?: ToolApprovalLevel;
     /** Chat mode plan — stricter approval policy */
     isPlanMode?: boolean;
+    /** Working directory for Codex's app-server subprocess. Defaults to
+     *  mesh's cwd — mirrors `createClaudeCodeModel`. Without this, the
+     *  codex CLI runs in the daemon's own cwd (typically the app root)
+     *  instead of the cloned repo, so file edits land in the wrong tree. */
+    cwd?: string;
   },
 ): { model: LanguageModelV3; provider: CodexAppServerProvider } {
   const mcpServers = options?.mcpServers
@@ -53,6 +58,7 @@ export function createCodexModel(
     defaultSettings: {
       mcpServers,
       approvalPolicy,
+      cwd: options?.cwd ?? process.cwd(),
       rmcpClient: true,
       sandboxPolicy: "workspace-write",
       connectionTimeoutMs: 30_000,
@@ -69,8 +75,7 @@ const CODEX_SDK_MODELS: Record<string, string> = {
   "codex:gpt-5.5": "gpt-5.5",
   "codex:gpt-5.4": "gpt-5.4",
   "codex:gpt-5.4-mini": "gpt-5.4-mini",
-  "codex:gpt-5.3-codex": "gpt-5.3-codex",
-  "codex:gpt-5.2": "gpt-5.2",
+  "codex:gpt-5.3-codex-spark": "gpt-5.3-codex-spark",
 };
 
 /** Resolve a composite codex model ID to the SDK model name. */

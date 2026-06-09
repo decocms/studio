@@ -31,7 +31,10 @@
 
 import { streamText, type UIMessageChunk } from "ai";
 import { createClaudeCodeModel, resolveClaudeCodeModelId } from "./model";
-import { prepCliMessages } from "../cli-message-prep";
+import { resolveCliCwd } from "../cli-cwd";
+import { extractUserText, prepCliMessages } from "../cli-message-prep";
+import { makeTitleResultChunk } from "../title-chunk";
+import { genTitle } from "../decopilot/title-generator";
 import type {
   Harness,
   HarnessContext,
@@ -40,44 +43,56 @@ import type {
 } from "../types";
 import { createUsageAccumulator } from "../usage-accumulator";
 
-/**
- * Compute the Claude Code working directory.
- *
- * Returns `undefined` when the agent has no `githubRepo` (ephemeral
- * agent → SDK default cwd) or no userId is available (defensive).
- *
- * Otherwise:
- *   - Desktop daemon (no `processLocal`): the sandbox daemon is spawned
- *     with `cwd = <appRoot>`, but the cloned repo lives at
- *     `<appRoot>/repo` (see `packages/sandbox/daemon/entry.ts` — it
- *     joins APP_ROOT with "repo" to form `repoDir`). Prefer the env
- *     vars the sandbox sets (`WORKDIR` / `APP_ROOT`) and fall through
- *     to `<cwd>/repo` so Claude Code actually runs inside the
- *     checkout. Final fallback is `process.cwd()` for non-sandbox
- *     environments (e.g. tests, ad-hoc invocations).
- *   - Cluster: no on-disk sandbox to point at after the host runner was
- *     retired, so fall through to `undefined` (SDK default). The
- *     `processLocal.resolveCwd` callback is kept as an extension point
- *     for future cluster-side runners that materialize files locally.
- */
-async function resolveClaudeCodeCwd(
-  input: HarnessStreamInput,
-): Promise<string | undefined> {
-  const vmMetadata = input.virtualMcp.metadata as {
-    githubRepo?: unknown;
-  } | null;
-  if (!vmMetadata?.githubRepo) return undefined;
-  if (!input.user?.id) return undefined;
+async function* mergeTitleResult(
+  uiStream: AsyncIterable<UIMessageChunk>,
+  titleHandle: ReturnType<typeof genTitle>,
+): AsyncIterable<UIMessageChunk> {
+  type Settled =
+    | { kind: "main"; value: IteratorResult<UIMessageChunk> }
+    | { kind: "title"; value: UIMessageChunk | null };
 
-  if (!input.processLocal) {
-    const appRoot =
-      process.env.WORKDIR || process.env.APP_ROOT || process.cwd();
-    return `${appRoot.replace(/\/$/, "")}/repo`;
+  const iter = uiStream[Symbol.asyncIterator]();
+  let mainDone = false;
+  let titleDone = false;
+  let mainPromise: Promise<Settled> = iter
+    .next()
+    .then((value) => ({ kind: "main" as const, value }));
+  let titlePromise: Promise<Settled> = titleHandle.promise
+    .then((title) => ({
+      kind: "title" as const,
+      value: title ? (makeTitleResultChunk(title) as UIMessageChunk) : null,
+    }))
+    .catch((err) => {
+      console.warn("[claude-code:title] title generation failed", err);
+      return { kind: "title" as const, value: null };
+    });
+
+  try {
+    while (!mainDone || !titleDone) {
+      const pending: Promise<Settled>[] = [];
+      if (!mainDone) pending.push(mainPromise);
+      if (!titleDone) pending.push(titlePromise);
+
+      const settled = await Promise.race(pending);
+      if (settled.kind === "main") {
+        if (settled.value.done) {
+          mainDone = true;
+          if (!titleDone) titleHandle.finish();
+          continue;
+        }
+        yield settled.value.value;
+        mainPromise = iter
+          .next()
+          .then((value) => ({ kind: "main" as const, value }));
+        continue;
+      }
+
+      titleDone = true;
+      if (settled.value) yield settled.value;
+    }
+  } finally {
+    if (!titleDone) titleHandle.finish();
   }
-
-  const resolveCwd = input.processLocal.resolveCwd;
-  if (!resolveCwd) return undefined;
-  return await resolveCwd();
 }
 
 export const claudeCodeHarnessFactory: HarnessFactory = {
@@ -93,8 +108,10 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
 
         // 2. Compute the working directory for the CLI subprocess —
         //    github-linked agents get a per-branch sandbox path, ephemeral
-        //    agents fall through to undefined (SDK default).
-        const cwd = await resolveClaudeCodeCwd(input);
+        //    agents fall through to undefined (SDK default). Shared with
+        //    the Codex harness via `../cli-cwd` so both CLIs run inside
+        //    the same checkout.
+        const cwd = await resolveCliCwd(input);
 
         // Diagnostics: on the user-desktop path this runs inside the spawned
         // sandbox daemon (stdout inherited by `deco link`), so these lines
@@ -136,6 +153,21 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    a previous `as never` cast hid this mismatch and would have
         //    thrown `InvalidPromptError` at runtime.
         const messages = await prepCliMessages(input.messages);
+
+        // 4a. Start title generation with Claude Code's fast model. The
+        //     cluster interceptor only persists/broadcasts the result chunk.
+        const titleHandle = genTitle({
+          abortSignal: input.signal,
+          model: createClaudeCodeModel(
+            resolveClaudeCodeModelId("claude-code:haiku"),
+            {
+              toolApprovalLevel: "readonly",
+              isPlanMode: true,
+              cwd,
+            },
+          ),
+          userMessage: extractUserText(messages),
+        });
 
         // 5. Run streamText. Claude Code's CLI manages its own tools
         //    and system prompt, so we explicitly DO NOT pass `tools` or
@@ -230,7 +262,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         });
 
         try {
-          for await (const chunk of uiStream) {
+          for await (const chunk of mergeTitleResult(uiStream, titleHandle)) {
             yield chunk;
           }
         } catch (err) {

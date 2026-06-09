@@ -1,10 +1,10 @@
 import { Span } from "@opentelemetry/api";
 import type { TimingVariables } from "hono/timing";
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 
 // Define Hono variables type
 type Variables = TimingVariables & {
-  meshContext: MeshContext;
+  meshContext: StudioContext;
   rootSpan: Span;
 };
 

@@ -17,7 +17,7 @@ import {
 } from "ai";
 import type { Context } from "hono";
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import { HTTPException } from "hono/http-exception";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
@@ -59,7 +59,7 @@ export function toolNeedsApproval(
  * Ensure organization context exists and matches route param
  */
 export function ensureOrganization(
-  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  c: Context<{ Variables: { meshContext: StudioContext } }>,
 ): OrganizationScope {
   const organization = c.get("meshContext").organization;
   if (!organization) {
@@ -220,7 +220,7 @@ export async function toolsFromMCP(
   toolApprovalLevel: ToolApprovalLevel = "auto",
   options?: {
     disableOutputTruncation?: boolean;
-    ctx?: MeshContext;
+    ctx?: StudioContext;
     isPlanMode?: boolean;
   },
 ): Promise<{ tools: ToolSet; nameMap: Map<string, string> }> {
@@ -383,7 +383,7 @@ export async function toolsFromMCP(
  * Use this for read-only / observability endpoints (e.g. stream).
  */
 export async function validateThreadAccess(
-  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  c: Context<{ Variables: { meshContext: StudioContext } }>,
 ) {
   const ctx = c.get("meshContext");
   const userId = ctx.auth?.user?.id;
@@ -411,7 +411,7 @@ export async function validateThreadAccess(
  * should be allowed to act.
  */
 export async function validateThreadOwnership(
-  c: Context<{ Variables: { meshContext: MeshContext } }>,
+  c: Context<{ Variables: { meshContext: StudioContext } }>,
 ) {
   const result = await validateThreadAccess(c);
   if (result.thread.created_by !== result.userId) {

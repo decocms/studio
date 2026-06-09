@@ -42,7 +42,14 @@ import {
 } from "./store/thread-connection";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
-import { AGENT_OPTION_PINS, type AgentOption } from "./pills/agent-options";
+import {
+  AGENT_OPTION_PINS,
+  agentOptionFor,
+  resolveAvailableAgentOption,
+  type AgentOption,
+} from "./pills/agent-options";
+import { useAgentOptionAvailability } from "./use-agent-availability";
+import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
   pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
@@ -95,7 +102,6 @@ import type { Task } from "./task/types";
 import type { SendMessageParams, SetAppContextParams } from "./store/types";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { chatModeForTransportRef } from "../../lib/chat-mode-sync";
-import { agentHasClonableSource } from "@/web/lib/agent-capabilities";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
@@ -138,13 +144,19 @@ export interface ChatTaskContextValue {
     virtualMcpId?: string;
   }) => void;
   activeTask: Task | null;
-  /** thread.branch — the only source of truth. Null until the user picks one or the server generates one on first send. */
+  /** True iff the thread row has captured a `harness_id` — i.e. the first
+   *  message has been processed and the runtime is pinned for life. */
+  isThreadLocked: boolean;
+  /** Locked harness for the active thread (null when unlocked / no thread). */
+  lockedHarness: HarnessId | null;
+  /** Locked sandbox provider kind (null when unlocked, or harness has no sandbox). */
+  lockedSandbox: SandboxProviderKind | null;
+  /** Locked branch (null when unlocked or thread has no branch). */
+  lockedBranch: string | null;
+  /** thread.branch — alias of `lockedBranch`. Kept for call-site compatibility
+   *  (e.g. `createTask` carry-over). Null until the user picks one or the
+   *  server generates one on first send. */
   currentBranch: string | null;
-  /**
-   * Immutable once set: switching branches mid-conversation would reroute the
-   * thread's sandboxMap entry, so users must create a new thread for another branch.
-   */
-  isBranchLocked: boolean;
   /** Persist pinned branch onto the thread (cache + server). */
   setCurrentTaskBranch: (branch: string | null) => void;
 }
@@ -480,51 +492,67 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // `Codex desktop`). Persisted to localStorage so the choice survives
   // page reloads.
   //
+  // Scoped per `locator` (like the image-model and tier prefs) so a desktop
+  // pick made in one org doesn't leak into another — runtime availability is
+  // org/link-specific, and a "Claude Code desktop" pick carried across orgs
+  // used to mis-route to an offline link. A fresh org starts with no pick
+  // (`null`), letting the server choose its default.
+  //
   // Everything else (`pendingHarnessId`, `pendingSandboxProviderKind`,
   // the request body's harnessId/sandboxProviderKind) derives from this
   // through `AGENT_OPTION_PINS`, so the pill display and the submit can
   // never disagree.
-  const [pendingAgentOption, setPendingAgentOptionState] =
-    useState<AgentOption | null>(() => {
-      try {
-        const stored = localStorage.getItem(
-          "chat:lastAgentOption",
-        ) as AgentOption | null;
-        return stored && stored in AGENT_OPTION_PINS ? stored : null;
-      } catch {
-        return null;
-      }
-    });
-  const setPendingAgentOption = (option: AgentOption | null) => {
-    setPendingAgentOptionState(option);
-    try {
-      if (option === null) {
-        localStorage.removeItem("chat:lastAgentOption");
-      } else {
-        localStorage.setItem("chat:lastAgentOption", option);
-      }
-    } catch {
-      // ignore storage errors (private browsing, quota exceeded, etc.)
-    }
-  };
+  const [pendingAgentOption, setPendingAgentOption] =
+    useLocalStorage<AgentOption | null>(
+      LOCALSTORAGE_KEYS.chatLastAgentOption(locator),
+      (existing) =>
+        existing && existing in AGENT_OPTION_PINS ? existing : null,
+    );
 
-  // Effective option: the user's pick filtered through what the current
-  // agent can actually run. Desktop-CLI options (Claude Code / Codex /
-  // Decopilot desktop) need a git branch to check out on the user's
-  // desktop; if the user picked a desktop variant but the current agent
-  // has no clonable source (Decopilot-only / ephemeral), this falls back
-  // to plain Decopilot. The persisted pick is unchanged and returns when
-  // navigating back to an agent with a checkout.
-  const hasClonableSource = agentHasClonableSource(
-    selectedVirtualMcpData?.metadata,
+  // Provider-tree wiring: `ChatPrefsProvider` is mounted INSIDE
+  // `ChatTaskCtx.Provider` (see `ChatContextProvider` below), so the optional
+  // task hook resolves the active-thread lock state in the full chat mount.
+  // On `/$org/` (standalone home composer) there is no task context — the
+  // hook returns `null` and we fall through to the user's global picker.
+  // This is option (b) from the plan: read the inner context here rather
+  // than hoist active-task knowledge into the outer provider, which would
+  // require restructuring the standalone mount path.
+  const taskCtxForLock = useOptionalChatTask();
+  const lockedAgentOption =
+    taskCtxForLock?.isThreadLocked && taskCtxForLock.lockedHarness != null
+      ? agentOptionFor(
+          taskCtxForLock.lockedHarness,
+          taskCtxForLock.lockedSandbox,
+        )
+      : null;
+
+  // Resolve the persisted pick against what's actually runnable right now,
+  // applying the same availability fallback the mode picker uses for display.
+  // A pick that points to an offline runtime — e.g. "Claude Code desktop"
+  // carried over from another org while this org's desktop link is offline —
+  // falls back to cloud Decopilot instead of dispatching to the dead desktop
+  // link (which 409s with `user_desktop_link_offline`). Because the picker's
+  // displayed mode is derived from `effectiveAgentOption` (exposed as
+  // `pendingAgentOption` below), this keeps the runtime the user sees selected
+  // and the runtime the message dispatches to in lockstep.
+  const availability = useAgentOptionAvailability();
+  const availableAgentOption = resolveAvailableAgentOption(
+    pendingAgentOption,
+    availability,
   );
+
+  // When the thread is locked, the agent option is dictated by the persisted
+  // (harness, sandbox) pair — period. Otherwise, fall through to the user's
+  // availability-resolved global picker.
+  //
+  // When the thread is locked but the (harness, sandbox) tuple doesn't map
+  // to a known AgentOption (legacy/trigger-created rows), we intentionally
+  // surface `null` here rather than falling through to the global picker.
+  // The submit path is server-enforced anyway; consumers (pills, etc.)
+  // should consult isThreadLocked for the "locked" affordance and avoid
+  // showing the global selection on a locked thread.
   const effectiveAgentOption: AgentOption | null =
-    pendingAgentOption === null
-      ? null
-      : !hasClonableSource &&
-          AGENT_OPTION_PINS[pendingAgentOption].sandbox === "user-desktop"
-        ? "decopilot"
-        : pendingAgentOption;
+    taskCtxForLock?.isThreadLocked ? lockedAgentOption : availableAgentOption;
 
   const effectivePins = effectiveAgentOption
     ? AGENT_OPTION_PINS[effectiveAgentOption]
@@ -632,8 +660,15 @@ export function ChatContextProvider({
   // navigation by only honoring the prop when ids match.
   const activeTask =
     effectiveTaskId && task?.id === effectiveTaskId ? task : null;
-  const currentBranch = activeTask?.branch ?? null;
-  const isBranchLocked = !!activeTask?.branch;
+  const lockedHarness = (activeTask?.harness_id ?? null) as HarnessId | null;
+  const lockedSandbox = (activeTask?.sandbox_provider_kind ??
+    null) as SandboxProviderKind | null;
+  const lockedBranch = activeTask?.branch ?? null;
+  const isThreadLocked = lockedHarness != null;
+
+  // Existing call sites still read `currentBranch` for create-task carry-over;
+  // it stays a separate alias so we don't have to touch every reference.
+  const currentBranch = lockedBranch;
 
   // Create task — calls COLLECTION_THREADS_CREATE up-front with the active
   // task's branch so the new thread lands on the same warm sandbox. The
@@ -699,8 +734,11 @@ export function ChatContextProvider({
     createTask,
     createTaskWithMessage,
     activeTask,
+    isThreadLocked,
+    lockedHarness,
+    lockedSandbox,
+    lockedBranch,
     currentBranch,
-    isBranchLocked,
     setCurrentTaskBranch: (branch: string | null) => {
       if (effectiveTaskId) {
         threadActions.setBranch(effectiveTaskId, branch);
@@ -804,6 +842,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    orgSlug: org.slug,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   cbRef.current = {
@@ -813,6 +852,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    orgSlug: org.slug,
   };
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
@@ -874,7 +914,7 @@ export function ActiveTaskProvider({
         // can flip that state, so re-fetch on every finish — covers both
         // `mine=true` and `mine=false` variants via partial-key match.
         cb.queryClient.invalidateQueries({
-          queryKey: KEYS.homeNextActions(org.slug),
+          queryKey: KEYS.homeNextActions(cb.orgSlug),
         });
 
         const serverThreadId = (message.metadata as Metadata | undefined)
@@ -978,9 +1018,20 @@ export function ActiveTaskProvider({
         system: system || undefined,
         agent: { id: capturedVirtualMcpId },
         thread_id: capturedTaskId,
-        branch: currentBranch,
-        sandboxProviderKind: pendingSandboxProviderKind || undefined,
-        harnessId: pendingHarnessId || undefined,
+        ...resolveSubmitSettings({
+          thread: activeTask
+            ? {
+                harness_id: activeTask.harness_id ?? null,
+                sandbox_provider_kind: activeTask.sandbox_provider_kind ?? null,
+                branch: activeTask.branch ?? null,
+              }
+            : null,
+          globals: {
+            harnessId: pendingHarnessId ?? undefined,
+            sandboxProviderKind: pendingSandboxProviderKind ?? undefined,
+            branch: currentBranch,
+          },
+        }),
       },
     );
   }

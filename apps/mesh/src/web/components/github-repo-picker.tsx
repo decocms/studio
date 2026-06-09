@@ -38,6 +38,8 @@ import {
   STOREFRONT_GITHUB_AUTOMATIONS,
   setupStorefrontGithubAutomations,
 } from "@/tools/virtual/storefront-github-automations";
+import { fetchGithubInstallations } from "@/web/lib/github-installations";
+import { provisionRepoScopedGithubConnection } from "@/web/lib/provision-repo-scoped-github-connection";
 
 export interface GitHubInstallation {
   installationId: number;
@@ -287,69 +289,106 @@ function PickerContent({
         throw new Error("No GitHub connection or installation");
       }
 
-      const connectionId = effectiveConnection.id;
+      const installationId = selectedInstallation.installationId;
 
-      const result = (await selfClient.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_CREATE",
-        arguments: {
-          data: {
-            title: repo.name,
-            description: repo.description || "Imported from GitHub",
-            pinned: true,
-            icon: null,
-            metadata: {
-              githubRepo: {
-                owner: repo.owner,
-                name: repo.name,
-                url: repo.url,
-                installationId: selectedInstallation.installationId,
-                connectionId,
-              },
-              instructions: null,
-              // runtime is resolved server-side inside SANDBOX_START's lockfile
-              // probe (github-runtime-detect.ts). Writing a client-side
-              // sentinel here only re-created the race the probe fixed.
-              ui: {
-                pinnedViews: null,
-                layout: {
-                  defaultMainView: {
-                    type: "preview",
+      const { childConnectionId } = await provisionRepoScopedGithubConnection({
+        orgSlug: org.slug,
+        sourceConnection: effectiveConnection,
+        installationId,
+        owner: repo.owner,
+        repo: repo.name,
+        githubCallTool: (req) => githubClient.callTool(req),
+        selfCallTool: (req) => selfClient.callTool(req),
+      });
+
+      let createdAgentId: string | null = null;
+
+      try {
+        // Create the agent wired to the CHILD connection (not the org one).
+        const result = (await selfClient.callTool({
+          name: "COLLECTION_VIRTUAL_MCP_CREATE",
+          arguments: {
+            data: {
+              title: repo.name,
+              description: repo.description || "Imported from GitHub",
+              pinned: true,
+              icon: null,
+              metadata: {
+                githubRepo: {
+                  owner: repo.owner,
+                  name: repo.name,
+                  url: repo.url,
+                  installationId,
+                  connectionId: childConnectionId,
+                },
+                instructions: null,
+                // runtime is resolved server-side inside SANDBOX_START's
+                // lockfile probe (github-runtime-detect.ts). Writing a
+                // client-side sentinel here only re-created the race the probe
+                // fixed.
+                ui: {
+                  pinnedViews: null,
+                  layout: {
+                    defaultMainView: { type: "preview" },
+                    chatDefaultOpen: true,
                   },
-                  chatDefaultOpen: true,
                 },
               },
+              connections: [{ connection_id: childConnectionId }],
             },
-            connections: [{ connection_id: connectionId }],
           },
-        },
-      })) as { structuredContent?: unknown };
+        })) as { structuredContent?: unknown };
 
-      const payload = (result.structuredContent ?? result) as {
-        item: { id: string; title: string };
-      };
+        const payload = (result.structuredContent ?? result) as {
+          item?: { id: string; title: string };
+        };
+        const virtualMcpId = payload.item?.id;
+        if (!payload.item || !virtualMcpId) {
+          throw new Error("Failed to create the imported agent");
+        }
+        createdAgentId = virtualMcpId;
 
-      const virtualMcpId = payload.item.id;
+        // 5. Repoint automations at the per-agent child connection.
+        if (effectiveSelectedKeys.size > 0) {
+          await setupGithubAutomations({
+            virtualMcpId,
+            repo,
+            connectionId: childConnectionId,
+            selectedKeys: effectiveSelectedKeys,
+          }).catch((err) => {
+            console.error("Failed to set up GitHub automations:", err);
+            toast.warning(
+              "Imported repo, but failed to set up GitHub automations. You can add triggers manually from the automations view.",
+            );
+          });
+        }
 
-      if (effectiveSelectedKeys.size > 0) {
-        await setupGithubAutomations({
+        return {
           virtualMcpId,
           repo,
-          connectionId,
-          selectedKeys: effectiveSelectedKeys,
-        }).catch((err) => {
-          console.error("Failed to set up GitHub automations:", err);
-          toast.warning(
-            "Imported repo, but failed to set up GitHub automations. You can add triggers manually from the automations view.",
-          );
-        });
+          connectionId: childConnectionId,
+          item: payload.item,
+        };
+      } catch (err) {
+        // Rollback: leave nothing behind. If the agent was created, delete it
+        // (which also tears down its repo-scoped child via server-side cleanup);
+        // always attempt the child delete as a harmless belt-and-suspenders.
+        if (createdAgentId) {
+          await selfClient
+            .callTool({
+              name: "COLLECTION_VIRTUAL_MCP_DELETE",
+              arguments: { id: createdAgentId },
+            })
+            .catch(() => {});
+        }
+        await selfClient
+          .callTool({
+            name: "COLLECTION_CONNECTIONS_DELETE",
+            arguments: { id: childConnectionId, force: true },
+          })
+          .catch(() => {});
+        throw err;
       }
-
-      return {
-        virtualMcpId,
-        repo,
-        connectionId,
-        item: payload.item,
-      };
     },
     onSuccess: ({ virtualMcpId, repo, connectionId, item }) => {
       queryClient.setQueryData(
@@ -505,19 +544,8 @@ function InstallationPicker({
 
   const installationsQuery = useQuery({
     queryKey: KEYS.githubUserOrgs(orgId, connectionId),
-    queryFn: async () => {
-      const result = await selfClient.callTool({
-        name: "GITHUB_LIST_USER_ORGS",
-        arguments: { connectionId },
-      });
-      const content = (result as { content?: Array<{ text?: string }> })
-        .content?.[0]?.text;
-      if (!content) throw new Error("No response from GITHUB_LIST_USER_ORGS");
-      return JSON.parse(content) as {
-        installations: GitHubInstallation[];
-        appSlug?: string;
-      };
-    },
+    queryFn: () =>
+      fetchGithubInstallations((req) => selfClient.callTool(req), connectionId),
   });
 
   if (installationsQuery.isLoading) {

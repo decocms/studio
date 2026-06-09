@@ -24,6 +24,7 @@ const mockParams: BuiltinToolParams = {
   passthroughClient: {} as never,
   htmlPageBuffer: {} as never,
   taskId: "task_test",
+  agentId: "agent-test",
 };
 
 const mockCtx = { auth: { user: { id: "user_test" } } } as never;

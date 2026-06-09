@@ -24,7 +24,7 @@
  * providers — they have their own harnesses.
  */
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -51,7 +51,7 @@ import type { AssembledTools } from "./tools";
  * provided. Returns null when no other active agents exist.
  */
 export async function listAgentsBlock(
-  ctx: MeshContext,
+  ctx: StudioContext,
   org: OrganizationScope,
   currentVirtualMcpId?: string,
 ): Promise<string | null> {
@@ -73,7 +73,7 @@ export async function listAgentsBlock(
  * client is provided (e.g., unit tests) or when the catalog is empty.
  */
 export async function listPromptsBlock(
-  _ctx: MeshContext,
+  _ctx: StudioContext,
   _org: OrganizationScope,
   passthroughClient?: Client,
 ): Promise<string | null> {
@@ -103,7 +103,7 @@ export async function listPromptsBlock(
  * there are no tools to expose.
  */
 export async function listConnectionsBlock(
-  _ctx: MeshContext,
+  _ctx: StudioContext,
   _org: OrganizationScope,
   data?: {
     tools: ConnectionsBlockTool[];
@@ -133,7 +133,7 @@ export interface AssembledPrompt {
  */
 export async function assembleDecopilotPrompt(
   input: HarnessStreamInput,
-  ctx: MeshContext,
+  ctx: StudioContext,
   tools: AssembledTools,
 ): Promise<AssembledPrompt> {
   const organization = ctx.organization!;

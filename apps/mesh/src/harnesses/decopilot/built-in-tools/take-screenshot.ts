@@ -11,7 +11,7 @@
 
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
 import { generatePresignedGetUrl } from "../../../api/routes/decopilot/file-materializer";
 import { BROWSERLESS_BASE_URL } from "./constants";
@@ -57,7 +57,7 @@ export interface PendingImage {
 export function createTakeScreenshotTool(
   writer: UIMessageStreamWriter,
   params: {
-    ctx: MeshContext;
+    ctx: StudioContext;
     toolOutputMap: Map<string, string>;
     pendingImages: PendingImage[];
   },

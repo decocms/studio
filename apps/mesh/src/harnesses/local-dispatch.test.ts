@@ -6,7 +6,7 @@ import type {
   HarnessFactory,
   HarnessStreamInput,
 } from "./types";
-import type { MeshContext } from "../core/mesh-context";
+import type { StudioContext } from "../core/studio-context";
 import { localDispatch } from "./local-dispatch";
 
 const makeInput = (): HarnessStreamInput => ({
@@ -28,7 +28,7 @@ const makeInput = (): HarnessStreamInput => ({
   signal: new AbortController().signal,
 });
 
-const stubCtx = {} as MeshContext;
+const stubCtx = {} as StudioContext;
 
 describe("localDispatch", () => {
   test("throws when harness id is not registered", async () => {

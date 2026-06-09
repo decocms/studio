@@ -51,7 +51,8 @@ export function findLivePageResolveType(meta: LiveMeta): string {
   return LIVE_PAGE_RESOLVE_TYPES[0];
 }
 
-function collectAnyOfRefsFromSchema(
+/** Collects block-ref variants from a resolved schema subtree (e.g. page `seo` or `sections`). */
+export function collectAnyOfRefsFromSchema(
   schema: SchemaProperty | null | undefined,
 ): Array<{ resolveType: string; title: string; description?: string }> {
   if (!schema) return [];

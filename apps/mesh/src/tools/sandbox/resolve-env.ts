@@ -4,10 +4,10 @@ import {
   SecretAccessDeniedError,
   SecretNotFoundError,
 } from "../../storage/secrets";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 
 interface ResolveAndPushParams {
-  ctx: MeshContext;
+  ctx: StudioContext;
   runner: SandboxProvider;
   handle: string;
   orgId: string;

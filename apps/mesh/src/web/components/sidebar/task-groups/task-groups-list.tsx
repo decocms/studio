@@ -85,9 +85,30 @@ export function TaskGroupsList() {
   const [orgPinOverrides, setOrgPinOverrides] = useState<
     Record<string, boolean>
   >({});
+  const serverOrgPinnedSet = new Set(serverOrgPinnedIds);
+
+  // Partition overrides into active (server hasn't confirmed yet) vs confirmed.
+  // Confirmed entries are pruned from state so they can't reactivate if server
+  // data fluctuates (cache miss, background refetch, etc.).
+  const activeOverrides: Record<string, boolean> = {};
+  const confirmedKeys: string[] = [];
+  for (const [id, pinned] of Object.entries(orgPinOverrides)) {
+    if (serverOrgPinnedSet.has(id) !== pinned) {
+      activeOverrides[id] = pinned;
+    } else {
+      confirmedKeys.push(id);
+    }
+  }
+  if (confirmedKeys.length > 0) {
+    setOrgPinOverrides((prev) => {
+      const next = { ...prev };
+      for (const k of confirmedKeys) delete next[k];
+      return next;
+    });
+  }
   const orgPinnedIds = (() => {
     const set = new Set(serverOrgPinnedIds);
-    for (const [id, pinned] of Object.entries(orgPinOverrides)) {
+    for (const [id, pinned] of Object.entries(activeOverrides)) {
       if (pinned) set.add(id);
       else set.delete(id);
     }
@@ -99,10 +120,9 @@ export function TaskGroupsList() {
   const visibleThreads = filterThreads(allThreads, { hidden: false });
   const { hide } = useThreadActions();
 
-  const { setTaskId, createNewTask } = usePanelActions();
   const navigate = useNavigate();
+  const { setTaskId, createNewTask } = usePanelActions();
   const params = useParams({ strict: false }) as {
-    org?: string;
     taskId?: string;
   };
   const activeTaskId = params.taskId ?? null;
@@ -160,14 +180,13 @@ export function TaskGroupsList() {
     const wasActive = task.id === activeTaskId;
     hide(task.id);
     if (!wasActive) return;
-    const next = sortedThreads.find((t) => t.id !== task.id);
+    const next = sortedThreads.find(
+      (t) => t.id !== task.id && t.virtual_mcp_id === task.virtual_mcp_id,
+    );
     if (next) {
       setTaskId(next.id, next.virtual_mcp_id);
-    } else if (params.org) {
-      navigate({
-        to: "/$org",
-        params: { org: params.org },
-      });
+    } else {
+      navigate({ to: "/$org", params: { org: org.slug } });
     }
   };
 
@@ -195,7 +214,7 @@ export function TaskGroupsList() {
 
   const handleToggleOrgPin = async (virtualMcpId: string, pinned: boolean) => {
     if (!canManageOrgPin) return;
-    if (orgPinOverrides[virtualMcpId] !== undefined) return;
+    if (activeOverrides[virtualMcpId] !== undefined) return;
     track("sidebar_group_org_pin_toggled", {
       virtual_mcp_id: virtualMcpId,
       pinned,
@@ -206,14 +225,10 @@ export function TaskGroupsList() {
         id: virtualMcpId,
         data: { pinned },
       });
-      syncOrdersOnOrgPinToggle(orderScope, virtualMcpId, pinned);
-      setLocalOrderRevision((n) => n + 1);
-      setOrgPinOverrides((prev) => {
-        const next = { ...prev };
-        delete next[virtualMcpId];
-        return next;
-      });
+      // The override is pruned from state automatically on the next render once
+      // serverOrgPinnedIds reflects the change — no explicit cleanup needed here.
     } catch {
+      syncOrdersOnOrgPinToggle(orderScope, virtualMcpId, !pinned);
       setOrgPinOverrides((prev) => {
         const next = { ...prev };
         delete next[virtualMcpId];
@@ -313,11 +328,11 @@ export function TaskGroupsList() {
           </ToolbarIconButton>
           <Popover>
             <PopoverTrigger asChild>
-              <ToolbarIconButton
-                aria-label="Filter tasks"
-                active={filtersActive}
-              >
+              <ToolbarIconButton aria-label="Filter tasks">
                 <FilterLines size={16} />
+                {filtersActive && (
+                  <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 ring-1 ring-sidebar pointer-events-none" />
+                )}
               </ToolbarIconButton>
             </PopoverTrigger>
             <PopoverContent
@@ -411,9 +426,6 @@ export function TaskGroupsList() {
             onReorder={() => setLocalOrderRevision((n) => n + 1)}
             renderGroup={(group) => ({
               ...buildAgentGroupRenderProps(group),
-              dimmed:
-                filtersActive &&
-                typeFiltered(memberFiltered(group.threads)).length === 0,
             })}
           />
         )}

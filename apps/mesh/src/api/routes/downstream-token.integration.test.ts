@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { Hono } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
 import { CredentialVault } from "../../encryption/credential-vault";
 import {
   closeTestPgDatabase,
@@ -8,12 +8,12 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { createDownstreamTokenRoutes } from "./downstream-token";
 
 describe("Downstream Token Routes", () => {
-  let database: MeshDatabase;
-  let app: Hono<{ Variables: { meshContext: MeshContext } }>;
+  let database: StudioDatabase;
+  let app: Hono<{ Variables: { meshContext: StudioContext } }>;
 
   beforeEach(async () => {
     database = await connectTestPgDatabase();
@@ -41,7 +41,7 @@ describe("Downstream Token Routes", () => {
           findById: mock(async () => ({ id: "conn_1" })),
         },
       },
-    } as unknown as MeshContext;
+    } as unknown as StudioContext;
 
     app = new Hono();
     app.use("*", async (c, next) => {

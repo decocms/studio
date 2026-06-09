@@ -1,4 +1,5 @@
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useAutoScroll } from "@deco/ui/hooks/use-auto-scroll.ts";
 import {
   useEffect,
   useRef,
@@ -123,6 +124,7 @@ function ChatMessages() {
     hasMoreOlder,
     isFetchingOlder,
     fetchOlderMessages,
+    isStreaming,
   } = useChatStream();
   const messagePairs = useMessagePairs(messages);
   const lastMessagePair = messagePairs.at(-1);
@@ -145,39 +147,53 @@ function ChatMessages() {
     fetchOlderMessages,
   });
 
+  // Bottom sentinel: pins the chat scroll to the bottom while the assistant
+  // is streaming. Rendered as the literal last child of the scroller so its
+  // y-position == scroller.scrollHeight — any upward scroll of 1px instantly
+  // disengages tracking (via IntersectionObserver in container mode).
+  // See: docs/superpowers/specs/2026-06-03-chat-autoscroll-sentinel-placement-design.md
+  const lastAssistantParts = lastMessagePair?.assistant?.parts;
+  const { sentinelRef: bottomSentinelRef } = useAutoScroll({
+    containerRef: scrollRef,
+    enabled: isStreaming,
+    contentDeps: [lastAssistantParts?.length, lastAssistantParts?.at(-1)],
+  });
+
   return (
     <div
       ref={scrollRef}
       data-chat-scroller
       className="w-full min-w-0 max-w-full overflow-y-auto h-full overflow-x-hidden"
-      style={{ paddingBottom }}
     >
-      <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
-        <div ref={sentinelRef} aria-hidden className="h-px" />
-        {isFetchingOlder && (
-          <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
-            Loading older messages…
+      <div style={{ paddingBottom }}>
+        <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
+          <div ref={sentinelRef} aria-hidden className="h-px" />
+          {isFetchingOlder && (
+            <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
+              Loading older messages…
+            </div>
+          )}
+          {messagePairs.slice(0, -1).map((pair, index) => (
+            <MessagePair
+              key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
+              pair={pair}
+              isLastPair={false}
+              status={index === messagePairs.length - 1 ? status : undefined}
+            />
+          ))}
+        </div>
+        {lastMessagePair && (
+          <div className="min-h-full min-w-0 max-w-2xl mx-auto w-full">
+            <MessagePair
+              key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
+              pair={lastMessagePair}
+              isLastPair={true}
+              status={status}
+            />
           </div>
         )}
-        {messagePairs.slice(0, -1).map((pair, index) => (
-          <MessagePair
-            key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
-            pair={pair}
-            isLastPair={false}
-            status={index === messagePairs.length - 1 ? status : undefined}
-          />
-        ))}
       </div>
-      {lastMessagePair && (
-        <div className="min-h-full min-w-0 max-w-2xl mx-auto w-full">
-          <MessagePair
-            key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
-            pair={lastMessagePair}
-            isLastPair={true}
-            status={status}
-          />
-        </div>
-      )}
+      <div ref={bottomSentinelRef} aria-hidden className="h-0" />
     </div>
   );
 }

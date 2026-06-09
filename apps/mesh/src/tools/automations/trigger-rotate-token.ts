@@ -14,7 +14,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { webhookPermissionResource, webhookUrl } from "./webhook-trigger";
 
 export const AUTOMATION_TRIGGER_ROTATE_TOKEN = defineTool({

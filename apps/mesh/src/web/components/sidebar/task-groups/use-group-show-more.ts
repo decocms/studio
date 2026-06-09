@@ -12,6 +12,17 @@ import {
 import type { Task } from "@/web/components/chat/task/types";
 import { extractToolErrorMessage } from "@/web/components/chat/store/mcp-utils";
 import {
+  groupShowMoreIdentity,
+  shouldDeferGroupProbe,
+} from "./group-show-more-identity";
+import { enqueueGroupThreadsFetch } from "./group-threads-fetch-queue";
+import {
+  cacheGroupProbeResult,
+  ensureGroupProbe,
+  getCachedGroupProbeResult,
+  inferServerHasMoreWithoutProbe,
+} from "./group-threads-probe-cache";
+import {
   buildShowMoreArgs,
   deriveGroupHasMore,
   groupHasMoreFromTotal,
@@ -27,24 +38,10 @@ interface ShowMoreState {
   isFetching: boolean;
   isProbing: boolean;
   identity: string;
+  /** Tracks which identity already subscribed to `ensureGroupProbe`. */
+  probeSubscribedIdentity: string | null;
   /** Authoritative once probed or after a per-group page fetch. */
   serverHasMore: boolean | null;
-}
-
-function makeIdentity(
-  orgId: string,
-  kind: GroupKind,
-  key: string,
-  filters: SidebarFilters,
-): string {
-  return [
-    orgId,
-    kind,
-    key,
-    filters.type,
-    filters.member,
-    filters.currentUserId ?? "",
-  ].join("|");
 }
 
 function parseListResult(result: unknown): {
@@ -95,18 +92,22 @@ export function useGroupShowMore(
   visibleCount?: number,
 ) {
   const { org } = useProjectContext();
-  const identity = makeIdentity(org.id, kind, key, filters);
+  const identity = groupShowMoreIdentity(org.id, kind, key, filters);
+  const deferProbe = shouldDeferGroupProbe(filters);
   const [state, setState] = useState<ShowMoreState>({
     isFetching: false,
     isProbing: false,
     identity,
+    probeSubscribedIdentity: null,
     serverHasMore: null,
   });
+
   if (state.identity !== identity) {
     setState({
       isFetching: false,
       isProbing: false,
       identity,
+      probeSubscribedIdentity: null,
       serverHasMore: null,
     });
   }
@@ -119,6 +120,10 @@ export function useGroupShowMore(
     resolvedVisibleCount,
     globalHasMore,
   );
+  const inferredServerHasMore = inferServerHasMoreWithoutProbe(
+    resolvedVisibleCount,
+    globalHasMore,
+  );
 
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
@@ -126,18 +131,36 @@ export function useGroupShowMore(
     orgSlug: org.slug,
   });
 
-  if (
+  if (state.identity === identity && state.serverHasMore === null) {
+    const resolvedWithoutProbe =
+      inferredServerHasMore ?? getCachedGroupProbeResult(identity);
+    if (resolvedWithoutProbe !== undefined) {
+      setState({
+        isFetching: false,
+        isProbing: false,
+        identity,
+        probeSubscribedIdentity: state.probeSubscribedIdentity,
+        serverHasMore: resolvedWithoutProbe,
+      });
+    }
+  }
+
+  const needsNetworkProbe =
+    !deferProbe &&
     state.identity === identity &&
     state.serverHasMore === null &&
-    !state.isProbing &&
-    !state.isFetching
-  ) {
-    const capturedIdentity = identity;
+    inferredServerHasMore === null &&
+    getCachedGroupProbeResult(identity) === undefined;
+
+  if (needsNetworkProbe && state.probeSubscribedIdentity !== identity) {
     setState((s) =>
-      s.identity === capturedIdentity ? { ...s, isProbing: true } : s,
+      s.identity === identity
+        ? { ...s, isProbing: true, probeSubscribedIdentity: identity }
+        : s,
     );
-    void (async () => {
-      try {
+    ensureGroupProbe(
+      identity,
+      async () => {
         const args = buildShowMoreArgs(kind, key, 0, filters, 1);
         const result = await client.callTool({
           name: "COLLECTION_THREADS_LIST",
@@ -155,29 +178,24 @@ export function useGroupShowMore(
           key,
           filters,
         );
+        if (totalCount === undefined) return false;
+        return groupHasMoreFromTotal(visible, totalCount);
+      },
+      (serverHasMore) => {
         setState((s) => {
-          if (s.identity !== capturedIdentity) return s;
+          if (s.identity !== identity) return s;
           return {
             ...s,
             isProbing: false,
-            serverHasMore:
-              totalCount === undefined
-                ? false
-                : groupHasMoreFromTotal(visible, totalCount),
+            serverHasMore,
           };
         });
-      } catch {
-        setState((s) =>
-          s.identity === capturedIdentity
-            ? { ...s, isProbing: false, serverHasMore: false }
-            : s,
-        );
-      }
-    })();
+      },
+    );
   }
 
   async function loadMore(): Promise<void> {
-    if (state.isFetching || state.isProbing) return;
+    if (state.isFetching || state.isProbing || deferProbe) return;
     const capturedIdentity = identity;
     setState((s) =>
       s.identity === capturedIdentity ? { ...s, isFetching: true } : s,
@@ -192,10 +210,12 @@ export function useGroupShowMore(
         GROUP_PAGE_SIZE,
       );
 
-      const result = await client.callTool({
-        name: "COLLECTION_THREADS_LIST",
-        arguments: args as unknown as Record<string, unknown>,
-      });
+      const result = await enqueueGroupThreadsFetch(() =>
+        client.callTool({
+          name: "COLLECTION_THREADS_LIST",
+          arguments: args as unknown as Record<string, unknown>,
+        }),
+      );
 
       if ((result as { isError?: boolean }).isError) {
         throw new Error(
@@ -232,6 +252,7 @@ export function useGroupShowMore(
           serverHasMore =
             items.length === 0 || newMatchingCount === 0 ? false : nextHasMore;
         }
+        cacheGroupProbeResult(capturedIdentity, serverHasMore);
         return {
           ...s,
           isFetching: false,
@@ -249,7 +270,15 @@ export function useGroupShowMore(
 
   const isBusy = state.isFetching || state.isProbing;
   const showButton =
-    !isBusy && resolveGroupHasMore(derivedHasMore, state.serverHasMore);
+    !deferProbe &&
+    !isBusy &&
+    resolveGroupHasMore(derivedHasMore, state.serverHasMore);
 
-  return { hasMore: showButton, isFetching: isBusy, loadMore };
+  return {
+    hasMore: showButton,
+    isFetching: isBusy,
+    isProbing: state.isProbing,
+    serverHasMore: state.serverHasMore,
+    loadMore,
+  };
 }

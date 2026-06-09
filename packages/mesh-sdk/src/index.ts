@@ -72,9 +72,12 @@ export {
   // Virtual MCP hooks
   useVirtualMCPs,
   useVirtualMCP,
+  virtualMcpItemQueryOptions,
   useVirtualMCPActions,
+  useVirtualMCPsLastUsed,
   type VirtualMCPFilter,
   type UseVirtualMCPsOptions,
+  type VirtualMCPLastUsed,
 } from "./hooks";
 
 // Types
@@ -128,7 +131,9 @@ export {
   parseSandboxRecord,
   parseBranchMap,
   normalizeSandboxMap,
+  normalizeSandboxProviderKind,
   type SandboxProviderKind,
+  type LegacySandboxProviderKind,
   type GithubRepo,
   // Decopilot event types
   THREAD_STATUSES,

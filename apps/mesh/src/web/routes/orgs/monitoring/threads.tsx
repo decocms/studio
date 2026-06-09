@@ -7,6 +7,7 @@ import type { useConnections, useVirtualMCPs } from "@decocms/mesh-sdk";
 import { useMCPClient } from "@decocms/mesh-sdk";
 import {
   useInfiniteQuery,
+  useQuery,
   useSuspenseInfiniteQuery,
 } from "@tanstack/react-query";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -60,11 +61,25 @@ import { KEYS } from "@/web/lib/query-keys";
 import { STATUS_CONFIG } from "@/web/lib/task-status";
 import type { Thread, ThreadMessage } from "@/storage/types.ts";
 import {
+  formatCompactNumber,
+  formatUsd,
   getOrgMembers,
   getThreadAgentId,
   resolveAgentIcon,
   resolveAgentName,
 } from "./utils.ts";
+
+// ── Per-thread usage (tokens + cost), keyed by thread id ────────────────────
+
+interface ThreadUsage {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: number;
+}
+
+type ThreadSortKey = "tokens" | "cost";
 
 // ── Thread types (pick only the fields we need from the server types) ───────
 
@@ -258,6 +273,7 @@ function ThreadMetaRow({
 
 function ThreadRow({
   thread,
+  usage,
   members,
   connections,
   virtualMcps,
@@ -265,6 +281,7 @@ function ThreadRow({
   lastRowRef,
 }: {
   thread: ThreadEntity;
+  usage?: ThreadUsage;
   members: ReturnType<typeof useMembers>["data"] | undefined;
   connections: ReturnType<typeof useConnections>;
   virtualMcps: ReturnType<typeof useVirtualMCPs>;
@@ -346,6 +363,12 @@ function ThreadRow({
             {statusCfg.label}
           </span>
         </div>
+      </TableCell>
+      <TableCell className="w-24 px-3 text-right tabular-nums text-muted-foreground">
+        {usage ? formatCompactNumber(usage.totalTokens) : "—"}
+      </TableCell>
+      <TableCell className="w-24 px-3 text-right tabular-nums text-muted-foreground">
+        {usage && usage.costUsd > 0 ? formatUsd(usage.costUsd) : "—"}
       </TableCell>
       <TableCell className="w-32 px-3 pr-5 text-muted-foreground">
         <div>{dateStr}</div>
@@ -785,9 +808,70 @@ export function ThreadsTabContent({
     (p: { items?: ThreadEntity[] }) => p.items ?? [],
   );
 
+  // Fetch per-thread token/cost for the loaded threads (from llm_call logs).
+  const threadIds = visibleThreads.map((t) => t.id);
+  const { data: usageData } = useQuery({
+    queryKey: KEYS.monitoringThreadUsage(
+      locator,
+      JSON.stringify({ ids: threadIds, startDate, endDate }),
+    ),
+    queryFn: async () => {
+      if (!client) throw new Error("MCP client is not available");
+      const result = (await client.callTool({
+        name: "MONITORING_THREAD_USAGE",
+        arguments: { threadIds, startDate, endDate },
+      })) as { structuredContent?: unknown };
+      return (result.structuredContent ?? result) as {
+        items: Array<ThreadUsage & { threadId: string }>;
+      };
+    },
+    enabled: !!client && threadIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  const usageMap = new Map<string, ThreadUsage>(
+    (usageData?.items ?? []).map((u) => [
+      u.threadId,
+      {
+        calls: u.calls,
+        inputTokens: u.inputTokens,
+        outputTokens: u.outputTokens,
+        totalTokens: u.totalTokens,
+        costUsd: u.costUsd,
+      },
+    ]),
+  );
+
+  // Client-side sort of the loaded threads by tokens/cost (null = server order).
+  const [sortKey, setSortKey] = useState<ThreadSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const toggleSort = (key: ThreadSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  };
+
+  const sortValue = (id: string) => {
+    const u = usageMap.get(id);
+    if (!u) return 0;
+    return sortKey === "cost" ? u.costUsd : u.totalTokens;
+  };
+
+  const displayThreads = sortKey
+    ? [...visibleThreads].sort((a, b) => {
+        const av = sortValue(a.id);
+        const bv = sortValue(b.id);
+        return sortDir === "desc" ? bv - av : av - bv;
+      })
+    : visibleThreads;
+
   const selectedThread =
     selectedThreadIndex !== null
-      ? (visibleThreads[selectedThreadIndex] ?? null)
+      ? (displayThreads[selectedThreadIndex] ?? null)
       : null;
 
   const handleLoadMore = () => {
@@ -810,7 +894,7 @@ export function ThreadsTabContent({
     setSelectedThreadIndex((i) => (i !== null && i > 0 ? i - 1 : i));
   const handleNext = () =>
     setSelectedThreadIndex((i) =>
-      i !== null && i < visibleThreads.length - 1 ? i + 1 : i,
+      i !== null && i < displayThreads.length - 1 ? i + 1 : i,
     );
 
   return (
@@ -857,22 +941,53 @@ export function ThreadsTabContent({
                         <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
                           Status
                         </TableHead>
+                        <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+                          <button
+                            type="button"
+                            onClick={() => toggleSort("tokens")}
+                            className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors uppercase"
+                          >
+                            Tokens
+                            {sortKey === "tokens" &&
+                              (sortDir === "desc" ? (
+                                <ChevronDown size={12} />
+                              ) : (
+                                <ChevronUp size={12} />
+                              ))}
+                          </button>
+                        </TableHead>
+                        <TableHead className="w-24 px-3 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide text-right">
+                          <button
+                            type="button"
+                            onClick={() => toggleSort("cost")}
+                            className="inline-flex items-center gap-1 ml-auto hover:text-foreground transition-colors uppercase"
+                          >
+                            Cost
+                            {sortKey === "cost" &&
+                              (sortDir === "desc" ? (
+                                <ChevronDown size={12} />
+                              ) : (
+                                <ChevronUp size={12} />
+                              ))}
+                          </button>
+                        </TableHead>
                         <TableHead className="w-32 px-3 pr-5 text-xs font-mono font-normal text-muted-foreground uppercase tracking-wide">
                           Date
                         </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {visibleThreads.map((thread, idx) => (
+                      {displayThreads.map((thread, idx) => (
                         <ThreadRow
                           key={thread.id}
                           thread={thread}
+                          usage={usageMap.get(thread.id)}
                           members={membersData}
                           connections={allConnections}
                           virtualMcps={allVirtualMcps}
                           onClick={() => setSelectedThreadIndex(idx)}
                           lastRowRef={
-                            idx === visibleThreads.length - 1
+                            idx === displayThreads.length - 1
                               ? (lastRowRef as (
                                   node: HTMLTableRowElement | null,
                                 ) => void)
@@ -910,7 +1025,7 @@ export function ThreadsTabContent({
               virtualMcps={allVirtualMcps}
               members={membersData}
               selectedIndex={selectedThreadIndex}
-              total={visibleThreads.length}
+              total={displayThreads.length}
               onPrev={handlePrev}
               onNext={handleNext}
             />

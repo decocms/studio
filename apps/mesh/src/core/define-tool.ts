@@ -11,7 +11,7 @@
 
 import { SpanStatusCode } from "@opentelemetry/api";
 import { z } from "zod";
-import type { MeshContext } from "./mesh-context";
+import type { StudioContext } from "./studio-context";
 
 // ============================================================================
 // Tool Definition Types
@@ -75,7 +75,7 @@ export interface ToolDefinition<
 > extends ToolBinder<TInput, TOutput, TName> {
   handler: (
     input: z.infer<TInput>,
-    ctx: MeshContext,
+    ctx: StudioContext,
   ) => Promise<z.infer<TOutput>>;
 }
 
@@ -92,7 +92,7 @@ export interface Tool<
 > extends ToolDefinition<TInput, TOutput, TName> {
   execute: (
     input: z.infer<TInput>,
-    ctx: MeshContext,
+    ctx: StudioContext,
   ) => Promise<z.infer<TOutput>>;
 }
 
@@ -141,7 +141,7 @@ export function defineTool<
      */
     execute: async (
       input: z.infer<TInput>,
-      ctx: MeshContext,
+      ctx: StudioContext,
     ): Promise<z.infer<TOutput>> => {
       return await ctx.timings.measure(
         `tool.${definition.name}`,

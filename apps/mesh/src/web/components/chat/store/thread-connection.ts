@@ -43,6 +43,7 @@ import {
   type UIMessage,
   type UIMessageChunk,
 } from "ai";
+import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import type { Client as MCPClient } from "@modelcontextprotocol/sdk/client/index.js";
 import type { ToolApprovalLevel } from "@/web/hooks/use-preferences";
 import type { SimpleModeTier } from "@/tools/organization/schema";
@@ -125,6 +126,9 @@ export interface ThreadObserver {
 const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
 const CLEAN_RECONNECT_DELAY_MS = 50;
+/** G1: Maximum time (ms) to wait for the POST /messages response. The POST is
+ *  idempotency-keyed (workflowID), so a timeout-then-retry is safe. */
+const POST_TIMEOUT_MS = 60_000;
 
 // Browser uses rAF for chunk-coalescing; tests run under Bun where rAF is absent.
 const scheduleFrame: (cb: () => void) => number =
@@ -256,6 +260,8 @@ export class ThreadConnection {
    * user has queued in the meantime.
    */
   private waitingForNewRun = false;
+  /** `start` chunk opened a new assistant turn — don't seed the prior one. */
+  private freshRunSubstream = false;
   private client: MCPClient | null;
   private serverFetchedCount = 0;
   private readonly pageSize = 5;
@@ -307,7 +313,10 @@ export class ThreadConnection {
     if (!next) {
       throw new Error(`submit: target not found for ${describe(action)}`);
     }
-    this.messages.set(next);
+    // Same sort pass refresh uses (mergeAndSort + DB `created_at`). Without
+    // it, an in-flight SSE assistant row can sit above the user we just
+    // appended because foldSubStream only upserts by id.
+    this.messages.set(mergeAndSort(next, []));
 
     // A new user turn always POSTs. For approval / toolOutput actions, only
     // POST once the assistant turn has no remaining client-side resolutions
@@ -355,6 +364,19 @@ export class ThreadConnection {
     if (this.subController) {
       this.forceCloseSubStream(true);
     }
+    // Anchor the frozen assistant so mergeAndSort on the next submit doesn't
+    // pull a timestamp-less user row ahead of it (role tiebreak or +Infinity).
+    this.messages.update((msgs) => {
+      const last = msgs.at(-1);
+      if (last?.role !== "assistant") return msgs;
+      const row = last as UIMessage & { created_at?: string };
+      if (row.created_at != null) return msgs;
+      const anchored = {
+        ...last,
+        created_at: new Date().toISOString(),
+      } as UIMessage;
+      return [...msgs.slice(0, -1), anchored];
+    });
     this.waitingForNewRun = true;
   }
 
@@ -424,6 +446,13 @@ export class ThreadConnection {
       this.drainChunkBuffer();
     } catch (err) {
       this.failTo(err instanceof Error ? err : new Error(String(err)));
+      // G3: drain the chunk buffer even on failure so live SSE chunks that
+      // arrived while the initial page was in-flight aren't stuck forever.
+      // Without this, chunkBuffer stays non-null after the catch branch and
+      // handleChunk keeps buffering indefinitely — the thread is stuck.
+      // Subsequent successful SSE chunks fold live; dedupe-by-id handles
+      // any overlap with rows from a later successful loadInitialPage.
+      this.drainChunkBuffer();
     } finally {
       this.resolveReady();
     }
@@ -549,15 +578,31 @@ export class ThreadConnection {
     const messages = systemMessage ? [systemMessage, message] : [message];
     const body = { messages, ...rest };
     const url = `/api/${encodeURIComponent(this.orgSlug)}/decopilot/threads/${encodeURIComponent(this.threadId)}/messages`;
-    const resp = await fetch(url, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal,
-    });
+    // G1: combine the caller's stop() abort signal with a generous timeout so
+    // a stalled server never hangs the chat indefinitely. The POST is
+    // idempotency-keyed (workflowID), so a timeout-then-retry is safe.
+    const timeoutSignal = AbortSignal.timeout(POST_TIMEOUT_MS);
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, timeoutSignal])
+      : timeoutSignal;
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: combinedSignal,
+      });
+    } catch (err) {
+      // Surface timeout as a clear, user-actionable error message.
+      if (timeoutSignal.aborted && !signal?.aborted) {
+        throw new Error("request timed out — retry");
+      }
+      throw err;
+    }
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
       throw new Error(text || `POST /messages failed (${resp.status})`);
@@ -618,22 +663,25 @@ export class ThreadConnection {
       }
 
       if (this.abort.signal.aborted) return;
+      // G2: use @decocms/std exponential backoff with jitter (CLAUDE.md bans
+      // hand-rolled backoff). Clean exits use the fast-path const; error
+      // exits get jittered backoff so thundering-herd on server restarts is
+      // spread out.
       const delay = cleanExit
         ? CLEAN_RECONNECT_DELAY_MS
-        : Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
+        : exponentialBackoffWithJitter(
+            MAX_DELAY_MS,
+            BASE_DELAY_MS,
+            attempt,
+            2,
+            0.5,
+          );
       attempt++;
       if (delay > 0) {
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, delay);
-          this.abort.signal.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(timer);
-              resolve();
-            },
-            { once: true },
-          );
-        });
+        // G2: use @decocms/std sleep (CLAUDE.md bans hand-rolled setTimeout
+        // promises). sleep() resolves (not rejects) on abort by default, which
+        // matches the previous "resolve on abort" semantics.
+        await sleep(delay, { signal: this.abort.signal }).catch(() => {});
       }
     }
   }
@@ -747,6 +795,9 @@ export class ThreadConnection {
         },
       });
     }
+    if (chunk.type === "start") {
+      this.freshRunSubstream = true;
+    }
     const sub = this.ensureSubStream();
     sub.enqueue(chunk);
     if (chunk.type === "finish") {
@@ -803,9 +854,12 @@ export class ThreadConnection {
   ): Promise<void> {
     const prev = this.messages.get();
     const seed =
-      prev.length > 0 && prev.at(-1)?.role === "assistant"
+      !this.freshRunSubstream &&
+      prev.length > 0 &&
+      prev.at(-1)?.role === "assistant"
         ? prev.at(-1)
         : undefined;
+    this.freshRunSubstream = false;
     const iter = readUIMessageStream({
       message: seed,
       stream: sub,
@@ -830,7 +884,9 @@ export class ThreadConnection {
       if (!pending) return;
       const msg = pending;
       pending = null;
-      this.messages.update((curr) => dropRedundantStubs(upsertById(curr, msg)));
+      this.messages.update((curr) =>
+        mergeAndSort(dropRedundantStubs(upsertById(curr, msg)), []),
+      );
     };
     for await (const msg of iter) {
       last = msg;
@@ -967,6 +1023,13 @@ export function mergeAndSort(
     const ta = readTimestamp(a);
     const tb = readTimestamp(b);
     if (ta !== tb) return ta - tb;
+    // Mirrors `listMessages` role tiebreak: user before assistant on equal
+    // timestamps (in-flight rows with no top-level `created_at` yet).
+    const roleRank = (m: UIMessage) =>
+      m.role === "user" ? 0 : m.role === "assistant" ? 1 : 2;
+    const ra = roleRank(a);
+    const rb = roleRank(b);
+    if (ra !== rb) return ra - rb;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
   return dropRedundantStubs(merged);
@@ -976,16 +1039,24 @@ export function mergeAndSort(
  * Persisted messages from COLLECTION_THREAD_MESSAGES_LIST carry the DB row's
  * `created_at` at the top level. AI-SDK UIMessages don't declare that field,
  * so we read it via a defensive cast. Some assistant messages additionally
- * stamp a `metadata.created_at` at the run-start time — that field reflects
- * the user-turn timestamp, NOT when the assistant row was actually written,
- * so it sorts the assistant BEFORE the user it answered. We deliberately
- * ignore `metadata.created_at` for ordering and trust only the top-level
- * persisted timestamp.
+ * stamp a `metadata.created_at` at run-start. Once the row is persisted the
+ * top-level `created_at` is authoritative — using metadata then would sort
+ * the assistant too early. In-flight assistants (no top-level yet) may fall
+ * back to metadata so a still-streaming turn-1 reply doesn't leap behind a
+ * newly-submitted turn-2 user row during live mergeAndSort.
  */
 function readTimestamp(m: UIMessage): number {
   const withTs = m as unknown as { created_at?: string | number | Date };
-  if (withTs.created_at == null) return Number.POSITIVE_INFINITY;
-  return new Date(withTs.created_at).getTime();
+  if (withTs.created_at != null) {
+    return new Date(withTs.created_at).getTime();
+  }
+  const meta = m.metadata as
+    | { created_at?: string | number | Date }
+    | undefined;
+  if (meta?.created_at != null) {
+    return new Date(meta.created_at).getTime();
+  }
+  return Number.POSITIVE_INFINITY;
 }
 
 // ─── Module-scoped slot ──────────────────────────────────────────────────────

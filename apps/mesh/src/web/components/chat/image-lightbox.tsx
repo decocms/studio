@@ -6,7 +6,7 @@ import {
   DialogOverlay,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
+import { cn } from "@deco/ui/lib/utils.ts";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Download01, ZoomIn, ZoomOut } from "@untitledui/icons";
 import { useRef, useState } from "react";

@@ -63,6 +63,8 @@ export interface Tool<
 > {
   _meta?: Record<string, unknown>;
   id: TId;
+  /** Human-readable name exposed via MCP tools/list `title` */
+  title?: string;
   description?: string;
   annotations?: ToolAnnotations;
   inputSchema: TSchemaIn;
@@ -82,6 +84,7 @@ export interface Tool<
 export type CreatedTool = {
   _meta?: Record<string, unknown>;
   id: string;
+  title?: string;
   description?: string;
   annotations?: ToolAnnotations;
   inputSchema: ZodTypeAny;
@@ -945,6 +948,7 @@ export const createMCPServer = <
         tool.id,
         {
           _meta: tool._meta,
+          title: tool.title,
           description: tool.description,
           annotations: tool.annotations,
           // Pass the full ZodObject (not its `.shape`) so the SDK skips

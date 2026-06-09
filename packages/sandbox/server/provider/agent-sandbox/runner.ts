@@ -38,7 +38,6 @@ import type {
   UpDownCounter,
 } from "@opentelemetry/api";
 import {
-  daemonBash,
   postConfig,
   probeDaemonHealth,
   proxyDaemonRequest,
@@ -54,8 +53,6 @@ import {
 import type { RunnerStateStore, RunnerStateStoreOps } from "../state-store";
 import type {
   EnsureOptions,
-  ExecInput,
-  ExecOutput,
   ProxyRequestInit,
   Sandbox,
   SandboxId,
@@ -86,8 +83,16 @@ import {
 import { watchClaimLifecycle } from "./lifecycle-watcher";
 import type { ClaimPhase } from "../lifecycle-types";
 
-const RUNNER_KIND = "cluster" as const;
+const RUNNER_KIND = "agent-sandbox" as const;
 const LOG_LABEL = "AgentSandboxProvider";
+
+/**
+ * Response-header marker on the preview-proxy's "sandbox not ready" envelopes
+ * (404 "sandbox not found" in dev, 502 "sandbox daemon unreachable" in prod).
+ * The mesh edge (`apps/mesh/src/sandbox/preview-proxy.ts`) swaps these for an
+ * auto-reloading "connecting" page on top-level document navigations.
+ */
+export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
 
 // Shared-namespace topology for MVP; tenancy enforced by unguessable claim
 // names (sha256(userId:projectRef)). Per-org namespaces are deferred.
@@ -407,33 +412,22 @@ export class AgentSandboxProvider implements SandboxProvider {
   // ---- SandboxProvider surface ------------------------------------------------
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
-    // Branch is the slug source; absent when caller didn't pass `repo`
-    // (tool-only sandboxes, smoke tests). The shared computeHandle falls
-    // back to a bare hash in that case, preserving stable identity.
-    const handle = composeBranchHandle(id, opts.repo?.branch ?? null);
+    // Branch is the slug source. Prefer the explicit top-level `opts.branch`
+    // (which `sandbox-proxy.ts`'s `computeClaimHandle` also uses) over
+    // `opts.repo?.branch` so a repo-less SANDBOX_START — i.e. a virtual MCP
+    // with no GitHub connection — still composes the same handle the proxy
+    // looks up. The fallback to bare-hash (`s-<hash>`) survives only for
+    // legacy tool-only / smoke-test callers that drive `ensure` without
+    // ever touching the sandbox-proxy.
+    const handle = composeBranchHandle(
+      id,
+      opts.branch ?? opts.repo?.branch ?? null,
+    );
     return this.inflight.run(handle, () =>
       withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
         this.ensureLocked(id, handle, opts, ops),
       ),
     );
-  }
-
-  async exec(handle: string, input: ExecInput): Promise<ExecOutput> {
-    let rec = await this.requireRecord(handle);
-    try {
-      return await daemonBash(rec.daemonUrl, rec.token, input);
-    } catch (err) {
-      // A 401 means the cached record is stale — the pool pod was recreated
-      // and no longer holds our token (daemonBash encodes the status in its
-      // message). Drop it and re-resolve; rehydrate re-bootstraps the fresh
-      // daemon. Then retry once.
-      if (err instanceof Error && err.message.includes("returned 401")) {
-        this.invalidateRecord(handle);
-        rec = await this.requireRecord(handle);
-        return daemonBash(rec.daemonUrl, rec.token, input);
-      }
-      throw err;
-    }
   }
 
   async delete(handle: string): Promise<void> {
@@ -536,7 +530,13 @@ export class AgentSandboxProvider implements SandboxProvider {
     // Preview traffic can resurrect autonomously (gateway fetch retry) while
     // daemon/git/exec paths still hit a cold records map. `exec` already
     // routes through `requireRecord`; mirror that here so Save-changes/git
-    // APIs don't 410 while the iframe preview is live.
+    // APIs don't 410 while the iframe preview is live. The operator may have
+    // evicted the claim+pod (15-min idle TTL) since the record was cached.
+    // resurrectByHandle returns null only for genuine not-found cases (no
+    // state-store / no row / row predates ensureOpts) — those fall through to the
+    // 404 below. A real ensure() failure (K8s/provisioning/bootstrap) THROWS and
+    // must propagate: callers already treat a throw as unreachable, and swallowing
+    // it would mislabel a backend failure as a false 404 "sandbox not found".
     if (!rec) {
       rec = await this.resurrectByHandle(handle);
     }
@@ -561,7 +561,9 @@ export class AgentSandboxProvider implements SandboxProvider {
       // URLSearchParams, FormData and Blobs are re-read from memory on retry.
       if (resp.status === 401 && canRetryBody) {
         this.invalidateRecord(handle);
-        const fresh = await this.requireRecord(handle).catch(() => null);
+        const fresh =
+          (await this.getRecord(handle).catch(() => null)) ??
+          (await this.resurrectByHandle(handle).catch(() => null));
         if (fresh) {
           activeRec = fresh;
           resp = await proxyDaemonRequest(
@@ -616,21 +618,29 @@ export class AgentSandboxProvider implements SandboxProvider {
     ).catch(() => undefined);
     if (!existing || existing.metadata?.deletionTimestamp) return false;
 
-    return this.inflight.run(handle, async () => {
-      if (this.records.has(handle)) return true;
-      const adopted = await this.adopt(id, handle, existing).catch(() => null);
-      if (!adopted) return false;
-      await withSandboxLock(this.stateStore, id, RUNNER_KIND, async (ops) => {
-        await this.finish(
-          adopted,
-          ops,
-          /* persistNow */ true,
-          /* patchTtl */ true,
-          "adopt",
+    // The inflight map is keyed on handle and typed to return `Sandbox`, so a
+    // concurrent ensure/adopt for the same handle dedupes onto one promise.
+    // Throw (not return false) on failure so the callback stays `Sandbox`;
+    // the catch below maps any failure back to `false`.
+    const sandbox = await this.inflight
+      .run(handle, async () => {
+        const cached = this.records.get(handle);
+        if (cached) return this.toSandbox(cached);
+        const adopted = await this.adopt(id, handle, existing);
+        if (!adopted) throw new Error(`cannot adopt live claim ${handle}`);
+        return withSandboxLock(this.stateStore, id, RUNNER_KIND, (ops) =>
+          this.finish(
+            adopted,
+            ops,
+            /* persistNow */ true,
+            /* patchTtl */ true,
+            "adopt",
+          ),
         );
-      });
-      return true;
-    });
+      })
+      .catch(() => null);
+
+    return sandbox != null;
   }
 
   /**
@@ -745,7 +755,9 @@ export class AgentSandboxProvider implements SandboxProvider {
       const upstreamBase = await this.resolvePreviewUpstreamUrl(handle);
       if (!upstreamBase) {
         status = 404;
-        return jsonResponse(404, { error: "sandbox not found" });
+        const notReady = jsonResponse(404, { error: "sandbox not found" });
+        notReady.headers.set(PREVIEW_NOT_READY_HEADER, "1");
+        return notReady;
       }
 
       const reqUrl = new URL(request.url);
@@ -836,7 +848,11 @@ export class AgentSandboxProvider implements SandboxProvider {
         }
 
         status = 502;
-        return jsonResponse(502, { error: "sandbox daemon unreachable" });
+        const notReady502 = jsonResponse(502, {
+          error: "sandbox daemon unreachable",
+        });
+        notReady502.headers.set(PREVIEW_NOT_READY_HEADER, "1");
+        return notReady502;
       }
 
       const responseHeaders = new Headers();
@@ -1626,14 +1642,6 @@ export class AgentSandboxProvider implements SandboxProvider {
     // is keyed on.
     await this.ensure(row.id, persistedOpts);
     return this.records.get(handle) ?? null;
-  }
-
-  private async requireRecord(handle: string): Promise<K8sRecord> {
-    const rec = await this.getRecord(handle);
-    if (rec) return rec;
-    const resurrected = await this.resurrectByHandle(handle);
-    if (resurrected) return resurrected;
-    throw new Error(`unknown sandbox handle ${handle}`);
   }
 
   /**

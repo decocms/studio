@@ -1,8 +1,8 @@
 /**
  * Workflows Plugin - Server Types
  *
- * Type definitions for the MeshContext shape used by workflow tools.
- * Tools receive MeshContext as `unknown` -- these types provide safe casting.
+ * Type definitions for the StudioContext shape used by workflow tools.
+ * Tools receive StudioContext as `unknown` -- these types provide safe casting.
  */
 
 import type { WorkflowPluginStorage } from "./storage";
@@ -40,11 +40,11 @@ export interface MCPProxy {
 }
 
 /**
- * MeshContext shape available to workflow tools.
+ * StudioContext shape available to workflow tools.
  *
- * This is a subset of the full MeshContext -- only the parts workflows need.
+ * This is a subset of the full StudioContext -- only the parts workflows need.
  */
-export interface WorkflowMeshContext {
+export interface WorkflowStudioContext {
   organization: { id: string; slug?: string; name?: string };
   auth: {
     user: { id: string; email?: string } | null;
@@ -58,11 +58,11 @@ export interface WorkflowMeshContext {
 }
 
 /**
- * Cast unknown ctx to WorkflowMeshContext.
+ * Cast unknown ctx to WorkflowStudioContext.
  * Throws if organization context is missing.
  */
-export function requireWorkflowContext(ctx: unknown): WorkflowMeshContext {
-  const meshCtx = ctx as WorkflowMeshContext;
+export function requireWorkflowContext(ctx: unknown): WorkflowStudioContext {
+  const meshCtx = ctx as WorkflowStudioContext;
   if (!meshCtx.organization) {
     throw new Error("Organization context required for workflow tools");
   }

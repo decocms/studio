@@ -1,7 +1,7 @@
 /**
  * Context Factory
  *
- * Creates MeshContext instances from HTTP requests (via Hono Context).
+ * Creates StudioContext instances from HTTP requests (via Hono Context).
  * Handles:
  * - API key verification
  * - Organization scope extraction (from Better Auth)
@@ -24,8 +24,10 @@ import {
 import {
   createMonitoringEngine,
   ClickHouseClientEngine,
+  DuckDBEngine,
+  buildOtlpFlatSource,
 } from "../monitoring/query-engine";
-import type { QueryEngine } from "../monitoring/query-engine";
+import type { QueryEngine, DuckDBGcsConfig } from "../monitoring/query-engine";
 import { getLogsDir, getMetricsDir } from "../monitoring/schema";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { VirtualMcpPluginConfigsStorage } from "../storage/virtual-mcp-plugin-configs";
@@ -33,6 +35,8 @@ import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { BrandContextStorage } from "../storage/brand-context";
 import { OrganizationDomainStorage } from "../storage/organization-domains";
+import { KyselyKVStorage } from "../storage/kv";
+import { KyselyInterestsStorage } from "../storage/interests";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import {
@@ -47,12 +51,13 @@ import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AccessControl } from "./access-control";
+import { isOrgArchived } from "./org-archived";
 import type {
   BetterAuthInstance,
   BoundAuthClient,
-  MeshContext,
+  StudioContext,
   Timings,
-} from "./mesh-context";
+} from "./studio-context";
 
 // ============================================================================
 // Configuration
@@ -100,7 +105,7 @@ function parsePropertiesHeader(
   }
 }
 
-export interface MeshContextConfig {
+export interface StudioContextConfig {
   db: Kysely<Database>;
   auth: BetterAuthInstance;
   encryption: {
@@ -246,7 +251,7 @@ export interface AuthContext {
 
 /**
  * Create a bound auth client that encapsulates HTTP headers and auth context
- * MeshContext stays HTTP-agnostic while delegating all Better Auth calls
+ * StudioContext stays HTTP-agnostic while delegating all Better Auth calls
  *
  * Two permission flows:
  * 1. API Key / MCP OAuth → check directly against stored `permissions`
@@ -264,11 +269,11 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       requestedPermission: Permission,
       options?: { organizationId?: string },
     ): Promise<boolean> => {
-      // Built-in roles bypass all permission checks
-      if (
-        role &&
-        BUILTIN_ROLES.includes(role as (typeof BUILTIN_ROLES)[number])
-      ) {
+      // Only owner/admin bypass all permission checks (full org access). The
+      // built-in `user` role is enforced like any member: it gets basic-usage
+      // (granted out-of-band in AccessControl) plus its explicit Better Auth /
+      // connection grants, and nothing else. See ADMIN_ROLES in auth/roles.ts.
+      if (role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])) {
         return true;
       }
 
@@ -351,10 +356,15 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
       },
 
       list: async (userId?: string) => {
-        return auth.api.listOrganizations({
+        // Choke point: archived (soft-deleted) orgs are invisible to every
+        // API/UI surface, so filter them here — no caller of this method ever
+        // sees them. A future restore flow would read archived orgs from
+        // storage directly, not via this method.
+        const orgs = await auth.api.listOrganizations({
           headers,
           query: userId ? { userId } : undefined,
         });
+        return orgs.filter((org: (typeof orgs)[number]) => !isOrgArchived(org));
       },
 
       addMember: async (data) => {
@@ -439,7 +449,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
 import { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import { ConnectionEntity } from "@/tools/connection/schema";
-import { BUILTIN_ROLES } from "../auth/roles";
+import { ADMIN_ROLES, BUILTIN_ROLES } from "../auth/roles";
 import { OrgScopedThreadStorage, SqlThreadStorage } from "@/storage/threads";
 import {
   OrgScopedAsyncResearchJobStorage,
@@ -459,15 +469,17 @@ import { DevObjectStorage } from "../object-storage/dev-object-storage";
 import { decorateStorageWithAssetHoisting } from "../object-storage/asset-hoister";
 
 /**
- * Fetch role permissions from the database
- * Returns undefined for built-in roles (they bypass permission checks)
+ * Fetch role permissions from the database.
+ * Built-in roles have no row in the organizationRole table, so this returns
+ * undefined for them. owner/admin additionally bypass all checks at runtime;
+ * `user` falls through to its (intentionally empty) Better Auth role grant.
  */
 export async function fetchRolePermissions(
   db: Kysely<Database>,
   organizationId: string,
   role: string,
 ): Promise<Permission | undefined> {
-  // Built-in roles bypass permission checks
+  // Built-in roles have no custom-role permission row to fetch.
   if (BUILTIN_ROLES.includes(role as (typeof BUILTIN_ROLES)[number])) {
     return undefined;
   }
@@ -501,6 +513,33 @@ export async function fetchRolePermissions(
  * 1. API Key / MCP OAuth → permissions are queried and returned
  * 2. Browser sessions → no permissions stored (use Better Auth's hasPermission API)
  */
+// Tiny TTL cache for org archived-status, keyed by org id. The mesh-JWT
+// (embedded name/slug) and API-key auth paths check this on every proxied
+// request, so caching keeps the lookup off the hot path. Archiving is a
+// one-way soft-delete, so a short TTL is plenty.
+const ARCHIVED_CACHE_TTL_MS = 60_000;
+const orgArchivedCache = new Map<string, { archived: boolean; at: number }>();
+
+async function isOrgArchivedCached(
+  db: Kysely<Database>,
+  timings: NonNullable<FactoryOptions["timings"]>,
+  organizationId: string,
+  spanName: string,
+): Promise<boolean> {
+  const hit = orgArchivedCache.get(organizationId);
+  if (hit && Date.now() - hit.at < ARCHIVED_CACHE_TTL_MS) return hit.archived;
+  const orgRow = await timings.measure(spanName, () =>
+    db
+      .selectFrom("organization")
+      .select(["metadata"])
+      .where("id", "=", organizationId)
+      .executeTakeFirst(),
+  );
+  const archived = isOrgArchived(orgRow);
+  orgArchivedCache.set(organizationId, { archived, at: Date.now() });
+  return archived;
+}
+
 async function authenticateRequest(
   req: Request,
   auth: BetterAuthInstance,
@@ -571,18 +610,8 @@ async function authenticateRequest(
         return base.executeTakeFirst();
       });
 
-      if (membership?.orgMetadata) {
-        try {
-          const meta = JSON.parse(membership.orgMetadata) as Record<
-            string,
-            unknown
-          >;
-          if (meta.archived === true) {
-            throw new Error("Organization is archived");
-          }
-        } catch (e) {
-          if ((e as Error).message === "Organization is archived") throw e;
-        }
+      if (isOrgArchived({ metadata: membership?.orgMetadata })) {
+        throw new Error("Organization is archived");
       }
 
       const role = membership?.role;
@@ -666,6 +695,19 @@ async function authenticateRequest(
           const metaName = meshJwtPayload.metadata?.organizationName;
           const metaSlug = meshJwtPayload.metadata?.organizationSlug;
           if (metaName || metaSlug) {
+            // Name/slug are embedded in the JWT, but we still need to verify the
+            // org isn't archived — the token may have been issued before
+            // deletion. Cached to keep this off the hot path.
+            if (
+              await isOrgArchivedCached(
+                db,
+                timings,
+                metaOrgId,
+                "auth_query_org_archived_for_mesh_jwt",
+              )
+            ) {
+              return { user: undefined };
+            }
             organization = { id: metaOrgId, name: metaName, slug: metaSlug };
           } else {
             const orgRow = await timings.measure(
@@ -673,10 +715,13 @@ async function authenticateRequest(
               () =>
                 db
                   .selectFrom("organization")
-                  .select(["id", "slug", "name"])
+                  .select(["id", "slug", "name", "metadata"])
                   .where("id", "=", metaOrgId)
                   .executeTakeFirst(),
             );
+            if (isOrgArchived(orgRow)) {
+              return { user: undefined };
+            }
             organization = orgRow
               ? { id: orgRow.id, slug: orgRow.slug, name: orgRow.name }
               : { id: metaOrgId };
@@ -717,6 +762,19 @@ async function authenticateRequest(
         const orgMetadata = result.key.metadata?.organization as
           | OrganizationContext
           | undefined;
+
+        // Block access if the org has been soft-deleted since the key was issued
+        if (
+          orgMetadata?.id &&
+          (await isOrgArchivedCached(
+            db,
+            timings,
+            orgMetadata.id,
+            "auth_query_org_for_api_key",
+          ))
+        ) {
+          return { user: undefined };
+        }
 
         // API keys have permissions stored directly on them
         const permissions = result.key.permissions as Permission | undefined;
@@ -835,6 +893,7 @@ async function authenticateRequest(
                 "organization.id as orgId",
                 "organization.slug as orgSlug",
                 "organization.name as orgName",
+                "organization.metadata as orgMetadata",
               ])
               .where("member.userId", "=", session.user.id);
             if (requestedOrgId) {
@@ -845,6 +904,10 @@ async function authenticateRequest(
             return q.executeTakeFirst();
           },
         );
+
+        if (isOrgArchived({ metadata: membership?.orgMetadata })) {
+          throw new Error("Organization is archived");
+        }
 
         if (membership) {
           organization = {
@@ -880,7 +943,7 @@ async function authenticateRequest(
         } | null;
 
         if (orgData) {
-          if (orgData.metadata?.archived === true) {
+          if (isOrgArchived(orgData)) {
             throw new Error("Organization is archived");
           }
 
@@ -950,7 +1013,7 @@ interface FactoryOptions {
 type FactoryFunction = (
   req?: Request,
   options?: FactoryOptions,
-) => Promise<MeshContext>;
+) => Promise<StudioContext>;
 
 let createContextFn: FactoryFunction;
 
@@ -974,35 +1037,98 @@ const wellKnownForwardableHeaders = ["x-hub-signature-256"];
  * Create a context factory function
  *
  * The factory creates storage adapters once (singleton pattern) and
- * returns a function that creates MeshContext from Hono Context
+ * returns a function that creates StudioContext from Hono Context
  */
-export async function createMeshContextFactory(
-  config: MeshContextConfig,
+export async function createStudioContextFactory(
+  config: StudioContextConfig,
 ): Promise<FactoryFunction> {
   // Create vault instance for credential encryption
   const vault = new CredentialVault(config.encryption.key);
 
-  // Create monitoring engines (shared across requests)
-  const clickhouseUrl = getSettings().clickhouseUrl;
+  // Create monitoring engines (shared across requests).
+  // Precedence: ClickHouse (otel_logs view) > GCS OTLP-JSON (embedded DuckDB +
+  // httpfs) > local NDJSON (embedded DuckDB). The test-stub path overrides all.
+  const settings = getSettings();
+  const clickhouseUrl = settings.clickhouseUrl;
   const isClickHouse = !!clickhouseUrl;
-  const dialect: SqlDialect = config.monitoringEngines
-    ? "duckdb"
-    : isClickHouse
-      ? "clickhouse"
-      : "duckdb";
+  const isGcsOtlp = !isClickHouse && !!settings.monitoringS3Bucket;
+  const dialect: SqlDialect = isClickHouse ? "clickhouse" : "duckdb";
+
+  const { resolve } = await import("node:path");
+  const logsBasePath = resolve(getLogsDir());
+  const metricsBasePath = resolve(getMetricsDir());
+
+  // DuckDB reads local NDJSON files; org-sharded directory layout.
+  const localLogSourceFactory = (orgId: string) =>
+    `read_ndjson('${logsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
+  const localMetricSourceFactory = (orgId: string) =>
+    `read_ndjson('${metricsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
 
   let monitoringEngine: QueryEngine;
   let metricEngine: QueryEngine;
+  let logSourceFactory: (orgId: string) => string;
+  let metricSourceFactory: (orgId: string) => string;
+  // When true, metrics are derived from flat log rows instead of histogram
+  // MetricRow files (the GCS OTLP path; see SqlMonitoringStorage).
+  let metricsFromLogs = false;
 
   if (config.monitoringEngines) {
     // Test-only path: caller supplied stubs to avoid loading
     // `@duckdb/node-api` (whose native finalizer trips a Bun teardown
-    // crash). See MeshContextConfig.monitoringEngines for the why.
+    // crash). See StudioContextConfig.monitoringEngines for the why.
     monitoringEngine = config.monitoringEngines.monitoringEngine;
     metricEngine = config.monitoringEngines.metricEngine;
+    logSourceFactory = localLogSourceFactory;
+    metricSourceFactory = localMetricSourceFactory;
   } else if (isClickHouse) {
+    // ClickHouse reads the studio_monitoring_logs VIEW (a flat projection of the
+    // OTel-native otel_logs table — provisioned manually, see
+    // monitoring/clickhouse-setup.md). Metrics are derived from those same log
+    // rows, so both factories point at the view.
     monitoringEngine = new ClickHouseClientEngine(clickhouseUrl!);
     metricEngine = new ClickHouseClientEngine(clickhouseUrl!);
+    logSourceFactory = (_orgId: string) => "studio_monitoring_logs";
+    metricSourceFactory = (_orgId: string) => "studio_monitoring_logs";
+  } else if (isGcsOtlp) {
+    // GCS OTLP-JSON path: embedded DuckDB reads OTLP-JSON log files from the
+    // bucket over the S3-compatible endpoint, flattens them to the dashboard's
+    // flat columns, and derives metrics from those log rows. The flat source is
+    // the same for logs and metrics; org scoping is the outer WHERE.
+    const accessKeyId =
+      settings.monitoringS3AccessKeyId ?? settings.s3AccessKeyId;
+    const secretAccessKey =
+      settings.monitoringS3SecretAccessKey ?? settings.s3SecretAccessKey;
+    const extensionDirectory = settings.duckdbExtensionDirectory;
+    if (!accessKeyId || !secretAccessKey || !extensionDirectory) {
+      throw new Error(
+        "MONITORING_S3_BUCKET is set but the GCS monitoring path is misconfigured: " +
+          "MONITORING_S3_ACCESS_KEY_ID/S3_ACCESS_KEY_ID, " +
+          "MONITORING_S3_SECRET_ACCESS_KEY/S3_SECRET_ACCESS_KEY, and " +
+          "DUCKDB_EXTENSION_DIRECTORY are all required.",
+      );
+    }
+    const gcs: DuckDBGcsConfig = {
+      endpoint:
+        settings.monitoringS3Endpoint ??
+        settings.s3Endpoint ??
+        "storage.googleapis.com",
+      region: settings.monitoringS3Region ?? settings.s3Region,
+      accessKeyId,
+      secretAccessKey,
+      extensionDirectory,
+    };
+    // One shared engine: same files for logs and log-derived metrics, so the
+    // httpfs + SECRET setup runs once.
+    const gcsEngine = new DuckDBEngine(gcs);
+    monitoringEngine = gcsEngine;
+    metricEngine = gcsEngine;
+    const otlpSource = buildOtlpFlatSource({
+      bucket: settings.monitoringS3Bucket!,
+      prefix: settings.monitoringS3Prefix ?? "",
+    });
+    logSourceFactory = (_orgId: string) => otlpSource;
+    metricSourceFactory = (_orgId: string) => otlpSource;
+    metricsFromLogs = true;
   } else {
     const { engine: me } = await createMonitoringEngine({
       basePath: getLogsDir(),
@@ -1012,27 +1138,14 @@ export async function createMeshContextFactory(
     });
     monitoringEngine = me;
     metricEngine = metricE;
+    logSourceFactory = localLogSourceFactory;
+    metricSourceFactory = localMetricSourceFactory;
   }
-
-  const { resolve } = await import("node:path");
-  const logsBasePath = resolve(getLogsDir());
-  const metricsBasePath = resolve(getMetricsDir());
-
-  const logSourceFactory = isClickHouse
-    ? (_orgId: string) => "monitoring_logs"
-    : (orgId: string) =>
-        `read_ndjson('${logsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
-
-  const useMetricsRollup = process.env.USE_METRICS_ROLLUP !== "false";
-  const metricSourceFactory = isClickHouse
-    ? (_orgId: string) =>
-        useMetricsRollup ? "monitoring_metrics_rollup_1m" : "monitoring_metrics"
-    : (orgId: string) =>
-        `read_ndjson('${metricsBasePath}/${orgId}/**/*.ndjson', auto_detect=true)`;
 
   // Create storage adapters once (singleton pattern)
   const threadDb = new SqlThreadStorage(config.db);
   const asyncResearchJobDb = new SqlAsyncResearchJobStorage(config.db);
+  const kvStorage = new KyselyKVStorage(config.db);
   const baseStorage = {
     connections: new ConnectionStorage(config.db, vault),
     organizationSettings: new OrganizationSettingsStorage(config.db),
@@ -1042,6 +1155,7 @@ export async function createMeshContextFactory(
       metricEngine,
       metricSourceFactory,
       dialect,
+      metricsFromLogs,
     ),
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),
@@ -1069,6 +1183,8 @@ export async function createMeshContextFactory(
     },
     brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
+    kv: kvStorage,
+    interests: new KyselyInterestsStorage(kvStorage),
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin
     // Note: Policies handled by Better Auth permissions directly
     // Note: API keys (tokens) managed by Better Auth API Key plugin
@@ -1079,7 +1195,7 @@ export async function createMeshContextFactory(
   return async (
     req?: Request,
     options?: FactoryOptions,
-  ): Promise<MeshContext> => {
+  ): Promise<StudioContext> => {
     const timings = options?.timings ?? DEFAULT_TIMINGS;
 
     // Client pool scoped to this request — reuses connections within the same
@@ -1090,7 +1206,7 @@ export async function createMeshContextFactory(
     // Authenticate request (OAuth session or API key)
     const authResult = req
       ? await config.observability.tracer.startActiveSpan(
-          "mesh.auth",
+          "studio.auth",
           async (span) => {
             try {
               const result = await authenticateRequest(
@@ -1134,8 +1250,8 @@ export async function createMeshContextFactory(
       userId: authResult.user?.id, // For server-side API key operations
     });
 
-    // Build auth object for MeshContext
-    const meshAuth: MeshContext["auth"] = {
+    // Build auth object for StudioContext
+    const meshAuth: StudioContext["auth"] = {
       user: authResult.user,
     };
 
@@ -1202,7 +1318,7 @@ export async function createMeshContextFactory(
       orgSlug: organization?.slug,
     });
 
-    const ctx: MeshContext = {
+    const ctx: StudioContext = {
       timings,
       auth: meshAuth,
       connectionId,

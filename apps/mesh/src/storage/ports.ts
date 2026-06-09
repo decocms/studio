@@ -36,6 +36,15 @@ export interface ThreadStoragePort {
     data: Partial<Thread>,
   ): Promise<Thread>;
   /**
+   * Atomically transition an in-progress thread to completed.
+   * Returns the updated row when this call won the transition, or null when the
+   * run was already terminal or no longer active.
+   */
+  completeRunIfNotCompleted(
+    id: string,
+    organizationId: string,
+  ): Promise<Thread | null>;
+  /**
    * Atomically transitions a thread to "failed" only when its current
    * persisted status is "in_progress". Safe to call concurrently — the
    * conditional WHERE clause prevents clobbering a terminal status.
@@ -92,6 +101,37 @@ export interface ThreadStoragePort {
 
   /** Release ownership for all runs owned by this pod (graceful shutdown). */
   orphanRunsByPod(podId: string): Promise<string[]>;
+
+  /**
+   * Stamp `last_progress_at = now()` on a thread. Cheap single-column UPDATE
+   * used by the progress-liveness heartbeat (throttled by the caller). No-op
+   * if the row doesn't exist.
+   */
+  bumpProgress(taskId: string, organizationId: string): Promise<void>;
+
+  /**
+   * Read the progress-liveness columns for a thread. `lastProgressAt` is the
+   * epoch-ms of the most recent progress signal (null when the run just
+   * started and hasn't emitted a chunk yet); `runStartedAt` is the epoch-ms
+   * the current run claimed the thread (null when not running). The reaper
+   * uses these to decide whether a run is stuck (`isRunStuck`).
+   */
+  getProgress(
+    taskId: string,
+    organizationId: string,
+  ): Promise<{
+    lastProgressAt: number | null;
+    runStartedAt: number | null;
+  } | null>;
+
+  /**
+   * For each given virtual MCP id, return the timestamp and creator of the most recent thread.
+   * Used by the dedicated last-used endpoint; not on the agent fetch hot path.
+   */
+  findLastUsedByVirtualMcpIds(
+    organizationId: string,
+    virtualMcpIds: string[],
+  ): Promise<Map<string, { last_used_at: string; last_used_by: string }>>;
 
   // Message operations - upserts by id (updates existing rows)
   saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;
@@ -433,6 +473,78 @@ export interface MonitoringStorage {
       p95: number;
     }>;
   }>;
+
+  /**
+   * Aggregate LLM-call usage (tokens + USD cost) for the AI Usage dashboard.
+   *
+   * Unlike queryMetricTimeseries (which reads pre-aggregated metric histograms),
+   * this reads the raw log rows — one row per LLM completion — so it can SUM the
+   * token/cost values stored in the `output` JSON and filter by `user_id`.
+   * Cost is only populated for providers that report it (deco ai-gateway /
+   * OpenRouter); it is 0 otherwise and for rows logged before cost capture shipped.
+   */
+  queryLlmUsageStats(params: {
+    organizationId: string;
+    interval: string;
+    connectionId: string;
+    startDate?: Date;
+    endDate?: Date;
+    userIds?: string[];
+    topN?: number;
+  }): Promise<{
+    totalCalls: number;
+    totalErrors: number;
+    avgDurationMs: number;
+    p50DurationMs: number;
+    p95DurationMs: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalTokens: number;
+    totalCostUsd: number;
+    topTools: Array<{
+      toolName: string;
+      connectionId: string | null;
+      calls: number;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+    }>;
+    timeseries: Array<{
+      timestamp: string;
+      calls: number;
+      errors: number;
+      errorRate: number;
+      avg: number;
+      p50: number;
+      p95: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      costUsd: number;
+    }>;
+  }>;
+
+  /**
+   * Per-thread LLM usage (tokens + USD cost), aggregated from llm_call logs
+   * grouped by `properties.thread_id`. Used to decorate the Threads monitoring
+   * tab. Filtered to the given thread IDs to keep the scan bounded.
+   */
+  queryThreadUsage(params: {
+    organizationId: string;
+    connectionId: string;
+    threadIds: string[];
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<
+    Array<{
+      threadId: string;
+      calls: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      costUsd: number;
+    }>
+  >;
 }
 
 // ============================================================================

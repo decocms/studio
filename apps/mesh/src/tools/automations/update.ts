@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { syncAutomationActiveChanged } from "../../automations/dbos-sync";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth, requireOrganization } from "../../core/mesh-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { ChatTierSchema } from "../organization/schema";
 import { configureTriggerOnMcp } from "./configure-trigger";
 import { normalizeMessages } from "./normalize-messages";

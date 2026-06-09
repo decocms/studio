@@ -6,7 +6,7 @@
  * falling back to a live tools/list request on cache miss.
  */
 
-import type { MeshContext } from "@/core/mesh-context";
+import type { StudioContext } from "@/core/studio-context";
 import {
   type McpListCache,
   getMcpListCache,
@@ -26,7 +26,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 const MCP_MESH_KEY = "mcp.mesh";
 
 interface AuthTransportOptions {
-  ctx: MeshContext;
+  ctx: StudioContext;
   connection: ConnectionEntity;
   superUser?: boolean;
   cache?: McpListCache;

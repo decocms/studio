@@ -11,21 +11,21 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
-import type { MeshDatabase } from "../../database";
+import type { StudioDatabase } from "../../database";
 import { CredentialVault } from "../../encryption/credential-vault";
 import {
   SqlThreadStorage,
   OrgScopedThreadStorage,
 } from "../../storage/threads";
 import { VirtualMCPStorage } from "../../storage/virtual";
-import type { BoundAuthClient, MeshContext } from "../../core/mesh-context";
+import type { BoundAuthClient, StudioContext } from "../../core/studio-context";
 
 const ORG_ID = "org_test";
 const USER_ID = "user_test";
 
 export interface ThreadTestEnv {
-  database: MeshDatabase;
-  ctx: MeshContext;
+  database: StudioDatabase;
+  ctx: StudioContext;
   orgId: string;
   userId: string;
   close: () => Promise<void>;
@@ -97,6 +97,8 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
       registry: null as never,
       brandContext: null as never,
       organizationDomains: null as never,
+      kv: null as never,
+      interests: null as never,
     },
     vault,
     authInstance: null as never,
@@ -132,7 +134,7 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
     createMCPProxy: vi.fn().mockResolvedValue({}),
     getOrCreateClient: vi.fn().mockResolvedValue({}),
     pendingRevalidations: [],
-  } as unknown as MeshContext;
+  } as unknown as StudioContext;
 
   return {
     database,

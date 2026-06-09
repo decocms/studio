@@ -12,6 +12,7 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
+import { isOrgArchived } from "../../src/core/org-archived";
 
 export interface SignUpResult {
   name: string;
@@ -95,7 +96,7 @@ export async function signUpViaApi(
       };
   // Better Auth has shipped both shapes over time. Accept either.
   const orgs = Array.isArray(orgsBody) ? orgsBody : (orgsBody.data ?? []);
-  const org = orgs.find((o) => !o.metadata?.archived);
+  const org = orgs.find((o) => !isOrgArchived(o));
   if (!org) {
     throw new Error(
       `signUpViaApi: signup completed but no org was found for user ${userId}`,

@@ -50,8 +50,8 @@ import {
   getUserId,
   requireAuth,
   requireOrganization,
-  type MeshContext,
-} from "../../core/mesh-context";
+  type StudioContext,
+} from "../../core/studio-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import { readSandboxMap, resolveVm } from "../../tools/sandbox/sandbox-map";
 import type { Env } from "../hono-env";
@@ -187,11 +187,11 @@ export const createVmEventsRoutes = () => {
       });
 
       try {
-        // Same probe for every runner. `runner.alive` is honest across both
+        // Same probe for every provider. `runner.alive` is honest across both
         // providers: each queries its source-of-truth (the K8s API for
-        // cluster, the link daemon for user-desktop). When the prior
-        // sandboxMap entry's runner kind differs from the env's current
-        // runner, we route the stale-state cleanup through the *prior* kind
+        // agent-sandbox, the link daemon for user-desktop). When the prior
+        // sandboxMap entry's provider kind differs from the env's current
+        // provider, we route the stale-state cleanup through the *prior* kind
         // so we don't leave behind rows in the wrong table.
         if (expectingHandle && providerKind) {
           const stale = await isStaleHandle(runner, claimName);
@@ -263,7 +263,7 @@ async function isStaleHandle(
  *
  * `provider.delete` is idempotent: it 404-tolerantly tries to delete the
  * SandboxClaim, closes any forwarder, drops in-memory + state-store rows.
- * The provider-kind dispatch matches the *prior* kind (existingRunnerKind)
+ * The provider-kind dispatch matches the *prior* kind (existing provider kind)
  * so we don't leave behind rows in the wrong table when the env's provider
  * has flipped between starts and stops.
  *
@@ -282,7 +282,7 @@ async function isStaleHandle(
  * browser self-heal) is what matters; this is a fast-path optimisation.
  */
 async function cleanupStaleEntry(args: {
-  ctx: MeshContext;
+  ctx: StudioContext;
   runner: SandboxProvider;
   claimName: string;
   userId: string;

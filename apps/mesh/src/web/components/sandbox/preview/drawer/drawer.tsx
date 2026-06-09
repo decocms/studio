@@ -232,9 +232,9 @@ function DrawerBody({
   hasData: boolean;
   onRunActive: () => void;
 }) {
-  // When the sandbox isn't running, the preview area's never-started card
-  // owns the single empty-state CTA. Rendering anything here (xterm shell
-  // or "no output" copy) would compete with it.
+  // When the sandbox isn't running, the preview area shows a starting card
+  // (or suspended card) that owns the single empty-state CTA. Rendering
+  // anything here (xterm shell or "no output" copy) would compete with it.
   if (!vmId) return null;
   if (active === DEFAULT_TAB || hasData) {
     return <SandboxTerminal key={active} source={active} className="h-full" />;
@@ -254,28 +254,4 @@ function DrawerBody({
       </button>
     </div>
   );
-}
-
-const STORAGE_KEY = (id: string) => `preview-drawer:${id}`;
-
-export function readPersistedDrawerOpen(virtualMcpId: string): boolean {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY(virtualMcpId));
-    if (!raw) return false;
-    const p = JSON.parse(raw);
-    return !!p.open;
-  } catch {
-    return false;
-  }
-}
-
-export function writePersistedDrawerOpen(
-  virtualMcpId: string,
-  open: boolean,
-): void {
-  try {
-    localStorage.setItem(STORAGE_KEY(virtualMcpId), JSON.stringify({ open }));
-  } catch {
-    /* ignore */
-  }
 }

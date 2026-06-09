@@ -173,7 +173,7 @@ function SectionGalleryCard({
         "group flex flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors",
         "hover:border-primary/40 hover:bg-accent/30",
         entry.isSavedBlock &&
-          "border-[oklch(0.7278_0.151_289/0.35)] hover:bg-[oklch(0.7278_0.151_289/0.08)]",
+          "border-global-section/35 hover:bg-global-section/8",
       )}
     >
       <LazySectionPreview

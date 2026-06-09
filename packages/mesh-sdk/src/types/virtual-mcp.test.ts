@@ -1,11 +1,14 @@
 import { describe, expect, it, test } from "bun:test";
 import {
+  SandboxMapSchema,
   VirtualMCPEntitySchema,
+  VirtualMCPCreateDataSchema,
   VirtualMcpUILayoutSchema,
   VirtualMCPUpdateDataSchema,
   SandboxRecordSchema,
   parseSandboxRecord,
   parseBranchMap,
+  normalizeSandboxMap,
 } from "./virtual-mcp";
 
 describe("VirtualMcpUILayoutSchema tabs", () => {
@@ -123,10 +126,10 @@ test("SandboxRecord.startedWith is optional with nullable packageManager/port/pa
 describe("parseBranchMap", () => {
   test("parses 3-level (kind-keyed) map with canonical kinds", () => {
     const result = parseBranchMap({
-      cluster: {
+      "agent-sandbox": {
         sandboxHandle: "v1",
         previewUrl: null,
-        sandboxProviderKind: "cluster",
+        sandboxProviderKind: "agent-sandbox",
       },
       "user-desktop": {
         sandboxHandle: "v2",
@@ -134,8 +137,51 @@ describe("parseBranchMap", () => {
         sandboxProviderKind: "user-desktop",
       },
     });
-    expect(result["cluster"]?.sandboxHandle).toBe("v1");
+    expect(result["agent-sandbox"]?.sandboxHandle).toBe("v1");
     expect(result["user-desktop"]?.sandboxHandle).toBe("v2");
+  });
+
+  test("normalizes legacy cluster key and record kind", () => {
+    const result = parseBranchMap({
+      cluster: {
+        sandboxHandle: "v1",
+        previewUrl: null,
+        sandboxProviderKind: "cluster",
+      },
+    });
+    expect(result).toEqual({
+      "agent-sandbox": {
+        sandboxHandle: "v1",
+        previewUrl: null,
+        sandboxProviderKind: "agent-sandbox",
+      },
+    });
+  });
+
+  test("prefers canonical agent-sandbox over legacy cluster regardless of key order", () => {
+    const canonical = {
+      sandboxHandle: "canonical",
+      previewUrl: null,
+      sandboxProviderKind: "agent-sandbox",
+    };
+    const legacy = {
+      sandboxHandle: "legacy",
+      previewUrl: null,
+      sandboxProviderKind: "cluster",
+    };
+
+    expect(
+      parseBranchMap({
+        "agent-sandbox": canonical,
+        cluster: legacy,
+      })["agent-sandbox"]?.sandboxHandle,
+    ).toBe("canonical");
+    expect(
+      parseBranchMap({
+        cluster: legacy,
+        "agent-sandbox": canonical,
+      })["agent-sandbox"]?.sandboxHandle,
+    ).toBe("canonical");
   });
 
   test("returns empty object for null/undefined/arrays", () => {
@@ -168,9 +214,18 @@ describe("parseSandboxRecord", () => {
     const result = parseSandboxRecord({
       sandboxHandle: "v1",
       previewUrl: null,
+      sandboxProviderKind: "agent-sandbox",
+    });
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
+  });
+
+  test("normalizes legacy cluster sandboxProviderKind", () => {
+    const result = parseSandboxRecord({
+      sandboxHandle: "v1",
+      previewUrl: null,
       sandboxProviderKind: "cluster",
     });
-    expect(result.sandboxProviderKind).toBe("cluster");
+    expect(result.sandboxProviderKind).toBe("agent-sandbox");
   });
 
   test("rejects legacy/retired kind values", () => {
@@ -195,8 +250,97 @@ describe("parseSandboxRecord", () => {
       parseSandboxRecord({
         vmId: "v-pre-rename",
         previewUrl: null,
-        sandboxProviderKind: "cluster",
+        sandboxProviderKind: "agent-sandbox",
       }),
     ).toThrow();
+  });
+});
+
+const sandboxRecord = {
+  sandboxHandle: "v1",
+  previewUrl: null,
+  sandboxProviderKind: "cluster",
+} as const;
+
+const canonicalSandboxRecord = {
+  sandboxHandle: "v1",
+  previewUrl: null,
+  sandboxProviderKind: "agent-sandbox",
+} as const;
+
+function expectSandboxMapHasOnlyCanonicalProviderKind(
+  sandboxMap: Record<string, Record<string, Record<string, unknown>>>,
+) {
+  expect(sandboxMap.u?.b?.cluster).toBeUndefined();
+  expect(sandboxMap.u?.b?.["agent-sandbox"]).toEqual(canonicalSandboxRecord);
+}
+
+describe("Sandbox map provider kind normalization", () => {
+  test("normalizeSandboxMap normalizes legacy cluster keys and record kinds", () => {
+    const parsed = normalizeSandboxMap({
+      u: {
+        b: {
+          cluster: sandboxRecord,
+        },
+      },
+    });
+
+    expectSandboxMapHasOnlyCanonicalProviderKind(parsed);
+  });
+
+  test("SandboxMapSchema accepts canonical provider maps", () => {
+    const parsed = SandboxMapSchema.parse({
+      u: {
+        b: {
+          "agent-sandbox": canonicalSandboxRecord,
+        },
+      },
+    });
+
+    expectSandboxMapHasOnlyCanonicalProviderKind(parsed);
+  });
+
+  test("VirtualMCPEntitySchema accepts canonical embedded sandbox maps", () => {
+    const parsed = VirtualMCPEntitySchema.parse({
+      id: "x",
+      title: "x",
+      description: null,
+      icon: null,
+      created_at: "t",
+      updated_at: "t",
+      created_by: "u",
+      organization_id: "o",
+      status: "active",
+      pinned: false,
+      metadata: {
+        instructions: null,
+        sandboxMap: { u: { b: { "agent-sandbox": canonicalSandboxRecord } } },
+      },
+      connections: [],
+    });
+
+    expectSandboxMapHasOnlyCanonicalProviderKind(parsed.metadata.sandboxMap!);
+  });
+
+  test("VirtualMCPCreateDataSchema accepts canonical embedded sandbox maps", () => {
+    const parsed = VirtualMCPCreateDataSchema.parse({
+      title: "x",
+      metadata: {
+        sandboxMap: { u: { b: { "agent-sandbox": canonicalSandboxRecord } } },
+      },
+      connections: [],
+    });
+
+    expectSandboxMapHasOnlyCanonicalProviderKind(parsed.metadata!.sandboxMap!);
+  });
+
+  test("VirtualMCPUpdateDataSchema accepts canonical embedded sandbox maps", () => {
+    const parsed = VirtualMCPUpdateDataSchema.parse({
+      metadata: {
+        sandboxMap: { u: { b: { "agent-sandbox": canonicalSandboxRecord } } },
+      },
+    });
+
+    expectSandboxMapHasOnlyCanonicalProviderKind(parsed.metadata!.sandboxMap!);
   });
 });

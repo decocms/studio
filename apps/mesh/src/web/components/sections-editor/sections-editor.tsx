@@ -1,10 +1,15 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/web/lib/query-keys";
 import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Code01,
   Flag01,
+  Globe01,
   Loading01,
+  CreditCardSearch,
 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
@@ -19,7 +24,11 @@ import { toast } from "sonner";
 import { useDecofile } from "./use-decofile";
 import { useLiveMeta } from "./use-live-meta";
 import { useDeleteBlock } from "./use-delete-block";
-import { useSaveBlock } from "./use-save-block";
+import {
+  AUTOSAVE_DELAY,
+  useDebouncedSaveBlock,
+  useSaveBlock,
+} from "./use-save-block";
 import { extractPages, globalSectionLabel } from "./page-list";
 import { normalizePagePath } from "./page-path-utils";
 import { SectionList, parseSections } from "./section-list";
@@ -27,14 +36,24 @@ import { isLazyResolveType } from "./section-lazy";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
-import { resolveSchema } from "./resolve-schema";
+import { resolveSchema, type SchemaProperty } from "./resolve-schema";
+import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
+import { defaultPageSeoResolveType } from "./seo-schema";
+import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
+import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
+import { PageSeoForm } from "./page-seo-form";
+import { SeoFormFields } from "./seo-form-fields";
 import { MatcherPicker, extractMatchers } from "./matcher-picker";
 import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
-import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
+import {
+  ALWAYS_MATCHER_RESOLVE_TYPE,
+  labelFromResolveType,
+  type RawSection,
+} from "./section-types";
 import {
   buildMatcherBlockData,
   buildMatcherBlockReference,
@@ -65,31 +84,81 @@ import {
   duplicateMultivariateSectionVariant,
   flattenMultivariateSection,
   getMultivariateSectionObject,
+  hideSection,
   parseSectionFlagVariants,
   rebuildSectionWithMultivariate,
+  showSection,
   unwrapVariantSectionValue,
   updateMultivariateSectionVariantRule,
   updateMultivariateSectionVariantValue,
 } from "./section-variants";
+import { PageJsonDialog } from "./page-json-dialog";
 
-const AUTOSAVE_DELAY = 700;
+function SchemaFormPanel({
+  activeSchema,
+  formValue,
+  formResetKey,
+  onFormChange,
+  onBreadcrumbChange,
+  emptyMessage,
+  beforeForm,
+  seoResolveType,
+  siteDefaultSeo,
+}: {
+  activeSchema: SchemaProperty | null | undefined;
+  formValue: unknown;
+  formResetKey: number;
+  onFormChange: (v: unknown) => void;
+  onBreadcrumbChange: (path: string[]) => void;
+  emptyMessage: string;
+  beforeForm?: ReactNode;
+  seoResolveType?: string;
+  siteDefaultSeo?: Record<string, unknown>;
+}) {
+  const formBody =
+    activeSchema && formValue ? (
+      seoResolveType ? (
+        <SeoFormFields
+          schema={activeSchema}
+          resolveType={seoResolveType}
+          value={formValue as Record<string, unknown>}
+          formResetKey={formResetKey}
+          onChange={onFormChange}
+          onBreadcrumbChange={onBreadcrumbChange}
+          siteDefaultSeo={siteDefaultSeo}
+        />
+      ) : (
+        <SchemaForm
+          key={formResetKey}
+          schema={activeSchema}
+          value={formValue}
+          onChange={onFormChange}
+          basePath=""
+          breadcrumbPath={[]}
+          onBreadcrumbChange={onBreadcrumbChange}
+        />
+      )
+    ) : null;
+
+  return (
+    <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
+      <div className="mx-auto max-w-2xl">
+        {beforeForm}
+        {formBody ?? (
+          <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const VARIANT_TAB_ACTIVE_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
 
 const capitalize = (s: string) =>
   s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-
-function labelFromResolveType(rt: string): string {
-  const segments = rt.split("/");
-  const filename = segments[segments.length - 1] ?? rt;
-  return (
-    filename
-      .replace(/\.(tsx?|jsx?)$/, "")
-      .replace(/[-_]/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
-  );
-}
 
 /**
  * Render a `start`/`end` ISO-date pair as a compact range — used by deco's
@@ -385,6 +454,9 @@ export function SectionsEditor({
   activeGlobalBlockKey = null,
   externalSelectedIndex,
   onSaved,
+  initialEditSeo = false,
+  onExitSeo,
+  onViewJsonFile,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -404,6 +476,16 @@ export function SectionsEditor({
   externalSelectedIndex?: number | null;
   /** Called after a successful auto-save so the parent can reload the preview. */
   onSaved?: () => void;
+  /** Open the inline page SEO form on mount (e.g. after "Edit SEO" from a host menu). */
+  initialEditSeo?: boolean;
+  /** Called when the user leaves inline SEO via the breadcrumb bar. */
+  onExitSeo?: () => void;
+  /**
+   * When provided, "View JSON" opens the page's block file in the host's file
+   * view (passing the decofile block key) instead of the built-in JSON modal.
+   * Hosts without a file surface (Content tab) omit this and get the modal.
+   */
+  onViewJsonFile?: (pageKey: string) => void;
 }) {
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch }
@@ -441,6 +523,31 @@ export function SectionsEditor({
   );
   const [isVariantRuleOpen, setIsVariantRuleOpen] = useState(true);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
+
+  // Inline SEO editing mode — same breadcrumb UX as editing a section
+  const [editingSeo, setEditingSeo] = useState(initialEditSeo);
+  const [prevInitialEditSeo, setPrevInitialEditSeo] = useState(initialEditSeo);
+  if (initialEditSeo && !prevInitialEditSeo) {
+    setPrevInitialEditSeo(true);
+    setEditingSeo(true);
+    setSelectedSectionIndex(null);
+    setFormValue(null);
+    setActiveResolveType(null);
+    setFieldBreadcrumbs([]);
+  }
+  if (!initialEditSeo && prevInitialEditSeo) {
+    setPrevInitialEditSeo(false);
+  }
+  const [seoFormValue, setSeoFormValue] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [seoRawOverride, setSeoRawOverride] = useState<
+    Record<string, unknown> | null | undefined
+  >(undefined);
+  const [seoFieldBreadcrumbs, setSeoFieldBreadcrumbs] = useState<string[]>([]);
+  const [seoFormResetKey, setSeoFormResetKey] = useState(0);
   const [activeSectionVariantIndex, setActiveSectionVariantIndex] = useState(0);
   const [sectionRuleFormValue, setSectionRuleFormValue] = useState<Record<
     string,
@@ -453,6 +560,14 @@ export function SectionsEditor({
     null,
   );
 
+  const queryClient = useQueryClient();
+  const decofileCacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
+  const pageBlockSave = useDebouncedSaveBlock({
+    orgSlug,
+    virtualMcpId,
+    branch,
+  });
+
   // Reset form state when the active page or global block changes
   const [prevPath, setPrevPath] = useState(currentPath);
   const [prevPageBlockKey, setPrevPageBlockKey] = useState(activePageBlockKey);
@@ -463,6 +578,7 @@ export function SectionsEditor({
     prevPageBlockKey !== activePageBlockKey ||
     prevGlobalBlockKey !== activeGlobalBlockKey
   ) {
+    queueMicrotask(() => pageBlockSave.flush());
     setPrevPath(currentPath);
     setPrevPageBlockKey(activePageBlockKey);
     setPrevGlobalBlockKey(activeGlobalBlockKey);
@@ -477,13 +593,17 @@ export function SectionsEditor({
     setSectionRuleResolveType(null);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
+    setEditingSeo(false);
+    setSeoFormValue(null);
+    setSeoRawOverride(undefined);
+    setSeoFieldBreadcrumbs([]);
+    setSeoFormResetKey((key) => key + 1);
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pageDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ruleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sectionRuleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -555,6 +675,46 @@ export function SectionsEditor({
     !isGlobalBlockMode && activePageKey && decofile[activePageKey]
       ? (decofile[activePageKey] as Record<string, unknown>)
       : null;
+
+  // SEO computed values — only while inline SEO is open
+  const inlineSeoResolved =
+    editingSeo && decofile && meta && activePageKey && activePage
+      ? resolveSeoTarget(
+          decofile,
+          {
+            kind: "page",
+            pageKey: activePageKey,
+            pageName: String(activePage.name ?? ""),
+            path: String(activePage.path ?? ""),
+          },
+          meta,
+        )
+      : null;
+  const savedRawSeo = editingSeo ? pageData?.seo : undefined;
+  const displayRawSeo =
+    seoRawOverride !== undefined ? seoRawOverride : savedRawSeo;
+  const innerFromSaved = editingSeo
+    ? unwrapSeoConfig(displayRawSeo)
+    : undefined;
+  const seoTypeOptions = inlineSeoResolved?.seoTypeOptions ?? [];
+  const defaultResolveType =
+    editingSeo && meta ? defaultPageSeoResolveType(meta) : "";
+  const effectiveInner = (seoFormValue ?? innerFromSaved ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const activeSeoType =
+    editingSeo && inlineSeoResolved
+      ? activeSeoResolveType(effectiveInner, inlineSeoResolved)
+      : null;
+  const seoSchema =
+    editingSeo && activeSeoType && isSeoEnabled(displayRawSeo)
+      ? resolveSchema(activeSeoType, meta)
+      : null;
+  const siteDefaultSeo = editingSeo
+    ? findSiteSeoEntry(decofile, meta)?.seoData
+    : undefined;
+
   const pageVariants = isGlobalBlockMode
     ? [
         {
@@ -872,27 +1032,52 @@ export function SectionsEditor({
     }
   };
 
+  const schedulePageBlockWrite = (seoPatch?: {
+    inner?: Record<string, unknown>;
+    raw?: Record<string, unknown> | null;
+  }) => {
+    if (!activePageKey || !decofile || !meta || !activePage) return;
+    const target = {
+      kind: "page" as const,
+      pageKey: activePageKey,
+      pageName: String(activePage.name ?? ""),
+      path: String(activePage.path ?? ""),
+    };
+    const resolved = resolveSeoTarget(decofile, target, meta);
+    if (!resolved) return;
+
+    pageBlockSave.save(activePageKey, () => {
+      const latest = queryClient.getQueryData<Record<string, unknown>>(
+        KEYS.decofile(decofileCacheKey),
+      )?.[activePageKey];
+      if (
+        !latest ||
+        typeof latest !== "object" ||
+        latest === null ||
+        Array.isArray(latest)
+      ) {
+        return null;
+      }
+      const block = {
+        ...(latest as Record<string, unknown>),
+        ...pendingPageFieldsRef.current,
+      };
+      pendingPageFieldsRef.current = {};
+
+      if (seoPatch?.raw !== undefined) {
+        return { ...block, seo: seoPatch.raw };
+      }
+      if (seoPatch?.inner !== undefined) {
+        return buildSeoSavePayload(target, resolved, block, seoPatch.inner);
+      }
+      return block;
+    });
+  };
+
   const savePageField = (field: "name" | "path", value: string) => {
     if (!activePageKey) return;
-    // Accumulate all pending field changes so rapid edits to name+path
-    // are merged into a single save instead of overwriting each other.
     pendingPageFieldsRef.current[field] = value;
-    if (pageDebounceRef.current) clearTimeout(pageDebounceRef.current);
-    pageDebounceRef.current = setTimeout(() => {
-      const pending = pendingPageFieldsRef.current;
-      pendingPageFieldsRef.current = {};
-      const fullPageData = {
-        ...(decofile[activePageKey] as Record<string, unknown>),
-        ...pending,
-      };
-      // No onSaved/iframe reload — name/path don't affect the visual preview
-      saveBlock.mutate(
-        { blockKey: activePageKey, data: fullPageData },
-        {
-          onError: (err) => toast.error(`Save failed: ${err.message}`),
-        },
-      );
-    }, AUTOSAVE_DELAY);
+    schedulePageBlockWrite();
   };
 
   const handleReorder = (fromIndex: number, toIndex: number) => {
@@ -938,6 +1123,26 @@ export function SectionsEditor({
     if (selectedSectionIndex !== null && selectedSectionIndex > index) {
       setSelectedSectionIndex(selectedSectionIndex + 1);
     }
+    savePageSections(updatedSections);
+  };
+
+  // Hide/show a section via the multivariate+never wrapper (see hideSection /
+  // showSection). Round-trips normal, lazy, and saved-block sections.
+  // Multivariate sections (real variants) are managed through the variant UI.
+  const handleToggleHidden = (index: number) => {
+    if (!activePageKey) return;
+    const rawSection = rawSections[index];
+    const parsed = parsedSections[index];
+    if (!rawSection || !parsed || parsed.isMultivariate) return;
+
+    const next = parsed.isHidden
+      ? showSection(rawSection)
+      : hideSection(rawSection);
+    if (!next) return;
+
+    const updatedSections = [...rawSections];
+    updatedSections[index] = next;
+    if (selectedSectionIndex === index) clearSectionEditing();
     savePageSections(updatedSections);
   };
 
@@ -1424,6 +1629,16 @@ export function SectionsEditor({
   const isEditing =
     isEditingSection &&
     (isEditingMultivariateSection || !!(activeSchema && formValue));
+  // A reusable/global section reached from inside a page (purple in the list).
+  // Editing it writes back to the shared block definition, so changes apply
+  // everywhere it's used — surface the same global banner as the dedicated
+  // global-section route.
+  const isEditingSavedBlock =
+    isEditing && !isGlobalBlockMode && selectedParsed?.isSavedBlock === true;
+  const showGlobalBanner = isGlobalBlockMode || isEditingSavedBlock;
+  const globalBannerName = isGlobalBlockMode
+    ? globalBlockName
+    : (selectedParsed?.label ?? "");
   const sectionRuleSchema =
     sectionRuleResolveType && meta
       ? resolveSchema(sectionRuleResolveType, meta)
@@ -1441,6 +1656,19 @@ export function SectionsEditor({
             ...fieldBreadcrumbs,
           ]
       : [];
+  // The global header still needs a crumb at the top level of a directly-opened
+  // global block, where editingBreadcrumbs is empty — fall back to its name.
+  const seoBreadcrumbs =
+    editingSeo && activePage
+      ? [activePage.name, "SEO", ...seoFieldBreadcrumbs]
+      : [];
+  const headerCrumbs = editingSeo
+    ? seoBreadcrumbs
+    : showGlobalBanner
+      ? editingBreadcrumbs.length > 0
+        ? editingBreadcrumbs
+        : [globalBannerName]
+      : editingBreadcrumbs;
   const handleAddPageVariant = () => {
     if (!activePageKey) return;
     const fullPageData = decofile[activePageKey] as Record<string, unknown>;
@@ -1713,7 +1941,45 @@ export function SectionsEditor({
   const exitSectionEditing = () => {
     clearSectionEditing();
   };
+
+  const handleSeoInnerChange = (nextRecord: Record<string, unknown>) => {
+    setSeoFormValue(nextRecord);
+    schedulePageBlockWrite({ inner: nextRecord });
+  };
+
+  const handlePersistRawSeo = (raw: Record<string, unknown> | null) => {
+    setSeoRawOverride(raw);
+    schedulePageBlockWrite({ raw });
+  };
+
+  const clearSeoForm = () => {
+    setSeoFormValue(null);
+    setSeoFieldBreadcrumbs([]);
+  };
+  const bumpSeoFormKey = () => setSeoFormResetKey((key) => key + 1);
+
   const handleBreadcrumbClick = (index: number) => {
+    if (editingSeo) {
+      if (index === 0) {
+        pageBlockSave.flush();
+        setEditingSeo(false);
+        setSeoFormValue(null);
+        setSeoRawOverride(undefined);
+        setSeoFieldBreadcrumbs([]);
+        setSeoFormResetKey((key) => key + 1);
+        onExitSeo?.();
+        return;
+      }
+      if (index === 1) {
+        setSeoFieldBreadcrumbs([]);
+        setSeoFormResetKey((key) => key + 1);
+        return;
+      }
+      setSeoFieldBreadcrumbs(seoFieldBreadcrumbs.slice(0, index - 1));
+      setSeoFormResetKey((key) => key + 1);
+      return;
+    }
+
     if (isGlobalBlockMode) {
       setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index));
       setFormResetKey((key) => key + 1);
@@ -1744,76 +2010,104 @@ export function SectionsEditor({
   return (
     <div className="flex h-full min-w-0 w-full flex-col">
       {/* Page header */}
-      <div className="px-3 py-2.5 border-b shrink-0">
-        {isEditing && (!isGlobalBlockMode || fieldBreadcrumbs.length > 0) ? (
-          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-            {!isGlobalBlockMode && hasMultipleVariants && activeVariant && (
-              <button
-                type="button"
-                onClick={exitSectionEditing}
-                title={`Editing in variant: ${activeVariant.label}`}
-                className={cn(
-                  "shrink-0 inline-flex items-center gap-1 rounded-md h-6 px-1.5 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80",
-                  VARIANT_TAB_ACTIVE_CLASS,
-                )}
-              >
-                <VariantTabIcon
-                  rule={resolveEffectiveMatcherRule(
-                    activeVariant.rule,
-                    decofile ?? {},
-                    meta ?? undefined,
-                  )}
-                  matchers={availableMatchers}
-                />
-                <span className="max-w-[160px] truncate">
-                  {activeVariant.label}
-                </span>
-              </button>
+      <div className="shrink-0">
+        {/* When editing a reusable/global block (opened directly or from inside
+            a page), the breadcrumb bar goes purple with a globe and a note that
+            changes apply everywhere — so it never reads as a local edit. */}
+        {showGlobalBanner || isEditing || editingSeo ? (
+          <div
+            className={cn(
+              "border-b px-3 py-2.5",
+              showGlobalBanner &&
+                "border-global-section/22 bg-global-section/12 dark:bg-global-section/16",
             )}
-            <nav
-              aria-label="Editing breadcrumb"
-              className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
-            >
-              {editingBreadcrumbs.map((crumb, index) => {
-                const isLast = index === editingBreadcrumbs.length - 1;
-
-                return (
-                  <span
-                    key={`${crumb}-${index}`}
-                    className="flex min-w-0 items-center gap-1 overflow-hidden"
-                  >
-                    {index > 0 && (
-                      <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
+          >
+            <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+              {!isGlobalBlockMode && hasMultipleVariants && activeVariant && (
+                <button
+                  type="button"
+                  onClick={exitSectionEditing}
+                  title={`Editing in variant: ${activeVariant.label}`}
+                  className={cn(
+                    "shrink-0 inline-flex items-center gap-1 rounded-md h-6 px-1.5 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80",
+                    VARIANT_TAB_ACTIVE_CLASS,
+                  )}
+                >
+                  <VariantTabIcon
+                    rule={resolveEffectiveMatcherRule(
+                      activeVariant.rule,
+                      decofile ?? {},
+                      meta ?? undefined,
                     )}
-                    <button
-                      type="button"
-                      onClick={() => handleBreadcrumbClick(index)}
-                      title={crumb}
-                      className={cn(
-                        "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
-                        isLast
-                          ? "font-medium text-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {crumb}
-                    </button>
+                    matchers={availableMatchers}
+                  />
+                  <span className="max-w-[160px] truncate">
+                    {activeVariant.label}
                   </span>
-                );
-              })}
-            </nav>
-          </div>
-        ) : isGlobalBlockMode ? (
-          <div className="space-y-0.5">
-            <div className="text-sm font-medium truncate">
-              {globalBlockName}
+                </button>
+              )}
+              <nav
+                aria-label="Editing breadcrumb"
+                className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
+              >
+                {headerCrumbs.map((crumb, index) => {
+                  const isLast = index === headerCrumbs.length - 1;
+
+                  return (
+                    <span
+                      key={`${crumb}-${index}`}
+                      className="flex min-w-0 items-center gap-1 overflow-hidden"
+                    >
+                      {index > 0 && (
+                        <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleBreadcrumbClick(index)}
+                        title={crumb}
+                        className={cn(
+                          "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors",
+                          isLast
+                            ? showGlobalBanner
+                              ? "font-semibold text-global-section-fg dark:text-global-section-fg-dark"
+                              : "font-medium text-foreground"
+                            : showGlobalBanner
+                              ? "text-foreground/80"
+                              : "text-muted-foreground",
+                          showGlobalBanner
+                            ? "hover:bg-global-section/15"
+                            : "hover:bg-accent hover:text-accent-foreground",
+                        )}
+                      >
+                        {crumb}
+                      </button>
+                    </span>
+                  );
+                })}
+              </nav>
+              {showGlobalBanner && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="shrink-0 cursor-help">
+                      <Globe01 className="size-4 text-global-section-fg dark:text-global-section-fg-dark" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[260px]">
+                    A global section is a reusable block shared across your
+                    site. Editing it here updates it everywhere it's used.
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
-            <div className="text-xs text-muted-foreground">
-              Global component
-            </div>
+            {showGlobalBanner && (
+              <p className="mt-1.5 py-1.5 pl-1 text-sm leading-snug text-foreground">
+                This is a global section. Changes apply everywhere this section
+                is used across your site.
+              </p>
+            )}
           </div>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 border-b px-3 py-2.5">
             <div className="flex-1 min-w-0">
               <PageHeaderInputs
                 pageKey={activePageKey!}
@@ -1822,6 +2116,40 @@ export function SectionsEditor({
                 onFieldChange={savePageField}
               />
             </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Edit SEO"
+                  className="size-7 shrink-0"
+                  onClick={() => setEditingSeo(true)}
+                >
+                  <CreditCardSearch size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Edit SEO</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="View JSON"
+                  className="size-7 shrink-0"
+                  onClick={() =>
+                    onViewJsonFile && activePageKey
+                      ? onViewJsonFile(activePageKey)
+                      : setJsonOpen(true)
+                  }
+                >
+                  <Code01 size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">View JSON</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1843,7 +2171,7 @@ export function SectionsEditor({
       </div>
 
       {/* Variant selector (when page sections are multivariate) */}
-      {hasMultipleVariants && !isEditing && activePageKey && (
+      {hasMultipleVariants && !isEditing && !editingSeo && activePageKey && (
         <PageVariantTabs
           listKey={activePageKey}
           variants={pageVariants}
@@ -1859,9 +2187,37 @@ export function SectionsEditor({
         />
       )}
 
-      {/* Drill-down: section list OR section form */}
-      {isEditing ? (
-        <ScrollArea className="flex-1 min-h-0">
+      {/* Drill-down: SEO form, section form, or section list */}
+      {editingSeo ? (
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+          <div className="min-w-0 max-w-full overflow-x-hidden px-6 py-4">
+            <div className="mx-auto max-w-2xl">
+              {pageData && activePageKey ? (
+                <PageSeoForm
+                  rawSeo={displayRawSeo}
+                  innerSeo={effectiveInner}
+                  defaultResolveType={defaultResolveType}
+                  seoSchema={seoSchema}
+                  activeResolveType={activeSeoType}
+                  seoTypeOptions={seoTypeOptions}
+                  formResetKey={seoFormResetKey}
+                  siteDefaultSeo={siteDefaultSeo}
+                  onBreadcrumbChange={setSeoFieldBreadcrumbs}
+                  onPersistRaw={handlePersistRawSeo}
+                  onInnerChange={handleSeoInnerChange}
+                  onClearForm={clearSeoForm}
+                  onBumpFormKey={bumpSeoFormKey}
+                />
+              ) : (
+                <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+                  SEO schema not found for this site.
+                </div>
+              )}
+            </div>
+          </div>
+        </ScrollArea>
+      ) : isEditing ? (
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
           {isEditingMultivariateSection && sectionFlagVariants.length > 0 && (
             <>
               <SectionVariantList
@@ -1900,46 +2256,28 @@ export function SectionsEditor({
               )}
             </>
           )}
-          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
-            {activeSchema && formValue ? (
-              <SchemaForm
-                key={formResetKey}
-                schema={activeSchema}
-                value={formValue}
-                onChange={handleFormChange}
-                basePath=""
-                breadcrumbPath={[]}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-              />
-            ) : (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                No editable fields for this variant.
-              </div>
-            )}
-          </div>
+          <SchemaFormPanel
+            activeSchema={activeSchema}
+            formValue={formValue}
+            formResetKey={formResetKey}
+            onFormChange={handleFormChange}
+            onBreadcrumbChange={setFieldBreadcrumbs}
+            emptyMessage="No editable fields for this variant."
+          />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="min-w-0 max-w-full overflow-x-hidden p-4">
-            {activeSchema && formValue ? (
-              <SchemaForm
-                key={formResetKey}
-                schema={activeSchema}
-                value={formValue}
-                onChange={handleFormChange}
-                basePath=""
-                breadcrumbPath={[]}
-                onBreadcrumbChange={setFieldBreadcrumbs}
-              />
-            ) : (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                No editable fields for this global block.
-              </div>
-            )}
-          </div>
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+          <SchemaFormPanel
+            activeSchema={activeSchema}
+            formValue={formValue}
+            formResetKey={formResetKey}
+            onFormChange={handleFormChange}
+            onBreadcrumbChange={setFieldBreadcrumbs}
+            emptyMessage="No editable fields for this global block."
+          />
         </ScrollArea>
       ) : (
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
           {/* Variant rule editor (collapsible so users can reclaim space) */}
           {hasMultipleVariants && ruleResolveType !== null && (
             <div
@@ -2005,6 +2343,7 @@ export function SectionsEditor({
               onDelete={handleDeleteSection}
               onDuplicate={handleDuplicateSection}
               onMakeReusable={setMakeReusableIndex}
+              onToggleHidden={handleToggleHidden}
               onAddSection={() => setAddSectionOpen(true)}
               canAddSection={canAddSection}
             />
@@ -2034,6 +2373,15 @@ export function SectionsEditor({
           decofile={decofile}
           previewBaseUrl={previewUrl}
           onSelect={handleAddSection}
+        />
+      )}
+
+      {jsonOpen && activePageKey && decofile && (
+        <PageJsonDialog
+          open={jsonOpen}
+          onOpenChange={setJsonOpen}
+          pageKey={activePageKey}
+          decofile={decofile}
         />
       )}
 

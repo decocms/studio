@@ -36,7 +36,11 @@ export interface BoundObjectStorage {
   delete(key: string): Promise<void>;
   head(key: string): Promise<HeadObjectResult>;
   /** Generate a presigned GET URL for the given key. */
-  presignedGetUrl(key: string, expiresIn?: number): Promise<string>;
+  presignedGetUrl(
+    key: string,
+    expiresIn?: number,
+    opts?: { requireFetchable?: boolean },
+  ): Promise<string>;
   /** Generate a presigned PUT URL for the given key. */
   presignedPutUrl(
     key: string,
@@ -59,8 +63,8 @@ export function createBoundObjectStorage(
     list: (options) => s3.list(orgId, options),
     delete: (key) => s3.delete(orgId, key),
     head: (key) => s3.head(orgId, key),
-    presignedGetUrl: (key, expiresIn) =>
-      s3.presignedGetUrl(orgId, key, expiresIn),
+    presignedGetUrl: (key, expiresIn, opts) =>
+      s3.presignedGetUrl(orgId, key, expiresIn, opts),
     presignedPutUrl: (key, expiresIn, contentType) =>
       s3.presignedPutUrl(orgId, key, expiresIn, contentType),
   };

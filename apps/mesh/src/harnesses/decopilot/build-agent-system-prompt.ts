@@ -13,7 +13,7 @@
  * are stubs returning null (wired up fully in Stage 2.3).
  */
 
-import type { MeshContext, OrganizationScope } from "@/core/mesh-context";
+import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
@@ -29,6 +29,112 @@ import {
   listConnectionsBlock,
 } from "./prompt";
 import type { ConnectionsBlockTool } from "./connections-block";
+import type { Interest } from "@/storage/interests";
+import type { Thread } from "@/storage/types";
+
+const MAX_INJECTED_INTERESTS = 3;
+
+/** Absolute date label (YYYY-MM-DD) — request-stable so the cached system
+ *  prefix isn't invalidated each turn the way a relative "3 mins ago" would be.
+ *  The model derives recency from the separate <current-context> date. */
+function dateLabel(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? "unknown date"
+    : d.toISOString().slice(0, 10);
+}
+
+function renderInterestsSection(interests: Interest[]): string {
+  const lines = interests.map((i) => `- ${i.title}: ${i.summary}`);
+  return `### What they're working toward
+
+Most important first:
+
+${lines.join("\n")}
+
+When the conversation is open-ended or clearly related, gently surface one concrete next step toward these. Do NOT derail a focused task the user is already on, and never force an interest in when it isn't relevant.`;
+}
+
+function renderRecentThreadsSection(total: number, threads: Thread[]): string {
+  const lines = threads.map(
+    (t) => `- "${t.title}" (${dateLabel(t.updated_at as string)})`,
+  );
+  return `### Your history together
+
+You and this user have had ${total} previous conversation${total === 1 ? "" : "s"}. Most recent:
+
+${lines.join("\n")}
+
+Don't recap these unprompted, but use them so you recognize the user and pick up context naturally instead of treating them as a stranger.`;
+}
+
+/**
+ * Build the per-user context block — who they are, your shared history, and
+ * what they're working toward. Returns null when there's nothing to say.
+ * Only top-level agents get this; subagents are task-scoped.
+ */
+async function buildUserContextBlock(
+  opts: BuildAgentSystemPromptOptions,
+): Promise<string | null> {
+  if (opts.kind !== "agent") return null;
+  const user = opts.ctx.auth?.user;
+  const userId = user?.id;
+  if (!userId) return null;
+  const agentId = opts.virtualMcp.id;
+
+  const sections: string[] = [];
+
+  // Identity — from the authenticated session.
+  if (user.name || user.email) {
+    const name = user.name ?? user.email;
+    const email = user.name && user.email ? ` (${user.email})` : "";
+    sections.push(`### Who you're talking to
+
+You're talking to ${name}${email}. Address them by name when it's natural.`);
+  }
+
+  // Continuity + interests are independent reads — fetch in parallel so the
+  // prompt build doesn't pay two serial round-trips.
+  const [recent, doc] = await Promise.all([
+    opts.ctx.storage?.threads
+      ?.list(userId, { limit: 9, agentId })
+      .catch(() => null),
+    opts.ctx.storage?.interests
+      ?.getForAgent(opts.organization.id, agentId, userId)
+      .catch(() => null),
+  ]);
+
+  // Continuity — recent threads with THIS agent, excluding the current one.
+  if (recent && recent.total > 0) {
+    const others = recent.threads
+      .filter((t) => t.id !== opts.currentThreadId)
+      .slice(0, 8);
+    if (others.length > 0) {
+      // The current thread is always part of the user's total, so exclude it
+      // from the count whenever we know which one it is.
+      const total = opts.currentThreadId ? recent.total - 1 : recent.total;
+      if (total > 0) {
+        sections.push(renderRecentThreadsSection(total, others));
+      }
+    }
+  }
+
+  // Interests — durable goals, scoped to this agent.
+  if (doc && doc.interests.length > 0) {
+    sections.push(
+      renderInterestsSection(doc.interests.slice(0, MAX_INJECTED_INTERESTS)),
+    );
+  }
+
+  sections.push(
+    "When you learn a durable new goal the user is working toward — or clear progress on an existing one — call `update_interests` to keep this record current. Skip one-off questions.",
+  );
+
+  // Only the closing instruction with no identity/history/interests above it
+  // isn't worth a block of its own.
+  if (sections.length <= 1) return null;
+  return `## About this user\n\n${sections.join("\n\n")}`;
+}
 
 const SUBAGENT_IDENTITY_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
 
@@ -61,7 +167,7 @@ End with a structured summary:
 This report is all the parent agent sees.`;
 
 export interface BuildAgentSystemPromptOptions {
-  ctx: MeshContext;
+  ctx: StudioContext;
   organization: OrganizationScope;
   virtualMcp: {
     id: string;
@@ -81,6 +187,9 @@ export interface BuildAgentSystemPromptOptions {
   isDecopilot?: boolean;
   agentInstructions?: string;
   date?: Date;
+  /** Current thread id, excluded from the "history together" recall so the
+   *  agent doesn't "remember" the conversation it's currently in. */
+  currentThreadId?: string;
 
   // ── Optional runtime data ──────────────────────────────────────────
   // When provided, the prompts and connections blocks get included.
@@ -98,8 +207,14 @@ export async function buildAgentSystemPrompt(
   opts: BuildAgentSystemPromptOptions,
 ): Promise<SystemMessage[]> {
   const prompts: string[] = [];
+  const labels: string[] = [];
+  const add = (label: string, text: string | null | undefined) => {
+    if (!text?.trim()) return;
+    prompts.push(text);
+    labels.push(label);
+  };
 
-  prompts.push(buildBasePlatformPrompt());
+  add("base", buildBasePlatformPrompt());
 
   if (opts.kind === "agent" && opts.planMode) {
     // Re-use the plan-mode prompt from mode-config (non-CLI variant).
@@ -107,54 +222,50 @@ export async function buildAgentSystemPrompt(
       "../../api/routes/decopilot/mode-config"
     );
     const modeConfig = resolveModeConfig("plan", { isCliAgent: false });
-    if (modeConfig.planPrompt) {
-      prompts.push(modeConfig.planPrompt);
-    }
+    add("planMode", modeConfig.planPrompt);
   }
 
   if (opts.virtualMcp.repo) {
-    prompts.push(buildRepoEnvironmentPrompt(opts.virtualMcp.repo));
+    add("repoEnv", buildRepoEnvironmentPrompt(opts.virtualMcp.repo));
   }
 
   if (opts.kind === "agent") {
     if (opts.isDecopilot) {
-      prompts.push(buildDecopilotAgentPrompt());
+      add("identity", buildDecopilotAgentPrompt());
     }
     // For custom agents (kind: "agent" && !isDecopilot), no identity
     // prompt — the agent's own instructions (via agentInstructions
     // param) serve as identity.
   } else {
-    prompts.push(SUBAGENT_IDENTITY_PROMPT);
+    add("identity", SUBAGENT_IDENTITY_PROMPT);
   }
 
-  const promptsBlock = await listPromptsBlock(
-    opts.ctx,
-    opts.organization,
-    opts.passthroughClient,
+  add(
+    "prompts",
+    await listPromptsBlock(opts.ctx, opts.organization, opts.passthroughClient),
   );
-  if (promptsBlock) prompts.push(promptsBlock);
 
   if (opts.kind === "agent") {
-    const agentsBlock = await listAgentsBlock(
+    add(
+      "agents",
+      await listAgentsBlock(opts.ctx, opts.organization, opts.virtualMcp.id),
+    );
+  }
+
+  add(
+    "connections",
+    await listConnectionsBlock(
       opts.ctx,
       opts.organization,
-      opts.virtualMcp.id,
-    );
-    if (agentsBlock) prompts.push(agentsBlock);
-  }
-
-  const connectionsBlock = await listConnectionsBlock(
-    opts.ctx,
-    opts.organization,
-    opts.connectionsData,
+      opts.connectionsData,
+    ),
   );
-  if (connectionsBlock) prompts.push(connectionsBlock);
 
-  prompts.push(buildTodoWritePrompt());
+  add("todoWrite", buildTodoWritePrompt());
 
-  if (opts.agentInstructions?.trim()) {
-    prompts.push(opts.agentInstructions);
-  }
+  add("agentInstructions", opts.agentInstructions);
+
+  add("userContext", await buildUserContextBlock(opts));
 
   return buildSystemMessages(prompts, opts.date ?? new Date());
 }

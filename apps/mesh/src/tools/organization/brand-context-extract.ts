@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/mesh-context";
+import { requireAuth } from "../../core/studio-context";
 import { extractBrandFromDomain } from "../../auth/extract-brand";
 import { BrandContextSchema } from "./schema.ts";
 

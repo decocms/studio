@@ -111,6 +111,16 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
       )}
       <MessageAssistant
         message={pair.assistant}
+        // Top-level `created_at` on the user row is a custom field added by
+        // our DB pipeline (see `readTimestamp` in thread-connection.ts) and
+        // isn't declared on the AI-SDK UIMessage type, so cast to read it.
+        // Falls through to `undefined` for assistant-only pairs (no preceding
+        // user) or for optimistic user rows before the server-confirmed row
+        // replaces them — MessageAssistant handles that with `Date.now()`.
+        turnStartedAt={
+          (pair.user as unknown as { created_at?: string | Date | null })
+            ?.created_at ?? null
+        }
         status={status}
         isLast={isLastPair}
       />

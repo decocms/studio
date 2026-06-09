@@ -175,10 +175,13 @@ async function daemonRequest(
       res.status,
       rawText.slice(0, 2000),
     );
-    throw new Error(
+    const errorMessage =
       (json as { error?: string }).error ??
-        `Daemon ${path} failed (${res.status})`,
-    );
+      `Daemon ${path} failed (${res.status})`;
+    if (res.status === 404 && errorMessage === "sandbox not found") {
+      throw new DaemonUnreachableError(new Error(errorMessage));
+    }
+    throw new Error(errorMessage);
   }
   return json;
 }

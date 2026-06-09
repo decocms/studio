@@ -1,12 +1,15 @@
 import type { MiddlewareHandler } from "hono";
-import type { MeshContext } from "../../core/mesh-context";
+import type { StudioContext } from "../../core/studio-context";
+import { isOrgArchived } from "../../core/org-archived";
 import { createBoundObjectStorage } from "../../object-storage/bound-object-storage";
 import { DevObjectStorage } from "../../object-storage/dev-object-storage";
 import { decorateStorageWithAssetHoisting } from "../../object-storage/asset-hoister";
 import { getObjectStorageS3Service } from "../../object-storage/factory";
 
+import { isBrowserNavigation } from "../utils/browser-navigation";
+
 export const resolveOrgFromPath: MiddlewareHandler<{
-  Variables: { meshContext: MeshContext };
+  Variables: { meshContext: StudioContext };
 }> = async (c, next) => {
   const slug = c.req.param("org");
   if (!slug) {
@@ -21,11 +24,27 @@ export const resolveOrgFromPath: MiddlewareHandler<{
 
   const org = await db
     .selectFrom("organization")
-    .select(["id", "slug", "name"])
+    .select(["id", "slug", "name", "metadata"])
     .where("slug", "=", slug)
     .executeTakeFirst();
 
   if (!org) {
+    // Bounce browser navigations into the SPA so OrgAccessGate shows the
+    // "Organization not found" screen instead of raw JSON.
+    if (isBrowserNavigation(c)) {
+      return c.redirect(`/${encodeURIComponent(slug)}`, 302);
+    }
+    return c.json({ error: `organization "${slug}" not found` }, 404);
+  }
+
+  // Archived (soft-deleted) orgs are invisible to the API. Treat them exactly
+  // like a missing org: bounce browser navigations into the SPA (the shell
+  // shows the branded "Organization unavailable" screen), and return JSON 404
+  // to machine clients such as the self-MCP proxy POST.
+  if (isOrgArchived(org)) {
+    if (isBrowserNavigation(c)) {
+      return c.redirect(`/${encodeURIComponent(slug)}`, 302);
+    }
     return c.json({ error: `organization "${slug}" not found` }, 404);
   }
 
@@ -52,6 +71,12 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       .executeTakeFirst();
 
     if (!membership) {
+      // Bounce browser navigations into the SPA so OrgAccessGate shows the
+      // styled "No access" screen (with invite/auto-join handling) instead of
+      // raw JSON in the address bar.
+      if (isBrowserNavigation(c)) {
+        return c.redirect(`/${encodeURIComponent(org.slug)}`, 302);
+      }
       return c.json({ error: "forbidden: not a member of organization" }, 403);
     }
     pathRole = membership.role;

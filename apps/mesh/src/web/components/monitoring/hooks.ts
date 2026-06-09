@@ -5,6 +5,7 @@ import {
 } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useQuery } from "@tanstack/react-query";
+import { KEYS } from "@/web/lib/query-keys";
 
 /** Connection ID used for all LLM calls emitted by Decopilot. Must match server-side DECOPILOT_CONNECTION_ID. */
 const DECOPILOT_CONNECTION_ID = "decopilot";
@@ -95,12 +96,10 @@ export function useMonitoringStats(
   };
 
   return useQuery<MonitoringStatsResult, Error>({
-    queryKey: [
-      "MONITORING_STATS",
+    queryKey: KEYS.monitoringStatsToolCalls(
       org.id,
-      "tool-calls",
       JSON.stringify(toolArguments),
-    ],
+    ),
     queryFn: () =>
       callMonitoringTool<MonitoringStatsResult>(client, toolArguments),
     staleTime: 30_000,
@@ -113,14 +112,31 @@ interface MonitoringLlmStatsParams {
   interval: string;
   startDate: string;
   endDate: string;
+  /** Restrict AI usage to specific members (user IDs). */
+  userIds?: string[];
 }
 
 interface MonitoringLlmStatsResult extends MonitoringStatsResult {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalCostUsd: number;
   topTools: Array<{
     toolName: string;
     connectionId: string | null;
     calls: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    costUsd?: number;
   }>;
+  timeseries: Array<
+    MonitoringStatsResult["timeseries"][number] & {
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+      costUsd?: number;
+    }
+  >;
 }
 
 /**
@@ -145,15 +161,12 @@ export function useMonitoringLlmStats(
     ...params,
     connectionIds: [DECOPILOT_CONNECTION_ID],
     topN: 5,
+    llmUsage: true,
+    userIds: params.userIds?.length ? params.userIds : undefined,
   };
 
   return useQuery<MonitoringLlmStatsResult, Error>({
-    queryKey: [
-      "MONITORING_STATS",
-      org.id,
-      "llm",
-      JSON.stringify(toolArguments),
-    ],
+    queryKey: KEYS.monitoringStatsLlm(org.id, JSON.stringify(toolArguments)),
     queryFn: () =>
       callMonitoringTool<MonitoringLlmStatsResult>(client, toolArguments),
     staleTime: 30_000,

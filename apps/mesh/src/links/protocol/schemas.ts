@@ -4,8 +4,17 @@ export const capabilitySchema = z.enum([
   "claude-code",
   "codex",
   "decopilot-sandbox",
+  "body-offload",
 ]);
 export type Capability = z.infer<typeof capabilitySchema>;
+
+// Per-element tolerant: unknown capabilities are dropped, known ones survive.
+export const capabilitiesArraySchema = z
+  .array(z.string())
+  .catch([])
+  .transform((arr) =>
+    arr.filter((c): c is Capability => capabilitySchema.safeParse(c).success),
+  );
 
 export const dispatchSSEEventSchema = z.discriminatedUnion("type", [
   z.object({
@@ -48,6 +57,22 @@ export const harnessStreamInputSchema = z
       url: z.string().url(),
       headers: z.record(z.string(), z.string()),
       expiresAt: z.number().int().positive(),
+      /**
+       * Injected main chat-model secret for desktop decopilot activation.
+       * Only present when sandboxProviderKind === "user-desktop" AND harnessId === "decopilot".
+       *
+       * ⚠️ SECURITY: carries an org provider API key in plaintext over HTTPS.
+       * Scoped to the single main chat-completion key only. Never log this field.
+       * Hardening follow-up: cluster model-proxy (spec §3.9).
+       */
+      modelSecret: z
+        .object({
+          providerId: z.string(),
+          apiKey: z.string(),
+          baseUrl: z.string().optional(),
+          extraHeaders: z.record(z.string(), z.string()).optional(),
+        })
+        .optional(),
     }),
     mode: z.string(),
     temperature: z.number(),
@@ -61,6 +86,12 @@ export const harnessStreamInputSchema = z
     triggerId: z.string().optional(),
     currentThreadTitle: z.string().optional(),
     traceparent: z.string().optional(),
+    /**
+     * Single-writer fence token for this run (spec §3.5). The desktop
+     * presents this on every POST .../stream append. Minted by
+     * prepareRun (Phase B), absent on ws-path runs.
+     */
+    runFenceToken: z.string().optional(),
   })
   .strip();
 

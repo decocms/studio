@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   capabilitySchema,
+  capabilitiesArraySchema,
   dispatchSSEEventSchema,
   harnessStreamInputSchema,
   type HarnessStreamInputWire,
@@ -87,5 +88,16 @@ describe("capabilitySchema", () => {
 
   it("rejects unknown harness", () => {
     expect(capabilitySchema.safeParse("not-a-harness").success).toBe(false);
+  });
+});
+
+describe("capabilities", () => {
+  it("includes body-offload", () => {
+    expect(capabilitySchema.safeParse("body-offload").success).toBe(true);
+  });
+  it("drops unknown elements but keeps known ones (per-element tolerant)", () => {
+    expect(
+      capabilitiesArraySchema.parse(["claude-code", "made-up", "body-offload"]),
+    ).toEqual(["claude-code", "body-offload"]);
   });
 });

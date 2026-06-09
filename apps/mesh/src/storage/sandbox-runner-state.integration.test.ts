@@ -5,11 +5,11 @@ import {
   connectTestPgDatabase,
   resetTestPgDatabase,
 } from "../database/test-db-pg";
-import type { MeshDatabase } from "../database";
+import type { StudioDatabase } from "../database";
 import { KyselySandboxProviderStateStore } from "./sandbox-runner-state";
 
 describe("KyselySandboxProviderStateStore", () => {
-  let database: MeshDatabase;
+  let database: StudioDatabase;
   let store: KyselySandboxProviderStateStore;
 
   beforeAll(async () => {
@@ -31,12 +31,12 @@ describe("KyselySandboxProviderStateStore", () => {
   it("put + get round-trips all fields", async () => {
     const id = mkId("round-trip");
     const before = Date.now();
-    await store.put(id, "cluster", {
+    await store.put(id, "agent-sandbox", {
       handle: "handle-round-trip",
       state: { token: "abc", hostPort: 1234, nested: { k: "v" } },
     });
 
-    const row = await store.get(id, "cluster");
+    const row = await store.get(id, "agent-sandbox");
     expect(row).not.toBeNull();
     expect(row!.handle).toBe("handle-round-trip");
     expect(row!.state).toEqual({
@@ -52,16 +52,16 @@ describe("KyselySandboxProviderStateStore", () => {
 
   it("put UPSERTs on same (user_id, project_ref, sandbox_provider_kind)", async () => {
     const id = mkId("upsert");
-    await store.put(id, "cluster", {
+    await store.put(id, "agent-sandbox", {
       handle: "upsert-handle-1",
       state: { version: 1 },
     });
-    await store.put(id, "cluster", {
+    await store.put(id, "agent-sandbox", {
       handle: "upsert-handle-2",
       state: { version: 2 },
     });
 
-    const row = await store.get(id, "cluster");
+    const row = await store.get(id, "agent-sandbox");
     expect(row).not.toBeNull();
     expect(row!.handle).toBe("upsert-handle-2");
     expect(row!.state).toEqual({ version: 2 });
@@ -70,7 +70,7 @@ describe("KyselySandboxProviderStateStore", () => {
     const { rows } = await database.pool.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM sandbox_runner_state
          WHERE user_id = $1 AND project_ref = $2 AND sandbox_provider_kind = $3`,
-      [id.userId, id.projectRef, "cluster"],
+      [id.userId, id.projectRef, "agent-sandbox"],
     );
     expect(rows[0]!.count).toBe("1");
   });
@@ -80,7 +80,7 @@ describe("KyselySandboxProviderStateStore", () => {
     const id2 = mkId("dup-handle-b");
     const sharedHandle = "shared-handle-conflict";
 
-    await store.put(id1, "cluster", {
+    await store.put(id1, "agent-sandbox", {
       handle: sharedHandle,
       state: { which: "a" },
     });
@@ -88,7 +88,7 @@ describe("KyselySandboxProviderStateStore", () => {
     // Migration 074 dropped the unique constraint on handle — different
     // runners can legitimately share a handle (hash entropy collisions).
     await expect(
-      store.put(id2, "host", {
+      store.put(id2, "user-desktop", {
         handle: sharedHandle,
         state: { which: "b" },
       }),
@@ -97,32 +97,32 @@ describe("KyselySandboxProviderStateStore", () => {
 
   it("delete removes the row", async () => {
     const id = mkId("delete");
-    await store.put(id, "cluster", {
+    await store.put(id, "agent-sandbox", {
       handle: "delete-handle",
       state: { x: 1 },
     });
-    expect(await store.get(id, "cluster")).not.toBeNull();
+    expect(await store.get(id, "agent-sandbox")).not.toBeNull();
 
-    await store.delete(id, "cluster");
-    expect(await store.get(id, "cluster")).toBeNull();
+    await store.delete(id, "agent-sandbox");
+    expect(await store.get(id, "agent-sandbox")).toBeNull();
   });
 
   it("deleteByHandle removes the row", async () => {
     const id = mkId("delete-by-handle");
     const handle = "delete-by-handle-h";
-    await store.put(id, "cluster", { handle, state: { x: 1 } });
-    expect(await store.get(id, "cluster")).not.toBeNull();
+    await store.put(id, "agent-sandbox", { handle, state: { x: 1 } });
+    expect(await store.get(id, "agent-sandbox")).not.toBeNull();
 
-    await store.deleteByHandle("cluster", handle);
-    expect(await store.get(id, "cluster")).toBeNull();
+    await store.deleteByHandle("agent-sandbox", handle);
+    expect(await store.get(id, "agent-sandbox")).toBeNull();
   });
 
   it("getByHandle returns populated row with id", async () => {
     const id = mkId("get-by-handle");
     const handle = "get-by-handle-h";
-    await store.put(id, "cluster", { handle, state: { token: "t" } });
+    await store.put(id, "agent-sandbox", { handle, state: { token: "t" } });
 
-    const row = await store.getByHandle("cluster", handle);
+    const row = await store.getByHandle("agent-sandbox", handle);
     expect(row).not.toBeNull();
     expect(row!.handle).toBe(handle);
     expect(row!.id).toEqual(id);
@@ -133,16 +133,16 @@ describe("KyselySandboxProviderStateStore", () => {
   it("getByHandle returns null when kind does not match", async () => {
     const id = mkId("kind-mismatch");
     const handle = "kind-mismatch-handle";
-    await store.put(id, "cluster", { handle, state: {} });
+    await store.put(id, "agent-sandbox", { handle, state: {} });
 
-    const row = await store.getByHandle("host", handle);
+    const row = await store.getByHandle("user-desktop", handle);
     expect(row).toBeNull();
   });
 
   it("withLock returns the callback's result and persists writes", async () => {
     const id = mkId("withlock-happy");
-    const result = await store.withLock(id, "cluster", async (scoped) => {
-      await scoped.put(id, "cluster", {
+    const result = await store.withLock(id, "agent-sandbox", async (scoped) => {
+      await scoped.put(id, "agent-sandbox", {
         handle: "withlock-happy-handle",
         state: { ok: true },
       });
@@ -150,7 +150,7 @@ describe("KyselySandboxProviderStateStore", () => {
     });
     expect(result).toBe(42);
 
-    const row = await store.get(id, "cluster");
+    const row = await store.get(id, "agent-sandbox");
     expect(row).not.toBeNull();
     expect(row!.handle).toBe("withlock-happy-handle");
     expect(row!.state).toEqual({ ok: true });
@@ -161,8 +161,8 @@ describe("KyselySandboxProviderStateStore", () => {
     const boom = new Error("boom");
 
     await expect(
-      store.withLock(id, "cluster", async (scoped) => {
-        await scoped.put(id, "cluster", {
+      store.withLock(id, "agent-sandbox", async (scoped) => {
+        await scoped.put(id, "agent-sandbox", {
           handle: "withlock-throw-handle",
           state: { bad: true },
         });
@@ -171,7 +171,7 @@ describe("KyselySandboxProviderStateStore", () => {
     ).rejects.toThrow("boom");
 
     // The put inside the throwing txn must not be visible.
-    const row = await store.get(id, "cluster");
+    const row = await store.get(id, "agent-sandbox");
     expect(row).toBeNull();
   });
 
@@ -186,14 +186,14 @@ describe("KyselySandboxProviderStateStore", () => {
     const firstStarted = Promise.withResolvers<void>();
     let secondSawHandle: string | undefined;
 
-    const first = store.withLock(id, "cluster", async (scoped) => {
+    const first = store.withLock(id, "agent-sandbox", async (scoped) => {
       firstStarted.resolve();
-      await scoped.put(id, "cluster", {
+      await scoped.put(id, "agent-sandbox", {
         handle: "serialize-handleA",
         state: { step: "A" },
       });
       await new Promise((r) => setTimeout(r, 50));
-      await scoped.put(id, "cluster", {
+      await scoped.put(id, "agent-sandbox", {
         handle: "serialize-handleB",
         state: { step: "B" },
       });
@@ -202,8 +202,8 @@ describe("KyselySandboxProviderStateStore", () => {
 
     const second = (async () => {
       await firstStarted.promise;
-      return store.withLock(id, "cluster", async (scoped) => {
-        const row = await scoped.get(id, "cluster");
+      return store.withLock(id, "agent-sandbox", async (scoped) => {
+        const row = await scoped.get(id, "agent-sandbox");
         secondSawHandle = row?.handle;
         return "second-done";
       });
