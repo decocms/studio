@@ -217,10 +217,6 @@ export async function connectToClusterPull(
       // acquireDispatch pins the sandbox for the full duration of the relay so
       // the LRU eviction logic skips it (activeDispatchCount > 0). Released in
       // `finally` to guarantee the counter is always decremented.
-      //
-      // The work item's orgSlug is authoritative — it is resolved cluster-side
-      // at pullDispatch time and is always present (required field on WorkItem).
-      const effectiveOrgSlug = item.orgSlug;
       const releaseDispatch = input.provider.acquireDispatch(handle);
       // Phase C: register a per-run AbortController so the control-poll loop
       // can abort this specific dispatch when the cluster sends a cancel frame.
@@ -233,7 +229,6 @@ export async function connectToClusterPull(
           sandboxDispatchUrl: sandboxApiUrl,
           sandboxDaemonToken,
           clusterBaseUrl: input.clusterBaseUrl,
-          orgSlug: effectiveOrgSlug,
           getClusterToken: input.getAccessToken,
           fetchImpl: input.fetchImpl,
           signal: AbortSignal.any([ac.signal, runAc.signal]),

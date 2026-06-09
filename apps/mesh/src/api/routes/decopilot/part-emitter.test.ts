@@ -156,6 +156,40 @@ describe("PartEmitter", () => {
     expect(rows.map((r) => r.id)).toEqual(["run1:0", "run1:1"]);
   });
 
+  it("rebuilds rows on retry when storage fails before persisting", async () => {
+    const rows: ThreadMessagePart[] = [];
+    let shouldFail = true;
+    const storage = {
+      appendParts: async (parts: ThreadMessagePart[]) => {
+        if (shouldFail) {
+          shouldFail = false;
+          throw new Error("write failed");
+        }
+        rows.push(...parts);
+      },
+    } as unknown as SqlThreadMessagePartStorage;
+    const emitter = new PartEmitter({
+      storage,
+      orgId: "org1",
+      threadId: "thrd1",
+      runId: "run1",
+      baseTimeMs: 1_000,
+    });
+    const message = {
+      id: "m",
+      role: "assistant" as const,
+      parts: [{ type: "text", text: "a", state: "done" }],
+    };
+
+    await expect(emitter.emitFinal(message)).rejects.toThrow("write failed");
+    await emitter.emitFinal(message);
+
+    expect(rows.map((r) => [r.id, r.kind])).toEqual([
+      ["run1:0", "text"],
+      ["run1:1", "finish"],
+    ]);
+  });
+
   it("finish anchor is emitted at most once per message", async () => {
     const { rows, emitter } = newEmitter();
     await emitter.emitFinal({

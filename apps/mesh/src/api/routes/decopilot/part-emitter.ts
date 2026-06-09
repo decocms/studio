@@ -41,14 +41,14 @@
  */
 
 import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
-import type { PartKind, ThreadMessagePart } from "@/storage/fold-parts";
+import type { ThreadMessagePart } from "@/storage/fold-parts";
+import {
+  type AnyMessage,
+  isFinalPart,
+  PartRowBuilder,
+} from "./part-row-builder";
 
-type AnyPart = { type?: string; state?: string } & Record<string, unknown>;
-type AnyMessage = {
-  id: string;
-  role: "user" | "assistant" | "system";
-  parts?: unknown[];
-};
+export { isFinalPart };
 
 export interface PartEmitterCtx {
   storage: SqlThreadMessagePartStorage;
@@ -63,130 +63,16 @@ export interface PartEmitterCtx {
   baseTimeMs?: number;
 }
 
-/**
- * True when a part has reached a terminal/renderable state and is safe to
- * freeze. Streaming text/reasoning and in-flight tool calls return false.
- */
-export function isFinalPart(part: AnyPart): boolean {
-  const type = part.type;
-  if (typeof type !== "string") return false;
-
-  if (type === "text" || type === "reasoning") {
-    // `state` is 'streaming' | 'done' (may be absent on a step-final snapshot).
-    return part.state !== "streaming";
-  }
-
-  if (type === "step-start") {
-    // Never persisted (folded away as a boundary marker), but treat as final.
-    return false;
-  }
-
-  if (type.startsWith("tool-") || type === "dynamic-tool") {
-    // Final only at a terminal output state. Anything earlier
-    // (input-streaming/input-available/approval-*) is still in flight.
-    return (
-      part.state === "output-available" ||
-      part.state === "output-error" ||
-      part.state === "output-denied"
-    );
-  }
-
-  // file / source-url / source-document / data-* — terminal by nature.
-  return true;
-}
-
-/** Map an AI-SDK part `type` to the storage `PartKind` taxonomy. */
-function kindForPart(part: AnyPart): PartKind {
-  const type = part.type ?? "";
-  if (type === "reasoning") return "reasoning";
-  if (type === "file") return "file";
-  if (type.startsWith("tool-") || type === "dynamic-tool") {
-    return part.state === "output-available" ||
-      part.state === "output-error" ||
-      part.state === "output-denied"
-      ? "tool_result"
-      : "tool_call";
-  }
-  // text, source-*, data-* and anything else render as text-equivalent payloads.
-  return "text";
-}
-
 export class PartEmitter {
-  private readonly base: number;
-  /** `${messageId}#${index}` → assigned seq (stable per logical part). */
-  private readonly seqByPart = new Map<string, number>();
-  /** Message ids for which the `finish` anchor has already been emitted. */
-  private readonly finished = new Set<string>();
-  private nextSeq = 0;
+  private readonly builder: PartRowBuilder;
 
   constructor(private readonly ctx: PartEmitterCtx) {
-    this.base = ctx.baseTimeMs ?? Date.now();
+    this.builder = new PartRowBuilder(ctx);
   }
 
-  /** Allocate (or reuse) the stable seq for a logical part. */
-  private seqFor(messageId: string, index: number): number {
-    const key = `${messageId}#${index}`;
-    const existing = this.seqByPart.get(key);
-    if (existing !== undefined) return existing;
-    const seq = this.nextSeq++;
-    this.seqByPart.set(key, seq);
-    return seq;
-  }
-
-  private row(
-    messageId: string,
-    role: AnyMessage["role"],
-    seq: number,
-    kind: PartKind,
-    payload: unknown,
-  ): ThreadMessagePart {
-    return {
-      id: `${this.ctx.runId}:${seq}`,
-      seq,
-      org_id: this.ctx.orgId,
-      thread_id: this.ctx.threadId,
-      run_id: this.ctx.runId,
-      message_id: messageId,
-      role,
-      kind,
-      payload,
-      payload_ref: null,
-      metadata: null,
-      // Monotonic per run, derived from seq (NOT Date.now() per part).
-      created_at: new Date(this.base + seq).toISOString(),
-    };
-  }
-
-  /**
-   * Emit the FINAL parts of a message that are not yet persisted. Walks the
-   * (cumulative) `parts` array; idempotent via stable seq + ON CONFLICT.
-   * Does NOT emit a `finish` marker — call `markFinished` for that.
-   */
-  private async emitMessageParts(message: AnyMessage): Promise<void> {
-    const parts = (message.parts ?? []) as AnyPart[];
-    const rows: ThreadMessagePart[] = [];
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]!;
-      if (!isFinalPart(part)) continue;
-      const seq = this.seqFor(message.id, i);
-      rows.push(
-        this.row(message.id, message.role, seq, kindForPart(part), part),
-      );
-    }
-    if (rows.length > 0) await this.ctx.storage.appendParts(rows);
-  }
-
-  /** Append the single `finish` anchor for a message (idempotent). */
-  private async markFinished(
-    messageId: string,
-    role: AnyMessage["role"],
-  ): Promise<void> {
-    if (this.finished.has(messageId)) return;
-    this.finished.add(messageId);
-    const seq = this.seqFor(`${messageId}#finish`, 0);
-    await this.ctx.storage.appendParts([
-      this.row(messageId, role, seq, "finish", {}),
-    ]);
+  private async appendBuiltRows(rows: ThreadMessagePart[]): Promise<void> {
+    await this.ctx.storage.appendParts(rows);
+    this.builder.acknowledge(rows);
   }
 
   /**
@@ -194,8 +80,7 @@ export class PartEmitter {
    * the message is immediately complete in the v2 read path.
    */
   async emitUserMessage(message: AnyMessage): Promise<void> {
-    await this.emitMessageParts(message);
-    await this.markFinished(message.id, message.role);
+    await this.appendBuiltRows(this.builder.emitUserMessage(message));
   }
 
   /**
@@ -203,7 +88,7 @@ export class PartEmitter {
    * No `finish` marker yet — the message may continue in later steps.
    */
   async emitStepParts(message: AnyMessage): Promise<void> {
-    await this.emitMessageParts(message);
+    await this.appendBuiltRows(this.builder.emitStepParts(message));
   }
 
   /**
@@ -211,8 +96,7 @@ export class PartEmitter {
    * message with a single `finish` anchor.
    */
   async emitFinal(message: AnyMessage): Promise<void> {
-    await this.emitMessageParts(message);
-    await this.markFinished(message.id, message.role);
+    await this.appendBuiltRows(this.builder.emitFinal(message));
   }
 
   /**
@@ -221,13 +105,6 @@ export class PartEmitter {
    * dangling in-progress message.
    */
   async emitError(messageId: string, errorText: string): Promise<void> {
-    const seq = this.seqFor(`${messageId}#error`, 0);
-    await this.ctx.storage.appendParts([
-      this.row(messageId, "assistant", seq, "error", {
-        type: "text",
-        text: `Error: ${errorText}`,
-      }),
-    ]);
-    await this.markFinished(messageId, "assistant");
+    await this.appendBuiltRows(this.builder.emitError(messageId, errorText));
   }
 }

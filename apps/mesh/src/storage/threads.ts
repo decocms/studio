@@ -83,6 +83,10 @@ export class OrgScopedThreadStorage {
     return this.inner.update(id, this.requireOrg(), data);
   }
 
+  completeRunIfNotCompleted(id: string): Promise<Thread | null> {
+    return this.inner.completeRunIfNotCompleted(id, this.requireOrg());
+  }
+
   forceFailIfInProgress(id: string): Promise<boolean> {
     return this.inner.forceFailIfInProgress(id, this.requireOrg());
   }
@@ -366,6 +370,29 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
 
     return thread;
+  }
+
+  async completeRunIfNotCompleted(
+    id: string,
+    organizationId: string,
+  ): Promise<Thread | null> {
+    const rows = await this.db
+      .updateTable("threads")
+      .set({
+        status: "completed",
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .returningAll()
+      .execute();
+
+    const row = rows[0];
+    return row ? this.threadFromDbRow(row) : null;
   }
 
   async forceFailIfInProgress(
