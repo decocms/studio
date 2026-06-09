@@ -19,7 +19,9 @@ import {
   TextInput,
   Loading01,
   Monitor04,
+  Phone02,
   RefreshCw01,
+  Tablet01,
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -94,6 +96,28 @@ const FileExplorer = lazy(() =>
 const DEV_SERVER_SETTLE_MS = 500;
 
 type PreviewViewMode = "preview" | "visual" | "cms" | "code";
+type PreviewDeviceSize = "mobile" | "tablet" | "desktop";
+
+const PREVIEW_DEVICE_WIDTHS: Record<PreviewDeviceSize, number | null> = {
+  mobile: 375,
+  tablet: 768,
+  desktop: null,
+};
+
+const DEVICE_CYCLE: PreviewDeviceSize[] = ["desktop", "mobile", "tablet"];
+
+const DEVICE_LABELS: Record<PreviewDeviceSize, string> = {
+  mobile: "Mobile (375px)",
+  tablet: "Tablet (768px)",
+  desktop: "Desktop",
+};
+
+/** Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`). */
+function withDeviceHint(url: string, device: PreviewDeviceSize): string {
+  const parsed = new URL(url, window.location.href);
+  parsed.searchParams.set("deviceHint", device);
+  return parsed.href;
+}
 
 export function PreviewContent() {
   const inset = useInsetContext();
@@ -101,6 +125,8 @@ export function PreviewContent() {
 
   // Visual editor state
   const [viewMode, setViewMode] = useState<PreviewViewMode>("preview");
+  const [previewDeviceSize, setPreviewDeviceSize] =
+    useState<PreviewDeviceSize>("desktop");
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
@@ -222,7 +248,11 @@ export function PreviewContent() {
 
   const iframeSrc =
     previewState.kind === "iframe"
-      ? (directPreviewUrl ?? new URL(currentPath, previewState.previewUrl).href)
+      ? withDeviceHint(
+          directPreviewUrl ??
+            new URL(currentPath, previewState.previewUrl).href,
+          previewDeviceSize,
+        )
       : null;
 
   // Reset navigation when the VM preview base URL changes (branch switch, etc.)
@@ -401,6 +431,11 @@ export function PreviewContent() {
     previewIframeRef.current.src = `${iframeSrc}${sep}_r=${Date.now()}`;
   };
 
+  const handleDeviceToggle = () => {
+    const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
+    setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
+  };
+
   const handleCopyUrl = () => {
     const url =
       previewIframeRef.current?.contentWindow?.location?.href ??
@@ -534,7 +569,7 @@ export function PreviewContent() {
               {/* Group 2: nav + url (hidden in code mode) */}
               <div
                 className={cn(
-                  "flex min-w-0 flex-1 items-center gap-0.5",
+                  "flex min-w-0 flex-1 items-center gap-0.5 ml-2",
                   viewMode === "code" && "hidden",
                 )}
               >
@@ -545,6 +580,34 @@ export function PreviewContent() {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">Refresh</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleDeviceToggle}
+                    >
+                      <span
+                        key={previewDeviceSize}
+                        className="flex items-center justify-center animate-device-icon-pop"
+                      >
+                        {previewDeviceSize === "mobile" && (
+                          <Phone02 size={14} />
+                        )}
+                        {previewDeviceSize === "tablet" && (
+                          <Tablet01 size={14} />
+                        )}
+                        {previewDeviceSize === "desktop" && (
+                          <Monitor04 size={14} />
+                        )}
+                      </span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {DEVICE_LABELS[previewDeviceSize]}
+                  </TooltipContent>
                 </Tooltip>
 
                 <div
@@ -875,7 +938,15 @@ export function PreviewContent() {
           </>
         )}
 
-        <div className="flex-1 relative overflow-hidden">
+        <div
+          className={cn(
+            "flex-1 relative overflow-hidden",
+            previewDeviceSize !== "desktop" &&
+              previewState.kind === "iframe" &&
+              viewMode !== "code" &&
+              "flex justify-center bg-muted/30",
+          )}
+        >
           {previewState.kind === "starting" && (
             <div className="absolute inset-0 z-30">
               <SandboxStateCard
@@ -931,53 +1002,68 @@ export function PreviewContent() {
           )}
 
           {previewState.kind === "iframe" && iframeSrc && (
-            <iframe
-              // Key on previewUrl: remount when the VM base URL changes (branch
-              // switch). Path navigation is driven by `iframeSrc` state.
-              key={previewState.previewUrl}
-              ref={previewIframeRef}
-              src={iframeSrc}
+            <div
               className={cn(
-                "w-full h-full border-0",
-                viewMode === "code" && "invisible",
+                "h-full transition-[width] duration-250 [transition-timing-function:var(--ease-in-out-cubic)]",
+                previewDeviceSize !== "desktop" &&
+                  viewMode !== "code" &&
+                  "w-full max-w-full border-x border-border bg-background shadow-sm",
               )}
-              title="Dev Server Preview"
-              tabIndex={sectionsOpen ? -1 : undefined}
-              onLoad={() => {
-                // This is the VM dev-server preview (sandboxed running app),
-                // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
-                track("vm_preview_loaded", {
-                  view_mode: viewMode,
-                  vm_id: vmEntry?.sandboxHandle ?? null,
-                  // Intentionally excluding the full previewUrl — it can contain
-                  // ephemeral tokens / user data in the query string.
-                });
-                // Sync currentPath when the user navigates inside the iframe.
-                // Skip while a programmatic navigation is pending — stale
-                // onLoad events from the previous URL would reset us to "/".
-                if (!activeGlobalSection) {
-                  try {
-                    const iframePath =
-                      previewIframeRef.current?.contentWindow?.location
-                        ?.pathname;
-                    if (!iframePath) return;
-                    const intended = intendedPathRef.current;
-                    if (intended !== null) {
-                      intendedPathRef.current = null;
-                      if (normPath(iframePath) === normPath(intended)) {
-                        setCurrentPath(iframePath);
-                      }
-                      return;
-                    }
-                    setCurrentPath(iframePath);
-                  } catch {
-                    // Cross-origin — can't read, keep current value
-                  }
-                }
-                if (viewMode === "visual") injectVisualEditor();
-                if (viewMode === "cms") injectCmsEditor();
+              style={{
+                width:
+                  previewDeviceSize === "desktop" || viewMode === "code"
+                    ? "100%"
+                    : `${PREVIEW_DEVICE_WIDTHS[previewDeviceSize]}px`,
               }}
-            />
+            >
+              <iframe
+                // Key on previewUrl: remount when the VM base URL changes (branch
+                // switch). Path navigation is driven by `iframeSrc` state.
+                key={previewState.previewUrl}
+                ref={previewIframeRef}
+                src={iframeSrc}
+                className={cn(
+                  "w-full h-full border-0",
+                  viewMode === "code" && "invisible",
+                )}
+                title="Dev Server Preview"
+                tabIndex={sectionsOpen ? -1 : undefined}
+                onLoad={() => {
+                  // This is the VM dev-server preview (sandboxed running app),
+                  // NOT an MCP app. MCP apps render via <MCPAppRenderer/>.
+                  track("vm_preview_loaded", {
+                    view_mode: viewMode,
+                    vm_id: vmEntry?.sandboxHandle ?? null,
+                    // Intentionally excluding the full previewUrl — it can contain
+                    // ephemeral tokens / user data in the query string.
+                  });
+                  // Sync currentPath when the user navigates inside the iframe.
+                  // Skip while a programmatic navigation is pending — stale
+                  // onLoad events from the previous URL would reset us to "/".
+                  if (!activeGlobalSection) {
+                    try {
+                      const iframePath =
+                        previewIframeRef.current?.contentWindow?.location
+                          ?.pathname;
+                      if (!iframePath) return;
+                      const intended = intendedPathRef.current;
+                      if (intended !== null) {
+                        intendedPathRef.current = null;
+                        if (normPath(iframePath) === normPath(intended)) {
+                          setCurrentPath(iframePath);
+                        }
+                        return;
+                      }
+                      setCurrentPath(iframePath);
+                    } catch {
+                      // Cross-origin — can't read, keep current value
+                    }
+                  }
+                  if (viewMode === "visual") injectVisualEditor();
+                  if (viewMode === "cms") injectCmsEditor();
+                }}
+              />
+            </div>
           )}
         </div>
       </div>
