@@ -89,6 +89,10 @@ function createPostgresDatabase(connectionString: string): StudioDatabase {
     connectionString,
     max: getPoolMax(),
     ssl: getSsl(),
+    // Force UTF-8 regardless of OS locale — on Windows the default client
+    // encoding resolves to WIN1252, which breaks non-Latin1 characters in
+    // seeded data and causes INSERT errors during migrations.
+    options: "-c client_encoding=UTF8",
     ...defaultPoolOptions,
   });
 
@@ -117,6 +121,7 @@ export function getDbDialect(databaseUrl?: string): Dialect {
       connectionString: url,
       max: getPoolMax(),
       ssl: getSsl(),
+      options: "-c client_encoding=UTF8",
       ...defaultPoolOptions,
     }),
   });
