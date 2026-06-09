@@ -13,6 +13,7 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "fs";
@@ -565,6 +566,18 @@ async function downloadNats(home: string): Promise<string> {
       `Expand-Archive -Path '${zipPath}' -DestinationPath '${binDir}' -Force`,
     ]);
     await proc.exited;
+    // Expand-Archive preserves the zip's top-level directory (e.g.
+    // nats-server-v2.10.24-windows-amd64/nats-server.exe) instead of
+    // flattening like `unzip -j`. Move the binary up to binDir and remove
+    // the versioned subdirectory so binPath resolves correctly.
+    if (!existsSync(binPath)) {
+      const extractedDir = join(binDir, artifact.replace(/\.zip$/, ""));
+      const extractedBin = join(extractedDir, `nats-server${EXE_EXT}`);
+      if (existsSync(extractedBin)) {
+        renameSync(extractedBin, binPath);
+        rmSync(extractedDir, { recursive: true, force: true });
+      }
+    }
   } else {
     const proc = Bun.spawn([
       "unzip",
