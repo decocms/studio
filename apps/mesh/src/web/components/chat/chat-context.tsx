@@ -492,33 +492,22 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // `Codex desktop`). Persisted to localStorage so the choice survives
   // page reloads.
   //
+  // Scoped per `locator` (like the image-model and tier prefs) so a desktop
+  // pick made in one org doesn't leak into another — runtime availability is
+  // org/link-specific, and a "Claude Code desktop" pick carried across orgs
+  // used to mis-route to an offline link. A fresh org starts with no pick
+  // (`null`), letting the server choose its default.
+  //
   // Everything else (`pendingHarnessId`, `pendingSandboxProviderKind`,
   // the request body's harnessId/sandboxProviderKind) derives from this
   // through `AGENT_OPTION_PINS`, so the pill display and the submit can
   // never disagree.
-  const [pendingAgentOption, setPendingAgentOptionState] =
-    useState<AgentOption | null>(() => {
-      try {
-        const stored = localStorage.getItem(
-          "chat:lastAgentOption",
-        ) as AgentOption | null;
-        return stored && stored in AGENT_OPTION_PINS ? stored : null;
-      } catch {
-        return null;
-      }
-    });
-  const setPendingAgentOption = (option: AgentOption | null) => {
-    setPendingAgentOptionState(option);
-    try {
-      if (option === null) {
-        localStorage.removeItem("chat:lastAgentOption");
-      } else {
-        localStorage.setItem("chat:lastAgentOption", option);
-      }
-    } catch {
-      // ignore storage errors (private browsing, quota exceeded, etc.)
-    }
-  };
+  const [pendingAgentOption, setPendingAgentOption] =
+    useLocalStorage<AgentOption | null>(
+      LOCALSTORAGE_KEYS.chatLastAgentOption(locator),
+      (existing) =>
+        existing && existing in AGENT_OPTION_PINS ? existing : null,
+    );
 
   // Provider-tree wiring: `ChatPrefsProvider` is mounted INSIDE
   // `ChatTaskCtx.Provider` (see `ChatContextProvider` below), so the optional
