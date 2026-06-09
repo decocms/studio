@@ -1,7 +1,22 @@
 import type { MiddlewareHandler } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 
-type Variables = { meshContext: StudioContext };
+/**
+ * Attribution set by token-authenticated legacy handlers (e.g.
+ * `/api/trigger-callback`) that don't resolve a session-based `meshContext`,
+ * so their org/connection can still appear in the deprecation log. The handler
+ * sets this via `c.set("deprecatedRouteAttribution", ...)` after validating its
+ * own token; the middleware reads it after `next()`.
+ */
+export interface DeprecatedRouteAttribution {
+  organizationId?: string;
+  connectionId?: string;
+}
+
+type Variables = {
+  meshContext: StudioContext;
+  deprecatedRouteAttribution?: DeprecatedRouteAttribution;
+};
 
 /**
  * Permanent (non-deprecated) routes that any legacy deprecation middleware
@@ -70,11 +85,13 @@ const buildLogDeprecatedRoute =
     }
 
     const ctx = c.get("meshContext");
+    const attribution = c.get("deprecatedRouteAttribution");
     console.log("deprecated route", {
       route: c.req.routePath,
       method: c.req.method,
-      org: ctx?.organization?.slug,
+      org: ctx?.organization?.slug ?? attribution?.organizationId,
       user: ctx?.auth?.user?.id,
+      connection: attribution?.connectionId,
       ua: c.req.header("user-agent"),
     });
   };
