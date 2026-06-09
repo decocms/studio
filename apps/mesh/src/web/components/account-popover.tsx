@@ -579,7 +579,7 @@ export function AccountPopover() {
       ? [
           {
             key: "install-app",
-            label: `Add ${currentOrg.name} to Home Screen`,
+            label: "Add to Home Screen",
             icon: <Download01 size={16} />,
             onClick: () => {
               navigate({
