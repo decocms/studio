@@ -681,7 +681,76 @@ describe("mergeAndSort", () => {
     expect(out[0]?.role).toBe("assistant");
   });
 
-  test("metadata.created_at is ignored — only top-level created_at is used", () => {
+  test("in-flight turn-1 assistant (metadata only) stays before turn-2 user", () => {
+    const wrongOrder = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "hello" }],
+        created_at: "2026-06-09T12:00:00.000Z",
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "u2",
+        role: "user",
+        parts: [{ type: "text", text: "second" }],
+        metadata: { created_at: "2026-06-09T12:00:05.000Z" },
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: "Hello!" }],
+        metadata: { created_at: "2026-06-09T12:00:01.000Z" },
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+    ];
+    expect(mergeAndSort(wrongOrder, []).map((m) => m.id)).toEqual([
+      "u1",
+      "a1",
+      "u2",
+    ]);
+  });
+
+  test("user metadata.created_at sorts before in-flight assistant (+Infinity)", () => {
+    const wrongOrder = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [],
+        created_at: "2026-06-09T12:00:00.000Z",
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [],
+        created_at: "2026-06-09T12:00:01.000Z",
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "a2",
+        role: "assistant",
+        parts: [{ type: "reasoning", text: "thinking" }],
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+      {
+        id: "u2",
+        role: "user",
+        parts: [{ type: "text", text: "second" }],
+        metadata: { created_at: "2026-06-09T12:00:02.000Z" },
+        // biome-ignore lint/suspicious/noExplicitAny: test helper
+      } as any,
+    ];
+    expect(mergeAndSort(wrongOrder, []).map((m) => m.id)).toEqual([
+      "u1",
+      "a1",
+      "u2",
+      "a2",
+    ]);
+  });
+
+  test("metadata.created_at is ignored for assistant — only top-level created_at is used", () => {
     // Regression: persisted assistant rows in the wild carry
     // `metadata.created_at` stamped at the run-start time, which is EARLIER
     // than the user message they answer. If readTimestamp pulled from

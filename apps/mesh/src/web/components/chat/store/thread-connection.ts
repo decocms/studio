@@ -260,6 +260,8 @@ export class ThreadConnection {
    * user has queued in the meantime.
    */
   private waitingForNewRun = false;
+  /** `start` chunk opened a new assistant turn — don't seed the prior one. */
+  private freshRunSubstream = false;
   private client: MCPClient | null;
   private serverFetchedCount = 0;
   private readonly pageSize = 5;
@@ -311,7 +313,10 @@ export class ThreadConnection {
     if (!next) {
       throw new Error(`submit: target not found for ${describe(action)}`);
     }
-    this.messages.set(next);
+    // Same sort pass refresh uses (mergeAndSort + DB `created_at`). Without
+    // it, an in-flight SSE assistant row can sit above the user we just
+    // appended because foldSubStream only upserts by id.
+    this.messages.set(mergeAndSort(next, []));
 
     // A new user turn always POSTs. For approval / toolOutput actions, only
     // POST once the assistant turn has no remaining client-side resolutions
@@ -359,6 +364,19 @@ export class ThreadConnection {
     if (this.subController) {
       this.forceCloseSubStream(true);
     }
+    // Anchor the frozen assistant so mergeAndSort on the next submit doesn't
+    // pull a timestamp-less user row ahead of it (role tiebreak or +Infinity).
+    this.messages.update((msgs) => {
+      const last = msgs.at(-1);
+      if (last?.role !== "assistant") return msgs;
+      const row = last as UIMessage & { created_at?: string };
+      if (row.created_at != null) return msgs;
+      const anchored = {
+        ...last,
+        created_at: new Date().toISOString(),
+      } as UIMessage;
+      return [...msgs.slice(0, -1), anchored];
+    });
     this.waitingForNewRun = true;
   }
 
@@ -777,6 +795,9 @@ export class ThreadConnection {
         },
       });
     }
+    if (chunk.type === "start") {
+      this.freshRunSubstream = true;
+    }
     const sub = this.ensureSubStream();
     sub.enqueue(chunk);
     if (chunk.type === "finish") {
@@ -833,9 +854,12 @@ export class ThreadConnection {
   ): Promise<void> {
     const prev = this.messages.get();
     const seed =
-      prev.length > 0 && prev.at(-1)?.role === "assistant"
+      !this.freshRunSubstream &&
+      prev.length > 0 &&
+      prev.at(-1)?.role === "assistant"
         ? prev.at(-1)
         : undefined;
+    this.freshRunSubstream = false;
     const iter = readUIMessageStream({
       message: seed,
       stream: sub,
@@ -860,7 +884,9 @@ export class ThreadConnection {
       if (!pending) return;
       const msg = pending;
       pending = null;
-      this.messages.update((curr) => dropRedundantStubs(upsertById(curr, msg)));
+      this.messages.update((curr) =>
+        mergeAndSort(dropRedundantStubs(upsertById(curr, msg)), []),
+      );
     };
     for await (const msg of iter) {
       last = msg;
@@ -997,6 +1023,13 @@ export function mergeAndSort(
     const ta = readTimestamp(a);
     const tb = readTimestamp(b);
     if (ta !== tb) return ta - tb;
+    // Mirrors `listMessages` role tiebreak: user before assistant on equal
+    // timestamps (in-flight rows with no top-level `created_at` yet).
+    const roleRank = (m: UIMessage) =>
+      m.role === "user" ? 0 : m.role === "assistant" ? 1 : 2;
+    const ra = roleRank(a);
+    const rb = roleRank(b);
+    if (ra !== rb) return ra - rb;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
   return dropRedundantStubs(merged);
@@ -1006,16 +1039,24 @@ export function mergeAndSort(
  * Persisted messages from COLLECTION_THREAD_MESSAGES_LIST carry the DB row's
  * `created_at` at the top level. AI-SDK UIMessages don't declare that field,
  * so we read it via a defensive cast. Some assistant messages additionally
- * stamp a `metadata.created_at` at the run-start time — that field reflects
- * the user-turn timestamp, NOT when the assistant row was actually written,
- * so it sorts the assistant BEFORE the user it answered. We deliberately
- * ignore `metadata.created_at` for ordering and trust only the top-level
- * persisted timestamp.
+ * stamp a `metadata.created_at` at run-start. Once the row is persisted the
+ * top-level `created_at` is authoritative — using metadata then would sort
+ * the assistant too early. In-flight assistants (no top-level yet) may fall
+ * back to metadata so a still-streaming turn-1 reply doesn't leap behind a
+ * newly-submitted turn-2 user row during live mergeAndSort.
  */
 function readTimestamp(m: UIMessage): number {
   const withTs = m as unknown as { created_at?: string | number | Date };
-  if (withTs.created_at == null) return Number.POSITIVE_INFINITY;
-  return new Date(withTs.created_at).getTime();
+  if (withTs.created_at != null) {
+    return new Date(withTs.created_at).getTime();
+  }
+  const meta = m.metadata as
+    | { created_at?: string | number | Date }
+    | undefined;
+  if (meta?.created_at != null) {
+    return new Date(meta.created_at).getTime();
+  }
+  return Number.POSITIVE_INFINITY;
 }
 
 // ─── Module-scoped slot ──────────────────────────────────────────────────────
