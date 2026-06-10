@@ -1313,7 +1313,7 @@ async function prepareRun(
                 });
                 return;
               }
-              console.error("[decopilot] stream error:", error);
+              console.error("[decopilot] stream error:", stringifyError(error));
               posthog.capture({
                 distinctId: input.userId,
                 event: "chat_message_failed",
