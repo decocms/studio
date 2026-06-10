@@ -107,7 +107,9 @@ async function fetchRepoFiles(
   ref: string,
 ): Promise<Map<string, Uint8Array>> {
   const url = `https://codeload.github.com/${repo}/tar.gz/${encodeURIComponent(ref)}`;
-  const res = await fetch(url);
+  // Bound the whole download — a stalled codeload socket would otherwise hang
+  // this sync cycle (and the boot loop's first iteration) indefinitely.
+  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
   if (!res.ok) {
     throw new Error(
       `tarball fetch failed for ${repo}@${ref}: HTTP ${res.status}`,
@@ -236,6 +238,26 @@ export async function syncPublicSet(
     );
   }
 
+  // Deletes (and the dir prune) run BEFORE writes: when a path changes kind
+  // upstream (dir → file or file → dir) the stale entry must be cleared first
+  // or the conflicting write fails — and re-fails every cycle, wedging the
+  // sync. Cost: a renamed path is briefly absent mid-sync instead of briefly
+  // duplicated.
+  let deleted = 0;
+  for (const path of current.keys()) {
+    if (desired.has(path)) continue;
+    await fs.delete(volume, path, { actor: SYNC_ACTOR });
+    deleted++;
+  }
+  // Prune dirs with no desired file beneath them (file tombstones don't touch
+  // the parent dir entries; each stale root deletes its whole subtree).
+  const dirs = await manifest.listVolumeDirs(ORG_FS_PUBLIC_ORG_ID, volume);
+  for (const dir of staleDirs(
+    desired.keys(),
+    dirs.map((d) => d.path),
+  )) {
+    await fs.delete(volume, dir, { actor: SYNC_ACTOR });
+  }
   let written = 0;
   let unchanged = 0;
   for (const [path, bytes] of desired) {
@@ -250,21 +272,6 @@ export async function syncPublicSet(
       skipVolumeQuota: true,
     });
     written++;
-  }
-  let deleted = 0;
-  for (const path of current.keys()) {
-    if (desired.has(path)) continue;
-    await fs.delete(volume, path, { actor: SYNC_ACTOR });
-    deleted++;
-  }
-  // Prune dirs left empty by upstream deletions (file tombstones don't touch
-  // the parent dir entries; each stale root deletes its whole subtree).
-  const dirs = await manifest.listVolumeDirs(ORG_FS_PUBLIC_ORG_ID, volume);
-  for (const dir of staleDirs(
-    desired.keys(),
-    dirs.map((d) => d.path),
-  )) {
-    await fs.delete(volume, dir, { actor: SYNC_ACTOR });
   }
   return { set: source.set, written, deleted, unchanged };
 }

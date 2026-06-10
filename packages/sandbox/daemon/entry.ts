@@ -841,7 +841,12 @@ async function repointOutputLinkForRun(threadId: string): Promise<boolean> {
   await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
   const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
   if (!mounts.some((m) => m.mountPath === outputsMountPath)) return false;
-  await repointOutputLink(bootConfig.appRoot, threadId, orgFsLog);
+  // Cache only a CONFIRMED repoint — repointOutputLink fails soft (logs and
+  // returns false), and caching a failure would pin the memo at this thread
+  // while the symlink still points at the PREVIOUS one, with no retry.
+  if (!(await repointOutputLink(bootConfig.appRoot, threadId, orgFsLog))) {
+    return false;
+  }
   lastOutputThread = threadId;
   return true;
 }
