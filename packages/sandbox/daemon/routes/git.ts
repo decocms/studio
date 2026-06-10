@@ -365,7 +365,7 @@ function pushBranch(repoDir: string, branch: string): void {
   );
 }
 
-function publish(deps: GitDeps, message: string): { pushed: boolean } {
+export function publish(deps: GitDeps, message: string): { pushed: boolean } {
   const repoDir = deps.repoDir;
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
