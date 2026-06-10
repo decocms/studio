@@ -45,7 +45,7 @@ import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
 //
 // `decopilotDesktopHarnessFactory` is the IMPORT-ISOLATED decopilot runtime
 // (`harnesses/decopilot-desktop/`): it activates its provider from the injected
-// `modelSource`, reaches cluster-coupled tools via `mcp.url`, and imports
+// `modelSources.thinking`, reaches cluster-coupled tools via `mcp.url`, and imports
 // only portable leaves — so it bundles here without dragging in StudioContext /
 // storage / vault. See that subtree's `index.ts` for the isolation contract.
 import { claudeCodeHarnessFactory } from "../../../apps/mesh/src/harnesses/claude-code";
@@ -412,8 +412,8 @@ const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 // The CLI factories plus the import-isolated desktop decopilot factory live in
 // the daemon. The cluster `decopilotHarnessFactory` (RunRegistry, run-stream
 // internals, StudioContext) is NOT here — desktop decopilot runs via
-// `decopilotDesktopHarnessFactory`, which activates from `modelSource` and
-// reaches cluster-coupled tools through `mcp.url`.
+// `decopilotDesktopHarnessFactory`, which activates from `modelSources.thinking`
+// and reaches cluster-coupled tools through `mcp.url`.
 const dispatchHarnessRegistry: Map<string, HarnessFactory> = new Map([
   ["claude-code", claudeCodeHarnessFactory],
   ["codex", codexHarnessFactory],

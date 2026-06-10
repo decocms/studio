@@ -89,6 +89,7 @@ import {
   fetchModelPermissions,
   filterToolTiersByPermission,
 } from "./model-permissions";
+import { normalizeClientModels } from "./normalize-client-models";
 import type { RunRegistry } from "./run-registry";
 import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
@@ -588,36 +589,9 @@ async function prepareRun(
 
   try {
     // The HTTP layer still sends the CLIENT models shape (root credentialId,
-    // optional client-only extras like `capabilities`). Read it through this
-    // narrowed view only — everything below the normalization block uses the
-    // per-slot v2 `models`.
-    const clientModels = input.models as unknown as {
-      credentialId: string;
-      thinking: {
-        id: string;
-        title?: string;
-        provider?: string | null;
-        limits?: { contextWindow?: number; maxOutputTokens?: number };
-        capabilities?: unknown;
-      };
-      fast?: { id: string; title?: string; provider?: string | null };
-      smart?: { id: string; title?: string; provider?: string | null };
-      image?: {
-        id: string;
-        title?: string;
-        provider?: string | null;
-        credentialId?: string;
-        limits?: { contextWindow?: number; maxOutputTokens?: number };
-      };
-      deepResearch?: {
-        id: string;
-        title?: string;
-        provider?: string | null;
-        credentialId?: string;
-        limits?: { contextWindow?: number; maxOutputTokens?: number };
-      };
-      coding?: { id: string }; // ignored — slot removed (D11)
-    };
+    // optional client-only extras like `capabilities`). Everything below the
+    // normalization call uses the per-slot v2 `models`.
+    const clientModels = input.models;
     const credentialKey = await ctx.storage.aiProviderKeys
       .findById(clientModels.credentialId, input.organizationId)
       .catch(() => null);
@@ -657,53 +631,9 @@ async function prepareRun(
 
     // Normalize the client models payload into the v2 per-slot shape FIRST
     // (the HTTP layer still sends a root credentialId), so the permission
-    // check and slot resolution below read the per-slot credential. Each slot
-    // carries its own credentialId (decision D14), defaulting to the chat
-    // credential when the client doesn't pin one. `coding` is dropped (D11)
-    // and client-only extras (`capabilities`) intentionally stay client-side:
-    // the wire schema is `.strict()` per slot, and capability checks
-    // (`ensureModelCompatibility`) run pre-dispatch on the client shape.
-    const toSelection = (
-      slot: {
-        id: string;
-        title?: string;
-        provider?: string | null;
-        limits?: { contextWindow?: number; maxOutputTokens?: number };
-      },
-      credentialId: string,
-    ): ModelSelection => ({
-      id: slot.id,
-      ...(slot.title !== undefined ? { title: slot.title } : {}),
-      ...(slot.provider !== undefined ? { provider: slot.provider } : {}),
-      credentialId,
-      ...(slot.limits ? { limits: slot.limits } : {}),
-    });
-    let models: ModelsConfig = {
-      thinking: toSelection(clientModels.thinking, clientModels.credentialId),
-      ...(clientModels.fast
-        ? { fast: toSelection(clientModels.fast, clientModels.credentialId) }
-        : {}),
-      ...(clientModels.smart
-        ? { smart: toSelection(clientModels.smart, clientModels.credentialId) }
-        : {}),
-      ...(clientModels.image
-        ? {
-            image: toSelection(
-              clientModels.image,
-              clientModels.image.credentialId ?? clientModels.credentialId,
-            ),
-          }
-        : {}),
-      ...(clientModels.deepResearch
-        ? {
-            deepResearch: toSelection(
-              clientModels.deepResearch,
-              clientModels.deepResearch.credentialId ??
-                clientModels.credentialId,
-            ),
-          }
-        : {}),
-    };
+    // check and slot resolution below read the per-slot credential. See
+    // `normalize-client-models.ts` for the slot/credential/stripping rules.
+    let models: ModelsConfig = normalizeClientModels(clientModels);
 
     // 1. Check model permissions (decopilot-only; CLI harnesses run with
     //    the user's own provider credential / local CLI binary, which is
@@ -728,6 +658,8 @@ async function prepareRun(
       ) {
         throw new Error("Model not allowed for your role");
       }
+      // NOTE: only image/deepResearch are filtered today — fast/smart must be
+      // added here when they gain a producer.
       models = filterToolTiersByPermission(allowedModels, models);
     }
 

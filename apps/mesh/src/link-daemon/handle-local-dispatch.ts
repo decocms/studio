@@ -29,14 +29,11 @@
  *
  * ⚠️ HARNESS ID NOTE:
  *   `WorkItem.harnessInput` is a `HarnessStreamInputWire`. As of link
- *   protocol v2 the cluster includes a first-class top-level `harnessId`
- *   field on the wire input, so reading
- *   `(work.harnessInput as Record<string,unknown>).harnessId` is the primary
- *   path. The legacy fallback chain stays for now: if absent, we fall back
- *   to `work.harnessInput.agent?.id` (which older dispatchers set to the
- *   harness type string, e.g. "claude-code"), then default to "claude-code"
- *   (the canonical desktop harness). Callers can override via
- *   `deps.harnessId` if the caller knows the correct value.
+ *   protocol v2 the cluster sets the first-class top-level `harnessId`
+ *   field on every dispatch — that is the primary path (see
+ *   `deriveHarnessId`). The fallback chain (agent.id → "claude-code") is
+ *   defense-in-depth only and can die with the next protocol bump. Callers
+ *   can override via `deps.harnessId` if they know the correct value.
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
@@ -85,11 +82,15 @@ export interface LocalDispatchDeps {
 }
 
 /**
- * Derive the harness id from the work item. Priority:
- *   1. `deps.harnessId` if the caller supplied one.
- *   2. `work.harnessInput.harnessId` — a future schema may include it.
- *   3. `work.harnessInput.agent.id` — the cluster sets this to the harness
- *      type string (e.g. "claude-code", "codex").
+ * Derive the harness id from the work item.
+ *
+ * Primary path: `work.harnessInput.harnessId` — first-class on the wire as
+ * of link protocol v2 and always set by v2 dispatch. The rest of the chain
+ * is defense-in-depth only and can die with the next protocol bump:
+ *   1. `deps.harnessId` — explicit caller override.
+ *   2. `work.harnessInput.harnessId` — the v2 wire field (primary).
+ *   3. `work.harnessInput.agent.id` — older dispatchers set this to the
+ *      harness type string (e.g. "claude-code", "codex").
  *   4. "claude-code" — the canonical desktop harness fallback.
  */
 function deriveHarnessId(work: WorkItem, depsHarnessId?: string): string {

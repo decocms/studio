@@ -4,9 +4,10 @@
  * All tests inject a stub `fetchImpl` — no real HTTP, no NATS, no DB.
  * The AbortController is used to stop the loop after verifying the behaviour.
  */
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, mock, spyOn } from "bun:test";
 import { runWorkPollLoop } from "./work-poller";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
+import { LINK_PROTOCOL_VERSION } from "../links/protocol";
 
 const BASE_URL = "https://studio.example.com";
 const ORG_SLUG = "acme";
@@ -206,6 +207,98 @@ describe("runWorkPollLoop", () => {
     });
 
     expect(headers[0]?.Authorization).toBe("Bearer my-fresh-token");
+  });
+
+  it("advertises the link protocol version via x-link-protocol on every poll", async () => {
+    const headers: Record<string, string>[] = [];
+    const ac = new AbortController();
+
+    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
+      headers.push((init?.headers ?? {}) as Record<string, string>);
+      if (headers.length >= 2) ac.abort();
+      return makeResponse(204);
+    });
+
+    await runWorkPollLoop({
+      baseUrl: BASE_URL,
+      onWork: async () => {},
+      getAccessToken: async () => "tok",
+      signal: ac.signal,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(headers.length).toBeGreaterThanOrEqual(2);
+    for (const h of headers) {
+      expect(h["x-link-protocol"]).toBe(String(LINK_PROTOCOL_VERSION));
+    }
+  });
+
+  it("logs the server message and stops permanently on 426 protocol_mismatch", async () => {
+    const received: WorkItem[] = [];
+    const ac = new AbortController();
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+
+    const serverMessage =
+      "Link protocol v2 is no longer supported. Re-run: bunx decocms@latest link";
+    const fetchImpl = mock(async () =>
+      makeResponse(426, {
+        error: "protocol_mismatch",
+        minSupported: 3,
+        message: serverMessage,
+      }),
+    );
+
+    try {
+      // The loop must resolve on its own — WITHOUT the abort signal firing —
+      // and without backing off into another poll (no hot-retry).
+      await runWorkPollLoop({
+        baseUrl: BASE_URL,
+        onWork: async (item) => {
+          received.push(item);
+        },
+        getAccessToken: async () => "tok",
+        signal: ac.signal,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+
+      expect(ac.signal.aborted).toBe(false);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(received).toHaveLength(0);
+      const logged = errorSpy.mock.calls.map((args) => String(args[0]));
+      expect(logged.some((line) => line.includes(serverMessage))).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("stops on 426 even when the body is not JSON, with a local remediation message", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const ac = new AbortController();
+
+    const fetchImpl = mock(async () => {
+      return {
+        status: 426,
+        json: () => Promise.reject(new Error("not json")),
+      } as unknown as Response;
+    });
+
+    try {
+      await runWorkPollLoop({
+        baseUrl: BASE_URL,
+        onWork: async () => {},
+        getAccessToken: async () => "tok",
+        signal: ac.signal,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      const logged = errorSpy.mock.calls.map((args) => String(args[0]));
+      expect(
+        logged.some((line) => line.includes("bunx decocms@latest link")),
+      ).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("calls getAccessToken on every poll iteration", async () => {

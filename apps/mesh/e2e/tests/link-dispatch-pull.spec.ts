@@ -55,6 +55,7 @@ import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { claimPullPresence } from "../fixtures/links-presence";
+import { LINK_PROTOCOL_VERSION } from "../../src/links/protocol";
 
 // ---------------------------------------------------------------------------
 // Helpers (scoped to this file; mirrors the patterns in link-ingest.spec.ts)
@@ -302,6 +303,7 @@ test.describe("pull-transport round-trip", () => {
           // before the server either delivers a work item or returns 204.
           timeout: 35_000,
           headers: {
+            "x-link-protocol": String(LINK_PROTOCOL_VERSION),
             "x-link-capabilities": "claude-code",
             "x-link-machine-id": "e2e-test-machine",
             "x-link-cli-version": "test",
