@@ -109,6 +109,7 @@ describe("harnessStreamInputSchema (v2)", () => {
           provider: null,
           credentialId: "cred-chat",
           limits: { contextWindow: 200000, maxOutputTokens: 32768 },
+          capabilities: { reasoning: true, vision: true, text: true },
         },
         fast: {
           id: "anthropic/claude-haiku",
@@ -146,6 +147,7 @@ describe("harnessStreamInputSchema (v2)", () => {
           provider: null,
           credentialId: "cred-chat",
           limits: { contextWindow: 200000, maxOutputTokens: 32768 },
+          capabilities: { reasoning: true, vision: true, text: true },
         },
         fast: {
           id: "anthropic/claude-haiku",

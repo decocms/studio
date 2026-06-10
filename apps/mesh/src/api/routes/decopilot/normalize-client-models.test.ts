@@ -74,7 +74,7 @@ describe("normalizeClientModels", () => {
     expect(result).not.toHaveProperty("coding");
   });
 
-  it("strips client-only capabilities (wire slots are strict)", () => {
+  it("passes wire-allowed capabilities through per slot", () => {
     const result = normalizeClientModels(
       baseInput({
         thinking: {
@@ -89,8 +89,25 @@ describe("normalizeClientModels", () => {
       }),
     );
 
-    expect(result.thinking).not.toHaveProperty("capabilities");
-    expect(result.fast).not.toHaveProperty("capabilities");
+    expect(result.thinking.capabilities).toEqual({
+      reasoning: true,
+      vision: true,
+    });
+    expect(result.fast?.capabilities).toEqual({ reasoning: false });
+  });
+
+  it("drops non-wire capability keys (tools/file) on passthrough", () => {
+    const result = normalizeClientModels(
+      baseInput({
+        thinking: {
+          id: "claude-opus-4-5",
+          title: "Opus",
+          capabilities: { reasoning: true, tools: true, file: true },
+        },
+      }),
+    );
+
+    expect(result.thinking.capabilities).toEqual({ reasoning: true });
   });
 
   it("falls back thinking.title to the model id (wire requires it)", () => {

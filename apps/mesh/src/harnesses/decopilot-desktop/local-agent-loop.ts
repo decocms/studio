@@ -38,8 +38,8 @@ import { makeTitleResultChunk } from "../title-chunk";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
 import {
   createLanguageModel,
-  type LanguageModelProvider,
-} from "./local-language-model";
+  type MeshProvider,
+} from "../decopilot/mesh-provider";
 import { type ConnectionsBlockTool } from "../decopilot/connections-block";
 import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./local-prompt";
 import type { ChatMode, ModelsConfig } from "../types";
@@ -52,7 +52,7 @@ import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
 
 export interface RunDesktopAgentLoopOptions {
   /** The provider built from `modelSource(kind="secret")`. */
-  provider: LanguageModelProvider;
+  provider: MeshProvider;
   models: ModelsConfig;
   mode: ChatMode;
   temperature: number;

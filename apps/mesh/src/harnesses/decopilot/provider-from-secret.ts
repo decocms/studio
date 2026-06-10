@@ -15,30 +15,11 @@ import {
   submitInteraction,
 } from "../../shared/gemini-interactions";
 import type { DecopilotSecretModelSource } from "../types";
+import type { MeshProvider } from "./mesh-provider";
 
-interface AsyncResearchProvider {
-  canHandle(modelId: string): boolean;
-  start(req: {
-    modelId: string;
-    query: string;
-    abortSignal?: AbortSignal;
-  }): Promise<{ jobId: string }>;
-  resume(req: {
-    jobId: string;
-    abortSignal?: AbortSignal;
-    onProgress?: (transcript: string) => void;
-    pollIntervalMs?: number;
-  }): Promise<{
-    text: string;
-    citations: Array<{ url: string; title?: string }>;
-    usage: { inputTokens: number; outputTokens: number };
-  }>;
-}
-
-export interface ResolvedSecretProvider {
+export interface ResolvedSecretProvider extends MeshProvider {
   info: { id: never; name: string; description: string };
   aiSdk: ProviderV3;
-  asyncResearch?: AsyncResearchProvider;
   listModels(): Promise<never[]>;
 }
 

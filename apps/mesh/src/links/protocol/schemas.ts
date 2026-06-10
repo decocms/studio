@@ -47,6 +47,13 @@ const modelSelectionSchema = z
         maxOutputTokens: z.number().int().positive().optional(),
       })
       .optional(),
+    capabilities: z
+      .object({
+        vision: z.boolean().optional(),
+        text: z.boolean().optional(),
+        reasoning: z.boolean().optional(),
+      })
+      .optional(),
   })
   .strict();
 

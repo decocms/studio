@@ -56,6 +56,9 @@ export interface ModelSelection {
    *  defaults it to the chat credential when the client doesn't pin one. */
   credentialId: string;
   limits?: { contextWindow?: number; maxOutputTokens?: number };
+  /** Capability flags forwarded from the client model descriptor.
+   *  `createLanguageModel` gates reasoning on `capabilities.reasoning !== false`. */
+  capabilities?: { vision?: boolean; text?: boolean; reasoning?: boolean };
 }
 
 /** Slot-keyed model config. `coding` and `title` are gone (decisions D11/D12);

@@ -34,11 +34,9 @@ export type ClientModelsInput = Omit<
 /**
  * Project a client slot onto the wire `ModelSelection` shape.
  *
- * `capabilities` is intentionally stripped: the wire schema is `.strict()`
- * per slot, and capability checks (`ensureModelCompatibility`) run
- * pre-dispatch on the client shape. `createLanguageModel`'s
- * `reasoning !== false` gate only ever sees true/undefined from producers —
- * revisit when capabilities go on the wire (plan Task 13).
+ * `capabilities` is forwarded (wire-allowed keys only: `vision`/`text`/
+ * `reasoning`) so `createLanguageModel`'s `reasoning !== false` gate sees the
+ * client's flags on every harness, cluster or desktop (plan Task 13).
  */
 function toSelection(slot: ModelInfo, credentialId: string): ModelSelection {
   return {
@@ -47,6 +45,21 @@ function toSelection(slot: ModelInfo, credentialId: string): ModelSelection {
     ...(slot.provider !== undefined ? { provider: slot.provider } : {}),
     credentialId,
     ...(slot.limits ? { limits: slot.limits } : {}),
+    ...(slot.capabilities
+      ? {
+          capabilities: {
+            ...(slot.capabilities.vision !== undefined
+              ? { vision: slot.capabilities.vision }
+              : {}),
+            ...(slot.capabilities.text !== undefined
+              ? { text: slot.capabilities.text }
+              : {}),
+            ...(slot.capabilities.reasoning !== undefined
+              ? { reasoning: slot.capabilities.reasoning }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 
