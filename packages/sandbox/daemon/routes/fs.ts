@@ -109,7 +109,12 @@ function resolveReadPath(
 
 export function makeReadHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
-    let body: { path?: string; offset?: number; limit?: number };
+    let body: {
+      path?: string;
+      offset?: number;
+      limit?: number;
+      full?: boolean;
+    };
     try {
       body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
@@ -167,8 +172,8 @@ export function makeReadHandler(deps: FsDeps) {
 
     const raw = fs.readFileSync(filePath, "utf-8");
     const lines = raw.split("\n");
-    const offset = Math.max(1, body.offset ?? 1);
-    const limit = body.limit ?? 2000;
+    const offset = body.full ? 1 : Math.max(1, body.offset ?? 1);
+    const limit = body.full ? lines.length : (body.limit ?? 2000);
     const slice = lines.slice(offset - 1, offset - 1 + limit);
     const numbered = slice.map((l, i) => `${offset + i}\t${l}`).join("\n");
     return jsonResponse({
