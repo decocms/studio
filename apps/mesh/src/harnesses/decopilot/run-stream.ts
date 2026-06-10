@@ -330,7 +330,10 @@ export async function* runDecopilotStream(
           return title ? (makeTitleResultChunk(title) as UIMessageChunk) : null;
         })
         .catch((err) => {
-          console.warn("[decopilot:title] title generation failed", err);
+          console.warn(
+            "[decopilot:title] title generation failed",
+            stringifyError(err),
+          );
           return null;
         })
     : Promise.resolve(null);

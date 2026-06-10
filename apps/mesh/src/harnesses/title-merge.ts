@@ -23,6 +23,7 @@
 import type { UIMessageChunk } from "ai";
 import { makeTitleResultChunk } from "./title-chunk";
 import { DEFAULT_THREAD_TITLE } from "./decopilot/prompt-constants";
+import { stringifyError } from "./decopilot/stream-error";
 
 /**
  * Producer-side auto-title gate (decision D13). Auto-title only an *unrenamed*
@@ -72,7 +73,10 @@ export async function* mergeTitleResult(
       value: title ? (makeTitleResultChunk(title) as UIMessageChunk) : null,
     }))
     .catch((err) => {
-      console.warn("[harness:title] title generation failed", err);
+      console.warn(
+        "[harness:title] title generation failed",
+        stringifyError(err),
+      );
       return { kind: "title" as const, value: null };
     });
 

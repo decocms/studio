@@ -37,6 +37,7 @@ import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
 import { genTitle } from "../decopilot/title-generator";
+import { stringifyError } from "../decopilot/stream-error";
 import type {
   Harness,
   HarnessContext,
@@ -192,7 +193,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
           // detail when the CLI subprocess fails to start.
           console.error(
             `[claude-code] stream error model=${sdkModelId} cwd=${cwd ?? "(default)"}:`,
-            err,
+            stringifyError(err),
           );
           throw err;
         }
