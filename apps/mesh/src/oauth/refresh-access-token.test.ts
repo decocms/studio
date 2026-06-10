@@ -51,6 +51,25 @@ describe("refreshAccessToken", () => {
     expect(result.error).toContain("revoked");
   });
 
+  it("flags 400 bad_refresh_token as permanent (non-standard GitHub MCP code)", async () => {
+    installFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            error: "bad_refresh_token",
+            error_description:
+              "The refresh token passed is incorrect or expired.",
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+
+    const result = await refreshAccessToken(baseToken);
+
+    expect(result.success).toBe(false);
+    expect(result.permanent).toBe(true);
+  });
+
   it("flags other 4xx errors as transient (could be config issue, retry-worthy)", async () => {
     installFetch(
       () =>
