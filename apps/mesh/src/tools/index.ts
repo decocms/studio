@@ -32,6 +32,7 @@ import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
+import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import { getPrompts, getResources } from "./guides";
 import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
@@ -165,6 +166,9 @@ const CORE_TOOLS = [
   FileConfigTools.FILE_CONFIG_UPDATE,
   FileConfigTools.FILE_CONFIG_DELETE,
   FileConfigTools.FILE_OBJECTS_LIST,
+
+  // Org filesystem (shared public skill sets)
+  ORG_FS_PUBLIC_SETS_SYNC,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,

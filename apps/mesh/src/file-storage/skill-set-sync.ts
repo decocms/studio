@@ -1,0 +1,258 @@
+/**
+ * Syncs public skill sets (file-storage/public-sets.ts) from their GitHub
+ * repos into the shared org-fs volumes.
+ *
+ * Source: the repo's codeload tarball at a pinned ref — no git binary, no
+ * clone dir. Each configured `paths[{from,to}]` maps a repo subtree into the
+ * volume. Diff: the manifest already stores SHA-256 per file, so a re-sync
+ * costs one tarball download + hash comparison; only changed/new files are
+ * written and only vanished ones deleted. Running sandboxes pick changes up
+ * in ~1s via the change feed (the mount invalidator).
+ *
+ * Runs from server boot on an interval (the cron-shaped safety net) and on
+ * demand via the ORG_FS_PUBLIC_SETS_SYNC tool.
+ */
+
+import { createHash } from "node:crypto";
+import { gunzipSync } from "node:zlib";
+import type { Kysely } from "kysely";
+import { sleep } from "@decocms/std";
+import type { Database } from "../storage/types";
+import { OrgFsEntryStorage } from "../storage/org-fs";
+import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
+import { DevObjectStorage } from "../object-storage/dev-object-storage";
+import { getObjectStorageS3Service } from "../object-storage/factory";
+import { detectContentType } from "../object-storage/key-utils";
+import { OrgFs } from "./org-fs";
+import {
+  getPublicSets,
+  ORG_FS_PUBLIC_ORG_ID,
+  type PublicSkillSetSource,
+  publicVolumeForSet,
+} from "./public-sets";
+
+const SYNC_ACTOR = "system:skill-set-sync";
+/** Tarballs of skill repos are small; refuse anything suspicious. */
+const MAX_TARBALL_BYTES = 200 * 1024 * 1024;
+
+// --- minimal tar reader ------------------------------------------------------
+// GitHub tarballs are ustar with pax extension headers. We only need regular
+// files; pax/global headers and GNU longnames are consumed and applied where
+// they matter (long paths), everything else is skipped.
+
+function readString(block: Uint8Array, offset: number, length: number): string {
+  let end = offset;
+  const max = offset + length;
+  while (end < max && block[end] !== 0) end++;
+  return new TextDecoder().decode(block.subarray(offset, end));
+}
+
+function readOctal(block: Uint8Array, offset: number, length: number): number {
+  const raw = readString(block, offset, length).trim();
+  return raw === "" ? 0 : Number.parseInt(raw, 8);
+}
+
+/** Parse a tar archive into path → bytes (regular files only). */
+export function parseTar(tar: Uint8Array): Map<string, Uint8Array> {
+  const files = new Map<string, Uint8Array>();
+  let pos = 0;
+  let pendingLongName: string | null = null;
+  let pendingPaxPath: string | null = null;
+  while (pos + 512 <= tar.length) {
+    const block = tar.subarray(pos, pos + 512);
+    pos += 512;
+    // two zero blocks = end of archive; a zero name means an empty block
+    if (block.every((b) => b === 0)) break;
+    let name = readString(block, 0, 100);
+    const prefix = readString(block, 345, 155);
+    if (prefix) name = `${prefix}/${name}`;
+    const size = readOctal(block, 124, 12);
+    const typeflag = String.fromCharCode(block[156] ?? 0);
+    const data = tar.subarray(pos, pos + size);
+    pos += Math.ceil(size / 512) * 512;
+
+    if (typeflag === "L") {
+      // GNU longname: data carries the next entry's path
+      pendingLongName = new TextDecoder().decode(data).replace(/\0+$/, "");
+      continue;
+    }
+    if (typeflag === "x") {
+      // pax header: may carry `path=` for the next entry
+      const text = new TextDecoder().decode(data);
+      const m = /(?:^|\n)\d+ path=([^\n]*)\n/.exec(text);
+      pendingPaxPath = m?.[1] ?? null;
+      continue;
+    }
+    if (typeflag === "g") continue; // global pax header (ref metadata)
+
+    const effectiveName = pendingPaxPath ?? pendingLongName ?? name;
+    pendingLongName = null;
+    pendingPaxPath = null;
+    // regular file ("0" or NUL)
+    if (typeflag === "0" || typeflag === "\0" || typeflag === "") {
+      files.set(effectiveName, new Uint8Array(data));
+    }
+  }
+  return files;
+}
+
+// --- sync --------------------------------------------------------------------
+
+/** Fetch `owner/repo@ref` and return files keyed by repo-relative path. */
+async function fetchRepoFiles(
+  repo: string,
+  ref: string,
+): Promise<Map<string, Uint8Array>> {
+  const url = `https://codeload.github.com/${repo}/tar.gz/${encodeURIComponent(ref)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(
+      `tarball fetch failed for ${repo}@${ref}: HTTP ${res.status}`,
+    );
+  }
+  const gz = new Uint8Array(await res.arrayBuffer());
+  if (gz.length > MAX_TARBALL_BYTES) {
+    throw new Error(
+      `tarball for ${repo}@${ref} exceeds ${MAX_TARBALL_BYTES} bytes`,
+    );
+  }
+  const raw = parseTar(new Uint8Array(gunzipSync(gz)));
+  // strip the tarball's single top-level `<repo>-<ref>/` dir
+  const files = new Map<string, Uint8Array>();
+  for (const [path, bytes] of raw) {
+    const slash = path.indexOf("/");
+    if (slash === -1) continue;
+    const rel = path.slice(slash + 1);
+    if (rel) files.set(rel, bytes);
+  }
+  return files;
+}
+
+/** Apply the set's `paths` mapping: repo files → desired volume tree. */
+export function planVolumeTree(
+  repoFiles: Map<string, Uint8Array>,
+  paths: PublicSkillSetSource["paths"],
+): Map<string, Uint8Array> {
+  const desired = new Map<string, Uint8Array>();
+  for (const { from, to } of paths) {
+    const prefix = from === "" ? "" : `${from.replace(/\/+$/, "")}/`;
+    for (const [path, bytes] of repoFiles) {
+      if (!path.startsWith(prefix)) continue;
+      const rest = path.slice(prefix.length);
+      if (!rest) continue;
+      desired.set(to ? `${to}/${rest}` : rest, bytes);
+    }
+  }
+  return desired;
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+export interface SyncResult {
+  set: string;
+  written: number;
+  deleted: number;
+  unchanged: number;
+}
+
+/** Sync one set into its shared volume. Throws on fetch/storage failure. */
+export async function syncPublicSet(
+  db: Kysely<Database>,
+  source: PublicSkillSetSource,
+  opts: { baseUrl: string },
+): Promise<SyncResult> {
+  const s3Service = getObjectStorageS3Service();
+  const storage = s3Service
+    ? createBoundObjectStorage(s3Service, ORG_FS_PUBLIC_ORG_ID)
+    : new DevObjectStorage(ORG_FS_PUBLIC_ORG_ID, opts.baseUrl);
+  const manifest = new OrgFsEntryStorage(db);
+  const fs = new OrgFs(storage, manifest, ORG_FS_PUBLIC_ORG_ID);
+  const volume = publicVolumeForSet(source.set);
+
+  const desired = planVolumeTree(
+    await fetchRepoFiles(source.repo, source.ref),
+    source.paths,
+  );
+  const current = new Map(
+    (await manifest.listVolumeFiles(ORG_FS_PUBLIC_ORG_ID, volume)).map((e) => [
+      e.path,
+      e.contentHash,
+    ]),
+  );
+
+  let written = 0;
+  let unchanged = 0;
+  for (const [path, bytes] of desired) {
+    if (current.get(path) === sha256Hex(bytes)) {
+      unchanged++;
+      continue;
+    }
+    await fs.write(volume, path, bytes, {
+      actor: SYNC_ACTOR,
+      contentType: detectContentType(path),
+      // System-owned shared content is exempt from per-volume quotas.
+      skipVolumeQuota: true,
+    });
+    written++;
+  }
+  let deleted = 0;
+  for (const path of current.keys()) {
+    if (desired.has(path)) continue;
+    await fs.delete(volume, path, { actor: SYNC_ACTOR });
+    deleted++;
+  }
+  return { set: source.set, written, deleted, unchanged };
+}
+
+/** Sync every configured set; failures are per-set (one bad repo never
+ *  blocks the others). Returns per-set results or error messages. */
+export async function syncAllPublicSets(
+  db: Kysely<Database>,
+  opts: { baseUrl: string },
+): Promise<Array<SyncResult | { set: string; error: string }>> {
+  const results: Array<SyncResult | { set: string; error: string }> = [];
+  for (const source of getPublicSets()) {
+    try {
+      results.push(await syncPublicSet(db, source, opts));
+    } catch (err) {
+      results.push({
+        set: source.set,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return results;
+}
+
+const DEFAULT_SYNC_INTERVAL_MS = 10 * 60 * 1000;
+
+/** Boot-time loop: initial sync, then every `intervalMs`. Never throws. */
+export function startPublicSetsSync(
+  db: Kysely<Database>,
+  opts: { baseUrl: string; intervalMs?: number; signal?: AbortSignal },
+): void {
+  if (getPublicSets().length === 0) return;
+  const intervalMs = opts.intervalMs ?? DEFAULT_SYNC_INTERVAL_MS;
+  void (async () => {
+    while (!opts.signal?.aborted) {
+      const results = await syncAllPublicSets(db, opts).catch((err) => {
+        console.warn("[org-fs] public set sync failed", err);
+        return [];
+      });
+      for (const r of results) {
+        if ("error" in r) {
+          console.warn(
+            `[org-fs] public set "${r.set}" sync failed: ${r.error}`,
+          );
+        } else if (r.written || r.deleted) {
+          console.log(
+            `[org-fs] public set "${r.set}" synced: +${r.written} -${r.deleted} (=${r.unchanged})`,
+          );
+        }
+      }
+      await sleep(intervalMs, { signal: opts.signal }).catch(() => {});
+    }
+  })();
+}

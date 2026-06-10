@@ -13,6 +13,7 @@ import {
   Download01,
   File02,
   Folder,
+  Lock01,
   Plus,
   RefreshCw01,
   Trash01,
@@ -52,6 +53,7 @@ import {
   useOrgFsDownloadUrl,
   useOrgFsList,
   useOrgFsMutations,
+  useOrgFsPublicSets,
   useOrgFsUsage,
 } from "@/web/hooks/use-org-fs";
 
@@ -183,9 +185,10 @@ function ListFrame(props: { children: React.ReactNode }) {
 }
 
 /** Root listing: each volume is a folder; usage doubles as its size. */
-function VolumeRootRows(props: { onOpen: (volume: string) => void }) {
+function VolumeRootRows(props: { onOpen: (segments: string[]) => void }) {
   const skills = useOrgFsUsage(VOLUMES[0].id);
   const outputs = useOrgFsUsage(VOLUMES[1].id);
+  const publicSets = useOrgFsPublicSets();
   const usageFor: Record<string, OrgFsUsage | undefined> = {
     skills: skills.data,
     outputs: outputs.data,
@@ -210,10 +213,45 @@ function VolumeRootRows(props: { onOpen: (volume: string) => void }) {
               usage ? `${usage.files} files · ${formatBytes(usage.bytes)}` : "—"
             }
             modified=""
-            onOpen={() => props.onOpen(v.id)}
+            onOpen={() => props.onOpen([v.id])}
           />
         );
       })}
+      {(publicSets.data?.length ?? 0) > 0 && (
+        <Row
+          icon={<Lock01 size={15} className="text-muted-foreground" />}
+          name={
+            <span className="flex items-baseline gap-2">
+              public
+              <span className="text-xs font-normal text-muted-foreground">
+                Curated skill sets — read-only, same for every org
+              </span>
+            </span>
+          }
+          size={`${publicSets.data?.length} sets`}
+          modified=""
+          onOpen={() => props.onOpen(["public"])}
+        />
+      )}
+    </>
+  );
+}
+
+/** Listing for `org/public`: one locked folder per configured set. */
+function PublicSetsRows(props: { onOpen: (set: string) => void }) {
+  const publicSets = useOrgFsPublicSets();
+  return (
+    <>
+      {(publicSets.data ?? []).map((set) => (
+        <Row
+          key={set}
+          icon={<Lock01 size={15} className="text-muted-foreground" />}
+          name={set}
+          size="—"
+          modified=""
+          onOpen={() => props.onOpen(set)}
+        />
+      ))}
     </>
   );
 }
@@ -221,6 +259,7 @@ function VolumeRootRows(props: { onOpen: (volume: string) => void }) {
 function VolumeListing(props: {
   volume: string;
   path: string;
+  readOnly: boolean;
   onOpenDir: (path: string) => void;
   onDelete: (entry: OrgFsEntry) => void;
 }) {
@@ -296,14 +335,16 @@ function VolumeListing(props: {
                     </a>
                   </Button>
                 )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Delete ${name}`}
-                  onClick={() => props.onDelete(entry)}
-                >
-                  <Trash01 size={14} />
-                </Button>
+                {!props.readOnly && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Delete ${name}`}
+                    onClick={() => props.onDelete(entry)}
+                  >
+                    <Trash01 size={14} />
+                  </Button>
+                )}
               </>
             }
           />
@@ -317,9 +358,18 @@ function FsBrowser() {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   // First segment is the volume; [] is the synthetic root listing volumes.
+  // The `public` namespace maps `public/<set>/...` → readonly volume
+  // `public-<set>` (mirroring the sandbox's org/public/<set> mounts).
   const [segments, setSegments] = useState<string[]>([]);
-  const volume = segments[0] ?? null;
-  const path = segments.slice(1).join("/");
+  const isPublic = segments[0] === "public";
+  const publicSet = isPublic ? (segments[1] ?? null) : null;
+  const volume = isPublic
+    ? publicSet
+      ? `public-${publicSet}`
+      : null
+    : (segments[0] ?? null);
+  const path = (isPublic ? segments.slice(2) : segments.slice(1)).join("/");
+  const readOnly = isPublic;
 
   const [pendingDelete, setPendingDelete] = useState<OrgFsEntry | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -396,7 +446,7 @@ function FsBrowser() {
           <Button
             variant="outline"
             size="sm"
-            disabled={!volume}
+            disabled={!volume || readOnly}
             onClick={() => setNewFolderOpen(true)}
           >
             <Plus size={14} />
@@ -404,7 +454,7 @@ function FsBrowser() {
           </Button>
           <Button
             size="sm"
-            disabled={!volume || upload.isPending}
+            disabled={!volume || readOnly || upload.isPending}
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload01 size={14} />
@@ -421,15 +471,24 @@ function FsBrowser() {
       </div>
 
       <ListFrame>
-        {volume === null ? (
-          <VolumeRootRows onOpen={(v) => setSegments([v])} />
+        {segments.length === 0 ? (
+          <VolumeRootRows onOpen={setSegments} />
+        ) : volume === null ? (
+          <PublicSetsRows onOpen={(set) => setSegments(["public", set])} />
         ) : (
           <VolumeListing
             // remount on volume switch so list state never bleeds across
             key={volume}
             volume={volume}
             path={path}
-            onOpenDir={(p) => setSegments([volume, ...p.split("/")])}
+            readOnly={readOnly}
+            onOpenDir={(p) =>
+              setSegments(
+                isPublic && publicSet
+                  ? ["public", publicSet, ...p.split("/")]
+                  : [volume, ...p.split("/")],
+              )
+            }
             onDelete={setPendingDelete}
           />
         )}

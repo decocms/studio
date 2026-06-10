@@ -40,7 +40,7 @@ export function createRcloneMounter(
 ): Mounter {
   const isMac = process.platform === "darwin";
   return {
-    async mount({ webdavUrl, mountPath, rcAddr }) {
+    async mount({ webdavUrl, mountPath, rcAddr, readonly }) {
       const args = isMac
         ? // actimeo=1: the macOS NFS client caches dir/file attributes ~5s by
           // default, which would mask the invalidator's freshness; 1s is cheap
@@ -59,6 +59,9 @@ export function createRcloneMounter(
       const rcArgs = rcAddr
         ? ["--rc", "--rc-addr", rcAddr, "--rc-no-auth"]
         : [];
+      // Public sets: enforce read-only at the mount, and blanket-exec perms
+      // (the manifest carries no mode bits; skill helper scripts need +x).
+      const roArgs = readonly ? ["--read-only", "--file-perms", "0755"] : [];
       const proc = Bun.spawn(
         [
           rclonePath,
@@ -71,6 +74,7 @@ export function createRcloneMounter(
           "--dir-cache-time",
           "10s",
           ...rcArgs,
+          ...roArgs,
         ],
         {
           env: {

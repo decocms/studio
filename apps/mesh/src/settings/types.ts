@@ -52,6 +52,9 @@ export interface Settings {
   /** Mint org-fs tokens for hosted (agent-sandbox) pods too — only useful
    *  when the sandbox-env chart runs the org-fs sidecar (orgFs.enabled). */
   orgFsClusterMounts: boolean;
+  /** JSON array of public skill-set sources (see file-storage/public-sets.ts);
+   *  unset = no public sets. */
+  orgFsPublicSetsJson: string | undefined;
 
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;
