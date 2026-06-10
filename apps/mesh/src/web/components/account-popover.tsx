@@ -22,6 +22,7 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import {
   Check,
   Copy01,
+  Download01,
   File06,
   Globe01,
   LogOut01,
@@ -570,6 +571,25 @@ export function AccountPopover() {
         });
       },
     },
+    // Per-org install: opens the org install page, which swaps to an
+    // org-branded manifest so installing produces a home-screen app for this
+    // org. (Studio itself installs via the browser's native "Add to Home
+    // Screen".) Only shown while inside an org.
+    ...(currentOrg
+      ? [
+          {
+            key: "install-app",
+            label: "Add to Home Screen",
+            icon: <Download01 size={16} />,
+            onClick: () => {
+              navigate({
+                to: "/$org/install",
+                params: { org: currentOrg.slug },
+              });
+            },
+          } satisfies MenuItem,
+        ]
+      : []),
     {
       key: "terms",
       label: "Terms of Use",
