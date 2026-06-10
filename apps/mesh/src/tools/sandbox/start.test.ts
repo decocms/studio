@@ -153,6 +153,18 @@ const mockRefreshAccessToken = mock(
     error?: string;
   }> => ({ success: true, accessToken: "ghu_refreshed_token" }),
 );
+const mockRefreshAndStore = mock(async () => "ghu_refreshed_token");
+
+mock.module("../../oauth/token-refresh", () => ({
+  PROACTIVE_REFRESH_BUFFER_MS: 5 * 60 * 1000,
+  RECONNECT_ERROR:
+    "GitHub token refresh failed — reconnect the mcp-github integration.",
+  canRefresh: (token: DownstreamToken) =>
+    !!token.refreshToken && !!token.tokenEndpoint && !!token.clientId,
+  refreshAndStore: mockRefreshAndStore,
+  refreshAccessToken: mockRefreshAccessToken,
+}));
+
 mock.module("@/oauth/refresh-access-token", () => ({
   refreshAccessToken: mockRefreshAccessToken,
 }));
@@ -237,10 +249,9 @@ function makeCtx(overrides: {
     },
     storage: {
       virtualMcps: { findById, update: updateSpy },
-      // Non-repo-scoped org connection: getRepoScope() returns null, so the
-      // repo-scoped mint path in provisionSandbox is skipped and these tests
-      // exercise the clone/token path unchanged. (Minting is covered by the
-      // e2e suite, github-import-repo-scope.spec.ts.)
+      // Non-repo-scoped org connection: getRepoScope() returns null, so
+      // buildCloneInfo exercises the OAuth refresh path. Repo-scoped minting
+      // is covered by github-clone-info.test.ts and the e2e suite.
       connections: {
         findById: mock(async (_id: string) => ({ metadata: null })),
       },
@@ -574,12 +585,7 @@ describe("SANDBOX_START", () => {
       ctx,
     );
 
-    expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
-    expect(mockTokenUpsert).toHaveBeenCalledTimes(1);
-    const upsertArg = (mockTokenUpsert.mock.calls as unknown[][])[0]![0] as {
-      accessToken: string;
-    };
-    expect(upsertArg.accessToken).toBe("ghu_refreshed_token");
+    expect(mockRefreshAndStore).toHaveBeenCalledTimes(1);
 
     const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
     expect(opts.repo?.cloneUrl).toContain("ghu_refreshed_token");
@@ -870,13 +876,7 @@ describe("SANDBOX_START", () => {
       clientSecret: "test_secret",
       tokenEndpoint: "https://github.com/login/oauth/access_token",
     }));
-    mockRefreshAccessToken.mockImplementation(async () => ({
-      success: false,
-      permanent: true,
-      status: 400,
-      errorCode: "invalid_grant",
-      error: "refresh token revoked",
-    }));
+    mockRefreshAndStore.mockImplementation(async () => null);
 
     const virtualMcp = makeVirtualMcp("org_1", BASE_METADATA);
     const ctx = makeCtx({ virtualMcp });
@@ -886,7 +886,6 @@ describe("SANDBOX_START", () => {
     ).rejects.toThrow(
       "GitHub token refresh failed — reconnect the mcp-github integration.",
     );
-    expect(mockTokenDelete).toHaveBeenCalledWith("conn_github_1");
     expect(mockEnsure).not.toHaveBeenCalled();
   });
 });

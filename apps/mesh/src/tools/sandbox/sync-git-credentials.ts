@@ -1,10 +1,7 @@
 import type { GithubRepo } from "@decocms/mesh-sdk/types";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { StudioContext } from "../../core/studio-context";
-import { ensureRepoScopedToken } from "../../oauth/github-mint";
-import { RECONNECT_ERROR } from "../../oauth/token-refresh";
 import { buildCloneInfo } from "../../shared/github-clone-info";
-import { getRepoScope } from "../../shared/github-repo-scope";
 
 export class GitPushAuthError extends Error {
   constructor(message: string) {
@@ -41,31 +38,23 @@ export async function refreshSandboxGitCredentials(
     );
   }
 
-  const organizationId = ctx.organization?.id;
-  if (!organizationId) {
-    throw new GitPushAuthError(RECONNECT_ERROR);
+  let cloneUrl: string;
+  let gitUserName: string;
+  let gitUserEmail: string;
+  try {
+    ({ cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
+      githubRepo.connectionId,
+      githubRepo.owner,
+      githubRepo.name,
+      ctx.db,
+      ctx.vault,
+      ctx,
+    ));
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to refresh GitHub token.";
+    throw new GitPushAuthError(message);
   }
-
-  const repoConn = await ctx.storage.connections.findById(
-    githubRepo.connectionId,
-    organizationId,
-  );
-  if (repoConn && getRepoScope(repoConn)) {
-    try {
-      await ensureRepoScopedToken(ctx, repoConn);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : RECONNECT_ERROR;
-      throw new GitPushAuthError(message);
-    }
-  }
-
-  const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
-    githubRepo.connectionId,
-    githubRepo.owner,
-    githubRepo.name,
-    ctx.db,
-    ctx.vault,
-  );
 
   const res = await runner.proxyDaemonRequest(handle, "/_sandbox/config", {
     method: "PUT",

@@ -1524,6 +1524,7 @@ async function resolvePullSandboxConfig(
             githubRepo.name,
             ctx.db,
             ctx.vault,
+            ctx,
           )
         : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
       repo = {

@@ -9,8 +9,9 @@
  */
 
 import type { Kysely } from "kysely";
+import type { StudioContext } from "../core/studio-context";
 import type { CredentialVault } from "../encryption/credential-vault";
-import { DownstreamTokenStorage } from "../storage/downstream-token";
+import { resolveGitHubAccessToken } from "./github-clone-info";
 import type { Database } from "../storage/types";
 import type { PackageManager } from "./runtime-defaults";
 
@@ -47,10 +48,19 @@ export async function detectRepoRuntime(
   name: string,
   db: Kysely<Database>,
   vault: CredentialVault,
+  ctx?: StudioContext,
 ): Promise<DetectedRuntime | null> {
-  const token = await new DownstreamTokenStorage(db, vault).get(connectionId);
-  if (!token) return null;
-  return probeRuntime(owner, name, token.accessToken);
+  try {
+    const accessToken = await resolveGitHubAccessToken(
+      connectionId,
+      db,
+      vault,
+      ctx,
+    );
+    return probeRuntime(owner, name, accessToken);
+  } catch {
+    return null;
+  }
 }
 
 /**
