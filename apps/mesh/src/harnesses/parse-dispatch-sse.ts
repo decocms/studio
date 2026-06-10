@@ -1,41 +1,62 @@
 /**
- * Parse a `/dispatch` SSE response body into a stream of UIMessageChunk.
+ * Parse a `/dispatch` SSE response body.
  *
  * The wire format (emitted by the sandbox daemon's `/dispatch` route) is a
  * sequence of `\n\n`-delimited event blocks, each with one or more `data: `
  * lines whose joined JSON matches `dispatchSSEEventSchema`. Shared by
- * `remoteDispatch` (cluster pulls the daemon) and the link ingest endpoint
- * (desktop pushes the cluster) so both decode identically.
+ * `remoteDispatch` (cluster pulls the daemon), the link ingest endpoint, and
+ * the daemon chunk relay (`link-daemon/chunk-relay.ts`) so all decode
+ * identically.
+ *
+ * Two consumers:
+ * - `parseDispatchSSEEvents` — yields every validated raw `DispatchSSEEvent`
+ *   (ui-message-chunk / error / done). Malformed frames are skipped silently.
+ * - `parseDispatchSSEStream` — unwraps ui-message-chunk payloads, throws on
+ *   error events, ignores done (the chunk-consumer shape).
  */
 import type { UIMessageChunk } from "ai";
-import { dispatchSSEEventSchema } from "../links/protocol";
+import {
+  type DispatchSSEEvent,
+  dispatchSSEEventSchema,
+} from "../links/protocol";
 
-function* emitEvent(eventText: string): Generator<UIMessageChunk> {
+/** Decode one `\n\n`-delimited SSE block; null for malformed frames. */
+function decodeEventBlock(eventText: string): DispatchSSEEvent | null {
   const dataLines = eventText
     .split("\n")
     .filter((l) => l.startsWith("data: "))
     .map((l) => l.slice("data: ".length));
-  if (dataLines.length === 0) return;
+  if (dataLines.length === 0) return null;
   let parsed: unknown;
   try {
     parsed = JSON.parse(dataLines.join("\n"));
   } catch {
-    return;
+    return null;
   }
   const ev = dispatchSSEEventSchema.safeParse(parsed);
-  if (!ev.success) return;
-  if (ev.data.type === "ui-message-chunk") {
-    yield ev.data.chunk as UIMessageChunk;
-  } else if (ev.data.type === "error") {
-    throw new Error(`[parseDispatchSSE] ${ev.data.code}: ${ev.data.message}`);
-  }
-  // `done` yields no chunk — the iterable ends when the body closes.
+  return ev.success ? ev.data : null;
 }
 
-export async function* parseDispatchSSEStream(
+/**
+ * Yield every validated raw `DispatchSSEEvent` from the SSE body, including
+ * `error` and `done` events. Malformed frames are skipped (same stance as
+ * `parseDispatchSSEStream`).
+ *
+ * `opts.signal` aborts the parse: the underlying reader is cancelled (which
+ * settles a pending `read()` with `{done: true}` and runs the source's cancel
+ * hook — verified on Bun 1.3.14, where this is the only way to interrupt a
+ * read blocked on a quiet-but-open stream) and the generator rejects with the
+ * signal's reason.
+ */
+export async function* parseDispatchSSEEvents(
   body: ReadableStream<Uint8Array>,
-): AsyncIterable<UIMessageChunk> {
+  opts: { signal?: AbortSignal } = {},
+): AsyncGenerator<DispatchSSEEvent, void, undefined> {
+  const { signal } = opts;
   const reader = body.getReader();
+  const onAbort = () => void reader.cancel(signal?.reason).catch(() => {});
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
   // SINGLE streaming decoder — a multi-byte UTF-8 char can split across reads.
   const decoder = new TextDecoder();
   let buffer = "";
@@ -48,14 +69,35 @@ export async function* parseDispatchSSEStream(
       while (sep !== -1) {
         const block = buffer.slice(0, sep);
         buffer = buffer.slice(sep + 2);
-        yield* emitEvent(block);
+        const event = decodeEventBlock(block);
+        if (event) yield event;
         sep = buffer.indexOf("\n\n");
       }
     }
+    // A cancelled reader reports `{done: true}` like a graceful end — surface
+    // the abort instead of treating the stream as complete.
+    signal?.throwIfAborted();
     buffer += decoder.decode();
     const tail = buffer.trim();
-    if (tail.length > 0) yield* emitEvent(tail);
+    if (tail.length > 0) {
+      const event = decodeEventBlock(tail);
+      if (event) yield event;
+    }
   } finally {
+    signal?.removeEventListener("abort", onAbort);
     reader.releaseLock();
+  }
+}
+
+export async function* parseDispatchSSEStream(
+  body: ReadableStream<Uint8Array>,
+): AsyncIterable<UIMessageChunk> {
+  for await (const event of parseDispatchSSEEvents(body)) {
+    if (event.type === "ui-message-chunk") {
+      yield event.chunk as UIMessageChunk;
+    } else if (event.type === "error") {
+      throw new Error(`[parseDispatchSSE] ${event.code}: ${event.message}`);
+    }
+    // `done` yields no chunk — the iterable ends when the body closes.
   }
 }

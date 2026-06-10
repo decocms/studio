@@ -2,12 +2,14 @@
  * Unit tests for handleLocalDispatch.
  *
  * All tests inject a stub `fetchImpl` — no real HTTP, no NATS, no DB.
- * The ReadableStream body is simulated via a simple string-encoded SSE block.
+ * The sandbox SSE body is simulated via a string-encoded stream; the cluster
+ * `/chunks` endpoint is stubbed by reading the streaming NDJSON request body
+ * fully and answering `{ ok, lastSeq }` like the real route.
  */
 import { describe, expect, it } from "bun:test";
 import type { UIMessageChunk } from "ai";
-import type { LinkIngestBatch } from "../api/routes/decopilot/link-ingest-batch-schema";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
+import { type RelayLine, relayLineSchema } from "../links/protocol/relay";
 import {
   handleLocalDispatch,
   type LocalDispatchDeps,
@@ -96,12 +98,33 @@ function dispatchSSE(chunks: UIMessageChunk[]): string {
     .join("")}data: {"type":"done"}\n\n`;
 }
 
+/** Read a (streaming) NDJSON relay body fully and validate every line. */
+async function readRelayLines(body: unknown): Promise<RelayLine[]> {
+  const text =
+    typeof body === "string"
+      ? body
+      : await new Response(body as ReadableStream<Uint8Array>).text();
+  return text
+    .split("\n")
+    .filter((l) => l.length > 0)
+    .map((l) => relayLineSchema.parse(JSON.parse(l)));
+}
+
+/** Stub cluster /chunks handler: consume the body, ack everything. */
+async function ackChunksPost(init?: RequestInit): Promise<Response> {
+  const lines = await readRelayLines(init?.body);
+  return new Response(
+    JSON.stringify({ ok: true, lastSeq: lines.at(-1)?.seq ?? 0 }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
 // ── Test: successful relay ──────────────────────────────────────────────────
 
 describe("handleLocalDispatch", () => {
-  it("POSTs to sandbox dispatch and appends JSON part batches to cluster ingest", async () => {
+  it("POSTs to sandbox dispatch and streams seq-numbered NDJSON relay lines to the cluster", async () => {
     const capturedRequests: Array<{ url: string; init: RequestInit }> = [];
-    const capturedBatches: LinkIngestBatch[] = [];
+    const capturedPosts: RelayLine[][] = [];
     let clusterTokenCalls = 0;
 
     const fetchImpl = async (
@@ -119,11 +142,12 @@ describe("handleLocalDispatch", () => {
       }
 
       if (url.includes("/links/runs/")) {
-        capturedBatches.push(JSON.parse(init?.body as string));
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        const lines = await readRelayLines(init?.body);
+        capturedPosts.push(lines);
+        return new Response(
+          JSON.stringify({ ok: true, lastSeq: lines.at(-1)?.seq ?? 0 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
       }
 
       throw new Error(`Unexpected fetch to ${url}`);
@@ -166,34 +190,33 @@ describe("handleLocalDispatch", () => {
     expect(dispatchBody.harnessId).toBe("claude-code"); // derived from agent.id
     expect(dispatchBody.input).toEqual(validWorkItem.harnessInput);
 
-    // ── Assert cluster ingest call ──────────────────────────────────────────
-    const ingestCalls = capturedRequests.filter((r) =>
+    // ── Assert cluster chunk-relay call ────────────────────────────────────
+    const chunkCalls = capturedRequests.filter((r) =>
       r.url.includes("/links/runs/"),
     );
-    expect(ingestCalls).toHaveLength(3);
-    expect(ingestCalls.every((call) => call.url.endsWith("/parts"))).toBe(true);
-    expect(ingestCalls[0]!.url).toBe(
-      `${CLUSTER_BASE}/api/${ORG_SLUG}/links/runs/${RUN_ID}/parts`,
+    expect(chunkCalls).toHaveLength(1);
+    expect(chunkCalls[0]!.url).toBe(
+      `${CLUSTER_BASE}/api/${ORG_SLUG}/links/runs/${RUN_ID}/chunks`,
     );
     expect(clusterTokenCalls).toBe(1);
-    for (const call of ingestCalls) {
-      const ingestHeaders = call.init.headers as Record<string, string>;
-      expect(ingestHeaders.authorization).toBe(`Bearer ${CLUSTER_TOKEN}`);
-      expect(ingestHeaders["x-fence-token"]).toBe(FENCE_TOKEN);
-      expect(ingestHeaders["content-type"]).toBe("application/json");
-    }
+    const relayHeaders = chunkCalls[0]!.init.headers as Record<string, string>;
+    expect(relayHeaders.authorization).toBe(`Bearer ${CLUSTER_TOKEN}`);
+    expect(relayHeaders["x-fence-token"]).toBe(FENCE_TOKEN);
+    expect(relayHeaders["content-type"]).toBe("application/x-ndjson");
+    expect(relayHeaders["x-relay-from"]).toBe("1");
 
-    // ── Assert JSON batches were appended, not a streaming upload ──────────
-    expect(ingestCalls[0]!.init.body).toBeString();
-    expect(ingestCalls[0]!.init.body).not.toBeInstanceOf(ReadableStream);
-    expect(capturedBatches[0]?.batchId).toBe(`${RUN_ID}:0`);
-    expect(capturedBatches[0]?.done).toBe(false);
-    expect(capturedBatches[0]?.rows.length).toBeGreaterThan(0);
-    expect(capturedBatches.at(-1)).toEqual({
-      batchId: `${RUN_ID}:done`,
-      rows: [],
-      done: true,
-    });
+    // ── Assert a streaming NDJSON upload, not a pre-serialized JSON batch ──
+    expect(chunkCalls[0]!.init.body).toBeInstanceOf(ReadableStream);
+    expect(
+      (chunkCalls[0]!.init as RequestInit & { duplex?: string }).duplex,
+    ).toBe("half");
+
+    const lines = capturedPosts[0]!;
+    expect(lines.map((l) => l.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(lines.slice(0, 7).map((l) => l.event)).toEqual(
+      TEXT_CHUNKS.map((chunk) => ({ type: "ui-message-chunk", chunk })),
+    );
+    expect(lines.at(-1)!.event).toEqual({ type: "done" });
   });
 
   // ── Test: non-ok sandbox dispatch → throw ──────────────────────────────
@@ -222,10 +245,10 @@ describe("handleLocalDispatch", () => {
     );
   });
 
-  // ── Test: non-ok cluster ingest → throw ────────────────────────────────
+  // ── Test: non-retriable cluster relay rejection → throw, single attempt ─
 
-  it("throws when the cluster ingest returns a non-2xx response", async () => {
-    let appendCount = 0;
+  it("throws without retrying when the cluster relay returns a 4xx (fence loss)", async () => {
+    let relayPosts = 0;
 
     const fetchImpl = async (url: string): Promise<Response> => {
       if (url.includes("/_sandbox/dispatch")) {
@@ -235,13 +258,7 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        appendCount++;
-        if (appendCount === 1) {
-          return new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          });
-        }
+        relayPosts++;
         return new Response(JSON.stringify({ error: "fenced" }), {
           status: 409,
           headers: { "content-type": "application/json" },
@@ -259,33 +276,45 @@ describe("handleLocalDispatch", () => {
     };
 
     await expect(handleLocalDispatch(validWorkItem, deps)).rejects.toThrow(
-      "[handleLocalDispatch] fenced",
+      "[handleLocalDispatch] relay failed (409)",
     );
-    expect(appendCount).toBe(2);
+    expect(relayPosts).toBe(1);
   });
 
-  it("retries a transient failed part append", async () => {
-    let appendAttempts = 0;
+  // ── Test: transient relay failure → reconnect resends the full prefix ──
 
-    const fetchImpl = async (url: string): Promise<Response> => {
+  it("retries a transient relay failure and resends the whole prefix from seq 1", async () => {
+    let relayAttempts = 0;
+    const capturedPosts: RelayLine[][] = [];
+    const capturedFromSeq: string[] = [];
+
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
       if (url.includes("/_sandbox/dispatch")) {
         return new Response(makeBodyStream(dispatchSSE(TEXT_CHUNKS)), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
         });
       }
-      if (url.endsWith("/parts")) {
-        appendAttempts++;
-        if (appendAttempts === 1) {
+      if (url.endsWith("/chunks")) {
+        relayAttempts++;
+        const headers = (init?.headers ?? {}) as Record<string, string>;
+        capturedFromSeq.push(headers["x-relay-from"] ?? "<missing>");
+        if (relayAttempts === 1) {
+          // Reject without reading the body — like a 503 from an LB.
           return new Response(JSON.stringify({ error: "temporary" }), {
             status: 503,
             headers: { "content-type": "application/json" },
           });
         }
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        const lines = await readRelayLines(init?.body);
+        capturedPosts.push(lines);
+        return new Response(
+          JSON.stringify({ ok: true, lastSeq: lines.at(-1)?.seq ?? 0 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
@@ -300,7 +329,13 @@ describe("handleLocalDispatch", () => {
 
     await handleLocalDispatch(validWorkItem, deps);
 
-    expect(appendAttempts).toBeGreaterThan(1);
+    expect(relayAttempts).toBe(2);
+    expect(capturedFromSeq).toEqual(["1", "1"]);
+    // The reconnect attempt carries the complete prefix: all 7 chunks + done.
+    expect(capturedPosts[0]!.map((l) => l.seq)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
+    expect(capturedPosts[0]!.at(-1)!.event).toEqual({ type: "done" });
   });
 
   // ── Test: harnessId from explicit deps override ─────────────────────────
@@ -322,10 +357,7 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
@@ -361,10 +393,7 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
@@ -417,10 +446,7 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
@@ -480,10 +506,7 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
@@ -505,7 +528,7 @@ describe("handleLocalDispatch", () => {
 
   // ── Test: abort signal is propagated ───────────────────────────────────
 
-  it("propagates abort signal to the dispatch fetch", async () => {
+  it("propagates abort signal to the dispatch and relay fetches", async () => {
     const ac = new AbortController();
     const capturedSignals: (AbortSignal | null | undefined)[] = [];
 
@@ -521,10 +544,7 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
@@ -540,8 +560,10 @@ describe("handleLocalDispatch", () => {
 
     await handleLocalDispatch(validWorkItem, deps);
 
-    // Dispatch plus every cluster append fetch should receive the abort signal.
-    expect(capturedSignals.length).toBe(4);
-    expect(capturedSignals.every((signal) => signal === ac.signal)).toBe(true);
+    // The sandbox dispatch and the single streaming relay POST both receive
+    // the abort signal.
+    expect(capturedSignals.length).toBe(2);
+    expect(capturedSignals[0]).toBe(ac.signal);
+    expect(capturedSignals[1]).toBe(ac.signal);
   });
 });

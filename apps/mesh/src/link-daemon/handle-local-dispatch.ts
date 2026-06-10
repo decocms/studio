@@ -1,11 +1,15 @@
 /**
  * handleLocalDispatch — relay a pulled work item to the local sandbox and
- * return completed message parts to the cluster via short JSON append requests.
+ * stream its raw chunk output back to the cluster.
  *
- * The local sandbox still streams SSE over loopback. The desktop link daemon
- * consumes that stream locally, assembles stable message part rows, and POSTs
- * small idempotent batches to the cluster. This avoids holding a multi-hour
- * streaming upload open through proxies/CDNs.
+ * The local sandbox streams SSE over loopback. The desktop link daemon
+ * forwards every `DispatchSSEEvent` verbatim to the cluster as seq-numbered
+ * NDJSON relay lines (see `chunk-relay.ts`), so the cluster-side harness
+ * kernel is the single consumer of harness output — titles, usage, and
+ * session metadata survive because the daemon no longer folds chunks into
+ * part rows. The relay buffers all unacked lines and, when the streaming
+ * upload drops, reconnects and resends the whole prefix from seq 1 (the
+ * cluster dedupes by seq), so multi-hour runs survive transient drops.
  *
  * Flow:
  *   1. POST ${sandboxDispatchUrl}/_sandbox/dispatch with a JSON body whose
@@ -15,17 +19,19 @@
  *      `sandboxDaemonToken` and returns a `text/event-stream` SSE body of
  *      `ui-message-chunk` / `error` / `done` events.
  *
- *   2. Convert the SSE response body to durable part batches and POST each
- *      batch to the cluster ingest endpoint:
- *        POST ${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/parts
- *      with `x-fence-token: ${runFenceToken}` and `Authorization: Bearer
- *      <cluster token>`.
+ *   2. Relay the SSE body as an NDJSON stream of `RelayLine`s:
+ *        POST ${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/chunks
+ *      with `x-fence-token: ${runFenceToken}`, `x-relay-from: <fromSeq>`
+ *      (resend start, always 1), `content-type: application/x-ndjson`, and
+ *      `Authorization: Bearer <cluster token>`, as a `duplex:"half"`
+ *      streaming upload. The cluster replies `{ ok, lastSeq }` once the body
+ *      ends.
  *
  * ⚠️ ORG SLUG vs ID NOTE:
  *   WorkItem carries `orgId` (the DB UUID) and `orgSlug` (the URL-safe slug).
- *   The ingest route uses `resolveOrgFromPath` which looks up the org by slug
+ *   The chunks route uses `resolveOrgFromPath` which looks up the org by slug
  *   (the `:org` path segment in `/api/:org/links/runs/...`). The work item's
- *   `orgSlug` is authoritative for the ingest URL.
+ *   `orgSlug` is authoritative for the relay URL.
  *
  * ⚠️ HARNESS ID NOTE:
  *   `WorkItem.harnessInput` is a `HarnessStreamInputWire`. As of link
@@ -37,9 +43,11 @@
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
-import { retry, RetryError } from "@decocms/std";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
-import { relayDispatchSSEAsPartBatches } from "./link-part-batcher";
+import {
+  type RelayPostResult,
+  relayDispatchSSEAsChunkStream,
+} from "./chunk-relay";
 
 export interface LocalDispatchDeps {
   /**
@@ -54,12 +62,12 @@ export interface LocalDispatchDeps {
    */
   sandboxDaemonToken: string;
   /**
-   * Cluster origin, e.g. "https://studio.deco.cx". The ingest POSTs are sent
-   * to `${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/parts`.
+   * Cluster origin, e.g. "https://studio.deco.cx". The relay upload is sent
+   * to `${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/chunks`.
    */
   clusterBaseUrl: string;
   /**
-   * Returns the bearer token for the cluster ingest endpoint. Called once
+   * Returns the bearer token for the cluster chunks endpoint. Called once
    * per dispatch so that a refreshed token is used (mirrors work-poller's
    * per-poll `getAccessToken` pattern).
    */
@@ -75,8 +83,8 @@ export interface LocalDispatchDeps {
    */
   fetchImpl?: typeof fetch;
   /**
-   * Abort signal propagated to both the sandbox dispatch fetch and the
-   * cluster ingest fetch.
+   * Abort signal propagated to the sandbox dispatch fetch, the chunk relay,
+   * and every cluster relay fetch.
    */
   signal?: AbortSignal;
 }
@@ -107,13 +115,14 @@ function deriveHarnessId(work: WorkItem, depsHarnessId?: string): string {
 }
 
 /**
- * Run a pulled work item against the local sandbox and append completed part
- * batches to the cluster ingest. Resolves when all batch POSTs complete.
+ * Run a pulled work item against the local sandbox and relay its raw SSE
+ * events to the cluster chunks endpoint as seq-numbered NDJSON. Resolves when
+ * a relay upload completes successfully after the terminal `done` line.
  * Throws on:
  *   - A non-2xx response from the sandbox dispatch (JSON error is extracted
  *     and included in the thrown Error, mirroring remote-dispatch.ts).
- *   - A non-2xx response from any cluster append.
- *   - Any network error from either fetch.
+ *   - A permanent relay failure (non-retriable 4xx, or 5 failed attempts).
+ *   - Relay buffer overflow (RELAY_BUFFER_MAX_BYTES) or abort.
  */
 export async function handleLocalDispatch(
   work: WorkItem,
@@ -174,59 +183,41 @@ export async function handleLocalDispatch(
     throw new Error("[handleLocalDispatch] dispatch response body is null");
   }
 
-  // ── Step 2: append parsed part batches to the cluster ingest ───────────
+  // ── Step 2: relay raw chunk lines to the cluster /chunks endpoint ──────
+  // Retry/backoff and full-prefix resend live inside the chunk relay; this
+  // post impl performs exactly one streaming upload attempt.
   const clusterToken = await deps.getClusterToken();
-  const ingestUrl = `${deps.clusterBaseUrl}/api/${work.orgSlug}/links/runs/${work.runId}/parts`;
+  const chunksUrl = `${deps.clusterBaseUrl}/api/${work.orgSlug}/links/runs/${work.runId}/chunks`;
 
-  await relayDispatchSSEAsPartBatches({
+  await relayDispatchSSEAsChunkStream({
     dispatchBody: dispatchRes.body,
     runId: work.runId,
-    orgId: work.orgId,
-    postBatch: async (batch) => {
-      try {
-        await retry(
-          async () => {
-            const ingestRes = await fetcher(ingestUrl, {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${clusterToken}`,
-                "x-fence-token": work.runFenceToken,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify(batch),
-              signal: deps.signal,
-            });
-
-            if (!ingestRes.ok) {
-              let detail = `ingest failed (${ingestRes.status})`;
-              try {
-                const j = (await ingestRes.json()) as Record<string, unknown>;
-                if (j && typeof j.error === "string" && j.error) {
-                  detail = j.error;
-                }
-              } catch {
-                // JSON parse failed — keep the status-code detail.
-              }
-              const err = new Error(`[handleLocalDispatch] ${detail}`);
-              (err as { status?: number }).status = ingestRes.status;
-              throw err;
-            }
-          },
-          {
-            maxAttempts: 5,
-            minTimeout: 250,
-            maxTimeout: 5_000,
-            signal: deps.signal,
-            isRetriable: (err) => {
-              const status = (err as { status?: number }).status;
-              return status === undefined || status >= 500;
-            },
-          },
+    signal: deps.signal,
+    post: async (body, fromSeq) => {
+      const res = await fetcher(chunksUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${clusterToken}`,
+          "x-fence-token": work.runFenceToken,
+          "content-type": "application/x-ndjson",
+          "x-relay-from": String(fromSeq),
+        },
+        body,
+        // @ts-expect-error — `duplex: "half"` is required by the Fetch spec
+        // for streaming request bodies; supported by Node/Bun/undici but not
+        // yet in TS DOM typings (same pattern as proxy-poller.ts). Verified
+        // on Bun 1.3.14: the upload is delivered incrementally.
+        duplex: "half",
+        signal: deps.signal,
+      });
+      if (!res.ok) {
+        const err = new Error(
+          `[handleLocalDispatch] relay failed (${res.status})`,
         );
-      } catch (error) {
-        if (error instanceof RetryError) throw error.cause;
-        throw error;
+        (err as { status?: number }).status = res.status;
+        throw err;
       }
+      return (await res.json()) as RelayPostResult;
     },
   });
 }
