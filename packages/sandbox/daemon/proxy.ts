@@ -72,7 +72,7 @@ export function makeProxyHandler({ broadcaster, getDevPort }: ProxyDeps) {
       clearTimeout(headersTimeout);
       req.signal.removeEventListener("abort", onClientAbort);
       const msg = (e as Error).message ?? String(e);
-      log("proxy error", req.method, url.pathname, msg);
+      log("proxy error", req.method, url.pathname, `port=${port}`, msg);
       const connErr =
         /ECONNREFUSED|ECONNRESET|ECONNABORTED|fetch failed|Unable to connect|TimeoutError|timed out/i.test(
           msg,
@@ -100,6 +100,21 @@ export function makeProxyHandler({ broadcaster, getDevPort }: ProxyDeps) {
           "Access-Control-Allow-Origin": "*",
         },
       });
+    }
+
+    // The fetch resolved, so routing to the dev server worked — but the dev
+    // server itself may have answered with a 5xx. That's invisible otherwise
+    // (the body just streams through), so log it explicitly: this is the
+    // "dev server responded but blew up" case, distinct from "couldn't reach
+    // it at all" handled in the catch above.
+    if (upstream.status >= 500) {
+      log(
+        "proxy upstream error",
+        req.method,
+        url.pathname,
+        `port=${port}`,
+        `status=${upstream.status}`,
+      );
     }
 
     const respHeaders = new Headers(upstream.headers);
