@@ -908,15 +908,16 @@ export function ActiveTaskProvider({
         });
         if (cb.taskId && sharedFile) {
           const key = KEYS.threadOutputs(cb.taskId);
-          cb.queryClient.invalidateQueries({ queryKey: key });
           // org/output files reach the manifest ~5s after the sandbox closes
           // them (rclone write-back), so a file written in the turn's last
-          // seconds misses the immediate refresh — sweep once more after the
-          // flush window. share_with_user uploads are synchronous and don't
-          // need this.
-          setTimeout(() => {
-            cb.queryClient.invalidateQueries({ queryKey: key });
-          }, 8_000);
+          // seconds misses an immediate refresh. Sweep a few times across a
+          // generous flush window — each sweep is one indexed query, and
+          // share_with_user uploads (synchronous) are covered by the first.
+          for (const delayMs of [0, 4_000, 9_000, 16_000, 30_000]) {
+            setTimeout(() => {
+              cb.queryClient.invalidateQueries({ queryKey: key });
+            }, delayMs);
+          }
         }
 
         // The "what's next for this agent" hint is derived server-side from
