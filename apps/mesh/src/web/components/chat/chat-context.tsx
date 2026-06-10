@@ -907,9 +907,16 @@ export function ActiveTaskProvider({
           );
         });
         if (cb.taskId && sharedFile) {
-          cb.queryClient.invalidateQueries({
-            queryKey: KEYS.threadOutputs(cb.taskId),
-          });
+          const key = KEYS.threadOutputs(cb.taskId);
+          cb.queryClient.invalidateQueries({ queryKey: key });
+          // org/output files reach the manifest ~5s after the sandbox closes
+          // them (rclone write-back), so a file written in the turn's last
+          // seconds misses the immediate refresh — sweep once more after the
+          // flush window. share_with_user uploads are synchronous and don't
+          // need this.
+          setTimeout(() => {
+            cb.queryClient.invalidateQueries({ queryKey: key });
+          }, 8_000);
         }
 
         // The "what's next for this agent" hint is derived server-side from
