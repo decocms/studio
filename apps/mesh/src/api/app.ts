@@ -133,6 +133,10 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
+import {
+  cancelDeadPodWorkflows,
+  sweepOrphanedWorkflows,
+} from "../dispatch-queue/dbos-orphan-recovery";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
@@ -1532,7 +1536,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   };
 
-  // Wire pod death watcher → orphan recovery
+  // Wire pod death watcher → orphan recovery. Two independent layers off the
+  // same dead-pod signal: the run-registry resumes/force-fails the user-facing
+  // run; `cancelDeadPodWorkflows` cancels the dead pod's orphaned DBOS rows so
+  // they stop pinning queue slots (fatal for the per-thread gate, concurrency=1).
   if (podHeartbeat) {
     podHeartbeat.onPodDeath((deadPodId) => {
       runRegistry
@@ -1543,12 +1550,29 @@ export async function createApp(options: CreateAppOptions = {}) {
             err,
           );
         });
+      cancelDeadPodWorkflows(deadPodId).catch((err) => {
+        console.error(
+          `[dbos-recovery] dead-pod workflow cleanup failed for ${deadPodId}:`,
+          err,
+        );
+      });
     });
   }
 
   setTimeout(() => {
     runRegistry.recoverOrphanedRuns(resumeOrphanedThread).catch((err) => {
       console.error("[recovery] Orphan recovery failed:", err);
+    });
+    // Boot-time DBOS sweep — safety net for orphans the onPodDeath event
+    // missed (hard crash, simultaneous full restart). Runs post-launch (this
+    // fires well after DBOS.launch in index.ts) behind the same grace window.
+    (async () => {
+      const alive = podHeartbeat
+        ? await podHeartbeat.listAlivePods()
+        : new Set<string>();
+      await sweepOrphanedWorkflows(alive, POD_ID);
+    })().catch((err) => {
+      console.error("[dbos-recovery] boot sweep failed:", err);
     });
   }, 10_000); // 10s grace for rolling deploys
 
