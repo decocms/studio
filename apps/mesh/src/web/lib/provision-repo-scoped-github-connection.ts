@@ -6,6 +6,35 @@ type McpCallTool = (req: {
   arguments: Record<string, unknown>;
 }) => Promise<unknown>;
 
+const REFRESH_GRANT_METADATA_ERROR =
+  "GitHub MCP did not return refreshable repo grant metadata";
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function isHttpTokenEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeRepositoryId(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value > 0
+    ? value
+    : undefined;
+}
+
 export async function provisionRepoScopedGithubConnection(params: {
   orgSlug: string;
   sourceConnection: ConnectionEntity;
@@ -56,11 +85,32 @@ export async function provisionRepoScopedGithubConnection(params: {
         : "Failed to mint a repo-scoped GitHub token",
     );
   }
-  if (!minted.refreshToken || !minted.tokenEndpoint || !minted.clientId) {
+  const refreshToken = nonEmptyString(minted.refreshToken);
+  const tokenEndpoint = nonEmptyString(minted.tokenEndpoint);
+  const clientId = nonEmptyString(minted.clientId);
+  if (!refreshToken || !tokenEndpoint || !clientId) {
+    throw new Error(REFRESH_GRANT_METADATA_ERROR);
+  }
+  if (!isHttpTokenEndpoint(tokenEndpoint)) {
+    throw new Error(REFRESH_GRANT_METADATA_ERROR);
+  }
+  if (
+    minted.repository?.owner !== undefined &&
+    minted.repository.owner.toLowerCase() !== owner.toLowerCase()
+  ) {
     throw new Error(
-      "GitHub MCP did not return refreshable repo grant metadata",
+      "GitHub MCP returned refresh metadata for a different repository",
     );
   }
+  if (
+    minted.repository?.name !== undefined &&
+    minted.repository.name.toLowerCase() !== repo.toLowerCase()
+  ) {
+    throw new Error(
+      "GitHub MCP returned refresh metadata for a different repository",
+    );
+  }
+  const repositoryId = normalizeRepositoryId(minted.repository?.id);
   const parsedExpiry = minted.expiresAt ? Date.parse(minted.expiresAt) : NaN;
   const expiresIn = Number.isFinite(parsedExpiry)
     ? Math.max(0, Math.floor((parsedExpiry - Date.now()) / 1000))
@@ -80,7 +130,7 @@ export async function provisionRepoScopedGithubConnection(params: {
         metadata: {
           repoScope: {
             installationId,
-            repositoryId: minted.repository?.id,
+            repositoryId,
             owner,
             repo,
             permissions: GITHUB_SCOPED_PERMISSIONS,
@@ -107,11 +157,11 @@ export async function provisionRepoScopedGithubConnection(params: {
       credentials: "include",
       body: JSON.stringify({
         accessToken: minted.token,
-        refreshToken: minted.refreshToken,
+        refreshToken,
         expiresIn: minted.expiresIn ?? expiresIn,
         scope: minted.scope ?? null,
-        clientId: minted.clientId,
-        tokenEndpoint: minted.tokenEndpoint,
+        clientId,
+        tokenEndpoint,
       }),
     },
   );
