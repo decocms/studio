@@ -91,8 +91,8 @@ export function setDevMode(
     ...state,
     services: [
       ...initialServices(),
-      { name: "Vite", status: "pending", port: 0 },
       { name: "API", status: "pending", port: 0 },
+      { name: "Vite", status: "pending", port: 0 },
       ...(includeToxiProxy
         ? [{ name: "ToxiProxy", status: "pending" as const, port: 0 }]
         : []),

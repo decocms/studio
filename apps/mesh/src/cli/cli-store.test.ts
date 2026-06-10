@@ -30,8 +30,8 @@ describe("cli-store dev mode services", () => {
     expect(getCliState().services.map((s) => s.name)).toEqual([
       "Postgres",
       "NATS",
-      "Vite",
       "API",
+      "Vite",
       "Sandbox",
     ]);
   });
@@ -41,8 +41,8 @@ describe("cli-store dev mode services", () => {
     expect(getCliState().services.map((s) => s.name)).toEqual([
       "Postgres",
       "NATS",
-      "Vite",
       "API",
+      "Vite",
       "ToxiProxy",
       "Sandbox",
     ]);
