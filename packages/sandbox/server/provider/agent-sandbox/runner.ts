@@ -88,6 +88,22 @@ const RUNNER_KIND = "agent-sandbox" as const;
 const LOG_LABEL = "AgentSandboxProvider";
 
 /**
+ * Readable message from an unknown throwable. The k8s client's port-forward
+ * rejects with a WebSocket `ErrorEvent` (not an `Error`), which `String(err)`
+ * renders as the useless `[object ErrorEvent]`; pull `.error.message`/`.message`
+ * off it instead.
+ */
+function errMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object") {
+    const e = err as { error?: unknown; message?: unknown };
+    if (e.error instanceof Error) return e.error.message;
+    if (typeof e.message === "string" && e.message) return e.message;
+  }
+  return String(err);
+}
+
+/**
  * Response-header marker on the preview-proxy's "sandbox not ready" envelopes
  * (404 "sandbox not found" in dev, 502 "sandbox daemon unreachable" in prod).
  * The mesh edge (`apps/mesh/src/sandbox/preview-proxy.ts`) swaps these for an
@@ -1852,7 +1868,7 @@ export class AgentSandboxProvider implements SandboxProvider {
       })
       .catch((err: unknown) => {
         console.warn(
-          `[${LOG_LABEL}] port-forward to ${podName}:${containerPort} failed: ${err instanceof Error ? err.message : String(err)}`,
+          `[${LOG_LABEL}] port-forward to ${podName}:${containerPort} failed: ${errMsg(err)}`,
         );
         this.invalidateRecord(handle);
         cleanup();
