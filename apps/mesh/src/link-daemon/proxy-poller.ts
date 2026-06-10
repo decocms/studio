@@ -445,7 +445,6 @@ async function handleProxyRequest(
       });
       const replyPostInit: RequestInit & {
         duplex: "half";
-        verbose: boolean;
       } = {
         method: "POST",
         headers: {
@@ -454,7 +453,6 @@ async function handleProxyRequest(
         },
         body,
         duplex: "half",
-        verbose: true,
         signal: combined,
       };
       const res = await fetcher(url, replyPostInit);
