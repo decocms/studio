@@ -1,9 +1,12 @@
 /**
  * Repo-scoped GitHub connection — shared, pure helpers.
  *
- * A "repo-scoped" mcp-github connection is a per-agent child connection whose
- * downstream token is minted (by deco/mcp-github's MINT_REPO_TOKEN) for exactly
- * one repository. The mint "recipe" lives on the connection's metadata under
+ * A "repo-scoped" mcp-github connection is a per-agent child connection for
+ * exactly one repository. New refreshable repo children persist a GitHub MCP
+ * repo grant in downstream_tokens and refresh through the normal OAuth-shaped
+ * token path. Legacy repo children may still carry `sourceConnectionId` so
+ * callers can mint with deco/mcp-github's MINT_REPO_TOKEN during compatibility
+ * flows. The repo grant metadata lives on the connection's metadata under
  * `repoScope`; its presence also marks the connection as a disposable per-agent
  * child for teardown.
  *
