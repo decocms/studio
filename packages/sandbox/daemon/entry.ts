@@ -641,16 +641,23 @@ async function vmRouteH(
   const denied = requireToken(req, bootConfig.daemonToken);
   if (denied) return denied;
 
-  // Hosted harnesses drive the sandbox through these tool routes WITHOUT a
-  // /dispatch envelope, so the org links must be ensured here too — before
-  // bash/read/write resolve the prompts' relative `org/...` paths. vm-tools
-  // stamp the thread on each call (x-thread-id) so `org/output` can point at
-  // the running thread's folder; memoized, so repeat calls cost one lstat.
-  const vmThreadId = req.headers.get("x-thread-id");
-  if (vmThreadId) {
-    await repointOutputLinkForRun(vmThreadId);
-  } else {
-    await ensureOrgRepoLink();
+  // Hosted harnesses drive the sandbox through the fs/exec tool routes
+  // WITHOUT a /dispatch envelope, so the org links must be ensured here too —
+  // before bash/read/write resolve the prompts' relative `org/...` paths.
+  // vm-tools stamp the thread on each call (x-thread-id) so `org/output` can
+  // point at the running thread's folder; memoized, so repeat calls cost one
+  // lstat. ONLY those routes: gating /orgfs-config would deadlock cluster
+  // provisioning into the full fail-open wait (the mounts the gate polls for
+  // appear only after that POST lands), and gating /setup/clone would create
+  // `repo/org` ahead of the clone — the boot-time hazard repo-link.ts exists
+  // to avoid. The other routes (config/tasks/git) never resolve org paths.
+  if (method === "POST" && (vmPath in fsH || vmPath.startsWith("/exec/"))) {
+    const vmThreadId = req.headers.get("x-thread-id");
+    if (vmThreadId) {
+      await repointOutputLinkForRun(vmThreadId);
+    } else {
+      await ensureOrgRepoLink();
+    }
   }
 
   // Buffer body once and re-inject as a fresh Request for downstream

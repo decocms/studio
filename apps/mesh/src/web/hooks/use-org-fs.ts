@@ -126,7 +126,9 @@ export function useOrgFsMutations(volume: string) {
         });
       }
     },
-    onSuccess: invalidate,
+    // Settled, not success: files upload sequentially, so a mid-batch failure
+    // (quota, size) leaves earlier files written — the listing must refresh.
+    onSettled: invalidate,
   });
 
   const mkdir = useMutation({
