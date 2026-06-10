@@ -215,7 +215,6 @@ const ALL_TOOL_NAMES = [
   // Decopilot cluster MCP tools — exposed on the management MCP server so the
   // desktop daemon can call them via the injected mcp.url token.
   "UPDATE_INTERESTS_MCP",
-  "SUBTASK_MCP",
   "TAKE_SCREENSHOT_MCP",
   "GENERATE_IMAGE_MCP",
   "WEB_SEARCH_MCP",
@@ -993,12 +992,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "UPDATE_INTERESTS_MCP",
     description:
       "Record what the user is durably working toward (goals/interests) — desktop decopilot cluster relay",
-    category: "Virtual MCPs",
-  },
-  {
-    name: "SUBTASK_MCP",
-    description:
-      "Delegate a focused sub-task to a specialized agent — desktop decopilot cluster relay (cluster-side recursive dispatch)",
     category: "Virtual MCPs",
   },
   {

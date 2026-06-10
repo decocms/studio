@@ -22,6 +22,9 @@
  *   - passes `telemetry: undefined` — desktop runs stay OTel-invisible this
  *     phase (no `@/monitoring` sink, no run-registry coupling). The engine still
  *     returns a no-op OTel span so the shared loop's span attributes are safe.
+ *   - implements a REAL local `subtask` (self + cross-agent, Task 18) by
+ *     building TARGET-agent core deps and calling `spawnSubtask` — the cluster
+ *     `SUBTASK_MCP` relay is gone.
  *
  * It imports ONLY portable leaves (relative paths) + `../types`. No `@/*`
  * specifier and no `StudioContext` ever enters this graph, so the daemon bundles
@@ -54,8 +57,11 @@ import { runNativeAgentLoopCore } from "../decopilot/native-agent-loop-core";
 import {
   buildModelRuntimeFromSources,
   runDecopilotCore,
+  spawnSubtask,
   type DecopilotToolRuntime,
   type ModelRuntime,
+  type RunDecopilotCoreDeps,
+  type SubtaskRunResult,
 } from "../decopilot/run-core";
 import type {
   AssembledEngineHandle,
@@ -65,17 +71,19 @@ import type {
 import type { ConnectionsBlockTool } from "../decopilot/connections-block";
 import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
 import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
+import { createLocalSubtaskTool } from "../decopilot/built-in-tools/local-subtask";
 import type { DesktopToolCtx } from "./types";
 import { createHtmlPageBufferFromStorage } from "../decopilot/built-in-tools/vm-tools/html-page-buffer-core";
-import { createSideChannelWriter } from "../side-channel-writer";
-
-const LOCALLY_WRAPPED_RELAY_TOOLS = new Set<string>(["SUBTASK_MCP"]);
+import {
+  createSideChannelWriter,
+  type SideChannelWriter,
+} from "../side-channel-writer";
+import { swapVirtualMcpAgent } from "./swap-virtual-mcp-agent";
 
 function isDesktopToolVisible(tool: {
   name: string;
   _meta?: Record<string, unknown>;
 }): boolean {
-  if (LOCALLY_WRAPPED_RELAY_TOOLS.has(tool.name)) return false;
   const ui = tool._meta?.ui as { visibility?: string | string[] } | undefined;
   const visibility = ui?.visibility;
   if (visibility == null) return true;
@@ -128,6 +136,9 @@ export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
  *   - `additionalSystemMessages` (inline <system> blocks + enabled-tools tail),
  *   - `connectionsData` / `isDecopilot` / `systemAgentInstructions` / `planMode`.
  * The full streamText tool set = passthrough (from the closure) + extraTools.
+ *
+ * `stepLimit` (set to `SUBAGENT_STEP_LIMIT` for `kind: "subtask"` core runs)
+ * overrides the default `PARENT_STEP_LIMIT` stop condition (Task 18 subtask).
  *
  * No telemetry, no run-registry, no monitoring — the engine returns a no-op
  * OTel span so the shared loop's span attribute writes are harmless.
@@ -191,7 +202,9 @@ function runDesktopEngine(
     prepareStep: args.prepareStep,
     temperature: args.temperature,
     maxOutputTokens: args.models.thinking.limits?.maxOutputTokens ?? 32768,
-    stopWhen: stepCountIs(PARENT_STEP_LIMIT),
+    // Delegated subtask core runs cap at SUBAGENT_STEP_LIMIT (args.stepLimit);
+    // top-level runs fall back to PARENT_STEP_LIMIT.
+    stopWhen: stepCountIs(args.stepLimit ?? PARENT_STEP_LIMIT),
     abortSignal: args.abortSignal,
     onStepFinish: args.onStepFinish,
     onError: (_message, error) => {
@@ -206,6 +219,207 @@ function runDesktopEngine(
     error: handle.error,
     span,
     assembledSystemMessages: systemMessages,
+  };
+}
+
+/**
+ * Build a desktop `DecopilotToolRuntime` for one MCP endpoint. Shared by the
+ * top-level run (parent's `mcpSource`) and a cross-agent subtask (the TARGET
+ * agent's swapped virtual-MCP URL — Task 18). Owns the per-runtime MCP-client
+ * lifecycle (assigned into `cleanup.close`); the caller runs `cleanup.close`
+ * in its `finally`.
+ *
+ * `agentOverride`, when present, makes `buildEnvironmentTools` build the desktop
+ * built-ins for the TARGET agent id (so `read_resource`/`sandbox`/etc. scope to
+ * the target) and `runEngine` assemble the prompt with the TARGET's
+ * server-provided instructions read from the target MCP client
+ * (`getInstructions()`), and report the target id on the span. The shared core
+ * passes `subtask: undefined` for these runs anyway (depth-1 strip), so the
+ * target toolset never re-exposes `subtask`.
+ */
+function createDesktopToolRuntime(args: {
+  input: HarnessStreamInput;
+  mcpSource: DecopilotHttpMcpSource;
+  modelRuntime: ModelRuntime;
+  sideChannel: SideChannelWriter;
+  cleanup: { close?: () => Promise<void> };
+  /** Cross-agent subtask: override the agent id the desktop tools + prompt
+   *  scope to. Omitted for the parent run and self-clone subtasks. */
+  agentOverride?: { id: string };
+  /** The real local `subtask` tool, injected only into the parent run's
+   *  toolset (depth-1 — never into a delegated subtask runtime). */
+  subtask?: ReturnType<typeof createLocalSubtaskTool>;
+}): DecopilotToolRuntime {
+  const { input, mcpSource, modelRuntime, sideChannel, cleanup } = args;
+  const imageProvider =
+    modelRuntime.image?.provider ?? modelRuntime.thinking.provider;
+  // The agent the desktop tools + prompt scope to. The parent uses the run's
+  // own agent; a cross-agent subtask overrides it with the target id.
+  const targetAgentId = args.agentOverride?.id ?? input.agent.id;
+
+  // passthroughTools is set by buildEnvironmentTools and consumed by runEngine.
+  // The sentinel `undefined` (not `{}`) distinguishes "not yet built" from
+  // "legitimately empty passthrough set", so runEngine can guard against
+  // temporal coupling if the call order ever breaks. `serverInstructions` is
+  // captured the same way (target prompt needs the target MCP's instructions).
+  let builtPassthroughTools: ToolSet | undefined = undefined;
+  let builtServerInstructions: string | undefined = undefined;
+
+  return {
+    buildEnvironmentTools: async ({ input: streamInput }) => {
+      const toolOutputMap = new Map<string, string>();
+      const pendingImages: PendingImage[] = [];
+
+      // 1. Open the MCP client to the (parent or target) virtual-mcp endpoint.
+      const openedMcp = await openMcpSource(mcpSource, {
+        clientInfo: { name: "decopilot-desktop", version: "1" },
+      });
+      const mcpClient = openedMcp.client as Client;
+      cleanup.close = openedMcp.close;
+
+      try {
+        // 2. Passthrough tools from the MCP endpoint.
+        const { tools: passthroughTools, nameMap } = await toolsFromMCP(
+          mcpClient,
+          toolOutputMap,
+          undefined,
+          streamInput.toolApprovalLevel,
+          {
+            isPlanMode: streamInput.mode === "plan",
+            isToolVisible: isDesktopToolVisible,
+          },
+        );
+
+        // 3. Connections-block list + read-only annotations from the raw
+        //    listing (drives enable_tool + the connections prompt block +
+        //    plan-mode gating).
+        const passthroughToolList = (await mcpClient.listTools()).tools;
+        const connectionsBlockTools: ConnectionsBlockTool[] = [];
+        const toolAnnotations = new Map<string, { readOnlyHint?: boolean }>();
+        for (const t of passthroughToolList) {
+          const safeName = nameMap.get(t.name);
+          if (!safeName) continue;
+          const connectionId =
+            typeof t._meta?.gatewayClientId === "string"
+              ? t._meta.gatewayClientId
+              : "unknown";
+          connectionsBlockTools.push({
+            rawName: t.name,
+            safeName,
+            connectionId,
+          });
+          if (t.annotations?.readOnlyHint !== undefined) {
+            toolAnnotations.set(safeName, {
+              readOnlyHint: t.annotations.readOnlyHint,
+            });
+          }
+        }
+
+        // 4. LOCAL-OK built-in tools (+ html-page buffer flush hook).
+        const objectStorage = await openObjectStorageSource(
+          streamInput.objectStorageSource,
+        );
+        const orgSlug = streamInput.organizationSlug ?? streamInput.projectSlug;
+        const baseUrl = streamInput.objectStorageSource
+          ? new URL(streamInput.objectStorageSource.baseUrl).origin
+          : "";
+        const htmlPageBuffer = createHtmlPageBufferFromStorage({
+          storage: objectStorage,
+          baseUrl,
+          orgSlug,
+          writer: sideChannel.writer,
+          logPrefix: "decopilot-desktop:html-page-buffer",
+        });
+        const toolCtx: DesktopToolCtx = {
+          objectStorage,
+          organization: { id: streamInput.organizationId, slug: orgSlug },
+          auth: { user: { id: streamInput.user.id } },
+          baseUrl,
+        };
+        const localTools = buildLocalTools({
+          writer: sideChannel.writer,
+          toolOutputMap,
+          passthroughClient: mcpClient as unknown as VirtualClient,
+          toolApprovalLevel: streamInput.toolApprovalLevel,
+          isPlanMode: streamInput.mode === "plan",
+          ctx: toolCtx,
+          imageProvider,
+          imageModelInfo: streamInput.models.image,
+          pendingImages,
+          threadId: streamInput.threadId,
+          // VM/sandbox + prompt scope to the target agent (parent or subtask).
+          virtualMcpId: targetAgentId,
+          branch: streamInput.branch,
+          htmlPageBuffer,
+          // Real desktop-local subtask, only on the parent run. Absent on
+          // delegated subtask runtimes (depth-1; the core strips it too).
+          subtask: args.subtask,
+        });
+
+        // Server instructions for the prompt: read from the live MCP client so
+        // a cross-agent subtask gets the TARGET agent's identity, not the
+        // parent's. (`getInstructions()` reflects the connected endpoint.)
+        const serverInstructions = mcpClient.getInstructions() ?? undefined;
+
+        // Stash for runDesktopEngine. The undefined→value transition is the
+        // type-enforced gate: runEngine throws if these were never assigned.
+        builtPassthroughTools = passthroughTools;
+        builtServerInstructions = serverInstructions;
+
+        const bundle: HarnessAssembledTools = {
+          tools: { ...passthroughTools, ...localTools },
+          passthroughTools,
+          builtInTools: localTools,
+          connectionsBlockTools,
+          toolAnnotations,
+          connectionTitleMap: new Map(),
+          serverInstructions,
+          passthroughClient: mcpClient,
+          writer: sideChannel.writer,
+          pendingImages,
+          sideChunks: sideChannel.stream,
+          closeSideChunks: sideChannel.close,
+          onStepFinish: async () => {
+            await htmlPageBuffer.flush().catch((err) => {
+              console.error("[decopilot-desktop] html-page flush failed", err);
+            });
+          },
+          close: openedMcp.close,
+        };
+        return bundle;
+      } catch (err) {
+        // Construction failed mid-way — close the MCP client we already opened
+        // so the session doesn't leak, then re-throw.
+        await openedMcp.close().catch(() => {});
+        cleanup.close = undefined;
+        throw err;
+      }
+    },
+    runEngine: async (engineArgs) => {
+      if (builtPassthroughTools === undefined) {
+        throw new Error(
+          "[decopilot-desktop] runEngine called before buildEnvironmentTools — " +
+            "passthroughTools not yet assembled. This is a harness wiring bug.",
+        );
+      }
+      // For a cross-agent subtask, force the engine to assemble the prompt for
+      // the TARGET agent id + its server instructions (the shared loop derives
+      // these from `input.agent.id` / `tools.serverInstructions`, which already
+      // reflect the override here, but the engine's `virtualMcp.id` also drives
+      // the desktop identity prompt — keep it consistent).
+      const scopedArgs: RunEngineArgs = args.agentOverride
+        ? {
+            ...engineArgs,
+            virtualMcp: { ...engineArgs.virtualMcp, id: targetAgentId },
+            systemAgentInstructions:
+              engineArgs.systemAgentInstructions ?? builtServerInstructions,
+          }
+        : engineArgs;
+      return runDesktopEngine(
+        { input, passthroughTools: builtPassthroughTools },
+        scopedArgs,
+      );
+    },
   };
 }
 
@@ -224,10 +438,6 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
           { models: input.models, modelSources: input.modelSources },
           createProviderFromSecret,
         );
-        // image slot falls back to the thinking provider when not separately
-        // pinned — same semantics as buildModelRuntimeFromSources (decision D12).
-        const imageProvider =
-          modelRuntime.image?.provider ?? modelRuntime.thinking.provider;
 
         // Diagnostics (provider id only, never the key). On the desktop this
         // runs inside the spawned daemon, so it surfaces in the link terminal.
@@ -239,169 +449,102 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
         // ── Per-run side-channel + html-page buffer (desktop lifecycle). ──
         const sideChannel = createSideChannelWriter();
 
-        // passthroughTools is set by buildEnvironmentTools and consumed by
-        // runEngine. The sentinel `undefined` (not `{}`) distinguishes "not yet
-        // built" from "legitimately empty passthrough set", so runEngine can
-        // guard against temporal coupling if the call order ever breaks.
-        let builtPassthroughTools: ToolSet | undefined = undefined;
         // Capture the MCP source cleanup so the finally below runs it even if
         // the core throws mid-stream.
         const cleanup: { close?: () => Promise<void> } = {};
 
-        const toolRuntime: DecopilotToolRuntime = {
-          buildEnvironmentTools: async ({ input: streamInput }) => {
-            const toolOutputMap = new Map<string, string>();
-            const pendingImages: PendingImage[] = [];
-
-            // 1. Open the MCP client to the cluster's virtual-mcp endpoint.
-            const openedMcp = await openMcpSource(mcpSource, {
-              clientInfo: { name: "decopilot-desktop", version: "1" },
-            });
-            const mcpClient = openedMcp.client as Client;
-            cleanup.close = openedMcp.close;
-
-            try {
-              // 2. Passthrough tools from the MCP endpoint.
-              const { tools: passthroughTools, nameMap } = await toolsFromMCP(
-                mcpClient,
-                toolOutputMap,
-                undefined,
-                streamInput.toolApprovalLevel,
-                {
-                  isPlanMode: streamInput.mode === "plan",
-                  isToolVisible: isDesktopToolVisible,
-                },
-              );
-
-              // 3. Connections-block list + read-only annotations from the raw
-              //    listing (drives enable_tool + the connections prompt block +
-              //    plan-mode gating).
-              const passthroughToolList = (await mcpClient.listTools()).tools;
-              const connectionsBlockTools: ConnectionsBlockTool[] = [];
-              const toolAnnotations = new Map<
-                string,
-                { readOnlyHint?: boolean }
-              >();
-              for (const t of passthroughToolList) {
-                const safeName = nameMap.get(t.name);
-                if (!safeName) continue;
-                const connectionId =
-                  typeof t._meta?.gatewayClientId === "string"
-                    ? t._meta.gatewayClientId
-                    : "unknown";
-                connectionsBlockTools.push({
-                  rawName: t.name,
-                  safeName,
-                  connectionId,
-                });
-                if (t.annotations?.readOnlyHint !== undefined) {
-                  toolAnnotations.set(safeName, {
-                    readOnlyHint: t.annotations.readOnlyHint,
-                  });
-                }
+        // ── Local subtask (Task 18) — self + cross-agent. Builds TARGET-agent
+        //    core deps and runs the shared core via spawnSubtask. ────────────
+        //
+        //    Self (target undefined): the parent's own mcpSource URL unchanged.
+        //    Cross-agent: SWAP the agent-id path segment of the parent URL to
+        //    the target id, reusing the run's EXISTING minted bearer (Q15 — no
+        //    new mint API; the bearer is org-scoped, and per-call authorization
+        //    is enforced at the virtual-MCP endpoint for the target id in the
+        //    path). Each subtask opens its OWN HTTP MCP client + side channel,
+        //    closed in `finally`.
+        const runSubtask = async (
+          prompt: string,
+          targetAgentId: string | undefined,
+          signal: AbortSignal,
+        ): Promise<SubtaskRunResult> => {
+          const targetUrl = swapVirtualMcpAgent(mcpSource.url, targetAgentId);
+          const targetMcpSource: DecopilotHttpMcpSource = {
+            kind: "http",
+            url: targetUrl,
+            headers: mcpSource.headers,
+            expiresAt: mcpSource.expiresAt,
+          };
+          // Fresh per-subtask side channel + MCP-client cleanup. The subtask's
+          // own chunks are drained by spawnSubtask (text/usage), not merged
+          // into the parent stream — only the parent's writer carries the
+          // subtask-metadata data chunk (emitted by createLocalSubtaskTool).
+          const subSideChannel = createSideChannelWriter();
+          const subCleanup: { close?: () => Promise<void> } = {};
+          const targetInput: HarnessStreamInput = targetAgentId
+            ? {
+                ...input,
+                agent: { id: targetAgentId },
+                virtualMcp: { ...input.virtualMcp, id: targetAgentId },
               }
+            : input;
+          const targetToolRuntime = createDesktopToolRuntime({
+            input: targetInput,
+            mcpSource: targetMcpSource,
+            modelRuntime,
+            sideChannel: subSideChannel,
+            cleanup: subCleanup,
+            agentOverride: targetAgentId ? { id: targetAgentId } : undefined,
+            // depth-1: a delegated run NEVER gets its own subtask tool. The
+            // core also strips it (kind:"subtask"); this is belt-and-braces.
+          });
+          const deps: Omit<RunDecopilotCoreDeps, "kind"> = {
+            input: targetInput,
+            modelRuntime,
+            toolRuntime: targetToolRuntime,
+            telemetry: undefined,
+          };
+          try {
+            return await spawnSubtask({ prompt, deps, signal });
+          } finally {
+            subSideChannel.close();
+            await subCleanup.close?.().catch(() => {});
+          }
+        };
 
-              // 4. LOCAL-OK built-in tools (+ html-page buffer flush hook).
-              const objectStorage = await openObjectStorageSource(
-                streamInput.objectStorageSource,
-              );
-              const orgSlug =
-                streamInput.organizationSlug ?? streamInput.projectSlug;
-              const baseUrl = streamInput.objectStorageSource
-                ? new URL(streamInput.objectStorageSource.baseUrl).origin
-                : "";
-              const htmlPageBuffer = createHtmlPageBufferFromStorage({
-                storage: objectStorage,
-                baseUrl,
-                orgSlug,
-                writer: sideChannel.writer,
-                logPrefix: "decopilot-desktop:html-page-buffer",
-              });
-              const toolCtx: DesktopToolCtx = {
-                objectStorage,
-                organization: { id: streamInput.organizationId, slug: orgSlug },
-                auth: { user: { id: streamInput.user.id } },
-                baseUrl,
-              };
-              const localTools = buildLocalTools({
-                writer: sideChannel.writer,
-                toolOutputMap,
-                passthroughClient: mcpClient as unknown as VirtualClient,
-                toolApprovalLevel: streamInput.toolApprovalLevel,
-                isPlanMode: streamInput.mode === "plan",
-                ctx: toolCtx,
-                // subtask runs cluster-side via the SUBTASK_MCP relay. The
-                // wrapper injects these so the model never supplies
-                // credential/model ids, defaulting the target to this agent.
-                mcpClient,
-                models: streamInput.models,
-                selfAgentId: streamInput.agent.id,
-                imageProvider,
-                imageModelInfo: streamInput.models.image,
-                pendingImages,
-                threadId: streamInput.threadId,
-                virtualMcpId: streamInput.agent.id,
-                branch: streamInput.branch,
-                htmlPageBuffer,
-              });
+        // The core supplies its usage roll-up sink to buildEnvironmentTools
+        // (`onChildUsage`, for kind:"main"). Capture it so the locally-built
+        // subtask tool — created BEFORE buildEnvironmentTools runs — can fold
+        // each child run's usage into the SAME accumulator that builds the
+        // parent's final `message-metadata.usage` (parity with the cluster).
+        let parentOnChildUsage:
+          | ((usage: SubtaskRunResult["usage"]) => void)
+          | undefined;
 
-              const vmMetadata = streamInput.virtualMcp.metadata as {
-                instructions?: string;
-              };
-              const serverInstructions =
-                typeof vmMetadata?.instructions === "string"
-                  ? vmMetadata.instructions
-                  : undefined;
+        const subtaskTool = createLocalSubtaskTool({
+          writer: sideChannel.writer,
+          selfAgentId: input.agent.id,
+          needsApproval:
+            input.mode === "plan" || input.toolApprovalLevel !== "auto",
+          runSubtask,
+          onChildUsage: (usage) => parentOnChildUsage?.(usage),
+        });
 
-              // Stash the passthrough tools for runDesktopEngine. The
-              // undefined→ToolSet transition is the type-enforced gate:
-              // runEngine throws if this was never assigned.
-              builtPassthroughTools = passthroughTools;
-
-              const bundle: HarnessAssembledTools = {
-                tools: { ...passthroughTools, ...localTools },
-                passthroughTools,
-                builtInTools: localTools,
-                connectionsBlockTools,
-                toolAnnotations,
-                connectionTitleMap: new Map(),
-                serverInstructions,
-                passthroughClient: mcpClient,
-                writer: sideChannel.writer,
-                pendingImages,
-                sideChunks: sideChannel.stream,
-                closeSideChunks: sideChannel.close,
-                onStepFinish: async () => {
-                  await htmlPageBuffer.flush().catch((err) => {
-                    console.error(
-                      "[decopilot-desktop] html-page flush failed",
-                      err,
-                    );
-                  });
-                },
-                close: openedMcp.close,
-              };
-              return bundle;
-            } catch (err) {
-              // Construction failed mid-way — close the MCP client we already
-              // opened so the session doesn't leak, then re-throw.
-              await openedMcp.close().catch(() => {});
-              cleanup.close = undefined;
-              throw err;
-            }
+        const parentToolRuntime = createDesktopToolRuntime({
+          input,
+          mcpSource,
+          modelRuntime,
+          sideChannel,
+          cleanup,
+          subtask: subtaskTool,
+        });
+        const toolRuntime: DecopilotToolRuntime = {
+          buildEnvironmentTools: (buildArgs) => {
+            // Capture the core's child-usage sink for the subtask tool.
+            parentOnChildUsage = buildArgs.onChildUsage;
+            return parentToolRuntime.buildEnvironmentTools(buildArgs);
           },
-          runEngine: async (args) => {
-            if (builtPassthroughTools === undefined) {
-              throw new Error(
-                "[decopilot-desktop] runEngine called before buildEnvironmentTools — " +
-                  "passthroughTools not yet assembled. This is a harness wiring bug.",
-              );
-            }
-            return runDesktopEngine(
-              { input, passthroughTools: builtPassthroughTools },
-              args,
-            );
-          },
+          runEngine: parentToolRuntime.runEngine,
         };
 
         try {

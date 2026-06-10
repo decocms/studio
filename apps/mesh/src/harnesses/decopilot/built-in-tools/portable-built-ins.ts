@@ -1,9 +1,4 @@
 import { tool, zodSchema, type ToolSet, type UIMessageStreamWriter } from "ai";
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import {
-  CallToolResultSchema,
-  type CallToolResult,
-} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { userAskTool } from "./user-ask";
 import { todoWriteTool } from "./todo-write";
@@ -39,15 +34,6 @@ interface PortableObjectStorage extends PortableMediaObjectStorage {
 }
 
 const INLINE_RESOURCE_BYTE_LIMIT = 1_048_576;
-const SUBTASK_MCP_TOOL_NAME = "SUBTASK_MCP";
-const SUBTASK_TIMEOUT_MS = 600_000;
-
-/** Per-slot credentials (v2): the relay forwards the thinking slot's
- *  credential; there is no root credential and no coding slot. */
-export interface PortableSubtaskModels {
-  thinking: { id: string; credentialId: string };
-  fast?: { id: string };
-}
 
 export interface BuildPortableBuiltInToolsParams {
   writer: UIMessageStreamWriter;
@@ -62,11 +48,6 @@ export interface BuildPortableBuiltInToolsParams {
     imageModelInfo: PortableImageModelInfo;
   };
   includeUnavailableClusterOnlyTools?: boolean;
-  subtaskRelay?: {
-    mcpClient: Client;
-    models: PortableSubtaskModels;
-    selfAgentId: string;
-  };
 }
 
 function parseMeshStorageKey(uri: string): string | null {
@@ -340,76 +321,6 @@ function createPortableBrowserlessTool(
   });
 }
 
-function extractSubtaskText(res: CallToolResult): string | undefined {
-  const structured = (
-    res as { structuredContent?: { result?: string; finishReason?: string } }
-  ).structuredContent;
-  if (typeof structured?.result === "string" && structured.result.length > 0) {
-    return structured.result;
-  }
-  const text = (res.content ?? [])
-    .filter((c): c is { type: "text"; text: string } => c.type === "text")
-    .map((c) => c.text)
-    .join("\n\n")
-    .trim();
-  return text.length > 0 ? text : undefined;
-}
-
-function createSubtaskRelayTool(params: {
-  writer: UIMessageStreamWriter;
-  mcpClient: Client;
-  models: PortableSubtaskModels;
-  selfAgentId: string;
-  needsApproval: boolean;
-}) {
-  const { writer, mcpClient, models, selfAgentId, needsApproval } = params;
-  return tool({
-    description:
-      "Run a focused task in a fresh subagent that works independently and returns only its conclusion.",
-    needsApproval,
-    inputSchema: zodSchema(
-      z.object({
-        prompt: z.string().min(1).max(50_000),
-        agent_id: z.string().min(1).max(128).optional(),
-      }),
-    ),
-    execute: async ({ prompt, agent_id }, options) => {
-      const startTime = performance.now();
-      try {
-        const res = (await mcpClient.callTool(
-          {
-            name: SUBTASK_MCP_TOOL_NAME,
-            arguments: {
-              prompt,
-              agent_id: agent_id ?? selfAgentId,
-              credentialId: models.thinking.credentialId,
-              thinkingModelId: models.thinking.id,
-              ...(models.fast ? { fastModelId: models.fast.id } : {}),
-            },
-          },
-          CallToolResultSchema,
-          { signal: options.abortSignal, timeout: SUBTASK_TIMEOUT_MS },
-        )) as CallToolResult;
-        return {
-          result: extractSubtaskText(res) ?? "Subtask completed (no output).",
-        };
-      } finally {
-        writer.write({
-          type: "data-tool-metadata",
-          id: options.toolCallId,
-          data: { latencyMs: performance.now() - startTime },
-        });
-      }
-    },
-    toModelOutput: ({ output }) => ({
-      type: "text" as const,
-      value:
-        (output as { result?: string } | undefined)?.result?.trim() ||
-        "Subtask completed (no output).",
-    }),
-  });
-}
-
 const UnavailableWebSearchInputSchema = z.object({
   query: z
     .string()
@@ -479,7 +390,6 @@ export function buildPortableBuiltInTools(
     pendingImages,
     imageTool,
     includeUnavailableClusterOnlyTools,
-    subtaskRelay,
   } = params;
   const sandboxNeedsApproval = isPlanMode || toolApprovalLevel !== "auto";
   const tools: Record<string, unknown> = {
@@ -499,14 +409,6 @@ export function buildPortableBuiltInTools(
       needsApproval: sandboxNeedsApproval,
     }),
   };
-
-  if (subtaskRelay) {
-    tools.subtask = createSubtaskRelayTool({
-      writer,
-      ...subtaskRelay,
-      needsApproval: sandboxNeedsApproval,
-    });
-  }
 
   if (includeUnavailableClusterOnlyTools) {
     tools.web_search = createUnavailableWebSearchTool();

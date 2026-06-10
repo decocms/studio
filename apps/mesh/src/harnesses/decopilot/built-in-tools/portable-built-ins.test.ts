@@ -37,25 +37,6 @@ describe("buildPortableBuiltInTools", () => {
     ]);
   });
 
-  it("registers the desktop subtask relay only when all relay inputs exist", () => {
-    const tools = buildPortableBuiltInTools({
-      writer,
-      toolOutputMap: new Map(),
-      passthroughClient,
-      toolApprovalLevel: "auto",
-      isPlanMode: false,
-      subtaskRelay: {
-        mcpClient: passthroughClient,
-        models: {
-          thinking: { id: "gpt-4.1", credentialId: "cred-1" },
-        },
-        selfAgentId: "agent-1",
-      },
-    });
-
-    expect("subtask" in tools).toBe(true);
-  });
-
   it("can expose unavailable cluster-only tools for desktop with clear errors", async () => {
     const tools = buildPortableBuiltInTools({
       writer,

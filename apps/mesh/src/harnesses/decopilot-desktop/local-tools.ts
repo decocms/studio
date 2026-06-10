@@ -6,13 +6,9 @@
  * names.
  */
 
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
-import type { ToolSet, UIMessageStreamWriter } from "ai";
-import {
-  buildPortableBuiltInTools,
-  type PortableSubtaskModels,
-} from "../decopilot/built-in-tools/portable-built-ins";
+import type { Tool, ToolSet, UIMessageStreamWriter } from "ai";
+import { buildPortableBuiltInTools } from "../decopilot/built-in-tools/portable-built-ins";
 import type {
   PortableImageModelInfo,
   PortableImageProvider,
@@ -23,8 +19,6 @@ import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
 import type { HtmlPageBuffer } from "../decopilot/built-in-tools/vm-tools/html-page-buffer-core";
 import type { ToolApprovalLevel } from "../decopilot/mcp-tools";
 import type { DesktopToolCtx } from "./types";
-
-export interface DesktopSubtaskModels extends PortableSubtaskModels {}
 
 export interface BuildLocalToolsParams {
   writer: UIMessageStreamWriter;
@@ -37,13 +31,15 @@ export interface BuildLocalToolsParams {
   threadId: string;
   virtualMcpId: string;
   branch?: string | null;
-  mcpClient?: Client;
-  models?: DesktopSubtaskModels;
-  selfAgentId?: string;
   imageProvider?: PortableImageProvider;
   imageModelInfo?: PortableImageModelInfo;
   runner?: SandboxProvider;
   htmlPageBuffer?: HtmlPageBuffer;
+  /** The real desktop-local `subtask` tool (built by the harness factory from
+   *  `createLocalSubtaskTool` + the daemon `runSubtask`). Injected here so it
+   *  joins the desktop toolset alongside the VM + portable built-ins. Absent on
+   *  delegated subtask runs (depth-1 — the core strips it anyway). */
+  subtask?: Tool;
 }
 
 export function createDesktopLocalSandboxProvider(): SandboxProvider {
@@ -142,14 +138,6 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
             imageModelInfo: params.imageModelInfo,
           }
         : undefined,
-    subtaskRelay:
-      params.mcpClient && params.models && params.selfAgentId
-        ? {
-            mcpClient: params.mcpClient,
-            models: params.models,
-            selfAgentId: params.selfAgentId,
-          }
-        : undefined,
   });
 
   const vmNeedsApproval =
@@ -196,5 +184,8 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
   return {
     ...portableTools,
     ...vmTools,
+    // Real desktop-local subtask (self + cross-agent) — runs the shared core
+    // in-process via spawnSubtask. Absent on delegated subtask runs (depth-1).
+    ...(params.subtask ? { subtask: params.subtask } : {}),
   };
 }

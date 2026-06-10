@@ -229,10 +229,11 @@ export async function* runDecopilotCore(
   });
 
   // Depth-1: a `subtask` core run must NOT expose the `subtask` tool, so a
-  // delegated run can't spawn its own delegated runs. Strip it from every
-  // surface the engine reads (the cluster also excludes it for `kind:
-  // "subagent"` in assemble-agent-tools, but the core enforces it portably so
-  // any adapter — including the desktop in Task 18 — inherits depth-1).
+  // delegated run can't spawn its own delegated runs. Strip it from the
+  // tool-host surfaces the engine reads (`tools` + `builtInTools`; the cluster
+  // also excludes it for `kind: "subagent"` in assemble-agent-tools, but the
+  // core enforces it portably so any adapter — including the desktop in Task 18
+  // — inherits depth-1).
   if (isSubtask) stripSubtaskTool(tools);
 
   const {
@@ -406,7 +407,7 @@ async function runSubtaskCore(
       };
       if (c.type === "text-delta" && typeof c.delta === "string") {
         text.push(c.delta);
-      } else if (c.type === "finish" || c.type === "finish-message") {
+      } else if (c.type === "finish") {
         if (typeof c.finishReason === "string") finishReason = c.finishReason;
         const u = c.messageMetadata?.usage;
         // The final `finish` chunk carries the cumulative total. Take whichever
@@ -432,8 +433,10 @@ async function runSubtaskCore(
   };
 }
 
-/** Strip the `subtask` tool from every surface the engine reads, enforcing
- *  depth-1 for delegated runs. Mutates the bundle in place. */
+/** Strip the `subtask` tool from the tool-host surfaces the engine reads
+ *  (`tools` + `builtInTools`), enforcing depth-1 for delegated runs.
+ *  `passthroughTools` is never a subtask host, so it isn't touched. Mutates
+ *  the bundle in place. */
 function stripSubtaskTool(tools: HarnessAssembledTools): void {
   if ("subtask" in tools.tools) {
     const { subtask: _s, ...rest } = tools.tools as Record<string, unknown>;
