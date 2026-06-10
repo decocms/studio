@@ -273,6 +273,43 @@ describe("POST /_sandbox/dispatch", () => {
     await reader.cancel();
   });
 
+  it("rebases symbolic workspace.cwd onto the daemon's sandbox root before the harness sees it", async () => {
+    // The wire carries the symbolic value "/repo"; the daemon must rebase it
+    // onto its own sandbox root (daemonAppRoot()) before handing the input to
+    // the harness. The harness MUST receive the rebased absolute path, not the
+    // wire symbol — so `effectiveCwd(input.workspace.cwd)` yields a real path.
+    const runId = "run-cwd-rebase";
+    let capturedInput: { workspace?: { cwd: string } } | undefined;
+
+    const deps = makeDeps({
+      lookupHarness: (_id, input) => {
+        capturedInput = input as { workspace?: { cwd: string } };
+        return makeFakeHarness();
+      },
+    });
+
+    const body = JSON.stringify({
+      harnessId: "fake",
+      input: {
+        ...fixtures.FIXTURE_MINIMAL_INPUT,
+        runId,
+        workspace: { cwd: "/repo" },
+      },
+    });
+    const res = await handleDispatchRequest(authedDispatch(body), deps);
+    expect(res.status).toBe(200);
+    await readSSE(res); // drain the stream so lookupHarness runs
+
+    // The harness should receive the daemon's appRoot + "/repo" — NOT the bare "/repo"
+    const rebasedCwd = capturedInput?.workspace?.cwd;
+    expect(typeof rebasedCwd).toBe("string");
+    // Must be an absolute path (not the sentinel or wire symbol)
+    expect(rebasedCwd).not.toBe("default");
+    expect(rebasedCwd).not.toBe("/repo");
+    // Must end with /repo (rebased to the daemon's sandbox root)
+    expect(rebasedCwd?.endsWith("/repo")).toBe(true);
+  });
+
   it("wraps harness errors as an error SSE event followed by done", async () => {
     const harnessId = "throws";
     const body = JSON.stringify({

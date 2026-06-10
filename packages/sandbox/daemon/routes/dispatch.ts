@@ -30,6 +30,7 @@ import {
 } from "../../../../apps/mesh/src/links/protocol";
 import type { LinkErrorCode } from "../../../../apps/mesh/src/links/protocol/error-codes";
 import { requireToken } from "../auth";
+import { daemonAppRoot, rebaseWorkspaceCwd } from "../rebase-workspace-cwd";
 import { fetchOffloadedMessages } from "./offload-fetch";
 
 /** Minimal harness shape the dispatch route needs. Decoupled from the
@@ -263,6 +264,12 @@ export async function handleDispatchRequest(
         }
         const input = inputParse.data;
 
+        // Rebase the symbolic workspace.cwd onto this daemon's sandbox root
+        // (spec: "Harness Input Contract" Q4 — containment by construction).
+        input.workspace = {
+          cwd: rebaseWorkspaceCwd(input.workspace.cwd, daemonAppRoot()),
+        };
+
         // 3. Tombstone check — a cancel may have landed first. Surface it as a
         //    terminal error rather than starting a doomed harness.
         const tombstoneExpiry = tombstones.get(input.runId);
@@ -340,6 +347,12 @@ export async function handleDispatchRequest(
     );
   }
   const input = inputParse.data;
+
+  // Rebase the symbolic workspace.cwd onto this daemon's sandbox root
+  // (spec: "Harness Input Contract" Q4 — containment by construction).
+  input.workspace = {
+    cwd: rebaseWorkspaceCwd(input.workspace.cwd, daemonAppRoot()),
+  };
 
   // Tombstone check — a cancel landed before this dispatch did. Decline
   // and let the cluster surface a clear cancellation instead of starting

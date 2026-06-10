@@ -11,12 +11,13 @@
  *    `finish-step.providerMetadata["claude-code"].sessionId`. The harness
  *    just forwards that opaque token to the SDK's `resume` setting.
  *
- * Working-directory resolution: the cluster used to inject a
- * `processLocal.resolveCwd` callback that mapped to the `host` runner's
- * `localWorkdir(handle)`. That runner has been retired; the cluster no
- * longer supplies a resolver, and this harness falls through to
- * `process.cwd()` on the desktop daemon (spawned with workdir = sandbox
- * path) or to `undefined` (SDK default) inside the cluster.
+ * Working-directory resolution: the cluster sends `input.workspace.cwd` as
+ * a SYMBOLIC value — either "default" (no checkout, use SDK default) or
+ * "/repo" (repo checkout inside the sandbox). The daemon rebases "/repo"
+ * onto its own sandbox root before the harness ever sees it, so by the
+ * time we reach `effectiveCwd()` the value is already a host-absolute path
+ * or the "default" sentinel. `effectiveCwd("default")` returns `undefined`
+ * so the CLI subprocess inherits `process.cwd()` from the daemon.
  *
  * Behavior parity with stream-core: the inline call at lines 888–906
  * passes `mcpServers` (single `cms` entry), `toolApprovalLevel`,
@@ -31,7 +32,7 @@
 
 import { streamText, type UIMessageChunk } from "ai";
 import { createClaudeCodeModel, resolveClaudeCodeModelId } from "./model";
-import { resolveCliCwd } from "../cli-cwd";
+import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
 import { makeTitleResultChunk } from "../title-chunk";
@@ -110,12 +111,13 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    line 889.
         const sdkModelId = resolveClaudeCodeModelId(input.models.thinking.id);
 
-        // 2. Compute the working directory for the CLI subprocess —
-        //    github-linked agents get a per-branch sandbox path, ephemeral
-        //    agents fall through to undefined (SDK default). Shared with
-        //    the Codex harness via `../cli-cwd` so both CLIs run inside
-        //    the same checkout.
-        const cwd = await resolveCliCwd(input);
+        // 2. Translate the symbolic workspace.cwd to an SDK option. The daemon
+        //    has already rebased "/repo" onto its sandbox root before the
+        //    harness runs, so we receive either the rebased absolute path or
+        //    the "default" sentinel. `effectiveCwd("default")` → undefined
+        //    (SDK default = process.cwd()); any other value passes through
+        //    as the CLI subprocess working directory.
+        const cwd = effectiveCwd(input.workspace.cwd);
 
         // Diagnostics: on the user-desktop path this runs inside the spawned
         // sandbox daemon (stdout inherited by `deco link`), so these lines

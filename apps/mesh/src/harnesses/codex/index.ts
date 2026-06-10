@@ -38,7 +38,7 @@
 
 import { streamText, type UIMessageChunk } from "ai";
 import { createCodexModel, resolveCodexModelId } from "./model";
-import { resolveCliCwd } from "../cli-cwd";
+import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
 import { makeTitleResultChunk } from "../title-chunk";
@@ -115,14 +115,13 @@ export const codexHarnessFactory: HarnessFactory = {
         //    name (e.g. `gpt-5.4`). Mirrors stream-core line 922.
         const sdkModelId = resolveCodexModelId(input.models.thinking.id);
 
-        // 2. Compute the working directory for the codex app-server
-        //    subprocess. Shared with the Claude Code harness via
-        //    `../cli-cwd` — github-linked agents resolve to the sandbox's
-        //    `<appRoot>/repo` checkout, ephemeral agents fall through to
-        //    undefined (SDK default = process.cwd()). Without this, the
-        //    codex CLI ran in the daemon's own cwd and file edits landed
-        //    outside the user's repo.
-        const cwd = await resolveCliCwd(input);
+        // 2. Translate the symbolic workspace.cwd to an SDK option. The daemon
+        //    has already rebased "/repo" onto its sandbox root before the
+        //    harness runs, so we receive either the rebased absolute path or
+        //    the "default" sentinel. `effectiveCwd("default")` → undefined
+        //    (SDK default = process.cwd()); any other value passes through
+        //    as the codex app-server subprocess working directory.
+        const cwd = effectiveCwd(input.workspace.cwd);
 
         // Diagnostics: on the user-desktop path this runs inside the spawned
         // sandbox daemon (stdout inherited by `deco link`), so these lines
