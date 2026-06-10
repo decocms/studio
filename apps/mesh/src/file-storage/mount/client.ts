@@ -123,7 +123,15 @@ export class OrgFsClient implements OrgFsApi {
     if (!/^https?:/i.test(url)) return null;
     // Global fetch on purpose: the presigned URL is external to the mesh (the
     // injected fetch only routes the mesh contract).
-    const res = await fetch(url, range ? { headers: { range } } : undefined);
+    let res: Response;
+    try {
+      res = await fetch(url, range ? { headers: { range } } : undefined);
+    } catch {
+      // Presigned host unreachable from THIS network (e.g. a cluster pod or
+      // remote desktop vs a localhost MinIO endpoint) — the mesh can still
+      // reach it, so fall back to the buffered read instead of erroring.
+      return null;
+    }
     if (res.status === 200 || res.status === 206 || res.status === 416) {
       return res;
     }

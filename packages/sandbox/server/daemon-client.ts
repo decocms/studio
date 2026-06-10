@@ -143,6 +143,36 @@ async function configRequest(
   return JSON.parse(body) as ConfigResponse;
 }
 
+/**
+ * POST /_sandbox/orgfs-config — relay the org-fs mount config (a JSON
+ * `OrgFsMountConfig`) for the pod's privileged sidecar. Separate from
+ * `/config` on purpose: an orgFs-only TenantConfig patch classifies as no-op
+ * and would be dropped by the daemon's config store. Returns whether the
+ * daemon actually relayed it (false = no sidecar configured; desktop pods).
+ */
+export async function postOrgFsConfig(
+  daemonUrl: string,
+  token: string,
+  configJson: string,
+): Promise<{ written: boolean }> {
+  const res = await fetch(`${daemonUrl}/_sandbox/orgfs-config`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: configJson,
+    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    throw new Error(
+      `sandbox daemon /_sandbox/orgfs-config returned ${res.status}: ${body}`,
+    );
+  }
+  return JSON.parse(body) as { written: boolean };
+}
+
 const STRIP_REQUEST_HEADERS = [
   "cookie",
   "host",

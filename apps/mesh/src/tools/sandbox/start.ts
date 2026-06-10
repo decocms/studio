@@ -414,11 +414,16 @@ async function provisionSandbox(
       : null;
 
   // Org-fs mounts: mint an fs-scoped token + build the daemon's ORGFS_CONFIG.
-  // Desktop-only — hosted pods can't mount (the privileged-sidecar path is
-  // separate). Guarded inside the helper: a mint failure → undefined → no
+  // Desktop links always mount; hosted pods only when the cluster runs the
+  // privileged org-fs sidecar (settings.orgFsClusterMounts ↔ the sandbox-env
+  // chart's orgFs.enabled — without the sidecar the minted key would just go
+  // unused). Guarded inside the helper: a mint failure → undefined → no
   // mounting, never breaks provisioning.
+  const wantsOrgFs =
+    runner.kind === "user-desktop" ||
+    (runner.kind === "agent-sandbox" && getSettings().orgFsClusterMounts);
   const orgFsConfigJson =
-    runner.kind === "user-desktop" && ctx.organization?.slug
+    wantsOrgFs && ctx.organization?.slug
       ? await mintOrgFsConfigJson(ctx, {
           orgSlug: ctx.organization.slug,
           orgId,

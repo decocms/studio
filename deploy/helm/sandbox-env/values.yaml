@@ -180,6 +180,37 @@ dnsConfig:
     - name: ndots
       value: "1"
 
+# ── org-fs sidecar (organization filesystem mounts) ───────────────────
+# Opt-in: a privileged sidecar that FUSE-mounts the org filesystem volumes
+# (skills + outputs) at /app/org/* via WebDAV→rclone, propagated into the
+# unprivileged sandbox container (Bidirectional → HostToContainer). The
+# mount config arrives post-bind: mesh POSTs it to the daemon's
+# /_sandbox/orgfs-config, which relays it onto the shared /run/orgfs
+# control volume the sidecar watches (warm-pool claims reject spec.env,
+# so boot env can't carry it).
+#
+# REQUIRES hostUsers: true — Kubernetes forbids privileged containers in
+# user-namespaced pods, and Bidirectional propagation requires privileged.
+# Enabling this trades the userns-remap hardening for org-fs mounts; the
+# template fails to render otherwise so the trade-off stays explicit.
+# Mesh side: set ORGFS_CLUSTER_MOUNTS=1 on the studio install so it mints
+# org-fs tokens for hosted sandboxes.
+orgFs:
+  enabled: false
+  image:
+    repository: ghcr.io/decocms/studio/orgfs-sidecar
+    # Bump to ship a new sidecar image — release-orgfs-sidecar.yaml reads
+    # this field as the single source of truth (netinit pattern).
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
 # ── sandbox-pod hardening ──────────────────────────────────────────────
 # User namespace remap (`spec.hostUsers: false`): UID 1000 inside the pod
 # maps to a high, unprivileged subordinate UID on the node, so a

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { bumpActivity } from "./activity";
 import { requireToken } from "./auth";
@@ -16,6 +17,8 @@ import { MountManager } from "./org-fs/mount-manager";
 import { createRcloneMounter } from "./org-fs/mounter";
 import { parseOrgFsConfig } from "./org-fs/config";
 import { repointOutputLink } from "./org-fs/output-link";
+import type { SidecarStatus } from "./org-fs/sidecar";
+import { makeOrgFsConfigHandler } from "./routes/orgfs-config";
 import { createPortSniffer } from "./process/port-sniffer";
 import { TaskManager } from "./process/task-manager";
 import { PhaseManager } from "./process/phase-manager";
@@ -646,6 +649,8 @@ async function vmRouteH(
     : req;
 
   if (vmPath === "/config") return configH(rebuilt, prefix);
+  if (method === "POST" && vmPath === "/orgfs-config")
+    return orgFsConfigH(rebuilt);
   if (vmPath.startsWith("/tasks"))
     return tasksRouteH(rebuilt, method, vmPath, prefix);
   if (method === "POST" && vmPath in setupH) return setupH[vmPath]();
@@ -704,16 +709,16 @@ Bun.serve<WsProxyData, never>({
   },
 });
 
-// --- Org-filesystem mounts (desktop links only) ----------------------------
-// The mesh sets ORGFS_CONFIG (a JSON OrgFsMountConfig) + ORGFS_RCLONE_PATH at
-// spawn — as boot env, like OFFLOAD_ALLOWED_HOSTS, so it's available here at
-// boot (config pushed via /_sandbox/config arrives only AFTER boot, so it
-// can't drive the mount). Both are absent for cluster pods (locked-down
-// securityContext can't mount) and until the provisioning side ships — so this
-// is inert by default. The start is fire-and-forget and fully guarded (see
-// MountManager): a mount failure logs and never affects the daemon, dev
-// server, fs routes, or harnesses. A volume's bytes still reach harnesses via
-// the mesh API regardless.
+// --- Org-filesystem mounts ---------------------------------------------------
+// Desktop links: the mesh sets ORGFS_CONFIG (a JSON OrgFsMountConfig) +
+// ORGFS_RCLONE_PATH at spawn — as boot env, like OFFLOAD_ALLOWED_HOSTS, so the
+// daemon itself mounts here at boot.
+// Cluster pods: this container can't mount (locked-down securityContext); a
+// privileged sidecar does (org-fs/sidecar.ts). The mesh runner POSTs the
+// config to /_sandbox/orgfs-config post-bind (warm-pool claims reject
+// spec.env) and the handler relays it onto the shared control volume the
+// sidecar watches. Both paths are inert unless their env is set; every step
+// is guarded — a mount failure never affects the daemon or harnesses.
 let mountManager: MountManager | null = null;
 {
   const orgFs = parseOrgFsConfig(process.env.ORGFS_CONFIG);
@@ -725,19 +730,31 @@ let mountManager: MountManager | null = null;
       .catch((err) => console.warn("[org-fs] mount start failed", err));
   }
 }
+const orgFsConfigH = makeOrgFsConfigHandler({
+  configPath: process.env.ORGFS_SIDECAR_CONFIG_PATH,
+});
 
 /**
  * Per-run share-files-back link (`org/output` → `.outputs/<threadId>`, see
  * org-fs/output-link.ts). Gated on the outputs volume being ACTUALLY mounted —
  * its mount-point dir exists locally even when the mount failed, and linking
- * into that would silently strand files on local disk. Hoisted declaration:
- * called from `lookupDispatchHarness` above, which only runs post-boot.
+ * into that would silently strand files on local disk. The mount is either
+ * ours (desktop) or the sidecar's (cluster — its status file reports what it
+ * mounted). Hoisted declaration: called from `lookupDispatchHarness` above,
+ * which only runs post-boot.
  */
 async function repointOutputLinkForRun(threadId: string): Promise<void> {
   const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
-  const mounted = mountManager
+  let mounted = mountManager
     ?.list()
     .some((m) => m.mountPath === outputsMountPath);
+  const statusPath = process.env.ORGFS_SIDECAR_STATUS_PATH;
+  if (!mounted && statusPath) {
+    const status = await readFile(statusPath, "utf8")
+      .then((raw) => JSON.parse(raw) as SidecarStatus)
+      .catch(() => null);
+    mounted = status?.mounts.some((m) => m.mountPath === outputsMountPath);
+  }
   if (!mounted) return;
   await repointOutputLink(bootConfig.appRoot, threadId, (msg, err) =>
     err ? console.warn(`[org-fs] ${msg}`, err) : console.log(`[org-fs] ${msg}`),

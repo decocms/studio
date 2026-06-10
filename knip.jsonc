@@ -35,9 +35,10 @@
     },
     "packages/sandbox": {
       // daemon/entry.ts is bundled via `bun build` into a standalone binary
-      // that runs inside sandbox VMs. Without marking it as an entry, knip
-      // treats the whole daemon graph as unused.
-      "entry": ["daemon/entry.ts"]
+      // that runs inside sandbox VMs; org-fs/sidecar-main.ts likewise into
+      // the orgfs-sidecar image (deploy/helm/sandbox-env/orgfs-sidecar).
+      // Without marking them as entries, knip treats their graphs as unused.
+      "entry": ["daemon/entry.ts", "daemon/org-fs/sidecar-main.ts"]
     },
     "packages/typegen": {}
   },

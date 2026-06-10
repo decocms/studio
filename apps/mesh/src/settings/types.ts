@@ -49,6 +49,9 @@ export interface Settings {
 
   // Feature Flags
   enableDecoImport: boolean;
+  /** Mint org-fs tokens for hosted (agent-sandbox) pods too — only useful
+   *  when the sandbox-env chart runs the org-fs sidecar (orgFs.enabled). */
+  orgFsClusterMounts: boolean;
 
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;
