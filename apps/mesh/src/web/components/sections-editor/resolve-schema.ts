@@ -18,6 +18,8 @@ export interface SchemaProperty {
   properties?: Record<string, SchemaProperty>;
   items?: SchemaProperty;
   titleBy?: string;
+  /** Mustache template for array-item thumbnails (from schema `@image`) */
+  image?: string;
   /**
    * Present on "block-ref" fields — a union of compatible block types
    * (loaders, sections, etc.). The UI renders a selector instead of
@@ -409,6 +411,10 @@ export function resolveSchema(
         typeof resolved.titleBy === "string"
           ? resolved.titleBy
           : fromLeaf<string>("titleBy"),
+      image:
+        typeof resolved.image === "string"
+          ? resolved.image
+          : fromLeaf<string>("image"),
     };
   };
 

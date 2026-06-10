@@ -38,11 +38,10 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { canMakeSectionReusable } from "./page-sections";
-import {
-  GLOBAL_SECTION_ICON_COLOR,
-  sectionsDisplayKey,
-  type RawSection,
-} from "./section-types";
+import { isLazyResolveType } from "./section-lazy";
+import { getSectionPreviewImageSrc } from "./section-preview-image";
+import type { LiveMeta } from "./resolve-schema";
+import { GLOBAL_SECTION_ICON_COLOR, type RawSection } from "./section-types";
 import { parseSections, type ParsedSection } from "./parse-sections";
 
 export { parseSections, type ParsedSection, type RawSection };
@@ -52,32 +51,66 @@ const GLOBAL_SECTION_ROW_CLASS =
 const GLOBAL_SECTION_MENU_ITEM_CLASS =
   "text-global-section-fg focus:bg-global-section/12 focus:text-global-section-fg dark:text-global-section-fg-dark dark:focus:bg-global-section/15 dark:focus:text-global-section-fg-dark [&_svg]:!text-global-section";
 
+/** Stable DnD id per row; section display data always comes from `sections` prop. */
 interface SectionEntry {
   id: string;
-  section: ParsedSection;
+  index: number;
 }
 
-function createEntries(sections: ParsedSection[]): SectionEntry[] {
-  return sections.map((section, index) => ({
+function createEntries(count: number): SectionEntry[] {
+  return Array.from({ length: count }, (_, index) => ({
     id: crypto.randomUUID(),
-    section: { ...section, index },
+    index,
   }));
 }
 
 function remapEntryIndices(entries: SectionEntry[]): SectionEntry[] {
-  return entries.map((entry, index) => ({
-    ...entry,
-    section: { ...entry.section, index },
-  }));
+  return entries.map((entry, index) => ({ ...entry, index }));
 }
 
-function SectionRowContent({ section }: { section: ParsedSection }) {
+function resizeEntries(
+  current: SectionEntry[],
+  nextCount: number,
+): SectionEntry[] {
+  if (nextCount === current.length) return current;
+  if (nextCount < current.length) {
+    return remapEntryIndices(current.slice(0, nextCount));
+  }
+  const extra = Array.from(
+    { length: nextCount - current.length },
+    (_, offset) => ({
+      id: crypto.randomUUID(),
+      index: current.length + offset,
+    }),
+  );
+  return [...current, ...extra];
+}
+
+function SectionRowContent({
+  section,
+  raw,
+  meta,
+}: {
+  section: ParsedSection;
+  raw: RawSection | undefined;
+  meta: LiveMeta | null | undefined;
+}) {
   const saved = section.isSavedBlock === true;
   const multivariate = section.isMultivariate === true;
+  const imageSrc =
+    raw && meta ? getSectionPreviewImageSrc(raw, meta) : undefined;
 
   return (
     <>
       <DotsGrid className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+      {imageSrc && (
+        <img
+          src={imageSrc}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+        />
+      )}
       <LayoutAlt01
         className="h-4 w-4 shrink-0"
         style={
@@ -96,9 +129,6 @@ function SectionRowContent({ section }: { section: ParsedSection }) {
       >
         {section.label}
       </span>
-      {section.isLazy && (
-        <Zap className="h-3.5 w-3.5 shrink-0 text-yellow-500" />
-      )}
     </>
   );
 }
@@ -123,6 +153,8 @@ function sectionRowClassName(section: ParsedSection, selected: boolean) {
 
 function SortableSectionItem({
   section,
+  raw,
+  meta,
   sortableId,
   selected,
   onSelect,
@@ -130,8 +162,11 @@ function SortableSectionItem({
   onDuplicate,
   onMakeReusable,
   onToggleHidden,
+  onToggleLazy,
 }: {
   section: ParsedSection;
+  raw: RawSection | undefined;
+  meta: LiveMeta | null | undefined;
   sortableId: string;
   selected: boolean;
   onSelect: () => void;
@@ -139,7 +174,11 @@ function SortableSectionItem({
   onDuplicate: () => void;
   onMakeReusable: () => void;
   onToggleHidden: () => void;
+  onToggleLazy: () => void;
 }) {
+  const isAsyncRender = raw
+    ? isLazyResolveType(raw.__resolveType ?? "")
+    : false;
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
       id: sortableId,
@@ -176,7 +215,7 @@ function SortableSectionItem({
         sectionRowClassName(section, selected),
       )}
     >
-      <SectionRowContent section={section} />
+      <SectionRowContent section={section} raw={raw} meta={meta} />
 
       {!section.isMultivariate && (
         <Button
@@ -184,22 +223,47 @@ function SortableSectionItem({
           variant="ghost"
           size="icon"
           aria-label={
-            section.isHidden ? `Show ${section.label}` : `Hide ${section.label}`
+            isAsyncRender ? "Disable async render" : "Enable async render"
           }
           className={cn(
-            "size-6 shrink-0 transition-opacity",
+            "h-7 w-7 shrink-0",
+            isAsyncRender ? "" : "opacity-0 group-hover:opacity-100",
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleLazy();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Zap
+            className={cn("h-3.5 w-3.5", isAsyncRender && "text-yellow-500")}
+          />
+        </Button>
+      )}
+
+      {!section.isMultivariate && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={section.isHidden ? "Show section" : "Hide section"}
+          className={cn(
+            "h-7 w-7 shrink-0",
             section.isHidden
               ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100",
+              : "opacity-0 group-hover:opacity-100",
           )}
           onClick={(e) => {
             e.stopPropagation();
             onToggleHidden();
           }}
           onPointerDown={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
         >
-          {section.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+          {section.isHidden ? (
+            <EyeOff className="h-3.5 w-3.5" />
+          ) : (
+            <Eye className="h-3.5 w-3.5" />
+          )}
         </Button>
       )}
 
@@ -209,15 +273,24 @@ function SortableSectionItem({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label={`Open actions for ${section.label}`}
-            className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+            aria-label="Section actions"
+            className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <DotsHorizontal size={14} />
+            <DotsHorizontal className="h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              onDuplicate();
+            }}
+          >
+            <Copy01 className="h-4 w-4" />
+            Duplicate
+          </DropdownMenuItem>
           {enableMakeReusable && (
             <DropdownMenuItem
               className={GLOBAL_SECTION_MENU_ITEM_CLASS}
@@ -226,27 +299,18 @@ function SortableSectionItem({
                 onMakeReusable();
               }}
             >
-              <LayoutAlt01 size={14} />
-              Save as global
+              <LayoutAlt01 className="h-4 w-4" />
+              Make reusable
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
-            onClick={(e) => {
-              e.stopPropagation();
-              onDuplicate();
-            }}
-          >
-            <Copy01 size={14} />
-            Duplicate
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            variant="destructive"
+            className="text-destructive focus:text-destructive"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
             }}
           >
-            <Trash01 size={14} />
+            <Trash01 className="h-4 w-4" />
             Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -259,7 +323,9 @@ function SortableSectionItem({
 
 export function SectionList({
   listKey,
+  rawSections,
   sections,
+  meta,
   selectedIndex,
   onSelect,
   onReorder,
@@ -267,11 +333,14 @@ export function SectionList({
   onDuplicate,
   onMakeReusable,
   onToggleHidden,
+  onToggleLazy,
   onAddSection,
   canAddSection = true,
 }: {
   listKey: string;
+  rawSections: RawSection[];
   sections: ParsedSection[];
+  meta: LiveMeta | null | undefined;
   selectedIndex: number | null;
   onSelect: (index: number) => void;
   onReorder?: (fromIndex: number, toIndex: number) => void;
@@ -279,42 +348,25 @@ export function SectionList({
   onDuplicate: (index: number) => void;
   onMakeReusable: (index: number) => void;
   onToggleHidden: (index: number) => void;
+  onToggleLazy: (index: number) => void;
   onAddSection: () => void;
   canAddSection?: boolean;
 }) {
   const [entries, setEntries] = useState<SectionEntry[]>(() =>
-    createEntries(sections),
+    createEntries(sections.length),
   );
-  const [activeEntry, setActiveEntry] = useState<SectionEntry | null>(null);
+  const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
   const [prevListKey, setPrevListKey] = useState(listKey);
   const [prevSectionCount, setPrevSectionCount] = useState(sections.length);
-  const [prevDisplayKey, setPrevDisplayKey] = useState(() =>
-    sectionsDisplayKey(sections),
-  );
   const suppressClickRef = useRef(false);
-
-  const displayKey = sectionsDisplayKey(sections);
 
   if (prevListKey !== listKey) {
     setPrevListKey(listKey);
     setPrevSectionCount(sections.length);
-    setPrevDisplayKey(displayKey);
-    setEntries(createEntries(sections));
+    setEntries(createEntries(sections.length));
   } else if (prevSectionCount !== sections.length) {
     setPrevSectionCount(sections.length);
-    setPrevDisplayKey(displayKey);
-    setEntries(createEntries(sections));
-  } else if (prevDisplayKey !== displayKey) {
-    setPrevDisplayKey(displayKey);
-    setEntries((current) =>
-      sections.map((section, index) => {
-        const prior = current[index];
-        return {
-          id: prior?.id ?? crypto.randomUUID(),
-          section: { ...section, index },
-        };
-      }),
-    );
+    setEntries((current) => resizeEntries(current, sections.length));
   }
 
   const sensors = useSensors(
@@ -327,12 +379,11 @@ export function SectionList({
   const entryIds = entries.map((entry) => entry.id);
 
   const handleDragStart = (event: DragStartEvent) => {
-    const id = String(event.active.id);
-    setActiveEntry(entries.find((entry) => entry.id === id) ?? null);
+    setActiveEntryId(String(event.active.id));
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    setActiveEntry(null);
+    setActiveEntryId(null);
 
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -352,13 +403,21 @@ export function SectionList({
   };
 
   const handleDragCancel = () => {
-    setActiveEntry(null);
+    setActiveEntryId(null);
   };
 
   const handleSelect = (index: number) => {
     if (suppressClickRef.current) return;
     onSelect(index);
   };
+
+  const activeEntry = activeEntryId
+    ? entries.find((entry) => entry.id === activeEntryId)
+    : null;
+  const activeSection =
+    activeEntry != null ? sections[activeEntry.index] : null;
+  const activeRaw =
+    activeEntry != null ? rawSections[activeEntry.index] : undefined;
 
   if (entries.length === 0) {
     return (
@@ -395,31 +454,43 @@ export function SectionList({
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-1">
-            {entries.map((entry) => (
-              <SortableSectionItem
-                key={entry.id}
-                sortableId={entry.id}
-                section={entry.section}
-                selected={selectedIndex === entry.section.index}
-                onSelect={() => handleSelect(entry.section.index)}
-                onDelete={() => onDelete(entry.section.index)}
-                onDuplicate={() => onDuplicate(entry.section.index)}
-                onMakeReusable={() => onMakeReusable(entry.section.index)}
-                onToggleHidden={() => onToggleHidden(entry.section.index)}
-              />
-            ))}
+            {entries.map((entry) => {
+              const section = sections[entry.index];
+              if (!section) return null;
+
+              return (
+                <SortableSectionItem
+                  key={entry.id}
+                  sortableId={entry.id}
+                  section={section}
+                  raw={rawSections[entry.index]}
+                  meta={meta}
+                  selected={selectedIndex === entry.index}
+                  onSelect={() => handleSelect(entry.index)}
+                  onDelete={() => onDelete(entry.index)}
+                  onDuplicate={() => onDuplicate(entry.index)}
+                  onMakeReusable={() => onMakeReusable(entry.index)}
+                  onToggleHidden={() => onToggleHidden(entry.index)}
+                  onToggleLazy={() => onToggleLazy(entry.index)}
+                />
+              );
+            })}
           </div>
         </SortableContext>
 
         <DragOverlay dropAnimation={null}>
-          {activeEntry ? (
+          {activeSection ? (
             <div
               className={cn(
                 "cursor-grabbing shadow-lg ring-1 ring-border/60",
-                sectionRowClassName(activeEntry.section, false),
+                sectionRowClassName(activeSection, false),
               )}
             >
-              <SectionRowContent section={activeEntry.section} />
+              <SectionRowContent
+                section={activeSection}
+                raw={activeRaw}
+                meta={meta}
+              />
             </div>
           ) : null}
         </DragOverlay>

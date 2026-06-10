@@ -1,4 +1,4 @@
-import { isLazyResolveType } from "./section-lazy";
+import { isLazyResolveType, LAZY_RENDER_RESOLVE_TYPE } from "./section-lazy";
 import {
   NEVER_MATCHER_RESOLVE_TYPE,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
@@ -7,24 +7,20 @@ import {
 
 export type { RawSection };
 
-/**
- * Wrap a section in a multivariate block gated by a `never` matcher so it never
- * renders on the live site. Parses back as `isHidden`. The original section is
- * preserved verbatim as the variant value, so {@link showSection} can restore
- * it exactly — works for normal, lazy, and saved-block sections alike.
- */
-export function hideSection(raw: RawSection): RawSection {
-  return {
-    __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
-    variants: [
-      { value: raw, rule: { __resolveType: NEVER_MATCHER_RESOLVE_TYPE } },
-    ],
-  } as RawSection;
+// Lazy (Lazy.tsx) and hidden (multivariate + never matcher) are mutually exclusive
+// wrappers — a section may have one or the other, never both nested together.
+
+/** Strip a top-level Lazy / SingleDeferred wrapper when present. */
+function unwrapLazySection(raw: RawSection): RawSection {
+  const rt = raw.__resolveType ?? "";
+  if (isLazyResolveType(rt)) {
+    return (raw.section as RawSection | undefined) ?? raw;
+  }
+  return raw;
 }
 
-/** Unwrap a hidden section back to the section it was hiding, or null. */
-export function showSection(raw: RawSection): RawSection | null {
-  const outerLazy = isLazyResolveType(raw.__resolveType);
+function readHiddenNeverVariantValue(raw: RawSection): RawSection | null {
+  const outerLazy = isLazyResolveType(raw.__resolveType ?? "");
   const mvObj = (outerLazy ? raw.section : raw) as
     | Record<string, unknown>
     | undefined;
@@ -39,6 +35,105 @@ export function showSection(raw: RawSection): RawSection | null {
     return null;
   }
   return (first?.value as RawSection | undefined) ?? null;
+}
+
+/**
+ * Wrap a section in a multivariate block gated by a `never` matcher so it never
+ * renders on the live site. Parses back as `isHidden`.
+ *
+ * Lazy and hidden are mutually exclusive — hiding unwraps lazy first so the
+ * stored variant value is always the core section.
+ */
+export function hideSection(raw: RawSection): RawSection {
+  const core = unwrapLazySection(raw);
+  return {
+    __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+    variants: [
+      { value: core, rule: { __resolveType: NEVER_MATCHER_RESOLVE_TYPE } },
+    ],
+  } as RawSection;
+}
+
+/**
+ * Toggle `website/sections/Rendering/Lazy.tsx` on a page section.
+ *
+ * Lazy and hidden are mutually exclusive — enabling lazy on a hidden section
+ * drops the never-matcher wrapper and lazy-wraps the core section instead.
+ */
+export function toggleSectionLazyRender(raw: RawSection): RawSection | null {
+  const rt = raw.__resolveType ?? "";
+  if (!rt) return null;
+
+  if (isLazyResolveType(rt)) {
+    return (raw.section as RawSection | undefined) ?? null;
+  }
+
+  const hiddenInner = readHiddenNeverVariantValue(raw);
+  if (hiddenInner) {
+    // Legacy multivariate(never(lazy(core))) — drop hidden, keep existing lazy shell.
+    if (isLazyResolveType(hiddenInner.__resolveType ?? "")) {
+      return hiddenInner;
+    }
+    return {
+      __resolveType: LAZY_RENDER_RESOLVE_TYPE,
+      section: unwrapLazySection(hiddenInner),
+    };
+  }
+
+  return {
+    __resolveType: LAZY_RENDER_RESOLVE_TYPE,
+    section: raw,
+  };
+}
+
+export interface SectionPreviewContext {
+  resolveType: string;
+  data: Record<string, unknown>;
+}
+
+function resolveCoreSectionContent(
+  section: RawSection,
+): SectionPreviewContext | null {
+  const rt = section.__resolveType ?? "";
+  if (!rt) return null;
+
+  if (isLazyResolveType(rt)) {
+    const nested = section.section as Record<string, unknown> | undefined;
+    const resolveType = (nested?.__resolveType as string) ?? "";
+    if (!resolveType || !nested) return null;
+    return { resolveType, data: nested };
+  }
+
+  return { resolveType: rt, data: section as Record<string, unknown> };
+}
+
+/** Resolve inner section content for list thumbnails (lazy/hidden/legacy shapes). */
+export function resolveSectionPreviewContext(
+  raw: RawSection,
+): SectionPreviewContext | null {
+  const hiddenInner = readHiddenNeverVariantValue(raw);
+  if (hiddenInner) {
+    return resolveCoreSectionContent(hiddenInner);
+  }
+
+  const outerLazy = isLazyResolveType(raw.__resolveType ?? "");
+  if (outerLazy) {
+    const inner = raw.section as RawSection | undefined;
+    if (!inner) return null;
+
+    const hiddenInLazy = readHiddenNeverVariantValue(inner);
+    if (hiddenInLazy) {
+      return resolveCoreSectionContent(hiddenInLazy);
+    }
+    return resolveCoreSectionContent(inner);
+  }
+
+  return resolveCoreSectionContent(raw);
+}
+
+/** Unwrap a hidden section back to the section it was hiding, or null. */
+export function showSection(raw: RawSection): RawSection | null {
+  return readHiddenNeverVariantValue(raw);
 }
 
 export interface SectionFlagVariant {

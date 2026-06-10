@@ -58,6 +58,39 @@ describe("resolveSchema – nullable unions inherit leaf metadata", () => {
     ).toBe("image-uri");
   });
 
+  test("preserves titleBy and image on array items", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        banners: {
+          type: "array",
+          items: {
+            type: "object",
+            titleBy: "{{{matcher}}}",
+            title: "{{{matcher}}}",
+            image: "{{{image.mobile}}}",
+            properties: {
+              matcher: { type: "array", items: { type: "string" } },
+              image: {
+                type: "object",
+                properties: {
+                  mobile: { type: "string", format: "image-uri" },
+                  desktop: { type: "string", format: "image-uri" },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const banners = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.banners;
+    const item = banners?.items;
+    expect(item?.titleBy).toBe("{{{matcher}}}");
+    expect(item?.image).toBe("{{{image.mobile}}}");
+  });
+
   test("explicit `default: null` is preserved (nullable fields)", () => {
     const meta = metaWithSchema({
       type: "object",
