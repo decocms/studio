@@ -68,6 +68,11 @@ export function createRcloneMounter(
           ...args,
           "--vfs-cache-mode",
           "full",
+          // Flush closed files fast: agent outputs become chips/visible to
+          // the org ~1s after close instead of rclone's 5s default. Files
+          // written incrementally still upload after write-quiescence.
+          "--vfs-write-back",
+          "1s",
           // Safety-net TTL if the invalidator isn't running or misses a change;
           // the change-feed-driven vfs/refresh (invalidator.ts) is what makes
           // external writes show up in ~1s.

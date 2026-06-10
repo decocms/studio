@@ -913,7 +913,7 @@ export function ActiveTaskProvider({
           // seconds misses an immediate refresh. Sweep a few times across a
           // generous flush window — each sweep is one indexed query, and
           // share_with_user uploads (synchronous) are covered by the first.
-          for (const delayMs of [0, 4_000, 9_000, 16_000, 30_000]) {
+          for (const delayMs of [0, 1_500, 3_000, 6_000, 12_000, 25_000]) {
             setTimeout(() => {
               cb.queryClient.invalidateQueries({ queryKey: key });
             }, delayMs);
