@@ -5,12 +5,10 @@ import {
   SandboxTimeoutError,
 } from "./constants";
 import {
-  applyHttpRoute,
   createSandboxClaim,
   deleteSandboxClaim,
   ensureServicePort,
   getSandboxClaim,
-  type HttpRoute,
   patchSandboxClaimShutdown,
   type SandboxClaim,
   type SandboxResource,
@@ -456,75 +454,6 @@ describe("ensureServicePort", () => {
         targetPort: 9000,
       }),
     ).rejects.toThrow(/Failed to apply Service ports: missing/);
-  });
-});
-
-describe("applyHttpRoute", () => {
-  const route: HttpRoute = {
-    apiVersion: "gateway.networking.k8s.io/v1",
-    kind: "HTTPRoute",
-    metadata: { name: "solar-vale", namespace: NS },
-    spec: {
-      parentRefs: [
-        {
-          kind: "Gateway",
-          group: "gateway.networking.k8s.io",
-          name: "agent-sandbox-preview-prod",
-          namespace: NS,
-        },
-      ],
-      hostnames: ["solar-vale.preview-studio.decocms.com"],
-      rules: [
-        {
-          backendRefs: [
-            {
-              group: "",
-              kind: "Service",
-              name: "studio-sandbox-prod-7nt7m",
-              port: 9000,
-            },
-          ],
-        },
-      ],
-    },
-  };
-
-  it("upserts via server-side apply to the named route path with force", async () => {
-    fetchImpl = async () => jsonResponse(200, { kind: "HTTPRoute" });
-    await applyHttpRoute(makeKc(), NS, route);
-
-    expect(fetchCalls).toHaveLength(1);
-    const [call] = fetchCalls;
-    const url = new URL(call!.url);
-    // SSA targets the named resource (not the collection) so the same call
-    // creates-or-updates — this is what re-points a surviving route's
-    // backendRef at the freshly adopted Service instead of 409-swallowing.
-    expect(url.pathname).toBe(
-      `/apis/gateway.networking.k8s.io/v1/namespaces/${NS}/httproutes/solar-vale`,
-    );
-    expect(url.searchParams.get("fieldManager")).toBe("mesh-sandbox-runner");
-    expect(url.searchParams.get("force")).toBe("true");
-
-    expect(call!.init.method).toBe("PATCH");
-    const headers = call!.init.headers as Record<string, string>;
-    expect(headers["content-type"]).toBe("application/apply-patch+yaml");
-
-    const body = JSON.parse(String(call!.init.body));
-    expect(body.spec.rules[0].backendRefs[0].name).toBe(
-      "studio-sandbox-prod-7nt7m",
-    );
-  });
-
-  it("wraps non-2xx errors in SandboxError with the route name", async () => {
-    fetchImpl = async () =>
-      jsonResponse(403, {
-        kind: "Status",
-        reason: "Forbidden",
-        message: "forbidden",
-      });
-    await expect(applyHttpRoute(makeKc(), NS, route)).rejects.toThrow(
-      /Failed to apply HTTPRoute: solar-vale/,
-    );
   });
 });
 

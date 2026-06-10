@@ -3,7 +3,7 @@
 export { KubeConfig } from "@kubernetes/client-node";
 export { K8S_CONSTANTS, SandboxError, SandboxTimeoutError } from "./constants";
 export {
-  applyHttpRoute,
+  createHttpRoute,
   createSandboxClaim,
   deleteHttpRoute,
   deleteSandboxClaim,
