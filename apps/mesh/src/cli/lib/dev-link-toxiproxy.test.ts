@@ -236,7 +236,7 @@ describe("dev-link-toxiproxy HTTP API", () => {
       return new Response(null, { status: 200 });
     }) as unknown as typeof fetch;
 
-    const config = await ensureDevLinkToxiProxy({
+    const handle = await ensureDevLinkToxiProxy({
       serverUrl: "http://localhost:4001",
       apiPort: 18474,
       listenPort: 18480,
@@ -246,7 +246,7 @@ describe("dev-link-toxiproxy HTTP API", () => {
 
     expect(startDaemon).toHaveBeenCalledWith(18474, 18480);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
-    expect(config.clusterUrl).toBe("http://127.0.0.1:18480");
+    expect(handle.config.clusterUrl).toBe("http://127.0.0.1:18480");
   });
 
   test("waits for ToxiProxy readiness before populating", async () => {
@@ -326,6 +326,27 @@ describe("dev-link-toxiproxy HTTP API", () => {
     ).rejects.toThrow(/reset/);
 
     expect(startDaemon).toHaveBeenCalledWith(18474, 18480);
+    expect(stopDaemon).toHaveBeenCalledWith(18474, 18480);
+  });
+
+  test("returned handle stops the owned daemon", async () => {
+    const startDaemon = mock(async () => {});
+    const stopDaemon = mock(async () => {});
+    const fetchImpl = mock(
+      async () => new Response(null, { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const handle = await ensureDevLinkToxiProxy({
+      serverUrl: "http://localhost:4001",
+      apiPort: 18474,
+      listenPort: 18480,
+      startDaemon,
+      stopDaemon,
+      fetchImpl,
+    });
+
+    await handle.stop();
+
     expect(stopDaemon).toHaveBeenCalledWith(18474, 18480);
   });
 });

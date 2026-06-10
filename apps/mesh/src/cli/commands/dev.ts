@@ -208,6 +208,7 @@ export async function startDevServer(
   updateService({ name: "API", status: "ready", port: Number(settings.port) });
 
   let linkClusterUrl = serverUrl;
+  let stopToxiProxy: (() => Promise<void>) | null = null;
   try {
     if (options.localSandboxProvider && options.devLinkToxiProxy) {
       const {
@@ -222,7 +223,11 @@ export async function startDevServer(
         apiPort,
         listenPort,
       });
-      linkClusterUrl = resolveDevLinkClusterUrl({ serverUrl, toxiproxy });
+      stopToxiProxy = toxiproxy.stop;
+      linkClusterUrl = resolveDevLinkClusterUrl({
+        serverUrl,
+        toxiproxy: toxiproxy.config,
+      });
       updateService({
         name: DEV_LINK_TOXIPROXY_SERVICE_NAME,
         status: "ready",
@@ -234,10 +239,13 @@ export async function startDevServer(
         status: 0,
         duration: 0,
         timestamp: new Date(),
-        rawLine: toxiproxy.logLine,
+        rawLine: toxiproxy.config.logLine,
       });
     }
   } catch (error) {
+    if (stopToxiProxy) {
+      await stopToxiProxy().catch(() => null);
+    }
     child.kill("SIGTERM");
     await child.exited.catch(() => null);
     if (managedServiceNames.length > 0) {
@@ -345,6 +353,13 @@ export async function startDevServer(
       const { stopLink } = await import("../../services/ensure-services");
       try {
         await stopLink(settings.dataDir);
+      } catch {
+        /* best-effort */
+      }
+    }
+    if (stopToxiProxy) {
+      try {
+        await stopToxiProxy();
       } catch {
         /* best-effort */
       }

@@ -31,6 +31,11 @@ export interface EnsureDevLinkToxiProxyInput
   fetchImpl?: typeof fetch;
 }
 
+export interface DevLinkToxiProxyHandle {
+  config: DevLinkToxiProxyConfig;
+  stop: () => Promise<void>;
+}
+
 export function isDevLinkToxiProxyEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
@@ -283,7 +288,7 @@ async function stopDevLinkToxiProxyDocker(
 
 export async function ensureDevLinkToxiProxy(
   input: EnsureDevLinkToxiProxyInput,
-): Promise<DevLinkToxiProxyConfig> {
+): Promise<DevLinkToxiProxyHandle> {
   const config = buildDevLinkToxiProxyConfig(input);
   const startDaemon = input.startDaemon ?? startDevLinkToxiProxyDocker;
   const stopDaemon =
@@ -304,5 +309,12 @@ export async function ensureDevLinkToxiProxy(
     }
     throw error;
   }
-  return config;
+  return {
+    config,
+    stop: async () => {
+      if (stopDaemon !== undefined) {
+        await stopDaemon(input.apiPort, input.listenPort);
+      }
+    },
+  };
 }
