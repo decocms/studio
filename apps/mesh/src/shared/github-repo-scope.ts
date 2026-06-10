@@ -31,6 +31,17 @@ export interface RepoScopeRecipe {
   grantProvider?: "github-mcp";
 }
 
+function parsePermissions(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return GITHUB_SCOPED_PERMISSIONS;
+  }
+  const permissions = raw as Record<string, unknown>;
+  if (Object.values(permissions).some((value) => typeof value !== "string")) {
+    return GITHUB_SCOPED_PERMISSIONS;
+  }
+  return permissions as Record<string, string>;
+}
+
 /**
  * Read + validate the repoScope recipe from a connection's metadata.
  * Returns null when the connection is not a repo-scoped child (or the recipe is
@@ -65,9 +76,7 @@ export function getRepoScope(connection: {
       typeof raw.repositoryId === "number" ? raw.repositoryId : undefined,
     owner: raw.owner,
     repo: raw.repo,
-    permissions:
-      (raw.permissions as Record<string, string> | undefined) ??
-      GITHUB_SCOPED_PERMISSIONS,
+    permissions: parsePermissions(raw.permissions),
     grantProvider:
       raw.grantProvider === "github-mcp" ? "github-mcp" : undefined,
   };

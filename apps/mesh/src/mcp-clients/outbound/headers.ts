@@ -148,21 +148,24 @@ async function _buildRequestHeaders(
   // This supports OAuth token refresh for connections that use OAuth
   let accessToken: string | null = null;
 
-  // Per-agent repo-scoped child connections carry a MINTED token (no refresh
-  // token), so mint-on-demand instead of refreshing. getRepoScope returns null
-  // for ordinary connections, which keep the cached-token + refresh path below.
+  // Legacy per-agent repo-scoped child connections mint on demand through their
+  // source org connection. Refreshable repo-scoped children use the normal
+  // cached-token + refresh path below.
   const repoScope = getRepoScope(connection);
   const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
-  const cachedToken = repoScope ? null : await tokenStorage.get(connectionId);
+  const useLegacyRepoMint = !!repoScope?.sourceConnectionId;
+  const cachedToken = useLegacyRepoMint
+    ? null
+    : await tokenStorage.get(connectionId);
 
-  if (repoScope) {
+  if (useLegacyRepoMint) {
     // Mint failure leaves accessToken null → the request goes out without an
     // Authorization header and fails downstream (same resilience as a failed
     // refresh); the next call retries the mint.
     try {
       accessToken = await ensureRepoScopedToken(ctx, connection);
     } catch (err) {
-      console.error("[Proxy] repo-scoped token mint failed", {
+      console.error("[Proxy] repo-scoped legacy token mint failed", {
         connectionId,
         error: (err as Error).message,
       });

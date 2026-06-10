@@ -48,6 +48,36 @@ describe("getRepoScope", () => {
     expect(result?.permissions).toEqual(GITHUB_SCOPED_PERMISSIONS);
   });
 
+  it("defaults permissions when permissions metadata is not an object", () => {
+    const result = getRepoScope({
+      metadata: {
+        repoScope: {
+          sourceConnectionId: "conn_org",
+          installationId: 1,
+          owner: "a",
+          repo: "b",
+          permissions: "bad",
+        },
+      },
+    });
+    expect(result?.permissions).toEqual(GITHUB_SCOPED_PERMISSIONS);
+  });
+
+  it("defaults permissions when permissions metadata has non-string values", () => {
+    const result = getRepoScope({
+      metadata: {
+        repoScope: {
+          sourceConnectionId: "conn_org",
+          installationId: 1,
+          owner: "a",
+          repo: "b",
+          permissions: { contents: 1 },
+        },
+      },
+    });
+    expect(result?.permissions).toEqual(GITHUB_SCOPED_PERMISSIONS);
+  });
+
   it("returns null when metadata is null", () => {
     expect(getRepoScope({ metadata: null })).toBeNull();
   });
@@ -129,12 +159,26 @@ describe("getOrgGithubConnections", () => {
       },
     },
   };
+  const refreshableScopedConn = {
+    id: "conn_refreshable_scoped",
+    metadata: {
+      repoScope: {
+        installationId: 1,
+        owner: "deco-sites",
+        repo: "demo-linkedin",
+      },
+    },
+  };
 
   it("drops repo-scoped child connections", () => {
-    expect(getOrgGithubConnections([scopedConn, orgConn])).toEqual([orgConn]);
+    expect(
+      getOrgGithubConnections([scopedConn, refreshableScopedConn, orgConn]),
+    ).toEqual([orgConn]);
   });
 
   it("returns an empty array when every connection is repo-scoped", () => {
-    expect(getOrgGithubConnections([scopedConn])).toEqual([]);
+    expect(
+      getOrgGithubConnections([scopedConn, refreshableScopedConn]),
+    ).toEqual([]);
   });
 });
