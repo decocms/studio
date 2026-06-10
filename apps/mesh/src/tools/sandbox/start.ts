@@ -442,7 +442,14 @@ async function provisionSandbox(
       branch,
       repo: repoOpts,
       workload,
-      tenant: { orgId, userId },
+      tenant: {
+        orgId,
+        userId,
+        ...(ctx.organization?.slug ? { orgSlug: ctx.organization.slug } : {}),
+        ...(ctx.organization?.name ? { orgName: ctx.organization.name } : {}),
+        ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
+        ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
+      },
       ...(offload
         ? {
             offloadAllowedHosts: offload.hosts,

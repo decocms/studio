@@ -82,10 +82,21 @@ export interface EnsureOptions {
    * downstream metrics pipelines can attribute resource usage to the owning
    * org/user. Optional — callers without an org context (smoke tests, internal
    * tool sandboxes) leave it unset and pods get only platform-level labels.
+   *
+   * `orgId`/`userId` are the stable IDs surfaced as k8s labels (label values
+   * are charset-restricted, so UUIDs only). The remaining fields are
+   * human-readable identity surfaced as k8s *annotations* (no charset limit) so
+   * `kubectl describe sandboxclaim` and dashboards can show who owns a sandbox
+   * without a join back to the DB. All optional — runners drop any that are
+   * absent.
    */
   tenant?: {
     orgId: string;
     userId: string;
+    orgSlug?: string;
+    orgName?: string;
+    userEmail?: string;
+    userName?: string;
   };
   /**
    * Message-offload SSRF allowlist for the spawned daemon. When the cluster
