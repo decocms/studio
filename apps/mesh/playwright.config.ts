@@ -1,5 +1,30 @@
 import { defineConfig, devices } from "@playwright/test";
 
+interface PlaywrightEnv {
+  [key: string]: string | undefined;
+  BASE_URL?: string;
+  PORT?: string;
+  VITE_PORT?: string;
+}
+
+export function resolvePlaywrightDevServerConfig(
+  env: PlaywrightEnv = process.env,
+): {
+  appOrigin: string;
+  webServerCommand: string;
+} {
+  const serverPort = env.PORT || "3000";
+  const appPort = env.VITE_PORT || "4000";
+  const appOrigin = env.BASE_URL || `http://localhost:${appPort}`;
+
+  return {
+    appOrigin,
+    webServerCommand: `BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev:servers`,
+  };
+}
+
+const { appOrigin, webServerCommand } = resolvePlaywrightDevServerConfig();
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -20,7 +45,7 @@ export default defineConfig({
   workers: process.env.CI ? 4 : undefined,
   reporter: [["html", { open: "never" }]],
   use: {
-    baseURL: `http://localhost:${process.env.PORT || "3000"}`,
+    baseURL: appOrigin,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -31,8 +56,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "bun run dev:servers",
-    url: `http://localhost:${process.env.PORT || "3000"}`,
+    command: webServerCommand,
+    url: `${appOrigin}/api/config`,
     reuseExistingServer: true,
     timeout: 120_000,
     stdout: "pipe",

@@ -12,9 +12,9 @@ import type { APIRequestContext, Page } from "@playwright/test";
 import type { Client } from "pg";
 import { connectDevDb } from "../fixtures/db";
 import { signUpViaApi } from "../fixtures/auth-api";
-import { expect, newApiContext, test } from "../fixtures/test";
+import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
-const ORIGIN = `http://localhost:${process.env.PORT ?? "3000"}`;
+const ORIGIN = getE2EAppOrigin();
 
 /**
  * Sign the page in as a fresh user, join `orgId` as a built-in "user", and make

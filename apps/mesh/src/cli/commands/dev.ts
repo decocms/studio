@@ -96,6 +96,7 @@ export async function startDevServer(
   options: DevOptions,
 ): Promise<{ port: number; process: Subprocess }> {
   const { vitePort, baseUrl, noTui } = options;
+  const publicBaseUrl = baseUrl || `http://localhost:${vitePort}`;
 
   const port = await findAvailablePort(Number(options.port));
 
@@ -148,6 +149,7 @@ export async function startDevServer(
       DATABASE_URL: settings.databaseUrl,
       NATS_URL: settings.natsUrls.join(","),
       NODE_ENV: settings.nodeEnv,
+      BASE_URL: publicBaseUrl,
       DECOCMS_LOCAL_MODE: String(settings.localMode),
       DECOCMS_HOME: settings.dataDir,
       DATA_DIR: settings.dataDir,
@@ -170,7 +172,6 @@ export async function startDevServer(
       ...(options.localSandboxProvider && options.localMode
         ? { DEV_LINK_SESSION_PATH: join(linkDataDir, "session.json") }
         : {}),
-      ...(settings.baseUrl ? { BASE_URL: settings.baseUrl } : {}),
     },
     stdio: [
       "inherit",
@@ -184,7 +185,7 @@ export async function startDevServer(
     pipeToLogStore(child.stderr as ReadableStream<Uint8Array>);
   }
 
-  const serverUrl = baseUrl || `http://localhost:${settings.port}`;
+  const serverUrl = publicBaseUrl;
   setServerUrl(serverUrl);
   updateService({ name: "Vite", status: "ready", port: Number(vitePort) });
 
@@ -300,5 +301,5 @@ export async function startDevServer(
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  return { port: Number(settings.port), process: child };
+  return { port: Number(vitePort), process: child };
 }

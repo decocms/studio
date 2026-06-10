@@ -47,13 +47,13 @@
  * the hard guard.
  */
 
-import { expect, test } from "../fixtures/test";
+import { expect, getE2EAppOrigin, test } from "../fixtures/test";
 
 // ---------------------------------------------------------------------------
 // Wire helpers
 // ---------------------------------------------------------------------------
 
-const BASE_URL = `http://localhost:${process.env.PORT ?? "3000"}`;
+const BASE_URL = getE2EAppOrigin();
 
 // Hard per-fetch ceilings so NO native fetch can outlive a bound even if a test
 // times out before `finally`/`dispose()` runs (the original CI hang: dangling

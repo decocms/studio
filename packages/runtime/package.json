@@ -11,7 +11,6 @@
     "@decocms/bindings": "^1.0.7",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@ai-sdk/provider": "^3.0.10",
-    "hono": "^4.10.7",
     "jose": "^6.0.11",
     "zod": "^4.0.0"
   },

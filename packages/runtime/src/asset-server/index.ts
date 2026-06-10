@@ -1,4 +1,3 @@
-import { devServerProxy } from "./dev-server-proxy";
 import { resolve, dirname, join, extname, basename, sep } from "path";
 
 /**
@@ -27,16 +26,10 @@ function getAssetCacheHeaders(
 
 export interface AssetServerConfig {
   /**
-   * Environment mode. Determines whether to proxy to dev server or serve static files.
+   * Environment mode. Determines whether to no-op in dev or serve static files.
    * @default process.env.NODE_ENV || "development"
    */
   env?: "development" | "production" | "test";
-
-  /**
-   * URL of the Vite dev server for development mode.
-   * @default "http://localhost:4000"
-   */
-  devServerUrl?: string | URL;
 
   /**
    * Directory containing the built client assets.
@@ -46,6 +39,12 @@ export interface AssetServerConfig {
   clientDir?: string;
 
   /**
+   * @deprecated Development assets are served by Vite in front of Bun.
+   * This option is kept for compatibility and is ignored.
+   */
+  devServerUrl?: string | URL;
+
+  /**
    * Function to check if a path should be handled by the API server.
    * Return true for API routes, false for static files.
    * If not provided, defaults to serving everything as static.
@@ -53,7 +52,6 @@ export interface AssetServerConfig {
   isServerPath?: (path: string) => boolean;
 }
 
-const DEFAULT_DEV_SERVER_URL = `http://localhost:${process.env.VITE_PORT || "4000"}`;
 const DEFAULT_CLIENT_DIR = "./dist/client";
 
 /**
@@ -150,7 +148,7 @@ export function resolveClientDir(
 /**
  * Create an asset handler that works with Bun.serve.
  *
- * In development: Proxies requests to Vite dev server
+ * In development: Does not serve assets; Vite should front the Bun server
  * In production: Serves static files with SPA fallback
  *
  * @example
@@ -172,29 +170,17 @@ export function createAssetHandler(config: AssetServerConfig = {}) {
   const {
     env = (process.env.NODE_ENV as "development" | "production" | "test") ||
       "development",
-    devServerUrl = DEFAULT_DEV_SERVER_URL,
     clientDir = DEFAULT_CLIENT_DIR,
     isServerPath = () => false,
   } = config;
 
-  // Development: Create a proxy handler
+  // Development: Vite fronts the app and proxies API/server routes to Bun.
+  // Keep the Bun-side asset handler inert so direct Bun requests are API-only.
   if (env === "development") {
-    const proxyHandler = devServerProxy(devServerUrl);
-
     return async function handleAssets(
-      request: Request,
+      _request: Request,
     ): Promise<Response | null> {
-      // In dev, proxy everything except server paths
-      const url = new URL(request.url);
-      if (isServerPath(url.pathname)) {
-        return null;
-      }
-
-      // Create a minimal Hono context for the proxy
-      const fakeContext = {
-        req: { raw: request, url: request.url },
-      };
-      return proxyHandler(fakeContext as any);
+      return null;
     };
   }
 

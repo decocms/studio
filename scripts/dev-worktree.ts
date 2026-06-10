@@ -46,7 +46,7 @@ startWorktree(slug, async (ctx) => {
     { stdio: ["inherit", "inherit", "inherit"] },
   );
 
-  return { port, process: child };
+  return { port: vitePort, process: child };
 }).catch((e) => {
   console.error("dev:worktree error:", e);
   process.exit(1);
