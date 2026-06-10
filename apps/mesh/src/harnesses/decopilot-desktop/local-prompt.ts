@@ -20,10 +20,7 @@ import {
   buildSystemMessages,
   type SystemMessage,
 } from "../decopilot/system-prompt";
-export {
-  DEFAULT_WINDOW_SIZE,
-  PARENT_STEP_LIMIT,
-} from "../decopilot/prompt-constants";
+export { PARENT_STEP_LIMIT } from "../decopilot/prompt-constants";
 import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,

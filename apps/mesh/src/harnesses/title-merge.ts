@@ -15,6 +15,9 @@
  * superset of `TitleHandle` (it carries `{ promise, finish }`), so existing
  * call sites pass without a cast.
  *
+ * Also exports `shouldGenerateTitle` — the producer-side auto-title gate
+ * (decision D13) that every harness consults before kicking off `genTitle`.
+ *
  * This module is `@/*`-free so the daemon can bundle it.
  */
 import type { UIMessageChunk } from "ai";

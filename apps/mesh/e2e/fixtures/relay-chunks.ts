@@ -57,10 +57,10 @@ function uiChunkEvent(chunk: unknown): unknown {
 
 /**
  * Build the ordered list of relay EVENTS (pre-seq) for one assistant turn.
- * Exposed separately so callers can compose multi-turn or partial-prefix
- * bodies (reconnect-replay case) before seq-numbering.
+ * Factored out from the body builders so a turn's events can be composed
+ * (e.g. with a terminal `done`/`error` line) before seq-numbering.
  */
-export function buildTurnEvents(opts: BuildTurnOptions): unknown[] {
+function buildTurnEvents(opts: BuildTurnOptions): unknown[] {
   const textId = `${opts.messageId}-text-0`;
   const events: unknown[] = [];
 
@@ -107,7 +107,7 @@ export function buildTurnEvents(opts: BuildTurnOptions): unknown[] {
 /** Seq-number a list of events (1-based) and serialize as NDJSON with a
  *  trailing newline. The cluster dedupes by seq, so a caller may re-serialize
  *  the same prefix to simulate a reconnect replay. */
-export function serializeRelayLines(events: unknown[]): string {
+function serializeRelayLines(events: unknown[]): string {
   return `${events
     .map((event, i) => JSON.stringify({ seq: i + 1, event }))
     .join("\n")}\n`;

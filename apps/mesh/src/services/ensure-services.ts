@@ -899,10 +899,9 @@ async function ensureMinio(home: string): Promise<ServiceInfo> {
       info.port = existing.port;
       info.owner = "managed";
       // Always provision the bucket on every dev start — provisionMinioBucket
-      // is idempotent (bucket create swallows BucketAlreadyOwnedByUs/Exists;
-      // lifecycle PutBucketLifecycleConfiguration is declarative). This ensures
-      // the bucket exists even if a previous run wrote state.json but crashed
-      // before completing provisioning.
+      // is idempotent (bucket create swallows BucketAlreadyOwnedByUs/Exists).
+      // This ensures the bucket exists even if a previous run wrote state.json
+      // but crashed before completing provisioning.
       await provisionMinioBucket(`http://127.0.0.1:${existing.port}`);
       return info;
     }

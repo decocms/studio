@@ -3,15 +3,14 @@
  * (spec decision Q4: containment by construction — the cluster never dictates
  * a host-absolute path on a user machine).
  *
- * The sentinel value "default" and the symbolic constant "/repo" are the same
- * as `WORKSPACE_CWD_DEFAULT` / `WORKSPACE_CWD_REPO` in
- * `apps/mesh/src/harnesses/workspace-cwd.ts`. They are re-declared here rather
+ * The sentinel value "default" is the same as `WORKSPACE_CWD_DEFAULT` in
+ * `apps/mesh/src/harnesses/workspace-cwd.ts`. It is re-declared here rather
  * than imported across the packages→apps boundary — same convention as the
  * rest of the daemon graph.
  */
 import { resolve, sep } from "node:path";
 
-export const WORKSPACE_CWD_DEFAULT = "default";
+const WORKSPACE_CWD_DEFAULT = "default";
 
 export function rebaseWorkspaceCwd(cwd: string, appRoot: string): string {
   if (cwd === WORKSPACE_CWD_DEFAULT) return cwd;

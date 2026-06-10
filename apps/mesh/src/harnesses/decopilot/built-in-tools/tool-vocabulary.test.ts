@@ -142,11 +142,12 @@ function buildDesktopBuiltInsForTest(): Set<string> {
 /**
  * The CLUSTER visible built-in vocabulary. The cluster's `buildAllTools` calls
  * the SAME portable builder for the shared base (without stubs — it has the real
- * tools), then adds the cluster-only REAL tools outside it: `update_interests`
- * (storage-backed) and `web_search` (deep-research). Image + Browserless tools
- * carry identical NAMES on the cluster path (cluster factories, same names), and
- * VM + subtask come from the same shared builders. We reconstruct the cluster's
- * full built-in NAME set here because `getBuiltInTools` needs real I/O to run.
+ * tools), then adds REAL tools OUTSIDE it: `update_interests` (storage-backed),
+ * `web_search` (deep-research), and `generate_image` (via `createGenerateImageTool`,
+ * NOT passed into the portable builder on the cluster path). VM + subtask come
+ * from the same shared builders. To reproduce the same NAME set without real I/O,
+ * this helper instead hands `imageTool` to the portable builder so `generate_image`
+ * lands in `portableBase` — the resulting NAMES match the cluster either way.
  */
 function buildClusterBuiltInsForTest(): Set<string> {
   const portableBase = buildPortableBuiltInTools({

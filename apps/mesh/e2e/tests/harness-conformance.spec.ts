@@ -440,8 +440,10 @@ test.describe("harness conformance — relay driver", () => {
           body,
         );
         expect(res.status()).toBe(200);
-        // Title interceptor gates on the request-time title != default, so the
-        // user's title survives.
+        // Title interceptor gates on the thread's CURRENT DB title (read at
+        // relay time) != default, so the user's title survives. (Here that
+        // equals the title set at thread creation — nothing renames between
+        // dispatch and relay.)
         expect(await fetchThreadTitle(db, threadId)).toBe(userTitle);
       }
     } finally {
@@ -971,7 +973,9 @@ test.describe("harness conformance — pull-seam body offload", () => {
 //     (decopilot-messages.spec.ts documents this).
 //   - A CLI harness (claude-code/codex) on agent-sandbox needs a real
 //     sandbox + LLM to emit chunks.
-//   - There is no mock-AI provider wired into the e2e harness.
+//   - No mock-AI provider is wired into THIS e2e harness. (One exists in
+//     tests/multi-pod, gated by STREAM_OF_RECORD_V2_PERCENT; porting it here
+//     is the cleanest path to enabling this driver — see option (a) below.)
 //
 // TO ENABLE this driver in CI, ONE of:
 //   (a) a mock-AI provider/model registered for e2e (deterministic chunk
