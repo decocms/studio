@@ -48,9 +48,9 @@ describe("resolveTierSubtitle", () => {
         "Sonnet 4.6",
       );
     });
-    it("thinking → Opus 4.8", () => {
+    it("thinking → Fable 5", () => {
       expect(resolveTierSubtitle("local-claude-code", "thinking")).toBe(
-        "Opus 4.8",
+        "Fable 5",
       );
     });
   });
