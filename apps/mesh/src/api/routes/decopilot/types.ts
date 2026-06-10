@@ -48,6 +48,16 @@ export type ChatMessage = UIMessage<
     "web-search": {
       delta: string;
     };
+    /**
+     * Structured trigger payload for an event/webhook-fired automation run.
+     * UI-only — dropped by `convertToModelMessages`; the sibling text part is
+     * what the model reads. Rendered as a dedicated card on the user message.
+     */
+    "trigger-event": {
+      source: string;
+      type: string;
+      data: unknown;
+    };
   },
   {
     [K in keyof BuiltInToolSet]: InferUITool<BuiltInToolSet[K]>;
