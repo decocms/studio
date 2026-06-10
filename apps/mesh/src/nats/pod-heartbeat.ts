@@ -20,6 +20,8 @@ export interface PodHeartbeat {
   start(podId: string): void;
   /** Watch for pod deaths. Callback receives the dead podId. */
   onPodDeath(callback: (deadPodId: string) => void): void;
+  /** Snapshot of currently-heartbeating pod ids. Empty set when unavailable. */
+  listAlivePods(): Promise<Set<string>>;
   stop(): Promise<void>;
 }
 
@@ -99,6 +101,22 @@ export class NatsPodHeartbeat implements PodHeartbeat {
       return;
     }
     this.startDeathWatcher(callback);
+  }
+
+  async listAlivePods(): Promise<Set<string>> {
+    const alive = new Set<string>();
+    // Make sure init (if in flight) settled, so a just-booted pod doesn't read
+    // an empty set before the KV view is open.
+    await this.initPromise?.catch(() => {});
+    if (!this.kv) return alive;
+    try {
+      const iter = await this.kv.keys();
+      for await (const key of iter) alive.add(key);
+    } catch {
+      // Empty bucket / transient read error → return whatever we have; callers
+      // treat a self-missing set as "unknown" and skip liveness-based actions.
+    }
+    return alive;
   }
 
   private startDeathWatcher(callback: (deadPodId: string) => void): void {
