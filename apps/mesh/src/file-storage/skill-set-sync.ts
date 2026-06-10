@@ -24,6 +24,7 @@ import { DevObjectStorage } from "../object-storage/dev-object-storage";
 import { getObjectStorageS3Service } from "../object-storage/factory";
 import { detectContentType } from "../object-storage/key-utils";
 import { OrgFs } from "./org-fs";
+import { normalizeFsPath } from "./org-fs-path";
 import {
   getPublicSets,
   ORG_FS_PUBLIC_ORG_ID,
@@ -141,7 +142,12 @@ async function fetchRepoFiles(
   return files;
 }
 
-/** Apply the set's `paths` mapping: repo files → desired volume tree. */
+/**
+ * Apply the set's `paths` mapping: repo files → desired volume tree. Keys are
+ * normalized exactly like `OrgFs.write` stores them — otherwise a filename
+ * that changes under normalization never matches its manifest entry and gets
+ * rewritten+deleted every cycle.
+ */
 export function planVolumeTree(
   repoFiles: Map<string, Uint8Array>,
   paths: PublicSkillSetSource["paths"],
@@ -153,10 +159,36 @@ export function planVolumeTree(
       if (!path.startsWith(prefix)) continue;
       const rest = path.slice(prefix.length);
       if (!rest) continue;
-      desired.set(to ? `${to}/${rest}` : rest, bytes);
+      const normalized = normalizeFsPath(to ? `${to}/${rest}` : rest);
+      if (normalized) desired.set(normalized, bytes);
     }
   }
   return desired;
+}
+
+/**
+ * Dirs with no remaining desired file beneath them, shallowest-first with
+ * covered descendants dropped — each survivor is one recursive delete.
+ */
+export function staleDirs(
+  desiredFiles: Iterable<string>,
+  currentDirs: Iterable<string>,
+): string[] {
+  const needed = new Set<string>();
+  for (const file of desiredFiles) {
+    const segs = file.split("/");
+    for (let i = 1; i < segs.length; i++) {
+      needed.add(segs.slice(0, i).join("/"));
+    }
+  }
+  const stale = [...currentDirs]
+    .filter((d) => !needed.has(d))
+    .sort((a, b) => a.length - b.length);
+  const roots: string[] = [];
+  for (const d of stale) {
+    if (!roots.some((r) => d.startsWith(`${r}/`))) roots.push(d);
+  }
+  return roots;
 }
 
 function sha256Hex(bytes: Uint8Array): string {
@@ -195,6 +227,15 @@ export async function syncPublicSet(
     ]),
   );
 
+  // An upstream dir rename or config typo yields an empty desired tree from a
+  // perfectly successful fetch — refuse to wipe a live set over it.
+  if (desired.size === 0 && current.size > 0) {
+    throw new Error(
+      `set "${source.set}" resolved 0 files from ${source.repo}@${source.ref} ` +
+        `(check paths config) — refusing to delete the ${current.size} existing files`,
+    );
+  }
+
   let written = 0;
   let unchanged = 0;
   for (const [path, bytes] of desired) {
@@ -215,6 +256,15 @@ export async function syncPublicSet(
     if (desired.has(path)) continue;
     await fs.delete(volume, path, { actor: SYNC_ACTOR });
     deleted++;
+  }
+  // Prune dirs left empty by upstream deletions (file tombstones don't touch
+  // the parent dir entries; each stale root deletes its whole subtree).
+  const dirs = await manifest.listVolumeDirs(ORG_FS_PUBLIC_ORG_ID, volume);
+  for (const dir of staleDirs(
+    desired.keys(),
+    dirs.map((d) => d.path),
+  )) {
+    await fs.delete(volume, dir, { actor: SYNC_ACTOR });
   }
   return { set: source.set, written, deleted, unchanged };
 }

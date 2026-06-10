@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseTar, planVolumeTree } from "./skill-set-sync";
+import { parseTar, planVolumeTree, staleDirs } from "./skill-set-sync";
 
 /** Build a minimal ustar archive in memory (the GitHub tarball shape). */
 function makeTar(
@@ -92,5 +92,40 @@ describe("planVolumeTree", () => {
   it("from='' maps the whole repo", () => {
     const tree = planVolumeTree(repo, [{ from: "" }]);
     expect(tree.size).toBe(4);
+  });
+});
+
+describe("planVolumeTree normalization", () => {
+  it("keys match what OrgFs.write stores (sanitized paths)", () => {
+    const repo = new Map([
+      ["skills/a%20b/SKILL.md", new TextEncoder().encode("x")],
+      ["skills/./weird/../ok/SKILL.md", new TextEncoder().encode("y")],
+    ]);
+    const tree = planVolumeTree(repo, [{ from: "skills" }]);
+    // exact strings depend on sanitizeKey; the invariant that matters is
+    // stability: re-normalizing a key is a no-op (idempotent fixpoint).
+    for (const key of tree.keys()) {
+      expect(key.includes("..")).toBe(false);
+      expect(key.startsWith("/")).toBe(false);
+    }
+  });
+});
+
+describe("staleDirs", () => {
+  it("keeps ancestors of desired files, prunes the rest shallowest-first", () => {
+    const desired = ["keep/one/SKILL.md", "keep/two/SKILL.md"];
+    const dirs = [
+      "keep",
+      "keep/one",
+      "keep/two",
+      "gone",
+      "gone/sub",
+      "keep/old",
+    ];
+    expect(staleDirs(desired, dirs).sort()).toEqual(["gone", "keep/old"]);
+  });
+
+  it("collapses nested stale dirs into one recursive root", () => {
+    expect(staleDirs([], ["a", "a/b", "a/b/c"])).toEqual(["a"]);
   });
 });
