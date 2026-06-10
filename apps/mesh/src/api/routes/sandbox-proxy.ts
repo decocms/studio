@@ -606,7 +606,12 @@ export const createSandboxRoutes = () => {
       return c.json({ error: "Path not allowed" }, 403);
     }
 
-    const previewUrl = await runner.getPreviewUrl(claimName);
+    let previewUrl: string | null;
+    try {
+      previewUrl = await runner.getPreviewUrl(claimName);
+    } catch {
+      return c.json({ error: "Preview not available" }, 502);
+    }
     if (!previewUrl) {
       return c.json({ error: "Preview not available" }, 502);
     }
@@ -619,7 +624,12 @@ export const createSandboxRoutes = () => {
       return c.json({ error: "Preview unreachable" }, 502);
     }
 
-    const text = await upstream.text();
+    let text: string;
+    try {
+      text = await upstream.text();
+    } catch {
+      return c.json({ error: "Preview unreachable" }, 502);
+    }
     return new Response(text, {
       status: upstream.status,
       headers: {
@@ -641,7 +651,12 @@ export const createSandboxRoutes = () => {
       if (runner instanceof Response) return runner;
 
       const { claimName } = c.get("vmClaim");
-      const previewUrl = await runner.getPreviewUrl(claimName);
+      let previewUrl: string | null;
+      try {
+        previewUrl = await runner.getPreviewUrl(claimName);
+      } catch {
+        return c.json({ error: "Preview not available" }, 502);
+      }
       if (!previewUrl) {
         return c.json({ error: "Preview not available" }, 502);
       }
@@ -677,7 +692,12 @@ export const createSandboxRoutes = () => {
         return c.json({ error: "Preview unreachable" }, 502);
       }
 
-      const text = await upstream.text();
+      let text: string;
+      try {
+        text = await upstream.text();
+      } catch {
+        return c.json({ error: "Preview unreachable" }, 502);
+      }
       return new Response(text, {
         status: upstream.status,
         headers: {
