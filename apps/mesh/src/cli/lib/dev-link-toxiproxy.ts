@@ -75,6 +75,13 @@ export function buildDevLinkToxiProxyConfig(
   };
 }
 
+export function resolveDevLinkClusterUrl(input: {
+  serverUrl: string;
+  toxiproxy: DevLinkToxiProxyConfig | null;
+}): string {
+  return input.toxiproxy?.clusterUrl ?? input.serverUrl;
+}
+
 async function assertToxiProxyResponseOk(
   response: Response,
   context: string,

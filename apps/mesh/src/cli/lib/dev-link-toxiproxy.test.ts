@@ -7,6 +7,7 @@ import {
   ensureDevLinkToxiProxy,
   isDevLinkToxiProxyEnabled,
   populateDevLinkToxiProxy,
+  resolveDevLinkClusterUrl,
 } from "./dev-link-toxiproxy";
 
 describe("dev-link-toxiproxy config", () => {
@@ -93,6 +94,30 @@ describe("dev-link-toxiproxy config", () => {
         listenPort: 18480,
       }),
     ).toThrow(/upstreamPort must be an integer port in 1\.\.65535/);
+  });
+});
+
+describe("resolveDevLinkClusterUrl", () => {
+  test("uses serverUrl when no proxy config exists", () => {
+    expect(
+      resolveDevLinkClusterUrl({
+        serverUrl: "http://localhost:4001",
+        toxiproxy: null,
+      }),
+    ).toBe("http://localhost:4001");
+  });
+
+  test("uses proxied clusterUrl when proxy config exists", () => {
+    expect(
+      resolveDevLinkClusterUrl({
+        serverUrl: "http://localhost:4001",
+        toxiproxy: buildDevLinkToxiProxyConfig({
+          serverUrl: "http://localhost:4001",
+          apiPort: 18474,
+          listenPort: 18480,
+        }),
+      }),
+    ).toBe("http://127.0.0.1:18480");
   });
 });
 
