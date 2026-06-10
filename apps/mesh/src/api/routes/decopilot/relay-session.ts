@@ -114,7 +114,16 @@ class RelaySessionImpl implements RelaySession {
   readonly whenComplete: Promise<void>;
 
   private readonly queue: UIMessageChunk[] = [];
-  private failure: (Error & { code?: string }) | null = null;
+  /**
+   * Set by a daemon `error` event — drain the queue THEN throw (everything
+   * received before the error is delivered to the consumer).
+   */
+  private errorFailure: (Error & { code?: string }) | null = null;
+  /**
+   * Set by `fail()` (eviction) — discard the queue and throw immediately.
+   * An evicted session must write NOTHING, so buffered chunks are dropped.
+   */
+  private evictedFailure: (Error & { code?: string }) | null = null;
   private change = Promise.withResolvers<void>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -131,7 +140,7 @@ class RelaySessionImpl implements RelaySession {
   }
 
   private armIdleTimer(): void {
-    if (this.ended || this.failure) return;
+    if (this.ended || this.errorFailure || this.evictedFailure) return;
     this.clearIdleTimer();
     const timer = setTimeout(this.onIdle, this.idleTimeoutMs);
     // Never let the reaper timer keep the process alive (matches daemon-side
@@ -159,7 +168,7 @@ class RelaySessionImpl implements RelaySession {
     } else if (event.type === "error") {
       this.ended = true;
       this.clearIdleTimer();
-      this.failure = Object.assign(
+      this.errorFailure = Object.assign(
         new Error(`${event.code}: ${event.message}`),
         { code: event.code },
       );
@@ -175,12 +184,19 @@ class RelaySessionImpl implements RelaySession {
    * Terminate the session's iterable with a coded failure (eviction). A no-op
    * once the session has already ended/failed — a terminal line always wins
    * over an eviction race.
+   *
+   * Unlike a daemon `error` event (which drains queued chunks first), eviction
+   * DISCARDS the pending queue so the consumer observes ZERO chunks after the
+   * evict call. This prevents a queued `finish-step` from triggering kernel
+   * persistence for a torn-down session.
    */
   fail(reason: RelayEvictReason): void {
-    if (this.ended || this.failure) return;
+    if (this.ended || this.errorFailure || this.evictedFailure) return;
     this.ended = true;
     this.clearIdleTimer();
-    this.failure = Object.assign(new Error(reason), { code: reason });
+    // Discard buffered chunks — an evicted session must write nothing.
+    this.queue.length = 0;
+    this.evictedFailure = Object.assign(new Error(reason), { code: reason });
     this.signalChange();
   }
 
@@ -196,13 +212,15 @@ class RelaySessionImpl implements RelaySession {
       // resolves this captured promise (no lost wakeups) — same idiom as the
       // daemon relay's signalChange (chunk-relay.ts).
       const waiter = this.change.promise;
+      // Eviction discards the queue and throws immediately — no drain window.
+      if (this.evictedFailure) throw this.evictedFailure;
       if (this.queue.length > 0) {
         yield this.queue.shift()!;
         continue;
       }
-      // Queued chunks drain before a failure surfaces: an error line only
-      // terminates the stream after everything relayed before it.
-      if (this.failure) throw this.failure;
+      // Queued chunks drain before a daemon error surfaces: everything relayed
+      // before the error line is delivered to the consumer first.
+      if (this.errorFailure) throw this.errorFailure;
       if (this.ended) return;
       await waiter;
     }

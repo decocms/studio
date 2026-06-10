@@ -276,9 +276,9 @@ describe("relay session registry", () => {
     expect(fresh.received).toEqual([
       { type: "text-delta", id: "t", delta: "FRESH" },
     ]);
-    expect(stale.received).toEqual([
-      { type: "text-delta", id: "t", delta: "STALE" },
-    ]);
+    // Eviction discards the stale session's queue — queued-but-undelivered
+    // chunks are dropped so the stale consumer writes nothing.
+    expect(stale.received).toEqual([]);
     // The fresh session's settle .finally must NOT delete a now-absent entry,
     // and the registry holds the fresh session until it settles.
     await sleep(0);
@@ -341,5 +341,45 @@ describe("relay session registry", () => {
 
   test("default idle timeout is 15 minutes", () => {
     expect(RELAY_SESSION_IDLE_TIMEOUT_MS).toBe(15 * 60 * 1000);
+  });
+
+  test("evict discards queued chunks — consumer observes zero chunks from pre-eviction queue", async () => {
+    const registry = createRelaySessionRegistry();
+    const { received, consume } = collectingConsumer();
+    const session = registry.open("run_1", FENCE, { consume });
+
+    // Push a full step sequence but do NOT let the consumer drain yet.
+    session.push(chunkLine(1, { type: "start", messageId: "m1" }));
+    session.push(chunkLine(2, { type: "start-step" }));
+    session.push(chunkLine(3, { type: "finish-step" }));
+
+    // Evict before the consumer gets a chance to pull any queued chunks.
+    registry.evict("run_1", "relay_superseded");
+
+    await expect(session.whenComplete).rejects.toThrow("relay_superseded");
+    // The queued start/start-step/finish-step must have been discarded — the
+    // consumer must have received ZERO chunks (no ghost persistence).
+    expect(received).toHaveLength(0);
+  });
+
+  test("a normal error event still drains queued chunks before throwing", async () => {
+    const registry = createRelaySessionRegistry();
+    const { received, consume } = collectingConsumer();
+    const session = registry.open("run_1", FENCE, { consume });
+
+    // Push chunks + an error line before the consumer gets a chance to pull:
+    // the queued chunks must still be yielded before the failure is thrown.
+    session.push(chunkLine(1, { type: "start", messageId: "m1" }));
+    session.push(chunkLine(2, { type: "start-step" }));
+    session.push(chunkLine(3, { type: "finish-step" }));
+    session.push(errorLine(4, "sandbox_dead", "sandbox went away"));
+
+    await session.whenComplete.catch(() => {});
+    // All three chunks before the error must have been delivered.
+    expect(received).toEqual([
+      { type: "start", messageId: "m1" },
+      { type: "start-step" },
+      { type: "finish-step" },
+    ]);
   });
 });
