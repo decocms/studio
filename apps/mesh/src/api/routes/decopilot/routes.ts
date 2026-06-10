@@ -43,6 +43,7 @@ import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { resolveHarnessId } from "./dispatch-run";
+import { stringifyError } from "@/harnesses/decopilot/stream-error";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { LinkClaimRegistry } from "../../../links/link-claim-registry";
@@ -822,7 +823,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       return wrapWithSseKeepalive(baseResponse);
     } catch (err) {
       if (err instanceof HTTPException) throw err;
-      console.error("[decopilot:stream] Error", err);
+      console.error("[decopilot:stream] Error", stringifyError(err));
       return c.body(null, 500);
     }
   });
