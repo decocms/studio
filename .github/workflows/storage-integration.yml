@@ -61,12 +61,35 @@ jobs:
             exit 0
           fi
           echo "Changed files:"; echo "$FILES"
+          # Storage integration is expensive and infrastructure-backed. Keep the
+          # required check scheduled, but only run the real DB/MinIO suite when
+          # files it actually exercises changed.
           relevant=false
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
-              .github/*|apps/docs/*|*.md) ;;
-              *) relevant=true; break ;;
+              apps/mesh/migrations/*|\
+              apps/mesh/src/api/*|\
+              apps/mesh/src/auth/*|\
+              apps/mesh/src/core/*|\
+              apps/mesh/src/database/*|\
+              apps/mesh/src/file-storage/*|\
+              apps/mesh/src/harnesses/*|\
+              apps/mesh/src/mcp-clients/*|\
+              apps/mesh/src/monitoring/*|\
+              apps/mesh/src/oauth/*|\
+              apps/mesh/src/object-storage/*|\
+              apps/mesh/src/storage/*|\
+              apps/mesh/src/tools/*|\
+              packages/bindings/*|\
+              packages/mesh-plugin-workflows/*|\
+              packages/runtime/*|\
+              .github/actions/start-minio/*|\
+              .github/workflows/storage-integration.yml|\
+              TESTING.md|\
+              package.json|\
+              bun.lock|\
+              apps/mesh/package.json) relevant=true; break ;;
             esac
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
