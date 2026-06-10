@@ -210,7 +210,153 @@ describe("consumeHarnessStream", () => {
       outputTokens: 5,
       totalTokens: 15,
       cacheReadTokens: 7,
+      cacheWriteTokens: 2,
       costUsd: 0.0123,
     });
+  });
+
+  test("passes finishReason to the onFinish hook", async () => {
+    let reason: string | undefined;
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: textChunks(),
+      originalMessages: [],
+      title: {
+        currentThreadTitle: "Existing title",
+        threadId: "thread-1",
+        persistTitle: async () => {},
+      },
+      persistence: {
+        emitFinal: async () => {},
+        emitStepParts: async () => {},
+        emitError: async () => {},
+      },
+      hooks: {
+        onFinish: (_message, finishReason) => {
+          reason = finishReason;
+        },
+      },
+    });
+
+    await drain(uiStream);
+    await whenComplete;
+
+    expect(reason).toBe("stop");
+  });
+
+  test("delivers usage to onUsage before the onFinish hook", async () => {
+    const order: string[] = [];
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: textChunksWithUsage(),
+      originalMessages: [],
+      title: {
+        currentThreadTitle: "Existing title",
+        threadId: "thread-1",
+        persistTitle: async () => {},
+      },
+      persistence: {
+        emitFinal: async () => {},
+        emitStepParts: async () => {},
+        emitError: async () => {},
+      },
+      hooks: {
+        onUsage: () => {
+          order.push("usage");
+        },
+        onFinish: () => {
+          order.push("finish");
+        },
+      },
+    });
+
+    await drain(uiStream);
+    await whenComplete;
+
+    expect(order).toEqual(["usage", "finish"]);
+  });
+
+  test("ignores non-object usage metadata (array)", async () => {
+    const usage: unknown[] = [];
+    const chunks = (async function* () {
+      yield { type: "start" } as UIMessageChunk;
+      yield {
+        type: "message-metadata",
+        messageMetadata: { usage: [10, 5, 15] },
+      } as UIMessageChunk;
+      yield { type: "text-start", id: "txt" } as UIMessageChunk;
+      yield { type: "text-delta", id: "txt", delta: "hello" } as UIMessageChunk;
+      yield { type: "text-end", id: "txt" } as UIMessageChunk;
+      yield { type: "finish", finishReason: "stop" } as UIMessageChunk;
+    })();
+
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks,
+      originalMessages: [],
+      title: {
+        currentThreadTitle: "Existing title",
+        threadId: "thread-1",
+        persistTitle: async () => {},
+      },
+      persistence: {
+        emitFinal: async () => {},
+        emitStepParts: async () => {},
+        emitError: async () => {},
+      },
+      hooks: {
+        onUsage: (totals) => {
+          usage.push(totals);
+        },
+      },
+    });
+
+    await drain(uiStream);
+    await whenComplete;
+
+    expect(usage).toEqual([]);
+  });
+
+  test("sanitizeErrorText shapes the wire error chunk; emitError keeps raw text", async () => {
+    const emitted: string[] = [];
+    const exposed: UIMessageChunk[] = [];
+    const chunks = (async function* () {
+      yield { type: "start" } as UIMessageChunk;
+      throw new Error("raw provider failure");
+    })();
+
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks,
+      originalMessages: [],
+      title: {
+        currentThreadTitle: "Existing title",
+        threadId: "thread-1",
+        persistTitle: async () => {},
+      },
+      persistence: {
+        emitFinal: async () => {},
+        emitStepParts: async () => {},
+        emitError: async (_messageId, errorText) => {
+          emitted.push(errorText);
+        },
+      },
+      sanitizeErrorText: (error) =>
+        `[SANITIZED] ${error instanceof Error ? error.message : String(error)}`,
+    });
+
+    const reader = uiStream.getReader();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        exposed.push(value as UIMessageChunk);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    await whenComplete;
+
+    const errorChunk = exposed.find((c) => c.type === "error") as
+      | { type: "error"; errorText: string }
+      | undefined;
+    expect(errorChunk?.errorText).toBe("[SANITIZED] raw provider failure");
+    expect(emitted).toEqual(["raw provider failure"]);
   });
 });

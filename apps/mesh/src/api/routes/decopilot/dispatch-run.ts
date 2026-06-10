@@ -18,13 +18,15 @@
  * system-prompt construction is delegated to a Harness via
  * `localDispatch(harnessId, harnessInput, ctx)`. The three in-tree harnesses
  * (`decopilot`, `claude-code`, `codex`) each produce `UIMessageChunk`
- * streams that get merged into the outer `createUIMessageStream` writer;
- * the drain reader consumes the result.
+ * streams consumed by the harness kernel (`consumeHarnessStream`) — the
+ * ONLY consume-side stream layer. dispatch-run feeds the kernel a lazy
+ * chunk source and run-lifecycle hooks (registry STEP_DONE/FINISH, thread
+ * status, posthog); the kernel's output stream is the run's uiStream.
  */
 
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
-import { createUIMessageStream } from "ai";
+import type { UIMessageChunk } from "ai";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
 import {
@@ -147,6 +149,48 @@ function tapProgress(
         progressThrottle.clear(taskId);
       },
     }),
+  );
+}
+
+/**
+ * Defer stream construction until the first consumer pull.
+ *
+ * `prepareRun` must NOT start any harness work unless its `uiStream` is
+ * actually consumed: `pullDispatch` calls `prepareRun` solely for the run
+ * claim + eager wire input and never consumes the stream — the daemon runs
+ * the harness remotely from the published work item, so an eager start here
+ * would double-dispatch the run. The AI SDK's `createUIMessageStream` runs
+ * its `execute` callback (and drains `writer.merge` sources) EAGERLY at
+ * construction time, so laziness must wrap the kernel construction itself:
+ * the factory runs on the first `pull`, which is when the harness dispatch
+ * actually starts. Cancelling before the first pull never invokes the
+ * factory.
+ *
+ * `highWaterMark: 0` is load-bearing: with the default (1) the stream calls
+ * `pull` at construction to pre-fill its queue, defeating the laziness.
+ * For the same reason the factory must contain any `pipeThrough` wrapping
+ * (e.g. `tapProgress`) — piping into a transform with the default writable
+ * high-water mark eagerly pulls one chunk even with no downstream consumer.
+ */
+function lazyStream<T>(factory: () => ReadableStream<T>): ReadableStream<T> {
+  let reader: ReadableStreamDefaultReader<T> | null = null;
+  return new ReadableStream<T>(
+    {
+      async pull(controller) {
+        try {
+          reader ??= factory().getReader();
+          const { done, value } = await reader.read();
+          if (done) controller.close();
+          else controller.enqueue(value);
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+      async cancel(reason) {
+        await reader?.cancel(reason);
+      },
+    },
+    { highWaterMark: 0 },
   );
 }
 
@@ -496,7 +540,7 @@ export async function dispatchRunAndWait(
  * Built eagerly in `prepareRun`'s main body (mcp mint + message
  * materialization + field assembly) so it's available without consuming
  * `uiStream`. The hosted dispatch path layers the signal on top inside the
- * lazy `createUIMessageStream` execute callback:
+ * lazy harness chunk source:
  * `{ ...wireHarnessInput, signal: registrySignal }`.
  */
 export type WireHarnessInput = Omit<HarnessStreamInput, "signal"> & {
@@ -505,6 +549,11 @@ export type WireHarnessInput = Omit<HarnessStreamInput, "signal"> & {
 
 interface PreparedRun {
   taskId: string;
+  /**
+   * LAZY: no harness work happens until the first consumer pull (see
+   * `lazyStream`). Callers that never consume it (`pullDispatch`) never
+   * start a cluster-side harness run.
+   */
   uiStream: ReadableStream<unknown>;
   registrySignal: AbortSignal;
   /** Minted by prepareRun for pull-transport threads (spec §3.5). */
@@ -555,10 +604,12 @@ export async function resolveEffectiveVirtualMcpForHarness({
 
 /**
  * Setup phase shared by both dispatch variants. Claims the run, loads
- * conversation history, dispatches through the harness registry, and
- * constructs `uiStream` from the AI SDK pipeline. Returns the stream to
- * whoever called it; the caller decides how to consume it (pump for
- * fan-out, drain for direct await).
+ * conversation history, assembles the wire harness input, and constructs a
+ * LAZY `uiStream` whose first pull dispatches through the harness registry
+ * and consumes the chunks via the harness kernel (`consumeHarnessStream`).
+ * Returns the stream to whoever called it; the caller decides how to
+ * consume it (pump for fan-out, drain for direct await) — or, for
+ * `pullDispatch`, not at all (no cluster-side harness runs then).
  *
  * Setup-phase errors propagate out of here with the run already
  * force-FINISHED to "failed" in the registry. Consumption-phase errors
@@ -956,15 +1007,12 @@ async function prepareRun(
     // ── Build the wire HarnessStreamInput EAGERLY ───────────────────────────
     // Everything the daemon's `harnessStreamInputSchema` needs (mcp endpoint,
     // materialized messages, virtualMcp, fence token, …) is assembled here,
-    // before the lazy stream-execute callback runs. Two consumers read it:
-    //   - hosted dispatch (the `execute` callback below) layers the
+    // before the lazy harness chunk source runs. Two consumers read it:
+    //   - hosted dispatch (`dispatchHarnessChunks` below) layers the
     //     non-serializable `signal` on top:
     //     `{ ...wireHarnessInput, signal: registrySignal }`.
     //   - `pullDispatch` returns it verbatim so the thread gate can publish
     //     it as the pull work item's `harnessInput` (Phase D daemon loop).
-    // Moving the mcp mint + message materialization out of `execute` means
-    // they now run slightly earlier (eagerly) for the hosted path too —
-    // acceptable per the hard-break; behavior is otherwise identical.
 
     // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
     // Also handles legacy data: URLs from threads predating this pipeline.
@@ -1060,35 +1108,63 @@ async function prepareRun(
       runFenceToken,
     };
 
-    const uiStream = createUIMessageStream({
-      originalMessages: allMessages,
-      execute: async ({ writer }) => {
-        // The wire input (mcp endpoint + materialized messages + all
-        // serializable fields) was already assembled eagerly above. Here we
-        // only build the in-process accumulator for usage reporting — all
-        // harnesses deliver usage through stream metadata, consumed by
-        // consumeHarnessStream's onUsage hook.
-        const onUsageAggregated = (totalUsage: {
-          inputTokens: number;
-          outputTokens: number;
-          totalTokens: number;
-        }) => {
-          aggregatedUsage = {
-            inputTokens: aggregatedUsage.inputTokens + totalUsage.inputTokens,
-            outputTokens:
-              aggregatedUsage.outputTokens + totalUsage.outputTokens,
-            totalTokens: aggregatedUsage.totalTokens + totalUsage.totalTokens,
-          };
-        };
-        const onTitleUpdated = sseHub
-          ? buildOnTitleUpdated({
-              ctx,
-              sseHub,
-              threadId: mem.thread.id,
-              organizationId: input.organizationId,
-            })
-          : undefined;
+    // In-process accumulator for usage reporting — all harnesses deliver
+    // usage through stream metadata, consumed by consumeHarnessStream's
+    // onUsage hook. The kernel guarantees usage delivery BEFORE the finish
+    // hook fires, so the posthog completion event below reads final totals.
+    const onUsageAggregated = (totalUsage: {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+    }) => {
+      aggregatedUsage = {
+        inputTokens: aggregatedUsage.inputTokens + totalUsage.inputTokens,
+        outputTokens: aggregatedUsage.outputTokens + totalUsage.outputTokens,
+        totalTokens: aggregatedUsage.totalTokens + totalUsage.totalTokens,
+      };
+    };
+    const onTitleUpdated = sseHub
+      ? buildOnTitleUpdated({
+          ctx,
+          sseHub,
+          threadId: mem.thread.id,
+          organizationId: input.organizationId,
+        })
+      : undefined;
 
+    // ── LAZY harness dispatch ───────────────────────────────────────────────
+    // This generator's body — sandbox ensure, provider build, remote/local
+    // dispatch — runs only when the kernel pulls the first chunk, which (via
+    // `lazyStream` below) happens only once a consumer pulls `uiStream`.
+    // `pullDispatch` never consumes the stream, so pull-transport runs never
+    // start a cluster-side harness.
+    //
+    // claude-code cwd resolution: with the `host` runner gone, the
+    // Hosted execution never has a local on-disk workdir to point the CLI at,
+    // so the harness falls back to its own ambient cwd. Remote-user
+    // dispatch runs the harness inside the desktop daemon, where the
+    // daemon is spawned with workdir = sandbox path; remote-cli runs
+    // claude-code in-process on the user's machine (no resolver
+    // needed). The agent-sandbox runner doesn't surface a
+    // local FS to mesh.
+    //
+    // When a streamBuffer is wired, its JetStream pump consumes `uiStream`
+    // directly after prepareRun returns and publishes every chunk into the
+    // per-task subject — that's what /stream tails.
+    //
+    // Branch on the resolved target:
+    //   - `sandboxProviderKind === "user-desktop"` — the whole stream is
+    //     delegated to the user's link daemon. `resolveRemoteCliSandboxUrl`
+    //     calls `ensureSandbox` (handle == `computeHandle(sandboxId,
+    //     branch)`) so the sandbox is the same one SANDBOX_START
+    //     provisions — repo cloned, env pushed, dev server primed.
+    //     Mesh talks to the daemon over the NATS-backed dispatch
+    //     channel. Per-run state inside the daemon stays keyed by
+    //     `runId` (cancellation via DELETE /_sandbox/runs/<runId>).
+    //   - `sandboxProviderKind === "agent-sandbox"` — runs in hosted
+    //     execution.
+    const dispatchHarnessChunks =
+      async function* (): AsyncIterable<UIMessageChunk> {
         // Layer the non-serializable `signal` onto the eagerly-built wire
         // input. Everything else (mcp, materialized messages, fence token, …)
         // was assembled above and is shared verbatim with the pull work item.
@@ -1097,35 +1173,6 @@ async function prepareRun(
           signal: registrySignal,
         };
 
-        // claude-code cwd resolution: with the `host` runner gone, the
-        // Hosted execution never has a local on-disk workdir to point the CLI at,
-        // so the harness falls back to its own ambient cwd. Remote-user
-        // dispatch runs the harness inside the desktop daemon, where the
-        // daemon is spawned with workdir = sandbox path; remote-cli runs
-        // claude-code in-process on the user's machine (no resolver
-        // needed). The agent-sandbox runner doesn't surface a
-        // local FS to mesh.
-
-        // Dispatch through the registry. The harness produces a stream
-        // of UIMessageChunk; we adapt it to a ReadableStream so it can
-        // flow through writer.merge(). When a streamBuffer is wired, its
-        // JetStream pump reads the merged uiStream output and publishes
-        // every chunk into the per-task subject — that's what /stream
-        // tails. We do NOT pipe through the buffer here; the pump is
-        // detached and consumes uiStream directly after prepareRun
-        // returns.
-        //
-        // Branch on the resolved target:
-        //   - `sandboxProviderKind === "user-desktop"` — the whole stream is
-        //     delegated to the user's link daemon. `resolveRemoteCliSandboxUrl`
-        //     calls `ensureSandbox` (handle == `computeHandle(sandboxId,
-        //     branch)`) so the sandbox is the same one SANDBOX_START
-        //     provisions — repo cloned, env pushed, dev server primed.
-        //     Mesh talks to the daemon over the NATS-backed dispatch
-        //     channel. Per-run state inside the daemon stays keyed by
-        //     `runId` (cancellation via DELETE /_sandbox/runs/<runId>).
-        //   - `sandboxProviderKind === "agent-sandbox"` — runs in hosted
-        //     execution.
         let rawHarnessChunks;
         if (target.sandboxProviderKind === "user-desktop") {
           // PUSH path (remoteDispatch): the control handler has NO daemon
@@ -1170,7 +1217,9 @@ async function prepareRun(
                   const url = await ctx.objectStorage!.presignedGetUrl(
                     key,
                     600,
-                    { requireFetchable: true },
+                    {
+                      requireFetchable: true,
+                    },
                   );
                   return {
                     url,
@@ -1206,9 +1255,32 @@ async function prepareRun(
         } else {
           rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);
         }
+        yield* rawHarnessChunks;
+      };
 
-        const consumed = consumeHarnessStream({
-          chunks: rawHarnessChunks,
+    // The kernel (`consumeHarnessStream`) is the ONLY consume-side stream
+    // layer: it intercepts/persists title chunks, persists v1/v2 messages,
+    // extracts usage, and drives the run-lifecycle hooks below (formerly the
+    // callbacks of a second outer `createUIMessageStream` wrapper). Its
+    // output IS the run's uiStream. Constructed lazily via `lazyStream`
+    // because the kernel starts pulling — and therefore dispatching — the
+    // harness chunk source immediately on construction.
+    //
+    // `consumed.whenComplete` deliberately does NOT land in `pendingOps`:
+    // the finish hook below runs INSIDE the kernel's completion path, before
+    // `whenComplete` resolves, so awaiting it from there would deadlock. The
+    // ordering it used to give the dissolved outer wrapper ("kernel
+    // persistence settled before FINISH") is now structural — the kernel
+    // awaits its own pending persistence (emitStepParts/emitFinal) before
+    // invoking the finish hook.
+    // The progress tap (the run's liveness heartbeat) lives INSIDE the lazy
+    // factory: `pipeThrough` at the return site would eagerly pull one chunk
+    // through the lazy stream even with no consumer (transform writable
+    // high-water mark), starting the harness for never-consumed pull runs.
+    const uiStream = lazyStream(() =>
+      tapProgress(
+        consumeHarnessStream({
+          chunks: dispatchHarnessChunks(),
           originalMessages: allMessages,
           title: {
             currentThreadTitle: mem.thread.title,
@@ -1245,154 +1317,164 @@ async function prepareRun(
               } as ChatMessage);
             },
           },
+          // Wire error chunks synthesized from thrown source errors carry
+          // sanitized text — the dissolved outer wrapper returned
+          // `sanitizeStreamError(error)` from its onError for exactly this.
+          sanitizeErrorText: sanitizeStreamError,
           hooks: {
             onUsage: onUsageAggregated,
-          },
-        });
-        pendingOps.push(consumed.whenComplete);
-
-        // Cast: the outer createUIMessageStream is typed via ChatMessage so
-        // writer.merge expects ChatMessage-shaped chunks, but the harness
-        // emits the structurally-equivalent generic UIMessageChunk shape.
-        writer.merge(consumed.uiStream as Parameters<typeof writer.merge>[0]);
-      },
-      onFinish: async ({ responseMessage, finishReason }) => {
-        await Promise.allSettled(pendingOps);
-
-        if (registrySignal.aborted) return;
-
-        const threadStatus = resolveThreadStatus(
-          finishReason,
-          responseMessage?.parts as {
-            type: string;
-            state?: string;
-            text?: string;
-          }[],
-        );
-
-        await runRegistry.execute({
-          type: "FINISH",
-          taskId: mem.thread.id,
-          threadStatus,
-        });
-
-        posthog.capture({
-          distinctId: input.userId,
-          event: "chat_message_completed",
-          groups: { organization: input.organizationId },
-          properties: {
-            organization_id: input.organizationId,
-            thread_id: mem.thread.id,
-            agent_id: input.agent.id,
-            model_id: models.thinking.id,
-            model_title: models.thinking.title,
-            mode: input.mode,
-            duration_ms: Date.now() - streamStartAt,
-            finish_reason: finishReason,
-            thread_status: threadStatus,
-            input_tokens: aggregatedUsage.inputTokens,
-            output_tokens: aggregatedUsage.outputTokens,
-            total_tokens: aggregatedUsage.totalTokens,
-            is_resume: input.isResume ?? false,
-          },
-        });
-      },
-      onStepFinish: ({ responseMessage }) => {
-        const transitions = runRegistry.dispatch({
-          type: "STEP_DONE",
-          taskId: mem.thread.id,
-        });
-        pendingOps.push(
-          runRegistry.react(transitions).catch((e) => {
-            console.error("[decopilot:stream] onStepFinish reactor failed", e);
-          }),
-        );
-        if (!partEmitter) {
-          // v1 (unchanged): coarse whole-message checkpoints — every step on
-          // resume, every 5th step otherwise.
-          const stepEvent = transitions[0]?.event;
-          const shouldSave = input.isResume
-            ? stepEvent?.type === "STEP_COMPLETED"
-            : stepEvent?.type === "STEP_COMPLETED" &&
-              stepEvent.stepCount % 5 === 0;
-          if (shouldSave) {
-            pendingOps.push(
-              saveMessagesToThread(responseMessage).catch((e) => {
-                saveErrorsCounter.add(1, { "org.id": input.organizationId });
-                console.error("[decopilot:stream] onStepFinish save failed", e);
-              }),
-            );
-          }
-        }
-      },
-      onError: (error) => {
-        if (registrySignal.aborted) {
-          // User cancelled (frontend stop button), tab closed mid-stream, or
-          // run was force-failed. Frontend chat_message_stopped covers the
-          // first case; this server event also covers the other two.
-          posthog.capture({
-            distinctId: input.userId,
-            event: "chat_message_aborted",
-            groups: { organization: input.organizationId },
-            properties: {
-              organization_id: input.organizationId,
-              thread_id: mem.thread.id,
-              agent_id: input.agent.id,
-              model_id: models.thinking.id,
-              mode: input.mode,
-              duration_ms: Date.now() - streamStartAt,
-              is_resume: input.isResume ?? false,
+            onStep: (responseMessage) => {
+              const transitions = runRegistry.dispatch({
+                type: "STEP_DONE",
+                taskId: mem.thread.id,
+              });
+              pendingOps.push(
+                runRegistry.react(transitions).catch((e) => {
+                  console.error(
+                    "[decopilot:stream] onStepFinish reactor failed",
+                    e,
+                  );
+                }),
+              );
+              if (!partEmitter) {
+                // v1 (unchanged): coarse whole-message checkpoints — every step
+                // on resume, every 5th step otherwise.
+                const stepEvent = transitions[0]?.event;
+                const shouldSave = input.isResume
+                  ? stepEvent?.type === "STEP_COMPLETED"
+                  : stepEvent?.type === "STEP_COMPLETED" &&
+                    stepEvent.stepCount % 5 === 0;
+                if (shouldSave) {
+                  pendingOps.push(
+                    saveMessagesToThread(responseMessage as ChatMessage).catch(
+                      (e) => {
+                        saveErrorsCounter.add(1, {
+                          "org.id": input.organizationId,
+                        });
+                        console.error(
+                          "[decopilot:stream] onStepFinish save failed",
+                          e,
+                        );
+                      },
+                    ),
+                  );
+                }
+              }
             },
-          });
-          return sanitizeStreamError(error);
-        }
-        console.error("[decopilot] stream error:", stringifyError(error));
-        const sanitized = sanitizeStreamError(error);
-        posthog.capture({
-          distinctId: input.userId,
-          event: "chat_message_failed",
-          groups: { organization: input.organizationId },
-          properties: {
-            organization_id: input.organizationId,
-            thread_id: mem.thread.id,
-            agent_id: input.agent.id,
-            model_id: models.thinking.id,
-            mode: input.mode,
-            duration_ms: Date.now() - streamStartAt,
-            error_category: classifyStreamError(error),
-            error_message:
-              error instanceof Error ? error.message : stringifyError(error),
-            is_resume: input.isResume ?? false,
+            onFinish: async (responseMessage, finishReason) => {
+              await Promise.allSettled(pendingOps);
+
+              if (registrySignal.aborted) return;
+
+              const threadStatus = resolveThreadStatus(
+                finishReason,
+                responseMessage?.parts as {
+                  type: string;
+                  state?: string;
+                  text?: string;
+                }[],
+              );
+
+              await runRegistry.execute({
+                type: "FINISH",
+                taskId: mem.thread.id,
+                threadStatus,
+              });
+
+              posthog.capture({
+                distinctId: input.userId,
+                event: "chat_message_completed",
+                groups: { organization: input.organizationId },
+                properties: {
+                  organization_id: input.organizationId,
+                  thread_id: mem.thread.id,
+                  agent_id: input.agent.id,
+                  model_id: models.thinking.id,
+                  model_title: models.thinking.title,
+                  mode: input.mode,
+                  duration_ms: Date.now() - streamStartAt,
+                  finish_reason: finishReason,
+                  thread_status: threadStatus,
+                  input_tokens: aggregatedUsage.inputTokens,
+                  output_tokens: aggregatedUsage.outputTokens,
+                  total_tokens: aggregatedUsage.totalTokens,
+                  is_resume: input.isResume ?? false,
+                },
+              });
+            },
+            onError: (error) => {
+              if (registrySignal.aborted) {
+                // User cancelled (frontend stop button), tab closed mid-stream,
+                // or run was force-failed. Frontend chat_message_stopped covers
+                // the first case; this server event also covers the other two.
+                posthog.capture({
+                  distinctId: input.userId,
+                  event: "chat_message_aborted",
+                  groups: { organization: input.organizationId },
+                  properties: {
+                    organization_id: input.organizationId,
+                    thread_id: mem.thread.id,
+                    agent_id: input.agent.id,
+                    model_id: models.thinking.id,
+                    mode: input.mode,
+                    duration_ms: Date.now() - streamStartAt,
+                    is_resume: input.isResume ?? false,
+                  },
+                });
+                return;
+              }
+              console.error("[decopilot] stream error:", error);
+              posthog.capture({
+                distinctId: input.userId,
+                event: "chat_message_failed",
+                groups: { organization: input.organizationId },
+                properties: {
+                  organization_id: input.organizationId,
+                  thread_id: mem.thread.id,
+                  agent_id: input.agent.id,
+                  model_id: models.thinking.id,
+                  mode: input.mode,
+                  duration_ms: Date.now() - streamStartAt,
+                  error_category: classifyStreamError(error),
+                  error_message:
+                    error instanceof Error
+                      ? error.message
+                      : stringifyError(error),
+                  is_resume: input.isResume ?? false,
+                },
+              });
+
+              runRegistry
+                .execute({
+                  type: "FINISH",
+                  taskId: mem.thread.id,
+                  threadStatus: "failed",
+                })
+                .catch((e) => {
+                  console.error("[decopilot:stream] onError reactor failed", e);
+                });
+            },
           },
-        });
-
-        runRegistry
-          .execute({
-            type: "FINISH",
-            taskId: mem.thread.id,
-            threadStatus: "failed",
-          })
-          .catch((e) => {
-            console.error("[decopilot:stream] onError reactor failed", e);
-          });
-
-        return sanitized;
-      },
-    });
+        }).uiStream,
+        ctx,
+        mem.thread.id,
+      ),
+    );
 
     // Setup complete — hand the uiStream back to `dispatchRunAndWait`,
     // which drains it with a reader loop and resolves when the run
-    // finishes. When a streamBuffer is configured the run also pumps into
-    // JetStream so `/stream` tails see chunks live across runs and tabs.
+    // finishes. The harness does not start until that first pull (see
+    // `lazyStream`). When a streamBuffer is configured the run also pumps
+    // into JetStream so `/stream` tails see chunks live across runs and tabs.
     //
-    // Wrap the stream with a throttled progress tap (Task 9): every chunk
-    // that flows out is "progress", collapsed to ≤1 `last_progress_at` write
-    // per ~3s per run. The single consumer downstream (pump or direct drain)
-    // pulls through this tap, so the heartbeat fires regardless of which
-    // consumption path runs.
+    // The stream is wrapped (inside the lazy factory) with a throttled
+    // progress tap (Task 9): every chunk that flows out is "progress",
+    // collapsed to ≤1 `last_progress_at` write per ~3s per run. The single
+    // consumer downstream (pump or direct drain) pulls through this tap, so
+    // the heartbeat fires regardless of which consumption path runs.
     return {
       taskId: mem.thread.id,
-      uiStream: tapProgress(uiStream, ctx, mem.thread.id),
+      uiStream,
       registrySignal,
       runFenceToken,
       wireHarnessInput,
@@ -1567,7 +1649,8 @@ async function resolvePullSandboxConfig(
  * for the gate step to thread into the work item published to the JetStream
  * WorkQueue.
  *
- * IMPORTANT: `uiStream` from prepareRun is never consumed here — the
+ * IMPORTANT: `uiStream` from prepareRun is never consumed here — and since
+ * prepareRun's stream is lazy (harness dispatch happens on first pull), the
  * local harness does NOT run for pull-transport threads (the daemon runs
  * remotely). The uiStream will be garbage-collected naturally; the run
  * transitions to terminal when the ingest finish handler fires FINISH.

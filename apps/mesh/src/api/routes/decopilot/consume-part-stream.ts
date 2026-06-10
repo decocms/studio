@@ -1,14 +1,15 @@
 /**
  * Cluster-side CONSUME half of a run, fed by a chunk stream produced elsewhere
- * (the desktop daemon, pushed over the link ingest). Mirrors the
- * `createUIMessageStream` + onStepFinish/onFinish/onError wiring in
- * `dispatch-run.ts`, minus the harness `execute` and the decopilot in-process
- * extras. Assembles chunks into messages, drives the emitter, and returns both
- * the assembled `uiStream` (for the caller to pump into the JetStream live
- * edge) and a `whenComplete` promise the caller awaits to know all durable
- * parts have been committed — instead of inferring completion from drain timing
- * (which is unsound on the error path, since the SDK invokes `onError`
- * synchronously, outside the stream's flush).
+ * (the desktop daemon, pushed over the link ingest). A thin adapter over the
+ * same harness kernel (`consumeHarnessStream`) that dispatch-run feeds its
+ * hosted runs into — minus the lazy harness dispatch and the run-lifecycle
+ * hooks (registry/posthog) that dispatch-run wires. Assembles chunks into
+ * messages, drives the emitter, and returns both the assembled `uiStream`
+ * (for the caller to pump into the JetStream live edge) and a `whenComplete`
+ * promise the caller awaits to know all durable parts have been committed —
+ * instead of inferring completion from drain timing (which is unsound on the
+ * error path, since the SDK invokes `onError` synchronously, outside the
+ * stream's flush).
  */
 import type { UIMessageChunk } from "ai";
 import {
@@ -27,11 +28,15 @@ export interface PartEmitterLike {
     id: string;
     role: "user" | "assistant" | "system";
     parts?: unknown[];
+    /** Message metadata (usage, codingAgentSessionId, …) — flows onto the
+     *  v2 finish anchor row; part of the contract, not an implicit cast. */
+    metadata?: unknown;
   }): Promise<void>;
   emitFinal(message: {
     id: string;
     role: "user" | "assistant" | "system";
     parts?: unknown[];
+    metadata?: unknown;
   }): Promise<void>;
   emitError(messageId: string, errorText: string): Promise<void>;
 }
