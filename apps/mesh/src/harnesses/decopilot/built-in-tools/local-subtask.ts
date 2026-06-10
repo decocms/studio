@@ -21,6 +21,7 @@
 
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
+import type { ModelsConfig } from "../../types";
 import type { SubtaskRunResult } from "../run-core";
 
 export const SubtaskInputSchema = z.object({
@@ -75,6 +76,11 @@ export interface LocalSubtaskParams {
    *  this id) clones the calling agent: a fresh subagent over the SAME target,
    *  identical tools + instructions, empty context. */
   selfAgentId: string;
+  /** Slot-keyed harness models for this run. Threaded onto the
+   *  `data-tool-subtask-metadata` chunk so it carries the same `{usage, agent,
+   *  models}` shape the cluster `subtask.ts` emits — the `ToolSubtaskMetadata`
+   *  interface declares `models` as required, so omitting it was a type lie. */
+  models: ModelsConfig;
   /** Tool-approval gate forwarded from the desktop tool assembly. */
   needsApproval?: boolean;
   /**
@@ -98,8 +104,14 @@ export interface LocalSubtaskParams {
 }
 
 export function createLocalSubtaskTool(params: LocalSubtaskParams) {
-  const { writer, selfAgentId, needsApproval, runSubtask, onChildUsage } =
-    params;
+  const {
+    writer,
+    selfAgentId,
+    models,
+    needsApproval,
+    runSubtask,
+    onChildUsage,
+  } = params;
 
   return tool({
     description: SUBTASK_DESCRIPTION,
@@ -135,7 +147,7 @@ export function createLocalSubtaskTool(params: LocalSubtaskParams) {
       writer.write({
         type: "data-tool-subtask-metadata",
         id: toolCallId,
-        data: { usage: result.usage, agent: target ?? selfAgentId },
+        data: { usage: result.usage, agent: target ?? selfAgentId, models },
       });
 
       // Returned shape is consumed by toModelOutput (text/error/finishReason).

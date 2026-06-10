@@ -14,8 +14,13 @@ import {
   type LocalSubtaskParams,
 } from "./local-subtask";
 import type { SubtaskRunResult } from "../run-core";
+import type { ModelsConfig } from "../../types";
 
 const zeroUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+
+const models: ModelsConfig = {
+  thinking: { id: "claude-test", credentialId: "cred_1" },
+};
 
 function makeTool(overrides: Partial<LocalSubtaskParams> = {}) {
   const writes: Array<{ type: string; data: unknown }> = [];
@@ -45,6 +50,7 @@ function makeTool(overrides: Partial<LocalSubtaskParams> = {}) {
   const tool = createLocalSubtaskTool({
     writer,
     selfAgentId: "vir_self",
+    models,
     runSubtask,
     onChildUsage: (usage) => childUsages.push(usage),
     ...overrides,
@@ -106,13 +112,16 @@ describe("createLocalSubtaskTool execute", () => {
     expect(types).toContain("data-tool-subtask-metadata");
 
     const meta = writes.find((w) => w.type === "data-tool-subtask-metadata")!
-      .data as { usage: unknown; agent: string };
+      .data as { usage: unknown; agent: string; models: ModelsConfig };
     expect(meta.agent).toBe("vir_self");
     expect(meta.usage).toEqual({
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 15,
     });
+    // Parity with cluster subtask.ts: the chunk carries `models` so the
+    // ToolSubtaskMetadata `models` field (declared required) is honest.
+    expect(meta.models).toEqual(models);
   });
 
   test("self-clone: omitted agent_id resolves target undefined", async () => {

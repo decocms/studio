@@ -524,6 +524,9 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
         const subtaskTool = createLocalSubtaskTool({
           writer: sideChannel.writer,
           selfAgentId: input.agent.id,
+          // Threaded onto the data-tool-subtask-metadata chunk for parity with
+          // the cluster subtask.ts ({usage, agent, models}).
+          models: input.models,
           needsApproval:
             input.mode === "plan" || input.toolApprovalLevel !== "auto",
           runSubtask,
