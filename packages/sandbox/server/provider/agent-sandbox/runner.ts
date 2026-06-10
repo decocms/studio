@@ -214,6 +214,10 @@ interface PortForwarder {
 interface RunnerTenant {
   orgId: string;
   userId: string;
+  orgSlug?: string;
+  orgName?: string;
+  userEmail?: string;
+  userName?: string;
 }
 
 interface K8sRecord {
@@ -1068,6 +1072,10 @@ export class AgentSandboxProvider implements SandboxProvider {
           // same env in different insertion orders.
           .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
           .map(([name, value]) => ({ name, value }));
+    // Human-readable ownership/provenance (org name, user email, git repo).
+    // Carried on both the claim and the pod; empty → block omitted entirely.
+    const annotations = buildTenantAnnotations(opts);
+    const hasAnnotations = Object.keys(annotations).length > 0;
     return {
       apiVersion: `${K8S_CONSTANTS.CLAIM_API_GROUP}/${K8S_CONSTANTS.CLAIM_API_VERSION}`,
       kind: "SandboxClaim",
@@ -1083,6 +1091,7 @@ export class AgentSandboxProvider implements SandboxProvider {
           ...(this.envName ? { [LABEL_KEYS.env]: this.envName } : {}),
           ...buildTenantLabels(opts.tenant),
         },
+        ...(hasAnnotations ? { annotations } : {}),
       },
       spec: {
         sandboxTemplateRef: { name: this.sandboxTemplateName },
@@ -1097,6 +1106,7 @@ export class AgentSandboxProvider implements SandboxProvider {
             [LABEL_KEYS.sandboxHandle]: handle,
             ...(this.envName ? { [LABEL_KEYS.env]: this.envName } : {}),
           }),
+          ...(hasAnnotations ? { annotations } : {}),
         },
         env: envEntries,
         warmpool: warmPoolMode ? "default" : "none",
@@ -1997,6 +2007,21 @@ const LABEL_KEYS = {
   env: "studio.decocms.com/env",
 } as const;
 
+// K8s annotation keys for human-readable ownership/provenance. Unlike labels,
+// annotation values aren't charset-limited, so these carry the identity that
+// can't be a label (emails with `@`, org names with spaces, repo paths with
+// `/`). Purely informational — recovered on adopt for round-trip fidelity but
+// never load-bearing for routing or tenancy.
+const ANNOTATION_KEYS = {
+  orgSlug: "studio.decocms.com/org-slug",
+  orgName: "studio.decocms.com/org-name",
+  userEmail: "studio.decocms.com/user-email",
+  userName: "studio.decocms.com/user-name",
+  gitRepo: "studio.decocms.com/git-repo",
+  gitRepoUrl: "studio.decocms.com/git-repo-url",
+  gitBranch: "studio.decocms.com/git-branch",
+} as const;
+
 // K8s label values: ≤63 chars, must match `(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?`.
 // Org/user IDs are UUIDs in mesh and pass through unchanged; the regex check
 // + truncation is defensive against future ID-shape changes (the operator will
@@ -2047,14 +2072,97 @@ function buildTenantLabels(
   return labels;
 }
 
-/** Read tenant back from a claim's metadata.labels (adopt path). */
+// Annotation values have no k8s-imposed charset limit, but we cap length and
+// strip control chars/newlines defensively (the operator validates the whole
+// object; a stray newline in a value can trip strict YAML round-trips).
+const MAX_ANNOTATION_VALUE_LEN = 253;
+
+function sanitizeAnnotationValue(value: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point.
+  return value
+    .replace(/[\x00-\x1f\x7f]/g, " ")
+    .slice(0, MAX_ANNOTATION_VALUE_LEN);
+}
+
+// Drop any embedded `user:token@` credential before exposing a clone URL as an
+// annotation. cloneUrl may carry an OAuth token (see EnsureOptions.repo) and
+// annotations are world-readable to anyone with `get` on the namespace.
+function stripUrlCredentials(raw: string): string {
+  try {
+    const url = new URL(raw);
+    url.username = "";
+    url.password = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Human-readable ownership/provenance annotations for the claim + pod. Mirrors
+ * the label tenant data with the fields that can't be labels (org name, user
+ * email) plus git repo provenance. Returns {} when nothing is available so the
+ * caller can omit the annotations block entirely.
+ */
+function buildTenantAnnotations(opts: EnsureOptions): Record<string, string> {
+  const annotations: Record<string, string> = {};
+  const tenant = opts.tenant;
+  if (tenant?.orgSlug) {
+    annotations[ANNOTATION_KEYS.orgSlug] = sanitizeAnnotationValue(
+      tenant.orgSlug,
+    );
+  }
+  if (tenant?.orgName) {
+    annotations[ANNOTATION_KEYS.orgName] = sanitizeAnnotationValue(
+      tenant.orgName,
+    );
+  }
+  if (tenant?.userEmail) {
+    annotations[ANNOTATION_KEYS.userEmail] = sanitizeAnnotationValue(
+      tenant.userEmail,
+    );
+  }
+  if (tenant?.userName) {
+    annotations[ANNOTATION_KEYS.userName] = sanitizeAnnotationValue(
+      tenant.userName,
+    );
+  }
+  const repo = opts.repo;
+  if (repo) {
+    if (repo.displayName) {
+      annotations[ANNOTATION_KEYS.gitRepo] = sanitizeAnnotationValue(
+        repo.displayName,
+      );
+    }
+    const repoUrl = stripUrlCredentials(repo.cloneUrl);
+    if (repoUrl) {
+      annotations[ANNOTATION_KEYS.gitRepoUrl] =
+        sanitizeAnnotationValue(repoUrl);
+    }
+    const branch = opts.branch ?? repo.branch;
+    if (branch) {
+      annotations[ANNOTATION_KEYS.gitBranch] = sanitizeAnnotationValue(branch);
+    }
+  }
+  return annotations;
+}
+
+/** Read tenant back from a claim's metadata.labels + annotations (adopt path). */
 function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
   const labels = claim.metadata?.labels;
   if (!labels) return null;
   const orgId = labels[LABEL_KEYS.orgId];
   const userId = labels[LABEL_KEYS.userId];
   if (!orgId || !userId) return null;
-  return { orgId, userId };
+  const annotations = claim.metadata?.annotations ?? {};
+  return {
+    orgId,
+    userId,
+    orgSlug: annotations[ANNOTATION_KEYS.orgSlug],
+    orgName: annotations[ANNOTATION_KEYS.orgName],
+    userEmail: annotations[ANNOTATION_KEYS.userEmail],
+    userName: annotations[ANNOTATION_KEYS.userName],
+  };
 }
 
 /**
