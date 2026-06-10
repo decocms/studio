@@ -204,7 +204,7 @@ export function FileExplorer({
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path: toDaemonPath(path) }),
+          body: JSON.stringify({ path: toDaemonPath(path), full: true }),
         },
       );
       if (!res.ok) return;
