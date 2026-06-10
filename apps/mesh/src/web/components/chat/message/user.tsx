@@ -7,6 +7,10 @@ import { FileNode } from "../tiptap/file/node.tsx";
 import { MentionNode } from "../tiptap/mention/node.tsx";
 import type { Metadata } from "../types.ts";
 import { MessageTextPart } from "./parts/text-part.tsx";
+import {
+  type TriggerEventData,
+  TriggerEventPart,
+} from "./parts/trigger-event-part.tsx";
 
 export interface MessageProps<T extends Metadata> {
   message: UIMessage<T>;
@@ -113,12 +117,29 @@ export function MessageUser<T extends Metadata>({
                   ),
             )}
           >
-            <div>
+            <div className="flex flex-col gap-2">
+              {/* Trigger-event cards always render from `parts`, even when the
+                  message also carries a tiptapDoc (automation runs do). */}
+              {parts.map((part, index) =>
+                part.type === "data-trigger-event" ? (
+                  <TriggerEventPart
+                    key={`${id}-${index}`}
+                    event={(part as { data: TriggerEventData }).data}
+                  />
+                ) : null,
+              )}
               {hasTiptapDoc ? (
                 <RichMessageContent tiptapDoc={metadata.tiptapDoc} />
               ) : (
                 parts.map((part, index) => {
                   if (part.type === "text") {
+                    // The guard-wrapped event text the model reads sits
+                    // directly after its `data-trigger-event` card — render the
+                    // card, not the raw JSON. The automation's own instruction
+                    // text (no card before it) still renders.
+                    if (parts[index - 1]?.type === "data-trigger-event") {
+                      return null;
+                    }
                     return (
                       <MessageTextPart
                         key={`${id}-${index}`}

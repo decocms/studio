@@ -103,11 +103,29 @@ function requireRuntime(): AutomationRuntime {
   return runtime;
 }
 
+/**
+ * A part of a trigger-context message handed to the agent. `text` parts are
+ * what the model reads (`convertToModelMessages` keeps them); `data-trigger-event`
+ * is a UI-only part the model never sees — it carries the structured event so
+ * the chat can render a dedicated card instead of raw JSON.
+ */
+export type ContextMessagePart =
+  | { type: "text"; text: string }
+  | {
+      type: "data-trigger-event";
+      data: { source: string; type: string; data: unknown };
+    };
+
+export interface ContextMessage {
+  role: "user" | "assistant" | "system";
+  parts: ContextMessagePart[];
+}
+
 export interface FireAutomationContext {
   automationId: string;
   organizationId: string;
   triggerId: string | null;
-  contextMessages?: Array<{ role: string; content: string }>;
+  contextMessages?: ContextMessage[];
 }
 
 export type FireAutomationOutcome =
@@ -275,15 +293,22 @@ async function buildDispatchRequestStep(
     taskId,
     resolvedModel,
   );
-  if (ctx.contextMessages) {
-    request.messages = [
-      ...request.messages,
-      ...ctx.contextMessages.map((m) => ({
-        id: crypto.randomUUID(),
-        role: m.role as "user" | "assistant" | "system",
-        parts: [{ type: "text" as const, text: m.content }],
-      })),
-    ];
+  if (ctx.contextMessages && ctx.contextMessages.length > 0) {
+    // The dispatch path (`dispatch-run.ts`) persists and forwards only the
+    // FIRST non-system message plus all system messages — any extra non-system
+    // message is dropped. So the event parts must ride ON the request message,
+    // not be appended as a separate one (which would vanish). Prepended so the
+    // event card/context precedes the automation's own instruction.
+    const extraParts = ctx.contextMessages.flatMap((m) => m.parts);
+    const target = request.messages.find((m) => m.role !== "system");
+    if (target) {
+      target.parts = [...extraParts, ...target.parts] as typeof target.parts;
+    } else {
+      request.messages = [
+        ...request.messages,
+        { id: crypto.randomUUID(), role: "user", parts: extraParts },
+      ] as typeof request.messages;
+    }
   }
 
   // Strip the (non-serializable, locally-built) abort signal — the

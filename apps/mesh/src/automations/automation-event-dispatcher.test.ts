@@ -127,7 +127,7 @@ describe("AutomationEventDispatcher", () => {
       expect(arg.trigger.id).toBe("trig_1");
     });
 
-    it("wraps event data into a system context message", async () => {
+    it("wraps event data into a user context message", async () => {
       const trigger = makeTriggerWithAutomation();
       const storage = {
         findActiveEventTriggers: mock(() => Promise.resolve([trigger])),
@@ -147,12 +147,29 @@ describe("AutomationEventDispatcher", () => {
 
       const [arg] = (fire as unknown as ReturnType<typeof mock>).mock.calls[0]!;
       const msg = arg.contextMessages[0];
-      expect(msg.role).toBe("system");
-      expect(msg.content).toContain("untrusted external input");
-      expect(msg.content).toContain("orderId");
-      expect(msg.content).toContain("456");
-      expect(msg.content).toContain("---BEGIN EVENT DATA---");
-      expect(msg.content).toContain("---END EVENT DATA---");
+      expect(msg.role).toBe("user");
+
+      // UI-only structured part — carries the raw event, never reaches the model.
+      const dataPart = msg.parts.find(
+        (p: { type: string }) => p.type === "data-trigger-event",
+      );
+      expect(dataPart).toBeDefined();
+      expect(dataPart.data).toEqual({
+        source: "conn_1",
+        type: "order.created",
+        data: { orderId: 456 },
+      });
+
+      // Text part — what the model reads, with prompt-injection mitigation.
+      const textPart = msg.parts.find(
+        (p: { type: string }) => p.type === "text",
+      );
+      expect(textPart).toBeDefined();
+      expect(textPart.text).toContain("untrusted external input");
+      expect(textPart.text).toContain("orderId");
+      expect(textPart.text).toContain("456");
+      expect(textPart.text).toContain("---BEGIN EVENT DATA---");
+      expect(textPart.text).toContain("---END EVENT DATA---");
     });
 
     it("derives idempotencyKey from event id + trigger id", async () => {
