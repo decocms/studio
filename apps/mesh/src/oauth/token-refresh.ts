@@ -14,6 +14,7 @@
 import type { DownstreamToken } from "../storage/types";
 import type { DownstreamTokenStorage } from "../storage/downstream-token";
 import { refreshAccessToken } from "./refresh-access-token";
+import { resolveOriginTokenEndpoint } from "./resolve-token-endpoint";
 
 export { refreshAccessToken } from "./refresh-access-token";
 export type { TokenRefreshResult } from "./refresh-access-token";
@@ -27,7 +28,9 @@ export function canRefresh(token: DownstreamToken): boolean {
   return !!token.refreshToken && !!token.tokenEndpoint && !!token.clientId;
 }
 
-export async function refreshAndStore(
+const inflightRefreshes = new Map<string, Promise<string | null>>();
+
+async function refreshAndStoreOnce(
   token: DownstreamToken,
   tokenStorage: DownstreamTokenStorage,
 ): Promise<string | null> {
@@ -56,4 +59,63 @@ export async function refreshAndStore(
     tokenEndpoint: token.tokenEndpoint,
   });
   return result.accessToken;
+}
+
+export async function refreshAndStore(
+  token: DownstreamToken,
+  tokenStorage: DownstreamTokenStorage,
+): Promise<string | null> {
+  const existing = inflightRefreshes.get(token.connectionId);
+  if (existing) return existing;
+
+  const refresh = refreshAndStoreOnce(token, tokenStorage).finally(() => {
+    inflightRefreshes.delete(token.connectionId);
+  });
+  inflightRefreshes.set(token.connectionId, refresh);
+  return refresh;
+}
+
+export type ValidDownstreamAccessTokenResult =
+  | { state: "missing"; accessToken: null }
+  | { state: "valid"; accessToken: string }
+  | { state: "refreshed"; accessToken: string }
+  | { state: "refresh_failed"; accessToken: null }
+  | { state: "expired_without_refresh"; accessToken: null };
+
+export async function getValidDownstreamAccessToken(params: {
+  connectionId: string;
+  connectionUrl?: string | null;
+  tokenStorage: DownstreamTokenStorage;
+  bufferMs?: number;
+}): Promise<ValidDownstreamAccessTokenResult> {
+  const { connectionId, connectionUrl, tokenStorage } = params;
+  const token = await tokenStorage.get(connectionId);
+  if (!token) return { state: "missing", accessToken: null };
+
+  const refreshable = canRefresh(token);
+  const bufferMs = refreshable
+    ? (params.bufferMs ?? PROACTIVE_REFRESH_BUFFER_MS)
+    : 0;
+
+  if (!tokenStorage.isExpired(token, bufferMs)) {
+    return { state: "valid", accessToken: token.accessToken };
+  }
+
+  if (!refreshable) {
+    await tokenStorage.delete(connectionId);
+    return { state: "expired_without_refresh", accessToken: null };
+  }
+
+  let tokenEndpoint = token.tokenEndpoint;
+  if (connectionUrl && tokenEndpoint?.includes("/oauth-proxy/")) {
+    const originEndpoint = await resolveOriginTokenEndpoint(connectionUrl);
+    if (originEndpoint) tokenEndpoint = originEndpoint;
+  }
+
+  const accessToken = await refreshAndStore(
+    { ...token, tokenEndpoint },
+    tokenStorage,
+  );
+  if (!accessToken) return { state: "refresh_failed", accessToken: null };
+  return { state: "refreshed", accessToken };
 }
