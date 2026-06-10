@@ -101,4 +101,27 @@ describe("foldParts", () => {
     ];
     expect(foldParts(input)).toEqual(foldParts(input));
   });
+
+  it("exposes finish-anchor metadata on the folded message", () => {
+    const textRow = part({
+      id: "r1:0",
+      seq: 0,
+      kind: "text",
+      payload: { type: "text", text: "hi" },
+    });
+    const finishRow = part({
+      id: "r1:1",
+      seq: 1,
+      kind: "finish",
+      payload: {},
+      metadata: {
+        codingAgentSessionId: "sess-1",
+        codingAgentProvider: "claude-code",
+      },
+    });
+    const folded = foldParts([textRow, finishRow]);
+    expect(folded[0]?.metadata).toMatchObject({
+      codingAgentSessionId: "sess-1",
+    });
+  });
 });

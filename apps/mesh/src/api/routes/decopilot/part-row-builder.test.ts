@@ -149,4 +149,25 @@ describe("PartRowBuilder", () => {
       true,
     );
   });
+
+  it("emitFinal carries the message metadata on the finish anchor row", () => {
+    const builder = new PartRowBuilder({
+      orgId: "org_1",
+      threadId: "thread_1",
+      runId: "thread_1",
+      baseTimeMs: 1_700_000_000_000,
+    });
+    const rows = builder.emitFinal({
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "text", text: "hi" }],
+      metadata: {
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+        codingAgentSessionId: "sess-1",
+        codingAgentProvider: "claude-code",
+      },
+    } as Parameters<typeof builder.emitFinal>[0] & { metadata?: unknown });
+    const finish = rows.find((r) => r.kind === "finish");
+    expect(finish?.metadata).toMatchObject({ codingAgentSessionId: "sess-1" });
+  });
 });

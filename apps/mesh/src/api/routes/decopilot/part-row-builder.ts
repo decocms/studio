@@ -104,6 +104,7 @@ export class PartRowBuilder {
     seq: number,
     kind: PartKind,
     payload: unknown,
+    metadata: unknown | null = null,
   ): ThreadMessagePart {
     return {
       id: `${this.ctx.runId}:${seq}`,
@@ -116,7 +117,7 @@ export class PartRowBuilder {
       kind,
       payload,
       payload_ref: null,
-      metadata: null,
+      metadata,
       // Monotonic per run, derived from seq (NOT Date.now() per part).
       created_at: new Date(this.base + seq).toISOString(),
     };
@@ -154,10 +155,11 @@ export class PartRowBuilder {
   private markFinished(
     messageId: string,
     role: AnyMessage["role"],
+    metadata: unknown | null = null,
   ): ThreadMessagePart[] {
     if (this.finished.has(messageId)) return [];
     const seq = this.seqFor(`${messageId}#finish`);
-    const row = this.row(messageId, role, seq, "finish", {});
+    const row = this.row(messageId, role, seq, "finish", {}, metadata);
     this.finishMessageIdByRowId.set(row.id, messageId);
     return [row];
   }
@@ -184,7 +186,11 @@ export class PartRowBuilder {
   emitUserMessage(message: AnyMessage): ThreadMessagePart[] {
     return [
       ...this.emitMessageParts(message),
-      ...this.markFinished(message.id, message.role),
+      ...this.markFinished(
+        message.id,
+        message.role,
+        (message as { metadata?: unknown }).metadata ?? null,
+      ),
     ];
   }
 
@@ -198,12 +204,18 @@ export class PartRowBuilder {
 
   /**
    * `onFinish`: persist remaining final parts, then close the assistant
-   * message with a single `finish` anchor.
+   * message with a single `finish` anchor. The message metadata (usage,
+   * codingAgentSessionId, etc.) is carried on the finish anchor row so the
+   * v2 fold path can surface it on `FoldedMessage.metadata`.
    */
   emitFinal(message: AnyMessage): ThreadMessagePart[] {
     return [
       ...this.emitMessageParts(message),
-      ...this.markFinished(message.id, message.role),
+      ...this.markFinished(
+        message.id,
+        message.role,
+        (message as { metadata?: unknown }).metadata ?? null,
+      ),
     ];
   }
 

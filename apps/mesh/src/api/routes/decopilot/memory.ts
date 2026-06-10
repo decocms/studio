@@ -137,7 +137,7 @@ export class Memory {
       thread_id: this.thread.id,
       role: m.role,
       parts: m.parts as ThreadMessage["parts"],
-      metadata: undefined,
+      metadata: m.metadata ?? undefined,
       created_at: m.created_at,
       updated_at: m.created_at,
     }));
