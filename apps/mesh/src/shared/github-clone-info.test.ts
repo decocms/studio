@@ -60,6 +60,7 @@ const vault = {
 };
 
 afterAll(() => {
+  mock.restore();
   for (const cachePath of Object.keys(require.cache)) {
     if (
       cachePath.endsWith("/apps/mesh/src/oauth/token-refresh.ts") ||
