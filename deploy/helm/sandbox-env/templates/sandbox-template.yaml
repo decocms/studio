@@ -6,6 +6,9 @@
 # default. The template *name* is suffixed with envName so multiple
 # environments' SandboxTemplates coexist; mesh in this env must reference
 # the suffixed name via STUDIO_SANDBOX_TEMPLATE_NAME.
+{{- if and .Values.orgFs.enabled (not .Values.hostUsers) }}
+{{- fail "orgFs.enabled requires hostUsers=true: privileged sidecar + Bidirectional mount propagation are incompatible with user-namespaced pods" }}
+{{- end }}
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
 metadata:
@@ -198,6 +201,14 @@ spec:
             - name: GIT_CONFIG_VALUE_0
               value: "*"
             {{- end }}
+            {{- if .Values.orgFs.enabled }}
+            # org-fs relay: the daemon writes the mount config here for the
+            # sidecar, and gates the per-run output link on its status file.
+            - name: ORGFS_SIDECAR_CONFIG_PATH
+              value: "/run/orgfs/config.json"
+            - name: ORGFS_SIDECAR_STATUS_PATH
+              value: "/run/orgfs/status.json"
+            {{- end }}
           ports:
             - name: daemon
               containerPort: 9000
@@ -221,6 +232,41 @@ spec:
             {{- end }}
             - name: home
               mountPath: /home/sandbox
+            {{- if .Values.orgFs.enabled }}
+            # The sidecar's FUSE mounts under /app/org surface here.
+            - name: orgfs-org
+              mountPath: /app/org
+              mountPropagation: HostToContainer
+            - name: orgfs-ctl
+              mountPath: /run/orgfs
+            {{- end }}
+        {{- if .Values.orgFs.enabled }}
+        # Privileged org-fs mounter: waits for the daemon to relay the mount
+        # config onto /run/orgfs (post-bind push), FUSE-mounts the org volumes
+        # under the shared /app/org, and Bidirectional propagation surfaces
+        # them in the (unprivileged) sandbox container. See
+        # packages/sandbox/daemon/org-fs/sidecar.ts.
+        - name: orgfs-sidecar
+          image: "{{ .Values.orgFs.image.repository }}:{{ .Values.orgFs.image.tag }}"
+          imagePullPolicy: {{ .Values.orgFs.image.pullPolicy }}
+          env:
+            - name: APP_ROOT
+              value: "/app"
+          securityContext:
+            # FUSE mount + Bidirectional propagation require privileged; root
+            # uid adds nothing on top of that, so keep it simple for fuse.
+            privileged: true
+            runAsUser: 0
+            runAsNonRoot: false
+          resources:
+            {{- toYaml .Values.orgFs.resources | nindent 12 }}
+          volumeMounts:
+            - name: orgfs-org
+              mountPath: /app/org
+              mountPropagation: Bidirectional
+            - name: orgfs-ctl
+              mountPath: /run/orgfs
+        {{- end }}
       volumes:
         {{- if .Values.readOnlyRootFilesystem }}
         # Sized to match the per-container ephemeral-storage limit shape;
@@ -235,3 +281,12 @@ spec:
         - name: home
           emptyDir:
             sizeLimit: 5Gi
+        {{- if .Values.orgFs.enabled }}
+        # Mount surface (volumes attach under it) + relay control files.
+        - name: orgfs-org
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: orgfs-ctl
+          emptyDir:
+            sizeLimit: 1Mi
+        {{- end }}

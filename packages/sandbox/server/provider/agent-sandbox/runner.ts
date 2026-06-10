@@ -39,6 +39,7 @@ import type {
 } from "@opentelemetry/api";
 import {
   postConfig,
+  postOrgFsConfig,
   probeDaemonHealth,
   proxyDaemonRequest,
   waitForDaemonReady,
@@ -1214,6 +1215,15 @@ export class AgentSandboxProvider implements SandboxProvider {
         });
       } else if (configPayload) {
         await postConfig(daemonUrl, token, configPayload);
+      }
+      // Org-fs mounts: relay the config for the pod's privileged sidecar
+      // (separate endpoint — see postOrgFsConfig). Post-bind on purpose:
+      // warm-pool claims reject spec.env. Best-effort: mounts are additive,
+      // a relay failure must not fail provisioning.
+      if (opts.orgFsConfigJson) {
+        await postOrgFsConfig(daemonUrl, token, opts.orgFsConfigJson).catch(
+          (err) => console.warn("[org-fs] sidecar config relay failed", err),
+        );
       }
     } catch (err) {
       this.closeForwarder(daemonForward);

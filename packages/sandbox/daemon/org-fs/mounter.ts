@@ -29,7 +29,15 @@ import type { MountHandle, Mounter } from "./mount-manager";
 const READY_TIMEOUT_MS = 15_000;
 const READY_POLL_MS = 200;
 
-export function createRcloneMounter(rclonePath: string): Mounter {
+export function createRcloneMounter(
+  rclonePath: string,
+  opts: {
+    /** FUSE `--allow-other` (Linux): lets OTHER uids/containers read the
+     *  mount — required when a privileged sidecar mounts for an unprivileged
+     *  main container (cluster pods). Needs `user_allow_other` in fuse.conf. */
+    allowOther?: boolean;
+  } = {},
+): Mounter {
   const isMac = process.platform === "darwin";
   return {
     async mount({ webdavUrl, mountPath, rcAddr }) {
@@ -42,7 +50,12 @@ export function createRcloneMounter(rclonePath: string): Mounter {
           // mount is strictly single-client (loopback), so client-local lock
           // semantics are exact.
           ["nfsmount", "wd:", mountPath, "--option", "actimeo=1,locallocks"]
-        : ["mount", "wd:", mountPath];
+        : [
+            "mount",
+            "wd:",
+            mountPath,
+            ...(opts.allowOther ? ["--allow-other"] : []),
+          ];
       const rcArgs = rcAddr
         ? ["--rc", "--rc-addr", rcAddr, "--rc-no-auth"]
         : [];
