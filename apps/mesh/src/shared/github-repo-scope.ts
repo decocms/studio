@@ -45,6 +45,18 @@ function parsePermissions(raw: unknown): Record<string, string> {
   return permissions as Record<string, string>;
 }
 
+function parsePositiveInteger(raw: unknown): number | undefined {
+  if (
+    typeof raw !== "number" ||
+    !Number.isFinite(raw) ||
+    !Number.isInteger(raw) ||
+    raw <= 0
+  ) {
+    return undefined;
+  }
+  return raw;
+}
+
 /**
  * Read + validate the repoScope recipe from a connection's metadata.
  * Returns null when the connection is not a repo-scoped child (or the recipe is
@@ -69,14 +81,14 @@ export function getRepoScope(connection: {
   ) {
     return null;
   }
+  const repositoryId = parsePositiveInteger(raw.repositoryId);
   return {
     sourceConnectionId:
       typeof raw.sourceConnectionId === "string"
         ? raw.sourceConnectionId
         : undefined,
     installationId: raw.installationId,
-    repositoryId:
-      typeof raw.repositoryId === "number" ? raw.repositoryId : undefined,
+    repositoryId,
     owner: raw.owner,
     repo: raw.repo,
     permissions: parsePermissions(raw.permissions),

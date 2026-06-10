@@ -128,6 +128,9 @@ export async function ensureRepoScopedToken(
   if (!recipe) {
     throw new Error("Connection is not repo-scoped");
   }
+  if (!recipe.sourceConnectionId) {
+    throw new Error(RECONNECT_ERROR);
+  }
 
   const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
   const cached = await tokenStorage.get(connection.id);

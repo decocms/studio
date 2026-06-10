@@ -144,6 +144,23 @@ describe("getRepoScope", () => {
       ).toBeNull();
     }
   });
+
+  it("omits non-positive, non-integer, or non-finite repository ids", () => {
+    for (const repositoryId of [NaN, Infinity, -1, 0, 1.5]) {
+      expect(
+        getRepoScope({
+          metadata: {
+            repoScope: {
+              installationId: 1,
+              repositoryId,
+              owner: "a",
+              repo: "b",
+            },
+          },
+        })?.repositoryId,
+      ).toBeUndefined();
+    }
+  });
 });
 
 describe("getOrgGithubConnections", () => {
