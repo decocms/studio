@@ -11,6 +11,8 @@
  */
 
 import type { Kysely } from "kysely";
+import type { StudioContext } from "../core/studio-context";
+import { ensureRepoScopedToken } from "../oauth/github-mint";
 import { DownstreamTokenStorage } from "../storage/downstream-token";
 import type { Database } from "../storage/types";
 import type { CredentialVault } from "../encryption/credential-vault";
@@ -18,6 +20,7 @@ import {
   getValidDownstreamAccessToken,
   RECONNECT_ERROR,
 } from "../oauth/token-refresh";
+import { getRepoScope } from "./github-repo-scope";
 
 export interface GitHubCloneInfo {
   cloneUrl: string;
@@ -39,6 +42,26 @@ export function buildAnonymousCloneInfo(
     gitUserName: "Deco Studio",
     gitUserEmail: "studio@deco.cx",
   };
+}
+
+export async function ensureGithubCloneToken(params: {
+  ctx: StudioContext;
+  connectionId: string;
+  organizationId: string;
+  onLegacyMintError?: (error: unknown) => void;
+}): Promise<void> {
+  const connection = await params.ctx.storage.connections.findById(
+    params.connectionId,
+    params.organizationId,
+  );
+  const repoScope = connection ? getRepoScope(connection) : null;
+  if (!connection || !repoScope?.sourceConnectionId) return;
+
+  try {
+    await ensureRepoScopedToken(params.ctx, connection);
+  } catch (error) {
+    params.onLegacyMintError?.(error);
+  }
 }
 
 export async function buildCloneInfo(

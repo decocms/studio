@@ -2,7 +2,10 @@ import type { GithubRepo } from "@decocms/mesh-sdk/types";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { StudioContext } from "../../core/studio-context";
 import { RECONNECT_ERROR } from "../../oauth/token-refresh";
-import { buildCloneInfo } from "../../shared/github-clone-info";
+import {
+  buildCloneInfo,
+  ensureGithubCloneToken,
+} from "../../shared/github-clone-info";
 
 export class GitPushAuthError extends Error {
   constructor(message: string) {
@@ -43,6 +46,16 @@ export async function refreshSandboxGitCredentials(
   if (!organizationId) {
     throw new GitPushAuthError(RECONNECT_ERROR);
   }
+
+  await ensureGithubCloneToken({
+    ctx,
+    connectionId: githubRepo.connectionId,
+    organizationId,
+    onLegacyMintError: (error) => {
+      const message = error instanceof Error ? error.message : RECONNECT_ERROR;
+      throw new GitPushAuthError(message);
+    },
+  });
 
   const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
     githubRepo.connectionId,

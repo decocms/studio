@@ -34,6 +34,7 @@ import {
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
+  ensureGithubCloneToken,
 } from "../../shared/github-clone-info";
 import {
   detectRepoRuntime,
@@ -300,8 +301,28 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
-    // buildCloneInfo and detectRepoRuntime refresh connection-backed tokens before
+    // Legacy repo-scoped children may mint through their source connection here.
+    // buildCloneInfo and detectRepoRuntime refresh OAuth-shaped tokens before
     // using them, including refreshable repo-scoped GitHub children.
+    if (githubRepo.connectionId) {
+      await ensureGithubCloneToken({
+        ctx,
+        connectionId: githubRepo.connectionId,
+        organizationId: orgId,
+        onLegacyMintError: (error) => {
+          // Swallow + log: a failed mint intentionally falls through to
+          // buildCloneInfo's own "No GitHub token found" throw below (sandbox
+          // start fails loudly — never an unauthenticated clone).
+          console.error(
+            "[provisionSandbox] repo-scoped legacy token mint failed",
+            {
+              connectionId: githubRepo.connectionId,
+              error: (error as Error).message,
+            },
+          );
+        },
+      });
+    }
 
     // Connection-backed (authenticated) vs public-clone (anonymous). The
     // daemon's clone behavior is identical — only the URL and identity
