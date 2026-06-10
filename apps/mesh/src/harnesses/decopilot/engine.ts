@@ -114,6 +114,11 @@ export interface RunEngineArgs {
   extraTools: ToolSet;
   /** Per-request inline <system> blocks + the currently-enabled-tools tail. */
   additionalSystemMessages: SystemModelMessage[];
+  /** Optional step-budget override. The shared core passes
+   *  `SUBAGENT_STEP_LIMIT` for delegated `subtask` runs (`kind: "subtask"`);
+   *  main runs leave it undefined so the engine derives its default
+   *  (`PARENT_STEP_LIMIT`). */
+  stepLimit?: number;
 }
 
 /**

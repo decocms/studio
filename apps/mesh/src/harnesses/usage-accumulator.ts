@@ -138,6 +138,18 @@ export interface UsageAccumulator {
     totalTokens: number;
   };
 
+  /** Fold a completed CHILD run's usage (e.g. a `subtask` core run) into
+   *  the final totals. Only the three token totals contribute — child cache
+   *  breakdown, context size, and cost are intentionally NOT mixed into the
+   *  parent's per-step ring (those reflect the parent model's own calls).
+   *  Surfaces ONLY in `buildFinalUsage` (so the kernel sees one number); the
+   *  per-step `buildStepUsage` ring is unaffected. Mutates state in place. */
+  addExternal(usage: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  }): void;
+
   /** Build the `messageMetadata.usage` payload for a `finish-step`
    *  chunk — cumulative totals + cache breakdown + (when nonzero)
    *  OpenRouter cost. Pure read; does not mutate. */
@@ -190,6 +202,10 @@ export function createUsageAccumulator(): UsageAccumulator {
     totalTokens: 0,
   };
   const cache = { read: 0, write: 0, input: 0 };
+  // External (child-run) token totals rolled in via `addExternal`. Kept
+  // separate from `totals` so the per-step ring (buildStepUsage) reflects only
+  // the parent model's own calls; folded into the FINAL total only.
+  const external = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   let accCost = 0;
   let lastProviderMetadata: Record<string, unknown> | undefined;
   let lastStepInputTokens = 0;
@@ -225,6 +241,12 @@ export function createUsageAccumulator(): UsageAccumulator {
       // today) contribute.
       accCost += readOpenRouterCost(providerMetadata);
       return { ...totals };
+    },
+
+    addExternal(usage) {
+      external.inputTokens += usage.inputTokens ?? 0;
+      external.outputTokens += usage.outputTokens ?? 0;
+      external.totalTokens += usage.totalTokens ?? 0;
     },
 
     buildStepUsage(): StepUsageEmission {
@@ -280,22 +302,34 @@ export function createUsageAccumulator(): UsageAccumulator {
             ? totals
             : totalUsage;
 
-      if (!effectiveUsage) return undefined;
+      const hasExternal =
+        external.inputTokens > 0 ||
+        external.outputTokens > 0 ||
+        external.totalTokens > 0;
+      // Surface usage even when the parent itself produced none but a child
+      // subtask did (e.g. a 0-step parent that only delegated).
+      if (!effectiveUsage && !hasExternal) return undefined;
+
+      // Parent-only input drives the cache breakdown (external children don't
+      // contribute cache details). External token totals are added on top so
+      // the kernel sees one number that includes delegated child work.
+      const parentInputTokens = effectiveUsage?.inputTokens ?? 0;
+      const parentOutputTokens = effectiveUsage?.outputTokens ?? 0;
+      const parentTotalTokens = effectiveUsage?.totalTokens ?? 0;
 
       return {
-        inputTokens: effectiveUsage.inputTokens ?? 0,
-        outputTokens: effectiveUsage.outputTokens ?? 0,
+        inputTokens: parentInputTokens + external.inputTokens,
+        outputTokens: parentOutputTokens + external.outputTokens,
         reasoningTokens:
           (totalUsage as { reasoningTokens?: number } | null | undefined)
             ?.reasoningTokens ?? undefined,
-        totalTokens: effectiveUsage.totalTokens ?? 0,
+        totalTokens: parentTotalTokens + external.totalTokens,
         contextTokens: lastStepInputTokens,
         cachedInputTokens: cache.read,
         inputTokenDetails: {
           cacheReadTokens: cache.read,
           cacheWriteTokens: cache.write,
-          noCacheTokens:
-            (effectiveUsage.inputTokens ?? 0) - cache.read - cache.write,
+          noCacheTokens: parentInputTokens - cache.read - cache.write,
         },
         providerMetadata: sanitizeProviderMetadata(
           providerKey && finalProviderMeta

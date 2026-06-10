@@ -3,6 +3,7 @@ export {
   DEFAULT_THREAD_TITLE,
   DEFAULT_WINDOW_SIZE,
   PARENT_STEP_LIMIT,
+  SUBAGENT_STEP_LIMIT,
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
   buildRepoEnvironmentPrompt,
@@ -13,5 +14,3 @@ export {
 export const generateMessageId = () => generatePrefixedId("msg");
 
 export const DEFAULT_MAX_TOKENS = 32768;
-
-export const SUBAGENT_STEP_LIMIT = 15;

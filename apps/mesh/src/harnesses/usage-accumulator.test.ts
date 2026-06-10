@@ -254,6 +254,59 @@ describe("createUsageAccumulator", () => {
     expect(openrouter?.usage?.cost).toBe(0.05);
   });
 
+  test("addExternal folds child-run usage into the final totals", () => {
+    const acc = createUsageAccumulator();
+    acc.addStep(
+      { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      undefined,
+    );
+    acc.addExternal({ inputTokens: 100, outputTokens: 50, totalTokens: 150 });
+    const final = acc.buildFinalUsage({
+      totalUsage: {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+      } as never,
+      providerKey: null,
+    });
+    expect(final?.inputTokens).toBe(110);
+    expect(final?.outputTokens).toBe(55);
+    expect(final?.totalTokens).toBe(165);
+  });
+
+  test("addExternal does not affect per-step usage", () => {
+    const acc = createUsageAccumulator();
+    acc.addStep(
+      { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      undefined,
+    );
+    acc.addExternal({ inputTokens: 100, outputTokens: 50, totalTokens: 150 });
+    // Per-step usage reflects only the parent's own model steps — external
+    // child usage rolls into the final total, not the per-step ring.
+    const step = acc.buildStepUsage();
+    expect(step.inputTokens).toBe(10);
+    expect(step.outputTokens).toBe(5);
+    expect(step.totalTokens).toBe(15);
+  });
+
+  test("addExternal accumulates across multiple children", () => {
+    const acc = createUsageAccumulator();
+    acc.addExternal({ inputTokens: 100, outputTokens: 50, totalTokens: 150 });
+    acc.addExternal({ inputTokens: 20, outputTokens: 10, totalTokens: 30 });
+    const final = acc.buildFinalUsage({
+      totalUsage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      } as never,
+      providerKey: null,
+    });
+    // No parent step usage; external-only totals surface in the final.
+    expect(final?.inputTokens).toBe(120);
+    expect(final?.outputTokens).toBe(60);
+    expect(final?.totalTokens).toBe(180);
+  });
+
   test("addStep returns the new cumulative totals", () => {
     const acc = createUsageAccumulator();
     const after1 = acc.addStep(

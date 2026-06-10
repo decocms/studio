@@ -108,6 +108,13 @@ export interface AssembleDecopilotToolsExtras {
    *  alongside `pendingOps` so the dispatch layer can also schedule a
    *  flush at step-end. */
   htmlPageBuffer: HtmlPageBuffer;
+  /** Usage roll-up sink (Task 17) — forwarded to the `subtask` built-in so a
+   *  delegated child run's tokens fold into the parent run's accumulator. */
+  onChildUsage?: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }) => void;
 }
 
 /**
@@ -278,6 +285,7 @@ export async function assembleDecopilotTools(
         htmlPageBuffer: extras.htmlPageBuffer,
         taskId: extras.threadId,
         agentId: input.agent.id,
+        onChildUsage: extras.onChildUsage,
       },
       ctx,
     );

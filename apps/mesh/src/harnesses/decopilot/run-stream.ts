@@ -38,7 +38,10 @@ import {
 import type { MeshProvider } from "./mesh-provider";
 
 import { createEnableToolTool } from "./built-in-tools/enable-tool";
-import { createUsageAccumulator } from "../usage-accumulator";
+import {
+  createUsageAccumulator,
+  type UsageAccumulator,
+} from "../usage-accumulator";
 import { generateMessageId } from "../../api/routes/decopilot/constants";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
 import { makeTitleResultChunk } from "../title-chunk";
@@ -178,8 +181,21 @@ export interface RunDecopilotStreamExtras {
   /** LLM-call telemetry hooks (cluster monitoring/metrics; undefined on desktop). */
   telemetry?: DecopilotTelemetry;
 
-  /** Top-level vs delegated subtask run. Threaded for Task 16/17; "main" today. */
+  /** Top-level vs delegated subtask run. Gates title generation (Task 16) and,
+   *  for `"subtask"`, drives the step-budget override below. */
   kind: "main" | "subtask";
+
+  /** Optional step-budget override forwarded to the engine. The core sets
+   *  `SUBAGENT_STEP_LIMIT` for `kind: "subtask"` runs; undefined for main runs
+   *  (engine derives `PARENT_STEP_LIMIT`). */
+  stepLimit?: number;
+
+  /** Shared cumulative-usage accumulator. The core owns it so a MAIN run's
+   *  subtask tool can roll delegated CHILD usage into the SAME accumulator
+   *  (`addExternal`) — the parent's final `message-metadata.usage` then
+   *  includes child tokens (Task 17 roll-up). Omitted by callers that don't
+   *  delegate; defaults to a fresh accumulator. */
+  usageAccumulator?: UsageAccumulator;
 }
 
 export interface RunDecopilotStreamArgs {
@@ -324,8 +340,10 @@ export async function* runDecopilotStream(
   let reasoningStartAt: Date | null = null;
   // Cumulative usage / cache-token / OpenRouter-cost tracking lives in a
   // shared accumulator used by all harnesses so the emitted
-  // `messageMetadata.usage` shape stays identical.
-  const usageAcc = createUsageAccumulator();
+  // `messageMetadata.usage` shape stays identical. The core may supply one
+  // (so a MAIN run's subtask tool can fold child usage in via `addExternal`);
+  // otherwise we create a fresh one.
+  const usageAcc = extras.usageAccumulator ?? createUsageAccumulator();
   llmCallStartTime = Date.now();
 
   const passthroughToolNames = new Set(Object.keys(tools.passthroughTools));
@@ -426,6 +444,9 @@ export async function* runDecopilotStream(
       ...processedSystemMessages,
       ...(enabledToolsSystemMessage ? [enabledToolsSystemMessage] : []),
     ],
+    // Subtask runs cap the engine at SUBAGENT_STEP_LIMIT (Task 17); main runs
+    // leave it undefined so the engine derives PARENT_STEP_LIMIT.
+    stepLimit: extras.stepLimit,
   });
 
   const result = handle.result;

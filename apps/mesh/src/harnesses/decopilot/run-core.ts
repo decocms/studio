@@ -49,7 +49,9 @@ import {
   type RunDecopilotStreamExtras,
 } from "./run-stream";
 import { processConversation } from "./conversation";
-import { DEFAULT_WINDOW_SIZE } from "./prompt-constants";
+import { DEFAULT_WINDOW_SIZE, SUBAGENT_STEP_LIMIT } from "./prompt-constants";
+import { createUsageAccumulator } from "../usage-accumulator";
+import { createSemaphore } from "../semaphore";
 
 export type { DecopilotTelemetry } from "./run-stream";
 
@@ -156,9 +158,14 @@ export function buildModelRuntimeFromSources(
  * desktop (Task 15) via `buildLocalTools` + `runNativeAgentLoopCore`.
  */
 export interface DecopilotToolRuntime {
-  /** Assemble the environment-specific tool bundle for one turn. */
+  /** Assemble the environment-specific tool bundle for one turn.
+   *  `onChildUsage` (when present) is the parent run's usage roll-up sink: the
+   *  adapter wires it into the `subtask` tool so each delegated child run's
+   *  usage folds into the parent's accumulator (Task 17). Absent on
+   *  `kind: "subtask"` runs (which expose no subtask tool — depth-1). */
   buildEnvironmentTools(args: {
     input: HarnessStreamInput;
+    onChildUsage?: (usage: SubtaskRunResult["usage"]) => void;
   }): Promise<HarnessAssembledTools>;
   /** Run the system-prompt + tool-assembly + streamText engine. The cluster
    *  closure captures `ctx` + `organization`; only the portable args flow in. */
@@ -171,8 +178,10 @@ export interface RunDecopilotCoreDeps {
   toolRuntime: DecopilotToolRuntime;
   telemetry?: DecopilotTelemetry;
   /** Discriminates a top-level run from a delegated subtask run. Title
-   *  generation is gated on `"main"` (Task 16); `"subtask"` wiring is Task 17.
-   *  For now every cluster call passes `"main"`. */
+   *  generation is gated on `"main"` (Task 16). A `"subtask"` run additionally
+   *  strips the `subtask` tool (depth-1) and caps the engine at
+   *  `SUBAGENT_STEP_LIMIT` (Task 17); `spawnSubtask` forces this value. Cluster
+   *  top-level streams pass `"main"`. */
   kind: "main" | "subtask";
 }
 
@@ -202,8 +211,29 @@ export async function* runDecopilotCore(
   deps: RunDecopilotCoreDeps,
 ): AsyncIterable<UIMessageChunk> {
   const { input, modelRuntime, toolRuntime, telemetry } = deps;
+  const isSubtask = deps.kind === "subtask";
 
-  const tools = await toolRuntime.buildEnvironmentTools({ input });
+  // The core owns the cumulative-usage accumulator so a MAIN run's `subtask`
+  // tool can roll delegated CHILD usage into the SAME accumulator — the
+  // parent's final `message-metadata.usage` then includes child tokens
+  // (Task 17 roll-up). Subtask runs delegate nothing (depth-1), so they don't
+  // need the sink.
+  const usageAccumulator = createUsageAccumulator();
+  const onChildUsage = isSubtask
+    ? undefined
+    : (usage: SubtaskRunResult["usage"]) => usageAccumulator.addExternal(usage);
+
+  const tools = await toolRuntime.buildEnvironmentTools({
+    input,
+    onChildUsage,
+  });
+
+  // Depth-1: a `subtask` core run must NOT expose the `subtask` tool, so a
+  // delegated run can't spawn its own delegated runs. Strip it from every
+  // surface the engine reads (the cluster also excludes it for `kind:
+  // "subagent"` in assemble-agent-tools, but the core enforces it portably so
+  // any adapter — including the desktop in Task 18 — inherits depth-1).
+  if (isSubtask) stripSubtaskTool(tools);
 
   const {
     systemMessages: processedSystemMessages,
@@ -249,6 +279,171 @@ export async function* runDecopilotCore(
       onStepFinish: tools.onStepFinish,
       telemetry,
       kind: deps.kind,
+      // Subtask runs cap the engine at SUBAGENT_STEP_LIMIT (Task 17).
+      stepLimit: isSubtask ? SUBAGENT_STEP_LIMIT : undefined,
+      // Shared so the subtask tool's child-usage roll-up lands in the same
+      // accumulator that builds the final `message-metadata.usage`.
+      usageAccumulator,
     },
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Subtask spawning (Task 17)
+// ─────────────────────────────────────────────────────────────────────
+
+/** Small process-wide cap on concurrent `subtask` core runs (decision Q17).
+ *  A counting semaphore (below) bounds delegated runs so a fan-out of parallel
+ *  subtasks can't exhaust model/CPU budget. */
+export const SUBTASK_MAX_CONCURRENT = 4;
+
+/** Module-scoped semaphore: concurrency is bounded across ALL subtasks in the
+ *  process, not per-parent-run. Acquired (abortably) before a subtask core run
+ *  starts and released in `finally`. */
+const subtaskSemaphore = createSemaphore(SUBTASK_MAX_CONCURRENT);
+
+/** The summarized outcome of one delegated subtask run. `text` is the
+ *  aggregated assistant text; `usage` is the child run's token totals (rolled
+ *  into the parent via `addExternal`). */
+export interface SubtaskRunResult {
+  text: string;
+  error?: string;
+  finishReason?: string;
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number };
+}
+
+export interface SpawnSubtaskArgs {
+  /** The self-contained task prompt for the fresh subagent. */
+  prompt: string;
+  /** Target-agent core deps the ADAPTER builds (cluster: in-process passthrough
+   *  client for the target; desktop/Task 18: HTTP client to the target's
+   *  virtual-MCP URL). `kind` is forced to `"subtask"` here, so the caller need
+   *  not set it. */
+  deps: Omit<RunDecopilotCoreDeps, "kind">;
+  /** The PARENT tool-call abort signal, chained into the subtask core run so
+   *  parent/daemon cancellation kills the subtask (and aborts a queued
+   *  semaphore wait). */
+  signal: AbortSignal;
+}
+
+/**
+ * Run one delegated subtask end-to-end and summarize it.
+ *
+ * Portable (`@/*`-free) so BOTH the cluster subtask tool and the desktop
+ * (Task 18) reuse it; environment-specific TARGET-deps construction stays in
+ * the adapter. Enforces the cluster resource policy:
+ *   - concurrency: a module-scoped semaphore caps process-wide parallelism
+ *     (`SUBTASK_MAX_CONCURRENT`); a queued wait is abortable via `signal`;
+ *   - depth-1 + step budget: `runDecopilotCore({ kind: "subtask" })` strips the
+ *     subtask tool and caps the engine at `SUBAGENT_STEP_LIMIT`;
+ *   - signal chaining: `signal` is fed into the core run as `input.signal` so
+ *     parent cancellation propagates.
+ *
+ * Drains the child's `UIMessageChunk` stream, collecting assistant text from
+ * `text-delta` chunks and usage/finishReason from the final `finish` chunk's
+ * `messageMetadata`. Never throws for a child-run failure — it returns the
+ * error on the result so the caller's `toModelOutput` renders it.
+ */
+export async function spawnSubtask(
+  args: SpawnSubtaskArgs,
+): Promise<SubtaskRunResult> {
+  await subtaskSemaphore.acquire(args.signal);
+  try {
+    return await runSubtaskCore(args);
+  } finally {
+    subtaskSemaphore.release();
+  }
+}
+
+async function runSubtaskCore(
+  args: SpawnSubtaskArgs,
+): Promise<SubtaskRunResult> {
+  const { prompt, deps, signal } = args;
+  const text: string[] = [];
+  let error: string | undefined;
+  // `finishReason` is best-effort from the UI chunk stream — the AI SDK keeps
+  // it on `StreamTextResult`, not on `UIMessageChunk`. It's populated when a
+  // chunk surfaces it (some `finish`/`finish-step` shapes do); otherwise it
+  // stays undefined and the caller's `toModelOutput` treats it as a normal
+  // finish. Usage + text are the load-bearing fields.
+  let finishReason: string | undefined;
+  let usage: SubtaskRunResult["usage"] = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+  };
+
+  // Chain the parent tool-call signal into the child core run.
+  const subtaskInput: HarnessStreamInput = {
+    ...deps.input,
+    messages: [
+      {
+        id: "subtask-prompt",
+        role: "user",
+        parts: [{ type: "text", text: prompt }],
+      },
+    ],
+    signal,
+  };
+
+  try {
+    for await (const chunk of runDecopilotCore({
+      ...deps,
+      input: subtaskInput,
+      kind: "subtask",
+    })) {
+      const c = chunk as {
+        type: string;
+        delta?: string;
+        finishReason?: string;
+        messageMetadata?: {
+          usage?: {
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+          };
+        };
+      };
+      if (c.type === "text-delta" && typeof c.delta === "string") {
+        text.push(c.delta);
+      } else if (c.type === "finish" || c.type === "finish-message") {
+        if (typeof c.finishReason === "string") finishReason = c.finishReason;
+        const u = c.messageMetadata?.usage;
+        // The final `finish` chunk carries the cumulative total. Take whichever
+        // chunk supplies usage (prefer a later, larger total).
+        if (u) {
+          usage = {
+            inputTokens: u.inputTokens ?? 0,
+            outputTokens: u.outputTokens ?? 0,
+            totalTokens: u.totalTokens ?? 0,
+          };
+        }
+      }
+    }
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  }
+
+  return {
+    text: text.join("").trim(),
+    error,
+    finishReason,
+    usage,
+  };
+}
+
+/** Strip the `subtask` tool from every surface the engine reads, enforcing
+ *  depth-1 for delegated runs. Mutates the bundle in place. */
+function stripSubtaskTool(tools: HarnessAssembledTools): void {
+  if ("subtask" in tools.tools) {
+    const { subtask: _s, ...rest } = tools.tools as Record<string, unknown>;
+    tools.tools = rest as typeof tools.tools;
+  }
+  if ("subtask" in tools.builtInTools) {
+    const { subtask: _s, ...rest } = tools.builtInTools as Record<
+      string,
+      unknown
+    >;
+    tools.builtInTools = rest as typeof tools.builtInTools;
+  }
 }

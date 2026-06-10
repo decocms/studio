@@ -3,6 +3,11 @@ import type { GithubRepo } from "@decocms/mesh-sdk";
 export const DEFAULT_WINDOW_SIZE = 50;
 export const PARENT_STEP_LIMIT = 30;
 
+/** Step budget for a delegated `subtask`/subagent run. Lives here (a `@/*`-free
+ *  harnesses leaf) so the portable core + the daemon (Task 18 desktop subtask)
+ *  can bundle it; re-exported from the route constants for the cluster. */
+export const SUBAGENT_STEP_LIMIT = 15;
+
 /** Title a thread carries until it's auto-titled or the user renames it. The
  *  producer-side title gate (`needsTitle`) and the cluster's title interceptor
  *  both compare against this. Lives here (a `@/*`-free harnesses leaf) so the

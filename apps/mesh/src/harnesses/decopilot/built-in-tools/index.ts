@@ -121,6 +121,13 @@ export interface BuiltinToolParams {
   /** Current agent (virtual MCP) id — scopes the per-agent interests memory
    *  written by `update_interests`. */
   agentId: string;
+  /** Usage roll-up sink (Task 17) — forwarded to the `subtask` tool so a
+   *  delegated child run's tokens fold into the parent run's accumulator. */
+  onChildUsage?: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }) => void;
 }
 
 export type { PendingImage };
@@ -152,6 +159,7 @@ async function buildAllTools(
     htmlPageBuffer,
     taskId,
     agentId,
+    onChildUsage,
   } = params;
   const approvalOpts = { isPlanMode };
   const userId = ctx.auth?.user?.id;
@@ -283,6 +291,8 @@ async function buildAllTools(
         self: { id: agentId },
         needsApproval:
           toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
+        // Roll the child run's usage into the parent's accumulator (Task 17).
+        onChildUsage,
       },
       ctx,
     );

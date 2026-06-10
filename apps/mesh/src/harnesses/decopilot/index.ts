@@ -95,6 +95,8 @@ async function runClusterEngine(
     connectionsData: args.connectionsData,
     extraTools: args.extraTools,
     additionalSystemMessages: args.additionalSystemMessages,
+    // Subtask core runs cap the loop at SUBAGENT_STEP_LIMIT (Task 17).
+    stepLimit: args.stepLimit,
   });
   return {
     result: handle.result,
@@ -133,7 +135,10 @@ export const decopilotHarnessFactory: HarnessFactory = {
         // it even if the core throws mid-stream.
         const cleanup: { close?: () => Promise<void> } = {};
         const toolRuntime: DecopilotToolRuntime = {
-          buildEnvironmentTools: async ({ input: streamInput }) => {
+          buildEnvironmentTools: async ({
+            input: streamInput,
+            onChildUsage,
+          }) => {
             const toolOutputMap = new Map<string, string>();
             const pendingImages: PendingImage[] = [];
             const assembled = await assembleDecopilotTools(streamInput, ctx, {
@@ -148,6 +153,9 @@ export const decopilotHarnessFactory: HarnessFactory = {
                 modelRuntime.deepResearch?.provider ??
                 modelRuntime.thinking.provider,
               htmlPageBuffer,
+              // Roll subtask child usage into the parent run's accumulator
+              // (Task 17). Threaded into the subtask tool via getBuiltInTools.
+              onChildUsage,
             });
             const bundle: HarnessAssembledTools = {
               tools: assembled.tools,
