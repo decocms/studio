@@ -197,6 +197,29 @@ export function createWebdavHandler(
               headers: { ...baseHeaders, "content-length": String(node.size) },
             });
           }
+          // Push the read down to the byte store when the backend can stream
+          // it: presigned URL + Range forwarded, so rclone's chunked reads of
+          // big files don't buffer whole objects through the mesh (or here).
+          if (api.readResponse) {
+            const upstream = await api.readResponse(
+              path,
+              req.headers.get("range") ?? undefined,
+            );
+            if (upstream) {
+              if (upstream.status === 416) {
+                return new Response("Range Not Satisfiable", { status: 416 });
+              }
+              const headers = { ...baseHeaders };
+              for (const h of ["content-length", "content-range"] as const) {
+                const v = upstream.headers.get(h);
+                if (v) headers[h] = v;
+              }
+              return new Response(upstream.body, {
+                status: upstream.status,
+                headers,
+              });
+            }
+          }
           const bytes = await api.read(path);
           const range = parseRange(req.headers.get("range"), bytes.length);
           if (range) {

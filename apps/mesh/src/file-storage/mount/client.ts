@@ -111,6 +111,25 @@ export class OrgFsClient implements OrgFsApi {
     return new Uint8Array(await res.arrayBuffer());
   }
 
+  async readResponse(path: string, range?: string): Promise<Response | null> {
+    const presign = await this.fetch(this.url("read", { path, presign: "1" }), {
+      headers: this.headers,
+    });
+    if (presign.status === 404) return this.fail(presign);
+    if (!presign.ok) return null; // presign unavailable — buffered fallback
+    const { url } = (await presign.json()) as { url: string };
+    // Dev storage presigns to inline `data:` URLs (the full base64 payload) —
+    // no push-down win there; the buffered path is strictly cheaper.
+    if (!/^https?:/i.test(url)) return null;
+    // Global fetch on purpose: the presigned URL is external to the mesh (the
+    // injected fetch only routes the mesh contract).
+    const res = await fetch(url, range ? { headers: { range } } : undefined);
+    if (res.status === 200 || res.status === 206 || res.status === 416) {
+      return res;
+    }
+    return null; // expired/stale URL etc. — the buffered path is authoritative
+  }
+
   async write(
     path: string,
     body: Uint8Array,
