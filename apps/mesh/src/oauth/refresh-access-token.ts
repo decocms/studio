@@ -10,11 +10,24 @@
 
 import type { DownstreamToken } from "../storage/types";
 
+/**
+ * 400 error codes that mean the refresh_token itself is permanently dead, so
+ * the cached token must be evicted instead of retried. `invalid_grant` is the
+ * RFC 6749 §5.2 standard; `bad_refresh_token` is the non-standard code some
+ * servers emit (e.g. the GitHub MCP token endpoint) — without it an expired
+ * GitHub token is retried on every request, hammering the token endpoint.
+ */
+const PERMANENT_REFRESH_ERROR_CODES = new Set([
+  "invalid_grant",
+  "bad_refresh_token",
+]);
+
 export interface TokenRefreshResult {
   success: boolean;
   /**
    * `true` only when the OAuth server told us the refresh_token itself is
-   * permanently invalid (RFC 6749 §5.2: `400 invalid_grant`). Callers use
+   * permanently invalid (a `400` with a code in `PERMANENT_REFRESH_ERROR_CODES`,
+   * e.g. RFC 6749 §5.2 `invalid_grant`). Callers use
    * this to decide whether to delete the cached token: deleting on transient
    * failures (5xx, network blips, non-spec status codes) silently logs users
    * out and forces a manual reconnect, so we only delete when we're certain.
@@ -94,11 +107,13 @@ export async function refreshAccessToken(
         // body wasn't JSON — fall through with undefined codes
       }
 
-      // Only `400 invalid_grant` means the refresh_token is permanently dead.
-      // Everything else (5xx, network blips, non-spec status codes) is treated
-      // as transient — the cached token should not be deleted.
+      // A 400 with a known dead-refresh-token code means it's permanently
+      // dead. Everything else (5xx, network blips, non-spec status codes) is
+      // treated as transient — the cached token should not be deleted.
       const permanent =
-        response.status === 400 && errorCode === "invalid_grant";
+        response.status === 400 &&
+        !!errorCode &&
+        PERMANENT_REFRESH_ERROR_CODES.has(errorCode);
 
       console.error("[TokenRefresh] refresh failed", {
         connectionId: token.connectionId,
