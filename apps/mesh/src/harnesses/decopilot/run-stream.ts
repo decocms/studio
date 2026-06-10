@@ -736,7 +736,7 @@ export async function* runDecopilotStream(
       // sets handle.error; we pick up the message from there.
       const rawError =
         error instanceof Error ? error : new Error(stringifyError(error));
-      console.error("[decopilot:stream] Error", rawError);
+      console.error("[decopilot:stream] Error", rawError.message);
       if (registrySignal.aborted) {
         return;
       }

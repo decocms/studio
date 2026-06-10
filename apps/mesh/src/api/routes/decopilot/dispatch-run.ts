@@ -1385,7 +1385,7 @@ async function prepareRun(
           });
           return sanitizeStreamError(error);
         }
-        console.error("[decopilot] stream error:", error);
+        console.error("[decopilot] stream error:", stringifyError(error));
         const sanitized = sanitizeStreamError(error);
         posthog.capture({
           distinctId: input.userId,
