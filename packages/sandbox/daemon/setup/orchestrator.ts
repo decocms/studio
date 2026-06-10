@@ -79,6 +79,7 @@ export class SetupOrchestrator {
       if (summary.intentional) return;
       if (summary.exitCode === 0 || summary.exitCode === null) return;
       const reason = `dev script exited with code ${summary.exitCode}`;
+      this.chunk(`\r\n[orchestrator] ${reason}\r\n`);
       this.deps.setStatus({ state: "error", reason });
       // Lifecycle was at `starting` (post-spawn) or `running` (probe saw it
       // up briefly). Either way the dev script is gone now; surface a
@@ -173,7 +174,9 @@ export class SetupOrchestrator {
         await this.stepStart();
         return;
       case "start":
-        await this.stopDevTask();
+        // stepStart owns the stop: it skips the kill entirely when an
+        // identical dev is already running, so a port-change can't SIGTERM a
+        // mid-boot dev only to respawn the same command.
         await this.stepStart();
         return;
     }
@@ -362,6 +365,17 @@ export class SetupOrchestrator {
       });
       return;
     }
+
+    const running = this.deps.taskManager.runningCommandByLogName(
+      command.source,
+    );
+    if (running?.command === command.cmd && running?.cwd === command.cwd) {
+      this.chunk(
+        `[orchestrator] dev already running (${command.source}) — skipping restart\r\n`,
+      );
+      return;
+    }
+    await this.stopDevTask();
     this.deps.lifecycle.transition({ phase: "starting" });
     await this.deps.taskManager.spawn({
       command: command.cmd,
