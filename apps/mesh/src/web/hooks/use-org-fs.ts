@@ -58,6 +58,9 @@ export function useOrgFsList(volume: string, path: string) {
     queryKey: KEYS.orgFsList(org.id, volume, path),
     // Keep the previous listing on screen while navigating into a dir.
     placeholderData: keepPreviousData,
+    // Sandboxes write into these volumes live — keep the open folder fresh
+    // without a manual Refresh (focused window only; TanStack default).
+    refetchInterval: 5_000,
     queryFn: async () => {
       const res = await fsFetch(fsUrl(org.slug, volume, "list", { path }));
       const body = (await res.json()) as { entries: OrgFsEntry[] };
@@ -76,6 +79,7 @@ export function useOrgFsUsage(volume: string) {
   const { org } = useProjectContext();
   return useQuery({
     queryKey: KEYS.orgFsUsage(org.id, volume),
+    refetchInterval: 15_000,
     queryFn: async () => {
       const res = await fsFetch(fsUrl(org.slug, volume, "usage"));
       return (await res.json()) as OrgFsUsage;
