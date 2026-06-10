@@ -110,6 +110,20 @@ describe("normalizeClientModels", () => {
     expect(result.thinking.capabilities).toEqual({ reasoning: true });
   });
 
+  it("omits capabilities entirely when only non-wire keys are present", () => {
+    const result = normalizeClientModels(
+      baseInput({
+        thinking: {
+          id: "claude-opus-4-5",
+          title: "Opus",
+          capabilities: { tools: true, file: true },
+        },
+      }),
+    );
+
+    expect("capabilities" in result.thinking).toBe(false);
+  });
+
   it("falls back thinking.title to the model id (wire requires it)", () => {
     const result = normalizeClientModels(
       baseInput({ thinking: { id: "claude-opus-4-5" } }),

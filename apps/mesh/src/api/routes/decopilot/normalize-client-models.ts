@@ -34,31 +34,37 @@ export type ClientModelsInput = Omit<
 /**
  * Project a client slot onto the wire `ModelSelection` shape.
  *
- * `capabilities` is forwarded (wire-allowed keys only: `vision`/`text`/
- * `reasoning`) so `createLanguageModel`'s `reasoning !== false` gate sees the
- * client's flags on every harness, cluster or desktop (plan Task 13).
+ * `capabilities` is forwarded (wire-only keys; see toSelection: `vision`/
+ * `text`/`reasoning`) so `createLanguageModel`'s `reasoning !== false` gate
+ * sees the client's flags on every harness, cluster or desktop (plan Task 13);
+ * `coding` dropped (D11).
  */
 function toSelection(slot: ModelInfo, credentialId: string): ModelSelection {
+  // Project only the wire-allowed capability keys. A tools/file-only client
+  // capabilities object has no wire-allowed key, so the projected object would
+  // be empty — omit `capabilities` entirely in that case rather than emitting
+  // `capabilities: {}` on the wire.
+  const wireCapabilities = slot.capabilities
+    ? {
+        ...(slot.capabilities.vision !== undefined
+          ? { vision: slot.capabilities.vision }
+          : {}),
+        ...(slot.capabilities.text !== undefined
+          ? { text: slot.capabilities.text }
+          : {}),
+        ...(slot.capabilities.reasoning !== undefined
+          ? { reasoning: slot.capabilities.reasoning }
+          : {}),
+      }
+    : undefined;
   return {
     id: slot.id,
     ...(slot.title !== undefined ? { title: slot.title } : {}),
     ...(slot.provider !== undefined ? { provider: slot.provider } : {}),
     credentialId,
     ...(slot.limits ? { limits: slot.limits } : {}),
-    ...(slot.capabilities
-      ? {
-          capabilities: {
-            ...(slot.capabilities.vision !== undefined
-              ? { vision: slot.capabilities.vision }
-              : {}),
-            ...(slot.capabilities.text !== undefined
-              ? { text: slot.capabilities.text }
-              : {}),
-            ...(slot.capabilities.reasoning !== undefined
-              ? { reasoning: slot.capabilities.reasoning }
-              : {}),
-          },
-        }
+    ...(wireCapabilities && Object.keys(wireCapabilities).length > 0
+      ? { capabilities: wireCapabilities }
       : {}),
   };
 }
@@ -69,7 +75,8 @@ function toSelection(slot: ModelInfo, credentialId: string): ModelSelection {
  *   - `thinking`/`fast`/`smart` resolve against the root client credential.
  *   - `image`/`deepResearch` keep their own `credentialId`, defaulting to
  *     the root credential when absent.
- *   - `coding` is dropped (D11); `capabilities` stripped (see toSelection).
+ *   - `capabilities` forwarded (wire-only keys; see toSelection); `coding`
+ *     dropped (D11).
  *   - `thinking.title` falls back to the model id — the wire schema requires
  *     it (`modelSelectionSchema.extend({ title: z.string() })`) while the TS
  *     client type leaves it optional.

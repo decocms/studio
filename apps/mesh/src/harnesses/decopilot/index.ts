@@ -1,186 +1,203 @@
 /**
- * Decopilot harness — the in-tree native runtime.
+ * Decopilot harness — the CLUSTER adapter for the shared Decopilot core.
  *
- * Wraps the existing `streamText` loop with the platform's built-in
- * tools and full system-prompt assembly. Composed from three pieces
- * extracted from `stream-core.ts`:
- *  - `assembleDecopilotTools` (./tools.ts)
- *  - `assembleDecopilotPrompt` (./prompt.ts)
- *  - `runDecopilotStream` (./run-stream.ts)
+ * The orchestration (processConversation → engine → streamText → title +
+ * side-channel merge) lives in `runDecopilotCore` (`./run-core`). This factory
+ * is the CLUSTER ADAPTER: it builds the cluster-specific dependencies the core
+ * needs and hands them off, keeping cluster behavior byte-identical.
  *
- * Created per-call (one `Harness` instance per stream) because the
- * underlying `streamText` loop is stateful (tool registration, MCP
- * passthrough client lifetime, per-thread state). The factory captures
- * `ctx` so the `HarnessStreamInput` shape stays serializable for a
- * future remote transport.
+ * Cluster adapter responsibilities:
+ *   - `modelRuntime`  — providers reconstructed from the resolved secret model
+ *     sources (`buildModelRuntimeFromSources` + `createProviderFromSecret`).
+ *   - `toolRuntime.buildEnvironmentTools` — opens the in-process MCP passthrough
+ *     client + assembles the full cluster tool set (`assembleDecopilotTools`:
+ *     web_search / update_interests / Browserless built-ins) and owns the
+ *     per-run side-channel writer + html-page buffer lifecycle.
+ *   - `toolRuntime.runEngine` — closes over `ctx` + `organization` and delegates
+ *     to `runAgentLoop` (system-prompt + tool assembly + streamText).
+ *   - `telemetry` — cluster LLM-call monitoring + metrics
+ *     (`@/monitoring/emit-llm-call`, `record-llm-call-metrics`).
  *
- * Owns `processConversation` itself because `convertToModelMessages` needs the
- * real tool set — three decopilot tools define `toModelOutput` handlers
- * (passthrough MCP truncation, take-screenshot formatting, subtask summary
- * extraction). Running it here, AFTER `assembleDecopilotTools`, ensures
- * prior-turn tool outputs get transformed correctly instead of leaking raw JSON
- * into every subsequent turn.
+ * Created per-call (one `Harness` instance per stream) because the underlying
+ * loop is stateful. The factory captures `ctx` so `HarnessStreamInput` stays
+ * serializable for the remote transport.
+ *
+ * The desktop daemon has its own import-isolated `decopilotDesktopHarnessFactory`
+ * (`harnesses/decopilot-desktop/`); it never calls THIS cluster factory, so
+ * there's no desktop branch here. Task 15 points the desktop factory at the
+ * same `runDecopilotCore` with HTTP/local adapter deps and deletes its
+ * duplicate loop.
  */
 
 import type { UIMessageChunk } from "ai";
 import type { HarnessContext } from "../../core/harness-context";
-import type { StudioContext } from "../../core/studio-context";
 import type {
-  DecopilotModelSource,
-  Harness,
-  HarnessFactory,
-  HarnessStreamInput,
-} from "../types";
-import type { ChatMessage } from "../../api/routes/decopilot/types";
-import { processConversation } from "../../api/routes/decopilot/conversation";
-import { DEFAULT_WINDOW_SIZE } from "../../api/routes/decopilot/constants";
+  StudioContext,
+  OrganizationScope,
+} from "../../core/studio-context";
+import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
+import { monitorLlmCall } from "@/monitoring/emit-llm-call";
+import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import { assembleDecopilotTools } from "./tools";
-import { assembleDecopilotPrompt } from "./prompt";
-import { runDecopilotStream } from "./run-stream";
-import type { PendingImage } from "./built-in-tools";
 import { createHtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import { createProviderFromSecret } from "./provider-from-secret";
-import type { DecopilotSecretModelSource } from "../types";
 import { createSideChannelWriter } from "../side-channel-writer";
+import {
+  buildModelRuntimeFromSources,
+  runDecopilotCore,
+  type DecopilotToolRuntime,
+} from "./run-core";
+import type { DecopilotTelemetry } from "./run-stream";
+import type {
+  AssembledEngineHandle,
+  HarnessAssembledTools,
+  RunEngineArgs,
+} from "./engine";
+import { runAgentLoop } from "./run-agent-loop";
+import type { PendingImage } from "./built-in-tools";
 
-/** Narrowed view of the cluster's richer input fields, mirroring what
- *  `dispatch-run.ts` actually builds. */
-interface ClusterInputView {
-  messages: ChatMessage[];
-}
-
-function resolveSecretModelSource(
-  input: HarnessStreamInput,
-): DecopilotSecretModelSource {
-  const source = input.modelSources?.thinking ?? null;
-  if (!source || source.kind !== "secret") {
-    throw new Error(
-      "Decopilot harness requires a secret thinking model source. Dispatch " +
-        "must resolve the selected model credential before invoking Decopilot.",
-    );
-  }
-  return source;
-}
-
-function optionalSecretModelSource(
-  source: DecopilotModelSource | undefined,
-): DecopilotSecretModelSource | undefined {
-  if (!source) return undefined;
-  if (source.kind !== "secret") {
-    throw new Error(
-      "Decopilot harness requires secret modelSources for all resolved slots.",
-    );
-  }
-  return source;
+/**
+ * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled
+ * `runAgentLoop` (which owns system-prompt assembly + tool assembly + the
+ * native streamText loop). Closes over `ctx` + `organization`. No behavior
+ * change — this is the same `runAgentLoop` call the factory made before the
+ * extraction, with the parent-supplied args threaded through.
+ */
+async function runClusterEngine(
+  ctx: StudioContext,
+  organization: OrganizationScope,
+  args: RunEngineArgs,
+): Promise<AssembledEngineHandle> {
+  const handle = await runAgentLoop({
+    kind: args.kind,
+    ctx,
+    organization,
+    virtualMcp: args.virtualMcp,
+    mcpClient: args.mcpClient,
+    provider: args.provider,
+    models: args.models,
+    messages: args.messages,
+    abortSignal: args.abortSignal,
+    temperature: args.temperature,
+    planMode: args.planMode,
+    isDecopilot: args.isDecopilot,
+    systemAgentInstructions: args.systemAgentInstructions,
+    currentThreadId: args.currentThreadId,
+    writer: args.writer,
+    subtaskParams: {
+      provider: args.provider,
+      organization,
+      models: args.models,
+    },
+    prepareStep: args.prepareStep,
+    onStepFinish: args.onStepFinish,
+    passthroughClient: args.passthroughClient,
+    connectionsData: args.connectionsData,
+    extraTools: args.extraTools,
+    additionalSystemMessages: args.additionalSystemMessages,
+  });
+  return {
+    result: handle.result,
+    error: handle.error,
+    span: handle.span,
+    assembledSystemMessages: handle.assembledSystemMessages,
+  };
 }
 
 export const decopilotHarnessFactory: HarnessFactory = {
   id: "decopilot",
   create(harnessCtx: HarnessContext): Harness {
-    // `storage` and `db` are required fields on StudioContext but absent
-    // from HarnessContext. The desktop daemon runs decopilot via the
-    // import-isolated `decopilotDesktopHarnessFactory`
-    // (`harnesses/decopilot-desktop/`), registered directly in the daemon —
-    // it never calls THIS cluster factory, so there's no desktop branch here.
+    // `storage` and `db` are required fields on StudioContext but absent from
+    // HarnessContext. The cluster always constructs this factory with a full
+    // StudioContext; the desktop uses its own import-isolated factory.
     const ctx = harnessCtx as StudioContext;
     return {
       id: "decopilot",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
-        const clusterInput = input as HarnessStreamInput & ClusterInputView;
-        const modelSource = resolveSecretModelSource(input);
-        const provider = createProviderFromSecret(modelSource);
-        const imageProvider = createProviderFromSecret(
-          optionalSecretModelSource(input.modelSources?.image) ?? modelSource,
+        const organization = ctx.organization!;
+
+        // ── Model runtime: providers from resolved secret sources. ────────
+        const modelRuntime = buildModelRuntimeFromSources(
+          { models: input.models, modelSources: input.modelSources },
+          createProviderFromSecret,
         );
-        const deepResearchProvider = createProviderFromSecret(
-          optionalSecretModelSource(input.modelSources?.deepResearch) ??
-            modelSource,
-        );
-        // Title generation rides the fast → smart → thinking slot chain
-        // (decision D12) — there is no dedicated title slot.
-        const titleSlot =
-          input.models.fast ?? input.models.smart ?? input.models.thinking;
-        const titleSource =
-          (input.models.fast
-            ? optionalSecretModelSource(input.modelSources?.fast)
-            : undefined) ??
-          (input.models.smart
-            ? optionalSecretModelSource(input.modelSources?.smart)
-            : undefined) ??
-          modelSource;
-        const titleProvider = createProviderFromSecret(titleSource);
-        const toolOutputMap = new Map<string, string>();
-        const pendingImages: PendingImage[] = [];
+
+        // ── Per-run side-channel + html-page buffer (cluster lifecycle). ──
         const sideChannel = createSideChannelWriter();
         const htmlPageBuffer = createHtmlPageBuffer(ctx, sideChannel.writer);
-        let tools: Awaited<ReturnType<typeof assembleDecopilotTools>> | null =
-          null;
+
+        // ── Cluster tool runtime. ─────────────────────────────────────────
+        // The assembled tool bundle owns a live passthrough MCP client; the
+        // factory must close it on completion/abort. Capture the cleanup here
+        // (assigned inside `buildEnvironmentTools`) so the finally below runs
+        // it even if the core throws mid-stream.
+        const cleanup: { close?: () => Promise<void> } = {};
+        const toolRuntime: DecopilotToolRuntime = {
+          buildEnvironmentTools: async ({ input: streamInput }) => {
+            const toolOutputMap = new Map<string, string>();
+            const pendingImages: PendingImage[] = [];
+            const assembled = await assembleDecopilotTools(streamInput, ctx, {
+              writer: sideChannel.writer,
+              toolOutputMap,
+              pendingImages,
+              threadId: streamInput.threadId,
+              provider: modelRuntime.thinking.provider,
+              imageProvider:
+                modelRuntime.image?.provider ?? modelRuntime.thinking.provider,
+              deepResearchProvider:
+                modelRuntime.deepResearch?.provider ??
+                modelRuntime.thinking.provider,
+              htmlPageBuffer,
+            });
+            const bundle: HarnessAssembledTools = {
+              tools: assembled.tools,
+              passthroughTools: assembled.passthroughTools,
+              builtInTools: assembled.builtInTools,
+              connectionsBlockTools: assembled.connectionsBlockTools,
+              toolAnnotations: assembled.toolAnnotations,
+              connectionTitleMap: assembled.connectionTitleMap,
+              serverInstructions: assembled.serverInstructions,
+              passthroughClient: assembled.passthroughClient as never,
+              writer: sideChannel.writer,
+              pendingImages,
+              sideChunks: sideChannel.stream,
+              closeSideChunks: sideChannel.close,
+              onStepFinish: async () => {
+                await htmlPageBuffer.flush().catch((err) => {
+                  console.error("[decopilot] html-page flush failed", err);
+                });
+              },
+              close: assembled.close,
+            };
+            cleanup.close = assembled.close;
+            return bundle;
+          },
+          runEngine: (args) => runClusterEngine(ctx, organization, args),
+        };
+
+        // ── Cluster telemetry (monitoring + metrics). ─────────────────────
+        const telemetry: DecopilotTelemetry = {
+          recordLlmCall: (params) => recordLlmCallMetrics({ ctx, ...params }),
+          monitorLlmCall: (params) =>
+            monitorLlmCall({
+              ctx,
+              ...params,
+              requestId: ctx.metadata.requestId,
+              userAgent: ctx.metadata.userAgent ?? null,
+            }),
+        };
 
         try {
-          tools = await assembleDecopilotTools(input, ctx, {
-            writer: sideChannel.writer,
-            toolOutputMap,
-            pendingImages,
-            threadId: input.threadId,
-            provider,
-            imageProvider,
-            deepResearchProvider,
-            htmlPageBuffer,
-          });
-
-          // Run `processConversation` with the REAL tool set — the AI SDK's
-          // `convertToModelMessages` calls `tools[name].toModelOutput()` to
-          // transform prior-turn tool results. Three decopilot tools
-          // implement this:
-          //  - Passthrough MCP tools (truncate oversized outputs with a
-          //    "too long, preview:..." text)
-          //  - `take-screenshot` (formats as "Screenshot of {url} captured")
-          //  - `subtask` (extracts the last text part as a summary)
-          // Without the real tool set, prior turns' raw JSON would leak
-          // through every turn → context bloat → eventual context overflow
-          // on long threads.
-          const {
-            systemMessages: processedSystemMessages,
-            messages: processedMessages,
-            originalMessages,
-          } = await processConversation(clusterInput.messages, {
-            windowSize: DEFAULT_WINDOW_SIZE,
-            models: input.models,
-            tools: tools.tools,
-          });
-
-          // `processConversation` splits out system messages internally,
-          // so the returned `messages` array only ever contains
-          // user/assistant/tool. Narrow at the boundary.
-          const narrowedMessages = processedMessages as Parameters<
-            typeof runDecopilotStream
-          >[4]["processedMessages"];
-
-          const prompt = await assembleDecopilotPrompt(input, ctx, tools);
-
-          yield* runDecopilotStream(input, ctx, tools, prompt, {
-            provider,
-            titleProvider,
-            titleModel: titleSlot,
-            registrySignal: input.signal ?? new AbortController().signal,
-            processedSystemMessages,
-            processedMessages: narrowedMessages,
-            originalMessages,
-            threadId: input.threadId,
-            currentThreadTitle: input.currentThreadTitle ?? "",
-            pendingImages,
-            writer: sideChannel.writer,
-            sideChunks: sideChannel.stream,
-            closeSideChunks: sideChannel.close,
-            onStepFinish: async () => {
-              await htmlPageBuffer.flush().catch((err) => {
-                console.error("[decopilot] html-page flush failed", err);
-              });
-            },
+          yield* runDecopilotCore({
+            input,
+            modelRuntime,
+            toolRuntime,
+            telemetry,
+            kind: "main",
           });
         } finally {
           sideChannel.close();
-          await tools?.close().catch(() => {});
+          await cleanup.close?.().catch(() => {});
         }
       },
     };

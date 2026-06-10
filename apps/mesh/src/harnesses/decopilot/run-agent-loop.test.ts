@@ -4,6 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { runAgentLoop, type RunAgentLoopOptions } from "./run-agent-loop";
+import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 
 // ── Stub fixtures ────────────────────────────────────────────────────
 // ctx needs enough storage stubs for buildAgentSystemPrompt (listAgentsBlock
@@ -139,5 +140,65 @@ describe("runAgentLoop with kind: 'subagent'", () => {
     expect(handle.result).toBeDefined();
     expect(handle.error).toBeDefined();
     expect(handle.span).toBeDefined();
+  });
+});
+
+describe("runAgentLoop assembledSystemMessages (single surviving assembler)", () => {
+  test("exposes exactly buildAgentSystemPrompt's output — the prompt feeding the model is the same one the _request.systemSections debug metadata is derived from", async () => {
+    const fakeResult = {
+      text: Promise.resolve(""),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      }),
+      toUIMessageStream: () => ({
+        async *[Symbol.asyncIterator]() {},
+      }),
+      response: Promise.resolve({ messages: [] }),
+    } as never;
+    const fakeStreamText = () => fakeResult;
+    const mockMcpClient = {
+      listTools: async () => ({ tools: [] }),
+      getInstructions: () => "",
+    } as never;
+
+    const opts = {
+      kind: "agent" as const,
+      ctx: mockCtx,
+      organization: mockOrg,
+      virtualMcp: { id: "vir_test" },
+      mcpClient: mockMcpClient,
+      provider: mockProvider,
+      models: mockModels,
+      messages: [{ role: "user" as const, content: "hi" }],
+      abortSignal: new AbortController().signal,
+      writer: mockWriter,
+      subtaskParams: mockSubtaskParams,
+      isDecopilot: true,
+      __streamText: fakeStreamText,
+    } as never;
+
+    const handle = await runAgentLoop(opts);
+
+    // The loop returns the SAME assembled system messages buildAgentSystemPrompt
+    // produces (no per-request extras passed here), proving the duplicate
+    // assembler removal didn't change the prompt the model sees.
+    const expected = await buildAgentSystemPrompt({
+      ctx: mockCtx,
+      organization: mockOrg,
+      virtualMcp: { id: "vir_test" },
+      kind: "agent",
+      planMode: false,
+      isDecopilot: true,
+    });
+
+    const contents = handle.assembledSystemMessages.map((m) => m.content);
+    const expectedContents = expected.map((m) => m.content);
+    // The non-cached <current-context> tail carries the date/time, so compare
+    // every part except that last tail (which differs by wall-clock seconds).
+    expect(contents.slice(0, -1)).toEqual(expectedContents.slice(0, -1));
+    expect(contents.length).toBe(expectedContents.length);
   });
 });

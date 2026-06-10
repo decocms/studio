@@ -21,6 +21,7 @@ import {
 import {
   stepCountIs,
   type ModelMessage,
+  type SystemModelMessage,
   type ToolSet,
   type StreamTextOnStepFinishCallback,
   type UIMessageStreamWriter,
@@ -111,6 +112,10 @@ export interface RunAgentLoopHandle {
   result: NativeAgentLoopCoreHandle["result"];
   error: Promise<string | undefined>;
   span: Span;
+  /** The system messages this loop assembled and sent to the model. Exposed so
+   *  the parent (`runDecopilotStream`) can derive the `_request.systemSections`
+   *  debug metadata from the REAL prompt — the single surviving assembler. */
+  assembledSystemMessages: SystemModelMessage[];
 }
 
 export async function runAgentLoop(
@@ -205,5 +210,10 @@ export async function runAgentLoop(
     })
     .finally(() => span.end());
 
-  return { result: handle.result, error: handle.error, span };
+  return {
+    result: handle.result,
+    error: handle.error,
+    span,
+    assembledSystemMessages: systemMessages,
+  };
 }
