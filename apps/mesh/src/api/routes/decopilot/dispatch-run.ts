@@ -28,19 +28,16 @@ import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import type { UIMessageChunk } from "ai";
 import { localDispatch } from "@/harnesses";
-import { remoteDispatch } from "@/harnesses/remote-dispatch";
 import {
   offloadKey,
   sha256Hex,
   shouldOffload,
   type MessagesRef,
 } from "@/harnesses/offload-messages";
-import { ensureSandbox } from "@/tools/sandbox/start";
 import {
   findStudioPackAgentByMcpId,
   resolveStudioPackRuntime,
 } from "@/tools/virtual/studio-pack";
-import { buildDesktopProvider } from "@/sandbox/lifecycle";
 import { computeClaimHandle } from "@/sandbox/claim-handle";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import {
@@ -1106,36 +1103,26 @@ async function prepareRun(
       : undefined;
 
     // ── LAZY harness dispatch ───────────────────────────────────────────────
-    // This generator's body — sandbox ensure, provider build, remote/local
-    // dispatch — runs only when the kernel pulls the first chunk, which (via
-    // `lazyStream` below) happens only once a consumer pulls `uiStream`.
-    // `pullDispatch` never consumes the stream, so pull-transport runs never
-    // start a cluster-side harness.
+    // This generator's body — local harness dispatch — runs only when the
+    // kernel pulls the first chunk, which (via `lazyStream` below) happens only
+    // once a consumer pulls `uiStream`. `pullDispatch` never consumes the
+    // stream, so pull-transport runs never start a cluster-side harness.
     //
-    // claude-code cwd resolution: with the `host` runner gone, the
-    // Hosted execution never has a local on-disk workdir to point the CLI at,
-    // so the harness falls back to its own ambient cwd. Remote-user
-    // dispatch runs the harness inside the desktop daemon, where the
-    // daemon is spawned with workdir = sandbox path; remote-cli runs
-    // claude-code in-process on the user's machine (no resolver
-    // needed). The agent-sandbox runner doesn't surface a
-    // local FS to mesh.
+    // claude-code cwd resolution: with the `host` runner gone, hosted execution
+    // never has a local on-disk workdir to point the CLI at, so the harness
+    // falls back to its own ambient cwd. The agent-sandbox runner doesn't
+    // surface a local FS to mesh.
     //
     // When a streamBuffer is wired, its JetStream pump consumes `uiStream`
     // directly after prepareRun returns and publishes every chunk into the
     // per-task subject — that's what /stream tails.
     //
-    // Branch on the resolved target:
-    //   - `sandboxProviderKind === "user-desktop"` — the whole stream is
-    //     delegated to the user's link daemon. `resolveRemoteCliSandboxUrl`
-    //     calls `ensureSandbox` (handle == `computeHandle(sandboxId,
-    //     branch)`) so the sandbox is the same one SANDBOX_START
-    //     provisions — repo cloned, env pushed, dev server primed.
-    //     Mesh talks to the daemon over the NATS-backed dispatch
-    //     channel. Per-run state inside the daemon stays keyed by
-    //     `runId` (cancellation via DELETE /_sandbox/runs/<runId>).
-    //   - `sandboxProviderKind === "agent-sandbox"` — runs in hosted
-    //     execution.
+    // Transport Convergence: this generator only ever runs HOSTED
+    // (agent-sandbox / legacy) harnesses via `localDispatch`. EVERY user-desktop
+    // run goes through the PULL transport (`pullDispatch` + work queue), which
+    // never consumes this stream — so a user-desktop target reaching here is a
+    // hard bug (the guard below throws). The push `remoteDispatch` path is
+    // deleted.
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
         // Layer the non-serializable `signal` onto the eagerly-built wire
@@ -1146,88 +1133,18 @@ async function prepareRun(
           signal: registrySignal,
         };
 
-        let rawHarnessChunks;
+        // Transport Convergence: user-desktop runs use the PULL transport
+        // exclusively (the gate routes them to `pullDispatch`, which never
+        // consumes this lazy stream). The push `remoteDispatch` path is
+        // deleted, so reaching this generator for a user-desktop target means
+        // the gate routing diverged from the dispatch path — a hard bug.
         if (target.sandboxProviderKind === "user-desktop") {
-          // PUSH path (remoteDispatch): the control handler has NO daemon
-          // self-ensure backstop — it just `proxyPort(handle)`s and 404s
-          // "unknown handle" for a sandbox that was never spawned
-          // (control-handler.ts:172-193). So ENSURE the sandbox here before
-          // dispatching, and dispatch the handle ensureSandbox actually
-          // provisioned so the two can never drift. (The pull site keeps the
-          // pure computeDesktopSandboxHandle — its daemon self-ensures.)
-          const sandboxHandle = await ensurePushDispatchSandboxHandle(
-            input.agent,
-            mem.thread.branch,
-            input.branch,
-            ctx,
+          throw new Error(
+            "user-desktop runs use the pull transport — dispatchRunAndWait must not run a local harness for them",
           );
-          // Route through the unified `proxyDaemonRequest` seam: the desktop
-          // provider tunnels `/dispatch` over the same WS+NATS link transport
-          // the old raw `dispatch` dep used, but now consumes the returned
-          // streaming `Response` (DispatchFn is a private impl detail of the
-          // provider). `proxyDaemonRequest` expects a `ProxyRequestInit`
-          // (`headers: Headers`, `body: BodyInit | null`), so adapt our
-          // simpler `{ headers: Record<string,string>, body: string }` shape.
-          const provider = await buildDesktopProvider(ctx, input.userId);
-          // Body-offload: when the dispatch body exceeds the per-message
-          // budget, `remoteDispatch` writes `input.messages` to object
-          // storage and the daemon re-inflates from the ref. `supported`
-          // mirrors the daemon's advertised capability (from the link claim
-          // resolved on `target.link`); without object storage the seam is a
-          // hard "no" so an oversized body fails loudly rather than silently
-          // truncating.
-          const supported =
-            target.link?.capabilities?.includes("body-offload") ?? false;
-          const offload = ctx.objectStorage
-            ? {
-                supported,
-                put: async (reqId: string, messagesJson: string) => {
-                  const bytes = new TextEncoder().encode(messagesJson);
-                  const key = offloadKey(reqId);
-                  await ctx.objectStorage!.put(key, bytes, {
-                    contentType: "application/json",
-                  });
-                  const url = await ctx.objectStorage!.presignedGetUrl(
-                    key,
-                    600,
-                    {
-                      requireFetchable: true,
-                    },
-                  );
-                  return {
-                    url,
-                    bytes: bytes.byteLength,
-                    sha256: await sha256Hex(bytes),
-                  };
-                },
-                cleanup: (key: string) =>
-                  ctx.objectStorage!.delete(key).then(() => {}),
-              }
-            : {
-                supported: false,
-                put: async () => {
-                  throw new Error("no object storage");
-                },
-                cleanup: async () => {},
-              };
-          rawHarnessChunks = remoteDispatch(
-            harnessId,
-            harnessInput,
-            sandboxHandle,
-            {
-              proxyDaemonRequest: (h, p, init) =>
-                provider.proxyDaemonRequest(h, p, {
-                  method: init.method,
-                  headers: new Headers(init.headers),
-                  body: init.body ?? null,
-                  signal: init.signal,
-                }),
-              offload,
-            },
-          );
-        } else {
-          rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);
         }
+        // hosted / agent-sandbox only.
+        const rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);
         yield* rawHarnessChunks;
       };
 
@@ -1473,20 +1390,20 @@ async function prepareRun(
  * Resolve the sandbox provisioning config for a pull-transport work item.
  *
  * Mirrors the logic in `provisionSandbox` but returns the resolved config
- * instead of calling `runner.ensure`. Called from `pullDispatch` for CLI
- * harnesses (claude-code, codex) targeting user-desktop so the daemon can
- * spawn the sandbox cold without a prior WS-path ensure call.
+ * instead of calling `runner.ensure`. Called from `pullDispatch` for EVERY
+ * harness (decopilot, claude-code, codex) targeting user-desktop so the daemon
+ * can spawn the sandbox cold without a prior WS-path ensure call. Decopilot
+ * desktop ALSO runs in a sandbox (Transport Convergence), so the repo/workload
+ * derivation applies to it identically.
  *
- * Returns `null` when no sandbox config can be derived (e.g. decopilot
- * harness, non-user-desktop target, or unresolvable metadata).
+ * Returns `null` when no sandbox config can be derived (non-user-desktop
+ * target, or unresolvable metadata).
  */
 async function resolvePullSandboxConfig(
   input: DispatchRunInput,
   ctx: StudioContext,
   sandboxHandle: string,
 ): Promise<WorkItemSandbox | null> {
-  const harnessId: HarnessId = input.harnessId ?? resolveHarnessId(undefined); // default fallback
-  if (harnessId === "decopilot") return null;
   if (input.target?.sandboxProviderKind !== "user-desktop") return null;
 
   const virtualMcp = await ctx.storage.virtualMcps
@@ -1664,14 +1581,14 @@ export async function pullDispatch(
         _rootSpan,
       );
 
-      // ── Message offload (mirrors the WS path in remoteDispatch) ─────────
+      // ── Message offload ─────────────────────────────────────────────────
       // The work item is published to the JetStream WorkQueue as a NATS
       // message; NATS rejects payloads exceeding MAX_PUBLISH_BYTES. The
       // conversation `messages` array is the dominant large part — when the
       // encoded harnessInput exceeds the budget, offload it to object storage
-      // exactly as `remoteDispatch` does, then carry the ref on the work item
-      // so the daemon can forward it to the sandbox daemon's /_sandbox/dispatch
-      // (which already re-inflates from messagesRef on the WS path).
+      // (via the shared `offload-messages` helpers), then carry the ref on the
+      // work item so the daemon can forward it to the sandbox daemon's
+      // /_sandbox/dispatch (which re-inflates from messagesRef).
       let effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
       let messagesRef: MessagesRef | null = null;
       const encodedInput = JSON.stringify(wireHarnessInput);
@@ -1721,17 +1638,16 @@ export async function pullDispatch(
       // Resolve the sandbox handle for the pull work item.
       // Pure derivation — no ensure round-trip. The daemon self-ensures
       // the sandbox from `WorkItem.sandbox` when it dequeues the item
-      // (cluster-connection-pull.ts:214: `input.provider.ensureSandbox(ensureInput)`),
-      // so the warm-ensure that `resolveRemoteCliSandboxHandle` performed here
-      // is redundant (C-bis S4). The handle formula is identical to what
+      // (cluster-connection-pull.ts: `input.provider.ensureSandbox(ensureInput)`),
+      // so no cluster-side warm-ensure is needed (the push ensure helper was
+      // deleted with the push path). The handle formula is identical to what
       // `ensureSandbox`/`provisionSandbox` would compute. See `computeDesktopSandboxHandle`.
+      // Compute the sandbox config for EVERY user-desktop run (all harnesses,
+      // incl. decopilot — Transport Convergence). Decopilot desktop runs in a
+      // sandbox too; `resolvePullSandboxConfig` derives the same repo/workload
+      // config for it as for the CLI harnesses.
       let sandboxConfig: WorkItemSandbox | null = null;
-      const harnessId: HarnessId =
-        input.harnessId ?? resolveHarnessId(undefined);
-      if (
-        harnessId !== "decopilot" &&
-        input.target?.sandboxProviderKind === "user-desktop"
-      ) {
+      if (input.target?.sandboxProviderKind === "user-desktop") {
         try {
           const sandboxHandle = computeDesktopSandboxHandle({
             agentId: input.agent.id,
@@ -1791,31 +1707,6 @@ export async function pullDispatch(
 }
 
 /**
- * Resolve the sandbox URL the cluster should dispatch a `remote-cli`
- * harness stream to. Calls `ensureSandbox` (lazy/idempotent — fast path
- * returns the existing entry, slow path provisions through the
- * desktop sandbox provider) so the resulting sandbox is the same one
- * SANDBOX_START / the always-on sandbox tools use. Returns the daemon's
- * `previewUrl`, which is the per-handle tunnel URL the cluster
- * already talks to directly.
- *
- * Branch defaults to `"ephemeral"` to match
- * `apps/mesh/src/api/routes/decopilot/routes.ts:434` — threads
- * without a connected repo share one sandbox per virtualMcp under
- * that synthetic branch.
- *
- * Exported so the unification can be unit-tested without standing up
- * the full `dispatchRunAndWait` machinery.
- */
-export async function resolveRemoteCliSandboxUrl(
-  input: { agent: { id: string }; branch?: string | null },
-  ctx: StudioContext,
-): Promise<string> {
-  const { previewUrl } = await resolveRemoteCliSandboxHandle(input, ctx);
-  return previewUrl;
-}
-
-/**
  * Pure, synchronous handle derivation — no I/O, no ensure round-trip.
  *
  * Mirrors the formula used by `ensureSandbox` / `provisionSandbox`:
@@ -1830,12 +1721,9 @@ export async function resolveRemoteCliSandboxUrl(
  * sandbox from the work item (cluster-connection-pull.ts:214 —
  * `input.provider.ensureSandbox(ensureInput)`). The warm-ensure
  * round-trip at those sites is therefore redundant and is replaced by this
- * pure call (C-bis S4 landmine #7).
- *
- * NOT a substitute at sites that return a preview URL outside the work-queue
- * path — `resolveRemoteCliSandboxUrl` must keep calling
- * `resolveRemoteCliSandboxHandle` (which runs the full ensure) because there
- * is no daemon self-ensure backstop for the preview-URL path.
+ * pure call (C-bis S4 landmine #7). Pull is the sole local transport now
+ * (Transport Convergence), so this is the only handle-derivation site —
+ * the push/preview-URL ensure helpers were deleted with the push path.
  *
  * Exported for unit tests.
  */
@@ -1851,67 +1739,4 @@ export function computeDesktopSandboxHandle(input: {
     branch: input.branch,
   });
   return computeClaimHandle({ userId: input.userId, projectRef }, input.branch);
-}
-
-/**
- * Resolve (or provision) the desktop sandbox for `agent`+`branch` and return
- * both its `sandboxHandle` and `previewUrl`. The handle is the stable
- * identifier used by `remoteDispatch` to route `/_sandbox/<handle>/dispatch`
- * requests over NATS to the user's link daemon.
- */
-async function resolveRemoteCliSandboxHandle(
-  input: { agent: { id: string }; branch?: string | null },
-  ctx: StudioContext,
-): Promise<{ sandboxHandle: string; previewUrl: string }> {
-  const entry = await ensureSandbox(
-    {
-      virtualMcpId: input.agent.id,
-      branch: input.branch ?? "ephemeral",
-      sandboxProviderKind: "user-desktop",
-    },
-    ctx,
-  );
-  if (!entry.previewUrl) {
-    throw new Error(
-      `Sandbox for agent ${input.agent.id} has no previewUrl — the desktop daemon may still be starting`,
-    );
-  }
-  return { sandboxHandle: entry.sandboxHandle, previewUrl: entry.previewUrl };
-}
-
-/**
- * Resolve the desktop sandbox handle for the PUSH (`remoteDispatch`) dispatch
- * path, ENSURING the sandbox is spawned first.
- *
- * Unlike the pull/work-queue path, the push path has NO daemon self-ensure
- * backstop: `proxyDaemonRequest(handle, "/dispatch")` is rewritten to
- * `/_sandbox/<handle>/dispatch` and reaches the link daemon's
- * `control-handler.handleStream`, which just `proxyPort(handle)`s and returns
- * `404 "unknown handle"` for a sandbox that was never spawned
- * (`control-handler.ts:172-193`). So we run the full `ensureSandbox` here and
- * return the handle it PROVISIONED — guaranteeing the dispatched handle equals
- * the spawned one.
- *
- * `effectiveBranch` mirrors the dispatch-site formula (thread pin → request
- * branch → synthetic "ephemeral"). Threading the SAME value into the ensure
- * closes the handle-drift bug: `resolveRemoteCliSandboxHandle`'s internal
- * `input.branch ?? "ephemeral"` would otherwise drop a thread-pinned branch.
- *
- * The pull site keeps the pure `computeDesktopSandboxHandle` — its daemon
- * self-ensures from `WorkItem.sandbox` (`cluster-connection-pull.ts:214`).
- *
- * Exported for unit tests.
- */
-export async function ensurePushDispatchSandboxHandle(
-  agent: { id: string },
-  threadBranch: string | null | undefined,
-  inputBranch: string | null | undefined,
-  ctx: StudioContext,
-): Promise<string> {
-  const effectiveBranch = threadBranch ?? inputBranch ?? "ephemeral";
-  const { sandboxHandle } = await resolveRemoteCliSandboxHandle(
-    { agent, branch: effectiveBranch },
-    ctx,
-  );
-  return sandboxHandle;
 }

@@ -1,114 +1,30 @@
 /**
  * Unit tests for:
- *   - `resolveRemoteCliSandboxUrl` — the ensure-backed preview-URL helper.
  *   - `computeDesktopSandboxHandle` — the pure, I/O-free handle derivation
- *     introduced in C-bis S4. It is still used at the pull/work-queue dispatch
- *     site (`pullDispatch`), where the daemon self-ensures the sandbox from the
- *     work item.
- *   - `ensurePushDispatchSandboxHandle` — the push (`remoteDispatch`) dispatch
- *     site's ensure-backed handle resolver. The push path has no daemon
- *     self-ensure backstop, so it runs the full ensure (like the preview-URL
- *     site) and dispatches the provisioned handle.
+ *     used at the pull/work-queue dispatch site (`pullDispatch`), where the
+ *     daemon self-ensures the sandbox from the work item. Pull is the sole
+ *     local transport (Transport Convergence), so this is the only
+ *     handle-derivation site — the push ensure helpers were deleted with the
+ *     push `remoteDispatch` path.
+ *   - `resolveEffectiveVirtualMcpForHarness` — studio-pack runtime resolution.
  */
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
-// `ensureSandbox` lives in tools/sandbox/start; we mock the module so the
-// test doesn't need to wire up storage, link registry, or the sandbox
-// provider. The route file imports `ensureSandbox` from this path.
-//
-// `nextEnsureSandboxReturn` lets individual tests override the previewUrl
-// (e.g. force `null` to exercise the helper's defensive throw).
+// dispatch-run transitively imports `@/api/app`, which loads
+// `tools/sandbox/index.ts` and re-exports `SANDBOX_START` from "./start".
+// Without this stub the re-export resolves to `undefined` against the mock and
+// Bun throws "export 'SANDBOX_START' not found in './start'". No function under
+// test calls `ensureSandbox`, so the mock body is a minimal placeholder.
+import { mock } from "bun:test";
 mock.module("@/tools/sandbox/start", () => ({
-  ensureSandbox: async (input: {
-    virtualMcpId: string;
-    branch: string;
-    sandboxProviderKind: "user-desktop";
-  }) => {
-    ensureSandboxCalls.push(input);
-    return {
-      sandboxHandle: "sleek-flint-0000000000000000",
-      previewUrl: nextEnsureSandboxReturn.previewUrl,
-      sandboxApiUrl: nextEnsureSandboxReturn.previewUrl,
-      sandboxProviderKind: "user-desktop" as const,
-      createdAt: 0,
-      startedWith: { packageManager: null, port: null, path: null },
-    };
+  ensureSandbox: async () => {
+    throw new Error("ensureSandbox must not be called in these unit tests");
   },
-  // dispatch-run transitively imports `@/api/app`, which loads
-  // `tools/sandbox/index.ts` and re-exports `SANDBOX_START` from "./start".
-  // Without this stub the re-export resolves to `undefined` against the
-  // mock and Bun throws "export 'SANDBOX_START' not found in './start'".
   SANDBOX_START: { name: "SANDBOX_START" },
 }));
 
-const ensureSandboxCalls: Array<{
-  virtualMcpId: string;
-  branch: string;
-  sandboxProviderKind: string;
-}> = [];
-
-const nextEnsureSandboxReturn: { previewUrl: string | null } = {
-  previewUrl: "http://sleek-flint-0000000000000000.localhost:5174",
-};
-
-const {
-  resolveRemoteCliSandboxUrl,
-  computeDesktopSandboxHandle,
-  ensurePushDispatchSandboxHandle,
-  resolveEffectiveVirtualMcpForHarness,
-} = await import("./dispatch-run");
-
-describe("resolveRemoteCliSandboxUrl", () => {
-  it("calls ensureSandbox with the agent id, branch, and user-desktop kind", async () => {
-    ensureSandboxCalls.length = 0;
-    const sandboxApiUrl = await resolveRemoteCliSandboxUrl(
-      { agent: { id: "vm-1" }, branch: "deco/sleek-flint" },
-      // The helper passes ctx straight to ensureSandbox; the mock ignores it.
-      {} as never,
-    );
-    expect(ensureSandboxCalls).toEqual([
-      {
-        virtualMcpId: "vm-1",
-        branch: "deco/sleek-flint",
-        sandboxProviderKind: "user-desktop",
-      },
-    ]);
-    expect(sandboxApiUrl).toBe(
-      "http://sleek-flint-0000000000000000.localhost:5174",
-    );
-  });
-
-  it("falls back to 'ephemeral' when branch is missing", async () => {
-    ensureSandboxCalls.length = 0;
-    await resolveRemoteCliSandboxUrl(
-      { agent: { id: "vm-2" }, branch: null },
-      {} as never,
-    );
-    expect(ensureSandboxCalls[0]?.branch).toBe("ephemeral");
-  });
-
-  it("falls back to 'ephemeral' when branch is undefined", async () => {
-    ensureSandboxCalls.length = 0;
-    await resolveRemoteCliSandboxUrl({ agent: { id: "vm-3" } }, {} as never);
-    expect(ensureSandboxCalls[0]?.branch).toBe("ephemeral");
-  });
-
-  it("throws when ensureSandbox returns a null previewUrl", async () => {
-    ensureSandboxCalls.length = 0;
-    const originalPreviewUrl = nextEnsureSandboxReturn.previewUrl;
-    nextEnsureSandboxReturn.previewUrl = null;
-    try {
-      await expect(
-        resolveRemoteCliSandboxUrl(
-          { agent: { id: "vm-4" }, branch: "deco/test" },
-          {} as never,
-        ),
-      ).rejects.toThrow(/vm-4/);
-    } finally {
-      nextEnsureSandboxReturn.previewUrl = originalPreviewUrl;
-    }
-  });
-});
+const { computeDesktopSandboxHandle, resolveEffectiveVirtualMcpForHarness } =
+  await import("./dispatch-run");
 
 describe("computeDesktopSandboxHandle", () => {
   const BASE = {
@@ -160,62 +76,6 @@ describe("computeDesktopSandboxHandle", () => {
     // "deco/sleek-flint" → last segment "sleek-flint" → slug prefix in handle.
     const handle = computeDesktopSandboxHandle(BASE);
     expect(handle).toMatch(/sleek-flint/);
-  });
-});
-
-describe("ensurePushDispatchSandboxHandle", () => {
-  it("ENSURES (spawns) the sandbox — the push path has no daemon self-ensure backstop", async () => {
-    ensureSandboxCalls.length = 0;
-    const handle = await ensurePushDispatchSandboxHandle(
-      { id: "vm-1" },
-      "deco/sleek-flint", // thread branch
-      null, // input branch
-      {} as never,
-    );
-    // It MUST run the full ensure (not a pure handle derivation).
-    expect(ensureSandboxCalls).toEqual([
-      {
-        virtualMcpId: "vm-1",
-        branch: "deco/sleek-flint",
-        sandboxProviderKind: "user-desktop",
-      },
-    ]);
-    // It returns the handle ensureSandbox actually provisioned, so the
-    // dispatched handle can never drift from the spawned one.
-    expect(handle).toBe("sleek-flint-0000000000000000");
-  });
-
-  it("prefers the thread branch over the request branch (handle-drift fix)", async () => {
-    ensureSandboxCalls.length = 0;
-    await ensurePushDispatchSandboxHandle(
-      { id: "vm-2" },
-      "deco/pinned",
-      "deco/from-request",
-      {} as never,
-    );
-    expect(ensureSandboxCalls[0]?.branch).toBe("deco/pinned");
-  });
-
-  it("falls back to the request branch when the thread has none", async () => {
-    ensureSandboxCalls.length = 0;
-    await ensurePushDispatchSandboxHandle(
-      { id: "vm-3" },
-      null,
-      "deco/from-request",
-      {} as never,
-    );
-    expect(ensureSandboxCalls[0]?.branch).toBe("deco/from-request");
-  });
-
-  it("falls back to 'ephemeral' when neither branch is set", async () => {
-    ensureSandboxCalls.length = 0;
-    await ensurePushDispatchSandboxHandle(
-      { id: "vm-4" },
-      null,
-      null,
-      {} as never,
-    );
-    expect(ensureSandboxCalls[0]?.branch).toBe("ephemeral");
   });
 });
 

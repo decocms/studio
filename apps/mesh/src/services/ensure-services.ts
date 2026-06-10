@@ -834,9 +834,10 @@ async function waitForMinioReady(
  * @aws-sdk/client-s3 so there's no `mc` version to keep in sync.
  *
  * Object-storage hygiene notes for dispatch offload objects:
- * - The primary reclaimer for `link-dispatch/` offload objects is the eager
- *   `finally` block in remote-dispatch.ts, which deletes the object on run
- *   completion (success or failure).
+ * - `link-dispatch/` offload objects are written by `pullDispatch` when a work
+ *   item's `harnessInput.messages` exceeds the NATS publish budget. They are
+ *   reclaimed by the bucket's lifecycle TTL (there is no eager per-run delete
+ *   on the pull transport).
  * - An S3 lifecycle `Prefix` rule is left-anchored and literal. Real offload
  *   object keys are `<orgId>/link-dispatch/<reqId>` (BoundObjectStorage
  *   prepends `<orgId>/`), so a `Prefix: "link-dispatch/"` rule would never

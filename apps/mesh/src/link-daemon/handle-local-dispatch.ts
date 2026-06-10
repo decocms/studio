@@ -12,8 +12,7 @@
  * cluster dedupes by seq), so multi-hour runs survive transient drops.
  *
  * Flow:
- *   1. POST ${sandboxDispatchUrl}/_sandbox/dispatch with a JSON body whose
- *      shape mirrors what `remote-dispatch.ts` sends:
+ *   1. POST ${sandboxDispatchUrl}/_sandbox/dispatch with a JSON body of shape:
  *        { harnessId: <id>, input: <HarnessStreamInputWire> }
  *      The local sandbox daemon authenticates the request via Bearer
  *      `sandboxDaemonToken` and returns a `text/event-stream` SSE body of
@@ -120,7 +119,7 @@ function deriveHarnessId(work: WorkItem, depsHarnessId?: string): string {
  * a relay upload completes successfully after the terminal `done` line.
  * Throws on:
  *   - A non-2xx response from the sandbox dispatch (JSON error is extracted
- *     and included in the thrown Error, mirroring remote-dispatch.ts).
+ *     and included in the thrown Error).
  *   - A permanent relay failure (non-retriable 4xx, or 5 failed attempts).
  *   - Relay buffer overflow (RELAY_BUFFER_MAX_BYTES) or abort.
  */
@@ -132,13 +131,11 @@ export async function handleLocalDispatch(
   const harnessId = deriveHarnessId(work, deps.harnessId);
 
   // ── Step 1: POST to the local sandbox daemon's /_sandbox/dispatch ──────
-  // Body shape mirrors remote-dispatch.ts: { harnessId, input } or, when the
-  // cluster offloaded messages, { harnessId, input, messagesRef }.
-  // `work.harnessInput` IS the HarnessStreamInputWire (messages:[] when
-  // offloaded). The sandbox daemon validates input against
-  // harnessStreamInputSchema and re-inflates messages from messagesRef when
-  // present — identical to the WS path (remote-dispatch.ts sends the same
-  // envelope shape to the same /_sandbox/dispatch endpoint).
+  // Body shape: { harnessId, input } or, when the cluster offloaded messages,
+  // { harnessId, input, messagesRef }. `work.harnessInput` IS the
+  // HarnessStreamInputWire (messages:[] when offloaded). The sandbox daemon
+  // validates input against harnessStreamInputSchema and re-inflates messages
+  // from messagesRef when present.
   const dispatchBody = work.messagesRef
     ? JSON.stringify({
         harnessId,
@@ -164,8 +161,10 @@ export async function handleLocalDispatch(
     },
   );
 
-  // Mirror remote-dispatch.ts non-2xx handling: read the JSON error body and
-  // throw BEFORE any SSE parsing so a failed run never looks successful.
+  // Non-2xx handling: read the JSON error body and throw BEFORE any SSE
+  // parsing so a failed run never looks successful (an error Response carries
+  // no `data:` lines, so feeding it to the parser would yield a silent-empty
+  // stream).
   if (!dispatchRes.ok) {
     let detail = `dispatch failed (${dispatchRes.status})`;
     try {

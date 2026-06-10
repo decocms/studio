@@ -403,11 +403,11 @@ const eventsH = makeEventsHandler({
 const idleH = makeIdleHandler();
 const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 
-// ─── Remote harness dispatch ───────────────────────────────────────────
+// ─── Harness dispatch ──────────────────────────────────────────────────
 // Authenticated by the bearer `bootConfig.daemonToken` (see `./auth`). The
-// cluster's `remoteDispatch` posts a HarnessStreamInput here, proxied over
-// loopback by the link daemon's control handler; the daemon spawns the
-// named factory's CLI in-process and streams `UIMessageChunk` back as SSE.
+// link daemon's `handleLocalDispatch` posts a HarnessStreamInput here over
+// loopback when it pulls a work item; the daemon spawns the named factory's
+// CLI in-process and streams `UIMessageChunk` back as SSE.
 //
 // The CLI factories plus the import-isolated desktop decopilot factory live in
 // the daemon. The cluster `decopilotHarnessFactory` (RunRegistry, run-stream

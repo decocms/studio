@@ -43,8 +43,8 @@ const POST_STREAM_GRACE_MS = 10_000;
 
 export function genTitle(config: {
   /** Optional: aborts title generation when the parent stream is cancelled.
-   *  Undefined on the remote-dispatch path, where the wire input cannot carry
-   *  a (non-serializable) AbortSignal. */
+   *  Undefined on the desktop/pull path, where the harness runs from a
+   *  serialized wire input that cannot carry a (non-serializable) AbortSignal. */
   abortSignal?: AbortSignal;
   model: LanguageModelV3;
   userMessage: string;
@@ -54,10 +54,10 @@ export function genTitle(config: {
   const titleAbortController = new AbortController();
 
   // Abort title generation if parent stream is aborted. `abortSignal` is
-  // optional-at-runtime: on the remote-dispatch path the wire input omits the
-  // (non-serializable) AbortSignal, and a caller may legitimately have nothing
-  // to tie lifetime to. Guard so a missing signal degrades to "no parent abort
-  // wiring" instead of throwing `addEventListener of undefined`.
+  // optional-at-runtime: on the desktop/pull path the serialized wire input
+  // omits the (non-serializable) AbortSignal, and a caller may legitimately
+  // have nothing to tie lifetime to. Guard so a missing signal degrades to "no
+  // parent abort wiring" instead of throwing `addEventListener of undefined`.
   const onParentAbort = () => titleAbortController.abort();
   abortSignal?.addEventListener("abort", onParentAbort, { once: true });
 

@@ -1,8 +1,8 @@
 import type { HarnessStreamInputWire } from "./schemas";
 
 /**
- * Shared by cluster `remoteDispatch` tests AND daemon dispatch tests.
- * If one side drifts, CI breaks on the other. Drop fixtures
+ * Shared by the daemon dispatch tests (and any other side of the dispatch wire
+ * contract). If one side drifts, CI breaks on the other. Drop fixtures
  * conservatively — every new one is wire-contract surface area.
  */
 

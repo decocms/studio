@@ -199,12 +199,13 @@ function isSupersededError(error: unknown): boolean {
  * - title: interception + persistence via the kernel; SSE title updates via
  *   `buildOnTitleUpdated` when an sseHub is configured.
  * - persistence: same v1/v2 fork as dispatch-run, read off the thread row's
- *   pinned `message_storage_version`. Pull routing requires v2 today
- *   (`decidePullDispatch`), so the PartEmitter path is the live one; the v1
- *   whole-message branch exists for Task 11 (v1 desktop threads moving to
- *   pull) and persists only the final message (no per-5-step checkpoints —
- *   the relay acks per chunk, so mid-run pod death loses at most the
- *   in-flight message, which the daemon's full-prefix resend replays).
+ *   pinned `message_storage_version`. Transport Convergence routes EVERY
+ *   user-desktop run to pull (`decidePullDispatch`) regardless of generation,
+ *   so both forks are live: v2 threads persist via the PartEmitter; v1 threads
+ *   take the whole-message branch, which persists only the final message (no
+ *   per-5-step checkpoints — the relay acks per chunk, so mid-run pod death
+ *   loses at most the in-flight message, which the daemon's full-prefix resend
+ *   replays).
  * - usage → PostHog `chat_message_completed`; failures → console.error +
  *   `chat_message_failed` + a durable `failed` status. Relay events carry
  *   `transport: "pull-relay"` and OMIT model/mode props — the wire harness

@@ -3,17 +3,13 @@
  *
  * The wire format (emitted by the sandbox daemon's `/dispatch` route) is a
  * sequence of `\n\n`-delimited event blocks, each with one or more `data: `
- * lines whose joined JSON matches `dispatchSSEEventSchema`. Shared by
- * `remoteDispatch` (cluster pulls the daemon) and the daemon chunk relay
- * (`link-daemon/chunk-relay.ts`) so both decode identically.
+ * lines whose joined JSON matches `dispatchSSEEventSchema`. Consumed by the
+ * daemon chunk relay (`link-daemon/chunk-relay.ts`), which forwards every raw
+ * `DispatchSSEEvent` to the cluster verbatim.
  *
- * Two consumers:
- * - `parseDispatchSSEEvents` — yields every validated raw `DispatchSSEEvent`
- *   (ui-message-chunk / error / done). Malformed frames are skipped silently.
- * - `parseDispatchSSEStream` — unwraps ui-message-chunk payloads, throws on
- *   error events, ignores done (the chunk-consumer shape).
+ * `parseDispatchSSEEvents` yields every validated raw `DispatchSSEEvent`
+ * (ui-message-chunk / error / done). Malformed frames are skipped silently.
  */
-import type { UIMessageChunk } from "ai";
 import {
   type DispatchSSEEvent,
   dispatchSSEEventSchema,
@@ -38,8 +34,7 @@ function decodeEventBlock(eventText: string): DispatchSSEEvent | null {
 
 /**
  * Yield every validated raw `DispatchSSEEvent` from the SSE body, including
- * `error` and `done` events. Malformed frames are skipped (same stance as
- * `parseDispatchSSEStream`).
+ * `error` and `done` events. Malformed frames are skipped.
  *
  * `opts.signal` aborts the parse: the underlying reader is cancelled (which
  * settles a pending `read()` with `{done: true}` and runs the source's cancel
@@ -85,18 +80,5 @@ export async function* parseDispatchSSEEvents(
   } finally {
     signal?.removeEventListener("abort", onAbort);
     reader.releaseLock();
-  }
-}
-
-export async function* parseDispatchSSEStream(
-  body: ReadableStream<Uint8Array>,
-): AsyncIterable<UIMessageChunk> {
-  for await (const event of parseDispatchSSEEvents(body)) {
-    if (event.type === "ui-message-chunk") {
-      yield event.chunk as UIMessageChunk;
-    } else if (event.type === "error") {
-      throw new Error(`[parseDispatchSSE] ${event.code}: ${event.message}`);
-    }
-    // `done` yields no chunk — the iterable ends when the body closes.
   }
 }

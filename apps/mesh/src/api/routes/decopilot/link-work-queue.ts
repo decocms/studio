@@ -126,8 +126,7 @@ export const workItemSchema = z.object({
    * Present when the encoded harnessInput exceeded the NATS `MAX_PUBLISH_BYTES`
    * budget — `harnessInput.messages` is then `[]` inline and the real messages
    * are at the presigned URL. The daemon forwards this ref verbatim in the
-   * `/_sandbox/dispatch` POST body; the sandbox daemon re-inflates from it
-   * (same flow as the WS path's `remoteDispatch` offload).
+   * `/_sandbox/dispatch` POST body; the sandbox daemon re-inflates from it.
    *
    * Optional for back-compat: absent on small conversations (no offload needed).
    */

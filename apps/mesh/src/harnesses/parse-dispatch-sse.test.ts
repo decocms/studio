@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { UIMessageChunk } from "ai";
 import type { DispatchSSEEvent } from "../links/protocol";
-import {
-  parseDispatchSSEEvents,
-  parseDispatchSSEStream,
-} from "./parse-dispatch-sse";
+import { parseDispatchSSEEvents } from "./parse-dispatch-sse";
 
 function sseStream(blocks: string[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
@@ -15,41 +11,6 @@ function sseStream(blocks: string[]): ReadableStream<Uint8Array> {
     },
   });
 }
-
-async function collect(
-  stream: AsyncIterable<UIMessageChunk>,
-): Promise<UIMessageChunk[]> {
-  const out: UIMessageChunk[] = [];
-  for await (const c of stream) out.push(c);
-  return out;
-}
-
-describe("parseDispatchSSEStream", () => {
-  it("yields ui-message-chunk payloads, ignores done", async () => {
-    const body = sseStream([
-      'data: {"type":"ui-message-chunk","chunk":{"type":"text-delta","id":"m1","delta":"hi"}}\n\n',
-      'data: {"type":"done"}\n\n',
-    ]);
-    const chunks = await collect(parseDispatchSSEStream(body));
-    expect(chunks).toEqual([{ type: "text-delta", id: "m1", delta: "hi" }]);
-  });
-
-  it("reassembles an event split across chunk boundaries", async () => {
-    const body = sseStream([
-      'data: {"type":"ui-message-chunk","chunk":{"type":"text-',
-      'delta","id":"m1","delta":"hi"}}\n\n',
-    ]);
-    const chunks = await collect(parseDispatchSSEStream(body));
-    expect(chunks).toEqual([{ type: "text-delta", id: "m1", delta: "hi" }]);
-  });
-
-  it("throws on an error event", async () => {
-    const body = sseStream([
-      'data: {"type":"error","code":"harness_crashed","message":"boom"}\n\n',
-    ]);
-    await expect(collect(parseDispatchSSEStream(body))).rejects.toThrow("boom");
-  });
-});
 
 async function collectEvents(
   events: AsyncIterable<DispatchSSEEvent>,
@@ -102,7 +63,7 @@ describe("parseDispatchSSEEvents", () => {
     ]);
   });
 
-  it("skips malformed frames (bad JSON, unknown type) like parseDispatchSSEStream", async () => {
+  it("skips malformed frames (bad JSON, unknown type)", async () => {
     const body = sseStream([
       "data: {not-json\n\n",
       'data: {"type":"mystery"}\n\n',

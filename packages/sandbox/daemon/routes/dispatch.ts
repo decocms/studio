@@ -2,10 +2,13 @@
  * `POST /_sandbox/dispatch` + `DELETE /_sandbox/runs/:runId`.
  *
  * Authenticated by the daemon's bearer `daemonToken` (see `../auth`). The
- * cluster-side caller is `remoteDispatch` in
- * `apps/mesh/src/harnesses/remote-dispatch.ts`, proxied to the daemon by
- * the link daemon's control handler over loopback; both sides parse SSE
- * events from `dispatchSSEEventSchema`.
+ * caller is the link daemon's `handleLocalDispatch`
+ * (`apps/mesh/src/link-daemon/handle-local-dispatch.ts`), which POSTs the
+ * pulled work item here over loopback and relays the SSE response to the
+ * cluster as seq-numbered NDJSON chunks. Both sides parse SSE events from
+ * `dispatchSSEEventSchema`. (The legacy cluster-side push caller
+ * `remoteDispatch` was deleted in Transport Convergence — pull is the only
+ * transport.)
  *
  * Dispatch flow:
  *   1. Verify the bearer token.
@@ -461,9 +464,9 @@ export async function handleCancelRequest(
   if (ctrl) ctrl.abort();
   tombstones.set(runId, Date.now() + TOMBSTONE_MS);
 
-  // Idempotent: 204 whether or not the runId was active. This mirrors
-  // the cluster's `remoteDispatch` cancel — it fires DELETE on consumer
-  // abort regardless of whether the daemon ever saw the runId.
+  // Idempotent: 204 whether or not the runId was active. The caller fires
+  // DELETE on consumer abort regardless of whether the daemon ever saw the
+  // runId.
   return new Response(null, { status: 204 });
 }
 

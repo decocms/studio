@@ -95,8 +95,8 @@ describe("genTitle fallback", () => {
   });
 
   test("missing abortSignal does not throw and still produces a fallback", async () => {
-    // Repro for the remote-dispatch crash: the wire input cannot carry a
-    // (non-serializable) AbortSignal, so genTitle may be called with
+    // Repro for the desktop/pull crash: the serialized wire input cannot carry
+    // a (non-serializable) AbortSignal, so genTitle may be called with
     // `abortSignal: undefined`. It must degrade to "no parent abort wiring"
     // instead of throwing `addEventListener of undefined`.
     const handle = genTitle({

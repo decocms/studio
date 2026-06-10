@@ -101,7 +101,8 @@ export interface ClusterConnectionPullInput {
  *
  * Priority:
  *   1. `item.sandbox.handle` — the authoritative handle resolved cluster-side
- *      by `resolveRemoteCliSandboxHandle` (Phase D fix). Always prefer this.
+ *      by `computeDesktopSandboxHandle` (the pure handle derivation in
+ *      `pullDispatch`). Always prefer this.
  *   2. Fallback derivation from `harnessInput.agent.id` + `harnessInput.branch`
  *      (legacy behavior for work items published before the `sandbox` field
  *      was added, or when sandbox config resolution failed).

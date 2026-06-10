@@ -35,8 +35,8 @@ const LOOPBACK_HOSTS = new Set([
 /**
  * Mint a sample presigned GET URL and extract the host the daemon must allow.
  * Returns an empty allowlist when no object storage is configured (offload is
- * a hard "no" in that case anyway — `remoteDispatch` throws on oversized
- * bodies without storage).
+ * a hard "no" in that case anyway — `pullDispatch` can't offload an oversized
+ * body without storage, so the NATS publish fails loudly instead).
  *
  * `allowSameHostDev` is true only when the derived host is loopback AND we are
  * not in production — so dev MinIO over http://127.0.0.1 is reachable while
