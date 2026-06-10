@@ -3,6 +3,7 @@ import {
   getOrgGithubConnections,
   getRepoScope,
   GITHUB_SCOPED_PERMISSIONS,
+  type RepoScopeRecipe,
 } from "./github-repo-scope";
 
 describe("getRepoScope", () => {
@@ -14,7 +15,7 @@ describe("getRepoScope", () => {
       repo: "widget",
       permissions: { contents: "write" },
       grantProvider: "github-mcp",
-    };
+    } satisfies RepoScopeRecipe;
     expect(getRepoScope({ metadata: { repoScope: recipe } })).toEqual(recipe);
   });
 
@@ -55,6 +56,22 @@ describe("getRepoScope", () => {
     expect(getRepoScope({ metadata: { source: "store" } })).toBeNull();
   });
 
+  it("accepts repoScope metadata without legacy sourceConnectionId", () => {
+    expect(
+      getRepoScope({
+        metadata: { repoScope: { installationId: 1, owner: "a", repo: "b" } },
+      }),
+    ).toEqual({
+      installationId: 1,
+      repositoryId: undefined,
+      sourceConnectionId: undefined,
+      owner: "a",
+      repo: "b",
+      permissions: GITHUB_SCOPED_PERMISSIONS,
+      grantProvider: undefined,
+    });
+  });
+
   it("returns null when required fields are missing or mistyped", () => {
     expect(
       getRepoScope({
@@ -70,19 +87,6 @@ describe("getRepoScope", () => {
     ).toBeNull();
     expect(
       getRepoScope({
-        metadata: { repoScope: { installationId: 1, owner: "a", repo: "b" } },
-      }),
-    ).toEqual({
-      installationId: 1,
-      repositoryId: undefined,
-      sourceConnectionId: undefined,
-      owner: "a",
-      repo: "b",
-      permissions: GITHUB_SCOPED_PERMISSIONS,
-      grantProvider: undefined,
-    });
-    expect(
-      getRepoScope({
         metadata: {
           repoScope: {
             sourceConnectionId: "x",
@@ -93,6 +97,22 @@ describe("getRepoScope", () => {
         },
       }),
     ).toBeNull();
+  });
+
+  it("returns null for non-positive, non-integer, or non-finite installation ids", () => {
+    for (const installationId of [NaN, Infinity, -1, 1.5]) {
+      expect(
+        getRepoScope({
+          metadata: {
+            repoScope: {
+              installationId,
+              owner: "a",
+              repo: "b",
+            },
+          },
+        }),
+      ).toBeNull();
+    }
   });
 });
 

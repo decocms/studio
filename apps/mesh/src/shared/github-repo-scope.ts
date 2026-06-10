@@ -45,6 +45,9 @@ export function getRepoScope(connection: {
   if (
     !raw ||
     typeof raw.installationId !== "number" ||
+    !Number.isFinite(raw.installationId) ||
+    !Number.isInteger(raw.installationId) ||
+    raw.installationId <= 0 ||
     typeof raw.owner !== "string" ||
     typeof raw.repo !== "string" ||
     raw.owner.length === 0 ||
