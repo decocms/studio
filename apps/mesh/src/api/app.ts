@@ -1135,6 +1135,17 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Health Check & Metrics
   // ============================================================================
 
+  // AWS NLB target-group health check (path "/health"). Cheap — no DB/NATS
+  // probe — but flips to 503 during shutdown so the load balancer stops routing
+  // to a draining pod. Without an explicit route this falls through to the SPA
+  // handler and returns 200 forever, hiding shutdown from the NLB.
+  app.get(SYSTEM_PATHS.HEALTH, (c) => {
+    if (isShuttingDown) {
+      return c.json({ status: "shutting_down" }, 503);
+    }
+    return c.json({ status: "ok" });
+  });
+
   // Liveness probe — the process is alive and the event loop is not stuck
   app.get(SYSTEM_PATHS.HEALTH_LIVE, (c) => {
     return c.json({ status: "ok" });
