@@ -216,20 +216,21 @@ async function runDockerCommand(
   options: { ignoreFailure?: boolean } = {},
 ): Promise<void> {
   const command = ["docker", ...args].join(" ");
-  let proc: ReturnType<typeof Bun.spawn>;
-  try {
-    proc = Bun.spawn(["docker", ...args], {
-      stdout: "ignore",
-      stderr: "pipe",
-    });
-  } catch (error) {
-    throw new Error(
-      `Docker command failed to start (${command}): ${errorMessage(error)}`,
-      {
-        cause: error,
-      },
-    );
-  }
+  const proc = (() => {
+    try {
+      return Bun.spawn(["docker", ...args], {
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+    } catch (error) {
+      throw new Error(
+        `Docker command failed to start (${command}): ${errorMessage(error)}`,
+        {
+          cause: error,
+        },
+      );
+    }
+  })();
   const [exitCode, stderr] = await Promise.all([
     proc.exited,
     drainStderr(proc.stderr),
