@@ -117,14 +117,7 @@ export const createOrgFsRoutes = () => {
       throw err;
     }
     if (isPublicVolume(volume)) {
-      const fs = buildPublicOrgFs(ctx);
-      if (!fs) {
-        return {
-          ok: false,
-          res: c.json({ error: "Object storage not configured" }, 503),
-        };
-      }
-      return { ok: true, ctx, fs };
+      return { ok: true, ctx, fs: buildPublicOrgFs(ctx) };
     }
     if (!ctx.orgFs) {
       return {

@@ -70,13 +70,13 @@ export function getPublicSets(): PublicSkillSetSource[] {
 
 /**
  * An OrgFs bound to the shared public scope (mirrors the per-org rebind in
- * resolve-org-from-path.ts). Null when object storage isn't configured.
+ * resolve-org-from-path.ts — like there, missing S3 falls back to the dev
+ * object storage, so this always returns a working instance).
  */
-export function buildPublicOrgFs(ctx: StudioContext): OrgFs | null {
+export function buildPublicOrgFs(ctx: StudioContext): OrgFs {
   const s3Service = getObjectStorageS3Service();
   const storage = s3Service
     ? createBoundObjectStorage(s3Service, ORG_FS_PUBLIC_ORG_ID)
     : new DevObjectStorage(ORG_FS_PUBLIC_ORG_ID, ctx.baseUrl);
-  if (!ctx.storage.orgFsEntries) return null;
   return new OrgFs(storage, ctx.storage.orgFsEntries, ORG_FS_PUBLIC_ORG_ID);
 }

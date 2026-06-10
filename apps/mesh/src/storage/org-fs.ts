@@ -211,10 +211,6 @@ export class OrgFsEntryStorage {
     return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
   }
 
-  /**
-   * All live file entries under a directory path (recursive). Used for
-   * recursive delete/move. `dirPath` must be normalized (no trailing slash).
-   */
   /** Every live file in a volume (the public-set syncer's diff base). */
   async listVolumeFiles(
     organizationId: string,
@@ -231,6 +227,10 @@ export class OrgFsEntryStorage {
     return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
   }
 
+  /**
+   * All live file entries under a directory path (recursive). Used for
+   * recursive delete/move. `dirPath` must be normalized (no trailing slash).
+   */
   async listSubtreeFiles(
     organizationId: string,
     volume: string,

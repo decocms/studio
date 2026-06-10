@@ -34,6 +34,8 @@ import {
 const SYNC_ACTOR = "system:skill-set-sync";
 /** Tarballs of skill repos are small; refuse anything suspicious. */
 const MAX_TARBALL_BYTES = 200 * 1024 * 1024;
+/** Decompression ceiling (gzip bombs expand far beyond the download size). */
+const MAX_UNPACKED_BYTES = 1024 * 1024 * 1024;
 
 // --- minimal tar reader ------------------------------------------------------
 // GitHub tarballs are ustar with pax extension headers. We only need regular
@@ -110,13 +112,24 @@ async function fetchRepoFiles(
       `tarball fetch failed for ${repo}@${ref}: HTTP ${res.status}`,
     );
   }
+  // Refuse before buffering when the server declares the size; the
+  // post-download check stays as the backstop for chunked responses.
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > MAX_TARBALL_BYTES) {
+    throw new Error(
+      `tarball for ${repo}@${ref} declares ${declared} bytes (cap ${MAX_TARBALL_BYTES})`,
+    );
+  }
   const gz = new Uint8Array(await res.arrayBuffer());
   if (gz.length > MAX_TARBALL_BYTES) {
     throw new Error(
       `tarball for ${repo}@${ref} exceeds ${MAX_TARBALL_BYTES} bytes`,
     );
   }
-  const raw = parseTar(new Uint8Array(gunzipSync(gz)));
+  // maxOutputLength bounds decompression (a gzip bomb throws instead of OOM).
+  const raw = parseTar(
+    new Uint8Array(gunzipSync(gz, { maxOutputLength: MAX_UNPACKED_BYTES })),
+  );
   // strip the tarball's single top-level `<repo>-<ref>/` dir
   const files = new Map<string, Uint8Array>();
   for (const [path, bytes] of raw) {

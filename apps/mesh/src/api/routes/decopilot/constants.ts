@@ -134,11 +134,6 @@ You have a \`todo_write\` tool for planning and tracking multi-step work.
 }
 
 /**
- * Repo environment prompt — injected when the active virtual MCP has a
- * GitHub repository linked (and therefore exposes the VM/filesystem/shell
- * tool suite).
- */
-/**
  * Teaches the org filesystem layout, including the deployment's actual public
  * skill sets so the agent surfaces them when asked about its capabilities.
  * Settings-stable per deployment, so it lives in the cached prompt prefix.
@@ -158,6 +153,11 @@ When asked about your skills or capabilities, list the contents of \`org/skills/
 </organization-filesystem>`;
 }
 
+/**
+ * Repo environment prompt — injected when the active virtual MCP has a
+ * GitHub repository linked (and therefore exposes the VM/filesystem/shell
+ * tool suite).
+ */
 export function buildRepoEnvironmentPrompt(repo: GithubRepo): string {
   return `<repo-environment>
 You are running inside the repository \`${repo.owner}/${repo.name}\`.

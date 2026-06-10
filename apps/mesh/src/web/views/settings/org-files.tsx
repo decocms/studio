@@ -298,7 +298,9 @@ function VolumeListing(props: {
           colSpan={4}
           className="p-10 text-center text-sm text-muted-foreground"
         >
-          Empty folder — upload a file or create a folder to get started.
+          {props.readOnly
+            ? "Empty — this read-only set syncs from its GitHub source."
+            : "Empty folder — upload a file or create a folder to get started."}
         </td>
       </tr>
     );
@@ -430,15 +432,21 @@ function FsBrowser() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
-              Promise.all(
-                VOLUMES.map((v) =>
-                  queryClient.invalidateQueries({
-                    queryKey: KEYS.orgFsVolume(org.id, v.id),
-                  }),
-                ),
-              )
-            }
+            onClick={() => {
+              for (const v of VOLUMES) {
+                queryClient.invalidateQueries({
+                  queryKey: KEYS.orgFsVolume(org.id, v.id),
+                });
+              }
+              queryClient.invalidateQueries({
+                queryKey: KEYS.orgFsPublicSets(org.id),
+              });
+              if (volume) {
+                queryClient.invalidateQueries({
+                  queryKey: KEYS.orgFsVolume(org.id, volume),
+                });
+              }
+            }}
           >
             <RefreshCw01 size={14} />
             Refresh
