@@ -72,6 +72,7 @@ export function setDevMode(opts: { localSandboxProvider?: boolean } = {}) {
     services: [
       ...state.services,
       { name: "Vite", status: "pending", port: 0 },
+      { name: "API", status: "pending", port: 0 },
       // Auto-spawned by `bun run dev --local-sandbox-provider` after the
       // cluster is up — see apps/mesh/src/cli/commands/dev.ts. The
       // desktop sandbox provider routes through this. Marked ready
