@@ -40,8 +40,6 @@ import {
   detectRepoRuntimeAnonymous,
 } from "../../shared/github-runtime-detect";
 import { generateBranchName } from "../../shared/branch-name";
-import { ensureRepoScopedToken } from "@/oauth/github-mint";
-import { getRepoScope } from "@/shared/github-repo-scope";
 import { PACKAGE_MANAGER_CONFIG } from "../../shared/runtime-defaults";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
 import { deriveOffloadAllowlist } from "../../object-storage/offload-allowlist";
@@ -302,32 +300,8 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
-    // Legacy repo-scoped child connections mint on demand before the token is
-    // baked into the clone URL or used for the lockfile probe. Refreshable repo
-    // grant children use buildCloneInfo's cached-token refresh path.
-    if (githubRepo.connectionId) {
-      const repoConn = await ctx.storage.connections.findById(
-        githubRepo.connectionId,
-        orgId,
-      );
-      const repoScope = repoConn ? getRepoScope(repoConn) : null;
-      if (repoConn && repoScope?.sourceConnectionId) {
-        try {
-          await ensureRepoScopedToken(ctx, repoConn);
-        } catch (err) {
-          // Swallow + log: a failed mint intentionally falls through to
-          // buildCloneInfo's own "No GitHub token found" throw below (sandbox
-          // start fails loudly — never an unauthenticated clone).
-          console.error(
-            "[provisionSandbox] repo-scoped legacy token mint failed",
-            {
-              connectionId: githubRepo.connectionId,
-              error: (err as Error).message,
-            },
-          );
-        }
-      }
-    }
+    // buildCloneInfo and detectRepoRuntime refresh connection-backed tokens before
+    // using them, including refreshable repo-scoped GitHub children.
 
     // Connection-backed (authenticated) vs public-clone (anonymous). The
     // daemon's clone behavior is identical — only the URL and identity

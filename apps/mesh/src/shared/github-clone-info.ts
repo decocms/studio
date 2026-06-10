@@ -15,10 +15,8 @@ import { DownstreamTokenStorage } from "../storage/downstream-token";
 import type { Database } from "../storage/types";
 import type { CredentialVault } from "../encryption/credential-vault";
 import {
-  canRefresh,
-  PROACTIVE_REFRESH_BUFFER_MS,
+  getValidDownstreamAccessToken,
   RECONNECT_ERROR,
-  refreshAndStore,
 } from "../oauth/token-refresh";
 
 export interface GitHubCloneInfo {
@@ -51,26 +49,19 @@ export async function buildCloneInfo(
   vault: CredentialVault,
 ): Promise<GitHubCloneInfo> {
   const tokenStorage = new DownstreamTokenStorage(db, vault);
-  const token = await tokenStorage.get(connectionId);
-  if (!token) {
+  const tokenResult = await getValidDownstreamAccessToken({
+    connectionId,
+    tokenStorage,
+  });
+  if (!tokenResult.accessToken) {
     throw new Error(
-      "No GitHub token found. Ensure the mcp-github connection is authenticated.",
+      tokenResult.state === "refresh_failed"
+        ? RECONNECT_ERROR
+        : "No GitHub token found. Ensure the mcp-github connection is authenticated.",
     );
   }
 
-  let accessToken = token.accessToken;
-
-  // Proactive refresh before baking into the clone URL. Mirrors GITHUB_LIST_USER_ORGS.
-  if (
-    canRefresh(token) &&
-    tokenStorage.isExpired(token, PROACTIVE_REFRESH_BUFFER_MS)
-  ) {
-    const refreshed = await refreshAndStore(token, tokenStorage);
-    if (!refreshed) {
-      throw new Error(RECONNECT_ERROR);
-    }
-    accessToken = refreshed;
-  }
+  const accessToken = tokenResult.accessToken;
 
   const cloneUrl = `https://x-access-token:${accessToken}@github.com/${owner}/${name}.git`;
 

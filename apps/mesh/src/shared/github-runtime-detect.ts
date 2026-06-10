@@ -10,6 +10,7 @@
 
 import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
+import { getValidDownstreamAccessToken } from "../oauth/token-refresh";
 import { DownstreamTokenStorage } from "../storage/downstream-token";
 import type { Database } from "../storage/types";
 import type { PackageManager } from "./runtime-defaults";
@@ -48,9 +49,12 @@ export async function detectRepoRuntime(
   db: Kysely<Database>,
   vault: CredentialVault,
 ): Promise<DetectedRuntime | null> {
-  const token = await new DownstreamTokenStorage(db, vault).get(connectionId);
-  if (!token) return null;
-  return probeRuntime(owner, name, token.accessToken);
+  const tokenResult = await getValidDownstreamAccessToken({
+    connectionId,
+    tokenStorage: new DownstreamTokenStorage(db, vault),
+  });
+  if (!tokenResult.accessToken) return null;
+  return probeRuntime(owner, name, tokenResult.accessToken);
 }
 
 /**

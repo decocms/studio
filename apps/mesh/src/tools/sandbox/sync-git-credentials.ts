@@ -1,10 +1,8 @@
 import type { GithubRepo } from "@decocms/mesh-sdk/types";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { StudioContext } from "../../core/studio-context";
-import { ensureRepoScopedToken } from "../../oauth/github-mint";
 import { RECONNECT_ERROR } from "../../oauth/token-refresh";
 import { buildCloneInfo } from "../../shared/github-clone-info";
-import { getRepoScope } from "../../shared/github-repo-scope";
 
 export class GitPushAuthError extends Error {
   constructor(message: string) {
@@ -27,8 +25,7 @@ export function parseGithubRepoFromMetadata(
 /**
  * Refreshes the GitHub token baked into the sandbox clone URL and patches the
  * running daemon config so git push can sync `origin` before publishing.
- * Legacy repo-scoped child connections are re-minted on demand. Refreshable
- * repo grant children rely on buildCloneInfo's cached-token refresh path.
+ * buildCloneInfo owns token refresh before baking the clone URL.
  */
 export async function refreshSandboxGitCredentials(
   ctx: StudioContext,
@@ -45,20 +42,6 @@ export async function refreshSandboxGitCredentials(
   const organizationId = ctx.organization?.id;
   if (!organizationId) {
     throw new GitPushAuthError(RECONNECT_ERROR);
-  }
-
-  const repoConn = await ctx.storage.connections.findById(
-    githubRepo.connectionId,
-    organizationId,
-  );
-  const repoScope = repoConn ? getRepoScope(repoConn) : null;
-  if (repoConn && repoScope?.sourceConnectionId) {
-    try {
-      await ensureRepoScopedToken(ctx, repoConn);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : RECONNECT_ERROR;
-      throw new GitPushAuthError(message);
-    }
   }
 
   const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
