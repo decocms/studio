@@ -282,7 +282,6 @@
         "@cloudflare/workers-types": "^4.20250617.0",
         "@decocms/bindings": "^1.0.7",
         "@modelcontextprotocol/sdk": "1.29.0",
-        "hono": "^4.10.7",
         "jose": "^6.0.11",
         "zod": "^4.0.0",
       },
