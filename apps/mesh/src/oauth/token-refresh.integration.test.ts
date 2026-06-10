@@ -171,6 +171,7 @@ describe("refreshAndStore", () => {
     const first = refreshAndStore(token!, tokenStorage);
     await refreshStarted;
     const second = refreshAndStore(token!, tokenStorage);
+    expect(first).toBe(second);
     releaseRefresh();
 
     await expect(first).resolves.toBe("fresh-single-flight");

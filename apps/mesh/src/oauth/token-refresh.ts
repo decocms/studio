@@ -61,7 +61,7 @@ async function refreshAndStoreOnce(
   return result.accessToken;
 }
 
-export async function refreshAndStore(
+export function refreshAndStore(
   token: DownstreamToken,
   tokenStorage: DownstreamTokenStorage,
 ): Promise<string | null> {
