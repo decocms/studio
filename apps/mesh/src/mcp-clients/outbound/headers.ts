@@ -147,39 +147,37 @@ async function _buildRequestHeaders(
   // This supports OAuth token refresh for connections that use OAuth
   let accessToken: string | null = null;
 
-  // Legacy per-agent repo-scoped child connections mint on demand through their
-  // source org connection. Refreshable repo-scoped children use the normal
-  // cached-token + refresh path below.
   const repoScope = getRepoScope(connection);
-  const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
-  const tokenResult = await getValidDownstreamAccessToken({
-    connectionId,
-    connectionUrl: connection.connection_url,
-    tokenStorage,
-  });
+  const useLegacyRepoMint = !!repoScope?.sourceConnectionId;
 
-  if (tokenResult.accessToken) {
-    accessToken = tokenResult.accessToken;
-  } else {
-    if (tokenResult.state === "expired_without_refresh") {
-      console.warn(
-        `[Proxy] Token expired for ${connectionId} with no refresh capability`,
-      );
-    } else if (tokenResult.state === "refresh_failed") {
-      console.error("[Proxy] token refresh failed", {
+  if (useLegacyRepoMint) {
+    try {
+      accessToken = await ensureRepoScopedToken(ctx, connection);
+    } catch (err) {
+      console.error("[Proxy] repo-scoped legacy token mint failed", {
         connectionId,
-        tokenState: tokenResult.state,
+        error: (err as Error).message,
       });
     }
+  } else {
+    const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
+    const tokenResult = await getValidDownstreamAccessToken({
+      connectionId,
+      connectionUrl: connection.connection_url,
+      tokenStorage,
+    });
 
-    if (repoScope?.sourceConnectionId) {
-      try {
-        accessToken = await ensureRepoScopedToken(ctx, connection);
-      } catch (err) {
-        console.error("[Proxy] repo-scoped legacy token mint failed", {
+    if (tokenResult.accessToken) {
+      accessToken = tokenResult.accessToken;
+    } else {
+      if (tokenResult.state === "expired_without_refresh") {
+        console.warn(
+          `[Proxy] Token expired for ${connectionId} with no refresh capability`,
+        );
+      } else if (tokenResult.state === "refresh_failed") {
+        console.error("[Proxy] token refresh failed", {
           connectionId,
           tokenState: tokenResult.state,
-          error: (err as Error).message,
         });
       }
     }
