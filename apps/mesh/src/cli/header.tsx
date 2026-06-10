@@ -23,6 +23,10 @@ function StatusIndicator({ status }: { status: "pending" | "ready" | "done" }) {
   return <Text color="green">{"✓"}</Text>;
 }
 
+export function formatServiceLabel(svc: ServiceStatus): string {
+  return `${svc.name}: ${svc.port || "...."}`;
+}
+
 export function Header({
   services,
   migrationsStatus,
@@ -44,9 +48,7 @@ export function Header({
       <Box gap={2}>
         {services.map((svc) => (
           <Box key={svc.name} gap={1}>
-            <Text>
-              {svc.name} :{svc.port || "...."}
-            </Text>
+            <Text>{formatServiceLabel(svc)}</Text>
             <StatusIndicator status={svc.status} />
           </Box>
         ))}
