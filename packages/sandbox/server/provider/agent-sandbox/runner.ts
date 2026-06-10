@@ -38,6 +38,7 @@ import type {
   UpDownCounter,
 } from "@opentelemetry/api";
 import {
+  ConfigRequestError,
   postConfig,
   postOrgFsConfig,
   probeDaemonHealth,
@@ -1308,15 +1309,31 @@ export class AgentSandboxProvider implements SandboxProvider {
     ensureOpts: EnsureOptions | null,
   ): Promise<boolean> {
     if (this.sentinelToken === null) return false;
+    const payload = this.workloadConfigPayload(ensureOpts) ?? {};
     try {
-      await postConfig(
-        daemonUrl,
-        this.sentinelToken,
-        this.workloadConfigPayload(ensureOpts) ?? {},
-        { rotateToken: token },
-      );
+      await postConfig(daemonUrl, this.sentinelToken, payload, {
+        rotateToken: token,
+      });
       return true;
     } catch (err) {
+      // A 401 means the daemon no longer accepts the sentinel: it was already
+      // rotated to our per-claim token (a stale stored bootId triggered this
+      // re-bootstrap against a pod we'd already healed — the resume/reactive-401
+      // paths don't persist bootId). The pod is still ours, so re-assert the
+      // workload authenticated with our own token (rotating token→token is a
+      // no-op) instead of tearing the sandbox down. Only if THAT also fails is
+      // the pod genuinely not ours and the caller should reprovision.
+      if (err instanceof ConfigRequestError && err.status === 401) {
+        try {
+          await postConfig(daemonUrl, token, payload, { rotateToken: token });
+          return true;
+        } catch (retryErr) {
+          console.warn(
+            `[${LOG_LABEL}] re-bootstrap retry with claim token failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
+          );
+          return false;
+        }
+      }
       console.warn(
         `[${LOG_LABEL}] re-bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
       );
