@@ -1,5 +1,10 @@
+import { retry, RetryError } from "@decocms/std";
+
 export const DEV_LINK_TOXIPROXY_SERVICE_NAME = "ToxiProxy";
 export const DEV_LINK_TOXIPROXY_PROXY_NAME = "dev_link_studio";
+
+const TOXIPROXY_READY_MAX_ATTEMPTS = 20;
+const TOXIPROXY_READY_INTERVAL_MS = 100;
 
 export interface DevLinkToxiProxyConfigInput {
   serverUrl: string;
@@ -72,40 +77,111 @@ export function buildDevLinkToxiProxyConfig(
 async function assertToxiProxyResponseOk(
   response: Response,
   context: string,
+  url: string,
 ): Promise<void> {
   if (response.ok) {
     return;
   }
   const body = await response.text();
   throw new Error(
-    `ToxiProxy ${context} failed: status=${response.status} statusText=${response.statusText} body=${body}`,
+    `ToxiProxy ${context} failed for ${url}: status=${response.status} statusText=${response.statusText} body=${body}`,
   );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function fetchToxiProxy(
+  fetchImpl: typeof fetch,
+  context: string,
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetchImpl(url, init);
+  } catch (error) {
+    throw new Error(
+      `ToxiProxy ${context} failed for ${url}: ${errorMessage(error)}`,
+      {
+        cause: error,
+      },
+    );
+  }
 }
 
 export async function populateDevLinkToxiProxy(
   config: DevLinkToxiProxyConfig,
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
-  const resetResponse = await fetchImpl(`${config.apiUrl}/reset`, {
+  const resetUrl = `${config.apiUrl}/reset`;
+  const resetResponse = await fetchToxiProxy(fetchImpl, "reset", resetUrl, {
     method: "POST",
   });
-  await assertToxiProxyResponseOk(resetResponse, "reset");
+  await assertToxiProxyResponseOk(resetResponse, "reset", resetUrl);
 
-  const populateResponse = await fetchImpl(`${config.apiUrl}/populate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify([
-      {
-        name: config.proxyName,
-        listen: config.listen,
-        upstream: config.upstream,
-        enabled: true,
+  const populateUrl = `${config.apiUrl}/populate`;
+  const populateResponse = await fetchToxiProxy(
+    fetchImpl,
+    "populate",
+    populateUrl,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    ]),
-  });
-  await assertToxiProxyResponseOk(populateResponse, "populate");
+      body: JSON.stringify([
+        {
+          name: config.proxyName,
+          listen: config.listen,
+          upstream: config.upstream,
+          enabled: true,
+        },
+      ]),
+    },
+  );
+  await assertToxiProxyResponseOk(populateResponse, "populate", populateUrl);
+}
+
+async function waitForDevLinkToxiProxy(
+  config: DevLinkToxiProxyConfig,
+  fetchImpl: typeof fetch,
+): Promise<void> {
+  const versionUrl = `${config.apiUrl}/version`;
+  try {
+    await retry(
+      async () => {
+        const response = await fetchToxiProxy(
+          fetchImpl,
+          "readiness check",
+          versionUrl,
+          {
+            method: "GET",
+          },
+        );
+        await assertToxiProxyResponseOk(
+          response,
+          "readiness check",
+          versionUrl,
+        );
+      },
+      {
+        maxAttempts: TOXIPROXY_READY_MAX_ATTEMPTS,
+        minTimeout: TOXIPROXY_READY_INTERVAL_MS,
+        maxTimeout: TOXIPROXY_READY_INTERVAL_MS,
+        multiplier: 1,
+        jitter: 0,
+      },
+    );
+  } catch (error) {
+    const cause = error instanceof RetryError ? error.cause : error;
+    throw new Error(
+      `ToxiProxy API did not become ready at ${versionUrl}: ${errorMessage(cause)}`,
+      {
+        cause,
+      },
+    );
+  }
 }
 
 async function drainStderr(
@@ -121,10 +197,21 @@ async function runDockerCommand(
   args: string[],
   options: { ignoreFailure?: boolean } = {},
 ): Promise<void> {
-  const proc = Bun.spawn(["docker", ...args], {
-    stdout: "ignore",
-    stderr: "pipe",
-  });
+  const command = ["docker", ...args].join(" ");
+  let proc: ReturnType<typeof Bun.spawn>;
+  try {
+    proc = Bun.spawn(["docker", ...args], {
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+  } catch (error) {
+    throw new Error(
+      `Docker command failed to start (${command}): ${errorMessage(error)}`,
+      {
+        cause: error,
+      },
+    );
+  }
   const [exitCode, stderr] = await Promise.all([
     proc.exited,
     drainStderr(proc.stderr),
@@ -132,7 +219,6 @@ async function runDockerCommand(
   if (exitCode === 0 || options.ignoreFailure === true) {
     return;
   }
-  const command = ["docker", ...args].join(" ");
   const suffix = stderr.trim().length > 0 ? `: ${stderr.trim()}` : "";
   throw new Error(
     `Docker command failed (${command}) with exit ${exitCode}${suffix}`,
@@ -166,6 +252,8 @@ export async function ensureDevLinkToxiProxy(
   const config = buildDevLinkToxiProxyConfig(input);
   const startDaemon = input.startDaemon ?? startDevLinkToxiProxyDocker;
   await startDaemon(input.apiPort, input.listenPort);
-  await populateDevLinkToxiProxy(config, input.fetchImpl ?? fetch);
+  const fetchImpl = input.fetchImpl ?? fetch;
+  await waitForDevLinkToxiProxy(config, fetchImpl);
+  await populateDevLinkToxiProxy(config, fetchImpl);
   return config;
 }

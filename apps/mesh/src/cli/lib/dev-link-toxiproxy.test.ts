@@ -148,9 +148,65 @@ describe("dev-link-toxiproxy HTTP API", () => {
     );
   });
 
+  test("includes populate response body and URL when populate fails", async () => {
+    const config = buildDevLinkToxiProxyConfig({
+      serverUrl: "http://localhost:4001",
+      apiPort: 18474,
+      listenPort: 18480,
+    });
+    const fetchImpl = mock(async (url: string) => {
+      if (url.endsWith("/reset")) {
+        return new Response(null, { status: 200 });
+      }
+      return new Response("bad populate", {
+        status: 422,
+        statusText: "Unprocessable Content",
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(populateDevLinkToxiProxy(config, fetchImpl)).rejects.toThrow(
+      /populate.*http:\/\/127\.0\.0\.1:18474\/populate.*422.*Unprocessable Content.*bad populate/s,
+    );
+  });
+
+  test("does not populate when reset fails", async () => {
+    const config = buildDevLinkToxiProxyConfig({
+      serverUrl: "http://localhost:4001",
+      apiPort: 18474,
+      listenPort: 18480,
+    });
+    const calls: string[] = [];
+    const fetchImpl = mock(async (url: string) => {
+      calls.push(url);
+      return new Response("bad reset", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    await expect(populateDevLinkToxiProxy(config, fetchImpl)).rejects.toThrow(
+      /reset/,
+    );
+    expect(calls).toEqual(["http://127.0.0.1:18474/reset"]);
+  });
+
+  test("wraps fetch failures with operation and URL context", async () => {
+    const config = buildDevLinkToxiProxyConfig({
+      serverUrl: "http://localhost:4001",
+      apiPort: 18474,
+      listenPort: 18480,
+    });
+    const fetchImpl = mock(async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+
+    await expect(populateDevLinkToxiProxy(config, fetchImpl)).rejects.toThrow(
+      /reset.*http:\/\/127\.0\.0\.1:18474\/reset.*fetch failed/s,
+    );
+  });
+
   test("starts the daemon, populates ToxiProxy, and returns config", async () => {
     const startDaemon = mock(async () => {});
+    const calls: string[] = [];
     const fetchImpl = mock(async () => {
+      calls.push("");
       return new Response(null, { status: 200 });
     }) as unknown as typeof fetch;
 
@@ -163,7 +219,34 @@ describe("dev-link-toxiproxy HTTP API", () => {
     });
 
     expect(startDaemon).toHaveBeenCalledWith(18474, 18480);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(config.clusterUrl).toBe("http://127.0.0.1:18480");
+  });
+
+  test("waits for ToxiProxy readiness before populating", async () => {
+    const startDaemon = mock(async () => {});
+    const calls: string[] = [];
+    const fetchImpl = mock(async (url: string) => {
+      calls.push(url);
+      if (url.endsWith("/version") && calls.length === 1) {
+        return new Response("not ready", { status: 503 });
+      }
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await ensureDevLinkToxiProxy({
+      serverUrl: "http://localhost:4001",
+      apiPort: 18474,
+      listenPort: 18480,
+      startDaemon,
+      fetchImpl,
+    });
+
+    expect(calls).toEqual([
+      "http://127.0.0.1:18474/version",
+      "http://127.0.0.1:18474/version",
+      "http://127.0.0.1:18474/reset",
+      "http://127.0.0.1:18474/populate",
+    ]);
   });
 });
