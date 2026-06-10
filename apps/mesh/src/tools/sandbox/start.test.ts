@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
 import type { StudioContext } from "../../core/studio-context";
 import type {
@@ -159,6 +159,8 @@ mock.module("@/oauth/refresh-access-token", () => ({
 
 const { SANDBOX_START } = await import("./start");
 
+const originalFetch = globalThis.fetch;
+
 const BRANCH = "feat/example";
 const ORG_ID = "org_1";
 const VMCP_ID = "vmcp_1";
@@ -283,6 +285,9 @@ function makeCtx(overrides: {
 
 describe("SANDBOX_START", () => {
   beforeEach(() => {
+    globalThis.fetch = mock(
+      async () => new Response("{}", { status: 404 }),
+    ) as unknown as typeof fetch;
     mockEnsure.mockReset();
     mockClusterDelete.mockReset();
     mockAgentSandboxDelete.mockReset();
@@ -318,6 +323,10 @@ describe("SANDBOX_START", () => {
     mockTokenUpsert.mockImplementation(async () => {});
     mockTokenDelete.mockReset();
     mockTokenDelete.mockImplementation(async () => {});
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   it("calls runner.ensure with composed projectRef + repo + workload", async () => {
