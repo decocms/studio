@@ -39,6 +39,32 @@ describe("git routes", () => {
     expect(body.modified).toContain("README.md");
   });
 
+  it("status returns 409 notReady before the repo is cloned", async () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "git-route-root-"));
+    const repoDir = join(appRoot, "app");
+    mkdirSync(repoDir, { recursive: true });
+    const handler = makeGitStatusHandler({ appRoot, repoDir });
+    const res = await handler(new Request("http://x/git/status"));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "repository not initialized",
+      notReady: true,
+    });
+  });
+
+  it("diff returns 409 notReady before the repo is cloned", async () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "git-route-root-"));
+    const repoDir = join(appRoot, "app");
+    mkdirSync(repoDir, { recursive: true });
+    const handler = makeGitDiffHandler({ appRoot, repoDir });
+    const res = await handler(new Request("http://x/git/diff"));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "repository not initialized",
+      notReady: true,
+    });
+  });
+
   it("status reports unpushed when feature branch has no remote ref", async () => {
     const { appRoot, repoDir } = initRepo();
     gitSync(["checkout", "-b", "deco/thin-crane"], {

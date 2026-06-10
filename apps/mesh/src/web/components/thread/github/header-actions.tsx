@@ -94,11 +94,19 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const sandboxRouteBranch =
     branch ?? sandboxBranch ?? sandboxMapBranch ?? undefined;
 
+  // The repo doesn't exist on disk until the clone+checkout finishes, so don't
+  // poll /git/status during those phases (it would 409 until the repo lands).
+  const repoNotClonedYet =
+    lifecycle.phase === "cloning" ||
+    lifecycle.phase === "checking-out" ||
+    lifecycle.phase === "clone-failed";
+
   const gitStatusQuery = useSandboxGitStatus({
     orgSlug: org.slug,
     virtualMcpId,
     branch: sandboxRouteBranch ?? null,
-    enabled: !!githubRepo && !!sandboxRouteBranch && !sandboxGone,
+    enabled:
+      !!githubRepo && !!sandboxRouteBranch && !sandboxGone && !repoNotClonedYet,
   });
 
   const githubHeadBranch =
