@@ -24,6 +24,13 @@ export function isDevLinkToxiProxyEnabled(
   return env.DECO_DEV_LINK_TOXIPROXY === "1";
 }
 
+function assertValidPort(value: number, name: string): number {
+  if (!Number.isInteger(value) || value < 1 || value > 65535) {
+    throw new Error(`${name} must be an integer port in 1..65535`);
+  }
+  return value;
+}
+
 export function buildDevLinkToxiProxyConfig(
   input: DevLinkToxiProxyConfigInput,
 ): DevLinkToxiProxyConfig {
@@ -33,15 +40,22 @@ export function buildDevLinkToxiProxyConfig(
       "DECO_DEV_LINK_TOXIPROXY only supports http local Studio URLs",
     );
   }
-  const upstreamPort =
-    server.port.length > 0 ? Number.parseInt(server.port, 10) : 80;
+  const apiPort = assertValidPort(input.apiPort, "apiPort");
+  const listenPort = assertValidPort(input.listenPort, "listenPort");
+  if (server.port.length === 0) {
+    throw new Error("serverUrl must include an explicit valid port");
+  }
+  const upstreamPort = assertValidPort(
+    Number.parseInt(server.port, 10),
+    "upstreamPort",
+  );
   const publicTargetUrl = `http://127.0.0.1:${upstreamPort}`;
-  const clusterUrl = `http://127.0.0.1:${input.listenPort}`;
+  const clusterUrl = `http://127.0.0.1:${listenPort}`;
   return {
     serviceName: DEV_LINK_TOXIPROXY_SERVICE_NAME,
     proxyName: DEV_LINK_TOXIPROXY_PROXY_NAME,
-    apiUrl: `http://127.0.0.1:${input.apiPort}`,
-    listen: `0.0.0.0:${input.listenPort}`,
+    apiUrl: `http://127.0.0.1:${apiPort}`,
+    listen: `0.0.0.0:${listenPort}`,
     upstream: `host.docker.internal:${upstreamPort}`,
     publicTargetUrl,
     clusterUrl,

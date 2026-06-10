@@ -51,4 +51,44 @@ describe("dev-link-toxiproxy config", () => {
       }),
     ).toThrow(/only supports http local Studio URLs/);
   });
+
+  test("rejects invalid api ports", () => {
+    expect(() =>
+      buildDevLinkToxiProxyConfig({
+        serverUrl: "http://localhost:4001",
+        apiPort: 0,
+        listenPort: 18480,
+      }),
+    ).toThrow(/apiPort must be an integer port in 1\.\.65535/);
+  });
+
+  test("rejects invalid listen ports", () => {
+    expect(() =>
+      buildDevLinkToxiProxyConfig({
+        serverUrl: "http://localhost:4001",
+        apiPort: 18474,
+        listenPort: 65536,
+      }),
+    ).toThrow(/listenPort must be an integer port in 1\.\.65535/);
+  });
+
+  test("rejects server URLs without an explicit port", () => {
+    expect(() =>
+      buildDevLinkToxiProxyConfig({
+        serverUrl: "http://localhost",
+        apiPort: 18474,
+        listenPort: 18480,
+      }),
+    ).toThrow(/serverUrl must include an explicit valid port/);
+  });
+
+  test("rejects invalid server URL ports", () => {
+    expect(() =>
+      buildDevLinkToxiProxyConfig({
+        serverUrl: "http://localhost:0",
+        apiPort: 18474,
+        listenPort: 18480,
+      }),
+    ).toThrow(/upstreamPort must be an integer port in 1\.\.65535/);
+  });
 });
