@@ -302,25 +302,29 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
-    // Repo-scoped child connections carry a minted token with no refresh path,
-    // so re-mint it now if expired before it gets baked into the clone URL or
-    // used for the lockfile probe. No-op for org connections and public repos.
+    // Legacy repo-scoped child connections mint on demand before the token is
+    // baked into the clone URL or used for the lockfile probe. Refreshable repo
+    // grant children use buildCloneInfo's cached-token refresh path.
     if (githubRepo.connectionId) {
       const repoConn = await ctx.storage.connections.findById(
         githubRepo.connectionId,
         orgId,
       );
-      if (repoConn && getRepoScope(repoConn)) {
+      const repoScope = repoConn ? getRepoScope(repoConn) : null;
+      if (repoConn && repoScope?.sourceConnectionId) {
         try {
           await ensureRepoScopedToken(ctx, repoConn);
         } catch (err) {
           // Swallow + log: a failed mint intentionally falls through to
           // buildCloneInfo's own "No GitHub token found" throw below (sandbox
           // start fails loudly — never an unauthenticated clone).
-          console.error("[provisionSandbox] repo-scoped token mint failed", {
-            connectionId: githubRepo.connectionId,
-            error: (err as Error).message,
-          });
+          console.error(
+            "[provisionSandbox] repo-scoped legacy token mint failed",
+            {
+              connectionId: githubRepo.connectionId,
+              error: (err as Error).message,
+            },
+          );
         }
       }
     }

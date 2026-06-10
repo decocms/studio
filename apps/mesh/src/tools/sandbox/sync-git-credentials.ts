@@ -27,7 +27,8 @@ export function parseGithubRepoFromMetadata(
 /**
  * Refreshes the GitHub token baked into the sandbox clone URL and patches the
  * running daemon config so git push can sync `origin` before publishing.
- * Repo-scoped child connections are re-minted on demand (no OAuth refresh path).
+ * Legacy repo-scoped child connections are re-minted on demand. Refreshable
+ * repo grant children rely on buildCloneInfo's cached-token refresh path.
  */
 export async function refreshSandboxGitCredentials(
   ctx: StudioContext,
@@ -50,7 +51,8 @@ export async function refreshSandboxGitCredentials(
     githubRepo.connectionId,
     organizationId,
   );
-  if (repoConn && getRepoScope(repoConn)) {
+  const repoScope = repoConn ? getRepoScope(repoConn) : null;
+  if (repoConn && repoScope?.sourceConnectionId) {
     try {
       await ensureRepoScopedToken(ctx, repoConn);
     } catch (err) {
