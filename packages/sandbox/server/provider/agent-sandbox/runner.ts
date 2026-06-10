@@ -62,7 +62,7 @@ import type {
   Workload,
 } from "../types";
 import {
-  createHttpRoute,
+  applyHttpRoute,
   createSandboxClaim,
   deleteHttpRoute,
   deleteSandboxClaim,
@@ -1376,10 +1376,11 @@ export class AgentSandboxProvider implements SandboxProvider {
   }
 
   /**
-   * No-op when `previewGateway` isn't configured. Otherwise PUT-or-create
+   * No-op when `previewGateway` isn't configured. Otherwise upsert (SSA)
    * an HTTPRoute that maps `<handle>.<base>` → Service `<adoptedSandboxName>`
-   * port 9000. createHttpRoute swallows 409, so this is safe to call from
-   * both fresh-provision and adopt-backfill paths.
+   * port 9000. applyHttpRoute is idempotent and mutating, so calling it from
+   * the adopt path re-points the backendRef at the newly bound pool pod
+   * rather than leaving it on the previous (deleted) Service.
    *
    * Route name and hostname stay tied to `handle` so the public preview
    * URL is stable across pool re-adoptions and so cleanup
@@ -1438,7 +1439,7 @@ export class AgentSandboxProvider implements SandboxProvider {
         ],
       },
     };
-    await createHttpRoute(this.kubeConfig, this.namespace, route);
+    await applyHttpRoute(this.kubeConfig, this.namespace, route);
   }
 
   /** No-op when `previewGateway` isn't configured. 404-tolerant otherwise. */
@@ -1564,9 +1565,11 @@ export class AgentSandboxProvider implements SandboxProvider {
 
     const tenant = readClaimTenant(claim);
     // Backfill the Service port + HTTPRoute for legacy claims provisioned
-    // before per-claim routing existed. Both calls are idempotent — Service
-    // patch is a no-op once `port: 9000` is already declared, and
-    // createHttpRoute swallows 409. Failures here don't block adoption:
+    // before per-claim routing existed. Both calls are idempotent SSA upserts
+    // — the Service patch is a no-op once `port: 9000` is declared, and
+    // applyHttpRoute re-points the backendRef at this adoption's Service even
+    // when a route from a prior pool pod survives. Failures here don't block
+    // adoption:
     // preview traffic stays unrouted until the next ensure() picks it up;
     // the rest of the sandbox surface (exec, port-forward) is unaffected.
     // Service patch first so that, if the route is missing, recreating it
