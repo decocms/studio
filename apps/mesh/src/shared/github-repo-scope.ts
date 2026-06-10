@@ -19,14 +19,16 @@ export const GITHUB_SCOPED_PERMISSIONS: Record<string, string> = {
   issues: "write",
 };
 
-/** The mint recipe stored at `connection.metadata.repoScope`. */
+/** The repo grant metadata stored at `connection.metadata.repoScope`. */
 export interface RepoScopeRecipe {
-  /** Org mcp-github connection (broad user-to-server OAuth) used to mint. */
-  sourceConnectionId: string;
+  /** Legacy org mcp-github connection used to mint before refreshable grants. */
+  sourceConnectionId?: string;
   installationId: number;
+  repositoryId?: number;
   owner: string;
   repo: string;
   permissions: Record<string, string>;
+  grantProvider?: "github-mcp";
 }
 
 /**
@@ -42,7 +44,6 @@ export function getRepoScope(connection: {
     | undefined;
   if (
     !raw ||
-    typeof raw.sourceConnectionId !== "string" ||
     typeof raw.installationId !== "number" ||
     typeof raw.owner !== "string" ||
     typeof raw.repo !== "string" ||
@@ -52,13 +53,20 @@ export function getRepoScope(connection: {
     return null;
   }
   return {
-    sourceConnectionId: raw.sourceConnectionId,
+    sourceConnectionId:
+      typeof raw.sourceConnectionId === "string"
+        ? raw.sourceConnectionId
+        : undefined,
     installationId: raw.installationId,
+    repositoryId:
+      typeof raw.repositoryId === "number" ? raw.repositoryId : undefined,
     owner: raw.owner,
     repo: raw.repo,
     permissions:
       (raw.permissions as Record<string, string> | undefined) ??
       GITHUB_SCOPED_PERMISSIONS,
+    grantProvider:
+      raw.grantProvider === "github-mcp" ? "github-mcp" : undefined,
   };
 }
 

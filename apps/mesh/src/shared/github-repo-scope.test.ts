@@ -6,7 +6,19 @@ import {
 } from "./github-repo-scope";
 
 describe("getRepoScope", () => {
-  it("returns the recipe for a well-formed repoScope", () => {
+  it("returns the grant metadata for a refreshable repoScope without sourceConnectionId", () => {
+    const recipe = {
+      installationId: 123,
+      repositoryId: 456,
+      owner: "acme",
+      repo: "widget",
+      permissions: { contents: "write" },
+      grantProvider: "github-mcp",
+    };
+    expect(getRepoScope({ metadata: { repoScope: recipe } })).toEqual(recipe);
+  });
+
+  it("accepts legacy repoScope metadata with sourceConnectionId", () => {
     const recipe = {
       sourceConnectionId: "conn_org",
       installationId: 123,
@@ -14,7 +26,11 @@ describe("getRepoScope", () => {
       repo: "widget",
       permissions: { contents: "write" },
     };
-    expect(getRepoScope({ metadata: { repoScope: recipe } })).toEqual(recipe);
+    expect(getRepoScope({ metadata: { repoScope: recipe } })).toEqual({
+      ...recipe,
+      grantProvider: undefined,
+      repositoryId: undefined,
+    });
   });
 
   it("defaults permissions when omitted", () => {
@@ -56,7 +72,15 @@ describe("getRepoScope", () => {
       getRepoScope({
         metadata: { repoScope: { installationId: 1, owner: "a", repo: "b" } },
       }),
-    ).toBeNull();
+    ).toEqual({
+      installationId: 1,
+      repositoryId: undefined,
+      sourceConnectionId: undefined,
+      owner: "a",
+      repo: "b",
+      permissions: GITHUB_SCOPED_PERMISSIONS,
+      grantProvider: undefined,
+    });
     expect(
       getRepoScope({
         metadata: {
