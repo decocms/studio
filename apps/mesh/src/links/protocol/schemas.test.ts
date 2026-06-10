@@ -247,11 +247,10 @@ describe("harnessStreamInputSchema (v2)", () => {
     expect(result.success).toBe(false);
   });
 
-  it("strips signal, processLocal, and the removed singular modelSource", () => {
+  it("strips signal and the removed singular modelSource", () => {
     const withExtras = {
       ...minimalV2,
       signal: { aborted: false },
-      processLocal: true,
       modelSource: {
         kind: "secret",
         providerId: "anthropic",
@@ -263,7 +262,6 @@ describe("harnessStreamInputSchema (v2)", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect("signal" in result.data).toBe(false);
-      expect("processLocal" in result.data).toBe(false);
       expect("modelSource" in result.data).toBe(false);
     }
   });

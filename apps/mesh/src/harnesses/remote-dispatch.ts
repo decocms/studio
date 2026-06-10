@@ -52,7 +52,6 @@ export function remoteDispatch(
 ): AsyncIterable<UIMessageChunk> {
   const {
     signal,
-    processLocal: _processLocal,
     decopilotRuntime: _legacyDecopilotRuntime,
     mcpSource,
     ...baseWireInput

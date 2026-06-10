@@ -14,13 +14,12 @@
  * `ctx` so the `HarnessStreamInput` shape stays serializable for a
  * future remote transport.
  *
- * Owns `processConversation` itself (rather than receiving its outputs
- * through processLocal) because `convertToModelMessages` needs the real
- * tool set — three decopilot tools define `toModelOutput` handlers
- * (passthrough MCP truncation, take-screenshot formatting, subtask
- * summary extraction). Running it here, AFTER `assembleDecopilotTools`,
- * ensures prior-turn tool outputs get transformed correctly instead of
- * leaking raw JSON into every subsequent turn.
+ * Owns `processConversation` itself because `convertToModelMessages` needs the
+ * real tool set — three decopilot tools define `toModelOutput` handlers
+ * (passthrough MCP truncation, take-screenshot formatting, subtask summary
+ * extraction). Running it here, AFTER `assembleDecopilotTools`, ensures
+ * prior-turn tool outputs get transformed correctly instead of leaking raw JSON
+ * into every subsequent turn.
  */
 
 import type { UIMessageChunk } from "ai";

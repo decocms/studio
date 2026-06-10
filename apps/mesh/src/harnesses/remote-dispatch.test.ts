@@ -138,7 +138,6 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
       {
         runId: "r",
         messages: [],
-        processLocal: { onUsageAggregated: () => {} },
         decopilotRuntime: { writer: {}, provider: {} },
         mcpSource: { kind: "in-process", client: {} },
         mcp: {
@@ -154,7 +153,7 @@ describe("remoteDispatch over proxyDaemonRequest", () => {
     }
 
     const env = JSON.parse(captured.body!);
-    expect("processLocal" in env.input).toBe(false);
+    expect("signal" in env.input).toBe(false);
     expect("decopilotRuntime" in env.input).toBe(false);
     expect("mcpSource" in env.input).toBe(false);
   });

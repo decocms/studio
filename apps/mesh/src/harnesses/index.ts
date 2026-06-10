@@ -36,7 +36,6 @@ export type {
   HarnessContext,
   HarnessFactory,
   HarnessId,
-  HarnessProcessLocal,
   HarnessStreamInput,
   ModelSelection,
   ModelsConfig,

@@ -56,7 +56,6 @@ import type {
   DecopilotSecretModelSource,
   DecopilotSecretModelSources,
   HarnessId,
-  HarnessProcessLocal,
   HarnessStreamInput,
   ModelSelection,
   ModelsConfig,
@@ -490,21 +489,19 @@ export async function dispatchRunAndWait(
 
 /**
  * The fully-assembled, JSON-serializable wire shape of a run's harness
- * input — everything `HarnessStreamInput` carries EXCEPT the two
- * non-serializable in-process fields (`signal`, `processLocal`). This is
- * exactly what the desktop daemon validates against
+ * input — everything `HarnessStreamInput` carries EXCEPT the non-serializable
+ * `signal` field. This is exactly what the desktop daemon validates against
  * `harnessStreamInputSchema` and what the pull-transport work item carries.
  *
  * Built eagerly in `prepareRun`'s main body (mcp mint + message
  * materialization + field assembly) so it's available without consuming
- * `uiStream`. The hosted dispatch path layers the in-process extras on
- * top inside the lazy `createUIMessageStream` execute callback:
- * `{ ...wireHarnessInput, signal: registrySignal, processLocal }`.
+ * `uiStream`. The hosted dispatch path layers the signal on top inside the
+ * lazy `createUIMessageStream` execute callback:
+ * `{ ...wireHarnessInput, signal: registrySignal }`.
  */
-export type WireHarnessInput = Omit<
-  HarnessStreamInput,
-  "signal" | "processLocal"
-> & { harnessId: HarnessId };
+export type WireHarnessInput = Omit<HarnessStreamInput, "signal"> & {
+  harnessId: HarnessId;
+};
 
 interface PreparedRun {
   taskId: string;
@@ -961,8 +958,8 @@ async function prepareRun(
     // materialized messages, virtualMcp, fence token, …) is assembled here,
     // before the lazy stream-execute callback runs. Two consumers read it:
     //   - hosted dispatch (the `execute` callback below) layers the
-    //     non-serializable in-process extras on top:
-    //     `{ ...wireHarnessInput, signal: registrySignal, processLocal }`.
+    //     non-serializable `signal` on top:
+    //     `{ ...wireHarnessInput, signal: registrySignal }`.
     //   - `pullDispatch` returns it verbatim so the thread gate can publish
     //     it as the pull work item's `harnessInput` (Phase D daemon loop).
     // Moving the mcp mint + message materialization out of `execute` means
@@ -1068,8 +1065,9 @@ async function prepareRun(
       execute: async ({ writer }) => {
         // The wire input (mcp endpoint + materialized messages + all
         // serializable fields) was already assembled eagerly above. Here we
-        // only build the generic in-process extras used by local CLI
-        // harnesses for usage reporting. Remote dispatch strips this field.
+        // only build the in-process accumulator for usage reporting — all
+        // harnesses deliver usage through stream metadata, consumed by
+        // consumeHarnessStream's onUsage hook.
         const onUsageAggregated = (totalUsage: {
           inputTokens: number;
           outputTokens: number;
@@ -1090,18 +1088,13 @@ async function prepareRun(
               organizationId: input.organizationId,
             })
           : undefined;
-        const processLocal: HarnessProcessLocal = {
-          onUsageAggregated,
-        };
 
-        // Layer the in-process extras onto the eagerly-built wire input.
-        // `signal` and `processLocal` are the only non-serializable members;
-        // everything else (mcp, materialized messages, fence token, …) was
-        // assembled above and is shared verbatim with the pull work item.
+        // Layer the non-serializable `signal` onto the eagerly-built wire
+        // input. Everything else (mcp, materialized messages, fence token, …)
+        // was assembled above and is shared verbatim with the pull work item.
         const harnessInput: HarnessStreamInput = {
           ...wireHarnessInput,
           signal: registrySignal,
-          processLocal,
         };
 
         // claude-code cwd resolution: with the `host` runner gone, the
@@ -1253,7 +1246,7 @@ async function prepareRun(
             },
           },
           hooks: {
-            onUsage: harnessId === "decopilot" ? onUsageAggregated : undefined,
+            onUsage: onUsageAggregated,
           },
         });
         pendingOps.push(consumed.whenComplete);
@@ -1583,8 +1576,8 @@ async function resolvePullSandboxConfig(
  * prepareRun now builds eagerly (mcp endpoint minted, messages
  * materialized, virtualMcp + fence token attached) — exactly the shape the
  * daemon validates against `harnessStreamInputSchema`. The non-serializable
- * `signal`/`processLocal` members are intentionally absent (they only exist
- * for the hosted dispatch path). This closes the prior work-item gap;
+ * `signal` member is intentionally absent (it only exists for the hosted
+ * dispatch path). This closes the prior work-item gap;
  * the item is consumed by the Phase D daemon pull loop.
  *
  * Also resolves the sandbox provisioning config (handle, repo clone URL,

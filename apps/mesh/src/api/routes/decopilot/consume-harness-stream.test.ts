@@ -49,6 +49,33 @@ function textChunksWithUsage(): AsyncIterable<UIMessageChunk> {
   })();
 }
 
+function textChunksWithRichUsage(): AsyncIterable<UIMessageChunk> {
+  return (async function* () {
+    yield { type: "start" } as UIMessageChunk;
+    yield {
+      type: "message-metadata",
+      messageMetadata: {
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          cacheReadTokens: 7,
+          cacheWriteTokens: 2,
+          costUsd: 0.0123,
+        },
+      },
+    } as UIMessageChunk;
+    yield { type: "text-start", id: "txt" } as UIMessageChunk;
+    yield { type: "text-delta", id: "txt", delta: "hello" } as UIMessageChunk;
+    yield { type: "text-end", id: "txt" } as UIMessageChunk;
+    yield {
+      type: "finish",
+      finishReason: "stop",
+      totalUsage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    } as UIMessageChunk;
+  })();
+}
+
 describe("consumeHarnessStream", () => {
   test("persists final assistant message after consuming chunks", async () => {
     const finals: Array<{ id: string; parts?: unknown[] }> = [];
@@ -151,5 +178,39 @@ describe("consumeHarnessStream", () => {
     expect(usage).toEqual([
       { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
     ]);
+  });
+
+  test("extracts rich usage (cache + cost passthrough) from final metadata", async () => {
+    let seen: Record<string, unknown> | null = null;
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: textChunksWithRichUsage(),
+      originalMessages: [],
+      title: {
+        currentThreadTitle: "Existing title",
+        threadId: "thread-1",
+        persistTitle: async () => {},
+      },
+      persistence: {
+        emitFinal: async () => {},
+        emitStepParts: async () => {},
+        emitError: async () => {},
+      },
+      hooks: {
+        onUsage: (totals) => {
+          seen = totals as Record<string, unknown>;
+        },
+      },
+    });
+
+    await drain(uiStream);
+    await whenComplete;
+
+    expect(seen).toMatchObject({
+      inputTokens: 10,
+      outputTokens: 5,
+      totalTokens: 15,
+      cacheReadTokens: 7,
+      costUsd: 0.0123,
+    });
   });
 });

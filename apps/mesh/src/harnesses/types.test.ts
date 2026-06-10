@@ -49,6 +49,14 @@ describe("HarnessStreamInput v2 contract", () => {
     expect("modelSource" in input).toBe(false);
   });
 
+  test("has no processLocal", () => {
+    const hasProcessLocal: Has<HarnessStreamInput, "processLocal"> = false;
+    const input = {} as HarnessStreamInput;
+
+    expect(hasProcessLocal).toBe(false);
+    expect("processLocal" in input).toBe(false);
+  });
+
   test("requires workspace.cwd", () => {
     const hasWorkspace: Has<HarnessStreamInput, "workspace"> = true;
     // Required: `undefined` must NOT be assignable to the field.

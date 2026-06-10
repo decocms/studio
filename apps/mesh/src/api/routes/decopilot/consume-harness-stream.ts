@@ -15,15 +15,17 @@ export interface HarnessStreamPersistence {
   emitError(messageId: string, errorText: string): Promise<void>;
 }
 
+export type HarnessUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+} & Record<string, unknown>;
+
 export interface HarnessStreamConsumerHooks {
   onStep?: (message: UIMessage) => void | Promise<void>;
   onFinish?: (message: UIMessage) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
-  onUsage?: (totals: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  }) => void | Promise<void>;
+  onUsage?: (totals: HarnessUsage) => void | Promise<void>;
 }
 
 export interface HarnessStreamTitleOptions {
@@ -59,23 +61,16 @@ function asReadableStream<T>(source: AsyncIterable<T>): ReadableStream<T> {
   });
 }
 
-function extractUsage(message: { metadata?: unknown }): {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-} | null {
-  const usage = (message.metadata as { usage?: unknown } | undefined)?.usage as
-    | {
-        inputTokens?: number;
-        outputTokens?: number;
-        totalTokens?: number;
-      }
-    | undefined;
-  if (!usage) return null;
+function extractUsage(message: { metadata?: unknown }): HarnessUsage | null {
+  const usage = (message.metadata as { usage?: unknown } | undefined)?.usage;
+  if (!usage || typeof usage !== "object") return null;
+  const u = usage as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" ? v : 0);
   return {
-    inputTokens: usage.inputTokens ?? 0,
-    outputTokens: usage.outputTokens ?? 0,
-    totalTokens: usage.totalTokens ?? 0,
+    ...u,
+    inputTokens: num(u.inputTokens),
+    outputTokens: num(u.outputTokens),
+    totalTokens: num(u.totalTokens),
   };
 }
 

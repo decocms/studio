@@ -26,10 +26,9 @@ export type {
  * These types intentionally avoid importing from cluster-only paths
  * (`@/core/*`, `@/storage/*`, `@/api/*`, etc.) so this file stays portable
  * into the desktop daemon's bundle. The cluster-side shapes (`ChatMessage`
- * with metadata + tools, full `StudioContext`, decopilot-only
- * `HarnessProcessLocal` internals) flow in via structural compatibility:
- * the cluster passes its richer types where the harness expects a
- * UIMessage / HarnessContext / unknown-extras-bag, and TS accepts the
+ * with metadata + tools, full `StudioContext`) flow in via structural
+ * compatibility: the cluster passes its richer types where the harness expects
+ * a UIMessage / HarnessContext / unknown-extras-bag, and TS accepts the
  * widening.
  */
 
@@ -74,21 +73,6 @@ export interface ModelsConfig {
  *  types). The package only needs the `parts` + `role` + `id` shape, which
  *  the AI SDK's generic `UIMessage` already provides. */
 export type ChatMessage = UIMessage;
-
-export interface UsageTotals {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-}
-
-/** Generic in-process hooks used by CLI harnesses.
- *
- *  DELETION PENDING (Phase 2): the last member dies when usage flows through
- *  stream metadata for all harnesses. */
-export interface HarnessProcessLocal {
-  /** Called once per model completion to report cumulative usage totals. */
-  onUsageAggregated?: (totalUsage: UsageTotals) => void;
-}
 
 /** Input passed to every Harness.stream() call. Fully serializable except
  *  AbortSignal — designed so a future remote transport can JSON-serialize it
@@ -187,10 +171,6 @@ export interface HarnessStreamInput {
    * desktop daemon. Absent on ws-path runs.
    */
   runFenceToken?: string;
-
-  /** Non-serializable generic extras for in-process dispatch. Remote dispatch
-   *  strips this field. CLI harnesses read the generic hooks here. */
-  processLocal?: HarnessProcessLocal;
 }
 
 /** A Harness produces a stream of UI message chunks for a conversation turn.
@@ -210,9 +190,9 @@ export interface Harness {
 
 /** Narrow context interface every Harness factory takes. Cluster-specific
  *  surface (DB, vault, auth, MCP gateway internals) lives on the wider
- *  StudioContext and is only safe to read inside a harness that gates its
- *  cluster-side code path on `HarnessStreamInput.processLocal` (today,
- *  only decopilot does this).
+ *  StudioContext; harnesses that need cluster-only services receive them
+ *  through factory construction (captured in the closure), not through
+ *  `HarnessStreamInput`.
  *
  *  The desktop's daemon constructs a HarnessContext directly to invoke
  *  `claudeCodeHarnessFactory.create()` / `codexHarnessFactory.create()`

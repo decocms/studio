@@ -114,10 +114,5 @@ describe("createCliMessageMetadata for Claude Code", () => {
         totalTokens: 5,
       },
     });
-    expect(messageMetadata.totalTokens()).toEqual({
-      inputTokens: 2,
-      outputTokens: 3,
-      totalTokens: 5,
-    });
   });
 });

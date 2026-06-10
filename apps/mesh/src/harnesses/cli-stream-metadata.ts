@@ -1,5 +1,5 @@
 import type { TextStreamPart, ToolSet } from "ai";
-import type { HarnessStreamInput, UsageTotals } from "./types";
+import type { HarnessStreamInput } from "./types";
 import { createUsageAccumulator } from "./usage-accumulator";
 
 export interface CliMetadataOptions {
@@ -15,7 +15,6 @@ export interface CliMessageMetadata {
   }: {
     part: TextStreamPart<ToolSet>;
   }): Record<string, unknown> | undefined;
-  totalTokens(): UsageTotals;
 }
 
 export function createCliMessageMetadata(
@@ -72,8 +71,6 @@ export function createCliMessageMetadata(
 
     return undefined;
   }) as CliMessageMetadata;
-
-  messageMetadata.totalTokens = () => usageAcc.totalTokens();
 
   return messageMetadata;
 }
