@@ -168,6 +168,48 @@ if ! grep -q '^[[:space:]]*-[[:space:]]*--extensions[[:space:]]*$' "${WORK}/mani
   exit 1
 fi
 
+# Inject the controller pod-template label/annotation hooks (chart values
+# `controller.podLabels` / `controller.podAnnotations` — added in #3519 for
+# annotation-based metrics scraping). Anchor: the 8-space-indented
+# `app: agent-sandbox-controller` line inside the Deployment's
+# `template.metadata.labels` (the top-level metadata and selector copies sit
+# at 4/6 spaces, so the indent disambiguates). Fail-loud check below.
+log "injecting controller podLabels/podAnnotations hooks into manifest.yaml Deployment"
+awk '
+  function flush(   i, is_dep) {
+    if (n == 0) return
+    is_dep = 0
+    for (i = 1; i <= n; i++) {
+      if (buf[i] ~ /^kind:[[:space:]]*Deployment[[:space:]]*$/) { is_dep = 1; break }
+    }
+    for (i = 1; i <= n; i++) {
+      print buf[i]
+      if (is_dep && buf[i] ~ /^        app: agent-sandbox-controller[[:space:]]*$/) {
+        print "        {{- with .Values.controller.podLabels }}"
+        print "        {{- toYaml . | nindent 8 }}"
+        print "        {{- end }}"
+        print "      {{- with .Values.controller.podAnnotations }}"
+        print "      annotations:"
+        print "        {{- toYaml . | nindent 8 }}"
+        print "      {{- end }}"
+      }
+    }
+    print "---"
+    n = 0
+  }
+  /^---[[:space:]]*$/ { flush(); next }
+  { buf[++n] = $0 }
+  END { flush() }
+' "${WORK}/manifest.yaml" > "${WORK}/manifest.patched.yaml"
+sed -i.bak -e '$d' "${WORK}/manifest.patched.yaml" && rm "${WORK}/manifest.patched.yaml.bak"
+mv "${WORK}/manifest.patched.yaml" "${WORK}/manifest.yaml"
+if ! grep -q 'Values.controller.podLabels' "${WORK}/manifest.yaml"; then
+  err "post-patch: controller podLabels/podAnnotations hooks were not injected"
+  err "  upstream may have changed the Deployment pod-template labels;"
+  err "  inspect ${WORK}/manifest.yaml and update the awk patch in this script"
+  exit 1
+fi
+
 # Inject PodSecurity admission labels into the agent-sandbox-system Namespace.
 #
 # Upstream ships a bare Namespace; we enforce `privileged` because the
