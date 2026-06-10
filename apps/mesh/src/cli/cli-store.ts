@@ -14,15 +14,30 @@ interface CliState {
   logs: LogEntry[];
 }
 
-let state: CliState = {
-  services: [
+function createInitialState(): CliState {
+  return {
+    services: [
+      { name: "Postgres", status: "pending", port: 0 },
+      { name: "NATS", status: "pending", port: 0 },
+    ],
+    migrationsStatus: "pending",
+    serverUrl: null,
+    logs: [],
+  };
+}
+
+let state: CliState = createInitialState();
+
+export function resetCliStateForTests() {
+  state = createInitialState();
+}
+
+function initialServices(): ServiceStatus[] {
+  return [
     { name: "Postgres", status: "pending", port: 0 },
     { name: "NATS", status: "pending", port: 0 },
-  ],
-  migrationsStatus: "pending",
-  serverUrl: null,
-  logs: [],
-};
+  ];
+}
 
 const listeners = new Set<() => void>();
 
@@ -66,13 +81,21 @@ export function addLogEntry(entry: LogEntry) {
   emit();
 }
 
-export function setDevMode(opts: { localSandboxProvider?: boolean } = {}) {
+export function setDevMode(
+  opts: { localSandboxProvider?: boolean; devLinkToxiProxy?: boolean } = {},
+) {
+  const includeToxiProxy =
+    opts.localSandboxProvider === true && opts.devLinkToxiProxy === true;
+
   state = {
     ...state,
     services: [
-      ...state.services,
+      ...initialServices(),
       { name: "Vite", status: "pending", port: 0 },
       { name: "API", status: "pending", port: 0 },
+      ...(includeToxiProxy
+        ? [{ name: "ToxiProxy", status: "pending" as const, port: 0 }]
+        : []),
       // Auto-spawned by `bun run dev --local-sandbox-provider` after the
       // cluster is up — see apps/mesh/src/cli/commands/dev.ts. The
       // desktop sandbox provider routes through this. Marked ready
