@@ -642,10 +642,18 @@ async function vmRouteH(
   if (denied) return denied;
 
   // Hosted harnesses drive the sandbox through these tool routes WITHOUT a
-  // /dispatch envelope, so the repo `org` link must be ensured here too —
-  // before bash/read/write resolve the prompts' relative `org/...` paths.
-  // Cheap when already linked (one lstat); skipped while nothing is mounted.
-  await ensureOrgRepoLink();
+  // /dispatch envelope, so the org links must be ensured here too — before
+  // bash/read/write resolve the prompts' relative `org/...` paths. vm-tools
+  // stamp the thread on each call (x-thread-id) so `org/output` can point at
+  // the running thread's folder; memoized, so repeat calls cost one lstat.
+  const vmThreadId = req.headers.get("x-thread-id");
+  if (vmThreadId && vmThreadId !== lastOutputThread) {
+    if (await repointOutputLinkForRun(vmThreadId)) {
+      lastOutputThread = vmThreadId;
+    }
+  } else {
+    await ensureOrgRepoLink();
+  }
 
   // Buffer body once and re-inject as a fresh Request for downstream
   // handlers that re-read it.
@@ -813,19 +821,24 @@ async function ensureOrgRepoLink(): Promise<void> {
   await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
 }
 
-async function repointOutputLinkForRun(threadId: string): Promise<void> {
-  if (!orgFsExpected) return;
+async function repointOutputLinkForRun(threadId: string): Promise<boolean> {
+  if (!orgFsExpected) return false;
   let mounts = await activeOrgFsMounts();
   if (mounts.length === 0) {
-    if (!(await waitForFirstMounts())) return;
+    if (!(await waitForFirstMounts())) return false;
     mounts = await activeOrgFsMounts();
-    if (mounts.length === 0) return;
+    if (mounts.length === 0) return false;
   }
   await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
   const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
-  if (!mounts.some((m) => m.mountPath === outputsMountPath)) return;
+  if (!mounts.some((m) => m.mountPath === outputsMountPath)) return false;
   await repointOutputLink(bootConfig.appRoot, threadId, orgFsLog);
+  return true;
 }
+
+// Last thread whose output link was repointed via the vm-route header —
+// skips the per-request mount round-trip once the link is current.
+let lastOutputThread: string | null = null;
 
 process.on("SIGTERM", async () => {
   taskManager.shutdown();
