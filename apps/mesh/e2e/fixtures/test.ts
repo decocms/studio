@@ -40,6 +40,12 @@ export const test = base.extend<Fixtures>({
 
 export { expect } from "@playwright/test";
 
+export function getE2EAppOrigin(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  return env.BASE_URL ?? `http://localhost:${env.VITE_PORT ?? "4000"}`;
+}
+
 /**
  * Wait for the post-signup redirect off /login. The signup hook
  * auto-creates an org and redirects to `/:slug/...`, but the redirect is
@@ -73,7 +79,7 @@ export async function waitForPostSignupRedirect(page: Page): Promise<void> {
 export async function newApiContext(
   playwright: PlaywrightWorkerArgs["playwright"],
 ): Promise<APIRequestContext> {
-  const baseURL = `http://localhost:${process.env.PORT ?? "3000"}`;
+  const baseURL = getE2EAppOrigin();
   return playwright.request.newContext({
     baseURL,
     extraHTTPHeaders: { Origin: baseURL },

@@ -1,7 +1,29 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const appPort = process.env.VITE_PORT || "4000";
-const appOrigin = `http://localhost:${appPort}`;
+interface PlaywrightEnv {
+  [key: string]: string | undefined;
+  BASE_URL?: string;
+  PORT?: string;
+  VITE_PORT?: string;
+}
+
+export function resolvePlaywrightDevServerConfig(
+  env: PlaywrightEnv = process.env,
+): {
+  appOrigin: string;
+  webServerCommand: string;
+} {
+  const serverPort = env.PORT || "3000";
+  const appPort = env.VITE_PORT || "4000";
+  const appOrigin = env.BASE_URL || `http://localhost:${appPort}`;
+
+  return {
+    appOrigin,
+    webServerCommand: `BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev:servers`,
+  };
+}
+
+const { appOrigin, webServerCommand } = resolvePlaywrightDevServerConfig();
 
 export default defineConfig({
   testDir: "./e2e",
@@ -34,7 +56,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "bun run dev:servers",
+    command: webServerCommand,
     url: `${appOrigin}/api/config`,
     reuseExistingServer: true,
     timeout: 120_000,
