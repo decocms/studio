@@ -120,12 +120,25 @@ async function instrumentedFetch(
           method === "GET" &&
           (headers.get("accept") ?? "").includes("text/event-stream");
 
-        if (response.status >= 400 && !isMcpSseProbe405) {
+        // A 404 on the in-pod daemon (`/_sandbox/*`) means the sandbox handle
+        // is gone (idle-evicted). That's expected control flow — the proxy maps
+        // it to 410/`gone` and the UI self-heals — not a failure. Open Studio
+        // tabs poll `/events` + `/git/status` against reaped sandboxes, so
+        // marking these ERROR floods the error dashboard with benign 404s.
+        const isDaemonSandboxGone404 =
+          response.status === 404 && url.pathname.startsWith("/_sandbox/");
+
+        if (
+          response.status >= 400 &&
+          !isMcpSseProbe405 &&
+          !isDaemonSandboxGone404
+        ) {
           span.setStatus({
             code: SpanStatusCode.ERROR,
             message: `HTTP ${response.status}`,
           });
         } else {
+          if (isDaemonSandboxGone404) span.setAttribute("sandbox.gone", true);
           span.setStatus({ code: SpanStatusCode.OK });
         }
 
