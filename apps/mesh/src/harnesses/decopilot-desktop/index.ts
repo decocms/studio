@@ -140,6 +140,8 @@ function runDesktopEngine(
   args: RunEngineArgs,
 ): AssembledEngineHandle {
   const { input } = closure;
+  // resolveModeConfig is the source of planPrompt/webSearchInstructionPrompt
+  // strings; args.planMode === (input.mode === "plan") for the boolean guard.
   const modeConfig = resolveModeConfig(input.mode, { isCliAgent: false });
 
   // ── DESKTOP system prompt (cluster-storage-free) ──────────────────────
@@ -222,11 +224,10 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
           { models: input.models, modelSources: input.modelSources },
           createProviderFromSecret,
         );
-        const imageModelSource =
-          input.modelSources?.image?.kind === "secret"
-            ? input.modelSources.image
-            : modelSource;
-        const imageProvider = createProviderFromSecret(imageModelSource);
+        // image slot falls back to the thinking provider when not separately
+        // pinned — same semantics as buildModelRuntimeFromSources (decision D12).
+        const imageProvider =
+          modelRuntime.image?.provider ?? modelRuntime.thinking.provider;
 
         // Diagnostics (provider id only, never the key). On the desktop this
         // runs inside the spawned daemon, so it surfaces in the link terminal.
@@ -238,13 +239,11 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
         // ── Per-run side-channel + html-page buffer (desktop lifecycle). ──
         const sideChannel = createSideChannelWriter();
 
-        // Closure shared between buildEnvironmentTools and runEngine: the
-        // engine needs the passthrough tool set the build step produced (the
-        // engine merges passthrough + extraTools). Assigned inside
-        // buildEnvironmentTools, read inside runEngine.
-        const engineClosure: { passthroughTools: ToolSet } = {
-          passthroughTools: {},
-        };
+        // passthroughTools is set by buildEnvironmentTools and consumed by
+        // runEngine. The sentinel `undefined` (not `{}`) distinguishes "not yet
+        // built" from "legitimately empty passthrough set", so runEngine can
+        // guard against temporal coupling if the call order ever breaks.
+        let builtPassthroughTools: ToolSet | undefined = undefined;
         // Capture the MCP source cleanup so the finally below runs it even if
         // the core throws mid-stream.
         const cleanup: { close?: () => Promise<void> } = {};
@@ -354,8 +353,10 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
                   ? vmMetadata.instructions
                   : undefined;
 
-              // Stash the passthrough tools for runDesktopEngine.
-              engineClosure.passthroughTools = passthroughTools;
+              // Stash the passthrough tools for runDesktopEngine. The
+              // undefined→ToolSet transition is the type-enforced gate:
+              // runEngine throws if this was never assigned.
+              builtPassthroughTools = passthroughTools;
 
               const bundle: HarnessAssembledTools = {
                 tools: { ...passthroughTools, ...localTools },
@@ -389,11 +390,18 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
               throw err;
             }
           },
-          runEngine: async (args) =>
-            runDesktopEngine(
-              { input, passthroughTools: engineClosure.passthroughTools },
+          runEngine: async (args) => {
+            if (builtPassthroughTools === undefined) {
+              throw new Error(
+                "[decopilot-desktop] runEngine called before buildEnvironmentTools — " +
+                  "passthroughTools not yet assembled. This is a harness wiring bug.",
+              );
+            }
+            return runDesktopEngine(
+              { input, passthroughTools: builtPassthroughTools },
               args,
-            ),
+            );
+          },
         };
 
         try {
