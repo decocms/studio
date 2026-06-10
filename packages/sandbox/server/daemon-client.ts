@@ -10,7 +10,11 @@ import { sleep } from "../shared";
 export type { ConfigPatch };
 
 const HEALTH_PROBE_TIMEOUT_MS = 500;
-const CONFIG_TIMEOUT_MS = 10_000;
+// Config application can run a cold clone + install on a heavy sandbox; 10s was
+// too tight and routinely tripped `AbortSignal.timeout()`, surfacing benign
+// "operation timed out" aborts as a chronic error spike. 30s gives cold starts
+// headroom. Callers may override per-call via `postConfig`'s `timeoutMs`.
+const CONFIG_TIMEOUT_MS = 30_000;
 const READY_ATTEMPTS = 25;
 const READY_INTERVAL_MS = 200;
 const READY_JITTER_MS = 50;
@@ -85,6 +89,11 @@ export interface ConfigAuthPatch {
   rotateToken?: string;
 }
 
+export interface ConfigRequestOptions {
+  /** Override the abort timeout (ms). Defaults to `CONFIG_TIMEOUT_MS`. */
+  timeoutMs?: number;
+}
+
 /**
  * POST /_sandbox/config — set initial tenant config (or patch via
  * the same payload semantics; deep-merge happens daemon-side).
@@ -101,8 +110,9 @@ export async function postConfig(
   token: string,
   payload: ConfigPatch,
   auth?: ConfigAuthPatch,
+  opts?: ConfigRequestOptions,
 ): Promise<ConfigResponse> {
-  return configRequest(daemonUrl, token, "POST", payload, auth);
+  return configRequest(daemonUrl, token, "POST", payload, auth, opts);
 }
 
 async function configRequest(
@@ -111,6 +121,7 @@ async function configRequest(
   method: "POST" | "PUT",
   payload: ConfigPatch,
   auth?: ConfigAuthPatch,
+  opts?: ConfigRequestOptions,
 ): Promise<ConfigResponse> {
   const wire: Record<string, unknown> = { ...payload };
   if (auth && auth.rotateToken !== undefined) wire.auth = auth;
@@ -121,7 +132,7 @@ async function configRequest(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(wire),
-    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
+    signal: AbortSignal.timeout(opts?.timeoutMs ?? CONFIG_TIMEOUT_MS),
   });
   const body = await res.text();
   if (!res.ok) {
