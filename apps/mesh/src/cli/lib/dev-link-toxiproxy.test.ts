@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import { sleep } from "@decocms/std";
 import {
   DEV_LINK_TOXIPROXY_PROXY_NAME,
   DEV_LINK_TOXIPROXY_SERVICE_NAME,
@@ -249,4 +250,32 @@ describe("dev-link-toxiproxy HTTP API", () => {
       "http://127.0.0.1:18474/populate",
     ]);
   });
+
+  test("aborts a stalled readiness fetch with readiness URL context", async () => {
+    const startDaemon = mock(async () => {});
+    const fetchImpl = mock(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(init.signal?.reason ?? new Error("aborted"));
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const result = await Promise.race([
+      ensureDevLinkToxiProxy({
+        serverUrl: "http://localhost:4001",
+        apiPort: 18474,
+        listenPort: 18480,
+        startDaemon,
+        fetchImpl,
+      }).catch((error) => error),
+      sleep(200).then(() => "timed out"),
+    ]);
+
+    expect(result).toBeInstanceOf(Error);
+    expect(String(result)).toMatch(
+      /ToxiProxy API did not become ready at http:\/\/127\.0\.0\.1:18474\/version.*readiness check.*TimeoutError/s,
+    );
+  }, 500);
 });

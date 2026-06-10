@@ -5,6 +5,7 @@ export const DEV_LINK_TOXIPROXY_PROXY_NAME = "dev_link_studio";
 
 const TOXIPROXY_READY_MAX_ATTEMPTS = 20;
 const TOXIPROXY_READY_INTERVAL_MS = 100;
+const TOXIPROXY_READY_ATTEMPT_TIMEOUT_MS = 100;
 
 export interface DevLinkToxiProxyConfigInput {
   serverUrl: string;
@@ -89,7 +90,22 @@ async function assertToxiProxyResponseOk(
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof Error) {
+    return error.name === "Error"
+      ? error.message
+      : `${error.name}: ${error.message}`;
+  }
+  return String(error);
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  if (error.name === "TimeoutError") {
+    return true;
+  }
+  return isTimeoutError(error.cause);
 }
 
 async function fetchToxiProxy(
@@ -157,6 +173,7 @@ async function waitForDevLinkToxiProxy(
           versionUrl,
           {
             method: "GET",
+            signal: AbortSignal.timeout(TOXIPROXY_READY_ATTEMPT_TIMEOUT_MS),
           },
         );
         await assertToxiProxyResponseOk(
@@ -171,6 +188,7 @@ async function waitForDevLinkToxiProxy(
         maxTimeout: TOXIPROXY_READY_INTERVAL_MS,
         multiplier: 1,
         jitter: 0,
+        isRetriable: (error) => !isTimeoutError(error),
       },
     );
   } catch (error) {
