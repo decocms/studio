@@ -22,7 +22,9 @@ Good examples:
 
 Bad (too vague): Help with task
 Bad (too long): Investigate and fix the issue where the login button does not respond on mobile devices
-Bad (wrong case): Fix Login Button On Mobile`;
+Bad (wrong case): Fix Login Button On Mobile
+
+Respond with a JSON object containing the title.`;
 
 // A title is usable only if it contains at least one letter or number in any
 // script. Unicode-aware (\p{L}\p{N}) so non-Latin titles (CJK, Arabic, etc.)
