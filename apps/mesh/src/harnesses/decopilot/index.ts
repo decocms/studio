@@ -157,7 +157,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
               toolAnnotations: assembled.toolAnnotations,
               connectionTitleMap: assembled.connectionTitleMap,
               serverInstructions: assembled.serverInstructions,
-              passthroughClient: assembled.passthroughClient as never,
+              passthroughClient: assembled.passthroughClient,
               writer: sideChannel.writer,
               pendingImages,
               sideChunks: sideChannel.stream,

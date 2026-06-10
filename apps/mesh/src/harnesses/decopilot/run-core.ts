@@ -12,10 +12,6 @@
  *
  * Environment-specific pieces are injected through the deps:
  *   - `modelRuntime` — adapter-constructed provider/model bundle (never wired);
- *   - `mcp` — the MCP passthrough client (in-process on the cluster, HTTP on
- *     the desktop) — only the `Client`-shaped surface the loop touches;
- *   - `objectStorage` — html-page buffer + resource reads (held by the tool
- *     runtime today; reserved on the deps for Task 15);
  *   - `toolRuntime` — `buildEnvironmentTools()` (cluster: virtual-MCP
  *     passthrough + web_search/update_interests/Browserless built-ins; desktop:
  *     HTTP passthrough + local built-ins) and `runEngine()` (the system-prompt +
@@ -35,7 +31,6 @@
  * HTTP/local ones.
  */
 
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { UIMessageChunk } from "ai";
 import type {
   DecopilotSecretModelSource,
@@ -53,6 +48,8 @@ import {
   type DecopilotTelemetry,
   type RunDecopilotStreamExtras,
 } from "./run-stream";
+import { processConversation } from "./conversation";
+import { DEFAULT_WINDOW_SIZE } from "./prompt-constants";
 
 export type { DecopilotTelemetry } from "./run-stream";
 
@@ -151,23 +148,6 @@ export function buildModelRuntimeFromSources(
 // ─────────────────────────────────────────────────────────────────────
 
 /**
- * The `Client`-shaped MCP surface the core forwards to the tool/engine
- * adapters. Both the in-process `PassthroughClient` and an HTTP MCP `Client`
- * satisfy this. Held on the deps so the core never re-opens it.
- */
-export type DecopilotMcpClient = Client;
-
-/**
- * Object-storage surface reserved for the html-page buffer + resource reads.
- * On the cluster the tool runtime owns the concrete storage (created from
- * `ctx` in `index.ts`); the desktop (Task 15) injects an HTTP-backed one. Kept
- * open until Task 15 narrows the exact read/write methods both sides share.
- */
-export interface DecopilotObjectStorage {
-  [k: string]: unknown;
-}
-
-/**
  * The tool + engine runtime. `buildEnvironmentTools` opens the env's MCP
  * passthrough client and assembles its full tool set (plus the per-run
  * side-channel/writer/pending-images/step-finish wiring it owns); `runEngine`
@@ -188,13 +168,6 @@ export interface DecopilotToolRuntime {
 export interface RunDecopilotCoreDeps {
   input: HarnessStreamInput;
   modelRuntime: ModelRuntime;
-  /** Adapter-opened MCP client. Optional: the cluster env tool runtime opens
-   *  its own in-process passthrough client and exposes it on the assembled
-   *  tools, so the engine uses `tools.passthroughClient` and this is omitted.
-   *  The desktop (Task 15) opens one HTTP client and passes it here AND into
-   *  the tool runtime. */
-  mcp?: DecopilotMcpClient;
-  objectStorage?: DecopilotObjectStorage;
   toolRuntime: DecopilotToolRuntime;
   telemetry?: DecopilotTelemetry;
   /** Discriminates a top-level run from a delegated subtask run. Title
@@ -230,19 +203,7 @@ export async function* runDecopilotCore(
 ): AsyncIterable<UIMessageChunk> {
   const { input, modelRuntime, toolRuntime, telemetry } = deps;
 
-  // `deps.mcp` is the adapter-opened MCP client; on the cluster the env tool
-  // runtime opens its own in-process passthrough client and exposes it on the
-  // assembled tools, so the engine uses `tools.passthroughClient`. The desktop
-  // (Task 15) opens the HTTP client once and passes the same reference through
-  // both `deps.mcp` and the tool runtime.
   const tools = await toolRuntime.buildEnvironmentTools({ input });
-
-  const { processConversation } = await import(
-    "../../api/routes/decopilot/conversation"
-  );
-  const { DEFAULT_WINDOW_SIZE } = await import(
-    "../../api/routes/decopilot/constants"
-  );
 
   const {
     systemMessages: processedSystemMessages,
