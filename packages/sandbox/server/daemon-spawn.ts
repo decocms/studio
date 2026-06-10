@@ -49,14 +49,17 @@ export function resolveSourceDaemonPath(): string {
 
 export function resolveNodePtyNodeModulesDir(): string {
   const ptyEntry = Bun.resolveSync("node-pty", import.meta.dir);
+  // Bun.resolveSync returns backslash-separated paths on Windows; normalize
+  // so the node_modules marker matches regardless of OS path separator.
+  const normalized = ptyEntry.replace(/\\/g, "/");
   const marker = "/node_modules/";
-  const idx = ptyEntry.lastIndexOf(marker);
+  const idx = normalized.lastIndexOf(marker);
   if (idx < 0) {
     throw new Error(
       `could not derive node_modules path from node-pty resolution: ${ptyEntry}`,
     );
   }
-  return ptyEntry.slice(0, idx + marker.length - 1);
+  return normalized.slice(0, idx + marker.length - 1);
 }
 
 export async function materializeDaemonBundle(
