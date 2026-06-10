@@ -16,7 +16,6 @@ import type { DownstreamTokenStorage } from "../storage/downstream-token";
 import { refreshAccessToken } from "./refresh-access-token";
 import { resolveOriginTokenEndpoint } from "./resolve-token-endpoint";
 
-export { refreshAccessToken } from "./refresh-access-token";
 export type { TokenRefreshResult } from "./refresh-access-token";
 
 export const PROACTIVE_REFRESH_BUFFER_MS = 5 * 60 * 1000;
