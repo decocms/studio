@@ -64,7 +64,13 @@ function buildTurnEvents(opts: BuildTurnOptions): unknown[] {
   const textId = `${opts.messageId}-text-0`;
   const events: unknown[] = [];
 
-  events.push(uiChunkEvent({ type: "start" }));
+  // The `start` chunk carries the assistant message id, exactly as a real
+  // harness's relayed stream does. This makes the message id (and therefore the
+  // persisted part ids `${runId}:${messageId}:${seq}`) STABLE across a
+  // reconnect replay — the daemon re-sends the same buffered chunks, so a
+  // re-consumed stream must reuse the same id and ON CONFLICT-dedupe. Omitting
+  // it would let the kernel mint a fresh random id per consumption.
+  events.push(uiChunkEvent({ type: "start", messageId: opts.messageId }));
 
   // Transient title result lands right after start, like a real harness's
   // fast-model title side-channel.
@@ -140,7 +146,7 @@ export function buildErrorRelayBody(opts: {
   message: string;
 }): { body: string; lineCount: number } {
   const events: unknown[] = [];
-  events.push(uiChunkEvent({ type: "start" }));
+  events.push(uiChunkEvent({ type: "start", messageId: opts.messageId }));
   events.push(uiChunkEvent({ type: "start-step" }));
   if (opts.text) {
     const textId = `${opts.messageId}-text-0`;

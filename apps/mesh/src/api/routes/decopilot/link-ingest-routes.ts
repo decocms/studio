@@ -225,7 +225,7 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
   const streamStartAt = Date.now();
 
   // Set when this session was superseded by a fresh run on the same runId. The
-  // fresh session owns the run row AND its `${runId}:${seq}` part-id namespace
+  // fresh session owns the run row AND its `${runId}:${messageId}:${seq}` part-id namespace
   // now, so this stale consume must perform ZERO persistence and ZERO terminal
   // status writes — otherwise a stale error/partial part would collide (ON
   // CONFLICT id DO NOTHING) with the fresh run's first part and silently drop

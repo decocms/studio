@@ -107,7 +107,12 @@ export class PartRowBuilder {
     metadata: unknown | null = null,
   ): ThreadMessagePart {
     return {
-      id: `${this.ctx.runId}:${seq}`,
+      // Per-MESSAGE-scoped id: seq restarts at 0 per builder (per message), so
+      // the runId+seq pair alone is NOT unique across messages of one run (e.g.
+      // the user message and the assistant message of a pull turn each start at
+      // seq 0). The messageId segment keeps them disjoint while same-message
+      // re-emits (same messageId + same seq) stay idempotent for ON CONFLICT.
+      id: `${this.ctx.runId}:${messageId}:${seq}`,
       seq,
       org_id: this.ctx.orgId,
       thread_id: this.ctx.threadId,

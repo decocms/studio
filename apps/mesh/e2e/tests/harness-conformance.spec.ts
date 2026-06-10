@@ -98,13 +98,16 @@ async function fetchThreadTitle(db: Db, threadId: string): Promise<string> {
 async function fetchParts(
   db: Db,
   runId: string,
-): Promise<Array<{ kind: string; payload: unknown; metadata: unknown }>> {
+): Promise<
+  Array<{ kind: string; role: string; payload: unknown; metadata: unknown }>
+> {
   const { rows } = await db.query<{
     kind: string;
+    role: string;
     payload: unknown;
     metadata: unknown;
   }>(
-    `SELECT kind, payload, metadata FROM thread_message_parts WHERE run_id = $1 ORDER BY seq`,
+    `SELECT kind, role, payload, metadata FROM thread_message_parts WHERE run_id = $1 ORDER BY seq`,
     [runId],
   );
   return rows;
@@ -495,10 +498,15 @@ test.describe("harness conformance — relay driver", () => {
       );
       expect(res.status()).toBe(200);
 
-      // The finish anchor row's metadata carries the usage block.
+      // The finish anchor row's metadata carries the usage block. NB: a v2
+      // pull thread persists TWO finish anchors — the user message's (at
+      // dispatch, null metadata) and the assistant's (at relay, usage) — so we
+      // must select the ASSISTANT's by role, not the first finish by seq.
       const parts = await fetchParts(db, runId);
-      const finish = parts.find((p) => p.kind === "finish");
-      expect(finish, "finish anchor present").toBeTruthy();
+      const finish = parts.find(
+        (p) => p.kind === "finish" && p.role === "assistant",
+      );
+      expect(finish, "assistant finish anchor present").toBeTruthy();
       expect(
         (finish!.metadata as { usage?: typeof usage }).usage,
       ).toMatchObject(usage);
