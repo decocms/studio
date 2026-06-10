@@ -20,7 +20,11 @@ function nonEmptyString(value: unknown): string | null {
 function isHttpTokenEndpoint(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      !url.username &&
+      !url.password
+    );
   } catch {
     return false;
   }
@@ -67,12 +71,12 @@ export async function provisionRepoScopedGithubConnection(params: {
     structuredContent?: {
       token?: string;
       expiresAt?: string;
-      expiresIn?: number;
+      expiresIn?: unknown;
       refreshToken?: string;
       tokenEndpoint?: string;
       clientId?: string;
       scope?: string;
-      repository?: { id?: number; owner?: string; name?: string };
+      repository?: { id?: unknown; owner?: unknown; name?: unknown };
     };
     content?: Array<{ type?: string; text?: string }>;
   };
@@ -94,27 +98,35 @@ export async function provisionRepoScopedGithubConnection(params: {
   if (!isHttpTokenEndpoint(tokenEndpoint)) {
     throw new Error(REFRESH_GRANT_METADATA_ERROR);
   }
+  const repositoryOwner = nonEmptyString(minted.repository?.owner);
+  const repositoryName = nonEmptyString(minted.repository?.name);
+  const repositoryMismatchError =
+    "GitHub MCP returned refresh metadata for a different repository";
   if (
     minted.repository?.owner !== undefined &&
-    minted.repository.owner.toLowerCase() !== owner.toLowerCase()
+    (!repositoryOwner || repositoryOwner.toLowerCase() !== owner.toLowerCase())
   ) {
-    throw new Error(
-      "GitHub MCP returned refresh metadata for a different repository",
-    );
+    throw new Error(repositoryMismatchError);
   }
   if (
     minted.repository?.name !== undefined &&
-    minted.repository.name.toLowerCase() !== repo.toLowerCase()
+    (!repositoryName || repositoryName.toLowerCase() !== repo.toLowerCase())
   ) {
-    throw new Error(
-      "GitHub MCP returned refresh metadata for a different repository",
-    );
+    throw new Error(repositoryMismatchError);
   }
   const repositoryId = normalizeRepositoryId(minted.repository?.id);
   const parsedExpiry = minted.expiresAt ? Date.parse(minted.expiresAt) : NaN;
   const expiresIn = Number.isFinite(parsedExpiry)
     ? Math.max(0, Math.floor((parsedExpiry - Date.now()) / 1000))
     : null;
+  const mintedExpiresIn =
+    typeof minted.expiresIn === "number" &&
+    Number.isFinite(minted.expiresIn) &&
+    Number.isInteger(minted.expiresIn) &&
+    minted.expiresIn > 0
+      ? minted.expiresIn
+      : null;
+  const tokenExpiresIn = mintedExpiresIn ?? expiresIn;
 
   const createRes = (await selfCallTool({
     name: "COLLECTION_CONNECTIONS_CREATE",
@@ -158,7 +170,7 @@ export async function provisionRepoScopedGithubConnection(params: {
       body: JSON.stringify({
         accessToken: minted.token,
         refreshToken,
-        expiresIn: minted.expiresIn ?? expiresIn,
+        expiresIn: tokenExpiresIn,
         scope: minted.scope ?? null,
         clientId,
         tokenEndpoint,
