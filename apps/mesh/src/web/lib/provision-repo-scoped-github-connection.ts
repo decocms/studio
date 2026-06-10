@@ -35,7 +35,16 @@ export async function provisionRepoScopedGithubConnection(params: {
     },
   })) as {
     isError?: boolean;
-    structuredContent?: { token?: string; expiresAt?: string };
+    structuredContent?: {
+      token?: string;
+      expiresAt?: string;
+      expiresIn?: number;
+      refreshToken?: string;
+      tokenEndpoint?: string;
+      clientId?: string;
+      scope?: string;
+      repository?: { id?: number; owner?: string; name?: string };
+    };
     content?: Array<{ type?: string; text?: string }>;
   };
   const minted = mintRes.structuredContent;
@@ -45,6 +54,11 @@ export async function provisionRepoScopedGithubConnection(params: {
       detail
         ? `Failed to mint a repo-scoped GitHub token: ${detail}`
         : "Failed to mint a repo-scoped GitHub token",
+    );
+  }
+  if (!minted.refreshToken || !minted.tokenEndpoint || !minted.clientId) {
+    throw new Error(
+      "GitHub MCP did not return refreshable repo grant metadata",
     );
   }
   const parsedExpiry = minted.expiresAt ? Date.parse(minted.expiresAt) : NaN;
@@ -65,11 +79,12 @@ export async function provisionRepoScopedGithubConnection(params: {
         connection_url: sourceConnection.connection_url,
         metadata: {
           repoScope: {
-            sourceConnectionId: sourceConnection.id,
             installationId,
+            repositoryId: minted.repository?.id,
             owner,
             repo,
             permissions: GITHUB_SCOPED_PERMISSIONS,
+            grantProvider: "github-mcp",
           },
         },
       },
@@ -90,7 +105,14 @@ export async function provisionRepoScopedGithubConnection(params: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ accessToken: minted.token, expiresIn }),
+      body: JSON.stringify({
+        accessToken: minted.token,
+        refreshToken: minted.refreshToken,
+        expiresIn: minted.expiresIn ?? expiresIn,
+        scope: minted.scope ?? null,
+        clientId: minted.clientId,
+        tokenEndpoint: minted.tokenEndpoint,
+      }),
     },
   );
   if (!tokenRes.ok) {
