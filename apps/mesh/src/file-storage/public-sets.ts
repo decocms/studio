@@ -54,11 +54,20 @@ export type PublicSkillSetSource = z.infer<typeof setSchema>;
  * Parse the deployment's ORGFS_PUBLIC_SETS (a JSON array of sets). Malformed
  * config returns [] with a warn — public sets must never break boot.
  */
+const setsSchema = z
+  .array(setSchema)
+  // Duplicate names share one volume — each sync cycle would delete the
+  // other entry's files (permanent churn). Route the misconfig to the
+  // warn-and-disable branch instead.
+  .refine((sets) => new Set(sets.map((s) => s.set)).size === sets.length, {
+    message: "duplicate set names",
+  });
+
 export function getPublicSets(): PublicSkillSetSource[] {
   const raw = getSettings().orgFsPublicSetsJson;
   if (!raw) return [];
   try {
-    return z.array(setSchema).parse(JSON.parse(raw));
+    return setsSchema.parse(JSON.parse(raw));
   } catch (err) {
     console.warn(
       "[org-fs] invalid ORGFS_PUBLIC_SETS — public sets disabled",

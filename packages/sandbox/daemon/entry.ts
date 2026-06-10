@@ -647,10 +647,8 @@ async function vmRouteH(
   // stamp the thread on each call (x-thread-id) so `org/output` can point at
   // the running thread's folder; memoized, so repeat calls cost one lstat.
   const vmThreadId = req.headers.get("x-thread-id");
-  if (vmThreadId && vmThreadId !== lastOutputThread) {
-    if (await repointOutputLinkForRun(vmThreadId)) {
-      lastOutputThread = vmThreadId;
-    }
+  if (vmThreadId) {
+    await repointOutputLinkForRun(vmThreadId);
   } else {
     await ensureOrgRepoLink();
   }
@@ -821,8 +819,19 @@ async function ensureOrgRepoLink(): Promise<void> {
   await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
 }
 
+// Last thread `org/output` points at. Owned by repointOutputLinkForRun so
+// EVERY caller (the /dispatch path and the vm-route x-thread-id header)
+// keeps it consistent with the actual symlink — a cache updated by only one
+// surface would let the other silently misroute writes across threads.
+let lastOutputThread: string | null = null;
+
 async function repointOutputLinkForRun(threadId: string): Promise<boolean> {
   if (!orgFsExpected) return false;
+  if (threadId === lastOutputThread) {
+    // Link already points here; keep the repo link fresh (one lstat).
+    await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
+    return true;
+  }
   let mounts = await activeOrgFsMounts();
   if (mounts.length === 0) {
     if (!(await waitForFirstMounts())) return false;
@@ -833,12 +842,9 @@ async function repointOutputLinkForRun(threadId: string): Promise<boolean> {
   const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
   if (!mounts.some((m) => m.mountPath === outputsMountPath)) return false;
   await repointOutputLink(bootConfig.appRoot, threadId, orgFsLog);
+  lastOutputThread = threadId;
   return true;
 }
-
-// Last thread whose output link was repointed via the vm-route header —
-// skips the per-request mount round-trip once the link is current.
-let lastOutputThread: string | null = null;
 
 process.on("SIGTERM", async () => {
   taskManager.shutdown();
