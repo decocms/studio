@@ -456,6 +456,18 @@ export const auth = betterAuth({
   logger: {
     log: (level, message, ...args) => {
       if (level === "error" && message.includes("validate API key")) return;
+      // Better Auth performs OAuth redirects by *throwing* an APIError with a
+      // 3xx status (e.g. "FOUND"/302 + Set-Cookie). A successful login is not
+      // a failure — drop these so they don't masquerade as errors in prod logs.
+      if (
+        level === "error" &&
+        args.some((a) => {
+          const code = (a as { statusCode?: unknown } | null)?.statusCode;
+          return typeof code === "number" && code >= 300 && code < 400;
+        })
+      ) {
+        return;
+      }
       const line = `${new Date().toISOString()} ${level.toUpperCase()} [Better Auth]: ${message}`;
       if (level === "error") console.error(line, ...args);
       else if (level === "warn") console.warn(line, ...args);
