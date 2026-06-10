@@ -33,6 +33,7 @@ import {
 import { createEnableToolTool } from "../decopilot/built-in-tools/enable-tool";
 import { createUsageAccumulator } from "../usage-accumulator";
 import { genTitle } from "../decopilot/title-generator";
+import { stringifyError } from "../decopilot/stream-error";
 import { makeTitleResultChunk } from "../title-chunk";
 import { OPENROUTER_CACHE_PROVIDER_OPTIONS } from "../../api/routes/decopilot/cache-instrumentation";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
@@ -312,7 +313,10 @@ export async function* runDesktopAgentLoop(
       title ? (makeTitleResultChunk(title) as UIMessageChunk) : null,
     )
     .catch((err) => {
-      console.warn("[decopilot-desktop:title] title generation failed", err);
+      console.warn(
+        "[decopilot-desktop:title] title generation failed",
+        stringifyError(err),
+      );
       return null;
     });
 
@@ -333,7 +337,7 @@ export async function* runDesktopAgentLoop(
     stopWhen: stepCountIs(PARENT_STEP_LIMIT),
     abortSignal,
     onError: ({ error }: { error?: unknown }) => {
-      console.error("[decopilot-desktop] stream error", error);
+      console.error("[decopilot-desktop] stream error", stringifyError(error));
     },
   });
 
