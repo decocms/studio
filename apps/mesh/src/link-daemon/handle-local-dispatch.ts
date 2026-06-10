@@ -48,6 +48,56 @@ import {
   relayDispatchSSEAsChunkStream,
 } from "./chunk-relay";
 
+/**
+ * Relay a synthesized terminal failure for a work item that cannot run
+ * (expired credentials, etc.) over the normal /chunks channel, so the
+ * cluster kernel persists the failure and the gate unblocks.
+ *
+ * Posts exactly two NDJSON relay lines:
+ *   seq 1 — error event with `code` + `message`
+ *   seq 2 — done event
+ *
+ * Security note: `code` and `message` are informational strings — they must
+ * never contain the fence token, API keys, or any other secret from the work
+ * item. This function deliberately does NOT log any secret fields.
+ */
+export async function relayWorkItemFailure(
+  work: WorkItem,
+  deps: Pick<
+    LocalDispatchDeps,
+    "clusterBaseUrl" | "getClusterToken" | "fetchImpl" | "signal"
+  >,
+  code: string,
+  message: string,
+): Promise<void> {
+  const fetcher = deps.fetchImpl ?? fetch;
+  const clusterToken = await deps.getClusterToken();
+  const body =
+    JSON.stringify({ seq: 1, event: { type: "error", code, message } }) +
+    "\n" +
+    JSON.stringify({ seq: 2, event: { type: "done" } }) +
+    "\n";
+  const res = await fetcher(
+    `${deps.clusterBaseUrl}/api/${work.orgSlug}/links/runs/${work.runId}/chunks`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${clusterToken}`,
+        "x-fence-token": work.runFenceToken,
+        "content-type": "application/x-ndjson",
+        "x-relay-from": "1",
+      },
+      body,
+      signal: deps.signal,
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `[relayWorkItemFailure] cluster rejected failure relay (${res.status})`,
+    );
+  }
+}
+
 export interface LocalDispatchDeps {
   /**
    * Base URL of the local sandbox daemon (loopback), e.g.

@@ -173,6 +173,9 @@ export class LinkWorkQueue {
       // Old-discard evicts the oldest.
       max_msgs_per_subject: 1_000,
       num_replicas: 1,
+      // Items carry model secrets + a 1h MCP bearer; never let them rest longer
+      // than the bearer's TTL (decision Q20). nanoseconds.
+      max_age: 3_600 * 1_000_000_000, // 1h
     };
 
     try {

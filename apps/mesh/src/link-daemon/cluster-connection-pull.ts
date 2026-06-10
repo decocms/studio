@@ -20,7 +20,10 @@ import { runControlPollLoop } from "./control-poller";
 import { runProxyPollLoop } from "./proxy-poller";
 import * as runAbortRegistry from "./run-abort-registry";
 import * as proxyAbortRegistry from "./proxy-abort-registry";
-import { handleLocalDispatch } from "./handle-local-dispatch";
+import {
+  handleLocalDispatch,
+  relayWorkItemFailure,
+} from "./handle-local-dispatch";
 import type { ClusterConnectionHandle } from "./types";
 import type { ControlHandler } from "./control-handler";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
@@ -168,6 +171,37 @@ export async function connectToClusterPull(
         `[cluster-connection-pull] work item runId=${item.runId} threadId=${item.threadId} handle=${handle}`,
       );
 
+      // Claim-time credential-expiry check (spec §Hard-Break-Mechanics / Q20).
+      // Work items carry a 1h MCP bearer; if the item sat in the queue too long
+      // and the bearer expired before we claimed it, fail the run cleanly via
+      // the relay channel rather than letting the sandbox attempt auth with a
+      // stale token.
+      // The item is already ACKed server-side (ACK-on-delivery at the HTTP
+      // layer) — we only decide whether to dispatch or relay a terminal failure.
+      // If relayWorkItemFailure itself throws (cluster unreachable), we re-throw
+      // so the work-poll loop logs it as "onWork threw (swallowed)" and continues
+      // to the next item. The max_age TTL on the JetStream stream (1h) is the
+      // backstop that evicts undelivered stale items before a daemon ever sees
+      // them; this check guards items that were claimed just at the boundary.
+      const mcp = (item.harnessInput as { mcp?: { expiresAt?: number } }).mcp;
+      if (typeof mcp?.expiresAt === "number" && mcp.expiresAt <= Date.now()) {
+        console.warn(
+          `[cluster-connection-pull] work item expired at claim time — relaying failure runId=${item.runId}`,
+        );
+        await relayWorkItemFailure(
+          item,
+          {
+            clusterBaseUrl: input.clusterBaseUrl,
+            getClusterToken: input.getAccessToken,
+            fetchImpl: input.fetchImpl,
+            signal: ac.signal,
+          },
+          "work_item_expired",
+          "work item credentials expired before the daemon claimed it — send the message again",
+        );
+        return;
+      }
+
       // (a) Ensure the sandbox is running.
       // Use the full sandbox config from the work item when available so the
       // daemon can spawn cold (repo clone + workload runtime configured).
@@ -221,6 +255,11 @@ export async function connectToClusterPull(
       // acquireDispatch pins the sandbox for the full duration of the relay so
       // the LRU eviction logic skips it (activeDispatchCount > 0). Released in
       // `finally` to guarantee the counter is always decremented.
+      // Note: an old-shape (pre-v2) work item that passes this point will fail
+      // the sandbox-daemon's `harnessStreamInputSchema` parse → `bad_input` SSE
+      // error → relay forwards it → kernel marks the run failed. No special
+      // handling needed here; the relay is the clean-failure path for stale-shape
+      // items too.
       const releaseDispatch = input.provider.acquireDispatch(handle);
       // Phase C: register a per-run AbortController so the control-poll loop
       // can abort this specific dispatch when the cluster sends a cancel frame.

@@ -12,6 +12,7 @@ import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
 import { type RelayLine, relayLineSchema } from "../links/protocol/relay";
 import {
   handleLocalDispatch,
+  relayWorkItemFailure,
   type LocalDispatchDeps,
 } from "./handle-local-dispatch";
 
@@ -565,5 +566,127 @@ describe("handleLocalDispatch", () => {
     expect(capturedSignals.length).toBe(2);
     expect(capturedSignals[0]).toBe(ac.signal);
     expect(capturedSignals[1]).toBe(ac.signal);
+  });
+});
+
+// ── relayWorkItemFailure tests ──────────────────────────────────────────────
+
+describe("relayWorkItemFailure", () => {
+  it("posts exactly error+done NDJSON lines with required headers to the correct URL", async () => {
+    const captured: Array<{ url: string; init: RequestInit }> = [];
+
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      captured.push({ url, init: init ?? {} });
+      return new Response(JSON.stringify({ ok: true, lastSeq: 2 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await relayWorkItemFailure(
+      validWorkItem,
+      {
+        clusterBaseUrl: CLUSTER_BASE,
+        getClusterToken: async () => CLUSTER_TOKEN,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      },
+      "work_item_expired",
+      "credentials expired",
+    );
+
+    expect(captured).toHaveLength(1);
+    const { url, init } = captured[0]!;
+
+    // Correct URL
+    expect(url).toBe(
+      `${CLUSTER_BASE}/api/${ORG_SLUG}/links/runs/${RUN_ID}/chunks`,
+    );
+
+    // Required headers
+    const headers = init.headers as Record<string, string>;
+    expect(headers["authorization"]).toBe(`Bearer ${CLUSTER_TOKEN}`);
+    expect(headers["x-fence-token"]).toBe(FENCE_TOKEN);
+    expect(headers["content-type"]).toBe("application/x-ndjson");
+    expect(headers["x-relay-from"]).toBe("1");
+
+    // Body: exactly 2 NDJSON lines
+    const lines = (init.body as string)
+      .split("\n")
+      .filter((l) => l.length > 0)
+      .map(
+        (l) =>
+          JSON.parse(l) as {
+            seq: number;
+            event: { type: string; code?: string; message?: string };
+          },
+      );
+
+    expect(lines).toHaveLength(2);
+
+    // Line 1: error event
+    expect(lines[0]!.seq).toBe(1);
+    expect(lines[0]!.event.type).toBe("error");
+    expect(lines[0]!.event.code).toBe("work_item_expired");
+    expect(lines[0]!.event.message).toBe("credentials expired");
+
+    // Line 2: done event
+    expect(lines[1]!.seq).toBe(2);
+    expect(lines[1]!.event.type).toBe("done");
+  });
+
+  it("throws when the cluster returns a non-2xx status", async () => {
+    const fetchImpl = async (): Promise<Response> => {
+      return new Response(JSON.stringify({ error: "fenced" }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await expect(
+      relayWorkItemFailure(
+        validWorkItem,
+        {
+          clusterBaseUrl: CLUSTER_BASE,
+          getClusterToken: async () => CLUSTER_TOKEN,
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+        },
+        "work_item_expired",
+        "credentials expired",
+      ),
+    ).rejects.toThrow("cluster rejected failure relay (409)");
+  });
+
+  it("propagates the abort signal to the fetch", async () => {
+    const ac = new AbortController();
+    const capturedSignals: (AbortSignal | null | undefined)[] = [];
+
+    const fetchImpl = async (
+      _url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      capturedSignals.push(init?.signal ?? null);
+      return new Response(JSON.stringify({ ok: true, lastSeq: 2 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await relayWorkItemFailure(
+      validWorkItem,
+      {
+        clusterBaseUrl: CLUSTER_BASE,
+        getClusterToken: async () => CLUSTER_TOKEN,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        signal: ac.signal,
+      },
+      "work_item_expired",
+      "credentials expired",
+    );
+
+    expect(capturedSignals).toHaveLength(1);
+    expect(capturedSignals[0]).toBe(ac.signal);
   });
 });

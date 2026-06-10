@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildConsumerName,
   buildWorkSubject,
+  LinkWorkQueue,
   workItemSchema,
 } from "./link-work-queue";
 
@@ -167,5 +168,37 @@ describe("workItemSchema", () => {
       harnessInput: { threadId: "thrd_07" },
     };
     expect(workItemSchema.safeParse(item).success).toBe(false);
+  });
+});
+
+describe("LinkWorkQueue stream config", () => {
+  it("stream config includes max_age of 1h (3600 * 1e9 nanoseconds)", async () => {
+    // Capture the config passed to jsm.streams.add by stubbing JetStreamManager.
+    let capturedConfig: Record<string, unknown> | null = null;
+
+    const jsmStub = {
+      streams: {
+        info: async (_name: string) => {
+          // Simulate stream not found so add() is called.
+          throw new Error("stream not found");
+        },
+        add: async (config: Record<string, unknown>) => {
+          capturedConfig = config;
+        },
+        update: async (_name: string, _config: unknown) => {},
+      },
+    };
+
+    const queue = new LinkWorkQueue({
+      getJetStreamManager: async () =>
+        jsmStub as unknown as import("nats").JetStreamManager,
+      getJetStream: () => null,
+    });
+
+    await queue.init();
+
+    expect(capturedConfig).not.toBeNull();
+    // 1h in nanoseconds
+    expect(capturedConfig!["max_age"]).toBe(3_600 * 1_000_000_000);
   });
 });
