@@ -41,8 +41,8 @@ const CLAUDE_CODE_TIERS: AgentTierMap = {
     iconNode: <ClaudeCodeIcon size={16} />,
   },
   thinking: {
-    modelId: "claude-code:opus",
-    label: "Opus 4.8",
+    modelId: "claude-code:fable",
+    label: "Fable 5",
     description: "Deeper reasoning",
     iconNode: <ClaudeCodeIcon size={16} />,
   },
