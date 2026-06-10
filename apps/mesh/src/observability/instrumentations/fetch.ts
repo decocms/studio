@@ -85,8 +85,17 @@ async function instrumentedFetch(
         // Record response attributes
         span.setAttribute("http.response.status_code", response.status);
 
-        // Set span status based on response
-        if (response.status >= 400) {
+        // The MCP Streamable HTTP transport opens its server->client stream
+        // with a GET (Accept: text/event-stream); the spec defines 405 as the
+        // expected "no SSE stream offered" reply, which the SDK swallows. Don't
+        // surface that handshake as an error span. All other 4xx/5xx are real
+        // client-span errors per OTel HTTP conventions.
+        const isMcpSseProbe405 =
+          response.status === 405 &&
+          method === "GET" &&
+          (headers.get("accept") ?? "").includes("text/event-stream");
+
+        if (response.status >= 400 && !isMcpSseProbe405) {
           span.setStatus({
             code: SpanStatusCode.ERROR,
             message: `HTTP ${response.status}`,
