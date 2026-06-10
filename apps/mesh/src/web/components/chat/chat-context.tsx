@@ -893,13 +893,16 @@ export function ActiveTaskProvider({
       },
       onFinish: (message) => {
         const cb = cbRef.current;
-        // Refresh download chips only when this turn actually produced a
-        // shared file. AI SDK v5 surfaces tool invocations as `tool-<name>`
-        // parts; filter on `output-available` to skip denied/cancelled calls.
+        // Refresh download chips only when this turn could have produced a
+        // file: an explicit share, or sandbox file work (bash/write can drop
+        // results into `org/output/`). AI SDK v5 surfaces tool invocations as
+        // `tool-<name>` parts; `output-available` skips denied/cancelled calls.
         const sharedFile = message.parts?.some((p) => {
           const part = p as { type: string; state?: string };
           return (
-            part.type === "tool-share_with_user" &&
+            (part.type === "tool-share_with_user" ||
+              part.type === "tool-bash" ||
+              part.type === "tool-write") &&
             part.state === "output-available"
           );
         });

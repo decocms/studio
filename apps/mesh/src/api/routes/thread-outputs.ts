@@ -49,13 +49,22 @@ export const createThreadOutputsRoutes = () => {
     }
 
     const storage = ctx.objectStorage;
-    if (!storage) {
-      return c.json({ objects: [] });
-    }
-    const result = await storage.list({
-      prefix: `model-outputs/${threadId}/`,
-      maxKeys: 200,
-    });
+    const result = storage
+      ? await storage.list({
+          prefix: `model-outputs/${threadId}/`,
+          maxKeys: 200,
+        })
+      : { objects: [] };
+
+    // Files the agent wrote to `org/output/` land in the org-fs `outputs`
+    // volume under `<threadId>/...` — surface them as chips alongside the
+    // share_with_user uploads (one indexed manifest query).
+    const orgId = ctx.organization?.id;
+    const fsOutputs = orgId
+      ? await ctx.storage.orgFsEntries
+          .listSubtreeFiles(orgId, "outputs", threadId)
+          .catch(() => [])
+      : [];
 
     // Use ctx.baseUrl (canonical, set during context creation from
     // forwarded-host headers / env) rather than `new URL(c.req.url).origin`
@@ -64,20 +73,29 @@ export const createThreadOutputsRoutes = () => {
     // share_with_user URL (which already uses ctx.baseUrl) to disagree
     // with subsequent listings.
     return c.json({
-      objects: result.objects.map((o) => {
-        const filename = o.key.split("/").pop() ?? o.key;
-        // Encode each path segment — keys may carry URL-special chars
-        // (?, #, &, space) and `c.req.path` in the files route truncates
-        // at the first unescaped `?`.
-        const encodedKey = o.key.split("/").map(encodeURIComponent).join("/");
-        return {
-          key: o.key,
-          filename,
-          size: o.size,
-          uploadedAt: o.lastModified?.toISOString(),
-          downloadUrl: `${ctx.baseUrl}/api/${encodeURIComponent(orgSlug)}/files/${encodedKey}`,
-        };
-      }),
+      objects: [
+        ...result.objects.map((o) => {
+          const filename = o.key.split("/").pop() ?? o.key;
+          // Encode each path segment — keys may carry URL-special chars
+          // (?, #, &, space) and `c.req.path` in the files route truncates
+          // at the first unescaped `?`.
+          const encodedKey = o.key.split("/").map(encodeURIComponent).join("/");
+          return {
+            key: o.key,
+            filename,
+            size: o.size,
+            uploadedAt: o.lastModified?.toISOString(),
+            downloadUrl: `${ctx.baseUrl}/api/${encodeURIComponent(orgSlug)}/files/${encodedKey}`,
+          };
+        }),
+        ...fsOutputs.map((e) => ({
+          key: `org-fs:outputs/${e.path}`,
+          filename: e.path.split("/").pop() ?? e.path,
+          size: e.size,
+          uploadedAt: e.updatedAt,
+          downloadUrl: `${ctx.baseUrl}/api/${encodeURIComponent(orgSlug)}/fs/outputs/read?path=${encodeURIComponent(e.path)}`,
+        })),
+      ],
     });
   });
 
