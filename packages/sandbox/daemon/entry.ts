@@ -640,6 +640,12 @@ async function vmRouteH(
   const denied = requireToken(req, bootConfig.daemonToken);
   if (denied) return denied;
 
+  // Hosted harnesses drive the sandbox through these tool routes WITHOUT a
+  // /dispatch envelope, so the repo `org` link must be ensured here too —
+  // before bash/read/write resolve the prompts' relative `org/...` paths.
+  // Cheap when already linked (one lstat); skipped while nothing is mounted.
+  await ensureOrgRepoLink();
+
   // Buffer body once and re-inject as a fresh Request for downstream
   // handlers that re-read it.
   const hasBody = method !== "GET" && method !== "HEAD" && method !== "DELETE";
@@ -744,24 +750,38 @@ const orgFsConfigH = makeOrgFsConfigHandler({
  * mounted). Hoisted declaration: called from `lookupDispatchHarness` above,
  * which only runs post-boot.
  */
-async function repointOutputLinkForRun(threadId: string): Promise<void> {
-  const log = (msg: string, err?: unknown) =>
-    err ? console.warn(`[org-fs] ${msg}`, err) : console.log(`[org-fs] ${msg}`);
-  let mounts = mountManager?.list() ?? [];
+const orgFsLog = (msg: string, err?: unknown) =>
+  err ? console.warn(`[org-fs] ${msg}`, err) : console.log(`[org-fs] ${msg}`);
+
+/** Active org-fs mounts: ours (desktop) or the sidecar's (cluster). */
+async function activeOrgFsMounts(): Promise<{ mountPath: string }[]> {
+  const own = mountManager?.list() ?? [];
+  if (own.length > 0) return own;
   const statusPath = process.env.ORGFS_SIDECAR_STATUS_PATH;
-  if (mounts.length === 0 && statusPath) {
-    const status = await readFile(statusPath, "utf8")
-      .then((raw) => JSON.parse(raw) as SidecarStatus)
-      .catch(() => null);
-    mounts = status?.mounts ?? [];
-  }
+  if (!statusPath) return [];
+  const status = await readFile(statusPath, "utf8")
+    .then((raw) => JSON.parse(raw) as SidecarStatus)
+    .catch(() => null);
+  return status?.mounts ?? [];
+}
+
+/**
+ * Make the prompts' relative `org/...` paths resolve from the harness cwd
+ * (`<appRoot>/repo`) — see org-fs/repo-link.ts. Lazy + idempotent: called on
+ * every vm tool request, no-op while nothing is mounted, one lstat after.
+ */
+async function ensureOrgRepoLink(): Promise<void> {
+  if ((await activeOrgFsMounts()).length === 0) return;
+  await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
+}
+
+async function repointOutputLinkForRun(threadId: string): Promise<void> {
+  const mounts = await activeOrgFsMounts();
   if (mounts.length === 0) return;
-  // Harness shells run with cwd `<appRoot>/repo`; make the prompts' relative
-  // `org/...` paths resolve there (post-clone, git-excluded).
-  await ensureRepoOrgLink(bootConfig.repoDir, log);
+  await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
   const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
   if (!mounts.some((m) => m.mountPath === outputsMountPath)) return;
-  await repointOutputLink(bootConfig.appRoot, threadId, log);
+  await repointOutputLink(bootConfig.appRoot, threadId, orgFsLog);
 }
 
 process.on("SIGTERM", async () => {
