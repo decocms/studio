@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import {
   DEV_LINK_TOXIPROXY_PROXY_NAME,
   DEV_LINK_TOXIPROXY_SERVICE_NAME,
   buildDevLinkToxiProxyConfig,
+  ensureDevLinkToxiProxy,
   isDevLinkToxiProxyEnabled,
+  populateDevLinkToxiProxy,
 } from "./dev-link-toxiproxy";
 
 describe("dev-link-toxiproxy config", () => {
@@ -90,5 +92,78 @@ describe("dev-link-toxiproxy config", () => {
         listenPort: 18480,
       }),
     ).toThrow(/upstreamPort must be an integer port in 1\.\.65535/);
+  });
+});
+
+describe("dev-link-toxiproxy HTTP API", () => {
+  test("resets then populates the configured proxy", async () => {
+    const config = buildDevLinkToxiProxyConfig({
+      serverUrl: "http://localhost:4001",
+      apiPort: 18474,
+      listenPort: 18480,
+    });
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await populateDevLinkToxiProxy(config, fetchImpl);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(calls[0]).toEqual({
+      url: "http://127.0.0.1:18474/reset",
+      init: { method: "POST" },
+    });
+    expect(calls[1]?.url).toBe("http://127.0.0.1:18474/populate");
+    expect(calls[1]?.init?.method).toBe("POST");
+    expect(calls[1]?.init?.headers).toEqual({
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual([
+      {
+        name: "dev_link_studio",
+        listen: "0.0.0.0:18480",
+        upstream: "host.docker.internal:4001",
+        enabled: true,
+      },
+    ]);
+  });
+
+  test("includes response body when ToxiProxy returns a non-ok response", async () => {
+    const config = buildDevLinkToxiProxyConfig({
+      serverUrl: "http://localhost:4001",
+      apiPort: 18474,
+      listenPort: 18480,
+    });
+    const fetchImpl = mock(async () => {
+      return new Response("bad proxy", {
+        status: 500,
+        statusText: "Internal Server Error",
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(populateDevLinkToxiProxy(config, fetchImpl)).rejects.toThrow(
+      /reset.*500.*Internal Server Error.*bad proxy/s,
+    );
+  });
+
+  test("starts the daemon, populates ToxiProxy, and returns config", async () => {
+    const startDaemon = mock(async () => {});
+    const fetchImpl = mock(async () => {
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const config = await ensureDevLinkToxiProxy({
+      serverUrl: "http://localhost:4001",
+      apiPort: 18474,
+      listenPort: 18480,
+      startDaemon,
+      fetchImpl,
+    });
+
+    expect(startDaemon).toHaveBeenCalledWith(18474, 18480);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(config.clusterUrl).toBe("http://127.0.0.1:18480");
   });
 });
