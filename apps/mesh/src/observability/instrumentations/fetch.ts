@@ -21,6 +21,31 @@ import { tracer } from "../index";
 const originalFetch = globalThis.fetch;
 
 /**
+ * Classify a thrown fetch error as a benign abort so it isn't surfaced as an
+ * error span. Two shapes leak into error tracking as if they were failures:
+ *
+ * - `TimeoutError` — `AbortSignal.timeout()` elapsed ("The operation timed
+ *   out."). Used by the sandbox daemon-client config/health probes.
+ * - `AbortError` — a caller cancelled the request via `AbortController.abort()`
+ *   ("The operation was aborted."). Idle teardown, in-flight replacement, client
+ *   disconnect, and SWR revalidation cleanup all do this as normal control flow.
+ *
+ * Returns the abort reason for span tagging, or null for genuine failures.
+ */
+function classifyAbort(
+  error: unknown,
+  signal: AbortSignal | undefined,
+): "timeout" | "cancelled" | null {
+  const name = error instanceof Error ? error.name : undefined;
+  if (name === "TimeoutError") return "timeout";
+  if (name === "AbortError") return "cancelled";
+  // Fallback: the caller's own signal fired but the runtime threw a
+  // non-standard error shape.
+  if (signal?.aborted) return "cancelled";
+  return null;
+}
+
+/**
  * Instrumented fetch that creates spans for outbound requests
  * and propagates trace context.
  */
@@ -106,12 +131,24 @@ async function instrumentedFetch(
 
         return response;
       } catch (error) {
-        // Record exception and set error status
-        span.recordException(error as Exception);
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: error instanceof Error ? error.message : "Fetch failed",
-        });
+        const signal =
+          init?.signal ?? (input instanceof Request ? input.signal : undefined);
+        const abortReason = classifyAbort(error, signal ?? undefined);
+        if (abortReason) {
+          // Benign control-flow abort (timeout / caller cancellation), not a
+          // server failure. Tag the span with the reason and leave its status
+          // UNSET so it stays out of the error bucket while remaining visible
+          // and distinguishable in traces. We still re-throw — control flow is
+          // the caller's concern, untouched.
+          span.setAttribute("abort.reason", abortReason);
+        } else {
+          // Record exception and set error status
+          span.recordException(error as Exception);
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: error instanceof Error ? error.message : "Fetch failed",
+          });
+        }
         throw error;
       } finally {
         span.end();
