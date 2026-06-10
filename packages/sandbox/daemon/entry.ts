@@ -17,6 +17,7 @@ import { MountManager } from "./org-fs/mount-manager";
 import { createRcloneMounter } from "./org-fs/mounter";
 import { parseOrgFsConfig } from "./org-fs/config";
 import { repointOutputLink } from "./org-fs/output-link";
+import { ensureRepoOrgLink } from "./org-fs/repo-link";
 import type { SidecarStatus } from "./org-fs/sidecar";
 import { makeOrgFsConfigHandler } from "./routes/orgfs-config";
 import { createPortSniffer } from "./process/port-sniffer";
@@ -744,21 +745,23 @@ const orgFsConfigH = makeOrgFsConfigHandler({
  * which only runs post-boot.
  */
 async function repointOutputLinkForRun(threadId: string): Promise<void> {
-  const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
-  let mounted = mountManager
-    ?.list()
-    .some((m) => m.mountPath === outputsMountPath);
+  const log = (msg: string, err?: unknown) =>
+    err ? console.warn(`[org-fs] ${msg}`, err) : console.log(`[org-fs] ${msg}`);
+  let mounts = mountManager?.list() ?? [];
   const statusPath = process.env.ORGFS_SIDECAR_STATUS_PATH;
-  if (!mounted && statusPath) {
+  if (mounts.length === 0 && statusPath) {
     const status = await readFile(statusPath, "utf8")
       .then((raw) => JSON.parse(raw) as SidecarStatus)
       .catch(() => null);
-    mounted = status?.mounts.some((m) => m.mountPath === outputsMountPath);
+    mounts = status?.mounts ?? [];
   }
-  if (!mounted) return;
-  await repointOutputLink(bootConfig.appRoot, threadId, (msg, err) =>
-    err ? console.warn(`[org-fs] ${msg}`, err) : console.log(`[org-fs] ${msg}`),
-  );
+  if (mounts.length === 0) return;
+  // Harness shells run with cwd `<appRoot>/repo`; make the prompts' relative
+  // `org/...` paths resolve there (post-clone, git-excluded).
+  await ensureRepoOrgLink(bootConfig.repoDir, log);
+  const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
+  if (!mounts.some((m) => m.mountPath === outputsMountPath)) return;
+  await repointOutputLink(bootConfig.appRoot, threadId, log);
 }
 
 process.on("SIGTERM", async () => {
