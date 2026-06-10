@@ -2078,10 +2078,12 @@ function buildTenantLabels(
 const MAX_ANNOTATION_VALUE_LEN = 253;
 
 function sanitizeAnnotationValue(value: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point.
-  return value
-    .replace(/[\x00-\x1f\x7f]/g, " ")
-    .slice(0, MAX_ANNOTATION_VALUE_LEN);
+  let out = "";
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    out += code < 0x20 || code === 0x7f ? " " : ch;
+  }
+  return out.slice(0, MAX_ANNOTATION_VALUE_LEN);
 }
 
 // Drop any embedded `user:token@` credential before exposing a clone URL as an
