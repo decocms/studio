@@ -94,7 +94,7 @@ import {
  */
 export interface RunDecopilotStreamExtras {
   /**
-   * Provider reconstructed from `input.modelSources.primary`. Decopilot,
+   * Provider reconstructed from `input.modelSources.thinking`. Decopilot,
    * unlike CLI harnesses, always has a provider.
    */
   provider: MeshProvider;
@@ -307,7 +307,10 @@ export async function* runDecopilotStream(
     abortSignal: registrySignal,
     model: createLanguageModel(
       titleProvider ?? provider,
-      titleModel ?? input.models.fast ?? input.models.thinking,
+      titleModel ??
+        input.models.fast ??
+        input.models.smart ??
+        input.models.thinking,
     ) as never,
     userMessage: userMessageText,
   });
@@ -517,7 +520,7 @@ export async function* runDecopilotStream(
         agentId: input.agent.id,
         modelId: input.models.thinking.id,
         modelTitle: input.models.thinking.title ?? input.models.thinking.id,
-        credentialId: input.models.credentialId,
+        credentialId: input.models.thinking.credentialId,
         taskId: threadId,
         durationMs,
         isError: false,
@@ -569,7 +572,7 @@ export async function* runDecopilotStream(
           agentId: input.agent.id,
           modelId: input.models.thinking.id,
           modelTitle: input.models.thinking.title ?? input.models.thinking.id,
-          credentialId: input.models.credentialId,
+          credentialId: input.models.thinking.credentialId,
           taskId: threadId,
           durationMs,
           isError: true,
@@ -627,7 +630,7 @@ export async function* runDecopilotStream(
       agentId: input.agent.id,
       modelId: input.models.thinking.id,
       modelTitle: input.models.thinking.title ?? input.models.thinking.id,
-      credentialId: input.models.credentialId,
+      credentialId: input.models.thinking.credentialId,
       taskId: threadId,
       durationMs,
       isError: false,
@@ -705,7 +708,7 @@ export async function* runDecopilotStream(
             id: input.agent.id ?? null,
           },
           models: {
-            credentialId: input.models.credentialId,
+            credentialId: input.models.thinking.credentialId,
             thinking: {
               ...input.models.thinking,
               title: input.models.thinking.title ?? input.models.thinking.id,

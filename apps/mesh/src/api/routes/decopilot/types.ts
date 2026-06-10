@@ -12,6 +12,7 @@ import type { InferUITool, UIMessage } from "ai";
 import type { ToolDefinition, UsageStats } from "@decocms/mesh-sdk";
 import type { Metadata } from "@/web/components/chat/types";
 import type { BuiltInToolSet } from "@/harnesses/decopilot/built-in-tools";
+import type { ModelsConfig as HarnessModelsConfig } from "@/harnesses/types";
 
 // ============================================================================
 // Stream API Message Types
@@ -35,7 +36,8 @@ export type ChatMessage = UIMessage<
     "tool-subtask-metadata": {
       usage: UsageStats;
       agent: string;
-      models: ModelsConfig;
+      /** Slot-keyed harness models (per-slot credentialId). */
+      models: HarnessModelsConfig;
     };
     "thread-title": {
       title: string;
@@ -82,10 +84,12 @@ export interface ModelInfo {
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
 
+/** CLIENT request shape: root credentialId for the chat model. Dispatch
+ *  normalizes this into the per-slot harness/wire `ModelsConfig`
+ *  (`@/harnesses`) before invoking a harness. No `coding` slot (D11). */
 export interface ModelsConfig {
   credentialId: string;
   thinking: ModelInfo;
-  coding?: ModelInfo;
   fast?: ModelInfo;
   image?: ModelInfo & { credentialId: string };
   deepResearch?: ModelInfo & { credentialId: string };

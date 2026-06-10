@@ -16,7 +16,7 @@ import type { UIMessageStreamWriter } from "ai";
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { MeshProvider } from "@/ai-providers/types";
-import type { ModelsConfig } from "../../../api/routes/decopilot/types";
+import type { ModelsConfig } from "../../types";
 import { runAgentLoop } from "../run-agent-loop";
 import { SUBAGENT_STEP_LIMIT } from "../../../api/routes/decopilot/constants";
 

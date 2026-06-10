@@ -31,108 +31,207 @@ describe("dispatchSSEEventSchema", () => {
   });
 });
 
-describe("harnessStreamInputSchema", () => {
-  const minimalInput: HarnessStreamInputWire = {
-    threadId: "thr-1",
-    runId: "run-1",
-    taskId: "thr-1",
+describe("harnessStreamInputSchema (v2)", () => {
+  const minimalV2: HarnessStreamInputWire = {
+    threadId: "t1",
+    runId: "t1",
+    taskId: "t1",
     messages: [],
-    models: {
-      credentialId: "cred-1",
-      thinking: { id: "claude-code:opus", title: "Opus" },
-    },
+    workspace: { cwd: "/repo" },
+    models: { thinking: { id: "m1", title: "M1", credentialId: "cred1" } },
     mcp: {
-      url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
-      headers: { Authorization: "Bearer fixture" },
-      expiresAt: 9999999999000,
+      url: "https://x.test/mcp",
+      headers: {},
+      expiresAt: 1,
     },
     mode: "default",
-    temperature: 0.7,
+    temperature: 1,
     toolApprovalLevel: "auto",
-    user: { id: "user-1", email: "user@example.com" },
-    organizationId: "org-1",
-    virtualMcp: { id: "agent-1" },
-    agent: { id: "agent-1" },
+    user: { id: "u1", email: "u@x.test" },
+    organizationId: "o1",
+    virtualMcp: { id: "vm1" },
+    agent: { id: "vm1" },
   };
 
-  it("round-trips a minimal CLI harness input", () => {
-    const result = harnessStreamInputSchema.safeParse(minimalInput);
+  it("accepts a minimal v2 input", () => {
+    const result = harnessStreamInputSchema.safeParse(minimalV2);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.threadId).toBe("thr-1");
-      expect(result.data.models.thinking.title).toBe("Opus");
+      expect(result.data.threadId).toBe("t1");
+      expect(result.data.workspace).toEqual({ cwd: "/repo" });
+      expect(result.data.models.thinking.credentialId).toBe("cred1");
     }
   });
 
-  it("round-trips full model slot metadata", () => {
-    const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
+  it("rejects the old v1 shape (no workspace, root credentialId, modelSources.primary)", () => {
+    const v1Input = {
+      threadId: "thr-1",
+      runId: "run-1",
+      taskId: "thr-1",
+      messages: [],
       models: {
-        credentialId: "cred-chat",
+        credentialId: "cred-1",
+        thinking: { id: "claude-code:opus", title: "Opus" },
+      },
+      modelSources: {
+        primary: {
+          kind: "secret",
+          providerId: "anthropic",
+          apiKey: "sk-main",
+          modelId: "claude-sonnet-4",
+        },
+      },
+      mcp: {
+        url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
+        headers: { Authorization: "Bearer fixture" },
+        expiresAt: 9999999999000,
+      },
+      mode: "default",
+      temperature: 0.7,
+      toolApprovalLevel: "auto",
+      user: { id: "user-1", email: "user@example.com" },
+      organizationId: "org-1",
+      virtualMcp: { id: "agent-1" },
+      agent: { id: "agent-1" },
+    };
+
+    expect(harnessStreamInputSchema.safeParse(v1Input).success).toBe(false);
+  });
+
+  it("round-trips all five model slots with per-slot credentialId and harnessId", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalV2,
+      harnessId: "decopilot",
+      models: {
         thinking: {
           id: "anthropic/claude-sonnet",
           title: "Sonnet",
           provider: null,
+          credentialId: "cred-chat",
           limits: { contextWindow: 200000, maxOutputTokens: 32768 },
         },
+        fast: {
+          id: "anthropic/claude-haiku",
+          title: "Haiku",
+          credentialId: "cred-chat",
+        },
+        smart: {
+          id: "anthropic/claude-opus",
+          title: "Opus",
+          credentialId: "cred-chat",
+        },
         image: {
-          credentialId: "cred-image",
           id: "google/imagen",
           title: "Imagen",
           provider: "google",
+          credentialId: "cred-image",
           limits: { maxOutputTokens: 4096 },
         },
         deepResearch: {
-          credentialId: "cred-research",
           id: "google/gemini-deep-research",
           title: "Deep Research",
           provider: "google",
-        },
-        title: {
-          id: "openai/gpt-4.1-mini",
-          title: "GPT 4.1 Mini",
-          provider: "openai",
-          limits: { maxOutputTokens: 2048 },
+          credentialId: "cred-research",
         },
       },
     });
 
     expect(result.success).toBe(true);
     if (result.success) {
+      expect(result.data.harnessId).toBe("decopilot");
       expect(result.data.models).toEqual({
-        credentialId: "cred-chat",
         thinking: {
           id: "anthropic/claude-sonnet",
           title: "Sonnet",
           provider: null,
+          credentialId: "cred-chat",
           limits: { contextWindow: 200000, maxOutputTokens: 32768 },
         },
+        fast: {
+          id: "anthropic/claude-haiku",
+          title: "Haiku",
+          credentialId: "cred-chat",
+        },
+        smart: {
+          id: "anthropic/claude-opus",
+          title: "Opus",
+          credentialId: "cred-chat",
+        },
         image: {
-          credentialId: "cred-image",
           id: "google/imagen",
           title: "Imagen",
           provider: "google",
+          credentialId: "cred-image",
           limits: { maxOutputTokens: 4096 },
         },
         deepResearch: {
-          credentialId: "cred-research",
           id: "google/gemini-deep-research",
           title: "Deep Research",
           provider: "google",
-        },
-        title: {
-          id: "openai/gpt-4.1-mini",
-          title: "GPT 4.1 Mini",
-          provider: "openai",
-          limits: { maxOutputTokens: 2048 },
+          credentialId: "cred-research",
         },
       });
     }
   });
 
+  it("rejects a slot without credentialId", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalV2,
+      models: { thinking: { id: "m1", title: "M1" } },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a title slot inside models (strict object)", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalV2,
+      models: {
+        ...minimalV2.models,
+        title: { id: "gpt-4.1-mini", title: "Mini", credentialId: "cred1" },
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a coding slot inside models (strict object)", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalV2,
+      models: {
+        ...minimalV2.models,
+        coding: { id: "gpt-5-codex", title: "Codex", credentialId: "cred1" },
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("requires workspace with a non-empty cwd", () => {
+    const { workspace: _workspace, ...withoutWorkspace } = minimalV2;
+    expect(harnessStreamInputSchema.safeParse(withoutWorkspace).success).toBe(
+      false,
+    );
+    expect(
+      harnessStreamInputSchema.safeParse({
+        ...minimalV2,
+        workspace: { cwd: "" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects unknown harness ids", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalV2,
+      harnessId: "made-up",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects unknown harness modes", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
+      ...minimalV2,
       mode: "made-up",
     });
 
@@ -141,30 +240,37 @@ describe("harnessStreamInputSchema", () => {
 
   it("rejects unknown tool approval levels", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
+      ...minimalV2,
       toolApprovalLevel: "danger",
     });
 
     expect(result.success).toBe(false);
   });
 
-  it("strips signal and processLocal fields", () => {
+  it("strips signal, processLocal, and the removed singular modelSource", () => {
     const withExtras = {
-      ...minimalInput,
+      ...minimalV2,
       signal: { aborted: false },
       processLocal: true,
+      modelSource: {
+        kind: "secret",
+        providerId: "anthropic",
+        apiKey: "sk-ant",
+        modelId: "claude-sonnet-4",
+      },
     };
     const result = harnessStreamInputSchema.safeParse(withExtras);
     expect(result.success).toBe(true);
     if (result.success) {
       expect("signal" in result.data).toBe(false);
       expect("processLocal" in result.data).toBe(false);
+      expect("modelSource" in result.data).toBe(false);
     }
   });
 
   it("rejects in-process MCP sources at the wire boundary", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
+      ...minimalV2,
       mcpSource: {
         kind: "in-process",
         client: {},
@@ -176,7 +282,7 @@ describe("harnessStreamInputSchema", () => {
 
   it("round-trips an HTTP MCP source", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
+      ...minimalV2,
       mcpSource: {
         kind: "http",
         url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
@@ -198,7 +304,7 @@ describe("harnessStreamInputSchema", () => {
 
   it("round-trips an HTTP object-storage source", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
+      ...minimalV2,
       objectStorageSource: {
         kind: "http",
         baseUrl: "https://mesh.example.com/api/acme/object-storage",
@@ -218,41 +324,28 @@ describe("harnessStreamInputSchema", () => {
     }
   });
 
-  it("round-trips a resolved secret model source", () => {
+  it("round-trips slot-keyed resolved Decopilot model sources", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
-      modelSource: {
-        kind: "secret",
-        providerId: "openai-compatible",
-        apiKey: "sk-test",
-        modelId: "gpt-4.1",
-        baseUrl: "https://litellm.example.com/v1",
-        extraHeaders: { "x-provider": "mesh" },
-      },
-    });
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.modelSource).toEqual({
-        kind: "secret",
-        providerId: "openai-compatible",
-        apiKey: "sk-test",
-        modelId: "gpt-4.1",
-        baseUrl: "https://litellm.example.com/v1",
-        extraHeaders: { "x-provider": "mesh" },
-      });
-    }
-  });
-
-  it("round-trips resolved Decopilot model sources for tool and title slots", () => {
-    const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
+      ...minimalV2,
       modelSources: {
-        primary: {
+        thinking: {
           kind: "secret",
           providerId: "anthropic",
           apiKey: "sk-main",
           modelId: "claude-sonnet-4",
+        },
+        fast: {
+          kind: "secret",
+          providerId: "openai-compatible",
+          apiKey: "sk-fast",
+          modelId: "gpt-4.1-mini",
+          baseUrl: "https://litellm.example.com/v1",
+        },
+        smart: {
+          kind: "secret",
+          providerId: "anthropic",
+          apiKey: "sk-smart",
+          modelId: "claude-opus-4",
         },
         image: {
           kind: "secret",
@@ -266,35 +359,36 @@ describe("harnessStreamInputSchema", () => {
           apiKey: "sk-google",
           modelId: "gemini-2.5-pro-deep-research",
         },
-        title: {
-          kind: "secret",
-          providerId: "openai-compatible",
-          apiKey: "sk-title",
-          modelId: "gpt-4.1-mini",
-          baseUrl: "https://litellm.example.com/v1",
-        },
       },
     });
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.modelSources?.primary.providerId).toBe("anthropic");
-      expect(result.data.modelSources?.image?.providerId).toBe("openrouter");
-      expect(result.data.modelSources?.deepResearch?.providerId).toBe("google");
-      expect(result.data.modelSources?.title?.baseUrl).toBe(
+      expect(result.data.modelSources?.thinking.providerId).toBe("anthropic");
+      expect(result.data.modelSources?.fast?.baseUrl).toBe(
         "https://litellm.example.com/v1",
       );
+      expect(result.data.modelSources?.smart?.providerId).toBe("anthropic");
+      expect(result.data.modelSources?.image?.providerId).toBe("openrouter");
+      expect(result.data.modelSources?.deepResearch?.providerId).toBe("google");
     }
   });
 
-  it("rejects legacy nested mcp model secrets", () => {
+  it("rejects a primary slot inside modelSources (strict object)", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
-      mcp: {
-        ...minimalInput.mcp,
-        modelSecret: {
+      ...minimalV2,
+      modelSources: {
+        thinking: {
+          kind: "secret",
           providerId: "anthropic",
-          apiKey: "sk-ant",
+          apiKey: "sk-main",
+          modelId: "claude-sonnet-4",
+        },
+        primary: {
+          kind: "secret",
+          providerId: "anthropic",
+          apiKey: "sk-main",
+          modelId: "claude-sonnet-4",
         },
       },
     });
@@ -304,11 +398,28 @@ describe("harnessStreamInputSchema", () => {
 
   it("rejects in-process model sources at the wire boundary", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalInput,
-      modelSource: {
-        kind: "in-process",
-        model: {},
-        modelId: "claude-sonnet-4",
+      ...minimalV2,
+      modelSources: {
+        thinking: {
+          kind: "in-process",
+          model: {},
+          modelId: "claude-sonnet-4",
+        },
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects legacy nested mcp model secrets", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalV2,
+      mcp: {
+        ...minimalV2.mcp,
+        modelSecret: {
+          providerId: "anthropic",
+          apiKey: "sk-ant",
+        },
       },
     });
 

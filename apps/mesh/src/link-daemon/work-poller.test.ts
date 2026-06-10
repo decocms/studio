@@ -24,9 +24,13 @@ const validWorkItem: WorkItem = {
     runId: "run_01",
     taskId: "task_01",
     messages: [],
+    workspace: { cwd: "default" },
     models: {
-      credentialId: "cred_01",
-      thinking: { id: "claude-3-7-sonnet", title: "Sonnet" },
+      thinking: {
+        id: "claude-3-7-sonnet",
+        title: "Sonnet",
+        credentialId: "cred_01",
+      },
     },
     mcp: {
       url: "https://mcp.example.com",

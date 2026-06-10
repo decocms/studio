@@ -24,12 +24,12 @@
  *      Prefer the env vars the sandbox sets (`WORKDIR` then `APP_ROOT`),
  *      then fall back to `process.cwd()`. Append `/repo` in every case so
  *      the CLI actually runs inside the checkout.
- *   4. **Cluster path** (`processLocal` is set): defer to the optional
- *      `processLocal.resolveCwd` callback. The cluster used to inject a
- *      `host` runner that materialized files at a per-branch path; that
- *      runner has been retired and the cluster no longer supplies a
- *      resolver, so we fall through to `undefined`. The callback is kept
- *      as an extension point for future cluster-side runners.
+ *   4. **Cluster path** (`processLocal` is set): return `undefined`. The
+ *      cluster's `host` runner (which materialized files at a per-branch
+ *      path) has been retired and hosted execution has no local checkout.
+ *
+ * DELETION PENDING (link protocol v2 follow-up): this whole resolver dies
+ * once CLI harnesses consume the symbolic `input.workspace.cwd` directly.
  */
 
 import type { HarnessStreamInput } from "./types";
@@ -56,7 +56,6 @@ export async function resolveCliCwd(
     return `${appRoot.replace(/\/$/, "")}/repo`;
   }
 
-  const resolveCwd = input.processLocal.resolveCwd;
-  if (!resolveCwd) return undefined;
-  return await resolveCwd();
+  // Cluster path: hosted execution has no local checkout to point the CLI at.
+  return undefined;
 }

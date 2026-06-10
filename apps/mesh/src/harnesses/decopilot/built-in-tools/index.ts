@@ -53,7 +53,7 @@ import { createTakeScreenshotTool, type PendingImage } from "./take-screenshot";
 import { createScrapeUrlTool } from "./scrape-url";
 import { createInspectPageTool } from "./inspect-page";
 import { buildPortableBuiltInTools } from "./portable-built-ins";
-import type { ModelsConfig } from "../../../api/routes/decopilot/types";
+import type { ModelsConfig } from "../../types";
 import type { MeshProvider } from "@/ai-providers/types";
 
 /**

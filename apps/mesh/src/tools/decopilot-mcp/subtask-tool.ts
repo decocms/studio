@@ -21,7 +21,7 @@ import { defineTool } from "@/core/define-tool";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { runAgentLoop } from "@/harnesses/decopilot/run-agent-loop";
 import { SUBAGENT_STEP_LIMIT } from "@/api/routes/decopilot/constants";
-import type { ModelsConfig } from "@/api/routes/decopilot/types";
+import type { ModelsConfig } from "@/harnesses";
 import type { UIMessageStreamWriter } from "ai";
 
 // Minimal no-op writer — discards all data chunks emitted by runAgentLoop
@@ -59,7 +59,6 @@ const SubtaskMcpInputSchema = z.object({
     .string()
     .min(1)
     .describe("Thinking model ID to use for the subagent loop."),
-  codingModelId: z.string().optional().describe("Optional coding model ID."),
   fastModelId: z.string().optional().describe("Optional fast model ID."),
 });
 
@@ -83,29 +82,22 @@ export const SUBTASK_MCP = defineTool({
       organization.id,
     );
 
-    // 2. Build a minimal ModelsConfig from the passed model IDs.
+    // 2. Build a minimal slot-keyed ModelsConfig from the passed model IDs.
+    //    Every slot carries the caller's credential (per-slot credentials, v2).
     const models: ModelsConfig = {
-      credentialId: input.credentialId,
       thinking: {
         id: input.thinkingModelId,
         provider: provider.info.id,
         title: input.thinkingModelId,
+        credentialId: input.credentialId,
       },
-      ...(input.codingModelId
-        ? {
-            coding: {
-              id: input.codingModelId,
-              provider: provider.info.id,
-              title: input.codingModelId,
-            },
-          }
-        : {}),
       ...(input.fastModelId
         ? {
             fast: {
               id: input.fastModelId,
               provider: provider.info.id,
               title: input.fastModelId,
+              credentialId: input.credentialId,
             },
           }
         : {}),

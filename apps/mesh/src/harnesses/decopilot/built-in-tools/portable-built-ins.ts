@@ -42,10 +42,10 @@ const INLINE_RESOURCE_BYTE_LIMIT = 1_048_576;
 const SUBTASK_MCP_TOOL_NAME = "SUBTASK_MCP";
 const SUBTASK_TIMEOUT_MS = 600_000;
 
+/** Per-slot credentials (v2): the relay forwards the thinking slot's
+ *  credential; there is no root credential and no coding slot. */
 export interface PortableSubtaskModels {
-  credentialId: string;
-  thinking: { id: string };
-  coding?: { id: string };
+  thinking: { id: string; credentialId: string };
   fast?: { id: string };
 }
 
@@ -382,9 +382,8 @@ function createSubtaskRelayTool(params: {
             arguments: {
               prompt,
               agent_id: agent_id ?? selfAgentId,
-              credentialId: models.credentialId,
+              credentialId: models.thinking.credentialId,
               thinkingModelId: models.thinking.id,
-              ...(models.coding ? { codingModelId: models.coding.id } : {}),
               ...(models.fast ? { fastModelId: models.fast.id } : {}),
             },
           },

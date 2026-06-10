@@ -11,9 +11,13 @@ export const FIXTURE_MINIMAL_INPUT: HarnessStreamInputWire = {
   runId: "run-fixture",
   taskId: "thr-fixture",
   messages: [],
+  workspace: { cwd: "default" },
   models: {
-    credentialId: "cred-fixture",
-    thinking: { id: "claude-code:opus", title: "Opus" },
+    thinking: {
+      id: "claude-code:opus",
+      title: "Opus",
+      credentialId: "cred-fixture",
+    },
   },
   mcp: {
     url: "https://mesh.example.com/mcp/virtual-mcp/agent-fixture",

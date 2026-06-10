@@ -58,11 +58,14 @@ export type DecopilotSecretModelSource = Extract<
   { kind: "secret" }
 >;
 
+/** Slot-keyed resolved model sources. Mirrors `ModelsConfig` (decision D14):
+ *  `thinking` is the canonical primary slot; `title`/`primary` are gone. */
 export interface DecopilotModelSources {
-  primary: DecopilotModelSource;
+  thinking: DecopilotModelSource;
+  fast?: DecopilotModelSource;
+  smart?: DecopilotModelSource;
   image?: DecopilotModelSource;
   deepResearch?: DecopilotModelSource;
-  title?: DecopilotModelSource;
 }
 
 export type DecopilotSecretModelSources = {

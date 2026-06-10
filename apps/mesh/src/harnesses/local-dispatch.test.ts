@@ -13,9 +13,9 @@ const makeInput = (): HarnessStreamInput => ({
   threadId: "t1",
   runId: "r1",
   messages: [],
+  workspace: { cwd: "default" },
   models: {
-    credentialId: "cred-1",
-    thinking: { id: "m-thinking", name: "Thinking", contextWindow: 0 },
+    thinking: { id: "m-thinking", title: "Thinking", credentialId: "cred-1" },
   } as unknown as HarnessStreamInput["models"],
   mcp: { url: "http://localhost/mcp", headers: {}, expiresAt: 0 },
   mode: "default",

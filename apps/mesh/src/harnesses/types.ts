@@ -1,7 +1,6 @@
 import type { UIMessage, UIMessageChunk } from "ai";
 import type {
   DecopilotMcpSource,
-  DecopilotModelSource,
   DecopilotModelSources,
   DecopilotObjectStorageSource,
 } from "./sources";
@@ -48,25 +47,26 @@ export type ToolApprovalLevel = "auto" | "readonly";
  *  `apps/mesh/src/api/routes/decopilot/mode-config.ts:CHAT_MODES`. */
 export type ChatMode = "default" | "plan" | "web-search" | "gen-image";
 
-/** Per-model selection passed in the wire input. Cluster has a richer
- *  `ModelInfo` (capabilities, etc.); the package mirrors the minimal
- *  fields the harness package itself reads, plus `limits` which the
- *  cluster's decopilot run-stream reads for `maxOutputTokens`. */
+/** Per-model selection passed in the wire input. Every slot carries its own
+ *  credentialId (decision D14) — there is no root credential. */
 export interface ModelSelection {
   id: string;
   title?: string;
   provider?: string | null;
+  /** The aiProviderKeys credential this slot resolves against. Dispatch
+   *  defaults it to the chat credential when the client doesn't pin one. */
+  credentialId: string;
   limits?: { contextWindow?: number; maxOutputTokens?: number };
 }
 
+/** Slot-keyed model config. `coding` and `title` are gone (decisions D11/D12);
+ *  `smart` is reserved for upcoming features. */
 export interface ModelsConfig {
-  credentialId: string;
   thinking: ModelSelection;
-  coding?: ModelSelection;
   fast?: ModelSelection;
-  title?: ModelSelection;
-  image?: ModelSelection & { credentialId: string };
-  deepResearch?: ModelSelection & { credentialId: string };
+  smart?: ModelSelection;
+  image?: ModelSelection;
+  deepResearch?: ModelSelection;
 }
 
 /** UI-shape message a harness receives. Structurally compatible with the
@@ -81,14 +81,11 @@ export interface UsageTotals {
   totalTokens: number;
 }
 
-/** Generic in-process hooks used by CLI harnesses. */
+/** Generic in-process hooks used by CLI harnesses.
+ *
+ *  DELETION PENDING (Phase 2): the last member dies when usage flows through
+ *  stream metadata for all harnesses. */
 export interface HarnessProcessLocal {
-  /** Cluster-side cwd resolver for github-linked agents. Returns the
-   *  per-branch sandbox workdir; CLI harnesses use this when running
-   *  in hosted execution. When undefined (or returns undefined), the harness
-   *  falls back to `process.cwd()`. */
-  resolveCwd?: () => Promise<string | undefined>;
-
   /** Called once per model completion to report cumulative usage totals. */
   onUsageAggregated?: (totalUsage: UsageTotals) => void;
 }
@@ -106,16 +103,18 @@ export interface HarnessStreamInput {
   // ===== Conversation =====
   messages: ChatMessage[];
 
+  // ===== Workspace =====
+  /** Symbolic, logically-resolved working directory (see workspace-cwd.ts).
+   *  Required. The daemon rebases non-"default" values onto its sandbox root. */
+  workspace: { cwd: string };
+
   // ===== Models (already resolved: credential → key/headers, permissions checked) =====
   models: ModelsConfig;
-  /** Resolved main model source for runtimes that cannot access the cluster
-   *  vault/aiProviders. Secret sources are serializable and may cross the link
-   *  protocol; in-process model sources are local-only and must not cross it. */
-  modelSource?: DecopilotModelSource;
-  /** Resolved Decopilot model sources by slot. The primary slot mirrors
-   *  `modelSource`; optional slots let built-ins and auto-title use the
+  /** Resolved Decopilot model sources by slot. `thinking` is the canonical
+   *  primary slot; optional slots let built-ins and auto-title use the
    *  credential already selected by the cluster without receiving cluster
-   *  provider objects. */
+   *  provider objects. Secret sources are serializable and may cross the link
+   *  protocol; in-process model sources are local-only and must not cross it. */
   modelSources?: DecopilotModelSources;
   /** Resolved MCP source. HTTP sources are serializable; in-process clients are
    *  local-only and stripped before remote dispatch. */

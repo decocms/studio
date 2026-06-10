@@ -53,13 +53,11 @@ interface ClusterInputView {
 function resolveSecretModelSource(
   input: HarnessStreamInput,
 ): DecopilotSecretModelSource {
-  const source =
-    input.modelSources?.primary ??
-    (input.modelSource?.kind === "secret" ? input.modelSource : null);
+  const source = input.modelSources?.thinking ?? null;
   if (!source || source.kind !== "secret") {
     throw new Error(
-      "Decopilot harness requires a secret modelSource. Dispatch must resolve " +
-        "the selected model credential before invoking Decopilot.",
+      "Decopilot harness requires a secret thinking model source. Dispatch " +
+        "must resolve the selected model credential before invoking Decopilot.",
     );
   }
   return source;
@@ -99,12 +97,19 @@ export const decopilotHarnessFactory: HarnessFactory = {
           optionalSecretModelSource(input.modelSources?.deepResearch) ??
             modelSource,
         );
-        const titleModelSource = optionalSecretModelSource(
-          input.modelSources?.title,
-        );
-        const titleProvider = createProviderFromSecret(
-          titleModelSource ?? modelSource,
-        );
+        // Title generation rides the fast → smart → thinking slot chain
+        // (decision D12) — there is no dedicated title slot.
+        const titleSlot =
+          input.models.fast ?? input.models.smart ?? input.models.thinking;
+        const titleSource =
+          (input.models.fast
+            ? optionalSecretModelSource(input.modelSources?.fast)
+            : undefined) ??
+          (input.models.smart
+            ? optionalSecretModelSource(input.modelSources?.smart)
+            : undefined) ??
+          modelSource;
+        const titleProvider = createProviderFromSecret(titleSource);
         const toolOutputMap = new Map<string, string>();
         const pendingImages: PendingImage[] = [];
         const sideChannel = createSideChannelWriter();
@@ -157,8 +162,7 @@ export const decopilotHarnessFactory: HarnessFactory = {
           yield* runDecopilotStream(input, ctx, tools, prompt, {
             provider,
             titleProvider,
-            titleModel:
-              input.models.title ?? input.models.fast ?? input.models.thinking,
+            titleModel: titleSlot,
             registrySignal: input.signal ?? new AbortController().signal,
             processedSystemMessages,
             processedMessages: narrowedMessages,

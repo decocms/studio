@@ -30,7 +30,7 @@ export function createCliMessageMetadata(
       return {
         agent: { id: input.agent.id ?? null },
         models: {
-          credentialId: input.models.credentialId,
+          credentialId: input.models.thinking.credentialId,
           thinking: {
             ...input.models.thinking,
             title: input.models.thinking.title ?? input.models.thinking.id,

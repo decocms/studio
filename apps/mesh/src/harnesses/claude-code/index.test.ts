@@ -6,16 +6,17 @@ import type { HarnessContext, HarnessStreamInput } from "../types";
 function makeInput(): HarnessStreamInput {
   return {
     agent: { id: "agent-1" },
+    workspace: { cwd: "default" },
     models: {
-      credentialId: "cred-1",
       thinking: {
         id: "claude-code:sonnet",
         title: "Claude Sonnet",
         provider: null,
+        credentialId: "cred-1",
       },
     },
     threadId: "thread-1",
-  } as HarnessStreamInput;
+  } as unknown as HarnessStreamInput;
 }
 
 /**

@@ -7,9 +7,13 @@ function makeInput(overrides: Partial<HarnessStreamInput>): HarnessStreamInput {
     threadId: "thread-1",
     runId: "run-1",
     messages: [],
+    workspace: { cwd: "default" },
     models: {
-      credentialId: "cred-1",
-      thinking: { id: "claude-sonnet-4", title: "Claude Sonnet 4" },
+      thinking: {
+        id: "claude-sonnet-4",
+        title: "Claude Sonnet 4",
+        credentialId: "cred-1",
+      },
     },
     mcp: {
       url: "https://studio.example.com/mcp/agent-1",
@@ -34,6 +38,8 @@ describe("decopilotHarnessFactory", () => {
     const harness = decopilotHarnessFactory.create({} as never);
     const iterator = harness.stream(makeInput({}))[Symbol.asyncIterator]();
 
-    await expect(iterator.next()).rejects.toThrow(/secret modelSource/);
+    await expect(iterator.next()).rejects.toThrow(
+      /secret thinking model source/,
+    );
   });
 });

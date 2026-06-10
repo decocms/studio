@@ -189,7 +189,7 @@ export async function* runDesktopAgentLoop(
     abortSignal,
     model: createLanguageModel(
       provider,
-      models.fast ?? models.thinking,
+      models.fast ?? models.smart ?? models.thinking,
     ) as never,
     userMessage: userMessageText,
   });
@@ -235,7 +235,7 @@ export async function* runDesktopAgentLoop(
         return {
           agent: { id: opts.agentIdForMetadata ?? null },
           models: {
-            credentialId: models.credentialId,
+            credentialId: models.thinking.credentialId,
             thinking: {
               ...models.thinking,
               title: models.thinking.title ?? models.thinking.id,

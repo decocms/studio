@@ -32,31 +32,33 @@ export type DispatchSSEEvent = z.infer<typeof dispatchSSEEventSchema>;
 
 const chatMessageSchema = z.record(z.string(), z.unknown()); // opaque to link-protocol
 
-const modelSelectionSchema = z.object({
-  id: z.string(),
-  title: z.string().optional(),
-  provider: z.string().nullable().optional(),
-  limits: z
-    .object({
-      contextWindow: z.number().int().positive().optional(),
-      maxOutputTokens: z.number().int().positive().optional(),
-    })
-    .optional(),
-});
+// v2 contract: per-slot credentialId (no root credential), no `coding`/`title`
+// slots, and `.strict()` objects so old-shape inputs are rejected rather than
+// silently accepted.
+const modelSelectionSchema = z
+  .object({
+    id: z.string(),
+    title: z.string().optional(),
+    provider: z.string().nullable().optional(),
+    credentialId: z.string(),
+    limits: z
+      .object({
+        contextWindow: z.number().int().positive().optional(),
+        maxOutputTokens: z.number().int().positive().optional(),
+      })
+      .optional(),
+  })
+  .strict();
 
-const modelSelectionWithCredentialSchema = modelSelectionSchema.extend({
-  credentialId: z.string().optional(),
-});
-
-const modelsConfigSchema = z.object({
-  credentialId: z.string(),
-  thinking: modelSelectionSchema.extend({ title: z.string() }),
-  coding: modelSelectionSchema.optional(),
-  fast: modelSelectionSchema.optional(),
-  title: modelSelectionSchema.optional(),
-  image: modelSelectionWithCredentialSchema.optional(),
-  deepResearch: modelSelectionWithCredentialSchema.optional(),
-});
+const modelsConfigSchema = z
+  .object({
+    thinking: modelSelectionSchema.extend({ title: z.string() }),
+    fast: modelSelectionSchema.optional(),
+    smart: modelSelectionSchema.optional(),
+    image: modelSelectionSchema.optional(),
+    deepResearch: modelSelectionSchema.optional(),
+  })
+  .strict();
 
 const secretModelSourceSchema = z.object({
   kind: z.literal("secret"),
@@ -67,12 +69,15 @@ const secretModelSourceSchema = z.object({
   extraHeaders: z.record(z.string(), z.string()).optional(),
 });
 
-const modelSourcesSchema = z.object({
-  primary: secretModelSourceSchema,
-  image: secretModelSourceSchema.optional(),
-  deepResearch: secretModelSourceSchema.optional(),
-  title: secretModelSourceSchema.optional(),
-});
+const modelSourcesSchema = z
+  .object({
+    thinking: secretModelSourceSchema,
+    fast: secretModelSourceSchema.optional(),
+    smart: secretModelSourceSchema.optional(),
+    image: secretModelSourceSchema.optional(),
+    deepResearch: secretModelSourceSchema.optional(),
+  })
+  .strict();
 
 const httpMcpSourceSchema = z.object({
   kind: z.literal("http"),
@@ -90,13 +95,17 @@ const objectStorageSourceSchema = z.object({
 
 export const harnessStreamInputSchema = z
   .object({
+    /** First-class harness id on the wire (v2). */
+    harnessId: z.enum(["decopilot", "claude-code", "codex"]).optional(),
     threadId: z.string(),
     runId: z.string(),
     taskId: z.string(),
     resumeSessionRef: z.string().optional(),
     messages: z.array(chatMessageSchema),
+    /** Symbolic, logically-resolved cwd (see harnesses/workspace-cwd.ts).
+     *  Required — its absence rejects pre-v2 inputs. */
+    workspace: z.object({ cwd: z.string().min(1) }).strict(),
     models: modelsConfigSchema,
-    modelSource: secretModelSourceSchema.optional(),
     modelSources: modelSourcesSchema.optional(),
     mcpSource: httpMcpSourceSchema.optional(),
     objectStorageSource: objectStorageSourceSchema.optional(),

@@ -47,8 +47,7 @@ describe("buildPortableBuiltInTools", () => {
       subtaskRelay: {
         mcpClient: passthroughClient,
         models: {
-          credentialId: "cred-1",
-          thinking: { id: "gpt-4.1" },
+          thinking: { id: "gpt-4.1", credentialId: "cred-1" },
         },
         selfAgentId: "agent-1",
       },

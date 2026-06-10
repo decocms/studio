@@ -5,8 +5,9 @@
  * Registered in the daemon's `dispatchHarnessRegistry` under the id "decopilot".
  * Unlike the cluster `decopilotHarnessFactory` (which threads the full
  * `StudioContext`, vault, storage, and run-registry), this factory:
- *   - activates the chat provider from the injected `modelSource`
- *     (`provider-from-secret`) instead of `ctx.aiProviders.activate` + vault;
+ *   - activates the chat provider from the injected `modelSources.thinking`
+ *     secret (`provider-from-secret`) instead of `ctx.aiProviders.activate`
+ *     + vault;
  *   - opens an HTTP MCP `Client` to `mcp.url` and exposes its tools as
  *     passthrough tools (`toolsFromMCP`);
  *   - assembles only the LOCAL-OK built-ins (`buildLocalTools`) — the 5 cluster
@@ -18,9 +19,9 @@
  * specifier and no `StudioContext` ever enters this graph, so the daemon bundles
  * it and `tsc` does not overflow.
  *
- * ⚠️ SECURITY: `modelSource(kind="secret")` carries an org chat-completion API key in
- * plaintext over HTTPS. Never log it. Hardening (cluster model-proxy, spec §3.9)
- * is deferred.
+ * ⚠️ SECURITY: each `modelSources` slot (kind="secret") carries an org
+ * chat-completion API key in plaintext over HTTPS. Never log it. Hardening
+ * (cluster model-proxy, spec §3.9) is deferred.
  */
 
 import type { UIMessageChunk } from "ai";
@@ -68,15 +69,14 @@ export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
   mcpSource: DecopilotHttpMcpSource;
 } {
   const modelSource =
-    input.modelSources?.primary?.kind === "secret"
-      ? input.modelSources.primary
-      : input.modelSource?.kind === "secret"
-        ? input.modelSource
-        : null;
+    input.modelSources?.thinking?.kind === "secret"
+      ? input.modelSources.thinking
+      : null;
   if (!modelSource) {
     throw new Error(
-      "decopilot-desktop requires a secret modelSource. The cluster must inject " +
-        "the chat-model credential when routing decopilot to user-desktop.",
+      "decopilot-desktop requires a secret thinking model source. The cluster " +
+        "must inject the chat-model credential when routing decopilot to " +
+        "user-desktop.",
     );
   }
 

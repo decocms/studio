@@ -28,15 +28,15 @@
  *   `orgSlug` is authoritative for the ingest URL.
  *
  * ⚠️ HARNESS ID NOTE:
- *   `WorkItem.harnessInput` is a `HarnessStreamInputWire` — a plain JSON
- *   record without a top-level `harnessId` field (the `harnessId` is passed
- *   *beside* the input in the dispatch POST body, as in remote-dispatch.ts).
- *   We read `(work.harnessInput as Record<string,unknown>).harnessId` first
- *   (a future schema version or the cluster may include it); if absent, we
- *   fall back to `work.harnessInput.agent?.id` (which the cluster sets to
- *   the harness type string, e.g. "claude-code"). If that is also absent, we
- *   default to "claude-code" (the canonical desktop harness).  Callers can
- *   override via `deps.harnessId` if the caller knows the correct value.
+ *   `WorkItem.harnessInput` is a `HarnessStreamInputWire`. As of link
+ *   protocol v2 the cluster includes a first-class top-level `harnessId`
+ *   field on the wire input, so reading
+ *   `(work.harnessInput as Record<string,unknown>).harnessId` is the primary
+ *   path. The legacy fallback chain stays for now: if absent, we fall back
+ *   to `work.harnessInput.agent?.id` (which older dispatchers set to the
+ *   harness type string, e.g. "claude-code"), then default to "claude-code"
+ *   (the canonical desktop harness). Callers can override via
+ *   `deps.harnessId` if the caller knows the correct value.
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */

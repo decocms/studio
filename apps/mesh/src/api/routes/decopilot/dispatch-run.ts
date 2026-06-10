@@ -25,7 +25,6 @@
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import { createUIMessageStream } from "ai";
-import { tryResolveTier, type ResolvedTier } from "@/core/resolve-tier";
 import { localDispatch } from "@/harnesses";
 import { remoteDispatch } from "@/harnesses/remote-dispatch";
 import {
@@ -59,8 +58,14 @@ import type {
   HarnessId,
   HarnessProcessLocal,
   HarnessStreamInput,
+  ModelSelection,
+  ModelsConfig,
 } from "@/harnesses";
 import { createSecretModelSource } from "@/harnesses";
+import {
+  WORKSPACE_CWD_DEFAULT,
+  WORKSPACE_CWD_REPO,
+} from "@/harnesses/workspace-cwd";
 import { createProviderFromSecret } from "@/harnesses/decopilot/provider-from-secret";
 import {
   sanitizeStreamError,
@@ -87,7 +92,7 @@ import {
 import type { RunRegistry } from "./run-registry";
 import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
-import type { ChatMessage, ModelsConfig } from "./types";
+import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
 import type { ThreadMessage } from "@/storage/types";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
@@ -200,6 +205,22 @@ export function resolveHarnessId(providerId: string | undefined): HarnessId {
   return "decopilot";
 }
 
+/** Symbolic cwd: "/repo" for repo-backed sandbox dispatch (the daemon rebases
+ *  onto its sandbox root); "default" otherwise (harness uses its SDK default,
+ *  never fails). Hosted/in-pod runs always get "default". */
+function resolveWorkspaceCwd(
+  virtualMcp: { metadata?: unknown } | null,
+  sandboxProviderKind: DispatchTarget["sandboxProviderKind"],
+): { cwd: string } {
+  const hasRepo = !!(
+    virtualMcp?.metadata as { githubRepo?: unknown } | undefined
+  )?.githubRepo;
+  if (sandboxProviderKind === "user-desktop" && hasRepo) {
+    return { cwd: WORKSPACE_CWD_REPO };
+  }
+  return { cwd: WORKSPACE_CWD_DEFAULT };
+}
+
 /**
  * Find the last coding-agent session id stored on a prior assistant
  * message. Today only claude-code uses this — codex spawns a new process
@@ -227,77 +248,6 @@ function lookupResumeSessionRef(
     }
   }
   return undefined;
-}
-
-async function resolveDecopilotTitleConfig(
-  ctx: StudioContext,
-  organizationId: string,
-): Promise<{
-  modelSource: DecopilotSecretModelSource;
-  model: ModelsConfig["thinking"];
-} | null> {
-  const resolved = await tryResolveTier(ctx, "fast");
-  if (!resolved) return null;
-
-  const allowedModels = await fetchModelPermissions(
-    ctx.db,
-    organizationId,
-    ctx.auth.user?.role,
-  );
-  if (
-    allowedModels !== undefined &&
-    !checkModelPermission(
-      allowedModels,
-      resolved.credentialId,
-      resolved.modelId,
-    )
-  ) {
-    return null;
-  }
-
-  const modelSource = await resolveSecretModelSource(
-    ctx,
-    organizationId,
-    resolved.credentialId,
-    resolved.modelId,
-  ).catch((err) => {
-    console.warn("[decopilot:title] failed to resolve title model", err);
-    return null;
-  });
-  if (!modelSource) return null;
-
-  return { modelSource, model: modelInfoFromResolvedTier(resolved) };
-}
-
-function modelInfoFromResolvedTier(
-  resolved: ResolvedTier,
-): ModelsConfig["thinking"] {
-  return {
-    id: resolved.modelId,
-    title: resolved.modelMeta.title ?? resolved.modelId,
-    provider: resolved.modelMeta.providerId ?? null,
-    capabilities:
-      resolved.modelMeta.capabilities &&
-      resolved.modelMeta.capabilities.length > 0
-        ? {
-            vision:
-              resolved.modelMeta.capabilities.includes("vision") ||
-              resolved.modelMeta.capabilities.includes("image") ||
-              undefined,
-            text: resolved.modelMeta.capabilities.includes("text") || undefined,
-            reasoning:
-              resolved.modelMeta.capabilities.includes("reasoning") ||
-              undefined,
-          }
-        : undefined,
-    limits: resolved.modelMeta.limits
-      ? {
-          contextWindow: resolved.modelMeta.limits.contextWindow,
-          maxOutputTokens:
-            resolved.modelMeta.limits.maxOutputTokens ?? undefined,
-        }
-      : undefined,
-  };
 }
 
 async function resolveSecretModelSource(
@@ -379,7 +329,9 @@ export interface AgentConfig {
 
 export interface DispatchRunInput {
   messages: ChatMessage[];
-  models: ModelsConfig;
+  /** CLIENT request shape (root credentialId). `prepareRun` normalizes it
+   *  into the per-slot harness/wire `ModelsConfig` before dispatch. */
+  models: ClientModelsConfig;
   agent: AgentConfig;
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
@@ -444,10 +396,11 @@ export interface DispatchRunResult {
 // ============================================================================
 
 function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
+  const clientModels = input.models;
   return {
     "decopilot.agent.id": input.agent.id,
-    "decopilot.model.id": input.models.thinking.id,
-    "decopilot.credential.id": input.models.credentialId,
+    "decopilot.model.id": clientModels.thinking.id,
+    "decopilot.credential.id": clientModels.credentialId,
     "decopilot.organization.id": input.organizationId,
     "decopilot.user.id": input.userId,
     "decopilot.thread.id": input.taskId ?? "",
@@ -634,8 +587,39 @@ async function prepareRun(
   let taskId: string | undefined;
 
   try {
+    // The HTTP layer still sends the CLIENT models shape (root credentialId,
+    // optional client-only extras like `capabilities`). Read it through this
+    // narrowed view only — everything below the normalization block uses the
+    // per-slot v2 `models`.
+    const clientModels = input.models as unknown as {
+      credentialId: string;
+      thinking: {
+        id: string;
+        title?: string;
+        provider?: string | null;
+        limits?: { contextWindow?: number; maxOutputTokens?: number };
+        capabilities?: unknown;
+      };
+      fast?: { id: string; title?: string; provider?: string | null };
+      smart?: { id: string; title?: string; provider?: string | null };
+      image?: {
+        id: string;
+        title?: string;
+        provider?: string | null;
+        credentialId?: string;
+        limits?: { contextWindow?: number; maxOutputTokens?: number };
+      };
+      deepResearch?: {
+        id: string;
+        title?: string;
+        provider?: string | null;
+        credentialId?: string;
+        limits?: { contextWindow?: number; maxOutputTokens?: number };
+      };
+      coding?: { id: string }; // ignored — slot removed (D11)
+    };
     const credentialKey = await ctx.storage.aiProviderKeys
-      .findById(input.models.credentialId, input.organizationId)
+      .findById(clientModels.credentialId, input.organizationId)
       .catch(() => null);
     // Prefer the pre-resolved pin from POST /messages (covers desktop-CLI
     // harnesses whose synthetic credentialId doesn't match any row);
@@ -671,6 +655,56 @@ async function prepareRun(
       target.sandboxProviderKind,
     );
 
+    // Normalize the client models payload into the v2 per-slot shape FIRST
+    // (the HTTP layer still sends a root credentialId), so the permission
+    // check and slot resolution below read the per-slot credential. Each slot
+    // carries its own credentialId (decision D14), defaulting to the chat
+    // credential when the client doesn't pin one. `coding` is dropped (D11)
+    // and client-only extras (`capabilities`) intentionally stay client-side:
+    // the wire schema is `.strict()` per slot, and capability checks
+    // (`ensureModelCompatibility`) run pre-dispatch on the client shape.
+    const toSelection = (
+      slot: {
+        id: string;
+        title?: string;
+        provider?: string | null;
+        limits?: { contextWindow?: number; maxOutputTokens?: number };
+      },
+      credentialId: string,
+    ): ModelSelection => ({
+      id: slot.id,
+      ...(slot.title !== undefined ? { title: slot.title } : {}),
+      ...(slot.provider !== undefined ? { provider: slot.provider } : {}),
+      credentialId,
+      ...(slot.limits ? { limits: slot.limits } : {}),
+    });
+    let models: ModelsConfig = {
+      thinking: toSelection(clientModels.thinking, clientModels.credentialId),
+      ...(clientModels.fast
+        ? { fast: toSelection(clientModels.fast, clientModels.credentialId) }
+        : {}),
+      ...(clientModels.smart
+        ? { smart: toSelection(clientModels.smart, clientModels.credentialId) }
+        : {}),
+      ...(clientModels.image
+        ? {
+            image: toSelection(
+              clientModels.image,
+              clientModels.image.credentialId ?? clientModels.credentialId,
+            ),
+          }
+        : {}),
+      ...(clientModels.deepResearch
+        ? {
+            deepResearch: toSelection(
+              clientModels.deepResearch,
+              clientModels.deepResearch.credentialId ??
+                clientModels.credentialId,
+            ),
+          }
+        : {}),
+    };
+
     // 1. Check model permissions (decopilot-only; CLI harnesses run with
     //    the user's own provider credential / local CLI binary, which is
     //    already vetted at credential-creation time).
@@ -688,16 +722,13 @@ async function prepareRun(
       if (
         !checkModelPermission(
           allowedModels,
-          input.models.credentialId,
-          input.models.thinking.id,
+          models.thinking.credentialId,
+          models.thinking.id,
         )
       ) {
         throw new Error("Model not allowed for your role");
       }
-      input = {
-        ...input,
-        models: filterToolTiersByPermission(allowedModels, input.models),
-      };
+      models = filterToolTiersByPermission(allowedModels, models);
     }
 
     const windowSize = input.windowSize ?? DEFAULT_WINDOW_SIZE;
@@ -707,46 +738,34 @@ async function prepareRun(
     }
 
     // 2. Load entities, create/load memory, and resolve Decopilot model
-    // credentials in parallel. The harness receives serializable secret
+    // credentials in parallel — one resolution per configured slot, each
+    // against its own credential. The harness receives serializable secret
     // sources and reconstructs SDK providers locally in both cluster and
     // desktop execution.
-    const chatCredId = input.models.credentialId;
-    const imageCredId = input.models.image?.credentialId;
-    const deepResearchCredId = input.models.deepResearch?.credentialId;
+    const resolveSlot = (slot?: ModelSelection) =>
+      harnessId === "decopilot" && slot
+        ? resolveSecretModelSource(
+            ctx,
+            input.organizationId,
+            slot.credentialId,
+            slot.id,
+          )
+        : Promise.resolve(undefined);
     const [
       virtualMcp,
-      primaryModelSource,
-      imageModelSource,
-      deepResearchModelSource,
+      thinkingSource,
+      fastSource,
+      smartSource,
+      imageSource,
+      deepResearchSource,
       mem,
     ] = await Promise.all([
       ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
-      harnessId === "decopilot"
-        ? resolveSecretModelSource(
-            ctx,
-            input.organizationId,
-            chatCredId,
-            input.models.thinking.id,
-          )
-        : Promise.resolve(undefined),
-      harnessId === "decopilot" && input.models.image && imageCredId
-        ? resolveSecretModelSource(
-            ctx,
-            input.organizationId,
-            imageCredId,
-            input.models.image.id,
-          )
-        : Promise.resolve(undefined),
-      harnessId === "decopilot" &&
-      input.models.deepResearch &&
-      deepResearchCredId
-        ? resolveSecretModelSource(
-            ctx,
-            input.organizationId,
-            deepResearchCredId,
-            input.models.deepResearch.id,
-          )
-        : Promise.resolve(undefined),
+      resolveSlot(models.thinking),
+      resolveSlot(models.fast),
+      resolveSlot(models.smart),
+      resolveSlot(models.image),
+      resolveSlot(models.deepResearch),
       createMemory(ctx.storage.threads, {
         organization_id: input.organizationId,
         thread_id: input.taskId,
@@ -755,27 +774,18 @@ async function prepareRun(
       }),
     ]);
 
-    const decopilotTitleConfig =
-      harnessId === "decopilot"
-        ? await resolveDecopilotTitleConfig(ctx, input.organizationId)
-        : null;
-
-    const modelSource = primaryModelSource;
-    const modelSources: DecopilotSecretModelSources | undefined = modelSource
+    const modelSources: DecopilotSecretModelSources | undefined = thinkingSource
       ? {
-          primary: modelSource,
-          ...(imageModelSource ? { image: imageModelSource } : {}),
-          ...(deepResearchModelSource
-            ? { deepResearch: deepResearchModelSource }
-            : {}),
-          ...(decopilotTitleConfig?.modelSource
-            ? { title: decopilotTitleConfig.modelSource }
-            : {}),
+          thinking: thinkingSource,
+          ...(fastSource ? { fast: fastSource } : {}),
+          ...(smartSource ? { smart: smartSource } : {}),
+          ...(imageSource ? { image: imageSource } : {}),
+          ...(deepResearchSource ? { deepResearch: deepResearchSource } : {}),
         }
       : undefined;
 
-    const primaryProvider = modelSource
-      ? createProviderFromSecret(modelSource)
+    const primaryProvider = thinkingSource
+      ? createProviderFromSecret(thinkingSource)
       : null;
 
     // Diagnostic (resume only): record whether the model secret resolved and
@@ -787,12 +797,12 @@ async function prepareRun(
       console.log("[decopilot:stream] resume — resolved source state", {
         taskId: input.taskId,
         harnessId,
-        modelSourceResolved: !!modelSource,
-        imageModelSourceResolved: !!imageModelSource,
-        deepResearchModelSourceResolved: !!deepResearchModelSource,
-        thinkingModelId: input.models.thinking.id,
-        hasImage: !!input.models.image,
-        hasDeepResearch: !!input.models.deepResearch,
+        thinkingSourceResolved: !!thinkingSource,
+        imageSourceResolved: !!imageSource,
+        deepResearchSourceResolved: !!deepResearchSource,
+        thinkingModelId: models.thinking.id,
+        hasImage: !!models.image,
+        hasDeepResearch: !!models.deepResearch,
       });
     }
 
@@ -812,12 +822,12 @@ async function prepareRun(
     // error instead of letting Google's opaque "This model only supports
     // Interactions API" bubble up from deep inside the agent loop.
     if (primaryProvider?.asyncResearch) {
-      const slots: Array<["thinking" | "coding" | "fast" | "image", string]> = [
-        ["thinking", input.models.thinking.id],
+      const slots: Array<["thinking" | "fast" | "smart" | "image", string]> = [
+        ["thinking", models.thinking.id],
       ];
-      if (input.models.coding) slots.push(["coding", input.models.coding.id]);
-      if (input.models.fast) slots.push(["fast", input.models.fast.id]);
-      if (input.models.image) slots.push(["image", input.models.image.id]);
+      if (models.fast) slots.push(["fast", models.fast.id]);
+      if (models.smart) slots.push(["smart", models.smart.id]);
+      if (models.image) slots.push(["image", models.image.id]);
       for (const [slot, modelId] of slots) {
         if (primaryProvider.asyncResearch.canHandle(modelId)) {
           throw new Error(
@@ -1067,7 +1077,7 @@ async function prepareRun(
     // activated provider objects. For hosted cluster execution these stay
     // in-process; for user-desktop execution they transit to the daemon over
     // the link transport so the same harness contract works in both places.
-    // Never log `modelSource` or `modelSources`.
+    // Never log `modelSources` (any slot) or `mcp.headers` values.
 
     const mcp: HarnessStreamInput["mcp"] = mcpBase;
     const mcpSource: HarnessStreamInput["mcpSource"] =
@@ -1095,13 +1105,11 @@ async function prepareRun(
       runId: mem.thread.id, // RunRegistry keys runs by taskId today
       resumeSessionRef,
       messages: materializedMessages,
-      models: {
-        ...input.models,
-        ...(decopilotTitleConfig?.model
-          ? { title: decopilotTitleConfig.model }
-          : {}),
-      },
-      modelSource,
+      workspace: resolveWorkspaceCwd(
+        effectiveVirtualMcp,
+        target.sandboxProviderKind,
+      ),
+      models,
       modelSources,
       mcpSource,
       objectStorageSource,
@@ -1351,8 +1359,8 @@ async function prepareRun(
             organization_id: input.organizationId,
             thread_id: mem.thread.id,
             agent_id: input.agent.id,
-            model_id: input.models.thinking.id,
-            model_title: input.models.thinking.title,
+            model_id: models.thinking.id,
+            model_title: models.thinking.title,
             mode: input.mode,
             duration_ms: Date.now() - streamStartAt,
             finish_reason: finishReason,
@@ -1405,7 +1413,7 @@ async function prepareRun(
               organization_id: input.organizationId,
               thread_id: mem.thread.id,
               agent_id: input.agent.id,
-              model_id: input.models.thinking.id,
+              model_id: models.thinking.id,
               mode: input.mode,
               duration_ms: Date.now() - streamStartAt,
               is_resume: input.isResume ?? false,
@@ -1423,7 +1431,7 @@ async function prepareRun(
             organization_id: input.organizationId,
             thread_id: mem.thread.id,
             agent_id: input.agent.id,
-            model_id: input.models.thinking.id,
+            model_id: models.thinking.id,
             mode: input.mode,
             duration_ms: Date.now() - streamStartAt,
             error_category: classifyStreamError(error),

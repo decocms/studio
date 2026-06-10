@@ -30,3 +30,12 @@ describe("link protocol version", () => {
     expect(isVersionAcceptable(0)).toBe(false);
   });
 });
+
+describe("link protocol v2 hard break", () => {
+  it("pins version 2 and refuses v1 daemons", () => {
+    expect(LINK_PROTOCOL_VERSION).toBe(2);
+    expect(MIN_SUPPORTED_LINK_PROTOCOL).toBe(2);
+    expect(isVersionAcceptable(1)).toBe(false);
+    expect(isVersionAcceptable(2)).toBe(true);
+  });
+});

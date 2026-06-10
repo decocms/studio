@@ -25,7 +25,7 @@ import {
   type StreamTextOnStepFinishCallback,
   type UIMessageStreamWriter,
 } from "ai";
-import type { ModelsConfig } from "../../api/routes/decopilot/types";
+import type { ModelsConfig } from "../types";
 import type { ToolApprovalLevel } from "../../api/routes/decopilot/helpers";
 import type { GithubRepo, UsageStats } from "@decocms/mesh-sdk";
 import { createLanguageModel } from "../../ai-providers/language-model";

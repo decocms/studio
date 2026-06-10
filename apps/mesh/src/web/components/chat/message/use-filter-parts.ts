@@ -1,5 +1,5 @@
 import type { ToolDefinition, UsageStats } from "@decocms/mesh-sdk";
-import type { ModelsConfig } from "@/api/routes/decopilot/types";
+import type { ModelsConfig } from "@/harnesses/types";
 import type { ChatMessage } from "../types.ts";
 
 type MessagePart = ChatMessage["parts"][number];
@@ -21,6 +21,7 @@ export interface ToolMetadata {
 export interface ToolSubtaskMetadata {
   usage: UsageStats;
   agent: string;
+  /** Slot-keyed harness models (per-slot credentialId, v2). */
   models: ModelsConfig;
 }
 

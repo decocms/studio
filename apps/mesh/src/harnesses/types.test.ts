@@ -4,7 +4,11 @@ import type {
   HarnessFactory,
   HarnessId,
   HarnessStreamInput,
+  ModelsConfig,
 } from "./types";
+import { WORKSPACE_CWD_DEFAULT } from "./workspace-cwd";
+
+type Has<T, K extends PropertyKey> = K extends keyof T ? true : false;
 
 describe("Harness types", () => {
   test("HarnessId union covers the three v1 harnesses", () => {
@@ -36,6 +40,49 @@ describe("Harness types", () => {
   });
 });
 
+describe("HarnessStreamInput v2 contract", () => {
+  test("has no singular modelSource", () => {
+    const hasModelSource: Has<HarnessStreamInput, "modelSource"> = false;
+    const input = {} as HarnessStreamInput;
+
+    expect(hasModelSource).toBe(false);
+    expect("modelSource" in input).toBe(false);
+  });
+
+  test("requires workspace.cwd", () => {
+    const hasWorkspace: Has<HarnessStreamInput, "workspace"> = true;
+    // Required: `undefined` must NOT be assignable to the field.
+    const workspaceRequired: undefined extends HarnessStreamInput["workspace"]
+      ? false
+      : true = true;
+    const cwd: HarnessStreamInput["workspace"]["cwd"] = WORKSPACE_CWD_DEFAULT;
+
+    expect(hasWorkspace).toBe(true);
+    expect(workspaceRequired).toBe(true);
+    expect(cwd).toBe("default");
+  });
+
+  test("models slots are thinking/fast/smart/image/deepResearch, each with credentialId; no title/coding/root credentialId", () => {
+    const hasTitleSlot: Has<ModelsConfig, "title"> = false;
+    const hasCodingSlot: Has<ModelsConfig, "coding"> = false;
+    const hasRootCredential: Has<ModelsConfig, "credentialId"> = false;
+    const hasSmartSlot: Has<ModelsConfig, "smart"> = true;
+    const hasThinkingCredential: Has<ModelsConfig["thinking"], "credentialId"> =
+      true;
+    // Per-slot credentialId is required, not optional.
+    const thinkingCredentialRequired: undefined extends ModelsConfig["thinking"]["credentialId"]
+      ? false
+      : true = true;
+
+    expect(hasTitleSlot).toBe(false);
+    expect(hasCodingSlot).toBe(false);
+    expect(hasRootCredential).toBe(false);
+    expect(hasSmartSlot).toBe(true);
+    expect(hasThinkingCredential).toBe(true);
+    expect(thinkingCredentialRequired).toBe(true);
+  });
+});
+
 describe("HarnessStreamInput sources", () => {
   test("Decopilot stream input has no decopilotRuntime backchannel", () => {
     type HasBackchannel = "decopilotRuntime" extends keyof HarnessStreamInput
@@ -49,18 +96,9 @@ describe("HarnessStreamInput sources", () => {
   });
 
   test("accepts mcp without embedded model secrets", () => {
-    const input: Pick<
-      HarnessStreamInput,
-      "mcp" | "modelSource" | "modelSources"
-    > = {
-      modelSource: {
-        kind: "secret",
-        providerId: "anthropic",
-        apiKey: "sk-ant-test",
-        modelId: "claude-3-5-sonnet",
-      },
+    const input: Pick<HarnessStreamInput, "mcp" | "modelSources"> = {
       modelSources: {
-        primary: {
+        thinking: {
           kind: "secret",
           providerId: "anthropic",
           apiKey: "sk-ant-test",
@@ -79,7 +117,7 @@ describe("HarnessStreamInput sources", () => {
         expiresAt: Date.now() + 3_600_000,
       },
     };
-    expect(input.modelSource?.kind).toBe("secret");
+    expect(input.modelSources?.thinking.kind).toBe("secret");
     expect(input.modelSources?.image?.kind).toBe("secret");
     expect(input.mcp.url).toBe("https://cluster/mcp");
   });

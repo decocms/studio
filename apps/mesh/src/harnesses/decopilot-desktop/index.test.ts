@@ -6,9 +6,9 @@ const baseInput = {
   threadId: "thread-1",
   runId: "run-1",
   messages: [],
+  workspace: { cwd: "default" },
   models: {
-    credentialId: "cred-1",
-    thinking: { id: "gpt-4.1", title: "GPT" },
+    thinking: { id: "gpt-4.1", title: "GPT", credentialId: "cred-1" },
   },
   mcp: {
     url: "https://studio.example.com/mcp/agent-1",
@@ -25,22 +25,24 @@ const baseInput = {
   signal: new AbortController().signal,
 } satisfies HarnessStreamInput;
 
+const thinkingSecret = {
+  kind: "secret",
+  providerId: "openai",
+  apiKey: "sk-test",
+  modelId: "gpt-4.1",
+} as const;
+
 describe("resolveDesktopRuntimeSources", () => {
-  it("requires a resolved secret model source", () => {
+  it("requires a resolved secret thinking model source", () => {
     expect(() => resolveDesktopRuntimeSources(baseInput)).toThrow(
-      /requires a secret modelSource/,
+      /secret thinking model source/,
     );
   });
 
   it("uses the top-level HTTP MCP source when present", () => {
     const result = resolveDesktopRuntimeSources({
       ...baseInput,
-      modelSource: {
-        kind: "secret",
-        providerId: "openai",
-        apiKey: "sk-test",
-        modelId: "gpt-4.1",
-      },
+      modelSources: { thinking: thinkingSecret },
       mcpSource: {
         kind: "http",
         url: "https://studio.example.com/mcp/source",
@@ -56,12 +58,7 @@ describe("resolveDesktopRuntimeSources", () => {
   it("falls back to the legacy HTTP mcp envelope when mcpSource is absent", () => {
     const result = resolveDesktopRuntimeSources({
       ...baseInput,
-      modelSource: {
-        kind: "secret",
-        providerId: "openai",
-        apiKey: "sk-test",
-        modelId: "gpt-4.1",
-      },
+      modelSources: { thinking: thinkingSecret },
     });
 
     expect(result.mcpSource).toEqual({
