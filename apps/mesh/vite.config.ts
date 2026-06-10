@@ -7,6 +7,16 @@ import pkg from "./package.json" with { type: "json" };
 
 const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
 
+// IMPORTANT: the dev server must run under Node, NOT Bun (`vite dev`, never
+// `bun --bun vite dev`). The proxy below relies on the ServerResponse "close"
+// event to propagate client disconnects upstream (http-proxy destroys the
+// proxied request when the downstream client goes away). Bun's node:http
+// compat never emits that event on premature disconnect, so under Bun an
+// aborted SSE stream / long-poll keeps running on the Bun API server forever —
+// chat-turn cancels never arrive and orphaned `GET /api/links/work` polls
+// swallow pull-dispatch work items (e2e: link-proxy.spec.ts,
+// link-dispatch-pull.spec.ts).
+
 export default defineConfig({
   define: {
     __MESH_VERSION__: JSON.stringify(pkg.version),
