@@ -3,6 +3,12 @@ import type { GithubRepo } from "@decocms/mesh-sdk";
 export const DEFAULT_WINDOW_SIZE = 50;
 export const PARENT_STEP_LIMIT = 30;
 
+/** Title a thread carries until it's auto-titled or the user renames it. The
+ *  producer-side title gate (`needsTitle`) and the cluster's title interceptor
+ *  both compare against this. Lives here (a `@/*`-free harnesses leaf) so the
+ *  daemon can bundle it; re-exported from the route constants for the cluster. */
+export const DEFAULT_THREAD_TITLE = "New chat";
+
 export function buildBasePlatformPrompt(): string {
   return `<platform>
 You are an AI agent running on Deco CMS — a control plane for connecting

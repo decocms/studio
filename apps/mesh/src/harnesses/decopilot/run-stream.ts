@@ -42,6 +42,7 @@ import { createUsageAccumulator } from "../usage-accumulator";
 import { generateMessageId } from "../../api/routes/decopilot/constants";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
 import { makeTitleResultChunk } from "../title-chunk";
+import { shouldGenerateTitle } from "../title-merge";
 import { createLanguageModel } from "./mesh-provider";
 import { genTitle } from "./title-generator";
 import type { ChatMessage, HarnessStreamInput, ModelSelection } from "../types";
@@ -281,29 +282,42 @@ export async function* runDecopilotStream(
 
   // ── Auto-title: generate with this harness's fast model. The cluster
   //    interceptor only persists/broadcasts the generated result.
-  const userMessageText = JSON.stringify(processedMessages[0]?.content ?? "");
-  const titleHandle = genTitle({
-    abortSignal: registrySignal,
-    model: createLanguageModel(
-      titleProvider ?? provider,
-      titleModel ??
-        input.models.fast ??
-        input.models.smart ??
-        input.models.thinking,
-    ) as never,
-    userMessage: userMessageText,
+  //
+  //    Gate (D13): only auto-title an unrenamed thread (title still equals the
+  //    default), and NEVER for delegated subtask runs. Skipping here saves a
+  //    model call the cluster interceptor would otherwise discard post-hoc.
+  //    The interceptor keeps its own gate as defense-in-depth against a rename
+  //    racing the run.
+  const needsTitle = shouldGenerateTitle({
+    currentThreadTitle: extras.currentThreadTitle,
+    kind: extras.kind,
   });
-  const titlePromise = titleHandle.promise
-    .then((title) => {
-      return title ? (makeTitleResultChunk(title) as UIMessageChunk) : null;
-    })
-    .catch((err) => {
-      console.warn(
-        "[decopilot:title] title generation failed",
-        stringifyError(err),
-      );
-      return null;
-    });
+  const userMessageText = JSON.stringify(processedMessages[0]?.content ?? "");
+  const titleHandle = needsTitle
+    ? genTitle({
+        abortSignal: registrySignal,
+        model: createLanguageModel(
+          titleProvider ?? provider,
+          titleModel ??
+            input.models.fast ??
+            input.models.smart ??
+            input.models.thinking,
+        ) as never,
+        userMessage: userMessageText,
+      })
+    : null;
+  // When title gen is gated off, this never resolves to a chunk and the title
+  // branch of the drain loop is short-circuited (`titleDone` starts true).
+  const titlePromise: Promise<UIMessageChunk | null> = titleHandle
+    ? titleHandle.promise
+        .then((title) => {
+          return title ? (makeTitleResultChunk(title) as UIMessageChunk) : null;
+        })
+        .catch((err) => {
+          console.warn("[decopilot:title] title generation failed", err);
+          return null;
+        })
+    : Promise.resolve(null);
 
   // ── Mode + tool gating state shared between prepareStep and the
   //    `tools` argument to streamText ───────────────────────────────
@@ -707,7 +721,10 @@ export async function* runDecopilotStream(
   const iter = uiMessageStream[Symbol.asyncIterator]();
   const sideIter = extras.sideChunks?.[Symbol.asyncIterator]();
   let mainDone = false;
-  let titleDone = false;
+  // When title gen is gated off (`titleHandle === null`), there is nothing to
+  // wait for — start the title branch already settled so the drain loop never
+  // pushes `titleResultPromise` and never tries to `finish()` a null handle.
+  let titleDone = titleHandle === null;
   let finishMetricsDone = false;
   let abortMetadataDone = false;
   let queueDone = false;
@@ -770,7 +787,7 @@ export async function* runDecopilotStream(
         if (settled.value.done) {
           mainDone = true;
           if (!titleDone) {
-            titleHandle.finish();
+            titleHandle?.finish();
           }
           continue;
         }
@@ -810,7 +827,7 @@ export async function* runDecopilotStream(
   } finally {
     // Defensive: make sure the queue is closed so any callback fired after we
     // exit can't hang the consumer.
-    if (!titleDone) titleHandle.finish();
+    if (!titleDone) titleHandle?.finish();
     extras.closeSideChunks?.();
     await iter.return?.().catch(() => {});
     await sideIter?.return?.().catch(() => {});

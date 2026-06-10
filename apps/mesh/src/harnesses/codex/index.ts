@@ -41,9 +41,8 @@ import { createCodexModel, resolveCodexModelId } from "./model";
 import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
-import { makeTitleResultChunk } from "../title-chunk";
+import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
 import { genTitle } from "../decopilot/title-generator";
-import { stringifyError } from "../decopilot/stream-error";
 import type {
   Harness,
   HarnessContext,
@@ -51,60 +50,6 @@ import type {
   HarnessStreamInput,
 } from "../types";
 
-async function* mergeTitleResult(
-  uiStream: AsyncIterable<UIMessageChunk>,
-  titleHandle: ReturnType<typeof genTitle>,
-): AsyncIterable<UIMessageChunk> {
-  type Settled =
-    | { kind: "main"; value: IteratorResult<UIMessageChunk> }
-    | { kind: "title"; value: UIMessageChunk | null };
-
-  const iter = uiStream[Symbol.asyncIterator]();
-  let mainDone = false;
-  let titleDone = false;
-  let mainPromise: Promise<Settled> = iter
-    .next()
-    .then((value) => ({ kind: "main" as const, value }));
-  const titlePromise: Promise<Settled> = titleHandle.promise
-    .then((title) => ({
-      kind: "title" as const,
-      value: title ? (makeTitleResultChunk(title) as UIMessageChunk) : null,
-    }))
-    .catch((err) => {
-      console.warn(
-        "[codex:title] title generation failed",
-        stringifyError(err),
-      );
-      return { kind: "title" as const, value: null };
-    });
-
-  try {
-    while (!mainDone || !titleDone) {
-      const pending: Promise<Settled>[] = [];
-      if (!mainDone) pending.push(mainPromise);
-      if (!titleDone) pending.push(titlePromise);
-
-      const settled = await Promise.race(pending);
-      if (settled.kind === "main") {
-        if (settled.value.done) {
-          mainDone = true;
-          if (!titleDone) titleHandle.finish();
-          continue;
-        }
-        yield settled.value.value;
-        mainPromise = iter
-          .next()
-          .then((value) => ({ kind: "main" as const, value }));
-        continue;
-      }
-
-      titleDone = true;
-      if (settled.value) yield settled.value;
-    }
-  } finally {
-    if (!titleDone) titleHandle.finish();
-  }
-}
 export const codexHarnessFactory: HarnessFactory = {
   id: "codex",
   create(_ctx: HarnessContext): Harness {
@@ -174,20 +119,33 @@ export const codexHarnessFactory: HarnessFactory = {
           // 3a. Start title generation with Codex's fast model. This uses a
           //     separate app-server process so title generation can run in
           //     parallel with the main Codex stream and close independently.
-          const { model: titleModel, provider: titleProvider } =
-            createCodexModel(resolveCodexModelId("codex:gpt-5.4-mini"), {
-              toolApprovalLevel: "readonly",
-              isPlanMode: true,
-              cwd,
-            });
-          const titleHandle = genTitle({
-            abortSignal: input.signal,
-            model: titleModel,
-            userMessage: extractUserText(messages),
+          //     Gate (D13): only auto-title an unrenamed thread (title still
+          //     the default). CLI harnesses are never subtask producers, so we
+          //     gate on title alone. When gated off we skip spawning the title
+          //     app-server entirely and pass the raw stream through unmerged.
+          const needsTitle = shouldGenerateTitle({
+            currentThreadTitle: input.currentThreadTitle,
           });
-          const titleProviderClosed = titleHandle.promise.finally(() =>
-            titleProvider.close().catch(() => {}),
-          );
+          const titleSetup = needsTitle
+            ? (() => {
+                const { model: titleModel, provider: titleProvider } =
+                  createCodexModel(resolveCodexModelId("codex:gpt-5.4-mini"), {
+                    toolApprovalLevel: "readonly",
+                    isPlanMode: true,
+                    cwd,
+                  });
+                const handle = genTitle({
+                  abortSignal: input.signal,
+                  model: titleModel,
+                  userMessage: extractUserText(messages),
+                });
+                const closed = handle.promise.finally(() =>
+                  titleProvider.close().catch(() => {}),
+                );
+                return { handle, closed };
+              })()
+            : null;
+          const titleHandle = titleSetup?.handle ?? null;
 
           // 4. Run streamText. Codex's CLI manages its own tools and
           //    system prompt, so we explicitly DO NOT pass `tools` or
@@ -243,12 +201,15 @@ export const codexHarnessFactory: HarnessFactory = {
           });
 
           try {
-            for await (const chunk of mergeTitleResult(uiStream, titleHandle)) {
+            const merged = titleHandle
+              ? mergeTitleResult(uiStream, titleHandle)
+              : uiStream;
+            for await (const chunk of merged) {
               yield chunk;
             }
           } finally {
-            titleHandle.finish();
-            await titleProviderClosed.catch(() => {});
+            titleHandle?.finish();
+            await titleSetup?.closed.catch(() => {});
           }
         } finally {
           // CRITICAL: codex app-server is a per-request child process.
