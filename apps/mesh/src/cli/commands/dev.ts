@@ -184,7 +184,7 @@ export async function startDevServer(
     pipeToLogStore(child.stderr as ReadableStream<Uint8Array>);
   }
 
-  const serverUrl = baseUrl || `http://localhost:${settings.port}`;
+  const serverUrl = baseUrl || `http://localhost:${vitePort}`;
   setServerUrl(serverUrl);
   updateService({ name: "Vite", status: "ready", port: Number(vitePort) });
 
@@ -300,5 +300,5 @@ export async function startDevServer(
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  return { port: Number(settings.port), process: child };
+  return { port: Number(vitePort), process: child };
 }

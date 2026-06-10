@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const appPort = process.env.VITE_PORT || "4000";
+const appOrigin = `http://localhost:${appPort}`;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -20,7 +23,7 @@ export default defineConfig({
   workers: process.env.CI ? 4 : undefined,
   reporter: [["html", { open: "never" }]],
   use: {
-    baseURL: `http://localhost:${process.env.PORT || "3000"}`,
+    baseURL: appOrigin,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -32,7 +35,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "bun run dev:servers",
-    url: `http://localhost:${process.env.PORT || "3000"}`,
+    url: `${appOrigin}/api/config`,
     reuseExistingServer: true,
     timeout: 120_000,
     stdout: "pipe",

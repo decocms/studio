@@ -58,7 +58,7 @@ bun install
 bun run dev
 ```
 
-> runs at [http://localhost:3000](http://localhost:3000) (client) + API server
+> runs at [http://localhost:4000](http://localhost:4000) (client) with API routes proxied to the Bun server
 
 ---
 
@@ -293,4 +293,3 @@ See `AGENTS.md` for coding guidelines.
 <div align="center">
   <sub>Made with care by the <a href="https://decocms.com">deco</a> community</sub>
 </div>
-
