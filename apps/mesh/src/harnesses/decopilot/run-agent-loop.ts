@@ -211,7 +211,7 @@ export async function runAgentLoop(
             : `${error}`;
       console.error(
         `[runAgentLoop:${opts.kind}:${opts.virtualMcp.id}] Error`,
-        error,
+        message,
       );
       span.setStatus({ code: SpanStatusCode.ERROR, message });
       if (error instanceof Error) span.recordException(error);

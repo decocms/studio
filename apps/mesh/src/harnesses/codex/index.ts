@@ -42,6 +42,7 @@ import { resolveCliCwd } from "../cli-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { makeTitleResultChunk } from "../title-chunk";
 import { genTitle } from "../decopilot/title-generator";
+import { stringifyError } from "../decopilot/stream-error";
 import type {
   Harness,
   HarnessContext,
@@ -70,7 +71,10 @@ async function* mergeTitleResult(
       value: title ? (makeTitleResultChunk(title) as UIMessageChunk) : null,
     }))
     .catch((err) => {
-      console.warn("[codex:title] title generation failed", err);
+      console.warn(
+        "[codex:title] title generation failed",
+        stringifyError(err),
+      );
       return { kind: "title" as const, value: null };
     });
 
