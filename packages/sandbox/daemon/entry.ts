@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { sleep } from "@decocms/std";
 import { join } from "node:path";
 import { bumpActivity } from "./activity";
 import { requireToken } from "./auth";
@@ -753,6 +754,11 @@ const orgFsConfigH = makeOrgFsConfigHandler({
 const orgFsLog = (msg: string, err?: unknown) =>
   err ? console.warn(`[org-fs] ${msg}`, err) : console.log(`[org-fs] ${msg}`);
 
+/** Org-fs is expected on this daemon (desktop boot env or cluster sidecar). */
+const orgFsExpected =
+  Boolean(process.env.ORGFS_CONFIG) ||
+  Boolean(process.env.ORGFS_SIDECAR_CONFIG_PATH);
+
 /** Active org-fs mounts: ours (desktop) or the sidecar's (cluster). */
 async function activeOrgFsMounts(): Promise<{ mountPath: string }[]> {
   const own = mountManager?.list() ?? [];
@@ -765,19 +771,56 @@ async function activeOrgFsMounts(): Promise<{ mountPath: string }[]> {
   return status?.mounts ?? [];
 }
 
+const FIRST_MOUNT_WAIT_MS = 10_000;
+const FIRST_MOUNT_POLL_MS = 250;
+let firstMountWait: Promise<boolean> | null = null;
+
+/**
+ * First-touch grace: a freshly provisioned sandbox can receive its first tool
+ * call while the sidecar is still attaching the mounts (~2-5s after the config
+ * relay), making the agent's very first `ls org/` race the mount. Wait once —
+ * shared across concurrent requests, deadline-bounded, fail-open (timeout →
+ * proceed without the link; the lazy hook self-heals on a later call). After
+ * this single window every request takes the cheap path, so a broken sidecar
+ * can never introduce a recurring stall.
+ */
+function waitForFirstMounts(): Promise<boolean> {
+  firstMountWait ??= (async () => {
+    const deadline = Date.now() + FIRST_MOUNT_WAIT_MS;
+    while (Date.now() < deadline) {
+      if ((await activeOrgFsMounts()).length > 0) return true;
+      await sleep(FIRST_MOUNT_POLL_MS);
+    }
+    orgFsLog(
+      `mounts not up after ${FIRST_MOUNT_WAIT_MS}ms; continuing without`,
+    );
+    return false;
+  })();
+  return firstMountWait;
+}
+
 /**
  * Make the prompts' relative `org/...` paths resolve from the harness cwd
  * (`<appRoot>/repo`) — see org-fs/repo-link.ts. Lazy + idempotent: called on
  * every vm tool request, no-op while nothing is mounted, one lstat after.
  */
 async function ensureOrgRepoLink(): Promise<void> {
-  if ((await activeOrgFsMounts()).length === 0) return;
+  if (!orgFsExpected) return;
+  if ((await activeOrgFsMounts()).length === 0) {
+    if (!(await waitForFirstMounts())) return;
+    if ((await activeOrgFsMounts()).length === 0) return;
+  }
   await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
 }
 
 async function repointOutputLinkForRun(threadId: string): Promise<void> {
-  const mounts = await activeOrgFsMounts();
-  if (mounts.length === 0) return;
+  if (!orgFsExpected) return;
+  let mounts = await activeOrgFsMounts();
+  if (mounts.length === 0) {
+    if (!(await waitForFirstMounts())) return;
+    mounts = await activeOrgFsMounts();
+    if (mounts.length === 0) return;
+  }
   await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
   const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
   if (!mounts.some((m) => m.mountPath === outputsMountPath)) return;
