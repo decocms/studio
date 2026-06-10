@@ -303,4 +303,29 @@ describe("dev-link-toxiproxy HTTP API", () => {
       /ToxiProxy API did not become ready at http:\/\/127\.0\.0\.1:18474\/version.*readiness check.*TimeoutError/s,
     );
   }, 500);
+
+  test("stops the daemon when setup fails after startup", async () => {
+    const startDaemon = mock(async () => {});
+    const stopDaemon = mock(async () => {});
+    const fetchImpl = mock(async (url: string) => {
+      if (url.endsWith("/version")) {
+        return new Response(null, { status: 200 });
+      }
+      return new Response("bad reset", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      ensureDevLinkToxiProxy({
+        serverUrl: "http://localhost:4001",
+        apiPort: 18474,
+        listenPort: 18480,
+        startDaemon,
+        stopDaemon,
+        fetchImpl,
+      }),
+    ).rejects.toThrow(/reset/);
+
+    expect(startDaemon).toHaveBeenCalledWith(18474, 18480);
+    expect(stopDaemon).toHaveBeenCalledWith(18474, 18480);
+  });
 });

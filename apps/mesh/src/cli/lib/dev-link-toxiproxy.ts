@@ -27,6 +27,7 @@ export interface DevLinkToxiProxyConfig {
 export interface EnsureDevLinkToxiProxyInput
   extends DevLinkToxiProxyConfigInput {
   startDaemon?: (apiPort: number, listenPort: number) => Promise<void>;
+  stopDaemon?: (apiPort: number, listenPort: number) => Promise<void>;
   fetchImpl?: typeof fetch;
 }
 
@@ -272,14 +273,36 @@ async function startDevLinkToxiProxyDocker(
   ]);
 }
 
+async function stopDevLinkToxiProxyDocker(
+  apiPort: number,
+  _listenPort: number,
+): Promise<void> {
+  const containerName = `deco-dev-link-toxiproxy-${apiPort}`;
+  await runDockerCommand(["rm", "-f", containerName], { ignoreFailure: true });
+}
+
 export async function ensureDevLinkToxiProxy(
   input: EnsureDevLinkToxiProxyInput,
 ): Promise<DevLinkToxiProxyConfig> {
   const config = buildDevLinkToxiProxyConfig(input);
   const startDaemon = input.startDaemon ?? startDevLinkToxiProxyDocker;
+  const stopDaemon =
+    input.stopDaemon ??
+    (input.startDaemon === undefined ? stopDevLinkToxiProxyDocker : undefined);
   await startDaemon(input.apiPort, input.listenPort);
   const fetchImpl = input.fetchImpl ?? fetch;
-  await waitForDevLinkToxiProxy(config, fetchImpl);
-  await populateDevLinkToxiProxy(config, fetchImpl);
+  try {
+    await waitForDevLinkToxiProxy(config, fetchImpl);
+    await populateDevLinkToxiProxy(config, fetchImpl);
+  } catch (error) {
+    if (stopDaemon !== undefined) {
+      try {
+        await stopDaemon(input.apiPort, input.listenPort);
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
+    throw error;
+  }
   return config;
 }

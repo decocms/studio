@@ -208,33 +208,47 @@ export async function startDevServer(
   updateService({ name: "API", status: "ready", port: Number(settings.port) });
 
   let linkClusterUrl = serverUrl;
-  if (options.localSandboxProvider && options.devLinkToxiProxy) {
-    const {
-      DEV_LINK_TOXIPROXY_SERVICE_NAME,
-      ensureDevLinkToxiProxy,
-      resolveDevLinkClusterUrl,
-    } = await import("../lib/dev-link-toxiproxy");
-    const apiPort = await findAvailablePort(18474);
-    const listenPort = await findAvailablePort(18480);
-    const toxiproxy = await ensureDevLinkToxiProxy({
-      serverUrl,
-      apiPort,
-      listenPort,
-    });
-    linkClusterUrl = resolveDevLinkClusterUrl({ serverUrl, toxiproxy });
-    updateService({
-      name: DEV_LINK_TOXIPROXY_SERVICE_NAME,
-      status: "ready",
-      port: listenPort,
-    });
-    addLogEntry({
-      method: "",
-      path: "",
-      status: 0,
-      duration: 0,
-      timestamp: new Date(),
-      rawLine: toxiproxy.logLine,
-    });
+  try {
+    if (options.localSandboxProvider && options.devLinkToxiProxy) {
+      const {
+        DEV_LINK_TOXIPROXY_SERVICE_NAME,
+        ensureDevLinkToxiProxy,
+        resolveDevLinkClusterUrl,
+      } = await import("../lib/dev-link-toxiproxy");
+      const apiPort = await findAvailablePort(18474);
+      const listenPort = await findAvailablePort(18480);
+      const toxiproxy = await ensureDevLinkToxiProxy({
+        serverUrl,
+        apiPort,
+        listenPort,
+      });
+      linkClusterUrl = resolveDevLinkClusterUrl({ serverUrl, toxiproxy });
+      updateService({
+        name: DEV_LINK_TOXIPROXY_SERVICE_NAME,
+        status: "ready",
+        port: listenPort,
+      });
+      addLogEntry({
+        method: "",
+        path: "",
+        status: 0,
+        duration: 0,
+        timestamp: new Date(),
+        rawLine: toxiproxy.logLine,
+      });
+    }
+  } catch (error) {
+    child.kill("SIGTERM");
+    await child.exited.catch(() => null);
+    if (managedServiceNames.length > 0) {
+      try {
+        const { stopServices } = await import("../../services/ensure-services");
+        await stopServices(settings.dataDir);
+      } catch {
+        /* best-effort cleanup; preserve the original startup error */
+      }
+    }
+    throw error;
   }
 
   // ── Auto-spawn `deco link` (opt-in) ──────────────────────────────
