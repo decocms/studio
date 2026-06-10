@@ -865,6 +865,16 @@ async function prepareRun(
     }
     runStarted = true;
 
+    // Clear any durable cancel flag from a PRIOR run on this thread. The flag
+    // (`cancel_requested_at`) is per-run intent — it cancels the run that was
+    // in flight when the user hit stop — but runId == threadId, so it lingers
+    // on the row forever once set. Without this clear, validateRunAccess would
+    // 409 ("cancelled") every future pull relay on the thread (the flag has no
+    // other caller — clearCancelRequested was previously unreferenced). A new
+    // run starting IS the user's intent to proceed, so reset it here, in the
+    // same place the fence is minted/overwritten.
+    await ctx.storage.threads.clearCancelRequested(mem.thread.id);
+
     // Mint the single-writer fence token for this run. The token is
     // included in HarnessStreamInput so the daemon presents it on every
     // ingest append. Minting after START ensures the run is claimed before

@@ -12,12 +12,31 @@
  * status, and the JetStream live edge all flow through the same code path.
  *
  * Reconnect/backfill: the daemon resends the FULL prefix from seq 1 on every
- * attempt; the session dedupes by seq, so replays are safe. The cluster acks
- * once per POST after the body ends with `{ok, lastSeq}`; a terminal POST
- * (after a `done`/`error` line) is acked only after the kernel committed all
- * durable effects. Registry loss (pod restart) is terminal: a resumed relay
- * (`x-relay-from` > 1) with no session gets 410 relay_session_lost, the
- * daemon gives up (4xx is non-retriable), and the idle reaper fails the run.
+ * attempt (`x-relay-from: 1` always, today); the session dedupes by seq, so
+ * replays are safe. The cluster acks once per POST after the body ends with
+ * `{ok, lastSeq}`; a terminal POST (after a `done`/`error` line) is acked only
+ * after the kernel committed all durable effects.
+ *
+ * Registry loss (pod restart/crash) is RECOVERABLE, not terminal: because the
+ * shipped daemon always posts `x-relay-from: 1`, a pod with no session for the
+ * runId opens a FRESH session and re-consumes the full prefix from seq 1 —
+ * parts are id-deduped and the completed transition is guarded, so the
+ * redelivery is idempotent. The `410 relay_session_lost` branch (resumed relay
+ * with `x-relay-from > 1` and no session) is therefore currently UNREACHABLE
+ * from the shipped daemon; it is kept for a future mid-stream resume. A
+ * reconnect landing on ANOTHER pod opens a concurrent fresh session there; the
+ * same dedupe/guard make that safe (live-edge chunks may duplicate, the
+ * completed event may double-fire — acceptable, documented). An abandoned
+ * session (daemon death without an error line) is reaped by the relay
+ * registry's per-session idle timer, which fails the run.
+ *
+ * Fence epochs: a parked session is keyed by runId (== threadId today). The
+ * NEXT run on the same thread mints a fresh fence and relays from seq 1, so
+ * attaching by runId alone would splice fresh lines into the stale kernel. The
+ * route attaches an existing session only when its fence matches the presented
+ * (DB-validated) fence; a mismatch evicts the stale session (`relay_superseded`
+ * — no durable status write, since the same runId row is re-driven by the
+ * fresh session) and opens a new one.
  *
  * AUTHZ: requires an authenticated principal; the run's thread must exist in
  * the path org (404 otherwise — closes the old cross-org fence-lookup TODO);
@@ -50,6 +69,41 @@ import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage } from "./types";
 import type { Env } from "../../hono-env";
 import type { SSEEvent } from "@/event-bus";
+import { meter } from "@/observability";
+
+/**
+ * Eviction code stamped on the iterable failure when a stale parked session is
+ * superseded by a fresh run on the same runId (see relay-session.ts). The
+ * relayed-run consumer treats this as a NON-failure: it tears down without
+ * writing a durable `failed` status, because the same run row is about to be
+ * re-driven by the fresh session.
+ */
+const RELAY_SUPERSEDED_CODE = "relay_superseded";
+
+// Mirrors dispatch-run's save-errors counter (same name/attrs) so v1 save
+// failures on the pull return path are visible in OTEL alongside hosted runs.
+const saveErrorsCounter = meter.createCounter("decopilot.save.errors", {
+  description:
+    "Number of message-save failures during decopilot run dispatch (v1 and v2 paths)",
+  unit: "{errors}",
+});
+
+/**
+ * Hard per-line cap for the relay NDJSON body. A single relay line carries one
+ * DispatchSSEEvent; a multi-megabyte line is a protocol violation (or a hostile
+ * upload) and must fail before `JSON.parse` allocates it. The route maps the
+ * tagged error to 400 {error:"line too large"}. Exported so the daemon side and
+ * tests can reference the same bound.
+ */
+export const RELAY_NDJSON_MAX_LINE_BYTES = 1024 * 1024;
+
+/** Thrown by `ndjsonLines` when a single line exceeds the byte cap. */
+export class NdjsonLineTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`relay NDJSON line exceeded ${maxBytes} bytes`);
+    this.name = "NdjsonLineTooLargeError";
+  }
+}
 
 export interface LinkIngestDeps {
   streamBuffer: StreamBuffer;
@@ -61,9 +115,17 @@ export interface LinkIngestDeps {
  * non-empty line (throws `SyntaxError` on malformed JSON), skip blank lines.
  * Yields lines as soon as their newline arrives, so a streaming relay upload
  * is processed per-line, not per-body.
+ *
+ * A pending (un-newlined) line is capped at `maxLineBytes`: once the buffer
+ * exceeds it without a `\n`, a `NdjsonLineTooLargeError` is thrown so an
+ * unbounded line never gets allocated and `JSON.parse`d. The cap is measured
+ * on the decoded string length (a conservative proxy for UTF-8 byte length:
+ * `string.length <= byteLength`, so the real allocation is always within the
+ * intended bound).
  */
 export async function* ndjsonLines(
   body: ReadableStream<Uint8Array>,
+  maxLineBytes: number = RELAY_NDJSON_MAX_LINE_BYTES,
 ): AsyncGenerator<unknown, void, undefined> {
   const reader = body.getReader();
   // SINGLE streaming decoder — a multi-byte UTF-8 char can split across reads.
@@ -81,9 +143,18 @@ export async function* ndjsonLines(
         if (line.length > 0) yield JSON.parse(line);
         nl = buffer.indexOf("\n");
       }
+      // No newline yet but the pending line already blew the cap — stop before
+      // it grows further. (Checked after splitting so a fully-consumed buffer
+      // never trips it.)
+      if (buffer.length > maxLineBytes) {
+        throw new NdjsonLineTooLargeError(maxLineBytes);
+      }
     }
     buffer += decoder.decode();
     const tail = buffer.trim();
+    if (tail.length > maxLineBytes) {
+      throw new NdjsonLineTooLargeError(maxLineBytes);
+    }
     if (tail.length > 0) yield JSON.parse(tail);
   } finally {
     reader.releaseLock();
@@ -108,6 +179,16 @@ interface ConsumeRelayedRunArgs {
   runId: string;
   thread: Thread;
   chunks: AsyncIterable<UIMessageChunk>;
+}
+
+/** True when an error is the supersede eviction signal (relay-session.ts) —
+ *  NOT a run failure, so it must not write a durable failed status. */
+function isSupersededError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === RELAY_SUPERSEDED_CODE
+  );
 }
 
 /**
@@ -142,6 +223,31 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
   const distinctId = ctx.auth.user!.id;
   const streamStartAt = Date.now();
 
+  // Set when this session was superseded by a fresh run on the same runId. The
+  // fresh session owns the run row AND its `${runId}:${seq}` part-id namespace
+  // now, so this stale consume must perform ZERO persistence and ZERO terminal
+  // status writes — otherwise a stale error/partial part would collide (ON
+  // CONFLICT id DO NOTHING) with the fresh run's first part and silently drop
+  // it. We intercept the supersede signal at the chunk boundary (below) and
+  // end the stream cleanly so the kernel never runs its error/emitError path;
+  // every persistence callback + the finish hook + the terminal completion are
+  // additionally guarded on this flag.
+  let superseded = false;
+
+  // Wrap the relay chunk iterable so a `relay_superseded` eviction ends the
+  // stream cleanly (no kernel error, no emitError) instead of throwing.
+  const guardedChunks = (async function* () {
+    try {
+      yield* chunks;
+    } catch (error) {
+      if (isSupersededError(error)) {
+        superseded = true;
+        return; // clean end — kernel runs onFinish, not onError
+      }
+      throw error;
+    }
+  })();
+
   const isV2 = thread.message_storage_version === 2;
   const partEmitter = isV2
     ? new PartEmitter({
@@ -174,12 +280,25 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
     await ctx.storage.threads
       .saveMessages(messagesToSave as ThreadMessage[])
       .catch((error) => {
+        // Same OTEL signal dispatch-run increments at its v1 save .catch sites
+        // (same counter name + org.id attr) so pull save failures are visible
+        // without log scraping.
+        saveErrorsCounter.add(1, { "org.id": orgId });
         console.error("[link-ingest] Error saving messages", error);
       });
   };
 
+  // Captured usage for the unconditional completed event (Fix 4): the kernel's
+  // onUsage fires only when the final message carries usage metadata, so a
+  // truncated/zero-token run would otherwise emit no completion event. Capture
+  // here, fire in onFinish unconditionally (captured totals or zeros).
+  let capturedUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  // Set when the kernel's onError fired, so onFinish (which still runs after a
+  // source error) doesn't double-emit a `completed` event for a failed run.
+  let runErrored = false;
+
   const { uiStream, whenComplete } = consumeHarnessStream({
-    chunks,
+    chunks: guardedChunks,
     originalMessages: [],
     title: {
       currentThreadTitle: thread.title,
@@ -197,11 +316,15 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
         : undefined,
     },
     persistence: {
+      // Every persistence callback is a no-op once superseded: the fresh
+      // session owns this runId's part-id namespace, so a stale write would
+      // collide and drop the fresh run's parts.
       emitStepParts: async (responseMessage) => {
-        if (!partEmitter) return;
+        if (superseded || !partEmitter) return;
         await partEmitter.emitStepParts(responseMessage);
       },
       emitFinal: async (responseMessage) => {
+        if (superseded) return;
         if (partEmitter) {
           await partEmitter.emitFinal(responseMessage);
           return;
@@ -209,6 +332,7 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
         await saveMessagesToThread(responseMessage as ChatMessage);
       },
       emitError: async (messageId, errorText) => {
+        if (superseded) return;
         const sanitized = sanitizeStreamError(errorText);
         if (partEmitter) {
           await partEmitter.emitError(messageId, sanitized);
@@ -227,10 +351,23 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
     sanitizeErrorText: sanitizeStreamError,
     hooks: {
       // Fires at most once, before onFinish, with the run's usage totals
-      // extracted from final message metadata. A relayed run without usage
-      // metadata emits no completion event — model/mode/duration semantics
-      // from dispatch-run's richer event need the wire input, absent here.
+      // extracted from final message metadata. Capture into a local; the
+      // completed event fires UNCONDITIONALLY in onFinish (captured totals or
+      // zeros) so a truncated/zero-token run isn't silently dropped. (The
+      // model/mode props of dispatch-run's richer completed event need the
+      // wire harness input, which the return path doesn't carry.)
       onUsage: (totals) => {
+        capturedUsage = {
+          inputTokens: totals.inputTokens,
+          outputTokens: totals.outputTokens,
+          totalTokens: totals.totalTokens,
+        };
+      },
+      onFinish: () => {
+        // A failed run already emitted `chat_message_failed` in onError — don't
+        // also emit `completed` for it. A superseded run emits nothing — the
+        // fresh session owns completion.
+        if (runErrored || superseded) return;
         posthog.capture({
           distinctId,
           event: "chat_message_completed",
@@ -239,13 +376,17 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
             organization_id: orgId,
             thread_id: runId,
             transport: "pull-relay",
-            input_tokens: totals.inputTokens,
-            output_tokens: totals.outputTokens,
-            total_tokens: totals.totalTokens,
+            input_tokens: capturedUsage.inputTokens,
+            output_tokens: capturedUsage.outputTokens,
+            total_tokens: capturedUsage.totalTokens,
           },
         });
       },
       onError: async (error) => {
+        // A supersede eviction never reaches here — `guardedChunks` converts it
+        // to a clean stream end (onFinish, not onError). Any error in onError is
+        // therefore a genuine run failure.
+        runErrored = true;
         console.error("[link-ingest] relayed stream error:", error);
         posthog.capture({
           distinctId,
@@ -271,6 +412,27 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
           run_config: null,
           run_started_at: null,
         });
+        // Failure SSE parity with the run-reactor's RUN_FAILED handling:
+        // emit the same failed thread-status + finish events the hosted path
+        // emits, so tabs not tailing /stream see the failure in real time.
+        if (deps.sseHub) {
+          const failedThread = await ctx.storage.threads
+            .get(runId)
+            .catch(() => null);
+          deps.sseHub.emit(
+            orgId,
+            createDecopilotThreadStatusEvent(runId, "failed", {
+              virtualMcpId: failedThread?.virtual_mcp_id ?? undefined,
+              createdBy: failedThread?.created_by,
+              triggerId: failedThread?.trigger_id,
+              title: failedThread?.title,
+              branch: failedThread?.branch ?? null,
+              createdAt: failedThread?.created_at,
+              updatedAt: failedThread?.updated_at,
+            }),
+          );
+          deps.sseHub.emit(orgId, createDecopilotFinishEvent(runId, "failed"));
+        }
       },
     },
   });
@@ -294,6 +456,11 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
     await drain(uiStream).catch(() => {});
   }
   await whenComplete;
+
+  // Superseded: a fresh session now owns this runId's row. Bail out before any
+  // terminal write — the live session drives completion/failure, and the
+  // JetStream subject + progress throttle belong to it now too.
+  if (superseded) return;
 
   // Transition the run terminal so the gate's polling loop unblocks (spec
   // §L6). Fungible-pod-safe: a direct durable write (no RunRegistry, which is
@@ -369,28 +536,44 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
       return c.json({ error: "fenced" }, 409);
     }
 
-    return { ctx, runId, thread };
+    // `presented` is now validated against the DB-current fence — it's the
+    // canonical epoch the relay session is keyed by.
+    return { ctx, runId, thread, presentedFence: presented };
   }
 
   app.post("/links/runs/:runId/chunks", async (c) => {
     const access = await validateRunAccess(c);
     if (access instanceof Response) return access;
-    const { ctx, runId, thread } = access;
+    const { ctx, runId, thread, presentedFence } = access;
 
     const body = c.req.raw.body;
     if (!body) return c.json({ error: "missing body" }, 400);
 
-    let session = relayRegistry.get(runId);
-    if (!session) {
-      const relayFrom = Number(c.req.header("x-relay-from") ?? "1");
-      if (relayFrom > 1) {
-        // The daemon is resuming a relay this pod has no session for — the
-        // in-memory registry was lost (pod restart/crash). Terminal by
-        // design: 4xx makes the daemon give up; the idle reaper fails the
-        // run.
-        return c.json({ error: "relay_session_lost" }, 410);
+    // Fence-epoch session resolution. A parked session keyed by runId may
+    // belong to a STALE run (runId == threadId; a dead daemon left it parked).
+    // Attach only when the existing session's fence matches the presented (and
+    // DB-validated) fence; otherwise evict the stale one — failing its iterable
+    // so its consume() tears down without a durable status write
+    // (relay_superseded) — and open a fresh session for this epoch.
+    const current = relayRegistry.get(runId);
+    let session;
+    if (current && current.fenceToken === presentedFence) {
+      session = current;
+    } else {
+      if (current) {
+        relayRegistry.evict(runId, "relay_superseded");
+      } else {
+        const relayFrom = Number(c.req.header("x-relay-from") ?? "1");
+        if (relayFrom > 1) {
+          // Resumed relay (`x-relay-from > 1`) with no session for this runId.
+          // UNREACHABLE from the shipped daemon (it always posts
+          // `x-relay-from: 1`); kept for a future mid-stream resume. 4xx makes
+          // the daemon give up rather than resend a prefix this pod can't
+          // splice.
+          return c.json({ error: "relay_session_lost" }, 410);
+        }
       }
-      session = relayRegistry.open(runId, {
+      session = relayRegistry.open(runId, presentedFence, {
         consume: (chunks) =>
           consumeRelayedRun({ ctx, deps, runId, thread, chunks }),
       });
@@ -408,6 +591,11 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
         }
       }
     } catch (error) {
+      // An over-cap line is a protocol violation (fatal for the daemon) — map
+      // it to 400 so the daemon stops resending rather than retrying forever.
+      if (error instanceof NdjsonLineTooLargeError) {
+        return c.json({ error: "line too large" }, 400);
+      }
       // Malformed NDJSON is a protocol violation (fatal for the daemon, like
       // a schema failure). Anything else (e.g. the upload connection died)
       // propagates — the response is undeliverable anyway and the daemon

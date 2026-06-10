@@ -4,7 +4,12 @@ import type { UIMessageChunk } from "ai";
 import type { SSEEvent } from "@/event-bus";
 import type { ThreadMessagePart } from "@/storage/fold-parts";
 import type { Env } from "../../hono-env";
-import { createLinkIngestRoutes, ndjsonLines } from "./link-ingest-routes";
+import {
+  createLinkIngestRoutes,
+  ndjsonLines,
+  NdjsonLineTooLargeError,
+  RELAY_NDJSON_MAX_LINE_BYTES,
+} from "./link-ingest-routes";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -57,6 +62,11 @@ function appWithContext(opts: AppContextOptions = {}) {
 
   const threadRow = () => ({ ...thread, status: threadStatus });
 
+  // Mutable DB-current fence so a test can simulate a NEW run minting a fresh
+  // fence between two relay POSTs (fence-epoch supersede).
+  let currentRunFence: string | null =
+    opts.runFence === undefined ? "fence_1" : opts.runFence;
+
   const app = new Hono<Env>();
   app.use("*", async (c, next) => {
     c.set("meshContext", {
@@ -69,8 +79,7 @@ function appWithContext(opts: AppContextOptions = {}) {
         threads: {
           get: async () => (thread ? threadRow() : null),
           getCancelRequestedAt: async () => opts.cancelRequestedAt ?? null,
-          getRunFence: async () =>
-            opts.runFence === undefined ? "fence_1" : opts.runFence,
+          getRunFence: async () => currentRunFence,
           bumpProgress: async () => {
             bumps++;
           },
@@ -165,6 +174,9 @@ function appWithContext(opts: AppContextOptions = {}) {
     pumpPromises,
     sseEvents,
     bumps: () => bumps,
+    setRunFence: (token: string | null) => {
+      currentRunFence = token;
+    },
   };
 }
 
@@ -262,6 +274,30 @@ describe("ndjsonLines", () => {
     await expect(
       collect(ndjsonLines(bytesStream(["not json\n"]))),
     ).rejects.toBeInstanceOf(SyntaxError);
+  });
+
+  test("throws NdjsonLineTooLargeError when a pending line exceeds the cap", async () => {
+    // No newline ever arrives — the buffer grows past the (tiny) cap.
+    await expect(
+      collect(ndjsonLines(bytesStream(["aaaa", "bbbb", "cccc"]), 8)),
+    ).rejects.toBeInstanceOf(NdjsonLineTooLargeError);
+  });
+
+  test("throws NdjsonLineTooLargeError for an over-cap trailing line", async () => {
+    await expect(
+      collect(ndjsonLines(bytesStream(["123456789"]), 8)),
+    ).rejects.toBeInstanceOf(NdjsonLineTooLargeError);
+  });
+
+  test("does not trip the cap when lines stay under it", async () => {
+    const lines = await collect(
+      ndjsonLines(bytesStream(['{"a":1}\n', '{"b":2}\n']), 16),
+    );
+    expect(lines).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+
+  test("default line cap is 1 MiB", () => {
+    expect(RELAY_NDJSON_MAX_LINE_BYTES).toBe(1024 * 1024);
   });
 });
 
@@ -498,7 +534,25 @@ describe("link ingest chunks route", () => {
     expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
       0,
     );
-    expect(sseEvents).toEqual([]);
+    // Failure SSE parity with the hosted run-reactor: a failed run emits a
+    // failed thread-status + finish event (never a completed one).
+    const failureEventTypes = sseEvents.map(({ event }) => event.type);
+    expect(failureEventTypes).toEqual([
+      "decopilot.thread.status",
+      "decopilot.finish",
+    ]);
+    const statusEvent = sseEvents.find(
+      ({ event }) => event.type === "decopilot.thread.status",
+    )!;
+    expect(
+      (statusEvent.event as { data?: { status?: string } }).data?.status,
+    ).toBe("failed");
+    const finishEvent = sseEvents.find(
+      ({ event }) => event.type === "decopilot.finish",
+    )!;
+    expect(
+      (finishEvent.event as { data?: { status?: string } }).data?.status,
+    ).toBe("failed");
     // The live edge is still purged — the run is over either way.
     expect(purged).toEqual([RUN_ID]);
   });
@@ -588,5 +642,89 @@ describe("link ingest chunks route", () => {
 
     expect(res.status).toBe(200);
     expect(updates.some((u) => "title" in u.data)).toBe(false);
+  });
+
+  test("same-fence reconnect attaches to the existing session (dedupe still works)", async () => {
+    // Two POSTs with the SAME fence — the second must attach to the live
+    // session and NOT splice into a fresh kernel, so parts aren't duplicated.
+    const { app, appended, updates } = appWithContext();
+    const turn = helloTurnChunks();
+
+    const first = await postChunks(
+      app,
+      relayBody(chunkEvents(turn.slice(0, 4))),
+    );
+    expect(first.status).toBe(200);
+
+    const events = [...chunkEvents(turn), { type: "done" } as const];
+    const second = await postChunks(app, relayBody(events));
+    expect(second.status).toBe(200);
+
+    const rows = appended.flat();
+    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
+    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
+      1,
+    );
+  });
+
+  test("a fresh fence supersedes a parked session: new lines consumed from seq 1, run completes once", async () => {
+    // First run's daemon dies mid-stream (partial upload, no terminal line) —
+    // its session parks keyed by runId. A NEW run mints a fresh fence and
+    // relays from seq 1. The route must evict the stale session and consume the
+    // fresh lines into a fresh kernel rather than dropping them as replays.
+    const { app, appended, updates, purged, sseEvents, setRunFence } =
+      appWithContext();
+    const turn = helloTurnChunks();
+
+    // Parked first run (fence_1), partial.
+    const first = await postChunks(
+      app,
+      relayBody(chunkEvents(turn.slice(0, 4))),
+      { "x-fence-token": "fence_1" },
+    );
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ ok: true, lastSeq: 4 });
+
+    // New run: DB fence rotates, daemon presents the new fence + relays from 1.
+    setRunFence("fence_2");
+    const events = [...chunkEvents(turn), { type: "done" } as const];
+    const second = await postChunks(app, relayBody(events), {
+      "x-fence-token": "fence_2",
+    });
+    expect(second.status).toBe(200);
+    // Fresh session counts from seq 1 — not deduped against the stale session.
+    expect(await second.json()).toEqual({ ok: true, lastSeq: events.length });
+
+    const rows = appended.flat();
+    // Exactly one finished message persisted by the FRESH session (the stale
+    // session's eviction wrote no terminal status / parts).
+    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
+    expect(rows.filter((r) => r.kind === "finish")).toHaveLength(1);
+    const textRow = rows.find((r) => r.kind === "text")!;
+    expect((textRow.payload as { text?: string }).text).toBe("hello");
+
+    // The run completes exactly once — the superseded (stale) consume never
+    // wrote a terminal status, so there's no completed/failed race.
+    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
+      1,
+    );
+    expect(updates.filter((u) => u.data.status === "failed")).toHaveLength(0);
+    expect(purged).toContain(RUN_ID);
+    expect(sseEvents.map(({ event }) => event.type)).toEqual([
+      "decopilot.thread.status",
+      "decopilot.finish",
+    ]);
+  });
+
+  test("400 line too large when a relay NDJSON line exceeds the cap", async () => {
+    const { app } = appWithContext();
+    // A single line with no newline, well over the 1 MiB cap.
+    const huge = `{"seq":1,"event":{"type":"ui-message-chunk","chunk":{"type":"text-delta","id":"t","delta":"${"x".repeat(
+      1024 * 1024 + 16,
+    )}"}}}`;
+    const res = await postChunks(app, huge);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "line too large" });
   });
 });
