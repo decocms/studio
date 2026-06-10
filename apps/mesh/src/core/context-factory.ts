@@ -321,7 +321,18 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 
         return wildcardResult?.success === true;
       } catch (err) {
-        console.error("[Auth] Permission check failed:", err);
+        // A 401/403 from the permission API is an expected denial (no session
+        // or insufficient scope) — we already deny by returning `false`, so
+        // don't log it as an error. Only surface genuinely unexpected failures
+        // (5xx, network), and log the message rather than dumping the whole
+        // APIError object.
+        const statusCode = (err as { statusCode?: number } | null)?.statusCode;
+        if (statusCode !== 401 && statusCode !== 403) {
+          console.error(
+            "[Auth] Permission check failed:",
+            err instanceof Error ? err.message : String(err),
+          );
+        }
         return false;
       }
     },
