@@ -557,33 +557,45 @@ function httpRoutePath(namespace: string, routeName: string): string {
   return `${HTTPROUTE_PATH_PREFIX}/${encodeURIComponent(namespace)}/${HTTPROUTE_PLURAL}/${encodeURIComponent(routeName)}`;
 }
 
-function httpRouteCollectionPath(namespace: string): string {
-  return `${HTTPROUTE_PATH_PREFIX}/${encodeURIComponent(namespace)}/${HTTPROUTE_PLURAL}`;
-}
-
 /**
- * Create an HTTPRoute. 409 (AlreadyExists) is swallowed because the runner
- * calls this from both the fresh-provision path and the adopt-backfill
- * path — a pre-existing route from an earlier provision attempt is the
- * intended steady state, not an error.
+ * Upsert an HTTPRoute via Server-Side Apply. Creates the route when absent
+ * and — crucially — rewrites `spec.rules[].backendRefs` when it already
+ * exists, so a route minted for an earlier sandbox re-points at the freshly
+ * adopted Service instead of an orphaned one.
+ *
+ * The route name is stable per handle, so the runner calls this from both
+ * the fresh-provision and adopt-backfill paths. The old POST-create path
+ * swallowed the resulting 409, which left the backendRef pinned to a
+ * since-deleted Service: Envoy then serves an empty-body 500 for the preview
+ * hostname (see `ensureServicePort` for the same no-upstream signature) until
+ * the next teardown happened to delete the route. SSA with a stable field
+ * manager makes the write idempotent AND mutating — re-applying the same body
+ * is a no-op, re-applying a changed backendRef updates it in place.
+ *
+ * `force=true` so we take ownership even when the route was first created by
+ * the legacy POST path under the default field manager.
  */
-export async function createHttpRoute(
+export async function applyHttpRoute(
   kc: KubeConfig,
   namespace: string,
   route: HttpRoute,
 ): Promise<void> {
+  const query = new URLSearchParams({
+    fieldManager: SSA_FIELD_MANAGER,
+    force: "true",
+  });
+  const path = `${httpRoutePath(namespace, route.metadata.name)}?${query}`;
   try {
     const resp = await kubeFetch(kc, {
-      method: "POST",
-      path: httpRouteCollectionPath(namespace),
+      method: "PATCH",
+      path,
+      patchType: "apply",
       body: route,
     });
-    if (resp.status === 409) return;
-    await ensureOk(resp, "createHttpRoute");
+    await ensureOk(resp, "applyHttpRoute");
   } catch (error) {
-    if (error instanceof KubeHttpError && error.status === 409) return;
     throw new SandboxError(
-      `Failed to create HTTPRoute: ${route.metadata.name}`,
+      `Failed to apply HTTPRoute: ${route.metadata.name}`,
       error,
     );
   }
