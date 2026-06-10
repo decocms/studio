@@ -1,8 +1,10 @@
 /**
  * Settings → Files: browser over the organization filesystem — the same
  * volumes sandboxes mount at `org/` (skills = shared library, outputs =
- * agent run outputs). Browse, upload, download, create folders, delete.
- * Data layer in @/web/hooks/use-org-fs (org-scoped HTTP, session auth).
+ * agent run outputs). Volumes render as root-level folders so the whole
+ * thing reads as one filesystem; the first path segment is the volume.
+ * Browse, upload, download, create folders, delete. Data layer in
+ * @/web/hooks/use-org-fs (org-scoped HTTP, session auth).
  */
 
 import { useRef, useState } from "react";
@@ -40,13 +42,13 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { Tabs, TabsList, TabsTrigger } from "@deco/ui/components/tabs.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { Page } from "@/web/components/page";
 import { SettingsPage } from "@/web/components/settings/settings-section";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   type OrgFsEntry,
+  type OrgFsUsage,
   useOrgFsDownloadUrl,
   useOrgFsList,
   useOrgFsMutations,
@@ -55,8 +57,8 @@ import {
 
 /** The volumes every sandbox mounts (see file-storage/mount/provisioning.ts). */
 const VOLUMES = [
-  { id: "skills", label: "Skills" },
-  { id: "outputs", label: "Outputs" },
+  { id: "skills", description: "Org-wide shared library" },
+  { id: "outputs", description: "Agent run outputs, one folder per thread" },
 ] as const;
 
 function basename(path: string): string {
@@ -83,24 +85,25 @@ function formatDate(iso: string): string {
 }
 
 function Breadcrumbs(props: {
-  path: string;
-  onNavigate: (path: string) => void;
+  segments: string[];
+  onNavigate: (segments: string[]) => void;
 }) {
-  const segments = props.path === "" ? [] : props.path.split("/");
   return (
     <div className="flex items-center gap-1 text-sm min-w-0 flex-wrap">
       <button
         type="button"
         className="text-muted-foreground hover:text-foreground hover:underline"
-        onClick={() => props.onNavigate("")}
+        onClick={() => props.onNavigate([])}
       >
-        root
+        org
       </button>
-      {segments.map((seg, i) => {
-        const target = segments.slice(0, i + 1).join("/");
-        const isLast = i === segments.length - 1;
+      {props.segments.map((seg, i) => {
+        const isLast = i === props.segments.length - 1;
         return (
-          <span key={target} className="flex items-center gap-1 min-w-0">
+          <span
+            key={props.segments.slice(0, i + 1).join("/")}
+            className="flex items-center gap-1 min-w-0"
+          >
             <ChevronRight
               size={12}
               className="text-muted-foreground shrink-0"
@@ -111,7 +114,7 @@ function Breadcrumbs(props: {
               <button
                 type="button"
                 className="text-muted-foreground hover:text-foreground hover:underline truncate"
-                onClick={() => props.onNavigate(target)}
+                onClick={() => props.onNavigate(props.segments.slice(0, i + 1))}
               >
                 {seg}
               </button>
@@ -123,23 +126,210 @@ function Breadcrumbs(props: {
   );
 }
 
-function VolumeBrowser(props: { volume: string }) {
-  const { volume } = props;
+function Row(props: {
+  icon: React.ReactNode;
+  name: React.ReactNode;
+  size: string;
+  modified: string;
+  actions?: React.ReactNode;
+  onOpen?: () => void;
+}) {
+  return (
+    <tr className="border-b border-border last:border-b-0 hover:bg-muted/50">
+      <td className="px-4 py-2">
+        {props.onOpen ? (
+          <button
+            type="button"
+            className="flex items-center gap-2 hover:underline"
+            onClick={props.onOpen}
+          >
+            {props.icon}
+            <span className="font-medium">{props.name}</span>
+          </button>
+        ) : (
+          <span className="flex items-center gap-2">
+            {props.icon}
+            {props.name}
+          </span>
+        )}
+      </td>
+      <td className="px-4 py-2 text-muted-foreground">{props.size}</td>
+      <td className="px-4 py-2 text-muted-foreground">{props.modified}</td>
+      <td className="px-4 py-2">
+        <div className="flex items-center justify-end gap-1">
+          {props.actions}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function ListFrame(props: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-muted-foreground">
+            <th className="px-4 py-2 font-medium">Name</th>
+            <th className="px-4 py-2 font-medium w-28">Size</th>
+            <th className="px-4 py-2 font-medium w-48">Modified</th>
+            <th className="px-4 py-2 w-20" />
+          </tr>
+        </thead>
+        <tbody>{props.children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Root listing: each volume is a folder; usage doubles as its size. */
+function VolumeRootRows(props: { onOpen: (volume: string) => void }) {
+  const skills = useOrgFsUsage(VOLUMES[0].id);
+  const outputs = useOrgFsUsage(VOLUMES[1].id);
+  const usageFor: Record<string, OrgFsUsage | undefined> = {
+    skills: skills.data,
+    outputs: outputs.data,
+  };
+  return (
+    <>
+      {VOLUMES.map((v) => {
+        const usage = usageFor[v.id];
+        return (
+          <Row
+            key={v.id}
+            icon={<Folder size={15} className="text-muted-foreground" />}
+            name={
+              <span className="flex items-baseline gap-2">
+                {v.id}
+                <span className="text-xs font-normal text-muted-foreground">
+                  {v.description}
+                </span>
+              </span>
+            }
+            size={
+              usage ? `${usage.files} files · ${formatBytes(usage.bytes)}` : "—"
+            }
+            modified=""
+            onOpen={() => props.onOpen(v.id)}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function VolumeListing(props: {
+  volume: string;
+  path: string;
+  onOpenDir: (path: string) => void;
+  onDelete: (entry: OrgFsEntry) => void;
+}) {
+  const { volume, path } = props;
+  const listing = useOrgFsList(volume, path);
+  const downloadUrl = useOrgFsDownloadUrl(volume);
+
+  if (listing.isLoading) {
+    return (
+      <tr>
+        <td colSpan={4} className="p-4">
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-2/3" />
+          </div>
+        </td>
+      </tr>
+    );
+  }
+  if (listing.isError) {
+    return (
+      <tr>
+        <td colSpan={4} className="p-6 text-sm text-destructive">
+          {listing.error instanceof Error
+            ? listing.error.message
+            : "Failed to load"}
+        </td>
+      </tr>
+    );
+  }
+  const entries = listing.data ?? [];
+  if (entries.length === 0) {
+    return (
+      <tr>
+        <td
+          colSpan={4}
+          className="p-10 text-center text-sm text-muted-foreground"
+        >
+          Empty folder — upload a file or create a folder to get started.
+        </td>
+      </tr>
+    );
+  }
+  return (
+    <>
+      {entries.map((entry) => {
+        const name = basename(entry.path);
+        const isDir = entry.kind === "dir";
+        return (
+          <Row
+            key={entry.path}
+            icon={
+              isDir ? (
+                <Folder size={15} className="text-muted-foreground" />
+              ) : (
+                <File02 size={15} className="text-muted-foreground" />
+              )
+            }
+            name={name}
+            size={isDir ? "—" : formatBytes(entry.size)}
+            modified={formatDate(entry.updatedAt)}
+            onOpen={isDir ? () => props.onOpenDir(entry.path) : undefined}
+            actions={
+              <>
+                {!isDir && (
+                  <Button variant="ghost" size="icon" asChild>
+                    <a
+                      href={downloadUrl(entry.path)}
+                      download={name}
+                      aria-label={`Download ${name}`}
+                    >
+                      <Download01 size={14} />
+                    </a>
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Delete ${name}`}
+                  onClick={() => props.onDelete(entry)}
+                >
+                  <Trash01 size={14} />
+                </Button>
+              </>
+            }
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function FsBrowser() {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const [path, setPath] = useState("");
+  // First segment is the volume; [] is the synthetic root listing volumes.
+  const [segments, setSegments] = useState<string[]>([]);
+  const volume = segments[0] ?? null;
+  const path = segments.slice(1).join("/");
+
   const [pendingDelete, setPendingDelete] = useState<OrgFsEntry | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const listing = useOrgFsList(volume, path);
-  const usage = useOrgFsUsage(volume);
-  const downloadUrl = useOrgFsDownloadUrl(volume);
-  const { upload, mkdir, remove } = useOrgFsMutations(volume);
+  const { upload, mkdir, remove } = useOrgFsMutations(volume ?? VOLUMES[0].id);
 
   async function handleUpload(files: FileList | null) {
-    if (!files || files.length === 0) return;
+    if (!volume || !files || files.length === 0) return;
     try {
       await upload.mutateAsync({ dir: path, files: [...files] });
       toast.success(
@@ -156,7 +346,7 @@ function VolumeBrowser(props: { volume: string }) {
 
   async function handleCreateFolder() {
     const name = newFolderName.trim();
-    if (!name) return;
+    if (!volume || !name) return;
     try {
       await mkdir.mutateAsync(path ? `${path}/${name}` : name);
       toast.success(`Folder "${name}" created`);
@@ -182,20 +372,22 @@ function VolumeBrowser(props: { volume: string }) {
     }
   }
 
-  const entries = listing.data ?? [];
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Breadcrumbs path={path} onNavigate={setPath} />
+        <Breadcrumbs segments={segments} onNavigate={setSegments} />
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() =>
-              queryClient.invalidateQueries({
-                queryKey: KEYS.orgFsVolume(org.id, volume),
-              })
+              Promise.all(
+                VOLUMES.map((v) =>
+                  queryClient.invalidateQueries({
+                    queryKey: KEYS.orgFsVolume(org.id, v.id),
+                  }),
+                ),
+              )
             }
           >
             <RefreshCw01 size={14} />
@@ -204,6 +396,7 @@ function VolumeBrowser(props: { volume: string }) {
           <Button
             variant="outline"
             size="sm"
+            disabled={!volume}
             onClick={() => setNewFolderOpen(true)}
           >
             <Plus size={14} />
@@ -211,7 +404,7 @@ function VolumeBrowser(props: { volume: string }) {
           </Button>
           <Button
             size="sm"
-            disabled={upload.isPending}
+            disabled={!volume || upload.isPending}
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload01 size={14} />
@@ -227,108 +420,27 @@ function VolumeBrowser(props: { volume: string }) {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border overflow-hidden">
-        {listing.isLoading ? (
-          <div className="p-4 flex flex-col gap-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-2/3" />
-          </div>
-        ) : listing.isError ? (
-          <div className="p-6 text-sm text-destructive">
-            {listing.error instanceof Error
-              ? listing.error.message
-              : "Failed to load"}
-          </div>
-        ) : entries.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            Empty folder — upload a file or create a folder to get started.
-          </div>
+      <ListFrame>
+        {volume === null ? (
+          <VolumeRootRows onOpen={(v) => setSegments([v])} />
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-muted-foreground">
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium w-28">Size</th>
-                <th className="px-4 py-2 font-medium w-48">Modified</th>
-                <th className="px-4 py-2 w-20" />
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => {
-                const name = basename(entry.path);
-                const isDir = entry.kind === "dir";
-                return (
-                  <tr
-                    key={entry.path}
-                    className="border-b border-border last:border-b-0 hover:bg-muted/50"
-                  >
-                    <td className="px-4 py-2">
-                      {isDir ? (
-                        <button
-                          type="button"
-                          className="flex items-center gap-2 hover:underline"
-                          onClick={() => setPath(entry.path)}
-                        >
-                          <Folder size={15} className="text-muted-foreground" />
-                          <span className="font-medium">{name}</span>
-                        </button>
-                      ) : (
-                        <span className="flex items-center gap-2">
-                          <File02 size={15} className="text-muted-foreground" />
-                          {name}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {isDir ? "—" : formatBytes(entry.size)}
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {formatDate(entry.updatedAt)}
-                    </td>
-                    <td className="px-4 py-2">
-                      <div className="flex items-center justify-end gap-1">
-                        {!isDir && (
-                          <Button variant="ghost" size="icon" asChild>
-                            <a
-                              href={downloadUrl(entry.path)}
-                              download={name}
-                              aria-label={`Download ${name}`}
-                            >
-                              <Download01 size={14} />
-                            </a>
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Delete ${name}`}
-                          onClick={() => setPendingDelete(entry)}
-                        >
-                          <Trash01 size={14} />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <VolumeListing
+            // remount on volume switch so list state never bleeds across
+            key={volume}
+            volume={volume}
+            path={path}
+            onOpenDir={(p) => setSegments([volume, ...p.split("/")])}
+            onDelete={setPendingDelete}
+          />
         )}
-      </div>
-
-      <div className="text-xs text-muted-foreground">
-        {usage.data
-          ? `${usage.data.files} files · ${formatBytes(usage.data.bytes)} used in this volume`
-          : " "}
-      </div>
+      </ListFrame>
 
       <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New folder</DialogTitle>
             <DialogDescription>
-              Create a folder in {path ? `“${path}”` : "the volume root"}.
+              Create a folder in {segments.length ? segments.join("/") : "org"}.
             </DialogDescription>
           </DialogHeader>
           <Input
@@ -384,7 +496,6 @@ function VolumeBrowser(props: { volume: string }) {
 }
 
 export function OrgFsFilesPage() {
-  const [volume, setVolume] = useState<string>(VOLUMES[0].id);
   return (
     <Page>
       <Page.Content>
@@ -393,22 +504,12 @@ export function OrgFsFilesPage() {
             <div className="flex flex-col gap-1">
               <Page.Title>Files</Page.Title>
               <p className="text-sm text-muted-foreground">
-                The organization filesystem — these volumes are mounted at{" "}
+                The organization filesystem — mounted at{" "}
                 <code className="text-xs">org/</code> inside every sandbox.
               </p>
             </div>
             <ErrorBoundary>
-              <Tabs value={volume} onValueChange={setVolume}>
-                <TabsList>
-                  {VOLUMES.map((v) => (
-                    <TabsTrigger key={v.id} value={v.id}>
-                      {v.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-              {/* key resets the browse path when switching volumes */}
-              <VolumeBrowser key={volume} volume={volume} />
+              <FsBrowser />
             </ErrorBoundary>
           </SettingsPage>
         </Page.Body>
