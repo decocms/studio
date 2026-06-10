@@ -105,7 +105,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
       streamBuffer: deps.streamBuffer,
       sseHub: deps.sseHub,
     }),
-  ); // /api/:org/links/runs/:runId/stream
+  ); // /api/:org/links/runs/:runId/chunks
 
   if (deps.mountDevAssets) {
     app.route("/dev-assets", createDevAssetsRoutes({ orgFromPath: true }));

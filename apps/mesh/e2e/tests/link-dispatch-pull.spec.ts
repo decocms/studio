@@ -16,10 +16,11 @@
  *      publish) and then polls threads.status until terminal.
  *   4. The "daemon" calls GET /api/links/work and receives the work
  *      item; the test asserts its shape (runId, runFenceToken, harnessInput).
- *   5. The "daemon" POSTs a minimal dispatch SSE body to
- *      POST /api/:org/links/runs/:runId/stream with x-fence-token header.
- *      The ingest commits parts and transitions the thread to terminal,
- *      which releases the gate's polling loop.
+ *   5. The "daemon" POSTs a seq-numbered NDJSON chunk relay (protocol v2) to
+ *      POST /api/:org/links/runs/:runId/chunks with x-fence-token and
+ *      x-relay-from headers. The cluster-side harness kernel consumes the
+ *      relayed chunks, commits parts, and transitions the thread to
+ *      terminal, which releases the gate's polling loop.
  *   6. The test asserts thread_message_parts has a text + finish part and
  *      that threads.status === 'completed'.
  *
@@ -28,17 +29,20 @@
  *     - Link presence via GET /links/work (sentinel claim refresh)
  *     - POST /messages dispatch path for a pull thread (202 + taskId)
  *     - Work item delivery via GET /links/work (runId, runFenceToken, harnessInput)
- *     - Ingest POST with fence token (200, parts land, status terminal)
+ *     - Chunk relay POST with fence token (200 {ok,lastSeq}, parts land,
+ *       status terminal)
  *     - Gate poll releases (threads.status = 'completed' before assertion)
  *
  *   NOT COVERED (requires real NATS JetStream consumer + timing):
  *     - The gate's DBOS pollUntilTerminal loop completing *before* the test
  *       asserts — the workflow runs asynchronously; the test asserts the DB
  *       state directly and does not await the DBOS step. This is acceptable:
- *       the ingest endpoint sets threads.status = 'completed' synchronously,
- *       which is what the gate polls. In CI the gate fires and polls against
- *       the real DB; the assertion sees the post-ingest row directly.
- *     - Body-offload and multi-chunk SSE streams (covered by link-ingest.spec.ts).
+ *       the chunks endpoint sets threads.status = 'completed' before acking
+ *       the terminal POST, which is what the gate polls. In CI the gate fires
+ *       and polls against the real DB; the assertion sees the post-relay row
+ *       directly.
+ *     - Reconnect/backfill (full-prefix resend) and body-offload (covered by
+ *       link-ingest.spec.ts and the chunk-relay unit tests).
  *
  * Presence strategy: the spec uses GET /api/links/work to establish the
  * claim (same as a real pull daemon holding the long-poll). The request carries
@@ -100,12 +104,14 @@ async function fetchParts(
 }
 
 /**
- * Build a minimal dispatch SSE body (reused from link-ingest.spec.ts).
- * Carries a single assistant turn:
+ * Build a minimal NDJSON chunk-relay body (protocol v2; mirrors what the real
+ * daemon's chunk relay produces — see link-daemon/chunk-relay.ts). Carries a
+ * single assistant turn:
  *   start → start-step → text-start → text-delta → text-end → finish-step → finish
- * followed by a `done` sentinel.
+ * followed by a terminal `done` line, each wrapped as a seq-numbered
+ * `{seq, event}` RelayLine.
  */
-function buildSseBody(messageId: string, text: string): string {
+function buildRelayBody(messageId: string, text: string): string {
   const textId = `${messageId}-text-0`;
   const chunks: unknown[] = [
     { type: "start" },
@@ -121,7 +127,9 @@ function buildSseBody(messageId: string, text: string): string {
     chunk,
   }));
   events.push({ type: "done" });
-  return events.map((ev) => `data: ${JSON.stringify(ev)}\n\n`).join("");
+  return `${events
+    .map((event, i) => JSON.stringify({ seq: i + 1, event }))
+    .join("\n")}\n`;
 }
 
 /**
@@ -357,34 +365,37 @@ test.describe("pull-transport round-trip", () => {
 
       const runFenceToken = workItem!.runFenceToken;
 
-      // ── Step 5: daemon POSTs the SSE harness output ───────────────────────
+      // ── Step 5: daemon relays the harness output as NDJSON chunk lines ────
       //
-      // Reuse buildSseBody: a minimal start/text/finish sequence that the
-      // ingest endpoint parses into parts and commits via consumePartStream.
+      // Reuse buildRelayBody: a minimal start/text/finish turn + a terminal
+      // done line, exactly what the real daemon chunk relay streams. The
+      // cluster-side harness kernel consumes it and commits parts.
       const messageId = `msg_pull_e2e_${Date.now()}`;
       const bodyText = `pull-daemon-sim-marker-${Date.now()}`;
-      const sseBody = buildSseBody(messageId, bodyText);
+      const relayBody = buildRelayBody(messageId, bodyText);
+      const relayLineCount = relayBody.trim().split("\n").length;
 
       const ingestRes = await api.post(
-        `/api/${orgSlug}/links/runs/${runId}/stream`,
+        `/api/${orgSlug}/links/runs/${runId}/chunks`,
         {
           headers: {
-            "content-type": "text/event-stream",
+            "content-type": "application/x-ndjson",
             "x-fence-token": runFenceToken,
+            "x-relay-from": "1",
           },
-          data: sseBody,
+          data: relayBody,
         },
       );
 
       expect(ingestRes.status()).toBe(200);
       const ingestJson = await ingestRes.json();
-      expect(ingestJson).toMatchObject({ ok: true });
+      expect(ingestJson).toMatchObject({ ok: true, lastSeq: relayLineCount });
 
       // ── Step 6: assert DB state ────────────────────────────────────────────
       //
-      // The ingest handler commits parts to thread_message_parts and
-      // transitions threads.status to 'completed'. This is what releases
-      // the gate's pollUntilTerminal loop.
+      // The chunks handler commits parts to thread_message_parts and
+      // transitions threads.status to 'completed' before acking the terminal
+      // POST. This is what releases the gate's pollUntilTerminal loop.
 
       // 6a. Parts must be present: at minimum a text part + a finish anchor.
       const parts = await fetchParts(db, runId);

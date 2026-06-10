@@ -69,6 +69,7 @@ import {
 } from "@/harnesses/workspace-cwd";
 import { createProviderFromSecret } from "@/harnesses/decopilot/provider-from-secret";
 import {
+  classifyStreamError,
   sanitizeStreamError,
   stringifyError,
 } from "@/harnesses/decopilot/stream-error";
@@ -192,44 +193,6 @@ function lazyStream<T>(factory: () => ReadableStream<T>): ReadableStream<T> {
     },
     { highWaterMark: 0 },
   );
-}
-
-/**
- * Classify a stream error into a small, stable taxonomy for analytics.
- * Consumers (dashboards) can rely on these values being consistent across
- * providers — the raw error message stays in the separate `error_message`
- * prop for debugging.
- */
-function classifyStreamError(
-  error: unknown,
-):
-  | "aborted"
-  | "insufficient_funds"
-  | "rate_limit"
-  | "timeout"
-  | "auth"
-  | "model_error"
-  | "tool_error"
-  | "unknown" {
-  if (error instanceof Error && error.name === "AbortError") return "aborted";
-  const msg = (
-    error instanceof Error ? error.message : stringifyError(error)
-  ).toLowerCase();
-  if (
-    /insufficient|no credits|out of credits|balance|payment|quota exceeded|402/i.test(
-      msg,
-    )
-  ) {
-    return "insufficient_funds";
-  }
-  if (/rate.?limit|too many requests|429/i.test(msg)) return "rate_limit";
-  if (/timeout|timed out|deadline/i.test(msg)) return "timeout";
-  if (/unauthor|forbidden|401|403|invalid.*(key|token)/i.test(msg))
-    return "auth";
-  if (/tool|mcp|connection/i.test(msg)) return "tool_error";
-  if (/model|provider|anthropic|openai|gemini|claude/i.test(msg))
-    return "model_error";
-  return "unknown";
 }
 
 /**

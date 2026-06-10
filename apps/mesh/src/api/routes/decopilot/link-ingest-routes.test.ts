@@ -4,108 +4,112 @@ import type { UIMessageChunk } from "ai";
 import type { SSEEvent } from "@/event-bus";
 import type { ThreadMessagePart } from "@/storage/fold-parts";
 import type { Env } from "../../hono-env";
-import { createLinkIngestRoutes } from "./link-ingest-routes";
+import { createLinkIngestRoutes, ndjsonLines } from "./link-ingest-routes";
 
-function makeRow(
-  overrides: Partial<ThreadMessagePart> = {},
-): ThreadMessagePart {
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+const RUN_ID = "run_1";
+
+function makeThread(overrides: Record<string, unknown> = {}) {
   return {
-    id: "run_1:0",
-    seq: 0,
-    org_id: "org_1",
-    thread_id: "run_1",
-    run_id: "run_1",
-    message_id: "assistant_1",
-    role: "assistant",
-    kind: "text",
-    payload: { type: "text", text: "hello" },
-    payload_ref: null,
-    metadata: null,
+    id: RUN_ID,
+    organization_id: "org_1",
+    status: "in_progress",
+    virtual_mcp_id: "vmcp_1",
+    created_by: "user_1",
+    trigger_id: null,
+    title: "Test thread",
+    branch: null,
+    message_storage_version: 2,
     created_at: "2026-06-09T00:00:00.000Z",
+    updated_at: "2026-06-09T00:00:01.000Z",
     ...overrides,
   };
 }
 
-function appWithContext(ctx: Record<string, unknown> = {}) {
+interface AppContextOptions {
+  /** Thread row returned by storage.threads.get (null = missing). */
+  thread?: Record<string, unknown> | null;
+  cancelRequestedAt?: string | null;
+  runFence?: string | null;
+  authUserId?: string | null;
+  orgId?: string;
+  /** When true, createTailStream returns an instantly-closed stream so the
+   *  pump path runs; when false (default) the tail is null → direct drain. */
+  withTail?: boolean;
+}
+
+function appWithContext(opts: AppContextOptions = {}) {
+  const thread = opts.thread === undefined ? makeThread() : opts.thread;
   const appended: ThreadMessagePart[][] = [];
-  const updates: unknown[] = [];
+  const savedMessages: unknown[][] = [];
+  const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
   const purged: string[] = [];
   const pumped: UIMessageChunk[][] = [];
   const pumpPromises: Promise<void>[] = [];
   const sseEvents: Array<{ orgId: string; event: SSEEvent }> = [];
   const insertedIds = new Set<string>();
+  let bumps = 0;
   let threadStatus =
-    typeof ctx.initialThreadStatus === "string"
-      ? ctx.initialThreadStatus
-      : "in_progress";
+    thread && typeof thread.status === "string" ? thread.status : "in_progress";
+
+  const threadRow = () => ({ ...thread, status: threadStatus });
+
   const app = new Hono<Env>();
   app.use("*", async (c, next) => {
     c.set("meshContext", {
-      auth: { user: { id: "user_1" } },
-      organization: { id: "org_1", slug: "acme" },
+      auth:
+        opts.authUserId === null
+          ? {}
+          : { user: { id: opts.authUserId ?? "user_1" } },
+      organization: { id: opts.orgId ?? "org_1", slug: "acme" },
       storage: {
         threads: {
-          getCancelRequestedAt: async () => null,
-          getRunFence: async () => "fence_1",
-          bumpProgress: async () => undefined,
-          get: async () => ({
-            id: "run_1",
-            status: threadStatus,
-            virtual_mcp_id: "vmcp_1",
-            created_by: "user_1",
-            trigger_id: null,
-            title: "Test thread",
-            branch: null,
-            created_at: "2026-06-09T00:00:00.000Z",
-            updated_at: "2026-06-09T00:00:01.000Z",
-          }),
-          update: async (_id: string, data: unknown) => {
-            updates.push(data);
-            if (
-              typeof data === "object" &&
-              data !== null &&
-              "status" in data &&
-              typeof data.status === "string"
-            ) {
-              threadStatus = data.status;
-            }
+          get: async () => (thread ? threadRow() : null),
+          getCancelRequestedAt: async () => opts.cancelRequestedAt ?? null,
+          getRunFence: async () =>
+            opts.runFence === undefined ? "fence_1" : opts.runFence,
+          bumpProgress: async () => {
+            bumps++;
+          },
+          update: async (id: string, data: Record<string, unknown>) => {
+            updates.push({ id, data });
+            if (typeof data.status === "string") threadStatus = data.status;
+            return threadRow();
           },
           completeRunIfNotCompleted: async () => {
             if (threadStatus !== "in_progress") return null;
-            const update = {
-              status: "completed",
-              run_owner_pod: null,
-              run_config: null,
-              run_started_at: null,
-            };
-            updates.push(update);
             threadStatus = "completed";
-            return {
-              id: "run_1",
-              status: threadStatus,
-              virtual_mcp_id: "vmcp_1",
-              created_by: "user_1",
-              trigger_id: null,
-              title: "Test thread",
-              branch: null,
-              created_at: "2026-06-09T00:00:00.000Z",
-              updated_at: "2026-06-09T00:00:01.000Z",
-            };
+            updates.push({
+              id: RUN_ID,
+              data: {
+                status: "completed",
+                run_owner_pod: null,
+                run_config: null,
+                run_started_at: null,
+              },
+            });
+            return threadRow();
+          },
+          saveMessages: async (messages: unknown[]) => {
+            savedMessages.push(messages);
           },
           messageParts: () => ({
             appendParts: async (rows: ThreadMessagePart[]) => {
               const inserted = rows.filter((row) => !insertedIds.has(row.id));
               for (const row of inserted) insertedIds.add(row.id);
-              appended.push(inserted);
+              if (inserted.length > 0) appended.push(inserted);
               return inserted;
             },
           }),
         },
       },
-      ...ctx,
     } as unknown as Env["Variables"]["meshContext"]);
     await next();
   });
+
   app.route(
     "/api/:org",
     createLinkIngestRoutes({
@@ -130,7 +134,14 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
           })();
           pumpPromises.push(promise);
         },
-        createTailStream: async () => null,
+        createTailStream: async () =>
+          opts.withTail
+            ? new ReadableStream({
+                start(controller) {
+                  controller.close();
+                },
+              })
+            : null,
         purge: (taskId: string) => {
           purged.push(taskId);
         },
@@ -143,225 +154,439 @@ function appWithContext(ctx: Record<string, unknown> = {}) {
       },
     }),
   );
-  return { app, appended, updates, purged, pumped, pumpPromises, sseEvents };
+
+  return {
+    app,
+    appended,
+    savedMessages,
+    updates,
+    purged,
+    pumped,
+    pumpPromises,
+    sseEvents,
+    bumps: () => bumps,
+  };
 }
 
-async function postParts(
+// ---------------------------------------------------------------------------
+// NDJSON relay body builders
+// ---------------------------------------------------------------------------
+
+type RelayEvent =
+  | { type: "ui-message-chunk"; chunk: unknown }
+  | { type: "error"; code: string; message: string }
+  | { type: "done" };
+
+function relayBody(events: RelayEvent[], fromSeq = 1): string {
+  return `${events
+    .map((event, i) => JSON.stringify({ seq: fromSeq + i, event }))
+    .join("\n")}\n`;
+}
+
+function chunkEvents(chunks: unknown[]): RelayEvent[] {
+  return chunks.map((chunk) => ({ type: "ui-message-chunk", chunk }));
+}
+
+/** One complete assistant turn (text "hello") as UIMessageChunks. */
+function helloTurnChunks(messageId = "msg_1"): unknown[] {
+  const textId = `${messageId}-text-0`;
+  return [
+    { type: "start", messageId },
+    { type: "start-step" },
+    { type: "text-start", id: textId },
+    { type: "text-delta", id: textId, delta: "hello" },
+    { type: "text-end", id: textId },
+    { type: "finish-step" },
+    { type: "finish" },
+  ];
+}
+
+function postChunks(
   app: Hono<Env>,
-  body: unknown,
-  headers: Record<string, string> = { "x-fence-token": "fence_1" },
+  body: string,
+  headers: Record<string, string> = {},
 ) {
-  return await app.request("/api/acme/links/runs/run_1/parts", {
+  return app.request(`/api/acme/links/runs/${RUN_ID}/chunks`, {
     method: "POST",
     headers: {
-      "content-type": "application/json",
+      "content-type": "application/x-ndjson",
+      "x-fence-token": "fence_1",
+      "x-relay-from": "1",
       ...headers,
     },
-    body: JSON.stringify(body),
+    body,
   });
 }
 
-describe("link ingest parts route", () => {
-  test("appends rows and returns ok", async () => {
-    const { app, appended } = appWithContext();
-    const row = makeRow();
+// ---------------------------------------------------------------------------
+// ndjsonLines
+// ---------------------------------------------------------------------------
 
-    const res = await postParts(app, {
-      batchId: "batch_1",
-      rows: [row],
-      done: false,
-    });
+function bytesStream(parts: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const part of parts) controller.enqueue(encoder.encode(part));
+      controller.close();
+    },
+  });
+}
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      ok: true,
-      appended: 1,
-      done: false,
-    });
-    expect(appended).toEqual([[row]]);
+async function collect<T>(iter: AsyncIterable<T>): Promise<T[]> {
+  const out: T[] = [];
+  for await (const value of iter) out.push(value);
+  return out;
+}
+
+describe("ndjsonLines", () => {
+  test("yields one parsed value per line, skipping blank lines", async () => {
+    const lines = await collect(
+      ndjsonLines(bytesStream(['{"a":1}\n', "\n", '{"b":2}\n'])),
+    );
+    expect(lines).toEqual([{ a: 1 }, { b: 2 }]);
   });
 
-  test("rejects rows whose run_id does not match path", async () => {
-    const { app, appended } = appWithContext();
-
-    const res = await postParts(app, {
-      batchId: "batch_1",
-      rows: [makeRow({ run_id: "other_run" })],
-      done: false,
-    });
-
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "row run mismatch" });
-    expect(appended).toEqual([]);
+  test("reassembles lines split across byte chunks", async () => {
+    const lines = await collect(
+      ndjsonLines(bytesStream(['{"seq":1,"ev', 'ent":{"type":"done"}}\n'])),
+    );
+    expect(lines).toEqual([{ seq: 1, event: { type: "done" } }]);
   });
 
-  test("rejects schema failures as a bad batch", async () => {
-    const { app, appended } = appWithContext();
-
-    const res = await postParts(app, {
-      rows: [makeRow()],
-      done: false,
-    });
-
-    expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ error: "bad batch" });
-    expect(appended).toEqual([]);
+  test("parses a trailing line without a final newline", async () => {
+    const lines = await collect(ndjsonLines(bytesStream(['{"a":1}\n{"b":2}'])));
+    expect(lines).toEqual([{ a: 1 }, { b: 2 }]);
   });
 
-  test("marks the run completed on done true", async () => {
-    const { app, updates, purged, sseEvents } = appWithContext();
+  test("throws SyntaxError on malformed JSON", async () => {
+    await expect(
+      collect(ndjsonLines(bytesStream(["not json\n"]))),
+    ).rejects.toBeInstanceOf(SyntaxError);
+  });
+});
 
-    const res = await postParts(app, {
-      batchId: "batch_1",
-      rows: [],
-      done: true,
-    });
+// ---------------------------------------------------------------------------
+// POST /links/runs/:runId/chunks
+// ---------------------------------------------------------------------------
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      ok: true,
-      appended: 0,
-      done: true,
-    });
-    expect(updates).toEqual([
-      {
-        status: "completed",
-        run_owner_pod: null,
-        run_config: null,
-        run_started_at: null,
-      },
-    ]);
-    expect(purged).toEqual(["run_1"]);
-    expect(sseEvents.map(({ event }) => event.type)).toEqual([
-      "decopilot.thread.status",
-      "decopilot.finish",
-    ]);
+describe("link ingest chunks route", () => {
+  test("rejects unauthenticated callers with 401", async () => {
+    const { app } = appWithContext({ authUserId: null });
+
+    const res = await postChunks(app, relayBody([{ type: "done" }]));
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
-  test("does not complete or publish finish for a late done batch after failure", async () => {
-    const { app, pumped, pumpPromises, updates, purged, sseEvents } =
-      appWithContext({ initialThreadStatus: "failed" });
+  test("404s a missing thread before any fence handling", async () => {
+    const { app } = appWithContext({ thread: null });
 
-    const res = await postParts(app, {
-      batchId: "batch_1",
-      rows: [],
-      done: true,
-    });
-    await Promise.all(pumpPromises);
+    const res = await postChunks(app, relayBody([{ type: "done" }]));
 
-    expect(res.status).toBe(200);
-    expect(pumped).toEqual([]);
-    expect(updates).toEqual([]);
-    expect(purged).toEqual([]);
-    expect(sseEvents).toEqual([]);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not found" });
   });
 
-  test("publishes appended rows and finish to the live stream buffer", async () => {
-    const { app, pumped, pumpPromises } = appWithContext();
-
-    const rowRes = await postParts(app, {
-      batchId: "batch_1",
-      rows: [makeRow()],
-      done: false,
-    });
-    const doneRes = await postParts(app, {
-      batchId: "batch_done",
-      rows: [],
-      done: true,
-    });
-    await Promise.all(pumpPromises);
-
-    expect(rowRes.status).toBe(200);
-    expect(doneRes.status).toBe(200);
-    expect(pumped).toEqual([
-      [
-        { type: "start", messageId: "assistant_1" },
-        { type: "start-step" },
-        { type: "text-start", id: "run_1:0" },
-        { type: "text-delta", id: "run_1:0", delta: "hello" },
-        { type: "text-end", id: "run_1:0" },
-        { type: "finish-step" },
-      ],
-      [{ type: "finish" }],
-    ]);
-  });
-
-  test("does not republish live chunks for a retried batch", async () => {
-    const { app, pumped, pumpPromises, updates, sseEvents } = appWithContext();
-    const rowBatch = {
-      batchId: "batch_1",
-      rows: [makeRow()],
-      done: false,
-    };
-    const doneBatch = {
-      batchId: "batch_done",
-      rows: [],
-      done: true,
-    };
-
-    const firstRow = await postParts(app, rowBatch);
-    const secondRow = await postParts(app, rowBatch);
-    const firstDone = await postParts(app, doneBatch);
-    const secondDone = await postParts(app, doneBatch);
-    await Promise.all(pumpPromises);
-
-    expect(firstRow.status).toBe(200);
-    expect(secondRow.status).toBe(200);
-    expect(firstDone.status).toBe(200);
-    expect(secondDone.status).toBe(200);
-    expect(pumped).toHaveLength(2);
-    expect(updates).toHaveLength(1);
-    expect(sseEvents.map(({ event }) => event.type)).toEqual([
-      "decopilot.thread.status",
-      "decopilot.finish",
-    ]);
-  });
-
-  test("rejects cancelled runs before fence check", async () => {
-    let fenceChecks = 0;
+  test("404s a thread owned by a foreign org", async () => {
     const { app } = appWithContext({
-      storage: {
-        threads: {
-          getCancelRequestedAt: async () => "2026-06-09T00:00:00.000Z",
-          getRunFence: async () => {
-            fenceChecks++;
-            return "fence_1";
-          },
-          bumpProgress: async () => undefined,
-          update: async () => undefined,
-          messageParts: () => ({
-            appendParts: async () => undefined,
-          }),
-        },
-      },
+      thread: makeThread({ organization_id: "org_other" }),
     });
 
-    const res = await postParts(app, {
-      batchId: "batch_1",
-      rows: [makeRow()],
-      done: false,
+    const res = await postChunks(app, relayBody([{ type: "done" }]));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not found" });
+  });
+
+  test("rejects cancelled runs with 409 even on a valid fence", async () => {
+    const { app } = appWithContext({
+      cancelRequestedAt: "2026-06-09T00:00:00.000Z",
     });
+
+    const res = await postChunks(app, relayBody([{ type: "done" }]));
 
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "cancelled" });
-    expect(fenceChecks).toBe(0);
   });
 
-  test("rejects bad fence", async () => {
+  test("rejects a missing fence with 409", async () => {
+    const { app } = appWithContext({ runFence: null });
+
+    const res = await postChunks(app, relayBody([{ type: "done" }]));
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "no active run fence" });
+  });
+
+  test("rejects a stale fence token with 409", async () => {
     const { app, appended } = appWithContext();
 
-    const res = await postParts(
-      app,
-      {
-        batchId: "batch_1",
-        rows: [makeRow()],
-        done: false,
-      },
-      { "x-fence-token": "wrong_fence" },
-    );
+    const res = await postChunks(app, relayBody([{ type: "done" }]), {
+      "x-fence-token": "wrong_fence",
+    });
 
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "fenced" });
     expect(appended).toEqual([]);
+  });
+
+  test("410 relay_session_lost for a resumed relay with no session", async () => {
+    const { app, appended } = appWithContext();
+
+    const res = await postChunks(app, relayBody([{ type: "done" }], 5), {
+      "x-relay-from": "5",
+    });
+
+    expect(res.status).toBe(410);
+    expect(await res.json()).toEqual({ error: "relay_session_lost" });
+    expect(appended).toEqual([]);
+  });
+
+  test("400 bad line for a schema-invalid relay line", async () => {
+    const { app } = appWithContext();
+
+    const res = await postChunks(
+      app,
+      '{"seq":"one","event":{"type":"done"}}\n',
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "bad line" });
+  });
+
+  test("400 bad line for malformed NDJSON", async () => {
+    const { app } = appWithContext();
+
+    const res = await postChunks(app, "not json at all\n");
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "bad line" });
+  });
+
+  test("happy path: full relay → 200 {ok,lastSeq}, parts committed, run completed, SSE emitted", async () => {
+    const { app, appended, updates, purged, sseEvents, bumps } =
+      appWithContext();
+
+    const events = [
+      ...chunkEvents(helloTurnChunks()),
+      { type: "done" } as const,
+    ];
+    const res = await postChunks(app, relayBody(events));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, lastSeq: events.length });
+
+    // v2 persistence: a text part + a finish anchor landed via PartEmitter.
+    const rows = appended.flat();
+    const kinds = rows.map((r) => r.kind);
+    expect(kinds).toContain("text");
+    expect(kinds).toContain("finish");
+    const textRow = rows.find((r) => r.kind === "text")!;
+    expect((textRow.payload as { text?: string }).text).toBe("hello");
+
+    // Terminal status transition (guarded completed update) + purge + SSE.
+    expect(updates.map((u) => u.data)).toContainEqual({
+      status: "completed",
+      run_owner_pod: null,
+      run_config: null,
+      run_started_at: null,
+    });
+    expect(purged).toEqual([RUN_ID]);
+    expect(sseEvents.map(({ event }) => event.type)).toEqual([
+      "decopilot.thread.status",
+      "decopilot.finish",
+    ]);
+    expect(bumps()).toBeGreaterThanOrEqual(1);
+  });
+
+  test("pumps kernel output into the live edge when JetStream is up", async () => {
+    const { app, pumped, pumpPromises } = appWithContext({ withTail: true });
+
+    const events = [
+      ...chunkEvents(helloTurnChunks()),
+      { type: "done" } as const,
+    ];
+    const res = await postChunks(app, relayBody(events));
+    await Promise.all(pumpPromises);
+
+    expect(res.status).toBe(200);
+    expect(pumped).toHaveLength(1);
+    const types = pumped[0]!.map((c) => (c as { type: string }).type);
+    expect(types).toContain("text-delta");
+    expect(types).toContain("finish");
+  });
+
+  test("reconnect replays the full prefix without duplicating parts", async () => {
+    const { app, appended, updates, sseEvents } = appWithContext();
+
+    const turn = helloTurnChunks();
+    // First POST: a partial upload (drops mid-message, no terminal line).
+    const first = await postChunks(
+      app,
+      relayBody(chunkEvents(turn.slice(0, 4))),
+    );
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ ok: true, lastSeq: 4 });
+
+    // Reconnect: the daemon resends the WHOLE prefix from seq 1 + the rest.
+    const events = [...chunkEvents(turn), { type: "done" } as const];
+    const second = await postChunks(app, relayBody(events));
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ ok: true, lastSeq: events.length });
+
+    const rows = appended.flat();
+    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
+    expect(rows.filter((r) => r.kind === "finish")).toHaveLength(1);
+    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
+      1,
+    );
+    expect(sseEvents.map(({ event }) => event.type)).toEqual([
+      "decopilot.thread.status",
+      "decopilot.finish",
+    ]);
+  });
+
+  test("a full re-POST after completion is idempotent (no double terminal effects)", async () => {
+    // The terminal ack can be lost on the wire; the daemon then retries the
+    // whole upload. The session is gone (consume settled → registry entry
+    // removed), so a fresh one re-consumes — deterministic part ids and the
+    // guarded completed-transition make that redelivery a no-op.
+    const { app, appended, updates, sseEvents } = appWithContext();
+    const events = [
+      ...chunkEvents(helloTurnChunks()),
+      { type: "done" } as const,
+    ];
+
+    const first = await postChunks(app, relayBody(events));
+    expect(first.status).toBe(200);
+    const second = await postChunks(app, relayBody(events));
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ ok: true, lastSeq: events.length });
+
+    const rows = appended.flat();
+    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
+    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
+      1,
+    );
+    expect(sseEvents).toHaveLength(2);
+  });
+
+  test("error event fails the run durably and never emits completed SSE", async () => {
+    const { app, appended, updates, purged, sseEvents } = appWithContext();
+
+    const turn = helloTurnChunks();
+    const events: RelayEvent[] = [
+      ...chunkEvents(turn.slice(0, 5)), // start..text-end, no finish
+      { type: "error", code: "sandbox_dead", message: "sandbox went away" },
+      { type: "done" },
+    ];
+    const res = await postChunks(app, relayBody(events));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, lastSeq: events.length });
+
+    // The kernel persisted an error part (v2 path) and the run is failed.
+    const kinds = appended.flat().map((r) => r.kind);
+    expect(kinds).toContain("error");
+    expect(updates.map((u) => u.data)).toContainEqual({
+      status: "failed",
+      run_owner_pod: null,
+      run_config: null,
+      run_started_at: null,
+    });
+    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
+      0,
+    );
+    expect(sseEvents).toEqual([]);
+    // The live edge is still purged — the run is over either way.
+    expect(purged).toEqual([RUN_ID]);
+  });
+
+  test("v1 thread persists the whole final message via saveMessages", async () => {
+    const { app, appended, savedMessages, updates } = appWithContext({
+      thread: makeThread({ message_storage_version: 1 }),
+    });
+
+    const events = [
+      ...chunkEvents(helloTurnChunks()),
+      { type: "done" } as const,
+    ];
+    const res = await postChunks(app, relayBody(events));
+
+    expect(res.status).toBe(200);
+    expect(appended).toEqual([]); // no part rows on v1
+    expect(savedMessages).toHaveLength(1);
+    const saved = savedMessages[0]![0] as {
+      thread_id: string;
+      role: string;
+      parts: Array<{ type: string; text?: string }>;
+    };
+    expect(saved.thread_id).toBe(RUN_ID);
+    expect(saved.role).toBe("assistant");
+    expect(
+      saved.parts.some((p) => p.type === "text" && p.text === "hello"),
+    ).toBe(true);
+    expect(updates.map((u) => u.data)).toContainEqual({
+      status: "completed",
+      run_owner_pod: null,
+      run_config: null,
+      run_started_at: null,
+    });
+  });
+
+  test("persists a relayed title for a default-titled thread and emits the SSE title event", async () => {
+    const { app, updates, sseEvents } = appWithContext({
+      thread: makeThread({ title: "New chat" }),
+    });
+
+    const events: RelayEvent[] = [
+      ...chunkEvents([
+        ...helloTurnChunks().slice(0, 6), // start..finish-step
+        {
+          type: "data-title-result",
+          data: { title: "Greeting the daemon" },
+          transient: true,
+        },
+        { type: "finish" },
+      ]),
+      { type: "done" },
+    ];
+    const res = await postChunks(app, relayBody(events));
+
+    expect(res.status).toBe(200);
+    expect(updates.map((u) => u.data)).toContainEqual({
+      title: "Greeting the daemon",
+    });
+    // buildOnTitleUpdated emits a thread-status event carrying the title,
+    // then the completed path emits status + finish.
+    const titleEvent = sseEvents.find(
+      ({ event }) =>
+        event.type === "decopilot.thread.status" &&
+        (event as { data?: { title?: string } }).data?.title ===
+          "Greeting the daemon",
+    );
+    expect(titleEvent).toBeDefined();
+  });
+
+  test("does not overwrite a user-set title", async () => {
+    const { app, updates } = appWithContext(); // title: "Test thread"
+
+    const events: RelayEvent[] = [
+      ...chunkEvents([
+        ...helloTurnChunks().slice(0, 6),
+        {
+          type: "data-title-result",
+          data: { title: "Auto title" },
+          transient: true,
+        },
+        { type: "finish" },
+      ]),
+      { type: "done" },
+    ];
+    const res = await postChunks(app, relayBody(events));
+
+    expect(res.status).toBe(200);
+    expect(updates.some((u) => "title" in u.data)).toBe(false);
   });
 });

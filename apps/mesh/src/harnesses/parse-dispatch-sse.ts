@@ -4,9 +4,8 @@
  * The wire format (emitted by the sandbox daemon's `/dispatch` route) is a
  * sequence of `\n\n`-delimited event blocks, each with one or more `data: `
  * lines whose joined JSON matches `dispatchSSEEventSchema`. Shared by
- * `remoteDispatch` (cluster pulls the daemon), the link ingest endpoint, and
- * the daemon chunk relay (`link-daemon/chunk-relay.ts`) so all decode
- * identically.
+ * `remoteDispatch` (cluster pulls the daemon) and the daemon chunk relay
+ * (`link-daemon/chunk-relay.ts`) so both decode identically.
  *
  * Two consumers:
  * - `parseDispatchSSEEvents` — yields every validated raw `DispatchSSEEvent`
