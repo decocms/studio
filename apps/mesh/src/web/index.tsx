@@ -368,6 +368,14 @@ const settingsFilesRoute = createRoute({
   ),
 });
 
+const settingsBucketsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/buckets",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/buckets.tsx"),
+  ),
+});
+
 const settingsMembersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/members",
@@ -552,6 +560,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsAiProvidersRoute,
   settingsSecretsRoute,
   settingsFilesRoute,
+  settingsBucketsRoute,
   settingsMembersRoute,
   settingsRolesRoute,
   settingsSsoRoute,
