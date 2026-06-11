@@ -321,6 +321,7 @@ export const KEYS = {
     ["org-fs", orgId, volume, "list", path] as const,
   orgFsUsage: (orgId: string, volume: string) =>
     ["org-fs", orgId, volume, "usage"] as const,
+  orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
 
   // File picker — objects listed from a configured bucket
   filePickerObjects: (orgId: string, configId: string | null) =>

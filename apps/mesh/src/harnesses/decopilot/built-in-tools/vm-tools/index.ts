@@ -9,6 +9,7 @@
 import { tool, zodSchema } from "ai";
 import path from "node:path";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
+import { getSettings } from "@/settings";
 import { maybeTruncate } from "./common";
 import {
   buildBashDescription,
@@ -124,6 +125,7 @@ async function daemonRequest(
   path: string,
   body: Record<string, unknown> | null,
   method: "GET" | "POST" | "PUT" = "POST",
+  threadId?: string,
 ): Promise<unknown> {
   let res: Response;
   try {
@@ -136,6 +138,9 @@ async function daemonRequest(
       headers: new Headers({ "content-type": "application/json" }),
       body: null,
     };
+    // Lets the daemon repoint `org/output → .outputs/<threadId>` before
+    // executing — hosted decopilot has no /dispatch envelope to carry it.
+    if (threadId) init.headers.set("x-thread-id", threadId);
     // GET/HEAD must not carry a body; the runners' proxy strips it anyway,
     // but constructing it is wasteful and obscures intent.
     if (method !== "GET" && body !== null) {
@@ -220,7 +225,7 @@ export function createVmTools(params: VmToolsParams) {
     method: "POST" | "PUT" = "POST",
   ): Promise<unknown> => {
     const tryOnce = async (handle: string) =>
-      daemonRequest(runner, handle, daemonPath, input, method);
+      daemonRequest(runner, handle, daemonPath, input, method, threadId);
     const firstHandle = await ensureHandle();
     try {
       return await tryOnce(firstHandle);
@@ -360,7 +365,7 @@ export function createVmTools(params: VmToolsParams) {
 
   const bash = tool({
     needsApproval: approvalFor(TOOL_APPROVAL.bash),
-    description: buildBashDescription(),
+    description: buildBashDescription(getSettings().orgFsClusterMounts),
     inputSchema: zodSchema(BashInputSchema),
     execute: async (input) => {
       const result = await call("/_sandbox/bash", input);
@@ -420,6 +425,10 @@ export function createVmTools(params: VmToolsParams) {
     glob,
     bash,
     copy_to_sandbox,
-    share_with_user,
+    // With org-fs mounts live, `org/output/` + the thread-outputs chips
+    // replace share_with_user (model-outputs) entirely — only register the
+    // legacy tool when the deployment hasn't flipped the flag. NOTE:
+    // copy_to_sandbox is NOT replaced (it's the inbound attachment path).
+    ...(getSettings().orgFsClusterMounts ? {} : { share_with_user }),
   };
 }

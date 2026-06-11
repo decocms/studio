@@ -40,7 +40,7 @@ export function createRcloneMounter(
 ): Mounter {
   const isMac = process.platform === "darwin";
   return {
-    async mount({ webdavUrl, mountPath, rcAddr }) {
+    async mount({ webdavUrl, mountPath, rcAddr, readonly }) {
       const args = isMac
         ? // actimeo=1: the macOS NFS client caches dir/file attributes ~5s by
           // default, which would mask the invalidator's freshness; 1s is cheap
@@ -59,18 +59,27 @@ export function createRcloneMounter(
       const rcArgs = rcAddr
         ? ["--rc", "--rc-addr", rcAddr, "--rc-no-auth"]
         : [];
+      // Public sets: enforce read-only at the mount, and blanket-exec perms
+      // (the manifest carries no mode bits; skill helper scripts need +x).
+      const roArgs = readonly ? ["--read-only", "--file-perms", "0755"] : [];
       const proc = Bun.spawn(
         [
           rclonePath,
           ...args,
           "--vfs-cache-mode",
           "full",
+          // Flush closed files fast: agent outputs become chips/visible to
+          // the org ~1s after close instead of rclone's 5s default. Files
+          // written incrementally still upload after write-quiescence.
+          "--vfs-write-back",
+          "1s",
           // Safety-net TTL if the invalidator isn't running or misses a change;
           // the change-feed-driven vfs/refresh (invalidator.ts) is what makes
           // external writes show up in ~1s.
           "--dir-cache-time",
           "10s",
           ...rcArgs,
+          ...roArgs,
         ],
         {
           env: {

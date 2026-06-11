@@ -421,14 +421,28 @@ async function provisionSandbox(
   const wantsOrgFs =
     runner.kind === "user-desktop" ||
     (runner.kind === "agent-sandbox" && getSettings().orgFsClusterMounts);
-  const orgFsConfigJson =
-    wantsOrgFs && ctx.organization?.slug
-      ? await mintOrgFsConfigJson(ctx, {
-          orgSlug: ctx.organization.slug,
-          orgId,
-          baseUrl: getPublicUrl(),
-        })
-      : undefined;
+  // ctx.organization is unset on the decopilot vm-tools dispatch path (the
+  // org travels as the `orgId` param there) — resolve the slug from the row
+  // so chat-ephemeral sandboxes get mounts too.
+  let orgFsConfigJson: string | undefined;
+  if (wantsOrgFs) {
+    const orgSlug =
+      ctx.organization?.slug ??
+      (
+        await ctx.db
+          .selectFrom("organization")
+          .select(["slug"])
+          .where("id", "=", orgId)
+          .executeTakeFirst()
+      )?.slug;
+    if (orgSlug) {
+      orgFsConfigJson = await mintOrgFsConfigJson(ctx, {
+        orgSlug,
+        orgId,
+        baseUrl: getPublicUrl(),
+      });
+    }
+  }
 
   const sandbox = await runner.ensure(
     { userId, projectRef },

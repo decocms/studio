@@ -157,6 +157,9 @@ const ALL_TOOL_NAMES = [
   "FILE_CONFIG_DELETE",
   "FILE_OBJECTS_LIST",
 
+  // Org filesystem (shared public skill sets)
+  "ORG_FS_PUBLIC_SETS_SYNC",
+
   // Object Storage tools
   "LIST_OBJECTS",
   "GET_OBJECT_METADATA",
@@ -742,6 +745,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "FILE_CONFIG_LIST",
     description:
       "List S3 bucket configurations for the org (no creds returned)",
+    category: "File Configs",
+  },
+  {
+    name: "ORG_FS_PUBLIC_SETS_SYNC",
+    description:
+      "Re-sync the shared public skill-set volumes from their GitHub sources",
     category: "File Configs",
   },
   {

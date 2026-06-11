@@ -109,6 +109,7 @@ export function resolveConfig(
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
     orgFsClusterMounts: toBool(envVars.ORGFS_CLUSTER_MOUNTS),
+    orgFsPublicSetsJson: envVars.ORGFS_PUBLIC_SETS,
 
     // Object Storage (S3-compatible)
     s3Endpoint: envVars.S3_ENDPOINT,

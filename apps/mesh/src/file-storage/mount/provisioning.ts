@@ -12,12 +12,14 @@
  *     subtree of the org-wide `outputs` volume (the share-files-back flow).
  */
 
+import { getPublicSets, publicVolumeForSet } from "../public-sets";
+
 /** Shape the daemon parses from ORGFS_CONFIG (mirrors OrgFsMountConfig). */
 export interface OrgFsProvisionConfig {
   baseUrl: string;
   orgSlug: string;
   token: string;
-  mounts: { volume: string; path: string }[];
+  mounts: { volume: string; path: string; readonly?: boolean }[];
 }
 
 /** Hidden mount point for the outputs volume; the per-run `output` symlink
@@ -34,12 +36,21 @@ export function buildOrgFsConfig(opts: {
   baseUrl: string;
   orgSlug: string;
   token: string;
+  /** Public skill sets to mount readonly at `org/public/<set>`. */
+  publicSets?: string[];
 }): OrgFsProvisionConfig {
   return {
     baseUrl: opts.baseUrl.replace(/\/+$/, ""),
     orgSlug: opts.orgSlug,
     token: opts.token,
-    mounts: DEFAULT_MOUNTS.map((m) => ({ ...m })),
+    mounts: [
+      ...DEFAULT_MOUNTS.map((m) => ({ ...m })),
+      ...(opts.publicSets ?? []).map((set) => ({
+        volume: publicVolumeForSet(set),
+        path: `public/${set}`,
+        readonly: true,
+      })),
+    ],
   };
 }
 
@@ -79,6 +90,7 @@ export async function mintOrgFsConfigJson(
         baseUrl: opts.baseUrl,
         orgSlug: opts.orgSlug,
         token: apiKey.key,
+        publicSets: getPublicSets().map((s) => s.set),
       }),
     );
   } catch (err) {

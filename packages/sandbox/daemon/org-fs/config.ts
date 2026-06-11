@@ -9,6 +9,8 @@ export interface OrgFsVolumeMount {
   readonly volume: string;
   /** Mount point; relative paths resolve under `<appRoot>/org/`. */
   readonly path: string;
+  /** Mount read-only (the shared public skill sets). */
+  readonly readonly?: boolean;
 }
 
 /** Mesh-pushed config that turns on org-fs mounting for a sandbox. */
@@ -53,7 +55,9 @@ export function parseOrgFsConfig(
       typeof m === "object" &&
       m !== null &&
       typeof (m as OrgFsVolumeMount).volume === "string" &&
-      typeof (m as OrgFsVolumeMount).path === "string",
+      typeof (m as OrgFsVolumeMount).path === "string" &&
+      ((m as OrgFsVolumeMount).readonly === undefined ||
+        typeof (m as OrgFsVolumeMount).readonly === "boolean"),
   );
   if (mounts.length === 0) return null;
   return { baseUrl: c.baseUrl, orgSlug: c.orgSlug, token: c.token, mounts };

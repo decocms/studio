@@ -83,6 +83,21 @@ export function useOrgFsUsage(volume: string) {
   });
 }
 
+/** The deployment's shared public skill sets (readonly volumes). */
+export function useOrgFsPublicSets() {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.orgFsPublicSets(org.id),
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const res = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/public-sets`,
+      );
+      return ((await res.json()) as { sets: string[] }).sets;
+    },
+  });
+}
+
 /** Same-origin byte URL for a file — usable as a download href. */
 export function useOrgFsDownloadUrl(volume: string) {
   const { org } = useProjectContext();
@@ -111,7 +126,9 @@ export function useOrgFsMutations(volume: string) {
         });
       }
     },
-    onSuccess: invalidate,
+    // Settled, not success: files upload sequentially, so a mid-batch failure
+    // (quota, size) leaves earlier files written — the listing must refresh.
+    onSettled: invalidate,
   });
 
   const mkdir = useMutation({
