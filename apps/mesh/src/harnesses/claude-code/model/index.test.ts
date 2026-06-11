@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { resolveAgentTier } from "../../../ai-providers/agent-tiers";
-import type { ChatTier } from "@/tools/organization/schema";
+import { resolveAgentTier } from "./agent-tiers";
+import type { ChatTier } from "./chat-tier";
 import { resolveClaudeCodeModelId } from "./index";
 
 describe("resolveClaudeCodeModelId", () => {
