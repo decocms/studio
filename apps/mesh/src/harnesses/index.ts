@@ -1,15 +1,15 @@
 import type { OrganizationScope, StudioContext } from "../core/studio-context";
-import { claudeCodeHarnessFactory } from "./claude-code";
+import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
 import {
   decopilotHarnessFactory,
   registerClusterEnvironmentBuilder,
   registerDesktopEnvironmentBuilder,
-} from "./decopilot";
-import { codexHarnessFactory } from "./codex";
+} from "@decocms/harness/decopilot/index";
+import { codexHarnessFactory } from "@decocms/harness/codex/index";
 import { decopilotDesktopHarnessFactory } from "./decopilot/desktop-factory";
 import { buildClusterEnvironmentTools } from "./decopilot/harness-deps";
 import { buildDesktopEnvironmentTools } from "./decopilot/desktop-runtime";
-import { registerHarnessFactory } from "./registry";
+import { registerHarnessFactory } from "@decocms/harness/registry";
 
 // Register the environment-deps builders for the unified decopilot factory.
 // The factory (`./decopilot`) is environment-agnostic and looks these up at
@@ -18,13 +18,14 @@ import { registerHarnessFactory } from "./registry";
 // dispatch. The cluster builder is `@/`-coupled (StudioContext) and the desktop
 // builder reaches `@decocms/sandbox` — keeping the registration here (mesh) lets
 // the factory itself stay portable.
-registerClusterEnvironmentBuilder((args) =>
-  buildClusterEnvironmentTools({
+registerClusterEnvironmentBuilder((args) => {
+  const ctx = args.ctx as StudioContext;
+  return buildClusterEnvironmentTools({
     ...args,
-    ctx: args.ctx as StudioContext,
-    organization: args.organization as OrganizationScope,
-  }),
-);
+    ctx,
+    organization: ctx.organization as OrganizationScope,
+  });
+});
 registerDesktopEnvironmentBuilder(buildDesktopEnvironmentTools);
 
 // Side-effect registration. Importing this module wires up the three
@@ -50,7 +51,7 @@ registerHarnessFactory(codexHarnessFactory);
 void decopilotDesktopHarnessFactory;
 
 export { localDispatch } from "./local-dispatch";
-export { createSecretModelSource } from "./types";
+export { createSecretModelSource } from "@decocms/harness/types";
 export type {
   ChatMessage,
   ChatMode,
@@ -65,4 +66,4 @@ export type {
   ModelSelection,
   ModelsConfig,
   ToolApprovalLevel,
-} from "./types";
+} from "@decocms/harness/types";

@@ -55,7 +55,7 @@ import {
   classifyStreamError,
   sanitizeStreamError,
   stringifyError,
-} from "@/harnesses/decopilot/stream-error";
+} from "@decocms/harness/decopilot/stream-error";
 import {
   createDecopilotFinishEvent,
   createDecopilotThreadStatusEvent,

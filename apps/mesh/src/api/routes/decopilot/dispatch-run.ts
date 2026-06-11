@@ -33,7 +33,7 @@ import {
   sha256Hex,
   shouldOffload,
   type MessagesRef,
-} from "@/harnesses/offload-messages";
+} from "@decocms/harness/offload-messages";
 import {
   findStudioPackAgentByMcpId,
   resolveStudioPackRuntime,
@@ -64,13 +64,13 @@ import { createSecretModelSource } from "@/harnesses";
 import {
   WORKSPACE_CWD_DEFAULT,
   WORKSPACE_CWD_REPO,
-} from "@/harnesses/workspace-cwd";
-import { createProviderFromSecret } from "@/harnesses/decopilot/provider-from-secret";
+} from "@decocms/harness/workspace-cwd";
+import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
 import {
   classifyStreamError,
   sanitizeStreamError,
   stringifyError,
-} from "@/harnesses/decopilot/stream-error";
+} from "@decocms/harness/decopilot/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { loadAndMergeMessages } from "./conversation";
 import { PartEmitter } from "./part-emitter";

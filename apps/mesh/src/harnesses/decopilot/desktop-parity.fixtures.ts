@@ -16,12 +16,12 @@
  * its KEYS; nothing is executed.
  */
 
-import type { OpenedMcpSource } from "../sources";
-import { buildModelRuntimeFromSources } from "./run-core";
+import type { OpenedMcpSource } from "@decocms/harness/sources";
+import { buildModelRuntimeFromSources } from "@decocms/harness/decopilot/run-core";
 import { buildDesktopEnvironmentTools } from "./desktop-runtime";
-import { createProviderFromSecret } from "./provider-from-secret";
-import { createSideChannelWriter } from "../side-channel-writer";
-import type { HarnessStreamInput } from "../types";
+import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
+import { createSideChannelWriter } from "@decocms/harness/side-channel-writer";
+import type { HarnessStreamInput } from "@decocms/harness/types";
 
 /** A fake MCP `Client` returning empty listings — the desktop passthrough set
  *  is therefore empty, so the assembled tool keys are exactly the desktop

@@ -16,9 +16,9 @@ import type { UIMessageStreamWriter } from "ai";
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { MeshProvider } from "@/ai-providers/types";
-import type { ModelsConfig } from "../../types";
+import type { ModelsConfig } from "@decocms/harness/types";
 import { runAgentLoop } from "../run-agent-loop";
-import { SUBAGENT_STEP_LIMIT } from "../prompt-constants";
+import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
 
 export const SubtaskInputSchema = z.object({
   prompt: z

@@ -1,5 +1,5 @@
 import type { ToolDefinition, UsageStats } from "@decocms/mesh-sdk";
-import type { ModelsConfig } from "@/harnesses/types";
+import type { ModelsConfig } from "@decocms/harness/types";
 import type { ChatMessage } from "../types.ts";
 
 type MessagePart = ChatMessage["parts"][number];

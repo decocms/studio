@@ -13,12 +13,12 @@ export type {
   MeshProvider,
   ModelInfo,
   ProviderInfo,
-} from "@/harnesses/decopilot/mesh-provider";
+} from "@decocms/harness/decopilot/mesh-provider";
 
 import type {
   MeshProvider,
   ProviderInfo,
-} from "@/harnesses/decopilot/mesh-provider";
+} from "@decocms/harness/decopilot/mesh-provider";
 
 export interface TokenCounter {
   countTokens(params: {

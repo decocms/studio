@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { sha256Hex } from "../../../../apps/mesh/src/harnesses/offload-messages";
+import { sha256Hex } from "@decocms/harness/offload-messages";
 import { assertAllowedRefUrl } from "./offload-fetch";
 
 const ALLOW = ["s3.amazonaws.com", "minio.local"];

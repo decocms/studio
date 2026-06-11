@@ -27,19 +27,22 @@ import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
-import type { SideChannelWriter } from "../side-channel-writer";
+import type { SideChannelWriter } from "@decocms/harness/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import { createHtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import type { PendingImage } from "./built-in-tools";
-import type { DecopilotToolRuntime, ModelRuntime } from "./run-core";
+import type {
+  DecopilotToolRuntime,
+  ModelRuntime,
+} from "@decocms/harness/decopilot/run-core";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
   RunEngineArgs,
-} from "./engine";
+} from "@decocms/harness/decopilot/engine";
 import { runAgentLoop } from "./run-agent-loop";
-import type { DecopilotTelemetry } from "./run-stream";
+import type { DecopilotTelemetry } from "@decocms/harness/decopilot/run-stream";
 
 /**
  * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled

@@ -10,7 +10,10 @@
  */
 import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
 import type { StudioContext } from "@/core/studio-context";
-import { isTitleInputChunk, isTitleResultChunk } from "@/harnesses/title-chunk";
+import {
+  isTitleInputChunk,
+  isTitleResultChunk,
+} from "@decocms/harness/title-chunk";
 import { DEFAULT_THREAD_TITLE } from "./constants";
 
 export interface TitleInterceptorDeps {

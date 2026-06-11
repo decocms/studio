@@ -30,10 +30,13 @@ import {
   type VmContext,
 } from "./built-in-tools";
 import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
-import type { ConnectionsBlockTool } from "./connections-block";
-import { toolsFromMCP, type ToolCallAnalytics } from "./mcp-tools";
-import { MCP_TOOL_CALL_TIMEOUT_MS } from "./harness-constants";
-import type { HarnessStreamInput } from "../types";
+import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
+import {
+  toolsFromMCP,
+  type ToolCallAnalytics,
+} from "@decocms/harness/decopilot/mcp-tools";
+import { MCP_TOOL_CALL_TIMEOUT_MS } from "@decocms/harness/decopilot/harness-constants";
+import type { HarnessStreamInput } from "@decocms/harness/types";
 
 /** Raw MCP tool entries returned by `passthroughClient.listTools()`. */
 export type PassthroughToolList = Awaited<

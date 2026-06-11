@@ -26,21 +26,24 @@ import {
   type StreamTextOnStepFinishCallback,
   type UIMessageStreamWriter,
 } from "ai";
-import type { ModelsConfig } from "../types";
-import type { ToolApprovalLevel } from "./mcp-tools";
+import type { ModelsConfig } from "@decocms/harness/types";
+import type { ToolApprovalLevel } from "@decocms/harness/decopilot/mcp-tools";
 import type { GithubRepo, UsageStats } from "@decocms/mesh-sdk";
-import { createLanguageModel } from "./mesh-provider";
-import { DEFAULT_MAX_TOKENS } from "./harness-constants";
-import { PARENT_STEP_LIMIT, SUBAGENT_STEP_LIMIT } from "./prompt-constants";
+import { createLanguageModel } from "@decocms/harness/decopilot/mesh-provider";
+import { DEFAULT_MAX_TOKENS } from "@decocms/harness/decopilot/harness-constants";
+import {
+  PARENT_STEP_LIMIT,
+  SUBAGENT_STEP_LIMIT,
+} from "@decocms/harness/decopilot/prompt-constants";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import type { SubtaskParams } from "./built-in-tools/subtask";
-import type { ConnectionsBlockTool } from "./connections-block";
+import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
 import {
   runNativeAgentLoopCore,
   type NativeAgentLoopCoreHandle,
-} from "./native-agent-loop-core";
+} from "@decocms/harness/decopilot/native-agent-loop-core";
 
 export interface RunAgentLoopOptions {
   ctx: StudioContext;
@@ -61,7 +64,7 @@ export interface RunAgentLoopOptions {
   /** Authenticated user identity for the user-context prompt block. */
   user?: { id: string; name?: string | null; email?: string | null };
   /** Pre-resolved prompt data (threads/interests/agents) for the system prompt. */
-  userContext?: import("../types").HarnessUserContext;
+  userContext?: import("@decocms/harness/types").HarnessUserContext;
   stepLimit?: number;
   toolApprovalLevel?: ToolApprovalLevel;
   planMode?: boolean;

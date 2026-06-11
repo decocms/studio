@@ -33,11 +33,14 @@ import {
 } from "@/ai-providers/types";
 import type { StudioContext } from "@/core/studio-context";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
-import type { ModelInfo } from "../model-info";
-import { toMeshStorageUri } from "../mesh-storage-uri";
-import type { ResearchParams, ResearchResult } from "../../harness-deps";
-import { createOutputPreview } from "./read-tool-output";
-import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
+import type { ModelInfo } from "@decocms/harness/decopilot/model-info";
+import { toMeshStorageUri } from "@decocms/harness/decopilot/mesh-storage-uri";
+import type {
+  ResearchParams,
+  ResearchResult,
+} from "@decocms/harness/harness-deps";
+import { createOutputPreview } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
+import { LARGE_RESULT_TOKEN_THRESHOLD } from "@decocms/harness/decopilot/built-in-tools/constants";
 
 /**
  * Single grep-friendly log prefix for the async path. Combined with

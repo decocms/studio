@@ -19,15 +19,18 @@ import {
   buildDecopilotAgentPrompt,
   buildTodoWritePrompt,
   buildRepoEnvironmentPrompt,
-} from "./prompt-constants";
+} from "@decocms/harness/decopilot/prompt-constants";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { buildSystemMessages, type SystemMessage } from "./system-prompt";
+import {
+  buildSystemMessages,
+  type SystemMessage,
+} from "@decocms/harness/decopilot/system-prompt";
 import { listPromptsBlock, listConnectionsBlock } from "./prompt";
-import { buildAgentsBlock } from "./agents-block";
-import { renderUserContextBlock } from "./user-context-block";
-import type { ConnectionsBlockTool } from "./connections-block";
-import type { HarnessUserContext } from "../types";
+import { buildAgentsBlock } from "@decocms/harness/decopilot/agents-block";
+import { renderUserContextBlock } from "@decocms/harness/decopilot/user-context-block";
+import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
+import type { HarnessUserContext } from "@decocms/harness/types";
 
 const SUBAGENT_IDENTITY_PROMPT = `You are a focused subtask agent delegated a specific task by a parent agent. You are NOT the parent agent.
 
@@ -117,7 +120,9 @@ export async function buildAgentSystemPrompt(
 
   if (opts.kind === "agent" && opts.planMode) {
     // Re-use the plan-mode prompt from mode-config (non-CLI variant).
-    const { resolveModeConfig } = await import("./mode-config");
+    const { resolveModeConfig } = await import(
+      "@decocms/harness/decopilot/mode-config"
+    );
     const modeConfig = resolveModeConfig("plan", { isCliAgent: false });
     add("planMode", modeConfig.planPrompt);
   }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SandboxFsHooks } from "@decocms/sandbox/provider";
+import type { SandboxFsHooks } from "./sandbox-fs-hooks-types";
 import { createVmTools } from "./index";
 import type { HtmlPageBuffer } from "./types";
 

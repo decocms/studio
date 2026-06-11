@@ -1,7 +1,14 @@
-// Relative (not the `@/` alias) so the sandbox daemon — which imports this
-// module cross-workspace via a relative path and typechecks under its own
-// tsconfig (no `@/` alias) — can resolve the transitive import.
-import { MAX_PUBLISH_BYTES } from "../nats/payload-chunking";
+/**
+ * Per-message byte budget for the link/decopilot NATS hop — the offload gate's
+ * ceiling. NATS rejects any single message larger than the server's
+ * `max_payload` (default 1 MiB) with MAX_PAYLOAD_EXCEEDED, thrown synchronously
+ * by the client. Kept under 1 MiB to leave headroom for the subject + protocol
+ * framing. This is the CANONICAL definition; the mesh NATS layer
+ * (`apps/mesh/src/nats/payload-chunking.ts`) re-exports it so the offload gate
+ * and the chunking/work-queue share one source of truth (a mismatch is a
+ * transport bug).
+ */
+export const MAX_PUBLISH_BYTES = 768 * 1024;
 
 export interface MessagesRef {
   url: string;

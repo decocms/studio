@@ -1,6 +1,6 @@
 import type { UIMessageChunk } from "ai";
-import { getHarnessFactory } from "./registry";
-import type { HarnessId, HarnessStreamInput } from "./types";
+import { getHarnessFactory } from "@decocms/harness/registry";
+import type { HarnessId, HarnessStreamInput } from "@decocms/harness/types";
 import type { StudioContext } from "../core/studio-context";
 
 /** Invoke a harness in-process. Looks up the factory, creates a harness with

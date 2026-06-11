@@ -1,6 +1,6 @@
 import type { UIMessageChunk } from "ai";
 import { describe, expect, test } from "bun:test";
-import { makeTitleResultChunk } from "@/harnesses/title-chunk";
+import { makeTitleResultChunk } from "@decocms/harness/title-chunk";
 import { consumeHarnessStream } from "./consume-harness-stream";
 
 async function drain(stream: ReadableStream) {

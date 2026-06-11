@@ -8,7 +8,10 @@
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import type { UIMessageStreamWriter } from "ai";
-import { toolNeedsApproval, type ToolApprovalLevel } from "../mcp-tools";
+import {
+  toolNeedsApproval,
+  type ToolApprovalLevel,
+} from "@decocms/harness/decopilot/mcp-tools";
 
 // Known destructive/read-only classifications for built-in tools. Mirrors
 // the MCP annotations used by passthrough tools so dashboards can filter
@@ -30,27 +33,33 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   todo_write: { readOnly: false, destructive: false },
   update_interests: { readOnly: false, destructive: false },
 };
-import { createReadToolOutputTool } from "./read-tool-output";
-import { createReadPromptTool } from "./prompts";
-import { createReadResourceTool } from "./resources";
-import { createSandboxTool, type VirtualClient } from "./sandbox";
-import { createVmTools } from "./vm-tools";
+import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
+import { createReadPromptTool } from "@decocms/harness/decopilot/built-in-tools/prompts";
+import { createReadResourceTool } from "@decocms/harness/decopilot/built-in-tools/resources";
+import {
+  createSandboxTool,
+  type VirtualClient,
+} from "@decocms/harness/decopilot/built-in-tools/sandbox";
+import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlPageBuffer } from "./vm-tools/html-page-buffer";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
 import { createSubtaskTool } from "./subtask";
-import { userAskTool } from "./user-ask";
-import { todoWriteTool } from "./todo-write";
-import { createUpdateInterestsTool } from "./update-interests";
-import { proposePlanTool } from "./propose-plan";
+import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
+import { todoWriteTool } from "@decocms/harness/decopilot/built-in-tools/todo-write";
+import { createUpdateInterestsTool } from "@decocms/harness/decopilot/built-in-tools/update-interests";
+import { proposePlanTool } from "@decocms/harness/decopilot/built-in-tools/propose-plan";
 import { createGenerateImageTool } from "./generate-image";
-import { createWebSearchTool } from "./web-search";
+import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
-import { createTakeScreenshotTool, type PendingImage } from "./take-screenshot";
-import { createScrapeUrlTool } from "./scrape-url";
-import { createInspectPageTool } from "./inspect-page";
-import { buildPortableBuiltInTools } from "./portable-built-ins";
-import { BROWSERLESS_BASE_URL } from "./constants";
-import type { ModelsConfig } from "../../types";
+import {
+  createTakeScreenshotTool,
+  type PendingImage,
+} from "@decocms/harness/decopilot/built-in-tools/take-screenshot";
+import { createScrapeUrlTool } from "@decocms/harness/decopilot/built-in-tools/scrape-url";
+import { createInspectPageTool } from "@decocms/harness/decopilot/built-in-tools/inspect-page";
+import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
+import { BROWSERLESS_BASE_URL } from "@decocms/harness/decopilot/built-in-tools/constants";
+import type { ModelsConfig } from "@decocms/harness/types";
 import type { MeshProvider } from "@/ai-providers/types";
 import { getSettings } from "@/settings";
 

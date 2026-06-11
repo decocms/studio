@@ -10,8 +10,8 @@ import type { ThreadMessage } from "@/storage/types";
 export {
   denyPendingApprovals,
   processConversation,
-} from "@/harnesses/decopilot/conversation";
-export type { ProcessedConversation } from "@/harnesses/decopilot/conversation";
+} from "@decocms/harness/decopilot/conversation";
+export type { ProcessedConversation } from "@decocms/harness/decopilot/conversation";
 
 /**
  * Split request messages into system and the single request message.

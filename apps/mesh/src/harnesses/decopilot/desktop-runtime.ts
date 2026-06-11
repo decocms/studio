@@ -42,42 +42,42 @@ import type {
   DecopilotHttpMcpSource,
   DecopilotSecretModelSource,
   HarnessStreamInput,
-} from "../types";
+} from "@decocms/harness/types";
 import {
   openMcpSource,
   openObjectStorageSource,
   type OpenMcpSourceOptions,
-} from "../sources";
-import { createLanguageModel } from "./mesh-provider";
-import { toolsFromMCP } from "./mcp-tools";
+} from "@decocms/harness/sources";
+import { createLanguageModel } from "@decocms/harness/decopilot/mesh-provider";
+import { toolsFromMCP } from "@decocms/harness/decopilot/mcp-tools";
 import { buildLocalTools } from "./desktop-local-tools";
 import { buildDesktopSandboxFs } from "./desktop-sandbox-fs";
 import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./desktop-prompt";
-import { resolveModeConfig } from "./mode-config";
-import { runNativeAgentLoopCore } from "./native-agent-loop-core";
+import { resolveModeConfig } from "@decocms/harness/decopilot/mode-config";
+import { runNativeAgentLoopCore } from "@decocms/harness/decopilot/native-agent-loop-core";
 import {
   spawnSubtask,
   type DecopilotToolRuntime,
   type ModelRuntime,
   type RunDecopilotCoreDeps,
   type SubtaskRunResult,
-} from "./run-core";
+} from "@decocms/harness/decopilot/run-core";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
   RunEngineArgs,
-} from "./engine";
-import type { ConnectionsBlockTool } from "./connections-block";
-import type { VirtualClient } from "./built-in-tools/sandbox";
-import type { PendingImage } from "./built-in-tools/vm-tools/types";
-import { createLocalSubtaskTool } from "./built-in-tools/local-subtask";
+} from "@decocms/harness/decopilot/engine";
+import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
+import type { VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
+import type { PendingImage } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
+import { createLocalSubtaskTool } from "@decocms/harness/decopilot/built-in-tools/local-subtask";
 import type { DesktopToolCtx } from "./desktop-tool-ctx";
-import { createHtmlPageBufferFromStorage } from "./built-in-tools/vm-tools/html-page-buffer-core";
+import { createHtmlPageBufferFromStorage } from "@decocms/harness/decopilot/built-in-tools/vm-tools/html-page-buffer-core";
 import {
   createSideChannelWriter,
   type SideChannelWriter,
-} from "../side-channel-writer";
-import { swapVirtualMcpAgent } from "./swap-virtual-mcp-agent";
+} from "@decocms/harness/side-channel-writer";
+import { swapVirtualMcpAgent } from "@decocms/harness/decopilot/swap-virtual-mcp-agent";
 
 function isDesktopToolVisible(tool: {
   name: string;

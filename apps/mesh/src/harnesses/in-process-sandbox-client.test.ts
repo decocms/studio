@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "./in-process-sandbox-client";
-import { registerHarnessFactory, resetRegistryForTests } from "./registry";
-import type { HarnessFactory, HarnessStreamInput } from "./types";
+import {
+  registerHarnessFactory,
+  resetRegistryForTests,
+} from "@decocms/harness/registry";
+import type {
+  HarnessFactory,
+  HarnessStreamInput,
+} from "@decocms/harness/types";
 import type { StudioContext } from "../core/studio-context";
 
 const makeInput = (): HarnessStreamInput => ({

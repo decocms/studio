@@ -16,7 +16,7 @@ import {
   createSandboxFsHooks,
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
-import type { SandboxFsHooks } from "./built-in-tools/vm-tools/sandbox-fs-hooks-types";
+import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
 
 export function createDesktopLocalSandboxProvider(): SandboxProvider {
   const port = Number(

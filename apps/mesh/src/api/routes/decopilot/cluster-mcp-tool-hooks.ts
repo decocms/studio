@@ -17,7 +17,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
-import type { ToolCallAnalytics } from "@/harnesses/decopilot/mcp-tools";
+import type { ToolCallAnalytics } from "@decocms/harness/decopilot/mcp-tools";
 import { resolveArgsStorageRefs } from "./file-materializer";
 
 export interface ClusterMcpToolHooks {

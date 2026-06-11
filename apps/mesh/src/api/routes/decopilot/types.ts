@@ -12,7 +12,7 @@ import type { InferUITool, UIMessage } from "ai";
 import type { ToolDefinition, UsageStats } from "@decocms/mesh-sdk";
 import type { Metadata } from "@/web/components/chat/types";
 import type { BuiltInToolSet } from "@/harnesses/decopilot/built-in-tools";
-import type { ModelsConfig as HarnessModelsConfig } from "@/harnesses/types";
+import type { ModelsConfig as HarnessModelsConfig } from "@decocms/harness/types";
 
 // ============================================================================
 // Stream API Message Types
@@ -70,7 +70,7 @@ export type ChatMessage = UIMessage<
 // Model Config Types
 // ============================================================================
 
-import type { ModelInfo } from "@/harnesses/decopilot/model-info";
+import type { ModelInfo } from "@decocms/harness/decopilot/model-info";
 
 export type { ModelInfo };
 

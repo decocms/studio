@@ -25,7 +25,7 @@
  * so a dispatch racing in after the cancel still resolves to 410 Gone.
  */
 
-import { parseMessagesRef } from "../../../../apps/mesh/src/harnesses/offload-messages";
+import { parseMessagesRef } from "@decocms/harness/offload-messages";
 import {
   dispatchSSEEventSchema,
   harnessStreamInputSchema,

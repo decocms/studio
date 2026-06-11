@@ -155,7 +155,7 @@ import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 import { LinkWorkQueue } from "./routes/decopilot/link-work-queue";
-import type { HarnessId } from "@/harnesses/types";
+import type { HarnessId } from "@decocms/harness/types";
 
 import type { Pool, PoolClient } from "pg";
 

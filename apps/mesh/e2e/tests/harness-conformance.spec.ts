@@ -57,7 +57,7 @@ import {
 import { LINK_PROTOCOL_VERSION } from "../../src/links/protocol";
 // The auto-titler gates on the thread title being this exact default; import
 // the source constant so the gating cases stay in lockstep if it ever changes.
-import { DEFAULT_THREAD_TITLE } from "../../src/harnesses/decopilot/prompt-constants";
+import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";
 import type { APIRequestContext } from "@playwright/test";
 
 // ---------------------------------------------------------------------------

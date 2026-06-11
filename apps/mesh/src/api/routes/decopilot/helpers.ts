@@ -13,7 +13,7 @@ import {
   sanitizeToolName,
   toolNeedsApproval,
   type ToolApprovalLevel,
-} from "@/harnesses/decopilot/mcp-tools";
+} from "@decocms/harness/decopilot/mcp-tools";
 
 export {
   buildSanitizedNameMap,

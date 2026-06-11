@@ -22,7 +22,7 @@ import {
   type JetStreamManager,
 } from "nats";
 import { z } from "zod";
-import type { MessagesRef } from "@/harnesses/offload-messages";
+import type { MessagesRef } from "@decocms/harness/offload-messages";
 
 const STREAM_NAME = "LINK_WORK_QUEUE";
 const SUBJECT_PREFIX = "link.work";

@@ -3,11 +3,11 @@
  *
  * NATS rejects any single message larger than the server's `max_payload`
  * (default 1 MiB) with MAX_PAYLOAD_EXCEEDED, thrown synchronously by the
- * client. Consumers (decopilot's `nats-stream-buffer.ts`, the message-offload
- * gate in `harnesses/offload-messages.ts`, and the pull work queue) keep their
- * payloads under this ceiling.
+ * client. Consumers (decopilot's `nats-stream-buffer.ts`, the pull work queue,
+ * and the message-offload gate) keep their payloads under this ceiling.
+ *
+ * The canonical definition lives in `@decocms/harness` (the offload gate owns
+ * the threshold); re-exported here so the NATS chunking/work-queue and the
+ * offload gate share ONE source of truth — a mismatch is a transport bug.
  */
-
-/** Per-message ceiling, under the 1 MiB NATS default to leave headroom for
- *  the subject and protocol framing (the server counts payload only). */
-export const MAX_PUBLISH_BYTES = 768 * 1024;
+export { MAX_PUBLISH_BYTES } from "@decocms/harness/offload-messages";

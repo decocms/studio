@@ -16,11 +16,14 @@
 
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { buildPromptsBlock, type PromptsBlockEntry } from "./prompts-block";
+import {
+  buildPromptsBlock,
+  type PromptsBlockEntry,
+} from "@decocms/harness/decopilot/prompts-block";
 import {
   buildConnectionsBlock,
   type ConnectionsBlockTool,
-} from "./connections-block";
+} from "@decocms/harness/decopilot/connections-block";
 
 /**
  * listPromptsBlock — fetches the MCP's prompt catalog via the passthrough

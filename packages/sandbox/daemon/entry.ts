@@ -52,14 +52,14 @@ import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
 // in StudioContext / storage / vault. See `desktop-factory.ts` for the
 // isolation contract (it deliberately never references the cluster branch in
 // `harness-deps.ts`).
-import { claudeCodeHarnessFactory } from "../../../apps/mesh/src/harnesses/claude-code";
-import { codexHarnessFactory } from "../../../apps/mesh/src/harnesses/codex";
+import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
+import { codexHarnessFactory } from "@decocms/harness/codex/index";
 import { decopilotDesktopHarnessFactory } from "../../../apps/mesh/src/harnesses/decopilot/desktop-factory";
 import type {
   HarnessContext,
   HarnessFactory,
   HarnessStreamInput,
-} from "../../../apps/mesh/src/harnesses/types";
+} from "@decocms/harness/types";
 import { metrics, trace } from "@opentelemetry/api";
 import { makeEventsHandler } from "./routes/events-stream";
 import { makeExecHandler } from "./routes/exec";

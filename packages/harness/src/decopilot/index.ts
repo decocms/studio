@@ -26,9 +26,12 @@
  */
 
 import type { UIMessageChunk } from "ai";
-import type { HarnessContext } from "../../core/harness-context";
-import type { StudioContext } from "../../core/studio-context";
-import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
+import type {
+  Harness,
+  HarnessContext,
+  HarnessFactory,
+  HarnessStreamInput,
+} from "../types";
 import { createProviderFromSecret } from "./provider-from-secret";
 import {
   createSideChannelWriter,
@@ -42,9 +45,11 @@ import {
 } from "./run-core";
 import type { DecopilotTelemetry } from "./run-stream";
 
-/** True when the injected context is a full cluster `StudioContext` (it carries
- *  `storage`/`db`, absent from the bare `HarnessContext` the daemon builds). */
-function isClusterContext(ctx: HarnessContext): ctx is StudioContext {
+/** True when the injected context is a full cluster context (it carries
+ *  `storage`/`db`, absent from the bare `HarnessContext` the daemon builds).
+ *  The cluster's richer `StudioContext` is structurally assignable to
+ *  `HarnessContext`; the mesh-side registered builder casts it back. */
+function isClusterContext(ctx: HarnessContext): boolean {
   return "storage" in ctx;
 }
 
@@ -60,7 +65,6 @@ function isClusterContext(ctx: HarnessContext): ctx is StudioContext {
 // transitively, so the builder is present when `create().stream()` runs.
 export interface ClusterEnvironmentBuilderArgs {
   ctx: HarnessContext;
-  organization: unknown;
   modelRuntime: ModelRuntime;
   sideChannel: SideChannelWriter;
   cleanup: { close?: () => Promise<void> };
@@ -130,7 +134,6 @@ export const decopilotHarnessFactory: HarnessFactory = {
           }
           const built = clusterEnvironmentBuilder({
             ctx: harnessCtx,
-            organization: harnessCtx.organization,
             modelRuntime,
             sideChannel,
             cleanup,

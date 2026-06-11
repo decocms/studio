@@ -31,14 +31,14 @@ import type {
   HarnessContext,
   HarnessFactory,
   HarnessStreamInput,
-} from "../types";
-import { createProviderFromSecret } from "./provider-from-secret";
-import { createSideChannelWriter } from "../side-channel-writer";
+} from "@decocms/harness/types";
+import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
+import { createSideChannelWriter } from "@decocms/harness/side-channel-writer";
 import {
   buildModelRuntimeFromSources,
   runDecopilotCore,
   type ModelRuntime,
-} from "./run-core";
+} from "@decocms/harness/decopilot/run-core";
 import { buildDesktopEnvironmentTools } from "./desktop-runtime";
 
 export const decopilotDesktopHarnessFactory: HarnessFactory = {

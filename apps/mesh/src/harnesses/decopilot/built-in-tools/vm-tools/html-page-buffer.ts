@@ -29,7 +29,7 @@ import {
   createHtmlPageBufferFromStorage,
   type HtmlPageBuffer,
   type HtmlPagePreview,
-} from "./html-page-buffer-core";
+} from "@decocms/harness/decopilot/built-in-tools/vm-tools/html-page-buffer-core";
 
 function resolveObjectStorage(ctx: StudioContext): BoundObjectStorage | null {
   if (ctx.objectStorage) return ctx.objectStorage;
