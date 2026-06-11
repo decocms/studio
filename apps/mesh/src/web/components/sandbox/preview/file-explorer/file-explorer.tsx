@@ -34,6 +34,7 @@ import {
 import { toast } from "sonner";
 import { useChatStream } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
+import { KEYS } from "@/web/lib/query-keys";
 import { saveChangesDebug } from "../../../thread/github/save-changes-debug.ts";
 import {
   fetchGitStatus,
@@ -47,15 +48,18 @@ import {
 import { FileTreeRow } from "./file-tree-row";
 import {
   buildFileTree,
+  decoBlockKeyFromTreePath,
   flattenTree,
   getAncestorDirectories,
   getDirectoryContextPath,
   getLanguageFromPath,
   getParentTreePath,
   joinTreePath,
+  pathExistsInFileList,
   stripLineNumbers,
   toDaemonPath,
   toTreePath,
+  validateExplorerEntryName,
 } from "./utils";
 
 // Configure Monaco CDN (shared with workflow editor)
@@ -145,6 +149,9 @@ export function FileExplorer({
   const [files, setFiles] = useState<string[]>([]);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNode | null>(
+    null,
+  );
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -207,6 +214,47 @@ export function FileExplorer({
     );
   }
 
+  function invalidateDecofileCacheForDeletedPath(treePath: string) {
+    const blockKey = decoBlockKeyFromTreePath(treePath);
+    if (!blockKey) return;
+    const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
+    queryClient.setQueryData(
+      KEYS.decofile(cacheKey),
+      (current: Record<string, unknown> | undefined) => {
+        if (!current) return current;
+        const { [blockKey]: _removed, ...rest } = current;
+        return rest;
+      },
+    );
+    void queryClient.invalidateQueries({ queryKey: KEYS.liveMeta(cacheKey) });
+  }
+
+  function invalidateDecofileCachesForDeletedNode(node: TreeNode) {
+    const pathsToInvalidate =
+      node.kind === "file"
+        ? [node.path]
+        : files
+            .filter((file) => file.startsWith(".deco/blocks/"))
+            .map((file) => toTreePath(file))
+            .filter(
+              (path) => path === node.path || path.startsWith(`${node.path}/`),
+            );
+    for (const path of pathsToInvalidate) {
+      invalidateDecofileCacheForDeletedPath(path);
+    }
+  }
+
+  function getDirtyOpenPathsUnder(prefix: string): string[] {
+    const normalizedPrefix = toTreePath(prefix);
+    return openTabs.filter((tab) => {
+      if (tab !== normalizedPrefix && !tab.startsWith(`${normalizedPrefix}/`)) {
+        return false;
+      }
+      const buf = buffers.get(tab);
+      return Boolean(buf?.loaded && buf.editorValue !== buf.savedContent);
+    });
+  }
+
   function remapOpenPaths(remap: (path: string) => string | null) {
     setOpenTabs((prev) =>
       prev
@@ -226,10 +274,31 @@ export function FileExplorer({
       }
       return next;
     });
+    setSelectedTreeNode((prev) => {
+      if (!prev) return prev;
+      const nextPath = remap(prev.path);
+      if (!nextPath) return null;
+      if (nextPath === prev.path) return prev;
+      return {
+        ...prev,
+        path: nextPath,
+        name: nextPath.split("/").pop() ?? nextPath,
+      };
+    });
   }
 
   function removeOpenPaths(prefix: string) {
     const normalizedPrefix = toTreePath(prefix);
+    setSelectedTreeNode((prev) => {
+      if (!prev) return prev;
+      if (
+        prev.path === normalizedPrefix ||
+        prev.path.startsWith(`${normalizedPrefix}/`)
+      ) {
+        return null;
+      }
+      return prev;
+    });
     remapOpenPaths((path) => {
       if (
         path === normalizedPrefix ||
@@ -244,6 +313,9 @@ export function FileExplorer({
   async function handleCreateFile(name: string) {
     if (!nameDialog) return;
     const filePath = joinTreePath(nameDialog.parentDir, name);
+    if (pathExistsInFileList(filePath, files)) {
+      throw new Error(`"${name}" already exists`);
+    }
     await postSandbox("write", {
       path: toDaemonPath(filePath),
       content: "",
@@ -257,12 +329,27 @@ export function FileExplorer({
   async function handleCreateFolder(name: string) {
     if (!nameDialog) return;
     const folderPath = joinTreePath(nameDialog.parentDir, name);
+    if (pathExistsInFileList(folderPath, files)) {
+      throw new Error(`"${name}" already exists`);
+    }
     const gitkeepPath = joinTreePath(folderPath, ".gitkeep");
     await postSandbox("mkdir", { path: toDaemonPath(folderPath) });
-    await postSandbox("write", {
-      path: toDaemonPath(gitkeepPath),
-      content: "",
-    });
+    try {
+      await postSandbox("write", {
+        path: toDaemonPath(gitkeepPath),
+        content: "",
+      });
+    } catch (err) {
+      try {
+        await postSandbox("unlink", {
+          path: toDaemonPath(folderPath),
+          recursive: true,
+        });
+      } catch {
+        // Best-effort rollback if the placeholder write fails.
+      }
+      throw err;
+    }
     await fetchFileTree();
     await refreshGitStatus();
     setNameDialog(null);
@@ -271,6 +358,12 @@ export function FileExplorer({
       for (const dir of getAncestorDirectories(folderPath)) next.add(dir);
       next.add(folderPath);
       return next;
+    });
+    setSelectedTreeNode({
+      name,
+      path: folderPath,
+      kind: "directory",
+      children: [],
     });
   }
 
@@ -282,6 +375,9 @@ export function FileExplorer({
     if (toPath === fromPath) {
       setNameDialog(null);
       return;
+    }
+    if (pathExistsInFileList(toPath, files)) {
+      throw new Error(`"${name}" already exists`);
     }
     await postSandbox("rename", {
       from: toDaemonPath(fromPath),
@@ -306,6 +402,7 @@ export function FileExplorer({
         path: toDaemonPath(node.path),
         recursive: node.kind === "directory",
       });
+      invalidateDecofileCachesForDeletedNode(node);
       removeOpenPaths(node.path);
       await fetchFileTree();
       await refreshGitStatus();
@@ -319,6 +416,11 @@ export function FileExplorer({
   }
 
   async function handleNameDialogSubmit(name: string) {
+    const validationError = validateExplorerEntryName(name);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
     setFsActionPending(true);
     try {
       if (nameDialog?.mode === "new-file") {
@@ -370,7 +472,12 @@ export function FileExplorer({
           body: JSON.stringify({ pattern: "**/*" }),
         },
       );
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (treeLoaded) {
+          toast.error("Failed to refresh file tree");
+        }
+        return;
+      }
       const data = (await res.json()) as { files?: string[] };
       setFiles(data.files ?? []);
       setTreeLoaded(true);
@@ -463,6 +570,12 @@ export function FileExplorer({
 
   function openFile(path: string) {
     setSelectedFile(path);
+    setSelectedTreeNode({
+      name: path.split("/").pop() ?? path,
+      path,
+      kind: "file",
+      children: [],
+    });
     setAskAi(null);
     if (!openTabs.includes(path)) {
       setOpenTabs((prev) => [...prev, path]);
@@ -508,8 +621,21 @@ export function FileExplorer({
     openFile(path);
   }
 
+  function getCreateParentDir(): string {
+    if (selectedTreeNode?.kind === "directory") {
+      return selectedTreeNode.path;
+    }
+    if (selectedTreeNode?.kind === "file") {
+      return getParentTreePath(selectedTreeNode.path);
+    }
+    if (selectedFile) {
+      return getParentTreePath(selectedFile);
+    }
+    return "/";
+  }
+
   function openCreateDialog(mode: "new-file" | "new-folder") {
-    const parentDir = selectedFile ? getParentTreePath(selectedFile) : "/";
+    const parentDir = getCreateParentDir();
     setNameDialog({
       mode,
       parentDir,
@@ -536,6 +662,10 @@ export function FileExplorer({
   const isDirty =
     currentBuffer?.loaded &&
     currentBuffer.editorValue !== currentBuffer.savedContent;
+
+  const deleteDirtyPaths = deleteTarget
+    ? getDirtyOpenPathsUnder(deleteTarget.path)
+    : [];
 
   const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -651,7 +781,7 @@ export function FileExplorer({
               const { node, depth } = row;
               const isDir = node.kind === "directory";
               const isExpanded = expandedDirs.has(node.path);
-              const isSelected = selectedFile === node.path;
+              const isSelected = selectedTreeNode?.path === node.path;
               const parentDir = getDirectoryContextPath(node.path, node.kind);
 
               return (
@@ -662,6 +792,7 @@ export function FileExplorer({
                   isExpanded={isExpanded}
                   isSelected={isSelected}
                   fileVisual={getFileVisual(node.name)}
+                  onSelect={() => setSelectedTreeNode(node)}
                   onOpen={() => {
                     if (isDir) {
                       toggleDir(node.path);
@@ -925,6 +1056,14 @@ export function FileExplorer({
               {deleteTarget?.kind === "directory"
                 ? " and everything inside it."
                 : "."}
+              {deleteDirtyPaths.length > 0 && (
+                <>
+                  {" "}
+                  {deleteDirtyPaths.length === 1
+                    ? "One open file has unsaved changes that will be lost."
+                    : `${deleteDirtyPaths.length} open files have unsaved changes that will be lost.`}
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

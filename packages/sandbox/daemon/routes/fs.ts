@@ -223,8 +223,12 @@ export function makeUnlinkHandler(deps: FsDeps) {
     if (!body.path || typeof body.path !== "string")
       return jsonResponse({ error: "path is required" }, 400);
     const normalized = body.path.replaceAll("\\", "/");
-    if (!normalized || normalized.includes("..")) {
-      return jsonResponse({ error: "Invalid path" }, 400);
+    const unlinkError = assertUnlinkAllowed(
+      normalized,
+      body.recursive === true,
+    );
+    if (unlinkError) {
+      return jsonResponse({ error: unlinkError }, 400);
     }
     const filePath = safePath(deps.appRoot, deps.repoDir, body.path);
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
@@ -695,10 +699,29 @@ const GLOB_RESULT_LIMIT = 1000;
 function isGlobPathAllowed(rel: string): boolean {
   for (const seg of rel.split("/")) {
     if (GLOB_EXCLUDE_DIRS.has(seg)) return false;
-    // Surface `.deco/**` without exposing other dotfiles (`.env`, `.npmrc`, …).
-    if (seg.startsWith(".") && seg !== ".deco") return false;
+    // Surface `.deco/**` and explorer `.gitkeep` folder markers without
+    // exposing other dotfiles (`.env`, `.npmrc`, …).
+    if (seg.startsWith(".") && seg !== ".deco" && seg !== ".gitkeep") {
+      return false;
+    }
   }
   return true;
+}
+
+/** Paths that must not be deleted via the sandbox unlink API. */
+function assertUnlinkAllowed(
+  normalized: string,
+  recursive: boolean,
+): string | null {
+  if (!normalized || normalized.includes("..")) return "Invalid path";
+  if (recursive && (normalized === "." || normalized === "")) {
+    return "Refusing to recursively delete the repository root";
+  }
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.includes(".git")) {
+    return "Refusing to delete .git";
+  }
+  return null;
 }
 
 export function makeGlobHandler(deps: FsDeps) {

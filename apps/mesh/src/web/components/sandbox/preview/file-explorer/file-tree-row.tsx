@@ -24,6 +24,7 @@ export function FileTreeRow({
   isSelected,
   fileVisual,
   onOpen,
+  onSelect,
   onNewFile,
   onNewFolder,
   onCopyPath,
@@ -37,6 +38,7 @@ export function FileTreeRow({
   isSelected: boolean;
   fileVisual: { Icon: FileIcon; color: string };
   onOpen: () => void;
+  onSelect: () => void;
   onNewFile: () => void;
   onNewFolder: () => void;
   onCopyPath: () => void;
@@ -57,7 +59,10 @@ export function FileTreeRow({
             isSelected && "bg-accent",
           )}
           style={{ paddingLeft: `${depth * 14 + 8}px` }}
-          onClick={onOpen}
+          onClick={() => {
+            onSelect();
+            onOpen();
+          }}
         >
           {isDir ? (
             <>

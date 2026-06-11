@@ -298,4 +298,41 @@ describe("fs handlers", () => {
     expect(body.files).not.toContain(".env");
     expect(body.files).toContain(".deco/blocks/foo.json");
   });
+
+  it("glob: includes .gitkeep folder markers", async () => {
+    mkdirSync(join(appRoot, "empty-dir"), { recursive: true });
+    writeFileSync(join(appRoot, "empty-dir", ".gitkeep"), "");
+    const h = makeGlobHandler({ appRoot, repoDir: appRoot });
+    const res = await h(post("/_sandbox/glob", { pattern: "**/*" }));
+    const body = (await res.json()) as { files: string[] };
+    expect(body.files).toContain("empty-dir/.gitkeep");
+  });
+
+  it("unlink: refuses recursive delete of repository root", async () => {
+    const h = makeUnlinkHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/unlink", { path: ".", recursive: true }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("unlink: refuses deleting .git", async () => {
+    mkdirSync(join(appRoot, ".git"), { recursive: true });
+    writeFileSync(join(appRoot, ".git", "HEAD"), "ref: refs/heads/main\n");
+    const h = makeUnlinkHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/unlink", { path: ".git/HEAD", recursive: false }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rename: rejects destination that already exists", async () => {
+    writeFileSync(join(appRoot, "old.txt"), "hello");
+    writeFileSync(join(appRoot, "new.txt"), "taken");
+    const h = makeRenameHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/rename", { from: "old.txt", to: "new.txt" }),
+    );
+    expect(res.status).toBe(400);
+  });
 });

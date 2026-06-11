@@ -41,6 +41,51 @@ export function getDirectoryContextPath(
   return kind === "directory" ? treePath : getParentTreePath(treePath);
 }
 
+/** Single-segment name validation for create/rename in the file explorer. */
+export function validateExplorerEntryName(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return "Name is required";
+  if (
+    trimmed.includes("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("..") ||
+    trimmed.includes("\0")
+  ) {
+    return "Name cannot contain /, \\, or ..";
+  }
+  if (trimmed.startsWith(".")) {
+    return "Name cannot start with a dot";
+  }
+  return null;
+}
+
+/** Whether `treePath` already exists in the glob file list (file or directory). */
+export function pathExistsInFileList(
+  treePath: string,
+  fileList: readonly string[],
+): boolean {
+  const daemonPath = toDaemonPath(treePath);
+  if (fileList.includes(daemonPath)) return true;
+  if (!daemonPath) return false;
+  const prefix = `${daemonPath}/`;
+  return fileList.some((file) => file.startsWith(prefix));
+}
+
+/** Extract decofile block key from `.deco/blocks/<key>.json`, if applicable. */
+export function decoBlockKeyFromTreePath(treePath: string): string | null {
+  const daemonPath = toDaemonPath(treePath);
+  const prefix = ".deco/blocks/";
+  if (!daemonPath.startsWith(prefix) || !daemonPath.endsWith(".json")) {
+    return null;
+  }
+  const stem = daemonPath.slice(prefix.length, -".json".length);
+  try {
+    return decodeURIComponent(stem);
+  } catch {
+    return stem;
+  }
+}
+
 export function getLanguageFromPath(filepath: string | null) {
   if (!filepath) return "plaintext";
 
@@ -136,6 +181,7 @@ export function flattenTree(
   const rows: FlatNode[] = [];
 
   for (const node of nodes) {
+    if (node.name === ".gitkeep") continue;
     rows.push({ node, depth });
 
     if (
