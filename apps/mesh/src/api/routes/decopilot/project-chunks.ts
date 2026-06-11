@@ -30,14 +30,38 @@ async function drain(stream: ReadableStream): Promise<void> {
  * `uiStream` (the UI-tail is a SEPARATE consumer of the NATS log) and ignores
  * title/usage hooks (those run at ingest/UI, not the projector).
  *
- * Re-throws if the source stream errored, AFTER `emitError` has been awaited —
- * so the projector consumer can NAK for redelivery while the error part is
- * already durably written (idempotent on replay).
+ * Re-throws on EITHER failure mode, AFTER persistence has been awaited, so the
+ * projector consumer can NAK for redelivery (re-projection is idempotent via
+ * PartEmitter's deterministic ids):
+ *  - a persistence write failure (emitStepParts/emitFinal/emitError throws).
+ *    consumeHarnessStream swallows these (logs them) so the LIVE UI path
+ *    survives a DB hiccup — but the durable DB-writer must NOT, or a part is
+ *    silently lost. We capture the first such error and re-throw it.
+ *  - a source stream error (the chunk iterator threw). The error part is
+ *    persisted first; for the projector a throw here is an infra/redelivery
+ *    signal, not a "the run failed cleanly" signal (run failures arrive as
+ *    `error` data chunks, not exceptions).
  */
 export async function projectChunks(
   options: ProjectChunksOptions,
 ): Promise<void> {
   let sourceError: unknown = null;
+  let persistenceError: unknown = null;
+  const recordPersistenceError = (error: unknown) => {
+    if (persistenceError === null) persistenceError = error;
+    throw error; // preserve consumeHarnessStream's own swallow-and-log
+  };
+  // Wrap persistence so a swallowed write failure is still captured here. The
+  // re-thrown rejection flows back into consumeHarnessStream's internal
+  // `.catch(console.error)`, so its completion semantics are unchanged.
+  const persistence: HarnessStreamPersistence = {
+    emitStepParts: (message) =>
+      options.persistence.emitStepParts(message).catch(recordPersistenceError),
+    emitFinal: (message) =>
+      options.persistence.emitFinal(message).catch(recordPersistenceError),
+    emitError: (id, text) =>
+      options.persistence.emitError(id, text).catch(recordPersistenceError),
+  };
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: options.chunks,
     originalMessages: [],
@@ -46,7 +70,7 @@ export async function projectChunks(
       threadId: "projector",
       persistTitle: async () => {},
     },
-    persistence: options.persistence,
+    persistence,
     sanitizeErrorText: options.sanitizeErrorText,
     hooks: {
       onError: (error) => {
@@ -56,5 +80,6 @@ export async function projectChunks(
   });
   await drain(uiStream).catch(() => {});
   await whenComplete;
+  if (persistenceError !== null) throw persistenceError;
   if (sourceError !== null) throw sourceError;
 }

@@ -55,4 +55,22 @@ describe("projectChunks", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]![1]).toBe("provider exploded");
   });
+
+  test("a persistence failure (emitFinal throws) surfaces so the projector can retry", async () => {
+    // The durable DB-writer's contract is "persist or fail loudly".
+    // consumeHarnessStream swallows persistence errors (logs them) so the live
+    // UI path survives a DB hiccup; the projector must NOT — a swallowed write
+    // would silently lose a part. projectChunks re-throws it so projectRun can
+    // retry/DLQ.
+    const persistence: HarnessStreamPersistence = {
+      emitStepParts: async () => {},
+      emitFinal: async () => {
+        throw new Error("db write failed");
+      },
+      emitError: async () => {},
+    };
+    await expect(
+      projectChunks({ chunks: helloChunks(), persistence }),
+    ).rejects.toThrow("db write failed");
+  });
 });
