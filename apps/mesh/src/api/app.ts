@@ -9,7 +9,11 @@
  */
 
 import { getSettings } from "../settings";
-import { startPublicSetsSync } from "../file-storage/skill-set-sync";
+import {
+  kickPublicSetsBootSync,
+  registerPublicSetsSyncWorkflow,
+  setPublicSetsSyncRuntime,
+} from "../file-storage/dbos-public-sets-sync";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -1368,9 +1372,10 @@ export async function createApp(options: CreateAppOptions = {}) {
       console.error("[EventBus] Error during startup:", error);
     });
 
-  // Public skill sets: sync the configured GitHub-sourced shared volumes on
-  // boot and on an interval (no-op when ORGFS_PUBLIC_SETS is unset).
-  startPublicSetsSync(database.db, { baseUrl: getPublicUrl() });
+  // Public skill sets: synced by a DBOS scheduled workflow (one pod per tick
+  // instead of every pod racing its own loop). This only stashes deps — the
+  // workflow no-ops when ORGFS_PUBLIC_SETS is unset.
+  setPublicSetsSyncRuntime({ db: database.db, baseUrl: getPublicUrl() });
 
   // ============================================================================
   // Automation Runtime — wire storage + streaming into the DBOS workflow
@@ -1418,6 +1423,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
+  registerPublicSetsSyncWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
@@ -2224,6 +2230,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     // replicas/workers all enqueueing in parallel collapse via OAOO.
     backfillStudioPackForAllOrgs().catch((err) => {
       console.error("[studio-pack-backfill] failed:", err);
+    });
+
+    // Fire-and-forget immediate public-sets sync (hour-bucketed workflow ID,
+    // so parallel-booting replicas collapse via OAOO).
+    kickPublicSetsBootSync().catch((err) => {
+      console.error("[org-fs] public-sets boot sync kick failed:", err);
     });
   };
 
