@@ -51,6 +51,10 @@ import {
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import {
+  type LinkBearerAuthApi,
+  resolveLinkBearer,
+} from "./routes/decopilot/link-bearer-auth";
 import { createLinkWorkRoutes } from "./routes/decopilot/link-work-routes";
 import { createLinkControlRoutes } from "./routes/decopilot/link-control-routes";
 import { createLinkProxyRoutes } from "./routes/decopilot/link-proxy-routes";
@@ -1895,30 +1899,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     let userSub: string | null = null;
     if (match) {
       const token = (match[1] ?? "").trim();
-      // `X-MCP-Session-Auth: true` tells the apiKey plugin to skip so its
-      // customAPIKeyGetter doesn't throw INVALID_API_KEY on a non-key bearer.
-      // Server-set on a fresh Headers so the marker is never client-trusted.
-      const headers = new Headers({
-        authorization: `Bearer ${token}`,
-        "X-MCP-Session-Auth": "true",
-      });
-      const mcp = (await auth.api
-        .getMcpSession({ headers })
-        .catch(() => null)) as { userId?: string } | null;
-      if (mcp?.userId) {
-        userSub = mcp.userId;
-      } else {
-        // Dev fallback: a Better Auth API key as the bearer (no local OIDC).
-        const verified = (await auth.api
-          .verifyApiKey({ body: { key: token } })
-          .catch(() => null)) as {
-          valid?: boolean;
-          key?: { userId?: string };
-        } | null;
-        if (verified?.valid && verified.key?.userId) {
-          userSub = verified.key.userId;
-        }
-      }
+      // Shared dual-auth resolver (MCP OAuth session → Better Auth API key
+      // fallback). The same function authenticates the WS uplink upgrade in
+      // index.ts, which runs outside Hono's auth middleware.
+      userSub = await resolveLinkBearer(
+        token,
+        auth.api as unknown as LinkBearerAuthApi,
+      );
     } else {
       const ctx = (c.get as (key: string) => unknown)("meshContext") as
         | { auth?: { user?: { id?: string } } }
