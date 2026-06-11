@@ -45,6 +45,31 @@ function classifyAbort(
   return null;
 }
 
+function benignSandbox4xx(status: number, pathname: string): string | null {
+  if (pathname.startsWith("/_sandbox/")) {
+    if (status === 404) return "daemon_gone";
+    if (status === 409) return "daemon_not_ready";
+  }
+  if (status === 404 && pathname.includes("/sandboxclaims/")) {
+    return "claim_gone";
+  }
+  return null;
+}
+
+/**
+ * Bun's `fetch` rejects with this shape when the peer closes the TCP
+ * connection mid-request (e.g. an in-pod sandbox daemon torn down by idle
+ * eviction). Distinct from an abort — nobody cancelled, the socket just went
+ * away. Matched on message + the common reset/broken-pipe codes since Bun
+ * gives these no stable error `name`.
+ */
+function isConnectionClosed(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.message.includes("socket connection was closed")) return true;
+  const code = (error as { code?: string }).code;
+  return code === "ECONNRESET" || code === "EPIPE";
+}
+
 /**
  * Instrumented fetch that creates spans for outbound requests
  * and propagates trace context.
@@ -120,25 +145,23 @@ async function instrumentedFetch(
           method === "GET" &&
           (headers.get("accept") ?? "").includes("text/event-stream");
 
-        // A 404 on the in-pod daemon (`/_sandbox/*`) means the sandbox handle
-        // is gone (idle-evicted). That's expected control flow — the proxy maps
-        // it to 410/`gone` and the UI self-heals — not a failure. Open Studio
-        // tabs poll `/events` + `/git/status` against reaped sandboxes, so
-        // marking these ERROR floods the error dashboard with benign 404s.
-        const isDaemonSandboxGone404 =
-          response.status === 404 && url.pathname.startsWith("/_sandbox/");
+        // Sandbox lifecycle churn (reaped/booting daemon, GC'd claim) is
+        // expected control flow the caller self-heals — not a failure. See
+        // benignSandbox4xx; marking these ERROR floods the error dashboard.
+        const sandboxLifecycle =
+          response.status >= 400
+            ? benignSandbox4xx(response.status, url.pathname)
+            : null;
 
-        if (
-          response.status >= 400 &&
-          !isMcpSseProbe405 &&
-          !isDaemonSandboxGone404
-        ) {
+        if (response.status >= 400 && !isMcpSseProbe405 && !sandboxLifecycle) {
           span.setStatus({
             code: SpanStatusCode.ERROR,
             message: `HTTP ${response.status}`,
           });
         } else {
-          if (isDaemonSandboxGone404) span.setAttribute("sandbox.gone", true);
+          if (sandboxLifecycle) {
+            span.setAttribute("sandbox.lifecycle", sandboxLifecycle);
+          }
           span.setStatus({ code: SpanStatusCode.OK });
         }
 
@@ -154,6 +177,11 @@ async function instrumentedFetch(
           // and distinguishable in traces. We still re-throw — control flow is
           // the caller's concern, untouched.
           span.setAttribute("abort.reason", abortReason);
+        } else if (
+          isConnectionClosed(error) &&
+          url.pathname.startsWith("/_sandbox/")
+        ) {
+          span.setAttribute("sandbox.lifecycle", "connection_closed");
         } else {
           // Record exception and set error status
           span.recordException(error as Exception);
@@ -177,3 +205,6 @@ export function enableFetchInstrumentation(): void {
   // @ts-expect-error - Bun's fetch has extra properties like preconnect
   globalThis.fetch = instrumentedFetch;
 }
+
+/** Internal helpers exposed for unit tests only. */
+export const __test = { benignSandbox4xx, isConnectionClosed };
