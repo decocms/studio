@@ -1413,3 +1413,42 @@ export async function createStudioContextFactory(
     return ctx;
   };
 }
+
+/**
+ * Rebind every org-scoped facet of an existing StudioContext to `org`.
+ *
+ * A StudioContext is born from the session's active org — or from no org at
+ * all (background contexts, unauthenticated requests). Any code path that
+ * resolves the org AFTER creation (path-scoped routes via
+ * resolve-org-from-path, durable-run rebuilds via automation-context) must
+ * rebind ALL org-scoped state through this one helper. A hand-rolled subset
+ * is how `ctx.orgFs` stayed null in background runs while `ctx.objectStorage`
+ * worked (#3826) — add new org-scoped fields HERE, not at the call sites.
+ *
+ * Auth state (ctx.organization, ctx.access, ctx.boundAuth) is intentionally
+ * not handled: the callers derive role/permissions differently (path
+ * membership vs background membership) and set those themselves.
+ */
+export function rebindOrgScope(
+  ctx: StudioContext,
+  org: { id: string; slug: string | null },
+): void {
+  // Storage wrappers were constructed eagerly with the creation-time org (or
+  // undefined); point them at the resolved org. Per-context instances — never
+  // shared across requests — so the mutation is race-free.
+  ctx.storage.threads.setOrganizationId(org.id);
+  ctx.storage.asyncResearchJobs.setOrganizationId(org.id);
+  // Object storage, and the org filesystem view over its keyspace.
+  const s3Service = getObjectStorageS3Service();
+  ctx.objectStorage = s3Service
+    ? createBoundObjectStorage(s3Service, org.id)
+    : new DevObjectStorage(org.id, ctx.baseUrl);
+  ctx.orgFs = new OrgFs(ctx.objectStorage, ctx.storage.orgFsEntries, org.id);
+  // Asset hoisters close over object storage and org slug; refresh the
+  // wrappers so writes land in the resolved org's tenant scope.
+  decorateStorageWithAssetHoisting(ctx.storage, {
+    objectStorage: ctx.objectStorage,
+    baseUrl: ctx.baseUrl,
+    orgSlug: org.slug ?? undefined,
+  });
+}
