@@ -39,3 +39,30 @@ describe("harness tree is cross-tree-free", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+// Option-b sandbox decoupling: the portable harness tree must not import
+// `@decocms/sandbox`. That would invert the harness ← sandbox dependency arrow
+// and re-introduce the cycle the package move breaks. The `SandboxProvider` +
+// `createSandboxFsHooks` construction is isolated in two assembler-glue modules
+// (slated to relocate into the cluster/daemon assemblers in the package-move
+// slice); every other production file consumes the harness-owned flat
+// `SandboxFsHooks` via DI and stays sandbox-free.
+const SANDBOX_GLUE = new Set([
+  "decopilot/built-in-tools/cluster-sandbox-fs.ts",
+  "decopilot/desktop-sandbox-fs.ts",
+]);
+const SANDBOX_IMPORT = /from\s+["']@decocms\/sandbox/;
+
+describe("harness tree is @decocms/sandbox-free", () => {
+  it("has no portable source importing @decocms/sandbox (only the glue + tests)", async () => {
+    const root = new URL("./", import.meta.url).pathname;
+    const offenders: string[] = [];
+    for await (const rel of new Glob("**/*.ts").scan(root)) {
+      if (rel.endsWith(".test.ts")) continue; // tests MAY import sandbox
+      if (SANDBOX_GLUE.has(rel)) continue; // the isolated glue seam
+      const src = await Bun.file(root + rel).text();
+      if (SANDBOX_IMPORT.test(src)) offenders.push(rel);
+    }
+    expect(offenders).toEqual([]);
+  });
+});
