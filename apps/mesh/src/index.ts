@@ -41,11 +41,6 @@ function withSslmode(url: string, ssl: boolean): string {
   }
   return u.toString();
 }
-// DBOS auto-builds OTel spans for every workflow/step but exports them via its
-// own pipeline, separate from observability/index.ts's NodeSDK. Point it at the
-// same collector as the rest of mesh. The OTLP proto exporter needs the full
-// per-signal URL, so derive it from the base OTEL_EXPORTER_OTLP_ENDPOINT.
-const otlpBase = process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.replace(/\/$/, "");
 DBOS.setConfig({
   name: "decocms",
   systemDatabaseUrl: withSslmode(settings.databaseUrl, settings.databasePgSsl),
@@ -58,13 +53,6 @@ DBOS.setConfig({
   // over port 3001. Re-enable per-process once we need workflow admin HTTP.
   runAdminServer: false,
   executorID: settings.podName,
-  ...(otlpBase
-    ? {
-        enableOTLP: true,
-        otlpTracesEndpoints: [`${otlpBase}/v1/traces`],
-        otlpLogsEndpoints: [`${otlpBase}/v1/logs`],
-      }
-    : {}),
 });
 
 const { createApp } = await import("./api/app");
