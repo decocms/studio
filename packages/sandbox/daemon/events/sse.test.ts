@@ -33,6 +33,29 @@ describe("makeSseStream", () => {
     await reader.cancel();
   });
 
+  it("unregisters the client when the request signal aborts", async () => {
+    const b = new Broadcaster(100);
+    const ctl = new AbortController();
+    const stream = makeSseStream({ ...mkDeps(b), signal: ctl.signal })!;
+    const reader = stream.getReader();
+    await reader.read(); // drive start() so the controller registers
+    expect(b.size()).toBe(1);
+    ctl.abort();
+    expect(b.size()).toBe(0);
+    await reader.cancel();
+  });
+
+  it("does not register when the signal is already aborted", async () => {
+    const b = new Broadcaster(100);
+    const ctl = new AbortController();
+    ctl.abort();
+    const stream = makeSseStream({ ...mkDeps(b), signal: ctl.signal })!;
+    const reader = stream.getReader();
+    await reader.read();
+    expect(b.size()).toBe(0);
+    await reader.cancel();
+  });
+
   it("emits status event in handshake", async () => {
     const b = new Broadcaster(100);
     const stream = makeSseStream(mkDeps(b))!;
