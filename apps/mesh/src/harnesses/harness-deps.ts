@@ -32,9 +32,33 @@ export interface GrepHit {
   text: string;
 }
 
+/**
+ * Object-storage hook surface (spec §14). Structurally a subset of the
+ * cluster's `BoundObjectStorage`, so `ctx.objectStorage` is assignable
+ * directly. Kept as a standalone interface (no `@/` import) so this file
+ * stays portable when it moves to `@decocms/harness`.
+ */
 export interface ObjectStorageHooks {
-  put(key: string, body: Uint8Array | string): Promise<{ key: string }>;
-  presignGet(key: string): Promise<string>;
+  getBytesOrPresign(
+    key: string,
+    opts: { presignWhenLargerThan: number; presignExpiresIn?: number },
+  ): Promise<
+    | { content: string; contentType: string; encoding: string; size: number }
+    | { error: string; size: number; presignedUrl: string; contentType: string }
+  >;
+  getBytes(key: string): Promise<Uint8Array>;
+  put(
+    key: string,
+    body: string | Uint8Array,
+    options?: { contentType?: string },
+  ): Promise<unknown>;
+  head(key: string): Promise<{ contentType: string; size: number }>;
+  presignedGetUrl(key: string, expiresIn?: number): Promise<string>;
+  presignedPutUrl(
+    key: string,
+    expiresIn?: number,
+    contentType?: string,
+  ): Promise<string>;
 }
 
 export interface McpClient {
@@ -71,6 +95,14 @@ export interface HarnessDeps {
   onGrep(pattern: string, opts?: GrepOpts): Promise<GrepHit[]>;
 
   objectStorage: ObjectStorageHooks;
+
+  /**
+   * Whether external image URLs may be fetched over plain HTTP (in addition
+   * to HTTPS). Cluster sets this from `getSettings().localMode`; desktop sets
+   * it from its local-mode flag. Universal (never undefined) so the consuming
+   * tools don't reach for settings themselves.
+   */
+  allowHttpExternalUrls: boolean;
 
   mcpForAgent(
     agentId: string,

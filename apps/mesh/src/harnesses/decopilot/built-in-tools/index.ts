@@ -55,6 +55,7 @@ import { createInspectPageTool } from "./inspect-page";
 import { buildPortableBuiltInTools } from "./portable-built-ins";
 import type { ModelsConfig } from "../../types";
 import type { MeshProvider } from "@/ai-providers/types";
+import { getSettings } from "@/settings";
 
 /**
  * Identifies the (virtual MCP, branch, user) tuple that the built-in VM
@@ -311,11 +312,15 @@ async function buildAllTools(
   // The provider is picked from `imageProvider` so the org can pair the
   // image tier with a different credential than the chat tier (caller
   // aliases it to `provider` when they share a credential).
-  if (imageProvider && models.image) {
+  if (imageProvider && models.image && ctx.objectStorage) {
+    // Cluster builds the `objectStorage` + `allowHttpExternalUrls` hooks from
+    // StudioContext + settings; the tool itself no longer reads either
+    // (HarnessDeps conversion).
     tools.generate_image = createGenerateImageTool(writer, {
       provider: imageProvider,
       imageModelInfo: models.image,
-      ctx,
+      objectStorage: ctx.objectStorage,
+      allowHttpExternalUrls: getSettings().localMode,
     });
   }
   // web_search requires a provider and a deep-research model.

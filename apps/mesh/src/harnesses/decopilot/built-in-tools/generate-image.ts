@@ -8,8 +8,7 @@
 
 import type { UIMessageStreamWriter } from "ai";
 import type { MeshProvider } from "@/ai-providers/types";
-import type { StudioContext } from "@/core/studio-context";
-import { getSettings } from "@/settings";
+import type { ObjectStorageHooks } from "../../harness-deps";
 import type { ModelInfo } from "../../../api/routes/decopilot/types";
 import {
   createPortableGenerateImageTool,
@@ -23,13 +22,14 @@ export function createGenerateImageTool(
   params: {
     provider: MeshProvider;
     imageModelInfo: ModelInfo;
-    ctx: StudioContext;
+    objectStorage: ObjectStorageHooks;
+    allowHttpExternalUrls: boolean;
   },
 ) {
   return createPortableGenerateImageTool(writer, {
     provider: params.provider,
     imageModelInfo: params.imageModelInfo,
-    objectStorage: params.ctx.objectStorage,
-    allowHttpExternalUrls: getSettings().localMode,
+    objectStorage: params.objectStorage,
+    allowHttpExternalUrls: params.allowHttpExternalUrls,
   });
 }

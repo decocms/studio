@@ -14,6 +14,7 @@ describe("HarnessDeps shape", () => {
       onGlob: async () => [],
       onGrep: async () => [],
       objectStorage: {} as HarnessDeps["objectStorage"],
+      allowHttpExternalUrls: false,
       mcpForAgent: async () =>
         ({}) as Awaited<ReturnType<HarnessDeps["mcpForAgent"]>>,
     } satisfies HarnessDeps;
