@@ -8,10 +8,7 @@
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import type { UIMessageStreamWriter } from "ai";
-import {
-  toolNeedsApproval,
-  type ToolApprovalLevel,
-} from "../../../api/routes/decopilot/helpers";
+import { toolNeedsApproval, type ToolApprovalLevel } from "../mcp-tools";
 
 // Known destructive/read-only classifications for built-in tools. Mirrors
 // the MCP annotations used by passthrough tools so dashboards can filter

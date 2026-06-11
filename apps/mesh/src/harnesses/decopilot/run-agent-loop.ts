@@ -27,7 +27,7 @@ import {
   type UIMessageStreamWriter,
 } from "ai";
 import type { ModelsConfig } from "../types";
-import type { ToolApprovalLevel } from "../../api/routes/decopilot/helpers";
+import type { ToolApprovalLevel } from "./mcp-tools";
 import type { GithubRepo, UsageStats } from "@decocms/mesh-sdk";
 import { createLanguageModel } from "../../ai-providers/language-model";
 import { DEFAULT_MAX_TOKENS } from "./harness-constants";
