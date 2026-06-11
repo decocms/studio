@@ -1,8 +1,31 @@
+import type { OrganizationScope, StudioContext } from "../core/studio-context";
 import { claudeCodeHarnessFactory } from "./claude-code";
+import {
+  decopilotHarnessFactory,
+  registerClusterEnvironmentBuilder,
+  registerDesktopEnvironmentBuilder,
+} from "./decopilot";
 import { codexHarnessFactory } from "./codex";
-import { decopilotHarnessFactory } from "./decopilot";
 import { decopilotDesktopHarnessFactory } from "./decopilot/desktop-factory";
+import { buildClusterEnvironmentTools } from "./decopilot/harness-deps";
+import { buildDesktopEnvironmentTools } from "./decopilot/desktop-runtime";
 import { registerHarnessFactory } from "./registry";
+
+// Register the environment-deps builders for the unified decopilot factory.
+// The factory (`./decopilot`) is environment-agnostic and looks these up at
+// dispatch time; this barrel is the sole in-process registration point, so
+// registering here guarantees both are present before any cluster/desktop
+// dispatch. The cluster builder is `@/`-coupled (StudioContext) and the desktop
+// builder reaches `@decocms/sandbox` — keeping the registration here (mesh) lets
+// the factory itself stay portable.
+registerClusterEnvironmentBuilder((args) =>
+  buildClusterEnvironmentTools({
+    ...args,
+    ctx: args.ctx as StudioContext,
+    organization: args.organization as OrganizationScope,
+  }),
+);
+registerDesktopEnvironmentBuilder(buildDesktopEnvironmentTools);
 
 // Side-effect registration. Importing this module wires up the three
 // in-tree harnesses. Out-of-tree harnesses register themselves the same way.

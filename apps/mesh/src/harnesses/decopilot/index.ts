@@ -30,20 +30,70 @@ import type { HarnessContext } from "../../core/harness-context";
 import type { StudioContext } from "../../core/studio-context";
 import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
 import { createProviderFromSecret } from "./provider-from-secret";
-import { createSideChannelWriter } from "../side-channel-writer";
+import {
+  createSideChannelWriter,
+  type SideChannelWriter,
+} from "../side-channel-writer";
 import {
   buildModelRuntimeFromSources,
   runDecopilotCore,
   type DecopilotToolRuntime,
+  type ModelRuntime,
 } from "./run-core";
 import type { DecopilotTelemetry } from "./run-stream";
-import { buildClusterEnvironmentTools } from "./harness-deps";
-import { buildDesktopEnvironmentTools } from "./desktop-runtime";
 
 /** True when the injected context is a full cluster `StudioContext` (it carries
  *  `storage`/`db`, absent from the bare `HarnessContext` the daemon builds). */
 function isClusterContext(ctx: HarnessContext): ctx is StudioContext {
   return "storage" in ctx;
+}
+
+// ── Environment-deps registration seam ──────────────────────────────────────
+// The factory is environment-agnostic: it looks the cluster/desktop deps builder
+// up from a module-scoped registry instead of statically importing the
+// `@/`-coupled cluster assembler (`./harness-deps`) or the desktop runtime
+// (`./desktop-runtime`, which reaches `@decocms/sandbox` via the desktop sandbox
+// glue). That keeps this file — the `@decocms/harness/decopilot` entry — free of
+// `@/` and `@decocms/sandbox` so it can move into the package. The mesh barrel
+// (`apps/mesh/src/harnesses/index.ts`) registers both impls at import time,
+// before any dispatch; every cluster dispatch path imports that barrel
+// transitively, so the builder is present when `create().stream()` runs.
+export interface ClusterEnvironmentBuilderArgs {
+  ctx: HarnessContext;
+  organization: unknown;
+  modelRuntime: ModelRuntime;
+  sideChannel: SideChannelWriter;
+  cleanup: { close?: () => Promise<void> };
+}
+export type ClusterEnvironmentBuilder = (
+  args: ClusterEnvironmentBuilderArgs,
+) => {
+  toolRuntime: DecopilotToolRuntime;
+  telemetry?: DecopilotTelemetry;
+};
+
+export interface DesktopEnvironmentBuilderArgs {
+  input: HarnessStreamInput;
+  modelRuntime: ModelRuntime;
+  sideChannel: SideChannelWriter;
+  cleanup: { close?: () => Promise<void> };
+}
+export type DesktopEnvironmentBuilder = (
+  args: DesktopEnvironmentBuilderArgs,
+) => DecopilotToolRuntime;
+
+let clusterEnvironmentBuilder: ClusterEnvironmentBuilder | undefined;
+let desktopEnvironmentBuilder: DesktopEnvironmentBuilder | undefined;
+
+export function registerClusterEnvironmentBuilder(
+  builder: ClusterEnvironmentBuilder,
+): void {
+  clusterEnvironmentBuilder = builder;
+}
+export function registerDesktopEnvironmentBuilder(
+  builder: DesktopEnvironmentBuilder,
+): void {
+  desktopEnvironmentBuilder = builder;
 }
 
 export const decopilotHarnessFactory: HarnessFactory = {
@@ -71,9 +121,16 @@ export const decopilotHarnessFactory: HarnessFactory = {
         let toolRuntime: DecopilotToolRuntime;
         let telemetry: DecopilotTelemetry | undefined;
         if (isClusterContext(harnessCtx)) {
-          const built = buildClusterEnvironmentTools({
+          if (!clusterEnvironmentBuilder) {
+            throw new Error(
+              "[decopilot] cluster environment builder not registered — " +
+                "apps/mesh/src/harnesses must be imported before dispatching " +
+                "the decopilot harness in cluster mode",
+            );
+          }
+          const built = clusterEnvironmentBuilder({
             ctx: harnessCtx,
-            organization: harnessCtx.organization!,
+            organization: harnessCtx.organization,
             modelRuntime,
             sideChannel,
             cleanup,
@@ -81,8 +138,13 @@ export const decopilotHarnessFactory: HarnessFactory = {
           toolRuntime = built.toolRuntime;
           telemetry = built.telemetry;
         } else {
+          if (!desktopEnvironmentBuilder) {
+            throw new Error(
+              "[decopilot] desktop environment builder not registered",
+            );
+          }
           // Desktop runs stay OTel-invisible this phase (no monitoring sink).
-          toolRuntime = buildDesktopEnvironmentTools({
+          toolRuntime = desktopEnvironmentBuilder({
             input,
             modelRuntime,
             sideChannel,
