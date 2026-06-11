@@ -425,6 +425,8 @@ export async function* runDecopilotStream(
     isDecopilot: isDecopilot(input.agent.id) !== null,
     systemAgentInstructions: tools.serverInstructions,
     currentThreadId: threadId,
+    user: { id: input.user.id, email: input.user.email },
+    userContext: input.userContext,
     writer,
     prepareStep: parentPrepareStep,
     onStepFinish: extras.onStepFinish,

@@ -85,6 +85,8 @@ async function runClusterEngine(
     isDecopilot: args.isDecopilot,
     systemAgentInstructions: args.systemAgentInstructions,
     currentThreadId: args.currentThreadId,
+    user: args.user,
+    userContext: args.userContext,
     writer: args.writer,
     subtaskParams: {
       provider: args.provider,

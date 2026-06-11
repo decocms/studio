@@ -143,6 +143,51 @@ describe("runAgentLoop with kind: 'subagent'", () => {
   });
 });
 
+describe("runAgentLoop user/userContext threading", () => {
+  test("renders the user-context block from passed-in userContext + user", async () => {
+    const fakeResult = {
+      text: Promise.resolve(""),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      }),
+      toUIMessageStream: () => ({
+        async *[Symbol.asyncIterator]() {},
+      }),
+      response: Promise.resolve({ messages: [] }),
+    } as never;
+    const fakeStreamText = () => fakeResult;
+    const mockMcpClient = {
+      listTools: async () => ({ tools: [] }),
+      getInstructions: () => "",
+    } as never;
+
+    const handle = await runAgentLoop({
+      kind: "agent",
+      ctx: mockCtx,
+      organization: mockOrg,
+      virtualMcp: { id: "vir_test" },
+      mcpClient: mockMcpClient,
+      provider: mockProvider,
+      models: mockModels,
+      messages: [{ role: "user", content: "hi" }],
+      abortSignal: new AbortController().signal,
+      writer: mockWriter,
+      subtaskParams: mockSubtaskParams,
+      user: { id: "u1", name: "Ada", email: "ada@example.com" },
+      userContext: {
+        interests: [{ title: "Ship harness", summary: "extract pkg" }],
+      },
+      __streamText: fakeStreamText,
+    } as never);
+
+    const joined = JSON.stringify(handle.assembledSystemMessages);
+    expect(joined).toContain("Ship harness");
+  });
+});
+
 describe("runAgentLoop assembledSystemMessages (single surviving assembler)", () => {
   test("exposes exactly buildAgentSystemPrompt's output — the prompt feeding the model is the same one the _request.systemSections debug metadata is derived from", async () => {
     const fakeResult = {

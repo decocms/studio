@@ -100,6 +100,10 @@ export interface RunEngineArgs {
   isDecopilot: boolean;
   systemAgentInstructions?: string;
   currentThreadId: string;
+  /** Authenticated user identity for the user-context prompt block. */
+  user?: { id: string; name?: string | null; email?: string | null };
+  /** Pre-resolved prompt data (threads/interests/agents) for the system prompt. */
+  userContext?: import("../types").HarnessUserContext;
   writer: UIMessageStreamWriter;
   /** Image-injection + plan-mode-filter prepareStep built by the loop. */
   prepareStep: unknown;

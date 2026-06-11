@@ -60,6 +60,10 @@ export interface RunAgentLoopOptions {
   /** Current thread id — excluded from the user-context "history" recall. */
   currentThreadId?: string;
   kind: "agent" | "subagent";
+  /** Authenticated user identity for the user-context prompt block. */
+  user?: { id: string; name?: string | null; email?: string | null };
+  /** Pre-resolved prompt data (threads/interests/agents) for the system prompt. */
+  userContext?: import("../types").HarnessUserContext;
   stepLimit?: number;
   toolApprovalLevel?: ToolApprovalLevel;
   planMode?: boolean;
@@ -148,6 +152,8 @@ export async function runAgentLoop(
     isDecopilot: opts.isDecopilot,
     agentInstructions: opts.systemAgentInstructions,
     currentThreadId: opts.currentThreadId,
+    user: opts.user,
+    userContext: opts.userContext,
     passthroughClient: opts.passthroughClient,
     connectionsData: opts.connectionsData,
   });
