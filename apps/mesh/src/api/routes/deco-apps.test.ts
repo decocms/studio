@@ -43,9 +43,11 @@ describe("mapSupabaseAppRows", () => {
 
 describe("createDecoAppsRoutes", () => {
   test("returns 401 when unauthenticated", async () => {
-    const root = new Hono();
+    const root = new Hono<{ Variables: { meshContext: StudioContext } }>();
     root.use("*", async (c, next) => {
-      c.set("meshContext", { auth: { user: null } } as StudioContext);
+      c.set("meshContext", {
+        auth: { user: null },
+      } as unknown as StudioContext);
       await next();
     });
     root.route("/", createDecoAppsRoutes());

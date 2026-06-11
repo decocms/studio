@@ -80,7 +80,7 @@ function appManifestResolveTypeAliases(vendor: string, app: string): string[] {
 }
 
 /** Manifest block schema entry, including legacy/modern app resolveType aliases. */
-export function lookupManifestBlockSchema(
+function lookupManifestBlockSchema(
   resolveType: string,
   meta: LiveMeta,
 ): RawSchema {

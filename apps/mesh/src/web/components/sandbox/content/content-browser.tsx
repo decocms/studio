@@ -297,7 +297,7 @@ function ContentBrowserReady({
   });
 
   const { catalog: appCatalog, isLoading: appCatalogLoading } =
-    useDecoAppsCatalog(decofile ?? undefined, meta ?? undefined, {
+    useDecoAppsCatalog(meta ?? undefined, decofile ?? undefined, {
       enabled: activeCollection === "apps",
     });
 

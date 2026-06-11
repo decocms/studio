@@ -113,16 +113,20 @@ describe("resolveSchema – app resolveType aliases", () => {
       manifest: {
         blocks: {
           apps: {
-            "deco/apps/blog.ts": {
-              type: "object",
-              properties: {
-                postsPerPage: { type: "number", title: "Posts per page" },
-              },
+            "deco/apps/blog.ts": { $ref: "#/definitions/BlogApp" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          BlogApp: {
+            type: "object",
+            properties: {
+              postsPerPage: { type: "number", title: "Posts per page" },
             },
           },
         },
       },
-      schema: {},
     };
 
     const resolved = resolveSchema("site/apps/deco/blog.ts", meta);

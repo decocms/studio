@@ -51,7 +51,7 @@ const PAGE_RESOLVE_TYPES = new Set([
 ]);
 
 /** Canonical decofile block id for the site app (matches admin `SITE_APP_ID`). */
-export const SITE_APP_BLOCK_KEY = "site";
+const SITE_APP_BLOCK_KEY = "site";
 
 /** Well-known resolve type for the site app block. */
 export const SITE_APP_RESOLVE_TYPE = "site/apps/site.ts";
