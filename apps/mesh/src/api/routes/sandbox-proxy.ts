@@ -26,6 +26,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import type { Env } from "../hono-env";
+import { patchSandboxOperator } from "../../tools/sandbox/patch-sandbox-operator";
 import { handleVmEvents } from "./sandbox-events-handler";
 import { resolveAndPushEnv } from "../../tools/sandbox/resolve-env";
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
@@ -196,6 +197,8 @@ async function proxyDaemon(
   opts?: {
     method?: "GET" | "POST" | "PUT";
     forwardJsonBody?: boolean;
+    /** When set, sent instead of reading the request body. */
+    jsonBody?: string;
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
@@ -209,7 +212,10 @@ async function proxyDaemon(
   let body: string | null = null;
   const headers = new Headers();
 
-  if (opts?.forwardJsonBody) {
+  if (opts?.jsonBody !== undefined) {
+    body = opts.jsonBody;
+    headers.set("content-type", "application/json");
+  } else if (opts?.forwardJsonBody) {
     body = await c.req.text();
     headers.set("content-type", "application/json");
   }
@@ -497,6 +503,7 @@ export const createSandboxRoutes = () => {
     const ctx = c.var.meshContext;
 
     try {
+      await patchSandboxOperator(ctx, runner, claimName);
       const githubRepo = parseGithubRepoFromMetadata(
         virtualMcpMetadata,
         connectionIds,
@@ -523,12 +530,25 @@ export const createSandboxRoutes = () => {
       map404to410: true,
     }),
   );
-  app.post("/:virtualMcpId/:branch/git/rebase", (c) =>
-    proxyDaemon(c, "/_sandbox/git/rebase", {
+  app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
+    const runner = requireRunner(c);
+    if (runner instanceof Response) return runner;
+
+    const { claimName } = c.get("vmClaim");
+    const ctx = c.var.meshContext;
+
+    try {
+      await patchSandboxOperator(ctx, runner, claimName);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+    }
+
+    return proxyDaemon(c, "/_sandbox/git/rebase", {
       forwardJsonBody: true,
       map404to410: true,
-    }),
-  );
+    });
+  });
   app.post(
     "/:virtualMcpId/:branch/git/suggest-commit",
     bodyLimit({

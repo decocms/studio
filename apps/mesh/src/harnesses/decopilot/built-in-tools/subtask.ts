@@ -10,8 +10,7 @@
  */
 
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
-import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
-import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
+import { resolveSubagent } from "../resolve-subagent";
 import type { UIMessageStreamWriter } from "ai";
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
@@ -125,23 +124,12 @@ export function createSubtaskTool(
         );
       }
 
-      // 1. Validate the target agent.
-      const virtualMcp = await ctx.storage.virtualMcps.findById(
-        targetId,
-        organization.id,
-      );
-      if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
-        throw new Error("Agent not found");
-      }
-      if (virtualMcp.status !== "active") {
-        throw new Error("Agent is not active");
-      }
-
-      // 1b. Enforce the caller's sub-agent allowlist for cross-agent
-      //     delegation. Self-clones are always allowed. An empty or absent
-      //     allowlist means "all agents" (the default). This mirrors the
-      //     <available-agents> prompt filter — the model shouldn't even see
-      //     disallowed agents, but we re-check here as defense in depth.
+      // 1. Enforce the caller's sub-agent allowlist for cross-agent
+      //    delegation BEFORE resolving the target — a disallowed target must
+      //    not even cause a client to open. Self-clones are always allowed. An
+      //    empty or absent allowlist means "all agents" (the default). This
+      //    mirrors the <available-agents> prompt filter — the model shouldn't
+      //    even see disallowed agents, but we re-check here as defense in depth.
       if (!isSelf && self) {
         const caller = await ctx.storage.virtualMcps.findById(
           self.id,
@@ -155,22 +143,17 @@ export function createSubtaskTool(
         }
       }
 
-      // 2. Open an MCP client for the target. A self-clone uses superUser so
-      //    its tool scope mirrors the parent loop's passthrough client.
-      const mcpClient = (await createVirtualClientFrom(
-        virtualMcp,
+      // 2. Validate the target and open its passthrough client. A self-clone
+      //    uses superUser so its tool scope mirrors the parent loop.
+      const { mcpClient, targetRef } = await resolveSubagent(
         ctx,
-        "passthrough",
-        isSelf,
-      )) as PassthroughClient;
-      const targetLabel = virtualMcp.id;
+        organization.id,
+        targetId,
+        { superUser: isSelf },
+      );
+      const targetLabel = targetRef.id;
 
       try {
-        const targetRef = {
-          id: virtualMcp.id,
-          instructions: mcpClient.getInstructions(),
-          repo: virtualMcp.metadata?.githubRepo ?? undefined,
-        };
         // 3. Call runAgentLoop with subagent kind.
         const handle = await runAgentLoop({
           kind: "subagent",

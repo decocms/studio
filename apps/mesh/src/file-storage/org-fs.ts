@@ -336,6 +336,31 @@ export class OrgFs {
   }
 
   /**
+   * Which of `paths` are live files — one batch query. The list route uses
+   * it to mark Claude Code skill dirs (`<dir>/SKILL.md`) without N stats.
+   */
+  async filesExist(volume: string, paths: string[]): Promise<Set<string>> {
+    assertValidVolume(volume);
+    const found = await this.manifest.liveFilePaths({
+      organizationId: this.organizationId,
+      volume,
+      paths: paths.map((p) => normalizeFsPath(p)),
+    });
+    return new Set(found);
+  }
+
+  /**
+   * Most recently written live files across every volume, newest first.
+   * Powers the Library page's "Recently added"/"All files" feed.
+   */
+  async recent(limit: number): Promise<OrgFsEntry[]> {
+    return this.manifest.recentFiles({
+      organizationId: this.organizationId,
+      limit,
+    });
+  }
+
+  /**
    * Change feed for a volume. Returns entries (incl. tombstones) after the
    * cursor, the new cursor to persist, and `hasMore` (a full page came back,
    * so the consumer should poll again immediately rather than wait). Pass "0"

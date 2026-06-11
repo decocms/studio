@@ -188,6 +188,8 @@ export const KEYS = {
   threadSandbox: (orgKey: string, taskId: string | undefined) =>
     ["thread-sandbox", "v2", orgKey, taskId] as const,
   threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
+  // Fetched text content of a previewed file (FilePreview), keyed by URL.
+  fileText: (downloadUrl: string) => ["file-text", downloadUrl] as const,
 
   // Virtual MCP tools (for tool definition lookup in chat)
   // null virtualMcpId means default virtual MCP
@@ -321,7 +323,13 @@ export const KEYS = {
     ["org-fs", orgId, volume, "list", path] as const,
   orgFsUsage: (orgId: string, volume: string) =>
     ["org-fs", orgId, volume, "usage"] as const,
+  orgFsStat: (orgId: string, volume: string, path: string) =>
+    ["org-fs", orgId, volume, "stat", path] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
+  // Cross-volume recent-files feed (Library home). Separate root key so a
+  // volume named like the segment can never collide; mutations invalidate it
+  // explicitly alongside the volume prefix.
+  orgFsRecent: (orgId: string) => ["org-fs-recent", orgId] as const,
 
   // File picker — objects listed from a configured bucket
   filePickerObjects: (orgId: string, configId: string | null) =>
@@ -359,6 +367,7 @@ export const KEYS = {
 
   // Deco sites (scoped by user email)
   decoSites: (email: string | undefined) => ["deco-sites", email] as const,
+  decoApps: () => ["deco-apps"] as const,
 
   // Web search blob content (fetched from object storage)
   webSearchBlob: (url: string) => ["web-search-blob", url] as const,

@@ -46,6 +46,7 @@ import {
   resolveTier,
   tryResolveTier,
 } from "@/core/resolve-tier";
+import { isPermanentRunError } from "@/core/dispatch-errors";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
 import type { SimpleModeTier } from "@/tools/organization/schema";
@@ -344,6 +345,15 @@ async function markRunFailedStep(taskId: string): Promise<void> {
   }
 }
 
+async function deactivateAutomationStep(automationId: string): Promise<void> {
+  const rt = requireRuntime();
+  try {
+    await rt.storage.deactivateAutomation(automationId);
+  } catch {
+    // best-effort
+  }
+}
+
 // Split into steps so a crash-recovery replay doesn't duplicate the
 // `threads` row inserted by `createRunThread`.
 async function fireAutomationWorkflowFn(
@@ -402,6 +412,18 @@ async function fireAutomationWorkflowFn(
     });
   } catch (err) {
     const runError = err instanceof Error ? err.message : String(err);
+    if (isPermanentRunError(err)) {
+      console.warn(
+        `[fireAutomationWorkflow] deactivating "${prep.automation.name}" (${prep.automation.id}) — permanent dispatch error, will not fire again: ${runError}`,
+      );
+      await DBOS.runStep(() => deactivateAutomationStep(prep.automation.id), {
+        name: "deactivateAutomation",
+      });
+      await DBOS.runStep(() => markRunFailedStep(taskId), {
+        name: "markRunFailed",
+      });
+      return { taskId, error: runError };
+    }
     console.error(
       `[fireAutomationWorkflow] ERROR "${prep.automation.name}" taskId=${taskId}:`,
       runError,

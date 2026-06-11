@@ -79,6 +79,11 @@ export interface EnsureSandboxInput {
   handle: string;
   repo?: RepoRef;
   workload?: Workload;
+  /** Studio user operating the sandbox — co-authored on git commits. */
+  operator?: {
+    userName: string;
+    userEmail?: string;
+  };
   /**
    * Message-offload SSRF allowlist, pushed by the cluster from its OWN trusted
    * S3 config (never a request frame). Threaded into the spawned daemon's boot
@@ -153,7 +158,11 @@ export interface DesktopSandboxProviderDeps {
   postConfig: (
     port: number,
     devPort: number,
-    config: { repo?: RepoRef; workload?: Workload },
+    config: {
+      repo?: RepoRef;
+      workload?: Workload;
+      operator?: EnsureSandboxInput["operator"];
+    },
     daemonToken: string,
   ) => Promise<void>;
   waitForHealth: (port: number) => Promise<void>;
@@ -369,7 +378,11 @@ export function createDesktopSandboxProvider(
         await deps.postConfig(
           port,
           devPort,
-          { repo: input.repo, workload: input.workload },
+          {
+            repo: input.repo,
+            workload: input.workload,
+            operator: input.operator,
+          },
           daemonToken,
         );
       } catch (err) {

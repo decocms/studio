@@ -9,14 +9,13 @@
  * written and only vanished ones deleted. Running sandboxes pick changes up
  * in ~1s via the change feed (the mount invalidator).
  *
- * Runs from server boot on an interval (the cron-shaped safety net) and on
- * demand via the ORG_FS_PUBLIC_SETS_SYNC tool.
+ * Runs on a DBOS scheduled workflow (dbos-public-sets-sync.ts) so exactly one
+ * pod owns each tick, and on demand via the ORG_FS_PUBLIC_SETS_SYNC tool.
  */
 
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import type { Kysely } from "kysely";
-import { sleep } from "@decocms/std";
 import type { Database } from "../storage/types";
 import { OrgFsEntryStorage } from "../storage/org-fs";
 import { createBoundObjectStorage } from "../object-storage/bound-object-storage";
@@ -278,6 +277,22 @@ async function syncPublicSet(
   return { set: source.set, written, deleted, unchanged };
 }
 
+/** `syncPublicSet` with failure folded into the result (never throws). */
+export async function syncPublicSetSafe(
+  db: Kysely<Database>,
+  source: PublicSkillSetSource,
+  opts: { baseUrl: string },
+): Promise<SyncResult | { set: string; error: string }> {
+  try {
+    return await syncPublicSet(db, source, opts);
+  } catch (err) {
+    return {
+      set: source.set,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 /** Sync every configured set; failures are per-set (one bad repo never
  *  blocks the others). Returns per-set results or error messages. */
 export async function syncAllPublicSets(
@@ -286,45 +301,7 @@ export async function syncAllPublicSets(
 ): Promise<Array<SyncResult | { set: string; error: string }>> {
   const results: Array<SyncResult | { set: string; error: string }> = [];
   for (const source of getPublicSets()) {
-    try {
-      results.push(await syncPublicSet(db, source, opts));
-    } catch (err) {
-      results.push({
-        set: source.set,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    results.push(await syncPublicSetSafe(db, source, opts));
   }
   return results;
-}
-
-const DEFAULT_SYNC_INTERVAL_MS = 10 * 60 * 1000;
-
-/** Boot-time loop: initial sync, then every `intervalMs`. Never throws. */
-export function startPublicSetsSync(
-  db: Kysely<Database>,
-  opts: { baseUrl: string; intervalMs?: number; signal?: AbortSignal },
-): void {
-  if (getPublicSets().length === 0) return;
-  const intervalMs = opts.intervalMs ?? DEFAULT_SYNC_INTERVAL_MS;
-  void (async () => {
-    while (!opts.signal?.aborted) {
-      const results = await syncAllPublicSets(db, opts).catch((err) => {
-        console.warn("[org-fs] public set sync failed", err);
-        return [];
-      });
-      for (const r of results) {
-        if ("error" in r) {
-          console.warn(
-            `[org-fs] public set "${r.set}" sync failed: ${r.error}`,
-          );
-        } else if (r.written || r.deleted) {
-          console.log(
-            `[org-fs] public set "${r.set}" synced: +${r.written} -${r.deleted} (=${r.unchanged})`,
-          );
-        }
-      }
-      await sleep(intervalMs, { signal: opts.signal }).catch(() => {});
-    }
-  })();
 }

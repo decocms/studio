@@ -25,6 +25,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import type { UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
@@ -40,6 +41,7 @@ import {
 } from "@/tools/virtual/studio-pack";
 import { computeClaimHandle } from "@/sandbox/claim-handle";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
+import { normalizeCoAuthorIdentity } from "@decocms/sandbox/shared";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
@@ -894,7 +896,7 @@ async function prepareRun(
       : null;
 
     if (!virtualMcp) {
-      throw new Error("Agent not found");
+      throw new PermanentRunError("agent_not_found", "Agent not found");
     }
     const effectiveVirtualMcp = await resolveEffectiveVirtualMcpForHarness({
       virtualMcp,
@@ -1004,7 +1006,8 @@ async function prepareRun(
 
     if (!input.isResume) {
       if (!materializedRequestMessage) {
-        throw new Error(
+        throw new PermanentRunError(
+          "empty_request",
           "No user message found in input — expected at least one non-system message",
         );
       }
@@ -1597,10 +1600,16 @@ async function resolvePullSandboxConfig(
       })
     : undefined;
 
+  const operator = normalizeCoAuthorIdentity({
+    userName: ctx.auth.user?.name,
+    userEmail: ctx.auth.user?.email,
+  });
+
   return {
     handle: sandboxHandle,
     ...(repo ? { repo } : {}),
     ...(workload ? { workload } : {}),
+    ...(operator ? { operator } : {}),
     ...(offloadAllowedHosts !== undefined ? { offloadAllowedHosts } : {}),
     ...(offloadAllowSameHostDev !== undefined
       ? { offloadAllowSameHostDev }

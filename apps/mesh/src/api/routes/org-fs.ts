@@ -54,6 +54,8 @@ const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 64 * 1024;
 const MAX_CHANGES_LIMIT = 1000;
 const DEFAULT_CHANGES_LIMIT = 500;
+const MAX_RECENT_LIMIT = 200;
+const DEFAULT_RECENT_LIMIT = 50;
 
 type Resolved =
   | { ok: true; ctx: StudioContext; fs: OrgFs }
@@ -73,6 +75,26 @@ function fsErrorResponse(c: Ctx, err: unknown): Response {
 
 export const createOrgFsRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
+
+  /** access.check with the thrown auth errors mapped to explicit responses. */
+  const checkPermission = async (
+    c: Ctx,
+    ctx: StudioContext,
+    permission: "ORG_FS_READ" | "ORG_FS_WRITE",
+  ): Promise<Response | null> => {
+    try {
+      await ctx.access.check(permission);
+      return null;
+    } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        return c.json({ error: err.message }, 401);
+      }
+      if (err instanceof ForbiddenError) {
+        return c.json({ error: err.message }, 403);
+      }
+      throw err;
+    }
+  };
 
   /**
    * Resolve the authenticated, org-scoped OrgFs for this request, gating on the
@@ -105,17 +127,8 @@ export const createOrgFsRoutes = () => {
         res: c.json({ error: "Public volumes are read-only" }, 403),
       };
     }
-    try {
-      await ctx.access.check(permission);
-    } catch (err) {
-      if (err instanceof UnauthorizedError) {
-        return { ok: false, res: c.json({ error: err.message }, 401) };
-      }
-      if (err instanceof ForbiddenError) {
-        return { ok: false, res: c.json({ error: err.message }, 403) };
-      }
-      throw err;
-    }
+    const denied = await checkPermission(c, ctx, permission);
+    if (denied) return { ok: false, res: denied };
     if (isPublicVolume(volume)) {
       return { ok: true, ctx, fs: buildPublicOrgFs(ctx) };
     }
@@ -138,16 +151,57 @@ export const createOrgFsRoutes = () => {
     return c.json({ sets: getPublicSets().map((s) => s.set) });
   });
 
+  // Most recently written files across every volume, newest first — the
+  // Library page's "Recently added"/"All files" feed. Volume-less by design,
+  // so it lives above the `/:volume/*` routes.
+  app.get("/recent", async (c) => {
+    const ctx = c.get("meshContext");
+    if (!ctx.auth?.user?.id) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    if (!ctx.organization?.id) {
+      return c.json({ error: "Organization required" }, 400);
+    }
+    const denied = await checkPermission(c, ctx, "ORG_FS_READ");
+    if (denied) return denied;
+    if (!ctx.orgFs) {
+      return c.json({ error: "Object storage not configured" }, 503);
+    }
+    const limit = Math.min(
+      Math.max(Number(c.req.query("limit")) || DEFAULT_RECENT_LIMIT, 1),
+      MAX_RECENT_LIMIT,
+    );
+    try {
+      return c.json({ entries: await ctx.orgFs.recent(limit) });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
+  });
+
   // --- Reads ---------------------------------------------------------------
 
-  // List a directory's immediate children (path "" = volume root).
+  // List a directory's immediate children (path "" = volume root). Dirs
+  // following the Claude Code skill format (containing SKILL.md) are marked
+  // `hasSkill` — one batch probe — so the Library renders them first-class.
   app.get("/:volume/list", async (c) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
     try {
+      const entries = await r.fs.listDir(volume, c.req.query("path") ?? "");
+      const dirs = entries.filter((e) => e.kind === "dir");
+      const skillMds = dirs.length
+        ? await r.fs.filesExist(
+            volume,
+            dirs.map((d) => `${d.path}/SKILL.md`),
+          )
+        : new Set<string>();
       return c.json({
-        entries: await r.fs.listDir(volume, c.req.query("path") ?? ""),
+        entries: entries.map((e) =>
+          e.kind === "dir" && skillMds.has(`${e.path}/SKILL.md`)
+            ? { ...e, hasSkill: true }
+            : e,
+        ),
       });
     } catch (err) {
       return fsErrorResponse(c, err);

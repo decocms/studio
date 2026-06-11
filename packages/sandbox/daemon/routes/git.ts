@@ -1,6 +1,7 @@
 import fs, { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { appendCoAuthorTrailer } from "../../git-co-author";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { rebaseOntoBase } from "../git/rebase-onto-base";
@@ -9,6 +10,7 @@ import {
   InvalidRemoteBranchNameError,
 } from "../git/ref-name";
 import { safePath } from "../paths";
+import type { OperatorIdentity } from "../types";
 import { git } from "../setup/git";
 import { jsonResponse, parseJsonBody } from "./body-parser";
 
@@ -17,6 +19,8 @@ export interface GitDeps {
   repoDir: string;
   /** Authenticated clone URL from daemon config (may embed OAuth token). */
   getCloneUrl?: () => string | null | undefined;
+  /** Studio user operating the sandbox — co-authored on commits. */
+  getOperator?: () => OperatorIdentity | null | undefined;
 }
 
 function gitEnv(repoDir: string): Record<string, string> {
@@ -387,8 +391,10 @@ export function publish(deps: GitDeps, message: string): { pushed: boolean } {
   const hasStagedChanges =
     tryGit(repoDir, ["diff", "--cached", "--quiet"]) === null;
   if (hasStagedChanges) {
-    const commitMsg =
-      message.trim().length > 0 ? message.trim() : "Update from sandbox";
+    const commitMsg = appendCoAuthorTrailer(
+      message.trim().length > 0 ? message.trim() : "Update from sandbox",
+      deps.getOperator?.(),
+    );
     // Sandbox repos often ship lefthook/husky hooks (deno fmt, lint, check)
     // that need a full dev toolchain + network. Push still runs normal hooks
     // (e.g. pre-push branch protection); only this commit skips them.
@@ -574,7 +580,11 @@ export function makeGitRebaseHandler(deps: GitDeps) {
       return jsonResponse({ error: "base is required" }, 400);
     }
     try {
-      return jsonResponse(rebaseOntoBase(deps.repoDir, base));
+      return jsonResponse(
+        rebaseOntoBase(deps.repoDir, base, {
+          operator: deps.getOperator?.() ?? undefined,
+        }),
+      );
     } catch (err) {
       if (err instanceof InvalidRemoteBranchNameError) {
         return jsonResponse({ error: err.message }, 400);

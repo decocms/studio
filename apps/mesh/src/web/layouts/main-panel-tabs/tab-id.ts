@@ -9,6 +9,7 @@
  *   - Pinned view: "app:<connectionId>:<toolName>" (from metadata.ui.pinnedViews)
  *   - Ephemeral automation: "automation:<id>"
  *   - Ephemeral web page: "web-page:<slug>" (web-developer agent preview)
+ *   - Ephemeral file preview: "file:<encoded output key>" (thread output viewer)
  *   - "0" = closed sentinel (not an actual tab id)
  *
  * The "settings" tab bundles what used to be separate instructions,
@@ -81,6 +82,32 @@ export function parseWebPageTabId(
   return { slug };
 }
 
+export interface FileTabParsed {
+  /** Thread-output key: an S3 key ("model-outputs/<threadId>/x.pdf") or an
+   *  org-fs ref ("org-fs:outputs/<threadId>/x.pdf") — same shape the
+   *  thread-outputs endpoint returns. */
+  key: string;
+}
+
+/** Keys carry `/` and `:`, so the tab id encodes them to keep the
+ *  `<kind>:<rest>` grammar unambiguous in the `?main=` URL param. */
+export function formatFileTabId(key: string): string {
+  return `file:${encodeURIComponent(key)}`;
+}
+
+export function parseFileTabId(
+  tabId: string | undefined,
+): FileTabParsed | null {
+  if (!tabId || !tabId.startsWith("file:")) return null;
+  const encoded = tabId.slice("file:".length);
+  if (!encoded) return null;
+  try {
+    return { key: decodeURIComponent(encoded) };
+  } catch {
+    return null;
+  }
+}
+
 export const FIXED_SYSTEM_TABS = [
   "settings",
   "automations",
@@ -97,12 +124,14 @@ const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
  *   - "app:<connectionId>:<toolName>"  (expanded tool / pinned view)
  *   - "web-page:<slug>"               (ephemeral web preview)
  *   - "automation:<id>"               (ephemeral automation detail)
+ *   - "file:<encoded key>"            (ephemeral thread-output file preview)
  */
 export function isPerThreadTab(tabId: string): boolean {
   return (
     tabId.startsWith("app:") ||
     tabId.startsWith("web-page:") ||
-    tabId.startsWith("automation:")
+    tabId.startsWith("automation:") ||
+    tabId.startsWith("file:")
   );
 }
 

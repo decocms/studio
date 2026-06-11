@@ -1,4 +1,5 @@
 import type { PackageManagerConfig, TenantConfig } from "../../../daemon/types";
+import { normalizeCoAuthorIdentity } from "../../../git-co-author";
 import type { EnsureOptions } from "../types";
 
 /**
@@ -11,6 +12,7 @@ export function buildConfigPayload(args: {
   packageManager: PackageManagerConfig | null;
   port?: number;
   repo: NonNullable<EnsureOptions["repo"]> | null;
+  tenant?: EnsureOptions["tenant"];
 }): Partial<TenantConfig> | null {
   const repo = args.repo;
   const git = repo
@@ -27,6 +29,13 @@ export function buildConfigPayload(args: {
       }
     : undefined;
 
+  const tenant = args.tenant;
+  const operator =
+    normalizeCoAuthorIdentity({
+      userName: tenant?.userName,
+      userEmail: tenant?.userEmail,
+    }) ?? undefined;
+
   const packageManager = args.packageManager
     ? {
         name: args.packageManager.name,
@@ -42,9 +51,10 @@ export function buildConfigPayload(args: {
       }
     : undefined;
 
-  if (!git && !application) return null;
+  if (!git && !application && !operator) return null;
   return {
     ...(git ? { git } : {}),
+    ...(operator ? { operator } : {}),
     ...(application ? { application } : {}),
   };
 }

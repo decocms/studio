@@ -10,7 +10,7 @@ import { getIconComponent, parseIconString } from "../../components/agent-icon";
 
 export type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
 
-export type TabKind = "system" | "agent" | "expanded";
+export type TabKind = "system" | "agent" | "expanded" | "file";
 
 export type TabIcon =
   | { kind: "component"; Component: IconComponent }

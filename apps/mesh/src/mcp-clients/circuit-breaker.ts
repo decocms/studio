@@ -28,12 +28,14 @@ interface CircuitEntry {
 const circuits = new Map<string, CircuitEntry>();
 
 export class CircuitOpenError extends Error {
+  readonly cooldownRemainingMs: number;
   constructor(connectionId: string, cooldownRemainingMs: number) {
     super(
       `Connection ${connectionId} circuit breaker is open — downstream server unreachable. ` +
         `Retry in ${Math.ceil(cooldownRemainingMs / 1000)}s.`,
     );
     this.name = "CircuitOpenError";
+    this.cooldownRemainingMs = cooldownRemainingMs;
   }
 }
 

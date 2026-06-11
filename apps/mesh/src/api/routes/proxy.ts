@@ -21,6 +21,13 @@ import { managementMCP } from "../../tools";
 import { guardResponseStream } from "../utils/stream-guard";
 import { handleAuthError } from "./oauth-proxy";
 import { getMcpListCache } from "@/mcp-clients/mcp-list-cache";
+import {
+  assertCircuitClosed,
+  CircuitOpenError,
+  recordFailure,
+  recordSuccess,
+} from "@/mcp-clients/circuit-breaker";
+import { getConnectionCircuitStore } from "@/mcp-clients/connection-circuit-store";
 import { peekRpcMethod, probeDecision } from "./proxy-handshake";
 import { handleVirtualMcpRequest } from "./virtual-mcp";
 export { toServerClient, type MCPProxyClient } from "./mcp-proxy-factory";
@@ -33,6 +40,10 @@ type Variables = {
 type ProxyEnv = { Variables: Variables };
 
 const handleError = (err: Error, c: Context) => {
+  if (err instanceof CircuitOpenError) {
+    c.header("Retry-After", String(Math.ceil(err.cooldownRemainingMs / 1000)));
+    return c.json({ error: err.message }, 503);
+  }
   if (err.message.includes("not found")) {
     return c.json({ error: err.message }, 404);
   }
@@ -163,6 +174,7 @@ export const createProxyRoutes = () => {
             : true;
         }
         if (connection.connection_url && probe) {
+          assertCircuitClosed(connectionId);
           await ctx.tracer.startActiveSpan(
             "studio.connection.handshake",
             {
@@ -175,6 +187,8 @@ export const createProxyRoutes = () => {
               startTime(c, "mcp.client_handshake");
               try {
                 await clientFromConnection(connection, ctx, false);
+                recordSuccess(connectionId);
+                void getConnectionCircuitStore().recordSuccess(connectionId);
                 span.setStatus({ code: SpanStatusCode.OK });
               } catch (err) {
                 span.setStatus({
@@ -214,6 +228,9 @@ export const createProxyRoutes = () => {
         endTime(c, "mcp.handle_request");
         return guardResponseStream(response, `mcp:${connectionId}`);
       } catch (error) {
+        if (error instanceof CircuitOpenError) {
+          throw error;
+        }
         // Check if this is an auth error - if so, return appropriate 401
         // Note: This only applies to HTTP connections
         const connection = await ctx.storage.connections.findById(
@@ -230,7 +247,29 @@ export const createProxyRoutes = () => {
             orgSlug: ctx.organization?.slug,
           });
           if (authResponse) {
+            // 401-style errors are user-recoverable (drive the OAuth popup) —
+            // they must NOT trip the breaker or disable the connection.
             return authResponse;
+          }
+          // Non-auth failure (404 / 5xx / network) against a real downstream.
+          // Trip the per-replica breaker (latency guard) and the cross-replica
+          // failure window. Once failures are sustained fleet-wide, durably
+          // disable the connection so every replica stops probing it.
+          recordFailure(connectionId);
+          const { shouldDisable } =
+            await getConnectionCircuitStore().recordFailure(connectionId);
+          if (shouldDisable && connection.status === "active") {
+            await ctx.storage.connections.update(connectionId, {
+              status: "error",
+            });
+            console.warn(
+              "[proxy] auto-disabled connection after sustained failures",
+              {
+                connectionId,
+                org: ctx.organization?.slug,
+                error: (error as Error).message,
+              },
+            );
           }
         }
         throw error;

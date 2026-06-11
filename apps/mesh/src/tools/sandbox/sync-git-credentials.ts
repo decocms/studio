@@ -2,6 +2,7 @@ import type { GithubRepo } from "@decocms/mesh-sdk/types";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
 import type { StudioContext } from "../../core/studio-context";
 import { RECONNECT_ERROR } from "../../oauth/token-refresh";
+import { coAuthorFromStudioContext } from "../../lib/co-author-identity";
 import {
   buildCloneInfo,
   ensureGithubCloneToken,
@@ -65,6 +66,8 @@ export async function refreshSandboxGitCredentials(
     ctx.vault,
   );
 
+  const operator = coAuthorFromStudioContext(ctx);
+
   const res = await runner.proxyDaemonRequest(handle, "/_sandbox/config", {
     method: "PUT",
     headers: new Headers({ "content-type": "application/json" }),
@@ -73,6 +76,7 @@ export async function refreshSandboxGitCredentials(
         repository: { cloneUrl },
         identity: { userName: gitUserName, userEmail: gitUserEmail },
       },
+      ...(operator ? { operator } : {}),
     }),
   });
 

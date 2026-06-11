@@ -30,6 +30,14 @@ const PATH_PREFIXES = {
 const STATIC_FILE_PATTERN =
   /\.(html|css|js|ico|svg|png|jpg|jpeg|gif|webp|woff|woff2)$/;
 
+export function isHealthPath(path: string): boolean {
+  return (
+    path === SYSTEM_PATHS.HEALTH ||
+    path === SYSTEM_PATHS.HEALTH_LIVE ||
+    path === SYSTEM_PATHS.HEALTH_READY
+  );
+}
+
 /** Check if a path is a system endpoint (health, metrics, well-known) */
 function isSystemPath(path: string): boolean {
   return (

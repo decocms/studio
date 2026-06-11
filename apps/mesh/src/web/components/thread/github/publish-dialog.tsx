@@ -24,6 +24,8 @@ import {
 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { authClient } from "@/web/lib/auth-client.ts";
+import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import {
   openPullRequestForBranch,
@@ -139,7 +141,10 @@ function PublishDialogBody({
     orgId,
     orgSlug,
   });
+  const { data: session } = authClient.useSession();
   const startSandbox = useSandboxStart(selfClient);
+
+  const coAuthor = coAuthorFromSessionUser(session?.user);
 
   const commitToOpenPr = openPullRequest?.state === "open";
   /** Header "Save changes" — commit/push only, no new PR / merge. */
@@ -349,6 +354,7 @@ function PublishDialogBody({
           title: prTitle,
           body: prBody,
           base: baseBranch,
+          coAuthor,
         });
       } catch (error) {
         throw new PublishFlowError(
@@ -365,6 +371,8 @@ function PublishDialogBody({
           repo,
           pullNumber: openedPr.number,
           commitTitle: prTitle,
+          commitMessage: prBody,
+          coAuthor,
         });
       } catch (error) {
         throw new PublishFlowError(
@@ -469,6 +477,7 @@ function PublishDialogBody({
         title: prTitle,
         body: prBody,
         base: baseBranch,
+        coAuthor,
       });
 
       toast.success(`Submitted pull request #${pr.number} for review`, {

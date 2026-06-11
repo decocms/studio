@@ -77,11 +77,17 @@ const workItemWorkloadSchema = z.object({
  * not be resolved at dispatch time (back-compat: daemons that already have
  * a running sandbox for the handle still succeed via the cache-hit path).
  */
+const workItemOperatorSchema = z.object({
+  userName: z.string(),
+  userEmail: z.string().optional(),
+});
+
 const workItemSandboxSchema = z.object({
   /** The stable sandbox handle — `computeHandle(sandboxId, branch)`. */
   handle: z.string(),
   repo: workItemRepoSchema.optional(),
   workload: workItemWorkloadSchema.optional(),
+  operator: workItemOperatorSchema.optional(),
   /**
    * Message-offload SSRF allowlist. Derived cluster-side from the object-
    * storage config (never a request frame). Empty = daemon fails closed.

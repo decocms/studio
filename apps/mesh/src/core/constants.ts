@@ -22,3 +22,24 @@ export const CIRCUIT_BREAKER_COOLDOWN_MS = 30_000; // 30 seconds
 
 /** Maximum number of circuit breaker entries to retain in memory */
 export const CIRCUIT_BREAKER_MAX_ENTRIES = 1000;
+
+/*
+ * Durable connection auto-disable (cross-replica, via the shared circuit store).
+ *
+ * Distinct from the in-memory CIRCUIT_BREAKER_* guard above: that one fast-fails
+ * per replica to bound latency on a hung server. These govern when a connection's
+ * `status` is flipped to "error" so EVERY replica then stops probing a
+ * persistently-failing downstream (fast-fail via the cheap DB status gate).
+ */
+
+/** Non-auth failures (aggregated across replicas) before a connection is durably disabled. */
+export const CONNECTION_DISABLE_FAILURE_THRESHOLD = 5;
+
+/**
+ * Failures must be sustained at least this long before disabling. Filters out
+ * transient blips / thundering herds that spike the count in well under a window.
+ */
+export const CONNECTION_DISABLE_MIN_WINDOW_MS = 60_000; // 60 seconds
+
+/** TTL for shared failure-counter entries — a connection that stops failing self-resets. */
+export const CONNECTION_CIRCUIT_TTL_MS = 5 * 60_000; // 5 minutes

@@ -15,6 +15,7 @@ import {
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/web/lib/auth-client.ts";
+import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { getActiveGithubRepo } from "@/web/lib/github-repo.ts";
 import { generateBranchName } from "@/shared/branch-name";
 import { useChatStream } from "../../chat/chat-context.tsx";
@@ -236,10 +237,12 @@ export function HeaderActions({ virtualMcpId }: Props) {
     if (!githubRepo?.connectionId || githubActionPending) return;
     setGithubActionPending(true);
     try {
+      const coAuthor = coAuthorFromSessionUser(session?.user);
       await squashMergePullRequest(githubClient, {
         owner: githubRepo.owner,
         repo: githubRepo.name,
         pullNumber,
+        coAuthor,
       });
       toast.success(`Published PR #${pullNumber}`);
       await refreshPrState();
