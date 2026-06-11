@@ -359,6 +359,50 @@ describe("outbox crash recovery (reopen DB → replay)", () => {
   });
 });
 
+describe("outbox rolling ackSeq truncation", () => {
+  it("drops rows with wireSeq <= ackSeq, keeping the unacked tail", () => {
+    for (let s = 1; s <= 5; s++) {
+      outbox.append({
+        runId: RUN,
+        fenceToken: FENCE,
+        wireSeq: s,
+        lane: 2,
+        line: line(s, "x"),
+      });
+    }
+    outbox.truncateUpToSeq({ runId: RUN, fenceToken: FENCE, ackSeq: 3 });
+    expect(
+      outbox
+        .replay({ runId: RUN, fenceToken: FENCE, fromSeq: 1 })
+        .map((r) => r.wireSeq),
+    ).toEqual([4, 5]);
+  });
+
+  it("is scoped per (runId, fenceToken)", () => {
+    outbox.append({
+      runId: "run_a",
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 2,
+      line: line(1, "a"),
+    });
+    outbox.append({
+      runId: "run_b",
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 2,
+      line: line(1, "b"),
+    });
+    outbox.truncateUpToSeq({ runId: "run_a", fenceToken: FENCE, ackSeq: 1 });
+    expect(
+      outbox.replay({ runId: "run_a", fenceToken: FENCE, fromSeq: 1 }),
+    ).toEqual([]);
+    expect(
+      outbox.replay({ runId: "run_b", fenceToken: FENCE, fromSeq: 1 }),
+    ).toHaveLength(1);
+  });
+});
+
 describe("openInMemoryOutbox (non-durable default for the relay)", () => {
   it("honors the same append/replay/cap/truncate contract without a file", () => {
     const mem = openInMemoryOutbox();

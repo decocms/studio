@@ -75,6 +75,16 @@ export interface Outbox {
   replay(query: OutboxReplayQuery): OutboxRow[];
   /** Terminal-only truncation (§13 step 2): drop all rows for a fully-acked run. */
   truncateRun(scope: { runId: string; fenceToken: string }): void;
+  /**
+   * Rolling ackSeq truncation (§13 step 4): drop rows with wireSeq <= ackSeq for
+   * one run, freeing the prefix the cluster has durably published. The unacked
+   * tail (wireSeq > ackSeq) stays for resume.
+   */
+  truncateUpToSeq(scope: {
+    runId: string;
+    fenceToken: string;
+    ackSeq: number;
+  }): void;
   journalMode(): string;
   close(): void;
 }
@@ -121,6 +131,9 @@ export function openOutbox(opts: OpenOutboxOptions): Outbox {
   const truncateStmt = db.query<unknown, [string, string]>(
     `DELETE FROM outbox WHERE run_id = ?1 AND fence_token = ?2`,
   );
+  const truncateUpToStmt = db.query<unknown, [string, string, number]>(
+    `DELETE FROM outbox WHERE run_id = ?1 AND fence_token = ?2 AND wire_seq <= ?3`,
+  );
 
   return {
     append(row) {
@@ -160,6 +173,9 @@ export function openOutbox(opts: OpenOutboxOptions): Outbox {
     },
     truncateRun(scope) {
       truncateStmt.run(scope.runId, scope.fenceToken);
+    },
+    truncateUpToSeq(scope) {
+      truncateUpToStmt.run(scope.runId, scope.fenceToken, scope.ackSeq);
     },
     journalMode() {
       const row = db
