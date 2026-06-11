@@ -76,6 +76,7 @@ import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
 import { SandboxLifecycleProvider } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
+import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -539,13 +540,7 @@ function AgentInsetProvider() {
 
 export default function AgentShellLayout() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex-1 flex items-center justify-center">
-          <Loading01 size={20} className="animate-spin text-muted-foreground" />
-        </div>
-      }
-    >
+    <Suspense fallback={<ShellRouteLoading />}>
       <AgentInsetProvider />
     </Suspense>
   );
