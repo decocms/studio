@@ -37,6 +37,7 @@ export type {
   HarnessFactory,
   HarnessId,
   HarnessStreamInput,
+  HarnessUserContext,
   ModelSelection,
   ModelsConfig,
   ToolApprovalLevel,

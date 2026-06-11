@@ -56,6 +56,7 @@ import type {
   DecopilotSecretModelSources,
   HarnessId,
   HarnessStreamInput,
+  HarnessUserContext,
   ModelSelection,
   ModelsConfig,
 } from "@/harnesses";
@@ -527,6 +528,58 @@ interface PreparedRun {
   wireHarnessInput: WireHarnessInput;
 }
 
+/**
+ * Pre-resolve the per-user prompt data the portable prompt builder renders:
+ * recent threads (continuity), interests (durable goals), and sibling agents
+ * (the `<available-agents>` block). Read agent-side here — the harness never
+ * touches `ctx.storage`. Each read is independently best-effort; a failure
+ * drops only its sub-block (matching the prior in-prompt `.catch(() => null)`).
+ *
+ * NOTE: `ctx.storage.threads` is the org-scoped decorator (`OrgScopedThreadStorage`),
+ * whose `list(createdBy?, options?)` binds the org implicitly — so we pass
+ * `(userId, { limit, agentId })`, NOT `(organizationId, userId, …)`.
+ */
+export async function resolveUserContext(
+  ctx: StudioContext,
+  organizationId: string,
+  agentId: string,
+  userId: string,
+): Promise<HarnessUserContext> {
+  const [recent, interestsDoc, agentList] = await Promise.all([
+    ctx.storage.threads.list(userId, { limit: 9, agentId }).catch(() => null),
+    ctx.storage.interests
+      .getForAgent(organizationId, agentId, userId)
+      .catch(() => null),
+    ctx.storage.virtualMcps.list(organizationId).catch(() => null),
+  ]);
+  const result: HarnessUserContext = {};
+  if (recent && recent.total > 0) {
+    result.recentThreads = {
+      total: recent.total,
+      threads: recent.threads.map((t) => ({
+        id: t.id,
+        title: t.title,
+        updated_at: t.updated_at,
+      })),
+    };
+  }
+  if (interestsDoc && interestsDoc.interests.length > 0) {
+    result.interests = interestsDoc.interests.map((i) => ({
+      title: i.title,
+      summary: i.summary,
+    }));
+  }
+  if (agentList) {
+    result.agents = agentList.map((vm) => ({
+      id: vm.id,
+      name: vm.title,
+      description: vm.description,
+      status: vm.status,
+    }));
+  }
+  return result;
+}
+
 export async function resolveEffectiveVirtualMcpForHarness({
   virtualMcp,
   agentId,
@@ -699,6 +752,7 @@ async function prepareRun(
       imageSource,
       deepResearchSource,
       mem,
+      userContext,
     ] = await Promise.all([
       ctx.storage.virtualMcps.findById(input.agent.id, input.organizationId),
       resolveSlot(models.thinking),
@@ -712,6 +766,18 @@ async function prepareRun(
         userId: input.userId,
         defaultWindowSize: windowSize,
       }),
+      // Pre-resolve threads/interests/sibling-agents agent-side so the portable
+      // prompt builder renders them without any `ctx.storage` reach-in. Only
+      // hosted decopilot runs need it; desktop runs leave it absent so the
+      // corresponding prompt blocks skip.
+      harnessId === "decopilot" && target.sandboxProviderKind !== "user-desktop"
+        ? resolveUserContext(
+            ctx,
+            input.organizationId,
+            input.agent.id,
+            input.userId,
+          )
+        : Promise.resolve(undefined),
     ]);
 
     const modelSources: DecopilotSecretModelSources | undefined = thinkingSource
@@ -1076,6 +1142,7 @@ async function prepareRun(
       triggerId: input.triggerId,
       currentThreadTitle: mem.thread.title,
       runFenceToken,
+      userContext,
     };
 
     // In-process accumulator for usage reporting — all harnesses deliver
