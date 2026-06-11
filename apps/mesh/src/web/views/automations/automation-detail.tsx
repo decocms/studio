@@ -4,10 +4,12 @@
  * Settings and run history for a single automation on one page.
  */
 
+import { type SimpleModeTier } from "@/web/components/chat/simple-mode-tier-dropdown";
 import {
-  SimpleModeTierDropdown,
-  type SimpleModeTier,
-} from "@/web/components/chat/simple-mode-tier-dropdown";
+  AutomationModelControl,
+  AutomationToolsControl,
+  type AutomationModelOverride,
+} from "@/web/components/automations/automation-config";
 import { User } from "@/web/components/user/user.tsx";
 import {
   useAutomation,
@@ -15,12 +17,7 @@ import {
   useTriggerList,
   type TriggerDefinition,
 } from "@/web/hooks/use-automations";
-import {
-  useChatTask,
-  useChatPrefs,
-  useChatStream,
-} from "@/web/components/chat/context";
-import { usePreferences } from "@/web/hooks/use-preferences";
+import { useChatTask, useChatStream } from "@/web/components/chat/context";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
@@ -68,6 +65,10 @@ interface SettingsFormData {
   name: string;
   active: boolean;
   tier: SimpleModeTier;
+  // Specific-model override (null when using the tier preset).
+  modelOverride: AutomationModelOverride | null;
+  // Tool allowlist (null = all of the agent's tools).
+  tools: string[] | null;
 }
 
 type EditSession = {
@@ -326,17 +327,18 @@ export function SettingsTab({
 }) {
   const agentId = automation.virtual_mcp_id;
   const { org } = useProjectContext();
-  const { update: updateMutation, triggerAdd: addTrigger } =
-    useAutomationActions();
+  const {
+    update: updateMutation,
+    triggerAdd: addTrigger,
+    run: runMutation,
+  } = useAutomationActions();
   const allConnections = useConnections();
   const connectionNameMap = new Map(allConnections.map((c) => [c.id, c.title]));
 
   // Chat hooks for running the automation
-  const { createTaskWithMessage } = useChatTask();
-  const { setSimpleModeTier } = useChatPrefs();
+  const { openTask } = useChatTask();
   const { setChatOpen } = usePanelActions();
   const { sendMessage } = useChatStream();
-  const [preferences, setPreferences] = usePreferences();
   const initialTiptapDoc =
     (automation.messages?.[0] as { metadata?: Metadata } | undefined)?.metadata
       ?.tiptapDoc ?? undefined;
@@ -395,12 +397,22 @@ export function SettingsTab({
   };
 
   const defaultTier: SimpleModeTier = automation.models?.tier ?? "smart";
+  const defaultModelOverride: AutomationModelOverride | null =
+    automation.models?.modelId && automation.models?.credentialId
+      ? {
+          modelId: automation.models.modelId,
+          credentialId: automation.models.credentialId,
+          title: automation.models.modelTitle ?? automation.models.modelId,
+        }
+      : null;
 
   const form = useForm<SettingsFormData>({
     defaultValues: {
       name: automation.name,
       active: automation.active,
       tier: defaultTier,
+      modelOverride: defaultModelOverride,
+      tools: automation.tools ?? null,
     },
   });
 
@@ -454,11 +466,22 @@ export function SettingsTab({
     const tiptapWasDirty = tiptapDirty;
     setTiptapDirty(false);
 
+    const models = {
+      tier: formData.tier,
+      ...(formData.modelOverride
+        ? {
+            modelId: formData.modelOverride.modelId,
+            credentialId: formData.modelOverride.credentialId,
+            modelTitle: formData.modelOverride.title,
+          }
+        : {}),
+    };
     const updatePayload = {
       id: automationId,
       name: formData.name,
       active: formData.active,
-      models: { tier: formData.tier },
+      models,
+      tools: formData.tools,
       messages: tiptapDocToMessages(tiptapDoc),
       temperature: 0,
     };
@@ -529,16 +552,18 @@ export function SettingsTab({
       return;
     }
 
-    setSimpleModeTier(form.getValues("tier"));
-
-    setChatOpen(true);
-    setPreferences({ ...preferences, toolApprovalLevel: "auto" });
-
-    const parts = derivePartsFromTiptapDoc(tiptapDoc);
-    createTaskWithMessage({
-      message: { tiptapDoc, parts },
-      virtualMcpId: agentId || undefined,
-    });
+    // Fire through the real automation path so the test honors the pinned
+    // model + tool allowlist exactly as a scheduled/triggered fire would,
+    // then open the resulting run thread in the chat panel.
+    try {
+      const result = await runMutation.mutateAsync(automationId);
+      if (result.threadId) {
+        setChatOpen(true);
+        openTask(result.threadId);
+      }
+    } catch {
+      // runMutation surfaces its own error toast.
+    }
   };
 
   return (
@@ -762,6 +787,25 @@ export function SettingsTab({
           />
         </div>
 
+        {/* Section: Model & Tools */}
+        <div className="flex flex-col gap-5">
+          <AutomationModelControl
+            tier={form.watch("tier")}
+            onTierChange={(tier) =>
+              form.setValue("tier", tier, { shouldDirty: true })
+            }
+            override={form.watch("modelOverride")}
+            onOverrideChange={(o) =>
+              form.setValue("modelOverride", o, { shouldDirty: true })
+            }
+          />
+          <AutomationToolsControl
+            agentId={agentId || null}
+            value={form.watch("tools")}
+            onChange={(v) => form.setValue("tools", v, { shouldDirty: true })}
+          />
+        </div>
+
         {/* Section: Instructions */}
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
@@ -791,12 +835,6 @@ export function SettingsTab({
               />
 
               <div className="@container/chat-bottom flex items-center justify-end gap-1.5 p-2.5">
-                <SimpleModeTierDropdown
-                  tier={form.watch("tier")}
-                  onSelect={(tier) =>
-                    form.setValue("tier", tier, { shouldDirty: true })
-                  }
-                />
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button

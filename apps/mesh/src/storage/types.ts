@@ -1203,6 +1203,9 @@ export interface AutomationTable {
   created_by: string;
   messages: string;
   models: string;
+  // JSON-encoded string[] of model-facing tool names the run is restricted to.
+  // null = all of the bound agent's tools (default / pre-existing behavior).
+  tools: string | null;
   temperature: number;
   virtual_mcp_id: string;
   created_at: ColumnType<Date, Date | string, never>;
@@ -1220,6 +1223,7 @@ export interface Automation {
   created_by: string;
   messages: string;
   models: string;
+  tools: string | null;
   temperature: number;
   virtual_mcp_id: string;
   created_at: string;

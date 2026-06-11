@@ -44,8 +44,14 @@ export const AUTOMATION_UPDATE = defineTool({
     models: z
       .object({
         tier: ChatTierSchema,
+        modelId: z.string().optional(),
+        credentialId: z.string().optional(),
       })
+      .loose()
       .optional(),
+    // null clears the allowlist (= all tools); an array sets it; omitting
+    // leaves the stored value untouched.
+    tools: z.array(z.string()).nullable().optional(),
     temperature: z.number().optional(),
   }),
   outputSchema: z.object({
@@ -78,6 +84,9 @@ export const AUTOMATION_UPDATE = defineTool({
     }
     if (input.models !== undefined)
       updateData.models = JSON.stringify(input.models);
+    if (input.tools !== undefined)
+      updateData.tools =
+        input.tools === null ? null : JSON.stringify(input.tools);
     if (input.temperature !== undefined)
       updateData.temperature = input.temperature;
     const automation = await ctx.storage.automations.update(

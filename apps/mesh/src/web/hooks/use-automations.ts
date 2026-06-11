@@ -142,8 +142,15 @@ export interface AutomationDetail {
   messages: unknown[];
   models: {
     tier?: "fast" | "smart" | "thinking";
+    // Specific-model override (coexists with tier; takes precedence when set).
+    modelId?: string;
+    credentialId?: string;
+    modelTitle?: string;
     [key: string]: unknown;
   };
+  // Tool allowlist (model-facing/raw tool names). null = all of the agent's
+  // tools.
+  tools: string[] | null;
   temperature: number;
   triggers: AutomationTrigger[];
 }

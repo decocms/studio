@@ -384,6 +384,13 @@ export interface DispatchRunInput {
   agent: AgentConfig;
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
+  /**
+   * Optional allowlist of model-facing tool names the run is restricted to.
+   * Applied after the full toolset (MCP + built-ins) is assembled. `null` or
+   * omitted leaves the agent's full toolset intact. Used by automations that
+   * pin a specific subset of tools.
+   */
+  toolAllowlist?: string[] | null;
   /** Chat mode — plan, forced web search / image, or default */
   mode: ChatMode;
   organizationId: string;
@@ -1044,6 +1051,7 @@ async function prepareRun(
       mode: input.mode,
       temperature: input.temperature,
       toolApprovalLevel: input.toolApprovalLevel,
+      toolAllowlist: input.toolAllowlist ?? null,
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
       projectSlug: organization.slug,

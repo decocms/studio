@@ -77,6 +77,8 @@ export const harnessStreamInputSchema = z
     mode: z.string(),
     temperature: z.number(),
     toolApprovalLevel: z.string(),
+    // Per-run tool allowlist (model-facing names). null/absent = full toolset.
+    toolAllowlist: z.array(z.string()).nullable().optional(),
     user: z.object({ id: z.string(), email: z.string() }),
     organizationId: z.string(),
     organizationSlug: z.string().optional(),

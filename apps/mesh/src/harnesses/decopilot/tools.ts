@@ -111,6 +111,60 @@ export interface AssembleDecopilotToolsExtras {
 }
 
 /**
+ * Built-in tools the agent loop depends on for mechanics (reading truncated
+ * outputs, the connections-block lazy-load via enable_tool, todo tracking).
+ * These are NEVER subject to the per-run allowlist — removing them would break
+ * the loop rather than scope it. The allowlist only governs MCP tools and the
+ * user-facing capability built-ins (web_search, generate_image, subtask, …).
+ */
+const ALLOWLIST_EXEMPT_BUILTINS = new Set<string>([
+  "read_tool_output",
+  "read_resource",
+  "read_prompt",
+  "enable_tool",
+  "open_in_agent",
+  "todo_write",
+  "update_interests",
+]);
+
+/**
+ * Filter the passthrough (MCP) tool set against the allowlist. The allowlist
+ * carries the RAW tool names the UI lists (from `listTools()`), so an MCP
+ * tool's model-facing (safe) key survives iff its raw name — or the safe name
+ * itself, for robustness — is allowed. A null allowlist is a no-op.
+ */
+function filterPassthroughByAllowlist(
+  set: ToolSet,
+  nameMap: Map<string, string>,
+  allow: Set<string> | null,
+): ToolSet {
+  if (!allow) return set;
+  const allowedSafe = new Set<string>();
+  for (const [raw, safe] of nameMap) {
+    if (allow.has(raw) || allow.has(safe)) allowedSafe.add(safe);
+  }
+  return Object.fromEntries(
+    Object.entries(set).filter(([name]) => allowedSafe.has(name)),
+  );
+}
+
+/**
+ * Filter built-ins against the allowlist, always keeping the loop-essential
+ * ones. A null allowlist is a no-op.
+ */
+function filterBuiltInsByAllowlist(
+  set: ToolSet,
+  allow: Set<string> | null,
+): ToolSet {
+  if (!allow) return set;
+  return Object.fromEntries(
+    Object.entries(set).filter(
+      ([name]) => ALLOWLIST_EXEMPT_BUILTINS.has(name) || allow.has(name),
+    ),
+  );
+}
+
+/**
  * Build the decopilot tool set for one streamText turn.
  *
  * Two side-effects:
@@ -127,6 +181,12 @@ export async function assembleDecopilotTools(
 ): Promise<AssembledTools> {
   const organization = ctx.organization!;
   const isPlanMode = input.mode === "plan";
+  // Per-run tool allowlist (model-facing names). Empty array is treated as
+  // "no restriction" so a misconfigured automation never ends up tool-less.
+  const allowlist =
+    input.toolAllowlist && input.toolAllowlist.length > 0
+      ? new Set(input.toolAllowlist)
+      : null;
 
   // superUser=true: the user is already authenticated as an org member,
   // the virtual MCP enforces which connections are in scope, and the
@@ -153,7 +213,7 @@ export async function assembleDecopilotTools(
   // try/finally only covers post-construction errors, so the cleanup
   // belongs inside the helper.
   try {
-    const { tools: passthroughTools, nameMap: passthroughNameMap } =
+    const { tools: rawPassthroughTools, nameMap: passthroughNameMap } =
       await toolsFromMCP(
         passthroughClient,
         extras.toolOutputMap,
@@ -161,6 +221,13 @@ export async function assembleDecopilotTools(
         input.toolApprovalLevel,
         { ctx, isPlanMode },
       );
+    // Restrict to the allowlist (if any) so enable_tool enumeration, the
+    // connections block, and the model-facing toolset all agree.
+    const passthroughTools = filterPassthroughByAllowlist(
+      rawPassthroughTools,
+      passthroughNameMap,
+      allowlist,
+    );
 
     // VM file tools bind to (virtualMcpId, branch, userId). The VM is
     // provisioned lazily on the first tool call inside getBuiltInTools.
@@ -194,7 +261,7 @@ export async function assembleDecopilotTools(
         }
       : null;
 
-    const builtInTools = await getBuiltInTools(
+    const allBuiltInTools = await getBuiltInTools(
       extras.writer,
       {
         provider: extras.provider,
@@ -214,6 +281,10 @@ export async function assembleDecopilotTools(
       },
       ctx,
     );
+    const builtInTools = filterBuiltInsByAllowlist(
+      allBuiltInTools,
+      allowlist,
+    ) as typeof allBuiltInTools;
 
     // Collect (rawName, safeName, connectionId) triples for the
     // connections block and the per-tool annotations used for plan-mode
@@ -224,6 +295,12 @@ export async function assembleDecopilotTools(
     for (const t of passthroughToolList) {
       const safeName = passthroughNameMap.get(t.name);
       if (!safeName) continue;
+      // Honor the allowlist so the connections block never advertises a tool
+      // the model can't actually call. The allowlist holds raw names; accept
+      // the safe name too for robustness.
+      if (allowlist && !allowlist.has(t.name) && !allowlist.has(safeName)) {
+        continue;
+      }
       // _meta.gatewayClientId is set by the gateway when the tool is
       // proxied from a non-virtual connection; the "unknown" fallback
       // only fires for tools that didn't traverse the gateway, which
