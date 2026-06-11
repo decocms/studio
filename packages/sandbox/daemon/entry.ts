@@ -61,6 +61,8 @@ import {
   getHarnessFactory,
   registerHarnessFactory,
 } from "@decocms/harness/registry";
+import { registerDesktopSandboxFsBuilder } from "@decocms/harness/decopilot/desktop-sandbox-fs-registry";
+import { buildDesktopSandboxFs } from "../dispatch/desktop-sandbox-fs";
 import type {
   HarnessContext,
   HarnessId,
@@ -437,6 +439,10 @@ const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 registerHarnessFactory(claudeCodeHarnessFactory);
 registerHarnessFactory(codexHarnessFactory);
 registerHarnessFactory(decopilotDesktopHarnessFactory);
+// The desktop runtime (decopilot) builds its VM fs hooks via the registered
+// sandbox-fs builder — kept in @decocms/sandbox so @decocms/harness stays
+// sandbox-free. Register it before any decopilot dispatch.
+registerDesktopSandboxFsBuilder(buildDesktopSandboxFs);
 const dispatchTracer = trace.getTracer("link-daemon");
 const dispatchMeter = metrics.getMeter("link-daemon");
 const lookupDispatchHarness = (id: string, input: unknown) => {

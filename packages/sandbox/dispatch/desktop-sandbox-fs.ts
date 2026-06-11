@@ -12,10 +12,7 @@
  * Phase 5).
  */
 
-import {
-  createSandboxFsHooks,
-  type SandboxProvider,
-} from "@decocms/sandbox/provider";
+import { createSandboxFsHooks, type SandboxProvider } from "../server/provider";
 import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
 
 export function createDesktopLocalSandboxProvider(): SandboxProvider {

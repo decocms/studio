@@ -4,7 +4,7 @@ import { buildLocalTools } from "./desktop-local-tools";
 import {
   buildDesktopSandboxFs,
   createDesktopLocalSandboxProvider,
-} from "./desktop-sandbox-fs";
+} from "@decocms/sandbox/dispatch/desktop-sandbox-fs";
 
 const writer = {
   write: () => {},

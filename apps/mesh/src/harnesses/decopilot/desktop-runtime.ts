@@ -51,7 +51,7 @@ import {
 import { createLanguageModel } from "@decocms/harness/decopilot/mesh-provider";
 import { toolsFromMCP } from "@decocms/harness/decopilot/mcp-tools";
 import { buildLocalTools } from "./desktop-local-tools";
-import { buildDesktopSandboxFs } from "./desktop-sandbox-fs";
+import { getDesktopSandboxFsBuilder } from "@decocms/harness/decopilot/desktop-sandbox-fs-registry";
 import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./desktop-prompt";
 import { resolveModeConfig } from "@decocms/harness/decopilot/mode-config";
 import { runNativeAgentLoopCore } from "@decocms/harness/decopilot/native-agent-loop-core";
@@ -343,7 +343,7 @@ function createDesktopToolRuntime(args: {
         };
         // Flat sandbox fs hooks built by the desktop glue (owns the
         // `@decocms/sandbox` provider) so buildLocalTools stays sandbox-free.
-        const fs = buildDesktopSandboxFs({
+        const fs = getDesktopSandboxFsBuilder()({
           virtualMcpId: targetAgentId,
           branch: streamInput.branch,
           userId: streamInput.user.id,

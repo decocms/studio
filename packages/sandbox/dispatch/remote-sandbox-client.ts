@@ -1,4 +1,7 @@
-import type { HarnessStreamInput, UIMessageChunk } from "@decocms/harness/types";
+import type {
+  HarnessStreamInput,
+  UIMessageChunk,
+} from "@decocms/harness/types";
 import type { SandboxClient } from "./sandbox-client";
 
 /**

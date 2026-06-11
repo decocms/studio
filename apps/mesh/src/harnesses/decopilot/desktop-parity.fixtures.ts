@@ -21,7 +21,21 @@ import { buildModelRuntimeFromSources } from "@decocms/harness/decopilot/run-cor
 import { buildDesktopEnvironmentTools } from "./desktop-runtime";
 import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
 import { createSideChannelWriter } from "@decocms/harness/side-channel-writer";
+import { registerDesktopSandboxFsBuilder } from "@decocms/harness/decopilot/desktop-sandbox-fs-registry";
 import type { HarnessStreamInput } from "@decocms/harness/types";
+
+// The parity fixtures only inspect the assembled tool KEYS (nothing executes),
+// so register a no-op desktop sandbox-fs builder — the real one lives in the
+// daemon (@decocms/sandbox) and isn't available in a unit test.
+registerDesktopSandboxFsBuilder(() => ({
+  onRead: async () => "",
+  onWrite: async () => {},
+  onEdit: async () => {},
+  onBash: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
+  onGlob: async () => [],
+  onGrep: async () => [],
+  onProxy: async () => ({}),
+}));
 
 /** A fake MCP `Client` returning empty listings — the desktop passthrough set
  *  is therefore empty, so the assembled tool keys are exactly the desktop
