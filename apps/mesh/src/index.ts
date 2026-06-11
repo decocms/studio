@@ -6,6 +6,7 @@
  * Or: bun run src/index.ts
  */
 
+import { sleep } from "@decocms/std";
 import { getSettings } from "./settings";
 import { initObservability } from "./observability";
 
@@ -275,8 +276,15 @@ async function gracefulShutdown(signal: string) {
     // 1. Mark as shutting down — readiness returns 503 immediately
     app.markShuttingDown();
 
-    // 2. Let K8s notice the 503 before we close connections.
-    await new Promise((r) => setTimeout(r, 2_000));
+    // 2. Keep serving while the load balancer stops routing to this pod.
+    //    With the AWS NLB in ip-target mode, deregistration is driven by the
+    //    LB controller observing the pod enter Terminating (this SIGTERM), not
+    //    by the K8s Endpoints path — and it takes far longer than the old 2s to
+    //    propagate. Closing the listener early leaves the NLB forwarding new
+    //    connections to a dead socket -> CF 520 during rollout. Stay well under
+    //    terminationGracePeriodSeconds (60s) so the force-exit timer never trips.
+    const drainMs = Number(process.env.SHUTDOWN_DRAIN_MS ?? 25_000);
+    await sleep(drainMs);
 
     // 3. Force-close connections (SSE streams are long-lived and would block
     //    graceful drain indefinitely).

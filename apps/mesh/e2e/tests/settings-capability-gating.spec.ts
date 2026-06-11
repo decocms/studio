@@ -17,12 +17,12 @@
 import type { Client } from "pg";
 import { connectDevDb } from "../fixtures/db";
 import { signUpViaApi } from "../fixtures/auth-api";
-import { expect, newApiContext, test } from "../fixtures/test";
+import { expect, getE2EAppOrigin, newApiContext, test } from "../fixtures/test";
 
 // Better Auth's CSRF guard rejects org-endpoint POSTs without an Origin that
 // matches trustedOrigins (keyed off baseURL). The page's own request context
 // doesn't set one, so we pass it explicitly on those calls.
-const ORIGIN = `http://localhost:${process.env.PORT ?? "3000"}`;
+const ORIGIN = getE2EAppOrigin();
 
 test.describe("settings capability gating", () => {
   let db: Client;

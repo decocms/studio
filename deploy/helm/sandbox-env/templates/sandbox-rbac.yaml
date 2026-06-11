@@ -69,12 +69,15 @@ rules:
   # `istio-system` (or wherever `previewGateway.namespace` points) can
   # route `<handle>.<domain>` traffic directly to the operator-created
   # headless Service — bypassing mesh as a proxy. `delete` mirrors the
-  # claim teardown path. `get` is used for the create-if-missing branch
-  # in `adopt()` so legacy claims (provisioned before this rolled out)
-  # get their HTTPRoute backfilled.
+  # claim teardown path. `patch` is required because the runner upserts
+  # the route via Server-Side Apply (`applyHttpRoute`) — apply-patch is a
+  # content type, but the verb on the resource is still PATCH. Without it
+  # every route write 403s, so re-adoption can't re-point the backendRef
+  # and the preview hostname serves an empty 500. `get`/`create` remain
+  # for the legacy-claim backfill path in `adopt()`.
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes"]
-    verbs: ["get", "create", "delete"]
+    verbs: ["get", "create", "delete", "patch"]
   # Per-claim Service port ownership. agent-sandbox v0.4.x creates the
   # Service for each Sandbox with `spec.ports: []` (the operator's
   # contract is that callers reach pods via direct pod-IP DNS). Istio's

@@ -66,11 +66,14 @@ class SandboxGitError extends Error {
 }
 
 /** The sandbox is gone / has no runner — polling it again won't help until
- *  it's re-provisioned, so stop the interval rather than flood 503s. */
+ *  it's re-provisioned, so back off the interval rather than flood errors.
+ *  404 is the daemon's "sandbox not found" (handle idle-evicted); without it
+ *  the status poll keeps hammering `/git/status` every 3s against a sandbox
+ *  that no longer exists. 503 = no runner, 410 = handle gone. */
 export function isSandboxUnreachable(error: unknown): boolean {
   return (
     error instanceof SandboxGitError &&
-    (error.status === 503 || error.status === 410)
+    (error.status === 503 || error.status === 410 || error.status === 404)
   );
 }
 

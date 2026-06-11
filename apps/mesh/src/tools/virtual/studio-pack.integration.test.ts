@@ -78,7 +78,7 @@ describe("installStudioPack", () => {
     await closeTestPgDatabase(database);
   });
 
-  test("creates all four studio-pack agents on a fresh org", async () => {
+  test("creates the studio-pack agents on a fresh org", async () => {
     await installStudioPack(orgId, userId, virtualMcpStorage);
 
     for (const getId of [
@@ -86,6 +86,7 @@ describe("installStudioPack", () => {
       StudioPackAgentId.AUTOMATION_MANAGER,
       StudioPackAgentId.CONNECTION_MANAGER,
       StudioPackAgentId.STORE_MANAGER,
+      StudioPackAgentId.USAGE_MANAGER,
     ]) {
       const found = await virtualMcpStorage.findById(getId(orgId), orgId);
       expect(found).not.toBeNull();

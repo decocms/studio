@@ -7,6 +7,10 @@
 
 /** System paths that don't require authentication or special handling */
 export const SYSTEM_PATHS = {
+  // Bare /health is the AWS NLB target-group health-check path. Kept distinct
+  // from the K8s liveness/readiness probes so the load balancer can pull a
+  // draining pod on its own during rollout.
+  HEALTH: "/health",
   HEALTH_LIVE: "/health/live",
   HEALTH_READY: "/health/ready",
   METRICS: "/metrics",
@@ -29,6 +33,7 @@ const STATIC_FILE_PATTERN =
 /** Check if a path is a system endpoint (health, metrics, well-known) */
 function isSystemPath(path: string): boolean {
   return (
+    path === SYSTEM_PATHS.HEALTH ||
     path === SYSTEM_PATHS.HEALTH_LIVE ||
     path === SYSTEM_PATHS.HEALTH_READY ||
     path === SYSTEM_PATHS.METRICS ||

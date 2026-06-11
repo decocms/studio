@@ -24,7 +24,7 @@
  *   - Patch extra columns (link_transport, run_fence_token) via SQL.
  */
 
-import { expect, test } from "../fixtures/test";
+import { expect, getE2EAppOrigin, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 
@@ -132,12 +132,9 @@ test.describe("link-control Phase C", () => {
   }) => {
     const { page } = authedPage;
     // Use a fresh context with no cookies to simulate an unauthenticated caller.
-    const unauthCtx = await page
-      .context()
-      .browser()!
-      .newContext({
-        baseURL: `http://localhost:${process.env.PORT ?? "3000"}`,
-      });
+    const unauthCtx = await page.context().browser()!.newContext({
+      baseURL: getE2EAppOrigin(),
+    });
     const unauthApi = unauthCtx.request;
 
     try {

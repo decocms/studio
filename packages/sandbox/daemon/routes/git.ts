@@ -42,6 +42,13 @@ function tryGit(repoDir: string, args: string[]): string | null {
   }
 }
 
+// repoDir is pre-created empty on boot; the clone only runs after config
+// arrives. Status/diff probes that race the clone would otherwise exit 128
+// ("not a git repository") and surface as a 500.
+function isGitRepo(repoDir: string): boolean {
+  return tryGit(repoDir, ["rev-parse", "--git-dir"]) !== null;
+}
+
 export interface GitStatusFile {
   path: string;
   index: string;
@@ -365,7 +372,7 @@ function pushBranch(repoDir: string, branch: string): void {
   );
 }
 
-function publish(deps: GitDeps, message: string): { pushed: boolean } {
+export function publish(deps: GitDeps, message: string): { pushed: boolean } {
   const repoDir = deps.repoDir;
   const branch = runGit(repoDir, ["rev-parse", "--abbrev-ref", "HEAD"]);
   if (!branch || branch === "HEAD") {
@@ -452,6 +459,12 @@ function discard(deps: GitDeps, filepaths: string[]): void {
 
 export function makeGitStatusHandler(deps: GitDeps) {
   return async (_req: Request): Promise<Response> => {
+    if (!isGitRepo(deps.repoDir)) {
+      return jsonResponse(
+        { error: "repository not initialized", notReady: true },
+        409,
+      );
+    }
     try {
       return jsonResponse(computeStatus(deps.repoDir));
     } catch (err) {
@@ -465,6 +478,12 @@ export function makeGitStatusHandler(deps: GitDeps) {
 
 export function makeGitDiffHandler(deps: GitDeps) {
   return async (req: Request): Promise<Response> => {
+    if (!isGitRepo(deps.repoDir)) {
+      return jsonResponse(
+        { error: "repository not initialized", notReady: true },
+        409,
+      );
+    }
     try {
       let base: string | undefined;
       let headSha: string | undefined;

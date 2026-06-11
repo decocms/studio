@@ -5,7 +5,7 @@
  *
  * Mechanics: the shared content lives under a dedicated system organization
  * row (`org_fs_entry.organization_id` FKs `organization.id`, so the scope is
- * a real org — seeded by migration 106, no members, unreachable as a normal
+ * a real org — seeded by migration 107, no members, unreachable as a normal
  * org). Volume names carry the `public-` prefix; the fs routes resolve them
  * to this scope, allow reads for any authenticated member, and reject writes
  * (the syncer writes server-side through `OrgFs` directly, never over HTTP).

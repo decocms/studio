@@ -97,16 +97,37 @@ export function resolveDaemonStdio(outFd?: number): "inherit" | number {
   return outFd ?? "inherit";
 }
 
+export function canHotReloadDaemon(opts: {
+  daemonExec: string;
+  sourceDaemonPath: string;
+  hotReload?: boolean;
+}): boolean {
+  return (
+    opts.hotReload === true &&
+    resolve(opts.daemonExec) === resolve(opts.sourceDaemonPath)
+  );
+}
+
+export function buildSandboxDaemonSpawnCommand(opts: {
+  daemonExec: string;
+  sourceDaemonPath: string;
+  hotReload?: boolean;
+}): string[] {
+  const hotFromSource = canHotReloadDaemon(opts);
+  return ["bun", ...(hotFromSource ? ["--hot"] : []), "run", opts.daemonExec];
+}
+
 /**
  * Default Bun.spawn-based daemon launcher. `homeDir` is the DATA_DIR
  * root used to materialize the daemon bundle when running from a bundle.
  */
 export function createDefaultDaemonSpawn(
   homeDir: string,
-  opts: { outFd?: number } = {},
+  opts: { outFd?: number; hotReload?: boolean } = {},
 ): SpawnDaemonFn {
   return async (args) => {
     const daemonExec = await resolveDaemonExec(homeDir);
+    const sourceDaemonPath = resolveSourceDaemonPath();
     const ptyNodeModulesDir = resolveNodePtyNodeModulesDir();
     const existingNodePath = process.env.NODE_PATH;
     const nodePath = existingNodePath
@@ -114,7 +135,11 @@ export function createDefaultDaemonSpawn(
       : ptyNodeModulesDir;
     const stdio = resolveDaemonStdio(opts.outFd);
     const proc = Bun.spawn({
-      cmd: ["bun", "run", daemonExec],
+      cmd: buildSandboxDaemonSpawnCommand({
+        daemonExec,
+        sourceDaemonPath,
+        hotReload: opts.hotReload,
+      }),
       env: {
         ...process.env,
         NODE_PATH: nodePath,

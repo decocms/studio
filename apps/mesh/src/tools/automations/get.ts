@@ -33,6 +33,7 @@ export const AUTOMATION_GET = defineTool({
         virtual_mcp_id: z.string(),
         messages: z.unknown(),
         models: z.unknown(),
+        tools: z.array(z.string()).nullable(),
         temperature: z.number(),
         triggers: z.array(
           z.object({
@@ -77,6 +78,7 @@ export const AUTOMATION_GET = defineTool({
         virtual_mcp_id: automation.virtual_mcp_id,
         messages: JSON.parse(automation.messages),
         models: JSON.parse(automation.models),
+        tools: automation.tools ? JSON.parse(automation.tools) : null,
         temperature: automation.temperature,
         triggers: triggers.map((t) => ({
           id: t.id,

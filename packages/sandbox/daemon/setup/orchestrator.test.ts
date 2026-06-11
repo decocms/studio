@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Broadcaster } from "../events/broadcast";
@@ -164,6 +164,147 @@ describe("SetupOrchestrator lifecycle integration", () => {
       cleanup();
     }
   }, 15_000);
+});
+
+describe("SetupOrchestrator idempotent start", () => {
+  // A port-change re-enqueues a `start` step. If a dev with the identical
+  // command is already running (or still mid-cold-boot), stepStart must skip
+  // the kill+respawn — otherwise it SIGTERMs the booting dev and forces a
+  // second cold compile (the prod crash-loop this fixes).
+  async function drain(o: {
+    isRunning: () => boolean;
+    pendingCount: () => number;
+  }) {
+    const deadline = Date.now() + 5_000;
+    while (o.isRunning() || o.pendingCount() > 0) {
+      if (Date.now() > deadline) throw new Error("orchestrator hung");
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
+  it("skips respawn when an identical dev is already running", async () => {
+    const { dir, cleanup } = tempRoot();
+    try {
+      const repoDir = join(dir, "repo");
+      mkdirSync(repoDir);
+      writeFileSync(
+        join(repoDir, "deno.json"),
+        JSON.stringify({ tasks: { dev: "echo hi" } }),
+      );
+      const broadcaster = new Broadcaster(1024);
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
+
+      const spawns: Array<{ command: string; cwd: string }> = [];
+      // Mutable "what's currently running"; null until we plant the first spawn.
+      let running: { command: string; cwd: string } | null = null;
+
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: dir, repoDir },
+        store: {
+          read: () => ({
+            application: { packageManager: { name: "deno" }, runtime: "deno" },
+          }),
+          hydrate: () => {},
+          applyInternal: async () => ({
+            kind: "applied",
+            before: null,
+            after: {},
+            transition: { kind: "no-op" },
+          }),
+        } as never,
+        taskManager: {
+          spawn: async (s: { command: string; cwd: string }) => {
+            spawns.push({ command: s.command, cwd: s.cwd });
+            return { id: `t${spawns.length}` };
+          },
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          runningCommandByLogName: () => running,
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
+        broadcaster,
+        installState: { isInstalledFor: () => true } as never,
+        logsDir: dir,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
+      });
+
+      // 1st start: nothing running → spawns once.
+      orchestrator.handle({ kind: "port-change", from: undefined, to: 3000 });
+      await drain(orchestrator);
+      expect(spawns).toHaveLength(1);
+
+      // Plant the just-spawned dev as "running", then fire another start
+      // (a port-change to the sniffed port). Same command → no respawn.
+      running = spawns[0];
+      orchestrator.handle({ kind: "port-change", from: 3000, to: 8000 });
+      await drain(orchestrator);
+      expect(spawns).toHaveLength(1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("respawns when the running command differs", async () => {
+    const { dir, cleanup } = tempRoot();
+    try {
+      const repoDir = join(dir, "repo");
+      mkdirSync(repoDir);
+      writeFileSync(
+        join(repoDir, "deno.json"),
+        JSON.stringify({ tasks: { dev: "echo hi" } }),
+      );
+      const broadcaster = new Broadcaster(1024);
+      const { lifecycle } = makeLifecycleSpy(broadcaster);
+
+      const spawns: Array<{ command: string; cwd: string }> = [];
+
+      const orchestrator = new SetupOrchestrator({
+        bootConfig: { appRoot: dir, repoDir },
+        store: {
+          read: () => ({
+            application: { packageManager: { name: "deno" }, runtime: "deno" },
+          }),
+          hydrate: () => {},
+          applyInternal: async () => ({
+            kind: "applied",
+            before: null,
+            after: {},
+            transition: { kind: "no-op" },
+          }),
+        } as never,
+        taskManager: {
+          spawn: async (s: { command: string; cwd: string }) => {
+            spawns.push({ command: s.command, cwd: s.cwd });
+            return { id: `t${spawns.length}` };
+          },
+          killByLogName: () => 0,
+          waitForLogNamesIdle: async () => {},
+          // A stale dev from a different command is running → must be replaced.
+          runningCommandByLogName: () => ({
+            command: "deno task old",
+            cwd: repoDir,
+          }),
+          onTaskExit: () => () => {},
+        } as never,
+        setStatus: () => {},
+        getStatus: () => ({ state: "running" as const }),
+        broadcaster,
+        installState: { isInstalledFor: () => true } as never,
+        logsDir: dir,
+        lifecycle,
+        branchStatus: makeMonitorStub(),
+      });
+
+      orchestrator.handle({ kind: "port-change", from: undefined, to: 3000 });
+      await drain(orchestrator);
+      expect(spawns).toHaveLength(1);
+    } finally {
+      cleanup();
+    }
+  });
 });
 
 describe("SetupOrchestrator status transitions", () => {

@@ -31,51 +31,51 @@ mock.module("./refresh-access-token", () => ({
 
 const { refreshAndStore } = await import("./token-refresh");
 
+let database: StudioDatabase;
+let vault: CredentialVault;
+let tokenStorage: DownstreamTokenStorage;
+const connectionId = "conn_refresh_test";
+
+beforeAll(async () => {
+  database = await connectTestPgDatabase();
+  await resetTestPgDatabase(database);
+  await seedCommonTestPgFixtures(database);
+  vault = new CredentialVault(CredentialVault.generateKey());
+  tokenStorage = new DownstreamTokenStorage(database.db, vault);
+
+  const connectionStorage = new ConnectionStorage(database.db, vault);
+  await connectionStorage.create({
+    id: connectionId,
+    organization_id: "org_123",
+    created_by: "user_1",
+    title: "GitHub",
+    connection_type: "HTTP",
+    connection_url: "https://mcp.example.com/github",
+    connection_token: null,
+    tools: null,
+  });
+});
+
+afterAll(async () => {
+  await closeTestPgDatabase(database);
+});
+
+beforeEach(async () => {
+  mockRefreshAccessToken.mockReset();
+  await tokenStorage.delete(connectionId);
+  await tokenStorage.upsert({
+    connectionId,
+    accessToken: "stale",
+    refreshToken: "rt",
+    scope: "repo",
+    expiresAt: new Date(Date.now() - 1000),
+    clientId: "cid",
+    clientSecret: null,
+    tokenEndpoint: "https://example.com/token",
+  });
+});
+
 describe("refreshAndStore", () => {
-  let database: StudioDatabase;
-  let vault: CredentialVault;
-  let tokenStorage: DownstreamTokenStorage;
-  const connectionId = "conn_refresh_test";
-
-  beforeAll(async () => {
-    database = await connectTestPgDatabase();
-    await resetTestPgDatabase(database);
-    await seedCommonTestPgFixtures(database);
-    vault = new CredentialVault(CredentialVault.generateKey());
-    tokenStorage = new DownstreamTokenStorage(database.db, vault);
-
-    const connectionStorage = new ConnectionStorage(database.db, vault);
-    await connectionStorage.create({
-      id: connectionId,
-      organization_id: "org_123",
-      created_by: "user_1",
-      title: "GitHub",
-      connection_type: "HTTP",
-      connection_url: "https://mcp.example.com/github",
-      connection_token: null,
-      tools: null,
-    });
-  });
-
-  afterAll(async () => {
-    await closeTestPgDatabase(database);
-  });
-
-  beforeEach(async () => {
-    mockRefreshAccessToken.mockReset();
-    await tokenStorage.delete(connectionId);
-    await tokenStorage.upsert({
-      connectionId,
-      accessToken: "stale",
-      refreshToken: "rt",
-      scope: "repo",
-      expiresAt: new Date(Date.now() - 1000),
-      clientId: "cid",
-      clientSecret: null,
-      tokenEndpoint: "https://example.com/token",
-    });
-  });
-
   it("preserves the cached token on transient (5xx) failures", async () => {
     mockRefreshAccessToken.mockResolvedValueOnce({
       success: false,
@@ -144,5 +144,89 @@ describe("refreshAndStore", () => {
     const after = await tokenStorage.get(connectionId);
     expect(after?.accessToken).toBe("fresh");
     expect(after?.refreshToken).toBe("rt2");
+  });
+
+  it("collapses concurrent refreshes for the same connection", async () => {
+    let releaseRefresh!: () => void;
+    const refreshStarted = new Promise<void>((resolve) => {
+      mockRefreshAccessToken.mockImplementationOnce(
+        () =>
+          new Promise<TokenRefreshResult>((resolveRefresh) => {
+            resolve();
+            releaseRefresh = () =>
+              resolveRefresh({
+                success: true,
+                accessToken: "fresh-single-flight",
+                refreshToken: "rt-single-flight",
+                expiresIn: 3600,
+                scope: "repo",
+              });
+          }),
+      );
+    });
+
+    const token = await tokenStorage.get(connectionId);
+    expect(token).not.toBeNull();
+
+    const first = refreshAndStore(token!, tokenStorage);
+    await refreshStarted;
+    const second = refreshAndStore(token!, tokenStorage);
+    expect(first).toBe(second);
+    releaseRefresh();
+
+    await expect(first).resolves.toBe("fresh-single-flight");
+    await expect(second).resolves.toBe("fresh-single-flight");
+    expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+  });
+});
+
+const { getValidDownstreamAccessToken } = await import("./token-refresh");
+
+describe("getValidDownstreamAccessToken", () => {
+  it("returns a cached valid token without refreshing", async () => {
+    await tokenStorage.delete(connectionId);
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "valid",
+      refreshToken: "rt",
+      scope: "repo",
+      expiresAt: new Date(Date.now() + 3600_000),
+      clientId: "cid",
+      clientSecret: null,
+      tokenEndpoint: "https://example.com/token",
+    });
+
+    const result = await getValidDownstreamAccessToken({
+      connectionId,
+      tokenStorage,
+    });
+
+    expect(result).toEqual({ state: "valid", accessToken: "valid" });
+    expect(mockRefreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("deletes expired tokens that cannot refresh", async () => {
+    await tokenStorage.delete(connectionId);
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "expired",
+      refreshToken: null,
+      scope: null,
+      expiresAt: new Date(Date.now() - 1000),
+      clientId: null,
+      clientSecret: null,
+      tokenEndpoint: null,
+    });
+
+    const result = await getValidDownstreamAccessToken({
+      connectionId,
+      tokenStorage,
+    });
+
+    expect(result).toEqual({
+      state: "expired_without_refresh",
+      accessToken: null,
+    });
+    expect(await tokenStorage.get(connectionId)).toBeNull();
   });
 });

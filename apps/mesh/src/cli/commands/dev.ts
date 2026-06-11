@@ -30,6 +30,8 @@ export interface DevOptions {
    *  desktop sandbox provider has a live target. Default false —
    *  `dev:conductor` opts in. */
   localSandboxProvider: boolean;
+  /** When true, hot-reload the managed link daemon and sandbox daemons. */
+  hotReload?: boolean;
 }
 
 // Strip ANSI escape codes from a string
@@ -95,9 +97,23 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
 export async function startDevServer(
   options: DevOptions,
 ): Promise<{ port: number; process: Subprocess }> {
-  const { vitePort, baseUrl, noTui } = options;
+  const { baseUrl, noTui } = options;
 
-  const port = await findAvailablePort(Number(options.port));
+  // Sandbox preview: the daemon injects PORT and proxies the preview to it,
+  // expecting HTML at /. Mesh's dev front door is Vite (it serves the app and
+  // proxies /api → the Bun server); the Bun server alone 404s at / in dev. So
+  // in a sandbox we bind Vite to the injected PORT and move the Bun server to
+  // an internal port (Vite's proxy target follows PORT). The daemon sets
+  // HOST=0.0.0.0 (buildDevEnv) and local `bun run dev` never does, so that's
+  // our sandbox tell. Locally the conventional split is preserved (server on
+  // --port, Vite on --vite-port).
+  const inSandbox = process.env.HOST === "0.0.0.0" && Boolean(process.env.PORT);
+  const vitePort = inSandbox ? process.env.PORT! : options.vitePort;
+  const publicBaseUrl = baseUrl || `http://localhost:${vitePort}`;
+
+  const port = inSandbox
+    ? await findAvailablePort(Number(vitePort) + 1)
+    : await findAvailablePort(Number(options.port));
 
   const { settings, services, managedServiceNames } = await buildSettings({
     port: String(port),
@@ -148,6 +164,7 @@ export async function startDevServer(
       DATABASE_URL: settings.databaseUrl,
       NATS_URL: settings.natsUrls.join(","),
       NODE_ENV: settings.nodeEnv,
+      BASE_URL: publicBaseUrl,
       DECOCMS_LOCAL_MODE: String(settings.localMode),
       DECOCMS_HOME: settings.dataDir,
       DATA_DIR: settings.dataDir,
@@ -170,7 +187,6 @@ export async function startDevServer(
       ...(options.localSandboxProvider && options.localMode
         ? { DEV_LINK_SESSION_PATH: join(linkDataDir, "session.json") }
         : {}),
-      ...(settings.baseUrl ? { BASE_URL: settings.baseUrl } : {}),
     },
     stdio: [
       "inherit",
@@ -184,9 +200,10 @@ export async function startDevServer(
     pipeToLogStore(child.stderr as ReadableStream<Uint8Array>);
   }
 
-  const serverUrl = baseUrl || `http://localhost:${settings.port}`;
+  const serverUrl = publicBaseUrl;
   setServerUrl(serverUrl);
   updateService({ name: "Vite", status: "ready", port: Number(vitePort) });
+  updateService({ name: "API", status: "ready", port: Number(settings.port) });
 
   // ── Auto-spawn `deco link` (opt-in) ──────────────────────────────
   // Gated on --local-sandbox-provider. When set, once the cluster is up
@@ -222,6 +239,7 @@ export async function startDevServer(
           clusterUrl: serverUrl,
           linkDataDir,
           repoRoot,
+          hotReload: options.hotReload,
           signal: linkAbort.signal,
           stdio: [
             "inherit",
@@ -300,5 +318,5 @@ export async function startDevServer(
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  return { port: Number(settings.port), process: child };
+  return { port: Number(vitePort), process: child };
 }

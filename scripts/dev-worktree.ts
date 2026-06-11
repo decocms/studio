@@ -6,7 +6,9 @@
  * Called by `bun run dev:worktree` / `bun run dev:conductor`.
  */
 import { join } from "path";
+import { tmpdir } from "os";
 import { startWorktree } from "worktree-devservers";
+import { buildDevCommand } from "./dev-worktree-command";
 
 const slug = process.env.WORKTREE_SLUG;
 if (!slug) {
@@ -30,23 +32,18 @@ startWorktree(slug, async (ctx) => {
   const vitePort = await ctx.findFreePort(4000);
 
   const child = Bun.spawn(
-    [
-      "bun",
-      "run",
-      join(repoRoot, "apps/mesh/src/cli.ts"),
-      "dev",
-      "--port",
-      String(port),
-      "--vite-port",
-      String(vitePort),
-      "--base-url",
-      `http://${ctx.slug}.localhost`,
-      ...process.argv.slice(2),
-    ],
+    buildDevCommand({
+      repoRoot,
+      slug: ctx.slug,
+      port,
+      vitePort,
+      extraArgs: process.argv.slice(2),
+      tmpRoot: tmpdir(),
+    }),
     { stdio: ["inherit", "inherit", "inherit"] },
   );
 
-  return { port, process: child };
+  return { port: vitePort, process: child };
 }).catch((e) => {
   console.error("dev:worktree error:", e);
   process.exit(1);

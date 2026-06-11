@@ -20,6 +20,7 @@ import "../../index.css";
 
 import { listOrganizationsCached } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { initPwaInstallCapture } from "@/web/lib/pwa-install";
 
 import { sourcePlugins } from "./plugins.ts";
 import type {
@@ -244,6 +245,17 @@ const settingsLayout = createRoute({
   getParentRoute: () => orgLayout,
   path: "/settings",
   component: lazyRouteComponent(() => import("./layouts/settings-layout.tsx")),
+});
+
+// Per-org install page (/$org/install) — swaps the document manifest to an
+// org-branded one so installing here produces a distinct home-screen app for
+// the org. Studio itself is installed via the browser's native "Add to Home
+// Screen" (the default manifest stays active everywhere else). See
+// routes/org-install.tsx and lib/pwa-install.ts.
+const orgInstallRoute = createRoute({
+  getParentRoute: () => orgLayout,
+  path: "/install",
+  component: lazyRouteComponent(() => import("./routes/org-install.tsx")),
 });
 
 // Settings index → redirect to /general
@@ -589,6 +601,7 @@ const orgShellWithChildren = orgShellLayout.addChildren([
 const orgLayoutWithChildren = orgLayout.addChildren([
   orgShellWithChildren,
   settingsWithChildren,
+  orgInstallRoute,
 ]);
 
 const shellRouteTree = shellLayout.addChildren([
@@ -638,6 +651,10 @@ declare module "@tanstack/react-router" {
     router: typeof router;
   }
 }
+
+// Capture the Chromium install prompt as early as possible so the /install
+// page can offer a one-click install. Fires once shortly after load.
+initPwaInstallCapture();
 
 const rootElement = document.getElementById("root")!;
 

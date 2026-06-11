@@ -238,6 +238,17 @@ export class TaskManager {
     await Promise.all(initial.map((t) => t.finishedPromise));
   }
 
+  runningCommandByLogName(
+    logName: string,
+  ): { command: string; cwd: string } | null {
+    for (const t of this.tasks.values()) {
+      if (t.status === "running" && t.spec.logName === logName) {
+        return { command: t.spec.command, cwd: t.spec.cwd };
+      }
+    }
+    return null;
+  }
+
   list(filter?: { status?: ReadonlyArray<TaskStatus> }): TaskSummary[] {
     const out: TaskSummary[] = [];
     for (const t of this.tasks.values()) {

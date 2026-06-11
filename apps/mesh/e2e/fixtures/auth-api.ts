@@ -43,9 +43,9 @@ function generateTestUser(overrides?: { email?: string; name?: string }) {
  *
  * `request` must be a context that participates in cookie storage — passing
  * `page.context().request` from a spec means the resulting session cookie
- * is already applied to the page that issued the call. Origin is hardcoded
- * because Better Auth's `trustedOrigins` list is keyed off baseUrl, and the
- * Playwright webServer always serves the same origin.
+ * is already applied to the page that issued the call. Standalone API
+ * contexts must use `newApiContext()` from `fixtures/test.ts` so their Origin
+ * header matches Better Auth's `trustedOrigins`.
  */
 export async function signUpViaApi(
   request: APIRequestContext,

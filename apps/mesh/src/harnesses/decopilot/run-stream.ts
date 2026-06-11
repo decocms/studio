@@ -410,7 +410,10 @@ export async function* runDecopilotStream(
       return title ? (makeTitleResultChunk(title) as UIMessageChunk) : null;
     })
     .catch((err) => {
-      console.warn("[decopilot:title] title generation failed", err);
+      console.warn(
+        "[decopilot:title] title generation failed",
+        stringifyError(err),
+      );
       return null;
     });
 
@@ -736,7 +739,7 @@ export async function* runDecopilotStream(
       // sets handle.error; we pick up the message from there.
       const rawError =
         error instanceof Error ? error : new Error(stringifyError(error));
-      console.error("[decopilot:stream] Error", rawError);
+      console.error("[decopilot:stream] Error", rawError.message);
       if (registrySignal.aborted) {
         return;
       }

@@ -12,30 +12,6 @@ export interface ReconcileResult {
   kept: number;
   paused: number;
   resumed: number;
-  orphansCancelled: number;
-}
-
-const AUTOMATION_WORKFLOW_NAMES = [
-  "cronEntryWorkflow",
-  "automationOrgGateWorkflow",
-  "automationGateWorkflow",
-  "fireAutomationWorkflow",
-] as const;
-
-// DBOS only dequeues rows matching the current `application_version`; older
-// ENQUEUED rows would otherwise accumulate forever.
-async function cancelOrphanedEnqueued(): Promise<number> {
-  const orphans = await DBOS.listWorkflows({
-    status: ["ENQUEUED"],
-    workflowName: [...AUTOMATION_WORKFLOW_NAMES],
-    loadInput: false,
-    loadOutput: false,
-  });
-  const stale = orphans
-    .filter((w) => w.applicationVersion !== DBOS.applicationVersion)
-    .map((w) => w.workflowID);
-  if (stale.length) await DBOS.cancelWorkflows(stale);
-  return stale.length;
 }
 
 export async function reconcileAutomationSchedules(
@@ -120,11 +96,10 @@ export async function reconcileAutomationSchedules(
     zero,
   );
   const deleted = deleteOutcomes.reduce<number>((a, b) => a + b, 0);
-  const orphansCancelled = await cancelOrphanedEnqueued();
 
   console.log(
-    `[automation-reconciler] reconciled — created=${created} deleted=${deleted} kept=${kept} resumed=${resumed} paused=${paused} orphansCancelled=${orphansCancelled}`,
+    `[automation-reconciler] reconciled — created=${created} deleted=${deleted} kept=${kept} resumed=${resumed} paused=${paused}`,
   );
 
-  return { created, deleted, kept, paused, resumed, orphansCancelled };
+  return { created, deleted, kept, paused, resumed };
 }

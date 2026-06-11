@@ -9,6 +9,19 @@ import { sleep } from "../shared";
 
 export type { ConfigPatch };
 
+/** Error thrown by config requests when the daemon responds non-2xx; carries
+ *  the HTTP status so callers can branch (e.g. 401 → re-auth with another
+ *  token rather than tear the sandbox down). */
+export class ConfigRequestError extends Error {
+  constructor(
+    readonly status: number,
+    body: string,
+  ) {
+    super(`sandbox daemon /_sandbox/config returned ${status}: ${body}`);
+    this.name = "ConfigRequestError";
+  }
+}
+
 const HEALTH_PROBE_TIMEOUT_MS = 500;
 // Config application can run a cold clone + install on a heavy sandbox; 10s was
 // too tight and routinely tripped `AbortSignal.timeout()`, surfacing benign
@@ -136,9 +149,7 @@ async function configRequest(
   });
   const body = await res.text();
   if (!res.ok) {
-    throw new Error(
-      `sandbox daemon /_sandbox/config returned ${res.status}: ${body}`,
-    );
+    throw new ConfigRequestError(res.status, body);
   }
   return JSON.parse(body) as ConfigResponse;
 }

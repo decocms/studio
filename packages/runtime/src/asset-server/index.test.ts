@@ -172,6 +172,32 @@ describe("createAssetHandler", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
+  describe("development mode", () => {
+    test("does not proxy browser asset paths from the Bun server", async () => {
+      const handler = createAssetHandler({
+        env: "development",
+        isServerPath: (path) => path.startsWith("/api/"),
+      });
+
+      const result = await handler(new Request("http://localhost:3000/"));
+
+      expect(result).toBeNull();
+    });
+
+    test("lets API paths fall through to the Bun server", async () => {
+      const handler = createAssetHandler({
+        env: "development",
+        isServerPath: (path) => path.startsWith("/api/"),
+      });
+
+      const result = await handler(
+        new Request("http://localhost:3000/api/config"),
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe("malformed URL encoding", () => {
     test("handles malformed percent-encoded sequences gracefully", async () => {
       // Create handler in production mode to test the decodeURIComponent path

@@ -74,6 +74,7 @@ const CLAUDE_CODE_SDK_MODELS: Record<string, string> = {
   "claude-code:opus": "opus",
   "claude-code:sonnet": "sonnet",
   "claude-code:haiku": "haiku",
+  "claude-code:fable": "fable",
 };
 
 /** Resolve a composite claude-code model ID to the SDK model name. */

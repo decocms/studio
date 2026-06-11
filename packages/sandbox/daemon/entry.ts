@@ -10,7 +10,6 @@ import { REPLAY_BYTES } from "./constants";
 import { Broadcaster } from "./events/broadcast";
 import type { DaemonStatus } from "./events/types";
 import { BranchStatusMonitor } from "./git/branch-status";
-import { gitSync } from "./git/git-sync";
 import { InstallState } from "./install/install-state";
 import { LifecycleManager } from "./lifecycle/manager";
 import { readConfig } from "./persistence";
@@ -34,6 +33,7 @@ import {
   makeGitPublishHandler,
   makeGitRebaseHandler,
   makeGitStatusHandler,
+  publish,
 } from "./routes/git";
 import {
   makeConfigReadHandler,
@@ -866,27 +866,20 @@ process.on("SIGTERM", async () => {
   if (mountManager) {
     await mountManager.stop().catch(() => {});
   }
+  // Reuse the same publish() path as POST /_sandbox/git/publish so the
+  // shutdown sync inherits credentialed-remote setup, hook-skipping, and
+  // non-interactive push — the blind add/commit/push it replaced silently
+  // failed on GitHub repos whose origin URL lacked embedded credentials and
+  // could hang on a credential prompt until SIGKILL.
   const branch = store.read()?.git?.repository?.branch;
   if (branch) {
     try {
-      gitSync(["-c", "safe.directory=*", "add", "-A"], {
-        cwd: bootConfig.repoDir,
-      });
-      gitSync(
-        [
-          "-c",
-          "safe.directory=*",
-          "commit",
-          "-m",
-          `chore(daemon): sync all local changes to remote on shutdown`,
-        ],
-        { cwd: bootConfig.repoDir },
+      publish(
+        gitDeps,
+        "chore(daemon): sync all local changes to remote on shutdown",
       );
-      gitSync(["-c", "safe.directory=*", "push", "origin", branch], {
-        cwd: bootConfig.repoDir,
-      });
-    } catch {
-      // best-effort
+    } catch (err) {
+      console.warn("[daemon] shutdown publish failed", err);
     }
   }
   process.exit(0);

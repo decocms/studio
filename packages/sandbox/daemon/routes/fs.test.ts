@@ -52,6 +52,33 @@ describe("fs handlers", () => {
     expect(body.lineCount).toBeGreaterThanOrEqual(3);
   });
 
+  it("read: defaults to 2000 lines but full returns the entire file", async () => {
+    const lines = Array.from({ length: 2500 }, (_, i) => `line-${i + 1}`);
+    writeFileSync(join(appRoot, "big.txt"), lines.join("\n"));
+    const h = makeReadHandler({ appRoot, repoDir: appRoot });
+
+    const truncated = await h(post("/_sandbox/read", { path: "big.txt" }));
+    const truncatedBody = (await truncated.json()) as {
+      content: string;
+      lineCount: number;
+    };
+    expect(truncatedBody.lineCount).toBe(2500);
+    expect(truncatedBody.content).toContain("1\tline-1");
+    expect(truncatedBody.content).toContain("2000\tline-2000");
+    expect(truncatedBody.content).not.toContain("2500\tline-2500");
+
+    const full = await h(
+      post("/_sandbox/read", { path: "big.txt", full: true }),
+    );
+    const fullBody = (await full.json()) as {
+      content: string;
+      lineCount: number;
+    };
+    expect(fullBody.lineCount).toBe(2500);
+    expect(fullBody.content).toContain("1\tline-1");
+    expect(fullBody.content).toContain("2500\tline-2500");
+  });
+
   it("read: returns base64 + mediaType for jpeg", async () => {
     // Minimal JPEG: SOI + EOI markers, enough to pass the magic-byte sniff.
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0xff, 0xd9]);

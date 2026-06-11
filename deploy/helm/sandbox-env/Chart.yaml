@@ -10,8 +10,8 @@ description: |
   Requires the sandbox-operator chart to already be installed.
 type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
-# mounts. NOTE: main is already past 0.7.4; the publish workflow skips
-# existing versions, so this MUST stay ahead of the latest published chart.
+# mounts. NOTE: the publish workflow skips existing versions, so this MUST
+# stay ahead of the latest published chart (0.7.5 at time of writing).
 version: 0.8.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "0.5.7"

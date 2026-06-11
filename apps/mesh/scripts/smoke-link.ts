@@ -11,11 +11,11 @@
  *   MESH_TEST_SESSION  Bearer token for an authenticated session
  *
  * Optional env:
- *   MESH_BASE_URL      Cluster base URL (default http://localhost:3000)
+ *   MESH_BASE_URL      Cluster base URL (default http://localhost:4000)
  */
 
 async function main(): Promise<void> {
-  const baseUrl = process.env.MESH_BASE_URL ?? "http://localhost:3000";
+  const baseUrl = process.env.MESH_BASE_URL ?? "http://localhost:4000";
   const token = process.env.MESH_TEST_SESSION ?? "";
   if (!token) {
     console.error(

@@ -44,6 +44,9 @@ async function mintRepoToken(
     // No org scope → refuse to mint rather than fall back to an unscoped lookup.
     throw new Error(RECONNECT_ERROR);
   }
+  if (!recipe.sourceConnectionId) {
+    throw new Error(RECONNECT_ERROR);
+  }
   const orgConn = await ctx.storage.connections.findById(
     recipe.sourceConnectionId,
     organizationId,
@@ -124,6 +127,9 @@ export async function ensureRepoScopedToken(
   const recipe = getRepoScope(connection);
   if (!recipe) {
     throw new Error("Connection is not repo-scoped");
+  }
+  if (!recipe.sourceConnectionId) {
+    throw new Error(RECONNECT_ERROR);
   }
 
   const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);

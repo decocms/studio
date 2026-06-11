@@ -42,6 +42,7 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
+  ensureGithubCloneToken,
 } from "@/shared/github-clone-info";
 import { resolveRuntimeConfig } from "@/tools/sandbox/helpers";
 import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
@@ -384,6 +385,13 @@ export interface DispatchRunInput {
   agent: AgentConfig;
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
+  /**
+   * Optional allowlist of model-facing tool names the run is restricted to.
+   * Applied after the full toolset (MCP + built-ins) is assembled. `null` or
+   * omitted leaves the agent's full toolset intact. Used by automations that
+   * pin a specific subset of tools.
+   */
+  toolAllowlist?: string[] | null;
   /** Chat mode — plan, forced web search / image, or default */
   mode: ChatMode;
   organizationId: string;
@@ -1044,6 +1052,7 @@ async function prepareRun(
       mode: input.mode,
       temperature: input.temperature,
       toolApprovalLevel: input.toolApprovalLevel,
+      toolAllowlist: input.toolAllowlist ?? null,
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
       projectSlug: organization.slug,
@@ -1385,7 +1394,7 @@ async function prepareRun(
           });
           return sanitizeStreamError(error);
         }
-        console.error("[decopilot] stream error:", error);
+        console.error("[decopilot] stream error:", stringifyError(error));
         const sanitized = sanitizeStreamError(error);
         posthog.capture({
           distinctId: input.userId,
@@ -1517,14 +1526,32 @@ async function resolvePullSandboxConfig(
   let repo: WorkItemSandbox["repo"];
   if (githubRepo) {
     try {
-      const { cloneUrl, gitUserName, gitUserEmail } = githubRepo.connectionId
-        ? await buildCloneInfo(
-            githubRepo.connectionId,
-            githubRepo.owner,
-            githubRepo.name,
-            ctx.db,
-            ctx.vault,
-          )
+      const connectionId = githubRepo.connectionId;
+      const { cloneUrl, gitUserName, gitUserEmail } = connectionId
+        ? await (async () => {
+            await ensureGithubCloneToken({
+              ctx,
+              connectionId,
+              organizationId: input.organizationId,
+              onLegacyMintError: (error) => {
+                console.warn(
+                  "[pullDispatch] repo-scoped legacy token mint failed",
+                  {
+                    connectionId,
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  },
+                );
+              },
+            });
+            return buildCloneInfo(
+              connectionId,
+              githubRepo.owner,
+              githubRepo.name,
+              ctx.db,
+              ctx.vault,
+            );
+          })()
         : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
       repo = {
         cloneUrl,

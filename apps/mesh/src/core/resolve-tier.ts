@@ -152,6 +152,32 @@ export async function resolveTier(
   };
 }
 
+/**
+ * Resolve a concrete (credentialId, modelId) pair into a ResolvedTier,
+ * enriching it with catalog metadata when available. Used by automations that
+ * pin a specific model instead of an org tier preset. Unlike `resolveTier`
+ * this never consults org settings or default-picks — the caller has already
+ * chosen the exact model + credential.
+ */
+export async function resolveSpecificModel(
+  ctx: StudioContext,
+  credentialId: string,
+  modelId: string,
+): Promise<ResolvedTier> {
+  const orgId = ctx.organization?.id;
+  if (!orgId) {
+    throw new Error("resolveSpecificModel called without an organization");
+  }
+  const catalog = await fetchModelList(ctx, credentialId, orgId).catch(
+    () => [] as AiProviderModel[],
+  );
+  return {
+    credentialId,
+    modelId,
+    modelMeta: metaFromCatalogEntry(catalog, modelId),
+  };
+}
+
 export async function tryResolveTier(
   ctx: StudioContext,
   tier: SimpleModeTier,

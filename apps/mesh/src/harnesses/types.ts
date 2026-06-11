@@ -235,6 +235,13 @@ export interface HarnessStreamInput {
   // ===== Knobs =====
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
+  /**
+   * Optional allowlist of model-facing tool names. When set, the assembled
+   * toolset (MCP + built-ins) is filtered down to just these names before the
+   * model sees it. `null`/absent = full toolset. Set by automations that pin a
+   * specific subset of tools.
+   */
+  toolAllowlist?: string[] | null;
 
   // ===== Identity context (for prompts, audit) =====
   user: { id: string; email: string };
