@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { fixtures } from "../../../../apps/mesh/src/links/protocol";
+import { fixtures } from "../../dispatch/index";
 import { handleCancelRequest, handleDispatchRequest } from "./dispatch";
 
 const DAEMON_TOKEN = "test-daemon-token-32-chars-min-aaaa";

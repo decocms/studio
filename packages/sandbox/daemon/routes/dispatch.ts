@@ -30,8 +30,8 @@ import {
   dispatchSSEEventSchema,
   harnessStreamInputSchema,
   type DispatchSSEEvent,
-} from "../../../../apps/mesh/src/links/protocol";
-import type { LinkErrorCode } from "../../../../apps/mesh/src/links/protocol/error-codes";
+} from "../../dispatch/index";
+import type { LinkErrorCode } from "../../dispatch/error-codes";
 import { requireToken } from "../auth";
 import { daemonAppRoot, rebaseWorkspaceCwd } from "../rebase-workspace-cwd";
 import { fetchOffloadedMessages } from "./offload-fetch";
