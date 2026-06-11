@@ -76,6 +76,60 @@ describe("buildAgentsBlock", () => {
     expect(result).toContain(`vmcp_c,C,"Has, a comma"`);
   });
 
+  test("restricts the catalog to a non-empty allowlist", () => {
+    const result = buildAgentsBlock(
+      [
+        entry("vmcp_self", "Self", "Self"),
+        entry("vmcp_a", "Agent A", "Does A things"),
+        entry("vmcp_b", "Agent B", "Does B things"),
+      ],
+      "vmcp_self",
+      ["vmcp_a"],
+    );
+    expect(result).toContain("vmcp_a");
+    expect(result).not.toContain("vmcp_b");
+  });
+
+  test("treats a null/undefined allowlist as all agents", () => {
+    const agents = [
+      entry("vmcp_self", "Self", "Self"),
+      entry("vmcp_a", "Agent A", "Does A things"),
+      entry("vmcp_b", "Agent B", "Does B things"),
+    ];
+    for (const allowed of [null, undefined]) {
+      const result = buildAgentsBlock(agents, "vmcp_self", allowed);
+      expect(result).toContain("vmcp_a");
+      expect(result).toContain("vmcp_b");
+    }
+  });
+
+  test("treats an empty allowlist as itself only (no catalog)", () => {
+    const result = buildAgentsBlock(
+      [
+        entry("vmcp_self", "Self", "Self"),
+        entry("vmcp_a", "Agent A", "Does A things"),
+      ],
+      "vmcp_self",
+      [],
+    );
+    // No other agents permitted, but self-delegation usage stays.
+    expect(result).not.toContain("id,name,description");
+    expect(result).toContain("<agents-usage>");
+  });
+
+  test("omits the catalog when the allowlist excludes every other agent", () => {
+    const result = buildAgentsBlock(
+      [entry("vmcp_self", "Self", "Self"), entry("vmcp_a", "Agent A", "x")],
+      "vmcp_self",
+      ["vmcp_does_not_exist"],
+    );
+    // No matching agents → no table, but self-delegation usage still emitted.
+    // (The usage prose references <available-agents>, so assert on the table
+    // header instead of the tag.)
+    expect(result).not.toContain("id,name,description");
+    expect(result).toContain("<agents-usage>");
+  });
+
   test("includes <agents-usage> with subtask delegation guidance", () => {
     const result = buildAgentsBlock(
       [entry("vmcp_self", "Self", "Self"), entry("vmcp_a", "A", "x")],

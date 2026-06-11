@@ -88,6 +88,7 @@ import { IconPicker } from "../../components/icon-picker";
 import { SimpleIconPicker } from "../../components/simple-icon-picker";
 import { Page } from "@/web/components/page";
 import { AddConnectionDialog } from "./add-connection-dialog";
+import { SubAgentsSection } from "./sub-agents-section";
 import { track } from "@/web/lib/posthog-client";
 import { DependencySelectionDialog } from "./dependency-selection-dialog";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
@@ -1756,6 +1757,22 @@ Define step-by-step how the agent should handle requests.
                 )}
               </div>
             </section>
+
+            {/* Sub-agents section — delegation allowlist for the subtask tool */}
+            <ErrorBoundary fallback={() => null}>
+              <Suspense
+                fallback={
+                  <section className="flex flex-col gap-3">
+                    <h2 className="text-sm font-medium text-foreground">
+                      Sub-agents
+                    </h2>
+                    <div className="h-16 rounded-lg border border-dashed border-border animate-pulse" />
+                  </section>
+                }
+              >
+                <SubAgentsSection form={form} currentAgentId={virtualMcp.id} />
+              </Suspense>
+            </ErrorBoundary>
 
             {/* Instructions section */}
             <section className="flex flex-col gap-3">

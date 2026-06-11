@@ -84,6 +84,9 @@ export function buildStreamRequest(
     // Per-automation tool allowlist (model-facing tool names). null/absent
     // leaves the run with the bound agent's full toolset.
     toolAllowlist: parseToolAllowlist(automation.tools),
+    // Per-automation parent step cap. undefined leaves runAgentLoop on its
+    // PARENT_STEP_LIMIT default.
+    maxAgentSteps: automation.max_agent_steps ?? undefined,
     temperature: automation.temperature ?? 0.5,
     toolApprovalLevel: "auto",
     mode: "default",

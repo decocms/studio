@@ -56,10 +56,19 @@ function truncate(s: string, max: number): string {
 export function buildAgentsBlock(
   agents: AgentsBlockEntry[],
   currentVirtualMcpId: string,
+  allowedIds?: string[] | null,
 ): string {
-  const others = agents.filter(
+  let others = agents.filter(
     (a) => a.id !== currentVirtualMcpId && a.status === "active",
   );
+
+  // An allowlist (any array, even empty) restricts delegation to exactly those
+  // agents — an empty array means "itself only" (no cross-agent delegation).
+  // A null/absent allowlist means "all active agents" (the default behavior).
+  if (allowedIds) {
+    const allow = new Set(allowedIds);
+    others = others.filter((a) => allow.has(a.id));
+  }
 
   // Self-delegation is always available, so the usage guidance is always
   // emitted. The <available-agents> table is added only when other active

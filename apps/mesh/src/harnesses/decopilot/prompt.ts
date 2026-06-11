@@ -56,6 +56,9 @@ export async function listAgentsBlock(
   currentVirtualMcpId?: string,
 ): Promise<string | null> {
   const virtualMcpList = await ctx.storage.virtualMcps.list(org.id);
+  const current = currentVirtualMcpId
+    ? virtualMcpList.find((vm) => vm.id === currentVirtualMcpId)
+    : undefined;
   return buildAgentsBlock(
     virtualMcpList.map((vm) => ({
       id: vm.id,
@@ -64,6 +67,7 @@ export async function listAgentsBlock(
       status: vm.status,
     })),
     currentVirtualMcpId ?? "",
+    current?.metadata?.subAgents ?? null,
   );
 }
 
@@ -150,6 +154,7 @@ export async function assembleDecopilotPrompt(
     })(),
   ]);
 
+  const currentAgent = virtualMcpList.find((vm) => vm.id === input.agent.id);
   const agentsBlock = buildAgentsBlock(
     virtualMcpList.map((vm) => ({
       id: vm.id,
@@ -158,6 +163,7 @@ export async function assembleDecopilotPrompt(
       status: vm.status,
     })),
     input.agent.id,
+    currentAgent?.metadata?.subAgents ?? null,
   );
 
   const promptsBlock = buildPromptsBlock(

@@ -242,6 +242,12 @@ export interface HarnessStreamInput {
    * specific subset of tools.
    */
   toolAllowlist?: string[] | null;
+  /**
+   * Parent agent-loop step cap (AI SDK `stopWhen: stepCountIs(...)`). Absent
+   * leaves the decopilot harness on its `PARENT_STEP_LIMIT` default. Set by
+   * automations that pin a custom ceiling.
+   */
+  maxAgentSteps?: number;
 
   // ===== Identity context (for prompts, audit) =====
   user: { id: string; email: string };

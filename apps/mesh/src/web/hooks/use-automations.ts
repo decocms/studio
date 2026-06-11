@@ -151,6 +151,8 @@ export interface AutomationDetail {
   // Tool allowlist (model-facing/raw tool names). null = all of the agent's
   // tools.
   tools: string[] | null;
+  // Parent agent-loop step cap. null = platform default (PARENT_STEP_LIMIT).
+  maxAgentSteps: number | null;
   temperature: number;
   triggers: AutomationTrigger[];
 }

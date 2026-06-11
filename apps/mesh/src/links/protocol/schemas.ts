@@ -79,6 +79,8 @@ export const harnessStreamInputSchema = z
     toolApprovalLevel: z.string(),
     // Per-run tool allowlist (model-facing names). null/absent = full toolset.
     toolAllowlist: z.array(z.string()).nullable().optional(),
+    // Per-run parent agent-loop step cap. absent = PARENT_STEP_LIMIT default.
+    maxAgentSteps: z.number().int().optional(),
     user: z.object({ id: z.string(), email: z.string() }),
     organizationId: z.string(),
     organizationSlug: z.string().optional(),
