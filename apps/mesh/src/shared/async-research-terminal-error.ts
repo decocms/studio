@@ -1,6 +1,4 @@
-export class AsyncResearchTerminalError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AsyncResearchTerminalError";
-  }
-}
+// Moved to the portable harness tree. Shim for cluster callers
+// (@/ai-providers/types). New code imports from
+// `@/harnesses/decopilot/async-research-terminal-error`.
+export * from "@/harnesses/decopilot/async-research-terminal-error";

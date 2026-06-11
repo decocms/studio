@@ -13,7 +13,7 @@ import {
   isInteractionsOnlyModel,
   pollInteraction,
   submitInteraction,
-} from "../../shared/gemini-interactions";
+} from "./gemini-interactions";
 import type { DecopilotSecretModelSource } from "../types";
 import type { MeshProvider } from "./mesh-provider";
 
