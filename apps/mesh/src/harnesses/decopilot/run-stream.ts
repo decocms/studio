@@ -610,6 +610,8 @@ export async function* runDecopilotStream(
     models: input.models,
     messages: processedMessages,
     abortSignal: registrySignal,
+    // Per-automation override; undefined → runAgentLoop's PARENT_STEP_LIMIT.
+    stepLimit: input.maxAgentSteps,
     temperature: input.temperature,
     planMode: modeConfig.isPlanMode,
     isDecopilot: isDecopilot(input.agent.id) !== null,

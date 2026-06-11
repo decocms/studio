@@ -507,6 +507,13 @@ export const VirtualMCPEntitySchema = z.object({
         .nullable()
         .optional()
         .describe("List of enabled plugin IDs"),
+      subAgents: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe(
+          "Allowlist of Virtual MCP (agent) IDs this agent may delegate to via subtask. null/absent = all active org agents; empty array = itself only (no cross-agent delegation).",
+        ),
       ui: VirtualMcpUISchema.nullable()
         .optional()
         .describe("UI customization settings"),
@@ -564,6 +571,13 @@ export const VirtualMCPCreateDataSchema = z.object({
         .nullable()
         .optional()
         .describe("List of enabled plugin IDs"),
+      subAgents: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe(
+          "Allowlist of Virtual MCP (agent) IDs this agent may delegate to via subtask. null/absent = all active org agents; empty array = itself only (no cross-agent delegation).",
+        ),
       ui: VirtualMcpUISchema.nullable()
         .optional()
         .describe("UI customization settings"),
@@ -617,6 +631,13 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .nullable()
         .optional()
         .describe("List of enabled plugin IDs"),
+      subAgents: z
+        .array(z.string())
+        .nullable()
+        .optional()
+        .describe(
+          "Allowlist of Virtual MCP (agent) IDs this agent may delegate to via subtask. null/absent = all active org agents; empty array = itself only (no cross-agent delegation).",
+        ),
       ui: VirtualMcpUISchema.nullable()
         .optional()
         .describe("UI customization settings"),

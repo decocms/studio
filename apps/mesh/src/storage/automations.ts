@@ -27,6 +27,7 @@ export interface CreateAutomationInput {
   models: string; // JSON
   tools?: string | null; // JSON string[] | null = all tools
   temperature?: number;
+  max_agent_steps?: number | null; // null = PARENT_STEP_LIMIT default
   virtual_mcp_id: string;
 }
 
@@ -37,6 +38,7 @@ export interface UpdateAutomationInput {
   models?: string;
   tools?: string | null;
   temperature?: number;
+  max_agent_steps?: number | null;
 }
 
 export interface CreateTriggerInput {
@@ -125,6 +127,7 @@ function automationFromDbRow(row: {
   models: string;
   tools: string | null;
   temperature: number;
+  max_agent_steps: number | null;
   virtual_mcp_id: string;
   created_at: Date | string;
   updated_at: Date | string;
@@ -139,6 +142,7 @@ function automationFromDbRow(row: {
     models: row.models,
     tools: row.tools ?? null,
     temperature: row.temperature,
+    max_agent_steps: row.max_agent_steps ?? null,
     virtual_mcp_id: row.virtual_mcp_id,
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
@@ -187,6 +191,7 @@ const TRIGGER_JOIN_AUTOMATION_COLUMNS = [
   "a.models as a_models",
   "a.tools as a_tools",
   "a.temperature as a_temperature",
+  "a.max_agent_steps as a_max_agent_steps",
   "a.virtual_mcp_id as a_virtual_mcp_id",
   "a.created_at as a_created_at",
   "a.updated_at as a_updated_at",
@@ -202,6 +207,7 @@ function automationFromAliasedRow(row: {
   a_models: string;
   a_tools: string | null;
   a_temperature: number;
+  a_max_agent_steps: number | null;
   a_virtual_mcp_id: string;
   a_created_at: Date | string;
   a_updated_at: Date | string;
@@ -216,6 +222,7 @@ function automationFromAliasedRow(row: {
     models: row.a_models,
     tools: row.a_tools,
     temperature: row.a_temperature,
+    max_agent_steps: row.a_max_agent_steps,
     virtual_mcp_id: row.a_virtual_mcp_id,
     created_at: row.a_created_at,
     updated_at: row.a_updated_at,
@@ -243,6 +250,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       models: input.models,
       tools: input.tools ?? null,
       temperature: input.temperature ?? 0.5,
+      max_agent_steps: input.max_agent_steps ?? null,
       virtual_mcp_id: input.virtual_mcp_id,
       created_at: now,
       updated_at: now,
@@ -299,6 +307,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.models",
         "a.tools",
         "a.temperature",
+        "a.max_agent_steps",
         "a.virtual_mcp_id",
         "a.created_at",
         "a.updated_at",
@@ -322,6 +331,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.models",
         "a.tools",
         "a.temperature",
+        "a.max_agent_steps",
         "a.virtual_mcp_id",
         "a.created_at",
         "a.updated_at",
@@ -353,6 +363,8 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     if (input.tools !== undefined) updateData.tools = input.tools;
     if (input.temperature !== undefined)
       updateData.temperature = input.temperature;
+    if (input.max_agent_steps !== undefined)
+      updateData.max_agent_steps = input.max_agent_steps;
 
     await this.db
       .updateTable("automations")

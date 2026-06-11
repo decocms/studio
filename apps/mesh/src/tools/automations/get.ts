@@ -34,6 +34,7 @@ export const AUTOMATION_GET = defineTool({
         messages: z.unknown(),
         models: z.unknown(),
         tools: z.array(z.string()).nullable(),
+        maxAgentSteps: z.number().nullable(),
         temperature: z.number(),
         triggers: z.array(
           z.object({
@@ -79,6 +80,7 @@ export const AUTOMATION_GET = defineTool({
         messages: JSON.parse(automation.messages),
         models: JSON.parse(automation.models),
         tools: automation.tools ? JSON.parse(automation.tools) : null,
+        maxAgentSteps: automation.max_agent_steps,
         temperature: automation.temperature,
         triggers: triggers.map((t) => ({
           id: t.id,

@@ -106,6 +106,7 @@ import * as migration104agentsandboxproviderkind from "./104-agent-sandbox-provi
 import * as migration105orgfs from "./105-org-fs.ts";
 import * as migration106automationtools from "./106-automation-tools.ts";
 import * as migration107orgfspublicorg from "./107-org-fs-public-org.ts";
+import * as migration108automationmaxagentsteps from "./108-automation-max-agent-steps.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -234,6 +235,7 @@ const migrations: Record<string, Migration> = {
   "105-org-fs": migration105orgfs,
   "106-automation-tools": migration106automationtools,
   "107-org-fs-public-org": migration107orgfspublicorg,
+  "108-automation-max-agent-steps": migration108automationmaxagentsteps,
 };
 
 export default migrations;

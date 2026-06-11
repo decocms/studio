@@ -52,6 +52,9 @@ export const AUTOMATION_UPDATE = defineTool({
     // null clears the allowlist (= all tools); an array sets it; omitting
     // leaves the stored value untouched.
     tools: z.array(z.string()).nullable().optional(),
+    // Parent agent-loop step cap. null resets to the platform default
+    // (PARENT_STEP_LIMIT); a number sets it; omitting leaves it untouched.
+    maxAgentSteps: z.number().int().min(1).max(100).nullable().optional(),
     temperature: z.number().optional(),
   }),
   outputSchema: z.object({
@@ -89,6 +92,8 @@ export const AUTOMATION_UPDATE = defineTool({
         input.tools === null ? null : JSON.stringify(input.tools);
     if (input.temperature !== undefined)
       updateData.temperature = input.temperature;
+    if (input.maxAgentSteps !== undefined)
+      updateData.max_agent_steps = input.maxAgentSteps;
     const automation = await ctx.storage.automations.update(
       input.id,
       organization.id,
