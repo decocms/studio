@@ -14,12 +14,17 @@ import {
   setCorrelationIdHeader,
 } from "./index";
 import type { Env } from "../api/hono-env";
+import { isHealthPath } from "../api/utils/paths";
 
 /**
  * Tracing middleware that creates a span for each request
  * with common HTTP attributes and mesh-specific context.
  */
 export const tracingMiddleware: MiddlewareHandler<Env> = async (c, next) => {
+  if (isHealthPath(c.req.path)) {
+    return next();
+  }
+
   const req = c.req.raw;
   const url = new URL(req.url);
 
