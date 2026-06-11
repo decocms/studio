@@ -42,6 +42,32 @@ import { AsyncResearchTerminalError } from "@/ai-providers/types";
 import type { ModelInfo } from "@/api/routes/decopilot/types";
 import type { UIMessageStreamWriter } from "ai";
 import { createWebSearchTool } from "./web-search";
+import { createClusterResearchJob } from "./cluster-research-job";
+
+/**
+ * Build the converted `web_search` tool the way the cluster wires it: the
+ * DB-coupled async-research lifecycle now lives in `createClusterResearchJob`,
+ * which produces the `deps.researchJob` async-gen hook; the tool only drives
+ * it. This helper mirrors the `index.ts` assembly so the e2e still exercises
+ * the full provider + `async_research_jobs` lifecycle.
+ */
+function makeWebSearchTool(args: {
+  writer: UIMessageStreamWriter;
+  provider: ReturnType<typeof googleAdapter.create>;
+  ctx: StudioContext;
+  toolOutputMap: Map<string, string>;
+}) {
+  const researchJob = createClusterResearchJob({
+    provider: args.provider,
+    deepResearchModelInfo: DEEP_RESEARCH_MODEL,
+    ctx: args.ctx,
+  });
+  return createWebSearchTool(args.writer, {
+    researchJob,
+    toolOutputMap: args.toolOutputMap,
+    taskId: THREAD_ID,
+  });
+}
 
 // ============================================================================
 // Mock Gemini Interactions server — in-process, owns its own port.
@@ -259,12 +285,11 @@ describe("web_search async-research e2e", () => {
     const toolOutputMap = new Map<string, string>();
     const toolCallId = "tc_happy_path";
 
-    const tool = createWebSearchTool(writer, {
+    const tool = makeWebSearchTool({
+      writer,
       provider,
-      deepResearchModelInfo: DEEP_RESEARCH_MODEL,
       ctx: makeCtx(storage),
       toolOutputMap,
-      taskId: THREAD_ID,
     });
 
     // `tool({ execute })` from the AI SDK exposes the execute fn
@@ -375,12 +400,11 @@ describe("web_search async-research e2e", () => {
       const { writer } = makeWriter();
       const toolOutputMap = new Map<string, string>();
 
-      const tool = createWebSearchTool(writer, {
+      const tool = makeWebSearchTool({
+        writer,
         provider,
-        deepResearchModelInfo: DEEP_RESEARCH_MODEL,
         ctx: makeCtx(storage),
         toolOutputMap,
-        taskId: THREAD_ID,
       });
 
       const execPromise = (
@@ -452,12 +476,11 @@ describe("web_search async-research e2e", () => {
     const toolCallId = "tc_happy_path"; // same as the previous test
     const replayQuery = "Different query — should be ignored on replay";
 
-    const tool = createWebSearchTool(writer, {
+    const tool = makeWebSearchTool({
+      writer,
       provider,
-      deepResearchModelInfo: DEEP_RESEARCH_MODEL,
       ctx: makeCtx(storage),
       toolOutputMap,
-      taskId: THREAD_ID,
     });
 
     const result = await (
@@ -499,12 +522,11 @@ describe("web_search async-research e2e", () => {
       const toolOutputMap = new Map<string, string>();
       const toolCallId = "tc_failure";
 
-      const tool = createWebSearchTool(writer, {
+      const tool = makeWebSearchTool({
+        writer,
         provider,
-        deepResearchModelInfo: DEEP_RESEARCH_MODEL,
         ctx: makeCtx(storage),
         toolOutputMap,
-        taskId: THREAD_ID,
       });
 
       let caught: unknown;

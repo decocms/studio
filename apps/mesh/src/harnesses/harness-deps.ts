@@ -66,12 +66,27 @@ export interface McpClient {
   [k: string]: unknown;
 }
 
+/**
+ * Durable web-research hook payload (spec §6). The cluster's `researchJob`
+ * closure owns the provider call + `async_research_jobs` lifecycle; the
+ * portable `web_search` tool only drives the generator with these params.
+ */
 export interface ResearchParams {
   query: string;
-  [k: string]: unknown;
+  /** Thread (task) id — scopes the persisted research job row. */
+  taskId: string;
+  /** AI SDK tool call id — the idempotency key for the durable job row. */
+  toolCallId: string;
+  abortSignal?: AbortSignal;
 }
 export interface ResearchResult {
-  [k: string]: unknown;
+  text: string;
+  citations: Array<{ url: string; title?: string }>;
+  usage: { inputTokens: number; outputTokens: number };
+  /** Set when the durable hook already offloaded the result to blob storage. */
+  resultUri?: string | null;
+  /** Preview snippet returned alongside `resultUri` for offloaded results. */
+  preview?: string;
 }
 export interface InterestsWrite {
   orgId: string;

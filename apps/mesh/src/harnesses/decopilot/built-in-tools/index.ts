@@ -50,6 +50,7 @@ import { createUpdateInterestsTool } from "./update-interests";
 import { proposePlanTool } from "./propose-plan";
 import { createGenerateImageTool } from "./generate-image";
 import { createWebSearchTool } from "./web-search";
+import { createClusterResearchJob } from "./cluster-research-job";
 import { createTakeScreenshotTool, type PendingImage } from "./take-screenshot";
 import { createScrapeUrlTool } from "./scrape-url";
 import { createInspectPageTool } from "./inspect-page";
@@ -331,15 +332,21 @@ async function buildAllTools(
       allowHttpExternalUrls: getSettings().localMode,
     });
   }
-  // web_search requires a provider and a deep-research model.
-  // The provider is picked from `deepResearchProvider` so the deep
-  // research tier can use Gemini's async research API even when the
-  // chat model is served by another provider (e.g. LiteLLM).
+  // web_search consumes the cluster-built `researchJob` async-gen hook
+  // (HarnessDeps conversion, spec §6). The provider/DB lifecycle lives in
+  // `createClusterResearchJob`; the tool only drives the generator. The hook
+  // is built from `deepResearchProvider` so the deep-research tier can use
+  // Gemini's async research API even when the chat model is served by another
+  // provider (e.g. LiteLLM). Hook presence is the gate — desktop omits it and
+  // `web_search` is simply not in the set (§5.1).
   if (deepResearchProvider && models.deepResearch) {
-    tools.web_search = createWebSearchTool(writer, {
+    const researchJob = createClusterResearchJob({
       provider: deepResearchProvider,
       deepResearchModelInfo: models.deepResearch,
       ctx,
+    });
+    tools.web_search = createWebSearchTool(writer, {
+      researchJob,
       toolOutputMap,
       taskId,
     });
