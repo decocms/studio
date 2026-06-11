@@ -146,6 +146,14 @@ export async function startLinkDaemon(
         };
       }
       const payload: Record<string, unknown> = { application };
+      if (config.operator?.userName) {
+        payload.operator = {
+          userName: config.operator.userName,
+          ...(config.operator.userEmail
+            ? { userEmail: config.operator.userEmail }
+            : {}),
+        };
+      }
       if (config.repo) {
         payload.git = {
           repository: {

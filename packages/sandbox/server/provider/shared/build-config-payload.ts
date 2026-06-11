@@ -11,6 +11,7 @@ export function buildConfigPayload(args: {
   packageManager: PackageManagerConfig | null;
   port?: number;
   repo: NonNullable<EnsureOptions["repo"]> | null;
+  tenant?: EnsureOptions["tenant"];
 }): Partial<TenantConfig> | null {
   const repo = args.repo;
   const git = repo
@@ -24,6 +25,16 @@ export function buildConfigPayload(args: {
           userName: repo.userName,
           userEmail: repo.userEmail,
         },
+      }
+    : undefined;
+
+  const tenant = args.tenant;
+  const operator = tenant?.userName?.trim()
+    ? {
+        userName: tenant.userName.trim(),
+        ...(tenant.userEmail?.trim()
+          ? { userEmail: tenant.userEmail.trim() }
+          : {}),
       }
     : undefined;
 
@@ -42,9 +53,10 @@ export function buildConfigPayload(args: {
       }
     : undefined;
 
-  if (!git && !application) return null;
+  if (!git && !application && !operator) return null;
   return {
     ...(git ? { git } : {}),
+    ...(operator ? { operator } : {}),
     ...(application ? { application } : {}),
   };
 }

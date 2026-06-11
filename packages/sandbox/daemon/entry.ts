@@ -350,6 +350,7 @@ const gitDeps = {
   appRoot,
   repoDir,
   getCloneUrl: () => store.read()?.git?.repository?.cloneUrl ?? null,
+  getOperator: () => store.read()?.operator ?? null,
 };
 const gitStatusH = makeGitStatusHandler(gitDeps);
 const gitDiffH = makeGitDiffHandler(gitDeps);

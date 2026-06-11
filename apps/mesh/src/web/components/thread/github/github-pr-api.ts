@@ -3,6 +3,7 @@ import {
   pullNumberFromUrl,
   pullRequestFromToolText,
 } from "./extract-tool-json.ts";
+import { appendCoAuthorTrailer } from "@decocms/sandbox/shared";
 
 type GithubMcpClient = {
   callTool: (req: {
@@ -33,6 +34,7 @@ export interface OpenPullRequestArgs {
   title: string;
   body?: string;
   base: string;
+  coAuthor?: { userName: string; userEmail?: string };
 }
 
 function toolErrorMessage(result: unknown): string | null {
@@ -201,15 +203,21 @@ async function createPullRequest(
     body?: string;
     head: string;
     base: string;
+    coAuthor?: OpenPullRequestArgs["coAuthor"];
   },
 ): Promise<CreatedPullRequest> {
+  const body = args.body
+    ? appendCoAuthorTrailer(args.body, args.coAuthor)
+    : args.coAuthor
+      ? appendCoAuthorTrailer("", args.coAuthor)
+      : undefined;
   const result = await client.callTool({
     name: "create_pull_request",
     arguments: {
       owner: args.owner,
       repo: args.repo,
       title: args.title,
-      body: args.body,
+      body: body || undefined,
       head: args.head,
       base: args.base,
     },
@@ -238,6 +246,7 @@ export async function openPullRequestForBranch(
       body: args.body,
       head: args.branch,
       base: args.base,
+      coAuthor: args.coAuthor,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -259,8 +268,15 @@ export async function squashMergePullRequest(
     repo: string;
     pullNumber: number;
     commitTitle?: string;
+    commitMessage?: string;
+    coAuthor?: OpenPullRequestArgs["coAuthor"];
   },
 ): Promise<MergedPullRequest> {
+  const commitMessage = args.commitMessage
+    ? appendCoAuthorTrailer(args.commitMessage, args.coAuthor)
+    : args.coAuthor
+      ? appendCoAuthorTrailer("", args.coAuthor)
+      : undefined;
   const result = await client.callTool({
     name: "merge_pull_request",
     arguments: {
@@ -269,6 +285,7 @@ export async function squashMergePullRequest(
       pullNumber: args.pullNumber,
       merge_method: "squash",
       ...(args.commitTitle ? { commit_title: args.commitTitle } : {}),
+      ...(commitMessage ? { commit_message: commitMessage } : {}),
     },
   });
 

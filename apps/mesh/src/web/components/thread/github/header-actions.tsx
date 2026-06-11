@@ -236,10 +236,19 @@ export function HeaderActions({ virtualMcpId }: Props) {
     if (!githubRepo?.connectionId || githubActionPending) return;
     setGithubActionPending(true);
     try {
+      const coAuthor = session?.user?.name?.trim()
+        ? {
+            userName: session.user.name.trim(),
+            ...(session.user.email?.trim()
+              ? { userEmail: session.user.email.trim() }
+              : {}),
+          }
+        : undefined;
       await squashMergePullRequest(githubClient, {
         owner: githubRepo.owner,
         repo: githubRepo.name,
         pullNumber,
+        coAuthor,
       });
       toast.success(`Published PR #${pullNumber}`);
       await refreshPrState();

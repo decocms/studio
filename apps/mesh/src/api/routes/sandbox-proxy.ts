@@ -17,6 +17,7 @@ import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
+import { appendCoAuthorTrailer } from "@decocms/sandbox/shared";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
@@ -26,6 +27,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import type { Env } from "../hono-env";
+import type { StudioContext } from "../../core/studio-context";
 import { handleVmEvents } from "./sandbox-events-handler";
 import { resolveAndPushEnv } from "../../tools/sandbox/resolve-env";
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
@@ -79,6 +81,13 @@ function assertSandboxBranchParam(branch: string): void {
 
 const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
+
+function coAuthorFromContext(ctx: StudioContext) {
+  const name = ctx.auth.user?.name?.trim();
+  if (!name) return null;
+  const email = ctx.auth.user?.email?.trim();
+  return { userName: name, ...(email ? { userEmail: email } : {}) };
+}
 
 // ---- Shared middleware ------------------------------------------------------
 
@@ -196,6 +205,8 @@ async function proxyDaemon(
   opts?: {
     method?: "GET" | "POST" | "PUT";
     forwardJsonBody?: boolean;
+    /** When set, sent instead of reading the request body. */
+    jsonBody?: string;
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
@@ -209,7 +220,10 @@ async function proxyDaemon(
   let body: string | null = null;
   const headers = new Headers();
 
-  if (opts?.forwardJsonBody) {
+  if (opts?.jsonBody !== undefined) {
+    body = opts.jsonBody;
+    headers.set("content-type", "application/json");
+  } else if (opts?.forwardJsonBody) {
     body = await c.req.text();
     headers.set("content-type", "application/json");
   }
@@ -512,8 +526,16 @@ export const createSandboxRoutes = () => {
       return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
     }
 
+    const raw = (await c.req.json().catch(() => ({}))) as {
+      message?: string;
+    };
+    const message = appendCoAuthorTrailer(
+      typeof raw.message === "string" ? raw.message : "",
+      coAuthorFromContext(ctx),
+    );
+
     return proxyDaemon(c, "/_sandbox/git/publish", {
-      forwardJsonBody: true,
+      jsonBody: JSON.stringify({ message }),
       map404to410: true,
     });
   });

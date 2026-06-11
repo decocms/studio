@@ -135,6 +135,16 @@ export class DesktopSandboxProvider implements SandboxProvider {
       repo: opts.repo,
       branch,
       ...(opts.workload ? { workload: opts.workload } : {}),
+      ...(opts.tenant?.userName
+        ? {
+            operator: {
+              userName: opts.tenant.userName,
+              ...(opts.tenant.userEmail
+                ? { userEmail: opts.tenant.userEmail }
+                : {}),
+            },
+          }
+        : {}),
       // Message-offload SSRF allowlist, derived cluster-side from the
       // cluster's own trusted S3 config and pushed down here so the spawned
       // daemon can fetch offloaded `messagesRef` payloads. The daemon fails

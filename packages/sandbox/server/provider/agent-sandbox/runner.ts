@@ -1293,6 +1293,7 @@ export class AgentSandboxProvider implements SandboxProvider {
         : null,
       repo: opts?.repo ?? null,
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
+      tenant: opts?.tenant ?? undefined,
     });
   }
 

@@ -1629,6 +1629,16 @@ async function resolvePullSandboxConfig(
     handle: sandboxHandle,
     ...(repo ? { repo } : {}),
     ...(workload ? { workload } : {}),
+    ...(ctx.auth.user?.name?.trim()
+      ? {
+          operator: {
+            userName: ctx.auth.user.name.trim(),
+            ...(ctx.auth.user.email?.trim()
+              ? { userEmail: ctx.auth.user.email.trim() }
+              : {}),
+          },
+        }
+      : {}),
     ...(offloadAllowedHosts !== undefined ? { offloadAllowedHosts } : {}),
     ...(offloadAllowSameHostDev !== undefined
       ? { offloadAllowSameHostDev }

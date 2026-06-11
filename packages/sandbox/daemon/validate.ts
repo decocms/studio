@@ -42,6 +42,10 @@ export function validateTenantConfig(config: TenantConfig): ValidationResult {
     const v = validateEnv(config.env);
     if (v.kind === "invalid") return v;
   }
+  if (config.operator !== undefined) {
+    const v = validateOperator(config.operator);
+    if (v.kind === "invalid") return v;
+  }
   return { kind: "ok" };
 }
 
@@ -138,6 +142,29 @@ function validateApplication(
       kind: "invalid",
       reason: `port invalid: ${app.port}`,
     };
+  }
+  return { kind: "ok" };
+}
+
+function validateOperator(
+  operator: NonNullable<TenantConfig["operator"]>,
+): ValidationResult {
+  if (
+    typeof operator.userName !== "string" ||
+    operator.userName.trim().length === 0
+  ) {
+    return { kind: "invalid", reason: "operator.userName is required" };
+  }
+  if (operator.userEmail !== undefined) {
+    if (
+      typeof operator.userEmail !== "string" ||
+      operator.userEmail.trim().length === 0
+    ) {
+      return {
+        kind: "invalid",
+        reason: "operator.userEmail must be non-empty",
+      };
+    }
   }
   return { kind: "ok" };
 }

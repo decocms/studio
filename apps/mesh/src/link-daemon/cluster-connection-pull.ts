@@ -179,6 +179,9 @@ export async function connectToClusterPull(
             ...(item.sandbox.workload
               ? { workload: item.sandbox.workload }
               : {}),
+            ...(item.sandbox.operator
+              ? { operator: item.sandbox.operator }
+              : {}),
             ...(item.sandbox.offloadAllowedHosts !== undefined
               ? { offloadAllowedHosts: item.sandbox.offloadAllowedHosts }
               : {}),
