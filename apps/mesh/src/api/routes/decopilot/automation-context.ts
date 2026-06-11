@@ -22,6 +22,7 @@ import {
   SqlAsyncResearchJobStorage,
 } from "@/storage/async-research-jobs";
 import type { StudioContextFactory } from "@/automations/fire";
+import { OrgFs } from "@/file-storage/org-fs";
 import { getObjectStorageS3Service } from "@/object-storage/factory";
 import { createBoundObjectStorage } from "@/object-storage/bound-object-storage";
 import { DevObjectStorage } from "@/object-storage/dev-object-storage";
@@ -125,6 +126,15 @@ export function createAutomationContextFactory(
     ctx.objectStorage = s3Service
       ? createBoundObjectStorage(s3Service, membership.orgId)
       : new DevObjectStorage(membership.orgId, ctx.baseUrl);
+
+    // orgFs was likewise null at base-context creation. Rebind it (mirrors
+    // resolve-org-from-path.ts) — the file materializer writes chat
+    // attachments into the uploads volume through it.
+    ctx.orgFs = new OrgFs(
+      ctx.objectStorage,
+      ctx.storage.orgFsEntries,
+      membership.orgId,
+    );
 
     // Re-apply asset hoisting after rebuilding org-bound storage. The base
     // ContextFactory.create() call above ran without an org, so its original

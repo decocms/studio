@@ -16,7 +16,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
 import {
-  BookOpen01,
   ChevronRight,
   Eye,
   Globe01,
@@ -75,9 +74,11 @@ import { LibraryPreviewDialog } from "./preview-dialog";
 import { SkillPreviewDialog } from "./skill-preview-dialog";
 
 /** The volumes every sandbox mounts (see file-storage/mount/provisioning.ts).
- *  `glyph` marks the folder body, Finder-special-folder style. */
+ *  `glyph` marks the folder body, Finder-special-folder style. Skills are
+ *  deliberately absent — they live in versioned repos (public sets), not as
+ *  an editable cloud volume. */
 const VOLUMES = [
-  { id: "skills", description: "Org-wide shared library", glyph: BookOpen01 },
+  { id: "uploads", description: "Files your team uploads", glyph: Upload01 },
   { id: "outputs", description: "Agent run outputs", glyph: Stars01 },
 ] as const;
 
@@ -488,13 +489,16 @@ function LibraryPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Root uploads land in the shared library (skills volume root).
-  const uploadVolume = location.readOnly ? null : (location.volume ?? "skills");
+  // Root uploads land in the uploads volume root — visible org-wide, outside
+  // any thread folder (those belong to chat-attachment flows).
+  const uploadVolume = location.readOnly
+    ? null
+    : (location.volume ?? "uploads");
   const uploadDir = location.volume ? location.dirPath : "";
-  const { upload, mkdir } = useOrgFsMutations(uploadVolume ?? "skills");
+  const { upload, mkdir } = useOrgFsMutations(uploadVolume ?? "uploads");
   // Deletes can target any volume (the root feed is cross-volume), so they
   // get their own hook instance bound to the pending entry's volume.
-  const { remove } = useOrgFsMutations(pendingDelete?.volume ?? "skills");
+  const { remove } = useOrgFsMutations(pendingDelete?.volume ?? "uploads");
 
   async function handleUpload(files: FileList | null) {
     if (!uploadVolume || !files || files.length === 0) return;

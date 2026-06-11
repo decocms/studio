@@ -145,11 +145,11 @@ export function buildOrgFilesystemPrompt(publicSets: string[]): string {
       : "No sets are configured on this deployment.";
   return `<organization-filesystem>
 The organization filesystem is mounted at \`org/\` in your sandbox (when available):
-- \`org/skills/\` — your organization's private skill library (editable, shared org-wide). Check it before starting non-trivial work.
 - \`org/public/<set>/\` — curated read-only skill sets. ${sets} Each skill is a folder with a SKILL.md — read it before applying the skill.
+- \`org/upload/\` — files the user attached to this conversation are already here; read them directly (no copy step needed).
 - \`org/output/\` — write final deliverables here; they are shared back to the organization under this run's folder.
 
-When asked about your skills or capabilities, list the contents of \`org/skills/\` and \`org/public/\` too — they are part of your skill surface.
+When asked about your skills or capabilities, list the contents of \`org/public/\` too — it is part of your skill surface.
 </organization-filesystem>`;
 }
 

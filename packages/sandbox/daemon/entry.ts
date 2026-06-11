@@ -16,7 +16,7 @@ import { readConfig } from "./persistence";
 import { MountManager } from "./org-fs/mount-manager";
 import { createRcloneMounter } from "./org-fs/mounter";
 import { parseOrgFsConfig } from "./org-fs/config";
-import { repointOutputLink } from "./org-fs/output-link";
+import { repointOutputLink, repointUploadLink } from "./org-fs/thread-links";
 import { ensureRepoOrgLink } from "./org-fs/repo-link";
 import type { SidecarStatus } from "./org-fs/sidecar";
 import { makeOrgFsConfigHandler } from "./routes/orgfs-config";
@@ -763,13 +763,13 @@ const orgFsConfigH = makeOrgFsConfigHandler({
 });
 
 /**
- * Per-run share-files-back link (`org/output` → `.outputs/<threadId>`, see
- * org-fs/output-link.ts). Gated on the outputs volume being ACTUALLY mounted —
- * its mount-point dir exists locally even when the mount failed, and linking
- * into that would silently strand files on local disk. The mount is either
- * ours (desktop) or the sidecar's (cluster — its status file reports what it
- * mounted). Hoisted declaration: called from `lookupDispatchHarness` above,
- * which only runs post-boot.
+ * Per-run thread links (`org/output` → `.outputs/<threadId>` and
+ * `org/upload` → `.uploads/<threadId>`, see org-fs/thread-links.ts). Gated on
+ * the volumes being ACTUALLY mounted — a mount-point dir exists locally even
+ * when the mount failed, and linking into that would silently strand files on
+ * local disk. The mount is either ours (desktop) or the sidecar's (cluster —
+ * its status file reports what it mounted). Hoisted declaration: called from
+ * `lookupDispatchHarness` above, which only runs post-boot.
  */
 const orgFsLog = (msg: string, err?: unknown) =>
   err ? console.warn(`[org-fs] ${msg}`, err) : console.log(`[org-fs] ${msg}`);
@@ -853,6 +853,13 @@ async function repointOutputLinkForRun(threadId: string): Promise<boolean> {
     if (mounts.length === 0) return false;
   }
   await ensureRepoOrgLink(bootConfig.repoDir, orgFsLog);
+  // Uploads link is best-effort: sandboxes provisioned before the uploads
+  // volume existed have no .uploads mount, and inbound attachments flow
+  // through the mesh regardless — never fail the run over it.
+  const uploadsMountPath = join(bootConfig.appRoot, "org", ".uploads");
+  if (mounts.some((m) => m.mountPath === uploadsMountPath)) {
+    await repointUploadLink(bootConfig.appRoot, threadId, orgFsLog);
+  }
   const outputsMountPath = join(bootConfig.appRoot, "org", ".outputs");
   if (!mounts.some((m) => m.mountPath === outputsMountPath)) return false;
   // Cache only a CONFIRMED repoint — repointOutputLink fails soft (logs and
