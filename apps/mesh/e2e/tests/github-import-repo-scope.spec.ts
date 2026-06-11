@@ -2,10 +2,10 @@
  * End-to-end tests for per-agent repo-scoped GitHub connections.
  *
  * Feature under test (Tasks 1-6): an imported GitHub agent gets a dedicated
- * child `mcp-github` connection whose `metadata.repoScope` recipe drives
- * on-demand minting of a short-lived, repo-scoped GitHub token via the ORG
- * connection's `MINT_REPO_TOKEN` tool. Deleting the agent tears the child
- * connection (and its minted token) down.
+ * child `mcp-github` connection whose `metadata.repoScope` marks it as
+ * repo-scoped. Legacy children can mint a short-lived token through an ORG
+ * connection; refreshable children carry no sourceConnectionId and refresh
+ * their repo grant through the normal downstream_tokens OAuth path.
  *
  * Scenarios covered here:
  *   1. Cross-tenant guard — org B cannot read org A's connection through
@@ -15,9 +15,9 @@
  *      its connection_aggregations rows, and (when seeded) its downstream
  *      token, WITHOUT tripping the ON DELETE RESTRICT FK (the agent is deleted
  *      first, clearing the aggregation rows, then the child).
- *   3. Runtime mint-on-demand — calling a tool on a repo-scoped child through
- *      the proxy mints a token via the org connection's MINT_REPO_TOKEN and
- *      caches it in downstream_tokens.
+ *   3. Runtime refresh — calling a tool on a source-less repo-scoped child
+ *      refreshes its repo grant through downstream_tokens without using the
+ *      org connection.
  *
  * OUT OF SCOPE (not attempted here): driving the full GitHub repo-picker UI
  * import. That needs real GitHub OAuth + a live `/user/installations` listing,
@@ -26,7 +26,12 @@
  * exercised directly against the built-in tools instead.
  */
 
-import { z } from "zod";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import type { APIRequestContext } from "@playwright/test";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
@@ -35,6 +40,162 @@ import {
   type TestMcpServer,
 } from "../fixtures/test-mcp-server";
 import { expect, newApiContext, test } from "../fixtures/test";
+
+interface TokenEndpointRequest {
+  method: string;
+  body: Record<string, string>;
+  timestamp: number;
+}
+
+interface TokenEndpointConfig {
+  status?: number;
+  body?: Record<string, unknown>;
+}
+
+interface TestTokenEndpoint {
+  url: string;
+  requests: ReadonlyArray<TokenEndpointRequest>;
+  stop: () => Promise<void>;
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+async function startTokenEndpoint(
+  config: TokenEndpointConfig = {},
+): Promise<TestTokenEndpoint> {
+  const status = config.status ?? 200;
+  const body = config.body ?? {
+    access_token: "ghs_refreshed_e2e",
+    refresh_token: "repo_grant_e2e_rotated",
+    expires_in: 3600,
+    scope: "repo:acme/widget",
+  };
+  const recorded: TokenEndpointRequest[] = [];
+
+  const server = createServer(
+    async (req: IncomingMessage, res: ServerResponse) => {
+      try {
+        const raw = req.method === "POST" ? await readBody(req) : "";
+        recorded.push({
+          method: req.method ?? "UNKNOWN",
+          body: Object.fromEntries(new URLSearchParams(raw)),
+          timestamp: Date.now(),
+        });
+
+        res.statusCode = status;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(body));
+      } catch (error) {
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            error: error instanceof Error ? error.message : "request failed",
+          }),
+        );
+      }
+    },
+  );
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Token endpoint did not bind to a TCP port");
+  }
+
+  return {
+    url: `http://127.0.0.1:${address.port}/token`,
+    requests: recorded,
+    stop: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      }),
+  };
+}
+
+async function createRepoGrantChild(
+  ctx: APIRequestContext,
+  org: string,
+  connectionUrl: string,
+): Promise<string> {
+  const child = await callSelfMcpTool<{ item: { id: string } }>(
+    ctx,
+    org,
+    "COLLECTION_CONNECTIONS_CREATE",
+    {
+      data: {
+        title: `GitHub: acme/widget ${Date.now()}`,
+        app_name: "mcp-github",
+        connection_type: "HTTP",
+        connection_url: connectionUrl,
+        metadata: {
+          repoScope: {
+            installationId: 1,
+            repositoryId: 99,
+            owner: "acme",
+            repo: "widget",
+            permissions: { contents: "write" },
+            grantProvider: "github-mcp",
+          },
+        },
+      },
+    },
+  );
+  expect(child.item.id).toBeTruthy();
+  return child.item.id;
+}
+
+async function seedExpiredRepoGrantToken(
+  ctx: APIRequestContext,
+  org: string,
+  childId: string,
+  tokenEndpoint: string,
+): Promise<void> {
+  const tokenRes = await ctx.post(
+    `/api/${org}/connections/${childId}/oauth-token`,
+    {
+      data: {
+        accessToken: "ghs_expired_e2e",
+        refreshToken: "repo_grant_e2e",
+        expiresIn: -60,
+        clientId: "github-mcp",
+        tokenEndpoint,
+      },
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  expect(tokenRes.ok()).toBe(true);
+}
+
+async function callRepoChildWhoami(
+  ctx: APIRequestContext,
+  org: string,
+  childId: string,
+): Promise<void> {
+  const res = await ctx.post(`/api/${org}/mcp/${childId}`, {
+    data: {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "whoami", arguments: {} },
+    },
+    headers: { Accept: "application/json, text/event-stream" },
+  });
+  expect(res.ok()).toBe(true);
+  const envelope = (await res.json()) as {
+    result?: { isError?: boolean; content?: Array<{ text?: string }> };
+    error?: unknown;
+  };
+  expect(envelope.error).toBeUndefined();
+  expect(envelope.result?.isError).not.toBe(true);
+}
 
 test.describe("GitHub import repo-scoped connections", () => {
   /**
@@ -271,61 +432,21 @@ test.describe("GitHub import repo-scoped connections", () => {
   });
 
   /**
-   * Scenario 3 — runtime mint-on-demand.
+   * Scenario 3 — runtime refresh of a repo grant.
    *
-   * Calling any tool on a repo-scoped child through the proxy triggers the
-   * outbound header builder → ensureRepoScopedToken → mintRepoToken, which
-   * opens an MCP client to the ORG connection and calls MINT_REPO_TOKEN. The
-   * minted token is then cached (vault-encrypted) in downstream_tokens.
-   *
-   * Two stubs: `orgStub` exposes MINT_REPO_TOKEN (with an outputSchema so the
-   * SDK emits the structuredContent the mesh mint caller reads), `repoStub`
-   * exposes a trivial `whoami` tool the child surfaces.
-   *
-   * Assertions: orgStub recorded a tools/call naming MINT_REPO_TOKEN, AND a
-   * downstream_tokens row now exists for the child with expiresAt set. The
-   * stored access token is vault-encrypted, so we assert existence rather than
-   * matching plaintext.
+   * A source-less repo-scoped child has no org-parent soft link. Calling a tool
+   * through the proxy should refresh the expired repo grant via the stored
+   * OAuth-shaped downstream token fields, not call MINT_REPO_TOKEN.
    */
-  test("calling a repo-scoped child tool mints + caches a token via the org connection", async ({
+  test("calling a repo-scoped child tool refreshes a repo grant without using the org connection", async ({
     playwright,
   }) => {
-    let orgStub: TestMcpServer | undefined;
     let repoStub: TestMcpServer | undefined;
+    let tokenEndpoint: TestTokenEndpoint | undefined;
     const ctx = await newApiContext(playwright);
     const db = await connectDevDb();
     try {
-      orgStub = await startTestMcpServer({
-        tools: [
-          {
-            name: "MINT_REPO_TOKEN",
-            description: "Mint a repo-scoped GitHub App installation token.",
-            inputSchema: {
-              installationId: z.number(),
-              owner: z.string(),
-              repo: z.string(),
-              permissions: z.record(z.string(), z.string()).optional(),
-            },
-            // outputSchema is required for the SDK to emit structuredContent,
-            // which mintRepoToken reads (res.structuredContent.token).
-            outputSchema: {
-              token: z.string(),
-              expiresAt: z.string(),
-              permissions: z.record(z.string(), z.string()),
-              repository: z.object({ owner: z.string(), name: z.string() }),
-              installationId: z.number(),
-            },
-            handler: () => ({
-              token: "ghs_minted_e2e",
-              expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-              permissions: {},
-              repository: { owner: "acme", name: "widget" },
-              installationId: 1,
-            }),
-          },
-        ],
-      });
-
+      tokenEndpoint = await startTokenEndpoint();
       repoStub = await startTestMcpServer({
         tools: [
           {
@@ -339,78 +460,19 @@ test.describe("GitHub import repo-scoped connections", () => {
       const user = await signUpViaApi(ctx);
       const org = user.orgSlug;
 
-      // Org connection: the mint source. Points at orgStub so MINT_REPO_TOKEN
-      // resolves to a reachable tool.
-      const orgConn = await createHttpConnection(ctx, org, {
-        title: `Org GitHub ${Date.now()}`,
-        url: orgStub.url,
+      const childId = await createRepoGrantChild(ctx, org, repoStub.url);
+      await seedExpiredRepoGrantToken(ctx, org, childId, tokenEndpoint.url);
+
+      await callRepoChildWhoami(ctx, org, childId);
+
+      expect(tokenEndpoint.requests).toHaveLength(1);
+      expect(tokenEndpoint.requests[0]?.body).toMatchObject({
+        grant_type: "refresh_token",
+        refresh_token: "repo_grant_e2e",
+        client_id: "github-mcp",
       });
 
-      // Repo-scoped child: points at repoStub, carries the mint recipe, and has
-      // NO downstream token yet (so the first proxied call must mint).
-      const child = await callSelfMcpTool<{ item: { id: string } }>(
-        ctx,
-        org,
-        "COLLECTION_CONNECTIONS_CREATE",
-        {
-          data: {
-            title: `GitHub: acme/widget ${Date.now()}`,
-            app_name: "mcp-github",
-            connection_type: "HTTP",
-            connection_url: repoStub.url,
-            metadata: {
-              repoScope: {
-                sourceConnectionId: orgConn.id,
-                installationId: 1,
-                owner: "acme",
-                repo: "widget",
-                permissions: { contents: "write" },
-              },
-            },
-          },
-        },
-      );
-      const childId = child.item.id;
-      expect(childId).toBeTruthy();
-
-      // No token before the first proxied call.
-      const before = await db.query(
-        'SELECT 1 FROM downstream_tokens WHERE "connectionId" = $1',
-        [childId],
-      );
-      expect(before.rowCount).toBe(0);
-
-      // Hit the proxy for the child connection. The outbound header builder
-      // runs per request and mints the repo-scoped token on the way out.
-      const res = await ctx.post(`/api/${org}/mcp/${childId}`, {
-        data: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "whoami", arguments: {} },
-        },
-        headers: { Accept: "application/json, text/event-stream" },
-      });
-      expect(res.ok()).toBe(true);
-      const envelope = (await res.json()) as {
-        result?: { isError?: boolean; content?: Array<{ text?: string }> };
-        error?: unknown;
-      };
-      expect(envelope.error).toBeUndefined();
-      expect(envelope.result?.isError).not.toBe(true);
-
-      // The org stub must have been asked to mint.
-      const mintCall = orgStub.requests.some(
-        (r) =>
-          r.method === "tools/call" &&
-          typeof r.body === "object" &&
-          r.body !== null &&
-          (r.body as { params?: { name?: string } }).params?.name ===
-            "MINT_REPO_TOKEN",
-      );
-      expect(mintCall).toBe(true);
-
-      // The minted token is now cached (vault-encrypted) with an expiry set.
+      // The refreshed token is cached (vault-encrypted) with an expiry set.
       const after = await db.query<{ expiresAt: string | null }>(
         'SELECT "expiresAt" FROM downstream_tokens WHERE "connectionId" = $1',
         [childId],
@@ -418,10 +480,116 @@ test.describe("GitHub import repo-scoped connections", () => {
       expect(after.rowCount).toBe(1);
       expect(after.rows[0]?.expiresAt).toBeTruthy();
     } finally {
-      await db.end();
-      await ctx.dispose();
-      await orgStub?.stop();
-      await repoStub?.stop();
+      await Promise.allSettled([
+        db.end(),
+        ctx.dispose(),
+        tokenEndpoint?.stop(),
+        repoStub?.stop(),
+      ]);
+    }
+  });
+
+  test("permanently invalid repo grant refresh deletes the cached downstream token", async ({
+    playwright,
+  }) => {
+    let repoStub: TestMcpServer | undefined;
+    let tokenEndpoint: TestTokenEndpoint | undefined;
+    const ctx = await newApiContext(playwright);
+    const db = await connectDevDb();
+    try {
+      tokenEndpoint = await startTokenEndpoint({
+        status: 400,
+        body: { error: "invalid_grant", error_description: "grant revoked" },
+      });
+      repoStub = await startTestMcpServer({
+        tools: [
+          {
+            name: "whoami",
+            description: "Trivial tool exposed by the repo-scoped child.",
+            handler: () => ({ ok: true }),
+          },
+        ],
+      });
+
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const childId = await createRepoGrantChild(ctx, org, repoStub.url);
+      await seedExpiredRepoGrantToken(ctx, org, childId, tokenEndpoint.url);
+
+      await callRepoChildWhoami(ctx, org, childId);
+
+      expect(tokenEndpoint.requests.length).toBeGreaterThan(0);
+      for (const request of tokenEndpoint.requests) {
+        expect(request.body).toMatchObject({
+          grant_type: "refresh_token",
+          refresh_token: "repo_grant_e2e",
+          client_id: "github-mcp",
+        });
+      }
+      const after = await db.query(
+        'SELECT 1 FROM downstream_tokens WHERE "connectionId" = $1',
+        [childId],
+      );
+      expect(after.rowCount).toBe(0);
+    } finally {
+      await Promise.allSettled([
+        db.end(),
+        ctx.dispose(),
+        tokenEndpoint?.stop(),
+        repoStub?.stop(),
+      ]);
+    }
+  });
+
+  test("transient repo grant refresh failure keeps the cached downstream token", async ({
+    playwright,
+  }) => {
+    let repoStub: TestMcpServer | undefined;
+    let tokenEndpoint: TestTokenEndpoint | undefined;
+    const ctx = await newApiContext(playwright);
+    const db = await connectDevDb();
+    try {
+      tokenEndpoint = await startTokenEndpoint({
+        status: 503,
+        body: { error: "server_error" },
+      });
+      repoStub = await startTestMcpServer({
+        tools: [
+          {
+            name: "whoami",
+            description: "Trivial tool exposed by the repo-scoped child.",
+            handler: () => ({ ok: true }),
+          },
+        ],
+      });
+
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const childId = await createRepoGrantChild(ctx, org, repoStub.url);
+      await seedExpiredRepoGrantToken(ctx, org, childId, tokenEndpoint.url);
+
+      await callRepoChildWhoami(ctx, org, childId);
+
+      expect(tokenEndpoint.requests.length).toBeGreaterThan(0);
+      for (const request of tokenEndpoint.requests) {
+        expect(request.body).toMatchObject({
+          grant_type: "refresh_token",
+          refresh_token: "repo_grant_e2e",
+          client_id: "github-mcp",
+        });
+      }
+      const after = await db.query(
+        'SELECT 1 FROM downstream_tokens WHERE "connectionId" = $1',
+        [childId],
+      );
+      expect(after.rowCount).toBe(1);
+    } finally {
+      await Promise.allSettled([
+        db.end(),
+        ctx.dispose(),
+        tokenEndpoint?.stop(),
+        repoStub?.stop(),
+      ]);
     }
   });
 });

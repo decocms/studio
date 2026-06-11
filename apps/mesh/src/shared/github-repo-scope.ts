@@ -1,9 +1,12 @@
 /**
  * Repo-scoped GitHub connection — shared, pure helpers.
  *
- * A "repo-scoped" mcp-github connection is a per-agent child connection whose
- * downstream token is minted (by deco/mcp-github's MINT_REPO_TOKEN) for exactly
- * one repository. The mint "recipe" lives on the connection's metadata under
+ * A "repo-scoped" mcp-github connection is a per-agent child connection for
+ * exactly one repository. New refreshable repo children persist a GitHub MCP
+ * repo grant in downstream_tokens and refresh through the normal OAuth-shaped
+ * token path. Legacy repo children may still carry `sourceConnectionId` so
+ * callers can mint with deco/mcp-github's MINT_REPO_TOKEN during compatibility
+ * flows. The repo grant metadata lives on the connection's metadata under
  * `repoScope`; its presence also marks the connection as a disposable per-agent
  * child for teardown.
  *
@@ -19,14 +22,39 @@ export const GITHUB_SCOPED_PERMISSIONS: Record<string, string> = {
   issues: "write",
 };
 
-/** The mint recipe stored at `connection.metadata.repoScope`. */
+/** The repo grant metadata stored at `connection.metadata.repoScope`. */
 export interface RepoScopeRecipe {
-  /** Org mcp-github connection (broad user-to-server OAuth) used to mint. */
-  sourceConnectionId: string;
+  /** Legacy org mcp-github connection used to mint before refreshable grants. */
+  sourceConnectionId?: string;
   installationId: number;
+  repositoryId?: number;
   owner: string;
   repo: string;
   permissions: Record<string, string>;
+  grantProvider?: "github-mcp";
+}
+
+function parsePermissions(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return GITHUB_SCOPED_PERMISSIONS;
+  }
+  const permissions = raw as Record<string, unknown>;
+  if (Object.values(permissions).some((value) => typeof value !== "string")) {
+    return GITHUB_SCOPED_PERMISSIONS;
+  }
+  return permissions as Record<string, string>;
+}
+
+function parsePositiveInteger(raw: unknown): number | undefined {
+  if (
+    typeof raw !== "number" ||
+    !Number.isFinite(raw) ||
+    !Number.isInteger(raw) ||
+    raw <= 0
+  ) {
+    return undefined;
+  }
+  return raw;
 }
 
 /**
@@ -42,8 +70,10 @@ export function getRepoScope(connection: {
     | undefined;
   if (
     !raw ||
-    typeof raw.sourceConnectionId !== "string" ||
     typeof raw.installationId !== "number" ||
+    !Number.isFinite(raw.installationId) ||
+    !Number.isInteger(raw.installationId) ||
+    raw.installationId <= 0 ||
     typeof raw.owner !== "string" ||
     typeof raw.repo !== "string" ||
     raw.owner.length === 0 ||
@@ -51,14 +81,19 @@ export function getRepoScope(connection: {
   ) {
     return null;
   }
+  const repositoryId = parsePositiveInteger(raw.repositoryId);
   return {
-    sourceConnectionId: raw.sourceConnectionId,
+    sourceConnectionId:
+      typeof raw.sourceConnectionId === "string"
+        ? raw.sourceConnectionId
+        : undefined,
     installationId: raw.installationId,
+    repositoryId,
     owner: raw.owner,
     repo: raw.repo,
-    permissions:
-      (raw.permissions as Record<string, string> | undefined) ??
-      GITHUB_SCOPED_PERMISSIONS,
+    permissions: parsePermissions(raw.permissions),
+    grantProvider:
+      raw.grantProvider === "github-mcp" ? "github-mcp" : undefined,
   };
 }
 

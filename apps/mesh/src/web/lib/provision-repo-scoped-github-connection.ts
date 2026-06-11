@@ -6,6 +6,39 @@ type McpCallTool = (req: {
   arguments: Record<string, unknown>;
 }) => Promise<unknown>;
 
+const REFRESH_GRANT_METADATA_ERROR =
+  "GitHub MCP did not return refreshable repo grant metadata";
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function isHttpTokenEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeRepositoryId(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value > 0
+    ? value
+    : undefined;
+}
+
 export async function provisionRepoScopedGithubConnection(params: {
   orgSlug: string;
   sourceConnection: ConnectionEntity;
@@ -35,7 +68,16 @@ export async function provisionRepoScopedGithubConnection(params: {
     },
   })) as {
     isError?: boolean;
-    structuredContent?: { token?: string; expiresAt?: string };
+    structuredContent?: {
+      token?: string;
+      expiresAt?: string;
+      expiresIn?: unknown;
+      refreshToken?: string;
+      tokenEndpoint?: string;
+      clientId?: string;
+      scope?: string;
+      repository?: { id?: unknown; owner?: unknown; name?: unknown };
+    };
     content?: Array<{ type?: string; text?: string }>;
   };
   const minted = mintRes.structuredContent;
@@ -47,10 +89,44 @@ export async function provisionRepoScopedGithubConnection(params: {
         : "Failed to mint a repo-scoped GitHub token",
     );
   }
+  const refreshToken = nonEmptyString(minted.refreshToken);
+  const tokenEndpoint = nonEmptyString(minted.tokenEndpoint);
+  const clientId = nonEmptyString(minted.clientId);
+  if (!refreshToken || !tokenEndpoint || !clientId) {
+    throw new Error(REFRESH_GRANT_METADATA_ERROR);
+  }
+  if (!isHttpTokenEndpoint(tokenEndpoint)) {
+    throw new Error(REFRESH_GRANT_METADATA_ERROR);
+  }
+  const repositoryOwner = nonEmptyString(minted.repository?.owner);
+  const repositoryName = nonEmptyString(minted.repository?.name);
+  const repositoryMismatchError =
+    "GitHub MCP returned refresh metadata for a different repository";
+  if (
+    minted.repository?.owner !== undefined &&
+    (!repositoryOwner || repositoryOwner.toLowerCase() !== owner.toLowerCase())
+  ) {
+    throw new Error(repositoryMismatchError);
+  }
+  if (
+    minted.repository?.name !== undefined &&
+    (!repositoryName || repositoryName.toLowerCase() !== repo.toLowerCase())
+  ) {
+    throw new Error(repositoryMismatchError);
+  }
+  const repositoryId = normalizeRepositoryId(minted.repository?.id);
   const parsedExpiry = minted.expiresAt ? Date.parse(minted.expiresAt) : NaN;
   const expiresIn = Number.isFinite(parsedExpiry)
     ? Math.max(0, Math.floor((parsedExpiry - Date.now()) / 1000))
     : null;
+  const mintedExpiresIn =
+    typeof minted.expiresIn === "number" &&
+    Number.isFinite(minted.expiresIn) &&
+    Number.isInteger(minted.expiresIn) &&
+    minted.expiresIn > 0
+      ? minted.expiresIn
+      : null;
+  const tokenExpiresIn = mintedExpiresIn ?? expiresIn;
 
   const createRes = (await selfCallTool({
     name: "COLLECTION_CONNECTIONS_CREATE",
@@ -65,11 +141,12 @@ export async function provisionRepoScopedGithubConnection(params: {
         connection_url: sourceConnection.connection_url,
         metadata: {
           repoScope: {
-            sourceConnectionId: sourceConnection.id,
             installationId,
+            repositoryId,
             owner,
             repo,
             permissions: GITHUB_SCOPED_PERMISSIONS,
+            grantProvider: "github-mcp",
           },
         },
       },
@@ -90,7 +167,14 @@ export async function provisionRepoScopedGithubConnection(params: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ accessToken: minted.token, expiresIn }),
+      body: JSON.stringify({
+        accessToken: minted.token,
+        refreshToken,
+        expiresIn: tokenExpiresIn,
+        scope: minted.scope ?? null,
+        clientId,
+        tokenEndpoint,
+      }),
     },
   );
   if (!tokenRes.ok) {

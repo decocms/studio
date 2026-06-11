@@ -42,6 +42,7 @@ import { composeSandboxRef } from "@decocms/sandbox/provider";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
+  ensureGithubCloneToken,
 } from "@/shared/github-clone-info";
 import { resolveRuntimeConfig } from "@/tools/sandbox/helpers";
 import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
@@ -1517,14 +1518,32 @@ async function resolvePullSandboxConfig(
   let repo: WorkItemSandbox["repo"];
   if (githubRepo) {
     try {
-      const { cloneUrl, gitUserName, gitUserEmail } = githubRepo.connectionId
-        ? await buildCloneInfo(
-            githubRepo.connectionId,
-            githubRepo.owner,
-            githubRepo.name,
-            ctx.db,
-            ctx.vault,
-          )
+      const connectionId = githubRepo.connectionId;
+      const { cloneUrl, gitUserName, gitUserEmail } = connectionId
+        ? await (async () => {
+            await ensureGithubCloneToken({
+              ctx,
+              connectionId,
+              organizationId: input.organizationId,
+              onLegacyMintError: (error) => {
+                console.warn(
+                  "[pullDispatch] repo-scoped legacy token mint failed",
+                  {
+                    connectionId,
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  },
+                );
+              },
+            });
+            return buildCloneInfo(
+              connectionId,
+              githubRepo.owner,
+              githubRepo.name,
+              ctx.db,
+              ctx.vault,
+            );
+          })()
         : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
       repo = {
         cloneUrl,

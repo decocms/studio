@@ -39,6 +39,7 @@ const SLUG = "wdtest";
 const USER = "user_wd";
 const VOLUME = "skills";
 const ASSETS_DIR = `./data/assets/${ORG}`;
+const HOOK_TIMEOUT_MS = 30_000;
 
 type Variables = { meshContext: StudioContext };
 
@@ -108,7 +109,7 @@ describe("WebDAV serve layer (integration, full chain)", () => {
       fetch: (url, reqInit) => Promise.resolve(app.request(url, reqInit)),
     });
     dav = createWebdavHandler(api);
-  });
+  }, HOOK_TIMEOUT_MS);
 
   afterAll(async () => {
     rmSync(ASSETS_DIR, { recursive: true, force: true });
