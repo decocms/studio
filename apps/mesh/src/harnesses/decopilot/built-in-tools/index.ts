@@ -39,6 +39,7 @@ import { createReadResourceTool } from "./resources";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createVmTools } from "./vm-tools";
 import type { HtmlPageBuffer } from "./vm-tools/html-page-buffer";
+import { createSandboxFsHooks } from "@decocms/sandbox/provider";
 import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
 import { ensureSandbox } from "@/tools/sandbox/start";
 import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
@@ -273,13 +274,19 @@ async function buildAllTools(
         }
       }
     };
+    // Build the flat fs hooks over the resolved provider. The hooks own the
+    // handle-resolution + auto-restart retry layer (moved out of the tools in
+    // the HarnessDeps cycle-break, spec §4.3); the LLM-visible tools consume
+    // them through `fs`.
+    const fs = createSandboxFsHooks(runner, {
+      ensureHandle,
+      invalidateHandle,
+      canAutoRestart,
+    });
     Object.assign(
       tools,
       createVmTools({
-        runner,
-        ensureHandle,
-        invalidateHandle,
-        canAutoRestart,
+        fs,
         htmlPageBuffer,
         toolOutputMap,
         needsApproval: vmNeedsApproval,

@@ -1,14 +1,15 @@
 /**
  * VM File Tools — runner-agnostic.
  *
- * Registers the six LLM-visible tools (read/write/edit/grep/glob/bash) on
- * top of any `SandboxProvider.proxyDaemonRequest`. All runners speak the
- * unified `/_sandbox/*` surface with plain JSON bodies.
+ * Registers the eight LLM-visible tools (read/write/edit/grep/glob/bash +
+ * copy_to_sandbox/share_with_user) on top of the injected `SandboxFsHooks`.
+ * The hooks speak the unified `/_sandbox/*` surface with plain JSON bodies and
+ * own the handle resolution + auto-restart retry layer, so this module never
+ * imports the sandbox-provider package directly (cycle-break, spec §4.3).
  */
 
 import { tool, zodSchema } from "ai";
 import path from "node:path";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
 import { maybeTruncate } from "./common";
 import {
   buildBashDescription,
@@ -102,96 +103,9 @@ function toFileDownloadUrl(
 
 export type { VmToolsParams } from "./types";
 
-/**
- * Sentinel error class for "the daemon proxy itself threw" — meaning the
- * sandbox is unreachable (dead, restarting, or never provisioned). Callers
- * upstream of `daemonRequest` use this to distinguish a recoverable
- * sandbox-death from a request-level failure (4xx/5xx from a live daemon).
- */
-class DaemonUnreachableError extends Error {
-  readonly code = "DAEMON_UNREACHABLE" as const;
-  constructor(cause: unknown) {
-    super(cause instanceof Error ? cause.message : "Daemon proxy failed");
-    if (cause instanceof Error) {
-      this.cause = cause;
-    }
-  }
-}
-
-async function daemonRequest(
-  runner: SandboxProvider,
-  handle: string,
-  path: string,
-  body: Record<string, unknown> | null,
-  method: "GET" | "POST" | "PUT" = "POST",
-): Promise<unknown> {
-  let res: Response;
-  try {
-    const init: {
-      method: string;
-      headers: Headers;
-      body: string | null;
-    } = {
-      method,
-      headers: new Headers({ "content-type": "application/json" }),
-      body: null,
-    };
-    // GET/HEAD must not carry a body; the runners' proxy strips it anyway,
-    // but constructing it is wasteful and obscures intent.
-    if (method !== "GET" && body !== null) {
-      init.body = JSON.stringify(body);
-    }
-    res = await runner.proxyDaemonRequest(handle, path, init);
-  } catch (cause) {
-    throw new DaemonUnreachableError(cause);
-  }
-  const rawText = await res.text();
-  let json: unknown;
-  try {
-    json = JSON.parse(rawText);
-  } catch {
-    console.error(
-      "[vm-tools] Failed to parse JSON response runner=%s path=%s status=%d rawText=%s",
-      runner.kind,
-      path,
-      res.status,
-      rawText.slice(0, 2000),
-    );
-    const statusHint =
-      res.status >= 500
-        ? " (server error)"
-        : res.status === 0
-          ? " (no response)"
-          : "";
-    throw new Error(
-      `Daemon ${path} returned invalid JSON (HTTP ${res.status}${statusHint}): ${rawText.slice(0, 800)}`,
-    );
-  }
-  if (!res.ok) {
-    console.error(
-      "[vm-tools] Non-OK response runner=%s path=%s status=%d body=%s",
-      runner.kind,
-      path,
-      res.status,
-      rawText.slice(0, 2000),
-    );
-    const errorMessage =
-      (json as { error?: string }).error ??
-      `Daemon ${path} failed (${res.status})`;
-    if (res.status === 404 && errorMessage === "sandbox not found") {
-      throw new DaemonUnreachableError(new Error(errorMessage));
-    }
-    throw new Error(errorMessage);
-  }
-  return json;
-}
-
 export function createVmTools(params: VmToolsParams) {
   const {
-    runner,
-    ensureHandle,
-    invalidateHandle,
-    canAutoRestart,
+    fs,
     htmlPageBuffer,
     toolOutputMap,
     needsApproval,
@@ -201,72 +115,14 @@ export function createVmTools(params: VmToolsParams) {
   } = params;
   const approvalFor = (mutating: boolean) => (mutating ? needsApproval : false);
 
-  /**
-   * Format the user-visible "sandbox unreachable" message. Ephemeral agents
-   * have no server button — auto-restart is the only recovery path, so if
-   * we got here both attempts already failed. GitHub-linked agents do have
-   * a UI button, so the original "ask user to start it" message applies.
-   */
-  const formatUnreachableMessage = (cause: unknown): string => {
-    const detail = cause instanceof Error ? cause.message : String(cause);
-    return canAutoRestart
-      ? `Sandbox is unreachable and auto-restart did not recover it: ${detail}`
-      : "The sandbox is not running. Ask the user to start it by clicking the server button (left side of the header bar).";
-  };
-
-  const call = async (
+  // Proxy an arbitrary `/_sandbox/*` route through the fs hooks' retry layer.
+  // Used by the tools whose daemon surface the typed flat ops don't model
+  // (image-read, html-buffer write/edit, write_from_url, upload_to_url).
+  const call = (
     daemonPath: string,
     input: Record<string, unknown>,
     method: "POST" | "PUT" = "POST",
-  ): Promise<unknown> => {
-    const tryOnce = async (handle: string) =>
-      daemonRequest(runner, handle, daemonPath, input, method);
-    const firstHandle = await ensureHandle();
-    try {
-      return await tryOnce(firstHandle);
-    } catch (firstErr) {
-      // Only retry on daemon-unreachable (sandbox dead). HTTP-level errors
-      // from a live daemon (4xx/5xx) are surfaced as-is — a retry would
-      // just repeat the same failure.
-      if (!(firstErr instanceof DaemonUnreachableError) || !canAutoRestart) {
-        if (firstErr instanceof DaemonUnreachableError) {
-          throw new Error(formatUnreachableMessage(firstErr.cause ?? firstErr));
-        }
-        throw firstErr;
-      }
-      console.warn(
-        `[vm-tools] daemon ${daemonPath} unreachable — reaping sandbox and retrying once`,
-        firstErr.cause ?? firstErr,
-      );
-      try {
-        await invalidateHandle();
-      } catch (reapErr) {
-        console.warn("[vm-tools] invalidateHandle failed", reapErr);
-      }
-      let secondHandle: string;
-      try {
-        secondHandle = await ensureHandle();
-      } catch (provisionErr) {
-        throw new Error(
-          `Failed to restart sandbox: ${
-            provisionErr instanceof Error
-              ? provisionErr.message
-              : String(provisionErr)
-          }`,
-        );
-      }
-      try {
-        return await tryOnce(secondHandle);
-      } catch (secondErr) {
-        if (secondErr instanceof DaemonUnreachableError) {
-          throw new Error(
-            formatUnreachableMessage(secondErr.cause ?? secondErr),
-          );
-        }
-        throw secondErr;
-      }
-    }
-  };
+  ): Promise<unknown> => fs.onProxy(daemonPath, input, method);
 
   const read = tool({
     needsApproval: approvalFor(TOOL_APPROVAL.read),

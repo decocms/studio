@@ -6,7 +6,10 @@
  * names.
  */
 
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import {
+  createSandboxFsHooks,
+  type SandboxProvider,
+} from "@decocms/sandbox/provider";
 import type { Tool, ToolSet, UIMessageStreamWriter } from "ai";
 import { buildPortableBuiltInTools } from "../decopilot/built-in-tools/portable-built-ins";
 import type {
@@ -161,8 +164,7 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
     }
     return cachedHandle;
   };
-  const vmTools = createVmTools({
-    runner,
+  const fs = createSandboxFsHooks(runner, {
     ensureHandle,
     invalidateHandle: async () => {
       const handlePromise = cachedHandle;
@@ -172,6 +174,9 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
       if (handle) await runner.delete(handle);
     },
     canAutoRestart: false,
+  });
+  const vmTools = createVmTools({
+    fs,
     htmlPageBuffer: params.htmlPageBuffer ?? createNoopHtmlPageBuffer(),
     toolOutputMap: params.toolOutputMap,
     needsApproval: vmNeedsApproval,

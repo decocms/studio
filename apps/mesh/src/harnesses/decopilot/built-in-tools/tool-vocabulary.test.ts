@@ -41,7 +41,10 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
+import {
+  createSandboxFsHooks,
+  type SandboxProvider,
+} from "@decocms/sandbox/provider";
 import { buildPortableBuiltInTools } from "./portable-built-ins";
 import { createVmTools } from "./vm-tools";
 import { createLocalSubtaskTool } from "./local-subtask";
@@ -88,10 +91,11 @@ const noopHtmlPageBuffer: HtmlPageBuffer = {
  *  builder, identical names cluster + desktop). Enumerated inertly. */
 function sharedVmAndSubtaskNames(): Set<string> {
   const vmTools = createVmTools({
-    runner: inertRunner,
-    ensureHandle: async () => "h",
-    invalidateHandle: async () => {},
-    canAutoRestart: false,
+    fs: createSandboxFsHooks(inertRunner, {
+      ensureHandle: async () => "h",
+      invalidateHandle: async () => {},
+      canAutoRestart: false,
+    }),
     htmlPageBuffer: noopHtmlPageBuffer,
     toolOutputMap: new Map(),
     needsApproval: false,
