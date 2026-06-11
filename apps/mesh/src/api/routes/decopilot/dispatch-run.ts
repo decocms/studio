@@ -27,7 +27,7 @@
 import type { StudioContext } from "@/core/studio-context";
 import { posthog } from "@/posthog";
 import type { UIMessageChunk } from "ai";
-import { localDispatch } from "@/harnesses";
+import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
 import {
   offloadKey,
   sha256Hex,
@@ -1143,8 +1143,12 @@ async function prepareRun(
             "user-desktop runs use the pull transport — dispatchRunAndWait must not run a local harness for them",
           );
         }
-        // hosted / agent-sandbox only.
-        const rawHarnessChunks = localDispatch(harnessId, harnessInput, ctx);
+        // hosted / agent-sandbox only. Step 1a: the in-process SandboxClient
+        // wraps the prior `localDispatch(harnessId, harnessInput, ctx)` path
+        // UNCHANGED — same AsyncIterable<UIMessageChunk>, same throw on unknown
+        // id, same ctx forwarding. consumeHarnessStream consumes it verbatim.
+        const sandboxClient = new InProcessSandboxClient({ ctx, harnessId });
+        const rawHarnessChunks = sandboxClient.dispatch(harnessInput);
         yield* rawHarnessChunks;
       };
 
