@@ -33,8 +33,6 @@
     "clean": "rm -f deno.lock package-lock.json bun.lock && rm -rf node_modules apps/*/node_modules packages/*/node_modules",
     "exorcise": "bun run clean && bun install --force",
     "knip": "knip",
-    "benchmark": "bun run --cwd=apps/benchmark benchmark",
-    "benchmark:quick": "bun run --cwd=apps/benchmark benchmark:quick",
     "services:up": "bun run --env-file apps/mesh/.env apps/mesh/src/cli.ts services up",
     "services:down": "bun run --env-file apps/mesh/.env apps/mesh/src/cli.ts services down",
     "services:status": "bun run --env-file apps/mesh/.env apps/mesh/src/cli.ts services status"
