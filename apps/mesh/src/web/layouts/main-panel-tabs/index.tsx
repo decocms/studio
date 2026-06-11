@@ -9,7 +9,6 @@
  */
 
 import { Suspense, lazy } from "react";
-import { Loading01 } from "@untitledui/icons";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { SettingsTab } from "./settings-tab";
 import { GitTab } from "@/web/components/thread/github/git-tab";
@@ -18,6 +17,7 @@ import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { WebPageTab } from "./web-page-tab";
+import { MainPanelLoading } from "./main-panel-loading";
 import {
   isLegacySettingsTab,
   parsePinnedViewTabId,
@@ -91,16 +91,7 @@ function TabBody({
         t.toolName === pinnedView.toolName,
     );
     return (
-      <Suspense
-        fallback={
-          <div className="h-full w-full flex items-center justify-center">
-            <Loading01
-              size={20}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
-        }
-      >
+      <Suspense fallback={<MainPanelLoading />}>
         <AppViewContent
           key={activeTab}
           connectionId={pinnedView.connectionId}
@@ -114,16 +105,7 @@ function TabBody({
   const agentTab = layoutTabs.find((t) => t.id === activeTab);
   if (agentTab) {
     return (
-      <Suspense
-        fallback={
-          <div className="h-full w-full flex items-center justify-center">
-            <Loading01
-              size={20}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
-        }
-      >
+      <Suspense fallback={<MainPanelLoading />}>
         <AppViewContent
           key={activeTab}
           connectionId={agentTab.view.appId}
@@ -152,16 +134,7 @@ export function MainPanelContent({
 
   return (
     <ErrorBoundary key={activeTab}>
-      <Suspense
-        fallback={
-          <div className="h-full w-full flex items-center justify-center">
-            <Loading01
-              size={20}
-              className="animate-spin text-muted-foreground"
-            />
-          </div>
-        }
-      >
+      <Suspense fallback={<MainPanelLoading />}>
         <TabBody
           activeTab={activeTab}
           virtualMcpId={virtualMcpId}

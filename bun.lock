@@ -38,7 +38,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.421.0",
+      "version": "2.419.1",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -242,7 +242,7 @@
     },
     "packages/mesh-sdk": {
       "name": "@decocms/mesh-sdk",
-      "version": "1.4.0",
+      "version": "1.3.0",
       "dependencies": {
         "@decocms/bindings": "^1.1.1",
         "@decocms/mcp-utils": "workspace:*",
