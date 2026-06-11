@@ -246,6 +246,51 @@ describe("handleLocalDispatch", () => {
     );
   });
 
+  it("throws when sandbox dispatch does not return response headers before the start timeout", async () => {
+    let clusterTokenCalls = 0;
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => {
+              reject(
+                signal.reason ?? new DOMException("aborted", "AbortError"),
+              );
+            },
+            { once: true },
+          );
+        });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    };
+
+    const deps: LocalDispatchDeps = {
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      clusterBaseUrl: CLUSTER_BASE,
+      getClusterToken: async () => {
+        clusterTokenCalls++;
+        return CLUSTER_TOKEN;
+      },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      dispatchStartTimeoutMs: 5,
+    };
+
+    await expect(handleLocalDispatch(validWorkItem, deps)).rejects.toThrow(
+      "[handleLocalDispatch] dispatch start timed out after 5ms",
+    );
+    expect(clusterTokenCalls).toBe(0);
+  });
+
   // ── Test: non-retriable cluster relay rejection → throw, single attempt ─
 
   it("throws without retrying when the cluster relay returns a 4xx (fence loss)", async () => {
@@ -561,10 +606,10 @@ describe("handleLocalDispatch", () => {
 
     await handleLocalDispatch(validWorkItem, deps);
 
-    // The sandbox dispatch and the single streaming relay POST both receive
-    // the abort signal.
+    // The sandbox dispatch receives a composite signal that includes `ac`;
+    // the relay fetch receives the original run signal.
     expect(capturedSignals.length).toBe(2);
-    expect(capturedSignals[0]).toBe(ac.signal);
+    expect(capturedSignals[0]).toBeInstanceOf(AbortSignal);
     expect(capturedSignals[1]).toBe(ac.signal);
   });
 });

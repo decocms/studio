@@ -125,6 +125,26 @@ function deriveHandle(item: WorkItem): string {
   return branch ? `agent-${agentId}-${branch}` : `agent-${agentId}`;
 }
 
+async function relayClaimedWorkItemFailure(
+  input: ClusterConnectionPullInput,
+  signal: AbortSignal,
+  item: WorkItem,
+  code: string,
+  message: string,
+): Promise<void> {
+  await relayWorkItemFailure(
+    item,
+    {
+      clusterBaseUrl: input.clusterBaseUrl,
+      getClusterToken: input.getAccessToken,
+      fetchImpl: input.fetchImpl,
+      signal,
+    },
+    code,
+    message,
+  );
+}
+
 /**
  * Pull-transport cluster connection.
  *
@@ -246,9 +266,14 @@ export async function connectToClusterPull(
           `[cluster-connection-pull] ensureSandbox failed handle=${handle} runId=${item.runId}:`,
           err,
         );
-        // Re-throw so the work-poll loop logs it as "onWork threw (swallowed)"
-        // and continues to the next item.
-        throw err;
+        await relayClaimedWorkItemFailure(
+          input,
+          ac.signal,
+          item,
+          "sandbox_start_failed",
+          "desktop sandbox failed to start for this run; send the message again",
+        );
+        return;
       }
 
       // (b) + (c) Relay via handleLocalDispatch.
@@ -276,6 +301,19 @@ export async function connectToClusterPull(
           fetchImpl: input.fetchImpl,
           signal: AbortSignal.any([ac.signal, runAc.signal]),
         });
+      } catch (err) {
+        console.error(
+          `[cluster-connection-pull] local dispatch failed handle=${handle} runId=${item.runId}:`,
+          err,
+        );
+        await relayClaimedWorkItemFailure(
+          input,
+          ac.signal,
+          item,
+          "local_dispatch_failed",
+          "desktop harness dispatch failed before producing a terminal result; send the message again",
+        );
+        return;
       } finally {
         runAbortRegistry.unregister(item.runId);
         releaseDispatch();

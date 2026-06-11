@@ -147,6 +147,7 @@ import {
   PersistedRunConfigSchema,
   toModelsConfig,
 } from "./routes/decopilot/run-config";
+import { shouldResumeThreadInProcess } from "./routes/decopilot/orphan-recovery";
 import { getPodId } from "../core/pod-identity";
 import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
 import { createAutomationsStorage } from "../storage/automations";
@@ -154,6 +155,7 @@ import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 import { LinkWorkQueue } from "./routes/decopilot/link-work-queue";
+import type { HarnessId } from "@/harnesses/types";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -1459,6 +1461,13 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   /** Shared resume function for both startup recovery and pod-death watcher. */
   const resumeOrphanedThread = async (thread: Thread) => {
+    if (!shouldResumeThreadInProcess(thread)) {
+      console.warn(
+        `[recovery] Skipping in-process recovery for user-desktop thread ${thread.id}; thread-gate/pull transport owns recovery`,
+      );
+      return;
+    }
+
     const parsed = PersistedRunConfigSchema.safeParse(thread.run_config);
     if (!parsed.success) {
       console.warn(
@@ -1530,6 +1539,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         taskId: thread.id,
         windowSize: config.windowSize,
         isResume: true,
+        harnessId: thread.harness_id as HarnessId | null,
       },
       resumeCtx,
       { runRegistry, cancelBroadcast, sseHub },

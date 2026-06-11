@@ -528,6 +528,99 @@ describe("claim-time credential-expiry check", () => {
       }
     }
   });
+
+  it("relays a terminal failure when ensureSandbox fails after claim", async () => {
+    const chunkPosts: Array<{
+      url: string;
+      body: string;
+      headers: Record<string, string>;
+    }> = [];
+
+    const workItem: WorkItem = {
+      runId: "run-sandbox-fail",
+      threadId: "thrd-sandbox-fail",
+      orgId: "org-sandbox-fail",
+      userId: "usr-sandbox-fail",
+      runFenceToken: "fence-sandbox-fail",
+      orgSlug: "acme",
+      harnessInput: { agent: { id: "decopilot" } },
+      sandbox: { handle: "agent-decopilot" },
+    };
+
+    const provider = {
+      ...minimalProvider,
+      ensureSandbox: async () => {
+        throw new Error("boom");
+      },
+    };
+
+    const handle = await connectToClusterPull({
+      clusterBaseUrl: "https://cluster.example.com",
+      getAccessToken: async () => "tok",
+      provider,
+      fetchImpl: makeExpiryFetch(workItem, chunkPosts),
+    });
+
+    await new Promise<void>((r) => setTimeout(r, 50));
+    await handle.close();
+
+    expect(chunkPosts).toHaveLength(1);
+    const lines = chunkPosts[0]!.body
+      .split("\n")
+      .filter((l) => l.length > 0)
+      .map(
+        (l) =>
+          JSON.parse(l) as {
+            seq: number;
+            event: { type: string; code?: string };
+          },
+      );
+    expect(lines.map((l) => l.event.type)).toEqual(["error", "done"]);
+    expect(lines[0]!.event.code).toBe("sandbox_start_failed");
+  });
+
+  it("relays a terminal failure when local dispatch fails after claim", async () => {
+    const chunkPosts: Array<{
+      url: string;
+      body: string;
+      headers: Record<string, string>;
+    }> = [];
+
+    const workItem: WorkItem = {
+      runId: "run-dispatch-fail",
+      threadId: "thrd-dispatch-fail",
+      orgId: "org-dispatch-fail",
+      userId: "usr-dispatch-fail",
+      runFenceToken: "fence-dispatch-fail",
+      orgSlug: "acme",
+      harnessInput: { agent: { id: "decopilot" } },
+      sandbox: { handle: "agent-decopilot" },
+    };
+
+    const handle = await connectToClusterPull({
+      clusterBaseUrl: "https://cluster.example.com",
+      getAccessToken: async () => "tok",
+      provider: minimalProvider,
+      fetchImpl: makeExpiryFetch(workItem, chunkPosts),
+    });
+
+    await new Promise<void>((r) => setTimeout(r, 50));
+    await handle.close();
+
+    expect(chunkPosts).toHaveLength(1);
+    const lines = chunkPosts[0]!.body
+      .split("\n")
+      .filter((l) => l.length > 0)
+      .map(
+        (l) =>
+          JSON.parse(l) as {
+            seq: number;
+            event: { type: string; code?: string };
+          },
+      );
+    expect(lines.map((l) => l.event.type)).toEqual(["error", "done"]);
+    expect(lines[0]!.event.code).toBe("local_dispatch_failed");
+  });
 });
 
 describe("connectToClusterPull close()/abort", () => {

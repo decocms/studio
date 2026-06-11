@@ -48,6 +48,8 @@ import {
   relayDispatchSSEAsChunkStream,
 } from "./chunk-relay";
 
+const DISPATCH_START_TIMEOUT_MS = 15_000;
+
 /**
  * Relay a synthesized terminal failure for a work item that cannot run
  * (expired credentials, etc.) over the normal /chunks channel, so the
@@ -136,6 +138,12 @@ export interface LocalDispatchDeps {
    * and every cluster relay fetch.
    */
   signal?: AbortSignal;
+  /**
+   * Maximum time to wait for the local sandbox daemon to return dispatch
+   * response headers. This is intentionally not a run timeout: once headers
+   * arrive, the SSE body may stream for hours under `signal`.
+   */
+  dispatchStartTimeoutMs?: number;
 }
 
 /**
@@ -179,6 +187,8 @@ export async function handleLocalDispatch(
 ): Promise<void> {
   const fetcher = deps.fetchImpl ?? fetch;
   const harnessId = deriveHarnessId(work, deps.harnessId);
+  const dispatchStartTimeoutMs =
+    deps.dispatchStartTimeoutMs ?? DISPATCH_START_TIMEOUT_MS;
 
   // ── Step 1: POST to the local sandbox daemon's /_sandbox/dispatch ──────
   // Body shape: { harnessId, input } or, when the cluster offloaded messages,
@@ -197,19 +207,50 @@ export async function handleLocalDispatch(
         input: work.harnessInput,
       });
 
-  const dispatchRes = await fetcher(
-    `${deps.sandboxDispatchUrl}/_sandbox/dispatch`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${deps.sandboxDaemonToken}`,
-        "content-type": "application/json",
-        accept: "text/event-stream",
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutController = new AbortController();
+  const dispatchSignal = deps.signal
+    ? AbortSignal.any([deps.signal, timeoutController.signal])
+    : timeoutController.signal;
+  if (Number.isFinite(dispatchStartTimeoutMs) && dispatchStartTimeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      timeoutController.abort(
+        new DOMException(
+          `sandbox dispatch did not respond within ${dispatchStartTimeoutMs}ms`,
+          "TimeoutError",
+        ),
+      );
+    }, dispatchStartTimeoutMs);
+  }
+
+  let dispatchRes: Response;
+  try {
+    dispatchRes = await fetcher(
+      `${deps.sandboxDispatchUrl}/_sandbox/dispatch`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${deps.sandboxDaemonToken}`,
+          "content-type": "application/json",
+          accept: "text/event-stream",
+        },
+        body: dispatchBody,
+        signal: dispatchSignal,
       },
-      body: dispatchBody,
-      signal: deps.signal,
-    },
-  );
+    );
+  } catch (err) {
+    if (timeoutController.signal.aborted && !deps.signal?.aborted) {
+      throw new Error(
+        `[handleLocalDispatch] dispatch start timed out after ${dispatchStartTimeoutMs}ms`,
+        { cause: err },
+      );
+    }
+    throw err;
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
 
   // Non-2xx handling: read the JSON error body and throw BEFORE any SSE
   // parsing so a failed run never looks successful (an error Response carries
