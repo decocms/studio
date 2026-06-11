@@ -9,6 +9,7 @@
  * on the error strings (`"Agent not found"` / `"Agent is not active"`) or the
  * targetRef shape.
  */
+import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { StudioContext } from "@/core/studio-context";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
@@ -18,7 +19,7 @@ export interface ResolvedSubagent {
   targetRef: {
     id: string;
     instructions: string | undefined;
-    repo: string | undefined;
+    repo: GithubRepo | undefined;
   };
 }
 
