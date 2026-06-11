@@ -36,10 +36,7 @@ import { createReadResourceTool } from "./resources";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { createVmTools } from "./vm-tools";
 import type { HtmlPageBuffer } from "./vm-tools/html-page-buffer";
-import { createSandboxFsHooks } from "@decocms/sandbox/provider";
-import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
-import { ensureSandbox } from "@/tools/sandbox/start";
-import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
+import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "./user-ask";
 import { todoWriteTool } from "./todo-write";
@@ -200,86 +197,14 @@ async function buildAllTools(
   const vmNeedsApproval =
     toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false;
   if (vmContext) {
-    // `dispatch-run` already populated `ctx.sandboxPreference` /
-    // `ctx.linkForCurrentRun` from the resolved `DispatchTarget`, so the
-    // resolver short-circuits on those ctx hints without reading sandboxMap —
-    // no DB hit on the decopilot hot path. The same `kind` flows into
-    // `ensureSandbox` below so `runner` and the provisioned handle are
-    // guaranteed to come from the same provider.
-    const { provider: runner, kind: providerKind } =
-      await resolveSandboxProvider(ctx, {
-        userId: vmContext.userId,
-        branch: vmContext.branch,
-        virtualMcpMetadata: null,
-      });
-    let cached: Promise<string> | null = null;
-    const ensureHandle = () => {
-      if (!cached) {
-        cached = ensureSandbox(
-          {
-            virtualMcpId: vmContext.virtualMcpId,
-            branch: vmContext.branch,
-            sandboxProviderKind: providerKind,
-          },
-          ctx,
-        ).then((entry) => entry.sandboxHandle);
-        // Reset on failure so the next tool call retries instead of
-        // permanently caching a rejected promise.
-        cached.catch(() => {
-          cached = null;
-        });
-      }
-      return cached;
-    };
-    // Ephemeral agents have no restart button, so the call layer auto-restarts on
-    // proxy failure. user-desktop sandboxes also auto-restart: the local daemon
-    // can drop/relink under the user at any time, and the iframe + ingress already
-    // render the reconnecting state, so a dead-daemon proxy error should reap +
-    // respawn rather than surface a sticky failure.
-    const canAutoRestart =
-      vmContext.branch === "ephemeral" || providerKind === "user-desktop";
-    const invalidateHandle = async () => {
-      // Capture before clearing — we need the dead handle to flush the
-      // captured runner's cache below.
-      const lastHandlePromise = cached;
-      cached = null;
-      if (!canAutoRestart) return;
-      // Reap the vmMap entry so the next `ensureVm` provisions fresh
-      // rather than returning the dead vmId from the fast path.
-      try {
-        await removeSandboxMapEntry(
-          ctx.storage.virtualMcps,
-          vmContext.virtualMcpId,
-          vmContext.userId,
-          vmContext.userId,
-          vmContext.branch,
-          providerKind,
-        );
-      } catch (err) {
-        console.warn("[built-in-tools] failed to reap vmMap entry", err);
-      }
-      // Flush the captured runner's in-process cache + state-store row.
-      // `ensureVm` constructs its own provider instance for the respawn, so
-      // without this the captured `runner` (used for proxy calls) would keep
-      // serving the dead URL out of its records map on the retry — even
-      // though the state store + new provider have already moved on.
-      if (lastHandlePromise && typeof runner.forgetHandle === "function") {
-        try {
-          const lastHandle = await lastHandlePromise;
-          await runner.forgetHandle(lastHandle);
-        } catch (err) {
-          console.warn("[built-in-tools] forgetHandle failed", err);
-        }
-      }
-    };
-    // Build the flat fs hooks over the resolved provider. The hooks own the
-    // handle-resolution + auto-restart retry layer (moved out of the tools in
-    // the HarnessDeps cycle-break, spec §4.3); the LLM-visible tools consume
-    // them through `fs`.
-    const fs = createSandboxFsHooks(runner, {
-      ensureHandle,
-      invalidateHandle,
-      canAutoRestart,
+    // The flat fs hooks (provider resolution + lazy handle + auto-restart retry
+    // layer) are built by the cluster glue so the portable tools never import
+    // `@decocms/sandbox` (spec §4.3). Provisioning stays lazy inside the hooks —
+    // `ensureSandbox` runs on the first VM-tool call, not here.
+    const fs = await buildClusterSandboxFs(ctx, {
+      virtualMcpId: vmContext.virtualMcpId,
+      branch: vmContext.branch,
+      userId: vmContext.userId,
     });
     Object.assign(
       tools,

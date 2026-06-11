@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
+import { buildLocalTools } from "./desktop-local-tools";
 import {
-  buildLocalTools,
+  buildDesktopSandboxFs,
   createDesktopLocalSandboxProvider,
-} from "./desktop-local-tools";
+} from "./desktop-sandbox-fs";
 
 const writer = {
   write: () => {},
@@ -78,7 +79,13 @@ describe("buildLocalTools", () => {
       pendingImages: [],
       threadId: "thread-1",
       virtualMcpId: "agent-1",
-      runner: fakeRunner(calls),
+      // fs is now injected (built by the desktop glue) — drive it through the
+      // fake runner so the ensure→proxy sequence assertions below still hold.
+      fs: buildDesktopSandboxFs({
+        runner: fakeRunner(calls),
+        virtualMcpId: "agent-1",
+        userId: "user-1",
+      }),
     });
 
     expect(Object.keys(tools)).toContain("read");

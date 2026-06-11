@@ -1,4 +1,4 @@
-import type { SandboxFsHooks } from "@decocms/sandbox/provider";
+import type { SandboxFsHooks } from "./sandbox-fs-hooks-types";
 
 export interface VmToolObjectStorage {
   presignedGetUrl(key: string): Promise<string>;

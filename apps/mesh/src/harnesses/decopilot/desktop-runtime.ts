@@ -51,6 +51,7 @@ import {
 import { createLanguageModel } from "./mesh-provider";
 import { toolsFromMCP } from "./mcp-tools";
 import { buildLocalTools } from "./desktop-local-tools";
+import { buildDesktopSandboxFs } from "./desktop-sandbox-fs";
 import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./desktop-prompt";
 import { resolveModeConfig } from "./mode-config";
 import { runNativeAgentLoopCore } from "./native-agent-loop-core";
@@ -340,6 +341,13 @@ function createDesktopToolRuntime(args: {
           auth: { user: { id: streamInput.user.id } },
           baseUrl,
         };
+        // Flat sandbox fs hooks built by the desktop glue (owns the
+        // `@decocms/sandbox` provider) so buildLocalTools stays sandbox-free.
+        const fs = buildDesktopSandboxFs({
+          virtualMcpId: targetAgentId,
+          branch: streamInput.branch,
+          userId: streamInput.user.id,
+        });
         const localTools = buildLocalTools({
           writer: sideChannel.writer,
           toolOutputMap,
@@ -353,7 +361,7 @@ function createDesktopToolRuntime(args: {
           threadId: streamInput.threadId,
           // VM/sandbox + prompt scope to the target agent (parent or subtask).
           virtualMcpId: targetAgentId,
-          branch: streamInput.branch,
+          fs,
           htmlPageBuffer,
           // Real desktop-local subtask, only on the parent run. Absent on
           // delegated subtask runtimes (depth-1; the core strips it too).
