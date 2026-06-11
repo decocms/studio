@@ -30,11 +30,8 @@ import type { ModelsConfig } from "../types";
 import type { ToolApprovalLevel } from "../../api/routes/decopilot/helpers";
 import type { GithubRepo, UsageStats } from "@decocms/mesh-sdk";
 import { createLanguageModel } from "../../ai-providers/language-model";
-import {
-  DEFAULT_MAX_TOKENS,
-  PARENT_STEP_LIMIT,
-  SUBAGENT_STEP_LIMIT,
-} from "../../api/routes/decopilot/constants";
+import { DEFAULT_MAX_TOKENS } from "./harness-constants";
+import { PARENT_STEP_LIMIT, SUBAGENT_STEP_LIMIT } from "./prompt-constants";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
 import type { SubtaskParams } from "./built-in-tools/subtask";

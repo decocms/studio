@@ -19,7 +19,7 @@ import {
   buildDecopilotAgentPrompt,
   buildTodoWritePrompt,
   buildRepoEnvironmentPrompt,
-} from "../../api/routes/decopilot/constants";
+} from "./prompt-constants";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { buildSystemMessages, type SystemMessage } from "./system-prompt";

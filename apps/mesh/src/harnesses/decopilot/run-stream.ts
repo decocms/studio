@@ -42,7 +42,7 @@ import {
   createUsageAccumulator,
   type UsageAccumulator,
 } from "../usage-accumulator";
-import { generateMessageId } from "../../api/routes/decopilot/constants";
+import { generateMessageId } from "./harness-constants";
 import { resolveModeConfig } from "./mode-config";
 import { makeTitleResultChunk } from "../title-chunk";
 import { shouldGenerateTitle } from "../title-merge";

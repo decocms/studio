@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildBasePlatformPrompt } from "../../api/routes/decopilot/constants";
+import { buildBasePlatformPrompt } from "./prompt-constants";
 import {
   buildCurrentContextPrompt,
   buildSystemMessages,
