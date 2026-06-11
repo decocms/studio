@@ -3,7 +3,9 @@
  *
  * The shared Decopilot core's ONE prompt assembler is
  * `buildAgentSystemPrompt` (`./build-agent-system-prompt`), invoked inside the
- * engine (`runAgentLoop`). It consumes the three `list*Block` helpers below.
+ * engine (`runAgentLoop`). It consumes the `list*Block` helpers below.
+ * (The `<available-agents>` block is now pre-resolved agent-side as data and
+ * rendered via `buildAgentsBlock`, so no storage-coupled helper lives here.)
  *
  * The previous standalone `assembleDecopilotPrompt` was a DUPLICATE assembler
  * whose output fed only the `_request.systemSections` debug metadata while the
@@ -14,34 +16,11 @@
 
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { buildAgentsBlock } from "./agents-block";
 import { buildPromptsBlock, type PromptsBlockEntry } from "./prompts-block";
 import {
   buildConnectionsBlock,
   type ConnectionsBlockTool,
 } from "./connections-block";
-
-/**
- * listAgentsBlock — fetches the org's virtual MCPs and builds the
- * `<available-agents>` block. Excludes the current virtualMcpId if
- * provided. Returns null when no other active agents exist.
- */
-export async function listAgentsBlock(
-  ctx: StudioContext,
-  org: OrganizationScope,
-  currentVirtualMcpId?: string,
-): Promise<string | null> {
-  const virtualMcpList = await ctx.storage.virtualMcps.list(org.id);
-  return buildAgentsBlock(
-    virtualMcpList.map((vm) => ({
-      id: vm.id,
-      name: vm.title,
-      description: vm.description,
-      status: vm.status,
-    })),
-    currentVirtualMcpId ?? "",
-  );
-}
 
 /**
  * listPromptsBlock — fetches the MCP's prompt catalog via the passthrough
