@@ -1,7 +1,7 @@
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { VirtualClient } from "./sandbox";
-import type { StudioContext } from "@/core/studio-context";
+import type { ObjectStorageHooks } from "../../harness-deps";
 import {
   MAX_RESULT_TOKENS,
   createOutputPreview,
@@ -16,11 +16,11 @@ const INLINE_RESOURCE_BYTE_LIMIT = 1_048_576; // 1 MiB
 export interface ResourceToolParams {
   readonly passthroughClient: VirtualClient;
   readonly toolOutputMap: Map<string, string>;
-  readonly ctx: StudioContext;
+  readonly objectStorage: ObjectStorageHooks;
 }
 
 export function createReadResourceTool(params: ResourceToolParams) {
-  const { passthroughClient, toolOutputMap, ctx } = params;
+  const { passthroughClient, toolOutputMap, objectStorage } = params;
   return tool({
     description:
       "Read a resource by its URI. Returns the content of the resource. " +
@@ -38,11 +38,8 @@ export function createReadResourceTool(params: ResourceToolParams) {
       const meshKey = parseMeshStorageKey(uri);
       if (meshKey !== null) {
         const key = meshKey;
-        if (!ctx.objectStorage) {
-          return { result: "Object storage is not configured." };
-        }
         try {
-          const data = await ctx.objectStorage.getBytesOrPresign(key, {
+          const data = await objectStorage.getBytesOrPresign(key, {
             presignWhenLargerThan: INLINE_RESOURCE_BYTE_LIMIT,
           });
           if ("error" in data) {
