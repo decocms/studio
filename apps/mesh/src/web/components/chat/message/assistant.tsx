@@ -30,7 +30,7 @@ import {
 } from "./parts/tool-call-part/index.ts";
 import { NextActionChip } from "./next-action-chip.tsx";
 import { ThreadHtmlPreviews } from "./thread-html-previews.tsx";
-import { ThreadOutputs } from "./thread-outputs.tsx";
+import { MessageProducedFiles } from "./thread-outputs.tsx";
 import {
   type DataParts,
   type RenderItem,
@@ -774,13 +774,15 @@ export function MessageAssistant({
               renderOrder,
             });
           })}
+          {taskId && (
+            <MessageProducedFiles threadId={taskId} message={message!} />
+          )}
           {isLast && isLoading && startedAt !== null && (
             <GeneratingFooter startedAt={startedAt} />
           )}
           {isLast && !isLoading && taskId && (
             <>
               <ThreadHtmlPreviews />
-              <ThreadOutputs threadId={taskId} />
               {isTerminallyDone && <NextActionChip />}
             </>
           )}

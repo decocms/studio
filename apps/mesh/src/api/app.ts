@@ -1111,11 +1111,13 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   app.use("*", async (c, next) => {
     await next();
-    // Org-scoped /files/* serves user content (HTML pages written by the
-    // web-developer agent, uploaded images, etc.) that we deliberately
-    // iframe back into the app. Same-origin only — auth middleware still
+    // Org-scoped /files/* and org-fs /fs/:volume/read serve user content
+    // (HTML pages written by the web-developer agent, uploaded images,
+    // thread outputs, etc.) that we deliberately iframe back into the app
+    // (pages preview, FileTab). Same-origin only — auth middleware still
     // gates access — and consumers are expected to sandbox the iframe.
     if (c.req.path.includes("/files/")) return;
+    if (c.req.path.includes("/fs/") && c.req.path.endsWith("/read")) return;
     c.header("X-Frame-Options", "DENY");
     c.header("Content-Security-Policy", "frame-ancestors 'none'");
   });

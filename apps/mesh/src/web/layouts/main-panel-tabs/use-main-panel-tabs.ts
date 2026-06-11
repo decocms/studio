@@ -12,7 +12,7 @@
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
+import { createElement, useSyncExternalStore } from "react";
 import {
   SELF_MCP_ALIAS_ID,
   useConnections,
@@ -39,9 +39,11 @@ import type {
   ThreadMetadata,
 } from "../../../storage/types";
 import type { Task } from "@/web/components/chat/task/types";
+import { FileTypeIcon } from "@/web/components/file-type-icon";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
+  parseFileTabId,
   resolveActiveTabAndOpen,
   resolveDefaultTabId,
   resolveTabClickTarget,
@@ -288,7 +290,31 @@ export function useMainPanelTabs(ctx: {
     });
   }
 
+  // Ephemeral file-preview tab (`?main=file:<key>`): surfaces as a pill
+  // while open — like the Figma artifact pill — so the open file is
+  // visible in the bar and click-to-toggle closes it. Not persisted:
+  // once closed, recovery is via the chat's file rows / files panel.
+  const fileTabParsed = parseFileTabId(activeTab);
+  const fileTabName = fileTabParsed
+    ? (fileTabParsed.key.split("/").pop() ?? fileTabParsed.key)
+    : null;
+  const fileTabs: Tab[] = fileTabName
+    ? [
+        {
+          id: activeTab,
+          title: fileTabName,
+          kind: "file",
+          icon: {
+            kind: "component",
+            Component: (props) =>
+              createElement(FileTypeIcon, { filename: fileTabName, ...props }),
+          },
+        },
+      ]
+    : [];
+
   const tabs: Tab[] = [
+    ...fileTabs,
     ...layoutTabs.map((t) => ({
       id: t.id,
       title: t.title,

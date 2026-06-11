@@ -188,6 +188,8 @@ export const KEYS = {
   threadSandbox: (orgKey: string, taskId: string | undefined) =>
     ["thread-sandbox", "v2", orgKey, taskId] as const,
   threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
+  threadOutputText: (downloadUrl: string) =>
+    ["thread-output-text", downloadUrl] as const,
 
   // Virtual MCP tools (for tool definition lookup in chat)
   // null virtualMcpId means default virtual MCP
