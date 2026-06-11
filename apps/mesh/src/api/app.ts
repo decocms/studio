@@ -9,7 +9,16 @@
  */
 
 import { getSettings } from "../settings";
-import { getBaseUrl, isSplitDevStack } from "../core/server-constants";
+import {
+  kickPublicSetsBootSync,
+  registerPublicSetsSyncWorkflow,
+  setPublicSetsSyncRuntime,
+} from "../file-storage/dbos-public-sets-sync";
+import {
+  getPublicUrl,
+  getBaseUrl,
+  isSplitDevStack,
+} from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
@@ -58,6 +67,7 @@ import {
   createDecoSitesOrgRoutes,
   createDecoSitesUserRoutes,
 } from "./routes/deco-sites";
+import { createDecoAppsRoutes } from "./routes/deco-apps";
 import { createVirtualMcpRoutes } from "./routes/virtual-mcp";
 import {
   createLegacyWellKnownProtectedResourceRoutes,
@@ -74,7 +84,11 @@ import publicConfigRoutes from "./routes/public-config";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
-import { shouldSkipStudioContext, SYSTEM_PATHS } from "./utils/paths";
+import {
+  isHealthPath,
+  shouldSkipStudioContext,
+  SYSTEM_PATHS,
+} from "./utils/paths";
 import {
   mountPluginRoutes,
   initializePluginStorage,
@@ -91,6 +105,12 @@ import {
   setMcpListCache,
   type McpListCache,
 } from "../mcp-clients/mcp-list-cache";
+import {
+  type ConnectionCircuitStore,
+  JetStreamKVConnectionCircuitStore,
+  NoopConnectionCircuitStore,
+  setConnectionCircuitStore,
+} from "../mcp-clients/connection-circuit-store";
 import {
   InMemoryModelListCache,
   type ModelListCache,
@@ -845,6 +865,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   let eventBus: EventBus;
   let mcpListCache: McpListCache;
+  let connectionCircuitStore: ConnectionCircuitStore;
   // Model lists are public, low-stakes metadata cached per-replica with a TTL —
   // no NATS needed, so this is shared across the test and production branches.
   const modelListCache: ModelListCache = new InMemoryModelListCache();
@@ -869,6 +890,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       invalidate: async () => {},
       teardown: () => {},
     };
+    connectionCircuitStore = new NoopConnectionCircuitStore();
     cancelBroadcast = {
       start: async () => {},
       broadcast: () => {},
@@ -914,6 +936,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     tlc.init().catch(() => {});
     mcpListCache = tlc;
 
+    const ccs = new JetStreamKVConnectionCircuitStore({
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    ccs.init().catch(() => {});
+    connectionCircuitStore = ccs;
+
     providerKeyCache = createProviderKeyCache({
       getConnection: () => natsProvider!.getConnection(),
     });
@@ -948,6 +976,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       tlc.init().catch((err: unknown) => {
         console.error("[McpListCache] Deferred init failed:", err);
       });
+      ccs.init().catch((err: unknown) => {
+        console.error("[ConnectionCircuitStore] Deferred init failed:", err);
+      });
       // Subscribe to cross-replica key invalidations (idempotent).
       providerKeyCache.start();
       streamBuffer.init().catch((err: unknown) => {
@@ -979,6 +1010,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
+  setConnectionCircuitStore(connectionCircuitStore);
 
   const threadStorage = new SqlThreadStorage(database.db);
 
@@ -1068,7 +1100,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     mcpListCache.teardown();
     modelListCache.teardown();
     providerKeyCache.teardown();
+    connectionCircuitStore.teardown();
     setMcpListCache(null);
+    setConnectionCircuitStore(null);
   };
 
   const app = new Hono<Env>();
@@ -1128,6 +1162,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Log response body for 5xx errors
   app.use("*", async (c, next) => {
     await next();
+    if (isHealthPath(c.req.path)) return;
     if (c.res.status >= 500) {
       const clonedRes = c.res.clone();
       const body = await clonedRes.text();
@@ -1364,6 +1399,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       console.error("[EventBus] Error during startup:", error);
     });
 
+  // Public skill sets: synced by a DBOS scheduled workflow (one pod per tick
+  // instead of every pod racing its own loop). This only stashes deps — the
+  // workflow no-ops when ORGFS_PUBLIC_SETS is unset.
+  setPublicSetsSyncRuntime({ db: database.db, baseUrl: getPublicUrl() });
+
   // ============================================================================
   // Automation Runtime — wire storage + streaming into the DBOS workflow
   // ============================================================================
@@ -1410,6 +1450,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
+  registerPublicSetsSyncWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
@@ -2023,6 +2064,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // /profile is user-scoped (no org), stays mounted permanently — no
   // deprecation log.
   app.route("/api/deco-sites", createDecoSitesUserRoutes());
+  app.route("/api/deco-apps", createDecoAppsRoutes());
 
   // Org-scoped deco-sites routes (GET /, POST /connection). Currently mounted
   // at /api/deco-sites with a deprecation log; the new /api/:org/deco-sites
@@ -2236,6 +2278,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     // replicas/workers all enqueueing in parallel collapse via OAOO.
     backfillStudioPackForAllOrgs().catch((err) => {
       console.error("[studio-pack-backfill] failed:", err);
+    });
+
+    // Fire-and-forget immediate public-sets sync (hour-bucketed workflow ID,
+    // so parallel-booting replicas collapse via OAOO).
+    kickPublicSetsBootSync().catch((err) => {
+      console.error("[org-fs] public-sets boot sync kick failed:", err);
     });
   };
 

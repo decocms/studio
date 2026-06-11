@@ -83,6 +83,8 @@ export interface Settings {
   noTui: boolean;
   podName: string;
   sandboxProviderKind: "agent-sandbox" | "user-desktop";
+  /** Vite dev-server port when split from the Bun API (dev:servers). */
+  vitePort?: string;
 
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;

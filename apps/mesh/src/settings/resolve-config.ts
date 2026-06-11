@@ -141,6 +141,7 @@ export function resolveConfig(
     sandboxProviderKind: resolveSandboxProviderKind(
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),
+    vitePort: flags.vitePort || envVars.VITE_PORT,
 
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
