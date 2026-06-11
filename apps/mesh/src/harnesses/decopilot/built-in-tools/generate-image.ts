@@ -9,7 +9,7 @@
 import type { UIMessageStreamWriter } from "ai";
 import type { MeshProvider } from "@/ai-providers/types";
 import type { ObjectStorageHooks } from "../../harness-deps";
-import type { ModelInfo } from "../../../api/routes/decopilot/types";
+import type { ModelInfo } from "../model-info";
 import {
   createPortableGenerateImageTool,
   type GenerateImageInput,

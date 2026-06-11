@@ -39,7 +39,7 @@ import {
 import type { StudioContext } from "@/core/studio-context";
 import { googleAdapter } from "@/ai-providers/adapters/google";
 import { AsyncResearchTerminalError } from "@/ai-providers/types";
-import type { ModelInfo } from "@/api/routes/decopilot/types";
+import type { ModelInfo } from "../model-info";
 import type { UIMessageStreamWriter } from "ai";
 import { createWebSearchTool } from "./web-search";
 import { createClusterResearchJob } from "./cluster-research-job";

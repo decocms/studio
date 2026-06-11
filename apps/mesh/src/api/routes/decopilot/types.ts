@@ -70,19 +70,9 @@ export type ChatMessage = UIMessage<
 // Model Config Types
 // ============================================================================
 
-export interface ModelInfo {
-  id: string;
-  title?: string;
-  capabilities?: {
-    vision?: boolean;
-    text?: boolean;
-    tools?: boolean;
-    reasoning?: boolean;
-    file?: boolean;
-  };
-  provider?: string | null;
-  limits?: { contextWindow?: number; maxOutputTokens?: number };
-}
+import type { ModelInfo } from "@/harnesses/decopilot/model-info";
+
+export type { ModelInfo };
 
 /** CLIENT request shape: root credentialId for the chat model. Dispatch
  *  normalizes this into the per-slot harness/wire `ModelsConfig`
