@@ -28,6 +28,7 @@ import type { ClusterConnectionHandle } from "./types";
 import type { ControlHandler } from "./control-handler";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
+import type { Outbox } from "./outbox";
 
 export interface ClusterConnectionPullInput {
   /**
@@ -97,6 +98,12 @@ export interface ClusterConnectionPullInput {
   pollTimeoutSecs?: number;
   /** Called once the pull loop has started (analogous to `onConnected` in the WS path). */
   onConnected?: () => void;
+  /**
+   * Durable chunk-relay outbox (spec §5.1). Opened once per daemon in index.ts
+   * and shared across every dispatch; forwarded to `handleLocalDispatch` so the
+   * relay survives a daemon restart mid-run.
+   */
+  outbox: Outbox;
 }
 
 /**
@@ -300,6 +307,7 @@ export async function connectToClusterPull(
           getClusterToken: input.getAccessToken,
           fetchImpl: input.fetchImpl,
           signal: AbortSignal.any([ac.signal, runAc.signal]),
+          outbox: input.outbox,
         });
       } catch (err) {
         console.error(

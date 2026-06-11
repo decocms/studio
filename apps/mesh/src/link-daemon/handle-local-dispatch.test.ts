@@ -7,6 +7,9 @@
  * fully and answering `{ ok, lastSeq }` like the real route.
  */
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { UIMessageChunk } from "ai";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
 import { type RelayLine, relayLineSchema } from "../links/protocol/relay";
@@ -15,6 +18,7 @@ import {
   relayWorkItemFailure,
   type LocalDispatchDeps,
 } from "./handle-local-dispatch";
+import { openInMemoryOutbox, openOutbox } from "./outbox";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -155,6 +159,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -234,6 +239,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -274,6 +280,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -314,6 +321,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -366,6 +374,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -409,6 +418,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -454,6 +464,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -512,6 +523,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -558,6 +570,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -570,6 +583,88 @@ describe("handleLocalDispatch", () => {
 
     expect(capturedDispatchBody).not.toBeNull();
     expect(capturedDispatchBody!.messagesRef).toBeUndefined();
+  });
+
+  // ── Test: the injected durable outbox is the relay's resend store ──────
+
+  it("appends through the injected durable outbox and truncates on terminal ack", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hld-outbox-"));
+    const outbox = openOutbox({ path: join(dir, "ob.sqlite") });
+    const posted: RelayLine[] = [];
+
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        return new Response(makeBodyStream(dispatchSSE(TEXT_CHUNKS)), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      const lines = await readRelayLines(init?.body);
+      posted.push(...lines);
+      return new Response(
+        JSON.stringify({ ok: true, lastSeq: posted.at(-1)?.seq ?? 0 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+
+    await handleLocalDispatch(validWorkItem, {
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      clusterBaseUrl: CLUSTER_BASE,
+      getClusterToken: async () => CLUSTER_TOKEN,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      outbox,
+    });
+
+    expect(posted.at(-1)!.event).toEqual({ type: "done" });
+    // Terminal-acked → the run's rows are truncated from the injected outbox.
+    expect(
+      outbox.replay({ runId: RUN_ID, fenceToken: FENCE_TOKEN, fromSeq: 1 }),
+    ).toEqual([]);
+    outbox.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("survives a daemon crash: the injected file outbox holds the unacked prefix", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hld-crash-"));
+    const outbox = openOutbox({ path: join(dir, "ob.sqlite") });
+
+    // The cluster /chunks always fails — the run never reaches a terminal ack,
+    // so the prefix stays durable. If deps.outbox were not plumbed through, the
+    // injected file outbox would be empty here.
+    const fetchImpl = async (url: string): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        return new Response(makeBodyStream(dispatchSSE(TEXT_CHUNKS)), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      return new Response(JSON.stringify({ error: "down" }), { status: 503 });
+    };
+
+    await handleLocalDispatch(validWorkItem, {
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      clusterBaseUrl: CLUSTER_BASE,
+      getClusterToken: async () => CLUSTER_TOKEN,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      outbox,
+    }).catch(() => {}); // expected to fail after retries
+
+    outbox.close();
+    const reopened = openOutbox({ path: join(dir, "ob.sqlite") });
+    const rows = reopened.replay({
+      runId: RUN_ID,
+      fenceToken: FENCE_TOKEN,
+      fromSeq: 1,
+    });
+    // 7 chunk lines + the synthesized terminal done = 8.
+    expect(rows.map((r) => r.wireSeq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    reopened.close();
+    rmSync(dir, { recursive: true, force: true });
   });
 
   // ── Test: abort signal is propagated ───────────────────────────────────
@@ -596,6 +691,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,

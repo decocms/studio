@@ -20,6 +20,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import { connectToClusterPull } from "./cluster-connection-pull";
+import { openInMemoryOutbox } from "./outbox";
 import type {
   DesktopSandboxProvider,
   EnsureSandboxInput,
@@ -166,6 +167,7 @@ describe("sandbox config propagation", () => {
     }) as unknown as typeof fetch;
 
     const handle = await connectToClusterPull({
+      outbox: openInMemoryOutbox(),
       clusterBaseUrl: "https://example.com",
       getAccessToken: async () => "access-tok",
       provider,
@@ -425,6 +427,7 @@ describe("claim-time credential-expiry check", () => {
 
     const fetchImpl = makeExpiryFetch(expiredItem, chunkPosts);
     const handle = await connectToClusterPull({
+      outbox: openInMemoryOutbox(),
       clusterBaseUrl: "https://cluster.example.com",
       getAccessToken: async () => "tok",
       provider: minimalProvider,
@@ -505,6 +508,7 @@ describe("claim-time credential-expiry check", () => {
     }> = [];
     const fetchImpl = makeExpiryFetch(freshItem, chunkPosts);
     const handle = await connectToClusterPull({
+      outbox: openInMemoryOutbox(),
       clusterBaseUrl: "https://cluster.example.com",
       getAccessToken: async () => "tok",
       provider,
@@ -555,6 +559,7 @@ describe("claim-time credential-expiry check", () => {
     };
 
     const handle = await connectToClusterPull({
+      outbox: openInMemoryOutbox(),
       clusterBaseUrl: "https://cluster.example.com",
       getAccessToken: async () => "tok",
       provider,
@@ -598,6 +603,7 @@ describe("claim-time credential-expiry check", () => {
     };
 
     const handle = await connectToClusterPull({
+      outbox: openInMemoryOutbox(),
       clusterBaseUrl: "https://cluster.example.com",
       getAccessToken: async () => "tok",
       provider: minimalProvider,
@@ -667,6 +673,7 @@ describe("connectToClusterPull close()/abort", () => {
     }) as unknown as typeof fetch;
 
     const handle = await connectToClusterPull({
+      outbox: openInMemoryOutbox(),
       clusterBaseUrl: "https://example.com",
       getAccessToken: async () => "test-token",
       provider,

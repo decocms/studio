@@ -47,6 +47,7 @@ import {
   type RelayPostResult,
   relayDispatchSSEAsChunkStream,
 } from "./chunk-relay";
+import type { Outbox } from "./outbox";
 
 const DISPATCH_START_TIMEOUT_MS = 15_000;
 
@@ -144,6 +145,14 @@ export interface LocalDispatchDeps {
    * arrive, the SSE body may stream for hours under `signal`.
    */
   dispatchStartTimeoutMs?: number;
+  /**
+   * Durable outbox for the chunk relay (spec §5.1). Opened once per daemon and
+   * shared across dispatches; the relay appends every line here before send and
+   * truncates the run's rows on terminal ack, so a reconnect — even across a
+   * daemon restart — resends the unacked prefix. Required at this boundary so
+   * production durability is never silently lost to the in-memory fallback.
+   */
+  outbox: Outbox;
 }
 
 /**
@@ -282,6 +291,8 @@ export async function handleLocalDispatch(
   await relayDispatchSSEAsChunkStream({
     dispatchBody: dispatchRes.body,
     runId: work.runId,
+    fenceToken: work.runFenceToken,
+    outbox: deps.outbox,
     signal: deps.signal,
     post: async (body, fromSeq) => {
       const res = await fetcher(chunksUrl, {
