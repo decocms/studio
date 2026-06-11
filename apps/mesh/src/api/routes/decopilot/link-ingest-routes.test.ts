@@ -44,6 +44,9 @@ interface AppContextOptions {
   /** When true, createTailStream returns an instantly-closed stream so the
    *  pump path runs; when false (default) the tail is null → direct drain. */
   withTail?: boolean;
+  /** Flip the ingest to publish-then-consume (raw chunks → NATS) instead of
+   *  pumping the processed uiStream. Default false (legacy pump path). */
+  publishThenConsume?: boolean;
 }
 
 function appWithContext(opts: AppContextOptions = {}) {
@@ -53,6 +56,7 @@ function appWithContext(opts: AppContextOptions = {}) {
   const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
   const purged: string[] = [];
   const pumped: UIMessageChunk[][] = [];
+  const publishedRaw: unknown[] = [];
   const pumpPromises: Promise<void>[] = [];
   const sseEvents: Array<{ orgId: string; event: SSEEvent }> = [];
   const insertedIds = new Set<string>();
@@ -122,9 +126,13 @@ function appWithContext(opts: AppContextOptions = {}) {
   app.route(
     "/api/:org",
     createLinkIngestRoutes({
+      publishThenConsume: opts.publishThenConsume,
       streamBuffer: {
         init: async () => undefined,
-        publishRawChunk: async () => true,
+        publishRawChunk: async (_taskId: string, chunk: unknown) => {
+          publishedRaw.push(chunk);
+          return true;
+        },
         pump: (stream: ReadableStream) => {
           const index = pumped.length;
           pumped.push([]);
@@ -172,6 +180,7 @@ function appWithContext(opts: AppContextOptions = {}) {
     updates,
     purged,
     pumped,
+    publishedRaw,
     pumpPromises,
     sseEvents,
     bumps: () => bumps,
@@ -435,6 +444,49 @@ describe("link ingest chunks route", () => {
       "decopilot.finish",
     ]);
     expect(bumps()).toBeGreaterThanOrEqual(1);
+  });
+
+  test("publishThenConsume: publishes RAW chunks in wire order AND keeps persistence parity", async () => {
+    const { app, appended, updates, publishedRaw, pumped } = appWithContext({
+      publishThenConsume: true,
+    });
+
+    const events = [
+      ...chunkEvents(helloTurnChunks()),
+      { type: "done" } as const,
+    ];
+    const res = await postChunks(app, relayBody(events));
+    expect(res.status).toBe(200);
+
+    // Every relayed ui-message-chunk was published RAW, in wire order, with no
+    // fold/interception (the daemon's raw harness output IS the NATS source).
+    const types = publishedRaw.map((c) => (c as { type: string }).type);
+    expect(types).toEqual([
+      "start",
+      "start-step",
+      "text-start",
+      "text-delta",
+      "text-end",
+      "finish-step",
+      "finish",
+    ]);
+    // The processed uiStream is NOT pumped to NATS in this mode (raw is the
+    // source); it is only drained for persistence.
+    expect(pumped).toHaveLength(0);
+
+    // Persistence parity: identical part rows + terminal completion as legacy.
+    const rows = appended.flat();
+    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
+    expect(rows.filter((r) => r.kind === "finish")).toHaveLength(1);
+    expect(
+      (rows.find((r) => r.kind === "text")!.payload as { text?: string }).text,
+    ).toBe("hello");
+    expect(updates.map((u) => u.data)).toContainEqual({
+      status: "completed",
+      run_owner_pod: null,
+      run_config: null,
+      run_started_at: null,
+    });
   });
 
   test("pumps kernel output into the live edge when JetStream is up", async () => {

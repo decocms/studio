@@ -108,6 +108,18 @@ export class NdjsonLineTooLargeError extends Error {
 export interface LinkIngestDeps {
   streamBuffer: StreamBuffer;
   sseHub?: { emit(orgId: string, event: SSEEvent): void };
+  /**
+   * Publish-then-consume ingest (spec §5.3/§5.4). OFF by default (legacy: the
+   * processed `uiStream` is pumped to DECOPILOT_STREAMS). When ON, the relay's
+   * RAW chunks are published to the same subject as they arrive (the durable
+   * commit + the UI-tail's source) and the processed `uiStream` is only drained
+   * for persistence/title/usage — never pumped. Persistence, title, usage,
+   * PostHog and terminal status are byte-identical between the two paths (the
+   * same `consumeHarnessStream` wiring runs verbatim); only the NATS source
+   * flips processed→raw. Gated so the inversion can be validated by multi-pod
+   * e2e (real NATS+PG) before the legacy pump path is retired.
+   */
+  publishThenConsume?: boolean;
 }
 
 /**
@@ -298,8 +310,23 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
   // source error) doesn't double-emit a `completed` event for a failed run.
   let runErrored = false;
 
+  // Publish-then-consume (spec §5.3/§5.4), gated on `deps.publishThenConsume`.
+  // When ON, each RAW chunk is published to DECOPILOT_STREAMS as a side effect
+  // of the kernel pulling it — so the UI tail reads raw chunks and the durable
+  // commit happens before persistence. The kernel still consumes the SAME
+  // chunks, so persistence/title/usage are unchanged. When OFF, the kernel
+  // reads `guardedChunks` directly and the processed uiStream is pumped (legacy).
+  const sourceChunks = deps.publishThenConsume
+    ? (async function* () {
+        for await (const chunk of guardedChunks) {
+          await deps.streamBuffer.publishRawChunk(runId, chunk);
+          yield chunk;
+        }
+      })()
+    : guardedChunks;
+
   const { uiStream, whenComplete } = consumeHarnessStream({
-    chunks: guardedChunks,
+    chunks: sourceChunks,
     originalMessages: [],
     title: {
       currentThreadTitle: thread.title,
@@ -444,17 +471,25 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
   // parts still commit. Either way `whenComplete` is the authoritative "all
   // durable effects committed" signal. The signal is session-scoped (a relay
   // session spans many HTTP requests, so no request signal applies).
-  const sessionAbort = new AbortController();
-  const tail = await deps.streamBuffer.createTailStream(
-    runId,
-    sessionAbort.signal,
-    { deliverPolicy: "new", closeOnDone: true },
-  );
-  if (tail) {
-    deps.streamBuffer.pump(uiStream, runId, sessionAbort.signal, orgId);
-    await drain(tail).catch(() => {});
-  } else {
+  if (deps.publishThenConsume) {
+    // Raw chunks were already published to NATS as a side effect of the kernel
+    // pulling `sourceChunks`; the UI tail reads those raw chunks. Drain the
+    // processed uiStream so persistence/title still run — but do NOT pump it
+    // (raw is the NATS source now). `whenComplete` remains authoritative.
     await drain(uiStream).catch(() => {});
+  } else {
+    const sessionAbort = new AbortController();
+    const tail = await deps.streamBuffer.createTailStream(
+      runId,
+      sessionAbort.signal,
+      { deliverPolicy: "new", closeOnDone: true },
+    );
+    if (tail) {
+      deps.streamBuffer.pump(uiStream, runId, sessionAbort.signal, orgId);
+      await drain(tail).catch(() => {});
+    } else {
+      await drain(uiStream).catch(() => {});
+    }
   }
   await whenComplete;
 
