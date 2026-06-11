@@ -682,6 +682,44 @@ async function watchEvents(
   });
 }
 
+/**
+ * Namespace-wide watch of mesh-managed SandboxClaims that invokes `onDelete`
+ * with the claim handle (== claim `metadata.name`) whenever a claim is removed.
+ * The long-lived runner uses this to drop its cached record + close the
+ * port-forwarder the instant the operator idle-reaps the backing pod, instead
+ * of waiting for a later request to that handle to fail — which, on prod
+ * hot-paths that bypass the records cache, may never happen, leaking the
+ * forwarder (a listening net.Server + FD) for the process lifetime.
+ *
+ * Reconnects with backoff via `runWatch`; resolves only when `signal` aborts.
+ */
+export async function watchClaimDeletions(opts: {
+  kc: KubeConfig;
+  namespace: string;
+  /** Pins the watch to this deployment's claims (managed-by + optional env). */
+  labelSelector: string;
+  signal: AbortSignal;
+  onDelete: (handle: string) => void;
+}): Promise<void> {
+  const { kc, namespace, labelSelector, signal, onDelete } = opts;
+  const path =
+    `/apis/${K8S_CONSTANTS.CLAIM_API_GROUP}/${K8S_CONSTANTS.CLAIM_API_VERSION}` +
+    `/namespaces/${encodeURIComponent(namespace)}/${K8S_CONSTANTS.CLAIM_PLURAL}` +
+    `?watch=true&labelSelector=${encodeURIComponent(labelSelector)}`;
+
+  return runWatch<{ metadata?: { name?: string } }>({
+    kc,
+    path,
+    signal,
+    label: "sandboxclaim-reaper",
+    onEvent: (envelope) => {
+      if (envelope.type !== "DELETED") return;
+      const handle = envelope.object.metadata?.name;
+      if (handle) onDelete(handle);
+    },
+  });
+}
+
 interface RunWatchOpts<T> {
   kc: KubeConfig;
   path: string;

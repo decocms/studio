@@ -82,7 +82,7 @@ import {
   SandboxAlreadyExistsError,
   SandboxError,
 } from "./constants";
-import { watchClaimLifecycle } from "./lifecycle-watcher";
+import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
 import type { ClaimPhase } from "../lifecycle-types";
 
 const RUNNER_KIND = "agent-sandbox" as const;
@@ -405,6 +405,8 @@ export class AgentSandboxProvider implements SandboxProvider {
    */
   private readonly sentinelToken: string | null;
   private closed = false;
+  /** Aborts the background SandboxClaim-deletion watch on `close()`. */
+  private readonly claimWatchAbort = new AbortController();
 
   constructor(opts: AgentSandboxProviderOptions = {}) {
     this.stateStore = opts.stateStore ?? null;
@@ -429,6 +431,30 @@ export class AgentSandboxProvider implements SandboxProvider {
         : null;
     const trimmedSentinel = opts.sentinelToken?.trim() ?? "";
     this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
+    this.startClaimReaper();
+  }
+
+  /**
+   * Drops the cached record + closes its forwarder the moment the operator
+   * reaps a claim (idle-TTL or explicit delete). Without this, a record for a
+   * sandbox that's used once then abandoned lingers — with its listening
+   * net.Server port-forwarder (an active libuv handle + FD that GC can't
+   * reclaim) — until a later request to that exact handle happens to fail,
+   * which on cache-bypassing prod hot-paths may never occur.
+   */
+  private startClaimReaper(): void {
+    const labelSelector = [
+      "app.kubernetes.io/managed-by=studio",
+      "app.kubernetes.io/name=studio-sandbox",
+      ...(this.envName ? [`${LABEL_KEYS.env}=${this.envName}`] : []),
+    ].join(",");
+    void watchClaimDeletions({
+      kc: this.kubeConfig,
+      namespace: this.namespace,
+      labelSelector,
+      signal: this.claimWatchAbort.signal,
+      onDelete: (handle) => this.invalidateRecord(handle),
+    });
   }
 
   // ---- SandboxProvider surface ------------------------------------------------
@@ -1003,7 +1029,11 @@ export class AgentSandboxProvider implements SandboxProvider {
     patchTtl: boolean,
     outcome: "fresh" | "resume" | "adopt",
   ): Promise<Sandbox> {
-    const wasCached = this.records.has(rec.handle);
+    const prev = this.records.get(rec.handle);
+    const wasCached = prev !== undefined;
+    if (prev && prev.daemonForward !== rec.daemonForward) {
+      this.closeForwarder(prev.daemonForward);
+    }
     this.records.set(rec.handle, rec);
     if (persistNow) await this.persist(ops, rec);
     // Fresh provision set a shutdownTime in the claim spec already; resumes
@@ -1918,6 +1948,7 @@ export class AgentSandboxProvider implements SandboxProvider {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.claimWatchAbort.abort();
     for (const rec of this.records.values()) {
       this.closeForwarder(rec.daemonForward);
     }
