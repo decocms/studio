@@ -18,7 +18,9 @@ import type { StudioContext } from "@/core/studio-context";
 import {
   toolsFromMCP,
   type ToolApprovalLevel,
-} from "../../api/routes/decopilot/helpers";
+  type ToolCallAnalytics,
+} from "./mcp-tools";
+import { MCP_TOOL_CALL_TIMEOUT_MS } from "./harness-constants";
 import {
   buildBuiltInTools,
   type BuildBuiltInToolsOptions,
@@ -41,6 +43,14 @@ export interface AssembleAgentToolsOptions {
   planMode: boolean;
   toolApprovalLevel: ToolApprovalLevel;
   subtaskParams: BuildBuiltInToolsOptions["subtaskParams"];
+  /** Cluster-injected hook: resolve storage-ref args before each MCP tool
+   *  call. Omitted on desktop (no ctx) → args pass through unchanged. */
+  resolveArgs?: (
+    input: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  /** Cluster-injected hook: emit per-tool-call analytics (posthog). Omitted
+   *  on desktop → no analytics. */
+  onToolCalled?: (event: ToolCallAnalytics) => void;
 }
 
 export interface AssembleAgentToolsResult {
@@ -62,8 +72,10 @@ export async function assembleAgentTools(
     opts.toolApprovalLevel,
     {
       disableOutputTruncation: false,
-      ctx: opts.ctx,
       isPlanMode: opts.planMode,
+      timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
+      resolveArgs: opts.resolveArgs,
+      onToolCalled: opts.onToolCalled,
     },
   );
 

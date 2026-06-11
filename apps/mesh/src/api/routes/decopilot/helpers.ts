@@ -4,20 +4,14 @@
  * Utility functions for request validation, context management, and tool conversion.
  */
 
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { ToolSet, UIMessageStreamWriter } from "ai";
 import type { Context } from "hono";
 
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
-import { posthog } from "@/posthog";
 import { HTTPException } from "hono/http-exception";
-import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
-import { resolveArgsStorageRefs } from "./file-materializer";
 import {
   buildSanitizedNameMap,
   sanitizeToolName,
   toolNeedsApproval,
-  toolsFromMCP as toolsFromMCPPortable,
   type ToolApprovalLevel,
 } from "@/harnesses/decopilot/mcp-tools";
 
@@ -42,56 +36,6 @@ export function ensureOrganization(
     throw new Error("Organization mismatch");
   }
   return organization;
-}
-
-export async function toolsFromMCP(
-  client: Client,
-  toolOutputMap: Map<string, string>,
-  writer?: UIMessageStreamWriter,
-  toolApprovalLevel: ToolApprovalLevel = "auto",
-  options?: {
-    disableOutputTruncation?: boolean;
-    ctx?: StudioContext;
-    isPlanMode?: boolean;
-  },
-): Promise<{ tools: ToolSet; nameMap: Map<string, string> }> {
-  const meshCtx = options?.ctx;
-  return toolsFromMCPPortable(
-    client,
-    toolOutputMap,
-    writer,
-    toolApprovalLevel,
-    {
-      disableOutputTruncation: options?.disableOutputTruncation,
-      isPlanMode: options?.isPlanMode,
-      timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
-      resolveArgs: meshCtx
-        ? (input) => resolveArgsStorageRefs(input, meshCtx)
-        : undefined,
-      onToolCalled: (event) => {
-        const orgId = meshCtx?.organization?.id;
-        const userId = meshCtx?.auth?.user?.id;
-        if (!orgId || !userId) return;
-        posthog.capture({
-          distinctId: userId,
-          event: "tool_called",
-          groups: { organization: orgId },
-          properties: {
-            organization_id: orgId,
-            tool_source: "mcp",
-            tool_name: event.toolName,
-            tool_safe_name: event.toolSafeName,
-            read_only: event.annotations?.readOnlyHint ?? null,
-            destructive: event.annotations?.destructiveHint ?? null,
-            idempotent: event.annotations?.idempotentHint ?? null,
-            open_world: event.annotations?.openWorldHint ?? null,
-            latency_ms: Math.round(event.latencyMs),
-            is_error: event.isError,
-          },
-        });
-      },
-    },
-  );
 }
 
 /**

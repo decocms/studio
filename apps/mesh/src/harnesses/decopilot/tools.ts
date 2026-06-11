@@ -31,7 +31,8 @@ import {
 } from "./built-in-tools";
 import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import type { ConnectionsBlockTool } from "./connections-block";
-import { toolsFromMCP } from "../../api/routes/decopilot/helpers";
+import { toolsFromMCP, type ToolCallAnalytics } from "./mcp-tools";
+import { MCP_TOOL_CALL_TIMEOUT_MS } from "./harness-constants";
 import type { HarnessStreamInput } from "../types";
 
 /** Raw MCP tool entries returned by `passthroughClient.listTools()`. */
@@ -126,6 +127,14 @@ export interface AssembleDecopilotToolsExtras {
     agentId: string,
     opts?: { superUser?: boolean; listTimeoutMs?: number },
   ) => Promise<PassthroughClient>;
+  /** Cluster-injected hook: resolve storage-ref args before each MCP tool
+   *  call. Omitted on desktop (no ctx) → args pass through unchanged. */
+  resolveArgs?: (
+    input: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  /** Cluster-injected hook: emit per-tool-call analytics (posthog). Omitted
+   *  on desktop → no analytics. */
+  onToolCalled?: (event: ToolCallAnalytics) => void;
 }
 
 /**
@@ -231,7 +240,12 @@ export async function assembleDecopilotTools(
         extras.toolOutputMap,
         extras.writer,
         input.toolApprovalLevel,
-        { ctx, isPlanMode },
+        {
+          isPlanMode,
+          timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
+          resolveArgs: extras.resolveArgs,
+          onToolCalled: extras.onToolCalled,
+        },
       );
     // Restrict to the allowlist (if any) so enable_tool enumeration, the
     // connections block, and the model-facing toolset all agree.

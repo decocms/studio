@@ -37,7 +37,7 @@ export type {
 export type HarnessId = "decopilot" | "claude-code" | "codex";
 
 /** Tool approval policy a harness should honor when forwarding to its CLI.
- *  Mirrors `apps/mesh/src/api/routes/decopilot/helpers.ts:ToolApprovalLevel`. */
+ *  Mirrors `apps/mesh/src/harnesses/decopilot/mcp-tools.ts:ToolApprovalLevel`. */
 export type ToolApprovalLevel = "auto" | "readonly";
 
 /** Mode flag forwarded into harnesses. The CLI harnesses only care about

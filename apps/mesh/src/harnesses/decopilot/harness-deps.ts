@@ -29,6 +29,7 @@ import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { SideChannelWriter } from "../side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
+import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import { createHtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import type { PendingImage } from "./built-in-tools";
 import type { DecopilotToolRuntime, ModelRuntime } from "./run-core";
@@ -113,11 +114,17 @@ export function buildClusterEnvironmentTools(args: {
     buildEnvironmentTools: async ({ input: streamInput, onChildUsage }) => {
       const toolOutputMap = new Map<string, string>();
       const pendingImages: PendingImage[] = [];
+      const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(ctx);
       const assembled = await assembleDecopilotTools(streamInput, ctx, {
         writer: sideChannel.writer,
         toolOutputMap,
         pendingImages,
         threadId: streamInput.threadId,
+        // Cluster MCP tool-call hooks: storage-ref resolution + posthog
+        // analytics. The portable assembly forwards these as-is; the
+        // desktop daemon omits them.
+        resolveArgs,
+        onToolCalled,
         // Cluster `mcpForAgent` hook: opens the in-process passthrough
         // client over the run's resolved Virtual MCP. superUser/listTimeout
         // come from the caller (assembleDecopilotTools). The daemon/desktop

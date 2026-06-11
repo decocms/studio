@@ -34,6 +34,7 @@ import { DEFAULT_MAX_TOKENS } from "./harness-constants";
 import { PARENT_STEP_LIMIT, SUBAGENT_STEP_LIMIT } from "./prompt-constants";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
+import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import type { SubtaskParams } from "./built-in-tools/subtask";
 import type { ConnectionsBlockTool } from "./connections-block";
 import {
@@ -162,6 +163,9 @@ export async function runAgentLoop(
       : baseSystemMessages;
 
   // ── Tools ─────────────────────────────────────────────────────────
+  // Cluster MCP tool-call hooks: storage-ref resolution + posthog
+  // analytics, built from ctx. The portable assembler forwards them as-is.
+  const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(opts.ctx);
   const { tools: assembledTools } = await assembleAgentTools({
     kind: opts.kind,
     ctx: opts.ctx,
@@ -170,6 +174,8 @@ export async function runAgentLoop(
     planMode,
     toolApprovalLevel,
     subtaskParams: opts.subtaskParams,
+    resolveArgs,
+    onToolCalled,
   });
   // Merge extra tools (e.g., parent's state-dependent `enable_tool`) after
   // the shared assembler. Parent extras shadow assembled tools intentionally.
