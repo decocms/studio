@@ -75,7 +75,11 @@ import publicConfigRoutes from "./routes/public-config";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
-import { shouldSkipStudioContext, SYSTEM_PATHS } from "./utils/paths";
+import {
+  isHealthPath,
+  shouldSkipStudioContext,
+  SYSTEM_PATHS,
+} from "./utils/paths";
 import {
   mountPluginRoutes,
   initializePluginStorage,
@@ -1127,6 +1131,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Log response body for 5xx errors
   app.use("*", async (c, next) => {
     await next();
+    if (isHealthPath(c.req.path)) return;
     if (c.res.status >= 500) {
       const clonedRes = c.res.clone();
       const body = await clonedRes.text();
