@@ -25,7 +25,7 @@ import {
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/web/lib/auth-client.ts";
-import { coAuthorFromSessionUser } from "@/web/lib/co-author-identity.ts";
+import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import {
   openPullRequestForBranch,

@@ -19,11 +19,11 @@ describe("coAuthorFromSessionUser", () => {
 });
 
 describe("coAuthorFromStudioContext", () => {
-  it("returns null when auth user has no display name", () => {
+  it("returns undefined when auth user has no display name", () => {
     expect(
       coAuthorFromStudioContext({
         auth: { user: { id: "u1", email: "jane@example.com" } },
       } as never),
-    ).toBeNull();
+    ).toBeUndefined();
   });
 });
