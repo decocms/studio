@@ -77,15 +77,24 @@ const installStudioPackWorkflow = DBOS.registerWorkflow(
 );
 
 /**
+ * Bump when STUDIO_PACK_AGENTS (or what the workflow writes) changes.
+ * OAOO dedupes on the workflow ID, so a completed run under the old
+ * version would otherwise block the startup backfill from installing
+ * newly added agents in existing orgs.
+ * v2: added Usage Manager.
+ */
+const INSTALL_VERSION = "v2";
+
+/**
  * Fire-and-forget enqueue from the Better Auth org.afterCreate callback.
- * Workflow ID is deterministic per org so an accidental double-fire
- * collapses onto the same workflow via OAOO.
+ * Workflow ID is deterministic per org+version so an accidental
+ * double-fire collapses onto the same workflow via OAOO.
  */
 export async function enqueueInstallStudioPack(
   input: InstallStudioPackInput,
 ): Promise<void> {
   await DBOS.startWorkflow(installStudioPackWorkflow, {
-    workflowID: `install-studio-pack:${input.orgId}`,
+    workflowID: `install-studio-pack:${INSTALL_VERSION}:${input.orgId}`,
   })(input);
 }
 
