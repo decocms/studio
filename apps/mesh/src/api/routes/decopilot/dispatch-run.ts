@@ -23,6 +23,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import { type UIMessageChunk, createUIMessageStream } from "ai";
 import type { MeshProvider } from "@/ai-providers/types";
@@ -812,7 +813,7 @@ async function prepareRun(
       : null;
 
     if (!virtualMcp) {
-      throw new Error("Agent not found");
+      throw new PermanentRunError("agent_not_found", "Agent not found");
     }
 
     // 3. Dispatch START or RESUME
@@ -906,7 +907,8 @@ async function prepareRun(
 
     if (!input.isResume) {
       if (!materializedRequestMessage) {
-        throw new Error(
+        throw new PermanentRunError(
+          "empty_request",
           "No user message found in input — expected at least one non-system message",
         );
       }
