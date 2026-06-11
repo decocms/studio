@@ -22,6 +22,10 @@ export default defineConfig({
     __MESH_VERSION__: JSON.stringify(pkg.version),
   },
   server: {
+    // In a sandbox the daemon proxies the preview to Vite over IPv4
+    // (127.0.0.1); Vite otherwise binds IPv6-only (localhost → [::1]) and the
+    // proxy can't reach it. HOST=0.0.0.0 is the daemon's dev-env tell.
+    ...(process.env.HOST === "0.0.0.0" ? { host: true } : {}),
     hmr: {
       overlay: true,
       host: "localhost",
