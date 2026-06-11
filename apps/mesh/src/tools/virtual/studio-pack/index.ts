@@ -5,6 +5,7 @@ import { automationManagerAgent } from "./automation-manager";
 import { brandManagerAgent } from "./brand-manager";
 import { connectionManagerAgent } from "./connection-manager";
 import { storeManagerAgent } from "./store-manager";
+import { usageManagerAgent } from "./usage-manager";
 import type {
   ChecklistContext,
   ResolvedChecklistItem,
@@ -30,6 +31,7 @@ export const STUDIO_PACK_AGENTS = [
   automationManagerAgent,
   connectionManagerAgent,
   storeManagerAgent,
+  usageManagerAgent,
 ] as const;
 
 type StudioPackAgent = (typeof STUDIO_PACK_AGENTS)[number];
