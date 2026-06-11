@@ -391,7 +391,7 @@ export function AccountPopover() {
           // to find from anywhere.
           {
             key: "connect-clients",
-            label: "Connect to Claude",
+            label: "Connect to Agents",
             icon: <LinkExternal01 size={16} />,
             onClick: () => {
               navigate({
