@@ -168,7 +168,7 @@ Every tool call gets input/output validation, access control, audit logging, and
 
 ```bash
 # Docker (embedded PostgreSQL)
-docker run -p 3000:3000 -v studio-data:/app/data ghcr.io/decocms/studio/mesh:latest
+docker run -p 3000:3000 -v studio-data:/app/data ghcr.io/decocms/studio/studio:latest
 
 # Bun (from source)
 git clone https://github.com/decocms/studio.git

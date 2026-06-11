@@ -89,7 +89,7 @@ apps/mesh/
 ├── src/
 │   ├── api/             # Hono HTTP + MCP proxy routes
 │   ├── auth/            # Better Auth (OAuth 2.1 + SSO + API keys)
-│   ├── core/            # MeshContext, AccessControl, defineTool
+│   ├── core/            # StudioContext, AccessControl, defineTool
 │   ├── tools/           # Built-in MCP management tools
 │   │                    # (connection, organization, eventbus, virtual,
 │   │                    #  monitoring, ai-providers, automations, …)
@@ -199,7 +199,7 @@ docker run -d \
   -p 3000:3000 \
   -v studio-data:/app/data \
   --name studio \
-  ghcr.io/decocms/studio/mesh:latest
+  ghcr.io/decocms/studio/studio:latest
 ```
 
 ### Compose with external Postgres
@@ -216,7 +216,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   studio:
-    image: ghcr.io/decocms/studio/mesh:latest
+    image: ghcr.io/decocms/studio/studio:latest
     depends_on: [postgres]
     environment:
       DATABASE_URL: postgresql://studio:${DB_PASSWORD}@postgres:5432/studio

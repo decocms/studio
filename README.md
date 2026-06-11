@@ -47,7 +47,7 @@ Everything is tracked — tokens, costs, errors, latency — per connection, per
 ## Quick Start
 
 ```bash
-bunx decocms
+bunx decostudio
 ```
 
 Or clone and run from source:
@@ -92,7 +92,7 @@ Token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Lat
 
 | | |
 |---|---|
-| **Local** | `bunx decocms` on your desktop. Embedded PostgreSQL. Private. |
+| **Local** | `bunx decostudio` on your desktop. Embedded PostgreSQL. Private. |
 | **Cloud** | Log in to studio.decocms.com. Control local projects from any browser. |
 | **Team** | Invite people. Roles. Shared connections. Cost attribution. |
 | **Enterprise** | Self-hosted. Your infra. Your rules. |
