@@ -82,6 +82,49 @@ describe("circuit-breaker", () => {
     expect(() => assertCircuitClosed("conn_a")).toThrow(CircuitOpenError);
   });
 
+  it("reports openCount and does not signal disable on the first open", () => {
+    const r1 = recordFailure("conn_a");
+    expect(r1.shouldDisable).toBe(false);
+    const r2 = recordFailure("conn_a");
+    expect(r2.shouldDisable).toBe(false);
+    // Third failure crosses the failure threshold → first OPEN cycle.
+    const r3 = recordFailure("conn_a");
+    expect(r3.state).toBe("OPEN");
+    expect(r3.openCount).toBe(1);
+    expect(r3.shouldDisable).toBe(false);
+  });
+
+  it("signals disable after re-opening across cooldown cycles", () => {
+    // First open cycle.
+    for (let i = 0; i < 3; i++) recordFailure("conn_a");
+    expect(_getCircuitForTest("conn_a")!.openCount).toBe(1);
+
+    // Each cooldown→HALF_OPEN→failed-probe re-opens the circuit once.
+    const reopen = () => {
+      const circuit = _getCircuitForTest("conn_a")!;
+      circuit.lastFailureTime = Date.now() - 60_000;
+      assertCircuitClosed("conn_a"); // → HALF_OPEN, probe allowed
+      return recordFailure("conn_a"); // probe fails → OPEN again
+    };
+
+    const second = reopen();
+    expect(second.openCount).toBe(2);
+    expect(second.shouldDisable).toBe(false);
+
+    const third = reopen();
+    expect(third.openCount).toBe(3);
+    expect(third.shouldDisable).toBe(true);
+  });
+
+  it("success clears the open-cycle counter", () => {
+    for (let i = 0; i < 3; i++) recordFailure("conn_a");
+    recordSuccess("conn_a");
+    // Counter resets — a fresh failure burst starts the cycle count over.
+    const r = recordFailure("conn_a");
+    expect(r.openCount).toBe(0);
+    expect(r.shouldDisable).toBe(false);
+  });
+
   it("includes retry info in error message", () => {
     for (let i = 0; i < 3; i++) recordFailure("conn_a");
     let thrown: unknown;
