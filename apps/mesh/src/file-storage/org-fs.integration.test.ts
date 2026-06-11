@@ -110,6 +110,44 @@ describe("OrgFs service (integration)", () => {
     expect((await fs.listDir("skills", ""))[0]!.path).toBe("docs");
   });
 
+  it("recent() lists live files across volumes, newest first, no dirs/tombstones", async () => {
+    await fs.write("skills", "old.txt", "1", { actor: ACTOR });
+    await fs.mkdir("skills", "docs", { actor: ACTOR });
+    await fs.write("outputs", "thread-1/report.pdf", "2", { actor: ACTOR });
+    await fs.write("skills", "gone.txt", "3", { actor: ACTOR });
+    await fs.delete("skills", "gone.txt", { actor: ACTOR });
+    await fs.write("skills", "newest.md", "4", { actor: ACTOR });
+
+    const recent = await fs.recent(10);
+    expect(recent.map((e) => [e.volume, e.path])).toEqual([
+      ["skills", "newest.md"],
+      ["outputs", "thread-1/report.pdf"],
+      ["skills", "old.txt"],
+    ]);
+
+    // Re-writing an old file bumps it to the front; limit caps the page.
+    await fs.write("skills", "old.txt", "updated", { actor: ACTOR });
+    const capped = await fs.recent(2);
+    expect(capped.map((e) => e.path)).toEqual(["old.txt", "newest.md"]);
+  });
+
+  it("filesExist batch-probes live files only", async () => {
+    await fs.write("skills", "seo/SKILL.md", "skill", { actor: ACTOR });
+    await fs.mkdir("skills", "plain", { actor: ACTOR });
+    await fs.write("skills", "gone/SKILL.md", "x", { actor: ACTOR });
+    await fs.delete("skills", "gone/SKILL.md", { actor: ACTOR });
+
+    const found = await fs.filesExist("skills", [
+      "seo/SKILL.md",
+      "plain/SKILL.md",
+      "gone/SKILL.md",
+    ]);
+    expect(found.has("seo/SKILL.md")).toBe(true);
+    expect(found.has("plain/SKILL.md")).toBe(false);
+    expect(found.has("gone/SKILL.md")).toBe(false);
+    expect(await fs.filesExist("skills", [])).toEqual(new Set());
+  });
+
   it("deletes a file (tombstone + bytes gone)", async () => {
     await fs.write("skills", "x.txt", "bye", { actor: ACTOR });
     await fs.delete("skills", "x.txt", { actor: ACTOR });

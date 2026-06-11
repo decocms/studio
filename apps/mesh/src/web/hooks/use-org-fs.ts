@@ -1,7 +1,7 @@
 /**
- * Data layer for the org filesystem browser (settings → Files). Talks the
+ * Data layer for the org filesystem browser (the Library page). Talks the
  * org-scoped HTTP contract at `/api/:org/fs/:volume/*` directly (same-origin
- * session auth) — unlike most settings views this is NOT an MCP tool surface:
+ * session auth) — unlike most views this is NOT an MCP tool surface:
  * uploads/downloads move raw bytes, which the HTTP routes are built for.
  */
 
@@ -20,11 +20,18 @@ export interface OrgFsEntry {
   kind: "file" | "dir";
   size: number;
   updatedAt: string;
+  /** Dir follows the Claude Code skill format (contains SKILL.md). */
+  hasSkill?: boolean;
 }
 
 export interface OrgFsUsage {
   files: number;
   bytes: number;
+}
+
+/** A `/fs/recent` entry — cross-volume, so the volume rides along. */
+export interface OrgFsRecentEntry extends OrgFsEntry {
+  volume: string;
 }
 
 function fsUrl(
@@ -72,6 +79,21 @@ export function useOrgFsList(volume: string, path: string) {
   });
 }
 
+/** Metadata for one entry — null when absent. Powers the Library preview. */
+export function useOrgFsStat(volume: string | null, path: string) {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.orgFsStat(org.id, volume ?? "", path),
+    enabled: volume !== null,
+    queryFn: async (): Promise<OrgFsEntry | null> => {
+      const res = await fetch(fsUrl(org.slug, volume ?? "", "stat", { path }));
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return ((await res.json()) as { entry: OrgFsEntry }).entry;
+    },
+  });
+}
+
 export function useOrgFsUsage(volume: string) {
   const { org } = useProjectContext();
   return useQuery({
@@ -79,6 +101,24 @@ export function useOrgFsUsage(volume: string) {
     queryFn: async () => {
       const res = await fsFetch(fsUrl(org.slug, volume, "usage"));
       return (await res.json()) as OrgFsUsage;
+    },
+  });
+}
+
+/**
+ * Most recently written files across every volume, newest first — the
+ * Library home's feed. The query key is limit-agnostic (single consumer);
+ * mutations invalidate it alongside the volume prefix.
+ */
+export function useOrgFsRecent(limit = 60) {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.orgFsRecent(org.id),
+    queryFn: async () => {
+      const res = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/recent?limit=${limit}`,
+      );
+      return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
     },
   });
 }
@@ -104,14 +144,23 @@ export function useOrgFsDownloadUrl(volume: string) {
   return (path: string) => fsUrl(org.slug, volume, "read", { path });
 }
 
+/** Volume-late variant for cross-volume feeds (the Library recent grid). */
+export function useOrgFsFileUrl() {
+  const { org } = useProjectContext();
+  return (volume: string, path: string) =>
+    fsUrl(org.slug, volume, "read", { path });
+}
+
 /** Upload/mkdir/delete; each invalidates the whole volume's listings+usage. */
 export function useOrgFsMutations(volume: string) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const invalidate = () =>
+  const invalidate = () => {
     queryClient.invalidateQueries({
       queryKey: KEYS.orgFsVolume(org.id, volume),
     });
+    queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
+  };
 
   const upload = useMutation({
     mutationFn: async (input: { dir: string; files: File[] }) => {

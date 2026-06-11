@@ -63,6 +63,50 @@ const BADGE_COLORS: Record<string, string> = {
 
 const DEFAULT_BADGE_COLOR = "#475467";
 
+const TYPE_LABELS: Record<string, string> = {
+  pdf: "PDF",
+  doc: "Word document",
+  docx: "Word document",
+  txt: "Text file",
+  md: "Markdown",
+  xls: "Excel file",
+  xlsx: "Excel file",
+  csv: "CSV file",
+  tsv: "TSV file",
+  json: "JSON file",
+  xml: "XML file",
+  yaml: "YAML file",
+  yml: "YAML file",
+  ppt: "Presentation",
+  pptx: "Presentation",
+  key: "Presentation",
+  png: "Image",
+  jpg: "Image",
+  jpeg: "Image",
+  gif: "Image",
+  webp: "Image",
+  svg: "Image",
+  avif: "Image",
+  mp3: "Audio",
+  wav: "Audio",
+  mp4: "Video",
+  mov: "Video",
+  webm: "Video",
+  zip: "Archive",
+  tar: "Archive",
+  gz: "Archive",
+  rar: "Archive",
+  html: "HTML file",
+  htm: "HTML file",
+};
+
+/** Human label for a file's type ("Excel file", "PDF", …) — Library cards. */
+export function describeFileType(filename: string): string {
+  const ext = extensionOf(filename);
+  if (!ext) return "File";
+  return TYPE_LABELS[ext] ?? `${ext.toUpperCase()} file`;
+}
+
 function extensionOf(filename: string): string | null {
   const dot = filename.lastIndexOf(".");
   if (dot <= 0 || dot === filename.length - 1) return null;

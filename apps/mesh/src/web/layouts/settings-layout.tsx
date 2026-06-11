@@ -46,7 +46,6 @@ import {
   Users03,
   Zap,
   Key01,
-  Folder,
   HardDrive,
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
@@ -122,14 +121,8 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           to: "/$org/settings/secrets",
           requires: "secrets:manage",
         },
-        {
-          // Org filesystem browser — member-accessible (org-fs ACL is
-          // basic-usage), so no `requires`.
-          key: "files",
-          label: "Files",
-          icon: <Folder size={14} />,
-          to: "/$org/settings/files",
-        },
+        // Files moved to the top-level Library (/$org/files); the old
+        // settings route redirects there.
         {
           key: "buckets",
           label: "Buckets",
