@@ -58,6 +58,11 @@ jobs:
           fi
         working-directory: packages/vite-plugin-deco
 
+      - name: Build package
+        if: steps.version-check.outputs.version-changed == 'true'
+        run: bun run build
+        working-directory: packages/vite-plugin-deco
+
       - name: Publish to npm
         if: steps.version-check.outputs.version-changed == 'true'
         run: npm publish --access public --tag ${{ steps.version-check.outputs.npm-tag }} --provenance

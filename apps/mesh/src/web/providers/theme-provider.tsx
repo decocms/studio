@@ -83,9 +83,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const [preferences] = usePreferences();
 
-  // Set OAuth redirect origin for proxy environments (e.g. tokyo.localhost → localhost:3000)
+  // Set OAuth redirect origin for *.localhost proxy dev (e.g. tokyo.localhost).
+  // External OAuth providers often reject those hostnames but accept plain
+  // localhost — so MCP OAuth registers localhost:API_PORT as redirect_uri and
+  // the API forwards to the browser-facing origin. On plain localhost:4000 dev
+  // the callback page lives on Vite; window.location.origin is already correct.
   if (publicConfig.internalUrl) {
-    setOAuthRedirectOrigin(publicConfig.internalUrl);
+    const { hostname } = window.location;
+    const isProxyLocalhost =
+      hostname.endsWith(".localhost") && hostname !== "localhost";
+    if (isProxyLocalhost) {
+      setOAuthRedirectOrigin(publicConfig.internalUrl);
+    }
   }
 
   // Inject theme variables synchronously before paint to avoid FOUC

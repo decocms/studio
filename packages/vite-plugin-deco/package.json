@@ -2,15 +2,27 @@
   "name": "@decocms/vite-plugin",
   "version": "1.0.0-alpha.2",
   "type": "module",
+  "files": [
+    "dist/**/*"
+  ],
   "exports": {
-    ".": "./index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "source": "./index.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build",
     "check": "tsc --noEmit"
   },
   "dependencies": {
     "vite": "^7.2.1",
     "@cloudflare/vite-plugin": "^1.13.4"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0"
   },
   "repository": {
     "type": "git",

@@ -19,7 +19,25 @@ export function getBaseUrl(): string {
   if (settings.baseUrl) {
     return settings.baseUrl;
   }
+  // Split dev stack: Vite serves the SPA on vitePort; the Bun API listens on
+  // port. OAuth callbacks and Better Auth redirects must target the browser
+  // origin (Vite), not the API port.
+  if (settings.nodeEnv === "development" && settings.vitePort) {
+    const apiPort = settings.port ?? 3000;
+    if (Number(settings.vitePort) !== Number(apiPort)) {
+      return `http://localhost:${settings.vitePort}`;
+    }
+  }
   return `http://localhost:${settings.port ?? 3000}`;
+}
+
+/** True when Vite (SPA) and the Bun API listen on different ports in dev. */
+export function isSplitDevStack(): boolean {
+  const settings = getSettings();
+  if (settings.nodeEnv !== "development") return false;
+  const vitePort = settings.vitePort;
+  if (!vitePort) return false;
+  return Number(vitePort) !== Number(settings.port ?? 3000);
 }
 
 /**

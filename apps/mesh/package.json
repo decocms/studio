@@ -1,6 +1,6 @@
 {
   "name": "decocms",
-  "version": "2.430.0",
+  "version": "2.419.1",
   "description": "Deco CMS — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "repository": {
@@ -19,11 +19,11 @@
     "dist/**/*"
   ],
   "scripts": {
-    "dev": "bun run migrate && concurrently \"bun run dev:client\" \"bun run dev:server\"",
-    "dev:servers": "concurrently \"bun run dev:client\" \"bun run dev:server\"",
-    "dev:client": "vite dev",
+    "dev": "bun run migrate && bun run dev:servers",
+    "dev:servers": "BASE_URL=http://localhost:4000 PORT=3000 VITE_PORT=4000 concurrently \"bun run dev:client\" \"bun run dev:server\"",
+    "dev:client": "bun run --cwd=../../packages/vite-plugin-deco build && vite dev",
     "dev:server": "bun run --cwd=../../packages/sandbox build && NODE_ENV=development bun --env-file=.env --hot run src/index.ts",
-    "build:client": "bun --bun vite build",
+    "build:client": "bun run --cwd=../../packages/vite-plugin-deco build && bun --bun vite build",
     "build:server": "bun run scripts/bundle-server-script.ts --dist ./dist/server",
     "db:migrate": "bun run ./dist/server/migrate.js",
     "check": "tsc --noEmit",
