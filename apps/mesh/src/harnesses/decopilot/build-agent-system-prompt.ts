@@ -20,9 +20,9 @@ import {
   buildTodoWritePrompt,
   buildRepoEnvironmentPrompt,
 } from "@decocms/harness/decopilot/prompt-constants";
-import { buildOrgFilesystemPrompt } from "../../api/routes/decopilot/constants";
-import { getPublicSets } from "../../file-storage/public-sets";
-import { getSettings } from "../../settings";
+import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
+import { getPublicSets } from "@/file-storage/public-sets";
+import { getSettings } from "@/settings";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
