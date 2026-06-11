@@ -8,6 +8,39 @@ function normalizePath(path: string) {
   return normalized.replace(/\/+/g, "/");
 }
 
+/** The daemon expects relative paths (no leading slash). */
+export function toDaemonPath(treePath: string) {
+  return treePath.startsWith("/") ? treePath.slice(1) : treePath;
+}
+
+/** Path as shown in the explorer tree (leading slash). */
+export function toTreePath(daemonPath: string) {
+  if (!daemonPath.trim()) return "/";
+  return daemonPath.startsWith("/") ? daemonPath : `/${daemonPath}`;
+}
+
+export function getParentTreePath(treePath: string): string {
+  const normalized = toTreePath(treePath);
+  if (normalized === "/") return "/";
+  const parts = normalized.split("/").filter(Boolean);
+  parts.pop();
+  return parts.length === 0 ? "/" : `/${parts.join("/")}`;
+}
+
+export function joinTreePath(parent: string, name: string): string {
+  const trimmedName = name.replace(/^\/+|\/+$/g, "");
+  if (!trimmedName) return toTreePath(parent);
+  const base = parent === "/" ? "" : parent;
+  return toTreePath(`${base}/${trimmedName}`);
+}
+
+export function getDirectoryContextPath(
+  treePath: string,
+  kind: TreeNode["kind"],
+): string {
+  return kind === "directory" ? treePath : getParentTreePath(treePath);
+}
+
 export function getLanguageFromPath(filepath: string | null) {
   if (!filepath) return "plaintext";
 

@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import {
   mkdtempSync,
   mkdirSync,
+  existsSync,
   rmSync,
   writeFileSync,
   readFileSync,
@@ -13,6 +14,8 @@ import {
   makeReadHandler,
   makeWriteHandler,
   makeUnlinkHandler,
+  makeMkdirHandler,
+  makeRenameHandler,
   makeEditHandler,
   makeGrepHandler,
   makeGlobHandler,
@@ -168,19 +171,50 @@ describe("fs handlers", () => {
     expect(body.existed).toBe(false);
   });
 
-  it("unlink: rejects paths outside .deco/blocks", async () => {
+  it("unlink: deletes any file under the workspace root", async () => {
     writeFileSync(join(appRoot, "secret.txt"), "x");
     const h = makeUnlinkHandler({ appRoot, repoDir: appRoot });
     const res = await h(post("/_sandbox/unlink", { path: "secret.txt" }));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect(() => readFileSync(join(appRoot, "secret.txt"))).toThrow();
   });
 
-  it("unlink: refuses directories", async () => {
+  it("unlink: refuses directories without recursive", async () => {
     const blockDir = join(appRoot, ".deco", "blocks");
     mkdirSync(blockDir, { recursive: true });
     const h = makeUnlinkHandler({ appRoot, repoDir: appRoot });
     const res = await h(post("/_sandbox/unlink", { path: ".deco/blocks" }));
     expect(res.status).toBe(400);
+  });
+
+  it("unlink: deletes directories when recursive is true", async () => {
+    const dir = join(appRoot, "nested", "dir");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "a.txt"), "x");
+    const h = makeUnlinkHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/unlink", { path: "nested", recursive: true }),
+    );
+    expect(res.status).toBe(200);
+    expect(() => readFileSync(join(dir, "a.txt"))).toThrow();
+  });
+
+  it("mkdir: creates a directory", async () => {
+    const h = makeMkdirHandler({ appRoot, repoDir: appRoot });
+    const res = await h(post("/_sandbox/mkdir", { path: "new-dir/nested" }));
+    expect(res.status).toBe(200);
+    expect(existsSync(join(appRoot, "new-dir", "nested"))).toBe(true);
+  });
+
+  it("rename: moves a file", async () => {
+    writeFileSync(join(appRoot, "old.txt"), "hello");
+    const h = makeRenameHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/rename", { from: "old.txt", to: "new.txt" }),
+    );
+    expect(res.status).toBe(200);
+    expect(readFileSync(join(appRoot, "new.txt"), "utf-8")).toBe("hello");
+    expect(() => readFileSync(join(appRoot, "old.txt"))).toThrow();
   });
 
   it("edit: rejects when old_string doesn't match", async () => {

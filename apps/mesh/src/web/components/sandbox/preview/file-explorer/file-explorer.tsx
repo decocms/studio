@@ -4,18 +4,34 @@ import Editor, { loader } from "@monaco-editor/react";
 import type { OnMount } from "@monaco-editor/react";
 import {
   Brackets,
-  ChevronDown,
-  ChevronRight,
   File02,
   FileCode01,
-  Folder,
+  FilePlus01,
+  FolderPlus,
   Image01,
   Loading01,
   SearchSm,
   XClose,
 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
+import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@deco/ui/components/alert-dialog.tsx";
+import { toast } from "sonner";
 import { useChatStream } from "@/web/components/chat/context";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { saveChangesDebug } from "../../../thread/github/save-changes-debug.ts";
@@ -23,13 +39,23 @@ import {
   fetchGitStatus,
   sandboxGitStatusQueryKey,
 } from "../../../thread/github/sandbox-git-api.ts";
-import type { FileBuffer } from "./types";
+import type { FileBuffer, TreeNode } from "./types";
+import {
+  FileExplorerNameDialog,
+  type FileExplorerNameDialogMode,
+} from "./file-explorer-name-dialog";
+import { FileTreeRow } from "./file-tree-row";
 import {
   buildFileTree,
   flattenTree,
   getAncestorDirectories,
+  getDirectoryContextPath,
   getLanguageFromPath,
+  getParentTreePath,
+  joinTreePath,
   stripLineNumbers,
+  toDaemonPath,
+  toTreePath,
 } from "./utils";
 
 // Configure Monaco CDN (shared with workflow editor)
@@ -60,11 +86,6 @@ function buildApiUrl(
   return `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/${endpoint}`;
 }
 
-/** The daemon expects relative paths (no leading slash). */
-function toDaemonPath(treePath: string) {
-  return treePath.startsWith("/") ? treePath.slice(1) : treePath;
-}
-
 /** Reject path traversal and absolute paths outside the workspace root. */
 function isSafeExplorerOpenPath(path: string): boolean {
   const normalized = toDaemonPath(path);
@@ -84,7 +105,6 @@ type FileIcon = React.ComponentType<{
 }>;
 
 /** Warm folder tone — reads well on both light and dark backgrounds. */
-const FOLDER_COLOR = "#d9a441";
 const DEFAULT_FILE_COLOR = "#94a3b8";
 
 /**
@@ -146,6 +166,177 @@ export function FileExplorer({
   const { sendMessage } = useChatStream();
   const { setChatOpen } = usePanelActions();
   const queryClient = useQueryClient();
+
+  const [nameDialog, setNameDialog] = useState<{
+    mode: FileExplorerNameDialogMode;
+    node: TreeNode;
+    parentDir: string;
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TreeNode | null>(null);
+  const [fsActionPending, setFsActionPending] = useState(false);
+
+  async function postSandbox(endpoint: string, body: Record<string, unknown>) {
+    const res = await fetch(
+      buildApiUrl(orgSlug, virtualMcpId, branch, endpoint),
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      throw new Error(
+        (payload as { error?: string }).error ??
+          `Request failed (${res.status})`,
+      );
+    }
+    return res.json();
+  }
+
+  async function refreshGitStatus() {
+    void queryClient.invalidateQueries({
+      queryKey: sandboxGitStatusQueryKey(orgSlug, virtualMcpId, branch),
+    });
+  }
+
+  function copyText(label: string, value: string) {
+    void navigator.clipboard.writeText(value).then(
+      () => toast.success(`${label} copied`),
+      () => toast.error(`Failed to copy ${label.toLowerCase()}`),
+    );
+  }
+
+  function remapOpenPaths(remap: (path: string) => string | null) {
+    setOpenTabs((prev) =>
+      prev
+        .map((tab) => remap(tab))
+        .filter((tab): tab is string => tab !== null),
+    );
+    setSelectedFile((prev) => {
+      if (!prev) return prev;
+      const next = remap(prev);
+      return next;
+    });
+    setBuffers((prev) => {
+      const next = new Map<string, FileBuffer>();
+      for (const [path, buffer] of prev) {
+        const mapped = remap(path);
+        if (mapped) next.set(mapped, buffer);
+      }
+      return next;
+    });
+  }
+
+  function removeOpenPaths(prefix: string) {
+    const normalizedPrefix = toTreePath(prefix);
+    remapOpenPaths((path) => {
+      if (
+        path === normalizedPrefix ||
+        path.startsWith(`${normalizedPrefix}/`)
+      ) {
+        return null;
+      }
+      return path;
+    });
+  }
+
+  async function handleCreateFile(name: string) {
+    if (!nameDialog) return;
+    const filePath = joinTreePath(nameDialog.parentDir, name);
+    await postSandbox("write", {
+      path: toDaemonPath(filePath),
+      content: "",
+    });
+    await fetchFileTree();
+    await refreshGitStatus();
+    setNameDialog(null);
+    handleFileClick(filePath);
+  }
+
+  async function handleCreateFolder(name: string) {
+    if (!nameDialog) return;
+    const folderPath = joinTreePath(nameDialog.parentDir, name);
+    const gitkeepPath = joinTreePath(folderPath, ".gitkeep");
+    await postSandbox("mkdir", { path: toDaemonPath(folderPath) });
+    await postSandbox("write", {
+      path: toDaemonPath(gitkeepPath),
+      content: "",
+    });
+    await fetchFileTree();
+    await refreshGitStatus();
+    setNameDialog(null);
+    setExpandedDirs((prev) => {
+      const next = new Set(prev);
+      for (const dir of getAncestorDirectories(folderPath)) next.add(dir);
+      next.add(folderPath);
+      return next;
+    });
+  }
+
+  async function handleRename(name: string) {
+    if (!nameDialog) return;
+    const fromPath = nameDialog.node.path;
+    const parentDir = getParentTreePath(fromPath);
+    const toPath = joinTreePath(parentDir, name);
+    if (toPath === fromPath) {
+      setNameDialog(null);
+      return;
+    }
+    await postSandbox("rename", {
+      from: toDaemonPath(fromPath),
+      to: toDaemonPath(toPath),
+    });
+    remapOpenPaths((path) => {
+      if (path === fromPath) return toPath;
+      if (path.startsWith(`${fromPath}/`)) {
+        return joinTreePath(toPath, path.slice(fromPath.length + 1));
+      }
+      return path;
+    });
+    await fetchFileTree();
+    await refreshGitStatus();
+    setNameDialog(null);
+  }
+
+  async function handleDelete(node: TreeNode) {
+    setFsActionPending(true);
+    try {
+      await postSandbox("unlink", {
+        path: toDaemonPath(node.path),
+        recursive: node.kind === "directory",
+      });
+      removeOpenPaths(node.path);
+      await fetchFileTree();
+      await refreshGitStatus();
+      setDeleteTarget(null);
+      toast.success(`Deleted "${node.name}"`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setFsActionPending(false);
+    }
+  }
+
+  async function handleNameDialogSubmit(name: string) {
+    setFsActionPending(true);
+    try {
+      if (nameDialog?.mode === "new-file") {
+        await handleCreateFile(name);
+        toast.success(`Created "${name}"`);
+      } else if (nameDialog?.mode === "new-folder") {
+        await handleCreateFolder(name);
+        toast.success(`Created folder "${name}"`);
+      } else if (nameDialog?.mode === "rename") {
+        await handleRename(name);
+        toast.success(`Renamed to "${name}"`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Operation failed");
+    } finally {
+      setFsActionPending(false);
+    }
+  }
 
   // Load file tree on first render
   const loadTreeCalledRef = useRef(false);
@@ -317,6 +508,20 @@ export function FileExplorer({
     openFile(path);
   }
 
+  function openCreateDialog(mode: "new-file" | "new-folder") {
+    const parentDir = selectedFile ? getParentTreePath(selectedFile) : "/";
+    setNameDialog({
+      mode,
+      parentDir,
+      node: {
+        name: "",
+        path: parentDir,
+        kind: "directory",
+        children: [],
+      },
+    });
+  }
+
   const tree = buildFileTree(files);
   const flatNodes = flattenTree(tree, expandedDirs);
 
@@ -391,9 +596,9 @@ export function FileExplorer({
     <div className="flex h-full w-full overflow-hidden">
       {/* File tree sidebar */}
       <div className="w-64 shrink-0 border-r flex flex-col overflow-hidden">
-        {/* Search */}
-        <div className="p-2 border-b">
-          <div className="relative">
+        {/* Search + create */}
+        <div className="flex items-center gap-1 p-2 border-b">
+          <div className="relative min-w-0 flex-1">
             <SearchSm
               size={14}
               className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -403,9 +608,40 @@ export function FileExplorer({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search files..."
+              aria-label="Search files"
               className="w-full rounded-md border border-input bg-transparent pl-7 pr-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
             />
           </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0"
+                aria-label="New file"
+                onClick={() => openCreateDialog("new-file")}
+              >
+                <FilePlus01 size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">New file</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0"
+                aria-label="New folder"
+                onClick={() => openCreateDialog("new-folder")}
+              >
+                <FolderPlus size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">New folder</TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Tree */}
@@ -416,59 +652,50 @@ export function FileExplorer({
               const isDir = node.kind === "directory";
               const isExpanded = expandedDirs.has(node.path);
               const isSelected = selectedFile === node.path;
-
-              const { Icon: FileVisualIcon, color: fileColor } = getFileVisual(
-                node.name,
-              );
+              const parentDir = getDirectoryContextPath(node.path, node.kind);
 
               return (
-                <button
+                <FileTreeRow
                   key={node.path}
-                  type="button"
-                  className={cn(
-                    "flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[13px] hover:bg-accent transition-colors",
-                    isSelected && "bg-accent",
-                  )}
-                  style={{ paddingLeft: `${depth * 14 + 8}px` }}
-                  onClick={() => {
+                  node={node}
+                  depth={depth}
+                  isExpanded={isExpanded}
+                  isSelected={isSelected}
+                  fileVisual={getFileVisual(node.name)}
+                  onOpen={() => {
                     if (isDir) {
                       toggleDir(node.path);
                     } else {
                       handleFileClick(node.path);
                     }
                   }}
-                >
-                  {isDir ? (
-                    <>
-                      {isExpanded ? (
-                        <ChevronDown
-                          size={14}
-                          className="shrink-0 text-muted-foreground"
-                        />
-                      ) : (
-                        <ChevronRight
-                          size={14}
-                          className="shrink-0 text-muted-foreground"
-                        />
-                      )}
-                      <Folder
-                        size={16}
-                        className="shrink-0"
-                        style={{ color: FOLDER_COLOR }}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <span className="w-3.5 shrink-0" />
-                      <FileVisualIcon
-                        size={16}
-                        className="shrink-0"
-                        style={{ color: fileColor }}
-                      />
-                    </>
-                  )}
-                  <span className="truncate">{node.name}</span>
-                </button>
+                  onNewFile={() =>
+                    setNameDialog({
+                      mode: "new-file",
+                      node,
+                      parentDir,
+                    })
+                  }
+                  onNewFolder={() =>
+                    setNameDialog({
+                      mode: "new-folder",
+                      node,
+                      parentDir,
+                    })
+                  }
+                  onCopyPath={() => copyText("Path", toTreePath(node.path))}
+                  onCopyRelativePath={() =>
+                    copyText("Relative path", toDaemonPath(node.path))
+                  }
+                  onRename={() =>
+                    setNameDialog({
+                      mode: "rename",
+                      node,
+                      parentDir,
+                    })
+                  }
+                  onDelete={() => setDeleteTarget(node)}
+                />
               );
             })}
             {treeLoaded && filteredNodes.length === 0 && (
@@ -662,6 +889,60 @@ export function FileExplorer({
           </div>
         )}
       </div>
+
+      <FileExplorerNameDialog
+        open={nameDialog !== null}
+        mode={nameDialog?.mode ?? "new-file"}
+        initialName={nameDialog?.mode === "rename" ? nameDialog.node.name : ""}
+        parentLabel={
+          nameDialog && nameDialog.mode !== "rename"
+            ? nameDialog.parentDir === "/"
+              ? "/"
+              : toDaemonPath(nameDialog.parentDir)
+            : undefined
+        }
+        isPending={fsActionPending}
+        onSubmit={handleNameDialogSubmit}
+        onOpenChange={(open) => {
+          if (!open && !fsActionPending) setNameDialog(null);
+        }}
+      />
+
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !fsActionPending) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {deleteTarget?.kind === "directory" ? "folder" : "file"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete{" "}
+              <span className="font-mono">{deleteTarget?.name}</span>
+              {deleteTarget?.kind === "directory"
+                ? " and everything inside it."
+                : "."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={fsActionPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={fsActionPending || !deleteTarget}
+              onClick={(e) => {
+                e.preventDefault();
+                if (deleteTarget) void handleDelete(deleteTarget);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

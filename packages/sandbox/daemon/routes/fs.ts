@@ -207,12 +207,54 @@ export function makeWriteHandler(deps: FsDeps) {
 }
 
 /**
- * Delete a single file inside the workspace. Symmetric with `write` —
+ * Delete a file or directory inside the workspace. Symmetric with `write` —
  * same safePath clamp, same onWorkingTreeWrite signal so the branch
  * dirty-state recomputes. Idempotent (returns ok with `existed: false`
  * for a missing path) so the client can retry without races.
  */
 export function makeUnlinkHandler(deps: FsDeps) {
+  return async (req: Request): Promise<Response> => {
+    let body: { path?: string; recursive?: boolean };
+    try {
+      body = (await parseJsonBody(req)) as typeof body;
+    } catch (e) {
+      return jsonResponse({ error: (e as Error).message }, 400);
+    }
+    if (!body.path || typeof body.path !== "string")
+      return jsonResponse({ error: "path is required" }, 400);
+    const normalized = body.path.replaceAll("\\", "/");
+    if (!normalized || normalized.includes("..")) {
+      return jsonResponse({ error: "Invalid path" }, 400);
+    }
+    const filePath = safePath(deps.appRoot, deps.repoDir, body.path);
+    if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
+    let existed = true;
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.isDirectory()) {
+        if (!body.recursive) {
+          return jsonResponse(
+            { error: "Refusing to unlink directory without recursive: true" },
+            400,
+          );
+        }
+        fs.rmSync(filePath, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        existed = false;
+      } else {
+        return jsonResponse({ error: (err as Error).message }, 500);
+      }
+    }
+    if (existed) deps.onWorkingTreeWrite?.();
+    return jsonResponse({ ok: true, existed });
+  };
+}
+
+export function makeMkdirHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string };
     try {
@@ -223,33 +265,69 @@ export function makeUnlinkHandler(deps: FsDeps) {
     if (!body.path || typeof body.path !== "string")
       return jsonResponse({ error: "path is required" }, 400);
     const normalized = body.path.replaceAll("\\", "/");
-    if (
-      !normalized.startsWith(".deco/blocks/") ||
-      !normalized.endsWith(".json") ||
-      normalized.includes("..")
-    ) {
-      return jsonResponse(
-        { error: "path must be a .deco/blocks/<key>.json file" },
-        400,
-      );
+    if (!normalized || normalized.includes("..")) {
+      return jsonResponse({ error: "Invalid path" }, 400);
     }
-    const filePath = safePath(deps.appRoot, deps.repoDir, body.path);
-    if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
-    let existed = true;
+    const dirPath = safePath(deps.appRoot, deps.repoDir, body.path);
+    if (!dirPath) return jsonResponse({ error: "Path escapes app root" }, 400);
     try {
-      const stat = fs.statSync(filePath);
-      if (stat.isDirectory())
-        return jsonResponse({ error: "Refusing to unlink directory" }, 400);
-      fs.unlinkSync(filePath);
+      fs.mkdirSync(dirPath, { recursive: true });
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        existed = false;
-      } else {
+      return jsonResponse({ error: (err as Error).message }, 500);
+    }
+    deps.onWorkingTreeWrite?.();
+    return jsonResponse({ ok: true });
+  };
+}
+
+export function makeRenameHandler(deps: FsDeps) {
+  return async (req: Request): Promise<Response> => {
+    let body: { from?: string; to?: string };
+    try {
+      body = (await parseJsonBody(req)) as typeof body;
+    } catch (e) {
+      return jsonResponse({ error: (e as Error).message }, 400);
+    }
+    if (!body.from || typeof body.from !== "string")
+      return jsonResponse({ error: "from is required" }, 400);
+    if (!body.to || typeof body.to !== "string")
+      return jsonResponse({ error: "to is required" }, 400);
+    const fromNormalized = body.from.replaceAll("\\", "/");
+    const toNormalized = body.to.replaceAll("\\", "/");
+    if (
+      !fromNormalized ||
+      !toNormalized ||
+      fromNormalized.includes("..") ||
+      toNormalized.includes("..")
+    ) {
+      return jsonResponse({ error: "Invalid path" }, 400);
+    }
+    const fromPath = safePath(deps.appRoot, deps.repoDir, body.from);
+    const toPath = safePath(deps.appRoot, deps.repoDir, body.to);
+    if (!fromPath || !toPath) {
+      return jsonResponse({ error: "Path escapes app root" }, 400);
+    }
+    try {
+      fs.statSync(fromPath);
+    } catch {
+      return jsonResponse({ error: `Path not found: ${body.from}` }, 400);
+    }
+    try {
+      fs.statSync(toPath);
+      return jsonResponse({ error: `Path already exists: ${body.to}` }, 400);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
         return jsonResponse({ error: (err as Error).message }, 500);
       }
     }
-    if (existed) deps.onWorkingTreeWrite?.();
-    return jsonResponse({ ok: true, existed });
+    try {
+      fs.mkdirSync(path.dirname(toPath), { recursive: true });
+      fs.renameSync(fromPath, toPath);
+    } catch (err) {
+      return jsonResponse({ error: (err as Error).message }, 500);
+    }
+    deps.onWorkingTreeWrite?.();
+    return jsonResponse({ ok: true });
   };
 }
 
