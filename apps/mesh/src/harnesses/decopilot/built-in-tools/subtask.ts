@@ -162,26 +162,18 @@ export function createSubtaskTool(
           passthroughClient: mcpClient,
         });
 
-        // 4. Drain the UI stream so streamText runs to completion.
-        //    We intentionally don't yield each progressive UIMessage:
-        //      - AI SDK's executeTool helper reads only YIELDED values
-        //        (the generator's return value is discarded), so the
-        //        last yielded UIMessage would be what reaches
-        //        toModelOutput — losing our extracted text/error.
-        //      - Each progressive UIMessage from readUIMessageStream
-        //        carries the full accumulated state (incl. multi-MB
-        //        MCP tool outputs), causing per-chunk NATS payloads
-        //        to exceed the 1 MB default and be dropped silently.
-        //    Instead, we drain here and yield a single structured
-        //    object at the end (step 7).
-        const reader = handle.result.toUIMessageStream().getReader();
-        try {
-          while (true) {
-            const { done } = await reader.read();
-            if (done) break;
+        let streamedText = "";
+        let lastFlush = 0;
+        const FLUSH_MS = 200;
+        for await (const part of handle.result.fullStream) {
+          if (part.type === "text-delta") {
+            streamedText += part.text;
+            const now = performance.now();
+            if (now - lastFlush >= FLUSH_MS) {
+              lastFlush = now;
+              yield { text: streamedText };
+            }
           }
-        } finally {
-          reader.releaseLock();
         }
 
         // 5. Collect results from the resolved promises.
