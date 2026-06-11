@@ -46,12 +46,6 @@ async function fetchThreadOutputs(
   return body.objects ?? [];
 }
 
-export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /**
  * True when any message has a tool part that could have produced a file:
  * an explicit share_with_user, or sandbox file work (bash/write can drop

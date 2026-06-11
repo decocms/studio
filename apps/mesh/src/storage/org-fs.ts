@@ -360,6 +360,45 @@ export class OrgFsEntryStorage {
     };
   }
 
+  /** Which of `paths` exist as live files — one batch probe (skill dirs). */
+  async liveFilePaths(params: {
+    organizationId: string;
+    volume: string;
+    paths: string[];
+  }): Promise<string[]> {
+    if (params.paths.length === 0) return [];
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", params.organizationId)
+      .where("volume", "=", params.volume)
+      .where("kind", "=", "file")
+      .where("deleted_at", "is", null)
+      .where("path", "in", params.paths)
+      .select(["path"])
+      .execute();
+    return rows.map((r) => r.path);
+  }
+
+  /**
+   * Most recently written live files across every volume of an org, newest
+   * first (`seq` desc — the same total order the change feed uses).
+   */
+  async recentFiles(params: {
+    organizationId: string;
+    limit: number;
+  }): Promise<OrgFsEntry[]> {
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", params.organizationId)
+      .where("kind", "=", "file")
+      .where("deleted_at", "is", null)
+      .select(COLUMNS)
+      .orderBy("seq", "desc")
+      .limit(params.limit)
+      .execute();
+    return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
+  }
+
   /**
    * Change feed: entries (including tombstones) with `seq` greater than the
    * cursor, oldest first. Consumers invalidate/delete locally and advance the

@@ -237,6 +237,23 @@ const orgIndexRoute = createRoute({
   component: lazyRouteComponent(() => import("./layouts/org-home/index.tsx")),
 });
 
+// Library (/$org/files) — the org filesystem browser. Static segment, so it
+// outranks the /$taskId param route. `path` is the browse location
+// ("<volume>/<dir...>", "" = root); `preview` is an open file's path;
+// `skill` is an open skill dir's path (Claude Code skill preview).
+const librarySearchSchema = z.object({
+  path: z.string().optional(),
+  preview: z.string().optional(),
+  skill: z.string().optional(),
+});
+
+const libraryRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/files",
+  validateSearch: librarySearchSchema,
+  component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
+});
+
 // ============================================
 // SETTINGS LAYOUT (/$org/settings)
 // ============================================
@@ -595,6 +612,7 @@ const agentShellWithChildren = agentShellLayout.addChildren([
 
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
+  libraryRoute,
   agentShellWithChildren,
 ]);
 

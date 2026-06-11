@@ -1,7 +1,8 @@
-import { OrgFsFilesPage } from "@/web/views/settings/org-files";
+import { Navigate, useParams } from "@tanstack/react-router";
 
-// No capability gate: the org filesystem is member-accessible by design
-// (ORG_FS_READ/WRITE are basic-usage — see api/routes/org-fs.ts ACL note).
+// The Files browser moved to the top-level Library (/$org/files). Keep the
+// old settings URL alive as a redirect for bookmarks/old links.
 export default function FilesRoute() {
-  return <OrgFsFilesPage />;
+  const { org } = useParams({ strict: false }) as { org: string };
+  return <Navigate to="/$org/files" params={{ org }} replace />;
 }
