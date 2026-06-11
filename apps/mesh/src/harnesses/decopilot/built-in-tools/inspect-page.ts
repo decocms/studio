@@ -15,13 +15,10 @@
 
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import type { StudioContext } from "@/core/studio-context";
+import type { ObjectStorageHooks } from "../../harness-deps";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
 import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
-import {
-  BROWSERLESS_BASE_URL,
-  LARGE_RESULT_TOKEN_THRESHOLD,
-} from "./constants";
+import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 
 const InspectPageInputSchema = z.object({
   url: z.string().url().describe("The URL of the web page to inspect."),
@@ -93,11 +90,15 @@ function buildFunctionCode(
 export function createInspectPageTool(
   writer: UIMessageStreamWriter,
   params: {
-    ctx: StudioContext;
+    // baseUrl + token come from `deps.browserless`; presence of the hook is
+    // the gate (the cluster only builds this tool when BROWSERLESS_TOKEN is
+    // set). The tool no longer reads `process.env` (HarnessDeps conversion).
+    browserless: { baseUrl: string; token: string };
+    objectStorage: ObjectStorageHooks;
     toolOutputMap: Map<string, string>;
   },
 ) {
-  const { ctx, toolOutputMap } = params;
+  const { browserless, objectStorage, toolOutputMap } = params;
 
   return tool({
     description:
@@ -110,21 +111,15 @@ export function createInspectPageTool(
     execute: async (input, options) => {
       const startTime = performance.now();
       try {
-        const token = process.env.BROWSERLESS_TOKEN;
-        if (!token) {
-          return {
-            success: false,
-            error: "BROWSERLESS_TOKEN is not configured.",
-          };
-        }
-
         const code = buildFunctionCode(input.url, {
           evaluate: input.evaluate,
           waitUntil: input.waitUntil,
         });
 
         const response = await fetch(
-          `${BROWSERLESS_BASE_URL}/function?token=${encodeURIComponent(token)}`,
+          `${browserless.baseUrl}/function?token=${encodeURIComponent(
+            browserless.token,
+          )}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/javascript" },
@@ -164,11 +159,11 @@ export function createInspectPageTool(
         const tokenCount = estimateJsonTokens(resultJson);
 
         // Large results → blob storage with preview
-        if (tokenCount > LARGE_RESULT_TOKEN_THRESHOLD && ctx.objectStorage) {
+        if (tokenCount > LARGE_RESULT_TOKEN_THRESHOLD) {
           const key = `inspect-pages/${crypto.randomUUID()}.json`;
           const bytes = new TextEncoder().encode(resultJson);
           try {
-            await ctx.objectStorage.put(key, bytes, {
+            await objectStorage.put(key, bytes, {
               contentType: "application/json",
             });
             const preview = createOutputPreview(resultJson);

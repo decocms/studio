@@ -12,13 +12,10 @@
 
 import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
-import type { StudioContext } from "@/core/studio-context";
+import type { ObjectStorageHooks } from "../../harness-deps";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
 import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
-import {
-  BROWSERLESS_BASE_URL,
-  LARGE_RESULT_TOKEN_THRESHOLD,
-} from "./constants";
+import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 
 const ScrapeUrlInputSchema = z.object({
   url: z.string().url().describe("The URL of the web page to scrape."),
@@ -29,11 +26,15 @@ export type ScrapeUrlInput = z.infer<typeof ScrapeUrlInputSchema>;
 export function createScrapeUrlTool(
   writer: UIMessageStreamWriter,
   params: {
-    ctx: StudioContext;
+    // baseUrl + token come from `deps.browserless`; presence of the hook is
+    // the gate (the cluster only builds this tool when BROWSERLESS_TOKEN is
+    // set). The tool no longer reads `process.env` (HarnessDeps conversion).
+    browserless: { baseUrl: string; token: string };
+    objectStorage: ObjectStorageHooks;
     toolOutputMap: Map<string, string>;
   },
 ) {
-  const { ctx, toolOutputMap } = params;
+  const { browserless, objectStorage, toolOutputMap } = params;
 
   return tool({
     description:
@@ -45,16 +46,10 @@ export function createScrapeUrlTool(
     execute: async (input, options) => {
       const startTime = performance.now();
       try {
-        const token = process.env.BROWSERLESS_TOKEN;
-        if (!token) {
-          return {
-            success: false,
-            error: "BROWSERLESS_TOKEN is not configured.",
-          };
-        }
-
         const response = await fetch(
-          `${BROWSERLESS_BASE_URL}/content?token=${encodeURIComponent(token)}`,
+          `${browserless.baseUrl}/content?token=${encodeURIComponent(
+            browserless.token,
+          )}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -81,11 +76,11 @@ export function createScrapeUrlTool(
         const tokenCount = estimateJsonTokens(htmlText);
 
         // Large results → blob storage with preview
-        if (tokenCount > LARGE_RESULT_TOKEN_THRESHOLD && ctx.objectStorage) {
+        if (tokenCount > LARGE_RESULT_TOKEN_THRESHOLD) {
           const key = `scraped-pages/${crypto.randomUUID()}.html`;
           const bytes = new TextEncoder().encode(htmlText);
           try {
-            await ctx.objectStorage.put(key, bytes, {
+            await objectStorage.put(key, bytes, {
               contentType: "text/html",
             });
             const preview = createOutputPreview(htmlText);

@@ -53,6 +53,7 @@ import { createTakeScreenshotTool, type PendingImage } from "./take-screenshot";
 import { createScrapeUrlTool } from "./scrape-url";
 import { createInspectPageTool } from "./inspect-page";
 import { buildPortableBuiltInTools } from "./portable-built-ins";
+import { BROWSERLESS_BASE_URL } from "./constants";
 import type { ModelsConfig } from "../../types";
 import type { MeshProvider } from "@/ai-providers/types";
 import { getSettings } from "@/settings";
@@ -338,23 +339,36 @@ async function buildAllTools(
   }
   // take_screenshot, scrape_url, inspect_page require Browserless API token.
   if (process.env.BROWSERLESS_TOKEN) {
-    // Cluster builds the `objectStorage` hook from StudioContext; the tool
-    // itself no longer reads ctx (HarnessDeps conversion). The Browserless
-    // gate stays env-based — `deps.browserless` presence equals
-    // `!!process.env.BROWSERLESS_TOKEN` as set by the cluster hook.
+    // Cluster builds the `browserless` + `objectStorage` hooks; the tools
+    // themselves no longer read ctx or process.env (HarnessDeps conversion).
+    // The Browserless gate stays env-based — `deps.browserless` presence
+    // equals `!!process.env.BROWSERLESS_TOKEN` as set by the cluster hook.
+    const browserless = {
+      baseUrl: BROWSERLESS_BASE_URL,
+      token: process.env.BROWSERLESS_TOKEN,
+    };
+    // take_screenshot keeps its nullable objectStorage (it has a data-URI
+    // fallback when storage is unavailable).
     tools.take_screenshot = createTakeScreenshotTool(writer, {
       objectStorage: ctx.objectStorage,
       toolOutputMap,
       pendingImages,
     });
-    tools.scrape_url = createScrapeUrlTool(writer, {
-      ctx,
-      toolOutputMap,
-    });
-    tools.inspect_page = createInspectPageTool(writer, {
-      ctx,
-      toolOutputMap,
-    });
+    // scrape_url / inspect_page require non-null objectStorage (the cluster's
+    // `deps.objectStorage` is universal). Object storage is effectively always
+    // present in the cluster; guard so the non-null hook type holds.
+    if (ctx.objectStorage) {
+      tools.scrape_url = createScrapeUrlTool(writer, {
+        browserless,
+        objectStorage: ctx.objectStorage,
+        toolOutputMap,
+      });
+      tools.inspect_page = createInspectPageTool(writer, {
+        browserless,
+        objectStorage: ctx.objectStorage,
+        toolOutputMap,
+      });
+    }
   }
   return tools as {
     user_ask: typeof userAskTool;
