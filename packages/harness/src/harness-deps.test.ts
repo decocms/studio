@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { UIMessageChunk } from "ai";
 import type { HarnessDeps } from "./harness-deps";
-import type { SandboxClient } from "./sandbox-client";
-import type { HarnessStreamInput } from "./types";
 
 describe("HarnessDeps shape", () => {
   test("a minimal cluster bag with all optional hooks omitted conforms", () => {
@@ -39,23 +36,5 @@ describe("HarnessDeps shape", () => {
     );
     const first = await gen.next();
     expect(first.value).toEqual({ progress: "started" });
-  });
-});
-
-describe("SandboxClient shape", () => {
-  test("dispatch returns an AsyncIterable<UIMessageChunk>", async () => {
-    const chunks: UIMessageChunk[] = [{ type: "start" } as UIMessageChunk];
-    const client: SandboxClient = {
-      dispatch(_input: HarnessStreamInput) {
-        return (async function* () {
-          for (const c of chunks) yield c;
-        })();
-      },
-    };
-    const out: UIMessageChunk[] = [];
-    for await (const c of client.dispatch({} as HarnessStreamInput)) {
-      out.push(c);
-    }
-    expect(out).toEqual(chunks);
   });
 });

@@ -1,6 +1,6 @@
 import type { UIMessageChunk } from "ai";
 import { localDispatch } from "./local-dispatch";
-import type { SandboxClient } from "@decocms/harness/sandbox-client";
+import type { SandboxClient } from "@decocms/sandbox/dispatch/sandbox-client";
 import type { HarnessId, HarnessStreamInput } from "@decocms/harness/types";
 import type { StudioContext } from "../core/studio-context";
 

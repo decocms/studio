@@ -1,5 +1,5 @@
-import type { UIMessageChunk } from "ai";
-import type { HarnessStreamInput } from "./types";
+import type { UIMessageChunk } from "@decocms/harness/types";
+import type { HarnessStreamInput } from "@decocms/harness/types";
 
 /**
  * SandboxClient — owns "merge the HarnessDeps bag + run the harness" (spec

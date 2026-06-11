@@ -1,4 +1,10 @@
 import type { UIMessage, UIMessageChunk } from "ai";
+
+// Re-exported so downstream packages (e.g. @decocms/sandbox's SandboxClient)
+// consume the AI-SDK chunk type via @decocms/harness without declaring a direct
+// `ai` dependency — keeping a SINGLE hoisted `ai` instance (avoids the
+// double-AI-SDK / broken-instanceof hazard).
+export type { UIMessageChunk } from "ai";
 import type {
   DecopilotMcpSource,
   DecopilotModelSources,
