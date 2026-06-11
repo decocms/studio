@@ -12,7 +12,6 @@
 
 import {
   CIRCUIT_BREAKER_COOLDOWN_MS,
-  CIRCUIT_BREAKER_DISABLE_AFTER_OPENS,
   CIRCUIT_BREAKER_FAILURE_THRESHOLD,
   CIRCUIT_BREAKER_MAX_ENTRIES,
 } from "../core/constants";
@@ -24,13 +23,6 @@ interface CircuitEntry {
   consecutiveFailures: number;
   lastFailureTime: number;
   halfOpenInFlight: boolean;
-  openCount: number;
-}
-
-export interface FailureOutcome {
-  state: CircuitState;
-  openCount: number;
-  shouldDisable: boolean;
 }
 
 const circuits = new Map<string, CircuitEntry>();
@@ -87,39 +79,27 @@ export function recordSuccess(connectionId: string): void {
 /**
  * Record a failed connection. Increments failures and opens circuit after threshold.
  */
-export function recordFailure(connectionId: string): FailureOutcome {
-  let circuit = circuits.get(connectionId);
+export function recordFailure(connectionId: string): void {
+  const circuit = circuits.get(connectionId);
 
   if (!circuit) {
     evictIfNeeded();
-    circuit = {
-      state: "CLOSED",
-      consecutiveFailures: 0,
-      lastFailureTime: 0,
+    circuits.set(connectionId, {
+      state: 1 >= CIRCUIT_BREAKER_FAILURE_THRESHOLD ? "OPEN" : "CLOSED",
+      consecutiveFailures: 1,
+      lastFailureTime: Date.now(),
       halfOpenInFlight: false,
-      openCount: 0,
-    };
-    circuits.set(connectionId, circuit);
+    });
+    return;
   }
 
-  const wasOpen = circuit.state === "OPEN";
   circuit.consecutiveFailures++;
   circuit.lastFailureTime = Date.now();
   circuit.halfOpenInFlight = false;
 
-  if (
-    circuit.consecutiveFailures >= CIRCUIT_BREAKER_FAILURE_THRESHOLD &&
-    !wasOpen
-  ) {
+  if (circuit.consecutiveFailures >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
     circuit.state = "OPEN";
-    circuit.openCount++;
   }
-
-  return {
-    state: circuit.state,
-    openCount: circuit.openCount,
-    shouldDisable: circuit.openCount >= CIRCUIT_BREAKER_DISABLE_AFTER_OPENS,
-  };
 }
 
 /**

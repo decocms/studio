@@ -23,14 +23,6 @@ export const CIRCUIT_BREAKER_COOLDOWN_MS = 30_000; // 30 seconds
 /** Maximum number of circuit breaker entries to retain in memory */
 export const CIRCUIT_BREAKER_MAX_ENTRIES = 1000;
 
-/**
- * Number of times a connection's circuit may re-open before it is durably
- * disabled (connection.status → "error"). The in-memory breaker fast-fails for
- * a 30s cooldown and auto-recovers; if the downstream keeps failing across this
- * many open cycles, the connection is persisted as "error" so it stops paying a
- * handshake on every refresh across all pods, until manually re-enabled.
- */
-export const CIRCUIT_BREAKER_DISABLE_AFTER_OPENS = 3;
 /*
  * Durable connection auto-disable (cross-replica, via the shared circuit store).
  *
