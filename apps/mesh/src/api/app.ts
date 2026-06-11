@@ -9,6 +9,8 @@
  */
 
 import { getSettings } from "../settings";
+import { startPublicSetsSync } from "../file-storage/skill-set-sync";
+import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
@@ -1362,6 +1364,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     .catch((error) => {
       console.error("[EventBus] Error during startup:", error);
     });
+
+  // Public skill sets: sync the configured GitHub-sourced shared volumes on
+  // boot and on an interval (no-op when ORGFS_PUBLIC_SETS is unset).
+  startPublicSetsSync(database.db, { baseUrl: getPublicUrl() });
 
   // ============================================================================
   // Automation Runtime — wire storage + streaming into the DBOS workflow

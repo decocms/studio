@@ -105,7 +105,9 @@ import * as migration103revertobservationalagent from "./103-revert-observationa
 import * as migration104agentsandboxproviderkind from "./104-agent-sandbox-provider-kind.ts";
 import * as migration105orgfs from "./105-org-fs.ts";
 import * as migration106automationtools from "./106-automation-tools.ts";
-import * as migration107threadmessagepartspermessageseq from "./107-thread-message-parts-per-message-seq.ts";
+import * as migration107orgfspublicorg from "./107-org-fs-public-org.ts";
+import * as migration108automationmaxagentsteps from "./108-automation-max-agent-steps.ts";
+import * as migration109threadmessagepartspermessageseq from "./109-thread-message-parts-per-message-seq.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -233,8 +235,10 @@ const migrations: Record<string, Migration> = {
   "104-agent-sandbox-provider-kind": migration104agentsandboxproviderkind,
   "105-org-fs": migration105orgfs,
   "106-automation-tools": migration106automationtools,
-  "107-thread-message-parts-per-message-seq":
-    migration107threadmessagepartspermessageseq,
+  "107-org-fs-public-org": migration107orgfspublicorg,
+  "108-automation-max-agent-steps": migration108automationmaxagentsteps,
+  "109-thread-message-parts-per-message-seq":
+    migration109threadmessagepartspermessageseq,
 };
 
 export default migrations;

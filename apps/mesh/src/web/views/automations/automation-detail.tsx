@@ -19,6 +19,11 @@ import {
 } from "@/web/hooks/use-automations";
 import { useChatTask, useChatStream } from "@/web/components/chat/context";
 import { Button } from "@deco/ui/components/button.tsx";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@deco/ui/components/collapsible.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import {
@@ -36,6 +41,7 @@ import { buildImprovePromptDoc } from "@/web/components/chat/tiptap/build-improv
 import {
   ArrowLeft,
   ArrowUp,
+  ChevronDown,
   Clock,
   Loading01,
   Stars01,
@@ -69,7 +75,13 @@ interface SettingsFormData {
   modelOverride: AutomationModelOverride | null;
   // Tool allowlist (null = all of the agent's tools).
   tools: string[] | null;
+  // Parent agent-loop step cap (null = platform default).
+  maxAgentSteps: number | null;
 }
+
+// Platform default for the parent agent loop (PARENT_STEP_LIMIT) — shown as
+// the placeholder when no per-automation override is set.
+const DEFAULT_MAX_AGENT_STEPS = 30;
 
 type EditSession = {
   start: number;
@@ -345,6 +357,7 @@ export function SettingsTab({
   const [tiptapDoc, setTiptapDocRaw] =
     useState<Metadata["tiptapDoc"]>(initialTiptapDoc);
   const [starterOpen, setStarterOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [showCustomCron, setShowCustomCron] = useState(false);
   const [cronInput, setCronInput] = useState("");
   const [showEventForm, setShowEventForm] = useState(false);
@@ -413,6 +426,7 @@ export function SettingsTab({
       tier: defaultTier,
       modelOverride: defaultModelOverride,
       tools: automation.tools ?? null,
+      maxAgentSteps: automation.maxAgentSteps ?? null,
     },
   });
 
@@ -482,6 +496,7 @@ export function SettingsTab({
       active: formData.active,
       models,
       tools: formData.tools,
+      maxAgentSteps: formData.maxAgentSteps,
       messages: tiptapDocToMessages(tiptapDoc),
       temperature: 0,
     };
@@ -787,25 +802,6 @@ export function SettingsTab({
           />
         </div>
 
-        {/* Section: Model & Tools */}
-        <div className="flex flex-col gap-5">
-          <AutomationModelControl
-            tier={form.watch("tier")}
-            onTierChange={(tier) =>
-              form.setValue("tier", tier, { shouldDirty: true })
-            }
-            override={form.watch("modelOverride")}
-            onOverrideChange={(o) =>
-              form.setValue("modelOverride", o, { shouldDirty: true })
-            }
-          />
-          <AutomationToolsControl
-            agentId={agentId || null}
-            value={form.watch("tools")}
-            onChange={(v) => form.setValue("tools", v, { shouldDirty: true })}
-          />
-        </div>
-
         {/* Section: Instructions */}
         <div className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
@@ -854,6 +850,62 @@ export function SettingsTab({
             </div>
           </TiptapProvider>
         </div>
+
+        {/* Section: Advanced (Model, Tools, Max steps) */}
+        <Collapsible
+          open={advancedOpen}
+          onOpenChange={setAdvancedOpen}
+          className="flex flex-col gap-2.5"
+        >
+          <CollapsibleTrigger className="group flex w-fit cursor-pointer items-center gap-1.5">
+            <span className="text-xs font-semibold text-muted-foreground/60">
+              Advanced
+            </span>
+            <ChevronDown
+              size={14}
+              className="text-muted-foreground/60 transition-transform group-data-[state=open]:rotate-180"
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="flex flex-col gap-5 pt-0.5">
+            <AutomationModelControl
+              tier={form.watch("tier")}
+              onTierChange={(tier) =>
+                form.setValue("tier", tier, { shouldDirty: true })
+              }
+              override={form.watch("modelOverride")}
+              onOverrideChange={(o) =>
+                form.setValue("modelOverride", o, { shouldDirty: true })
+              }
+            />
+            <AutomationToolsControl
+              agentId={agentId || null}
+              value={form.watch("tools")}
+              onChange={(v) => form.setValue("tools", v, { shouldDirty: true })}
+            />
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-semibold text-muted-foreground/60">
+                Max steps
+              </span>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                className="w-40"
+                placeholder={`${DEFAULT_MAX_AGENT_STEPS} (default)`}
+                value={form.watch("maxAgentSteps") ?? ""}
+                onChange={(e) => {
+                  const raw = e.target.value.trim();
+                  const next = raw === "" ? null : Number(raw);
+                  form.setValue(
+                    "maxAgentSteps",
+                    next === null || Number.isNaN(next) ? null : next,
+                    { shouldDirty: true },
+                  );
+                }}
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
     </>
   );

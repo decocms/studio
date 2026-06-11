@@ -498,13 +498,13 @@ function FilesContent() {
   );
 }
 
-export function OrgFilesPage() {
+export function OrgBucketsPage() {
   return (
     <Page>
       <Page.Content>
         <Page.Body>
           <SettingsPage>
-            <Page.Title>Files</Page.Title>
+            <Page.Title>Buckets</Page.Title>
             <ErrorBoundary
               fallback={({ error }) => (
                 <ErrorFallback

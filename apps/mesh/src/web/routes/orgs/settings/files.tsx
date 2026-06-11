@@ -1,10 +1,7 @@
-import { OrgFilesPage } from "@/web/views/settings/files";
-import { RequireCapability } from "@/web/components/require-capability";
+import { OrgFsFilesPage } from "@/web/views/settings/org-files";
 
+// No capability gate: the org filesystem is member-accessible by design
+// (ORG_FS_READ/WRITE are basic-usage — see api/routes/org-fs.ts ACL note).
 export default function FilesRoute() {
-  return (
-    <RequireCapability capability="file-configs:manage" area="files">
-      <OrgFilesPage />
-    </RequireCapability>
-  );
+  return <OrgFsFilesPage />;
 }

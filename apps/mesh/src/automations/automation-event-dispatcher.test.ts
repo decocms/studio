@@ -26,6 +26,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
     models: JSON.stringify({ tier: "smart" }),
     tools: null,
     temperature: 0.5,
+    max_agent_steps: null,
     virtual_mcp_id: "agent_1",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",

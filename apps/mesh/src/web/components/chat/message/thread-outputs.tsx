@@ -61,13 +61,16 @@ function formatSize(bytes: number): string {
 export function ThreadOutputs({ threadId }: { threadId: string }) {
   const { org } = useProjectContext();
   const messages = useOptionalChatStream()?.messages ?? [];
-  // Only fetch when the thread has actually produced a shared file.
-  // Threads with no share_with_user output stay silent — no /outputs GET.
+  // Only fetch when the thread could have produced a downloadable file:
+  // an explicit share_with_user, or sandbox file work (bash/write can drop
+  // results into `org/output/`). Pure-chat threads stay silent — no GET.
   const hasSharedFile = messages.some((m) =>
     m.parts?.some((p) => {
       const part = p as { type: string; state?: string };
       return (
-        part.type === "tool-share_with_user" &&
+        (part.type === "tool-share_with_user" ||
+          part.type === "tool-bash" ||
+          part.type === "tool-write") &&
         part.state === "output-available"
       );
     }),

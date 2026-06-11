@@ -23,7 +23,6 @@ import {
   SidebarProvider,
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import { Loading01 } from "@untitledui/icons";
 import { Outlet } from "@tanstack/react-router";
 import { SidebarResizeHandle } from "@/web/components/sidebar/sidebar-resize-handle";
 import { useSidebarResize } from "@/web/hooks/use-sidebar-resize";
@@ -37,15 +36,12 @@ import {
   SidebarTriggerButton,
 } from "@/web/layouts/shell-controls";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
+import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 
 const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
 
 function RouteFallback() {
-  return (
-    <div className="flex-1 flex items-center justify-center">
-      <Loading01 size={20} className="animate-spin text-muted-foreground" />
-    </div>
-  );
+  return <ShellRouteLoading />;
 }
 
 export default function OrgShellLayout() {
@@ -107,7 +103,7 @@ export default function OrgShellLayout() {
                   }}
                 >
                   <div className="flex flex-col h-full min-h-0">
-                    <div className="flex-1 min-h-0 flex flex-row">
+                    <div className="relative flex-1 min-h-0 flex flex-row">
                       <Suspense fallback={<RouteFallback />}>
                         <Outlet />
                       </Suspense>

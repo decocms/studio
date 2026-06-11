@@ -20,6 +20,9 @@ import {
   buildTodoWritePrompt,
   buildRepoEnvironmentPrompt,
 } from "@decocms/harness/decopilot/prompt-constants";
+import { buildOrgFilesystemPrompt } from "../../api/routes/decopilot/constants";
+import { getPublicSets } from "../../file-storage/public-sets";
+import { getSettings } from "../../settings";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
@@ -129,6 +132,15 @@ export async function buildAgentSystemPrompt(
 
   if (opts.virtualMcp.repo) {
     add("repoEnv", buildRepoEnvironmentPrompt(opts.virtualMcp.repo));
+  }
+
+  // Org filesystem layout + the deployment's public skill sets. Gated on the
+  // deployment actually mounting org-fs into hosted sandboxes
+  // (ORGFS_CLUSTER_MOUNTS) — otherwise agents get taught `org/...` paths
+  // that don't exist and burn turns on `ls org/` failures. Settings-stable
+  // either way, so still cache-safe.
+  if (getSettings().orgFsClusterMounts) {
+    add("orgFs", buildOrgFilesystemPrompt(getPublicSets().map((s) => s.set)));
   }
 
   if (opts.kind === "agent") {

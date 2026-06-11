@@ -19,7 +19,7 @@ describe("repointOutputLink", () => {
   });
 
   it("creates the thread dir and a relative symlink", async () => {
-    await repointOutputLink(appRoot, "thread-1");
+    expect(await repointOutputLink(appRoot, "thread-1")).toBe(true);
     expect((await lstat(join(outputs(), "thread-1"))).isDirectory()).toBe(true);
     expect(await readlink(link())).toBe(join(".outputs", "thread-1"));
   });
@@ -28,14 +28,16 @@ describe("repointOutputLink", () => {
     await repointOutputLink(appRoot, "t1");
     await repointOutputLink(appRoot, "t2");
     expect(await readlink(link())).toBe(join(".outputs", "t2"));
-    await repointOutputLink(appRoot, "t2");
+    expect(await repointOutputLink(appRoot, "t2")).toBe(true);
     expect(await readlink(link())).toBe(join(".outputs", "t2"));
   });
 
   it("rejects traversal / multi-segment / hidden threadIds", async () => {
     const logged: string[] = [];
     for (const bad of ["../evil", "a/b", "..", ".hidden", ""]) {
-      await repointOutputLink(appRoot, bad, (m) => logged.push(m));
+      expect(await repointOutputLink(appRoot, bad, (m) => logged.push(m))).toBe(
+        false,
+      );
     }
     await expect(lstat(link())).rejects.toThrow(); // no link created
     expect(logged.length).toBe(5);
@@ -43,7 +45,7 @@ describe("repointOutputLink", () => {
 
   it("is a no-op when the outputs mount dir is missing", async () => {
     rmSync(outputs(), { recursive: true });
-    await repointOutputLink(appRoot, "t1");
+    expect(await repointOutputLink(appRoot, "t1")).toBe(false);
     await expect(lstat(link())).rejects.toThrow();
     await expect(lstat(join(outputs(), "t1"))).rejects.toThrow();
   });
@@ -51,7 +53,9 @@ describe("repointOutputLink", () => {
   it("refuses to clobber a non-symlink at org/output", async () => {
     writeFileSync(link(), "real file");
     const logged: string[] = [];
-    await repointOutputLink(appRoot, "t1", (m) => logged.push(m));
+    expect(await repointOutputLink(appRoot, "t1", (m) => logged.push(m))).toBe(
+      false,
+    );
     expect((await lstat(link())).isFile()).toBe(true);
     expect(logged[0]).toContain("not a symlink");
   });

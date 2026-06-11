@@ -18,6 +18,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
     models: JSON.stringify({ tier: "smart" }),
     tools: null,
     temperature: 0.7,
+    max_agent_steps: null,
     virtual_mcp_id: "agent_1",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
@@ -210,5 +211,25 @@ describe("buildStreamRequest", () => {
       makeResolvedModel(),
     );
     expect(result.toolAllowlist).toBeNull();
+  });
+
+  it("leaves maxAgentSteps undefined when not configured", () => {
+    const result = buildStreamRequest(
+      makeAutomation({ max_agent_steps: null }),
+      null,
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(result.maxAgentSteps).toBeUndefined();
+  });
+
+  it("forwards a configured maxAgentSteps", () => {
+    const result = buildStreamRequest(
+      makeAutomation({ max_agent_steps: 50 }),
+      null,
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(result.maxAgentSteps).toBe(50);
   });
 });

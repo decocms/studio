@@ -207,12 +207,58 @@ export function makeWriteHandler(deps: FsDeps) {
 }
 
 /**
- * Delete a single file inside the workspace. Symmetric with `write` —
+ * Delete a file or directory inside the workspace. Symmetric with `write` —
  * same safePath clamp, same onWorkingTreeWrite signal so the branch
  * dirty-state recomputes. Idempotent (returns ok with `existed: false`
  * for a missing path) so the client can retry without races.
  */
 export function makeUnlinkHandler(deps: FsDeps) {
+  return async (req: Request): Promise<Response> => {
+    let body: { path?: string; recursive?: boolean };
+    try {
+      body = (await parseJsonBody(req)) as typeof body;
+    } catch (e) {
+      return jsonResponse({ error: (e as Error).message }, 400);
+    }
+    if (!body.path || typeof body.path !== "string")
+      return jsonResponse({ error: "path is required" }, 400);
+    const normalized = body.path.replaceAll("\\", "/");
+    const unlinkError = assertUnlinkAllowed(
+      normalized,
+      body.recursive === true,
+    );
+    if (unlinkError) {
+      return jsonResponse({ error: unlinkError }, 400);
+    }
+    const filePath = safePath(deps.appRoot, deps.repoDir, body.path);
+    if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
+    let existed = true;
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.isDirectory()) {
+        if (!body.recursive) {
+          return jsonResponse(
+            { error: "Refusing to unlink directory without recursive: true" },
+            400,
+          );
+        }
+        fs.rmSync(filePath, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(filePath);
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        existed = false;
+      } else {
+        return jsonResponse({ error: (err as Error).message }, 500);
+      }
+    }
+    if (existed) deps.onWorkingTreeWrite?.();
+    return jsonResponse({ ok: true, existed });
+  };
+}
+
+export function makeMkdirHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { path?: string };
     try {
@@ -223,33 +269,69 @@ export function makeUnlinkHandler(deps: FsDeps) {
     if (!body.path || typeof body.path !== "string")
       return jsonResponse({ error: "path is required" }, 400);
     const normalized = body.path.replaceAll("\\", "/");
-    if (
-      !normalized.startsWith(".deco/blocks/") ||
-      !normalized.endsWith(".json") ||
-      normalized.includes("..")
-    ) {
-      return jsonResponse(
-        { error: "path must be a .deco/blocks/<key>.json file" },
-        400,
-      );
+    if (!normalized || normalized.includes("..")) {
+      return jsonResponse({ error: "Invalid path" }, 400);
     }
-    const filePath = safePath(deps.appRoot, deps.repoDir, body.path);
-    if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
-    let existed = true;
+    const dirPath = safePath(deps.appRoot, deps.repoDir, body.path);
+    if (!dirPath) return jsonResponse({ error: "Path escapes app root" }, 400);
     try {
-      const stat = fs.statSync(filePath);
-      if (stat.isDirectory())
-        return jsonResponse({ error: "Refusing to unlink directory" }, 400);
-      fs.unlinkSync(filePath);
+      fs.mkdirSync(dirPath, { recursive: true });
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        existed = false;
-      } else {
+      return jsonResponse({ error: (err as Error).message }, 500);
+    }
+    deps.onWorkingTreeWrite?.();
+    return jsonResponse({ ok: true });
+  };
+}
+
+export function makeRenameHandler(deps: FsDeps) {
+  return async (req: Request): Promise<Response> => {
+    let body: { from?: string; to?: string };
+    try {
+      body = (await parseJsonBody(req)) as typeof body;
+    } catch (e) {
+      return jsonResponse({ error: (e as Error).message }, 400);
+    }
+    if (!body.from || typeof body.from !== "string")
+      return jsonResponse({ error: "from is required" }, 400);
+    if (!body.to || typeof body.to !== "string")
+      return jsonResponse({ error: "to is required" }, 400);
+    const fromNormalized = body.from.replaceAll("\\", "/");
+    const toNormalized = body.to.replaceAll("\\", "/");
+    if (
+      !fromNormalized ||
+      !toNormalized ||
+      fromNormalized.includes("..") ||
+      toNormalized.includes("..")
+    ) {
+      return jsonResponse({ error: "Invalid path" }, 400);
+    }
+    const fromPath = safePath(deps.appRoot, deps.repoDir, body.from);
+    const toPath = safePath(deps.appRoot, deps.repoDir, body.to);
+    if (!fromPath || !toPath) {
+      return jsonResponse({ error: "Path escapes app root" }, 400);
+    }
+    try {
+      fs.statSync(fromPath);
+    } catch {
+      return jsonResponse({ error: `Path not found: ${body.from}` }, 400);
+    }
+    try {
+      fs.statSync(toPath);
+      return jsonResponse({ error: `Path already exists: ${body.to}` }, 400);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
         return jsonResponse({ error: (err as Error).message }, 500);
       }
     }
-    if (existed) deps.onWorkingTreeWrite?.();
-    return jsonResponse({ ok: true, existed });
+    try {
+      fs.mkdirSync(path.dirname(toPath), { recursive: true });
+      fs.renameSync(fromPath, toPath);
+    } catch (err) {
+      return jsonResponse({ error: (err as Error).message }, 500);
+    }
+    deps.onWorkingTreeWrite?.();
+    return jsonResponse({ ok: true });
   };
 }
 
@@ -617,10 +699,62 @@ const GLOB_RESULT_LIMIT = 1000;
 function isGlobPathAllowed(rel: string): boolean {
   for (const seg of rel.split("/")) {
     if (GLOB_EXCLUDE_DIRS.has(seg)) return false;
-    // Surface `.deco/**` without exposing other dotfiles (`.env`, `.npmrc`, …).
-    if (seg.startsWith(".") && seg !== ".deco") return false;
+    // Surface `.deco/**` and explorer `.gitkeep` folder markers without
+    // exposing other dotfiles (`.env`, `.npmrc`, …).
+    if (seg.startsWith(".") && seg !== ".deco" && seg !== ".gitkeep") {
+      return false;
+    }
   }
   return true;
+}
+
+/** Paths that must not be deleted via the sandbox unlink API. */
+function assertUnlinkAllowed(
+  normalized: string,
+  recursive: boolean,
+): string | null {
+  if (!normalized || normalized.includes("..")) return "Invalid path";
+  if (recursive && (normalized === "." || normalized === "")) {
+    return "Refusing to recursively delete the repository root";
+  }
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.includes(".git")) {
+    return "Refusing to delete .git";
+  }
+  return null;
+}
+
+function toRepoRelativePath(
+  abs: string,
+  searchPath: string,
+  repoDir: string,
+): string {
+  return abs.startsWith(`${repoDir}/`)
+    ? abs.slice(repoDir.length + 1)
+    : abs.startsWith(`${searchPath}/`)
+      ? abs.slice(searchPath.length + 1)
+      : abs;
+}
+
+/** Empty directories have no nested files and no nested directories in the scan. */
+export function collectEmptyDirectories(
+  filePaths: readonly string[],
+  directoryPaths: readonly string[],
+): string[] {
+  const dirSet = new Set(directoryPaths);
+  const empty: string[] = [];
+  for (const dir of directoryPaths) {
+    if (!dir) continue;
+    const prefix = `${dir}/`;
+    const hasNestedFile = filePaths.some((file) => file.startsWith(prefix));
+    const hasNestedDirectory = [...dirSet].some(
+      (other) => other !== dir && other.startsWith(prefix),
+    );
+    if (!hasNestedFile && !hasNestedDirectory) {
+      empty.push(dir);
+    }
+  }
+  return empty;
 }
 
 export function makeGlobHandler(deps: FsDeps) {
@@ -642,26 +776,35 @@ export function makeGlobHandler(deps: FsDeps) {
     // Bun.Glob — no external binary dependency. Returns paths relative
     // to `cwd`, which we re-anchor to repoDir for consistent UX.
     const glob = new Bun.Glob(body.pattern);
-    const files: string[] = [];
+    const filePaths: string[] = [];
+    const directoryPaths = new Set<string>();
     try {
       for await (const rel of glob.scan({
         cwd: searchPath,
-        onlyFiles: true,
+        onlyFiles: false,
         followSymlinks: false,
         dot: true,
       })) {
         if (!isGlobPathAllowed(rel)) continue;
         const abs = path.join(searchPath, rel);
-        files.push(
-          abs.startsWith(`${deps.repoDir}/`)
-            ? abs.slice(deps.repoDir.length + 1)
-            : abs,
-        );
-        if (files.length >= GLOB_RESULT_LIMIT) break;
+        let relPath: string;
+        try {
+          const stat = fs.statSync(abs);
+          relPath = toRepoRelativePath(abs, searchPath, deps.repoDir);
+          if (stat.isDirectory()) {
+            directoryPaths.add(relPath);
+          } else if (stat.isFile()) {
+            filePaths.push(relPath);
+          }
+        } catch {
+          continue;
+        }
+        if (filePaths.length >= GLOB_RESULT_LIMIT) break;
       }
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 500);
     }
-    return jsonResponse({ files });
+    const directories = collectEmptyDirectories(filePaths, [...directoryPaths]);
+    return jsonResponse({ files: filePaths, directories });
   };
 }

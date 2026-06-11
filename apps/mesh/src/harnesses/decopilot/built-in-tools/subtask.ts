@@ -137,6 +137,24 @@ export function createSubtaskTool(
         throw new Error("Agent is not active");
       }
 
+      // 1b. Enforce the caller's sub-agent allowlist for cross-agent
+      //     delegation. Self-clones are always allowed. An empty or absent
+      //     allowlist means "all agents" (the default). This mirrors the
+      //     <available-agents> prompt filter — the model shouldn't even see
+      //     disallowed agents, but we re-check here as defense in depth.
+      if (!isSelf && self) {
+        const caller = await ctx.storage.virtualMcps.findById(
+          self.id,
+          organization.id,
+        );
+        const allow = caller?.metadata?.subAgents;
+        // An allowlist array (even empty = itself only) gates cross-agent
+        // delegation. A null/absent allowlist means all agents are allowed.
+        if (Array.isArray(allow) && !allow.includes(targetId)) {
+          throw new Error("Agent not available for delegation");
+        }
+      }
+
       // 2. Open an MCP client for the target. A self-clone uses superUser so
       //    its tool scope mirrors the parent loop's passthrough client.
       const mcpClient = (await createVirtualClientFrom(

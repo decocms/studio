@@ -226,6 +226,7 @@ async function buildAllTools(
         ctx,
         threadId: vmContext.threadId,
         virtualMcpId: vmContext.virtualMcpId,
+        orgFs: getSettings().orgFsClusterMounts,
       }),
     );
   }

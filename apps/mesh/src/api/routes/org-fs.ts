@@ -38,6 +38,11 @@ import {
   OrgFsValidationError,
 } from "@/file-storage/org-fs";
 import { isValidVolume } from "@/file-storage/org-fs-path";
+import {
+  buildPublicOrgFs,
+  getPublicSets,
+  isPublicVolume,
+} from "@/file-storage/public-sets";
 import { detectContentType } from "@/object-storage/key-utils";
 
 type Variables = { meshContext: StudioContext };
@@ -92,6 +97,14 @@ export const createOrgFsRoutes = () => {
     if (!isValidVolume(volume)) {
       return { ok: false, res: c.json({ error: "Invalid volume name" }, 400) };
     }
+    // `public-*` volumes are the shared skill sets: readable by any member
+    // of any org, never writable over HTTP (the syncer writes server-side).
+    if (isPublicVolume(volume) && permission !== "ORG_FS_READ") {
+      return {
+        ok: false,
+        res: c.json({ error: "Public volumes are read-only" }, 403),
+      };
+    }
     try {
       await ctx.access.check(permission);
     } catch (err) {
@@ -103,6 +116,9 @@ export const createOrgFsRoutes = () => {
       }
       throw err;
     }
+    if (isPublicVolume(volume)) {
+      return { ok: true, ctx, fs: buildPublicOrgFs(ctx) };
+    }
     if (!ctx.orgFs) {
       return {
         ok: false,
@@ -111,6 +127,16 @@ export const createOrgFsRoutes = () => {
     }
     return { ok: true, ctx, fs: ctx.orgFs };
   };
+
+  // The deployment's configured public skill sets (names only — the UI's
+  // root listing). Member-gated like any read.
+  app.get("/public-sets", async (c) => {
+    const ctx = c.get("meshContext");
+    if (!ctx.auth?.user?.id) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    return c.json({ sets: getPublicSets().map((s) => s.set) });
+  });
 
   // --- Reads ---------------------------------------------------------------
 

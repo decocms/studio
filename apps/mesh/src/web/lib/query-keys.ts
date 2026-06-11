@@ -313,6 +313,16 @@ export const KEYS = {
   // Org-scoped S3 bucket file configurations
   fileConfigs: (orgId: string) => ["file-configs", orgId] as const,
 
+  // Organization filesystem (volume browser). `orgFsVolume` is the prefix key
+  // a mutation invalidates to refresh every listing + usage for the volume.
+  orgFsVolume: (orgId: string, volume: string) =>
+    ["org-fs", orgId, volume] as const,
+  orgFsList: (orgId: string, volume: string, path: string) =>
+    ["org-fs", orgId, volume, "list", path] as const,
+  orgFsUsage: (orgId: string, volume: string) =>
+    ["org-fs", orgId, volume, "usage"] as const,
+  orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
+
   // File picker — objects listed from a configured bucket
   filePickerObjects: (orgId: string, configId: string | null) =>
     ["file-picker-objects", orgId, configId] as const,

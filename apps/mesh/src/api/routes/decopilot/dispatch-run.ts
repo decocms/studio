@@ -347,6 +347,12 @@ export interface DispatchRunInput {
    * pin a specific subset of tools.
    */
   toolAllowlist?: string[] | null;
+  /**
+   * Parent agent-loop step cap (AI SDK `stopWhen`). Omitted leaves the loop
+   * on its `PARENT_STEP_LIMIT` default. Set by automations that need a higher
+   * (or lower) ceiling than the platform default.
+   */
+  maxAgentSteps?: number;
   /** Chat mode — plan, forced web search / image, or default */
   mode: ChatMode;
   organizationId: string;
@@ -1131,6 +1137,7 @@ async function prepareRun(
       temperature: input.temperature,
       toolApprovalLevel: input.toolApprovalLevel,
       toolAllowlist: input.toolAllowlist ?? null,
+      maxAgentSteps: input.maxAgentSteps,
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
       organizationSlug: organization.slug,

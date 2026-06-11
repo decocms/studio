@@ -44,6 +44,8 @@ export interface Mounter {
     webdavUrl: string;
     mountPath: string;
     rcAddr?: string;
+    /** Read-only mount (public skill sets). */
+    readonly?: boolean;
   }): Promise<MountHandle>;
 }
 
@@ -157,6 +159,7 @@ export class MountManager {
             webdavUrl,
             mountPath,
             rcAddr,
+            readonly: m.readonly,
           });
           // Near-realtime freshness: feed-driven vfs/refresh against rclone's rc.
           const invalidator = this.startInvalidator({

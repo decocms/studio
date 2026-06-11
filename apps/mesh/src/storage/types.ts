@@ -1207,6 +1207,8 @@ export interface AutomationTable {
   // null = all of the bound agent's tools (default / pre-existing behavior).
   tools: string | null;
   temperature: number;
+  // Parent agent-loop step cap (AI SDK stopWhen). null = PARENT_STEP_LIMIT.
+  max_agent_steps: number | null;
   virtual_mcp_id: string;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
@@ -1225,6 +1227,7 @@ export interface Automation {
   models: string;
   tools: string | null;
   temperature: number;
+  max_agent_steps: number | null;
   virtual_mcp_id: string;
   created_at: string;
   updated_at: string;

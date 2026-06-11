@@ -68,4 +68,11 @@ export interface VmToolsParams {
    * provisioned with the updated workload rather than stale defaults.
    */
   readonly virtualMcpId: string;
+  /**
+   * Whether the org filesystem (`org/`) is mounted in the sandbox (the cluster's
+   * `getSettings().orgFsClusterMounts`). Injected (the portable tool can't read
+   * cluster settings): drives the `bash` description's org-fs guidance and
+   * replaces the legacy `share_with_user` tool with `org/output/` when on.
+   */
+  readonly orgFs?: boolean;
 }

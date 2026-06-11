@@ -112,6 +112,7 @@ export function createVmTools(params: VmToolsParams) {
     pendingImages,
     ctx,
     threadId,
+    orgFs = false,
   } = params;
   const approvalFor = (mutating: boolean) => (mutating ? needsApproval : false);
 
@@ -216,7 +217,7 @@ export function createVmTools(params: VmToolsParams) {
 
   const bash = tool({
     needsApproval: approvalFor(TOOL_APPROVAL.bash),
-    description: buildBashDescription(),
+    description: buildBashDescription(orgFs),
     inputSchema: zodSchema(BashInputSchema),
     execute: async (input) => {
       const result = await call("/_sandbox/bash", input);
@@ -276,6 +277,10 @@ export function createVmTools(params: VmToolsParams) {
     glob,
     bash,
     copy_to_sandbox,
-    share_with_user,
+    // With org-fs mounts live, `org/output/` + the thread-outputs chips replace
+    // share_with_user (model-outputs) entirely — only register the legacy tool
+    // when the deployment hasn't flipped the flag. copy_to_sandbox is NOT
+    // replaced (it's the inbound attachment path).
+    ...(orgFs ? {} : { share_with_user }),
   };
 }

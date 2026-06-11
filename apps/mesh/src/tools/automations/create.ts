@@ -53,6 +53,10 @@ export const AUTOMATION_CREATE = defineTool({
     // Allowlist of model-facing tool names the run is restricted to.
     // null/omitted = all of the bound agent's tools (default behavior).
     tools: z.array(z.string()).nullable().optional(),
+    // Parent agent-loop step cap. null/omitted = platform default
+    // (PARENT_STEP_LIMIT). Raise it for automations that legitimately need
+    // more reasoning/tool steps before stopping.
+    maxAgentSteps: z.number().int().min(1).max(100).nullable().optional(),
     temperature: z.number().default(0.5),
     active: z.boolean().default(true),
   }),
@@ -84,6 +88,7 @@ export const AUTOMATION_CREATE = defineTool({
         input.tools === undefined || input.tools === null
           ? null
           : JSON.stringify(input.tools),
+      max_agent_steps: input.maxAgentSteps ?? null,
       temperature: input.temperature,
       active: input.active,
       virtual_mcp_id: input.virtual_mcp_id,
