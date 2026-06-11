@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 import { MANAGEMENT_TOOLS } from "./registry-metadata";
 
@@ -12,11 +13,11 @@ describe("decopilot-mcp gateway tools removed", () => {
     expect(names).not.toContain("GENERATE_IMAGE_MCP");
   });
 
-  test("the decopilot-mcp module no longer resolves", async () => {
-    await expect(
-      // @ts-expect-error — the decopilot-mcp module is intentionally deleted; tsc
-      // would otherwise flag the missing module. The runtime rejection IS the assertion.
-      import("./decopilot-mcp"),
-    ).rejects.toThrow();
+  test("the decopilot-mcp directory no longer exists", () => {
+    // The gateway-copy tools were removed; the directory must stay gone. A
+    // filesystem check asserts removal without a static import of the deleted
+    // path (which dead-import analysis would otherwise flag).
+    const dir = new URL("./decopilot-mcp", import.meta.url).pathname;
+    expect(existsSync(dir)).toBe(false);
   });
 });
