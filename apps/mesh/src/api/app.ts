@@ -97,6 +97,12 @@ import {
   type McpListCache,
 } from "../mcp-clients/mcp-list-cache";
 import {
+  type ConnectionCircuitStore,
+  JetStreamKVConnectionCircuitStore,
+  NoopConnectionCircuitStore,
+  setConnectionCircuitStore,
+} from "../mcp-clients/connection-circuit-store";
+import {
   InMemoryModelListCache,
   type ModelListCache,
 } from "../ai-providers/model-list-cache";
@@ -850,6 +856,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   let eventBus: EventBus;
   let mcpListCache: McpListCache;
+  let connectionCircuitStore: ConnectionCircuitStore;
   // Model lists are public, low-stakes metadata cached per-replica with a TTL —
   // no NATS needed, so this is shared across the test and production branches.
   const modelListCache: ModelListCache = new InMemoryModelListCache();
@@ -874,6 +881,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       invalidate: async () => {},
       teardown: () => {},
     };
+    connectionCircuitStore = new NoopConnectionCircuitStore();
     cancelBroadcast = {
       start: async () => {},
       broadcast: () => {},
@@ -919,6 +927,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     tlc.init().catch(() => {});
     mcpListCache = tlc;
 
+    const ccs = new JetStreamKVConnectionCircuitStore({
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    ccs.init().catch(() => {});
+    connectionCircuitStore = ccs;
+
     providerKeyCache = createProviderKeyCache({
       getConnection: () => natsProvider!.getConnection(),
     });
@@ -953,6 +967,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       tlc.init().catch((err: unknown) => {
         console.error("[McpListCache] Deferred init failed:", err);
       });
+      ccs.init().catch((err: unknown) => {
+        console.error("[ConnectionCircuitStore] Deferred init failed:", err);
+      });
       // Subscribe to cross-replica key invalidations (idempotent).
       providerKeyCache.start();
       streamBuffer.init().catch((err: unknown) => {
@@ -984,6 +1001,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
+  setConnectionCircuitStore(connectionCircuitStore);
 
   const threadStorage = new SqlThreadStorage(database.db);
 
@@ -1073,7 +1091,9 @@ export async function createApp(options: CreateAppOptions = {}) {
     mcpListCache.teardown();
     modelListCache.teardown();
     providerKeyCache.teardown();
+    connectionCircuitStore.teardown();
     setMcpListCache(null);
+    setConnectionCircuitStore(null);
   };
 
   const app = new Hono<Env>();
