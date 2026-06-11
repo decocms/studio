@@ -67,4 +67,10 @@ describe("file-explorer utils", () => {
     expect(toDaemonPath("/src/index.ts")).toBe("src/index.ts");
     expect(getParentTreePath("/src/index.ts")).toBe("/src");
   });
+
+  it("toTreePath adds leading slash", () => {
+    expect(toTreePath("src/index.ts")).toBe("/src/index.ts");
+    expect(toTreePath("/src/index.ts")).toBe("/src/index.ts");
+    expect(toTreePath("")).toBe("/");
+  });
 });
