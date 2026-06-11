@@ -359,6 +359,33 @@ describe("outbox crash recovery (reopen DB → replay)", () => {
   });
 });
 
+describe("outbox parent directory creation", () => {
+  it("creates a missing parent dir instead of failing to open the DB", () => {
+    // The daemon opens the outbox at `${dataDir}/link/outbox.sqlite`, where the
+    // `link/` parent does NOT pre-exist. bun:sqlite's `create: true` makes the
+    // FILE but never the parent dir, so without an mkdir this throws
+    // "unable to open database file" and crash-loops the daemon.
+    const nested = join(dir, "link", "outbox.sqlite"); // `link/` does not exist
+    let created: Outbox | undefined;
+    expect(() => {
+      created = openOutbox({ path: nested });
+    }).not.toThrow();
+    created!.append({
+      runId: RUN,
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 2,
+      line: line(1, "a"),
+    });
+    expect(
+      created!
+        .replay({ runId: RUN, fenceToken: FENCE, fromSeq: 1 })
+        .map((r) => r.wireSeq),
+    ).toEqual([1]);
+    created!.close();
+  });
+});
+
 describe("outbox rolling ackSeq truncation", () => {
   it("drops rows with wireSeq <= ackSeq, keeping the unacked tail", () => {
     for (let s = 1; s <= 5; s++) {

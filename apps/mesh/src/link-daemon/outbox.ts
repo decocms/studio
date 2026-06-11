@@ -17,6 +17,8 @@
  * an internal column (Task: lane classifier), never serialized to the wire.
  */
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { RelayLine } from "../links/protocol/relay";
 import { relayLineSchema } from "../links/protocol/relay";
 import type { OutboxLane } from "./outbox-lane";
@@ -91,6 +93,13 @@ export interface Outbox {
 
 export function openOutbox(opts: OpenOutboxOptions): Outbox {
   assertBunRuntime();
+  // bun:sqlite's `create: true` creates the DB FILE but never its parent
+  // directory; opening a path under a missing dir throws "unable to open
+  // database file". The daemon opens at `${dataDir}/link/outbox.sqlite` where
+  // `link/` does not pre-exist, so ensure the parent dir before opening.
+  if (opts.path !== ":memory:") {
+    mkdirSync(dirname(opts.path), { recursive: true });
+  }
   const db = new Database(opts.path, { create: true });
   // WAL: crash-safe, concurrent reader while the writer appends.
   db.exec("PRAGMA journal_mode = WAL");
