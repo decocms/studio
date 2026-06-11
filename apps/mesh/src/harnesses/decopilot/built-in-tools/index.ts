@@ -338,8 +338,12 @@ async function buildAllTools(
   }
   // take_screenshot, scrape_url, inspect_page require Browserless API token.
   if (process.env.BROWSERLESS_TOKEN) {
+    // Cluster builds the `objectStorage` hook from StudioContext; the tool
+    // itself no longer reads ctx (HarnessDeps conversion). The Browserless
+    // gate stays env-based — `deps.browserless` presence equals
+    // `!!process.env.BROWSERLESS_TOKEN` as set by the cluster hook.
     tools.take_screenshot = createTakeScreenshotTool(writer, {
-      ctx,
+      objectStorage: ctx.objectStorage,
       toolOutputMap,
       pendingImages,
     });

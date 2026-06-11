@@ -5,7 +5,7 @@
  */
 
 import type { UIMessageStreamWriter } from "ai";
-import type { StudioContext } from "@/core/studio-context";
+import type { ObjectStorageHooks } from "../../harness-deps";
 import {
   createPortableTakeScreenshotTool,
   type TakeScreenshotInput,
@@ -17,13 +17,16 @@ export type { PendingImage, TakeScreenshotInput };
 export function createTakeScreenshotTool(
   writer: UIMessageStreamWriter,
   params: {
-    ctx: StudioContext;
+    // Nullable: the portable screenshot tool has a data-URI fallback when
+    // object storage is unavailable, so cluster passes `ctx.objectStorage`
+    // (BoundObjectStorage | null) straight through — behavior-preserving.
+    objectStorage: ObjectStorageHooks | null;
     toolOutputMap: Map<string, string>;
     pendingImages: PendingImage[];
   },
 ) {
   return createPortableTakeScreenshotTool(writer, {
-    objectStorage: params.ctx.objectStorage,
+    objectStorage: params.objectStorage,
     toolOutputMap: params.toolOutputMap,
     pendingImages: params.pendingImages,
   });
