@@ -1046,20 +1046,44 @@ export async function createApp(options: CreateAppOptions = {}) {
     registerUplinkResolve((token) =>
       resolveLinkBearer(token, auth.api as unknown as LinkBearerAuthApi),
     );
-    registerUplinkConnectionFactory(({ send }) => {
-      const cache = new Map<string, Promise<UplinkIngestSession>>();
+    registerUplinkConnectionFactory(({ userSub, send }) => {
+      const cache = new Map<string, Promise<UplinkIngestSession | null>>();
       return {
         sessionFor: (runId) => {
           let pending = cache.get(runId);
           if (!pending) {
             pending = (async () => {
-              const [dbFence, cancelAt] = await Promise.all([
-                threadStorage.getRunFence(runId),
-                threadStorage.getCancelRequestedAt(runId),
-              ]);
+              // ORG OWNERSHIP (parity with the NDJSON validateRunAccess gate):
+              // the authenticated daemon user MUST be a member of the run's org
+              // — the fence is a secret, not an org-bound token, so it can't be
+              // the sole authz. The getRunFence/getCancelRequestedAt lookups are
+              // unscoped (threadId-only); this check is the required caller guard.
+              const threadRow = await database.db
+                .selectFrom("threads")
+                .select(["organization_id"])
+                .where("id", "=", runId)
+                .executeTakeFirst();
+              if (!threadRow) return null;
+              const member = await database.db
+                .selectFrom("member")
+                .select(["role"])
+                .where("userId", "=", userSub)
+                .where("organizationId", "=", threadRow.organization_id)
+                .executeTakeFirst();
+              if (!member) return null;
+
+              const dbFence = await threadStorage.getRunFence(runId);
+              // No minted fence ⇒ no active pull run ⇒ reject (NDJSON 409 parity;
+              // fenceMatches(null, …) returns true, so the gate MUST short here).
+              if (dbFence === null) return null;
+
               return createUplinkIngestSession({
                 fenceOk: (token) => fenceMatches(dbFence, token),
-                cancelRequested: () => isCancelRequested(cancelAt),
+                // Read FRESH per frame so a mid-stream cancel stops publishing.
+                cancelRequested: async () =>
+                  isCancelRequested(
+                    await threadStorage.getCancelRequestedAt(runId),
+                  ),
                 publish: async (chunk) => {
                   await streamBuffer.publishRawChunk(runId, chunk);
                 },

@@ -30,11 +30,13 @@ export interface UplinkIngestDeps {
       | { type: "cancel"; runId: string; fenceToken: string },
   ) => void;
   /**
-   * True when `cancel_requested_at` is set for the run — re-checked per
-   * (re)connect so a cancel issued while the daemon was offline is re-asserted
-   * on the `accept` frame (§8, B3 backstop). Optional; defaults to never.
+   * True when `cancel_requested_at` is set for the run. Read FRESH per frame
+   * (and per reconnect), so the impl should query the DB (or a short-TTL cache)
+   * rather than a snapshot — a mid-stream cancel must stop publishing. Used by
+   * onFrame (NDJSON 409 parity: don't publish a cancelled run) and onResume
+   * (§8, B3 reconnect backstop). Optional; defaults to never.
    */
-  cancelRequested?: () => boolean;
+  cancelRequested?: () => boolean | Promise<boolean>;
 }
 
 export interface UplinkIngestSession {
@@ -79,6 +81,16 @@ export function createUplinkIngestSession(
         );
       }
       if (fence === null) fence = frame.fenceToken;
+      // Cancel gate (NDJSON 409 parity): never publish a cancelled run. Read
+      // fresh so a mid-stream cancel takes effect; signal the daemon to abort.
+      if ((await deps.cancelRequested?.()) === true) {
+        deps.send({
+          type: "cancel",
+          runId: frame.runId,
+          fenceToken: frame.fenceToken,
+        });
+        return;
+      }
       // Dedupe a replayed prefix: already contiguous-acked → no-op.
       if (frame.wireSeq <= ackSeq) return;
       await deps.publish(frame.chunk as UIMessageChunk);
@@ -107,7 +119,7 @@ export function createUplinkIngestSession(
         pending.clear();
       }
       fence = frame.fenceToken;
-      const cancelled = deps.cancelRequested?.() ?? false;
+      const cancelled = (await deps.cancelRequested?.()) ?? false;
       const accept: AcceptFrame = {
         type: "accept",
         runId: frame.runId,

@@ -77,6 +77,17 @@ describe("uplink ingest session", () => {
     await expect(s.onFrame(chunk(1))).rejects.toThrow(/fence/i);
     expect(published.length).toBe(0);
   });
+
+  it("does NOT publish a chunk for a cancelled run; sends a down-channel cancel (NDJSON parity)", async () => {
+    const { s, published, sent } = session({ cancelRequested: () => true });
+    await s.onFrame(chunk(1));
+    expect(published.length).toBe(0);
+    expect(sent.at(-1)).toEqual({
+      type: "cancel",
+      runId: "r",
+      fenceToken: "f",
+    });
+  });
 });
 
 const resume = (fenceToken: string, fromSeq = 1) => ({

@@ -22,12 +22,14 @@ import { isUplinkWsData, UPLINK_KEEPALIVE_MS } from "./uplink-ws";
 
 export interface UplinkConnectionDeps {
   /** Resolve (creating on first use) the ingest session for a run on this
-   *  connection. May be async so the factory can resolve the run's DB fence
-   *  once at session creation; the session then closes over a sync fenceOk
-   *  against the cached value (plus publish/send/cancelRequested). */
+   *  connection. May be async so the factory can verify the authenticated user
+   *  owns the run's org + resolve the run's DB fence once at session creation;
+   *  the session then closes over a sync fenceOk against the cached value (plus
+   *  publish/send/cancelRequested). Returns null to REJECT the run (foreign org
+   *  / unknown run / no minted fence) — the handler closes the socket (1008). */
   sessionFor: (
     runId: string,
-  ) => UplinkIngestSession | Promise<UplinkIngestSession>;
+  ) => UplinkIngestSession | null | Promise<UplinkIngestSession | null>;
   /** Close the socket with a WS status code (the daemon reconnects + resumes). */
   close: (code: number, reason?: string) => void;
 }
@@ -59,16 +61,27 @@ export function createUplinkConnection(
       }
       try {
         switch (frame.type) {
-          case "chunk":
-            await (await deps.sessionFor(frame.runId)).onFrame(frame);
+          case "chunk": {
+            const session = await deps.sessionFor(frame.runId);
+            if (!session) {
+              deps.close(1008, "run not authorized");
+              return;
+            }
+            await session.onFrame(frame);
             break;
+          }
           case "resume":
           case "hello":
             // `hello` carries no run; only `resume` drives a cursor. A hello
             // without a run is a no-op handshake (auth already happened at the
             // upgrade). A resume replies `accept` before any chunk.
             if (frame.type === "resume") {
-              await (await deps.sessionFor(frame.runId)).onResume(frame);
+              const session = await deps.sessionFor(frame.runId);
+              if (!session) {
+                deps.close(1008, "run not authorized");
+                return;
+              }
+              await session.onResume(frame);
             }
             break;
           default:

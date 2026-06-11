@@ -94,4 +94,16 @@ describe("createUplinkConnection", () => {
     expect(closes[0]!.code).toBe(1008);
     expect(closes[0]!.reason).toMatch(/fence/i);
   });
+
+  it("closes 1008 when sessionFor rejects the run (foreign org / no fence → null)", async () => {
+    const closes: Array<{ code: number; reason?: string }> = [];
+    const c = createUplinkConnection({
+      sessionFor: async () => null,
+      close: (code, reason) => {
+        closes.push({ code, reason });
+      },
+    });
+    await c.onMessage(JSON.stringify(chunkFrame));
+    expect(closes[0]!.code).toBe(1008);
+  });
 });
