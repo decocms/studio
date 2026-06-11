@@ -979,6 +979,41 @@ export async function createApp(options: CreateAppOptions = {}) {
           err,
         );
       });
+      // Durable explicit-ack projector consumer (spec §5.4), default-off. Only
+      // the §5.4 cutover (inline projector stops persisting) makes this the
+      // sole DB-writer, so it stays gated behind LINK_DURABLE_PROJECTOR until
+      // multi-pod e2e validates no double-write.
+      if (process.env.LINK_DURABLE_PROJECTOR === "true") {
+        void (async () => {
+          const nc = natsProvider!.getConnection();
+          const js = natsProvider!.getJetStream();
+          if (!nc || !js) return;
+          const jsm = await nc.jetstreamManager();
+          const { startDurableProjector } = await import(
+            "./routes/decopilot/start-durable-projector"
+          );
+          await startDurableProjector({
+            jsm,
+            js,
+            messageParts: new SqlThreadStorage(database.db).messageParts(),
+            resolveRunOrg: async (runId) => {
+              const row = await database.db
+                .selectFrom("threads")
+                .select(["organization_id", "message_storage_version"])
+                .where("id", "=", runId)
+                .executeTakeFirst();
+              return row
+                ? {
+                    orgId: row.organization_id,
+                    version: row.message_storage_version ?? 1,
+                  }
+                : null;
+            },
+          });
+        })().catch((err: unknown) => {
+          console.warn("[DurableProjector] Deferred init failed:", err);
+        });
+      }
     });
   }
 
