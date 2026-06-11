@@ -104,14 +104,29 @@ export function createSubtaskTool(
       // identical tools + instructions but an empty context.
       const isSelf = !!self && (!agent_id || agent_id === self.id);
       const targetId = isSelf ? self!.id : agent_id;
+
+      // Recoverable failures yield a structured error (surfaced to the model
+      // via toModelOutput) and stop, instead of throwing. Throwing before the
+      // first yield kills the subtask with no guidance, so the model can't
+      // self-correct and just repeats the mistake. A yielded error lets it
+      // retry — usually by omitting agent_id to clone itself.
+      const selfHint = self
+        ? " Omit agent_id to clone yourself (a fresh subagent with your tools + instructions), or pass an agent id from <available-agents>."
+        : "";
+
       if (!targetId) {
-        throw new Error(
-          "agent_id is required: this agent cannot delegate to itself here.",
-        );
+        yield {
+          text: "",
+          error: `agent_id is required here.${selfHint}`,
+          finishReason: "error",
+        };
+        return;
       }
 
-      const isSelfTarget = !!self && targetId === self.id;
-      if (!isSelf && !isSelfTarget && self) {
+      // 1. Enforce the caller's sub-agent allowlist for cross-agent delegation
+      //    BEFORE resolving the target. Self-clones are always allowed (isSelf
+      //    short-circuits). An empty/absent allowlist means "all agents".
+      if (!isSelf && self) {
         const caller = await ctx.storage.virtualMcps.findById(
           self.id,
           organization.id,
@@ -120,20 +135,32 @@ export function createSubtaskTool(
         // An allowlist array (even empty = itself only) gates cross-agent
         // delegation. A null/absent allowlist means all agents are allowed.
         if (Array.isArray(allow) && !allow.includes(targetId)) {
-          throw new Error(
-            `Agent not available for delegation, blocked by allowlist. caller=${self.id} target=${targetId} allow=${JSON.stringify(allow)} isSelf=${isSelf} agent_id=${agent_id ?? "(omitted)"}`,
-          );
+          yield {
+            text: "",
+            error: `Agent '${targetId}' is not in this agent's delegation allowlist (allow=${JSON.stringify(allow)}).${selfHint}`,
+            finishReason: "error",
+          };
+          return;
         }
       }
 
       // 2. Validate the target and open its passthrough client. A self-clone
-      //    uses superUser so its tool scope mirrors the parent loop.
-      const { mcpClient, targetRef } = await resolveSubagent(
-        ctx,
-        organization.id,
-        targetId,
-        { superUser: isSelf },
-      );
+      //    uses superUser so its tool scope mirrors the parent loop. Resolution
+      //    errors ("Agent not found" / "not active") are also recoverable.
+      let resolved: Awaited<ReturnType<typeof resolveSubagent>>;
+      try {
+        resolved = await resolveSubagent(ctx, organization.id, targetId, {
+          superUser: isSelf,
+        });
+      } catch (err) {
+        yield {
+          text: "",
+          error: `${(err as Error).message} (agent_id="${targetId}").${selfHint}`,
+          finishReason: "error",
+        };
+        return;
+      }
+      const { mcpClient, targetRef } = resolved;
       const targetLabel = targetRef.id;
 
       try {
