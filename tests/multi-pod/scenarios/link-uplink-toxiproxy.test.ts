@@ -51,6 +51,13 @@ describe("link uplink — WS resilience + publish-then-consume parity", () => {
   // never a silent black hole (§10 fence coherence).
   test.skip("[coherence] a stale fence token is rejected loudly by uplink ingest", () => {});
 
+  // Authorization parity with the NDJSON gate (the WS-uplink security fix): a
+  // daemon authenticated as user A must NOT stream chunks into an org-B run
+  // (close 1008 "run not authorized"), and a run with NO minted fence must
+  // reject any chunk (null-fence guard). No cross-org WS ingest is otherwise
+  // covered.
+  test.skip("[authz] a foreign-org or unfenced run is rejected (close 1008)", () => {});
+
   // Inject an un-projectable chunk; assert the durable projector retries with
   // backoff, surfaces it (run marked failed via onDlq), and does NOT stall later
   // runs (poison isolation, §5.4).
