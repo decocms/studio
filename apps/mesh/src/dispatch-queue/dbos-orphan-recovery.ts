@@ -75,6 +75,7 @@ async function cancelDeadExecutorPending(
 export async function cancelDeadPodWorkflows(
   deadPodId: string,
 ): Promise<number> {
+  if (!DBOS.isInitialized()) return 0;
   const rows = await DBOS.listWorkflows({
     status: ["PENDING"],
     executorId: deadPodId,
@@ -110,6 +111,10 @@ export async function sweepOrphanedWorkflows(
   alivePods: ReadonlySet<string>,
   selfPodId: string,
 ): Promise<SweepResult> {
+  if (!DBOS.isInitialized()) {
+    console.warn("[dbos-recovery] DBOS not launched yet; skipping boot sweep");
+    return { deadExecutor: 0, versionDrift: 0 };
+  }
   const versionDrift = await cancelVersionDriftedEnqueued();
 
   let deadExecutor = 0;
