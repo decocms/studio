@@ -310,7 +310,9 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       rt.deps,
     );
 
-    // 2. Publish the work item idempotently (L1: keyed by runId).
+    // 2. Publish the work item idempotently (L1: keyed by the per-attempt
+    //    runFenceToken, NOT runId — runId aliases the threadId, so sequential
+    //    turns would collide in NATS dedup; see `workItemDedupKey`).
     // `harnessInput` is the complete wire `HarnessStreamInput` that
     // `pullDispatch` built eagerly (mcp endpoint minted, messages
     // materialized, virtualMcp + fence token already on it) — exactly the

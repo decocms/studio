@@ -3,6 +3,8 @@ import {
   buildConsumerName,
   buildWorkSubject,
   LinkWorkQueue,
+  type WorkItem,
+  workItemDedupKey,
   workItemSchema,
 } from "./link-work-queue";
 
@@ -168,6 +170,31 @@ describe("workItemSchema", () => {
       harnessInput: { threadId: "thrd_07" },
     };
     expect(workItemSchema.safeParse(item).success).toBe(false);
+  });
+});
+
+describe("workItemDedupKey", () => {
+  // Regression: harness-conformance "claude-code session id round-trips" drove
+  // two turns on one thread; the second never enqueued because the publish
+  // deduped on `runId` (== threadId), colliding with turn 1 in NATS's
+  // duplicate window. The dedup key must be the per-attempt fence token.
+  it("is the per-attempt fence token, NOT the thread-scoped runId", () => {
+    const base: Omit<WorkItem, "runFenceToken"> = {
+      runId: "thrd_same", // runId aliases the threadId — identical across turns
+      threadId: "thrd_same",
+      orgId: "org_01",
+      userId: "usr_01",
+      harnessInput: {},
+      orgSlug: "test-org",
+    };
+    const turn1: WorkItem = { ...base, runFenceToken: "fence-turn-1" };
+    const turn2: WorkItem = { ...base, runFenceToken: "fence-turn-2" };
+
+    // Same thread/run id, distinct attempts → distinct dedup keys, so turn 2's
+    // publish is NOT swallowed by NATS dedup.
+    expect(workItemDedupKey(turn1)).toBe("fence-turn-1");
+    expect(workItemDedupKey(turn1)).not.toBe(workItemDedupKey(turn2));
+    expect(workItemDedupKey(turn1)).not.toBe(turn1.runId);
   });
 });
 
