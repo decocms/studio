@@ -18,6 +18,7 @@ export function deepMerge(
   const base: TenantConfig = current ?? {};
   return {
     git: mergeOptional(base.git, patch.git),
+    operator: mergeOptional(base.operator, patch.operator),
     application: mergeOptional(base.application, patch.application),
     env: mergeEnv(base.env, patch.env),
   };

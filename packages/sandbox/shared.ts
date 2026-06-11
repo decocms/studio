@@ -31,6 +31,14 @@ export function gitIdentityScript(userName: string, userEmail: string): string {
   return `git config --global user.name ${shellQuote(userName)} && git config --global user.email ${shellQuote(userEmail)}`;
 }
 
+export {
+  appendCoAuthorToPullRequestBody,
+  appendCoAuthorTrailer,
+  normalizeCoAuthorIdentity,
+  stripCoAuthorTrailers,
+  type CoAuthorIdentity,
+} from "./git-co-author";
+
 /**
  * Injected into proxied dev-server HTML. Two jobs:
  * 1. WebSocket rewriter — Vite/Fresh/Next/Webpack/Bun bake the dev WS URL

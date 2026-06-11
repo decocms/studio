@@ -159,6 +159,7 @@ function stripDerived(
   if (!enriched) return null;
   return {
     git: enriched.git,
+    operator: enriched.operator,
     application: enriched.application,
   };
 }

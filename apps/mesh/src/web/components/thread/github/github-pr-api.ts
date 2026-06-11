@@ -3,6 +3,12 @@ import {
   pullNumberFromUrl,
   pullRequestFromToolText,
 } from "./extract-tool-json.ts";
+import {
+  appendCoAuthorToPullRequestBody,
+  appendCoAuthorTrailer,
+  normalizeCoAuthorIdentity,
+  type CoAuthorIdentity,
+} from "@decocms/sandbox/shared";
 
 type GithubMcpClient = {
   callTool: (req: {
@@ -33,6 +39,7 @@ export interface OpenPullRequestArgs {
   title: string;
   body?: string;
   base: string;
+  coAuthor?: CoAuthorIdentity;
 }
 
 function toolErrorMessage(result: unknown): string | null {
@@ -192,6 +199,37 @@ export async function findOpenPullRequestForBranch(
   return null;
 }
 
+async function ensureExistingPullRequestCoAuthor(
+  client: GithubMcpClient,
+  args: {
+    owner: string;
+    repo: string;
+    pullNumber: number;
+    body?: string;
+    coAuthor?: CoAuthorIdentity;
+  },
+): Promise<void> {
+  const body = appendCoAuthorToPullRequestBody(
+    args.body,
+    normalizeCoAuthorIdentity(args.coAuthor),
+  );
+  if (!body) return;
+
+  try {
+    await client.callTool({
+      name: "update_pull_request",
+      arguments: {
+        owner: args.owner,
+        repo: args.repo,
+        pullNumber: args.pullNumber,
+        body,
+      },
+    });
+  } catch {
+    // Best-effort when the GitHub MCP tool is unavailable or rejects the update.
+  }
+}
+
 async function createPullRequest(
   client: GithubMcpClient,
   args: {
@@ -201,15 +239,20 @@ async function createPullRequest(
     body?: string;
     head: string;
     base: string;
+    coAuthor?: CoAuthorIdentity;
   },
 ): Promise<CreatedPullRequest> {
+  const body = appendCoAuthorToPullRequestBody(
+    args.body,
+    normalizeCoAuthorIdentity(args.coAuthor),
+  );
   const result = await client.callTool({
     name: "create_pull_request",
     arguments: {
       owner: args.owner,
       repo: args.repo,
       title: args.title,
-      body: args.body,
+      body: body || undefined,
       head: args.head,
       base: args.base,
     },
@@ -228,7 +271,16 @@ export async function openPullRequestForBranch(
     repo: args.repo,
     branch: args.branch,
   });
-  if (existing) return existing;
+  if (existing) {
+    await ensureExistingPullRequestCoAuthor(client, {
+      owner: args.owner,
+      repo: args.repo,
+      pullNumber: existing.number,
+      body: args.body,
+      coAuthor: args.coAuthor,
+    });
+    return existing;
+  }
 
   try {
     return await createPullRequest(client, {
@@ -238,6 +290,7 @@ export async function openPullRequestForBranch(
       body: args.body,
       head: args.branch,
       base: args.base,
+      coAuthor: args.coAuthor,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -259,8 +312,14 @@ export async function squashMergePullRequest(
     repo: string;
     pullNumber: number;
     commitTitle?: string;
+    commitMessage?: string;
+    coAuthor?: CoAuthorIdentity;
   },
 ): Promise<MergedPullRequest> {
+  const normalized = normalizeCoAuthorIdentity(args.coAuthor);
+  const commitMessage = normalized
+    ? appendCoAuthorTrailer(args.commitMessage?.trim() ?? "", normalized)
+    : args.commitMessage?.trim() || undefined;
   const result = await client.callTool({
     name: "merge_pull_request",
     arguments: {
@@ -269,6 +328,7 @@ export async function squashMergePullRequest(
       pullNumber: args.pullNumber,
       merge_method: "squash",
       ...(args.commitTitle ? { commit_title: args.commitTitle } : {}),
+      ...(commitMessage ? { commit_message: commitMessage } : {}),
     },
   });
 

@@ -6,6 +6,7 @@ import {
 } from "./extract-tool-json.ts";
 import {
   findOpenPullRequestForBranch,
+  openPullRequestForBranch,
   parseCreatedPullRequestResult,
   squashMergePullRequest,
 } from "./github-pr-api.ts";
@@ -141,5 +142,70 @@ describe("squashMergePullRequest", () => {
         pullNumber: 1,
       }),
     ).rejects.toThrow("Failed to merge pull request");
+  });
+
+  test("appends co-author to squash commit message", async () => {
+    let args: Record<string, unknown> | undefined;
+    const client = {
+      callTool: async (req: {
+        name: string;
+        arguments: Record<string, unknown>;
+      }) => {
+        args = req.arguments;
+        return {
+          content: [{ type: "text", text: JSON.stringify({ merged: true }) }],
+        };
+      },
+    };
+
+    await squashMergePullRequest(client, {
+      owner: "o",
+      repo: "r",
+      pullNumber: 1,
+      commitMessage: "feat: ship it",
+      coAuthor: { userName: "Jane Doe", userEmail: "jane@example.com" },
+    });
+
+    expect(args?.commit_message).toBe(
+      "feat: ship it\n\nCo-authored-by: Jane Doe <jane@example.com>",
+    );
+  });
+});
+
+describe("openPullRequestForBranch", () => {
+  test("does not create a co-author-only PR body", async () => {
+    let args: Record<string, unknown> | undefined;
+    const client = {
+      callTool: async (req: {
+        name: string;
+        arguments: Record<string, unknown>;
+      }) => {
+        if (req.name === "list_pull_requests") {
+          return { content: [{ type: "text", text: "[]" }] };
+        }
+        args = req.arguments;
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                url: "https://github.com/o/r/pull/2",
+              }),
+            },
+          ],
+        };
+      },
+    };
+
+    await openPullRequestForBranch(client, {
+      owner: "o",
+      repo: "r",
+      branch: "feat/x",
+      title: "feat: x",
+      base: "main",
+      coAuthor: { userName: "Jane Doe", userEmail: "jane@example.com" },
+    });
+
+    expect(args?.body).toBeUndefined();
   });
 });

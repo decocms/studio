@@ -35,6 +35,10 @@ interface EnsureSandboxBody {
   handle: string;
   repo?: RepoRef;
   workload?: Workload;
+  operator?: {
+    userName: string;
+    userEmail?: string;
+  };
   /** Message-offload SSRF allowlist pushed by the cluster (trusted config,
    *  never a request frame). Threaded into the spawned daemon's boot env so
    *  it can fetch offloaded `messagesRef` payloads from these hosts only. */

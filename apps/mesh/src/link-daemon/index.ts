@@ -17,6 +17,7 @@ import {
   postConfig as daemonPostConfig,
   waitForDaemonReady,
 } from "@decocms/sandbox/daemon-client";
+import { normalizeCoAuthorIdentity } from "@decocms/sandbox/shared";
 import { createDefaultDaemonSpawn } from "@decocms/sandbox/daemon-spawn";
 import { ensureRclone } from "./ensure-rclone";
 import { createControlHandler } from "./control-handler";
@@ -146,6 +147,10 @@ export async function startLinkDaemon(
         };
       }
       const payload: Record<string, unknown> = { application };
+      const operator = normalizeCoAuthorIdentity(config.operator ?? null);
+      if (operator) {
+        payload.operator = operator;
+      }
       if (config.repo) {
         payload.git = {
           repository: {

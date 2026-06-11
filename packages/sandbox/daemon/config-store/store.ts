@@ -183,6 +183,7 @@ export class TenantConfigStore {
 function plainConfig(enriched: EnrichedTenantConfig): TenantConfig {
   return {
     git: enriched.git,
+    operator: enriched.operator,
     application: enriched.application,
     env: enriched.env,
   };

@@ -245,6 +245,31 @@ describe("git routes", () => {
     });
   });
 
+  it("publish appends operator co-author trailer", async () => {
+    const { appRoot, repoDir } = initRepo();
+    writeFileSync(join(repoDir, "README.md"), "updated\n");
+    const handler = makeGitPublishHandler({
+      appRoot,
+      repoDir,
+      getOperator: () => ({
+        userName: "Studio User",
+        userEmail: "studio@example.com",
+      }),
+    });
+    const res = await handler(
+      new Request("http://x/git/publish", {
+        method: "POST",
+        body: JSON.stringify({ message: "update readme" }),
+      }),
+    );
+    expect([200, 500]).toContain(res.status);
+    const log = gitSync(["log", "-1", "--pretty=%B"], {
+      cwd: repoDir,
+      asUser: false,
+    });
+    expect(log).toContain("Co-authored-by: Studio User <studio@example.com>");
+  });
+
   it("publish commits staged changes", async () => {
     const { appRoot, repoDir } = initRepo();
     writeFileSync(join(repoDir, "README.md"), "updated\n");

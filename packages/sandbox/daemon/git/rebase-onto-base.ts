@@ -1,9 +1,11 @@
 import fs, { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { appendCoAuthorTrailer } from "../../git-co-author";
 import { gitSync as rawGitSync } from "./git-sync";
 import { parsePorcelainEntry } from "./porcelain";
 import { assertValidRemoteBranchName } from "./ref-name";
+import type { OperatorIdentity } from "../types";
 
 const MAX_CONFLICT_RESOLUTION_ATTEMPTS = 50;
 
@@ -15,6 +17,7 @@ let rebaseGitAsUser = true;
 
 export interface RebaseOntoBaseOptions {
   asUser?: boolean;
+  operator?: OperatorIdentity;
 }
 
 function gitEnv(repoDir: string): Record<string, string> {
@@ -119,7 +122,10 @@ const NON_INTERACTIVE_ENV: Record<string, string> = {
   EDITOR: "true",
 };
 
-function commitBeforeRebase(repoDir: string): void {
+function commitBeforeRebase(
+  repoDir: string,
+  operator?: OperatorIdentity,
+): void {
   const porcelain = tryGit(repoDir, ["status", "--porcelain"]);
   if (!porcelain?.trim()) return;
 
@@ -134,7 +140,7 @@ function commitBeforeRebase(repoDir: string): void {
       // hook failures clearly in the publish UI instead of opaque daemon errors.
       "--no-verify",
       "-m",
-      "Before rebase",
+      appendCoAuthorTrailer("Before rebase", operator),
     ],
     { env: SKIP_HOOKS_ENV },
   );
@@ -304,7 +310,7 @@ export function rebaseOntoBase(
   const previousAsUser = rebaseGitAsUser;
   rebaseGitAsUser = options?.asUser ?? true;
   try {
-    return rebaseOntoBaseInner(repoDir, base);
+    return rebaseOntoBaseInner(repoDir, base, options?.operator);
   } finally {
     rebaseGitAsUser = previousAsUser;
   }
@@ -313,6 +319,7 @@ export function rebaseOntoBase(
 function rebaseOntoBaseInner(
   repoDir: string,
   base: string,
+  operator?: OperatorIdentity,
 ): { rebased: boolean } {
   assertValidRemoteBranchName(base);
 
@@ -338,7 +345,7 @@ function rebaseOntoBaseInner(
     throw new Error(`Base branch '${base}' not found on origin`);
   }
 
-  commitBeforeRebase(repoDir);
+  commitBeforeRebase(repoDir, operator);
 
   try {
     runGit(repoDir, ["rebase", "-X", "theirs", upstream]);
