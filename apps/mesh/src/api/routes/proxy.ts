@@ -27,6 +27,7 @@ import {
   recordFailure,
   recordSuccess,
 } from "@/mcp-clients/circuit-breaker";
+import { getConnectionCircuitStore } from "@/mcp-clients/connection-circuit-store";
 import { peekRpcMethod, probeDecision } from "./proxy-handshake";
 import { handleVirtualMcpRequest } from "./virtual-mcp";
 export { toServerClient, type MCPProxyClient } from "./mcp-proxy-factory";
@@ -187,6 +188,7 @@ export const createProxyRoutes = () => {
               try {
                 await clientFromConnection(connection, ctx, false);
                 recordSuccess(connectionId);
+                void getConnectionCircuitStore().recordSuccess(connectionId);
                 span.setStatus({ code: SpanStatusCode.OK });
               } catch (err) {
                 span.setStatus({
@@ -245,15 +247,23 @@ export const createProxyRoutes = () => {
             orgSlug: ctx.organization?.slug,
           });
           if (authResponse) {
+            // 401-style errors are user-recoverable (drive the OAuth popup) —
+            // they must NOT trip the breaker or disable the connection.
             return authResponse;
           }
-          const { shouldDisable } = recordFailure(connectionId);
+          // Non-auth failure (404 / 5xx / network) against a real downstream.
+          // Trip the per-replica breaker (latency guard) and the cross-replica
+          // failure window. Once failures are sustained fleet-wide, durably
+          // disable the connection so every replica stops probing it.
+          recordFailure(connectionId);
+          const { shouldDisable } =
+            await getConnectionCircuitStore().recordFailure(connectionId);
           if (shouldDisable && connection.status === "active") {
             await ctx.storage.connections.update(connectionId, {
               status: "error",
             });
             console.warn(
-              "[proxy] auto-disabled connection after repeated failures",
+              "[proxy] auto-disabled connection after sustained failures",
               {
                 connectionId,
                 org: ctx.organization?.slug,
