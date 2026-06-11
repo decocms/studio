@@ -71,6 +71,7 @@ import { Avatar } from "@deco/ui/components/avatar.tsx";
 import { OverviewTabContent, OverviewTabSkeleton } from "./overview.tsx";
 import { AuditTabContent, MonitoringLogsTable } from "./audit.tsx";
 import { ThreadsTabContent, ThreadsFiltersPopover } from "./threads.tsx";
+import { AutomationsTabContent } from "./automations.tsx";
 import { getOrgMembers } from "./utils.ts";
 import { track } from "@/web/lib/posthog-client";
 
@@ -551,7 +552,7 @@ function FiltersPopover({
 // ============================================================================
 
 interface MonitoringDashboardContentProps {
-  tab: "overview" | "audit" | "threads";
+  tab: "overview" | "audit" | "threads" | "automations";
   dateRange: DateRange;
   displayDateRange: DateRange;
   connectionIds: string[];
@@ -568,7 +569,7 @@ interface MonitoringDashboardContentProps {
   onUpdateFilters: (updates: Partial<MonitoringSearchParams>) => void;
   onTimeRangeChange: (range: TimeRangeValue) => void;
   onStreamingToggle: () => void;
-  onTabChange: (tab: "overview" | "audit" | "threads") => void;
+  onTabChange: (tab: "overview" | "audit" | "threads" | "automations") => void;
 }
 
 function MonitoringDashboardContent({
@@ -697,6 +698,7 @@ function MonitoringDashboardContent({
     { id: "overview" as const, label: "Overview" },
     { id: "audit" as const, label: "Audit" },
     { id: "threads" as const, label: "Threads" },
+    { id: "automations" as const, label: "Automations" },
   ];
 
   return (
@@ -709,11 +711,13 @@ function MonitoringDashboardContent({
               tabs={tabs}
               activeTab={tab}
               onTabChange={(tabId) =>
-                onTabChange(tabId as "overview" | "audit" | "threads")
+                onTabChange(
+                  tabId as "overview" | "audit" | "threads" | "automations",
+                )
               }
             />
             <div className="flex items-center gap-2">
-              {tab !== "threads" && (
+              {(tab === "overview" || tab === "audit") && (
                 <>
                   <Button
                     variant={isStreaming ? "secondary" : "outline"}
@@ -800,7 +804,9 @@ function MonitoringDashboardContent({
         </div>
       </Page.Body>
 
-      {tab === "threads" ? (
+      {tab === "automations" ? (
+        <AutomationsTabContent dateRange={dateRange} />
+      ) : tab === "threads" ? (
         <ThreadsTabContent
           client={client}
           locator={locator}
@@ -953,11 +959,16 @@ export default function MonitoringDashboard() {
                         { id: "overview", label: "Overview" },
                         { id: "audit", label: "Audit" },
                         { id: "threads", label: "Threads" },
+                        { id: "automations", label: "Automations" },
                       ]}
                       activeTab={tab}
                       onTabChange={(tabId) =>
                         updateFilters({
-                          tab: tabId as "overview" | "audit" | "threads",
+                          tab: tabId as
+                            | "overview"
+                            | "audit"
+                            | "threads"
+                            | "automations",
                         })
                       }
                     />

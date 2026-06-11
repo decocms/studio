@@ -1,10 +1,82 @@
 import { parseAutomationTabId } from "./tab-id";
 import { SettingsTab as AutomationInlineDetail } from "@/web/views/automations/automation-detail";
+import { AutomationRunsView } from "@/web/views/automations/automation-runs";
 import { useAutomation } from "@/web/hooks/use-automations";
 import { Page } from "@/web/components/page";
+import { Button } from "@deco/ui/components/button.tsx";
+import { CollectionTabs } from "@/web/components/collections/collection-tabs.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
+import { ArrowLeft } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { MainPanelLoading } from "./main-panel-loading";
+
+// Stat-card window options for the Runs tab. Anchored once at selection time so
+// the derived ISO range is stable across renders (avoids refetch loops).
+const WINDOW_OPTIONS = [
+  { key: "24h", label: "Last 24 hours", ms: 24 * 60 * 60 * 1000 },
+  { key: "7d", label: "Last 7 days", ms: 7 * 24 * 60 * 60 * 1000 },
+  { key: "30d", label: "Last 30 days", ms: 30 * 24 * 60 * 60 * 1000 },
+] as const;
+
+type WindowKey = (typeof WINDOW_OPTIONS)[number]["key"];
+
+function computeRange(key: WindowKey): { startDate: string; endDate: string } {
+  const ms = WINDOW_OPTIONS.find((o) => o.key === key)!.ms;
+  const now = Date.now();
+  return {
+    startDate: new Date(now - ms).toISOString(),
+    endDate: new Date(now).toISOString(),
+  };
+}
+
+function RunsTab({
+  automationId,
+  triggerIds,
+}: {
+  automationId: string;
+  triggerIds: string[];
+}) {
+  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
+  const [range, setRange] = useState(() => computeRange("30d"));
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-end">
+        <Select
+          value={windowKey}
+          onValueChange={(v) => {
+            const key = v as WindowKey;
+            setWindowKey(key);
+            setRange(computeRange(key));
+          }}
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {WINDOW_OPTIONS.map((o) => (
+              <SelectItem key={o.key} value={o.key}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <AutomationRunsView
+        automationId={automationId}
+        triggerIds={triggerIds}
+        range={range}
+      />
+    </div>
+  );
+}
 
 export function AutomationTab({ tabId }: { tabId: string }) {
   const parsed = parseAutomationTabId(tabId);
@@ -20,6 +92,7 @@ export function AutomationTab({ tabId }: { tabId: string }) {
 function AutomationTabInner({ id }: { id: string }) {
   const navigate = useNavigate();
   const { data: automation, isLoading } = useAutomation(id);
+  const [tab, setTab] = useState<"settings" | "runs">("settings");
 
   const onBack = () => {
     navigate({
@@ -44,15 +117,32 @@ function AutomationTabInner({ id }: { id: string }) {
     );
   }
 
+  const triggerIds = automation.triggers.map((t) => t.id);
+
   return (
     <Page>
       <Page.Content>
         <Page.Body>
-          <AutomationInlineDetail
-            automationId={id}
-            automation={automation}
-            onBack={onBack}
-          />
+          <div className="flex items-center justify-between pb-4 shrink-0">
+            <Button variant="ghost" size="sm" onClick={onBack}>
+              <ArrowLeft size={14} />
+              Back to list
+            </Button>
+            <CollectionTabs
+              tabs={[
+                { id: "settings", label: "Settings" },
+                { id: "runs", label: "Runs" },
+              ]}
+              activeTab={tab}
+              onTabChange={(t) => setTab(t as "settings" | "runs")}
+            />
+          </div>
+
+          {tab === "settings" ? (
+            <AutomationInlineDetail automationId={id} automation={automation} />
+          ) : (
+            <RunsTab automationId={id} triggerIds={triggerIds} />
+          )}
         </Page.Body>
       </Page.Content>
     </Page>
