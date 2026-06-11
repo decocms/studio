@@ -151,18 +151,22 @@ export const GLOB_DESCRIPTION =
   "Find files by name pattern in the VM's project directory. " +
   "Uses ripgrep for gitignore-aware matching. Returns relative file paths.";
 
-export function buildBashDescription(): string {
+/** `orgFs`: deployment mounts org-fs into hosted sandboxes — the caller
+ *  passes the settings flag (this module stays dependency-free). */
+export function buildBashDescription(orgFs: boolean): string {
   return (
     "Execute a shell command in the VM's project directory. " +
     "Working directory is the project root. Timeout default 30s, max 2min.\n\n" +
-    "The organization filesystem is mounted at `org/` (when available):\n" +
-    "- `org/skills/` — your organization's own skill library (editable, " +
-    "shared org-wide). Check it before starting non-trivial work.\n" +
-    "- `org/public/<set>/` — curated read-only skill sets. Run " +
-    "`ls org/public/` for the sets and `cat org/public/<set>/<name>/SKILL.md` " +
-    "before using a skill.\n" +
-    "- `org/output/` — write deliverables here; they are shared back to the " +
-    "organization under this run's folder.\n\n" +
+    (orgFs
+      ? "The organization filesystem is mounted at `org/` (when available):\n" +
+        "- `org/skills/` — your organization's own skill library (editable, " +
+        "shared org-wide). Check it before starting non-trivial work.\n" +
+        "- `org/public/<set>/` — curated read-only skill sets. Run " +
+        "`ls org/public/` for the sets and `cat org/public/<set>/<name>/SKILL.md` " +
+        "before using a skill.\n" +
+        "- `org/output/` — write deliverables here; they are shared back to the " +
+        "organization under this run's folder.\n\n"
+      : "") +
     "Pre-installed file-handling skills also live at " +
     "`/mnt/skills/public/<name>/SKILL.md` (pptx, docx, xlsx, pdf, " +
     "file-reading). Run `ls /mnt/skills/public/` for that index.\n\n" +

@@ -9,6 +9,7 @@
 import { tool, zodSchema } from "ai";
 import path from "node:path";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
+import { getSettings } from "@/settings";
 import { maybeTruncate } from "./common";
 import {
   buildBashDescription,
@@ -364,7 +365,7 @@ export function createVmTools(params: VmToolsParams) {
 
   const bash = tool({
     needsApproval: approvalFor(TOOL_APPROVAL.bash),
-    description: buildBashDescription(),
+    description: buildBashDescription(getSettings().orgFsClusterMounts),
     inputSchema: zodSchema(BashInputSchema),
     execute: async (input) => {
       const result = await call("/_sandbox/bash", input);
