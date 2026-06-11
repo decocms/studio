@@ -43,7 +43,7 @@ export default function SettingsIndexRedirect() {
     return <Navigate to="/$org/settings/secrets" params={{ org }} replace />;
   }
   if (can("file-configs:manage")) {
-    return <Navigate to="/$org/settings/files" params={{ org }} replace />;
+    return <Navigate to="/$org/settings/buckets" params={{ org }} replace />;
   }
   if (can("automations:manage")) {
     return (
