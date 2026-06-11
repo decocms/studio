@@ -11,6 +11,7 @@ import { Chat } from "./index";
 import { useChatStream, useChatPrefs } from "./context";
 import { ChatContextPanel } from "./context-panel";
 import { CenteredComposer } from "./centered-composer";
+import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
 import {
@@ -86,8 +87,14 @@ function ChatPanelContent() {
           </Chat.Main>
         ) : (
           <>
-            <Chat.Main>
-              <Chat.Messages />
+            {/* @container: the files panel floats in the right gutter on
+                wide chats and becomes an in-flow topbar (flex row above
+                the scroller) when the gutter can't fit it */}
+            <Chat.Main className="relative flex flex-col overflow-hidden @container">
+              <ThreadFilesPanel />
+              <div className="min-h-0 flex-1">
+                <Chat.Messages />
+              </div>
             </Chat.Main>
             <Chat.Footer>
               <Chat.Input

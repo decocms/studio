@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  formatFileTabId,
   isLegacySettingsTab,
+  isPerThreadTab,
   parseAutomationTabId,
+  parseFileTabId,
   resolveDefaultTabId,
   resolveActiveTabAndOpen,
   resolveTabClickTarget,
@@ -25,6 +28,34 @@ describe("parseAutomationTabId", () => {
 
   test("automation: with empty id → null", () => {
     expect(parseAutomationTabId("automation:")).toBeNull();
+  });
+});
+
+describe("file tab id", () => {
+  test("round-trips S3 and org-fs keys (slashes, colons, spaces)", () => {
+    for (const key of [
+      "model-outputs/thread-1/report final.pdf",
+      "org-fs:outputs/thread-1/nested/dir/data.csv",
+      "model-outputs/t/weird?#&name.txt",
+    ]) {
+      expect(parseFileTabId(formatFileTabId(key))).toEqual({ key });
+    }
+  });
+
+  test("non-file tab → null", () => {
+    expect(parseFileTabId("settings")).toBeNull();
+    expect(parseFileTabId("web-page:home")).toBeNull();
+    expect(parseFileTabId(undefined)).toBeNull();
+    expect(parseFileTabId("file:")).toBeNull();
+  });
+
+  test("malformed percent-encoding → null, not a throw", () => {
+    expect(parseFileTabId("file:%E0%A4%A")).toBeNull();
+  });
+
+  test("file tabs are per-thread", () => {
+    expect(isPerThreadTab(formatFileTabId("model-outputs/t/a.pdf"))).toBe(true);
+    expect(isPerThreadTab("settings")).toBe(false);
   });
 });
 
