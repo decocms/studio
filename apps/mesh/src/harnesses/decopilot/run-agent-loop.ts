@@ -29,7 +29,7 @@ import {
 import type { ModelsConfig } from "../types";
 import type { ToolApprovalLevel } from "./mcp-tools";
 import type { GithubRepo, UsageStats } from "@decocms/mesh-sdk";
-import { createLanguageModel } from "../../ai-providers/language-model";
+import { createLanguageModel } from "./mesh-provider";
 import { DEFAULT_MAX_TOKENS } from "./harness-constants";
 import { PARENT_STEP_LIMIT, SUBAGENT_STEP_LIMIT } from "./prompt-constants";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";

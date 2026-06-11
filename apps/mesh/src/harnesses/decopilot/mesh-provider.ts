@@ -2,9 +2,9 @@
  * mesh-provider — the portable provider surface + language-model factory.
  *
  * This file is the ONE home for `MeshProvider` + `createLanguageModel`, shared
- * by the cluster (`@/ai-providers/types` + `@/ai-providers/language-model`
- * re-export from here) and the desktop daemon (which deep-imports the harnesses
- * subtree). It imports ONLY AI-SDK + `@decocms/mesh-sdk` + relative paths — no
+ * by the cluster (the `@/ai-providers/*` aliases re-export from here) and the
+ * desktop daemon (which deep-imports the harnesses subtree). It imports ONLY
+ * AI-SDK + `@decocms/mesh-sdk` + relative paths — no
  * `@/*` specifier and no StudioContext — so the daemon bundles it without the
  * tsc stack overflow that cluster types induce.
  */
