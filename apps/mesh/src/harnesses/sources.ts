@@ -1,8 +1,6 @@
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
-import { isTextContentType } from "../object-storage/key-utils";
 
 export interface McpClientLike {
   close?: () => Promise<void>;
@@ -93,7 +91,64 @@ export interface OpenedMcpSource {
   close: () => Promise<void>;
 }
 
-export interface OpenedObjectStorageSource extends BoundObjectStorage {}
+/**
+ * Object-storage surface a harness source exposes — the portable subset of the
+ * cluster's `BoundObjectStorage` that the HTTP-backed source implements.
+ * Declared locally (no `@/object-storage` import) so this file stays portable
+ * to `@decocms/harness`; a concrete `BoundObjectStorage` is structurally
+ * assignable to it.
+ */
+export interface ObjectStorageGetResult {
+  content: string;
+  contentType: string;
+  encoding: string;
+  size: number;
+  lastModified?: Date;
+  etag?: string;
+}
+export interface ObjectStorageTooLargeResult {
+  error: string;
+  size: number;
+  maxInlineSize: number;
+  presignedUrl: string;
+  contentType: string;
+}
+export interface ObjectStorageHeadResult {
+  contentType: string;
+  size: number;
+  lastModified?: Date;
+  etag?: string;
+}
+export interface OpenedObjectStorageSource {
+  getBytesOrPresign(
+    key: string,
+    opts: { presignWhenLargerThan: number; presignExpiresIn?: number },
+  ): Promise<ObjectStorageGetResult | ObjectStorageTooLargeResult>;
+  getBytes(key: string): Promise<Uint8Array>;
+  put(
+    key: string,
+    body: string | Uint8Array,
+    options?: { contentType?: string },
+  ): Promise<unknown>;
+  list(options?: {
+    prefix?: string;
+    maxKeys?: number;
+    continuationToken?: string;
+    delimiter?: string;
+  }): Promise<unknown>;
+  delete(key: string): Promise<void>;
+  head(key: string): Promise<ObjectStorageHeadResult>;
+  presignedGetUrl(
+    key: string,
+    expiresIn?: number,
+    opts?: { requireFetchable?: boolean },
+  ): Promise<string>;
+  presignedPutUrl(
+    key: string,
+    expiresIn?: number,
+    contentType?: string,
+  ): Promise<string>;
+}
 
 export interface OpenMcpSourceOptions {
   openHttp?: (source: DecopilotHttpMcpSource) => Promise<OpenedMcpSource>;
@@ -329,4 +384,30 @@ function withHeaders(
     headers.set(key, value);
   }
   return headers;
+}
+
+// Inlined from `@/object-storage/key-utils` so this file stays portable to
+// `@decocms/harness` (kept in sync with the cluster copy; both decide whether a
+// stored object is decoded as UTF-8 text vs base64).
+const TEXT_CONTENT_TYPES = new Set([
+  "application/json",
+  "text/html",
+  "text/css",
+  "application/javascript",
+  "text/typescript",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/xml",
+  "image/svg+xml",
+  "application/yaml",
+  "application/toml",
+]);
+
+function isTextContentType(contentType: string): boolean {
+  // Strip parameters (e.g. "application/json; charset=utf-8" → "application/json")
+  const mediaType = contentType.split(";")[0]!.trim();
+  if (TEXT_CONTENT_TYPES.has(mediaType)) return true;
+  if (mediaType.startsWith("text/")) return true;
+  return false;
 }

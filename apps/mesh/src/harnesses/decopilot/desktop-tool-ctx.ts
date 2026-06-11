@@ -22,10 +22,10 @@
  * desktop so shared storage-aware built-ins can run without S3 credentials.
  */
 
-import type { BoundObjectStorage } from "../../object-storage/bound-object-storage";
+import type { OpenedObjectStorageSource } from "../sources";
 
 export interface DesktopToolCtx {
-  objectStorage?: BoundObjectStorage | null;
+  objectStorage?: OpenedObjectStorageSource | null;
   organization?: { id: string; slug?: string };
   auth?: { user?: { id: string } };
   baseUrl?: string;
