@@ -18,7 +18,7 @@
  * markers propagate through OpenRouter routes too.
  */
 
-import { EPHEMERAL_5M } from "../../api/routes/decopilot/cache-instrumentation";
+import { EPHEMERAL_5M } from "./cache-instrumentation";
 
 export interface SystemMessage {
   role: "system";

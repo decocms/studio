@@ -7,7 +7,7 @@ import {
   type SystemModelMessage,
   type ToolSet,
 } from "ai";
-import { OPENROUTER_CACHE_PROVIDER_OPTIONS } from "../../api/routes/decopilot/cache-instrumentation";
+import { OPENROUTER_CACHE_PROVIDER_OPTIONS } from "./cache-instrumentation";
 
 export interface NativeAgentLoopCoreOptions {
   model: LanguageModel;

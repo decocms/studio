@@ -7,7 +7,7 @@ import {
   type UIMessage,
   validateUIMessages,
 } from "ai";
-import { keepLastTodoWrite } from "../../api/routes/decopilot/todo-write-context";
+import { keepLastTodoWrite } from "./todo-write-context";
 
 export interface ProcessedConversation<TMessage extends UIMessage = UIMessage> {
   systemMessages: SystemModelMessage[];
