@@ -30,6 +30,8 @@ export interface DevOptions {
    *  desktop sandbox provider has a live target. Default false —
    *  `dev:conductor` opts in. */
   localSandboxProvider: boolean;
+  /** When true, hot-reload the managed link daemon and sandbox daemons. */
+  hotReload?: boolean;
 }
 
 // Strip ANSI escape codes from a string
@@ -237,6 +239,7 @@ export async function startDevServer(
           clusterUrl: serverUrl,
           linkDataDir,
           repoRoot,
+          hotReload: options.hotReload,
           signal: linkAbort.signal,
           stdio: [
             "inherit",
