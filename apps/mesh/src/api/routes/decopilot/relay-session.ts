@@ -16,13 +16,13 @@
  * and opens a new one (the presented fence is already validated against the DB
  * by `validateRunAccess`, so presented==DB-current is sound to attach by).
  *
- * Registry loss (pod restart/crash) is recoverable, NOT terminal: the shipped
- * daemon always posts `x-relay-from: 1`, so a fresh session re-consumes the
- * full prefix from seq 1 — parts are id-deduped and the completed transition
- * is guarded, so the redelivery is idempotent. The `410 relay_session_lost`
- * branch in the route is reserved for a future mid-stream resume (`x-relay-from
- * > 1`) and is currently unreachable from the shipped daemon. A reconnect
- * landing on ANOTHER pod opens a concurrent fresh session there; the same
+ * Registry loss (pod restart/crash) is recoverable, NOT terminal: a fresh
+ * session (started `lastSeq = 0`, ignoring `x-relay-from`) re-consumes the full
+ * prefix from seq 1 — parts are id-deduped and the completed transition is
+ * guarded, so the redelivery is idempotent. (The old `410 relay_session_lost`
+ * branch for `x-relay-from > 1` with no session is gone; a resumed relay just
+ * opens fresh.) A reconnect landing on ANOTHER pod opens a concurrent fresh
+ * session there; the same
  * dedupe/guard make that safe (live-edge chunks may duplicate and the completed
  * event may double-fire — acceptable, documented).
  *

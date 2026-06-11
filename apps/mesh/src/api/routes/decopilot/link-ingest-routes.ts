@@ -17,13 +17,13 @@
  * `{ok, lastSeq}`; a terminal POST (after a `done`/`error` line) is acked only
  * after the kernel committed all durable effects.
  *
- * Registry loss (pod restart/crash) is RECOVERABLE, not terminal: because the
- * shipped daemon always posts `x-relay-from: 1`, a pod with no session for the
- * runId opens a FRESH session and re-consumes the full prefix from seq 1 —
- * parts are id-deduped and the completed transition is guarded, so the
- * redelivery is idempotent. The `410 relay_session_lost` branch (resumed relay
- * with `x-relay-from > 1` and no session) is therefore currently UNREACHABLE
- * from the shipped daemon; it is kept for a future mid-stream resume. A
+ * Registry loss (pod restart/crash) is RECOVERABLE, not terminal: a pod with no
+ * session for the runId — at ANY `x-relay-from` — opens a FRESH session and
+ * re-consumes the full prefix from seq 1 (a fresh session starts `lastSeq = 0`
+ * and ignores `x-relay-from`). Parts are id-deduped and the completed
+ * transition is guarded, so the redelivery is idempotent. (The old
+ * `410 relay_session_lost` branch for `x-relay-from > 1` with no session is
+ * gone; the WS uplink's fence-scoped resume uses `resumeFloorForRelay`.) A
  * reconnect landing on ANOTHER pod opens a concurrent fresh session there; the
  * same dedupe/guard make that safe (live-edge chunks may duplicate, the
  * completed event may double-fire — acceptable, documented). An abandoned
