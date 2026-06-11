@@ -59,6 +59,7 @@ import {
   createDecoSitesOrgRoutes,
   createDecoSitesUserRoutes,
 } from "./routes/deco-sites";
+import { createDecoAppsRoutes } from "./routes/deco-apps";
 import { createVirtualMcpRoutes } from "./routes/virtual-mcp";
 import {
   createLegacyWellKnownProtectedResourceRoutes,
@@ -2031,6 +2032,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // /profile is user-scoped (no org), stays mounted permanently — no
   // deprecation log.
   app.route("/api/deco-sites", createDecoSitesUserRoutes());
+  app.route("/api/deco-apps", createDecoAppsRoutes());
 
   // Org-scoped deco-sites routes (GET /, POST /connection). Currently mounted
   // at /api/deco-sites with a deprecation log; the new /api/:org/deco-sites
