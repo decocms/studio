@@ -7,17 +7,17 @@
  */
 
 import type { Tool, ToolSet, UIMessageStreamWriter } from "ai";
-import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
+import { buildPortableBuiltInTools } from "./built-in-tools/portable-built-ins";
 import type {
   PortableImageModelInfo,
   PortableImageProvider,
-} from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
-import type { VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
-import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
-import type { PendingImage } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
-import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/vm-tools/sandbox-fs-hooks-types";
-import type { HtmlPageBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/html-page-buffer-core";
-import type { ToolApprovalLevel } from "@decocms/harness/decopilot/mcp-tools";
+} from "./built-in-tools/portable-media-tools";
+import type { VirtualClient } from "./built-in-tools/sandbox";
+import { createVmTools } from "./built-in-tools/vm-tools/index";
+import type { PendingImage } from "./built-in-tools/vm-tools/types";
+import type { SandboxFsHooks } from "./built-in-tools/vm-tools/sandbox-fs-hooks-types";
+import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer-core";
+import type { ToolApprovalLevel } from "./mcp-tools";
 import type { DesktopToolCtx } from "./desktop-tool-ctx";
 
 export interface BuildLocalToolsParams {

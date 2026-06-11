@@ -56,7 +56,7 @@ import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
 // `harness-deps.ts`).
 import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
 import { codexHarnessFactory } from "@decocms/harness/codex/index";
-import { decopilotDesktopHarnessFactory } from "../../../apps/mesh/src/harnesses/decopilot/desktop-factory";
+import { decopilotDesktopHarnessFactory } from "@decocms/harness/decopilot/desktop-factory";
 import {
   getHarnessFactory,
   registerHarnessFactory,

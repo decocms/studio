@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { HarnessStreamInput } from "@decocms/harness/types";
+import type { HarnessStreamInput } from "../types";
 import { resolveDesktopRuntimeSources } from "./desktop-runtime";
 
 const baseInput = {

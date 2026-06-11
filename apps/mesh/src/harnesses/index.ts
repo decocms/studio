@@ -6,9 +6,8 @@ import {
   registerDesktopEnvironmentBuilder,
 } from "@decocms/harness/decopilot/index";
 import { codexHarnessFactory } from "@decocms/harness/codex/index";
-import { decopilotDesktopHarnessFactory } from "./decopilot/desktop-factory";
 import { buildClusterEnvironmentTools } from "./decopilot/harness-deps";
-import { buildDesktopEnvironmentTools } from "./decopilot/desktop-runtime";
+import { buildDesktopEnvironmentTools } from "@decocms/harness/decopilot/desktop-runtime";
 import { registerHarnessFactory } from "@decocms/harness/registry";
 
 // Register the environment-deps builders for the unified decopilot factory.
@@ -39,16 +38,9 @@ registerHarnessFactory(claudeCodeHarnessFactory);
 registerHarnessFactory(codexHarnessFactory);
 
 // The import-isolated DESKTOP decopilot factory
-// (`./decopilot/desktop-factory.ts`) is registered DIRECTLY in the daemon
-// (packages/sandbox/daemon/entry.ts) via a relative subpath import — never
-// through this cluster barrel, because pulling the barrel would drag the
-// cluster `decopilotHarnessFactory` tree into the daemon bundle. It shares the
-// "decopilot" id with the cluster factory and only runs inside the daemon, so
-// it is intentionally NOT registered in-process here. Referencing it keeps the
-// cluster module graph aware of the file so it isn't seen as dead — the same
-// reason the CLI factories above are imported even though the daemon imports
-// them by subpath too.
-void decopilotDesktopHarnessFactory;
+// (`@decocms/harness/decopilot/desktop-factory`) is registered DIRECTLY in the
+// daemon (packages/sandbox/daemon/entry.ts) — never through this cluster barrel,
+// which only handles the in-process cluster dispatch path.
 
 export { localDispatch } from "./local-dispatch";
 export { createSecretModelSource } from "@decocms/harness/types";

@@ -22,7 +22,7 @@
  * desktop so shared storage-aware built-ins can run without S3 credentials.
  */
 
-import type { OpenedObjectStorageSource } from "@decocms/harness/sources";
+import type { OpenedObjectStorageSource } from "../sources";
 
 export interface DesktopToolCtx {
   objectStorage?: OpenedObjectStorageSource | null;

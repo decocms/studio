@@ -16,13 +16,13 @@
  * its KEYS; nothing is executed.
  */
 
-import type { OpenedMcpSource } from "@decocms/harness/sources";
-import { buildModelRuntimeFromSources } from "@decocms/harness/decopilot/run-core";
+import type { OpenedMcpSource } from "../sources";
+import { buildModelRuntimeFromSources } from "./run-core";
 import { buildDesktopEnvironmentTools } from "./desktop-runtime";
-import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
-import { createSideChannelWriter } from "@decocms/harness/side-channel-writer";
-import { registerDesktopSandboxFsBuilder } from "@decocms/harness/decopilot/desktop-sandbox-fs-registry";
-import type { HarnessStreamInput } from "@decocms/harness/types";
+import { createProviderFromSecret } from "./provider-from-secret";
+import { createSideChannelWriter } from "../side-channel-writer";
+import { registerDesktopSandboxFsBuilder } from "./desktop-sandbox-fs-registry";
+import type { HarnessStreamInput } from "../types";
 
 // The parity fixtures only inspect the assembled tool KEYS (nothing executes),
 // so register a no-op desktop sandbox-fs builder — the real one lives in the

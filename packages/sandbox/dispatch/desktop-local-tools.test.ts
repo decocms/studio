@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import type { SandboxProvider } from "@decocms/sandbox/provider";
-import { buildLocalTools } from "./desktop-local-tools";
+import type { SandboxProvider } from "../server/provider";
+import { buildLocalTools } from "@decocms/harness/decopilot/desktop-local-tools";
 import {
   buildDesktopSandboxFs,
   createDesktopLocalSandboxProvider,
-} from "@decocms/sandbox/dispatch/desktop-sandbox-fs";
+} from "./desktop-sandbox-fs";
 
 const writer = {
   write: () => {},
