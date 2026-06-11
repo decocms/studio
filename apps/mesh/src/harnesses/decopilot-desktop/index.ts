@@ -46,7 +46,11 @@ import type {
   HarnessFactory,
   HarnessStreamInput,
 } from "../types";
-import { openMcpSource, openObjectStorageSource } from "../sources";
+import {
+  openMcpSource,
+  openObjectStorageSource,
+  type OpenMcpSourceOptions,
+} from "../sources";
 import { createProviderFromSecret } from "../decopilot/provider-from-secret";
 import { createLanguageModel } from "../decopilot/mesh-provider";
 import { toolsFromMCP } from "../decopilot/mcp-tools";
@@ -237,7 +241,7 @@ function runDesktopEngine(
  * passes `subtask: undefined` for these runs anyway (depth-1 strip), so the
  * target toolset never re-exposes `subtask`.
  */
-function createDesktopToolRuntime(args: {
+export function createDesktopToolRuntime(args: {
   input: HarnessStreamInput;
   mcpSource: DecopilotHttpMcpSource;
   modelRuntime: ModelRuntime;
@@ -249,6 +253,11 @@ function createDesktopToolRuntime(args: {
   /** The real local `subtask` tool, injected only into the parent run's
    *  toolset (depth-1 — never into a delegated subtask runtime). */
   subtask?: ReturnType<typeof createLocalSubtaskTool>;
+  /** Test-only seam: override how the HTTP MCP source is opened so the parity
+   *  test can inject a fake MCP `Client` without a real network connection.
+   *  Production leaves this undefined and `openMcpSource` opens the real
+   *  Streamable-HTTP transport. */
+  openHttp?: OpenMcpSourceOptions["openHttp"];
 }): DecopilotToolRuntime {
   const { input, mcpSource, modelRuntime, sideChannel, cleanup } = args;
   const imageProvider =
@@ -273,6 +282,7 @@ function createDesktopToolRuntime(args: {
       // 1. Open the MCP client to the (parent or target) virtual-mcp endpoint.
       const openedMcp = await openMcpSource(mcpSource, {
         clientInfo: { name: "decopilot-desktop", version: "1" },
+        openHttp: args.openHttp,
       });
       const mcpClient = openedMcp.client as Client;
       cleanup.close = openedMcp.close;
