@@ -22,7 +22,6 @@
 import type { ToolSet, UIMessageStreamWriter } from "ai";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { StudioContext } from "@/core/studio-context";
-import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
 import type { MeshProvider } from "@/ai-providers/types";
 import {
@@ -115,6 +114,18 @@ export interface AssembleDecopilotToolsExtras {
     outputTokens: number;
     totalTokens: number;
   }) => void;
+  /**
+   * Portable MCP-client seam (HarnessDeps `mcpForAgent`). Generalizes the
+   * cluster's in-process `createVirtualClientFrom(virtualMcp, ctx,
+   * "passthrough", superUser, { listTimeoutMs })` so the daemon/desktop can
+   * swap in an HTTP `Client` at the agent's `mcp.url`. The cluster impl
+   * (supplied by `index.ts`) loads the Virtual MCP by id and returns a live
+   * `PassthroughClient`; the caller owns closing it via `result.close()`.
+   */
+  mcpForAgent: (
+    agentId: string,
+    opts?: { superUser?: boolean; listTimeoutMs?: number },
+  ) => Promise<PassthroughClient>;
 }
 
 /**
@@ -200,16 +211,10 @@ export async function assembleDecopilotTools(
   // per-tool AuthTransport check would block every non-public connection
   // tool (GitHub, Slack, etc.) for users who don't have explicit per-tool
   // permissions configured — the wrong enforcement layer for chat.
-  const passthroughClient = await createVirtualClientFrom(
-    // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`; the
-    // package widens the field to a loose bag so the daemon can ship
-    // without the cluster's storage types. Narrow back here.
-    input.virtualMcp as Parameters<typeof createVirtualClientFrom>[0],
-    ctx,
-    "passthrough",
-    true,
-    { listTimeoutMs: 1_000 },
-  );
+  const passthroughClient = await extras.mcpForAgent(input.agent.id, {
+    superUser: true,
+    listTimeoutMs: 1_000,
+  });
 
   // Once the passthrough client is open, every subsequent failure in
   // tool assembly (toolsFromMCP, getBuiltInTools, listTools, …) MUST

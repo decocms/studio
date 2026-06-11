@@ -61,9 +61,34 @@ export interface ObjectStorageHooks {
   ): Promise<string>;
 }
 
+/**
+ * Portable MCP-client view returned by `mcpForAgent`. Generalizes the
+ * cluster's in-process `createVirtualClientFrom(...)` + `PassthroughClient`
+ * seam so the daemon/desktop can swap in an HTTP `Client` at the agent's
+ * `mcp.url`. Only the surface the harness tool-assembler actually drives is
+ * pinned — `getInstructions` + `getConnectionTitleMap` are the
+ * PassthroughClient extras the cluster relies on for the prompt/connections
+ * blocks. Structurally a subset of `@modelcontextprotocol/sdk` `Client`, so a
+ * concrete `PassthroughClient` / `Client` is assignable directly (no `@/` or
+ * SDK import here keeps this file portable to `@decocms/harness`).
+ */
 export interface McpClient {
-  getInstructions?(): Promise<string | undefined> | string | undefined;
-  [k: string]: unknown;
+  listTools(): Promise<{
+    tools: Array<{
+      name: string;
+      annotations?: { readOnlyHint?: boolean };
+      _meta?: { gatewayClientId?: string };
+      [k: string]: unknown;
+    }>;
+  }>;
+  callTool(params: { name: string; arguments?: unknown }): Promise<unknown>;
+  listResources(): Promise<{ resources: unknown[] }>;
+  readResource(params: { uri: string }): Promise<{ contents: unknown[] }>;
+  listPrompts(): Promise<{ prompts: unknown[] }>;
+  getPrompt(params: { name: string }): Promise<{ messages: unknown[] }>;
+  getInstructions(): string | undefined;
+  getConnectionTitleMap(): Map<string, string>;
+  close(): Promise<void>;
 }
 
 /**

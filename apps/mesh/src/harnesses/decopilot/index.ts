@@ -39,6 +39,8 @@ import type { Harness, HarnessFactory, HarnessStreamInput } from "../types";
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import { assembleDecopilotTools } from "./tools";
+import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
+import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { createHtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import { createProviderFromSecret } from "./provider-from-secret";
 import { createSideChannelWriter } from "../side-channel-writer";
@@ -146,6 +148,21 @@ export const decopilotHarnessFactory: HarnessFactory = {
               toolOutputMap,
               pendingImages,
               threadId: streamInput.threadId,
+              // Cluster `mcpForAgent` hook: opens the in-process passthrough
+              // client over the run's resolved Virtual MCP. superUser/listTimeout
+              // come from the caller (assembleDecopilotTools). The daemon/desktop
+              // factory supplies an HTTP-backed impl at the agent's mcp.url.
+              mcpForAgent: (_agentId, opts) =>
+                createVirtualClientFrom(
+                  // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
+                  // the transport type widens the field to a loose bag so the
+                  // daemon can ship without the cluster's storage types.
+                  streamInput.virtualMcp as VirtualMCPEntity,
+                  ctx,
+                  "passthrough",
+                  opts?.superUser ?? false,
+                  { listTimeoutMs: opts?.listTimeoutMs },
+                ),
               provider: modelRuntime.thinking.provider,
               imageProvider:
                 modelRuntime.image?.provider ?? modelRuntime.thinking.provider,
