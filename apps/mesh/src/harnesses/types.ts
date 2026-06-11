@@ -77,6 +77,40 @@ export interface ModelsConfig {
  *  the AI SDK's generic `UIMessage` already provides. */
 export type ChatMessage = UIMessage;
 
+/** One recent thread, pre-resolved agent-side for the prompt's history block.
+ *  `updated_at` is an ISO string (the portable prompt builder formats the date
+ *  label). Mirrors the fields `renderRecentThreadsSection` reads. */
+export interface PromptThreadSummary {
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
+/** One durable interest, pre-resolved agent-side. Mirrors `storage.interests`'
+ *  `Interest` shape, copied here so the package stays `@/`-free. */
+export interface PromptInterest {
+  title: string;
+  summary: string;
+}
+
+/** One sibling agent, pre-resolved agent-side for the `<available-agents>`
+ *  block. Mirrors `AgentsBlockEntry`. */
+export interface PromptAgentSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  status: "active" | "inactive" | "error";
+}
+
+/** Pre-resolved per-user prompt data, read agent-side (mesh) before dispatch
+ *  and rendered by the portable prompt builder. Each sub-block is independently
+ *  optional; absent ⇒ the corresponding prompt section is skipped (desktop). */
+export interface HarnessUserContext {
+  recentThreads?: { total: number; threads: PromptThreadSummary[] };
+  interests?: PromptInterest[];
+  agents?: PromptAgentSummary[];
+}
+
 /** Input passed to every Harness.stream() call. Fully serializable except
  *  AbortSignal — designed so a future remote transport can JSON-serialize it
  *  over an HTTP+SSE wire (cancel becomes a separate RPC). */
@@ -174,6 +208,13 @@ export interface HarnessStreamInput {
    * desktop daemon. Absent on ws-path runs.
    */
   runFenceToken?: string;
+
+  // ===== Pre-resolved prompt data (read agent-side before dispatch) =====
+  /** Threads / interests / sibling-agents, pre-resolved by `prepareRun` so the
+   *  portable prompt builder renders them without any `ctx.storage` reach-in.
+   *  Absent on runs whose caller didn't pre-resolve (e.g. desktop) ⇒ the
+   *  corresponding prompt blocks are skipped. */
+  userContext?: HarnessUserContext;
 }
 
 /** A Harness produces a stream of UI message chunks for a conversation turn.
