@@ -185,6 +185,24 @@ async function drain(stream: ReadableStream): Promise<void> {
   }
 }
 
+/**
+ * Resume floor for a relay reconnect (replaces the old `x-relay-from > 1` 410
+ * stub). The fence-scoped cursor (spec §5.3/N6): resume from `lastSeq + 1` when
+ * the presented fence matches the parked session's epoch; a new epoch (or no
+ * parked session) resends the full prefix from seq 1. Drives the WS uplink's
+ * `accept` cursor; the NDJSON path stays full-prefix because its parked session
+ * is gone after pod loss.
+ */
+export function resumeFloorForRelay(
+  session: { lastSeq: number; fenceToken: string | null },
+  presentedFence: string | null,
+): number {
+  if (session.fenceToken === null || session.fenceToken !== presentedFence) {
+    return 1;
+  }
+  return session.lastSeq + 1;
+}
+
 interface ConsumeRelayedRunArgs {
   ctx: StudioContext;
   deps: LinkIngestDeps;
@@ -598,17 +616,12 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     } else {
       if (current) {
         relayRegistry.evict(runId, "relay_superseded");
-      } else {
-        const relayFrom = Number(c.req.header("x-relay-from") ?? "1");
-        if (relayFrom > 1) {
-          // Resumed relay (`x-relay-from > 1`) with no session for this runId.
-          // UNREACHABLE from the shipped daemon (it always posts
-          // `x-relay-from: 1`); kept for a future mid-stream resume. 4xx makes
-          // the daemon give up rather than resend a prefix this pod can't
-          // splice.
-          return c.json({ error: "relay_session_lost" }, 410);
-        }
       }
+      // No parked session (pod loss) OR superseded epoch: open a fresh session.
+      // A resumed relay (`x-relay-from > 1`) no longer 410s — a full-prefix
+      // resend is idempotent (§10, the cluster dedupes by seq), so the daemon
+      // resends from seq 1 and we splice cleanly. The WS path uses the
+      // fence-scoped `resumeFloorForRelay` cursor instead of full-prefix.
       session = relayRegistry.open(runId, presentedFence, {
         consume: (chunks) =>
           consumeRelayedRun({ ctx, deps, runId, thread, chunks }),

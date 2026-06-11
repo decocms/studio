@@ -377,16 +377,18 @@ describe("link ingest chunks route", () => {
     expect(appended).toEqual([]);
   });
 
-  test("410 relay_session_lost for a resumed relay with no session", async () => {
-    const { app, appended } = appWithContext();
+  test("a resumed relay with no parked session opens fresh (no 410; full-prefix resend is idempotent)", async () => {
+    const { app } = appWithContext();
 
+    // x-relay-from > 1 with no parked session (pod loss) no longer 410s — the
+    // daemon's full-prefix resend is idempotent (§10), so the cluster opens a
+    // fresh session and accepts the lines.
     const res = await postChunks(app, relayBody([{ type: "done" }], 5), {
       "x-relay-from": "5",
     });
 
-    expect(res.status).toBe(410);
-    expect(await res.json()).toEqual({ error: "relay_session_lost" });
-    expect(appended).toEqual([]);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, lastSeq: 5 });
   });
 
   test("400 bad line for a schema-invalid relay line", async () => {

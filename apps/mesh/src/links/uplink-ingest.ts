@@ -26,20 +26,40 @@ export interface UplinkIngestDeps {
   send: (
     frame:
       | AcceptFrame
-      | { type: "ack"; runId: string; fenceToken: string; ackSeq: number },
+      | { type: "ack"; runId: string; fenceToken: string; ackSeq: number }
+      | { type: "cancel"; runId: string; fenceToken: string },
   ) => void;
+  /**
+   * True when `cancel_requested_at` is set for the run — re-checked per
+   * (re)connect so a cancel issued while the daemon was offline is re-asserted
+   * on the `accept` frame (§8, B3 backstop). Optional; defaults to never.
+   */
+  cancelRequested?: () => boolean;
 }
 
 export interface UplinkIngestSession {
   /** Highest contiguous publish-confirmed wireSeq for the active run. */
   readonly ackSeq: number;
   onFrame(frame: ChunkFrame): Promise<void>;
+  /**
+   * Handle a `resume`/`hello` reconnect: validate the fence, reset the cursor on
+   * a new fence epoch (N6), reply `accept{ackSeq, cancelled}` BEFORE any chunk,
+   * and re-assert a pending cancel down-channel.
+   */
+  onResume(frame: {
+    runId: string;
+    fenceToken: string;
+    fromSeq: number;
+  }): Promise<AcceptFrame>;
 }
 
 export function createUplinkIngestSession(
   deps: UplinkIngestDeps,
 ): UplinkIngestSession {
   let ackSeq = 0;
+  // The active fence epoch — seeded by the first chunk/resume; a change resets
+  // the cursor (fence-scoped resume, spec N6).
+  let fence: string | null = null;
   // wireSeqs published but not yet contiguous with ackSeq (out-of-order arrivals).
   const pending = new Set<number>();
 
@@ -58,6 +78,7 @@ export function createUplinkIngestSession(
           `[uplink-ingest] fence mismatch for runId=${frame.runId}`,
         );
       }
+      if (fence === null) fence = frame.fenceToken;
       // Dedupe a replayed prefix: already contiguous-acked → no-op.
       if (frame.wireSeq <= ackSeq) return;
       await deps.publish(frame.chunk as UIMessageChunk);
@@ -73,6 +94,39 @@ export function createUplinkIngestSession(
         fenceToken: frame.fenceToken,
         ackSeq,
       });
+    },
+    async onResume(frame): Promise<AcceptFrame> {
+      if (!deps.fenceOk(frame.fenceToken)) {
+        throw new Error(
+          `[uplink-ingest] fence mismatch on resume for runId=${frame.runId}`,
+        );
+      }
+      // Fence-scoped cursor (N6): a new epoch resets the floor to 0.
+      if (fence !== null && fence !== frame.fenceToken) {
+        ackSeq = 0;
+        pending.clear();
+      }
+      fence = frame.fenceToken;
+      const cancelled = deps.cancelRequested?.() ?? false;
+      const accept: AcceptFrame = {
+        type: "accept",
+        runId: frame.runId,
+        fenceToken: frame.fenceToken,
+        ackSeq,
+        cancelled,
+      };
+      deps.send(accept);
+      // Re-assert a pending cancel down-channel (B3 backstop): the daemon may
+      // have been offline when the user cancelled, so the accept's `cancelled`
+      // flag is followed by an explicit cancel frame to abort the run.
+      if (cancelled) {
+        deps.send({
+          type: "cancel",
+          runId: frame.runId,
+          fenceToken: frame.fenceToken,
+        });
+      }
+      return accept;
     },
   };
 }
