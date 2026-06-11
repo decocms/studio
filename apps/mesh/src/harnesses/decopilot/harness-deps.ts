@@ -1,25 +1,22 @@
 /**
- * Unified Decopilot environment-deps assemblers (spec §5.2/§9 — "ONE factory").
+ * CLUSTER Decopilot environment-deps assembler (spec §5.2/§9 — "ONE factory").
  *
  * The Decopilot harness runs ONE orchestration loop (`runDecopilotCore`); the
  * only difference between the cluster and the desktop daemon is which
- * `DecopilotToolRuntime` + `telemetry` the environment builds. This module owns
- * those two branches as flat assemblers so the single `decopilotHarnessFactory`
- * can select between them by inspecting the injected context shape:
+ * `DecopilotToolRuntime` + `telemetry` the environment builds. The single
+ * `decopilotHarnessFactory` (`./index.ts`) selects between this StudioContext-
+ * backed assembler and the desktop one by inspecting the injected context shape:
  *
- *   - `buildClusterEnvironmentTools` — the StudioContext-backed branch: the
- *     in-process virtual-MCP passthrough client + the full cluster tool set
+ *   - `buildClusterEnvironmentTools` (here) — the StudioContext-backed branch:
+ *     the in-process virtual-MCP passthrough client + the full cluster tool set
  *     (web_search / update_interests / Browserless built-ins) + the per-run
- *     html-page buffer, plus the ctx-coupled `runAgentLoop` engine.
- *   - `buildDesktopEnvironmentTools` — the import-isolated daemon branch: an
- *     HTTP MCP passthrough client + the local-OK built-ins + the portable
- *     `runNativeAgentLoopCore` engine with a cluster-storage-free system prompt.
- *
- * Both return a `DecopilotToolRuntime` (the `buildEnvironmentTools` +
- * `runEngine` seam `runDecopilotCore` consumes); the cluster assembler also
- * returns its telemetry sink. Behavior is byte-identical to the two forks they
- * replace — the bodies are lifted verbatim from the cluster `index.ts` factory
- * and the desktop `createDesktopToolRuntime`.
+ *     html-page buffer, plus the ctx-coupled `runAgentLoop` engine + telemetry.
+ *   - `buildDesktopEnvironmentTools` (`./desktop-runtime.ts`) — the import-
+ *     isolated daemon branch: an HTTP MCP passthrough client + the local-OK
+ *     built-ins + the portable `runNativeAgentLoopCore` engine with a
+ *     cluster-storage-free system prompt. It lives in its own `@/`-free module
+ *     so the desktop daemon factory (`./desktop-factory.ts`) can pull it WITHOUT
+ *     dragging this file's cluster `@/*` imports into the daemon bundle.
  */
 
 import type {
@@ -30,29 +27,11 @@ import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
-import type { HarnessStreamInput } from "../types";
-import {
-  createSideChannelWriter,
-  type SideChannelWriter,
-} from "../side-channel-writer";
+import type { SideChannelWriter } from "../side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { createHtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import type { PendingImage } from "./built-in-tools";
-import {
-  createDesktopToolRuntime,
-  resolveDesktopRuntimeSources,
-} from "../decopilot-desktop/index";
-import type { OpenMcpSourceOptions } from "../sources";
-import { createLocalSubtaskTool } from "./built-in-tools/local-subtask";
-import { swapVirtualMcpAgent } from "../decopilot-desktop/swap-virtual-mcp-agent";
-import type { DecopilotHttpMcpSource } from "../types";
-import {
-  spawnSubtask,
-  type DecopilotToolRuntime,
-  type ModelRuntime,
-  type RunDecopilotCoreDeps,
-  type SubtaskRunResult,
-} from "./run-core";
+import type { DecopilotToolRuntime, ModelRuntime } from "./run-core";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
@@ -202,116 +181,4 @@ export function buildClusterEnvironmentTools(args: {
   };
 
   return { toolRuntime, telemetry };
-}
-
-/**
- * Build the DESKTOP environment deps: the HTTP-passthrough + local-built-ins
- * tool runtime, including the real desktop-local `subtask` tool (self +
- * cross-agent — Task 18). `telemetry` is undefined for the desktop (runs stay
- * OTel-invisible this phase). `cleanup.close` is assigned inside
- * `buildEnvironmentTools` so the factory's `finally` closes the MCP client.
- *
- * The body is lifted verbatim from the desktop factory's `stream` wiring: it
- * builds a parent `createDesktopToolRuntime`, threads the subtask tool's
- * `runSubtask` closure (which swaps the virtual-MCP agent path segment for
- * cross-agent delegation and runs `spawnSubtask`), and captures the core's
- * child-usage sink so child runs fold into the parent accumulator.
- *
- * `openHttp` is the test seam that lets the parity test inject a fake MCP
- * `Client`; production leaves it undefined so `openMcpSource` opens the real
- * Streamable-HTTP transport.
- */
-export function buildDesktopEnvironmentTools(args: {
-  input: HarnessStreamInput;
-  modelRuntime: ModelRuntime;
-  sideChannel: SideChannelWriter;
-  cleanup: { close?: () => Promise<void> };
-  openHttp?: OpenMcpSourceOptions["openHttp"];
-}): DecopilotToolRuntime {
-  const { input, modelRuntime, sideChannel, cleanup, openHttp } = args;
-  const { mcpSource } = resolveDesktopRuntimeSources(input);
-
-  // ── Local subtask (Task 18) — self + cross-agent. Builds TARGET-agent
-  //    core deps and runs the shared core via spawnSubtask. ────────────────
-  const runSubtask = async (
-    prompt: string,
-    targetAgentId: string | undefined,
-    signal: AbortSignal,
-  ): Promise<SubtaskRunResult> => {
-    const targetUrl = swapVirtualMcpAgent(mcpSource.url, targetAgentId);
-    const targetMcpSource: DecopilotHttpMcpSource = {
-      kind: "http",
-      url: targetUrl,
-      headers: mcpSource.headers,
-      expiresAt: mcpSource.expiresAt,
-    };
-    const subSideChannel = createSideChannelWriter();
-    const subCleanup: { close?: () => Promise<void> } = {};
-    const targetInput: HarnessStreamInput = targetAgentId
-      ? {
-          ...input,
-          agent: { id: targetAgentId },
-          virtualMcp: { ...input.virtualMcp, id: targetAgentId },
-        }
-      : input;
-    const targetToolRuntime = createDesktopToolRuntime({
-      input: targetInput,
-      mcpSource: targetMcpSource,
-      modelRuntime,
-      sideChannel: subSideChannel,
-      cleanup: subCleanup,
-      agentOverride: targetAgentId ? { id: targetAgentId } : undefined,
-      openHttp,
-      // depth-1: a delegated run NEVER gets its own subtask tool. The
-      // core also strips it (kind:"subtask"); this is belt-and-braces.
-    });
-    const deps: Omit<RunDecopilotCoreDeps, "kind"> = {
-      input: targetInput,
-      modelRuntime,
-      toolRuntime: targetToolRuntime,
-      telemetry: undefined,
-    };
-    try {
-      return await spawnSubtask({ prompt, deps, signal });
-    } finally {
-      subSideChannel.close();
-      await subCleanup.close?.().catch(() => {});
-    }
-  };
-
-  // The core supplies its usage roll-up sink to buildEnvironmentTools
-  // (`onChildUsage`, for kind:"main"). Capture it so the locally-built
-  // subtask tool — created BEFORE buildEnvironmentTools runs — can fold
-  // each child run's usage into the SAME accumulator that builds the
-  // parent's final `message-metadata.usage` (parity with the cluster).
-  let parentOnChildUsage:
-    | ((usage: SubtaskRunResult["usage"]) => void)
-    | undefined;
-
-  const subtaskTool = createLocalSubtaskTool({
-    writer: sideChannel.writer,
-    selfAgentId: input.agent.id,
-    models: input.models,
-    needsApproval: input.mode === "plan" || input.toolApprovalLevel !== "auto",
-    runSubtask,
-    onChildUsage: (usage) => parentOnChildUsage?.(usage),
-  });
-
-  const parentToolRuntime = createDesktopToolRuntime({
-    input,
-    mcpSource,
-    modelRuntime,
-    sideChannel,
-    cleanup,
-    subtask: subtaskTool,
-    openHttp,
-  });
-
-  return {
-    buildEnvironmentTools: (buildArgs) => {
-      parentOnChildUsage = buildArgs.onChildUsage;
-      return parentToolRuntime.buildEnvironmentTools(buildArgs);
-    },
-    runEngine: parentToolRuntime.runEngine,
-  };
 }

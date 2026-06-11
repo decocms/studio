@@ -1,13 +1,13 @@
 /**
- * decopilot-desktop harness — the import-isolated DESKTOP ADAPTER for the shared
- * Decopilot core. Runs INSIDE the desktop daemon (`packages/sandbox/daemon`).
+ * desktop-runtime — the import-isolated DESKTOP tool-runtime for the shared
+ * Decopilot core. Runs INSIDE the desktop daemon (`packages/sandbox/daemon`) and
+ * is ALSO consumed by the unified cluster factory's desktop branch
+ * (`decopilot/index.ts` → `buildDesktopEnvironmentTools`).
  *
- * Registered in the daemon's `dispatchHarnessRegistry` under the id "decopilot".
- * Like the cluster `decopilotHarnessFactory`, this factory builds the
- * environment-specific deps and hands them to `runDecopilotCore` (`../decopilot/
- * run-core`) — ONE loop drives both environments. Unlike the cluster (which
- * threads the full `StudioContext`, vault, storage, run-registry, and OTel
- * monitoring), this factory:
+ * Like the cluster path, the desktop path builds the environment-specific deps
+ * and hands them to `runDecopilotCore` (`./run-core`) — ONE loop drives both
+ * environments. Unlike the cluster (which threads the full `StudioContext`,
+ * vault, storage, run-registry, and OTel monitoring), this module:
  *   - activates the chat provider from the injected `modelSources` secrets
  *     (`buildModelRuntimeFromSources` + `createProviderFromSecret`) instead of
  *     `ctx.aiProviders.activate` + vault;
@@ -22,8 +22,8 @@
  *   - passes `telemetry: undefined` — desktop runs stay OTel-invisible this
  *     phase (no `@/monitoring` sink, no run-registry coupling). The engine still
  *     returns a no-op OTel span so the shared loop's span attributes are safe.
- *   - implements a REAL local `subtask` (self + cross-agent, Task 18) by
- *     building TARGET-agent core deps and calling `spawnSubtask` — the cluster
+ *   - implements a REAL local `subtask` (self + cross-agent) by building
+ *     TARGET-agent core deps and calling `spawnSubtask` — the cluster
  *     `SUBTASK_MCP` relay is gone.
  *
  * It imports ONLY portable leaves (relative paths) + `../types`. No `@/*`
@@ -35,15 +35,12 @@
  * (cluster model-proxy, spec §3.9) is deferred.
  */
 
-import { stepCountIs, type ToolSet, type UIMessageChunk } from "ai";
+import { stepCountIs, type ToolSet } from "ai";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { trace } from "@opentelemetry/api";
 import type {
   DecopilotHttpMcpSource,
   DecopilotSecretModelSource,
-  Harness,
-  HarnessContext,
-  HarnessFactory,
   HarnessStreamInput,
 } from "../types";
 import {
@@ -51,33 +48,30 @@ import {
   openObjectStorageSource,
   type OpenMcpSourceOptions,
 } from "../sources";
-import { createProviderFromSecret } from "../decopilot/provider-from-secret";
-import { createLanguageModel } from "../decopilot/mesh-provider";
-import { toolsFromMCP } from "../decopilot/mcp-tools";
-import { buildLocalTools } from "./local-tools";
-import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./local-prompt";
+import { createLanguageModel } from "./mesh-provider";
+import { toolsFromMCP } from "./mcp-tools";
+import { buildLocalTools } from "./desktop-local-tools";
+import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./desktop-prompt";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
-import { runNativeAgentLoopCore } from "../decopilot/native-agent-loop-core";
+import { runNativeAgentLoopCore } from "./native-agent-loop-core";
 import {
-  buildModelRuntimeFromSources,
-  runDecopilotCore,
   spawnSubtask,
   type DecopilotToolRuntime,
   type ModelRuntime,
   type RunDecopilotCoreDeps,
   type SubtaskRunResult,
-} from "../decopilot/run-core";
+} from "./run-core";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
   RunEngineArgs,
-} from "../decopilot/engine";
-import type { ConnectionsBlockTool } from "../decopilot/connections-block";
-import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
-import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
-import { createLocalSubtaskTool } from "../decopilot/built-in-tools/local-subtask";
-import type { DesktopToolCtx } from "./types";
-import { createHtmlPageBufferFromStorage } from "../decopilot/built-in-tools/vm-tools/html-page-buffer-core";
+} from "./engine";
+import type { ConnectionsBlockTool } from "./connections-block";
+import type { VirtualClient } from "./built-in-tools/sandbox";
+import type { PendingImage } from "./built-in-tools/vm-tools/types";
+import { createLocalSubtaskTool } from "./built-in-tools/local-subtask";
+import type { DesktopToolCtx } from "./desktop-tool-ctx";
+import { createHtmlPageBufferFromStorage } from "./built-in-tools/vm-tools/html-page-buffer-core";
 import {
   createSideChannelWriter,
   type SideChannelWriter,
@@ -142,7 +136,7 @@ export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
  * The full streamText tool set = passthrough (from the closure) + extraTools.
  *
  * `stepLimit` (set to `SUBAGENT_STEP_LIMIT` for `kind: "subtask"` core runs)
- * overrides the default `PARENT_STEP_LIMIT` stop condition (Task 18 subtask).
+ * overrides the default `PARENT_STEP_LIMIT` stop condition.
  *
  * No telemetry, no run-registry, no monitoring — the engine returns a no-op
  * OTel span so the shared loop's span attribute writes are harmless.
@@ -229,9 +223,9 @@ function runDesktopEngine(
 /**
  * Build a desktop `DecopilotToolRuntime` for one MCP endpoint. Shared by the
  * top-level run (parent's `mcpSource`) and a cross-agent subtask (the TARGET
- * agent's swapped virtual-MCP URL — Task 18). Owns the per-runtime MCP-client
- * lifecycle (assigned into `cleanup.close`); the caller runs `cleanup.close`
- * in its `finally`.
+ * agent's swapped virtual-MCP URL). Owns the per-runtime MCP-client lifecycle
+ * (assigned into `cleanup.close`); the caller runs `cleanup.close` in its
+ * `finally`.
  *
  * `agentOverride`, when present, makes `buildEnvironmentTools` build the desktop
  * built-ins for the TARGET agent id (so `read_resource`/`sandbox`/etc. scope to
@@ -241,7 +235,7 @@ function runDesktopEngine(
  * passes `subtask: undefined` for these runs anyway (depth-1 strip), so the
  * target toolset never re-exposes `subtask`.
  */
-export function createDesktopToolRuntime(args: {
+function createDesktopToolRuntime(args: {
   input: HarnessStreamInput;
   mcpSource: DecopilotHttpMcpSource;
   modelRuntime: ModelRuntime;
@@ -433,147 +427,113 @@ export function createDesktopToolRuntime(args: {
   };
 }
 
-export const decopilotDesktopHarnessFactory: HarnessFactory = {
-  id: "decopilot",
-  create(_ctx: HarnessContext): Harness {
-    return {
-      id: "decopilot",
-      async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
-        const { mcp } = input;
-        const { modelSource, mcpSource } = resolveDesktopRuntimeSources(input);
+/**
+ * Build the DESKTOP environment deps: the HTTP-passthrough + local-built-ins
+ * tool runtime, including the real desktop-local `subtask` tool (self +
+ * cross-agent). `telemetry` is undefined for the desktop (runs stay
+ * OTel-invisible this phase). `cleanup.close` is assigned inside
+ * `buildEnvironmentTools` so the factory's `finally` closes the MCP client.
+ *
+ * It builds a parent `createDesktopToolRuntime`, threads the subtask tool's
+ * `runSubtask` closure (which swaps the virtual-MCP agent path segment for
+ * cross-agent delegation and runs `spawnSubtask`), and captures the core's
+ * child-usage sink so child runs fold into the parent accumulator.
+ *
+ * `openHttp` is the test seam that lets the parity test inject a fake MCP
+ * `Client`; production leaves it undefined so `openMcpSource` opens the real
+ * Streamable-HTTP transport.
+ */
+export function buildDesktopEnvironmentTools(args: {
+  input: HarnessStreamInput;
+  modelRuntime: ModelRuntime;
+  sideChannel: SideChannelWriter;
+  cleanup: { close?: () => Promise<void> };
+  openHttp?: OpenMcpSourceOptions["openHttp"];
+}): DecopilotToolRuntime {
+  const { input, modelRuntime, sideChannel, cleanup, openHttp } = args;
+  const { mcpSource } = resolveDesktopRuntimeSources(input);
 
-        // ── Model runtime: providers from the resolved secret sources. Never
-        //    log a modelSource — each carries a provider API key. ───────────
-        const modelRuntime: ModelRuntime = buildModelRuntimeFromSources(
-          { models: input.models, modelSources: input.modelSources },
-          createProviderFromSecret,
-        );
-
-        // Diagnostics (provider id only, never the key). On the desktop this
-        // runs inside the spawned daemon, so it surfaces in the link terminal.
-        console.log(
-          `[decopilot-desktop] stream start provider=${modelSource.providerId} ` +
-            `model=${input.models.thinking.id} mcpUrl=${mcp.url} mode=${input.mode}`,
-        );
-
-        // ── Per-run side-channel + html-page buffer (desktop lifecycle). ──
-        const sideChannel = createSideChannelWriter();
-
-        // Capture the MCP source cleanup so the finally below runs it even if
-        // the core throws mid-stream.
-        const cleanup: { close?: () => Promise<void> } = {};
-
-        // ── Local subtask (Task 18) — self + cross-agent. Builds TARGET-agent
-        //    core deps and runs the shared core via spawnSubtask. ────────────
-        //
-        //    Self (target undefined): the parent's own mcpSource URL unchanged.
-        //    Cross-agent: SWAP the agent-id path segment of the parent URL to
-        //    the target id, reusing the run's EXISTING minted bearer (Q15 — no
-        //    new mint API; the bearer is org-scoped, and per-call authorization
-        //    is enforced at the virtual-MCP endpoint for the target id in the
-        //    path). Each subtask opens its OWN HTTP MCP client + side channel,
-        //    closed in `finally`.
-        const runSubtask = async (
-          prompt: string,
-          targetAgentId: string | undefined,
-          signal: AbortSignal,
-        ): Promise<SubtaskRunResult> => {
-          const targetUrl = swapVirtualMcpAgent(mcpSource.url, targetAgentId);
-          const targetMcpSource: DecopilotHttpMcpSource = {
-            kind: "http",
-            url: targetUrl,
-            headers: mcpSource.headers,
-            expiresAt: mcpSource.expiresAt,
-          };
-          // Fresh per-subtask side channel + MCP-client cleanup. The subtask's
-          // own chunks are drained by spawnSubtask (text/usage), not merged
-          // into the parent stream — only the parent's writer carries the
-          // subtask-metadata data chunk (emitted by createLocalSubtaskTool).
-          const subSideChannel = createSideChannelWriter();
-          const subCleanup: { close?: () => Promise<void> } = {};
-          const targetInput: HarnessStreamInput = targetAgentId
-            ? {
-                ...input,
-                agent: { id: targetAgentId },
-                virtualMcp: { ...input.virtualMcp, id: targetAgentId },
-              }
-            : input;
-          const targetToolRuntime = createDesktopToolRuntime({
-            input: targetInput,
-            mcpSource: targetMcpSource,
-            modelRuntime,
-            sideChannel: subSideChannel,
-            cleanup: subCleanup,
-            agentOverride: targetAgentId ? { id: targetAgentId } : undefined,
-            // depth-1: a delegated run NEVER gets its own subtask tool. The
-            // core also strips it (kind:"subtask"); this is belt-and-braces.
-          });
-          const deps: Omit<RunDecopilotCoreDeps, "kind"> = {
-            input: targetInput,
-            modelRuntime,
-            toolRuntime: targetToolRuntime,
-            telemetry: undefined,
-          };
-          try {
-            return await spawnSubtask({ prompt, deps, signal });
-          } finally {
-            subSideChannel.close();
-            await subCleanup.close?.().catch(() => {});
-          }
-        };
-
-        // The core supplies its usage roll-up sink to buildEnvironmentTools
-        // (`onChildUsage`, for kind:"main"). Capture it so the locally-built
-        // subtask tool — created BEFORE buildEnvironmentTools runs — can fold
-        // each child run's usage into the SAME accumulator that builds the
-        // parent's final `message-metadata.usage` (parity with the cluster).
-        let parentOnChildUsage:
-          | ((usage: SubtaskRunResult["usage"]) => void)
-          | undefined;
-
-        const subtaskTool = createLocalSubtaskTool({
-          writer: sideChannel.writer,
-          selfAgentId: input.agent.id,
-          // Threaded onto the data-tool-subtask-metadata chunk for parity with
-          // the cluster subtask.ts ({usage, agent, models}).
-          models: input.models,
-          needsApproval:
-            input.mode === "plan" || input.toolApprovalLevel !== "auto",
-          runSubtask,
-          onChildUsage: (usage) => parentOnChildUsage?.(usage),
-        });
-
-        const parentToolRuntime = createDesktopToolRuntime({
-          input,
-          mcpSource,
-          modelRuntime,
-          sideChannel,
-          cleanup,
-          subtask: subtaskTool,
-        });
-        const toolRuntime: DecopilotToolRuntime = {
-          buildEnvironmentTools: (buildArgs) => {
-            // Capture the core's child-usage sink for the subtask tool.
-            parentOnChildUsage = buildArgs.onChildUsage;
-            return parentToolRuntime.buildEnvironmentTools(buildArgs);
-          },
-          runEngine: parentToolRuntime.runEngine,
-        };
-
-        try {
-          yield* runDecopilotCore({
-            input,
-            modelRuntime,
-            toolRuntime,
-            // Desktop runs stay OTel-invisible this phase (no monitoring sink).
-            telemetry: undefined,
-            kind: "main",
-          });
-        } finally {
-          sideChannel.close();
-          await cleanup.close?.().catch(() => {});
-        }
-      },
+  // ── Local subtask — self + cross-agent. Builds TARGET-agent core deps and
+  //    runs the shared core via spawnSubtask. ──────────────────────────────
+  const runSubtask = async (
+    prompt: string,
+    targetAgentId: string | undefined,
+    signal: AbortSignal,
+  ): Promise<SubtaskRunResult> => {
+    const targetUrl = swapVirtualMcpAgent(mcpSource.url, targetAgentId);
+    const targetMcpSource: DecopilotHttpMcpSource = {
+      kind: "http",
+      url: targetUrl,
+      headers: mcpSource.headers,
+      expiresAt: mcpSource.expiresAt,
     };
-  },
-};
+    const subSideChannel = createSideChannelWriter();
+    const subCleanup: { close?: () => Promise<void> } = {};
+    const targetInput: HarnessStreamInput = targetAgentId
+      ? {
+          ...input,
+          agent: { id: targetAgentId },
+          virtualMcp: { ...input.virtualMcp, id: targetAgentId },
+        }
+      : input;
+    const targetToolRuntime = createDesktopToolRuntime({
+      input: targetInput,
+      mcpSource: targetMcpSource,
+      modelRuntime,
+      sideChannel: subSideChannel,
+      cleanup: subCleanup,
+      agentOverride: targetAgentId ? { id: targetAgentId } : undefined,
+      openHttp,
+      // depth-1: a delegated run NEVER gets its own subtask tool. The
+      // core also strips it (kind:"subtask"); this is belt-and-braces.
+    });
+    const deps: Omit<RunDecopilotCoreDeps, "kind"> = {
+      input: targetInput,
+      modelRuntime,
+      toolRuntime: targetToolRuntime,
+      telemetry: undefined,
+    };
+    try {
+      return await spawnSubtask({ prompt, deps, signal });
+    } finally {
+      subSideChannel.close();
+      await subCleanup.close?.().catch(() => {});
+    }
+  };
+
+  // The core supplies its usage roll-up sink to buildEnvironmentTools
+  // (`onChildUsage`, for kind:"main"). Capture it so the locally-built
+  // subtask tool — created BEFORE buildEnvironmentTools runs — can fold
+  // each child run's usage into the SAME accumulator that builds the
+  // parent's final `message-metadata.usage` (parity with the cluster).
+  let parentOnChildUsage:
+    | ((usage: SubtaskRunResult["usage"]) => void)
+    | undefined;
+
+  const subtaskTool = createLocalSubtaskTool({
+    writer: sideChannel.writer,
+    selfAgentId: input.agent.id,
+    models: input.models,
+    needsApproval: input.mode === "plan" || input.toolApprovalLevel !== "auto",
+    runSubtask,
+    onChildUsage: (usage) => parentOnChildUsage?.(usage),
+  });
+
+  const parentToolRuntime = createDesktopToolRuntime({
+    input,
+    mcpSource,
+    modelRuntime,
+    sideChannel,
+    cleanup,
+    subtask: subtaskTool,
+    openHttp,
+  });
+
+  return {
+    buildEnvironmentTools: (buildArgs) => {
+      parentOnChildUsage = buildArgs.onChildUsage;
+      return parentToolRuntime.buildEnvironmentTools(buildArgs);
+    },
+    runEngine: parentToolRuntime.runEngine,
+  };
+}

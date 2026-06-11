@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { HarnessStreamInput } from "../types";
-import { resolveDesktopRuntimeSources } from "./index";
+import { resolveDesktopRuntimeSources } from "./desktop-runtime";
 
 const baseInput = {
   threadId: "thread-1",

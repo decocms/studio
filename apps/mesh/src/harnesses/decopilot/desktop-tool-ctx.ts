@@ -1,9 +1,11 @@
 /**
- * decopilot-desktop — narrow context types for the import-isolated harness.
+ * desktop-tool-ctx — narrow context types for the import-isolated desktop path.
  *
- * This whole subtree (`harnesses/decopilot-desktop/`) is registered in the
- * daemon (`packages/sandbox/daemon/entry.ts`) and therefore MUST NOT pull
- * cluster code into the bundle. Two rules keep it portable:
+ * The desktop daemon factory (`./desktop-factory.ts`) is registered in the
+ * daemon (`packages/sandbox/daemon/entry.ts`) and the daemon-safe desktop leaves
+ * it pulls (this file, `desktop-runtime`, `desktop-local-tools`, `desktop-prompt`)
+ * therefore MUST NOT pull cluster code into the bundle. Two rules keep them
+ * portable:
  *
  *  1. NEVER import `StudioContext` (`@/core/studio-context`). That type derives
  *     from Better-Auth's recursive plugin API; threading it into this tree

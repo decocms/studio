@@ -40,24 +40,49 @@ const input = {
   signal: new AbortController().signal,
 } satisfies HarnessStreamInput;
 
+// The sorted desktop tool-key baseline captured at the unification cutover.
+// The desktop fork is deleted, so this is now a REGRESSION LOCK: any drift in
+// the unified factory's desktop tool set must update this list deliberately.
+// The cluster-only tools (`web_search`, `update_interests`) appear here only as
+// UNAVAILABLE stubs (`includeUnavailableClusterOnlyTools` — see
+// portable-built-ins): they surface to the model but throw "only available in
+// cluster Decopilot" at execution, so the desktop never runs the real cluster
+// path.
+const DESKTOP_TOOL_KEYS_BASELINE = [
+  "bash",
+  "copy_to_sandbox",
+  "edit",
+  "glob",
+  "grep",
+  "propose_plan",
+  "read",
+  "read_prompt",
+  "read_resource",
+  "read_tool_output",
+  "sandbox",
+  "share_with_user",
+  "subtask",
+  "todo_write",
+  "update_interests",
+  "user_ask",
+  "web_search",
+  "write",
+];
+
 describe("decopilot desktop tool-set parity", () => {
-  it("unified factory yields the same desktop tool keys as the deleted adapter", async () => {
+  it("unified factory yields the hardcoded desktop tool-key baseline", async () => {
+    const newKeys = await buildDesktopToolKeysViaUnifiedFactory(input);
+    expect(newKeys).toEqual(DESKTOP_TOOL_KEYS_BASELINE);
+    // Sanity: desktop set must include the local built-ins (e.g. `read`).
+    expect(newKeys).toContain("read");
+    expect(newKeys).toContain("web_search");
+    expect(newKeys).toContain("update_interests");
+  });
+
+  it("both parity builders drive the unified desktop assembler, exactly", async () => {
     const oldKeys = await buildDesktopToolKeysViaExistingAdapter(input);
     const newKeys = await buildDesktopToolKeysViaUnifiedFactory(input);
     expect(newKeys).toEqual(oldKeys);
-    // Sanity: desktop set must include the local built-ins (e.g. `read`).
-    expect(oldKeys).toContain("read");
-    // The cluster-only tools are present only as UNAVAILABLE stubs
-    // (`includeUnavailableClusterOnlyTools` — see portable-built-ins): they
-    // surface to the model but throw "only available in cluster Decopilot" at
-    // execution, so the desktop never runs the real cluster path.
-    expect(oldKeys).toContain("web_search");
-    expect(oldKeys).toContain("update_interests");
-  });
-
-  it("unified factory desktop path equals the legacy desktop adapter, exactly", async () => {
-    const oldKeys = await buildDesktopToolKeysViaExistingAdapter(input);
-    const newKeys = await buildDesktopToolKeysViaUnifiedFactory(input); // now the REAL unified path
-    expect(newKeys).toEqual(oldKeys);
+    expect(newKeys).toEqual(DESKTOP_TOOL_KEYS_BASELINE);
   });
 });

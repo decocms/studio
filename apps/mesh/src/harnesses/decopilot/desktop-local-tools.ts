@@ -11,17 +11,17 @@ import {
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
 import type { Tool, ToolSet, UIMessageStreamWriter } from "ai";
-import { buildPortableBuiltInTools } from "../decopilot/built-in-tools/portable-built-ins";
+import { buildPortableBuiltInTools } from "./built-in-tools/portable-built-ins";
 import type {
   PortableImageModelInfo,
   PortableImageProvider,
-} from "../decopilot/built-in-tools/portable-media-tools";
-import type { VirtualClient } from "../decopilot/built-in-tools/sandbox";
-import { createVmTools } from "../decopilot/built-in-tools/vm-tools";
-import type { PendingImage } from "../decopilot/built-in-tools/vm-tools/types";
-import type { HtmlPageBuffer } from "../decopilot/built-in-tools/vm-tools/html-page-buffer-core";
-import type { ToolApprovalLevel } from "../decopilot/mcp-tools";
-import type { DesktopToolCtx } from "./types";
+} from "./built-in-tools/portable-media-tools";
+import type { VirtualClient } from "./built-in-tools/sandbox";
+import { createVmTools } from "./built-in-tools/vm-tools";
+import type { PendingImage } from "./built-in-tools/vm-tools/types";
+import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer-core";
+import type { ToolApprovalLevel } from "./mcp-tools";
+import type { DesktopToolCtx } from "./desktop-tool-ctx";
 
 export interface BuildLocalToolsParams {
   writer: UIMessageStreamWriter;

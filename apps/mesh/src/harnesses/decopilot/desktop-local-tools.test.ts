@@ -3,7 +3,7 @@ import type { SandboxProvider } from "@decocms/sandbox/provider";
 import {
   buildLocalTools,
   createDesktopLocalSandboxProvider,
-} from "./local-tools";
+} from "./desktop-local-tools";
 
 const writer = {
   write: () => {},

@@ -10,7 +10,9 @@
     // `tsc` resolution here. Map `@/*` → apps/mesh/src/* so any such reference
     // resolves. NOTE: this is a tsc-only safety net — the BUNDLE
     // (`bun build daemon/entry.ts`) deliberately needs no alias because the
-    // decopilot-desktop tree imports every portable leaf by relative path.
+    // import-isolated desktop harness leaves (decopilot/desktop-factory.ts and
+    // the desktop-* modules it pulls) import every portable leaf by relative
+    // path.
     "baseUrl": ".",
     "paths": {
       "@/*": ["../../apps/mesh/src/*"]

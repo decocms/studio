@@ -15,17 +15,14 @@
 import {
   buildConnectionsBlock,
   type ConnectionsBlockTool,
-} from "../decopilot/connections-block";
-import {
-  buildSystemMessages,
-  type SystemMessage,
-} from "../decopilot/system-prompt";
-export { PARENT_STEP_LIMIT } from "../decopilot/prompt-constants";
+} from "./connections-block";
+import { buildSystemMessages, type SystemMessage } from "./system-prompt";
+export { PARENT_STEP_LIMIT } from "./prompt-constants";
 import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
   buildTodoWritePrompt,
-} from "../decopilot/prompt-constants";
+} from "./prompt-constants";
 
 export interface DesktopPromptInput {
   /** Active agent (virtual MCP) id — used to decide whether the decopilot

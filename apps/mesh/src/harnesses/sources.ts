@@ -151,7 +151,7 @@ export async function openObjectStorageSource(
   return createHttpObjectStorage(source);
 }
 
-export function createHttpObjectStorage(
+function createHttpObjectStorage(
   options: CreateHttpObjectStorageOptions,
 ): OpenedObjectStorageSource {
   const fetchFn = options.fetch ?? fetch;

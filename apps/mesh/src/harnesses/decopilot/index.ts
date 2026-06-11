@@ -37,10 +37,8 @@ import {
   type DecopilotToolRuntime,
 } from "./run-core";
 import type { DecopilotTelemetry } from "./run-stream";
-import {
-  buildClusterEnvironmentTools,
-  buildDesktopEnvironmentTools,
-} from "./harness-deps";
+import { buildClusterEnvironmentTools } from "./harness-deps";
+import { buildDesktopEnvironmentTools } from "./desktop-runtime";
 
 /** True when the injected context is a full cluster `StudioContext` (it carries
  *  `storage`/`db`, absent from the bare `HarnessContext` the daemon builds). */

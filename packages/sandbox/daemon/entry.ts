@@ -40,17 +40,21 @@ import {
 import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
 // Import harness factories from their subpaths (rather than the barrel
 // `apps/mesh/src/harnesses/index.ts`) to avoid pulling in the cluster-only
-// `decopilotHarnessFactory` and its dependency tree (which references
-// cluster modules that cause a TS stack overflow in the daemon bundle).
+// unified `decopilotHarnessFactory` (`harnesses/decopilot/index.ts`) and its
+// dependency tree (which references cluster modules that cause a TS stack
+// overflow in the daemon bundle).
 //
-// `decopilotDesktopHarnessFactory` is the IMPORT-ISOLATED decopilot runtime
-// (`harnesses/decopilot-desktop/`): it activates its provider from the injected
-// `modelSources.thinking`, reaches cluster-coupled tools via `mcp.url`, and imports
-// only portable leaves — so it bundles here without dragging in StudioContext /
-// storage / vault. See that subtree's `index.ts` for the isolation contract.
+// `decopilotDesktopHarnessFactory` is the IMPORT-ISOLATED daemon entrypoint into
+// the shared desktop tool-runtime (`harnesses/decopilot/desktop-factory.ts` →
+// `desktop-runtime.ts`): it activates its provider from the injected
+// `modelSources.thinking`, reaches cluster-coupled tools via `mcp.url`, and
+// imports only portable, `@/`-free leaves — so it bundles here without dragging
+// in StudioContext / storage / vault. See `desktop-factory.ts` for the
+// isolation contract (it deliberately never references the cluster branch in
+// `harness-deps.ts`).
 import { claudeCodeHarnessFactory } from "../../../apps/mesh/src/harnesses/claude-code";
 import { codexHarnessFactory } from "../../../apps/mesh/src/harnesses/codex";
-import { decopilotDesktopHarnessFactory } from "../../../apps/mesh/src/harnesses/decopilot-desktop";
+import { decopilotDesktopHarnessFactory } from "../../../apps/mesh/src/harnesses/decopilot/desktop-factory";
 import type {
   HarnessContext,
   HarnessFactory,
