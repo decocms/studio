@@ -19,6 +19,7 @@ import {
   makeEditHandler,
   makeGrepHandler,
   makeGlobHandler,
+  collectEmptyDirectories,
 } from "./fs";
 
 const hasRg = spawnSync("which", ["rg"]).status === 0;
@@ -275,8 +276,12 @@ describe("fs handlers", () => {
     writeFileSync(join(appRoot, "x.txt"), "");
     const h = makeGlobHandler({ appRoot, repoDir: appRoot });
     const res = await h(post("/_sandbox/glob", { pattern: "*.txt" }));
-    const body = (await res.json()) as { files: string[] };
+    const body = (await res.json()) as {
+      files: string[];
+      directories?: string[];
+    };
     expect(body.files).toContain("x.txt");
+    expect(body.directories ?? []).toEqual([]);
   });
 
   it("glob: includes dot-directories such as .deco", async () => {
@@ -284,7 +289,10 @@ describe("fs handlers", () => {
     writeFileSync(join(appRoot, ".deco/blocks/foo.json"), "{}");
     const h = makeGlobHandler({ appRoot, repoDir: appRoot });
     const res = await h(post("/_sandbox/glob", { pattern: "**/*" }));
-    const body = (await res.json()) as { files: string[] };
+    const body = (await res.json()) as {
+      files: string[];
+      directories?: string[];
+    };
     expect(body.files).toContain(".deco/blocks/foo.json");
   });
 
@@ -299,13 +307,30 @@ describe("fs handlers", () => {
     expect(body.files).toContain(".deco/blocks/foo.json");
   });
 
-  it("glob: includes .gitkeep folder markers", async () => {
+  it("glob: includes empty directories without placeholder files", async () => {
+    mkdirSync(join(appRoot, "tavano-folder"), { recursive: true });
+    const h = makeGlobHandler({ appRoot, repoDir: appRoot });
+    const res = await h(post("/_sandbox/glob", { pattern: "**/*" }));
+    const body = (await res.json()) as {
+      files: string[];
+      directories: string[];
+    };
+    expect(body.directories).toContain("tavano-folder");
+  });
+
+  it("glob: includes .gitkeep folder markers in files", async () => {
     mkdirSync(join(appRoot, "empty-dir"), { recursive: true });
     writeFileSync(join(appRoot, "empty-dir", ".gitkeep"), "");
     const h = makeGlobHandler({ appRoot, repoDir: appRoot });
     const res = await h(post("/_sandbox/glob", { pattern: "**/*" }));
     const body = (await res.json()) as { files: string[] };
     expect(body.files).toContain("empty-dir/.gitkeep");
+  });
+
+  it("collectEmptyDirectories ignores parents of nested directories", () => {
+    expect(collectEmptyDirectories([], ["src", "src/components"])).toEqual([
+      "src/components",
+    ]);
   });
 
   it("unlink: refuses recursive delete of repository root", async () => {

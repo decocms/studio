@@ -147,6 +147,7 @@ export function FileExplorer({
 }: FileExplorerProps) {
   // File tree state
   const [files, setFiles] = useState<string[]>([]);
+  const [directories, setDirectories] = useState<string[]>([]);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNode | null>(
@@ -313,7 +314,7 @@ export function FileExplorer({
   async function handleCreateFile(name: string) {
     if (!nameDialog) return;
     const filePath = joinTreePath(nameDialog.parentDir, name);
-    if (pathExistsInFileList(filePath, files)) {
+    if (pathExistsInFileList(filePath, files, directories)) {
       throw new Error(`"${name}" already exists`);
     }
     await postSandbox("write", {
@@ -329,27 +330,14 @@ export function FileExplorer({
   async function handleCreateFolder(name: string) {
     if (!nameDialog) return;
     const folderPath = joinTreePath(nameDialog.parentDir, name);
-    if (pathExistsInFileList(folderPath, files)) {
+    if (pathExistsInFileList(folderPath, files, directories)) {
       throw new Error(`"${name}" already exists`);
     }
-    const gitkeepPath = joinTreePath(folderPath, ".gitkeep");
-    await postSandbox("mkdir", { path: toDaemonPath(folderPath) });
-    try {
-      await postSandbox("write", {
-        path: toDaemonPath(gitkeepPath),
-        content: "",
-      });
-    } catch (err) {
-      try {
-        await postSandbox("unlink", {
-          path: toDaemonPath(folderPath),
-          recursive: true,
-        });
-      } catch {
-        // Best-effort rollback if the placeholder write fails.
-      }
-      throw err;
-    }
+    const daemonFolderPath = toDaemonPath(folderPath);
+    await postSandbox("mkdir", { path: daemonFolderPath });
+    setDirectories((prev) =>
+      prev.includes(daemonFolderPath) ? prev : [...prev, daemonFolderPath],
+    );
     await fetchFileTree();
     await refreshGitStatus();
     setNameDialog(null);
@@ -376,7 +364,7 @@ export function FileExplorer({
       setNameDialog(null);
       return;
     }
-    if (pathExistsInFileList(toPath, files)) {
+    if (pathExistsInFileList(toPath, files, directories)) {
       throw new Error(`"${name}" already exists`);
     }
     await postSandbox("rename", {
@@ -478,8 +466,20 @@ export function FileExplorer({
         }
         return;
       }
-      const data = (await res.json()) as { files?: string[] };
-      setFiles(data.files ?? []);
+      const data = (await res.json()) as {
+        files?: string[];
+        directories?: string[];
+      };
+      const nextFiles = data.files ?? [];
+      setFiles(nextFiles);
+      setDirectories((prev) => {
+        if (data.directories !== undefined) return data.directories;
+        // Legacy daemons omit `directories`; keep client-side empty dirs
+        // until the sandbox daemon is restarted with directory support.
+        return prev.filter(
+          (dir) => !pathExistsInFileList(toTreePath(dir), nextFiles),
+        );
+      });
       setTreeLoaded(true);
     } finally {
       setLoading(false);
@@ -648,7 +648,7 @@ export function FileExplorer({
     });
   }
 
-  const tree = buildFileTree(files);
+  const tree = buildFileTree(files, directories);
   const flatNodes = flattenTree(tree, expandedDirs);
 
   // Filter by search

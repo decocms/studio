@@ -724,6 +724,39 @@ function assertUnlinkAllowed(
   return null;
 }
 
+function toRepoRelativePath(
+  abs: string,
+  searchPath: string,
+  repoDir: string,
+): string {
+  return abs.startsWith(`${repoDir}/`)
+    ? abs.slice(repoDir.length + 1)
+    : abs.startsWith(`${searchPath}/`)
+      ? abs.slice(searchPath.length + 1)
+      : abs;
+}
+
+/** Empty directories have no nested files and no nested directories in the scan. */
+export function collectEmptyDirectories(
+  filePaths: readonly string[],
+  directoryPaths: readonly string[],
+): string[] {
+  const dirSet = new Set(directoryPaths);
+  const empty: string[] = [];
+  for (const dir of directoryPaths) {
+    if (!dir) continue;
+    const prefix = `${dir}/`;
+    const hasNestedFile = filePaths.some((file) => file.startsWith(prefix));
+    const hasNestedDirectory = [...dirSet].some(
+      (other) => other !== dir && other.startsWith(prefix),
+    );
+    if (!hasNestedFile && !hasNestedDirectory) {
+      empty.push(dir);
+    }
+  }
+  return empty;
+}
+
 export function makeGlobHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
     let body: { pattern?: string; path?: string };
@@ -743,26 +776,35 @@ export function makeGlobHandler(deps: FsDeps) {
     // Bun.Glob — no external binary dependency. Returns paths relative
     // to `cwd`, which we re-anchor to repoDir for consistent UX.
     const glob = new Bun.Glob(body.pattern);
-    const files: string[] = [];
+    const filePaths: string[] = [];
+    const directoryPaths = new Set<string>();
     try {
       for await (const rel of glob.scan({
         cwd: searchPath,
-        onlyFiles: true,
+        onlyFiles: false,
         followSymlinks: false,
         dot: true,
       })) {
         if (!isGlobPathAllowed(rel)) continue;
         const abs = path.join(searchPath, rel);
-        files.push(
-          abs.startsWith(`${deps.repoDir}/`)
-            ? abs.slice(deps.repoDir.length + 1)
-            : abs,
-        );
-        if (files.length >= GLOB_RESULT_LIMIT) break;
+        let relPath: string;
+        try {
+          const stat = fs.statSync(abs);
+          relPath = toRepoRelativePath(abs, searchPath, deps.repoDir);
+          if (stat.isDirectory()) {
+            directoryPaths.add(relPath);
+          } else if (stat.isFile()) {
+            filePaths.push(relPath);
+          }
+        } catch {
+          continue;
+        }
+        if (filePaths.length >= GLOB_RESULT_LIMIT) break;
       }
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 500);
     }
-    return jsonResponse({ files });
+    const directories = collectEmptyDirectories(filePaths, [...directoryPaths]);
+    return jsonResponse({ files: filePaths, directories });
   };
 }

@@ -63,12 +63,17 @@ export function validateExplorerEntryName(name: string): string | null {
 export function pathExistsInFileList(
   treePath: string,
   fileList: readonly string[],
+  directoryList: readonly string[] = [],
 ): boolean {
   const daemonPath = toDaemonPath(treePath);
   if (fileList.includes(daemonPath)) return true;
+  if (directoryList.includes(daemonPath)) return true;
   if (!daemonPath) return false;
   const prefix = `${daemonPath}/`;
-  return fileList.some((file) => file.startsWith(prefix));
+  return (
+    fileList.some((file) => file.startsWith(prefix)) ||
+    directoryList.some((dir) => dir.startsWith(prefix))
+  );
 }
 
 /** Extract decofile block key from `.deco/blocks/<key>.json`, if applicable. */
@@ -126,12 +131,39 @@ export function getAncestorDirectories(filepath: string) {
   return directories;
 }
 
-export function buildFileTree(files: string[]): TreeNode[] {
+export function buildFileTree(
+  files: string[],
+  directories: readonly string[] = [],
+): TreeNode[] {
   const root: TreeNode = {
     name: "/",
     path: "/",
     kind: "directory",
     children: [],
+  };
+
+  const ensureDirectory = (dirPath: string) => {
+    const normalized = normalizePath(dirPath);
+    const parts = normalized.split("/").filter(Boolean);
+    let current = root;
+    let currentPath = "";
+
+    for (const part of parts) {
+      currentPath += `/${part}`;
+      let child = current.children.find((entry) => entry.name === part);
+      if (!child) {
+        child = {
+          name: part,
+          path: currentPath,
+          kind: "directory",
+          children: [],
+        };
+        current.children.push(child);
+      } else if (child.kind === "file") {
+        child.kind = "directory";
+      }
+      current = child;
+    }
   };
 
   for (const rawFile of files) {
@@ -157,6 +189,10 @@ export function buildFileTree(files: string[]): TreeNode[] {
 
       current = child;
     });
+  }
+
+  for (const rawDirectory of directories) {
+    ensureDirectory(toTreePath(rawDirectory));
   }
 
   const sortNodes = (nodes: TreeNode[]) => {

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildFileTree,
   decoBlockKeyFromTreePath,
+  flattenTree,
   getDirectoryContextPath,
   getParentTreePath,
   joinTreePath,
   pathExistsInFileList,
   toDaemonPath,
+  toTreePath,
   validateExplorerEntryName,
 } from "./utils";
 
@@ -32,9 +35,22 @@ describe("file-explorer utils", () => {
 
   it("pathExistsInFileList detects files and directories", () => {
     const files = ["src/index.ts", "src/utils.ts", "README.md"];
-    expect(pathExistsInFileList("/src/index.ts", files)).toBe(true);
-    expect(pathExistsInFileList("/src", files)).toBe(true);
-    expect(pathExistsInFileList("/missing", files)).toBe(false);
+    const directories = ["empty-dir"];
+    expect(pathExistsInFileList("/src/index.ts", files, directories)).toBe(
+      true,
+    );
+    expect(pathExistsInFileList("/src", files, directories)).toBe(true);
+    expect(pathExistsInFileList("/empty-dir", files, directories)).toBe(true);
+    expect(pathExistsInFileList("/missing", files, directories)).toBe(false);
+  });
+
+  it("buildFileTree includes empty directories", () => {
+    const tree = buildFileTree([], ["tavano-folder"]);
+    expect(tree).toHaveLength(1);
+    expect(tree[0]?.name).toBe("tavano-folder");
+    expect(tree[0]?.kind).toBe("directory");
+    const rows = flattenTree(tree, new Set());
+    expect(rows.some((row) => row.node.name === "tavano-folder")).toBe(true);
   });
 
   it("decoBlockKeyFromTreePath decodes block keys", () => {
