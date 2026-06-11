@@ -57,4 +57,14 @@ describe("ensureRepoOrgLink", () => {
     await ensureRepoOrgLink(repo());
     expect(readlinkSync(join(repo(), "org"))).toBe("../org");
   });
+
+  it("creates info/exclude when .git exists without it (template-less clones)", async () => {
+    rmSync(join(repo(), ".git", "info"), { recursive: true, force: true });
+    await ensureRepoOrgLink(repo());
+    expect(
+      readFileSync(join(repo(), ".git", "info", "exclude"), "utf8")
+        .split("\n")
+        .includes("/org"),
+    ).toBe(true);
+  });
 });

@@ -75,8 +75,10 @@ export function parseTar(tar: Uint8Array): Map<string, Uint8Array> {
     pos += Math.ceil(size / 512) * 512;
 
     if (typeflag === "L") {
-      // GNU longname: data carries the next entry's path
-      pendingLongName = new TextDecoder().decode(data).replace(/\0+$/, "");
+      // GNU longname: data carries the next entry's path (NUL-padded)
+      const text = new TextDecoder().decode(data);
+      const nul = text.indexOf("\0");
+      pendingLongName = nul === -1 ? text : text.slice(0, nul);
       continue;
     }
     if (typeflag === "x") {
