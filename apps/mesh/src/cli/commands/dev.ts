@@ -95,10 +95,23 @@ function pipeToLogStore(stream: ReadableStream<Uint8Array>) {
 export async function startDevServer(
   options: DevOptions,
 ): Promise<{ port: number; process: Subprocess }> {
-  const { vitePort, baseUrl, noTui } = options;
+  const { baseUrl, noTui } = options;
+
+  // Sandbox preview: the daemon injects PORT and proxies the preview to it,
+  // expecting HTML at /. Mesh's dev front door is Vite (it serves the app and
+  // proxies /api → the Bun server); the Bun server alone 404s at / in dev. So
+  // in a sandbox we bind Vite to the injected PORT and move the Bun server to
+  // an internal port (Vite's proxy target follows PORT). The daemon sets
+  // HOST=0.0.0.0 (buildDevEnv) and local `bun run dev` never does, so that's
+  // our sandbox tell. Locally the conventional split is preserved (server on
+  // --port, Vite on --vite-port).
+  const inSandbox = process.env.HOST === "0.0.0.0" && Boolean(process.env.PORT);
+  const vitePort = inSandbox ? process.env.PORT! : options.vitePort;
   const publicBaseUrl = baseUrl || `http://localhost:${vitePort}`;
 
-  const port = await findAvailablePort(Number(options.port));
+  const port = inSandbox
+    ? await findAvailablePort(Number(vitePort) + 1)
+    : await findAvailablePort(Number(options.port));
 
   const { settings, services, managedServiceNames } = await buildSettings({
     port: String(port),
