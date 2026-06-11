@@ -9,14 +9,26 @@ import { type Kysely, sql } from "kysely";
  * `apps/mesh/src/file-storage/public-sets.ts`.
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
+  // The slug is cosmetic — everything resolves this org by id — but the
+  // column is unique and user-claimable, so a deployment where someone
+  // already owns "orgfs-public-skills" falls back to a suffixed slug
+  // instead of aborting the migration (slugs are immutable, so the owner
+  // couldn't self-serve a rename). A bare ON CONFLICT DO NOTHING would be
+  // worse: it would silently skip the row and break every org_fs_entry FK
+  // write at sync time.
   await sql`
     INSERT INTO "organization" (id, name, slug, "createdAt")
-    VALUES (
+    SELECT
       'org_orgfs_public_skills',
       'Public skill sets (system)',
-      'orgfs-public-skills',
+      CASE
+        WHEN EXISTS (
+          SELECT 1 FROM "organization" WHERE slug = 'orgfs-public-skills'
+        )
+        THEN 'orgfs-public-skills-' || substr(md5(random()::text), 1, 8)
+        ELSE 'orgfs-public-skills'
+      END,
       now()
-    )
     ON CONFLICT (id) DO NOTHING
   `.execute(db);
 }
