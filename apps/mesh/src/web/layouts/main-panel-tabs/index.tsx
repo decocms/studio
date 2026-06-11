@@ -17,9 +17,11 @@ import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { WebPageTab } from "./web-page-tab";
+import { FileTab } from "./file-tab";
 import { MainPanelLoading } from "./main-panel-loading";
 import {
   isLegacySettingsTab,
+  parseFileTabId,
   parsePinnedViewTabId,
   parseWebPageTabId,
 } from "./tab-id";
@@ -34,12 +36,14 @@ const AppViewContent = lazy(() =>
 function TabBody({
   activeTab,
   virtualMcpId,
+  taskId,
   layoutTabs,
   expandedTools,
   automationTabParsed,
 }: {
   activeTab: string;
   virtualMcpId: string;
+  taskId: string;
   layoutTabs: ReturnType<typeof useMainPanelTabs>["layoutTabs"];
   expandedTools: ReturnType<typeof useMainPanelTabs>["expandedTools"];
   automationTabParsed: ReturnType<
@@ -81,6 +85,11 @@ function TabBody({
   const webPage = parseWebPageTabId(activeTab);
   if (webPage) {
     return <WebPageTab slug={webPage.slug} />;
+  }
+
+  const fileTab = parseFileTabId(activeTab);
+  if (fileTab) {
+    return <FileTab fileKey={fileTab.key} taskId={taskId} />;
   }
 
   const pinnedView = parsePinnedViewTabId(activeTab);
@@ -138,6 +147,7 @@ export function MainPanelContent({
         <TabBody
           activeTab={activeTab}
           virtualMcpId={virtualMcpId}
+          taskId={taskId}
           layoutTabs={layoutTabs}
           expandedTools={expandedTools}
           automationTabParsed={automationTabParsed}

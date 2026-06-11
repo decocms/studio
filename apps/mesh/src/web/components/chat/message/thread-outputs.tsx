@@ -1,113 +1,81 @@
 /**
- * ThreadOutputs — download chips for files the model has shared back
- * to the user via the `share_with_user` tool. Files live under
- * `model-outputs/<thread_id>/` and are listed by
- * `GET /api/:org/threads/:threadId/outputs`. The query is invalidated on
- * assistant-turn completion (see chat onFinish).
+ * MessageProducedFiles — file rows under the assistant message that
+ * PRODUCED them (replacing the old thread-aggregate "files shared in this
+ * chat" block that always sat under the last message).
  *
- * The fetch is gated on whether any message in the thread has a
- * `tool-share_with_user` part with `state: "output-available"` — threads
- * that never shared a file pay zero network. The companion invalidation in
- * chat-context's onFinish handler refreshes the cache only when a new
- * share appears, so the round-trip count is exactly one per produced file.
+ * Attribution is client-side: the message's own tool parts name the files
+ * it produced — `share_with_user` returns `{ filename }`, and `write`
+ * calls targeting the org-output mount carry the path in their input.
+ * Those names are matched against the thread-outputs listing (shared
+ * `useThreadOutputs` query) to get key/size/downloadUrl. Files produced
+ * invisibly (e.g. `bash` cp into org/output) can't be attributed to a
+ * turn and surface only in ThreadFilesPanel.
  *
- * Attribution caveat: outputs are aggregated under the *last* assistant
- * message of the thread rather than per-producing-message. Future
- * iterations can encode the message id in the storage key to attribute
- * each chip to its producing turn.
+ * Caveat: the match is by filename, so a file re-written in a later turn
+ * shows on every producing turn (it IS the same output). Encoding the
+ * message id in the storage key is the future per-turn-exact fix.
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { Download01 } from "@untitledui/icons";
-import { useProjectContext } from "@decocms/mesh-sdk";
-import { KEYS } from "../../../lib/query-keys";
-import { useOptionalChatStream } from "../context.tsx";
+import { useThreadOutputs } from "../use-thread-outputs.ts";
+import { OutputFileRow } from "../output-file-row.tsx";
 
-interface ThreadOutput {
-  key: string;
-  filename: string;
-  size: number;
-  uploadedAt?: string;
-  downloadUrl: string;
+interface MessageLike {
+  parts?: ReadonlyArray<unknown>;
 }
 
-interface ThreadOutputsResponse {
-  objects: ThreadOutput[];
+function basename(p: string): string {
+  return p.split("/").pop() ?? p;
 }
 
-async function fetchThreadOutputs(
-  threadId: string,
-  orgSlug: string,
-): Promise<ThreadOutput[]> {
-  const res = await fetch(
-    `/api/${orgSlug}/threads/${encodeURIComponent(threadId)}/outputs`,
-    {
-      credentials: "include",
-    },
-  );
-  if (!res.ok) {
-    throw new Error(`Failed to fetch thread outputs: ${res.status}`);
+/** Matches sandbox paths under the org-output mount: `output/x`,
+ *  `org/output/x`, `/app/org/output/x`. */
+const OUTPUT_PATH_RE = /(^|\/)output\//;
+
+function collectProducedFilenames(message: MessageLike): Set<string> {
+  const names = new Set<string>();
+  for (const raw of message.parts ?? []) {
+    const part = raw as {
+      type?: string;
+      state?: string;
+      input?: { path?: string; source?: string; name?: string };
+      output?: { filename?: string };
+    };
+    if (part.state !== "output-available") continue;
+    if (part.type === "tool-share_with_user") {
+      const name =
+        part.output?.filename ??
+        part.input?.name ??
+        (part.input?.source ? basename(part.input.source) : null);
+      if (name) names.add(name);
+    } else if (part.type === "tool-write") {
+      const path = part.input?.path;
+      if (path && OUTPUT_PATH_RE.test(path)) names.add(basename(path));
+    }
   }
-  const body = (await res.json()) as ThreadOutputsResponse;
-  return body.objects ?? [];
+  return names;
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-export function ThreadOutputs({ threadId }: { threadId: string }) {
-  const { org } = useProjectContext();
-  const messages = useOptionalChatStream()?.messages ?? [];
-  // Only fetch when the thread could have produced a downloadable file:
-  // an explicit share_with_user, or sandbox file work (bash/write can drop
-  // results into `org/output/`). Pure-chat threads stay silent — no GET.
-  const hasSharedFile = messages.some((m) =>
-    m.parts?.some((p) => {
-      const part = p as { type: string; state?: string };
-      return (
-        (part.type === "tool-share_with_user" ||
-          part.type === "tool-bash" ||
-          part.type === "tool-write") &&
-        part.state === "output-available"
-      );
-    }),
-  );
-  const { data: outputs } = useQuery({
-    queryKey: KEYS.threadOutputs(threadId),
-    queryFn: () => fetchThreadOutputs(threadId, org.slug),
-    enabled: hasSharedFile,
-    // Stale immediately so refetch on invalidation is fresh.
-    staleTime: 0,
+export function MessageProducedFiles({
+  threadId,
+  message,
+}: {
+  threadId: string;
+  message: MessageLike;
+}) {
+  const produced = collectProducedFilenames(message);
+  const { data: outputs } = useThreadOutputs(threadId, {
+    enabled: produced.size > 0,
   });
 
-  if (!outputs || outputs.length === 0) return null;
+  if (produced.size === 0) return null;
+  const files = (outputs ?? []).filter((o) => produced.has(o.filename));
+  if (files.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-1.5 py-2">
-      <div className="text-[12px] text-muted-foreground/70 uppercase tracking-wide">
-        Files shared in this chat
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {outputs.map((file) => (
-          <a
-            key={file.key}
-            href={file.downloadUrl}
-            download={file.filename}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/30 hover:bg-muted/60 text-[13px] transition-colors"
-          >
-            <Download01 className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="font-medium text-foreground">{file.filename}</span>
-            <span className="text-muted-foreground">
-              {formatSize(file.size)}
-            </span>
-          </a>
-        ))}
-      </div>
+      {files.map((file) => (
+        <OutputFileRow key={file.key} file={file} />
+      ))}
     </div>
   );
 }
