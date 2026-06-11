@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const TMP = `${ROOT}/.ban-cross-tree.tmp`;
@@ -107,4 +107,15 @@ describe("ban-cross-tree-imports", () => {
     const msgs = await lint(f);
     expect(msgs.length).toBe(3);
   });
+});
+
+test("plugin is registered in .oxlintrc.json", () => {
+  const cfg = JSON.parse(readFileSync(`${ROOT}/.oxlintrc.json`, "utf8")) as {
+    jsPlugins: string[];
+    rules: Record<string, string>;
+  };
+  expect(cfg.jsPlugins).toContain("./plugins/ban-cross-tree-imports.js");
+  expect(cfg.rules["ban-cross-tree-imports/ban-cross-tree-imports"]).toBe(
+    "warn",
+  );
 });
