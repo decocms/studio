@@ -57,9 +57,13 @@ import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
 import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
 import { codexHarnessFactory } from "@decocms/harness/codex/index";
 import { decopilotDesktopHarnessFactory } from "../../../apps/mesh/src/harnesses/decopilot/desktop-factory";
+import {
+  getHarnessFactory,
+  registerHarnessFactory,
+} from "@decocms/harness/registry";
 import type {
   HarnessContext,
-  HarnessFactory,
+  HarnessId,
   HarnessStreamInput,
 } from "@decocms/harness/types";
 import { metrics, trace } from "@opentelemetry/api";
@@ -424,15 +428,19 @@ const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 // internals, StudioContext) is NOT here — desktop decopilot runs via
 // `decopilotDesktopHarnessFactory`, which activates from `modelSources.thinking`
 // and reaches cluster-coupled tools through `mcp.url`.
-const dispatchHarnessRegistry: Map<string, HarnessFactory> = new Map([
-  ["claude-code", claudeCodeHarnessFactory],
-  ["codex", codexHarnessFactory],
-  ["decopilot", decopilotDesktopHarnessFactory],
-]);
+// Register the daemon's harness factories into the shared @decocms/harness
+// registry (the same registry the cluster barrel uses, but a separate
+// module-singleton in the daemon process). Keys are the factory ids
+// (claude-code / codex / decopilot — the desktop factory shares the decopilot
+// id). Lookup goes through `getHarnessFactory` so the daemon and the cluster
+// share one registry abstraction.
+registerHarnessFactory(claudeCodeHarnessFactory);
+registerHarnessFactory(codexHarnessFactory);
+registerHarnessFactory(decopilotDesktopHarnessFactory);
 const dispatchTracer = trace.getTracer("link-daemon");
 const dispatchMeter = metrics.getMeter("link-daemon");
 const lookupDispatchHarness = (id: string, input: unknown) => {
-  const factory = dispatchHarnessRegistry.get(id);
+  const factory = getHarnessFactory(id as HarnessId);
   if (!factory) throw new Error(`unknown harness: ${id}`);
   // Build a minimal HarnessContext. CLI harnesses don't read storage,
   // db, vault, or aiProviders — they only need tracer/meter for OTel
