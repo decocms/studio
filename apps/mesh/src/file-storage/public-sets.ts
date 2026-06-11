@@ -20,7 +20,7 @@ import type { StudioContext } from "../core/studio-context";
 import { OrgFs } from "./org-fs";
 
 export const ORG_FS_PUBLIC_ORG_ID = "org_orgfs_public_skills";
-export const PUBLIC_VOLUME_PREFIX = "public-";
+const PUBLIC_VOLUME_PREFIX = "public-";
 
 export function isPublicVolume(volume: string): boolean {
   return volume.startsWith(PUBLIC_VOLUME_PREFIX);

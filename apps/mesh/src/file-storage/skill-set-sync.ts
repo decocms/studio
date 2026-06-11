@@ -207,7 +207,7 @@ export interface SyncResult {
 }
 
 /** Sync one set into its shared volume. Throws on fetch/storage failure. */
-export async function syncPublicSet(
+async function syncPublicSet(
   db: Kysely<Database>,
   source: PublicSkillSetSource,
   opts: { baseUrl: string },
