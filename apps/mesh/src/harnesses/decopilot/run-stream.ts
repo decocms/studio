@@ -43,7 +43,7 @@ import {
   type UsageAccumulator,
 } from "../usage-accumulator";
 import { generateMessageId } from "../../api/routes/decopilot/constants";
-import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
+import { resolveModeConfig } from "./mode-config";
 import { makeTitleResultChunk } from "../title-chunk";
 import { shouldGenerateTitle } from "../title-merge";
 import { createLanguageModel } from "./mesh-provider";

@@ -43,7 +43,7 @@ export type ToolApprovalLevel = "auto" | "readonly";
 /** Mode flag forwarded into harnesses. The CLI harnesses only care about
  *  "plan" (sets `isPlanMode` for read-only restrictions); decopilot
  *  interprets the rest internally. Mirrors
- *  `apps/mesh/src/api/routes/decopilot/mode-config.ts:CHAT_MODES`. */
+ *  `apps/mesh/src/harnesses/decopilot/mode-config.ts:CHAT_MODES`. */
 export type ChatMode = "default" | "plan" | "web-search" | "gen-image";
 
 /** Per-model selection passed in the wire input. Every slot carries its own

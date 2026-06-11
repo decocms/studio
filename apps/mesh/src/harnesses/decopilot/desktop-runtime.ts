@@ -52,7 +52,7 @@ import { createLanguageModel } from "./mesh-provider";
 import { toolsFromMCP } from "./mcp-tools";
 import { buildLocalTools } from "./desktop-local-tools";
 import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./desktop-prompt";
-import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
+import { resolveModeConfig } from "./mode-config";
 import { runNativeAgentLoopCore } from "./native-agent-loop-core";
 import {
   spawnSubtask,

@@ -117,9 +117,7 @@ export async function buildAgentSystemPrompt(
 
   if (opts.kind === "agent" && opts.planMode) {
     // Re-use the plan-mode prompt from mode-config (non-CLI variant).
-    const { resolveModeConfig } = await import(
-      "../../api/routes/decopilot/mode-config"
-    );
+    const { resolveModeConfig } = await import("./mode-config");
     const modeConfig = resolveModeConfig("plan", { isCliAgent: false });
     add("planMode", modeConfig.planPrompt);
   }

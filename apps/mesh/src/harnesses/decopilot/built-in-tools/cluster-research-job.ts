@@ -34,7 +34,7 @@ import {
 import type { StudioContext } from "@/core/studio-context";
 import { sanitizeProviderMetadata } from "@decocms/mesh-sdk";
 import type { ModelInfo } from "../../../api/routes/decopilot/types";
-import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
+import { toMeshStorageUri } from "../mesh-storage-uri";
 import type { ResearchParams, ResearchResult } from "../../harness-deps";
 import { createOutputPreview } from "./read-tool-output";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";

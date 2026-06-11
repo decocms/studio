@@ -1,10 +1,7 @@
 import { generateImage, tool, type UIMessageStreamWriter } from "ai";
 import { zodSchema } from "ai";
 import { z } from "zod";
-import {
-  parseMeshStorageKey,
-  toMeshStorageUri,
-} from "../../../api/routes/decopilot/mesh-storage-uri";
+import { parseMeshStorageKey, toMeshStorageUri } from "../mesh-storage-uri";
 import type { PendingImage } from "./vm-tools/types";
 import { BROWSERLESS_BASE_URL } from "./constants";
 

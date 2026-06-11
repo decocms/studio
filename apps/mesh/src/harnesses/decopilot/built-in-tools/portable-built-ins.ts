@@ -13,7 +13,7 @@ import { createReadPromptTool } from "./prompts";
 import { createSandboxTool, type VirtualClient } from "./sandbox";
 import { BROWSERLESS_BASE_URL } from "./constants";
 import type { ToolApprovalLevel } from "../mcp-tools";
-import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
+import { toMeshStorageUri } from "../mesh-storage-uri";
 import {
   createPortableGenerateImageTool,
   createPortableTakeScreenshotTool,

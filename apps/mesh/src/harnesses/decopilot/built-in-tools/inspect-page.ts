@@ -17,7 +17,7 @@ import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { ObjectStorageHooks } from "../../harness-deps";
 import { createOutputPreview, estimateJsonTokens } from "./read-tool-output";
-import { toMeshStorageUri } from "../../../api/routes/decopilot/mesh-storage-uri";
+import { toMeshStorageUri } from "../mesh-storage-uri";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "./constants";
 
 const InspectPageInputSchema = z.object({
