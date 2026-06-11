@@ -24,6 +24,7 @@ import {
   Download01,
   File06,
   Globe01,
+  LinkExternal01,
   LogOut01,
   Monitor01,
   Moon01,
@@ -381,6 +382,20 @@ export function AccountPopover() {
             onClick: () => {
               navigate({
                 to: "/$org/install",
+                params: { org: currentOrg.slug },
+              });
+            },
+          } satisfies MenuItem,
+          // Connect this org's unified MCP to Claude (Code/Desktop) and
+          // other MCP clients. Always available inside an org so it's easy
+          // to find from anywhere.
+          {
+            key: "connect-clients",
+            label: "Connect to Claude",
+            icon: <LinkExternal01 size={16} />,
+            onClick: () => {
+              navigate({
+                to: "/$org/settings/connect",
                 params: { org: currentOrg.slug },
               });
             },
