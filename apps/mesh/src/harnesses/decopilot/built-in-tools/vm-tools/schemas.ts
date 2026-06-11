@@ -171,8 +171,13 @@ export function buildBashDescription(orgFs: boolean): string {
     "`/mnt/skills/public/<name>/SKILL.md` (pptx, docx, xlsx, pdf, " +
     "file-reading). Run `ls /mnt/skills/public/` for that index.\n\n" +
     "To bring chat attachments / presigned URLs into the sandbox FS use " +
-    "`copy_to_sandbox` (NOT bash + curl). To deliver a file you produced " +
-    "back to the user as a download chip, use `share_with_user`."
+    "`copy_to_sandbox` (NOT bash + curl)." +
+    // Without org-fs there is no org/output — the legacy share tool (also
+    // only registered then) is the one way to hand files back.
+    (orgFs
+      ? ""
+      : " To deliver a file you produced back to the user as a download " +
+        "chip, use `share_with_user`.")
   );
 }
 
