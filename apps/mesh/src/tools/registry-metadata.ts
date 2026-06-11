@@ -125,6 +125,7 @@ const ALL_TOOL_NAMES = [
   "AUTOMATION_TRIGGER_REMOVE",
   "AUTOMATION_TRIGGER_ROTATE_TOKEN",
   "AUTOMATION_RUN",
+  "AUTOMATION_RUN_STATS",
   // Virtual MCP plugin config and pinned views tools
   "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
   "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
@@ -637,6 +638,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Manually trigger an automation run",
     category: "Automations",
   },
+  {
+    name: "AUTOMATION_RUN_STATS",
+    description: "View aggregated run counts and token/cost for an automation",
+    category: "Automations",
+  },
   // Virtual MCP plugin config and pinned views tools
   {
     name: "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
@@ -1070,6 +1076,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // View automations
       "AUTOMATION_GET",
       "AUTOMATION_LIST",
+      "AUTOMATION_RUN_STATS",
       // View AI providers (read-only — every member needs to know which
       // providers are configured so chat / agents can use them). KEY_LIST
       // returns metadata only (no secret material); CREDITS is the balance

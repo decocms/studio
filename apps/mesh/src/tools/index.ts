@@ -135,6 +135,7 @@ const CORE_TOOLS = [
   AutomationTools.AUTOMATION_TRIGGER_REMOVE,
   AutomationTools.AUTOMATION_TRIGGER_ROTATE_TOKEN,
   AutomationTools.AUTOMATION_RUN,
+  AutomationTools.AUTOMATION_RUN_STATS,
 
   // Virtual MCP plugin config tools
   VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_GET,
