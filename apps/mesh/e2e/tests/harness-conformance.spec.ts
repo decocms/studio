@@ -846,9 +846,12 @@ test.describe("harness conformance — relay endpoint rejections", () => {
     }
   });
 
-  test("resumed relay with no session (x-relay-from > 1) rejected 410 relay_session_lost", async ({
+  test("resumed relay with no parked session (x-relay-from > 1) opens fresh (no 410; idempotent resend)", async ({
     authedPage,
   }) => {
+    // The 410 stub is gone: a resumed relay with no parked session opens a fresh
+    // session and accepts the lines (a full-prefix resend is idempotent, §10),
+    // instead of dead-ending the daemon.
     const { page, user, orgSlug } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
@@ -862,13 +865,13 @@ test.describe("harness conformance — relay endpoint rejections", () => {
       });
       const { body } = buildTurnRelayBody({
         messageId: `msg_conf_lost_${Date.now()}`,
-        text: "should not land",
+        text: "resumed turn lands",
       });
       // x-relay-from > 1 with no in-memory session for this runId.
       const res = await postRelay(api, orgSlug, runId, fenceToken, body, 5);
-      expect(res.status()).toBe(410);
-      expect(await res.json()).toMatchObject({ error: "relay_session_lost" });
-      expect(await fetchParts(db, runId)).toHaveLength(0);
+      expect(res.status()).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: true });
+      expect((await fetchParts(db, runId)).length).toBeGreaterThan(0);
     } finally {
       await db.end();
     }

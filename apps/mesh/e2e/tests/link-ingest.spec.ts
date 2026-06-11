@@ -249,12 +249,13 @@ test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", 
     }
   });
 
-  test("resumed relay with no session (x-relay-from > 1) → 410 relay_session_lost", async ({
+  test("resumed relay with no parked session (x-relay-from > 1) opens fresh (no 410; idempotent resend)", async ({
     authedPage,
   }) => {
-    // Registry loss (pod restart) is terminal for the run: the daemon's
-    // resumed upload must get a non-retriable 4xx so it gives up and the
-    // idle reaper fails the run.
+    // Registry loss (pod restart) is no longer terminal: a full-prefix resend
+    // is idempotent (§10, the cluster dedupes by seq), so a resumed relay with
+    // no parked session opens a FRESH session and accepts the lines rather than
+    // 410-ing the daemon into giving up.
     const { page, user, orgSlug } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
@@ -269,19 +270,19 @@ test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", 
       });
 
       const messageId = `msg_lost_e2e_${Date.now()}`;
-      const relayBody = buildRelayBody(messageId, "should not land");
+      const relayBody = buildRelayBody(messageId, "resumed turn lands");
 
       const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
         headers: relayHeaders(fenceToken, 5),
         data: relayBody,
       });
 
-      expect(res.status()).toBe(410);
-      const json = await res.json();
-      expect(json).toMatchObject({ error: "relay_session_lost" });
+      expect(res.status()).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: true });
 
+      // The fresh session processed the relayed turn → parts persist.
       const parts = await fetchParts(db, runId);
-      expect(parts).toHaveLength(0);
+      expect(parts.length).toBeGreaterThan(0);
     } finally {
       await db.end();
     }
