@@ -146,7 +146,7 @@ export function TierTriggerPure({
  * pill, not here. Exported so the automations tier dropdown can reuse
  * it without depending on the chat AgentMode concept.
  */
-export function tierIconFor(tier: ChatTier): ReactNode {
+function tierIconFor(tier: ChatTier): ReactNode {
   if (tier === "fast") return <Lightning01 size={16} />;
   if (tier === "thinking") return <Atom01 size={16} />;
   return <Stars01 size={16} />;

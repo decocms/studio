@@ -16,6 +16,7 @@ function makeAutomation(overrides?: Partial<Automation>): Automation {
       { id: "m1", role: "user", parts: [{ type: "text", text: "hello" }] },
     ]),
     models: JSON.stringify({ tier: "smart" }),
+    tools: null,
     temperature: 0.7,
     virtual_mcp_id: "agent_1",
     created_at: "2026-01-01T00:00:00Z",
@@ -169,5 +170,45 @@ describe("buildStreamRequest", () => {
       makeResolvedModel(),
     );
     expect(result.agent).toEqual({ id: "vir_xyz" });
+  });
+
+  it("leaves toolAllowlist null when automation.tools is null", () => {
+    const result = buildStreamRequest(
+      makeAutomation({ tools: null }),
+      null,
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(result.toolAllowlist).toBeNull();
+  });
+
+  it("parses a stored tool allowlist", () => {
+    const result = buildStreamRequest(
+      makeAutomation({ tools: JSON.stringify(["web_search", "list_objects"]) }),
+      null,
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(result.toolAllowlist).toEqual(["web_search", "list_objects"]);
+  });
+
+  it("treats an empty stored allowlist as null (= all tools)", () => {
+    const result = buildStreamRequest(
+      makeAutomation({ tools: JSON.stringify([]) }),
+      null,
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(result.toolAllowlist).toBeNull();
+  });
+
+  it("falls back to null on a malformed allowlist", () => {
+    const result = buildStreamRequest(
+      makeAutomation({ tools: "{not json" }),
+      null,
+      "thrd_1",
+      makeResolvedModel(),
+    );
+    expect(result.toolAllowlist).toBeNull();
   });
 });

@@ -25,6 +25,7 @@ export interface CreateAutomationInput {
   created_by: string;
   messages: string; // JSON
   models: string; // JSON
+  tools?: string | null; // JSON string[] | null = all tools
   temperature?: number;
   virtual_mcp_id: string;
 }
@@ -34,6 +35,7 @@ export interface UpdateAutomationInput {
   active?: boolean;
   messages?: string;
   models?: string;
+  tools?: string | null;
   temperature?: number;
 }
 
@@ -121,6 +123,7 @@ function automationFromDbRow(row: {
   created_by: string;
   messages: string;
   models: string;
+  tools: string | null;
   temperature: number;
   virtual_mcp_id: string;
   created_at: Date | string;
@@ -134,6 +137,7 @@ function automationFromDbRow(row: {
     created_by: row.created_by,
     messages: row.messages,
     models: row.models,
+    tools: row.tools ?? null,
     temperature: row.temperature,
     virtual_mcp_id: row.virtual_mcp_id,
     created_at: toIsoString(row.created_at),
@@ -181,6 +185,7 @@ const TRIGGER_JOIN_AUTOMATION_COLUMNS = [
   "a.created_by as a_created_by",
   "a.messages as a_messages",
   "a.models as a_models",
+  "a.tools as a_tools",
   "a.temperature as a_temperature",
   "a.virtual_mcp_id as a_virtual_mcp_id",
   "a.created_at as a_created_at",
@@ -195,6 +200,7 @@ function automationFromAliasedRow(row: {
   a_created_by: string;
   a_messages: string;
   a_models: string;
+  a_tools: string | null;
   a_temperature: number;
   a_virtual_mcp_id: string;
   a_created_at: Date | string;
@@ -208,6 +214,7 @@ function automationFromAliasedRow(row: {
     created_by: row.a_created_by,
     messages: row.a_messages,
     models: row.a_models,
+    tools: row.a_tools,
     temperature: row.a_temperature,
     virtual_mcp_id: row.a_virtual_mcp_id,
     created_at: row.a_created_at,
@@ -234,6 +241,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       created_by: input.created_by,
       messages: input.messages,
       models: input.models,
+      tools: input.tools ?? null,
       temperature: input.temperature ?? 0.5,
       virtual_mcp_id: input.virtual_mcp_id,
       created_at: now,
@@ -289,6 +297,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.created_by",
         "a.messages",
         "a.models",
+        "a.tools",
         "a.temperature",
         "a.virtual_mcp_id",
         "a.created_at",
@@ -311,6 +320,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         "a.created_by",
         "a.messages",
         "a.models",
+        "a.tools",
         "a.temperature",
         "a.virtual_mcp_id",
         "a.created_at",
@@ -340,6 +350,7 @@ class KyselyAutomationsStorage implements AutomationsStorage {
     if (input.active !== undefined) updateData.active = input.active;
     if (input.messages !== undefined) updateData.messages = input.messages;
     if (input.models !== undefined) updateData.models = input.models;
+    if (input.tools !== undefined) updateData.tools = input.tools;
     if (input.temperature !== undefined)
       updateData.temperature = input.temperature;
 

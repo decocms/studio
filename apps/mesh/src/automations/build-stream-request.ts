@@ -35,6 +35,24 @@ export interface ResolvedAutomationModel {
   deepResearch?: ModelShape & { credentialId: string };
 }
 
+/**
+ * Parse the stored `automations.tools` JSON column into a tool-name allowlist.
+ * Returns null (= all tools) for null/empty/malformed values so a bad write can
+ * never silently strip every tool from an automation.
+ */
+function parseToolAllowlist(raw: string | null): string[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((t) => typeof t === "string")) {
+      return parsed.length > 0 ? parsed : null;
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
 export function buildStreamRequest(
   automation: Automation,
   triggerId: string | null,
@@ -63,6 +81,9 @@ export function buildStreamRequest(
     // takes the agent branch when this invariant holds), so virtual_mcp_id
     // is non-null. The `!` is the cheapest way to express that here.
     agent: { id: automation.virtual_mcp_id! },
+    // Per-automation tool allowlist (model-facing tool names). null/absent
+    // leaves the run with the bound agent's full toolset.
+    toolAllowlist: parseToolAllowlist(automation.tools),
     temperature: automation.temperature ?? 0.5,
     toolApprovalLevel: "auto",
     mode: "default",

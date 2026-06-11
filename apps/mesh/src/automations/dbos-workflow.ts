@@ -41,7 +41,11 @@ import {
   awaitThreadRun,
   type SerializableDispatchRunInput,
 } from "@/dispatch-queue";
-import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
+import {
+  resolveSpecificModel,
+  resolveTier,
+  tryResolveTier,
+} from "@/core/resolve-tier";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation } from "@/storage/types";
 import type { SimpleModeTier } from "@/tools/organization/schema";
@@ -176,21 +180,35 @@ async function prepareFireStep(
 
   const parsedModels = JSON.parse(automation.models) as {
     tier?: SimpleModeTier;
+    modelId?: string;
+    credentialId?: string;
   };
-  if (!parsedModels.tier) {
+  // Specific-model override: when the automation pins a concrete model +
+  // credential, resolve it directly (no org tier/default-pick). Otherwise fall
+  // back to the org tier preset.
+  const pinned =
+    parsedModels.modelId && parsedModels.credentialId
+      ? {
+          modelId: parsedModels.modelId,
+          credentialId: parsedModels.credentialId,
+        }
+      : null;
+  if (!pinned && !parsedModels.tier) {
     console.warn(
       `[fireAutomationWorkflow] automation ${automation.id} missing tier, defaulting to "smart"`,
     );
   }
   const tier: SimpleModeTier = parsedModels.tier ?? "smart";
-  // Match the chat POST /messages path: resolve the chat tier strictly
+  // Match the chat POST /messages path: resolve the chat model strictly
   // (failure aborts the run), and optimistically resolve `image` and
   // `web_research` so the corresponding built-in tools (generate_image,
   // web_search) light up the same way they do in interactive chat. Without
   // these, the automation agent reports "I don't have a web_search tool"
   // even when the org has Perplexity/Gemini Deep Research configured.
   const [resolved, image, webResearch] = await Promise.all([
-    resolveTier(meshCtx, tier),
+    pinned
+      ? resolveSpecificModel(meshCtx, pinned.credentialId, pinned.modelId)
+      : resolveTier(meshCtx, tier),
     tryResolveTier(meshCtx, "image"),
     tryResolveTier(meshCtx, "web_research"),
   ]);
