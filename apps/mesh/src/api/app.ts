@@ -55,6 +55,14 @@ import {
   type LinkBearerAuthApi,
   resolveLinkBearer,
 } from "./routes/decopilot/link-bearer-auth";
+import {
+  createUplinkIngestSession,
+  type UplinkIngestSession,
+} from "../links/uplink-ingest";
+import { registerUplinkResolve } from "../links/uplink-ws";
+import { registerUplinkConnectionFactory } from "../links/uplink-ws-handler";
+import { fenceMatches } from "../storage/run-fence";
+import { isCancelRequested } from "../storage/cancel-flag";
 import { createLinkWorkRoutes } from "./routes/decopilot/link-work-routes";
 import { createLinkControlRoutes } from "./routes/decopilot/link-control-routes";
 import { createLinkProxyRoutes } from "./routes/decopilot/link-proxy-routes";
@@ -1027,6 +1035,44 @@ export async function createApp(options: CreateAppOptions = {}) {
   setMcpListCache(mcpListCache);
 
   const threadStorage = new SqlThreadStorage(database.db);
+
+  // WS uplink (return-leg), default-off. Register the bearer resolver + the
+  // per-connection session factory the Bun.serve handler (index.ts) dispatches
+  // to. The fence/cancel gate uses the global (threadId-only) thread storage;
+  // publishing reuses the same DECOPILOT_STREAMS path as the NDJSON ingest. Off
+  // by default so /api/links/uplink stays unmounted until multi-pod e2e
+  // validates the transport.
+  if (process.env.LINK_WS_UPLINK === "true") {
+    registerUplinkResolve((token) =>
+      resolveLinkBearer(token, auth.api as unknown as LinkBearerAuthApi),
+    );
+    registerUplinkConnectionFactory(({ send }) => {
+      const cache = new Map<string, Promise<UplinkIngestSession>>();
+      return {
+        sessionFor: (runId) => {
+          let pending = cache.get(runId);
+          if (!pending) {
+            pending = (async () => {
+              const [dbFence, cancelAt] = await Promise.all([
+                threadStorage.getRunFence(runId),
+                threadStorage.getCancelRequestedAt(runId),
+              ]);
+              return createUplinkIngestSession({
+                fenceOk: (token) => fenceMatches(dbFence, token),
+                cancelRequested: () => isCancelRequested(cancelAt),
+                publish: async (chunk) => {
+                  await streamBuffer.publishRawChunk(runId, chunk);
+                },
+                send: (frame) => send(JSON.stringify(frame)),
+              });
+            })();
+            cache.set(runId, pending);
+          }
+          return pending;
+        },
+      };
+    });
+  }
 
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,

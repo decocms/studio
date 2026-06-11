@@ -52,6 +52,24 @@ export interface UplinkUpgradeDeps {
   resolve: (token: string) => Promise<string | null>;
 }
 
+/**
+ * Registration seam: the cluster (app.ts, which has `auth`) registers the
+ * bearer→userSub resolver at boot; index.ts's Bun.serve fetch reads it to decide
+ * whether the uplink upgrade is wired (null = WS uplink disabled → fall through).
+ * Keeps index.ts free of an `auth` import and the upgrade gated behind the flag.
+ */
+let uplinkResolve: ((token: string) => Promise<string | null>) | null = null;
+export function registerUplinkResolve(
+  resolve: (token: string) => Promise<string | null>,
+): void {
+  uplinkResolve = resolve;
+}
+export function getUplinkResolve():
+  | ((token: string) => Promise<string | null>)
+  | null {
+  return uplinkResolve;
+}
+
 export async function tryUpgradeUplinkWs(
   request: Request,
   server: UplinkUpgradeServer,
