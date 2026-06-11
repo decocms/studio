@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RelayLine } from "../links/protocol/relay";
-import { MAX_OUTBOX_BYTES, openOutbox, type Outbox } from "./outbox";
+import {
+  MAX_OUTBOX_BYTES,
+  openInMemoryOutbox,
+  openOutbox,
+  type Outbox,
+} from "./outbox";
 
 let dir: string;
 let outbox: Outbox;
@@ -351,5 +356,65 @@ describe("outbox crash recovery (reopen DB → replay)", () => {
       reopened.replay({ runId: RUN, fenceToken: FENCE, fromSeq: 1 }),
     ).toEqual([]);
     reopened.close();
+  });
+});
+
+describe("openInMemoryOutbox (non-durable default for the relay)", () => {
+  it("honors the same append/replay/cap/truncate contract without a file", () => {
+    const mem = openInMemoryOutbox();
+    mem.append({
+      runId: RUN,
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 2,
+      line: line(1, "a"),
+    });
+    mem.append({
+      runId: RUN,
+      fenceToken: FENCE,
+      wireSeq: 2,
+      lane: 1,
+      line: line(2, "b"),
+    });
+    // idempotent re-append
+    mem.append({
+      runId: RUN,
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 2,
+      line: line(1, "a"),
+    });
+    expect(
+      mem
+        .replay({ runId: RUN, fenceToken: FENCE, fromSeq: 1 })
+        .map((r) => r.wireSeq),
+    ).toEqual([1, 2]);
+    mem.truncateRun({ runId: RUN, fenceToken: FENCE });
+    expect(mem.replay({ runId: RUN, fenceToken: FENCE, fromSeq: 1 })).toEqual(
+      [],
+    );
+    mem.close();
+  });
+
+  it("enforces MAX_OUTBOX_BYTES via the same loud-fail path", () => {
+    const mem = openInMemoryOutbox({ maxBytes: 4096 });
+    const big = "x".repeat(2048);
+    mem.append({
+      runId: "r",
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 2,
+      line: line(1, big),
+    });
+    expect(() =>
+      mem.append({
+        runId: "r",
+        fenceToken: FENCE,
+        wireSeq: 2,
+        lane: 2,
+        line: line(2, big),
+      }),
+    ).toThrow(/outbox exceeded MAX_OUTBOX_BYTES/);
+    mem.close();
   });
 });

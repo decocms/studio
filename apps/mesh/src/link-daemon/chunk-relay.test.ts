@@ -6,7 +6,10 @@
  * NDJSON body stream and reject when that stream errors, because a real
  * streaming upload dies when its request body errors.
  */
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { DispatchSSEEvent } from "../links/protocol";
 import {
   RELAY_BUFFER_MAX_BYTES,
@@ -17,6 +20,7 @@ import {
   type RelayPostResult,
   relayDispatchSSEAsChunkStream,
 } from "./chunk-relay";
+import { openOutbox, type Outbox } from "./outbox";
 
 const enc = new TextEncoder();
 
@@ -314,7 +318,7 @@ describe("relayDispatchSSEAsChunkStream", () => {
           return { ok: true, lastSeq: lines.at(-1)?.seq ?? 0 };
         },
       }),
-    ).rejects.toThrow(/run_overflow.*relay buffer exceeded/);
+    ).rejects.toThrow(/run_overflow.*outbox exceeded MAX_OUTBOX_BYTES/);
   });
 
   it("aborts cleanly via signal: rejects with the reason and cancels the source", async () => {
@@ -343,5 +347,77 @@ describe("relayDispatchSSEAsChunkStream", () => {
 
     await expect(relayPromise).rejects.toThrow("run cancelled by cluster");
     expect(sse.cancelled()).toBe(true);
+  });
+});
+
+describe("relayDispatchSSEAsChunkStream + durable outbox", () => {
+  let dir: string;
+  let outbox: Outbox;
+  const FENCE = "fence-relay";
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "relay-outbox-"));
+    outbox = openOutbox({ path: join(dir, "ob.sqlite") });
+  });
+  afterEach(() => {
+    outbox.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("appends every line to the injected outbox, then truncates on terminal ack", async () => {
+    await relayDispatchSSEAsChunkStream({
+      dispatchBody: sseBody([CHUNK_A, CHUNK_B, DONE]),
+      runId: "run_ob",
+      fenceToken: FENCE,
+      outbox,
+      post: async (body): Promise<RelayPostResult> => {
+        const lines = await readAllLines(body);
+        return { ok: true, lastSeq: lines.at(-1)?.seq ?? 0 };
+      },
+    });
+    // Run was terminal-acked → truncated → nothing left to replay.
+    expect(
+      outbox.replay({ runId: "run_ob", fenceToken: FENCE, fromSeq: 1 }),
+    ).toEqual([]);
+  });
+
+  it("survives a daemon crash mid-run: the reopened outbox holds the unacked prefix", async () => {
+    const sse = pushableSSEBody();
+    const crashed = Promise.withResolvers<void>();
+    const relayPromise = relayDispatchSSEAsChunkStream({
+      dispatchBody: sse.body,
+      runId: "run_crash",
+      fenceToken: FENCE,
+      outbox,
+      post: async (body): Promise<RelayPostResult> => {
+        for await (const _line of ndjsonLines(
+          body as ReadableStream<Uint8Array>,
+        )) {
+          crashed.resolve();
+          throw new Error("socket hang up"); // never reaches terminal ack
+        }
+        return { ok: true, lastSeq: 0 };
+      },
+    }).catch(() => {}); // we expect failure after retries
+
+    sse.push(CHUNK_A);
+    await crashed.promise;
+    sse.push(DONE);
+    sse.close();
+    await relayPromise;
+
+    // The outbox file still holds the prefix (not truncated — never
+    // terminal-acked). Reopen at the same path to prove on-disk durability.
+    outbox.close();
+    const reopened = openOutbox({ path: join(dir, "ob.sqlite") });
+    const rows = reopened.replay({
+      runId: "run_crash",
+      fenceToken: FENCE,
+      fromSeq: 1,
+    });
+    expect(rows.map((r) => r.wireSeq)).toEqual([1, 2]);
+    reopened.close();
+    // Reopen the shared handle so afterEach's close() is balanced.
+    outbox = openOutbox({ path: join(dir, "ob.sqlite") });
   });
 });

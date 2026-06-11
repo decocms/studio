@@ -172,3 +172,14 @@ export function openOutbox(opts: OpenOutboxOptions): Outbox {
     },
   };
 }
+
+/**
+ * A non-durable Outbox backed by a `:memory:` sqlite DB. Same append/replay/cap/
+ * truncate contract as {@link openOutbox}, but nothing survives `close()` (no
+ * crash recovery). This is the relay's default when no durable outbox is
+ * injected — production opens a file-backed outbox once per daemon and injects
+ * it; tests and the transition path use this so a single code path drives both.
+ */
+export function openInMemoryOutbox(opts: { maxBytes?: number } = {}): Outbox {
+  return openOutbox({ path: ":memory:", maxBytes: opts.maxBytes });
+}

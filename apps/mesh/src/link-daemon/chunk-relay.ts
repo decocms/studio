@@ -33,10 +33,9 @@
 import { retry, RetryError } from "@decocms/std";
 import { parseDispatchSSEEvents } from "../harnesses/parse-dispatch-sse";
 import type { DispatchSSEEvent } from "../links/protocol";
-import {
-  RELAY_BUFFER_MAX_BYTES,
-  type RelayLine,
-} from "../links/protocol/relay";
+import type { RelayLine } from "../links/protocol/relay";
+import { laneForEvent } from "./outbox-lane";
+import { type Outbox, openInMemoryOutbox } from "./outbox";
 
 /**
  * Cluster ack for one relay POST. `lastSeq` is the highest seq the cluster
@@ -65,6 +64,22 @@ export interface RelayDispatchSSEAsChunkStreamInput {
     fromSeq: number,
   ) => Promise<RelayPostResult>;
   signal?: AbortSignal;
+  /**
+   * Single-writer fence token for this run — the outbox key epoch (spec §5.1).
+   * Optional during the transition; defaults to a local sentinel when the relay
+   * uses its own non-durable in-memory outbox.
+   */
+  fenceToken?: string;
+  /**
+   * Durable outbox. Every line is appended here BEFORE the POST body can read
+   * it (append-before-send); on terminal ack the run's rows are truncated. The
+   * on-disk successor to the old in-memory lines[] + RELAY_BUFFER_MAX_BYTES cap
+   * — the cap now lives in the outbox (MAX_OUTBOX_BYTES, same 64 MiB). When
+   * absent the relay opens a private :memory: outbox (no crash survival), so a
+   * single code path drives both modes. Production injects a file-backed outbox
+   * opened once per daemon.
+   */
+  outbox?: Outbox;
 }
 
 const encoder = new TextEncoder();
@@ -78,6 +93,14 @@ const encoder = new TextEncoder();
 export async function relayDispatchSSEAsChunkStream(
   input: RelayDispatchSSEAsChunkStreamInput,
 ): Promise<void> {
+  // The durable outbox is the resendable prefix. When the caller injects one
+  // (production: a file-backed outbox opened once per daemon) we use it and the
+  // caller owns its lifecycle; otherwise we open a private :memory: outbox and
+  // close it on exit. Either way the relay drives a single Outbox code path.
+  const outbox = input.outbox ?? openInMemoryOutbox();
+  const ownsOutbox = input.outbox === undefined;
+  const fenceToken = input.fenceToken ?? "local";
+
   // Internal abort fans a failure on either side (pump/poster) out to the
   // other: it cancels the SSE reader inside parseDispatchSSEEvents and
   // interrupts the poster's backoff delays.
@@ -97,11 +120,9 @@ export async function relayDispatchSSEAsChunkStream(
   };
 
   // ── Shared relay state ───────────────────────────────────────────────────
-  // `lines[i]` is the serialized NDJSON line for seq i+1. Lines are never
-  // evicted mid-run (terminal-ack protocol), so `lines` always holds the full
-  // resendable prefix.
-  const lines: string[] = [];
-  let bufferedBytes = 0;
+  // The durable outbox holds the full resendable prefix (never evicted mid-run
+  // under the terminal-ack protocol). We keep only the cursor-side bookkeeping
+  // in memory. `seq` is the wireSeq — today's relay seq, unchanged on the wire.
   let seq = 0;
   let pumpDone = false; // set ONLY when the pump finished successfully
   let pumpError: unknown = null;
@@ -114,16 +135,16 @@ export async function relayDispatchSSEAsChunkStream(
 
   const pushLine = (event: DispatchSSEEvent): void => {
     seq += 1;
-    const line = `${JSON.stringify({ seq, event } satisfies RelayLine)}\n`;
-    bufferedBytes += encoder.encode(line).byteLength;
-    if (bufferedBytes > RELAY_BUFFER_MAX_BYTES) {
-      throw new Error(
-        `[chunk-relay] runId=${input.runId}: relay buffer exceeded ` +
-          `RELAY_BUFFER_MAX_BYTES (${RELAY_BUFFER_MAX_BYTES} bytes) at seq ${seq} ` +
-          `— failing the run instead of ballooning daemon memory`,
-      );
-    }
-    lines.push(line);
+    const line: RelayLine = { seq, event };
+    // append-before-send: the cap (MAX_OUTBOX_BYTES) lives in the outbox and
+    // throws loudly here, preserving today's 64 MiB loud-fail contract.
+    outbox.append({
+      runId: input.runId,
+      fenceToken,
+      wireSeq: seq,
+      lane: laneForEvent(event),
+      line,
+    });
     signalChange();
   };
 
@@ -149,9 +170,9 @@ export async function relayDispatchSSEAsChunkStream(
     throw pumpError;
   });
 
-  // ── Attempt bodies: replay the buffered prefix, then follow live ─────────
+  // ── Attempt bodies: replay the durable prefix, then follow live ──────────
   const createAttemptBody = (): ReadableStream<Uint8Array> => {
-    let cursor = 0; // index into `lines` — always starts at seq 1
+    let cursor = 0; // highest wireSeq already enqueued; replay from cursor+1
     return new ReadableStream<Uint8Array>({
       async pull(controller) {
         while (true) {
@@ -162,14 +183,23 @@ export async function relayDispatchSSEAsChunkStream(
             controller.error(pumpError);
             return;
           }
-          if (cursor < lines.length) {
-            const line = lines[cursor]!;
-            cursor += 1;
-            try {
-              controller.enqueue(encoder.encode(line));
-            } catch {
-              // The consumer cancelled this attempt's upload (dropped POST) —
-              // the line stays buffered for the next attempt.
+          const rows = outbox.replay({
+            runId: input.runId,
+            fenceToken,
+            fromSeq: cursor + 1,
+          });
+          if (rows.length > 0) {
+            for (const row of rows) {
+              cursor = row.wireSeq;
+              try {
+                controller.enqueue(
+                  encoder.encode(`${JSON.stringify(row.line)}\n`),
+                );
+              } catch {
+                // The consumer cancelled this attempt's upload (dropped POST) —
+                // the rows stay durable for the next attempt.
+                return;
+              }
             }
             return;
           }
@@ -205,6 +235,10 @@ export async function relayDispatchSSEAsChunkStream(
         `[chunk-relay] runId=${input.runId}: cluster acked lastSeq=${result.lastSeq} < terminal seq=${seq}`,
       );
     }
+    // Terminal-acked: drop the whole run's durable rows (terminal-only
+    // truncation, §13 step 2; rolling ackSeq truncation arrives with the WS
+    // step). Frees the per-run/per-daemon byte budget for the next run.
+    outbox.truncateRun({ runId: input.runId, fenceToken });
   };
 
   const posterPromise = retry(postOnce, {
@@ -224,16 +258,22 @@ export async function relayDispatchSSEAsChunkStream(
     throw cause;
   });
 
-  const results = await Promise.allSettled([pumpPromise, posterPromise]);
-  input.signal?.removeEventListener("abort", forwardAbort);
+  try {
+    const results = await Promise.allSettled([pumpPromise, posterPromise]);
+    input.signal?.removeEventListener("abort", forwardAbort);
 
-  if (results.some((r) => r.status === "rejected")) {
-    // Failure paths can leave the source unlocked but open (e.g. buffer
-    // overflow exits the parse generator cleanly) — cancel it so the sandbox
-    // stops streaming into the void. No-op if already cancelled/locked.
-    void input.dispatchBody.cancel(rootCause).catch(() => {});
-    throw (
-      rootCause ?? new Error(`[chunk-relay] runId=${input.runId}: relay failed`)
-    );
+    if (results.some((r) => r.status === "rejected")) {
+      // Failure paths can leave the source unlocked but open (e.g. buffer
+      // overflow exits the parse generator cleanly) — cancel it so the sandbox
+      // stops streaming into the void. No-op if already cancelled/locked.
+      void input.dispatchBody.cancel(rootCause).catch(() => {});
+      throw (
+        rootCause ??
+        new Error(`[chunk-relay] runId=${input.runId}: relay failed`)
+      );
+    }
+  } finally {
+    // Close only an outbox we created; an injected one is the caller's to own.
+    if (ownsOutbox) outbox.close();
   }
 }
