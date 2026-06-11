@@ -110,14 +110,6 @@ export function createSubtaskTool(
         );
       }
 
-      // 1. Enforce the caller's sub-agent allowlist for cross-agent
-      //    delegation BEFORE resolving the target — a disallowed target must
-      //    not even cause a client to open. Delegating to SELF is always
-      //    allowed and never gated by the allowlist (an agent can always clone
-      //    itself), whether the id was omitted or passed explicitly. An empty
-      //    or absent allowlist means "all agents" (the default). This mirrors
-      //    the <available-agents> prompt filter — the model shouldn't even see
-      //    disallowed agents, but we re-check here as defense in depth.
       const isSelfTarget = !!self && targetId === self.id;
       if (!isSelf && !isSelfTarget && self) {
         const caller = await ctx.storage.virtualMcps.findById(
@@ -128,10 +120,9 @@ export function createSubtaskTool(
         // An allowlist array (even empty = itself only) gates cross-agent
         // delegation. A null/absent allowlist means all agents are allowed.
         if (Array.isArray(allow) && !allow.includes(targetId)) {
-          console.log(
-            `[subtask] delegation blocked by allowlist: caller=${self.id} target=${targetId} allow=${JSON.stringify(allow)} isSelf=${isSelf} agent_id=${agent_id ?? "(omitted)"}`,
+          throw new Error(
+            `Agent not available for delegation, blocked by allowlist. caller=${self.id} target=${targetId} allow=${JSON.stringify(allow)} isSelf=${isSelf} agent_id=${agent_id ?? "(omitted)"}`,
           );
-          throw new Error(`Agent not available for delegation, blocked by allowlist. caller=${self.id} target=${targetId} allow=${JSON.stringify(allow)} isSelf=${isSelf} agent_id=${agent_id ?? "(omitted)"}`);
         }
       }
 
