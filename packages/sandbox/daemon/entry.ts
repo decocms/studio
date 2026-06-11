@@ -642,7 +642,7 @@ async function vmRouteH(
   prefix: string,
 ): Promise<Response> {
   if (method === "GET" && vmPath === "/idle") return idleH();
-  if (method === "GET" && vmPath === "/events") return eventsH();
+  if (method === "GET" && vmPath === "/events") return eventsH(req);
   if (method === "GET" && vmPath === "/scripts") return scriptsHandler();
   if (method === "OPTIONS")
     return new Response(null, { status: 204, headers: CORS_HEADERS });

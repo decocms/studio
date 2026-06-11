@@ -1,4 +1,4 @@
-<h1 align="center">Deco CMS</h1>
+<h1 align="center">deco Studio</h1>
 
 <p align="center">
 <em>Open-source · TypeScript-first · Deploy anywhere</em><br/><br/>
@@ -15,7 +15,7 @@
 
 ---
 
-## What is Deco CMS?
+## What is deco Studio?
 
 Studio is where you hire agents, connect tools, and organize them into projects that actually do things.
 
@@ -31,13 +31,13 @@ Everything is tracked — tokens, costs, errors, latency — per connection, per
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                         DECO CMS                              │
+│                         deco Studio                             │
 │  Agents · Connections · Projects · Observability · Token Vault  │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Tools & MCP Servers                          │
+│                     Tools & MCP Servers                         │
 │      GitHub · Slack · Postgres · OpenRouter · Your APIs         │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -50,15 +50,24 @@ Everything is tracked — tokens, costs, errors, latency — per connection, per
 bunx decostudio
 ```
 
-Or clone and run from source:
+Runs at [http://localhost:3000](http://localhost:3000) with embedded PostgreSQL. Private by default, no signup required.
 
 ```bash
-git clone https://github.com/decocms/studio.git
-bun install
-bun run dev
-```
+# Custom port
+bunx decostudio -p 8080
 
-> runs at [http://localhost:4000](http://localhost:4000) (client) with API routes proxied to the Bun server
+# Custom data directory
+bunx decostudio --home ~/my-project
+
+# Dev mode (Vite hot reload)
+bunx decostudio dev
+
+# Scaffold a new MCP app
+bunx decostudio init my-app
+
+# Manage local services (Postgres, NATS)
+bunx decostudio services up
+```
 
 ---
 
@@ -88,11 +97,11 @@ You can also define outcomes declaratively and let Studio work backward to deriv
 
 Token spend per connection — OpenRouter, Perplexity, Firecrawl, all of it. Latency, errors, bottlenecks. One dashboard.
 
-### From your desktop to your org
+### From your laptop to your org
 
 | | |
 |---|---|
-| **Local** | `bunx decostudio` on your desktop. Embedded PostgreSQL. Private. |
+| **Local** | `bunx decostudio` on your laptop. Embedded PostgreSQL. Private. |
 | **Cloud** | Log in to studio.decocms.com. Control local projects from any browser. |
 | **Team** | Invite people. Roles. Shared connections. Cost attribution. |
 | **Enterprise** | Self-hosted. Your infra. Your rules. |
@@ -155,85 +164,22 @@ Every tool call gets input/output validation, access control, audit logging, and
 
 ---
 
-## Project Structure
-
-```
-├── apps/
-│   ├── mesh/                # Full-stack Deco CMS (Hono API + Vite/React)
-│   │   ├── src/
-│   │   │   ├── api/         # Hono HTTP + MCP proxy routes
-│   │   │   ├── auth/        # Better Auth (OAuth + API keys)
-│   │   │   ├── core/        # StudioContext, AccessControl, defineTool
-│   │   │   ├── tools/       # Built-in MCP management tools
-│   │   │   ├── storage/     # Kysely DB adapters
-│   │   │   ├── event-bus/   # Pub/sub event delivery system
-│   │   │   ├── encryption/  # Token vault & credential management
-│   │   │   ├── observability/  # OpenTelemetry tracing & metrics
-│   │   │   └── web/         # React 19 admin UI
-│   │   └── migrations/      # Kysely database migrations
-│   └── docs/                # Astro documentation site
-│
-└── packages/
-    ├── bindings/            # Core MCP bindings and connection abstractions
-    ├── runtime/             # MCP proxy, OAuth, and runtime utilities
-    ├── ui/                  # Shared React components (shadcn-based)
-    ├── cli/                 # CLI tooling (deco commands)
-    ├── create-deco/         # Project scaffolding (npm create deco)
-    └── vite-plugin-deco/    # Vite plugin for Deco projects
-```
-
----
-
-## Development
-
-```bash
-bun install          # Install dependencies
-bun run dev          # Run dev server (client + API)
-bun test             # Run tests
-bun run check        # Type check
-bun run lint         # Lint
-bun run fmt          # Format
-```
-
-### Studio commands (from `apps/mesh/`)
-
-```bash
-bun run dev:client     # Vite dev server (port 4000)
-bun run dev:server     # Hono server with hot reload
-bun run migrate        # Run database migrations
-```
-
-### Worktrees
-
-`dev:worktree` routes `http://<WORKTREE_SLUG>.localhost` via Caddy — useful for running multiple workspaces without port conflicts.
-
-```bash
-# One-time setup
-brew install caddy && caddy start
-
-# Start
-WORKTREE_SLUG=my-feature bun run dev:worktree
-
-# Conductor adapter (sets WORKTREE_SLUG from CONDUCTOR_WORKSPACE_NAME)
-bun run dev:conductor
-```
-
----
-
 ## Deploy Anywhere
 
 ```bash
 # Docker (embedded PostgreSQL)
-docker compose -f deploy/docker-compose.yml up
+docker run -p 3000:3000 -v studio-data:/app/data ghcr.io/decocms/studio/studio:latest
 
-# Docker (PostgreSQL)
-docker compose -f deploy/docker-compose.postgres.yml up
-
-# Bun
-bun run build:client && bun run build:server && bun run start
+# Bun (from source)
+git clone https://github.com/decocms/studio.git
+cd studio && bun install
+bun run --cwd=apps/mesh build:client
+bun run --cwd=apps/mesh build:server
+bun run --cwd=apps/mesh start
 
 # Kubernetes (Helm)
-helm install deco-studio oci://ghcr.io/decocms/chart-deco-studio --version <version> -n deco-studio --create-namespace
+helm install deco-studio oci://ghcr.io/decocms/chart-deco-studio \
+  --version <version> -n deco-studio --create-namespace
 ```
 
 No vendor lock-in. Runs on Docker, Kubernetes, AWS, GCP, or local runtimes.
@@ -268,25 +214,13 @@ No vendor lock-in. Runs on Docker, Kubernetes, AWS, GCP, or local runtimes.
 
 ## License
 
-**Sustainable Use License (SUL)** — see [LICENSE.md](./LICENSE.md).
+**Sustainable Use License (SUL)** — see the [project repository](https://github.com/decocms/studio) for full terms.
 
 - Free to self-host for internal use
 - Free for client projects (agencies, SIs)
 - Commercial license required for SaaS or revenue-generating production systems
 
 Questions? [builders@decocms.com](mailto:builders@decocms.com)
-
----
-
-## Contributing
-
-```bash
-bun run fmt      # Format
-bun run lint     # Lint
-bun test         # Test
-```
-
-See `AGENTS.md` for coding guidelines.
 
 ---
 

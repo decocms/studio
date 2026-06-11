@@ -48,12 +48,14 @@ export class Broadcaster {
   }
 
   private fan(bytes: Uint8Array): void {
+    let dead: Controller[] | null = null;
     for (const c of this.clients) {
       try {
         c.enqueue(bytes);
       } catch {
-        // Swallow — controller closed under our feet.
+        (dead ??= []).push(c);
       }
     }
+    if (dead) for (const c of dead) this.clients.delete(c);
   }
 }
