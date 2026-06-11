@@ -358,6 +358,12 @@ export const createSandboxRoutes = () => {
   app.post("/:virtualMcpId/:branch/unlink", (c) =>
     proxyDaemon(c, "/_sandbox/unlink", { forwardJsonBody: true }),
   );
+  app.post("/:virtualMcpId/:branch/mkdir", (c) =>
+    proxyDaemon(c, "/_sandbox/mkdir", { forwardJsonBody: true }),
+  );
+  app.post("/:virtualMcpId/:branch/rename", (c) =>
+    proxyDaemon(c, "/_sandbox/rename", { forwardJsonBody: true }),
+  );
   app.post("/:virtualMcpId/:branch/read", (c) =>
     proxyDaemon(c, "/_sandbox/read", { forwardJsonBody: true }),
   );

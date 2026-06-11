@@ -65,6 +65,8 @@ import {
   makeReadHandler,
   makeWriteHandler,
   makeUnlinkHandler,
+  makeMkdirHandler,
+  makeRenameHandler,
   makeEditHandler,
   makeGrepHandler,
   makeGlobHandler,
@@ -332,6 +334,8 @@ const fsDeps = {
 const readH = makeReadHandler(fsDeps);
 const writeH = makeWriteHandler(fsDeps);
 const unlinkH = makeUnlinkHandler(fsDeps);
+const mkdirH = makeMkdirHandler(fsDeps);
+const renameH = makeRenameHandler(fsDeps);
 const editH = makeEditHandler(fsDeps);
 const grepH = makeGrepHandler(fsDeps);
 const globH = makeGlobHandler(fsDeps);
@@ -581,6 +585,8 @@ const fsH: Record<string, (req: Request) => Response | Promise<Response>> = {
   "/read": readH,
   "/write": writeH,
   "/unlink": unlinkH,
+  "/mkdir": mkdirH,
+  "/rename": renameH,
   "/edit": editH,
   "/grep": grepH,
   "/glob": globH,

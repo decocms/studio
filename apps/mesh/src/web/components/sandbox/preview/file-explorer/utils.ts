@@ -8,6 +8,89 @@ function normalizePath(path: string) {
   return normalized.replace(/\/+/g, "/");
 }
 
+/** The daemon expects relative paths (no leading slash). */
+export function toDaemonPath(treePath: string) {
+  return treePath.startsWith("/") ? treePath.slice(1) : treePath;
+}
+
+/** Path as shown in the explorer tree (leading slash). */
+export function toTreePath(daemonPath: string) {
+  if (!daemonPath.trim()) return "/";
+  return daemonPath.startsWith("/") ? daemonPath : `/${daemonPath}`;
+}
+
+export function getParentTreePath(treePath: string): string {
+  const normalized = toTreePath(treePath);
+  if (normalized === "/") return "/";
+  const parts = normalized.split("/").filter(Boolean);
+  parts.pop();
+  return parts.length === 0 ? "/" : `/${parts.join("/")}`;
+}
+
+export function joinTreePath(parent: string, name: string): string {
+  const trimmedName = name.replace(/^\/+|\/+$/g, "");
+  if (!trimmedName) return toTreePath(parent);
+  const base = parent === "/" ? "" : parent;
+  return toTreePath(`${base}/${trimmedName}`);
+}
+
+export function getDirectoryContextPath(
+  treePath: string,
+  kind: TreeNode["kind"],
+): string {
+  return kind === "directory" ? treePath : getParentTreePath(treePath);
+}
+
+/** Single-segment name validation for create/rename in the file explorer. */
+export function validateExplorerEntryName(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return "Name is required";
+  if (
+    trimmed.includes("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("..") ||
+    trimmed.includes("\0")
+  ) {
+    return "Name cannot contain /, \\, or ..";
+  }
+  if (trimmed.startsWith(".")) {
+    return "Name cannot start with a dot";
+  }
+  return null;
+}
+
+/** Whether `treePath` already exists in the glob file list (file or directory). */
+export function pathExistsInFileList(
+  treePath: string,
+  fileList: readonly string[],
+  directoryList: readonly string[] = [],
+): boolean {
+  const daemonPath = toDaemonPath(treePath);
+  if (fileList.includes(daemonPath)) return true;
+  if (directoryList.includes(daemonPath)) return true;
+  if (!daemonPath) return false;
+  const prefix = `${daemonPath}/`;
+  return (
+    fileList.some((file) => file.startsWith(prefix)) ||
+    directoryList.some((dir) => dir.startsWith(prefix))
+  );
+}
+
+/** Extract decofile block key from `.deco/blocks/<key>.json`, if applicable. */
+export function decoBlockKeyFromTreePath(treePath: string): string | null {
+  const daemonPath = toDaemonPath(treePath);
+  const prefix = ".deco/blocks/";
+  if (!daemonPath.startsWith(prefix) || !daemonPath.endsWith(".json")) {
+    return null;
+  }
+  const stem = daemonPath.slice(prefix.length, -".json".length);
+  try {
+    return decodeURIComponent(stem);
+  } catch {
+    return stem;
+  }
+}
+
 export function getLanguageFromPath(filepath: string | null) {
   if (!filepath) return "plaintext";
 
@@ -48,12 +131,39 @@ export function getAncestorDirectories(filepath: string) {
   return directories;
 }
 
-export function buildFileTree(files: string[]): TreeNode[] {
+export function buildFileTree(
+  files: string[],
+  directories: readonly string[] = [],
+): TreeNode[] {
   const root: TreeNode = {
     name: "/",
     path: "/",
     kind: "directory",
     children: [],
+  };
+
+  const ensureDirectory = (dirPath: string) => {
+    const normalized = normalizePath(dirPath);
+    const parts = normalized.split("/").filter(Boolean);
+    let current = root;
+    let currentPath = "";
+
+    for (const part of parts) {
+      currentPath += `/${part}`;
+      let child = current.children.find((entry) => entry.name === part);
+      if (!child) {
+        child = {
+          name: part,
+          path: currentPath,
+          kind: "directory",
+          children: [],
+        };
+        current.children.push(child);
+      } else if (child.kind === "file") {
+        child.kind = "directory";
+      }
+      current = child;
+    }
   };
 
   for (const rawFile of files) {
@@ -81,6 +191,10 @@ export function buildFileTree(files: string[]): TreeNode[] {
     });
   }
 
+  for (const rawDirectory of directories) {
+    ensureDirectory(toTreePath(rawDirectory));
+  }
+
   const sortNodes = (nodes: TreeNode[]) => {
     nodes.sort((a, b) => {
       if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
@@ -103,6 +217,7 @@ export function flattenTree(
   const rows: FlatNode[] = [];
 
   for (const node of nodes) {
+    if (node.name === ".gitkeep") continue;
     rows.push({ node, depth });
 
     if (
