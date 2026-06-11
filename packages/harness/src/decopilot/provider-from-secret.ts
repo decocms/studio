@@ -99,11 +99,17 @@ export function createProviderFromSecret(
         ...(baseUrl ? { baseURL: baseUrl } : {}),
         ...(extraHeaders ? { headers: extraHeaders } : {}),
       });
+      // Capture the ORIGINAL factory before the Object.assign below overwrites
+      // `aiSdk.languageModel`. A wrapper of the form `(...a) => aiSdk.languageModel(...a)`
+      // would, post-assign, call ITSELF — a self-referential tail call that JSC
+      // (Bun) tail-call-eliminates into a 100% CPU infinite loop (not a stack
+      // overflow), wedging the desktop sandbox daemon on every decopilot run.
+      const baseLanguageModel = aiSdk.languageModel.bind(aiSdk);
       return withProviderSurface(
         source,
         Object.assign(aiSdk, {
           languageModel: (...args: Parameters<typeof aiSdk.languageModel>) =>
-            aiSdk.languageModel(...args),
+            baseLanguageModel(...args),
         }) as ProviderV3,
       );
     }
