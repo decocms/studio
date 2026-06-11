@@ -124,6 +124,7 @@ function appWithContext(opts: AppContextOptions = {}) {
     createLinkIngestRoutes({
       streamBuffer: {
         init: async () => undefined,
+        publishRawChunk: async () => true,
         pump: (stream: ReadableStream) => {
           const index = pumped.length;
           pumped.push([]);

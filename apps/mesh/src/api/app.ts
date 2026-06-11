@@ -902,6 +902,10 @@ export async function createApp(options: CreateAppOptions = {}) {
           }
         })();
       },
+      // No-NATS stub: there is no durable subject to commit to, so signal
+      // "unavailable" (false) — the publish-then-consume ingest must not
+      // advance its ack cursor when the chunk wasn't actually persisted.
+      publishRawChunk: async () => false,
       createTailStream: async () => null,
       purge: () => {},
       teardown: () => {},
