@@ -424,11 +424,13 @@ export function createVmTools(params: VmToolsParams) {
     grep,
     glob,
     bash,
-    copy_to_sandbox,
-    // With org-fs mounts live, `org/output/` + the thread-outputs chips
-    // replace share_with_user (model-outputs) entirely — only register the
-    // legacy tool when the deployment hasn't flipped the flag. NOTE:
-    // copy_to_sandbox is NOT replaced (it's the inbound attachment path).
-    ...(getSettings().orgFsClusterMounts ? {} : { share_with_user }),
+    // With org-fs mounts live, both legacy transfer tools disappear:
+    // `org/output/` + the thread-outputs chips replace share_with_user
+    // (model-outputs), and chat attachments land in `org/upload/` via the
+    // uploads volume, replacing copy_to_sandbox. Only register them when
+    // the deployment hasn't flipped the flag.
+    ...(getSettings().orgFsClusterMounts
+      ? {}
+      : { share_with_user, copy_to_sandbox }),
   };
 }

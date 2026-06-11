@@ -159,25 +159,25 @@ export function buildBashDescription(orgFs: boolean): string {
     "Working directory is the project root. Timeout default 30s, max 2min.\n\n" +
     (orgFs
       ? "The organization filesystem is mounted at `org/` (when available):\n" +
-        "- `org/skills/` — your organization's own skill library (editable, " +
-        "shared org-wide). Check it before starting non-trivial work.\n" +
         "- `org/public/<set>/` — curated read-only skill sets. Run " +
         "`ls org/public/` for the sets and `cat org/public/<set>/<name>/SKILL.md` " +
         "before using a skill.\n" +
+        "- `org/upload/` — files the user attached to this conversation are " +
+        "already here; read them directly.\n" +
         "- `org/output/` — write deliverables here; they are shared back to the " +
         "organization under this run's folder.\n\n"
       : "") +
     "Pre-installed file-handling skills also live at " +
     "`/mnt/skills/public/<name>/SKILL.md` (pptx, docx, xlsx, pdf, " +
-    "file-reading). Run `ls /mnt/skills/public/` for that index.\n\n" +
-    "To bring chat attachments / presigned URLs into the sandbox FS use " +
-    "`copy_to_sandbox` (NOT bash + curl)." +
-    // Without org-fs there is no org/output — the legacy share tool (also
-    // only registered then) is the one way to hand files back.
+    "file-reading). Run `ls /mnt/skills/public/` for that index." +
+    // Without org-fs there is no org/upload or org/output — the legacy
+    // transfer tools (also only registered then) are the one way to move
+    // files in and out.
     (orgFs
       ? ""
-      : " To deliver a file you produced back to the user as a download " +
-        "chip, use `share_with_user`.")
+      : "\n\nTo bring chat attachments / presigned URLs into the sandbox FS " +
+        "use `copy_to_sandbox` (NOT bash + curl). To deliver a file you " +
+        "produced back to the user as a download chip, use `share_with_user`.")
   );
 }
 

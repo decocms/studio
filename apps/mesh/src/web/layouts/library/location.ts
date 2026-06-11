@@ -7,7 +7,7 @@
  * sandbox's `org/public/<set>` mounts).
  *
  *   ""                     → root (volumes listing)
- *   "skills/docs"          → volume "skills", dir "docs"
+ *   "uploads/docs"         → volume "uploads", dir "docs"
  *   "public"               → public sets listing
  *   "public/core/skills"   → volume "public-core", dir "skills"
  */

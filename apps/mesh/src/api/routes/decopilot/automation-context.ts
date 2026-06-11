@@ -11,26 +11,15 @@ import {
   ContextFactory,
   createBoundAuthClient,
   fetchRolePermissions,
+  rebindOrgScope,
 } from "@/core/context-factory";
 import type { StudioContext } from "@/core/studio-context";
 import type { Database } from "@/storage/types";
-import { OrgScopedThreadStorage } from "@/storage/threads";
 import type { Kysely } from "kysely";
-import type { SqlThreadStorage } from "@/storage/threads";
-import {
-  OrgScopedAsyncResearchJobStorage,
-  SqlAsyncResearchJobStorage,
-} from "@/storage/async-research-jobs";
 import type { StudioContextFactory } from "@/automations/fire";
-import { getObjectStorageS3Service } from "@/object-storage/factory";
-import { createBoundObjectStorage } from "@/object-storage/bound-object-storage";
-import { DevObjectStorage } from "@/object-storage/dev-object-storage";
-import { decorateStorageWithAssetHoisting } from "@/object-storage/asset-hoister";
 
 export interface BuildAutomationContextDeps {
   db: Kysely<Database>;
-  threadStorage: SqlThreadStorage;
-  asyncResearchJobStorage: SqlAsyncResearchJobStorage;
 }
 
 /**
@@ -102,38 +91,11 @@ export function createAutomationContextFactory(
       "self",
     );
 
-    // Rebuild thread storage with the correct org so OrgScopedThreadStorage
-    // doesn't throw "thread operations require an authenticated organization".
-    ctx.storage.threads = new OrgScopedThreadStorage(
-      deps.threadStorage,
-      membership.orgId,
-    );
-    // Same fix for the async-research-job store. The web_search tool reads
-    // this from `ctx.storage.asyncResearchJobs` and would otherwise throw
-    // the matching "requires an authenticated organization" error the
-    // first time a deep-research call hits the persist step.
-    ctx.storage.asyncResearchJobs = new OrgScopedAsyncResearchJobStorage(
-      deps.asyncResearchJobStorage,
-      membership.orgId,
-    );
-
-    // The base context was built without `req`, so it had no organization and
-    // objectStorage was set to null (context-factory.ts). Now that the org is
-    // resolved, rebuild it the same way the request path does — otherwise tools
-    // like generate_image silently fall back to inlining base64 data: URIs.
-    const s3Service = getObjectStorageS3Service();
-    ctx.objectStorage = s3Service
-      ? createBoundObjectStorage(s3Service, membership.orgId)
-      : new DevObjectStorage(membership.orgId, ctx.baseUrl);
-
-    // Re-apply asset hoisting after rebuilding org-bound storage. The base
-    // ContextFactory.create() call above ran without an org, so its original
-    // hoisters captured null object storage and must not be inherited.
-    decorateStorageWithAssetHoisting(ctx.storage, {
-      objectStorage: ctx.objectStorage,
-      baseUrl: ctx.baseUrl,
-      orgSlug: membership.orgSlug,
-    });
+    // The base context was built without `req`, so every org-scoped facet
+    // (thread storage, object storage, org-fs, asset hoisters) was created
+    // org-less. Rebind it all to the verified membership org — the SAME
+    // helper the path-scoped middleware uses, so the two paths can't drift.
+    rebindOrgScope(ctx, { id: membership.orgId, slug: membership.orgSlug });
 
     return ctx;
   };

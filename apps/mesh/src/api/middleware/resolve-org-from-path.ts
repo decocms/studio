@@ -1,11 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import type { StudioContext } from "../../core/studio-context";
+import { rebindOrgScope } from "../../core/context-factory";
 import { isOrgArchived } from "../../core/org-archived";
-import { createBoundObjectStorage } from "../../object-storage/bound-object-storage";
-import { DevObjectStorage } from "../../object-storage/dev-object-storage";
-import { decorateStorageWithAssetHoisting } from "../../object-storage/asset-hoister";
-import { getObjectStorageS3Service } from "../../object-storage/factory";
-import { OrgFs } from "../../file-storage/org-fs";
 
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
@@ -100,33 +96,12 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   // different org — or when there's no active org and the role was undefined
   // — the bypass silently fails and owners get spurious 403s on tool calls.
   ctx.access.setRole(pathRole);
-  // Rebind org-scoped storage that was constructed eagerly with `undefined`
-  // when meshContext was created (no `x-org-id` header on the new path
-  // means `organization` was not yet resolved). Without this, any thread
-  // operation throws "thread operations require an authenticated organization".
-  ctx.storage.threads.setOrganizationId(org.id);
-  ctx.storage.asyncResearchJobs.setOrganizationId(org.id);
-  // objectStorage was constructed eagerly from the session's active org (or
-  // null when unauthenticated). Always rebind to the path-resolved org so
-  // cross-org navigation — e.g. session active=A, URL targets B — reads from
-  // B's tenant scope, not A's.
-  const s3Service = getObjectStorageS3Service();
-  ctx.objectStorage = s3Service
-    ? createBoundObjectStorage(s3Service, org.id)
-    : new DevObjectStorage(org.id, ctx.baseUrl);
-  // orgFs was likewise built from the session's active org at context creation
-  // (and is null when there was no active org). Rebind it to the path-resolved
-  // org so /api/:org/fs/* reads/writes the URL org's manifest + keyspace, never
-  // the session-active org's. Mirrors the objectStorage rebind above.
-  ctx.orgFs = new OrgFs(ctx.objectStorage, ctx.storage.orgFsEntries, org.id);
-  // Asset hoisters close over object storage and org slug. Context creation can
-  // happen before path-org resolution, so refresh the wrappers after rebinding
-  // object storage to avoid writing files into the session-active org.
-  decorateStorageWithAssetHoisting(ctx.storage, {
-    objectStorage: ctx.objectStorage,
-    baseUrl: ctx.baseUrl,
-    orgSlug: org.slug,
-  });
+  // Everything org-scoped on the context (thread storage, object storage,
+  // org-fs, asset hoisters) was constructed eagerly from the session's active
+  // org — or from no org at all. Rebind it all to the path-resolved org so
+  // cross-org navigation (session active=A, URL targets B) reads and writes
+  // B's tenant scope, never A's.
+  rebindOrgScope(ctx, org);
 
   return await next();
 };

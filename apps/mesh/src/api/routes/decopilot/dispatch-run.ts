@@ -899,11 +899,14 @@ async function prepareRun(
     const requestMessage = input.messages.find((m) => m.role !== "system");
 
     // Upload file parts before saving so the thread stores stable
-    // mesh-storage: URIs instead of base64 data: blobs.
+    // mesh-storage: URIs instead of base64 data: blobs. threadId routes the
+    // bytes into the org-fs uploads volume (org/upload in the sandbox).
     const materializedRequestMessage = requestMessage
-      ? ((await uploadFileParts([requestMessage], ctx)).find(
-          (m) => m.role !== "system",
-        ) as typeof requestMessage)
+      ? ((
+          await uploadFileParts([requestMessage], ctx, {
+            threadId: mem.thread.id,
+          })
+        ).find((m) => m.role !== "system") as typeof requestMessage)
       : undefined;
 
     if (!input.isResume) {
