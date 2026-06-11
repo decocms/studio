@@ -54,4 +54,10 @@ describe("decopilot desktop tool-set parity", () => {
     expect(oldKeys).toContain("web_search");
     expect(oldKeys).toContain("update_interests");
   });
+
+  it("unified factory desktop path equals the legacy desktop adapter, exactly", async () => {
+    const oldKeys = await buildDesktopToolKeysViaExistingAdapter(input);
+    const newKeys = await buildDesktopToolKeysViaUnifiedFactory(input); // now the REAL unified path
+    expect(newKeys).toEqual(oldKeys);
+  });
 });
