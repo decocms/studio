@@ -9,10 +9,12 @@ import {
   File02,
   Flag01,
   Globe02,
+  Grid01,
   LayoutAlt01,
   Loading01,
   Plus,
   SearchLg,
+  Settings01,
   Tag01,
   CreditCardSearch,
   Trash01,
@@ -55,14 +57,18 @@ import { authClient } from "@/web/lib/auth-client";
 import { useChatTask } from "@/web/components/chat/context";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
+import { resolveSchema } from "@/web/components/sections-editor/resolve-schema";
 import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/web/components/sections-editor/use-delete-block";
 import {
   extractGlobalSections,
   extractPages,
+  findSiteAppEntry,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
+import type { AppCatalogEntry } from "./app-catalog";
+import { useDecoAppsCatalog } from "@/web/hooks/use-deco-apps-catalog";
 import { normalizePagePath } from "@/web/components/sections-editor/page-path-utils";
 import {
   appendPageVariantSections,
@@ -107,6 +113,10 @@ import {
 } from "./blog/use-blog-mutations";
 import { PageJsonDialog } from "@/web/components/sections-editor/page-json-dialog";
 
+const AppEditor = lazy(() =>
+  import("./app-editor").then((m) => ({ default: m.AppEditor })),
+);
+
 const PostEditor = lazy(() =>
   import("./blog/post-editor").then((m) => ({ default: m.PostEditor })),
 );
@@ -135,11 +145,12 @@ const AddSectionModal = lazy(() =>
 
 const VARIANT_GREEN = "oklch(0.65 0.15 160)";
 
-type CollectionId = "pages" | "sections" | "seo" | BlogKind;
+type CollectionId = "pages" | "sections" | "apps" | "site" | "seo" | BlogKind;
 
 type Selection =
   | { collection: "pages"; key: string; path: string }
   | { collection: "sections"; key: string }
+  | { collection: "apps"; key: string }
   | { collection: BlogKind; key: string }
   | null;
 
@@ -243,12 +254,6 @@ function ContentBrowserReady({
   const fetchParams = { orgSlug, virtualMcpId, branch };
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(fetchParams);
-  const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams);
-
-  const saveBlock = useSaveBlock(fetchParams);
-  const deleteBlock = useDeleteBlock(fetchParams);
-  const saveBlogBlock = useSaveBlogBlock(fetchParams);
-  const deleteBlogBlock = useDeleteBlogBlock(fetchParams);
 
   const [activeCollection, setActiveCollection] =
     useState<CollectionId>("pages");
@@ -262,6 +267,31 @@ function ContentBrowserReady({
     setPrevCollection(activeCollection);
     setSearchQuery("");
   }
+
+  const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
+    refetchInterval: (query) => {
+      if (
+        activeCollection !== "apps" ||
+        !selection ||
+        selection.collection !== "apps"
+      ) {
+        return false;
+      }
+      const block = decofile?.[selection.key] as
+        | Record<string, unknown>
+        | undefined;
+      const resolveType = block?.__resolveType;
+      if (typeof resolveType !== "string") return false;
+      const currentMeta = query.state.data;
+      if (!currentMeta) return 2000;
+      return resolveSchema(resolveType, currentMeta) ? false : 2000;
+    },
+  });
+
+  const saveBlock = useSaveBlock(fetchParams);
+  const deleteBlock = useDeleteBlock(fetchParams);
+  const saveBlogBlock = useSaveBlogBlock(fetchParams);
+  const deleteBlogBlock = useDeleteBlogBlock(fetchParams);
 
   // Dialog state
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
@@ -287,6 +317,9 @@ function ContentBrowserReady({
     a.name.localeCompare(b.name),
   );
   const globalSections = extractGlobalSections(decofile, meta);
+  const siteApp = findSiteAppEntry(decofile, meta);
+  const { catalog: appCatalog, isLoading: appCatalogLoading } =
+    useDecoAppsCatalog(meta, decofile);
   const allBlogEntries = scanBlogEntries(decofile);
   const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
   const blogEntries = isBlogKind(activeCollection)
@@ -304,11 +337,12 @@ function ContentBrowserReady({
   }
 
   const counts: Record<
-    "pages" | "sections" | "posts" | "authors" | "categories",
+    "pages" | "sections" | "apps" | "posts" | "authors" | "categories",
     number
   > = {
     pages: pages.length,
     sections: globalSections.length,
+    apps: appCatalog.length,
     posts: allBlogEntries.posts.length,
     authors: allBlogEntries.authors.length,
     categories: allBlogEntries.categories.length,
@@ -583,11 +617,13 @@ function ContentBrowserReady({
           setOpenPageSeoKey(null);
         }}
       />
-      {activeCollection !== "seo" && (
+      {activeCollection !== "seo" && activeCollection !== "site" && (
         <ItemList
           activeCollection={activeCollection}
           pages={pages}
           sections={globalSections}
+          appCatalog={appCatalog}
+          appCatalogLoading={appCatalogLoading}
           blogEntries={blogEntries}
           decofile={decofile}
           searchQuery={searchQuery}
@@ -651,7 +687,26 @@ function ContentBrowserReady({
             </div>
           }
         >
-          {activeCollection === "seo" ? (
+          {activeCollection === "site" ? (
+            siteApp ? (
+              <AppEditor
+                key={`site:${siteApp.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                blockKey={siteApp.key}
+                block={decofile[siteApp.key] as Record<string, unknown>}
+                meta={meta}
+                title="Site"
+                excludeFields={["seo"]}
+              />
+            ) : (
+              <EmptyMessage
+                title="Site settings not found"
+                description="This project doesn't have a site app block (site/apps/site.ts)."
+              />
+            )
+          ) : activeCollection === "seo" ? (
             <SeoEditor
               orgSlug={orgSlug}
               virtualMcpId={virtualMcpId}
@@ -662,7 +717,28 @@ function ContentBrowserReady({
               previewBaseUrl={previewUrl}
             />
           ) : selection ? (
-            selection.collection === "posts" ? (
+            selection.collection === "apps" ? (
+              <AppEditor
+                key={`app:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+                meta={meta}
+                schemaPending={
+                  typeof (decofile[selection.key] as Record<string, unknown>)
+                    ?.__resolveType === "string" &&
+                  !resolveSchema(
+                    String(
+                      (decofile[selection.key] as Record<string, unknown>)
+                        .__resolveType,
+                    ),
+                    meta,
+                  )
+                }
+              />
+            ) : selection.collection === "posts" ? (
               <PostEditor
                 key={`post:${selection.key}`}
                 orgSlug={orgSlug}
@@ -719,9 +795,15 @@ function ContentBrowserReady({
                   ? `a ${BLOG_SINGULAR[activeCollection]}`
                   : activeCollection === "pages"
                     ? "a page"
-                    : "a section"
+                    : activeCollection === "apps"
+                      ? "an app"
+                      : "a section"
               } to edit`}
-              description='Pick an item from the list, or click "+" to create one.'
+              description={
+                activeCollection === "apps"
+                  ? "Browse all apps and select an installed one to edit its settings."
+                  : 'Pick an item from the list, or click "+" to create one.'
+              }
             />
           )}
         </Suspense>
@@ -799,7 +881,7 @@ function ContentBrowserReady({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteNoun}?</AlertDialogTitle>
+            <AlertDialogTitle>{`Delete ${deleteNoun}?`}</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget?.kind === "section"
                 ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
@@ -842,7 +924,7 @@ function CollectionsSidebar({
 }: {
   active: CollectionId;
   counts: Record<
-    "pages" | "sections" | "posts" | "authors" | "categories",
+    "pages" | "sections" | "apps" | "posts" | "authors" | "categories",
     number
   >;
   showBlog: boolean;
@@ -868,6 +950,14 @@ function CollectionsSidebar({
           label="Sections"
           count={counts.sections}
           active={active === "sections"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="apps"
+          icon={Grid01}
+          label="Apps"
+          count={counts.apps}
+          active={active === "apps"}
           onSelect={onSelect}
         />
         {showBlog && (
@@ -902,6 +992,13 @@ function CollectionsSidebar({
             />
           </>
         )}
+        <CollectionRow
+          id="site"
+          icon={Settings01}
+          label="Site"
+          active={active === "site"}
+          onSelect={onSelect}
+        />
         <CollectionRow
           id="seo"
           icon={CreditCardSearch}
@@ -960,6 +1057,8 @@ function ItemList({
   activeCollection,
   pages,
   sections,
+  appCatalog,
+  appCatalogLoading,
   blogEntries,
   decofile,
   previewUrl,
@@ -983,6 +1082,8 @@ function ItemList({
   activeCollection: CollectionId;
   pages: PageEntry[];
   sections: GlobalSectionEntry[];
+  appCatalog: AppCatalogEntry[];
+  appCatalogLoading: boolean;
   blogEntries: BlogEntry[];
   decofile: Record<string, unknown>;
   previewUrl: string | null;
@@ -1017,6 +1118,14 @@ function ItemList({
       s.key.toLowerCase().includes(q) ||
       s.resolveType.toLowerCase().includes(q),
   );
+  const filteredApps = appCatalog.filter(
+    (entry) =>
+      !q ||
+      entry.title.toLowerCase().includes(q) ||
+      entry.app.toLowerCase().includes(q) ||
+      entry.vendor.toLowerCase().includes(q) ||
+      entry.category.toLowerCase().includes(q),
+  );
   const filteredBlog = blogEntries.filter(
     (e) =>
       !q ||
@@ -1031,6 +1140,8 @@ function ItemList({
       ? "Create new page"
       : "Create new section";
   const sectionCreateBlocked = activeCollection === "sections" && !previewUrl;
+  const showCreateButton = activeCollection !== "apps";
+  const createDisabled = sectionCreateBlocked;
   const createDisabledReason = sectionCreateBlocked
     ? "Start the preview dev server to add sections"
     : undefined;
@@ -1053,23 +1164,25 @@ function ItemList({
             className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onCreate}
-              disabled={sectionCreateBlocked}
-              aria-label={createTooltip}
-              aria-disabled={sectionCreateBlocked}
-            >
-              <Plus size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {createDisabledReason ?? createTooltip}
-          </TooltipContent>
-        </Tooltip>
+        {showCreateButton && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onCreate}
+                disabled={createDisabled}
+                aria-label={createTooltip}
+                aria-disabled={createDisabled}
+              >
+                <Plus size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {createDisabledReason ?? createTooltip}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
       {/* Force Radix's inner `display:table` content wrapper back to block so
           long titles truncate instead of widening the viewport. */}
@@ -1154,6 +1267,54 @@ function ItemList({
                 );
               })
             )
+          ) : activeCollection === "apps" ? (
+            appCatalogLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loading01
+                  size={18}
+                  className="animate-spin text-muted-foreground"
+                />
+              </div>
+            ) : filteredApps.length === 0 ? (
+              <ListEmpty
+                hasItems={appCatalog.length > 0}
+                emptyLabel="No apps found."
+                emptyHint="Try a different search term."
+              />
+            ) : (
+              filteredApps.map((entry) => {
+                const isActive =
+                  selection?.collection === "apps" &&
+                  entry.blockKey !== null &&
+                  selection.key === entry.blockKey;
+                return (
+                  <ItemRow
+                    key={entry.id}
+                    icon={Grid01}
+                    logoUrl={entry.logo}
+                    title={entry.title}
+                    subtitle={entry.category}
+                    active={isActive}
+                    trailing={
+                      entry.installed ? (
+                        <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                          Installed
+                        </span>
+                      ) : undefined
+                    }
+                    onClick={() => {
+                      if (!entry.installed || !entry.blockKey) {
+                        toast.message(
+                          `${entry.title} is not installed on this site.`,
+                        );
+                        return;
+                      }
+                      onSelect({ collection: "apps", key: entry.blockKey });
+                    }}
+                  />
+                );
+              })
+            )
           ) : filteredBlog.length === 0 ? (
             <ListEmpty
               hasItems={blogEntries.length > 0}
@@ -1203,10 +1364,12 @@ function ItemList({
 
 function ItemRow({
   icon: Icon,
+  logoUrl,
   title,
   subtitle,
   active,
   variantCount,
+  trailing,
   onClick,
   menu,
 }: {
@@ -1215,13 +1378,43 @@ function ItemRow({
     className?: string;
     style?: React.CSSProperties;
   }>;
+  logoUrl?: string;
   title: string;
   subtitle: string;
   active: boolean;
   variantCount?: number;
+  trailing?: React.ReactNode;
   onClick: () => void;
   menu?: React.ReactNode;
 }) {
+  const rowIcon =
+    variantCount && variantCount > 1 ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Icon
+            size={16}
+            className="shrink-0"
+            style={{ color: VARIANT_GREEN }}
+          />
+        </TooltipTrigger>
+        <TooltipContent side="right">{variantCount} variants</TooltipContent>
+      </Tooltip>
+    ) : logoUrl ? (
+      <img
+        src={logoUrl}
+        alt=""
+        className="size-8 shrink-0 rounded-lg object-cover bg-muted"
+      />
+    ) : (
+      <Icon
+        size={16}
+        className={cn(
+          "shrink-0",
+          active ? "text-accent-foreground" : "text-muted-foreground",
+        )}
+      />
+    );
+
   return (
     <div
       className={cn(
@@ -1234,28 +1427,7 @@ function ItemRow({
         onClick={onClick}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer"
       >
-        {variantCount && variantCount > 1 ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Icon
-                size={16}
-                className="shrink-0"
-                style={{ color: VARIANT_GREEN }}
-              />
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              {variantCount} variants
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          <Icon
-            size={16}
-            className={cn(
-              "shrink-0",
-              active ? "text-accent-foreground" : "text-muted-foreground",
-            )}
-          />
-        )}
+        {rowIcon}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{title}</span>
           <span
@@ -1267,6 +1439,7 @@ function ItemRow({
             {subtitle}
           </span>
         </span>
+        {trailing}
       </button>
       {menu && (
         <div

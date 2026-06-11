@@ -106,3 +106,26 @@ describe("resolveSchema – nullable unions inherit leaf metadata", () => {
     expect(image?.default).toBeNull();
   });
 });
+
+describe("resolveSchema – app resolveType aliases", () => {
+  test("resolves site/apps blocks from legacy manifest keys", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          apps: {
+            "deco/apps/blog.ts": {
+              type: "object",
+              properties: {
+                postsPerPage: { type: "number", title: "Posts per page" },
+              },
+            },
+          },
+        },
+      },
+      schema: {},
+    };
+
+    const resolved = resolveSchema("site/apps/deco/blog.ts", meta);
+    expect(resolved?.properties?.postsPerPage?.title).toBe("Posts per page");
+  });
+});

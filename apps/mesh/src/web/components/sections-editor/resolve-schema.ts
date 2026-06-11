@@ -51,6 +51,63 @@ type RawSchema = Record<string, unknown>;
 // `format` field natively this guard becomes a no-op.
 const VIDEO_WIDGET_REF_KEY = "VideoWidget";
 
+function parseSiteAppResolveType(
+  resolveType: string,
+): { vendor: string; app: string } | null {
+  const match = resolveType.match(/^site\/apps\/([^/]+)\/([^/.]+)\.tsx?$/);
+  if (!match) return null;
+  return { vendor: match[1]!, app: match[2]! };
+}
+
+function parseLegacyAppResolveType(
+  resolveType: string,
+): { vendor: string; app: string } | null {
+  const match = resolveType.match(/^([^/]+)\/apps\/([^/.]+)\.tsx?$/);
+  if (!match) return null;
+  return { vendor: match[1]!, app: match[2]! };
+}
+
+function appManifestResolveTypeAliases(vendor: string, app: string): string[] {
+  return [
+    `site/apps/${vendor}/${app}.ts`,
+    `site/apps/${vendor}/${app}.tsx`,
+    `${vendor}/apps/${app}.ts`,
+    `${vendor}/apps/${app}.tsx`,
+  ];
+}
+
+/** Manifest block schema entry, including legacy/modern app resolveType aliases. */
+export function lookupManifestBlockSchema(
+  resolveType: string,
+  meta: LiveMeta,
+): RawSchema {
+  const allBlockTypes = meta.manifest?.blocks ?? {};
+
+  for (const blockTypeMap of Object.values(allBlockTypes)) {
+    if (blockTypeMap[resolveType]) {
+      return blockTypeMap[resolveType] as RawSchema;
+    }
+  }
+
+  const parsed =
+    parseSiteAppResolveType(resolveType) ??
+    parseLegacyAppResolveType(resolveType);
+  if (!parsed) return {};
+
+  for (const alias of appManifestResolveTypeAliases(
+    parsed.vendor,
+    parsed.app,
+  )) {
+    for (const blockTypeMap of Object.values(allBlockTypes)) {
+      if (blockTypeMap[alias]) {
+        return blockTypeMap[alias] as RawSchema;
+      }
+    }
+  }
+
+  return {};
+}
+
 /**
  * Resolve the schema for a given __resolveType by searching across ALL
  * block types in the manifest (sections, loaders, matchers, etc.).
@@ -60,16 +117,7 @@ export function resolveSchema(
   meta: LiveMeta,
 ): SchemaProperty | null {
   const globalSchema = meta.schema ?? {};
-  const allBlockTypes = meta.manifest?.blocks ?? {};
-
-  // Find the per-block schema for this resolveType across all block types
-  let blockSchema: RawSchema = {};
-  for (const blockTypeMap of Object.values(allBlockTypes)) {
-    if (blockTypeMap[resolveType]) {
-      blockSchema = blockTypeMap[resolveType] as RawSchema;
-      break;
-    }
-  }
+  const blockSchema = lookupManifestBlockSchema(resolveType, meta);
 
   // Merge exactly as admin-mcp does: { ...schema, ...blockSchema }
   const merged: RawSchema = { ...globalSchema, ...blockSchema };
@@ -439,6 +487,7 @@ export interface BlockSchemaMetadata {
   title?: string;
   description?: string;
   icon?: string;
+  logo?: string;
 }
 
 /**
@@ -450,15 +499,7 @@ export function resolveBlockSchemaMetadata(
   meta: LiveMeta,
 ): BlockSchemaMetadata {
   const globalSchema = meta.schema ?? {};
-  const allBlockTypes = meta.manifest?.blocks ?? {};
-
-  let blockSchema: RawSchema = {};
-  for (const blockTypeMap of Object.values(allBlockTypes)) {
-    if (blockTypeMap[resolveType]) {
-      blockSchema = blockTypeMap[resolveType] as RawSchema;
-      break;
-    }
-  }
+  const blockSchema = lookupManifestBlockSchema(resolveType, meta);
 
   const merged: RawSchema = { ...globalSchema, ...blockSchema };
   const defs = (merged.$defs ?? merged.definitions ?? {}) as Record<
@@ -472,6 +513,7 @@ export function resolveBlockSchemaMetadata(
       : { ...globalSchema, ...blockSchema };
 
   const icon = (resolved as { icon?: string }).icon;
+  const logo = (resolved as { logo?: string }).logo;
 
   return {
     title: typeof resolved.title === "string" ? resolved.title : undefined,
@@ -480,5 +522,6 @@ export function resolveBlockSchemaMetadata(
         ? resolved.description
         : undefined,
     icon: typeof icon === "string" ? icon : undefined,
+    logo: typeof logo === "string" ? logo : undefined,
   };
 }

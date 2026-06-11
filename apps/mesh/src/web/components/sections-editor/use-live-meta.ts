@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { type Query, useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -10,7 +10,13 @@ interface UseLiveMetaParams {
 
 export function useLiveMeta(
   params: UseLiveMetaParams | null,
-  options?: { fetchEnabled?: boolean },
+  options?: {
+    fetchEnabled?: boolean;
+    refetchInterval?:
+      | number
+      | false
+      | ((query: Query<LiveMeta>) => number | false | undefined);
+  },
 ) {
   const key = params
     ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`
@@ -31,6 +37,7 @@ export function useLiveMeta(
       return (await res.json()) as LiveMeta;
     },
     enabled: !!params && fetchEnabled,
+    refetchInterval: options?.refetchInterval,
     staleTime: 300_000,
     // 502 = preview unreachable (sandbox starting or down). The SSE lifecycle
     // re-enables this query when the preview is back, so retrying just hammers

@@ -62,6 +62,14 @@ export function isManifestSectionResolveType(
   return blockType !== null && blockType.includes("sections");
 }
 
+export function isManifestAppResolveType(
+  meta: LiveMeta,
+  resolveType: string,
+): boolean {
+  const blockType = getManifestBlockType(meta, resolveType);
+  return blockType !== null && blockType.includes("apps");
+}
+
 export function isManifestMatcherResolveType(
   meta: LiveMeta,
   resolveType: string,

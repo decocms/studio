@@ -1,4 +1,5 @@
-import type { LiveMeta } from "./resolve-schema";
+import { isManifestAppResolveType } from "./block-type-utils";
+import { resolveBlockSchemaMetadata, type LiveMeta } from "./resolve-schema";
 import { listSavedSectionBlocks } from "./section-catalog";
 
 export interface PageEntry {
@@ -8,6 +9,12 @@ export interface PageEntry {
 }
 
 export interface GlobalSectionEntry {
+  key: string;
+  name: string;
+  resolveType: string;
+}
+
+export interface AppEntry {
   key: string;
   name: string;
   resolveType: string;
@@ -38,6 +45,20 @@ const PAGE_RESOLVE_TYPES = new Set([
   "website/pages/Page.tsx",
   "$live/pages/LivePage.tsx",
 ]);
+
+/** Canonical decofile block id for the site app (matches admin `SITE_APP_ID`). */
+export const SITE_APP_BLOCK_KEY = "site";
+
+/** Well-known resolve type for the site app block. */
+export const SITE_APP_RESOLVE_TYPE = "site/apps/site.ts";
+
+export function isSiteAppBlock(
+  blockKey: string,
+  block: Record<string, unknown>,
+): boolean {
+  if (blockKey === SITE_APP_BLOCK_KEY) return true;
+  return block.__resolveType === SITE_APP_RESOLVE_TYPE;
+}
 
 /**
  * Same gate as Preview's "Sections editor" mode and the Content tab body:
@@ -83,6 +104,93 @@ export function globalSectionLabel(
     if (trimmed) return trimmed;
   }
   return blockId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function appLabel(
+  blockKey: string,
+  block: Record<string, unknown>,
+  meta: LiveMeta,
+): string {
+  const resolveType =
+    typeof block.__resolveType === "string" ? block.__resolveType : "";
+  const metadata = resolveType
+    ? resolveBlockSchemaMetadata(resolveType, meta)
+    : {};
+  if (metadata.title) return metadata.title;
+  if (typeof block.name === "string") {
+    const trimmed = block.name.trim();
+    if (trimmed) return trimmed;
+  }
+  return blockKey
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function findSiteAppEntry(
+  decofile: Record<string, unknown>,
+  meta: LiveMeta,
+): AppEntry | null {
+  const direct = decofile[SITE_APP_BLOCK_KEY];
+  if (direct && typeof direct === "object" && !Array.isArray(direct)) {
+    const obj = direct as Record<string, unknown>;
+    const resolveType = obj.__resolveType;
+    if (
+      typeof resolveType === "string" &&
+      isManifestAppResolveType(meta, resolveType)
+    ) {
+      return {
+        key: SITE_APP_BLOCK_KEY,
+        name: appLabel(SITE_APP_BLOCK_KEY, obj, meta),
+        resolveType,
+      };
+    }
+  }
+
+  for (const [key, val] of Object.entries(decofile)) {
+    if (key.includes("/")) continue;
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+
+    const obj = val as Record<string, unknown>;
+    if (obj.__resolveType !== SITE_APP_RESOLVE_TYPE) continue;
+    if (!isManifestAppResolveType(meta, SITE_APP_RESOLVE_TYPE)) continue;
+
+    return {
+      key,
+      name: appLabel(key, obj, meta),
+      resolveType: SITE_APP_RESOLVE_TYPE,
+    };
+  }
+
+  return null;
+}
+
+/** Installed app blocks from the decofile (manifest `apps` block type). */
+export function extractApps(
+  decofile: Record<string, unknown>,
+  meta: LiveMeta,
+): AppEntry[] {
+  const apps: AppEntry[] = [];
+
+  for (const [key, val] of Object.entries(decofile)) {
+    if (key.includes("/")) continue;
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+
+    const obj = val as Record<string, unknown>;
+    const resolveType = obj.__resolveType;
+    if (typeof resolveType !== "string") continue;
+    if (PAGE_RESOLVE_TYPES.has(resolveType)) continue;
+    if (typeof obj.path === "string") continue;
+    if (isSiteAppBlock(key, obj)) continue;
+    if (!isManifestAppResolveType(meta, resolveType)) continue;
+
+    apps.push({
+      key,
+      name: appLabel(key, obj, meta),
+      resolveType,
+    });
+  }
+
+  return apps.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Saved section blocks from the decofile (same filters as the section catalog). */
