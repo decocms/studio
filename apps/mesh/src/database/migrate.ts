@@ -12,13 +12,10 @@
 
 import { Migrator, sql, type Kysely } from "kysely";
 import migrations from "../../migrations";
-import { runSeed, type SeedName } from "../../migrations/seeds";
 import { migrateBetterAuth } from "../auth/migrate";
 import { collectPluginMigrations } from "../core/plugin-loader";
 import { closeDatabase, getDb, type StudioDatabase } from "./index";
 import type { Database } from "../storage/types";
-
-export { runSeed, type SeedName };
 
 // ============================================================================
 // Plugin Migration System
@@ -240,12 +237,6 @@ export interface MigrateOptions {
    * Default: false
    */
   skipBetterAuth?: boolean;
-
-  /**
-   * Seed to run after migrations.
-   * Seeds populate the database with initial/test data.
-   */
-  seed?: SeedName;
 }
 
 /**
@@ -287,10 +278,9 @@ export async function runKyselyMigrations(
 }
 
 /**
- * Migration result with optional seed data
+ * Migration result
  */
-export interface MigrateResult<T = unknown> {
-  seedResult?: T;
+export interface MigrateResult {
   betterAuth: string;
   kysely: number;
   plugins: number;
@@ -299,14 +289,13 @@ export interface MigrateResult<T = unknown> {
 /**
  * Run all pending migrations
  */
-export async function migrateToLatest<T = unknown>(
+export async function migrateToLatest(
   options?: MigrateOptions,
-): Promise<MigrateResult<T>> {
+): Promise<MigrateResult> {
   const {
     keepOpen = false,
     database: customDb,
     skipBetterAuth = false,
-    seed,
   } = options ?? {};
 
   // Run Better Auth migrations (unless skipped or using custom db)
@@ -331,16 +320,10 @@ export async function migrateToLatest<T = unknown>(
     const kysely = await runKyselyMigrations(database.db);
     const plugins = await runPluginMigrations(database.db);
 
-    // Run seed if specified
-    let seedResult: T | undefined;
-    if (seed) {
-      seedResult = await runSeed<T>(database.db, seed);
-    }
-
     // Close database on success if needed
     await maybeCloseDatabase();
 
-    return { seedResult, betterAuth, kysely, plugins };
+    return { betterAuth, kysely, plugins };
   } catch (error) {
     // Ensure database is closed on failure
     await maybeCloseDatabase();
