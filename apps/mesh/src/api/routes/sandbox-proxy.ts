@@ -17,7 +17,6 @@ import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
 import type { SandboxProvider } from "@decocms/sandbox/provider";
-import { appendCoAuthorTrailer } from "@decocms/sandbox/shared";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import { resolveSandboxProvider } from "../../sandbox/resolve-provider";
@@ -27,7 +26,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import type { Env } from "../hono-env";
-import type { StudioContext } from "../../core/studio-context";
+import { patchSandboxOperator } from "../../tools/sandbox/patch-sandbox-operator";
 import { handleVmEvents } from "./sandbox-events-handler";
 import { resolveAndPushEnv } from "../../tools/sandbox/resolve-env";
 import { readValidatedRuntimeEnv } from "../../tools/sandbox/helpers";
@@ -81,13 +80,6 @@ function assertSandboxBranchParam(branch: string): void {
 
 const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
-
-function coAuthorFromContext(ctx: StudioContext) {
-  const name = ctx.auth.user?.name?.trim();
-  if (!name) return null;
-  const email = ctx.auth.user?.email?.trim();
-  return { userName: name, ...(email ? { userEmail: email } : {}) };
-}
 
 // ---- Shared middleware ------------------------------------------------------
 
@@ -511,6 +503,7 @@ export const createSandboxRoutes = () => {
     const ctx = c.var.meshContext;
 
     try {
+      await patchSandboxOperator(ctx, runner, claimName);
       const githubRepo = parseGithubRepoFromMetadata(
         virtualMcpMetadata,
         connectionIds,
@@ -526,16 +519,8 @@ export const createSandboxRoutes = () => {
       return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
     }
 
-    const raw = (await c.req.json().catch(() => ({}))) as {
-      message?: string;
-    };
-    const message = appendCoAuthorTrailer(
-      typeof raw.message === "string" ? raw.message : "",
-      coAuthorFromContext(ctx),
-    );
-
     return proxyDaemon(c, "/_sandbox/git/publish", {
-      jsonBody: JSON.stringify({ message }),
+      forwardJsonBody: true,
       map404to410: true,
     });
   });
@@ -545,12 +530,25 @@ export const createSandboxRoutes = () => {
       map404to410: true,
     }),
   );
-  app.post("/:virtualMcpId/:branch/git/rebase", (c) =>
-    proxyDaemon(c, "/_sandbox/git/rebase", {
+  app.post("/:virtualMcpId/:branch/git/rebase", async (c) => {
+    const runner = requireRunner(c);
+    if (runner instanceof Response) return runner;
+
+    const { claimName } = c.get("vmClaim");
+    const ctx = c.var.meshContext;
+
+    try {
+      await patchSandboxOperator(ctx, runner, claimName);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 502, SANDBOX_PROXY_CACHE_HEADERS);
+    }
+
+    return proxyDaemon(c, "/_sandbox/git/rebase", {
       forwardJsonBody: true,
       map404to410: true,
-    }),
-  );
+    });
+  });
   app.post(
     "/:virtualMcpId/:branch/git/suggest-commit",
     bodyLimit({

@@ -32,7 +32,10 @@ export function gitIdentityScript(userName: string, userEmail: string): string {
 }
 
 export {
+  appendCoAuthorToPullRequestBody,
   appendCoAuthorTrailer,
+  normalizeCoAuthorIdentity,
+  stripCoAuthorTrailers,
   type CoAuthorIdentity,
 } from "./git-co-author";
 

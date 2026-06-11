@@ -1,4 +1,5 @@
 import type { PackageManagerConfig, TenantConfig } from "../../../daemon/types";
+import { normalizeCoAuthorIdentity } from "../../../git-co-author";
 import type { EnsureOptions } from "../types";
 
 /**
@@ -29,14 +30,11 @@ export function buildConfigPayload(args: {
     : undefined;
 
   const tenant = args.tenant;
-  const operator = tenant?.userName?.trim()
-    ? {
-        userName: tenant.userName.trim(),
-        ...(tenant.userEmail?.trim()
-          ? { userEmail: tenant.userEmail.trim() }
-          : {}),
-      }
-    : undefined;
+  const operator =
+    normalizeCoAuthorIdentity({
+      userName: tenant?.userName,
+      userEmail: tenant?.userEmail,
+    }) ?? undefined;
 
   const packageManager = args.packageManager
     ? {

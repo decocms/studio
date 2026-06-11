@@ -1,4 +1,5 @@
 import { isSyntheticBranch } from "./constants";
+import { normalizeCoAuthorIdentity } from "../git-co-author";
 import type { PackageManager, RuntimeName, TenantConfig } from "./types";
 
 const VALID_RUNTIMES: ReadonlySet<RuntimeName> = new Set([
@@ -149,21 +150,22 @@ function validateApplication(
 function validateOperator(
   operator: NonNullable<TenantConfig["operator"]>,
 ): ValidationResult {
-  if (
-    typeof operator.userName !== "string" ||
-    operator.userName.trim().length === 0
-  ) {
+  if (typeof operator.userName !== "string") {
+    return { kind: "invalid", reason: "operator.userName is required" };
+  }
+  const normalized = normalizeCoAuthorIdentity({
+    userName: operator.userName,
+    userEmail: operator.userEmail,
+  });
+  if (!normalized) {
     return { kind: "invalid", reason: "operator.userName is required" };
   }
   if (operator.userEmail !== undefined) {
-    if (
-      typeof operator.userEmail !== "string" ||
-      operator.userEmail.trim().length === 0
-    ) {
-      return {
-        kind: "invalid",
-        reason: "operator.userEmail must be non-empty",
-      };
+    if (typeof operator.userEmail !== "string") {
+      return { kind: "invalid", reason: "operator.userEmail must be a string" };
+    }
+    if (operator.userEmail.trim().length > 0 && !normalized.userEmail) {
+      return { kind: "invalid", reason: "operator.userEmail is invalid" };
     }
   }
   return { kind: "ok" };

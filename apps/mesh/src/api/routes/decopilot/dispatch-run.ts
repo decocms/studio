@@ -39,6 +39,7 @@ import { ensureSandbox } from "@/tools/sandbox/start";
 import { buildDesktopProvider } from "@/sandbox/lifecycle";
 import { computeClaimHandle } from "@/sandbox/claim-handle";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
+import { normalizeCoAuthorIdentity } from "@decocms/sandbox/shared";
 import {
   buildAnonymousCloneInfo,
   buildCloneInfo,
@@ -1625,20 +1626,16 @@ async function resolvePullSandboxConfig(
       })
     : undefined;
 
+  const operator = normalizeCoAuthorIdentity({
+    userName: ctx.auth.user?.name,
+    userEmail: ctx.auth.user?.email,
+  });
+
   return {
     handle: sandboxHandle,
     ...(repo ? { repo } : {}),
     ...(workload ? { workload } : {}),
-    ...(ctx.auth.user?.name?.trim()
-      ? {
-          operator: {
-            userName: ctx.auth.user.name.trim(),
-            ...(ctx.auth.user.email?.trim()
-              ? { userEmail: ctx.auth.user.email.trim() }
-              : {}),
-          },
-        }
-      : {}),
+    ...(operator ? { operator } : {}),
     ...(offloadAllowedHosts !== undefined ? { offloadAllowedHosts } : {}),
     ...(offloadAllowSameHostDev !== undefined
       ? { offloadAllowSameHostDev }

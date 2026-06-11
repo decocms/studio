@@ -28,10 +28,7 @@ export interface GitIdentity {
 }
 
 /** Studio user operating the sandbox — appended as git co-author on commits. */
-export interface OperatorIdentity {
-  readonly userName: string;
-  readonly userEmail?: string;
-}
+export type { CoAuthorIdentity as OperatorIdentity } from "../../git-co-author";
 
 export interface GitRepository {
   readonly cloneUrl: string;

@@ -25,6 +25,7 @@ import {
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/web/lib/auth-client.ts";
+import { coAuthorFromSessionUser } from "@/web/lib/co-author-identity.ts";
 import { GitDiffList } from "./git-diff-list.tsx";
 import {
   openPullRequestForBranch,
@@ -143,14 +144,7 @@ function PublishDialogBody({
   const { data: session } = authClient.useSession();
   const startSandbox = useSandboxStart(selfClient);
 
-  const coAuthor = session?.user?.name?.trim()
-    ? {
-        userName: session.user.name.trim(),
-        ...(session.user.email?.trim()
-          ? { userEmail: session.user.email.trim() }
-          : {}),
-      }
-    : undefined;
+  const coAuthor = coAuthorFromSessionUser(session?.user);
 
   const commitToOpenPr = openPullRequest?.state === "open";
   /** Header "Save changes" — commit/push only, no new PR / merge. */

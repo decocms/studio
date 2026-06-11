@@ -17,6 +17,7 @@
  */
 
 import { computeHandle } from "../shared";
+import { normalizeCoAuthorIdentity } from "../../../git-co-author";
 import type { ClaimPhase } from "../lifecycle-types";
 import type { RunnerStateStoreOps } from "../state-store";
 import type {
@@ -130,21 +131,16 @@ export class DesktopSandboxProvider implements SandboxProvider {
     // falls through to lockfile autodetect, which on a repo with
     // `yarn.lock` picks yarn — and the desktop daemon can't reliably
     // shim a yarn binary into PATH.
+    const operator = normalizeCoAuthorIdentity({
+      userName: opts.tenant?.userName,
+      userEmail: opts.tenant?.userEmail,
+    });
     const body = JSON.stringify({
       handle,
       repo: opts.repo,
       branch,
       ...(opts.workload ? { workload: opts.workload } : {}),
-      ...(opts.tenant?.userName
-        ? {
-            operator: {
-              userName: opts.tenant.userName,
-              ...(opts.tenant.userEmail
-                ? { userEmail: opts.tenant.userEmail }
-                : {}),
-            },
-          }
-        : {}),
+      ...(operator ? { operator } : {}),
       // Message-offload SSRF allowlist, derived cluster-side from the
       // cluster's own trusted S3 config and pushed down here so the spawned
       // daemon can fetch offloaded `messagesRef` payloads. The daemon fails
