@@ -1,0 +1,32 @@
+{
+  "name": "decostudio",
+  "version": "0.0.2",
+  "description": "Alias for decocms. `bunx decostudio` runs `decocms`.",
+  "homepage": "https://github.com/decocms/studio",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/decocms/studio.git",
+    "directory": "decostudio-alias"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "decostudio": "./bin/decostudio.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "dependencies": {
+    "decocms": "*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "decocms",
+    "alias",
+    "mcp",
+    "decostudio"
+  ]
+}
