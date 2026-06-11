@@ -40,16 +40,21 @@ describe("harness tree is cross-tree-free", () => {
   });
 });
 
-// Option-b sandbox decoupling: the portable harness tree must not import
-// `@decocms/sandbox`. That would invert the harness ← sandbox dependency arrow
-// and re-introduce the cycle the package move breaks. The `SandboxProvider` +
-// `createSandboxFsHooks` construction is isolated in two assembler-glue modules
-// (slated to relocate into the cluster/daemon assemblers in the package-move
-// slice); every other production file consumes the harness-owned flat
-// `SandboxFsHooks` via DI and stays sandbox-free.
+// Option-b sandbox decoupling: the portable harness was extracted to
+// `@decocms/harness` (guarded there by packages/harness/src/no-cross-tree.test.ts).
+// What remains in this directory is the cluster island, which sits ABOVE
+// `@decocms/sandbox` in the package DAG, so a `@decocms/sandbox` import here is
+// not a layering violation — but we still keep that surface explicit and small.
+// Only the two dispatch/fs glue modules may bridge into sandbox:
+//  - `in-process-sandbox-client.ts` implements the `SandboxClient` dispatch
+//    contract (`@decocms/sandbox/dispatch`) for in-process cluster dispatch.
+//  - `cluster-sandbox-fs.ts` constructs the cluster `SandboxProvider` + fs hooks.
+// Every other production file consumes the harness-owned flat `SandboxFsHooks`
+// via DI and stays sandbox-free. (`desktop-sandbox-fs.ts` relocated into
+// `@decocms/sandbox/dispatch` with the desktop subtree in the package-move slice.)
 const SANDBOX_GLUE = new Set([
+  "in-process-sandbox-client.ts",
   "decopilot/built-in-tools/cluster-sandbox-fs.ts",
-  "decopilot/desktop-sandbox-fs.ts",
 ]);
 const SANDBOX_IMPORT = /from\s+["']@decocms\/sandbox/;
 
