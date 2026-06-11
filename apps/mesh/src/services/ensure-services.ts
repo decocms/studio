@@ -1016,6 +1016,8 @@ export interface EnsureLinkInputs {
   linkDataDir: string;
   /** Repo root — `cwd` for the spawned `bun run --cwd=apps/mesh …`. */
   repoRoot: string;
+  /** Enable Bun hot reload for the managed link and its sandbox daemons. */
+  hotReload?: boolean;
   /**
    * Called only when a fresh link daemon needs to be spawned (i.e. not when
    * an existing managed link is reused). Use this to await prerequisites
@@ -1042,6 +1044,32 @@ export interface EnsureLinkResult {
   info: ServiceInfo;
   /** The spawned subprocess, or null when reusing an existing managed link. */
   proc: ReturnType<typeof Bun.spawn> | null;
+}
+
+export function buildManagedLinkSpawnCommand(opts: {
+  clusterUrl: string;
+  port: number;
+  hotReload?: boolean;
+}): string[] {
+  const bunRuntimeArgs = opts.hotReload === true ? ["--hot"] : [];
+  const forwardedLinkArgs = opts.hotReload === true ? ["--hot"] : [];
+
+  return [
+    "bun",
+    ...bunRuntimeArgs,
+    "run",
+    "--cwd=apps/mesh",
+    "src/cli.ts",
+    "link",
+    // Required positional: the studio to link against.
+    opts.clusterUrl,
+    "--port",
+    String(opts.port),
+    // Managed background daemon: never render the Ink TUI (it would paint
+    // over the parent dev/serve terminal when stdio is inherited).
+    "--no-tui",
+    ...forwardedLinkArgs,
+  ];
 }
 
 async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
@@ -1071,20 +1099,11 @@ async function ensureLink(inputs: EnsureLinkInputs): Promise<EnsureLinkResult> {
   info.port = port;
 
   const proc = Bun.spawn(
-    [
-      "bun",
-      "run",
-      "--cwd=apps/mesh",
-      "src/cli.ts",
-      "link",
-      // Required positional: the studio to link against.
-      inputs.clusterUrl,
-      "--port",
-      String(port),
-      // Managed background daemon: never render the Ink TUI (it would paint
-      // over the parent dev/serve terminal when stdio is inherited).
-      "--no-tui",
-    ],
+    buildManagedLinkSpawnCommand({
+      clusterUrl: inputs.clusterUrl,
+      port,
+      hotReload: inputs.hotReload,
+    }),
     {
       cwd: inputs.repoRoot,
       env: {

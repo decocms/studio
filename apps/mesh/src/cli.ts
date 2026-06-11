@@ -61,6 +61,10 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
+    hot: {
+      type: "boolean",
+      default: false,
+    },
     target: { type: "string" },
     env: { type: "string", short: "e" },
     "dry-run": {
@@ -102,6 +106,7 @@ Dev Options:
   --vite-port <port>            Vite dev server port (default: 4000)
   --base-url <url>              Base URL for the server
   --local-sandbox-provider      Auto-spawn the local link daemon (desktop sandbox provider)
+  --hot                         Hot-reload managed link and sandbox daemons in dev
 
 Auth Options:
   --target <url>        Decocms target (default: https://studio.decocms.com)
@@ -306,6 +311,7 @@ if (command === "link") {
     clusterBaseUrl: studioUrl,
     tui,
     version: await getVersion(),
+    hotReload: values.hot === true,
     // Managed daemons (dev / npx --local-sandbox-provider) suppress the
     // banner — the parent dev/serve process already renders one.
     banner: process.env.DECOCMS_LINK_MANAGED !== "1",
@@ -336,6 +342,7 @@ if (command === "dev") {
     noTui,
     localMode: values["no-local-mode"] !== true,
     localSandboxProvider,
+    hotReload: values.hot === true,
   };
 
   if (noTui) {

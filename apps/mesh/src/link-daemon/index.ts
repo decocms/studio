@@ -62,6 +62,8 @@ export interface StartLinkDaemonOptions {
    * to the parent process.
    */
   logFd?: number;
+  /** Hot-reload sandbox daemons spawned from source. */
+  hotReload?: boolean;
 }
 
 export interface LinkDaemonHandle {
@@ -77,6 +79,7 @@ export async function startLinkDaemon(
 
   const innerSpawn = createDefaultDaemonSpawn(opts.dataDir, {
     outFd: opts.logFd,
+    hotReload: opts.hotReload,
   });
   // Forward declaration so `resolvePreviewUrl` can read the ingress port
   // once the ingress finishes binding (the ingress's `lookupSandboxPort`

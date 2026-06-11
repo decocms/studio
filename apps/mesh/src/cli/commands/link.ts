@@ -33,6 +33,8 @@ export interface LinkCommandOptions {
    * `dev`/`serve` TUI.
    */
   banner?: boolean;
+  /** Hot-reload sandbox daemons spawned by this link process. */
+  hotReload?: boolean;
 }
 
 /**
@@ -179,6 +181,7 @@ export async function runLinkCommand(
       session,
       monitor,
       logFd,
+      hotReload: opts.hotReload,
     });
     return await handle.stopped;
   } catch (err) {
