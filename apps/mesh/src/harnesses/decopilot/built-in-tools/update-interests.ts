@@ -9,7 +9,7 @@
 
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
-import type { StudioContext } from "@/core/studio-context";
+import type { InterestsWrite } from "../../harness-deps";
 
 const UpdateInterestsInputSchema = z.object({
   interests: z
@@ -38,21 +38,21 @@ const description =
   "that are clearly finished or abandoned. Order by importance, most first.";
 
 export function createUpdateInterestsTool(deps: {
-  ctx: StudioContext;
-  orgId: string;
-  agentId: string;
-  userId: string;
+  write(input: InterestsWrite): Promise<void>;
+  orgId?: string;
+  agentId?: string;
+  userId?: string;
 }) {
   return tool({
     description,
     inputSchema: zodSchema(UpdateInterestsInputSchema),
     execute: async ({ interests }: UpdateInterestsInput) => {
-      await deps.ctx.storage.interests.setForAgent(
-        deps.orgId,
-        deps.agentId,
-        deps.userId,
-        { interests },
-      );
+      await deps.write({
+        orgId: deps.orgId ?? "",
+        agentId: deps.agentId ?? "",
+        userId: deps.userId ?? "",
+        interests,
+      });
       return { ok: true as const, count: interests.length };
     },
   });

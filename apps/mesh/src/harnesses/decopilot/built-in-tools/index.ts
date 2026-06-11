@@ -172,8 +172,18 @@ async function buildAllTools(
     objectStorage: ctx.objectStorage,
   });
   if (userId) {
+    // Cluster `interests.write` hook: closes over ctx/storage and forwards the
+    // org/agent/user carried in the InterestsWrite payload. The tool itself no
+    // longer touches StudioContext (HarnessDeps conversion).
     tools.update_interests = createUpdateInterestsTool({
-      ctx,
+      write: async (input) => {
+        await ctx.storage.interests.setForAgent(
+          input.orgId,
+          input.agentId,
+          input.userId,
+          { interests: input.interests },
+        );
+      },
       orgId: organization.id,
       agentId,
       userId,

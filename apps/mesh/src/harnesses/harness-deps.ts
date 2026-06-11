@@ -50,9 +50,10 @@ export interface ResearchResult {
   [k: string]: unknown;
 }
 export interface InterestsWrite {
+  orgId: string;
   agentId: string;
-  content: string;
-  [k: string]: unknown;
+  userId: string;
+  interests: Array<{ title: string; summary: string }>;
 }
 export interface LlmCall {
   [k: string]: unknown;
