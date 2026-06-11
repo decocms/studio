@@ -44,9 +44,15 @@ export function appResolveType(vendor: string, app: string): string {
 export function parseAppResolveType(
   resolveType: string,
 ): { vendor: string; app: string } | null {
-  const match = resolveType.match(/^([^/]+)\/apps\/([^/.]+)\.tsx?$/);
-  if (!match) return null;
-  return { vendor: match[1]!, app: match[2]! };
+  const siteMatch = resolveType.match(/^site\/apps\/([^/]+)\/([^/.]+)\.tsx?$/);
+  if (siteMatch) {
+    return { vendor: siteMatch[1]!, app: siteMatch[2]! };
+  }
+  const legacyMatch = resolveType.match(/^([^/]+)\/apps\/([^/.]+)\.tsx?$/);
+  if (legacyMatch) {
+    return { vendor: legacyMatch[1]!, app: legacyMatch[2]! };
+  }
+  return null;
 }
 
 function findInstalledBlockKey(
@@ -179,6 +185,7 @@ function manifestHasApp(meta: LiveMeta, vendor: string, app: string): boolean {
   const apps = meta.manifest?.blocks?.apps ?? {};
   for (const alias of [
     appResolveType(vendor, app),
+    `site/apps/${vendor}/${app}.tsx`,
     `${vendor}/apps/${app}.ts`,
     `${vendor}/apps/${app}.tsx`,
   ]) {
@@ -221,8 +228,4 @@ function listInstalledAppEntries(
   }
 
   return entries;
-}
-
-export function installedAppCount(catalog: AppCatalogEntry[]): number {
-  return catalog.filter((entry) => entry.installed).length;
 }

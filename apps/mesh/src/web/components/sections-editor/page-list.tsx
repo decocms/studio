@@ -1,5 +1,9 @@
 import { isManifestAppResolveType } from "./block-type-utils";
-import { resolveBlockSchemaMetadata, type LiveMeta } from "./resolve-schema";
+import {
+  isResolvableManifestApp,
+  resolveBlockSchemaMetadata,
+  type LiveMeta,
+} from "./resolve-schema";
 import { listSavedSectionBlocks } from "./section-catalog";
 
 export interface PageEntry {
@@ -61,8 +65,8 @@ export function isSiteAppBlock(
 }
 
 /**
- * Same gate as Preview's "Sections editor" mode and the Content tab body:
- * at least one Deco page block or one saved global section.
+ * Same gate as Preview's "Sections editor" mode and the Content tab:
+ * pages, global sections, site app, or installed deco apps.
  */
 export function hasEditableDecoContent(
   decofile: Record<string, unknown> | undefined | null,
@@ -71,7 +75,9 @@ export function hasEditableDecoContent(
   if (!decofile) return false;
   if (extractPages(decofile).length > 0) return true;
   if (!meta) return false;
-  return extractGlobalSections(decofile, meta).length > 0;
+  if (extractGlobalSections(decofile, meta).length > 0) return true;
+  if (findSiteAppEntry(decofile, meta)) return true;
+  return extractApps(decofile, meta).length > 0;
 }
 
 export function extractPages(decofile: Record<string, unknown>): PageEntry[] {
@@ -181,7 +187,7 @@ export function extractApps(
     if (PAGE_RESOLVE_TYPES.has(resolveType)) continue;
     if (typeof obj.path === "string") continue;
     if (isSiteAppBlock(key, obj)) continue;
-    if (!isManifestAppResolveType(meta, resolveType)) continue;
+    if (!isResolvableManifestApp(meta, resolveType)) continue;
 
     apps.push({
       key,

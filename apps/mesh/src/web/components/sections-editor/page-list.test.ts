@@ -171,4 +171,38 @@ describe("page-list", () => {
       hasEditableDecoContent({ Header: { __resolveType: "site/x" } }, null),
     ).toBe(false);
   });
+
+  it("hasEditableDecoContent is true when only a site app exists", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          apps: {
+            "site/apps/site.ts": { $ref: "#/definitions/SiteApp" },
+          },
+        },
+      },
+      schema: {},
+    };
+    const decofile = {
+      site: { __resolveType: "site/apps/site.ts", name: "My Site" },
+    };
+    expect(hasEditableDecoContent(decofile, meta)).toBe(true);
+  });
+
+  it("hasEditableDecoContent is true when only installed apps exist", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          apps: {
+            "deco/apps/blog.ts": { $ref: "#/definitions/BlogApp" },
+          },
+        },
+      },
+      schema: {},
+    };
+    const decofile = {
+      blog: { __resolveType: "site/apps/deco/blog.ts", name: "Blog" },
+    };
+    expect(hasEditableDecoContent(decofile, meta)).toBe(true);
+  });
 });

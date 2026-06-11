@@ -19,12 +19,15 @@ async function fetchDecoStoreApps(): Promise<DecoStoreApp[]> {
 export function useDecoAppsCatalog(
   meta: LiveMeta | undefined,
   decofile: Record<string, unknown> | undefined,
+  options?: { enabled?: boolean },
 ) {
+  const enabled = options?.enabled ?? true;
   const storeQuery = useQuery({
     queryKey: KEYS.decoApps(),
     queryFn: fetchDecoStoreApps,
     staleTime: 5 * 60 * 1000,
     retry: 1,
+    enabled,
   });
 
   const catalog: AppCatalogEntry[] =

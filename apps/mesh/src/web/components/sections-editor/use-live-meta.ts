@@ -38,6 +38,7 @@ export function useLiveMeta(
     },
     enabled: !!params && fetchEnabled,
     refetchInterval: options?.refetchInterval,
+    refetchIntervalInBackground: false,
     staleTime: 300_000,
     // 502 = preview unreachable (sandbox starting or down). The SSE lifecycle
     // re-enables this query when the preview is back, so retrying just hammers

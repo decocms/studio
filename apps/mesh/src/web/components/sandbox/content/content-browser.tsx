@@ -64,6 +64,7 @@ import {
   extractGlobalSections,
   extractPages,
   findSiteAppEntry,
+  hasEditableDecoContent,
   type GlobalSectionEntry,
   type PageEntry,
 } from "@/web/components/sections-editor/page-list";
@@ -268,6 +269,9 @@ function ContentBrowserReady({
     setSearchQuery("");
   }
 
+  const SCHEMA_POLL_INTERVAL_MS = 2000;
+  const SCHEMA_POLL_MAX_ATTEMPTS = 15;
+
   const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
     refetchInterval: (query) => {
       if (
@@ -283,10 +287,19 @@ function ContentBrowserReady({
       const resolveType = block?.__resolveType;
       if (typeof resolveType !== "string") return false;
       const currentMeta = query.state.data;
-      if (!currentMeta) return 2000;
-      return resolveSchema(resolveType, currentMeta) ? false : 2000;
+      if (!currentMeta) return SCHEMA_POLL_INTERVAL_MS;
+      if (resolveSchema(resolveType, currentMeta)) return false;
+      if (query.state.dataUpdateCount >= SCHEMA_POLL_MAX_ATTEMPTS) {
+        return false;
+      }
+      return SCHEMA_POLL_INTERVAL_MS;
     },
   });
+
+  const { catalog: appCatalog, isLoading: appCatalogLoading } =
+    useDecoAppsCatalog(decofile ?? undefined, meta ?? undefined, {
+      enabled: activeCollection === "apps",
+    });
 
   const saveBlock = useSaveBlock(fetchParams);
   const deleteBlock = useDeleteBlock(fetchParams);
@@ -318,20 +331,18 @@ function ContentBrowserReady({
   );
   const globalSections = extractGlobalSections(decofile, meta);
   const siteApp = findSiteAppEntry(decofile, meta);
-  const { catalog: appCatalog, isLoading: appCatalogLoading } =
-    useDecoAppsCatalog(meta, decofile);
   const allBlogEntries = scanBlogEntries(decofile);
   const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
   const blogEntries = isBlogKind(activeCollection)
     ? allBlogEntries[activeCollection]
     : [];
 
-  if (pages.length === 0 && globalSections.length === 0 && !showBlog) {
+  if (!hasEditableDecoContent(decofile, meta) && !showBlog) {
     return (
       <EmptyMessage
         icon={AlertCircle}
         title="No editable content"
-        description="This project doesn't expose any Deco pages or sections."
+        description="This project doesn't expose any Deco pages, sections, or apps."
       />
     );
   }

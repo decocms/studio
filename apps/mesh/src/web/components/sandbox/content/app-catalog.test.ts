@@ -133,5 +133,9 @@ describe("app-catalog", () => {
       vendor: "commerce",
       app: "vtex",
     });
+    expect(parseAppResolveType("site/apps/deco/vtex.ts")).toEqual({
+      vendor: "deco",
+      app: "vtex",
+    });
   });
 });

@@ -1,4 +1,7 @@
-import { parseSavedBlockSchemaTitle } from "./block-type-utils";
+import {
+  isManifestAppResolveType,
+  parseSavedBlockSchemaTitle,
+} from "./block-type-utils";
 
 /**
  * Schema resolution for /live/_meta JSON Schemas.
@@ -106,6 +109,22 @@ export function lookupManifestBlockSchema(
   }
 
   return {};
+}
+
+/** Whether resolveType refers to a manifest `apps` block (legacy + site/apps aliases). */
+export function isResolvableManifestApp(
+  meta: LiveMeta,
+  resolveType: string,
+): boolean {
+  if (isManifestAppResolveType(meta, resolveType)) return true;
+  const parsed =
+    parseSiteAppResolveType(resolveType) ??
+    parseLegacyAppResolveType(resolveType);
+  if (!parsed) return false;
+  const apps = meta.manifest?.blocks?.apps ?? {};
+  return appManifestResolveTypeAliases(parsed.vendor, parsed.app).some(
+    (alias) => alias in apps,
+  );
 }
 
 /**
