@@ -42,6 +42,16 @@ export {
   type SandboxRefInput,
   type ThreadSandboxRefInput,
 } from "./sandbox-ref";
+export {
+  createSandboxFsHooks,
+  type SandboxFsBashOpts,
+  type SandboxFsBashResult,
+  type SandboxFsEdit,
+  type SandboxFsGrepHit,
+  type SandboxFsGrepOpts,
+  type SandboxFsHooks,
+  type SandboxFsHooksLifecycle,
+} from "./sandbox-fs-hooks";
 
 function isSandboxProviderKind(
   kind: string,
