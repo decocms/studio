@@ -18,7 +18,7 @@
  */
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
-import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
+import { resolveSubagent } from "@/harnesses/decopilot/resolve-subagent";
 import { runAgentLoop } from "@/harnesses/decopilot/run-agent-loop";
 import { SUBAGENT_STEP_LIMIT } from "@/api/routes/decopilot/constants";
 import type { ModelsConfig } from "@/api/routes/decopilot/types";
@@ -111,23 +111,11 @@ export const SUBTASK_MCP = defineTool({
         : {}),
     };
 
-    // 3. Validate the target agent.
-    const virtualMcp = await ctx.storage.virtualMcps.findById(
-      input.agent_id,
-      organization.id,
-    );
-    if (!virtualMcp || virtualMcp.organization_id !== organization.id) {
-      throw new Error("Agent not found");
-    }
-    if (virtualMcp.status !== "active") {
-      throw new Error("Agent is not active");
-    }
-
-    // 4. Create MCP client for the target agent.
-    const mcpClient = await createVirtualClientFrom(
-      virtualMcp,
+    // 3. Validate the target agent and open its passthrough client.
+    const { mcpClient, targetRef } = await resolveSubagent(
       ctx,
-      "passthrough",
+      organization.id,
+      input.agent_id,
     );
 
     try {
@@ -140,11 +128,7 @@ export const SUBTASK_MCP = defineTool({
         kind: "subagent",
         ctx,
         organization,
-        virtualMcp: {
-          id: virtualMcp.id,
-          instructions: mcpClient.getInstructions(),
-          repo: virtualMcp.metadata?.githubRepo ?? undefined,
-        },
+        virtualMcp: targetRef,
         mcpClient,
         provider,
         models,
