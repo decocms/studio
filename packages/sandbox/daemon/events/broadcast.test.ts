@@ -28,6 +28,19 @@ describe("Broadcaster", () => {
     b.emit("intent", { state: "running" });
   });
 
+  it("reaps a controller that throws on enqueue so it frees its slot", () => {
+    const b = new Broadcaster(100);
+    b.register({
+      enqueue: () => {
+        throw new Error("closed");
+      },
+    } as unknown as ReadableStreamDefaultController<Uint8Array>);
+    expect(b.size()).toBe(1);
+    b.emit("intent", { state: "running" });
+    // Dead controller dropped — would otherwise leak against MAX_SSE_CLIENTS.
+    expect(b.size()).toBe(0);
+  });
+
   it("records chunks into its replay buffer", () => {
     const b = new Broadcaster(100);
     b.broadcastChunk("setup", "abc");

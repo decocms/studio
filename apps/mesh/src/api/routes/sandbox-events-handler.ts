@@ -14,7 +14,7 @@ import {
   type SandboxProviderKind,
   type SandboxProvider,
 } from "@decocms/sandbox/provider";
-import { delay } from "@decocms/std";
+import { delay, exponentialBackoffWithJitter } from "@decocms/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { StudioContext } from "../../core/studio-context";
 import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
@@ -43,6 +43,14 @@ const HEARTBEAT_MS = 15_000;
  */
 const PROXY_OPEN_RETRY_BUDGET_MS = 60_000;
 const PROXY_OPEN_RETRY_DELAY_MS = 500;
+/**
+ * Cap for the exponential backoff applied to transient upstream statuses (429 /
+ * 5xx). 429 means "too many SSE clients on the daemon" — retrying every 500ms
+ * (let alone instantly ending the stream so the client's EventSource reconnects
+ * at once) is exactly the storm that pins the daemon at MAX_SSE_CLIENTS and
+ * floods logs with `bad status 429`. Back off hard instead.
+ */
+const PROXY_BACKOFF_CAP_MS = 10_000;
 
 export interface VmEventsHandlerArgs {
   ctx: StudioContext;
@@ -269,6 +277,7 @@ async function proxyDaemonEvents(args: {
 
   const openedAt = Date.now();
   let upstream: Response | null = null;
+  let badStatusAttempt = 0;
 
   while (!signal.aborted) {
     let attempt: Response | null = null;
@@ -320,9 +329,25 @@ async function proxyDaemonEvents(args: {
       } catch {
         /* ignore */
       }
-      // Transient upstream error — end the stream and let the client reconnect.
+      if (Date.now() - openedAt < PROXY_OPEN_RETRY_BUDGET_MS) {
+        console.warn(
+          `[vm-events] upstream daemon SSE bad status ${status} for ${claimName} (attempt ${
+            badStatusAttempt + 1
+          }, backing off)`,
+        );
+        const backoff = exponentialBackoffWithJitter(
+          PROXY_BACKOFF_CAP_MS,
+          PROXY_OPEN_RETRY_DELAY_MS,
+          badStatusAttempt++,
+          2,
+          0.5,
+        );
+        await delay(backoff, { signal }).catch(() => {});
+        continue;
+      }
+      // Past budget — end the stream and let the client reconnect fresh.
       console.warn(
-        `[vm-events] upstream daemon SSE bad status ${status} for ${claimName}`,
+        `[vm-events] upstream daemon SSE bad status ${status} for ${claimName} past budget; ending stream`,
       );
       return;
     }
