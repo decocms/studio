@@ -20,6 +20,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { resolveSubagent } from "@/harnesses/decopilot/resolve-subagent";
 import { runAgentLoop } from "@/harnesses/decopilot/run-agent-loop";
+import { acquireSubagentSlot } from "@/harnesses/decopilot/built-in-tools/subagent-concurrency";
 import { SUBAGENT_STEP_LIMIT } from "@/api/routes/decopilot/constants";
 import type { ModelsConfig } from "@/api/routes/decopilot/types";
 import type { UIMessageStreamWriter } from "ai";
@@ -118,6 +119,7 @@ export const SUBTASK_MCP = defineTool({
       input.agent_id,
     );
 
+    const releaseSlot = await acquireSubagentSlot();
     try {
       const abortController = new AbortController();
 
@@ -167,6 +169,7 @@ export const SUBTASK_MCP = defineTool({
         finishReason: String(finishReason),
       };
     } finally {
+      releaseSlot();
       mcpClient.close().catch(() => {});
     }
   },

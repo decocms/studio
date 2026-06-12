@@ -18,6 +18,7 @@ import type { MeshProvider } from "@/ai-providers/types";
 import type { ModelsConfig } from "../../../api/routes/decopilot/types";
 import { runAgentLoop } from "../run-agent-loop";
 import { SUBAGENT_STEP_LIMIT } from "../../../api/routes/decopilot/constants";
+import { acquireSubagentSlot } from "./subagent-concurrency";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -174,6 +175,7 @@ export function createSubtaskTool(
       const { mcpClient, targetRef } = resolved;
       const targetLabel = targetRef.id;
 
+      const releaseSlot = await acquireSubagentSlot();
       try {
         // 3. Call runAgentLoop with subagent kind.
         const handle = await runAgentLoop({
@@ -248,6 +250,7 @@ export function createSubtaskTool(
         //    correct.
         yield { text: aggregatedText, error, finishReason };
       } finally {
+        releaseSlot();
         mcpClient.close().catch(() => {});
       }
     },
