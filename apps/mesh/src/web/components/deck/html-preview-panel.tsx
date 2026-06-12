@@ -58,7 +58,9 @@ export function HtmlPreviewPanel({
       <DeckToolbar
         readUrl={readUrl}
         editor={editor}
-        downloadName={title}
+        // Basename only — `title` can be a volume path ("decks/x.html")
+        // and browsers mangle slashes in the download attribute.
+        downloadName={title.split("/").pop() ?? title}
         trailing={trailing}
       />
       <div className="relative flex-1">

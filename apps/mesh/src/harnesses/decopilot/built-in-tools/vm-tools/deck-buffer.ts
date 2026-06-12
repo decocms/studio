@@ -4,8 +4,10 @@
  * write-back takes seconds to reach org-fs; mirroring the tool's full
  * content server-side at step end makes the deck preview (and the
  * change-feed deck watcher, which emits the `data-deck-updated` part)
- * see the bytes immediately. The mount's own later write-back uploads
- * identical content, so the two paths converge.
+ * see the bytes immediately. The mount's own later write-back re-uploads
+ * identical bytes — that echo still bumps the change feed (OrgFs.write
+ * doesn't compare contentHash), so the deck watcher dedupes emissions by
+ * content hash and the UI keys its cache marker on the hash too.
  *
  * Coalesces per path like the html-page buffer: a burst of writes/edits
  * to the same deck collapses to one org-fs write per step.

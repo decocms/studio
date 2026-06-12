@@ -16,7 +16,11 @@
 
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { HtmlPreviewPanel } from "@/web/components/deck/html-preview-panel";
-import { useOrgFsDownloadUrl, useOrgFsStat } from "@/web/hooks/use-org-fs";
+import {
+  entryMarker,
+  useOrgFsDownloadUrl,
+  useOrgFsStat,
+} from "@/web/hooks/use-org-fs";
 
 const HOME_VOLUME = "home";
 
@@ -50,7 +54,7 @@ export function DeckTab({ path }: { path: string }) {
   return (
     <HtmlPreviewPanel
       readUrl={readUrl}
-      marker={`${stat.data.size}-${stat.data.updatedAt}`}
+      marker={entryMarker(stat.data)}
       title={path}
       savePath={path}
     />

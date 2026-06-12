@@ -20,6 +20,7 @@ export interface OrgFsEntry {
   kind: "file" | "dir";
   size: number;
   updatedAt: string;
+  contentHash?: string | null;
   /** Dir follows the Claude Code skill format (contains SKILL.md). */
   hasSkill?: boolean;
 }
@@ -32,6 +33,21 @@ export interface OrgFsUsage {
 /** A `/fs/recent` entry — cross-volume, so the volume rides along. */
 export interface OrgFsRecentEntry extends OrgFsEntry {
   volume: string;
+}
+
+/**
+ * Content marker for cache-busting previews. Prefer the content hash:
+ * the sandbox mount's vfs write-back re-PUTs identical bytes seconds
+ * after the deck fast-path mirror, bumping size-agnostic `updatedAt` —
+ * a hash-keyed marker doesn't roll on that echo (no spurious iframe
+ * reloads / stale-edit badges).
+ */
+export function entryMarker(entry: {
+  size: number;
+  updatedAt: string;
+  contentHash?: string | null;
+}): string {
+  return entry.contentHash ?? `${entry.size}-${entry.updatedAt}`;
 }
 
 function fsUrl(

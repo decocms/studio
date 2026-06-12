@@ -60,6 +60,11 @@ export function createDeckWatcher(
   let cursor: string | null = null;
   let cursorInitialized = false;
   let sweeping = false;
+  // Last emitted content hash per deck — the mount's vfs write-back
+  // re-writes the same bytes the fast-path mirror already stored, which
+  // bumps the change feed but changes nothing; skip those echoes so the
+  // UI doesn't reload/re-open the preview for identical content.
+  const emittedHash = new Map<string, string>();
 
   const sweep = async (): Promise<void> => {
     if (sweeping) return; // sweeps are serialized; skip overlap
@@ -77,6 +82,10 @@ export function createDeckWatcher(
           if (entry.kind !== "file" || entry.deletedAt) continue;
           const deck = matchDeckEntryPath(entry.path);
           if (!deck) continue;
+          if (entry.contentHash) {
+            if (emittedHash.get(deck.path) === entry.contentHash) continue;
+            emittedHash.set(deck.path, entry.contentHash);
+          }
           updated.set(deck.path, {
             volume: HOME_VOLUME,
             path: deck.path,

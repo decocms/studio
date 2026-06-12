@@ -26,7 +26,11 @@ import {
 } from "@/web/components/file-preview";
 import { HtmlPreviewPanel } from "@/web/components/deck/html-preview-panel";
 import { FileTypeIcon } from "@/web/components/file-type-icon";
-import { useOrgFsDownloadUrl, useOrgFsStat } from "@/web/hooks/use-org-fs";
+import {
+  entryMarker,
+  useOrgFsDownloadUrl,
+  useOrgFsStat,
+} from "@/web/hooks/use-org-fs";
 import { basename, parseLibraryPath } from "./location";
 
 const isHtml = (name: string) => /\.html?$/i.test(name);
@@ -78,7 +82,7 @@ export function LibraryPreviewPanel({
       <HtmlPreviewPanel
         key={previewPath}
         readUrl={file.downloadUrl}
-        marker={`${entry.size}-${entry.updatedAt}`}
+        marker={entryMarker(entry)}
         title={filename}
         savePath={volume === "home" ? filePath : undefined}
         trailing={<PreviewClose onClose={onClose} />}

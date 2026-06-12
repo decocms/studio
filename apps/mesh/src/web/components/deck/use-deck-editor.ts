@@ -25,7 +25,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { KEYS } from "@/web/lib/query-keys";
-import { useOrgFsWriteText } from "@/web/hooks/use-org-fs";
+import { entryMarker, useOrgFsWriteText } from "@/web/hooks/use-org-fs";
 import {
   DECK_PROTOCOL_V,
   type DeckHostMessage,
@@ -168,14 +168,15 @@ export function useDeckEditor(args: {
         path: args.savePath!,
         body,
       });
-      machine.selfMarkers.add(`${entry.size}-${entry.updatedAt}`);
+      machine.selfMarkers.add(entryMarker(entry));
       invalidateStat();
     } catch (err) {
       console.error("[deck-editor] save failed", err);
       toast.error("Couldn't save deck edits — reloading the preview.");
-      machine.source = null;
-      setAgentUpdated(false);
-      invalidateStat();
+      // Same recovery as the op-failure path: the nonce in reload() forces
+      // the iframe roll even though the failed PUT left the server marker
+      // unchanged — otherwise the phantom edits would stay on screen.
+      latestRef.current.reload();
     } finally {
       setSaving(false);
       setSavePending(false);
