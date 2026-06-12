@@ -124,9 +124,26 @@ export interface ProxyDispatchDiagnosticEvent {
   error?: string;
 }
 
+// Routine per-request lifecycle events flooded the dev terminal in steady
+// state. The default console sink drops them and logs only failures/anomalies;
+// the full event stream is still delivered to an injected `diagnosticLog`
+// (e.g. tests, custom sinks), so observability is unaffected.
+const NOISY_DISPATCH_EVENTS: ReadonlySet<string> = new Set([
+  "first_reply_ack",
+  "reply_ack",
+  "first_reply_frame",
+  "first_reply_frame_decoded",
+  "request_published",
+  "request_republished",
+  "headers_frame_yielded",
+  "terminal_end",
+  "caller_aborted",
+]);
+
 function defaultProxyDispatchDiagnosticLog(
   event: ProxyDispatchDiagnosticEvent,
 ): void {
+  if (NOISY_DISPATCH_EVENTS.has(event.event)) return;
   console.log(`[link-proxy.dispatch] ${event.event}`, event);
 }
 
