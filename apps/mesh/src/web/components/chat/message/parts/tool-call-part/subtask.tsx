@@ -101,9 +101,14 @@ function useSubtaskShellConfig({
         ? prompt.slice(0, 120) + "…"
         : prompt;
 
-  const response = isError
+  const extracted = isError
     ? getToolPartErrorText(part)
-    : (extractSubtaskResponse(part.output) ?? "No output available");
+    : extractSubtaskResponse(part.output);
+  // While the subtask is still streaming but no chunk has arrived yet, show
+  // nothing rather than "No output available" — that text is for a genuinely
+  // empty completed result, not for the in-flight gap before the first chunk.
+  const isStreaming = isInputStreaming || isOutputStreaming;
+  const response = extracted ?? (isStreaming ? "" : "No output available");
   const detail = `# Task\n${part.input?.prompt ?? "No prompt provided"}\n\n# ${isError ? "Error" : "Result"}\n${response}`;
 
   return {

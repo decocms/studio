@@ -89,6 +89,24 @@ export interface SubtaskParams {
   }) => void;
 }
 
+/** Max chars of a tool call's args shown in the live subtask stream. */
+const TOOL_CALL_ARG_CAP = 80;
+
+/** Render a subagent tool call as a short, capped one-liner for the stream. */
+function formatToolCall(toolName: string, input: unknown): string {
+  let args = "";
+  try {
+    args = typeof input === "string" ? input : JSON.stringify(input ?? {});
+  } catch {
+    args = "";
+  }
+  if (args === "{}") args = "";
+  if (args.length > TOOL_CALL_ARG_CAP) {
+    args = args.slice(0, TOOL_CALL_ARG_CAP) + "…";
+  }
+  return args ? `${toolName} ${args}` : toolName;
+}
+
 const SUBTASK_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: false,
@@ -225,6 +243,16 @@ export function createSubtaskTool(
               lastFlush = now;
               yield { text: streamedText };
             }
+          } else if (part.type === "tool-call") {
+            // Surface the subagent's tool executions in the live stream so the
+            // UI shows progress even while the subagent is working silently
+            // (calling tools, not emitting text). Args are capped to a few
+            // tokens — enough to identify the call, not a full dump.
+            const sep =
+              streamedText && !streamedText.endsWith("\n") ? "\n" : "";
+            streamedText += `${sep}↳ ${formatToolCall(part.toolName, part.input)}\n`;
+            lastFlush = performance.now();
+            yield { text: streamedText };
           }
         }
 
