@@ -1,6 +1,6 @@
 {
   "name": "@decocms/harness",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.ts",
