@@ -151,8 +151,12 @@ export function FileExplorer({
   openPath,
 }: FileExplorerProps) {
   // File tree state
-  const [files, setFiles] = useState<string[]>([]);
-  const [directories, setDirectories] = useState<string[]>([]);
+  const [treeLists, setTreeLists] = useState<{
+    files: string[];
+    directories: string[];
+    truncated: boolean;
+  }>({ files: [], directories: [], truncated: false });
+  const { files, directories } = treeLists;
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNode | null>(
@@ -162,20 +166,23 @@ export function FileExplorer({
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [treeLoaded, setTreeLoaded] = useState(false);
-  const [loadedLazyDirs, setLoadedLazyDirs] = useState<Set<string>>(new Set());
+  const [, setLoadedLazyDirs] = useState<Set<string>>(new Set());
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
 
   const treeGenerationRef = useRef(0);
   const initialTreeLoadRef = useRef<Promise<void> | null>(null);
-  const filesRef = useRef<string[]>([]);
-  const directoriesRef = useRef<string[]>([]);
   const loadedLazyDirsRef = useRef<Set<string>>(new Set());
   const lazyLoadInflightRef = useRef<Map<string, Promise<boolean>>>(new Map());
-  const treeTruncatedRef = useRef(false);
 
-  filesRef.current = files;
-  directoriesRef.current = directories;
-  loadedLazyDirsRef.current = loadedLazyDirs;
+  function updateLoadedLazyDirs(
+    updater: Set<string> | ((prev: Set<string>) => Set<string>),
+  ) {
+    setLoadedLazyDirs((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      loadedLazyDirsRef.current = next;
+      return next;
+    });
+  }
 
   // File buffers: path -> { savedContent, editorValue, loaded }
   const [buffers, setBuffers] = useState<Map<string, FileBuffer>>(new Map());
@@ -354,9 +361,12 @@ export function FileExplorer({
     }
     const daemonFolderPath = toDaemonPath(folderPath);
     await postSandbox("mkdir", { path: daemonFolderPath });
-    setDirectories((prev) =>
-      prev.includes(daemonFolderPath) ? prev : [...prev, daemonFolderPath],
-    );
+    setTreeLists((prev) => ({
+      ...prev,
+      directories: prev.directories.includes(daemonFolderPath)
+        ? prev.directories
+        : [...prev.directories, daemonFolderPath],
+    }));
     await fetchFileTree();
     await refreshGitStatus();
     setNameDialog(null);
@@ -453,6 +463,7 @@ export function FileExplorer({
   if (!loadTreeCalledRef.current) {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot fetch trigger
     loadTreeCalledRef.current = true;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot fetch trigger
     initialTreeLoadRef.current = fetchFileTree();
   }
 
@@ -492,33 +503,26 @@ export function FileExplorer({
   ): boolean {
     if (generation !== treeGenerationRef.current) return false;
 
-    if (merge) {
-      const merged = mergeGlobLists(
-        filesRef.current,
-        directoriesRef.current,
-        result,
-        treeTruncatedRef.current,
-      );
-      filesRef.current = merged.files;
-      directoriesRef.current = merged.directories;
-      treeTruncatedRef.current = Boolean(merged.truncated);
-      setFiles(merged.files);
-      setDirectories(merged.directories);
-      if (merged.truncated) {
-        toast.warning("File list truncated — some files may be hidden");
-      }
-      return Boolean(merged.truncated);
-    }
-
-    filesRef.current = result.files;
-    directoriesRef.current = result.directories ?? [];
-    treeTruncatedRef.current = Boolean(result.truncated);
-    setFiles(result.files);
-    setDirectories(result.directories ?? []);
-    if (result.truncated) {
+    let truncated = false;
+    setTreeLists((prev) => {
+      const merged = merge
+        ? mergeGlobLists(prev.files, prev.directories, result, prev.truncated)
+        : {
+            files: result.files,
+            directories: result.directories ?? [],
+            truncated: Boolean(result.truncated),
+          };
+      truncated = Boolean(merged.truncated);
+      return {
+        files: merged.files,
+        directories: merged.directories,
+        truncated,
+      };
+    });
+    if (truncated) {
       toast.warning("File list truncated — some files may be hidden");
     }
-    return Boolean(result.truncated);
+    return truncated;
   }
 
   async function fetchDirChildren(dirPath: string): Promise<boolean> {
@@ -534,7 +538,7 @@ export function FileExplorer({
       });
       const truncated = applyGlobResult(result, true, generation);
       if (!truncated && generation === treeGenerationRef.current) {
-        setLoadedLazyDirs((prev) => {
+        updateLoadedLazyDirs((prev) => {
           const next = new Set(prev);
           next.add(dirPath);
           return next;
@@ -582,9 +586,8 @@ export function FileExplorer({
   async function fetchFileTree() {
     const generation = ++treeGenerationRef.current;
     lazyLoadInflightRef.current.clear();
-    treeTruncatedRef.current = false;
     setLoading(true);
-    setLoadedLazyDirs(new Set());
+    updateLoadedLazyDirs(new Set());
     setExpandedDirs(new Set());
     setLoadingDirs(new Set());
     try {
