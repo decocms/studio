@@ -28,10 +28,7 @@ describe("buildPortableBuiltInTools", () => {
 
     expect(Object.keys(tools).sort()).toEqual([
       "propose_plan",
-      "read_prompt",
-      "read_resource",
       "read_tool_output",
-      "sandbox",
       "todo_write",
       "user_ask",
     ]);
