@@ -18,7 +18,7 @@ import { Context, Hono } from "hono";
 import { endTime, startTime } from "hono/timing";
 import type { StudioContext } from "../../core/studio-context";
 import { managementMCP } from "../../tools";
-import { guardResponseStream } from "../utils/stream-guard";
+import { serveMcpRequest } from "../utils/serve-mcp";
 import { handleAuthError } from "./oauth-proxy";
 import { getMcpListCache } from "@/mcp-clients/mcp-list-cache";
 import {
@@ -97,8 +97,12 @@ export const createProxyRoutes = () => {
           false,
       });
       await server.connect(transport);
-      const selfResponse = await transport.handleRequest(c.req.raw);
-      return guardResponseStream(selfResponse, `mcp:self:${connectionId}`);
+      return serveMcpRequest(
+        server,
+        transport,
+        c.req.raw,
+        `mcp:self:${connectionId}`,
+      );
     }
 
     try {
@@ -224,9 +228,14 @@ export const createProxyRoutes = () => {
 
         // Handle request and cleanup
         startTime(c, "mcp.handle_request");
-        const response = await transport.handleRequest(c.req.raw);
+        const response = await serveMcpRequest(
+          server,
+          transport,
+          c.req.raw,
+          `mcp:${connectionId}`,
+        );
         endTime(c, "mcp.handle_request");
-        return guardResponseStream(response, `mcp:${connectionId}`);
+        return response;
       } catch (error) {
         if (error instanceof CircuitOpenError) {
           throw error;

@@ -22,7 +22,7 @@ import type { StudioContext } from "../../core/studio-context";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
 import type { Env } from "../hono-env";
-import { guardResponseStream } from "../utils/stream-guard";
+import { serveMcpRequest } from "../utils/serve-mcp";
 
 // ============================================================================
 // Route Handler (shared between /gateway and /virtual-mcp endpoints for backward compat)
@@ -193,9 +193,10 @@ export async function handleVirtualMcpRequest(
     // Connect server to transport
     await server.connect(transport);
 
-    const response = await transport.handleRequest(c.req.raw);
-    return guardResponseStream(
-      response,
+    return await serveMcpRequest(
+      server,
+      transport,
+      c.req.raw,
       `virtual-mcp:${virtualMcp.id ?? "decopilot"}`,
     );
   } catch (error) {

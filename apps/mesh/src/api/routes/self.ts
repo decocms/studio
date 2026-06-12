@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { StudioContext } from "../../core/studio-context";
 import { managementMCP } from "../../tools";
+import { serveMcpRequest } from "../utils/serve-mcp";
 
 // Define Hono variables type
 type Variables = {
@@ -32,7 +33,7 @@ export const createSelfRoutes = () => {
         c.req.raw.headers.get("Accept")?.includes("application/json") ?? false,
     });
     await server.connect(transport);
-    return transport.handleRequest(c.req.raw);
+    return serveMcpRequest(server, transport, c.req.raw, "mcp:self");
   });
 
   return app;

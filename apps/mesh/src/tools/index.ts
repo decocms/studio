@@ -467,5 +467,6 @@ export async function listManagementTools(
     return result.tools;
   } finally {
     await client.close().catch(() => {});
+    await server.close().catch(() => {});
   }
 }
