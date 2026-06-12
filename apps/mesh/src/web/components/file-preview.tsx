@@ -23,7 +23,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Download01 } from "@untitledui/icons";
 import { KEYS } from "@/web/lib/query-keys";
-import { CodeViewer } from "@/web/components/code-viewer";
+import { ReadOnlyCodeViewer } from "@/web/components/read-only-code-viewer";
 import { FileTypeIcon } from "@/web/components/file-type-icon";
 import { MemoizedMarkdown } from "@/web/components/chat/markdown.tsx";
 
@@ -170,7 +170,7 @@ function TextPreview({
       </div>
     );
   }
-  return <CodeViewer value={data} filename={file.filename} />;
+  return <ReadOnlyCodeViewer value={data} filename={file.filename} />;
 }
 
 export function FilePreview({ file }: { file: PreviewableFile }) {

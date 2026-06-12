@@ -1,9 +1,11 @@
 /**
- * CodeViewer — read-only Monaco viewer for source files, sharing the same
- * editor (and CDN-loaded engine) the sandbox file explorer uses so code
+ * ReadOnlyCodeViewer — read-only Monaco viewer for source files, sharing the
+ * same editor (and CDN-loaded engine) the sandbox file explorer uses so code
  * renders with real syntax highlighting and line numbers instead of a bare
- * <pre>. Not editable: `readOnly` + `domReadOnly` disable input and the
- * cursor, leaving selection/scroll/copy intact.
+ * <pre>. Distinct from the editable MonacoCodeEditor (workflow): this is a
+ * pure viewer — `readOnly` + `domReadOnly` disable input and the cursor,
+ * leaving selection/scroll/copy intact, and it carries none of the editor's
+ * Prettier/TS-diagnostics/save machinery.
  */
 
 import Editor, { loader } from "@monaco-editor/react";
@@ -19,7 +21,7 @@ loader.config({
   },
 });
 
-export function CodeViewer({
+export function ReadOnlyCodeViewer({
   value,
   filename,
 }: {
