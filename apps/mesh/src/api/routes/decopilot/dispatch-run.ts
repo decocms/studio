@@ -163,7 +163,7 @@ function classifyStreamError(
     error instanceof Error ? error.message : stringifyError(error)
   ).toLowerCase();
   if (
-    /insufficient|no credits|out of credits|balance|payment|quota exceeded|402/i.test(
+    /insufficient|no credits|out of credits|balance|payment|quota exceeded|key limit|402/i.test(
       msg,
     )
   ) {

@@ -781,93 +781,100 @@ export async function* runDecopilotStream(
   // we must register this watcher before we start draining the stream
   // below. We do NOT await it here — we just attach the handler so it
   // fires whenever the abort resolves.
-  handle.error.then(async (_errMsg) => {
-    // Only fire the abort metrics path if the signal was aborted AND
-    // we haven't already logged metrics via the onFinish path.
-    if (!registrySignal.aborted || llmCallLogged) return;
-    const steps = await result.steps;
-    if (!steps.length || llmCallLogged) return;
-    llmCallLogged = true;
-    const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
-    const abortTotalUsage = steps.reduce(
-      (acc, s) => ({
-        inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
-        outputTokens: acc.outputTokens + (s.usage.outputTokens ?? 0),
-        totalTokens: acc.totalTokens + (s.usage.totalTokens ?? 0),
-      }),
-      { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-    );
-    const lastStepUsage = steps[steps.length - 1]!.usage;
-    const cacheTotalsOnAbort = usageAcc.cacheTotals();
-    recordLlmCallMetrics({
-      ctx,
-      organizationId: input.organizationId,
-      modelId: input.models.thinking.id,
-      durationMs,
-      isError: false,
-      inputTokens: abortTotalUsage.inputTokens,
-      outputTokens: abortTotalUsage.outputTokens,
-      cacheReadTokens: cacheTotalsOnAbort.read,
-      cacheWriteTokens: cacheTotalsOnAbort.write,
-    });
-    monitorLlmCall({
-      ctx,
-      organizationId: input.organizationId,
-      agentId: input.agent.id,
-      modelId: input.models.thinking.id,
-      modelTitle: input.models.thinking.title ?? input.models.thinking.id,
-      credentialId: input.models.credentialId,
-      taskId: threadId,
-      durationMs,
-      isError: false,
-      finishReason: "abort",
-      usage: {
-        inputTokens: lastStepUsage.inputTokens ?? 0,
-        outputTokens: lastStepUsage.outputTokens ?? 0,
-        totalTokens: lastStepUsage.totalTokens ?? 0,
-      },
-      totalUsage: abortTotalUsage,
-      cost: usageAcc.cost(),
-      request: undefined,
-      response: undefined,
-      userId: input.user.id,
-      requestId: ctx.metadata.requestId,
-      userAgent: ctx.metadata.userAgent ?? null,
-    });
-
-    // Re-push accumulated usage to the client. On abort the SDK
-    // resets message.metadata to its pre-stream state, so we
-    // explicitly emit it here before the stream closes.
-    if (abortTotalUsage.totalTokens > 0) {
-      const cost = usageAcc.cost();
-      chunkQueue.push({
-        type: "message-metadata",
-        messageMetadata: {
-          usage: {
-            inputTokens: abortTotalUsage.inputTokens,
-            outputTokens: abortTotalUsage.outputTokens,
-            totalTokens: abortTotalUsage.totalTokens,
-            cachedInputTokens: cacheTotalsOnAbort.read,
-            inputTokenDetails: {
-              cacheReadTokens: cacheTotalsOnAbort.read,
-              cacheWriteTokens: cacheTotalsOnAbort.write,
-              noCacheTokens:
-                abortTotalUsage.inputTokens -
-                cacheTotalsOnAbort.read -
-                cacheTotalsOnAbort.write,
-            },
-            ...(cost > 0 && {
-              providerMetadata: {
-                openrouter: {
-                  usage: { cost },
-                },
-              },
-            }),
-          },
-        },
+  handle.error
+    .then(async (_errMsg) => {
+      // Only fire the abort metrics path if the signal was aborted AND
+      // we haven't already logged metrics via the onFinish path.
+      if (!registrySignal.aborted || llmCallLogged) return;
+      const steps = await result.steps;
+      if (!steps.length || llmCallLogged) return;
+      llmCallLogged = true;
+      const durationMs = Date.now() - (llmCallStartTime ?? Date.now());
+      const abortTotalUsage = steps.reduce(
+        (acc, s) => ({
+          inputTokens: acc.inputTokens + (s.usage.inputTokens ?? 0),
+          outputTokens: acc.outputTokens + (s.usage.outputTokens ?? 0),
+          totalTokens: acc.totalTokens + (s.usage.totalTokens ?? 0),
+        }),
+        { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      );
+      const lastStepUsage = steps[steps.length - 1]!.usage;
+      const cacheTotalsOnAbort = usageAcc.cacheTotals();
+      recordLlmCallMetrics({
+        ctx,
+        organizationId: input.organizationId,
+        modelId: input.models.thinking.id,
+        durationMs,
+        isError: false,
+        inputTokens: abortTotalUsage.inputTokens,
+        outputTokens: abortTotalUsage.outputTokens,
+        cacheReadTokens: cacheTotalsOnAbort.read,
+        cacheWriteTokens: cacheTotalsOnAbort.write,
       });
-    }
-  });
+      monitorLlmCall({
+        ctx,
+        organizationId: input.organizationId,
+        agentId: input.agent.id,
+        modelId: input.models.thinking.id,
+        modelTitle: input.models.thinking.title ?? input.models.thinking.id,
+        credentialId: input.models.credentialId,
+        taskId: threadId,
+        durationMs,
+        isError: false,
+        finishReason: "abort",
+        usage: {
+          inputTokens: lastStepUsage.inputTokens ?? 0,
+          outputTokens: lastStepUsage.outputTokens ?? 0,
+          totalTokens: lastStepUsage.totalTokens ?? 0,
+        },
+        totalUsage: abortTotalUsage,
+        cost: usageAcc.cost(),
+        request: undefined,
+        response: undefined,
+        userId: input.user.id,
+        requestId: ctx.metadata.requestId,
+        userAgent: ctx.metadata.userAgent ?? null,
+      });
+
+      // Re-push accumulated usage to the client. On abort the SDK
+      // resets message.metadata to its pre-stream state, so we
+      // explicitly emit it here before the stream closes.
+      if (abortTotalUsage.totalTokens > 0) {
+        const cost = usageAcc.cost();
+        chunkQueue.push({
+          type: "message-metadata",
+          messageMetadata: {
+            usage: {
+              inputTokens: abortTotalUsage.inputTokens,
+              outputTokens: abortTotalUsage.outputTokens,
+              totalTokens: abortTotalUsage.totalTokens,
+              cachedInputTokens: cacheTotalsOnAbort.read,
+              inputTokenDetails: {
+                cacheReadTokens: cacheTotalsOnAbort.read,
+                cacheWriteTokens: cacheTotalsOnAbort.write,
+                noCacheTokens:
+                  abortTotalUsage.inputTokens -
+                  cacheTotalsOnAbort.read -
+                  cacheTotalsOnAbort.write,
+              },
+              ...(cost > 0 && {
+                providerMetadata: {
+                  openrouter: {
+                    usage: { cost },
+                  },
+                },
+              }),
+            },
+          },
+        });
+      }
+    })
+    .catch((err) => {
+      console.error(
+        "[decopilot:stream] abort-metrics handler failed",
+        stringifyError(err),
+      );
+    });
 
   // Posthog: emit `chat_message_completed`/`chat_message_aborted`/
   // `chat_message_failed` is the caller's responsibility (it lives in

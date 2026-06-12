@@ -48,13 +48,14 @@ export function sanitizeStreamError(error: unknown): string {
       msg.includes("insufficient balance") ||
       msg.includes("billing") ||
       msg.includes("quota exceeded") ||
+      msg.includes("key limit") ||
       msg.includes("payment required")
     ) {
       // Prefix with [CREDITS] so the frontend can detect credit errors
       // without fragile string matching on provider-specific messages.
       return `[CREDITS] ${stripProviderSpecificDetails(error.message)}`;
     }
-    return error.message;
+    return stripProviderSpecificDetails(error.message);
   }
   return stringifyError(error);
 }
