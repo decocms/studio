@@ -254,6 +254,15 @@ const libraryRoute = createRoute({
   component: lazyRouteComponent(() => import("./layouts/library/index.tsx")),
 });
 
+// Tasks board (/$org/tasks) — the org's tasks as a kanban or list.
+const tasksRoute = createRoute({
+  getParentRoute: () => orgShellLayout,
+  path: "/tasks",
+  component: lazyRouteComponent(
+    () => import("./layouts/tasks-board/index.tsx"),
+  ),
+});
+
 // ============================================
 // SETTINGS LAYOUT (/$org/settings)
 // ============================================
@@ -615,6 +624,7 @@ const agentShellWithChildren = agentShellLayout.addChildren([
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,
   libraryRoute,
+  tasksRoute,
   agentShellWithChildren,
 ]);
 

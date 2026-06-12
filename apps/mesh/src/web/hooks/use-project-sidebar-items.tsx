@@ -4,7 +4,7 @@ import type {
   SidebarSection,
 } from "@/web/components/sidebar/types";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Folder, Home01 } from "@untitledui/icons";
+import { Columns03, Folder, Home01 } from "@untitledui/icons";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -32,6 +32,16 @@ export function useProjectSidebarItems(): SidebarSection[] {
     },
   };
 
+  const tasksItem: NavigationSidebarItem = {
+    key: "tasks",
+    label: "Tasks",
+    icon: <Columns03 className="size-4!" />,
+    isActive: pathname.startsWith(`/${slug}/tasks`),
+    onClick: () => {
+      navigate({ to: "/$org/tasks", params: { org: slug } });
+    },
+  };
+
   const filesItem: NavigationSidebarItem = {
     key: "files",
     label: "Library",
@@ -43,7 +53,7 @@ export function useProjectSidebarItems(): SidebarSection[] {
   };
 
   const sections: SidebarSection[] = [
-    { type: "items", items: [homeItem, filesItem] },
+    { type: "items", items: [homeItem, tasksItem, filesItem] },
   ];
 
   if (isCollapsed) {
