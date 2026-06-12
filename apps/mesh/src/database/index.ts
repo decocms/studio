@@ -74,18 +74,32 @@ function instrumentPool(pool: Pool): Pool {
   pool.connect = (cb?: unknown) => {
     if (typeof cb === "function") return originalConnect(cb as never);
     const start = performance.now();
+    const max = getPoolMax();
+    const contended = pool.idleCount === 0 && pool.totalCount >= max;
+    const idleAtStart = pool.idleCount;
     return originalConnect().then(
       (client) => {
         const waited = performance.now() - start;
-        poolAcquireHistogram.record(waited, { "db.pool.outcome": "acquired" });
+        poolAcquireHistogram.record(waited, {
+          "db.pool.outcome": contended ? "contended" : "available",
+        });
         if (waited > SLOW_ACQUIRE_THRESHOLD_MS) {
-          console.error("Slow pool acquire detected:", {
-            waitMs: waited,
-            total: pool.totalCount,
-            idle: pool.idleCount,
-            waiting: pool.waitingCount,
-            max: getPoolMax(),
-          });
+          if (contended) {
+            console.error("Slow pool acquire — pool saturated:", {
+              waitMs: waited,
+              total: pool.totalCount,
+              idle: pool.idleCount,
+              waiting: pool.waitingCount,
+              max,
+            });
+          } else {
+            console.warn("Slow pool acquire — event-loop lag (not pool):", {
+              waitMs: waited,
+              idleAtStart,
+              total: pool.totalCount,
+              max,
+            });
+          }
         }
         return client;
       },
