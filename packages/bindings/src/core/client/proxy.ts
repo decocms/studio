@@ -20,6 +20,25 @@ type Tool = {
 
 const toolsMap = new Map<string, Promise<Array<Tool>>>();
 
+// Memoize JSON-schema → Zod conversion by schema content. Zod v4 schemas carry
+// their methods per-instance, so a freshly-converted schema is ~18 Function/
+// AsyncFunction nodes; `mapTool` runs on EVERY `asCallableTools()`/`asTool()`
+// call, so without this an MCP server's whole tool set was re-minted into a new
+// Zod graph per call and retained by whatever held the result — a dominant
+// heap-leak vector server-side (runtime/workflows/sandbox hit this path). The
+// conversion is pure and Zod schemas are immutable after build, so sharing one
+// instance per distinct schema is safe. Distinct schema contents are bounded by
+// the tool catalogue, so no eviction is needed (mirrors sharedJsonSchemaValidator).
+const zodSchemaCache = new Map<string, unknown>();
+const cachedConvertJsonSchemaToZod = (schema: any) => {
+  const key = JSON.stringify(schema);
+  const hit = zodSchemaCache.get(key);
+  if (hit !== undefined) return hit;
+  const zod = convertJsonSchemaToZod(schema);
+  zodSchemaCache.set(key, zod);
+  return zod;
+};
+
 const mapTool = (
   tool: Tool,
   callToolFn: (input: any, toolName?: string) => Promise<any>,
@@ -28,10 +47,10 @@ const mapTool = (
     ...tool,
     id: tool.name,
     inputSchema: tool.inputSchema
-      ? convertJsonSchemaToZod(tool.inputSchema)
+      ? cachedConvertJsonSchemaToZod(tool.inputSchema)
       : undefined,
     outputSchema: tool.outputSchema
-      ? convertJsonSchemaToZod(tool.outputSchema)
+      ? cachedConvertJsonSchemaToZod(tool.outputSchema)
       : undefined,
     execute: (input: any) => {
       return callToolFn(input.context, tool.name);

@@ -198,6 +198,11 @@ export async function handleVirtualMcpRequest(
       transport,
       c.req.raw,
       `virtual-mcp:${virtualMcp.id ?? "decopilot"}`,
+      // `client` is built fresh per request and is NOT pooled; the bridge
+      // server delegates to it but never closes it. Close it here or the
+      // PassthroughClient + every downstream lazy/real client + their
+      // transports leak (GatewayClient.close() cascades to all children).
+      { onClose: () => client.close() },
     );
   } catch (error) {
     const err = error as Error;
