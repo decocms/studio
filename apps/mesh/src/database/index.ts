@@ -11,6 +11,7 @@ import { Pool } from "pg";
 import type { Database as DatabaseSchema } from "../storage/types";
 import { getSettings } from "../settings";
 import { meter } from "../observability";
+import { getEventLoopLagMs } from "../observability/profiling/event-loop";
 
 // ============================================================================
 // StudioDatabase Types
@@ -42,20 +43,29 @@ const SLOW_QUERY_TRESHOLD_MS = 400;
 const SLOW_ACQUIRE_THRESHOLD_MS = 100;
 
 const createLog = (pool: Pool) => (event: LogEvent) => {
-  const attributes = {
-    "db.statement": event.query.sql,
-    "db.status": event.level === "error" ? "error" : "success",
-  };
-
   if (event.queryDurationMillis > SLOW_QUERY_TRESHOLD_MS) {
-    console.error("Slow query detected:", {
-      durationMs: event.queryDurationMillis,
-      sql: event.query.sql,
-      pool: {
-        total: pool.totalCount,
-        idle: pool.idleCount,
-        waiting: pool.waitingCount,
-        max: getPoolMax(),
+    // Kysely's queryDurationMillis is measured in JS: the timer starts when the
+    // query is dispatched and stops in the result callback, so a blocked event
+    // loop inflates the figure even when Postgres answered in sub-ms. When
+    // recent loop lag is on the same order as the "slow" duration, the SQL is
+    // almost certainly fast and the loop is the real bottleneck — say so
+    // instead of blaming the DB. See observability/profiling/event-loop.ts.
+    const eventLoopLagMs = getEventLoopLagMs();
+    const likelyEventLoopLag = eventLoopLagMs > SLOW_QUERY_TRESHOLD_MS / 2;
+    console.error(
+      likelyEventLoopLag
+        ? "Slow query measurement — likely event-loop lag, not slow SQL:"
+        : "Slow query detected:",
+      {
+        durationMs: event.queryDurationMillis,
+        eventLoopLagMs: Math.round(eventLoopLagMs),
+        sql: event.query.sql,
+        pool: {
+          total: pool.totalCount,
+          idle: pool.idleCount,
+          waiting: pool.waitingCount,
+          max: getPoolMax(),
+        },
       },
     });
   }
@@ -106,7 +116,7 @@ function instrumentPool(pool: Pool): Pool {
             });
           } else {
             // A connection was free; the delay is the event loop being blocked,
-            // not the DB pool. See observability/event-loop-delay.ts.
+            // not the DB pool. See observability/profiling/event-loop.ts.
             console.warn("Slow pool acquire — event-loop lag (not pool):", {
               waitMs: waited,
               idleAtStart,
