@@ -1,9 +1,5 @@
-import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
-import type {
-  JsonSchemaType,
-  JsonSchemaValidator,
-  jsonSchemaValidator,
-} from "@modelcontextprotocol/sdk/validation";
+import Ajv, { type ValidateFunction } from "ajv";
+import addFormats from "ajv-formats";
 
 /**
  * Shared, content-memoized JSON-schema validator for all MCP Client/Server
@@ -16,10 +12,10 @@ import type {
  *      when none is injected. The mesh builds these per request / per Decopilot
  *      turn (proxy routes, passthrough aggregator, management server), so the
  *      Ajv instances pile up.
- *   2. `AjvJsonSchemaValidator.getValidator()` calls `ajv.compile(schema)` for
- *      every schema (MCP tool schemas have no `$id`), and Ajv keeps every
- *      compiled schema in its internal cache forever — no eviction. So the same
- *      tool schema is recompiled and retained on every request.
+ *   2. Ajv's `compile()` keeps every compiled schema in its internal cache
+ *      forever — no eviction — and the SDK calls it for every schema (MCP tool
+ *      schemas have no `$id`). So identical tool schemas are recompiled and
+ *      retained on every request.
  *
  * Heap snapshots showed the compiled-validator codegen (the dominant growing
  * object set — `Function`/`string`/`Object` in the millions) retained via
@@ -30,28 +26,63 @@ import type {
  * bounding total compiled validators to the number of distinct tool schemas
  * regardless of request volume — instead of one fresh Ajv + recompile per
  * request.
+ *
+ * Implemented against `ajv` directly (not the SDK's `AjvJsonSchemaValidator`)
+ * because that lives behind the SDK's `exports` map, which the package's
+ * classic module resolution can't reach; behaviour mirrors the SDK's provider.
  */
-class MemoizingJsonSchemaValidator implements jsonSchemaValidator {
-  // A single backing Ajv instance, compiled into once per distinct schema.
-  readonly #inner = new AjvJsonSchemaValidator();
-  readonly #cache = new Map<string, JsonSchemaValidator<unknown>>();
 
-  getValidator<T>(schema: JsonSchemaType): JsonSchemaValidator<T> {
+// Mirrors the SDK's JsonSchemaValidatorResult / JsonSchemaValidator types
+// structurally so the singleton is assignable to the `jsonSchemaValidator`
+// option on Client/Server without importing the SDK's exports-only types.
+type ValidatorResult<T> =
+  | { valid: true; data: T; errorMessage: undefined }
+  | { valid: false; data: undefined; errorMessage: string };
+
+type Validator<T> = (input: unknown) => ValidatorResult<T>;
+
+// Match the SDK's default Ajv configuration (server/index.js → AjvJsonSchemaValidator).
+function createAjv(): Ajv {
+  const ajv = new Ajv({
+    strict: false,
+    validateFormats: true,
+    validateSchema: false,
+    allErrors: true,
+  });
+  addFormats(ajv);
+  return ajv;
+}
+
+class MemoizingJsonSchemaValidator {
+  // One backing Ajv, compiled into once per distinct schema.
+  readonly #ajv = createAjv();
+  readonly #cache = new Map<string, ValidateFunction>();
+
+  getValidator<T>(schema: object): Validator<T> {
     const key = stableStringify(schema);
-    const cached = this.#cache.get(key);
-    if (cached) {
-      return cached as JsonSchemaValidator<T>;
+    let compiled = this.#cache.get(key);
+    if (!compiled) {
+      compiled = this.#ajv.compile(schema);
+      this.#cache.set(key, compiled);
     }
-    const created = this.#inner.getValidator<unknown>(schema);
-    this.#cache.set(key, created);
-    return created as JsonSchemaValidator<T>;
+    const validate = compiled;
+    return (input: unknown): ValidatorResult<T> => {
+      if (validate(input)) {
+        return { valid: true, data: input as T, errorMessage: undefined };
+      }
+      return {
+        valid: false,
+        data: undefined,
+        errorMessage: this.#ajv.errorsText(validate.errors),
+      };
+    };
   }
 }
 
 /**
  * Stable stringify: sort object keys so two structurally-identical schemas
  * serialized with different key order still hit the same cache entry. Tool
- * schemas are small, so the recursive walk is cheap relative to Ajv compilation.
+ * schemas are small, so the recursive walk is cheap relative to compilation.
  */
 function stableStringify(value: unknown): string {
   return JSON.stringify(value, (_key, val) => {
@@ -70,5 +101,4 @@ function stableStringify(value: unknown): string {
  * Process-wide singleton. Pass as `jsonSchemaValidator` to every `new Client`,
  * `new Server`, and `new McpServer` so they share one bounded validator cache.
  */
-export const sharedJsonSchemaValidator: jsonSchemaValidator =
-  new MemoizingJsonSchemaValidator();
+export const sharedJsonSchemaValidator = new MemoizingJsonSchemaValidator();
