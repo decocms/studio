@@ -10,6 +10,7 @@ import { sleep } from "@decocms/std";
 import { getSettings } from "./settings";
 import { initObservability } from "./observability";
 import { startHeapWatch } from "./observability/heap-watch";
+import { startEventLoopMonitor } from "./observability/event-loop-delay";
 
 const settings = getSettings();
 
@@ -201,6 +202,7 @@ const server = Bun.serve({
 });
 
 const stopHeapWatch = startHeapWatch();
+const stopEventLoopMonitor = startEventLoopMonitor();
 
 // Local mode: seed admin user + organization after server is listening
 // This must run after Bun.serve() so that the org seed can fetch tools
@@ -277,6 +279,7 @@ async function gracefulShutdown(signal: string) {
   let exitCode = 0;
   try {
     stopHeapWatch();
+    stopEventLoopMonitor();
 
     // 1. Mark as shutting down — readiness returns 503 immediately
     app.markShuttingDown();
