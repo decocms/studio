@@ -104,6 +104,7 @@ import { useLocalStorage } from "../../hooks/use-local-storage";
 import { chatModeForTransportRef } from "../../lib/chat-mode-sync";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
+import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
 
 // ============================================================================
@@ -842,6 +843,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    orgId: org.id,
     orgSlug: org.slug,
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
@@ -852,6 +854,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    orgId: org.id,
     orgSlug: org.slug,
   };
 
@@ -885,6 +888,31 @@ export function ActiveTaskProvider({
             search: (prev: Record<string, unknown>) => ({
               ...prev,
               main: `web-page:${slug}`,
+            }),
+            replace: true,
+          });
+          return;
+        }
+        // Deck preview (slides skill): the harness emits `data-deck-updated`
+        // when `decks/<name>.html` changes in the org home volume. Refresh
+        // the stat (rolls the deck tab's cache-busted iframe src) and
+        // auto-open the tab — latest deck wins, like html pages above.
+        if (chunk.type === "data-deck-updated") {
+          const data = (chunk as unknown as { data: { path?: string } }).data;
+          if (!data?.path) return;
+          const path = data.path;
+          const cb = cbRef.current;
+          cb.queryClient.invalidateQueries({
+            queryKey: KEYS.orgFsStat(cb.orgId, "home", path),
+          });
+          cb.queryClient.invalidateQueries({
+            queryKey: KEYS.orgFsRecent(cb.orgId),
+          });
+          cb.navigate({
+            to: ".",
+            search: (prev: Record<string, unknown>) => ({
+              ...prev,
+              main: formatDeckTabId(path),
             }),
             replace: true,
           });

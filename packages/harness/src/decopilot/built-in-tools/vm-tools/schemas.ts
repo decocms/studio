@@ -173,7 +173,8 @@ export function buildBashDescription(orgFs: boolean): string {
       : "") +
     "Pre-installed file-handling skills also live at " +
     "`/mnt/skills/public/<name>/SKILL.md` (pptx, docx, xlsx, pdf, " +
-    "file-reading). Run `ls /mnt/skills/public/` for that index." +
+    "file-reading, slides, templating). Run `ls /mnt/skills/public/` for " +
+    "that index. To make a presentation deck, read the `slides` skill first." +
     // Without org-fs there is no org/upload or org/output — the legacy
     // transfer tools (also only registered then) are the one way to move
     // files in and out.

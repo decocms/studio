@@ -80,11 +80,21 @@ export function useOrgFsList(volume: string, path: string) {
 }
 
 /** Metadata for one entry — null when absent. Powers the Library preview. */
-export function useOrgFsStat(volume: string | null, path: string) {
+export function useOrgFsStat(
+  volume: string | null,
+  path: string,
+  opts?: { refetchIntervalWhenAbsent?: number },
+) {
   const { org } = useProjectContext();
   return useQuery({
     queryKey: KEYS.orgFsStat(org.id, volume ?? "", path),
     enabled: volume !== null,
+    // Optional poll while the entry doesn't exist yet (e.g. the deck tab
+    // waiting out the sandbox mount's write-back lag).
+    refetchInterval: opts?.refetchIntervalWhenAbsent
+      ? (query) =>
+          query.state.data ? false : (opts.refetchIntervalWhenAbsent ?? false)
+      : undefined,
     queryFn: async (): Promise<OrgFsEntry | null> => {
       const res = await fetch(fsUrl(org.slug, volume ?? "", "stat", { path }));
       if (res.status === 404) return null;
@@ -149,6 +159,35 @@ export function useOrgFsFileUrl() {
   const { org } = useProjectContext();
   return (volume: string, path: string) =>
     fsUrl(org.slug, volume, "read", { path });
+}
+
+/**
+ * Write a text file body to a volume path (deck inline editing). Returns
+ * the written entry (size/updatedAt) so callers can self-echo-suppress the
+ * stat refresh. Invalidation is the CALLER's job — the deck editor needs
+ * to record the entry BEFORE the stat query refetches.
+ */
+export function useOrgFsWriteText(volume: string) {
+  const { org } = useProjectContext();
+  return useMutation({
+    mutationFn: async (input: {
+      path: string;
+      body: string;
+      contentType?: string;
+    }): Promise<OrgFsEntry> => {
+      const res = await fsFetch(
+        fsUrl(org.slug, volume, "file", { path: input.path }),
+        {
+          method: "PUT",
+          headers: {
+            "content-type": input.contentType ?? "text/html; charset=utf-8",
+          },
+          body: input.body,
+        },
+      );
+      return ((await res.json()) as { entry: OrgFsEntry }).entry;
+    },
+  });
 }
 
 /** Upload/mkdir/delete; each invalidates the whole volume's listings+usage. */

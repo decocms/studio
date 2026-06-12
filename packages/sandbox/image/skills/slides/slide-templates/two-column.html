@@ -1,0 +1,14 @@
+<section>
+  {{#eyebrow}}<p class="eyebrow">{{eyebrow}}</p>{{/eyebrow}}
+  <h2 class="deck-h2">{{heading}}</h2>
+  <div class="cols">
+    <div class="card grow">
+      {{#left.title}}<h3 class="col-title">{{left.title}}</h3>{{/left.title}}
+      <div class="deck-body">{{{left.html}}}</div>
+    </div>
+    <div class="card grow">
+      {{#right.title}}<h3 class="col-title">{{right.title}}</h3>{{/right.title}}
+      <div class="deck-body">{{{right.html}}}</div>
+    </div>
+  </div>
+</section>

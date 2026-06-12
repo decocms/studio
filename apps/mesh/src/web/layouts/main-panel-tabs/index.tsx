@@ -18,9 +18,11 @@ import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { WebPageTab } from "./web-page-tab";
 import { FileTab } from "./file-tab";
+import { DeckTab } from "./deck-tab";
 import { MainPanelLoading } from "./main-panel-loading";
 import {
   isLegacySettingsTab,
+  parseDeckTabId,
   parseFileTabId,
   parsePinnedViewTabId,
   parseWebPageTabId,
@@ -85,6 +87,11 @@ function TabBody({
   const webPage = parseWebPageTabId(activeTab);
   if (webPage) {
     return <WebPageTab slug={webPage.slug} />;
+  }
+
+  const deckTab = parseDeckTabId(activeTab);
+  if (deckTab) {
+    return <DeckTab key={deckTab.path} path={deckTab.path} />;
   }
 
   const fileTab = parseFileTabId(activeTab);

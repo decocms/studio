@@ -1,0 +1,2 @@
+#!/bin/sh
+exec bun /mnt/skills/public/templating/create-from-template.mjs "$@"

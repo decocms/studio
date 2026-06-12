@@ -1,0 +1,13 @@
+<section>
+  {{#eyebrow}}<p class="eyebrow">{{eyebrow}}</p>{{/eyebrow}}
+  {{#heading}}<h2 class="deck-h2">{{heading}}</h2>{{/heading}}
+  <div class="cols kpis">
+    {{#kpis}}
+    <div class="card kpi grow">
+      <p class="kpi-value">{{value}}</p>
+      <p class="kpi-label">{{label}}</p>
+      {{#delta}}<p class="kpi-delta">{{delta}}</p>{{/delta}}
+    </div>
+    {{/kpis}}
+  </div>
+</section>

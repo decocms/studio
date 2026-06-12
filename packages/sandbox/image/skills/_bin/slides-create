@@ -1,0 +1,2 @@
+#!/bin/sh
+exec bun /mnt/skills/public/slides/slides-create.mjs "$@"

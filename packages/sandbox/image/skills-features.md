@@ -294,6 +294,28 @@ the image-size impact ahead of time.
 
 ---
 
+## templating
+
+- [x] **v1** `create-from-template` CLI — render any text file from a mustache template + JSON data (`--data` inline or `@file`, `--strict`, `--partials-dir`, `-f`)
+- [x] **v1** Vendored single-file mustache.js (MIT) at `templating/vendor/mustache.mjs`; other skills import it
+
+> **deps:** bun (already in the image); zero packages
+
+---
+
+## slides
+
+- [x] **v1** `slides-create` CLI — compose a deck from `deck.json` (slides by layout template) into a theme shell; `--theme`, `--templates-dir` for org brand templates
+- [x] **v1** Theme shells: `aurora-light`, `ink-dark`, `bold-gradient` (shared class contract, CSS custom-property theming)
+- [x] **v1** Slide templates: title, agenda, section-divider, bullets, two-column, quote, kpi-row, timeline, comparison, closing
+- [x] **v1** Decks are single self-contained HTML files driven by the mesh-served `/deck-runtime/v1/deck-viewer.js` (live preview, inline editing, and print-to-PDF live in the runtime/host, not the sandbox)
+- [ ] **v2** Image support inside decks (needs an unauthenticated org-asset route)
+- [ ] **v2** Speaker notes
+
+> **deps:** bun + the `templating` skill; zero packages
+
+---
+
 ## v1 summary — what we're shipping in the reading milestone
 
 In rough sequence:

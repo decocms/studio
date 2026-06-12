@@ -10,6 +10,7 @@
  *   - Ephemeral automation: "automation:<id>"
  *   - Ephemeral web page: "web-page:<slug>" (web-developer agent preview)
  *   - Ephemeral file preview: "file:<encoded output key>" (thread output viewer)
+ *   - Ephemeral deck preview: "deck:<encoded home-volume path>" (slides skill)
  *   - "0" = closed sentinel (not an actual tab id)
  *
  * The "settings" tab bundles what used to be separate instructions,
@@ -82,6 +83,30 @@ export function parseWebPageTabId(
   return { slug };
 }
 
+export interface DeckTabParsed {
+  /** Home-volume-relative deck path, e.g. `decks/q3-launch.html`. */
+  path: string;
+}
+
+/** Paths carry `/`, so the tab id encodes them to keep the
+ *  `<kind>:<rest>` grammar unambiguous in the `?main=` URL param. */
+export function formatDeckTabId(path: string): string {
+  return `deck:${encodeURIComponent(path)}`;
+}
+
+export function parseDeckTabId(
+  tabId: string | undefined,
+): DeckTabParsed | null {
+  if (!tabId || !tabId.startsWith("deck:")) return null;
+  const encoded = tabId.slice("deck:".length);
+  if (!encoded) return null;
+  try {
+    return { path: decodeURIComponent(encoded) };
+  } catch {
+    return null;
+  }
+}
+
 export interface FileTabParsed {
   /** Thread-output key: an S3 key ("model-outputs/<threadId>/x.pdf") or an
    *  org-fs ref ("org-fs:outputs/<threadId>/x.pdf") — same shape the
@@ -125,13 +150,15 @@ const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
  *   - "web-page:<slug>"               (ephemeral web preview)
  *   - "automation:<id>"               (ephemeral automation detail)
  *   - "file:<encoded key>"            (ephemeral thread-output file preview)
+ *   - "deck:<encoded path>"           (ephemeral deck preview/editor)
  */
 export function isPerThreadTab(tabId: string): boolean {
   return (
     tabId.startsWith("app:") ||
     tabId.startsWith("web-page:") ||
     tabId.startsWith("automation:") ||
-    tabId.startsWith("file:")
+    tabId.startsWith("file:") ||
+    tabId.startsWith("deck:")
   );
 }
 

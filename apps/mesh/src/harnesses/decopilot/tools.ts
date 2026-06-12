@@ -30,6 +30,7 @@ import {
   type VmContext,
 } from "./built-in-tools";
 import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
+import type { DeckBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
 import {
   toolsFromMCP,
@@ -111,6 +112,9 @@ export interface AssembleDecopilotToolsExtras {
    *  alongside `pendingOps` so the dispatch layer can also schedule a
    *  flush at step-end. */
   htmlPageBuffer: HtmlPageBuffer;
+  /** Per-turn deck fast-path mirror (`org/<slug>/decks/*.html`) — flushed
+   *  into org-fs at step-end by the dispatch layer. */
+  deckBuffer?: DeckBuffer;
   /** Usage roll-up sink (Task 17) — forwarded to the `subtask` built-in so a
    *  delegated child run's tokens fold into the parent run's accumulator. */
   onChildUsage?: (usage: {
@@ -305,6 +309,7 @@ export async function assembleDecopilotTools(
         passthroughClient,
         vmContext,
         htmlPageBuffer: extras.htmlPageBuffer,
+        deckBuffer: extras.deckBuffer,
         taskId: extras.threadId,
         agentId: input.agent.id,
         onChildUsage: extras.onChildUsage,
