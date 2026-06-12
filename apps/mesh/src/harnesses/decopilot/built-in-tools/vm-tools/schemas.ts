@@ -159,6 +159,10 @@ export function buildBashDescription(orgFs: boolean): string {
     "Working directory is the project root. Timeout default 30s, max 2min.\n\n" +
     (orgFs
       ? "The organization filesystem is mounted at `org/` (when available):\n" +
+        "- `org/<your-org-slug>/` — the org's shared home folder (editable, " +
+        "shared across runs; `ls org/` shows the actual name). Organize it " +
+        "freely; check it before non-trivial work and record durable facts, " +
+        "decisions, and learnings as small markdown files.\n" +
         "- `org/public/<set>/` — curated read-only skill sets. Run " +
         "`ls org/public/` for the sets and `cat org/public/<set>/<name>/SKILL.md` " +
         "before using a skill.\n" +

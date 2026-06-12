@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Eye,
   Globe01,
+  Home01,
   Plus,
   RefreshCw01,
   Stars01,
@@ -78,6 +79,7 @@ import { SkillPreviewDialog } from "./skill-preview-dialog";
  *  deliberately absent — they live in versioned repos (public sets), not as
  *  an editable cloud volume. */
 const VOLUMES = [
+  { id: "home", description: "Your organization's home folder", glyph: Home01 },
   { id: "uploads", description: "Files your team uploads", glyph: Upload01 },
   { id: "outputs", description: "Agent run outputs", glyph: Stars01 },
 ] as const;
@@ -147,11 +149,14 @@ function FolderFilterPills() {
 
 function VolumeFolderCard({
   volume,
+  displayName,
   description,
   glyph,
   onOpen,
 }: {
   volume: string;
+  /** Card label when it differs from the volume id (home shows the slug). */
+  displayName?: string;
   description: string;
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   onOpen: () => void;
@@ -159,7 +164,7 @@ function VolumeFolderCard({
   const usage = useOrgFsUsage(volume);
   return (
     <FolderCard
-      name={volume}
+      name={displayName ?? volume}
       meta={usage.data ? `${usage.data.files} files` : undefined}
       subtitle={description}
       glyph={glyph}
@@ -223,6 +228,7 @@ function RootView({
   onOpenFile: (previewPath: string) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
+  const { org } = useProjectContext();
   const recent = useOrgFsRecent();
   const publicSets = useOrgFsPublicSets();
   const fileUrl = useOrgFsFileUrl();
@@ -271,6 +277,9 @@ function RootView({
             <VolumeFolderCard
               key={v.id}
               volume={v.id}
+              // The home volume presents as the org itself (mirrors the
+              // sandbox mount at org/<slug>).
+              displayName={v.id === "home" ? org.slug : undefined}
               description={v.description}
               glyph={v.glyph}
               onOpen={() => onOpenDir(v.id)}

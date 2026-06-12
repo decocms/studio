@@ -4,9 +4,15 @@
  * (packages/sandbox/daemon/org-fs/config.ts) validates this shape.
  *
  * The mounted set is hardcoded for now (per the team decision); later this
- * becomes per-agent configurable. Two volumes (org skills are deliberately
+ * becomes per-agent configurable. Three volumes (org skills are deliberately
  * NOT a cloud volume — skills belong in versioned repos, surfaced through
  * the read-only public sets):
+ *   - `home`    → mounted at `<appRoot>/org/<orgSlug>` (visible, editable):
+ *     the org's shared home folder, free-form — members and agents organize
+ *     it with whatever subfolders they want, and knowledge accumulates
+ *     across every run (no per-thread scoping). The volume NAME is the
+ *     stable `home` (uniform keyspace across orgs); only the mount path
+ *     carries the slug, which is immutable by design (see CLAUDE.md).
  *   - `outputs` → mounted at `<appRoot>/org/.outputs` (hidden); the daemon
  *     repoints a per-run symlink `<appRoot>/org/output → .outputs/<threadId>`
  *     so the agent sees a bare `output/` that is, externally, that thread's
@@ -38,6 +44,22 @@ const DEFAULT_MOUNTS: ReadonlyArray<{ volume: string; path: string }> = [
   { volume: "uploads", path: ORG_FS_UPLOADS_MOUNT_PATH },
 ];
 
+/** Other names that live directly under `org/` — a slug matching one of
+ *  these would shadow it. */
+const RESERVED_HOME_PATHS = new Set(["output", "upload", "public", "home"]);
+/** One safe path segment, no traversal/hidden dirs (mirrors thread-links). */
+const SAFE_MOUNT_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/** Mount path for the org's home volume: the org's own slug (immutable),
+ *  so the agent sees `org/<slug>/`. Falls back to a literal `home` when the
+ *  slug would collide with another `org/` entry or isn't a safe segment. */
+export function homeMountPath(orgSlug: string): string {
+  if (RESERVED_HOME_PATHS.has(orgSlug) || !SAFE_MOUNT_SEGMENT.test(orgSlug)) {
+    return "home";
+  }
+  return orgSlug;
+}
+
 export function buildOrgFsConfig(opts: {
   baseUrl: string;
   orgSlug: string;
@@ -50,6 +72,8 @@ export function buildOrgFsConfig(opts: {
     orgSlug: opts.orgSlug,
     token: opts.token,
     mounts: [
+      // The org's home folder mounts under the org's own name.
+      { volume: "home", path: homeMountPath(opts.orgSlug) },
       ...DEFAULT_MOUNTS.map((m) => ({ ...m })),
       ...(opts.publicSets ?? []).map((set) => ({
         volume: publicVolumeForSet(set),
