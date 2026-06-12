@@ -6,7 +6,6 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { GitBranch01 } from "@untitledui/icons";
-import { useOptionalChatTask } from "../chat-context";
 import { BranchPicker } from "../../thread/github/branch-picker";
 
 interface Props {
@@ -30,20 +29,15 @@ interface Props {
  * Button + Tooltip when disabled — the user just can't open the
  * popover.
  *
- * When the active thread is *thread-locked* (i.e. `thread.harness_id` is
- * captured on the server row) we replace the picker with a
- * non-clickable lock chip. Any branch change on a locked thread is a
- * no-op on submit (see `applyThreadLock`), so we surface that to the
- * user instead of silently ignoring the click.
+ * When `locked` is true (chat has messages or is a thread-locked thread)
+ * we replace the picker with a non-clickable lock chip so the user can
+ * see the active branch without being able to change it.
  */
-export function BranchPill({ locked, placement, ...props }: Props) {
-  const taskCtx = useOptionalChatTask();
-  const isThreadLocked = taskCtx?.isThreadLocked ?? false;
-  const lockedBranch = taskCtx?.lockedBranch ?? null;
+export function BranchPill({ locked, placement, value, ...props }: Props) {
   const isHeader = placement === "header";
 
-  if (isThreadLocked) {
-    const branchLabel = lockedBranch ?? "(no branch)";
+  if (locked) {
+    const branchLabel = value ?? "(no branch)";
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -79,5 +73,12 @@ export function BranchPill({ locked, placement, ...props }: Props) {
     );
   }
 
-  return <BranchPicker {...props} disabled={locked} placement={placement} />;
+  return (
+    <BranchPicker
+      {...props}
+      value={value}
+      disabled={locked}
+      placement={placement}
+    />
+  );
 }
