@@ -16,6 +16,7 @@
  * on client cancel, on client disconnect (request abort), or on a handler
  * throw.
  */
+import { meter } from "../../observability";
 import { guardResponseStream } from "./stream-guard";
 
 interface CloseableServer {
@@ -58,18 +59,43 @@ const collectedRegistry = new FinalizationRegistry<null>(() => {
 const GAUGE_INTERVAL_MS = 60_000;
 const gaugeTimer = setInterval(() => {
   if (gauge.built === 0) return;
-  console.log(
-    JSON.stringify({
-      msg: "mcp-server-gauge",
-      ts: new Date().toISOString(),
-      built: gauge.built,
-      closed: gauge.closed,
-      collected: gauge.collected,
-      alive: gauge.built - gauge.collected,
-    }),
-  );
 }, GAUGE_INTERVAL_MS);
 gaugeTimer.unref?.();
+
+/**
+ * Export the gauge to OTLP/Grafana as metrics. `meter` is a live binding that
+ * is a Noop until `initObservability()` runs after SDK start, so register the
+ * instruments lazily on first request (the SDK is up by the time traffic
+ * arrives). `mcp.server.alive` is the leak indicator; built/collected are
+ * monotonic counters for rate/gap analysis.
+ */
+let metricsRegistered = false;
+function ensureGaugeMetrics(): void {
+  if (metricsRegistered) return;
+  metricsRegistered = true;
+  try {
+    const alive = meter.createObservableGauge("mcp.server.alive", {
+      description:
+        "Per-request MCP servers built but not yet GC-collected (rising floor = leak)",
+      unit: "{server}",
+    });
+    alive.addCallback((r) => r.observe(gauge.built - gauge.collected));
+
+    const built = meter.createObservableCounter("mcp.server.built", {
+      description: "Total per-request MCP servers constructed",
+      unit: "{server}",
+    });
+    built.addCallback((r) => r.observe(gauge.built));
+
+    const collected = meter.createObservableCounter("mcp.server.collected", {
+      description: "Total per-request MCP servers reclaimed by GC",
+      unit: "{server}",
+    });
+    collected.addCallback((r) => r.observe(gauge.collected));
+  } catch (err) {
+    console.error("[serve-mcp] failed to register gauge metrics:", err);
+  }
+}
 
 /**
  * The SDK transport's JSON-response mode returns a Promise from
@@ -116,6 +142,7 @@ export async function serveMcpRequest(
 ): Promise<Response> {
   const signal = request.signal;
 
+  ensureGaugeMetrics();
   gauge.built++;
   collectedRegistry.register(server, null);
 
