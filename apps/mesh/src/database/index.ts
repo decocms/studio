@@ -43,6 +43,11 @@ const SLOW_QUERY_TRESHOLD_MS = 400;
 const SLOW_ACQUIRE_THRESHOLD_MS = 100;
 
 const createLog = (pool: Pool) => (event: LogEvent) => {
+  const attributes = {
+    "db.statement": event.query.sql,
+    "db.status": event.level === "error" ? "error" : "success",
+  };
+
   if (event.queryDurationMillis > SLOW_QUERY_TRESHOLD_MS) {
     // Kysely's queryDurationMillis is measured in JS: the timer starts when the
     // query is dispatched and stops in the result callback, so a blocked event
@@ -67,7 +72,7 @@ const createLog = (pool: Pool) => (event: LogEvent) => {
           max: getPoolMax(),
         },
       },
-    });
+    );
   }
 
   queryDurationHistogram().record(event.queryDurationMillis, attributes);
