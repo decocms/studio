@@ -178,8 +178,7 @@ Every tool call gets input/output validation, access control, audit logging, and
     ├── runtime/             # MCP proxy, OAuth, and runtime utilities
     ├── ui/                  # Shared React components (shadcn-based)
     ├── cli/                 # CLI tooling (deco commands)
-    ├── create-deco/         # Project scaffolding (npm create deco)
-    └── vite-plugin-deco/    # Vite plugin for Deco projects
+    └── create-deco/         # Project scaffolding (npm create deco)
 ```
 
 ---
