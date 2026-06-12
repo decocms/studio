@@ -108,7 +108,12 @@ describe("file-explorer utils", () => {
 
   it("mergeGlobLists preserves truncated across merges", () => {
     expect(
-      mergeGlobLists(["a.ts"], ["src"], { files: [], truncated: true }, true),
+      mergeGlobLists(
+        ["a.ts"],
+        ["src"],
+        { files: [], directories: [], truncated: true },
+        true,
+      ),
     ).toEqual({
       files: ["a.ts"],
       directories: ["src"],
