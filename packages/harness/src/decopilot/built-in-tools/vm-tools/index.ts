@@ -27,7 +27,7 @@ import {
   SHARE_WITH_USER_DESCRIPTION,
   ShareWithUserInputSchema,
   TOOL_APPROVAL,
-  WRITE_DESCRIPTION,
+  buildWriteDescription,
   WriteInputSchema,
 } from "./schemas";
 import type { VmToolsParams } from "./types";
@@ -162,7 +162,7 @@ export function createVmTools(params: VmToolsParams) {
 
   const write = tool({
     needsApproval: approvalFor(TOOL_APPROVAL.write),
-    description: WRITE_DESCRIPTION,
+    description: buildWriteDescription(orgFs),
     inputSchema: zodSchema(WriteInputSchema),
     execute: async (input) => {
       const daemonResult = await call("/_sandbox/write", input);
