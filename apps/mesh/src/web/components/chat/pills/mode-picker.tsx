@@ -175,7 +175,7 @@ export function ModePickerPure({
   const [open, setOpen] = useState(false);
   const { icon, text } = pillLabel(mode);
   const isLocal = mode !== "cloud-decopilot";
-  const isThreadLocked = locked && lockedHarness != null;
+  const showHarnessLabel = lockedHarness != null;
   const harnessLabel = lockedHarness ? HARNESS_LABEL[lockedHarness] : null;
   // Cloud rows hide when unavailable (a deployment without an agent sandbox
   // is an operator decision, nothing the user can act on). Local rows always
@@ -208,14 +208,12 @@ export function ModePickerPure({
                 variant="ghost"
                 size="default"
                 aria-label={
-                  isThreadLocked && harnessLabel
+                  showHarnessLabel && harnessLabel
                     ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
                     : text
                 }
                 disabled={locked}
-                data-testid={
-                  isThreadLocked ? "harness-picker-locked" : "harness-picker"
-                }
+                data-testid={locked ? "mode-picker-locked" : "mode-picker"}
                 className={cn(
                   baseClasses,
                   isLocal && localPreviewClasses,
@@ -224,13 +222,7 @@ export function ModePickerPure({
                 )}
               >
                 {icon}
-                <span
-                  className={cn(
-                    "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                    !locked &&
-                      "@[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100",
-                  )}
-                >
+                <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100">
                   {text}
                 </span>
                 {!locked && (
@@ -244,7 +236,7 @@ export function ModePickerPure({
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          {isThreadLocked && harnessLabel
+          {showHarnessLabel && harnessLabel
             ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
             : text}
         </TooltipContent>
