@@ -21,8 +21,19 @@ const queryDurationHistogram = meter.createHistogram("db.query.duration", {
   unit: "ms",
 });
 
+// Kysely's queryDurationMillis measures SQL execution only — the timer starts
+// after the connection is checked out of the pool. Pool-acquisition wait is
+// invisible to it, so we measure that separately to tell genuinely slow SQL
+// apart from pool-capacity contention.
+const poolAcquireHistogram = meter.createHistogram("db.pool.acquire.duration", {
+  description: "Time spent waiting to acquire a connection from the pool",
+  unit: "ms",
+});
+
 const SLOW_QUERY_TRESHOLD_MS = 400;
-const log = (event: LogEvent) => {
+const SLOW_ACQUIRE_THRESHOLD_MS = 100;
+
+const createLog = (pool: Pool) => (event: LogEvent) => {
   const attributes = {
     "db.statement": event.query.sql,
     "db.status": event.level === "error" ? "error" : "success",
@@ -32,6 +43,12 @@ const log = (event: LogEvent) => {
     console.error("Slow query detected:", {
       durationMs: event.queryDurationMillis,
       sql: event.query.sql,
+      pool: {
+        total: pool.totalCount,
+        idle: pool.idleCount,
+        waiting: pool.waitingCount,
+        max: getPoolMax(),
+      },
     });
   }
 
@@ -45,6 +62,43 @@ const log = (event: LogEvent) => {
     });
   }
 };
+
+/**
+ * Wrap pool.connect() to measure connection-acquisition wait and pool
+ * saturation. Kysely uses the promise form; the callback form is delegated
+ * untouched.
+ */
+function instrumentPool(pool: Pool): Pool {
+  const originalConnect = pool.connect.bind(pool);
+  // @ts-expect-error pg's connect has callback/promise overloads
+  pool.connect = (cb?: unknown) => {
+    if (typeof cb === "function") return originalConnect(cb as never);
+    const start = performance.now();
+    return originalConnect().then(
+      (client) => {
+        const waited = performance.now() - start;
+        poolAcquireHistogram.record(waited, { "db.pool.outcome": "acquired" });
+        if (waited > SLOW_ACQUIRE_THRESHOLD_MS) {
+          console.error("Slow pool acquire detected:", {
+            waitMs: waited,
+            total: pool.totalCount,
+            idle: pool.idleCount,
+            waiting: pool.waitingCount,
+            max: getPoolMax(),
+          });
+        }
+        return client;
+      },
+      (err) => {
+        poolAcquireHistogram.record(performance.now() - start, {
+          "db.pool.outcome": "error",
+        });
+        throw err;
+      },
+    );
+  };
+  return pool;
+}
 
 /**
  * PostgreSQL database connection.
@@ -85,15 +139,17 @@ function getPoolMax(): number {
 }
 
 function createPostgresDatabase(connectionString: string): StudioDatabase {
-  const pool = new Pool({
-    connectionString,
-    max: getPoolMax(),
-    ssl: getSsl(),
-    ...defaultPoolOptions,
-  });
+  const pool = instrumentPool(
+    new Pool({
+      connectionString,
+      max: getPoolMax(),
+      ssl: getSsl(),
+      ...defaultPoolOptions,
+    }),
+  );
 
   const dialect = new PostgresDialect({ pool });
-  const db = new Kysely<DatabaseSchema>({ dialect, log });
+  const db = new Kysely<DatabaseSchema>({ dialect, log: createLog(pool) });
 
   return { type: "postgres", db, pool };
 }
