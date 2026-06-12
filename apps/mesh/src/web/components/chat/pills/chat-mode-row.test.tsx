@@ -13,6 +13,7 @@ mock.module("../../thread/github/branch-picker", () => ({
 
 import { ChatModeRowPure } from "./chat-mode-row";
 import { BranchPill } from "./branch-pill";
+import { ModePickerPure } from "./mode-picker";
 
 describe("ChatModeRowPure", () => {
   it("returns null when both pills are null", () => {
@@ -89,5 +90,40 @@ describe("BranchPill", () => {
       <BranchPill {...BRANCH_PILL_PROPS} locked={false} />,
     );
     expect(getByRole("button")).toBeInTheDocument();
+  });
+});
+
+describe("ChatModeRow integration", () => {
+  it("renders both pills as non-interactive when locked=true", () => {
+    const { getByTestId, queryAllByRole } = render(
+      <ChatModeRowPure
+        branchPill={
+          <BranchPill {...BRANCH_PILL_PROPS} locked={true} value="main" />
+        }
+        modePicker={
+          <ModePickerPure
+            mode="cloud-decopilot"
+            availability={{
+              agentSandbox: true,
+              userDesktop: false,
+              claudeCode: false,
+              codex: false,
+            }}
+            locked={true}
+            onSelect={mock(() => {})}
+          />
+        }
+      />,
+    );
+
+    // Both locked elements are present
+    expect(getByTestId("branch-picker-locked")).toBeInTheDocument();
+    expect(getByTestId("mode-picker-locked")).toBeInTheDocument();
+
+    // No interactive (enabled) buttons should be present
+    const buttons = queryAllByRole("button");
+    for (const btn of buttons) {
+      expect(btn).toBeDisabled();
+    }
   });
 });
