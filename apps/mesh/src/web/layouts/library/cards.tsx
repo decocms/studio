@@ -8,7 +8,8 @@
  * else gets a large type icon. Real xlsx/pptx renders are phase 3.
  */
 
-import type { ComponentType, SVGProps } from "react";
+import type { ComponentType, ReactNode, SVGProps } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   DotsVertical,
@@ -42,13 +43,13 @@ const IMAGE_EXTS = new Set([
   "svg",
   "avif",
 ]);
+const CSV_EXTS = new Set(["csv", "tsv"]);
+const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "m4v"]);
 const TEXT_THUMB_EXTS = new Set([
   "txt",
   "md",
   "markdown",
   "json",
-  "csv",
-  "tsv",
   "log",
   "yaml",
   "yml",
@@ -372,6 +373,31 @@ export function SkillCard({
   );
 }
 
+/**
+ * Defers rendering children until the sentinel div enters the viewport.
+ * Prevents N parallel network requests when many thumbnails mount at once.
+ * The `setVisible` setter is stable across renders so capturing it in the
+ * lazy initializer is safe without a ref.
+ */
+function LazyThumb({ children }: { children: ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  const [attachSentinel] = useState(() => (node: HTMLDivElement | null) => {
+    if (!node) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    obs.observe(node);
+  });
+  if (visible) return <>{children}</>;
+  return <div ref={attachSentinel} className="h-full w-full" />;
+}
+
 function TextThumb({ url }: { url: string }) {
   const { data } = useQuery({
     queryKey: KEYS.fileText(url),
@@ -391,6 +417,56 @@ function TextThumb({ url }: { url: string }) {
   );
 }
 
+function CsvThumb({ url, ext }: { url: string; ext: string }) {
+  const { data } = useQuery({
+    queryKey: KEYS.csvThumb(url),
+    queryFn: async () => {
+      const res = await fetch(url, {
+        credentials: "include",
+        headers: { Range: "bytes=0-8191" },
+      });
+      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+      return res.text();
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+  if (!data) return null;
+  const sep = ext === "tsv" ? "\t" : ",";
+  const rows = data
+    .split("\n")
+    .filter(Boolean)
+    .slice(0, 7)
+    .map((line) =>
+      line
+        .split(sep)
+        .slice(0, 6)
+        .map((cell) => cell.trim().replace(/^"|"$/g, "")),
+    );
+  if (rows.length === 0) return null;
+  return (
+    <div className="pointer-events-none h-full w-full overflow-hidden bg-background p-2 select-none">
+      <table className="w-full border-collapse">
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri} className={cn(ri === 0 && "bg-muted/50 font-medium")}>
+              {row.map((cell, ci) => (
+                <td
+                  key={ci}
+                  className="max-w-[56px] overflow-hidden border border-border/30 px-1 py-px text-[7px] leading-[1.4] text-muted-foreground"
+                  style={{ maxWidth: 56 }}
+                >
+                  <span className="block truncate">{cell}</span>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Thumb({
   filename,
   size,
@@ -401,20 +477,57 @@ function Thumb({
   downloadUrl: string;
 }) {
   const ext = extOf(filename);
-  const inner = IMAGE_EXTS.has(ext) ? (
-    <img
-      src={downloadUrl}
-      alt=""
-      loading="lazy"
-      className="h-full w-full object-cover"
-    />
-  ) : TEXT_THUMB_EXTS.has(ext) && size <= MAX_TEXT_THUMB_BYTES ? (
-    <TextThumb url={downloadUrl} />
-  ) : (
-    <div className="flex h-full w-full items-center justify-center">
-      <FileTypeIcon filename={filename} className="h-14 w-11 opacity-60" />
-    </div>
-  );
+  let inner: ReactNode;
+  if (IMAGE_EXTS.has(ext)) {
+    inner = (
+      <img
+        src={downloadUrl}
+        alt=""
+        loading="lazy"
+        className="h-full w-full object-cover"
+      />
+    );
+  } else if (VIDEO_EXTS.has(ext)) {
+    // `#t=0.1` + preload="metadata" paints the first frame without a full
+    // download — but only when the card is actually visible.
+    inner = (
+      <LazyThumb>
+        <video
+          src={`${downloadUrl}#t=0.1`}
+          preload="metadata"
+          muted
+          playsInline
+          className="pointer-events-none h-full w-full object-cover"
+        />
+      </LazyThumb>
+    );
+  } else if (ext === "pdf") {
+    // Full PDF embed is too heavy for a card thumbnail; show the type icon
+    // and let the preview panel handle the real render.
+    inner = (
+      <div className="flex h-full w-full items-center justify-center">
+        <FileTypeIcon filename={filename} className="h-14 w-11 opacity-60" />
+      </div>
+    );
+  } else if (CSV_EXTS.has(ext)) {
+    inner = (
+      <LazyThumb>
+        <CsvThumb url={downloadUrl} ext={ext} />
+      </LazyThumb>
+    );
+  } else if (TEXT_THUMB_EXTS.has(ext) && size <= MAX_TEXT_THUMB_BYTES) {
+    inner = (
+      <LazyThumb>
+        <TextThumb url={downloadUrl} />
+      </LazyThumb>
+    );
+  } else {
+    inner = (
+      <div className="flex h-full w-full items-center justify-center">
+        <FileTypeIcon filename={filename} className="h-14 w-11 opacity-60" />
+      </div>
+    );
+  }
   return (
     <div className="aspect-[400/265] w-full overflow-hidden rounded-lg border border-border/60 bg-muted/30">
       {inner}

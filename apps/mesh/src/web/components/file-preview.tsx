@@ -10,7 +10,7 @@
  *             without allow-scripts would disable Chrome's PDF plugin)
  *   - html  → <iframe sandbox="allow-scripts"> (untrusted, mirrors WebPageTab)
  *   - md    → fetched and rendered through the chat markdown renderer
- *   - text  → fetched and rendered in a <pre>
+ *   - text  → fetched and rendered in a read-only Monaco code viewer
  *   - other (xlsx/pptx/zip/…) → download card fallback
  *
  * Text-ish fetches go through `fetch(credentials: "include")`; if that
@@ -23,6 +23,7 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Download01 } from "@untitledui/icons";
 import { KEYS } from "@/web/lib/query-keys";
+import { ReadOnlyCodeViewer } from "@/web/components/read-only-code-viewer";
 import { FileTypeIcon } from "@/web/components/file-type-icon";
 import { MemoizedMarkdown } from "@/web/components/chat/markdown.tsx";
 
@@ -169,13 +170,7 @@ function TextPreview({
       </div>
     );
   }
-  return (
-    <div className="h-full overflow-auto">
-      <pre className="px-6 py-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words text-foreground">
-        {data}
-      </pre>
-    </div>
-  );
+  return <ReadOnlyCodeViewer value={data} filename={file.filename} />;
 }
 
 export function FilePreview({ file }: { file: PreviewableFile }) {

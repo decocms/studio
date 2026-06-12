@@ -190,6 +190,8 @@ export const KEYS = {
   threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
   // Fetched text content of a previewed file (FilePreview), keyed by URL.
   fileText: (downloadUrl: string) => ["file-text", downloadUrl] as const,
+  // First bytes of a CSV/TSV file for the card thumbnail (range request).
+  csvThumb: (downloadUrl: string) => ["csv-thumb", downloadUrl] as const,
 
   // Virtual MCP tools (for tool definition lookup in chat)
   // null virtualMcpId means default virtual MCP
