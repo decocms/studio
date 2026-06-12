@@ -1,5 +1,16 @@
 import type { FlatNode, TreeNode } from "./types";
 
+/** File explorer glob cap (agent default stays 1000 on the daemon). */
+export const EXPLORER_GLOB_LIMIT = 10_000;
+/** Eager-load directory depth; deeper paths load on expand. */
+export const EXPLORER_EAGER_DEPTH = 3;
+
+export type GlobListResult = {
+  files: string[];
+  directories: string[];
+  truncated?: boolean;
+};
+
 function normalizePath(path: string) {
   if (!path.trim()) {
     return "/";
@@ -57,6 +68,35 @@ export function validateExplorerEntryName(name: string): string | null {
     return "Name cannot start with a dot";
   }
   return null;
+}
+
+export function getPathDepth(treePath: string): number {
+  const daemonPath = toDaemonPath(treePath);
+  if (!daemonPath) return 0;
+  return daemonPath.split("/").filter(Boolean).length;
+}
+
+export function mergeGlobLists(
+  prevFiles: readonly string[],
+  prevDirs: readonly string[],
+  next: GlobListResult,
+  prevTruncated = false,
+): GlobListResult {
+  return {
+    files: [...new Set([...prevFiles, ...next.files])],
+    directories: [...new Set([...prevDirs, ...(next.directories ?? [])])],
+    truncated: prevTruncated || Boolean(next.truncated),
+  };
+}
+
+export function directoryNeedsLazyLoad(
+  treePath: string,
+  loadedLazyDirs: ReadonlySet<string>,
+): boolean {
+  return (
+    getPathDepth(treePath) > EXPLORER_EAGER_DEPTH &&
+    !loadedLazyDirs.has(treePath)
+  );
 }
 
 /** Whether `treePath` already exists in the glob file list (file or directory). */

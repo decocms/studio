@@ -1,19 +1,21 @@
 /**
- * E2E: POST /api/:org/links/runs/:runId/stream — link ingest return path.
+ * E2E: POST /api/:org/links/runs/:runId/chunks — link chunk-relay return path.
  *
- * The desktop daemon runs a harness locally and POSTs the resulting
- * UIMessageChunk SSE stream to this endpoint, which:
- *   1. Checks the run_fence_token (409 on mismatch).
- *   2. Parses the SSE body (parseDispatchSSEStream).
- *   3. Commits parts to thread_message_parts via PartEmitter (consumePartStream).
- *   4. Pumps chunks to the JetStream live edge (StreamBuffer.pump).
+ * The desktop daemon runs a harness locally and relays its raw output as
+ * seq-numbered NDJSON `RelayLine`s to this endpoint (protocol v2), which:
+ *   1. Enforces org-scoped thread ownership (404 for foreign/missing runs).
+ *   2. Checks the durable cancel flag, then the run_fence_token (409s).
+ *   3. Feeds the relayed chunks into the harness kernel
+ *      (consumeHarnessStream), which commits parts via PartEmitter.
+ *   4. Pumps kernel output to the JetStream live edge and transitions the
+ *      run terminal before acking the terminal POST with {ok, lastSeq}.
  *
- * This spec verifies the happy path (matching fence → 200 + parts land) and
- * the stale-fence path (mismatched token → 409 + zero parts).
+ * This spec verifies the happy path (matching fence → 200 + parts land +
+ * status completed), the stale-fence path (409 + zero parts), the no-fence
+ * path (409 + zero parts), and the lost-session resume path (410).
  *
- * Wire format: concatenated `data: <json>\n\n` blocks, each containing one
- * `{type:"ui-message-chunk", chunk: UIMessageChunk}` event, followed by a
- * `{type:"done"}` sentinel.
+ * Wire format: one `{seq, event}\n` JSON line per DispatchSSEEvent, ending
+ * with a `{type:"done"}` terminal line (see links/protocol/relay.ts).
  */
 
 import { expect, test } from "../fixtures/test";
@@ -75,7 +77,7 @@ async function fetchParts(
   return rows;
 }
 
-/** Fetch the durable thread status (terminal transition is Task 7's effect). */
+/** Fetch the durable thread status (terminal transition before terminal ack). */
 async function fetchThreadStatus(
   db: Awaited<ReturnType<typeof connectDevDb>>,
   threadId: string,
@@ -88,15 +90,12 @@ async function fetchThreadStatus(
 }
 
 /**
- * Build a minimal dispatch SSE body that carries a single assistant turn:
+ * Build a minimal NDJSON chunk-relay body carrying a single assistant turn:
  *   start → start-step → text-start → text-delta → text-end → finish-step → finish
- * followed by a `done` sentinel. The message id is deterministic so callers
- * can assert against it.
+ * followed by a terminal `done` line. Each line is a seq-numbered RelayLine,
+ * exactly what the real daemon chunk relay streams (link-daemon/chunk-relay.ts).
  */
-function buildSseBody(messageId: string, text: string): string {
-  // Exactly the SDK-verified UIMessageChunk sequence the consume-part-stream
-  // unit test proved assembles into one text message (ai@6: text deltas use
-  // `delta`, text parts key on `id`). Wrapped as `ui-message-chunk` events.
+function buildRelayBody(messageId: string, text: string): string {
   const textId = `${messageId}-text-0`;
   const chunks: unknown[] = [
     { type: "start" },
@@ -112,15 +111,25 @@ function buildSseBody(messageId: string, text: string): string {
     chunk,
   }));
   events.push({ type: "done" });
-  return events.map((ev) => `data: ${JSON.stringify(ev)}\n\n`).join("");
+  return `${events
+    .map((event, i) => JSON.stringify({ seq: i + 1, event }))
+    .join("\n")}\n`;
+}
+
+function relayHeaders(fenceToken: string, fromSeq = 1): Record<string, string> {
+  return {
+    "content-type": "application/x-ndjson",
+    "x-fence-token": fenceToken,
+    "x-relay-from": String(fromSeq),
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe("POST /api/:org/links/runs/:runId/stream — link ingest", () => {
-  test("matching fence token → 200 and parts land in thread_message_parts", async ({
+test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", () => {
+  test("matching fence token → 200 {ok,lastSeq} and parts land in thread_message_parts", async ({
     authedPage,
   }) => {
     const { page, user, orgSlug } = authedPage;
@@ -138,19 +147,17 @@ test.describe("POST /api/:org/links/runs/:runId/stream — link ingest", () => {
 
       const messageId = `msg_ingest_e2e_${Date.now()}`;
       const bodyText = `link-ingest-e2e-marker-${Date.now()}`;
-      const sseBody = buildSseBody(messageId, bodyText);
+      const relayBody = buildRelayBody(messageId, bodyText);
+      const lineCount = relayBody.trim().split("\n").length;
 
-      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/stream`, {
-        headers: {
-          "content-type": "text/event-stream",
-          "x-fence-token": fenceToken,
-        },
-        data: sseBody,
+      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
+        headers: relayHeaders(fenceToken),
+        data: relayBody,
       });
 
       expect(res.status()).toBe(200);
       const json = await res.json();
-      expect(json).toMatchObject({ ok: true });
+      expect(json).toMatchObject({ ok: true, lastSeq: lineCount });
 
       // Parts must be committed: at least a text part and a finish anchor.
       const parts = await fetchParts(db, runId);
@@ -159,8 +166,8 @@ test.describe("POST /api/:org/links/runs/:runId/stream — link ingest", () => {
       expect(kinds).toContain("text");
       expect(kinds).toContain("finish");
 
-      // Task 7: a successful ingest transitions the run terminal (durably),
-      // which is what releases the pull gate's threads.status poll.
+      // The terminal POST is acked only after the run transitioned terminal
+      // (durably), which is what releases the pull gate's threads.status poll.
       expect(await fetchThreadStatus(db, runId)).toBe("completed");
     } finally {
       await db.end();
@@ -185,14 +192,11 @@ test.describe("POST /api/:org/links/runs/:runId/stream — link ingest", () => {
       });
 
       const messageId = `msg_stale_e2e_${Date.now()}`;
-      const sseBody = buildSseBody(messageId, "should not land");
+      const relayBody = buildRelayBody(messageId, "should not land");
 
-      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/stream`, {
-        headers: {
-          "content-type": "text/event-stream",
-          "x-fence-token": staleToken,
-        },
-        data: sseBody,
+      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
+        headers: relayHeaders(staleToken),
+        data: relayBody,
       });
 
       expect(res.status()).toBe(409);
@@ -210,17 +214,15 @@ test.describe("POST /api/:org/links/runs/:runId/stream — link ingest", () => {
   test("null fence (no active run) → 409 'no active run fence' and zero parts land", async ({
     authedPage,
   }) => {
-    // Asserts the INERT posture: when run_fence_token is null the endpoint
-    // must refuse to write anything, regardless of the presented token.
+    // When run_fence_token is null there is no active pull run for the
+    // thread, so the endpoint must refuse to write anything regardless of
+    // the presented token.
     const { page, user, orgSlug } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
     try {
       const orgId = await orgIdForSlug(db, orgSlug);
 
-      // Seed a thread with NO fence token — simulates a thread that exists
-      // but for which no run has been started (the fence is never minted in
-      // this phase).
       const runId = await seedV2Thread(db, {
         orgId,
         userId: user.userId,
@@ -228,15 +230,11 @@ test.describe("POST /api/:org/links/runs/:runId/stream — link ingest", () => {
       });
 
       const messageId = `msg_nofence_e2e_${Date.now()}`;
-      const sseBody = buildSseBody(messageId, "should not land");
+      const relayBody = buildRelayBody(messageId, "should not land");
 
-      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/stream`, {
-        headers: {
-          "content-type": "text/event-stream",
-          // Present any token — must still be rejected because current === null.
-          "x-fence-token": `any_token_${Date.now()}`,
-        },
-        data: sseBody,
+      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
+        headers: relayHeaders(`any_token_${Date.now()}`),
+        data: relayBody,
       });
 
       expect(res.status()).toBe(409);
@@ -246,6 +244,45 @@ test.describe("POST /api/:org/links/runs/:runId/stream — link ingest", () => {
       // No parts should have been written.
       const parts = await fetchParts(db, runId);
       expect(parts).toHaveLength(0);
+    } finally {
+      await db.end();
+    }
+  });
+
+  test("resumed relay with no parked session (x-relay-from > 1) opens fresh (no 410; idempotent resend)", async ({
+    authedPage,
+  }) => {
+    // Registry loss (pod restart) is no longer terminal: a full-prefix resend
+    // is idempotent (§10, the cluster dedupes by seq), so a resumed relay with
+    // no parked session opens a FRESH session and accepts the lines rather than
+    // 410-ing the daemon into giving up.
+    const { page, user, orgSlug } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    try {
+      const orgId = await orgIdForSlug(db, orgSlug);
+      const fenceToken = `fence_lost_${Date.now()}`;
+
+      const runId = await seedV2Thread(db, {
+        orgId,
+        userId: user.userId,
+        runFenceToken: fenceToken,
+      });
+
+      const messageId = `msg_lost_e2e_${Date.now()}`;
+      const relayBody = buildRelayBody(messageId, "resumed turn lands");
+
+      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
+        headers: relayHeaders(fenceToken, 5),
+        data: relayBody,
+      });
+
+      expect(res.status()).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: true });
+
+      // The fresh session processed the relayed turn → parts persist.
+      const parts = await fetchParts(db, runId);
+      expect(parts.length).toBeGreaterThan(0);
     } finally {
       await db.end();
     }

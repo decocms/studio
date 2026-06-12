@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Eye,
   Globe01,
+  Home01,
   Plus,
   RefreshCw01,
   Stars01,
@@ -46,6 +47,7 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { homeMountPath } from "@/file-storage/home-mount";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { KEYS } from "@/web/lib/query-keys";
 import {
@@ -78,6 +80,7 @@ import { SkillPreviewDialog } from "./skill-preview-dialog";
  *  deliberately absent — they live in versioned repos (public sets), not as
  *  an editable cloud volume. */
 const VOLUMES = [
+  { id: "home", description: "Your organization's home folder", glyph: Home01 },
   { id: "uploads", description: "Files your team uploads", glyph: Upload01 },
   { id: "outputs", description: "Agent run outputs", glyph: Stars01 },
 ] as const;
@@ -147,11 +150,14 @@ function FolderFilterPills() {
 
 function VolumeFolderCard({
   volume,
+  displayName,
   description,
   glyph,
   onOpen,
 }: {
   volume: string;
+  /** Card label when it differs from the volume id (home shows the slug). */
+  displayName?: string;
   description: string;
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   onOpen: () => void;
@@ -159,7 +165,7 @@ function VolumeFolderCard({
   const usage = useOrgFsUsage(volume);
   return (
     <FolderCard
-      name={volume}
+      name={displayName ?? volume}
       meta={usage.data ? `${usage.data.files} files` : undefined}
       subtitle={description}
       glyph={glyph}
@@ -223,6 +229,7 @@ function RootView({
   onOpenFile: (previewPath: string) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
+  const { org } = useProjectContext();
   const recent = useOrgFsRecent();
   const publicSets = useOrgFsPublicSets();
   const fileUrl = useOrgFsFileUrl();
@@ -271,6 +278,13 @@ function RootView({
             <VolumeFolderCard
               key={v.id}
               volume={v.id}
+              // The home volume presents as the org itself — through the same
+              // helper provisioning uses, so the label always matches the
+              // sandbox mount (incl. the reserved-slug fallback to "home",
+              // which avoids two cards both named e.g. "public").
+              displayName={
+                v.id === "home" ? homeMountPath(org.slug) : undefined
+              }
               description={v.description}
               glyph={v.glyph}
               onOpen={() => onOpenDir(v.id)}

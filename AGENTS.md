@@ -168,7 +168,6 @@ The workspace is managed via Bun workspaces. The main application lives in `apps
 - `packages/bindings/` - Core MCP bindings and connection abstractions (defines standardized interfaces)
 - `packages/runtime/` - Runtime utilities for MCP proxy, OAuth, and tools
 - `packages/ui/` - Shared React components (shadcn-based design system)
-- `packages/vite-plugin-deco/` - Vite plugin for Deco projects
 - `packages/create-deco/` - Project scaffolding tool (npm init)
 
 Database migrations live in `apps/mesh/migrations/`, code quality plugins in `plugins/`, and infrastructure/deploy configs in `deploy/`.

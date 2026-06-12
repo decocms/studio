@@ -23,14 +23,19 @@
  *   - `emitUserMessage(message)` at the initial user-message save.
  *   - `emitError(messageId, role, parts)` at `onError`: an `error` part + finish.
  *
- * **Deterministic, idempotent ids.** Row id = `${runId}:${seq}`. `seq` is a
- * per-run counter, but it is NOT a naive "next int per call": the SAME logical
- * part (identified by `${message_id}#${indexInMessage}`) is always assigned the
- * SAME `seq`, memoized in `seqByPart`. So a part that is `input-available`
- * (skipped) at step N and `output-available` (emitted) at step N+1 lands at one
- * stable id, and re-emits across retries/resumes hit `ON CONFLICT (id) DO
- * NOTHING`. This also satisfies the UNIQUE `(run_id, seq)` index: each logical
- * part owns exactly one seq for the life of the run.
+ * **Deterministic, idempotent ids.** Row id = `${runId}:${messageId}:${seq}`.
+ * `seq` is a per-MESSAGE counter (each PartRowBuilder/message restarts at 0),
+ * but it is NOT a naive "next int per call": the SAME logical part (identified
+ * by `${message_id}#${indexInMessage}`) is always assigned the SAME `seq`,
+ * memoized in `seqByPart`. So a part that is `input-available` (skipped) at
+ * step N and `output-available` (emitted) at step N+1 lands at one stable id,
+ * and re-emits across retries/resumes hit `ON CONFLICT (id) DO NOTHING`. The
+ * `messageId` segment is what keeps parts of DIFFERENT messages disjoint even
+ * when seq collides — e.g. the user message (persisted at dispatch) and the
+ * assistant message (persisted by consumeRelayedRun) of one pull turn both
+ * start at seq 0 under the same `runId == threadId`. Because `messageId` is
+ * globally unique, the `id` primary key alone guarantees row uniqueness; there
+ * is no longer a UNIQUE `(run_id, seq)` index (dropped in migration 106).
  *
  * **Monotonic created_at from seq.** `created_at = base + seq` (ms), NOT
  * `Date.now()` per part. The fold orders messages by their first part's

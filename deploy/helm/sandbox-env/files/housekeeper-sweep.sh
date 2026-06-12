@@ -22,6 +22,16 @@ DAEMON_PORT=9000
 IDLE_PATH="/_sandbox/idle"
 LEGACY_IDLE_PATH="/_decopilot_vm/idle"
 
+# A transient optimistic-concurrency conflict on the SandboxClaim status write
+# surfaces as Ready=False/reason=ReconcilerError for ~1s before the operator
+# retries and recovers (a concurrent reconcile still lands status.sandbox.name).
+# Don't force-delete on first sight — require the error to persist this long, so
+# we never delete a freshly-adopted claim out from under a client still inside
+# its adoption wait (the "did not record an adopted Sandbox within 60s" freeze).
+# Override via the CronJob env if needed.
+: "${RECONCILER_ERROR_GRACE_SEC:=120}"
+RECONCILER_ERROR_SINCE_ANNOTATION="studio.decocms.com/reconciler-error-since"
+
 now_iso()   { date -u +%Y-%m-%dT%H:%M:%SZ; }
 now_micro() { date -u +%Y-%m-%dT%H:%M:%S.000000Z; }
 
@@ -220,6 +230,14 @@ while IFS='|' read -r CLAIM READY REASON ERROR_SINCE; do
     force_delete_claim "$CLAIM" "ReconcilerError" "persisted ${age_s}s past ${RECONCILER_ERROR_GRACE_SEC}s grace"
     reaped=$((reaped + 1))
     continue
+  fi
+
+  # Not in ReconcilerError this sweep — clear any stale streak stamp so a future
+  # transient error starts its grace window fresh (else a later blip would be
+  # judged against a long-expired timestamp and deleted immediately).
+  if [ -n "$ERROR_SINCE" ]; then
+    kubectl annotate sandboxclaim "$CLAIM" -n "$NS" \
+      "${RECONCILER_ERROR_SINCE_ANNOTATION}-" >/dev/null 2>&1 || true
   fi
 
   if [ "$READY" != "True" ]; then

@@ -31,82 +31,52 @@ describe("threadGateWorkflow plumbing", () => {
   });
 });
 
-describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
-  it("routes a user-desktop CLI target on a v2 thread to pull", () => {
+describe("decidePullDispatch (Transport Convergence)", () => {
+  // EVERY user-desktop run goes pull — all harnesses, both storage generations.
+  it("routes a user-desktop claude-code target to pull", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: "user-desktop",
-        harnessId: "claude-code",
-        messageStorageVersion: 2,
       }),
     ).toBe(true);
   });
 
-  it("routes a user-desktop codex target on a v2 thread to pull", () => {
+  it("routes a user-desktop codex target to pull", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: "user-desktop",
-        harnessId: "codex",
-        messageStorageVersion: 2,
       }),
     ).toBe(true);
   });
 
-  it("keeps decopilot user-desktop v2 runs on the push path until pull sandbox config exists", () => {
+  it("routes a user-desktop decopilot target to pull (push remoteDispatch deleted)", () => {
+    // Decopilot desktop now ALSO runs in a sandbox, and the pull work item
+    // carries its sandbox config. Push is gone — pull is the sole local
+    // transport.
     expect(
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: "user-desktop",
-        harnessId: "decopilot",
-        messageStorageVersion: 2,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("keeps an unspecified harness on the push path", () => {
-    expect(
-      decidePullDispatch({
-        isPullCapable: true,
-        sandboxProviderKind: "user-desktop",
-        harnessId: undefined,
-        messageStorageVersion: 2,
-      }),
-    ).toBe(false);
-  });
-
-  it("routes an agent-sandbox target to the hosted ws path (NOT pull)", () => {
+  it("routes an agent-sandbox target to the hosted local-dispatch path (NOT pull)", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: "agent-sandbox",
-        harnessId: "claude-code",
-        messageStorageVersion: 2,
       }),
     ).toBe(false);
   });
 
-  it("routes an undefined target (legacy path) to the hosted ws path", () => {
+  it("routes an undefined target (legacy path) to the hosted local-dispatch path", () => {
     expect(
       decidePullDispatch({
         isPullCapable: true,
         sandboxProviderKind: undefined,
-        harnessId: "claude-code",
-        messageStorageVersion: 2,
-      }),
-    ).toBe(false);
-  });
-
-  it("routes a user-desktop target on a v1 thread to the push path (v2 conjunct)", () => {
-    // Belt-and-suspenders: a v1 user-desktop thread has no v2 ingest path, so
-    // pull would silently corrupt. The version conjunct forces ws fallback.
-    expect(
-      decidePullDispatch({
-        isPullCapable: true,
-        sandboxProviderKind: "user-desktop",
-        harnessId: "claude-code",
-        messageStorageVersion: 1,
       }),
     ).toBe(false);
   });
@@ -116,27 +86,6 @@ describe("decidePullDispatch (Phase C-bis S6 target-gate)", () => {
       decidePullDispatch({
         isPullCapable: false,
         sandboxProviderKind: "user-desktop",
-        harnessId: "claude-code",
-        messageStorageVersion: 2,
-      }),
-    ).toBe(false);
-  });
-
-  it("treats a null/undefined message_storage_version as non-v2 (ws path)", () => {
-    expect(
-      decidePullDispatch({
-        isPullCapable: true,
-        sandboxProviderKind: "user-desktop",
-        harnessId: "claude-code",
-        messageStorageVersion: null,
-      }),
-    ).toBe(false);
-    expect(
-      decidePullDispatch({
-        isPullCapable: true,
-        sandboxProviderKind: "user-desktop",
-        harnessId: "claude-code",
-        messageStorageVersion: undefined,
       }),
     ).toBe(false);
   });

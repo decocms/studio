@@ -29,7 +29,6 @@ export interface AgentBindingConfig {
   id?: string;
   credentialId?: string;
   thinking?: AgentModelInfo;
-  coding?: AgentModelInfo;
   fast?: AgentModelInfo;
   toolApprovalLevel?: "auto" | "readonly";
   /** Decopilot stream mode — default, plan, web-search, gen-image */
@@ -45,7 +44,6 @@ export interface AgentStreamParams {
   messages: Omit<UIMessage, "id">[];
   credentialId?: string;
   thinking?: AgentModelInfo;
-  coding?: AgentModelInfo;
   fast?: AgentModelInfo;
   toolApprovalLevel?: "auto" | "readonly";
   /** Decopilot stream mode — default, plan, web-search, gen-image */
@@ -118,9 +116,6 @@ export async function streamAgent(
           models: {
             credentialId,
             thinking,
-            ...((params.coding ?? config.coding)
-              ? { coding: params.coding ?? config.coding }
-              : {}),
             ...((params.fast ?? config.fast)
               ? { fast: params.fast ?? config.fast }
               : {}),
@@ -190,7 +185,6 @@ export function createDecopilotClient(options: DecopilotClientOptions) {
         id: request.agent.id,
         credentialId: request.credentialId ?? "",
         thinking: request.thinking ?? { id: "", title: "" },
-        coding: request.coding,
         fast: request.fast,
         toolApprovalLevel: request.toolApprovalLevel,
         mode: request.mode,

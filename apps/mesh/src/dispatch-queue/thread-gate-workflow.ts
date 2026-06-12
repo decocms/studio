@@ -89,44 +89,34 @@ export async function pollUntilTerminal(
 export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
 
 /**
- * Pure decision for the thread-gate's pull-vs-ws routing (Phase C-bis S6).
+ * Pure decision for the thread-gate's pull-vs-local routing (Transport
+ * Convergence).
  *
- * Pull fires only when ALL of:
+ * Pull fires when BOTH of:
  *   1. the runtime is pull-capable (NATS work queue + pullDispatchFn wired);
  *   2. the dispatch target's `sandboxProviderKind === 'user-desktop'` — i.e.
  *      POST-time `resolveDispatchTarget` found a LIVE desktop link (the gate
  *      trusts the pre-resolved target and never re-probes `linkClaimRegistry`,
- *      which would drift on replay if the link went offline);
- *   3. the harness has pull work-item sandbox config support (`claude-code`
- *      or `codex`). Decopilot desktop stays on the push/remote-dispatch path
- *      until pull work items can carry its sandbox config;
- *   4. the thread is message_storage_version 2 — the only ingest path that can
- *      consume a pull round-trip. A v1 user-desktop thread routed to pull would
- *      have no v2 ingest → silent corruption; the conjunct prevents that.
+ *      which would drift on replay if the link went offline).
+ *
+ * EVERY user-desktop run goes pull — ALL harnesses (decopilot, claude-code,
+ * codex) and BOTH storage generations (v1 and v2). The push `remoteDispatch`
+ * transport is deleted; pull (the work queue) is the sole local transport.
+ * Decopilot desktop now ALSO runs in a sandbox, and the pull work item carries
+ * its sandbox config (see `resolvePullSandboxConfig`). The v1 generation is
+ * handled by `consumeRelayedRun`'s v1 whole-message branch (built in Task 10),
+ * so a v1 user-desktop thread routed to pull persists correctly.
  *
  * Hosted agent-sandbox threads and undefined targets (legacy paths) all yield
- * `false` → hosted ws fallback. This is the fix for the reverted NATS-gated
+ * `false` → hosted local dispatch. This is the fix for the reverted NATS-gated
  * cutover (40562b383), which keyed only on pull-capability and routed EVERY
  * chat to a pull work-queue nobody drains.
  */
 export function decidePullDispatch(input: {
   isPullCapable: boolean;
   sandboxProviderKind?: DispatchTarget["sandboxProviderKind"];
-  harnessId?: DispatchRunInput["harnessId"];
-  messageStorageVersion: number | null | undefined;
 }): boolean {
-  return (
-    input.isPullCapable &&
-    input.sandboxProviderKind === "user-desktop" &&
-    isPullSupportedHarness(input.harnessId) &&
-    input.messageStorageVersion === 2
-  );
-}
-
-function isPullSupportedHarness(
-  harnessId: DispatchRunInput["harnessId"],
-): boolean {
-  return harnessId === "claude-code" || harnessId === "codex";
+  return input.isPullCapable && input.sandboxProviderKind === "user-desktop";
 }
 
 /**
@@ -187,10 +177,10 @@ export interface ThreadGateRuntime {
    */
   runTimeoutMs?: number;
   /**
-   * Pull-transport dependencies (Phase B). When present and the dispatch
-   * target's `sandboxProviderKind === 'user-desktop'` AND the thread's
-   * message_storage_version === 2 (Phase C-bis S6 target-gate), the gate uses
-   * these instead of dispatchRunFn.
+   * Pull-transport dependencies (Transport Convergence). When present and the
+   * dispatch target's `sandboxProviderKind === 'user-desktop'`, the gate uses
+   * these instead of dispatchRunFn — for every user-desktop run (all harnesses,
+   * both storage generations). Pull is the sole local transport.
    */
   pullDispatchFn?: (
     input: DispatchRunInput,
@@ -249,53 +239,26 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
 
   // Resolve whether this thread should use the pull transport.
   //
-  // TARGET-GATED (Phase C-bis S6): pull fires only when the dispatch is bound
-  // for a LIVE user-desktop link. The target was resolved once at POST time
-  // (routes.ts `resolveDispatchTarget`) and forwarded on `request.target`; we
-  // key off it here instead of re-probing `linkClaimRegistry` — re-resolving at
-  // replay time would drift if the link went offline between enqueue and
-  // dispatch. Hosted agent-sandbox threads (no desktop daemon) yield
-  // `sandboxProviderKind === "agent-sandbox"` → hosted fallback; an undefined
-  // target (legacy paths) also falls back. This is the fix for the reverted
-  // NATS-gated cutover (40562b383), which routed EVERY chat to a pull
+  // TRANSPORT CONVERGENCE: EVERY user-desktop run goes pull — all harnesses
+  // (decopilot, claude-code, codex) and both storage generations (v1, v2). The
+  // push `remoteDispatch` transport is deleted; pull is the sole local
+  // transport. The target was resolved once at POST time (routes.ts
+  // `resolveDispatchTarget`) and forwarded on `request.target`; we key off it
+  // here instead of re-probing `linkClaimRegistry` — re-resolving at replay
+  // time would drift if the link went offline between enqueue and dispatch.
+  // Hosted agent-sandbox threads (no desktop daemon) yield
+  // `sandboxProviderKind === "agent-sandbox"` → hosted local dispatch; an
+  // undefined target (legacy paths) also falls back. This is the fix for the
+  // reverted NATS-gated cutover (40562b383), which routed EVERY chat to a pull
   // work-queue nobody drains.
-  //
-  // The v2 conjunct stays as belt-and-suspenders: a v1 user-desktop thread
-  // routed to pull would have no v2 ingest path → silent corruption. We only
-  // need the DB fetch to read `message_storage_version`, so skip it entirely
-  // when pull isn't wired (no-NATS/test branch).
   const isPullCapable = rt.pullDispatchFn != null && rt.workQueue != null;
-  const isUserDesktopTarget =
-    request.target?.sandboxProviderKind === "user-desktop";
-  const isPullSupported =
-    isUserDesktopTarget && isPullSupportedHarness(request.harnessId);
-  const thread =
-    isPullCapable && isPullSupported
-      ? await meshCtx.storage.threads.get(request.taskId ?? ctx.threadId)
-      : null;
   const isPull = decidePullDispatch({
     isPullCapable,
     sandboxProviderKind: request.target?.sandboxProviderKind,
-    harnessId: request.harnessId,
-    messageStorageVersion: thread?.message_storage_version,
   });
 
-  // Observability: a user-desktop target on a non-v2 thread is a config gap.
-  // It falls back from pull to the push dispatch path, still using the
-  // user-desktop target, but masks the v1 thread that should have been
-  // migrated. Log it so the mismatch surfaces.
-  if (isPullCapable && isPullSupported && !isPull) {
-    console.warn(
-      "[threadGate] user-desktop target on non-v2 thread — falling back to push dispatch",
-      {
-        threadId: request.taskId ?? ctx.threadId,
-        messageStorageVersion: thread?.message_storage_version ?? null,
-      },
-    );
-  }
-
   if (!isPull) {
-    // ── Original ws path — unchanged ────────────────────────────────────
+    // ── Hosted local-dispatch path (agent-sandbox / legacy) — unchanged ──
     // Abort timer is opt-in. Automations supply a 5-min cap so a runaway
     // cron can't pin a thread slot forever; user messages leave it unset
     // because tool-using agent loops (Claude Code, deep research,
@@ -347,7 +310,9 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       rt.deps,
     );
 
-    // 2. Publish the work item idempotently (L1: keyed by runId).
+    // 2. Publish the work item idempotently (L1: keyed by the per-attempt
+    //    runFenceToken, NOT runId — runId aliases the threadId, so sequential
+    //    turns would collide in NATS dedup; see `workItemDedupKey`).
     // `harnessInput` is the complete wire `HarnessStreamInput` that
     // `pullDispatch` built eagerly (mcp endpoint minted, messages
     // materialized, virtualMcp + fence token already on it) — exactly the

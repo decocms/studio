@@ -43,7 +43,7 @@ import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { resolveHarnessId } from "./dispatch-run";
-import { stringifyError } from "@/harnesses/decopilot/stream-error";
+import { stringifyError } from "@decocms/harness/decopilot/stream-error";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import type { LinkClaimRegistry } from "../../../links/link-claim-registry";

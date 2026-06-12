@@ -1,24 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 
-const mockAgentList = [
-  {
-    id: "vir_other",
-    title: "Other Agent",
-    description: "A sibling agent",
-    status: "active" as const,
-    organization_id: "org_test",
-  },
-];
-
 const baseOpts = {
-  ctx: {
-    storage: { virtualMcps: { list: async () => mockAgentList } },
-  } as never,
+  ctx: {} as never,
   organization: { id: "org_test" } as never,
   virtualMcp: { id: "vir_test", instructions: undefined } as never,
   agentInstructions: undefined,
   date: new Date("2026-05-26T00:00:00Z"),
+  userContext: {
+    agents: [
+      {
+        id: "vir_other",
+        name: "Other Agent",
+        description: "A sibling agent",
+        status: "active" as const,
+      },
+    ],
+  },
 };
 
 describe("buildAgentSystemPrompt", () => {
@@ -30,6 +28,23 @@ describe("buildAgentSystemPrompt", () => {
     });
     const joined = JSON.stringify(out);
     expect(joined).toContain("available-agents");
+  });
+
+  test("kind: 'agent' renders the user-context block from passed-in userContext", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      planMode: false,
+      user: { id: "u1", name: "Ada", email: "ada@example.com" },
+      currentThreadId: "t-current",
+      userContext: {
+        ...baseOpts.userContext,
+        interests: [{ title: "Ship harness", summary: "extract pkg" }],
+      },
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).toContain("About this user");
+    expect(joined).toContain("Ship harness");
   });
 
   test("kind: 'subagent' OMITS the agents block", async () => {

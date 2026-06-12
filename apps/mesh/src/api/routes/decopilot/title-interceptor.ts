@@ -10,13 +10,15 @@
  */
 import type { UIMessageChunk, UIMessageStreamWriter } from "ai";
 import type { StudioContext } from "@/core/studio-context";
-import type { HarnessProcessLocal } from "@/harnesses/types";
-import { isTitleInputChunk, isTitleResultChunk } from "@/harnesses/title-chunk";
+import {
+  isTitleInputChunk,
+  isTitleResultChunk,
+} from "@decocms/harness/title-chunk";
 import { DEFAULT_THREAD_TITLE } from "./constants";
 
 export interface TitleInterceptorDeps {
   ctx: StudioContext;
-  processLocal: HarnessProcessLocal;
+  isStreamFinished: () => boolean;
   currentThreadTitle: string | null | undefined;
   threadId: string;
   writer: UIMessageStreamWriter;
@@ -77,7 +79,7 @@ export async function* interceptTitleChunks(
         );
       }
 
-      if (!deps.processLocal.isStreamFinished()) {
+      if (!deps.isStreamFinished()) {
         try {
           deps.writer.write({
             type: "data-thread-title",

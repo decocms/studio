@@ -42,22 +42,32 @@ import {
 import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
 // Import harness factories from their subpaths (rather than the barrel
 // `apps/mesh/src/harnesses/index.ts`) to avoid pulling in the cluster-only
-// `decopilotHarnessFactory` and its dependency tree (which references
-// cluster modules that cause a TS stack overflow in the daemon bundle).
+// unified `decopilotHarnessFactory` (`harnesses/decopilot/index.ts`) and its
+// dependency tree (which references cluster modules that cause a TS stack
+// overflow in the daemon bundle).
 //
-// `decopilotDesktopHarnessFactory` is the IMPORT-ISOLATED decopilot runtime
-// (`harnesses/decopilot-desktop/`): it activates its provider from the injected
-// `mcp.modelSecret`, reaches cluster-coupled tools via `mcp.url`, and imports
-// only portable leaves — so it bundles here without dragging in StudioContext /
-// storage / vault. See that subtree's `index.ts` for the isolation contract.
-import { claudeCodeHarnessFactory } from "../../../apps/mesh/src/harnesses/claude-code";
-import { codexHarnessFactory } from "../../../apps/mesh/src/harnesses/codex";
-import { decopilotDesktopHarnessFactory } from "../../../apps/mesh/src/harnesses/decopilot-desktop";
+// `decopilotDesktopHarnessFactory` is the IMPORT-ISOLATED daemon entrypoint into
+// the shared desktop tool-runtime (`harnesses/decopilot/desktop-factory.ts` →
+// `desktop-runtime.ts`): it activates its provider from the injected
+// `modelSources.thinking`, reaches cluster-coupled tools via `mcp.url`, and
+// imports only portable, `@/`-free leaves — so it bundles here without dragging
+// in StudioContext / storage / vault. See `desktop-factory.ts` for the
+// isolation contract (it deliberately never references the cluster branch in
+// `harness-deps.ts`).
+import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
+import { codexHarnessFactory } from "@decocms/harness/codex/index";
+import { decopilotDesktopHarnessFactory } from "@decocms/harness/decopilot/desktop-factory";
+import {
+  getHarnessFactory,
+  registerHarnessFactory,
+} from "@decocms/harness/registry";
+import { registerDesktopSandboxFsBuilder } from "@decocms/harness/decopilot/desktop-sandbox-fs-registry";
+import { buildDesktopSandboxFs } from "../dispatch/desktop-sandbox-fs";
 import type {
   HarnessContext,
-  HarnessFactory,
+  HarnessId,
   HarnessStreamInput,
-} from "../../../apps/mesh/src/harnesses/types";
+} from "@decocms/harness/types";
 import { metrics, trace } from "@opentelemetry/api";
 import { makeEventsHandler } from "./routes/events-stream";
 import { makeExecHandler } from "./routes/exec";
@@ -410,26 +420,34 @@ const eventsH = makeEventsHandler({
 const idleH = makeIdleHandler();
 const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 
-// ─── Remote harness dispatch ───────────────────────────────────────────
+// ─── Harness dispatch ──────────────────────────────────────────────────
 // Authenticated by the bearer `bootConfig.daemonToken` (see `./auth`). The
-// cluster's `remoteDispatch` posts a HarnessStreamInput here, proxied over
-// loopback by the link daemon's control handler; the daemon spawns the
-// named factory's CLI in-process and streams `UIMessageChunk` back as SSE.
+// link daemon's `handleLocalDispatch` posts a HarnessStreamInput here over
+// loopback when it pulls a work item; the daemon spawns the named factory's
+// CLI in-process and streams `UIMessageChunk` back as SSE.
 //
 // The CLI factories plus the import-isolated desktop decopilot factory live in
 // the daemon. The cluster `decopilotHarnessFactory` (RunRegistry, run-stream
 // internals, StudioContext) is NOT here — desktop decopilot runs via
-// `decopilotDesktopHarnessFactory`, which activates from `mcp.modelSecret` and
-// reaches cluster-coupled tools through `mcp.url`.
-const dispatchHarnessRegistry: Map<string, HarnessFactory> = new Map([
-  ["claude-code", claudeCodeHarnessFactory],
-  ["codex", codexHarnessFactory],
-  ["decopilot", decopilotDesktopHarnessFactory],
-]);
+// `decopilotDesktopHarnessFactory`, which activates from `modelSources.thinking`
+// and reaches cluster-coupled tools through `mcp.url`.
+// Register the daemon's harness factories into the shared @decocms/harness
+// registry (the same registry the cluster barrel uses, but a separate
+// module-singleton in the daemon process). Keys are the factory ids
+// (claude-code / codex / decopilot — the desktop factory shares the decopilot
+// id). Lookup goes through `getHarnessFactory` so the daemon and the cluster
+// share one registry abstraction.
+registerHarnessFactory(claudeCodeHarnessFactory);
+registerHarnessFactory(codexHarnessFactory);
+registerHarnessFactory(decopilotDesktopHarnessFactory);
+// The desktop runtime (decopilot) builds its VM fs hooks via the registered
+// sandbox-fs builder — kept in @decocms/sandbox so @decocms/harness stays
+// sandbox-free. Register it before any decopilot dispatch.
+registerDesktopSandboxFsBuilder(buildDesktopSandboxFs);
 const dispatchTracer = trace.getTracer("link-daemon");
 const dispatchMeter = metrics.getMeter("link-daemon");
 const lookupDispatchHarness = (id: string, input: unknown) => {
-  const factory = dispatchHarnessRegistry.get(id);
+  const factory = getHarnessFactory(id as HarnessId);
   if (!factory) throw new Error(`unknown harness: ${id}`);
   // Build a minimal HarnessContext. CLI harnesses don't read storage,
   // db, vault, or aiProviders — they only need tracer/meter for OTel

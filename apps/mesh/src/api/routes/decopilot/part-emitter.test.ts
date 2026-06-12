@@ -95,7 +95,10 @@ describe("PartEmitter", () => {
       parts: [{ type: "text", text: "hello" }],
     });
 
-    expect(rows.map((r) => r.id)).toEqual(["run1:0", "run1:1"]);
+    expect(rows.map((r) => r.id)).toEqual([
+      "run1:msg_user:0",
+      "run1:msg_user:1",
+    ]);
     expect(rows[0]!.kind).toBe("text");
     expect(rows[1]!.kind).toBe("finish");
     // created_at derived from base + seq (monotonic), not Date.now()
@@ -135,8 +138,8 @@ describe("PartEmitter", () => {
     });
 
     // idx0 → seq0, idx1 → seq1 (stable across the two steps), idx2 → seq2.
-    expect(rows.map((r) => r.id)).toEqual(["run1:0", "run1:1", "run1:2"]);
-    const idx1 = rows.find((r) => r.id === "run1:1")!;
+    expect(rows.map((r) => r.id)).toEqual(["run1:m:0", "run1:m:1", "run1:m:2"]);
+    const idx1 = rows.find((r) => r.id === "run1:m:1")!;
     expect(idx1.kind).toBe("tool_result");
     expect(idx1.payload).toMatchObject({ state: "output-available" });
   });
@@ -153,7 +156,7 @@ describe("PartEmitter", () => {
     await emitter.emitFinal(msg);
     await emitter.emitFinal(msg);
     // one text + one finish, regardless of repeated emits
-    expect(rows.map((r) => r.id)).toEqual(["run1:0", "run1:1"]);
+    expect(rows.map((r) => r.id)).toEqual(["run1:m:0", "run1:m:1"]);
   });
 
   it("rebuilds rows on retry when storage fails before persisting", async () => {
@@ -185,8 +188,8 @@ describe("PartEmitter", () => {
     await emitter.emitFinal(message);
 
     expect(rows.map((r) => [r.id, r.kind])).toEqual([
-      ["run1:0", "text"],
-      ["run1:1", "finish"],
+      ["run1:m:0", "text"],
+      ["run1:m:1", "finish"],
     ]);
   });
 

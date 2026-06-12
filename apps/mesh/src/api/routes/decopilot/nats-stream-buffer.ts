@@ -55,6 +55,60 @@ const MAX_CHUNKED_BYTES = 32 * 1024 * 1024;
 const FRAG_INDEX_HEADER = "Dp-Frag-Idx";
 const FRAG_TOTAL_HEADER = "Dp-Frag-Total";
 
+// Canary-gated profiler: is per-chunk JSON.stringify+encode the dominant
+// event-loop occupant? Sums encode time across every active pump on the pod
+// and reports it as a fraction of wall-clock per 10s window. Off by default
+// (prod publish path stays byte-for-byte unchanged).
+const STREAM_ENCODE_TRACE = process.env.STREAM_ENCODE_TRACE === "1";
+
+class StreamEncodeProfiler {
+  private chunks = 0;
+  private encodeMs = 0;
+  private maxMs = 0;
+  private bytes = 0;
+  private windowStart = performance.now();
+
+  constructor() {
+    const timer = setInterval(() => this.flush(), 10_000);
+    timer.unref?.();
+  }
+
+  record(ms: number, byteLen: number): void {
+    this.chunks++;
+    this.encodeMs += ms;
+    if (ms > this.maxMs) this.maxMs = ms;
+    this.bytes += byteLen;
+  }
+
+  private flush(): void {
+    const now = performance.now();
+    const windowMs = now - this.windowStart;
+    if (this.chunks > 0 && windowMs > 0) {
+      console.warn(
+        JSON.stringify({
+          msg: "stream-encode-trace",
+          windowMs: Math.round(windowMs),
+          chunks: this.chunks,
+          encodeMs: Math.round(this.encodeMs),
+          // share of wall-clock the loop spent synchronously encoding chunks
+          pctOfLoop: +((this.encodeMs / windowMs) * 100).toFixed(1),
+          maxChunkMs: +this.maxMs.toFixed(2),
+          mbEncoded: +(this.bytes / 1048576).toFixed(2),
+        }),
+      );
+    }
+    this.chunks = 0;
+    this.encodeMs = 0;
+    this.maxMs = 0;
+    this.bytes = 0;
+    this.windowStart = now;
+  }
+}
+
+const streamEncodeProfiler = STREAM_ENCODE_TRACE
+  ? new StreamEncodeProfiler()
+  : null;
+
 function assertSafeSubjectToken(id: string): void {
   if (/[.*>\s]/.test(id)) throw new Error("Invalid NATS subject token");
 }
@@ -175,7 +229,14 @@ export class NatsStreamBuffer implements StreamBuffer {
     // back together by `createTailStream`. Fragments carry raw byte slices
     // of the encoded `{ p: value }` JSON, so reassembly is byte-exact.
     const publishChunk = (value: unknown): void => {
-      const bytes = encoder.encode(JSON.stringify({ p: value }));
+      let bytes: Uint8Array;
+      if (streamEncodeProfiler) {
+        const t0 = performance.now();
+        bytes = encoder.encode(JSON.stringify({ p: value }));
+        streamEncodeProfiler.record(performance.now() - t0, bytes.length);
+      } else {
+        bytes = encoder.encode(JSON.stringify({ p: value }));
+      }
       if (bytes.length <= MAX_PUBLISH_BYTES) {
         tracker.publish(js, subj, bytes);
         return;
@@ -221,6 +282,48 @@ export class NatsStreamBuffer implements StreamBuffer {
         publishDone();
       }
     })();
+  }
+
+  /**
+   * Publish ONE raw chunk and AWAIT the JetStream ack (spec §5.3). This is the
+   * durable commit point for the publish-then-consume ingest: the caller
+   * advances its ack cursor only after this resolves `true`. Mirrors `pump`'s
+   * `publishChunk` fragmentation, but awaited (not fire-and-forget) so the
+   * caller knows the publish is confirmed. Returns `false` when JetStream is
+   * unavailable so the caller does NOT advance its cursor.
+   */
+  async publishRawChunk(taskId: string, chunk: unknown): Promise<boolean> {
+    const js = this.js;
+    if (!js) return false;
+    const subj = streamSubject(taskId);
+    const bytes = this.encoder.encode(JSON.stringify({ p: chunk }));
+    if (bytes.length > MAX_CHUNKED_BYTES) {
+      console.warn(
+        `[Decopilot] dropping oversized raw chunk for thread ${taskId}: ${(
+          bytes.length / (1024 * 1024)
+        ).toFixed(1)} MiB exceeds ${MAX_CHUNKED_BYTES / (1024 * 1024)} MiB cap`,
+      );
+      // Dropped, but the publish "succeeded" as far as the ack cursor is
+      // concerned — refusing to advance would wedge the run on a pathological
+      // chunk (loud-fail is the daemon-outbox cap's job, not ingest's).
+      return true;
+    }
+    if (bytes.length <= MAX_PUBLISH_BYTES) {
+      await js.publish(subj, bytes);
+      return true;
+    }
+    const total = Math.ceil(bytes.length / MAX_PUBLISH_BYTES);
+    for (let i = 0; i < total; i++) {
+      const slice = bytes.slice(
+        i * MAX_PUBLISH_BYTES,
+        (i + 1) * MAX_PUBLISH_BYTES,
+      );
+      const hdrs = natsHeaders();
+      hdrs.set(FRAG_INDEX_HEADER, String(i));
+      hdrs.set(FRAG_TOTAL_HEADER, String(total));
+      await js.publish(subj, slice, { headers: hdrs });
+    }
+    return true;
   }
 
   async createTailStream(

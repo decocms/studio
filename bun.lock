@@ -38,7 +38,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "2.419.1",
+      "version": "2.444.1",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -62,8 +62,6 @@
         "@tanstack/react-virtual": "3.13.24",
         "@xterm/addon-fit": "^0.11.0",
         "@xterm/xterm": "^6.0.0",
-        "ai-sdk-provider-claude-code": "^3.4.4",
-        "ai-sdk-provider-codex-cli": "^1.1.0",
         "embedded-postgres": "^18.3.0-beta.16",
         "ink": "^6.8.0",
         "kysely": "^0.28.12",
@@ -82,12 +80,12 @@
         "@deco/ui": "workspace:*",
         "@decocms/better-auth": "1.5.17",
         "@decocms/bindings": "workspace:*",
+        "@decocms/harness": "workspace:*",
         "@decocms/mcp-utils": "workspace:*",
         "@decocms/mesh-sdk": "workspace:*",
         "@decocms/runtime": "workspace:*",
         "@decocms/sandbox": "workspace:*",
         "@decocms/std": "workspace:*",
-        "@decocms/vite-plugin": "workspace:*",
         "@floating-ui/react": "^0.27.16",
         "@happy-dom/global-registrator": "^20.9.0",
         "@hookform/resolvers": "^5.2.2",
@@ -199,6 +197,28 @@
         "create-deco": "./index.js",
       },
     },
+    "packages/harness": {
+      "name": "@decocms/harness",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ai-sdk/anthropic": "^3.0.80",
+        "@ai-sdk/google": "^3.0.80",
+        "@ai-sdk/openai": "^3.0.65",
+        "@ai-sdk/provider": "^3.0.10",
+        "@decocms/mcp-utils": "workspace:*",
+        "@decocms/mesh-sdk": "workspace:*",
+        "@modelcontextprotocol/sdk": "1.29.0",
+        "@openrouter/ai-sdk-provider": "^2.9.0",
+        "@opentelemetry/api": "^1.9.0",
+        "ai-sdk-provider-claude-code": "^3.4.4",
+        "ai-sdk-provider-codex-cli": "^1.1.0",
+        "nanoid": "^5.1.6",
+        "zod": "^4.0.0",
+      },
+      "peerDependencies": {
+        "ai": ">=6.0.0",
+      },
+    },
     "packages/mcp-utils": {
       "name": "@decocms/mcp-utils",
       "version": "1.0.2",
@@ -242,7 +262,7 @@
     },
     "packages/mesh-sdk": {
       "name": "@decocms/mesh-sdk",
-      "version": "1.3.0",
+      "version": "1.5.0",
       "dependencies": {
         "@decocms/bindings": "^1.1.1",
         "@decocms/mcp-utils": "workspace:*",
@@ -282,8 +302,9 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "0.15.0",
+      "version": "0.21.0",
       "dependencies": {
+        "@decocms/harness": "workspace:*",
         "@decocms/std": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
         "@opentelemetry/api": "^1.9.0",
@@ -372,14 +393,6 @@
       },
       "devDependencies": {
         "tailwindcss": "^4.1.1",
-      },
-    },
-    "packages/vite-plugin-deco": {
-      "name": "@decocms/vite-plugin",
-      "version": "1.0.0-alpha.2",
-      "dependencies": {
-        "@cloudflare/vite-plugin": "^1.13.4",
-        "vite": "^7.2.1",
       },
     },
   },
@@ -627,8 +640,6 @@
 
     "@cloudflare/unenv-preset": ["@cloudflare/unenv-preset@2.16.1", "", { "peerDependencies": { "unenv": "2.0.0-rc.24", "workerd": ">1.20260305.0 <2.0.0-0" }, "optionalPeers": ["workerd"] }, "sha512-ECxObrMfyTl5bhQf/lZCXwo5G6xX9IAUo+nDMKK4SZ8m4Jvvxp52vilxyySSWh2YTZz8+HQ07qGH/2rEom1vDw=="],
 
-    "@cloudflare/vite-plugin": ["@cloudflare/vite-plugin@1.33.2", "", { "dependencies": { "@cloudflare/unenv-preset": "2.16.1", "miniflare": "4.20260424.0", "unenv": "2.0.0-rc.24", "wrangler": "4.85.0", "ws": "8.18.0" }, "peerDependencies": { "vite": "^6.1.0 || ^7.0.0 || ^8.0.0" } }, "sha512-XI6+XkDn8W6tlvtYUoS6C89Te7fwhyDLrhUBUbagPO1StJ6ofbR0vpqNNqNskUp9592xTRCDk5ukqcjz6xMo+g=="],
-
     "@cloudflare/workerd-darwin-64": ["@cloudflare/workerd-darwin-64@1.20260424.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-yFR1XaJbSDLg/qbwtrYaU2xwFXatIPKR5nrMQCN1q/m6+Qe/j6r+kCnFEvOJjMZOm9iCKsE6Qly5clgl4u32qw=="],
 
     "@cloudflare/workerd-darwin-arm64": ["@cloudflare/workerd-darwin-arm64@1.20260424.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-LqWKcE7x/9KyC2iQvKPeb20hKST3dYXDZlYTvFymgR1DfLS0OFOCzVGTloVNd7WqvK4SkdzBYfxo7QMIAeBK0w=="],
@@ -657,6 +668,8 @@
 
     "@decocms/docs": ["@decocms/docs@workspace:apps/docs"],
 
+    "@decocms/harness": ["@decocms/harness@workspace:packages/harness"],
+
     "@decocms/mcp-utils": ["@decocms/mcp-utils@workspace:packages/mcp-utils"],
 
     "@decocms/mesh-sdk": ["@decocms/mesh-sdk@workspace:packages/mesh-sdk"],
@@ -668,8 +681,6 @@
     "@decocms/std": ["@decocms/std@workspace:packages/std"],
 
     "@decocms/typegen": ["@decocms/typegen@workspace:packages/typegen"],
-
-    "@decocms/vite-plugin": ["@decocms/vite-plugin@workspace:packages/vite-plugin-deco"],
 
     "@dnd-kit/accessibility": ["@dnd-kit/accessibility@3.1.1", "", { "dependencies": { "tslib": "^2.0.0" }, "peerDependencies": { "react": ">=16.8.0" } }, "sha512-2P+YgaXF+gRsIihwwY1gCsQSYnu9Zyj2py8kY5fFvUM1qm2WA2u639R6YNVfU4GWr+ZM5mqEsfHZZLoRONbemw=="],
 
@@ -3352,8 +3363,6 @@
     "@better-auth/passkey/better-auth": ["better-auth@1.4.5", "", { "dependencies": { "@better-auth/core": "1.4.5", "@better-auth/telemetry": "1.4.5", "@better-auth/utils": "0.3.0", "@better-fetch/fetch": "1.1.18", "@noble/ciphers": "^2.0.0", "@noble/hashes": "^2.0.0", "better-call": "1.1.4", "defu": "^6.1.4", "jose": "^6.1.0", "kysely": "^0.28.5", "ms": "4.0.0-nightly.202508271359", "nanostores": "^1.0.1", "zod": "^4.1.12" }, "peerDependencies": { "@lynx-js/react": "*", "@sveltejs/kit": "^2.0.0", "@tanstack/react-start": "^1.0.0", "next": "^14.0.0 || ^15.0.0 || ^16.0.0", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0", "solid-js": "^1.0.0", "svelte": "^4.0.0 || ^5.0.0", "vue": "^3.0.0" }, "optionalPeers": ["@lynx-js/react", "@sveltejs/kit", "@tanstack/react-start", "next", "react", "react-dom", "solid-js", "svelte", "vue"] }, "sha512-pHV2YE0OogRHvoA6pndHXCei4pcep/mjY7psSaHVrRgjBtumVI68SV1g9U9XPRZ4KkoGca9jfwuv+bB2UILiFw=="],
 
     "@better-auth/sso/better-auth": ["better-auth@1.4.5", "", { "dependencies": { "@better-auth/core": "1.4.5", "@better-auth/telemetry": "1.4.5", "@better-auth/utils": "0.3.0", "@better-fetch/fetch": "1.1.18", "@noble/ciphers": "^2.0.0", "@noble/hashes": "^2.0.0", "better-call": "1.1.4", "defu": "^6.1.4", "jose": "^6.1.0", "kysely": "^0.28.5", "ms": "4.0.0-nightly.202508271359", "nanostores": "^1.0.1", "zod": "^4.1.12" }, "peerDependencies": { "@lynx-js/react": "*", "@sveltejs/kit": "^2.0.0", "@tanstack/react-start": "^1.0.0", "next": "^14.0.0 || ^15.0.0 || ^16.0.0", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0", "solid-js": "^1.0.0", "svelte": "^4.0.0 || ^5.0.0", "vue": "^3.0.0" }, "optionalPeers": ["@lynx-js/react", "@sveltejs/kit", "@tanstack/react-start", "next", "react", "react-dom", "solid-js", "svelte", "vue"] }, "sha512-pHV2YE0OogRHvoA6pndHXCei4pcep/mjY7psSaHVrRgjBtumVI68SV1g9U9XPRZ4KkoGca9jfwuv+bB2UILiFw=="],
-
-    "@cloudflare/vite-plugin/ws": ["ws@8.18.0", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw=="],
 
     "@cspotcode/source-map-support/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.9", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.0.3", "@jridgewell/sourcemap-codec": "^1.4.10" } }, "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ=="],
 

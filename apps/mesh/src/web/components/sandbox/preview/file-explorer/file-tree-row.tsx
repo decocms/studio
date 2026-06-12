@@ -5,7 +5,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@deco/ui/components/context-menu.tsx";
-import { ChevronDown, ChevronRight, Folder } from "@untitledui/icons";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  Loading01,
+} from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
 import type { TreeNode } from "./types";
 
@@ -22,6 +27,7 @@ export function FileTreeRow({
   depth,
   isExpanded,
   isSelected,
+  isLoading = false,
   fileVisual,
   onOpen,
   onSelect,
@@ -36,6 +42,7 @@ export function FileTreeRow({
   depth: number;
   isExpanded: boolean;
   isSelected: boolean;
+  isLoading?: boolean;
   fileVisual: { Icon: FileIcon; color: string };
   onOpen: () => void;
   onSelect: () => void;
@@ -66,7 +73,12 @@ export function FileTreeRow({
         >
           {isDir ? (
             <>
-              {isExpanded ? (
+              {isLoading ? (
+                <Loading01
+                  size={14}
+                  className="shrink-0 animate-spin text-muted-foreground"
+                />
+              ) : isExpanded ? (
                 <ChevronDown
                   size={14}
                   className="shrink-0 text-muted-foreground"
