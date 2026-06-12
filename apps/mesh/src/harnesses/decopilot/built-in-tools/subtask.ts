@@ -11,7 +11,7 @@
 
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { resolveSubagent } from "../resolve-subagent";
-import type { UIMessageStreamWriter } from "ai";
+import type { ToolSet, UIMessageStreamWriter } from "ai";
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { MeshProvider } from "@/ai-providers/types";
@@ -87,6 +87,15 @@ export interface SubtaskParams {
     outputTokens: number;
     totalTokens: number;
   }) => void;
+  /**
+   * The parent's already-built VM sandbox tools (read/write/edit/grep/glob/
+   * bash/…), bound to the parent's sandbox via its fs hooks. Forwarded to a
+   * SELF-CLONE subagent so it works in the SAME sandbox — its file writes are
+   * visible to the parent. Absent for cross-agent delegation (different agent =
+   * different sandbox identity) and when the parent has no sandbox (no
+   * vmContext, e.g. Claude Code).
+   */
+  vmTools?: ToolSet;
 }
 
 /** Max chars of a tool call's args shown in the live subtask stream. */
@@ -119,8 +128,15 @@ export function createSubtaskTool(
   params: SubtaskParams,
   ctx: StudioContext,
 ) {
-  const { provider, organization, models, needsApproval, self, onChildUsage } =
-    params;
+  const {
+    provider,
+    organization,
+    models,
+    needsApproval,
+    self,
+    onChildUsage,
+    vmTools,
+  } = params;
 
   return tool({
     description: SUBTASK_DESCRIPTION,
@@ -230,6 +246,10 @@ export function createSubtaskTool(
           // (which is both the tool source AND the prompts source for the
           // target agent). This passes through to buildAgentSystemPrompt.
           passthroughClient: mcpClient,
+          // Self-clone only: inherit the parent's sandbox tools so the clone
+          // runs bash / file I/O against the SAME sandbox. A different agent
+          // has a different sandbox identity, so it must NOT inherit these.
+          extraTools: isSelf ? vmTools : undefined,
         });
 
         let streamedText = "";

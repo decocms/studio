@@ -7,7 +7,7 @@
 
 import type { StudioContext, OrganizationScope } from "@/core/studio-context";
 import { posthog } from "@/posthog";
-import type { UIMessageStreamWriter } from "ai";
+import type { ToolSet, UIMessageStreamWriter } from "ai";
 import {
   toolNeedsApproval,
   type ToolApprovalLevel,
@@ -200,6 +200,9 @@ async function buildAllTools(
   // share a single provisioning round-trip.
   const vmNeedsApproval =
     toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false;
+  // Captured so a self-clone subtask can inherit the SAME sandbox tools (and
+  // therefore the same sandbox), letting it run bash / read-write files.
+  let vmTools: ToolSet | undefined;
   if (vmContext) {
     // The flat fs hooks (provider resolution + lazy handle + auto-restart retry
     // layer) are built by the cluster glue so the portable tools never import
@@ -210,20 +213,18 @@ async function buildAllTools(
       branch: vmContext.branch,
       userId: vmContext.userId,
     });
-    Object.assign(
-      tools,
-      createVmTools({
-        fs,
-        htmlPageBuffer,
-        toolOutputMap,
-        needsApproval: vmNeedsApproval,
-        pendingImages,
-        ctx,
-        threadId: vmContext.threadId,
-        virtualMcpId: vmContext.virtualMcpId,
-        orgFs: getSettings().orgFsClusterMounts,
-      }),
-    );
+    vmTools = createVmTools({
+      fs,
+      htmlPageBuffer,
+      toolOutputMap,
+      needsApproval: vmNeedsApproval,
+      pendingImages,
+      ctx,
+      threadId: vmContext.threadId,
+      virtualMcpId: vmContext.virtualMcpId,
+      orgFs: getSettings().orgFsClusterMounts,
+    }) as ToolSet;
+    Object.assign(tools, vmTools);
   }
   // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
   if (provider) {
@@ -240,6 +241,9 @@ async function buildAllTools(
           toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
         // Roll the child run's usage into the parent's accumulator (Task 17).
         onChildUsage,
+        // Self-clones inherit the parent's sandbox tools so they can run
+        // bash / file I/O against the SAME sandbox.
+        vmTools,
       },
       ctx,
     );
