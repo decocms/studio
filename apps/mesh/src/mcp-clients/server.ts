@@ -118,5 +118,18 @@ export function serverFromConnection(
     },
   );
 
+  // The bridge created by `createServerFromClient` does NOT close the client it
+  // delegates to (a generic bridge can't assume it owns a possibly-shared
+  // client). This `client` IS owned by this per-request server, so cascade:
+  // closing the server (e.g. via `serveMcpRequest` on stream-done/disconnect)
+  // must close the lazy client too, or it + its real downstream connection +
+  // transport leak. The lazy client's own `close()` is a no-op if it never
+  // connected (list cache hits), so this is cheap on the warm path.
+  const closeServer = server.close.bind(server);
+  server.close = async () => {
+    await closeServer();
+    await client.close().catch(() => {});
+  };
+
   return server;
 }
