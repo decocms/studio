@@ -91,6 +91,7 @@ import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
+import { sleep } from "@decocms/std";
 
 // B5/I1: counter for message-save failures — tagged by org.id (low cardinality).
 // Incremented at every save .catch site inside dispatch-run.ts so the frequency
@@ -100,6 +101,22 @@ const saveErrorsCounter = meter.createCounter("decopilot.save.errors", {
     "Number of message-save failures during decopilot run dispatch (v1 and v2 paths)",
   unit: "{errors}",
 });
+
+// Attributes onFinish event-loop cost by phase (settle = awaiting the
+// accumulated pendingOps; save = the synchronous message-serialization +
+// DB write). The standalone eventloop.delay timer can't know what phase it
+// stalled in; this histogram closes that gap for the finish path.
+const finishDurationHistogram = meter.createHistogram(
+  "decopilot.finish.duration",
+  {
+    description: "Wall time of onFinish flush segments, tagged by phase",
+    unit: "ms",
+  },
+);
+
+// The per-finish payload-size probe re-stringifies the whole message (the very
+// cost we're characterizing), so the heavy trace is gated to a canary pod.
+const FINISH_TRACE = process.env.DECOPILOT_FINISH_TRACE === "1";
 
 /**
  * Process-wide progress-bump throttle (Task 9, A1/A2). One instance shared by
@@ -1278,8 +1295,22 @@ async function prepareRun(
           pendingOps.length,
         );
         streamFinished = true;
+        const pendingCount = pendingOps.length;
 
+        const settleStart = performance.now();
         await Promise.allSettled(pendingOps);
+        finishDurationHistogram.record(performance.now() - settleStart, {
+          phase: "settle",
+        });
+
+        // Yield a macrotask before the synchronous save serialization so the
+        // settle-burst of 35–55 pending-op continuations and the large
+        // JSON.stringify don't run in one tick — lets queued I/O (health
+        // probes) get a turn and caps the worst onFinish event-loop stalls.
+        await sleep(0);
+
+        const heapBefore = FINISH_TRACE ? process.memoryUsage() : null;
+        const saveStart = performance.now();
         if (partEmitter) {
           // v2: persist any remaining final parts + close the assistant
           // message with a finish anchor.
@@ -1288,6 +1319,31 @@ async function prepareRun(
           });
         } else {
           await saveMessagesToThread(responseMessage);
+        }
+        const saveMs = performance.now() - saveStart;
+        finishDurationHistogram.record(saveMs, { phase: "save" });
+
+        if (FINISH_TRACE && heapBefore) {
+          const heapAfter = process.memoryUsage();
+          let messageBytes = -1;
+          try {
+            messageBytes = JSON.stringify(responseMessage)?.length ?? -1;
+          } catch {
+            // circular/oversized — leave -1
+          }
+          console.warn(
+            JSON.stringify({
+              msg: "decopilot-finish-trace",
+              threadId: mem.thread.id,
+              pendingOps: pendingCount,
+              saveMs: Math.round(saveMs),
+              parts: responseMessage?.parts?.length ?? 0,
+              messageBytes,
+              rssDelta: heapAfter.rss - heapBefore.rss,
+              heapUsedDelta: heapAfter.heapUsed - heapBefore.heapUsed,
+              externalDelta: heapAfter.external - heapBefore.external,
+            }),
+          );
         }
 
         if (registrySignal.aborted) return;
