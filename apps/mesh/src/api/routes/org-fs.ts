@@ -234,10 +234,22 @@ export const createOrgFsRoutes = () => {
         return c.json({ url: await r.fs.presignRead(volume, path) });
       }
       const bytes = await r.fs.read(volume, path);
-      return c.body(Buffer.from(bytes), 200, {
-        "Content-Type": detectContentType(path),
+      const contentType = detectContentType(path);
+      const headers: Record<string, string> = {
+        "Content-Type": contentType,
         "Cache-Control": "private, max-age=0",
-      });
+      };
+      // Member-authored HTML (deck previews, generated pages) renders in
+      // sandboxed iframes AND can be opened top-level ("open in new tab",
+      // PDF export). CSP-sandbox the response so the top-level document
+      // also runs with an opaque origin — its scripts can't make
+      // credentialed same-origin calls. allow-modals keeps window.print()
+      // working for the deck PDF-export path.
+      if (contentType.startsWith("text/html")) {
+        headers["Content-Security-Policy"] =
+          "sandbox allow-scripts allow-modals";
+      }
+      return c.body(Buffer.from(bytes), 200, headers);
     } catch (err) {
       return fsErrorResponse(c, err);
     }

@@ -26,6 +26,19 @@ export interface HtmlPageBuffer {
   flush(): Promise<void>;
 }
 
+/**
+ * Fast-path mirror for presentation decks (`org/<slug>/decks/<name>.html`).
+ * `write`/`edit` enqueue the full post-write content; the cluster flush
+ * writes it server-side into org-fs, skipping the sandbox mount's multi-
+ * second vfs write-back so the preview (and the change-feed deck watcher)
+ * see the bytes at step end. Bash-created decks skip this and are caught
+ * by the watcher after write-back.
+ */
+export interface DeckBuffer {
+  enqueue(rawPath: string, content: string): void;
+  flush(): Promise<void>;
+}
+
 export interface VmToolsParams {
   /**
    * Flat sandbox filesystem hooks (read/write/edit/bash/glob/grep + the
@@ -43,6 +56,8 @@ export interface VmToolsParams {
    * `onStepFinish` so the iframe never races the write.
    */
   readonly htmlPageBuffer: HtmlPageBuffer;
+  /** Optional deck fast-path mirror (cluster-only; see `DeckBuffer`). */
+  readonly deckBuffer?: DeckBuffer;
   readonly toolOutputMap: Map<string, string>;
   readonly needsApproval: boolean;
   /**

@@ -30,6 +30,8 @@ import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { SideChannelWriter } from "@decocms/harness/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
+import { createDeckBuffer } from "./built-in-tools/vm-tools/deck-buffer";
+import { createDeckWatcher } from "./built-in-tools/vm-tools/deck-watcher";
 import { createHtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
 import type { PendingImage } from "./built-in-tools";
 import type {
@@ -112,6 +114,12 @@ export function buildClusterEnvironmentTools(args: {
 }): { toolRuntime: DecopilotToolRuntime; telemetry: DecopilotTelemetry } {
   const { ctx, organization, modelRuntime, sideChannel, cleanup } = args;
   const htmlPageBuffer = createHtmlPageBuffer(ctx, sideChannel.writer);
+  // Deck previews: change-feed watcher emitting `data-deck-updated` parts
+  // for `decks/<name>.html` writes in the org home volume (slides skill),
+  // plus the write/edit fast-path mirror that lands tool content in org-fs
+  // at step end (ahead of the mount's slow vfs write-back).
+  const deckWatcher = createDeckWatcher(ctx, sideChannel.writer);
+  const deckBuffer = createDeckBuffer(ctx);
 
   const toolRuntime: DecopilotToolRuntime = {
     buildEnvironmentTools: async ({ input: streamInput, onChildUsage }) => {
@@ -149,6 +157,7 @@ export function buildClusterEnvironmentTools(args: {
         deepResearchProvider:
           modelRuntime.deepResearch?.provider ?? modelRuntime.thinking.provider,
         htmlPageBuffer,
+        deckBuffer,
         // Roll subtask child usage into the parent run's accumulator
         // (Task 17). Threaded into the subtask tool via getBuiltInTools.
         onChildUsage,
@@ -170,6 +179,12 @@ export function buildClusterEnvironmentTools(args: {
           await htmlPageBuffer.flush().catch((err) => {
             console.error("[decopilot] html-page flush failed", err);
           });
+          // Deck fast-path mirror must land before the sweep so the
+          // change-feed entry it creates is picked up in the same step.
+          // Both swallow their own errors; late rclone write-backs are
+          // caught by the next step's sweep or the DeckTab stat poll.
+          await deckBuffer.flush();
+          await deckWatcher.sweep();
         },
         close: assembled.close,
       };

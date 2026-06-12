@@ -107,6 +107,7 @@ export function createVmTools(params: VmToolsParams) {
   const {
     fs,
     htmlPageBuffer,
+    deckBuffer,
     toolOutputMap,
     needsApproval,
     pendingImages,
@@ -169,6 +170,9 @@ export function createVmTools(params: VmToolsParams) {
       // `htmlPageBuffer.flush()`, so a burst of writes/edits to the same
       // slug collapses to a single round-trip.
       const preview = htmlPageBuffer.enqueue(input.path, input.content);
+      // Deck fast path: mirror `org/<slug>/decks/*.html` content server-
+      // side at step end (skips the mount's slow vfs write-back).
+      deckBuffer?.enqueue(input.path, input.content);
       return preview
         ? { ...(daemonResult as object), htmlPreview: preview }
         : daemonResult;
@@ -189,6 +193,7 @@ export function createVmTools(params: VmToolsParams) {
       const { content: _omit, ...resultForClient } = daemonResult;
       if (typeof postEditContent !== "string") return resultForClient;
       const preview = htmlPageBuffer.enqueue(input.path, postEditContent);
+      deckBuffer?.enqueue(input.path, postEditContent);
       return preview
         ? { ...resultForClient, htmlPreview: preview }
         : resultForClient;

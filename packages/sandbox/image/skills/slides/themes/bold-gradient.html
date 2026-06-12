@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<!--
+  Studio deck (deck-viewer v1). Authoring rules:
+  - Slides are the direct <section> children of <deck-viewer>; the canvas
+    is a fixed 1920x1080 the runtime scales. Do NOT set position/inset/
+    width/height on the <section> elements themselves.
+  - Keep slide content static HTML (users edit it inline in the preview).
+    No JS-rendered text. Re-read this file before editing it again.
+  - Theme is tuned via the CSS custom properties below.
+  - Images: absolute public URLs or data URIs only (relative paths do not
+    resolve when the deck is served).
+-->
+<style>
+  :root {
+    --deck-bg-gradient: linear-gradient(135deg, #3527c0 0%, #8b22c4 52%, #d63d57 100%);
+    --deck-surface: rgba(255, 255, 255, 0.12);
+    --deck-text: #ffffff;
+    --deck-muted: rgba(255, 255, 255, 0.72);
+    --deck-accent: #ffd84d;
+    --deck-accent-2: #7df2c8;
+    --deck-font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --deck-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --deck-radius: 30px;
+  }
+
+  section {
+    background: var(--deck-bg-gradient);
+    color: var(--deck-text);
+    font-family: var(--deck-font-body);
+    padding: 120px 150px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+  section.slide-center {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .eyebrow {
+    margin: 0 0 28px;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--deck-accent);
+  }
+  .deck-h1 {
+    margin: 0;
+    font-family: var(--deck-font-display);
+    font-size: 138px;
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    max-width: 1500px;
+  }
+  .deck-h2 {
+    margin: 0 0 56px;
+    font-family: var(--deck-font-display);
+    font-size: 86px;
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    max-width: 1500px;
+  }
+  .deck-sub {
+    margin: 36px 0 0;
+    font-size: 44px;
+    line-height: 1.35;
+    color: var(--deck-muted);
+    max-width: 1300px;
+  }
+  .deck-meta {
+    margin: 56px 0 0;
+    font-size: 30px;
+    color: var(--deck-muted);
+  }
+  .deck-body {
+    font-size: 34px;
+    line-height: 1.45;
+    margin: 0;
+  }
+  .deck-body.intro {
+    margin: -16px 0 48px;
+    color: var(--deck-muted);
+    max-width: 1300px;
+  }
+
+  .bullets {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+    font-size: 40px;
+    line-height: 1.35;
+    max-width: 1500px;
+  }
+  .bullets li {
+    padding-left: 56px;
+    position: relative;
+  }
+  .bullets li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.5em;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--deck-accent);
+  }
+  .bullets.compact {
+    gap: 22px;
+    font-size: 32px;
+  }
+  .bullets.compact li {
+    padding-left: 44px;
+  }
+  .bullets.compact li::before {
+    width: 16px;
+    height: 16px;
+  }
+
+  .agenda {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: agenda;
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+    font-size: 48px;
+    line-height: 1.25;
+  }
+  .agenda li {
+    counter-increment: agenda;
+    display: flex;
+    align-items: baseline;
+    gap: 36px;
+  }
+  .agenda li::before {
+    content: counter(agenda, decimal-leading-zero);
+    font-family: var(--deck-font-display);
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--deck-accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cols {
+    display: flex;
+    gap: 44px;
+    align-items: stretch;
+    width: 100%;
+  }
+  .grow { flex: 1; min-width: 0; }
+  .card {
+    background: var(--deck-surface);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: var(--deck-radius);
+    padding: 52px 56px;
+  }
+  .col-title {
+    margin: 0 0 28px;
+    font-family: var(--deck-font-display);
+    font-size: 40px;
+    font-weight: 800;
+  }
+
+  .kpis { align-items: stretch; }
+  .kpi { text-align: left; }
+  .kpi-value {
+    margin: 0;
+    font-family: var(--deck-font-display);
+    font-size: 124px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: var(--deck-accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-label {
+    margin: 24px 0 0;
+    font-size: 32px;
+    color: var(--deck-muted);
+  }
+  .kpi-delta {
+    margin: 14px 0 0;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--deck-accent-2);
+  }
+
+  .timeline { gap: 36px; }
+  .step {
+    border-top: 6px solid rgba(255, 255, 255, 0.45);
+    padding-top: 36px;
+  }
+  .step-label {
+    margin: 0 0 18px;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--deck-accent);
+  }
+  .step .deck-body {
+    margin-top: 18px;
+    font-size: 30px;
+    color: var(--deck-muted);
+  }
+
+  .deck-quote {
+    margin: 0;
+    font-family: var(--deck-font-display);
+    font-size: 78px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    max-width: 1500px;
+  }
+  .attribution {
+    margin: 56px 0 0;
+    font-size: 36px;
+    color: var(--deck-muted);
+  }
+
+  .giant-number {
+    margin: 0 0 24px;
+    font-family: var(--deck-font-display);
+    font-size: 210px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--deck-accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .cta {
+    margin: 64px 0 0;
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--deck-accent);
+  }
+
+  /* Entrance animation — base state is the visible end state so print
+     and reduced-motion render full content. */
+  @media (prefers-reduced-motion: no-preference) {
+    section[data-deck-active] > * {
+      animation: deck-rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    }
+    section[data-deck-active] > :nth-child(2) { animation-delay: 70ms; }
+    section[data-deck-active] > :nth-child(3) { animation-delay: 140ms; }
+    section[data-deck-active] > :nth-child(4) { animation-delay: 210ms; }
+    section[data-deck-active] > :nth-child(5) { animation-delay: 280ms; }
+    section[data-deck-active] > :nth-child(n + 6) { animation-delay: 350ms; }
+    @keyframes deck-rise {
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+    }
+  }
+</style>
+</head>
+<body>
+<deck-viewer width="1920" height="1080">
+{{{slides}}}
+</deck-viewer>
+<script src="/deck-runtime/v1/deck-viewer.js"></script>
+</body>
+</html>

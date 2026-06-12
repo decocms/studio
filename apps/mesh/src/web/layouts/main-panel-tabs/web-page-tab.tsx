@@ -1,38 +1,28 @@
 /**
- * WebPageTab — side-panel preview of a generated HTML page.
+ * WebPageTab — side-panel preview of a generated HTML page (the legacy
+ * `pages/<slug>.html` pipeline).
  *
  * The HTML itself is NOT streamed through the chat. The model writes to
  * the sandbox; the wrapped `write`/`edit` tools enqueue the new content
- * into a per-turn buffer (`html-page-buffer`) and return `htmlPreview`
- * synchronously so the chat row paints "Page updated" immediately. The
- * actual S3 PUT happens once per step from `htmlPageBuffer.flush()`,
- * which is hooked into `onStepFinish` via `pendingOps` (awaited at
- * `onFinish` before the stream closes).
+ * into a per-turn buffer (`html-page-buffer`) and the actual S3 PUT
+ * happens once per step. This component waits for the
+ * `data-html-page-published` part emitted after the PUT lands (loading
+ * the URL straight from the tool result would race the deferred PUT),
+ * then renders the shared HtmlPreviewPanel.
  *
- * Iframe gating: this component does NOT load the URL straight from the
- * tool's `htmlPreview` — that would race the deferred PUT. Instead, it
- * waits for a `data-html-page-published` part emitted from the flush
- * after the PUT lands, then iframes the URL from that data event. While
- * waiting, the panel shows a shimmer.
+ * The panel is the same surface decks use: if the published page speaks
+ * the deck-viewer protocol it gains the rail toggle + PDF export. No
+ * `savePath` — this pipeline's source of truth is the sandbox file, and
+ * there is no write-back route to object storage, so the preview stays
+ * read-only (no inline edit affordance).
  *
- * Cache-bust: `?v=<bytes>` from the publish event forces the iframe to
- * refetch when the same slug is re-published with a different size, so
- * the browser doesn't serve a cached stale body.
+ * Cache-bust: the publish event's byte count is the content marker; a
+ * republished slug with a different size rolls the iframe src.
  */
 
-import { Button } from "@deco/ui/components/button.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@deco/ui/components/tooltip.tsx";
-import { cn } from "@deco/ui/lib/utils.ts";
-import { Check, Copy01, LinkExternal01 } from "@untitledui/icons";
-import { useState } from "react";
 import { useOptionalChatStream } from "@/web/components/chat/context.tsx";
-
-const FADE_MS = 300;
+import { HtmlPreviewPanel } from "@/web/components/deck/html-preview-panel";
 
 interface HtmlPagePublished {
   slug: string;
@@ -53,44 +43,6 @@ function PageShimmer() {
         </div>
         <Skeleton className="mt-2 h-8 w-24" />
       </div>
-    </div>
-  );
-}
-
-function PreviewSlot({ url, title }: { url: string; title: string }) {
-  const [iframeReady, setIframeReady] = useState(false);
-  const [shimmerMounted, setShimmerMounted] = useState(true);
-
-  return (
-    <div className="relative h-full w-full bg-background">
-      <iframe
-        src={url}
-        onLoad={() => setIframeReady(true)}
-        sandbox="allow-scripts"
-        className={cn(
-          "absolute inset-0 block w-full h-full bg-white",
-          "transition-opacity ease-out",
-          iframeReady ? "opacity-100" : "opacity-0",
-        )}
-        style={{ transitionDuration: `${FADE_MS}ms` }}
-        title={title}
-      />
-      {shimmerMounted && (
-        <div
-          className={cn(
-            "absolute inset-0 transition-opacity ease-out",
-            iframeReady ? "opacity-0 pointer-events-none" : "opacity-100",
-          )}
-          style={{ transitionDuration: `${FADE_MS}ms` }}
-          onTransitionEnd={(e) => {
-            if (e.propertyName === "opacity" && iframeReady) {
-              setShimmerMounted(false);
-            }
-          }}
-        >
-          <PageShimmer />
-        </div>
-      )}
     </div>
   );
 }
@@ -124,51 +76,6 @@ function findLatestPublished(
   return null;
 }
 
-function PreviewToolbar({ url }: { url: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
-  };
-
-  return (
-    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
-      <button
-        type="button"
-        onClick={() => window.open(url, "_blank", "noopener")}
-        className="flex min-w-0 flex-1 items-center rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        title={url}
-      >
-        <span className="truncate">{url}</span>
-      </button>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={handleCopy}>
-            {copied ? <Check size={14} /> : <Copy01 size={14} />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {copied ? "Copied" : "Copy URL"}
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => window.open(url, "_blank", "noopener")}
-          >
-            <LinkExternal01 size={14} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Open in new tab</TooltipContent>
-      </Tooltip>
-    </div>
-  );
-}
-
 export function WebPageTab({ slug }: { slug: string }) {
   const stream = useOptionalChatStream();
   const messages = stream?.messages ?? [];
@@ -182,13 +89,12 @@ export function WebPageTab({ slug }: { slug: string }) {
     );
   }
 
-  const cacheBustedUrl = `${latest.url}${latest.url.includes("?") ? "&" : "?"}v=${latest.bytes}`;
   return (
-    <div className="flex h-full w-full flex-col bg-background">
-      <PreviewToolbar url={latest.url} />
-      <div className="relative flex-1">
-        <PreviewSlot url={cacheBustedUrl} title={`${slug}.html`} />
-      </div>
-    </div>
+    <HtmlPreviewPanel
+      key={slug}
+      readUrl={latest.url}
+      marker={String(latest.bytes)}
+      title={`${slug}.html`}
+    />
   );
 }

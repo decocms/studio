@@ -1,0 +1,147 @@
+{
+  "title": "Acme Q3 Launch",
+  "theme": "aurora-light",
+  "slides": [
+    {
+      "template": "title",
+      "data": {
+        "eyebrow": "Acme Inc",
+        "heading": "Q3 Launch Plan",
+        "subheading": "How we ship the new platform to every customer",
+        "meta": "Product Team · September 2026"
+      }
+    },
+    {
+      "template": "agenda",
+      "data": {
+        "heading": "What we'll cover",
+        "items": [
+          "Where we are today",
+          "The launch plan",
+          "Numbers that matter",
+          "Risks and mitigations",
+          "Next steps"
+        ]
+      }
+    },
+    {
+      "template": "section-divider",
+      "data": {
+        "number": "01",
+        "heading": "Where we are today",
+        "subheading": "Six months of groundwork, one quarter to ship"
+      }
+    },
+    {
+      "template": "bullets",
+      "data": {
+        "eyebrow": "Status",
+        "heading": "The platform is ready",
+        "intro": "Every workstream hit its August milestone.",
+        "items": [
+          "Core API stable since July — zero breaking changes in 8 weeks",
+          "Beta cohort of 40 customers using it daily",
+          "Support playbooks written and rehearsed",
+          "Pricing approved by finance and legal"
+        ]
+      }
+    },
+    {
+      "template": "two-column",
+      "data": {
+        "heading": "Beta vs. GA scope",
+        "left": {
+          "title": "In the beta",
+          "html": "Single-region deployments, manual onboarding, and a fixed integration catalog. Good enough to prove value with 40 teams."
+        },
+        "right": {
+          "title": "Added for GA",
+          "html": "Multi-region failover, <b>self-serve onboarding</b>, usage-based billing, and an open integration SDK."
+        }
+      }
+    },
+    {
+      "template": "kpi-row",
+      "data": {
+        "eyebrow": "Beta results",
+        "heading": "Numbers that matter",
+        "kpis": [
+          {
+            "value": "3.2x",
+            "label": "Faster onboarding vs. legacy",
+            "delta": "up from 2.1x in Q2"
+          },
+          { "value": "98.7%", "label": "30-day retention in beta cohort" },
+          {
+            "value": "$1.4M",
+            "label": "Pipeline attributed to beta",
+            "delta": "+$600k QoQ"
+          }
+        ]
+      }
+    },
+    {
+      "template": "timeline",
+      "data": {
+        "heading": "The launch plan",
+        "steps": [
+          {
+            "label": "Week 1–2",
+            "title": "Private GA",
+            "description": "Beta cohort upgrades in place; daily error budget review."
+          },
+          {
+            "label": "Week 3–4",
+            "title": "Public GA",
+            "description": "Self-serve signup opens; launch post and demo video go live."
+          },
+          {
+            "label": "Week 5–8",
+            "title": "Scale",
+            "description": "Migration tooling for legacy accounts; first partner integrations."
+          }
+        ]
+      }
+    },
+    {
+      "template": "comparison",
+      "data": {
+        "heading": "Risks and mitigations",
+        "columns": [
+          {
+            "title": "Top risks",
+            "items": [
+              "Migration load spikes on week one",
+              "Support volume beyond playbook capacity",
+              "One unresolved billing edge case"
+            ]
+          },
+          {
+            "title": "Mitigations",
+            "items": [
+              "Staged rollout with per-cohort rate limits",
+              "Two support engineers on rotation through GA",
+              "Billing fix ships before public GA gate"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "template": "quote",
+      "data": {
+        "quote": "We replaced three internal tools the first week. The team refuses to go back.",
+        "attribution": "Dana M.",
+        "role": "Engineering lead, beta customer"
+      }
+    },
+    {
+      "template": "closing",
+      "data": {
+        "heading": "Let's ship it",
+        "subheading": "Decision needed: green-light public GA for October 6",
+        "cta": "launch-q3@acme.com"
+      }
+    }
+  ]
+}

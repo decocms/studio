@@ -1,0 +1,13 @@
+<section>
+  {{#eyebrow}}<p class="eyebrow">{{eyebrow}}</p>{{/eyebrow}}
+  <h2 class="deck-h2">{{heading}}</h2>
+  <div class="cols timeline">
+    {{#steps}}
+    <div class="step grow">
+      <p class="step-label">{{label}}</p>
+      <h3 class="col-title">{{title}}</h3>
+      {{#description}}<p class="deck-body">{{description}}</p>{{/description}}
+    </div>
+    {{/steps}}
+  </div>
+</section>

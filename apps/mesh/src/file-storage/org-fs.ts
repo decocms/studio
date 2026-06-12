@@ -392,6 +392,16 @@ export class OrgFs {
     };
   }
 
+  /** Latest change-feed cursor for a volume ("0" when empty). Use as the
+   *  starting point for "changes from now on" consumers. */
+  async latestSeq(volume: string): Promise<string> {
+    assertValidVolume(volume);
+    return this.manifest.latestSeq({
+      organizationId: this.organizationId,
+      volume,
+    });
+  }
+
   /**
    * Seed the manifest from objects already present in storage under a volume.
    * Idempotent — safe to re-run. Returns the number of file entries written.

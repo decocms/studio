@@ -1,0 +1,8 @@
+<section>
+  <p class="eyebrow">{{#eyebrow}}{{eyebrow}}{{/eyebrow}}{{^eyebrow}}Agenda{{/eyebrow}}</p>
+  <h2 class="deck-h2">{{heading}}</h2>
+  <ol class="agenda">
+    {{#items}}<li>{{.}}</li>
+    {{/items}}
+  </ol>
+</section>

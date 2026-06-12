@@ -12,6 +12,7 @@
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
 import {
   SELF_MCP_ALIAS_ID,
@@ -43,6 +44,7 @@ import { FileTypeIcon } from "@/web/components/file-type-icon";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
+  parseDeckTabId,
   parseFileTabId,
   resolveActiveTabAndOpen,
   resolveDefaultTabId,
@@ -313,8 +315,28 @@ export function useMainPanelTabs(ctx: {
       ]
     : [];
 
+  // Ephemeral deck-preview tab (`?main=deck:<path>`): same pill semantics
+  // as file previews. Title is the deck name (file stem).
+  const deckTabParsed = parseDeckTabId(activeTab);
+  const deckTabs: Tab[] = deckTabParsed
+    ? [
+        {
+          id: activeTab,
+          title: (
+            deckTabParsed.path.split("/").pop() ?? deckTabParsed.path
+          ).replace(/\.html$/i, ""),
+          kind: "file",
+          icon: {
+            kind: "component",
+            Component: (props) => createElement(Monitor01, props),
+          },
+        },
+      ]
+    : [];
+
   const tabs: Tab[] = [
     ...fileTabs,
+    ...deckTabs,
     ...layoutTabs.map((t) => ({
       id: t.id,
       title: t.title,

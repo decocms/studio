@@ -3,6 +3,13 @@
  * viewer, mirroring the chat's file tab (toolbar + preview). URL-driven
  * (`?preview=<browse path>`) so a preview link survives reload: the entry
  * is re-resolved via `stat`, not read off list caches.
+ *
+ * HTML files render the shared HtmlPreviewPanel instead — the SAME single
+ * toolbar the chat deck tab shows (URL/copy/open, upgrading with rail/
+ * edit/download on the deck-viewer handshake), with the Library's close
+ * action appended via `trailing` (download lives in the shared toolbar).
+ * Only home-volume files get a savePath (the inline editor persists to
+ * the home volume).
  */
 
 import { Button } from "@deco/ui/components/button.tsx";
@@ -17,9 +24,29 @@ import {
   FilePreviewShimmer,
   formatSize,
 } from "@/web/components/file-preview";
+import { HtmlPreviewPanel } from "@/web/components/deck/html-preview-panel";
 import { FileTypeIcon } from "@/web/components/file-type-icon";
-import { useOrgFsDownloadUrl, useOrgFsStat } from "@/web/hooks/use-org-fs";
+import {
+  entryMarker,
+  useOrgFsDownloadUrl,
+  useOrgFsStat,
+} from "@/web/hooks/use-org-fs";
 import { basename, parseLibraryPath } from "./location";
+
+const isHtml = (name: string) => /\.html?$/i.test(name);
+
+function PreviewClose({ onClose }: { onClose: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" onClick={onClose}>
+          <XClose size={14} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Close</TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function LibraryPreviewPanel({
   previewPath,
@@ -44,6 +71,24 @@ export function LibraryPreviewPanel({
           downloadUrl: downloadUrl(entry.path),
         }
       : null;
+
+  // HTML: hand the whole panel (toolbar included) to the shared surface so
+  // it is pixel-identical to the chat deck tab.
+  if (file && entry && isHtml(filename)) {
+    return (
+      // Keyed per file: the editor hook holds per-file state (source
+      // cache, debounced saves, handshake) that must never survive a
+      // ?preview= switch — a pending save would PUT to the new path.
+      <HtmlPreviewPanel
+        key={previewPath}
+        readUrl={file.downloadUrl}
+        marker={entryMarker(entry)}
+        title={filename}
+        savePath={volume === "home" ? filePath : undefined}
+        trailing={<PreviewClose onClose={onClose} />}
+      />
+    );
+  }
 
   return (
     <div className="flex h-full w-full flex-col bg-background">

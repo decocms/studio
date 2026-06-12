@@ -424,6 +424,20 @@ export class OrgFsEntryStorage {
       .execute();
     return rows.map((r) => rowToEntry(r as OrgFsEntryRow));
   }
+
+  /** Latest change-feed cursor for a volume ("0" when empty). */
+  async latestSeq(params: {
+    organizationId: string;
+    volume: string;
+  }): Promise<string> {
+    const row = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", params.organizationId)
+      .where("volume", "=", params.volume)
+      .select(sql<string | null>`max(seq)`.as("seq"))
+      .executeTakeFirst();
+    return row?.seq ?? "0";
+  }
 }
 
 /** Escape LIKE wildcards in a literal path prefix. */

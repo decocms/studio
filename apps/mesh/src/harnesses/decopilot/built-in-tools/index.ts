@@ -37,6 +37,7 @@ import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-to
 import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlPageBuffer } from "./vm-tools/html-page-buffer";
+import type { DeckBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
@@ -117,6 +118,8 @@ export interface BuiltinToolParams {
    * burst of edits collapses to one S3 PUT.
    */
   htmlPageBuffer: HtmlPageBuffer;
+  /** Per-turn deck fast-path mirror (see `DeckBuffer`). */
+  deckBuffer?: DeckBuffer;
   /** Thread (task) id of the current run — needed by tools that persist
    *  thread-scoped state (e.g. web_search reconnecting to Gemini Deep Research). */
   taskId: string;
@@ -159,6 +162,7 @@ async function buildAllTools(
     passthroughClient,
     vmContext,
     htmlPageBuffer,
+    deckBuffer,
     taskId,
     agentId,
     onChildUsage,
@@ -216,6 +220,7 @@ async function buildAllTools(
     vmTools = createVmTools({
       fs,
       htmlPageBuffer,
+      deckBuffer,
       toolOutputMap,
       needsApproval: vmNeedsApproval,
       pendingImages,
