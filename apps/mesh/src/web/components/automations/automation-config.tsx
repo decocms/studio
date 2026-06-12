@@ -10,15 +10,26 @@
 import { Suspense, useState } from "react";
 import {
   Atom01,
+  BookOpen01,
   Check,
   ChevronDown,
+  Code01,
   Cube01,
+  Database01,
+  Edit01,
+  Edit02,
+  File06,
+  Folder,
   GitBranch01,
   Globe01,
+  Globe02,
   HelpCircle,
   Image01,
   Lightning01,
+  Monitor01,
+  SearchMd,
   Stars01,
+  TerminalSquare,
   Tool01,
 } from "@untitledui/icons";
 import { Badge } from "@deco/ui/components/badge.tsx";
@@ -270,42 +281,153 @@ function SpecificModelPicker({
 // Tools control
 // ============================================================================
 
-/**
- * User-facing capability built-ins the allowlist can govern. Loop-essential
- * built-ins (read_tool_output, enable_tool, …) are intentionally absent — they
- * are never filtered out (see assemble-decopilot-tools).
- */
-const CAPABILITY_BUILTINS: {
+interface BuiltinDef {
   name: string;
   title: string;
   description: string;
   icon: typeof Tool01;
-}[] = [
+}
+
+interface BuiltinGroup {
+  key: string;
+  heading: string;
+  icon: typeof Tool01;
+  tools: BuiltinDef[];
+}
+
+/**
+ * Governable built-in tools, grouped for the picker. The allowlist can toggle
+ * every tool listed here. Loop-essential built-ins (read_tool_output,
+ * enable_tool, todo_write, update_interests, open_in_agent) are intentionally
+ * absent — they are never filtered out (see ALLOWLIST_EXEMPT_BUILTINS in
+ * harnesses/decopilot/tools.ts). The set mirrors what the agent can actually
+ * run; tools not provisioned for a given agent (e.g. browser tools without a
+ * BROWSERLESS_TOKEN, VM tools without a sandbox) simply never appear at
+ * runtime, so toggling them off is a harmless no-op.
+ */
+const BUILTIN_GROUPS: BuiltinGroup[] = [
   {
-    name: "web_search",
-    title: "Web search",
-    description: "Look up current information on the web",
-    icon: Globe01,
+    key: "capabilities",
+    heading: "Built-in capabilities",
+    icon: Tool01,
+    tools: [
+      {
+        name: "web_search",
+        title: "Web search",
+        description: "Look up current information on the web",
+        icon: Globe01,
+      },
+      {
+        name: "generate_image",
+        title: "Generate image",
+        description: "Create images from a text prompt",
+        icon: Image01,
+      },
+      {
+        name: "subtask",
+        title: "Subtask",
+        description: "Spawn a focused sub-agent to handle part of the work",
+        icon: GitBranch01,
+      },
+      {
+        name: "user_ask",
+        title: "Ask the user",
+        description: "Pause to ask the user a clarifying question",
+        icon: HelpCircle,
+      },
+    ],
   },
   {
-    name: "generate_image",
-    title: "Generate image",
-    description: "Create images from a text prompt",
-    icon: Image01,
+    key: "files",
+    heading: "Files & code",
+    icon: Folder,
+    tools: [
+      {
+        name: "read",
+        title: "Read File",
+        description: "Read a file from the workspace",
+        icon: File06,
+      },
+      {
+        name: "write",
+        title: "Write File",
+        description: "Create or overwrite a file",
+        icon: Edit01,
+      },
+      {
+        name: "edit",
+        title: "Edit File",
+        description: "Make targeted edits to an existing file",
+        icon: Edit02,
+      },
+      {
+        name: "grep",
+        title: "Search Content",
+        description: "Search file contents by pattern",
+        icon: SearchMd,
+      },
+      {
+        name: "glob",
+        title: "Find Files",
+        description: "Find files by name pattern",
+        icon: Folder,
+      },
+      {
+        name: "bash",
+        title: "Run Command",
+        description: "Run shell commands in the sandbox",
+        icon: TerminalSquare,
+      },
+    ],
   },
   {
-    name: "subtask",
-    title: "Subtask",
-    description: "Spawn a focused sub-agent to handle part of the work",
-    icon: GitBranch01,
+    key: "context",
+    heading: "Context",
+    icon: Database01,
+    tools: [
+      {
+        name: "read_resource",
+        title: "Read Resource",
+        description: "Read an MCP resource by URI",
+        icon: Database01,
+      },
+      {
+        name: "read_prompt",
+        title: "Read Prompt",
+        description: "Read an MCP prompt definition",
+        icon: BookOpen01,
+      },
+    ],
   },
   {
-    name: "user_ask",
-    title: "Ask the user",
-    description: "Pause to ask the user a clarifying question",
-    icon: HelpCircle,
+    key: "browser",
+    heading: "Browser",
+    icon: Globe02,
+    tools: [
+      {
+        name: "take_screenshot",
+        title: "Take Screenshot",
+        description: "Capture a screenshot of a web page",
+        icon: Monitor01,
+      },
+      {
+        name: "scrape_url",
+        title: "Scrape URL",
+        description: "Fetch and extract content from a URL",
+        icon: Globe02,
+      },
+      {
+        name: "inspect_page",
+        title: "Inspect Page",
+        description: "Inspect a web page's structure",
+        icon: Code01,
+      },
+    ],
   },
 ];
+
+/** Flat list of every governable built-in tool name across all groups. */
+const BUILTIN_NAMES = BUILTIN_GROUPS.flatMap((g) => g.tools.map((t) => t.name));
 
 /** Turn `GET_CALENDAR_EVENTS` / `get-calendar` into "Get Calendar Events". */
 function humanizeToolName(raw: string): string {
@@ -399,14 +521,19 @@ function ToolRow({
   );
 }
 
-/** Group header for a source connection: icon + name + n/total + All/None. */
+/** Group header: icon + name + n/total + All/None. Used both for source
+ *  connections (pass `conn`) and built-in groups (pass `label` + `icon`). */
 function GroupHeading({
   conn,
+  label,
+  icon: Icon,
   on,
   total,
   onToggle,
 }: {
   conn?: ConnectionEntity;
+  label?: string;
+  icon?: typeof Tool01;
   on: number;
   total: number;
   onToggle: () => void;
@@ -416,10 +543,12 @@ function GroupHeading({
     <div className="flex items-center gap-2">
       {conn ? (
         <IntegrationIcon icon={conn.icon} name={conn.title} size="2xs" />
+      ) : Icon ? (
+        <Icon size={14} className="text-muted-foreground" />
       ) : (
         <Cube01 size={14} className="text-muted-foreground" />
       )}
-      <span className="truncate">{conn?.title ?? "Other tools"}</span>
+      <span className="truncate">{conn?.title ?? label ?? "Other tools"}</span>
       <span className="ml-auto flex items-center gap-2">
         <span className="text-[11px] font-normal tabular-nums text-muted-foreground/70">
           {on}/{total}
@@ -489,7 +618,7 @@ function ToolsPicker({
   );
 
   const mcpNames = (data?.tools ?? []).map((t) => t.name);
-  const allNames = [...CAPABILITY_BUILTINS.map((t) => t.name), ...mcpNames];
+  const allNames = [...BUILTIN_NAMES, ...mcpNames];
   // null = all tools. Materialize to a Set for toggling.
   const selected = value === null ? new Set(allNames) : new Set(value);
   const allSelected = allNames.every((n) => selected.has(n));
@@ -567,21 +696,43 @@ function ToolsPicker({
             ) : (
               <>
                 <CommandEmpty>No tools found</CommandEmpty>
-                <CommandGroup heading="Built-in capabilities">
-                  {CAPABILITY_BUILTINS.map((t) => (
-                    <ToolRow
-                      key={t.name}
-                      value={`${t.title} ${t.name}`}
-                      checked={selected.has(t.name)}
-                      onToggle={() => toggle(t.name)}
-                      title={t.title}
-                      description={t.description}
-                      leading={
-                        <t.icon size={16} className="text-muted-foreground" />
+                {BUILTIN_GROUPS.map((g) => {
+                  const names = g.tools.map((t) => t.name);
+                  const on = names.filter((n) => selected.has(n)).length;
+                  return (
+                    <CommandGroup
+                      key={g.key}
+                      heading={
+                        <GroupHeading
+                          label={g.heading}
+                          icon={g.icon}
+                          on={on}
+                          total={names.length}
+                          onToggle={() =>
+                            toggleGroup(names, on !== names.length)
+                          }
+                        />
                       }
-                    />
-                  ))}
-                </CommandGroup>
+                    >
+                      {g.tools.map((t) => (
+                        <ToolRow
+                          key={t.name}
+                          value={`${t.title} ${t.name}`}
+                          checked={selected.has(t.name)}
+                          onToggle={() => toggle(t.name)}
+                          title={t.title}
+                          description={t.description}
+                          leading={
+                            <t.icon
+                              size={16}
+                              className="text-muted-foreground"
+                            />
+                          }
+                        />
+                      ))}
+                    </CommandGroup>
+                  );
+                })}
                 {groupList.map((g) => {
                   const names = g.tools.map((t) => t.name);
                   const on = names.filter((n) => selected.has(n)).length;
