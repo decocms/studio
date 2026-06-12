@@ -55,6 +55,60 @@ const MAX_CHUNKED_BYTES = 32 * 1024 * 1024;
 const FRAG_INDEX_HEADER = "Dp-Frag-Idx";
 const FRAG_TOTAL_HEADER = "Dp-Frag-Total";
 
+// Canary-gated profiler: is per-chunk JSON.stringify+encode the dominant
+// event-loop occupant? Sums encode time across every active pump on the pod
+// and reports it as a fraction of wall-clock per 10s window. Off by default
+// (prod publish path stays byte-for-byte unchanged).
+const STREAM_ENCODE_TRACE = process.env.STREAM_ENCODE_TRACE === "1";
+
+class StreamEncodeProfiler {
+  private chunks = 0;
+  private encodeMs = 0;
+  private maxMs = 0;
+  private bytes = 0;
+  private windowStart = performance.now();
+
+  constructor() {
+    const timer = setInterval(() => this.flush(), 10_000);
+    timer.unref?.();
+  }
+
+  record(ms: number, byteLen: number): void {
+    this.chunks++;
+    this.encodeMs += ms;
+    if (ms > this.maxMs) this.maxMs = ms;
+    this.bytes += byteLen;
+  }
+
+  private flush(): void {
+    const now = performance.now();
+    const windowMs = now - this.windowStart;
+    if (this.chunks > 0 && windowMs > 0) {
+      console.warn(
+        JSON.stringify({
+          msg: "stream-encode-trace",
+          windowMs: Math.round(windowMs),
+          chunks: this.chunks,
+          encodeMs: Math.round(this.encodeMs),
+          // share of wall-clock the loop spent synchronously encoding chunks
+          pctOfLoop: +((this.encodeMs / windowMs) * 100).toFixed(1),
+          maxChunkMs: +this.maxMs.toFixed(2),
+          mbEncoded: +(this.bytes / 1048576).toFixed(2),
+        }),
+      );
+    }
+    this.chunks = 0;
+    this.encodeMs = 0;
+    this.maxMs = 0;
+    this.bytes = 0;
+    this.windowStart = now;
+  }
+}
+
+const streamEncodeProfiler = STREAM_ENCODE_TRACE
+  ? new StreamEncodeProfiler()
+  : null;
+
 function assertSafeSubjectToken(id: string): void {
   if (/[.*>\s]/.test(id)) throw new Error("Invalid NATS subject token");
 }
@@ -175,7 +229,14 @@ export class NatsStreamBuffer implements StreamBuffer {
     // back together by `createTailStream`. Fragments carry raw byte slices
     // of the encoded `{ p: value }` JSON, so reassembly is byte-exact.
     const publishChunk = (value: unknown): void => {
-      const bytes = encoder.encode(JSON.stringify({ p: value }));
+      let bytes: Uint8Array;
+      if (streamEncodeProfiler) {
+        const t0 = performance.now();
+        bytes = encoder.encode(JSON.stringify({ p: value }));
+        streamEncodeProfiler.record(performance.now() - t0, bytes.length);
+      } else {
+        bytes = encoder.encode(JSON.stringify({ p: value }));
+      }
       if (bytes.length <= MAX_PUBLISH_BYTES) {
         tracker.publish(js, subj, bytes);
         return;
