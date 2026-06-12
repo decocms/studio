@@ -2,9 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
-import deco from "@decocms/vite-plugin";
 import pkg from "./package.json" with { type: "json" };
 
+const vitePort = parseInt(process.env.VITE_PORT || "4000", 10);
 const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
 
 // IMPORTANT: the dev server must run under Node, NOT Bun (`vite dev`, never
@@ -22,6 +22,10 @@ export default defineConfig({
     __MESH_VERSION__: JSON.stringify(pkg.version),
   },
   server: {
+    // Previously set by @decocms/vite-plugin's baseDecoPlugin; keep the same
+    // defaults so the link daemon and dev CLI can reach Vite on :4000.
+    port: vitePort,
+    strictPort: true,
     // In a sandbox the daemon proxies the preview to Vite over IPv4
     // (127.0.0.1); Vite otherwise binds IPv6-only (localhost → [::1]) and the
     // proxy can't reach it. HOST=0.0.0.0 is the daemon's dev-env tell.
@@ -29,7 +33,7 @@ export default defineConfig({
     hmr: {
       overlay: true,
       host: "localhost",
-      clientPort: parseInt(process.env.VITE_PORT || "4000", 10),
+      clientPort: vitePort,
     },
     proxy: {
       "/api": {
@@ -73,8 +77,5 @@ export default defineConfig({
     react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
     tailwindcss(),
     tsconfigPaths({ root: "." }),
-    deco({
-      target: "bun",
-    }),
   ],
 });
