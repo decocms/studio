@@ -165,26 +165,41 @@ jobs:
       - name: Publish to NPM
         run: npm publish decocms-*.tgz --access public --tag ${{ needs.prepare.outputs.npm-tag }} --provenance
 
-  # Single-job multi-arch build. Pushes the final tagged manifest directly to
-  # GHCR. arm64 is built under QEMU on an amd64 runner; only node-pty compiles
-  # natively, which is small enough to keep the simpler topology.
+  # Multi-arch build split across NATIVE runners — amd64 on ubuntu-latest,
+  # arm64 on ubuntu-24.04-arm — instead of emulating arm64 under QEMU on amd64.
+  # The expensive `bun add /tmp/decocms.tgz` layer ran ~5x slower under QEMU
+  # (~64s vs ~13s) and is a guaranteed cache miss every release (the tarball
+  # content changes each version), so we paid the full emulation tax every time.
+  # Each leg builds + pushes its single-arch image BY DIGEST (no tags), and the
+  # merge-docker job below assembles the tagged manifest list from both digests.
+  #
   # Consumes the tarball built by build-dist (NOT the npm registry): the
   # Dockerfile does `bun add /tmp/decocms.tgz`, so there is no registry read to
   # race against publish-npm. Runs in PARALLEL with publish-npm — both gate only
   # on build-dist and install the same tarball, so the image stays byte-identical
   # to the published package.
   build-docker:
-    name: Build & push Docker (multi-arch)
+    name: Build Docker (${{ matrix.arch }})
     needs: [prepare, build-dist]
     if: |
       always() &&
       needs.prepare.outputs.image-exists == 'false' &&
       needs.build-dist.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
@@ -195,7 +210,6 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Download package artifact into build context
         uses: actions/download-artifact@v4
@@ -204,7 +218,71 @@ jobs:
           path: docker-context
       - name: Normalize tarball filename
         run: mv docker-context/decocms-*.tgz docker-context/decocms.tgz
-      - name: Extract metadata (tags, labels)
+      - name: Image labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+      # push-by-digest=true publishes a single-arch image addressable only by
+      # digest (no tag); merge-docker stitches the per-arch digests into the
+      # tagged manifest list. provenance:false keeps each pushed digest a plain
+      # single-platform image — provenance attestations turn it into a nested
+      # index that `buildx imagetools create` can't merge cleanly.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker-context
+          file: ./apps/mesh/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=mesh-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=mesh-${{ matrix.arch }}
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Assemble the per-arch digests pushed by build-docker into one tagged
+  # multi-arch manifest list and push it to GHCR. This is the job that makes
+  # `ghcr.io/.../mesh:<version>` resolve to both amd64 + arm64.
+  merge-docker:
+    name: Merge & push Docker manifest
+    needs: [prepare, build-docker]
+    if: |
+      always() &&
+      needs.prepare.outputs.image-exists == 'false' &&
+      needs.build-docker.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Extract metadata (tags)
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -213,27 +291,25 @@ jobs:
             type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.version }}
             type=raw,value=latest
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: ./docker-context
-          file: ./apps/mesh/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=mesh
-          cache-to: type=gha,mode=max,scope=mesh
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
 
   release:
     name: GitHub Release + Deployment
-    needs: [prepare, build-dist, publish-npm, build-docker]
+    needs: [prepare, build-dist, publish-npm, merge-docker]
     if: |
       always() &&
       (needs.prepare.outputs.version-changed == 'true' || needs.prepare.outputs.image-exists == 'false') &&
       (needs.build-dist.result == 'success' || needs.build-dist.result == 'skipped') &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
-      (needs.build-docker.result == 'success' || needs.build-docker.result == 'skipped')
+      (needs.merge-docker.result == 'success' || needs.merge-docker.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -299,15 +375,15 @@ jobs:
   # ---------------------------------------------------------------------------
   bump-deco-apps-cd:
     name: Trigger deco-apps-cd bump
-    needs: [prepare, build-dist, publish-npm, build-docker]
+    needs: [prepare, build-dist, publish-npm, merge-docker]
     # Only bump when this release is fully consistent across the artifact pair:
     #   * a VALID image for this version exists (either already published, so
-    #     build-docker is skipped, or freshly built), AND
-    #   * the npm side didn't fail. publish-npm is gated separately because
-    #     build-docker is now parallel to it — without this clause, an npm
-    #     failure could still ship an image to prod whose `bunx @decocms/mesh@X`
+    #     merge-docker is skipped, or freshly built + merged), AND
+    #   * the npm side didn't fail. publish-npm is gated separately because the
+    #     docker build is parallel to it — without this clause, an npm failure
+    #     could still ship an image to prod whose `bunx @decocms/mesh@X`
     #     wouldn't resolve, leaving the two artifacts inconsistent.
-    # A skipped publish-npm (version already on npm) or skipped build-docker
+    # A skipped publish-npm (version already on npm) or skipped merge-docker
     # (image already in GHCR) is fine — those mean "nothing to do", not failure.
     if: |
       always() &&
@@ -315,7 +391,7 @@ jobs:
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
       (
         needs.prepare.outputs.image-exists == 'true' ||
-        needs.build-docker.result == 'success'
+        needs.merge-docker.result == 'success'
       )
     runs-on: ubuntu-latest
     # Reuses DEPLOY_REPO_TOKEN — the decobot machine-user PAT already used to

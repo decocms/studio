@@ -12,7 +12,7 @@
  */
 
 import { nodeFileTrace } from "@vercel/nft";
-import { cp, mkdir, readFile, stat } from "fs/promises";
+import { cp, mkdir, readFile, rm, stat } from "fs/promises";
 import { dirname, join, resolve } from "path";
 import { existsSync } from "fs";
 import { $ } from "bun";
@@ -97,6 +97,22 @@ const ALWAYS_EXCLUDE = [
   "@duckdb/node-bindings",
   "react-devtools-core",
 ];
+
+// Package-name prefixes whose packages nft DOES trace but we must NOT copy into
+// dist/server/node_modules. Unlike ALWAYS_EXCLUDE (which only adds `--external`
+// to the bun build), this filters the prune/copy step.
+//
+// @embedded-postgres/<platform> ships a ~144MB platform-specific Postgres
+// binary. `embedded-postgres` (a runtime dependency, kept external) resolves
+// the matching one with a dynamic `import("@embedded-postgres/<platform>")` at
+// runtime, and that package is installed per-platform via embedded-postgres'
+// own optionalDependencies when a consumer runs `bun add decocms`. nft, run on
+// the BUILD HOST, traces only the host's binary — so bundling it is both dead
+// weight on every other platform AND wrong-platform for the published package
+// (CI builds linux-x64; a Mac/arm consumer's runtime never loads it, and the
+// Docker `bun add` already installs the correct linux-<arch> binary per image).
+// Skipping the copy lets the consumer's install supply the right binary.
+const EXCLUDE_COPY_PREFIXES = ["@embedded-postgres/"];
 
 // Parse command line arguments
 function parseArgs() {
@@ -386,6 +402,15 @@ async function pruneNodeModules(): Promise<Set<string>> {
       packageName !== "@decocms/better-auth"
     ) {
       console.log(`📦 Bundling inline (workspace): ${packageName}`);
+      continue;
+    }
+
+    // Platform-specific binaries resolved from the consumer's install at
+    // runtime (see EXCLUDE_COPY_PREFIXES). Don't ship the build host's copy.
+    if (EXCLUDE_COPY_PREFIXES.some((p) => packageName.startsWith(p))) {
+      console.log(
+        `⏭️  Skipping copy (resolved from consumer install): ${packageName}`,
+      );
       continue;
     }
 
@@ -833,6 +858,39 @@ async function verifyBundlesShipExternals() {
   );
 }
 
+// Strip files the JS runtime never loads from the copied node_modules:
+// source maps (debug-only) and TypeScript declarations (the published package
+// is a runnable bundle, not a typed library). These are ~45MB of pure dead
+// weight in the tarball/image and slow down every npm pack / publish / docker
+// `bun add` / artifact transfer. We deliberately do NOT strip *.development.js
+// (react-dom's exports map can resolve to it depending on NODE_ENV) or *.ts
+// source (a few packages route exports through it).
+async function stripNonRuntimeFiles() {
+  console.log("🧹 Stripping non-runtime files (.map / .d.ts) from bundle...");
+  const nodeModules = join(OUTPUT_DIR, "node_modules");
+  if (!existsSync(nodeModules)) return;
+
+  const patterns = ["**/*.map", "**/*.d.ts", "**/*.d.cts", "**/*.d.mts"];
+  let removed = 0;
+  let freedBytes = 0;
+  for (const pattern of patterns) {
+    const glob = new Bun.Glob(pattern);
+    for await (const rel of glob.scan({ cwd: nodeModules, onlyFiles: true })) {
+      const abs = join(nodeModules, rel);
+      try {
+        freedBytes += (await stat(abs)).size;
+        await rm(abs);
+        removed++;
+      } catch {
+        // best-effort: a missing/locked file just stays
+      }
+    }
+  }
+  console.log(
+    `✅ Stripped ${removed} files, freed ${(freedBytes / 1048576).toFixed(1)} MB`,
+  );
+}
+
 async function main() {
   // Build sandbox daemon bundle so runner.ts's text-import has a file to embed.
   await buildSandboxDaemon();
@@ -850,6 +908,9 @@ async function main() {
 
   // Copy QuickJS WASM alongside bundles as a safety net for path resolution
   await copyQuickjsWasm();
+
+  // Drop debug-only / type-only files the runtime never loads (~45MB).
+  await stripNonRuntimeFiles();
 
   // Defense in depth: fail the build if any external import points at a
   // package that isn't on disk. See verifyBundlesShipExternals for context.
