@@ -74,7 +74,11 @@ import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-
 import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
-import { SandboxLifecycleProvider } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
+import {
+  SandboxLifecycleProvider,
+  selectVmEntry,
+  type BranchMapEntryLike,
+} from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 
@@ -227,14 +231,20 @@ function VmEventsBridge({
   );
   const branchMap =
     userId && currentBranch
-      ? parseBranchMap(sandboxMap?.[userId]?.[currentBranch])
+      ? (parseBranchMap(sandboxMap?.[userId]?.[currentBranch]) as Record<
+          string,
+          BranchMapEntryLike
+        >)
       : {};
+  const vmEntry = selectVmEntry(branchMap);
+  const previewUrl = vmEntry?.previewUrl ?? null;
   const shouldConnect = Object.keys(branchMap).length > 0 || isStartPending;
 
   return (
     <SandboxEventsProvider
       virtualMcpId={virtualMcpId}
       branch={currentBranch ?? null}
+      previewUrl={previewUrl}
       enabled={shouldConnect}
     >
       <SandboxLifecycleProvider
