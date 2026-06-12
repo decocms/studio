@@ -13,7 +13,7 @@ const DISCORD_API = "https://discord.com/api/v10";
  * interaction signatures; `botToken` authorizes outbound REST calls;
  * `applicationId` addresses interaction follow-ups.
  */
-export const discordCredentialSchema = z.object({
+const discordCredentialSchema = z.object({
   applicationId: z.string().min(1),
   publicKey: z.string().min(1),
   botToken: z.string().min(1),

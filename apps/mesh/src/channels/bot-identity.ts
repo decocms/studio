@@ -18,7 +18,7 @@ import type { Database } from "@/storage/types";
 
 const BOT_EMAIL_DOMAIN = "channels.studio.local";
 
-export function botEmailFor(channelId: string): string {
+function botEmailFor(channelId: string): string {
   return `bot+${channelId}@${BOT_EMAIL_DOMAIN}`;
 }
 

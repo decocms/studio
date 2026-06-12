@@ -11,7 +11,7 @@ import type {
  * `appId` + `appPassword` are the bot's Microsoft App registration client id
  * and secret; `tenantId` is optional (single-tenant bots).
  */
-export const teamsCredentialSchema = z.object({
+const teamsCredentialSchema = z.object({
   appId: z.string().min(1),
   appPassword: z.string().min(1),
   tenantId: z.string().optional(),
