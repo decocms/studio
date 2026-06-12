@@ -14,9 +14,15 @@ export interface CurrentLink {
   hostname?: string;
   cliVersion?: string;
   capabilities: Capability[];
+  /**
+   * False until LINK_CURRENT_GET has resolved at least once this mount.
+   * Lets "the desktop is offline" surfaces (banner, teaser rows) hold back
+   * instead of flashing offline-state UI during the initial fetch.
+   */
+  ready: boolean;
 }
 
-const OFFLINE: CurrentLink = { online: false, capabilities: [] };
+const OFFLINE: CurrentLink = { online: false, capabilities: [], ready: false };
 
 export function useCurrentLink(): CurrentLink {
   const { org } = useProjectContext();
@@ -33,7 +39,8 @@ export function useCurrentLink(): CurrentLink {
         name: "LINK_CURRENT_GET",
         arguments: {},
       });
-      return unwrapToolResult<CurrentLink>(result) ?? OFFLINE;
+      const link = unwrapToolResult<Omit<CurrentLink, "ready">>(result);
+      return link ? { ...link, ready: true } : { ...OFFLINE, ready: true };
     },
     staleTime: 10_000,
     refetchInterval: 15_000,

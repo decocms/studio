@@ -16,6 +16,13 @@
  *                                  directly; the held control-poll is the only
  *                                  inbound signal it has.
  *   - `keep_alive` (Phase C)     — server heartbeat; ignored by the daemon.
+ *   - `shutdown`                 — disconnect requested from the Studio UI
+ *                                  (LINK_DISCONNECT tool); the daemon stops
+ *                                  polling and exits. Daemons predating this
+ *                                  frame fail schema validation and skip it
+ *                                  (logged, no crash) — for those the tool's
+ *                                  claim delete only flips the UI until their
+ *                                  next poll re-registers, which is accepted.
  *
  * Additional frame types (ensure_sandbox, delete_sandbox, approval) are deferred.
  */
@@ -25,6 +32,7 @@ export const controlFrameSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("cancel"), runId: z.string() }),
   z.object({ type: z.literal("cancel_req"), reqId: z.string() }),
   z.object({ type: z.literal("keep_alive") }),
+  z.object({ type: z.literal("shutdown") }),
 ]);
 
 export type ControlFrame = z.infer<typeof controlFrameSchema>;

@@ -99,6 +99,13 @@ export interface ClusterConnectionPullInput {
   /** Called once the pull loop has started (analogous to `onConnected` in the WS path). */
   onConnected?: () => void;
   /**
+   * Called when the cluster sends a `shutdown` control frame (LINK_DISCONNECT
+   * from the Studio UI). index.ts wires this to the daemon's shutdown so a
+   * web-side "Disconnect" actually stops the local daemon instead of letting
+   * its next poll re-register the presence claim the cluster just deleted.
+   */
+  onShutdown?: () => void;
+  /**
    * Durable chunk-relay outbox (spec §5.1). Opened once per daemon in index.ts
    * and shared across every dispatch; forwarded to `handleLocalDispatch` so the
    * relay survives a daemon restart mid-run.
@@ -356,6 +363,7 @@ export async function connectToClusterPull(
     onCancelReq: (reqId) => {
       proxyAbortRegistry.abort(reqId);
     },
+    onShutdown: input.onShutdown,
   });
 
   // Phase C-bis S2: the pull reverse-proxy loop (continuous-overlap GETs +

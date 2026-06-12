@@ -125,6 +125,11 @@ export interface StudioContextConfig {
   /** Required for desktop sandbox auto-resolution; tests may omit. */
   linkClaimRegistry?: LinkClaimRegistry;
   /**
+   * Publishes a control frame to a user's link control channel (delegates to
+   * the app's CancelBroadcast). Required for LINK_DISCONNECT; tests may omit.
+   */
+  publishLinkControlFrame?: StudioContext["publishLinkControlFrame"];
+  /**
    * Test-only escape hatch: pre-built monitoring + metric engines. When
    * provided, skips the `@duckdb/node-api` import path that otherwise
    * runs in dev/test (when no `clickhouseUrl` is set). DuckDB's native
@@ -1401,6 +1406,7 @@ export async function createStudioContextFactory(
       },
       eventBus: config.eventBus,
       linkClaimRegistry: config.linkClaimRegistry,
+      publishLinkControlFrame: config.publishLinkControlFrame,
       aiProviders: aiProviderFactory,
       createMCPProxy: async (conn: string | ConnectionEntity) => {
         return await createMCPProxy(conn, ctx);

@@ -23,6 +23,7 @@ import { AgentAvatar } from "@/web/components/agent-icon";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { track } from "@/web/lib/posthog-client";
 import { useOptionalChatTask } from "../chat-context";
+import { ConnectDesktopDialog } from "../connect-desktop-dialog";
 import { useAgentOptionAvailability } from "../use-agent-availability";
 import type { AgentOptionAvailability } from "./agent-options";
 import { ClaudeCodeIcon, CodexIcon } from "../agent-icons";
@@ -72,6 +73,13 @@ interface PureProps {
    */
   lockedHarness?: HarnessId | null;
   onSelect: (mode: AgentMode) => void;
+  /**
+   * Invoked when the user clicks an unavailable LOCAL row (desktop not
+   * linked, or linked without the CLI). The smart wrapper opens the
+   * connect-desktop dialog. Local rows are rendered as disabled teasers —
+   * not omitted — precisely so this path is discoverable.
+   */
+  onConnectDesktop?: () => void;
 }
 
 interface ModeRow {
@@ -162,19 +170,31 @@ export function ModePickerPure({
   locked,
   lockedHarness,
   onSelect,
+  onConnectDesktop,
 }: PureProps) {
   const [open, setOpen] = useState(false);
   const { icon, text } = pillLabel(mode);
   const isLocal = mode !== "cloud-decopilot";
   const isThreadLocked = locked && lockedHarness != null;
   const harnessLabel = lockedHarness ? HARNESS_LABEL[lockedHarness] : null;
-  const rows = ROWS.filter((row) => row.isAvailable(availability));
-  const cloudRows = rows.filter((row) => row.group === "cloud");
-  const localRows = rows.filter((row) => row.group === "local");
+  // Cloud rows hide when unavailable (a deployment without an agent sandbox
+  // is an operator decision, nothing the user can act on). Local rows always
+  // render: an unavailable one is a disabled teaser pointing at the
+  // connect-desktop flow — otherwise users never learn local Claude
+  // Code/Codex exists.
+  const cloudRows = ROWS.filter(
+    (row) => row.group === "cloud" && row.isAvailable(availability),
+  );
+  const localRows = ROWS.filter((row) => row.group === "local");
 
   const handleSelect = (m: AgentMode) => {
     onSelect(m);
     setOpen(false);
+  };
+
+  const handleConnectDesktop = () => {
+    setOpen(false);
+    onConnectDesktop?.();
   };
 
   return (
@@ -250,14 +270,25 @@ export function ModePickerPure({
               testId="local-section-header"
             />
           )}
-          {localRows.map((row) => (
-            <Row
-              key={row.mode}
-              row={row}
-              active={mode === row.mode}
-              onSelect={handleSelect}
-            />
-          ))}
+          {localRows.map((row) => {
+            const available = row.isAvailable(availability);
+            return (
+              <Row
+                key={row.mode}
+                row={row}
+                active={available && mode === row.mode}
+                onSelect={handleSelect}
+                unavailableHint={
+                  available
+                    ? undefined
+                    : availability.userDesktop
+                      ? "Not detected on your desktop"
+                      : "Connect your desktop to enable"
+                }
+                onUnavailableClick={handleConnectDesktop}
+              />
+            );
+          })}
         </div>
       </PopoverContent>
     </Popover>
@@ -295,25 +326,43 @@ function Row({
   row,
   active,
   onSelect,
+  unavailableHint,
+  onUnavailableClick,
 }: {
   row: ModeRow;
   active: boolean;
   onSelect: (mode: AgentMode) => void;
+  /**
+   * When set, the row is an unavailable teaser: dimmed, `aria-disabled`,
+   * and the hint replaces the description. It stays clickable — the click
+   * routes to `onUnavailableClick` (connect-desktop flow) instead of
+   * selecting the mode. A truly `disabled` button would swallow the one
+   * affordance that tells the user how to enable the feature.
+   */
+  unavailableHint?: string;
+  onUnavailableClick?: () => void;
 }) {
+  const unavailable = unavailableHint != null;
   return (
     <button
       type="button"
       role="menuitem"
-      onClick={() => onSelect(row.mode)}
+      aria-disabled={unavailable || undefined}
+      onClick={() =>
+        unavailable ? onUnavailableClick?.() : onSelect(row.mode)
+      }
       className={cn(
         "flex items-start gap-2 px-2 py-1.5 rounded-md text-left",
         "hover:bg-muted",
+        unavailable && "opacity-60",
       )}
     >
       <span className="shrink-0 text-muted-foreground mt-0.5">{row.icon}</span>
       <div className="flex-1">
         <div className="text-sm">{row.label}</div>
-        <div className="text-xs text-muted-foreground">{row.description}</div>
+        <div className="text-xs text-muted-foreground">
+          {unavailableHint ?? row.description}
+        </div>
       </div>
       {active && <Check size={14} className="text-foreground mt-0.5" />}
     </button>
@@ -358,6 +407,8 @@ export function ModePicker({
   const availability = useAgentOptionAvailability();
   const mode = fallbackMode(selectedMode, availability);
 
+  const [connectOpen, setConnectOpen] = useState(false);
+
   const handleSelect = (next: AgentMode) => {
     setAgentMode(next);
     track("agent_mode_selected", { mode: next });
@@ -374,12 +425,19 @@ export function ModePicker({
   };
 
   return (
-    <ModePickerPure
-      mode={mode}
-      availability={availability}
-      locked={locked}
-      lockedHarness={lockedHarness}
-      onSelect={handleSelect}
-    />
+    <>
+      <ModePickerPure
+        mode={mode}
+        availability={availability}
+        locked={locked}
+        lockedHarness={lockedHarness}
+        onSelect={handleSelect}
+        onConnectDesktop={() => {
+          track("agent_mode_connect_desktop_opened");
+          setConnectOpen(true);
+        }}
+      />
+      <ConnectDesktopDialog open={connectOpen} onOpenChange={setConnectOpen} />
+    </>
   );
 }

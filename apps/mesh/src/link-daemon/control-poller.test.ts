@@ -126,4 +126,31 @@ describe("runControlPollLoop frame routing", () => {
       "https://cluster.example.com/api/links/control?timeout=15",
     );
   });
+
+  it("routes a shutdown frame to onShutdown and stops polling without abort", async () => {
+    // No ac.abort() here on purpose: the loop must RETURN on its own after a
+    // shutdown frame — one more long-poll would race the process exit and
+    // re-mint the presence claim the cluster just deleted.
+    const ac = new AbortController();
+    let shutdowns = 0;
+    let call = 0;
+    const fetchImpl = (async () => {
+      call++;
+      return jsonResponse(200, encodeControlFrame({ type: "shutdown" }));
+    }) as unknown as typeof fetch;
+
+    await runControlPollLoop({
+      baseUrl: BASE_URL,
+      getAccessToken: () => "tok",
+      signal: ac.signal,
+      fetchImpl,
+      onCancel: () => {},
+      onShutdown: () => {
+        shutdowns++;
+      },
+    });
+
+    expect(shutdowns).toBe(1);
+    expect(call).toBe(1);
+  });
 });

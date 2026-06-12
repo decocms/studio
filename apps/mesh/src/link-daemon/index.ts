@@ -24,7 +24,7 @@ import { createControlHandler } from "./control-handler";
 import { connectToClusterPull } from "./cluster-connection-pull";
 import { openOutbox } from "./outbox";
 import { startLocalIngress } from "./local-ingress";
-import { detectCapabilities } from "./capabilities";
+import { detectCapabilities, startCapabilityReprobe } from "./capabilities";
 import { loadOrCreateMachineId } from "./machine-id";
 import { getValidSession } from "../cli/lib/get-valid-session";
 import type { Session } from "../cli/lib/session";
@@ -226,11 +226,29 @@ export async function startLinkDaemon(
   const machineId = await loadOrCreateMachineId(opts.dataDir);
   const cliVersion = process.env.npm_package_version ?? "0.0.0";
   const capabilities = await detectCapabilities();
+  // While a CLI capability (claude-code / codex) is missing, re-probe every
+  // minute so installing or signing into the CLI after `decocms link` started
+  // is picked up without a daemon restart. The poll loops read the (shared,
+  // grow-only) array on every poll, so the next poll advertises the change
+  // and the cluster's presence claim follows.
+  const stopReprobe = startCapabilityReprobe(capabilities, {
+    onChange: (added) => {
+      console.log(
+        `[link-daemon] capabilities detected: +${added.join(",")} (now: ${capabilities.join(",")})`,
+      );
+    },
+  });
   // Durable uplink outbox (spec §5.1). One DB per daemon under the leaf data
   // dir (DATA_DIR is the leaf — do NOT append `.deco`; sandboxes live at
   // `$DATA_DIR/link/sandboxes/...`). Survives daemon restart so a reconnect can
   // resend the unacked relay prefix.
   const outbox = openOutbox({ path: `${opts.dataDir}/link/outbox.sqlite` });
+
+  // `shutdown` is declared below (it needs `cluster` in scope); the control
+  // poller can in principle deliver a frame before that line runs, so route
+  // the callback through a mutable holder instead of capturing `shutdown`
+  // directly (TDZ).
+  let onRemoteShutdown: () => void = () => {};
 
   const cluster = await connectToClusterPull({
     clusterBaseUrl: opts.clusterBaseUrl,
@@ -249,6 +267,7 @@ export async function startLinkDaemon(
       opts.monitor?.onCluster?.("linked");
       console.log(`Linked to ${opts.clusterBaseUrl} (pull transport)`);
     },
+    onShutdown: () => onRemoteShutdown(),
   });
 
   let resolveStopped!: (code: number) => void;
@@ -260,6 +279,7 @@ export async function startLinkDaemon(
     if (shuttingDown) return;
     shuttingDown = true;
     console.log("\nShutting down…");
+    stopReprobe();
     try {
       await cluster.close();
     } catch {
@@ -284,6 +304,12 @@ export async function startLinkDaemon(
   };
   process.on("SIGINT", () => void shutdown());
   process.on("SIGTERM", () => void shutdown());
+  onRemoteShutdown = () => {
+    console.log(
+      "Disconnect requested from the Studio web UI — shutting down. Run `bunx decocms link` to reconnect.",
+    );
+    void shutdown();
+  };
 
   void cluster.closed.then(() => {
     opts.monitor?.onCluster?.("closed");

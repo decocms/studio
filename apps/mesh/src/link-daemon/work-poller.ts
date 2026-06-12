@@ -60,6 +60,11 @@ export interface WorkPollerDeps {
    * header. The server mints the presence claim with these so
    * resolveDispatchTarget can route pull-transport threads correctly.
    * Mirrors the `capabilities` field in the WS hello frame.
+   *
+   * Read on EVERY poll (not snapshotted at loop start): the daemon re-probes
+   * CLI capabilities after startup, growing this array in place when a CLI
+   * (claude-code / codex) is installed while the daemon is running, and the
+   * next poll advertises the updated set without a restart.
    */
   capabilities?: Capability[];
   /**
@@ -106,12 +111,12 @@ export async function runWorkPollLoop(deps: WorkPollerDeps): Promise<void> {
   // Build the static presence headers once — these don't change between polls.
   // The protocol version is always sent so the cluster's 426 gate can tell a
   // current daemon from a stale one (absent header = pre-v2 daemon).
+  // `x-link-capabilities` is intentionally NOT in this static set — it is
+  // re-read from `deps.capabilities` on every poll so a post-startup CLI
+  // re-probe (capability array grown in place) reaches the presence claim.
   const presenceHeaders: Record<string, string> = {
     [LINK_PROTOCOL_HEADER]: String(LINK_PROTOCOL_VERSION),
   };
-  if (deps.capabilities && deps.capabilities.length > 0) {
-    presenceHeaders["x-link-capabilities"] = deps.capabilities.join(",");
-  }
   if (deps.machineId) {
     presenceHeaders["x-link-machine-id"] = deps.machineId;
   }
@@ -143,11 +148,20 @@ export async function runWorkPollLoop(deps: WorkPollerDeps): Promise<void> {
       continue;
     }
 
-    // Step 2: issue the long-poll request.
+    // Step 2: issue the long-poll request. Capabilities are joined here, per
+    // poll, so an in-place capability update is advertised on the next poll.
+    const capabilityHeader =
+      deps.capabilities && deps.capabilities.length > 0
+        ? { "x-link-capabilities": deps.capabilities.join(",") }
+        : undefined;
     let res: Response;
     try {
       res = await fetcher(url, {
-        headers: { Authorization: `Bearer ${token}`, ...presenceHeaders },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...presenceHeaders,
+          ...capabilityHeader,
+        },
         signal,
       });
     } catch (err) {

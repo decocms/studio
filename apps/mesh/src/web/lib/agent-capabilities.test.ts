@@ -109,6 +109,7 @@ describe("hasLocalCliHarness", () => {
   const link = (overrides: Partial<CurrentLink> = {}): CurrentLink => ({
     online: false,
     capabilities: [],
+    ready: true,
     ...overrides,
   });
 
