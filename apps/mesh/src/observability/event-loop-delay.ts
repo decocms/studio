@@ -13,17 +13,20 @@ import { meter } from "./index";
  * process.nextTick, so a blocked loop inflates measured acquire time. Spikes
  * are logged with memory stats to correlate with GC pauses.
  */
-const delayHistogram = meter.createHistogram("eventloop.delay", {
-  description: "Event-loop lag measured as timer scheduling drift",
-  unit: "ms",
-});
-
 let timer: ReturnType<typeof setInterval> | undefined;
 
 export function startEventLoopMonitor(): () => void {
   if (process.env.EVENT_LOOP_MONITOR !== "1") return () => {};
   const intervalMs = Number(process.env.EVENT_LOOP_INTERVAL_MS ?? 250);
   const spikeMs = Number(process.env.EVENT_LOOP_SPIKE_MS ?? 100);
+
+  // Create the instrument here, not at module top: `meter` is a no-op until
+  // initObservability() reassigns it, and module-top capture binds the dead
+  // pre-init meter (instruments never export). This runs post-init.
+  const delayHistogram = meter.createHistogram("eventloop.delay", {
+    description: "Event-loop lag measured as timer scheduling drift",
+    unit: "ms",
+  });
 
   let expected = performance.now() + intervalMs;
   timer = setInterval(() => {
@@ -38,6 +41,7 @@ export function startEventLoopMonitor(): () => void {
       console.warn(
         JSON.stringify({
           msg: "event-loop-stall",
+          ts: new Date().toISOString(),
           lagMs: Math.round(drift),
           rss: m.rss,
           heapUsed: m.heapUsed,
