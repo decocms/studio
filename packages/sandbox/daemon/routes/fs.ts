@@ -717,11 +717,81 @@ export function registerGlobAncestorDirectories(
   }
 }
 
-function resolveGlobResultLimit(limit: unknown): number {
+export function resolveGlobResultLimit(limit: unknown): number {
   if (limit === undefined || limit === null) return GLOB_RESULT_LIMIT;
   const n = typeof limit === "number" ? limit : Number(limit);
   if (!Number.isFinite(n) || n < 1) return GLOB_RESULT_LIMIT;
   return Math.min(Math.floor(n), GLOB_MAX_RESULT_LIMIT);
+}
+
+function repoRelativePrefix(searchPath: string, repoDir: string): string {
+  if (searchPath === repoDir) return "";
+  return path.relative(repoDir, searchPath).replace(/\\/g, "/");
+}
+
+function joinRepoRelative(prefix: string, name: string): string {
+  return prefix ? `${prefix}/${name}` : name;
+}
+
+type GlobScanState = {
+  filePaths: string[];
+  directoryPaths: Set<string>;
+  resultLimit: number;
+};
+
+/** Depth-bounded directory walk — avoids scanning the full tree for maxDepth. */
+function walkRepoWithinMaxDepth(
+  absDir: string,
+  repoRelDir: string,
+  maxDepth: number,
+  state: GlobScanState,
+): boolean {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(absDir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+
+  for (const entry of entries) {
+    const childRel = joinRepoRelative(repoRelDir, entry.name);
+    if (!isGlobPathAllowed(childRel)) continue;
+    if (entry.isSymbolicLink()) continue;
+
+    const depth = pathSegmentDepth(childRel);
+
+    if (entry.isDirectory()) {
+      if (depth > maxDepth) {
+        registerGlobAncestorDirectories(
+          childRel,
+          maxDepth,
+          state.directoryPaths,
+          false,
+        );
+        continue;
+      }
+      state.directoryPaths.add(childRel);
+      if (depth < maxDepth) {
+        const childAbs = path.join(absDir, entry.name);
+        if (walkRepoWithinMaxDepth(childAbs, childRel, maxDepth, state)) {
+          return true;
+        }
+      }
+    } else if (entry.isFile()) {
+      if (depth > maxDepth) {
+        registerGlobAncestorDirectories(
+          childRel,
+          maxDepth,
+          state.directoryPaths,
+          true,
+        );
+        continue;
+      }
+      state.filePaths.push(childRel);
+      if (state.filePaths.length >= state.resultLimit) return true;
+    }
+  }
+  return false;
 }
 
 function isGlobPathAllowed(rel: string): boolean {
@@ -814,44 +884,58 @@ export function makeGlobHandler(deps: FsDeps) {
 
     // Bun.Glob — no external binary dependency. Returns paths relative
     // to `cwd`, which we re-anchor to repoDir for consistent UX.
-    const glob = new Bun.Glob(body.pattern);
     const filePaths: string[] = [];
     const directoryPaths = new Set<string>();
     let truncated = false;
     try {
-      for await (const rel of glob.scan({
-        cwd: searchPath,
-        onlyFiles: false,
-        followSymlinks: false,
-        dot: true,
-      })) {
-        if (!isGlobPathAllowed(rel)) continue;
-        const abs = path.join(searchPath, rel);
-        let relPath: string;
-        try {
-          const stat = fs.statSync(abs);
-          relPath = toRepoRelativePath(abs, searchPath, deps.repoDir);
-          const depth = pathSegmentDepth(relPath);
-          if (maxDepth !== undefined && depth > maxDepth) {
-            registerGlobAncestorDirectories(
-              relPath,
-              maxDepth,
-              directoryPaths,
-              stat.isFile(),
-            );
+      if (maxDepth !== undefined && body.pattern === "**/*") {
+        const state: GlobScanState = {
+          filePaths,
+          directoryPaths,
+          resultLimit,
+        };
+        truncated = walkRepoWithinMaxDepth(
+          searchPath,
+          repoRelativePrefix(searchPath, deps.repoDir),
+          maxDepth,
+          state,
+        );
+      } else {
+        const glob = new Bun.Glob(body.pattern);
+        for await (const rel of glob.scan({
+          cwd: searchPath,
+          onlyFiles: false,
+          followSymlinks: false,
+          dot: true,
+        })) {
+          if (!isGlobPathAllowed(rel)) continue;
+          const abs = path.join(searchPath, rel);
+          let relPath: string;
+          try {
+            const stat = fs.statSync(abs);
+            relPath = toRepoRelativePath(abs, searchPath, deps.repoDir);
+            const depth = pathSegmentDepth(relPath);
+            if (maxDepth !== undefined && depth > maxDepth) {
+              registerGlobAncestorDirectories(
+                relPath,
+                maxDepth,
+                directoryPaths,
+                stat.isFile(),
+              );
+              continue;
+            }
+            if (stat.isDirectory()) {
+              directoryPaths.add(relPath);
+            } else if (stat.isFile()) {
+              filePaths.push(relPath);
+            }
+          } catch {
             continue;
           }
-          if (stat.isDirectory()) {
-            directoryPaths.add(relPath);
-          } else if (stat.isFile()) {
-            filePaths.push(relPath);
+          if (filePaths.length >= resultLimit) {
+            truncated = true;
+            break;
           }
-        } catch {
-          continue;
-        }
-        if (filePaths.length >= resultLimit) {
-          truncated = true;
-          break;
         }
       }
     } catch (e) {

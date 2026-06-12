@@ -3,7 +3,6 @@ import {
   buildFileTree,
   decoBlockKeyFromTreePath,
   directoryNeedsLazyLoad,
-  EXPLORER_EAGER_DEPTH,
   flattenTree,
   getDirectoryContextPath,
   getParentTreePath,
@@ -85,13 +84,12 @@ describe("file-explorer utils", () => {
     expect(getPathDepth("/apps/mesh/src/index.ts")).toBe(4);
   });
 
-  it("directoryNeedsLazyLoad is true at EXPLORER_EAGER_DEPTH and above", () => {
+  it("directoryNeedsLazyLoad is true only below eager depth boundary", () => {
     const loaded = new Set(["/apps/mesh/src"]);
     expect(directoryNeedsLazyLoad("/apps", loaded)).toBe(false);
     expect(directoryNeedsLazyLoad("/apps/mesh/src", loaded)).toBe(false);
-    expect(directoryNeedsLazyLoad("/apps/mesh/deep", loaded)).toBe(true);
-    expect(getPathDepth("/apps/mesh/deep")).toBeGreaterThanOrEqual(
-      EXPLORER_EAGER_DEPTH,
+    expect(directoryNeedsLazyLoad("/apps/mesh/src/components", loaded)).toBe(
+      true,
     );
   });
 
@@ -104,7 +102,17 @@ describe("file-explorer utils", () => {
     ).toEqual({
       files: ["a.ts", "b.ts"],
       directories: ["src", "src/components"],
-      truncated: undefined,
+      truncated: false,
+    });
+  });
+
+  it("mergeGlobLists preserves truncated across merges", () => {
+    expect(
+      mergeGlobLists(["a.ts"], ["src"], { files: [], truncated: true }, true),
+    ).toEqual({
+      files: ["a.ts"],
+      directories: ["src"],
+      truncated: true,
     });
   });
 });

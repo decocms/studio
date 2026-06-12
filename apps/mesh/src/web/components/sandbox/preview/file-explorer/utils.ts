@@ -80,11 +80,12 @@ export function mergeGlobLists(
   prevFiles: readonly string[],
   prevDirs: readonly string[],
   next: GlobListResult,
+  prevTruncated = false,
 ): GlobListResult {
   return {
     files: [...new Set([...prevFiles, ...next.files])],
     directories: [...new Set([...prevDirs, ...(next.directories ?? [])])],
-    truncated: next.truncated,
+    truncated: prevTruncated || Boolean(next.truncated),
   };
 }
 
@@ -93,7 +94,7 @@ export function directoryNeedsLazyLoad(
   loadedLazyDirs: ReadonlySet<string>,
 ): boolean {
   return (
-    getPathDepth(treePath) >= EXPLORER_EAGER_DEPTH &&
+    getPathDepth(treePath) > EXPLORER_EAGER_DEPTH &&
     !loadedLazyDirs.has(treePath)
   );
 }

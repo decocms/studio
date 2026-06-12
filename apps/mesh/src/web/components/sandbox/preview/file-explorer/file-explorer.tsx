@@ -165,6 +165,18 @@ export function FileExplorer({
   const [loadedLazyDirs, setLoadedLazyDirs] = useState<Set<string>>(new Set());
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
 
+  const treeGenerationRef = useRef(0);
+  const initialTreeLoadRef = useRef<Promise<void> | null>(null);
+  const filesRef = useRef<string[]>([]);
+  const directoriesRef = useRef<string[]>([]);
+  const loadedLazyDirsRef = useRef<Set<string>>(new Set());
+  const lazyLoadInflightRef = useRef<Map<string, Promise<boolean>>>(new Map());
+  const treeTruncatedRef = useRef(false);
+
+  filesRef.current = files;
+  directoriesRef.current = directories;
+  loadedLazyDirsRef.current = loadedLazyDirs;
+
   // File buffers: path -> { savedContent, editorValue, loaded }
   const [buffers, setBuffers] = useState<Map<string, FileBuffer>>(new Map());
 
@@ -441,7 +453,7 @@ export function FileExplorer({
   if (!loadTreeCalledRef.current) {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot fetch trigger
     loadTreeCalledRef.current = true;
-    fetchFileTree();
+    initialTreeLoadRef.current = fetchFileTree();
   }
 
   // Deep-link: open the requested file when `openPath` is set or changes.
@@ -451,7 +463,11 @@ export function FileExplorer({
     const pathToOpen = openPath;
     queueMicrotask(() => {
       if (isSafeExplorerOpenPath(pathToOpen)) {
-        void handleFileClick(pathToOpen);
+        void handleFileClick(pathToOpen).catch((err) => {
+          toast.error(
+            err instanceof Error ? err.message : "Failed to open file",
+          );
+        });
       }
     });
   }
@@ -469,70 +485,115 @@ export function FileExplorer({
     };
   }
 
-  function applyGlobResult(result: GlobListResult, merge: boolean) {
+  function applyGlobResult(
+    result: GlobListResult,
+    merge: boolean,
+    generation: number,
+  ): boolean {
+    if (generation !== treeGenerationRef.current) return false;
+
     if (merge) {
-      const merged = mergeGlobLists(files, directories, result);
+      const merged = mergeGlobLists(
+        filesRef.current,
+        directoriesRef.current,
+        result,
+        treeTruncatedRef.current,
+      );
+      filesRef.current = merged.files;
+      directoriesRef.current = merged.directories;
+      treeTruncatedRef.current = Boolean(merged.truncated);
       setFiles(merged.files);
       setDirectories(merged.directories);
       if (merged.truncated) {
         toast.warning("File list truncated — some files may be hidden");
       }
-      return;
+      return Boolean(merged.truncated);
     }
+
+    filesRef.current = result.files;
+    directoriesRef.current = result.directories ?? [];
+    treeTruncatedRef.current = Boolean(result.truncated);
     setFiles(result.files);
     setDirectories(result.directories ?? []);
     if (result.truncated) {
       toast.warning("File list truncated — some files may be hidden");
     }
+    return Boolean(result.truncated);
   }
 
-  async function fetchDirChildren(dirPath: string) {
-    const result = await fetchGlob({
-      pattern: "**/*",
-      path: toDaemonPath(dirPath),
-      limit: EXPLORER_GLOB_LIMIT,
-    });
-    applyGlobResult(result, true);
-    setLoadedLazyDirs((prev) => {
-      const next = new Set(prev);
-      next.add(dirPath);
-      return next;
-    });
-  }
+  async function fetchDirChildren(dirPath: string): Promise<boolean> {
+    const inflight = lazyLoadInflightRef.current.get(dirPath);
+    if (inflight) return inflight;
 
-  async function ensureAncestorsLoaded(treePath: string) {
-    const loaded = new Set(loadedLazyDirs);
-    for (const dir of getAncestorDirectories(treePath)) {
-      if (!directoryNeedsLazyLoad(dir, loaded)) continue;
-      setLoadingDirs((prev) => new Set(prev).add(dir));
-      try {
-        await fetchDirChildren(dir);
-        loaded.add(dir);
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : "Failed to load folder",
-        );
-        throw err;
-      } finally {
-        setLoadingDirs((prev) => {
+    const generation = treeGenerationRef.current;
+    const promise = (async () => {
+      const result = await fetchGlob({
+        pattern: "**/*",
+        path: toDaemonPath(dirPath),
+        limit: EXPLORER_GLOB_LIMIT,
+      });
+      const truncated = applyGlobResult(result, true, generation);
+      if (!truncated && generation === treeGenerationRef.current) {
+        setLoadedLazyDirs((prev) => {
           const next = new Set(prev);
-          next.delete(dir);
+          next.add(dirPath);
           return next;
         });
       }
+      return truncated;
+    })();
+
+    lazyLoadInflightRef.current.set(dirPath, promise);
+    try {
+      return await promise;
+    } finally {
+      lazyLoadInflightRef.current.delete(dirPath);
+    }
+  }
+
+  async function loadLazyDirectory(dirPath: string): Promise<boolean> {
+    if (!directoryNeedsLazyLoad(dirPath, loadedLazyDirsRef.current)) {
+      return false;
+    }
+    setLoadingDirs((prev) => new Set(prev).add(dirPath));
+    try {
+      return await fetchDirChildren(dirPath);
+    } finally {
+      setLoadingDirs((prev) => {
+        const next = new Set(prev);
+        next.delete(dirPath);
+        return next;
+      });
+    }
+  }
+
+  async function ensureAncestorsLoaded(treePath: string) {
+    const loaded = new Set(loadedLazyDirsRef.current);
+    for (const dir of getAncestorDirectories(treePath)) {
+      if (!directoryNeedsLazyLoad(dir, loaded)) continue;
+      const truncated = await loadLazyDirectory(dir);
+      if (truncated) {
+        throw new Error("Folder listing truncated — expand again to load more");
+      }
+      loaded.add(dir);
     }
   }
 
   async function fetchFileTree() {
+    const generation = ++treeGenerationRef.current;
+    lazyLoadInflightRef.current.clear();
+    treeTruncatedRef.current = false;
     setLoading(true);
     setLoadedLazyDirs(new Set());
+    setExpandedDirs(new Set());
+    setLoadingDirs(new Set());
     try {
       const result = await fetchGlob({
         pattern: "**/*",
         limit: EXPLORER_GLOB_LIMIT,
         maxDepth: EXPLORER_EAGER_DEPTH,
       });
-      applyGlobResult(result, false);
+      applyGlobResult(result, false, generation);
       setTreeLoaded(true);
     } catch {
       if (treeLoaded) {
@@ -668,21 +729,15 @@ export function FileExplorer({
   }
 
   async function expandDirectory(dirPath: string) {
-    if (directoryNeedsLazyLoad(dirPath, loadedLazyDirs)) {
-      setLoadingDirs((prev) => new Set(prev).add(dirPath));
+    if (directoryNeedsLazyLoad(dirPath, loadedLazyDirsRef.current)) {
       try {
-        await fetchDirChildren(dirPath);
+        const truncated = await loadLazyDirectory(dirPath);
+        if (truncated) return;
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : "Failed to load folder",
         );
         return;
-      } finally {
-        setLoadingDirs((prev) => {
-          const next = new Set(prev);
-          next.delete(dirPath);
-          return next;
-        });
       }
     }
     toggleDir(dirPath);
@@ -697,6 +752,7 @@ export function FileExplorer({
   }
 
   async function handleFileClick(path: string) {
+    await initialTreeLoadRef.current;
     await ensureAncestorsLoaded(path);
     const ancestors = getAncestorDirectories(path);
     setExpandedDirs((prev) => {
