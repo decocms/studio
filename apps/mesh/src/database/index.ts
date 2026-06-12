@@ -16,26 +16,27 @@ import { meter } from "../observability";
 // StudioDatabase Types
 // ============================================================================
 
-// Created lazily, not at module top: `meter` is a no-op until
-// initObservability() reassigns it, and module-top capture binds the dead
-// pre-init meter (instruments never export). First use happens post-init.
-let _queryDurationHistogram: ReturnType<typeof meter.createHistogram>;
+// Resolve the instrument on every record, never cached: the module-level
+// `meter` is the NoopMeter until initObservability() reassigns it, so caching
+// the first instance (e.g. when an early query races init) binds the dead meter
+// forever. createHistogram is idempotent — the meter memoizes by name — so this
+// is cheap and always hits the real post-init provider. Mirrors the working
+// pattern in mcp-clients/outbound/transports/monitoring.ts.
 const queryDurationHistogram = () =>
-  (_queryDurationHistogram ??= meter.createHistogram("db.query.duration", {
+  meter.createHistogram("db.query.duration", {
     description: "Database query execution duration in milliseconds",
     unit: "ms",
-  }));
+  });
 
 // Kysely's queryDurationMillis measures SQL execution only — the timer starts
 // after the connection is checked out of the pool. Pool-acquisition wait is
 // invisible to it, so we measure that separately to tell genuinely slow SQL
 // apart from pool-capacity contention.
-let _poolAcquireHistogram: ReturnType<typeof meter.createHistogram>;
 const poolAcquireHistogram = () =>
-  (_poolAcquireHistogram ??= meter.createHistogram("db.pool.acquire.duration", {
+  meter.createHistogram("db.pool.acquire.duration", {
     description: "Time spent waiting to acquire a connection from the pool",
     unit: "ms",
-  }));
+  });
 
 const SLOW_QUERY_TRESHOLD_MS = 400;
 const SLOW_ACQUIRE_THRESHOLD_MS = 100;
