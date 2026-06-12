@@ -34,15 +34,6 @@ function startLagSampler(): void {
   lagSampler.unref?.();
 }
 
-/**
- * Most recent event-loop lag sample in ms (timer scheduling drift). Lazily
- * starts the sampler on first read, so callers don't need init wiring.
- */
-export function getEventLoopLagMs(): number {
-  startLagSampler();
-  return lastLagMs;
-}
-
 export function startEventLoopMonitor(): () => void {
   // Start the lightweight sampler eagerly at boot so the first slow query
   // already has lag data to classify against.
