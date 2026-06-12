@@ -4,9 +4,15 @@
  * (packages/sandbox/daemon/org-fs/config.ts) validates this shape.
  *
  * The mounted set is hardcoded for now (per the team decision); later this
- * becomes per-agent configurable. Two volumes (org skills are deliberately
+ * becomes per-agent configurable. Three volumes (org skills are deliberately
  * NOT a cloud volume — skills belong in versioned repos, surfaced through
  * the read-only public sets):
+ *   - `home`    → mounted at `<appRoot>/org/<orgSlug>` (visible, editable):
+ *     the org's shared home folder, free-form — members and agents organize
+ *     it with whatever subfolders they want, and knowledge accumulates
+ *     across every run (no per-thread scoping). The volume NAME is the
+ *     stable `home` (uniform keyspace across orgs); only the mount path
+ *     carries the slug, which is immutable by design (see CLAUDE.md).
  *   - `outputs` → mounted at `<appRoot>/org/.outputs` (hidden); the daemon
  *     repoints a per-run symlink `<appRoot>/org/output → .outputs/<threadId>`
  *     so the agent sees a bare `output/` that is, externally, that thread's
@@ -17,6 +23,7 @@
  *     folder appear in the sandbox with no copy step.
  */
 
+import { homeMountPath } from "../home-mount";
 import { getPublicSets, publicVolumeForSet } from "../public-sets";
 
 /** Shape the daemon parses from ORGFS_CONFIG (mirrors OrgFsMountConfig). */
@@ -50,6 +57,8 @@ export function buildOrgFsConfig(opts: {
     orgSlug: opts.orgSlug,
     token: opts.token,
     mounts: [
+      // The org's home folder mounts under the org's own name.
+      { volume: "home", path: homeMountPath(opts.orgSlug) },
       ...DEFAULT_MOUNTS.map((m) => ({ ...m })),
       ...(opts.publicSets ?? []).map((set) => ({
         volume: publicVolumeForSet(set),
