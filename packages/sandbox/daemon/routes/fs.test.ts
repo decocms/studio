@@ -20,6 +20,11 @@ import {
   makeGrepHandler,
   makeGlobHandler,
   collectEmptyDirectories,
+  pathSegmentDepth,
+  registerGlobAncestorDirectories,
+  GLOB_RESULT_LIMIT,
+  GLOB_MAX_RESULT_LIMIT,
+  resolveGlobResultLimit,
 } from "./fs";
 
 const hasRg = spawnSync("which", ["rg"]).status === 0;
@@ -325,6 +330,80 @@ describe("fs handlers", () => {
     const res = await h(post("/_sandbox/glob", { pattern: "**/*" }));
     const body = (await res.json()) as { files: string[] };
     expect(body.files).toContain("empty-dir/.gitkeep");
+  });
+
+  it("glob: maxDepth skips deeper files but registers ancestor directories", async () => {
+    mkdirSync(join(appRoot, "a/b/c/d"), { recursive: true });
+    writeFileSync(join(appRoot, "a/b/c/d/deep.txt"), "x");
+    writeFileSync(join(appRoot, "a/b/shallow.txt"), "y");
+    const h = makeGlobHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/glob", { pattern: "**/*", maxDepth: 3 }),
+    );
+    const body = (await res.json()) as {
+      files: string[];
+      directories: string[];
+    };
+    expect(body.files).toContain("a/b/shallow.txt");
+    expect(body.files).not.toContain("a/b/c/d/deep.txt");
+    expect(body.directories).toContain("a/b/c");
+  });
+
+  it("glob: explicit limit truncates results", async () => {
+    for (let i = 0; i < 7; i++) {
+      writeFileSync(join(appRoot, `file-${i}.txt`), "");
+    }
+    const h = makeGlobHandler({ appRoot, repoDir: appRoot });
+    const res = await h(
+      post("/_sandbox/glob", {
+        pattern: "*.txt",
+        limit: 5,
+      }),
+    );
+    const body = (await res.json()) as {
+      files: string[];
+      truncated?: boolean;
+    };
+    expect(body.files.length).toBe(5);
+    expect(body.truncated).toBe(true);
+  });
+
+  it("resolveGlobResultLimit caps at GLOB_MAX_RESULT_LIMIT", () => {
+    expect(resolveGlobResultLimit(undefined)).toBe(GLOB_RESULT_LIMIT);
+    expect(resolveGlobResultLimit(GLOB_MAX_RESULT_LIMIT + 999)).toBe(
+      GLOB_MAX_RESULT_LIMIT,
+    );
+  });
+
+  it("glob: default limit remains GLOB_RESULT_LIMIT for agents", async () => {
+    for (let i = 0; i < GLOB_RESULT_LIMIT + 5; i++) {
+      writeFileSync(join(appRoot, `agent-${i}.txt`), "");
+    }
+    const h = makeGlobHandler({ appRoot, repoDir: appRoot });
+    const res = await h(post("/_sandbox/glob", { pattern: "agent-*.txt" }));
+    const body = (await res.json()) as {
+      files: string[];
+      truncated?: boolean;
+    };
+    expect(body.files.length).toBe(GLOB_RESULT_LIMIT);
+    expect(body.truncated).toBe(true);
+  });
+
+  it("pathSegmentDepth counts path segments", () => {
+    expect(pathSegmentDepth("a/b/c.ts")).toBe(3);
+    expect(pathSegmentDepth("README.md")).toBe(1);
+  });
+
+  it("registerGlobAncestorDirectories adds ancestors up to maxDepth", () => {
+    const dirs = new Set<string>();
+    registerGlobAncestorDirectories("a/b/c/d.ts", 3, dirs, true);
+    expect([...dirs].sort()).toEqual(["a", "a/b", "a/b/c"]);
+  });
+
+  it("registerGlobAncestorDirectories handles directory paths", () => {
+    const dirs = new Set<string>();
+    registerGlobAncestorDirectories("a/b/c/d", 3, dirs, false);
+    expect([...dirs].sort()).toEqual(["a", "a/b", "a/b/c"]);
   });
 
   it("collectEmptyDirectories ignores parents of nested directories", () => {

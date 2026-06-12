@@ -1,4 +1,4 @@
-import { meter } from "./index";
+import { meter } from "../index";
 
 /**
  * Event-loop delay monitor (timer-drift technique).

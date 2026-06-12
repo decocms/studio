@@ -49,17 +49,22 @@ import { FileTreeRow } from "./file-tree-row";
 import {
   buildFileTree,
   decoBlockKeyFromTreePath,
+  directoryNeedsLazyLoad,
+  EXPLORER_EAGER_DEPTH,
+  EXPLORER_GLOB_LIMIT,
   flattenTree,
   getAncestorDirectories,
   getDirectoryContextPath,
   getLanguageFromPath,
   getParentTreePath,
   joinTreePath,
+  mergeGlobLists,
   pathExistsInFileList,
   stripLineNumbers,
   toDaemonPath,
   toTreePath,
   validateExplorerEntryName,
+  type GlobListResult,
 } from "./utils";
 
 // Configure Monaco CDN (shared with workflow editor)
@@ -146,8 +151,12 @@ export function FileExplorer({
   openPath,
 }: FileExplorerProps) {
   // File tree state
-  const [files, setFiles] = useState<string[]>([]);
-  const [directories, setDirectories] = useState<string[]>([]);
+  const [treeLists, setTreeLists] = useState<{
+    files: string[];
+    directories: string[];
+    truncated: boolean;
+  }>({ files: [], directories: [], truncated: false });
+  const { files, directories } = treeLists;
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [selectedTreeNode, setSelectedTreeNode] = useState<TreeNode | null>(
@@ -157,6 +166,23 @@ export function FileExplorer({
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [treeLoaded, setTreeLoaded] = useState(false);
+  const [, setLoadedLazyDirs] = useState<Set<string>>(new Set());
+  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
+
+  const treeGenerationRef = useRef(0);
+  const initialTreeLoadRef = useRef<Promise<void> | null>(null);
+  const loadedLazyDirsRef = useRef<Set<string>>(new Set());
+  const lazyLoadInflightRef = useRef<Map<string, Promise<boolean>>>(new Map());
+
+  function updateLoadedLazyDirs(
+    updater: Set<string> | ((prev: Set<string>) => Set<string>),
+  ) {
+    setLoadedLazyDirs((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      loadedLazyDirsRef.current = next;
+      return next;
+    });
+  }
 
   // File buffers: path -> { savedContent, editorValue, loaded }
   const [buffers, setBuffers] = useState<Map<string, FileBuffer>>(new Map());
@@ -335,9 +361,12 @@ export function FileExplorer({
     }
     const daemonFolderPath = toDaemonPath(folderPath);
     await postSandbox("mkdir", { path: daemonFolderPath });
-    setDirectories((prev) =>
-      prev.includes(daemonFolderPath) ? prev : [...prev, daemonFolderPath],
-    );
+    setTreeLists((prev) => ({
+      ...prev,
+      directories: prev.directories.includes(daemonFolderPath)
+        ? prev.directories
+        : [...prev.directories, daemonFolderPath],
+    }));
     await fetchFileTree();
     await refreshGitStatus();
     setNameDialog(null);
@@ -434,7 +463,8 @@ export function FileExplorer({
   if (!loadTreeCalledRef.current) {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot fetch trigger
     loadTreeCalledRef.current = true;
-    fetchFileTree();
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- one-shot fetch trigger
+    initialTreeLoadRef.current = fetchFileTree();
   }
 
   // Deep-link: open the requested file when `openPath` is set or changes.
@@ -444,43 +474,134 @@ export function FileExplorer({
     const pathToOpen = openPath;
     queueMicrotask(() => {
       if (isSafeExplorerOpenPath(pathToOpen)) {
-        handleFileClick(pathToOpen);
+        void handleFileClick(pathToOpen).catch((err) => {
+          toast.error(
+            err instanceof Error ? err.message : "Failed to open file",
+          );
+        });
       }
     });
   }
 
-  async function fetchFileTree() {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        buildApiUrl(orgSlug, virtualMcpId, branch, "glob"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ pattern: "**/*" }),
-        },
-      );
-      if (!res.ok) {
-        if (treeLoaded) {
-          toast.error("Failed to refresh file tree");
-        }
-        return;
-      }
-      const data = (await res.json()) as {
-        files?: string[];
-        directories?: string[];
+  async function fetchGlob(
+    body: Record<string, unknown>,
+  ): Promise<GlobListResult> {
+    const data = (await postSandbox("glob", body)) as GlobListResult & {
+      error?: string;
+    };
+    return {
+      files: data.files ?? [],
+      directories: data.directories ?? [],
+      truncated: data.truncated,
+    };
+  }
+
+  function applyGlobResult(
+    result: GlobListResult,
+    merge: boolean,
+    generation: number,
+  ): boolean {
+    if (generation !== treeGenerationRef.current) return false;
+
+    let truncated = false;
+    setTreeLists((prev) => {
+      const merged = merge
+        ? mergeGlobLists(prev.files, prev.directories, result, prev.truncated)
+        : {
+            files: result.files,
+            directories: result.directories ?? [],
+            truncated: Boolean(result.truncated),
+          };
+      truncated = Boolean(merged.truncated);
+      return {
+        files: merged.files,
+        directories: merged.directories,
+        truncated,
       };
-      const nextFiles = data.files ?? [];
-      setFiles(nextFiles);
-      setDirectories((prev) => {
-        if (data.directories !== undefined) return data.directories;
-        // Legacy daemons omit `directories`; keep client-side empty dirs
-        // until the sandbox daemon is restarted with directory support.
-        return prev.filter(
-          (dir) => !pathExistsInFileList(toTreePath(dir), nextFiles),
-        );
+    });
+    if (truncated) {
+      toast.warning("File list truncated — some files may be hidden");
+    }
+    return truncated;
+  }
+
+  async function fetchDirChildren(dirPath: string): Promise<boolean> {
+    const inflight = lazyLoadInflightRef.current.get(dirPath);
+    if (inflight) return inflight;
+
+    const generation = treeGenerationRef.current;
+    const promise = (async () => {
+      const result = await fetchGlob({
+        pattern: "**/*",
+        path: toDaemonPath(dirPath),
+        limit: EXPLORER_GLOB_LIMIT,
       });
+      const truncated = applyGlobResult(result, true, generation);
+      if (!truncated && generation === treeGenerationRef.current) {
+        updateLoadedLazyDirs((prev) => {
+          const next = new Set(prev);
+          next.add(dirPath);
+          return next;
+        });
+      }
+      return truncated;
+    })();
+
+    lazyLoadInflightRef.current.set(dirPath, promise);
+    try {
+      return await promise;
+    } finally {
+      lazyLoadInflightRef.current.delete(dirPath);
+    }
+  }
+
+  async function loadLazyDirectory(dirPath: string): Promise<boolean> {
+    if (!directoryNeedsLazyLoad(dirPath, loadedLazyDirsRef.current)) {
+      return false;
+    }
+    setLoadingDirs((prev) => new Set(prev).add(dirPath));
+    try {
+      return await fetchDirChildren(dirPath);
+    } finally {
+      setLoadingDirs((prev) => {
+        const next = new Set(prev);
+        next.delete(dirPath);
+        return next;
+      });
+    }
+  }
+
+  async function ensureAncestorsLoaded(treePath: string) {
+    const loaded = new Set(loadedLazyDirsRef.current);
+    for (const dir of getAncestorDirectories(treePath)) {
+      if (!directoryNeedsLazyLoad(dir, loaded)) continue;
+      const truncated = await loadLazyDirectory(dir);
+      if (truncated) {
+        throw new Error("Folder listing truncated — expand again to load more");
+      }
+      loaded.add(dir);
+    }
+  }
+
+  async function fetchFileTree() {
+    const generation = ++treeGenerationRef.current;
+    lazyLoadInflightRef.current.clear();
+    setLoading(true);
+    updateLoadedLazyDirs(new Set());
+    setExpandedDirs(new Set());
+    setLoadingDirs(new Set());
+    try {
+      const result = await fetchGlob({
+        pattern: "**/*",
+        limit: EXPLORER_GLOB_LIMIT,
+        maxDepth: EXPLORER_EAGER_DEPTH,
+      });
+      applyGlobResult(result, false, generation);
       setTreeLoaded(true);
+    } catch {
+      if (treeLoaded) {
+        toast.error("Failed to refresh file tree");
+      }
     } finally {
       setLoading(false);
     }
@@ -610,8 +731,32 @@ export function FileExplorer({
     });
   }
 
-  function handleFileClick(path: string) {
-    // Auto-expand ancestor directories
+  async function expandDirectory(dirPath: string) {
+    if (directoryNeedsLazyLoad(dirPath, loadedLazyDirsRef.current)) {
+      try {
+        const truncated = await loadLazyDirectory(dirPath);
+        if (truncated) return;
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to load folder",
+        );
+        return;
+      }
+    }
+    toggleDir(dirPath);
+  }
+
+  async function handleDirectoryOpen(dirPath: string, isExpanded: boolean) {
+    if (isExpanded) {
+      toggleDir(dirPath);
+      return;
+    }
+    await expandDirectory(dirPath);
+  }
+
+  async function handleFileClick(path: string) {
+    await initialTreeLoadRef.current;
+    await ensureAncestorsLoaded(path);
     const ancestors = getAncestorDirectories(path);
     setExpandedDirs((prev) => {
       const next = new Set(prev);
@@ -783,6 +928,7 @@ export function FileExplorer({
               const isExpanded = expandedDirs.has(node.path);
               const isSelected = selectedTreeNode?.path === node.path;
               const parentDir = getDirectoryContextPath(node.path, node.kind);
+              const isDirLoading = isDir && loadingDirs.has(node.path);
 
               return (
                 <FileTreeRow
@@ -791,13 +937,14 @@ export function FileExplorer({
                   depth={depth}
                   isExpanded={isExpanded}
                   isSelected={isSelected}
+                  isLoading={isDirLoading}
                   fileVisual={getFileVisual(node.name)}
                   onSelect={() => setSelectedTreeNode(node)}
                   onOpen={() => {
                     if (isDir) {
-                      toggleDir(node.path);
+                      void handleDirectoryOpen(node.path, isExpanded);
                     } else {
-                      handleFileClick(node.path);
+                      void handleFileClick(node.path);
                     }
                   }}
                   onNewFile={() =>

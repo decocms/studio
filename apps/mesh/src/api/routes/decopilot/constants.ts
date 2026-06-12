@@ -21,6 +21,7 @@ export function buildOrgFilesystemPrompt(publicSets: string[]): string {
       : "No sets are configured on this deployment.";
   return `<organization-filesystem>
 The organization filesystem is mounted at \`org/\` in your sandbox (when available):
+- the folder named after your organization (its slug — run \`ls org/\` to see it) — the org's shared home folder, editable and shared across every agent, member, and run. Organize it freely with subfolders. Check it for relevant context before starting non-trivial work, and record durable knowledge as you learn it: decisions, preferences, project facts, gotchas. Prefer small focused markdown files over one big log, and update stale notes instead of appending duplicates.
 - \`org/public/<set>/\` — curated read-only skill sets. ${sets} Each skill is a folder with a SKILL.md — read it before applying the skill.
 - \`org/upload/\` — files the user attached to this conversation are already here; read them directly (no copy step needed).
 - \`org/output/\` — write final deliverables here; they are shared back to the organization under this run's folder.
