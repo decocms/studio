@@ -694,7 +694,105 @@ const GLOB_EXCLUDE_DIRS = new Set([
   ".aws",
   ".gnupg",
 ]);
-const GLOB_RESULT_LIMIT = 1000;
+/** Default cap for agent glob calls. */
+export const GLOB_RESULT_LIMIT = 1000;
+/** Hard ceiling when callers pass an explicit `limit` (file explorer). */
+export const GLOB_MAX_RESULT_LIMIT = 10_000;
+
+export function pathSegmentDepth(relPath: string): number {
+  return relPath.split("/").filter(Boolean).length;
+}
+
+/** Register repo-relative ancestor directories up to `maxDepth`. */
+export function registerGlobAncestorDirectories(
+  repoRelativePath: string,
+  maxDepth: number,
+  directoryPaths: Set<string>,
+  isFile: boolean,
+): void {
+  const parts = repoRelativePath.split("/").filter(Boolean);
+  const dirParts = isFile ? parts.slice(0, -1) : parts;
+  for (let i = 1; i <= Math.min(dirParts.length, maxDepth); i++) {
+    directoryPaths.add(dirParts.slice(0, i).join("/"));
+  }
+}
+
+export function resolveGlobResultLimit(limit: unknown): number {
+  if (limit === undefined || limit === null) return GLOB_RESULT_LIMIT;
+  const n = typeof limit === "number" ? limit : Number(limit);
+  if (!Number.isFinite(n) || n < 1) return GLOB_RESULT_LIMIT;
+  return Math.min(Math.floor(n), GLOB_MAX_RESULT_LIMIT);
+}
+
+function repoRelativePrefix(searchPath: string, repoDir: string): string {
+  if (searchPath === repoDir) return "";
+  return path.relative(repoDir, searchPath).replace(/\\/g, "/");
+}
+
+function joinRepoRelative(prefix: string, name: string): string {
+  return prefix ? `${prefix}/${name}` : name;
+}
+
+type GlobScanState = {
+  filePaths: string[];
+  directoryPaths: Set<string>;
+  resultLimit: number;
+};
+
+/** Depth-bounded directory walk — avoids scanning the full tree for maxDepth. */
+function walkRepoWithinMaxDepth(
+  absDir: string,
+  repoRelDir: string,
+  maxDepth: number,
+  state: GlobScanState,
+): boolean {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(absDir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+
+  for (const entry of entries) {
+    const childRel = joinRepoRelative(repoRelDir, entry.name);
+    if (!isGlobPathAllowed(childRel)) continue;
+    if (entry.isSymbolicLink()) continue;
+
+    const depth = pathSegmentDepth(childRel);
+
+    if (entry.isDirectory()) {
+      if (depth > maxDepth) {
+        registerGlobAncestorDirectories(
+          childRel,
+          maxDepth,
+          state.directoryPaths,
+          false,
+        );
+        continue;
+      }
+      state.directoryPaths.add(childRel);
+      if (depth < maxDepth) {
+        const childAbs = path.join(absDir, entry.name);
+        if (walkRepoWithinMaxDepth(childAbs, childRel, maxDepth, state)) {
+          return true;
+        }
+      }
+    } else if (entry.isFile()) {
+      if (depth > maxDepth) {
+        registerGlobAncestorDirectories(
+          childRel,
+          maxDepth,
+          state.directoryPaths,
+          true,
+        );
+        continue;
+      }
+      state.filePaths.push(childRel);
+      if (state.filePaths.length >= state.resultLimit) return true;
+    }
+  }
+  return false;
+}
 
 function isGlobPathAllowed(rel: string): boolean {
   for (const seg of rel.split("/")) {
@@ -759,7 +857,12 @@ export function collectEmptyDirectories(
 
 export function makeGlobHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
-    let body: { pattern?: string; path?: string };
+    let body: {
+      pattern?: string;
+      path?: string;
+      limit?: number;
+      maxDepth?: number;
+    };
     try {
       body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
@@ -773,38 +876,76 @@ export function makeGlobHandler(deps: FsDeps) {
     if (!searchPath)
       return jsonResponse({ error: "Path escapes app root" }, 400);
 
+    const resultLimit = resolveGlobResultLimit(body.limit);
+    const maxDepth =
+      body.maxDepth === undefined || body.maxDepth === null
+        ? undefined
+        : Math.max(1, Math.floor(body.maxDepth));
+
     // Bun.Glob — no external binary dependency. Returns paths relative
     // to `cwd`, which we re-anchor to repoDir for consistent UX.
-    const glob = new Bun.Glob(body.pattern);
     const filePaths: string[] = [];
     const directoryPaths = new Set<string>();
+    let truncated = false;
     try {
-      for await (const rel of glob.scan({
-        cwd: searchPath,
-        onlyFiles: false,
-        followSymlinks: false,
-        dot: true,
-      })) {
-        if (!isGlobPathAllowed(rel)) continue;
-        const abs = path.join(searchPath, rel);
-        let relPath: string;
-        try {
-          const stat = fs.statSync(abs);
-          relPath = toRepoRelativePath(abs, searchPath, deps.repoDir);
-          if (stat.isDirectory()) {
-            directoryPaths.add(relPath);
-          } else if (stat.isFile()) {
-            filePaths.push(relPath);
+      if (maxDepth !== undefined && body.pattern === "**/*") {
+        const state: GlobScanState = {
+          filePaths,
+          directoryPaths,
+          resultLimit,
+        };
+        truncated = walkRepoWithinMaxDepth(
+          searchPath,
+          repoRelativePrefix(searchPath, deps.repoDir),
+          maxDepth,
+          state,
+        );
+      } else {
+        const glob = new Bun.Glob(body.pattern);
+        for await (const rel of glob.scan({
+          cwd: searchPath,
+          onlyFiles: false,
+          followSymlinks: false,
+          dot: true,
+        })) {
+          if (!isGlobPathAllowed(rel)) continue;
+          const abs = path.join(searchPath, rel);
+          let relPath: string;
+          try {
+            const stat = fs.statSync(abs);
+            relPath = toRepoRelativePath(abs, searchPath, deps.repoDir);
+            const depth = pathSegmentDepth(relPath);
+            if (maxDepth !== undefined && depth > maxDepth) {
+              registerGlobAncestorDirectories(
+                relPath,
+                maxDepth,
+                directoryPaths,
+                stat.isFile(),
+              );
+              continue;
+            }
+            if (stat.isDirectory()) {
+              directoryPaths.add(relPath);
+            } else if (stat.isFile()) {
+              filePaths.push(relPath);
+            }
+          } catch {
+            continue;
           }
-        } catch {
-          continue;
+          if (filePaths.length >= resultLimit) {
+            truncated = true;
+            break;
+          }
         }
-        if (filePaths.length >= GLOB_RESULT_LIMIT) break;
       }
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 500);
     }
     const directories = collectEmptyDirectories(filePaths, [...directoryPaths]);
-    return jsonResponse({ files: filePaths, directories });
+    return jsonResponse({
+      files: filePaths,
+      directories,
+      ...(truncated ? { truncated: true } : {}),
+    });
   };
 }
