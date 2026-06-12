@@ -5,6 +5,26 @@ import { generatePrefixedId } from "@/shared/utils/generate-id";
 export const generateMessageId = () => generatePrefixedId("msg");
 
 export const DEFAULT_MAX_TOKENS = 32768;
+
+/**
+ * Clamp the per-request output budget so input + output fits the context
+ * window. Some providers (e.g. OpenRouter) report `max_completion_tokens` ≈
+ * `context_length`; passing it raw overflows the window once any prompt is
+ * added and the provider rejects the whole request. Reserves 2x the input
+ * estimate because token estimation is rough (tool schemas especially) —
+ * over-reserving output is harmless, undercounting input re-triggers overflow.
+ */
+export function resolveMaxOutputTokens(
+  limits: { contextWindow?: number; maxOutputTokens?: number } | undefined,
+  inputTokensEstimate: number,
+): number {
+  const modelMax = limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS;
+  const contextWindow = limits?.contextWindow;
+  if (!contextWindow) return modelMax;
+  const available = contextWindow - inputTokensEstimate * 2;
+  return Math.max(1024, Math.min(modelMax, available));
+}
+
 export const DEFAULT_WINDOW_SIZE = 50;
 export const DEFAULT_THREAD_TITLE = "New chat";
 

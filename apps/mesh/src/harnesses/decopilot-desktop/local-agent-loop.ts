@@ -36,6 +36,8 @@ import { genTitle } from "../decopilot/title-generator";
 import { stringifyError } from "../decopilot/stream-error";
 import { makeTitleResultChunk } from "../title-chunk";
 import { OPENROUTER_CACHE_PROVIDER_OPTIONS } from "../../api/routes/decopilot/cache-instrumentation";
+import { resolveMaxOutputTokens } from "../../api/routes/decopilot/constants";
+import { estimateJsonTokens } from "../decopilot/built-in-tools/read-tool-output";
 import { resolveModeConfig } from "../../api/routes/decopilot/mode-config";
 import {
   createLanguageModel,
@@ -333,7 +335,12 @@ export async function* runDesktopAgentLoop(
     providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
     prepareStep: prepareStep as never,
     temperature,
-    maxOutputTokens: models.thinking.limits?.maxOutputTokens ?? 32768,
+    maxOutputTokens: resolveMaxOutputTokens(
+      models.thinking.limits,
+      estimateJsonTokens(systemMessages) +
+        estimateJsonTokens(processedMessages) +
+        estimateJsonTokens(streamTools),
+    ),
     stopWhen: stepCountIs(PARENT_STEP_LIMIT),
     abortSignal,
     onError: ({ error }: { error?: unknown }) => {

@@ -33,10 +33,11 @@ import type { GithubRepo, UsageStats } from "@decocms/mesh-sdk";
 import { OPENROUTER_CACHE_PROVIDER_OPTIONS } from "../../api/routes/decopilot/cache-instrumentation";
 import { createLanguageModel } from "../../ai-providers/language-model";
 import {
-  DEFAULT_MAX_TOKENS,
   PARENT_STEP_LIMIT,
+  resolveMaxOutputTokens,
   SUBAGENT_STEP_LIMIT,
 } from "../../api/routes/decopilot/constants";
+import { estimateJsonTokens } from "./built-in-tools/read-tool-output";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
 import type { SubtaskParams } from "./built-in-tools/subtask";
@@ -196,8 +197,12 @@ export async function runAgentLoop(
     providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
     prepareStep: opts.prepareStep as never,
     temperature: opts.temperature,
-    maxOutputTokens:
-      opts.models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
+    maxOutputTokens: resolveMaxOutputTokens(
+      opts.models.thinking.limits,
+      estimateJsonTokens(systemMessages) +
+        estimateJsonTokens(opts.messages) +
+        estimateJsonTokens(tools),
+    ),
     stopWhen: stepCountIs(stepLimit),
     abortSignal: opts.abortSignal,
     onStepFinish: opts.onStepFinish,
