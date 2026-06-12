@@ -1,9 +1,9 @@
-import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv.js";
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import type {
   JsonSchemaType,
   JsonSchemaValidator,
   jsonSchemaValidator,
-} from "@modelcontextprotocol/sdk/validation/types.js";
+} from "@modelcontextprotocol/sdk/validation";
 
 /**
  * Shared, content-memoized JSON-schema validator for all MCP Client/Server
