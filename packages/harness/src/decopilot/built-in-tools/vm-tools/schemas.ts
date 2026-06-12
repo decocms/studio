@@ -129,15 +129,29 @@ export const READ_DESCRIPTION =
   "binary formats are not supported; use a format-specific skill " +
   "(e.g. pptx-extract for .pptx).";
 
-export const WRITE_DESCRIPTION =
-  "Write content to a file in the VM's project directory. " +
-  "Creates parent directories if needed. Overwrites existing files entirely.\n\n" +
-  "Reserved path — `pages/<slug>.html`: writes to this prefix are " +
-  "automatically published to the org's object storage and rendered as a " +
-  "live preview in the chat side panel. Use this whenever the user wants " +
-  "a viewable HTML page (landing pages, brand kits, one-pagers). Slug " +
-  "must be lowercase kebab (e.g. `pages/landing.html`). HTML written " +
-  "elsewhere stays sandbox-only and will not render a preview.";
+/** `orgFs`: mirrors buildBashDescription — when the org filesystem is
+ *  mounted, decks/durable files belong under `org/`, and `pages/` must
+ *  not swallow slide requests. */
+export function buildWriteDescription(orgFs: boolean): string {
+  return (
+    "Write content to a file in the VM's project directory. " +
+    "Creates parent directories if needed. Overwrites existing files entirely.\n\n" +
+    (orgFs
+      ? "PRESENTATION DECKS / SLIDES: never `pages/` — read " +
+        "`/mnt/skills/public/slides/SKILL.md` and write the deck to " +
+        "`org/<your-org-slug>/decks/<name>.html` (lowercase kebab). That " +
+        "path gets a live preview with inline editing and persists in the " +
+        "org's shared folder.\n\n"
+      : "") +
+    "Reserved path — `pages/<slug>.html`: writes to this prefix are " +
+    "automatically published to the org's object storage and rendered as a " +
+    "live preview in the chat side panel. Use this for one-off viewable " +
+    "HTML pages (landing pages, brand kits, one-pagers)" +
+    (orgFs ? " — NOT for slides/decks (see above)" : "") +
+    ". Slug must be lowercase kebab (e.g. `pages/landing.html`). HTML " +
+    "written elsewhere stays sandbox-only and will not render a preview."
+  );
+}
 
 export const EDIT_DESCRIPTION =
   "Perform exact string replacement in a file in the VM. " +
