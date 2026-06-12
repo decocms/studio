@@ -1,6 +1,7 @@
 import { defineTool } from "@/core/define-tool";
 import { requireOrganization } from "@/core/studio-context";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { z } from "zod";
@@ -213,7 +214,10 @@ export const REGISTRY_DISCOVER_TOOLS = defineTool({
     for (const attempt of attempts) {
       let client: Client | null = null;
       try {
-        client = new Client({ name: "registry-discover", version: "1.0.0" });
+        client = new Client(
+          { name: "registry-discover", version: "1.0.0" },
+          { jsonSchemaValidator: sharedJsonSchemaValidator },
+        );
 
         const transport =
           attempt.transport === "sse"

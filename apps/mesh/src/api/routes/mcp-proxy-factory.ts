@@ -17,6 +17,7 @@ import {
   createServerFromClient,
 } from "@decocms/mesh-sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import type { StudioContext } from "../../core/studio-context";
 
@@ -131,10 +132,13 @@ async function createMCPProxyDoNotUseDirectly(
   await server.connect(serverTransport);
 
   // Create client and connect to client-side transport
-  const client = new Client({
-    name: "mcp-cms-proxy-client",
-    version: "1.0.0",
-  });
+  const client = new Client(
+    {
+      name: "mcp-cms-proxy-client",
+      version: "1.0.0",
+    },
+    { jsonSchemaValidator: sharedJsonSchemaValidator },
+  );
   await client.connect(clientTransport);
 
   // Return client as MCPProxyClient (backward compatible)

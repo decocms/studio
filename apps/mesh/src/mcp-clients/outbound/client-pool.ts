@@ -11,6 +11,7 @@
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 
 /**
  * Create a client pool
@@ -60,6 +61,7 @@ export function createClientPool(): (<T extends Transport>(
             requests: { tool: { call: {} } },
           },
         },
+        jsonSchemaValidator: sharedJsonSchemaValidator,
       },
     );
 
