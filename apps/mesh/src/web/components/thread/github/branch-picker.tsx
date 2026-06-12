@@ -157,11 +157,7 @@ export function BranchPicker({
                     "min-w-0 truncate",
                     isHeader
                       ? ""
-                      : cn(
-                          "transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                          !disabled &&
-                            "@[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
-                        ),
+                      : "transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[200px] @[320px]/chat-bottom:opacity-100",
                   )}
                 >
                   {label}
