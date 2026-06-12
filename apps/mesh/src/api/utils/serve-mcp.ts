@@ -39,6 +39,74 @@ interface ServeMcpOptions {
   onClose?: () => void | Promise<void>;
 }
 
+/**
+ * Leak gauge for per-request MCP servers. `built` counts servers entering
+ * `serveMcpRequest`, `closed` counts completed teardowns, `collected` counts
+ * servers the GC actually reclaimed (via FinalizationRegistry). A rising
+ * `built - collected` floor under steady traffic means servers are being
+ * pinned after close — the production leak signature — and tells us so
+ * without needing a heap snapshot.
+ */
+const gauge = {
+  built: 0,
+  closed: 0,
+  collected: 0,
+};
+const collectedRegistry = new FinalizationRegistry<null>(() => {
+  gauge.collected++;
+});
+const GAUGE_INTERVAL_MS = 60_000;
+const gaugeTimer = setInterval(() => {
+  if (gauge.built === 0) return;
+  console.log(
+    JSON.stringify({
+      msg: "mcp-server-gauge",
+      ts: new Date().toISOString(),
+      built: gauge.built,
+      closed: gauge.closed,
+      collected: gauge.collected,
+      alive: gauge.built - gauge.collected,
+    }),
+  );
+}, GAUGE_INTERVAL_MS);
+gaugeTimer.unref?.();
+
+/**
+ * The SDK transport's JSON-response mode returns a Promise from
+ * `handleRequest` that is resolved only by `send()` delivering the final
+ * response. `transport.close()` does NOT settle it (cleanup just deletes the
+ * stream mapping — verified through SDK 1.29), so a request that aborts
+ * mid-handler leaves `handleRequest` pending forever. Awaiting it would pin
+ * this frame — and through it the server, transport, request, and every tool
+ * schema — as a permanent GC root. Race it against the abort signal so the
+ * frame always settles.
+ */
+function raceAbort(
+  promise: Promise<Response>,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.resolve(new Response(null, { status: 499 }));
+  }
+  return new Promise<Response>((resolve, reject) => {
+    const onAbort = () => {
+      resolve(new Response(null, { status: 499 }));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (res) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(res);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
 export async function serveMcpRequest(
   server: CloseableServer,
   transport: RequestTransport,
@@ -48,12 +116,16 @@ export async function serveMcpRequest(
 ): Promise<Response> {
   const signal = request.signal;
 
+  gauge.built++;
+  collectedRegistry.register(server, null);
+
   // Idempotent: the abort listener and the stream guard's onDone can both fire
   // (e.g. disconnect racing body-complete) — teardown must run exactly once.
   let closed = false;
   const close = () => {
     if (closed) return;
     closed = true;
+    gauge.closed++;
     signal?.removeEventListener("abort", close);
     void server.close().catch((err) => {
       console.error(`[serve-mcp] ${label} server close failed:`, err);
@@ -78,10 +150,14 @@ export async function serveMcpRequest(
 
   let response: Response;
   try {
-    response = await transport.handleRequest(request);
+    response = await raceAbort(transport.handleRequest(request), signal);
   } catch (err) {
     close();
     throw err;
+  }
+  if (signal?.aborted) {
+    close();
+    return response;
   }
   return guardResponseStream(response, label, close);
 }
