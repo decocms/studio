@@ -69,12 +69,19 @@ export function createClaudeCodeModel(
   return provider(modelId);
 }
 
-/** Map composite model IDs (e.g. "claude-code:sonnet") to SDK model names. */
+/** Map composite model IDs (e.g. "claude-code:sonnet") to SDK model names.
+ *
+ * NOTE: The ai-sdk-provider-claude-code SDK only recognises the short aliases
+ * "opus", "sonnet", and "haiku". Any other string is passed straight through to
+ * the CLI's --model flag. For Fable 5 we therefore use the full CLI model ID
+ * "claude-fable-5" so the CLI can resolve it correctly (the short alias "fable"
+ * is not in the SDK's modelMap and the CLI rejects it).
+ */
 const CLAUDE_CODE_SDK_MODELS: Record<string, string> = {
   "claude-code:opus": "opus",
   "claude-code:sonnet": "sonnet",
   "claude-code:haiku": "haiku",
-  "claude-code:fable": "fable",
+  "claude-code:fable": "claude-fable-5",
 };
 
 /** Resolve a composite claude-code model ID to the SDK model name. */

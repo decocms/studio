@@ -8,7 +8,10 @@ describe("resolveClaudeCodeModelId", () => {
     expect(resolveClaudeCodeModelId("claude-code:opus")).toBe("opus");
     expect(resolveClaudeCodeModelId("claude-code:sonnet")).toBe("sonnet");
     expect(resolveClaudeCodeModelId("claude-code:haiku")).toBe("haiku");
-    expect(resolveClaudeCodeModelId("claude-code:fable")).toBe("fable");
+    // Fable uses the full CLI model ID because the SDK doesn't have a short alias for it
+    expect(resolveClaudeCodeModelId("claude-code:fable")).toBe(
+      "claude-fable-5",
+    );
   });
 
   it("passes through already-resolved aliases / full model IDs unchanged", () => {
