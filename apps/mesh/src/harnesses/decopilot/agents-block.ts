@@ -20,15 +20,7 @@ export interface AgentsBlockEntry {
   status: "active" | "inactive" | "error";
 }
 
-const SELF_USAGE = `<agents-usage>
-Delegate self-contained work to a subagent with the subtask tool.
-
-- subtask({ prompt }) — clone YOURSELF: a fresh subagent with your exact tools
-  and instructions but an empty context window.
-- subtask({ agent_id, prompt }) — delegate to a DIFFERENT agent (see
-  <available-agents>), which has its own tools and instructions.
-
-REACH FOR IT ON DISCOVERY: before an open-ended search, or before reading more
+const USAGE_TAIL = `REACH FOR IT ON DISCOVERY: before an open-ended search, or before reading more
 than ~3 files / resources / records to answer a question, run subtask FIRST so
 the digging burns the subagent's context, not yours. A single, targeted lookup
 you already know the shape of stays inline.
@@ -39,6 +31,31 @@ a raw dump); never use continuation phrases like "continue" or "as before".
 Launch multiple subtask calls in one message to run independent searches in
 parallel.
 </agents-usage>`;
+
+// Emitted when other delegable agents exist: documents both the self-clone and
+// the cross-agent form, and points at the <available-agents> catalog below.
+const FULL_USAGE = `<agents-usage>
+Delegate self-contained work to a subagent with the subtask tool.
+
+- subtask({ prompt }) — clone YOURSELF: a fresh subagent with your exact tools
+  and instructions but an empty context window.
+- subtask({ agent_id, prompt }) — delegate to a DIFFERENT agent (see
+  <available-agents>), which has its own tools and instructions.
+
+${USAGE_TAIL}`;
+
+// Emitted when there is NO catalog (self-only). Must NOT reference
+// <available-agents> or the agent_id form — that block isn't in context, and a
+// dangling pointer makes the model fabricate agent ids instead of just omitting
+// agent_id to clone itself.
+const SELF_ONLY_USAGE = `<agents-usage>
+Delegate self-contained work to a subagent with the subtask tool.
+
+- subtask({ prompt }) — clone YOURSELF: a fresh subagent with your exact tools
+  and instructions but an empty context window. This is your ONLY delegation
+  option: there are no other agents available, so NEVER pass agent_id.
+
+${USAGE_TAIL}`;
 
 function csvField(s: string | null | undefined): string {
   if (s == null || s === "") return "";
@@ -74,7 +91,7 @@ export function buildAgentsBlock(
   // emitted. The <available-agents> table is added only when other active
   // agents exist to delegate to.
   if (others.length === 0) {
-    return `\n\n${SELF_USAGE}`;
+    return `\n\n${SELF_ONLY_USAGE}`;
   }
 
   const rows = others.map((a) => {
@@ -84,6 +101,6 @@ export function buildAgentsBlock(
 
   return (
     `\n\n<available-agents>\nid,name,description\n${rows.join("\n")}\n</available-agents>` +
-    `\n\n${SELF_USAGE}`
+    `\n\n${FULL_USAGE}`
   );
 }

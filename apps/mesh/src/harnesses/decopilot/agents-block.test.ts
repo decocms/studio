@@ -123,11 +123,12 @@ describe("buildAgentsBlock", () => {
       "vmcp_self",
       ["vmcp_does_not_exist"],
     );
-    // No matching agents → no table, but self-delegation usage still emitted.
-    // (The usage prose references <available-agents>, so assert on the table
-    // header instead of the tag.)
+    // No matching agents → no table, and the self-only usage must NOT dangle a
+    // pointer at <available-agents> (that's what makes the model invent ids).
     expect(result).not.toContain("id,name,description");
+    expect(result).not.toContain("<available-agents>");
     expect(result).toContain("<agents-usage>");
+    expect(result).toContain("NEVER pass agent_id");
   });
 
   test("includes <agents-usage> with subtask delegation guidance", () => {

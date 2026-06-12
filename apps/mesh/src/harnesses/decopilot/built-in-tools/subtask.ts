@@ -110,14 +110,18 @@ export function createSubtaskTool(
       // first yield kills the subtask with no guidance, so the model can't
       // self-correct and just repeats the mistake. A yielded error lets it
       // retry — usually by omitting agent_id to clone itself.
-      const selfHint = self
-        ? " Omit agent_id to clone yourself (a fresh subagent with your tools + instructions), or pass an agent id from <available-agents>."
+      // Base hint: always offer the self-clone path. The "pass an agent id from
+      // <available-agents>" pointer is appended ONLY when a catalog actually
+      // exists (see the allowlist branch below) — a dangling pointer is what
+      // makes the model fabricate agent ids instead of just omitting agent_id.
+      const cloneHint = self
+        ? " Omit agent_id to clone yourself (a fresh subagent with your tools + instructions)."
         : "";
 
       if (!targetId) {
         yield {
           text: "",
-          error: `agent_id is required here.${selfHint}`,
+          error: `agent_id is required here.${cloneHint}`,
           finishReason: "error",
         };
         return;
@@ -135,9 +139,16 @@ export function createSubtaskTool(
         // An allowlist array (even empty = itself only) gates cross-agent
         // delegation. A null/absent allowlist means all agents are allowed.
         if (Array.isArray(allow) && !allow.includes(targetId)) {
+          // Point at the catalog ONLY when the allowlist permits some other
+          // agent. An empty allowlist (self-only) has no <available-agents>
+          // table, so directing the model there just makes it invent ids.
+          const catalogHint =
+            allow.length > 0
+              ? " Or pass an agent id from <available-agents>."
+              : "";
           yield {
             text: "",
-            error: `Agent '${targetId}' is not in this agent's delegation allowlist (allow=${JSON.stringify(allow)}).${selfHint}`,
+            error: `Agent '${targetId}' is not in this agent's delegation allowlist (allow=${JSON.stringify(allow)}).${cloneHint}${catalogHint}`,
             finishReason: "error",
           };
           return;
@@ -155,7 +166,7 @@ export function createSubtaskTool(
       } catch (err) {
         yield {
           text: "",
-          error: `${(err as Error).message} (agent_id="${targetId}").${selfHint}`,
+          error: `${(err as Error).message} (agent_id="${targetId}").${cloneHint}`,
           finishReason: "error",
         };
         return;
