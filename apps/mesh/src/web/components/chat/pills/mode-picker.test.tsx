@@ -137,7 +137,9 @@ describe("ModePickerPure", () => {
     ]);
   });
 
-  it("omits local rows when user desktop is not linked", () => {
+  it("shows local rows as disabled connect-desktop teasers when user desktop is not linked", () => {
+    const onSelect = mock(() => {});
+    const onConnectDesktop = mock(() => {});
     const { getByRole, getAllByRole } = render(
       <ModePickerPure
         mode="cloud-decopilot"
@@ -148,18 +150,27 @@ describe("ModePickerPure", () => {
           codex: true,
         }}
         locked={false}
-        onSelect={() => {}}
+        onSelect={onSelect}
+        onConnectDesktop={onConnectDesktop}
       />,
     );
     fireEvent.click(getByRole("button", { name: /Cloud/i }));
+    // Local rows are teasers, not omitted — discoverability is the point.
     const items = getAllByRole("menuitem");
-    expect(items.map((i) => i.textContent)).toEqual([
-      expect.stringMatching(/Decopilot/),
-    ]);
+    expect(items).toHaveLength(4);
+
+    const claudeCode = getByRole("menuitem", { name: /Claude Code/ });
+    expect(claudeCode).toHaveAttribute("aria-disabled", "true");
+    expect(claudeCode).toHaveTextContent("Connect your desktop to enable");
+
+    // Clicking a teaser routes to the connect flow, never selects the mode.
+    fireEvent.click(claudeCode);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onConnectDesktop).toHaveBeenCalledTimes(1);
   });
 
   it("omits cloud decopilot when agent-sandbox is not configured", () => {
-    const { getByRole, getAllByRole } = render(
+    const { getByRole, getAllByRole, queryByRole } = render(
       <ModePickerPure
         mode="local-decopilot"
         availability={{
@@ -173,14 +184,19 @@ describe("ModePickerPure", () => {
       />,
     );
     fireEvent.click(getByRole("button", { name: /Decopilot/i }));
+    // Cloud row is gone (operator decision, not user-actionable); local rows
+    // all render — available Decopilot plus the two CLI teasers.
+    expect(queryByRole("menuitem", { name: /agent sandbox/i })).toBeNull();
     const items = getAllByRole("menuitem");
     expect(items.map((i) => i.textContent)).toEqual([
       expect.stringMatching(/Decopilot/),
+      expect.stringMatching(/Claude Code/),
+      expect.stringMatching(/Codex/),
     ]);
   });
 
-  it("omits unavailable CLIs", () => {
-    const { getByRole, queryByRole } = render(
+  it("shows unavailable CLIs as disabled rows with a not-detected hint", () => {
+    const { getByRole } = render(
       <ModePickerPure
         mode="cloud-decopilot"
         availability={{
@@ -194,8 +210,11 @@ describe("ModePickerPure", () => {
       />,
     );
     fireEvent.click(getByRole("button", { name: /Cloud/i }));
-    expect(queryByRole("menuitem", { name: /Claude Code/ })).toBeNull();
-    expect(queryByRole("menuitem", { name: /Codex/ })).toBeNull();
+    for (const name of [/Claude Code/, /Codex/]) {
+      const row = getByRole("menuitem", { name });
+      expect(row).toHaveAttribute("aria-disabled", "true");
+      expect(row).toHaveTextContent("Not detected on your desktop");
+    }
     expect(
       getByRole("menuitem", { name: /Runs on your desktop/ }),
     ).toHaveTextContent("Decopilot");

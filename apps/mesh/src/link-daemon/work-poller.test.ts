@@ -358,4 +358,40 @@ describe("runWorkPollLoop", () => {
 
     expect(received).toEqual(["run_A", "run_B", "run_C"]);
   });
+
+  it("advertises capabilities grown in place between polls (re-probe pickup)", async () => {
+    // The daemon's capability re-probe mutates the shared array after the
+    // loop has started; the NEXT poll must carry the updated header — that
+    // is the whole propagation mechanism (no restart, no re-registration).
+    const ac = new AbortController();
+    const capabilities: import("../links/protocol").Capability[] = [
+      "decopilot-sandbox",
+      "body-offload",
+    ];
+    const seenHeaders: (string | undefined)[] = [];
+
+    const fetchImpl = mock(async (_url: string, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>;
+      seenHeaders.push(headers["x-link-capabilities"]);
+      if (seenHeaders.length === 1) {
+        // Simulate the re-probe discovering claude-code mid-loop.
+        capabilities.push("claude-code");
+        return makeResponse(204);
+      }
+      ac.abort();
+      return makeResponse(204);
+    });
+
+    await runWorkPollLoop({
+      baseUrl: BASE_URL,
+      onWork: async () => {},
+      getAccessToken: async () => "tok",
+      signal: ac.signal,
+      capabilities,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(seenHeaders[0]).toBe("decopilot-sandbox,body-offload");
+    expect(seenHeaders[1]).toBe("decopilot-sandbox,body-offload,claude-code");
+  });
 });

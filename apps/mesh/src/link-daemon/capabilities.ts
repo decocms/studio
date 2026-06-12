@@ -1,7 +1,8 @@
 import type { Capability } from "@/links/protocol";
 
 /**
- * Detected once at daemon startup. The result rides the existing
+ * Detected at daemon startup and re-probed periodically while a CLI is
+ * missing (see `startCapabilityReprobe`). The result rides the existing
  * `capabilities: Capability[]` field on the registration payload, so the
  * cluster sees an accurate view of what this desktop can actually run.
  *
@@ -27,6 +28,68 @@ export async function detectCapabilities(
   if (hasClaudeCode) caps.push("claude-code");
   if (hasCodex) caps.push("codex");
   return caps;
+}
+
+/** CLI-backed capabilities that can appear after daemon startup (the user
+ * installs / signs into the CLI while the daemon is running). */
+export const CLI_CAPABILITIES: readonly Capability[] = ["claude-code", "codex"];
+
+/** CLI capabilities not present in `current` — the re-probe targets. */
+export function missingCliCapabilities(
+  current: readonly Capability[],
+): Capability[] {
+  return CLI_CAPABILITIES.filter((c) => !current.includes(c));
+}
+
+/**
+ * Grow-only merge of a re-probe result into the live capability array,
+ * IN PLACE — the same array reference is shared with the poll loops, which
+ * read it on every poll, so mutation is the propagation mechanism.
+ *
+ * Grow-only on purpose: a transient probe failure (CLI busy, SDK hiccup)
+ * must never un-advertise a capability mid-run — dispatch routing would
+ * start bouncing threads that are actively streaming. Returns the newly
+ * added capabilities (empty when nothing changed).
+ */
+export function mergeProbedCapabilities(
+  current: Capability[],
+  probed: readonly Capability[],
+): Capability[] {
+  const added = probed.filter((c) => !current.includes(c));
+  current.push(...added);
+  return added;
+}
+
+/**
+ * Re-probe CLI capabilities every `intervalMs` while at least one is
+ * missing, merging discoveries into `capabilities` in place. Probing stops
+ * being useful once every CLI capability is present, so those ticks are
+ * skipped (each claude-code probe spawns the agent SDK — not free).
+ * Returns a cancel function for daemon shutdown.
+ */
+export function startCapabilityReprobe(
+  capabilities: Capability[],
+  opts: {
+    intervalMs?: number;
+    detect?: () => Promise<Capability[]>;
+    onChange?: (added: Capability[]) => void;
+  } = {},
+): () => void {
+  const detect = opts.detect ?? (() => detectCapabilities());
+  const timer = setInterval(() => {
+    if (missingCliCapabilities(capabilities).length === 0) return;
+    void detect()
+      .then((probed) => {
+        const added = mergeProbedCapabilities(capabilities, probed);
+        if (added.length > 0) opts.onChange?.(added);
+      })
+      .catch(() => {
+        /* probe failures are expected while the CLI is absent */
+      });
+  }, opts.intervalMs ?? 60_000);
+  // Don't let the re-probe timer hold the process open on shutdown.
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 async function detectClaudeCode(): Promise<boolean> {

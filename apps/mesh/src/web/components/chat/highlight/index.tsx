@@ -14,6 +14,7 @@ import { UserAskQuestionHighlight } from "./user-ask-question";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
+import { DesktopOfflineBanner } from "../desktop-offline-banner";
 import { useHighlightFlags } from "./use-highlight-count";
 import { parseErrorMessage } from "./parse-error-message";
 import type { UserAskToolPart } from "../types";
@@ -279,6 +280,7 @@ export function ChatHighlight() {
   return (
     <div className="absolute bottom-full left-0 right-0">
       <TodosHighlight />
+      <DesktopOfflineBanner />
       {showError && (
         <StatusHighlight
           variant="error"

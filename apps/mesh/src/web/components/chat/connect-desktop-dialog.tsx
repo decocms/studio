@@ -31,6 +31,18 @@ export function visibleCapabilities(caps: readonly Capability[]): string[] {
     .filter((label): label is string => Boolean(label));
 }
 
+/**
+ * CLI agents the linked desktop does NOT advertise, as friendly labels.
+ * Drives the remediation copy: the daemon re-probes every minute, so a
+ * CLI installed (and signed into) after linking shows up here on its own.
+ */
+export function missingCliLabels(caps: readonly Capability[]): string[] {
+  return (Object.keys(CAPABILITY_LABELS) as Capability[])
+    .filter((c) => !caps.includes(c))
+    .map((c) => CAPABILITY_LABELS[c])
+    .filter((label): label is string => Boolean(label));
+}
+
 interface ConnectDesktopDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -88,6 +100,16 @@ export function ConnectDesktopDialog({
             {visibleCapabilities(link.capabilities).length > 0 && (
               <p className="text-muted-foreground">
                 Available: {visibleCapabilities(link.capabilities).join(", ")}
+              </p>
+            )}
+            {missingCliLabels(link.capabilities).length > 0 && (
+              <p className="text-muted-foreground">
+                {missingCliLabels(link.capabilities).join(" and ")}{" "}
+                {missingCliLabels(link.capabilities).length > 1
+                  ? "were"
+                  : "was"}{" "}
+                not detected on this desktop. Install the CLI and sign in there
+                — it appears here automatically within a minute.
               </p>
             )}
           </div>
