@@ -17,19 +17,39 @@
 import type { MeshProvider } from "./types";
 import type { ModelInfo } from "../api/routes/decopilot/types";
 
+const FREE_FALLBACK_MODEL = "openrouter/free";
+
+const OPENROUTER_FAMILY = new Set(["openrouter", "deco"]);
+
 /**
- * Creates a language model from the provider, enabling reasoning when the
- * model advertises the "reasoning" capability (e.g. OpenRouter thinking models).
+ * Creates a language model from the provider.
+ *
+ * - Enables reasoning when the model advertises the "reasoning" capability
+ *   (e.g. OpenRouter thinking models).
+ * - For OpenRouter-family providers, attaches a native model-fallback list
+ *   (`models: [primary, openrouter/free]`). When the primary fails for ANY
+ *   reason — rate-limit, downtime, context-length, or a budget/credit
+ *   rejection — OpenRouter retries on the free model instead of surfacing a
+ *   hard error to the user. The response's `model` field reports whichever
+ *   model actually served the request.
  */
 export function createLanguageModel(provider: MeshProvider, model: ModelInfo) {
+  const settings: Record<string, unknown> = {};
+
   if (model.capabilities?.reasoning !== false) {
-    // Provider-specific settings (e.g. OpenRouter reasoning) are not part of
-    // the generic ProviderV3 interface, so we cast to pass them through.
-    // biome-ignore lint/complexity/noBannedTypes: pass-through provider settings
-    const lm = (provider.aiSdk.languageModel as Function)(model.id, {
-      reasoning: { enabled: true, effort: "medium" },
-    });
-    return lm as ReturnType<typeof provider.aiSdk.languageModel>;
+    settings.reasoning = { enabled: true, effort: "medium" };
   }
-  return provider.aiSdk.languageModel(model.id);
+  if (
+    OPENROUTER_FAMILY.has(provider.info.id) &&
+    model.id !== FREE_FALLBACK_MODEL
+  ) {
+    settings.models = [model.id, FREE_FALLBACK_MODEL];
+  }
+
+  if (Object.keys(settings).length === 0) {
+    return provider.aiSdk.languageModel(model.id);
+  }
+
+  const lm = (provider.aiSdk.languageModel as Function)(model.id, settings);
+  return lm as ReturnType<typeof provider.aiSdk.languageModel>;
 }
