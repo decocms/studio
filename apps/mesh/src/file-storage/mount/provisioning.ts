@@ -4,12 +4,17 @@
  * (packages/sandbox/daemon/org-fs/config.ts) validates this shape.
  *
  * The mounted set is hardcoded for now (per the team decision); later this
- * becomes per-agent configurable. Two volumes:
- *   - `skills`  → mounted at `<appRoot>/org/skills` (org-wide shared library)
+ * becomes per-agent configurable. Two volumes (org skills are deliberately
+ * NOT a cloud volume — skills belong in versioned repos, surfaced through
+ * the read-only public sets):
  *   - `outputs` → mounted at `<appRoot>/org/.outputs` (hidden); the daemon
  *     repoints a per-run symlink `<appRoot>/org/output → .outputs/<threadId>`
  *     so the agent sees a bare `output/` that is, externally, that thread's
  *     subtree of the org-wide `outputs` volume (the share-files-back flow).
+ *   - `uploads` → mounted at `<appRoot>/org/.uploads` (hidden); same per-run
+ *     symlink trick (`org/upload → .uploads/<threadId>`) in the inbound
+ *     direction — chat attachments the mesh writes to the thread's uploads
+ *     folder appear in the sandbox with no copy step.
  */
 
 import { getPublicSets, publicVolumeForSet } from "../public-sets";
@@ -22,14 +27,15 @@ export interface OrgFsProvisionConfig {
   mounts: { volume: string; path: string; readonly?: boolean }[];
 }
 
-/** Hidden mount point for the outputs volume; the per-run `output` symlink
- *  (daemon-side) points into here. Kept distinct from `skills` so a stray
- *  `output` symlink never collides with a real volume mount. */
+/** Hidden mount points for the per-thread volumes; the per-run `output` /
+ *  `upload` symlinks (daemon-side) point into these. Kept distinct from
+ *  `skills` so a stray symlink never collides with a real volume mount. */
 const ORG_FS_OUTPUTS_MOUNT_PATH = ".outputs";
+const ORG_FS_UPLOADS_MOUNT_PATH = ".uploads";
 
 const DEFAULT_MOUNTS: ReadonlyArray<{ volume: string; path: string }> = [
-  { volume: "skills", path: "skills" },
   { volume: "outputs", path: ORG_FS_OUTPUTS_MOUNT_PATH },
+  { volume: "uploads", path: ORG_FS_UPLOADS_MOUNT_PATH },
 ];
 
 export function buildOrgFsConfig(opts: {

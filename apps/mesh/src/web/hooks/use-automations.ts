@@ -217,6 +217,61 @@ export function useAutomation(id: string) {
 }
 
 // ============================================================================
+// Run stats hook
+// ============================================================================
+
+export interface AutomationRunStats {
+  runs: {
+    total: number;
+    completed: number;
+    failed: number;
+    inProgress: number;
+  };
+  usage: {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    costUsd: number;
+    sampledRuns: number;
+    truncated: boolean;
+  };
+}
+
+export function useAutomationRunStats(
+  automationId: string,
+  range?: { startDate?: string; endDate?: string },
+) {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  return useQuery({
+    queryKey: KEYS.automationRunStats(
+      org.id,
+      automationId,
+      JSON.stringify(range ?? {}),
+    ),
+    queryFn: async () => {
+      const result = (await client.callTool({
+        name: "AUTOMATION_RUN_STATS",
+        arguments: {
+          automation_id: automationId,
+          ...(range?.startDate ? { startDate: range.startDate } : {}),
+          ...(range?.endDate ? { endDate: range.endDate } : {}),
+        },
+      })) as { structuredContent?: unknown };
+      return (result.structuredContent ?? result) as AutomationRunStats;
+    },
+    enabled: !!automationId,
+    staleTime: 30_000,
+  });
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 

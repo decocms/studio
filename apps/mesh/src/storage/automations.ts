@@ -107,6 +107,33 @@ export interface AutomationsStorage {
   markRunCompleted(taskId: string): Promise<void>;
   updateTriggerLastRunAt(triggerId: string, lastRunAt: string): Promise<void>;
   deactivateAutomation(id: string): Promise<void>;
+  /**
+   * Count run threads for an automation grouped into the run-lifecycle buckets,
+   * joining `threads` → `automation_triggers`. Backs the per-automation Runs
+   * stat cards (total + success rate).
+   */
+  getRunStats(
+    automationId: string,
+    organizationId: string,
+    opts?: { startDate?: string; endDate?: string },
+  ): Promise<AutomationRunStats>;
+  /**
+   * Most-recent run thread IDs for an automation (newest first), capped by
+   * `limit`. Used to aggregate token/cost usage for the stat cards via the
+   * monitoring store (keyed by `properties.thread_id`).
+   */
+  listRunThreadIds(
+    automationId: string,
+    organizationId: string,
+    opts?: { startDate?: string; endDate?: string; limit?: number },
+  ): Promise<string[]>;
+}
+
+export interface AutomationRunStats {
+  total: number;
+  completed: number;
+  failed: number;
+  inProgress: number;
 }
 
 // ============================================================================
@@ -615,6 +642,88 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       .where("id", "=", id)
       .where("active", "=", true)
       .execute();
+  }
+
+  async getRunStats(
+    automationId: string,
+    organizationId: string,
+    opts?: { startDate?: string; endDate?: string },
+  ): Promise<AutomationRunStats> {
+    let query = this.db
+      .selectFrom("threads as th")
+      .innerJoin("automation_triggers as t", "t.id", "th.trigger_id")
+      .select("th.status")
+      .select((eb) => eb.fn.count("th.id").as("count"))
+      .where("t.automation_id", "=", automationId)
+      .where("th.organization_id", "=", organizationId)
+      .where("th.hidden", "=", false)
+      .groupBy("th.status");
+
+    if (opts?.startDate) {
+      query = query.where(
+        "th.created_at",
+        ">=",
+        opts.startDate as unknown as Date,
+      );
+    }
+    if (opts?.endDate) {
+      query = query.where(
+        "th.created_at",
+        "<=",
+        opts.endDate as unknown as Date,
+      );
+    }
+
+    const rows = await query.execute();
+
+    const stats: AutomationRunStats = {
+      total: 0,
+      completed: 0,
+      failed: 0,
+      inProgress: 0,
+    };
+    for (const row of rows) {
+      const count = Number(row.count);
+      stats.total += count;
+      if (row.status === "completed") stats.completed += count;
+      else if (row.status === "failed") stats.failed += count;
+      else if (row.status === "in_progress") stats.inProgress += count;
+    }
+    return stats;
+  }
+
+  async listRunThreadIds(
+    automationId: string,
+    organizationId: string,
+    opts?: { startDate?: string; endDate?: string; limit?: number },
+  ): Promise<string[]> {
+    let query = this.db
+      .selectFrom("threads as th")
+      .innerJoin("automation_triggers as t", "t.id", "th.trigger_id")
+      .select("th.id")
+      .where("t.automation_id", "=", automationId)
+      .where("th.organization_id", "=", organizationId)
+      .where("th.hidden", "=", false)
+      .orderBy("th.created_at", "desc")
+      .limit(opts?.limit ?? 500);
+
+    if (opts?.startDate) {
+      query = query.where(
+        "th.created_at",
+        ">=",
+        opts.startDate as unknown as Date,
+      );
+    }
+    if (opts?.endDate) {
+      query = query.where(
+        "th.created_at",
+        "<=",
+        opts.endDate as unknown as Date,
+      );
+    }
+
+    const rows = await query.execute();
+    return rows.map((row) => row.id);
   }
 }
 

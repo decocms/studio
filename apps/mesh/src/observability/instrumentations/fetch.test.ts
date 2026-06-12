@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { __test } from "./fetch";
 
-const { benignSandbox4xx, isConnectionClosed } = __test;
+const { benignSandbox4xx, benignPreview404, isConnectionClosed } = __test;
 
 describe("benignSandbox4xx", () => {
   it("treats daemon 404 as gone", () => {
@@ -35,6 +35,23 @@ describe("benignSandbox4xx", () => {
 
   it("does not suppress a claim-path 409 (only 404 is benign there)", () => {
     expect(benignSandbox4xx(409, "/apis/x/sandboxclaims/foo")).toBeNull();
+  });
+});
+
+describe("benignPreview404", () => {
+  it("treats a 404 on the deco-site probe paths as not-a-deco-site", () => {
+    expect(benignPreview404(404, "/.decofile")).toBe("not_a_deco_site");
+    expect(benignPreview404(404, "/live/_meta")).toBe("not_a_deco_site");
+  });
+
+  it("does not suppress non-404 statuses on those paths", () => {
+    expect(benignPreview404(500, "/.decofile")).toBeNull();
+    expect(benignPreview404(403, "/live/_meta")).toBeNull();
+  });
+
+  it("does not suppress 404 on unrelated paths", () => {
+    expect(benignPreview404(404, "/live/_meta/extra")).toBeNull();
+    expect(benignPreview404(404, "/api/links/work")).toBeNull();
   });
 });
 

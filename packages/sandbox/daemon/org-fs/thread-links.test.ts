@@ -3,7 +3,7 @@ import { lstat, readlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { repointOutputLink } from "./output-link";
+import { repointOutputLink, repointUploadLink } from "./thread-links";
 
 describe("repointOutputLink", () => {
   let appRoot: string;
@@ -58,5 +58,41 @@ describe("repointOutputLink", () => {
     );
     expect((await lstat(link())).isFile()).toBe(true);
     expect(logged[0]).toContain("not a symlink");
+  });
+});
+
+describe("repointUploadLink", () => {
+  let appRoot: string;
+  const uploads = () => join(appRoot, "org", ".uploads");
+  const link = () => join(appRoot, "org", "upload");
+
+  beforeEach(() => {
+    appRoot = mkdtempSync(join(tmpdir(), "orgfs-up-"));
+    mkdirSync(uploads(), { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(appRoot, { recursive: true, force: true });
+  });
+
+  it("creates the thread dir and a relative org/upload symlink", async () => {
+    expect(await repointUploadLink(appRoot, "thread-1")).toBe(true);
+    expect((await lstat(join(uploads(), "thread-1"))).isDirectory()).toBe(true);
+    expect(await readlink(link())).toBe(join(".uploads", "thread-1"));
+  });
+
+  it("repoints across threads and is independent of the output link", async () => {
+    mkdirSync(join(appRoot, "org", ".outputs"), { recursive: true });
+    await repointOutputLink(appRoot, "t1");
+    await repointUploadLink(appRoot, "t2");
+    expect(await readlink(join(appRoot, "org", "output"))).toBe(
+      join(".outputs", "t1"),
+    );
+    expect(await readlink(link())).toBe(join(".uploads", "t2"));
+  });
+
+  it("is a no-op when the uploads mount dir is missing", async () => {
+    rmSync(uploads(), { recursive: true });
+    expect(await repointUploadLink(appRoot, "t1")).toBe(false);
+    await expect(lstat(link())).rejects.toThrow();
   });
 });

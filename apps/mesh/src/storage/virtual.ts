@@ -241,6 +241,45 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     );
   }
 
+  /**
+   * Union of `metadata.enabled_plugins` across all VIRTUAL connections in the
+   * org. Projects only the `metadata` column — no aggregations join, no
+   * full-entity deserialization — because the callers (management-tool
+   * filtering, plugin-enablement checks) need just the plugin ids, not whole
+   * virtual-MCP rows. The full `list()` pulls every column (configs run to
+   * ~16 KB) for hundreds of rows, so reusing it here is what put `select *`
+   * on the hot path.
+   */
+  async listEnabledPlugins(organizationId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom("connections")
+      .select("metadata")
+      .where("organization_id", "=", organizationId)
+      .where("connection_type", "=", "VIRTUAL")
+      .execute();
+
+    const plugins = new Set<string>();
+    for (const row of rows) {
+      if (!row.metadata) continue;
+      let metadata: Record<string, unknown>;
+      try {
+        metadata =
+          typeof row.metadata === "string"
+            ? JSON.parse(row.metadata)
+            : (row.metadata as Record<string, unknown>);
+      } catch {
+        continue;
+      }
+      const enabled = metadata?.enabled_plugins;
+      if (Array.isArray(enabled)) {
+        for (const pluginId of enabled) {
+          if (typeof pluginId === "string") plugins.add(pluginId);
+        }
+      }
+    }
+    return [...plugins];
+  }
+
   async listByIds(
     organizationId: string,
     ids: string[],
@@ -625,4 +664,55 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     }
     return value as T;
   }
+}
+
+/**
+ * Wrap a (singleton) VirtualMCPStorage so `list` and `listEnabledPlugins` are
+ * memoized for the lifetime of one request. A single MCP/decopilot request
+ * fans out to several independent callers — management-tool filtering, plugin
+ * enablement checks, decopilot prompt assembly — that each re-read the org's
+ * virtual MCPs; without this they issue the same query 3+ times. Concurrent
+ * callers share the in-flight promise. Any write through this wrapper clears
+ * the cache, so a mutate-then-read within the same request stays correct.
+ */
+export function createRequestCachedVirtualMcps(
+  base: VirtualMCPStorage,
+): VirtualMCPStorage {
+  const cache = new Map<string, Promise<unknown>>();
+  const memoize = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    const hit = cache.get(key);
+    if (hit) return hit as Promise<T>;
+    const promise = fn();
+    cache.set(key, promise);
+    return promise;
+  };
+
+  return new Proxy(base, {
+    get(target, prop, receiver) {
+      if (prop === "list") {
+        return (organizationId: string, options?: { pinnedOnly?: boolean }) =>
+          memoize(`list:${organizationId}:${options?.pinnedOnly ? 1 : 0}`, () =>
+            target.list(organizationId, options),
+          );
+      }
+      if (prop === "listEnabledPlugins") {
+        return (organizationId: string) =>
+          memoize(`plugins:${organizationId}`, () =>
+            target.listEnabledPlugins(organizationId),
+          );
+      }
+      if (
+        prop === "create" ||
+        prop === "update" ||
+        prop === "delete" ||
+        prop === "removeConnectionReferences"
+      ) {
+        return (...args: unknown[]) => {
+          cache.clear();
+          return (target[prop] as (...a: unknown[]) => unknown)(...args);
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
 }

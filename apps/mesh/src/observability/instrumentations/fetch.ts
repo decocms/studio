@@ -56,6 +56,16 @@ function benignSandbox4xx(status: number, pathname: string): string | null {
   return null;
 }
 
+function benignPreview404(status: number, pathname: string): string | null {
+  if (
+    status === 404 &&
+    (pathname === "/.decofile" || pathname === "/live/_meta")
+  ) {
+    return "not_a_deco_site";
+  }
+  return null;
+}
+
 /**
  * Bun's `fetch` rejects with this shape when the peer closes the TCP
  * connection mid-request (e.g. an in-pod sandbox daemon torn down by idle
@@ -153,7 +163,17 @@ async function instrumentedFetch(
             ? benignSandbox4xx(response.status, url.pathname)
             : null;
 
-        if (response.status >= 400 && !isMcpSseProbe405 && !sandboxLifecycle) {
+        const previewProbe =
+          response.status >= 400
+            ? benignPreview404(response.status, url.pathname)
+            : null;
+
+        if (
+          response.status >= 400 &&
+          !isMcpSseProbe405 &&
+          !sandboxLifecycle &&
+          !previewProbe
+        ) {
           span.setStatus({
             code: SpanStatusCode.ERROR,
             message: `HTTP ${response.status}`,
@@ -161,6 +181,9 @@ async function instrumentedFetch(
         } else {
           if (sandboxLifecycle) {
             span.setAttribute("sandbox.lifecycle", sandboxLifecycle);
+          }
+          if (previewProbe) {
+            span.setAttribute("preview.probe", previewProbe);
           }
           span.setStatus({ code: SpanStatusCode.OK });
         }
@@ -207,4 +230,8 @@ export function enableFetchInstrumentation(): void {
 }
 
 /** Internal helpers exposed for unit tests only. */
-export const __test = { benignSandbox4xx, isConnectionClosed };
+export const __test = {
+  benignSandbox4xx,
+  benignPreview404,
+  isConnectionClosed,
+};

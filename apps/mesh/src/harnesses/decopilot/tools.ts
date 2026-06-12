@@ -144,13 +144,13 @@ export interface AssembleDecopilotToolsExtras {
  * Built-in tools the agent loop depends on for mechanics (reading truncated
  * outputs, the connections-block lazy-load via enable_tool, todo tracking).
  * These are NEVER subject to the per-run allowlist — removing them would break
- * the loop rather than scope it. The allowlist only governs MCP tools and the
- * user-facing capability built-ins (web_search, generate_image, subtask, …).
+ * the loop rather than scope it. The allowlist governs everything else: MCP
+ * tools, the user-facing capability built-ins (web_search, generate_image,
+ * subtask, …), the VM file tools, the browser tools, and read_resource /
+ * read_prompt — all selectable in the automations tool picker.
  */
 const ALLOWLIST_EXEMPT_BUILTINS = new Set<string>([
   "read_tool_output",
-  "read_resource",
-  "read_prompt",
   "enable_tool",
   "open_in_agent",
   "todo_write",

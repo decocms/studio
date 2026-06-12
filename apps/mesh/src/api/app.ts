@@ -1526,8 +1526,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   const automationContextFactory = createAutomationContextFactory({
     db: database.db,
-    threadStorage,
-    asyncResearchJobStorage,
   });
 
   // Stash deps for the DBOS workflow body. Safe to call before DBOS.launch():

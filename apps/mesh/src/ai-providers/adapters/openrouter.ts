@@ -64,6 +64,13 @@ export const openrouterAdapter: ProviderAdapter = {
 
       async listModels(): Promise<ModelInfo[]> {
         const mapV1Model = (m: OpenRouterAPIModel): ModelInfo => {
+          const contextWindow = m.context_length ?? 0;
+          const reportedMaxOut = m.top_provider.max_completion_tokens || null;
+          const maxOutputTokens =
+            reportedMaxOut &&
+            (contextWindow === 0 || reportedMaxOut < contextWindow)
+              ? reportedMaxOut
+              : null;
           return {
             providerId: "openrouter",
             modelId: m.id,
@@ -87,8 +94,8 @@ export const openrouterAdapter: ProviderAdapter = {
               ]),
             ] as ModelCapability[],
             limits: {
-              contextWindow: m.context_length ?? 0,
-              maxOutputTokens: m.top_provider.max_completion_tokens || null,
+              contextWindow,
+              maxOutputTokens,
             },
             costs: {
               input: m.pricing.prompt ?? 0,

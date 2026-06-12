@@ -401,6 +401,14 @@ function tsLte(
  */
 const DEFAULT_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * Tighter lookback for thread-usage queries. These always target a specific,
+ * recent set of decopilot thread IDs, so the 30-day default just scans (and
+ * materializes the wide `LogAttributes`/`properties` column for) weeks of
+ * irrelevant rows — the dominant cost behind the queryThreadUsage OOMs.
+ */
+const THREAD_USAGE_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+
 function applyStartDateBound(
   where: string[],
   startDate: Date | undefined,
@@ -811,7 +819,13 @@ LIMIT ${topN}`;
       `connection_id = '${esc(params.connectionId)}'`,
       `${threadExpr} IN (${ids})`,
     ];
-    applyStartDateBound(where, params.startDate, dialect);
+    // ClickHouse-only tighter default: applyStartDateBound otherwise falls back
+    // to the 30-day DEFAULT_LOOKBACK_MS, which scans far more of otel_logs than
+    // these recent-thread lookups ever need. DuckDB stays unbounded (local files).
+    const startDate =
+      params.startDate ??
+      (isCh ? new Date(Date.now() - THREAD_USAGE_LOOKBACK_MS) : undefined);
+    applyStartDateBound(where, startDate, dialect);
     if (params.endDate) {
       where.push(tsLte(params.endDate, dialect));
     }

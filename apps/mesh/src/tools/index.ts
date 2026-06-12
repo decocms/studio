@@ -134,6 +134,7 @@ const CORE_TOOLS = [
   AutomationTools.AUTOMATION_TRIGGER_REMOVE,
   AutomationTools.AUTOMATION_TRIGGER_ROTATE_TOKEN,
   AutomationTools.AUTOMATION_RUN,
+  AutomationTools.AUTOMATION_RUN_STATS,
 
   // Virtual MCP plugin config tools
   VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_GET,
@@ -230,16 +231,13 @@ export const managementMCP = async (ctx: StudioContext) => {
     const settings = await ctx.storage.organizationSettings.get(
       ctx.organization.id,
     );
-    const virtualMcps = await ctx.storage.virtualMcps.list(ctx.organization.id);
+    const virtualMcpPlugins = await ctx.storage.virtualMcps.listEnabledPlugins(
+      ctx.organization.id,
+    );
     // Merge enabled plugins from org settings + all virtual MCPs
     const merged = new Set<string>(settings?.enabled_plugins ?? []);
-    for (const virtualMcp of virtualMcps) {
-      const enabledPlugins = virtualMcp.metadata?.enabled_plugins;
-      if (enabledPlugins && Array.isArray(enabledPlugins)) {
-        for (const pluginId of enabledPlugins) {
-          merged.add(pluginId);
-        }
-      }
+    for (const pluginId of virtualMcpPlugins) {
+      merged.add(pluginId);
     }
     enabledPlugins = merged.size > 0 ? [...merged] : null;
   }

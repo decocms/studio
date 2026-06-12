@@ -71,7 +71,7 @@ import {
 
 // ── Per-thread usage (tokens + cost), keyed by thread id ────────────────────
 
-interface ThreadUsage {
+export interface ThreadUsage {
   calls: number;
   inputTokens: number;
   outputTokens: number;
@@ -83,7 +83,7 @@ type ThreadSortKey = "tokens" | "cost";
 
 // ── Thread types (pick only the fields we need from the server types) ───────
 
-type ThreadEntity = Pick<
+export type ThreadEntity = Pick<
   Thread,
   | "id"
   | "title"
@@ -506,7 +506,7 @@ function ThreadConversationPanel({
 
 // ── Thread sheet wrapper (renders header once, body swaps for loading/error) ─
 
-function ThreadSheetBody({
+export function ThreadSheetBody({
   thread,
   client,
   locator,

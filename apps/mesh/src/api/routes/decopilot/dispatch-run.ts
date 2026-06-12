@@ -103,6 +103,7 @@ import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
+import { sleep } from "@decocms/std";
 
 // B5/I1: counter for message-save failures — tagged by org.id (low cardinality).
 // Incremented at every save .catch site inside dispatch-run.ts so the frequency
@@ -112,6 +113,22 @@ const saveErrorsCounter = meter.createCounter("decopilot.save.errors", {
     "Number of message-save failures during decopilot run dispatch (v1 and v2 paths)",
   unit: "{errors}",
 });
+
+// Attributes onFinish event-loop cost by phase (settle = awaiting the
+// accumulated pendingOps; save = the synchronous message-serialization +
+// DB write). The standalone eventloop.delay timer can't know what phase it
+// stalled in; this histogram closes that gap for the finish path.
+const finishDurationHistogram = meter.createHistogram(
+  "decopilot.finish.duration",
+  {
+    description: "Wall time of onFinish flush segments, tagged by phase",
+    unit: "ms",
+  },
+);
+
+// The per-finish payload-size probe re-stringifies the whole message (the very
+// cost we're characterizing), so the heavy trace is gated to a canary pod.
+const FINISH_TRACE = process.env.DECOPILOT_FINISH_TRACE === "1";
 
 /**
  * Process-wide progress-bump throttle (Task 9, A1/A2). One instance shared by
@@ -997,11 +1014,14 @@ async function prepareRun(
     const requestMessage = input.messages.find((m) => m.role !== "system");
 
     // Upload file parts before saving so the thread stores stable
-    // mesh-storage: URIs instead of base64 data: blobs.
+    // mesh-storage: URIs instead of base64 data: blobs. threadId routes the
+    // bytes into the org-fs uploads volume (org/upload in the sandbox).
     const materializedRequestMessage = requestMessage
-      ? ((await uploadFileParts([requestMessage], ctx)).find(
-          (m) => m.role !== "system",
-        ) as typeof requestMessage)
+      ? ((
+          await uploadFileParts([requestMessage], ctx, {
+            threadId: mem.thread.id,
+          })
+        ).find((m) => m.role !== "system") as typeof requestMessage)
       : undefined;
 
     if (!input.isResume) {
@@ -1333,9 +1353,30 @@ async function prepareRun(
               }
             },
             onFinish: async (responseMessage, finishReason) => {
+              const pendingCount = pendingOps.length;
+
+              // Phase 1 (settle): await the dispatch-level side-effect ops
+              // accumulated during the run (step reactors, v1 checkpoints).
+              // The kernel already settled its own persistence pending +
+              // emitFinal before invoking this hook, so this segment isolates
+              // the dispatch-side flush cost.
+              const settleStart = performance.now();
               await Promise.allSettled(pendingOps);
+              finishDurationHistogram.record(performance.now() - settleStart, {
+                phase: "settle",
+              });
 
               if (registrySignal.aborted) return;
+
+              // Yield a macrotask before the synchronous finish bookkeeping so
+              // the settle-burst of pending-op continuations and the FINISH
+              // reactor's DB write don't run in one tick — lets queued I/O
+              // (health probes) get a turn and caps the worst onFinish
+              // event-loop stalls.
+              await sleep(0);
+
+              const heapBefore = FINISH_TRACE ? process.memoryUsage() : null;
+              const saveStart = performance.now();
 
               const threadStatus = resolveThreadStatus(
                 finishReason,
@@ -1351,6 +1392,32 @@ async function prepareRun(
                 taskId: mem.thread.id,
                 threadStatus,
               });
+
+              const saveMs = performance.now() - saveStart;
+              finishDurationHistogram.record(saveMs, { phase: "save" });
+
+              if (FINISH_TRACE && heapBefore) {
+                const heapAfter = process.memoryUsage();
+                let messageBytes = -1;
+                try {
+                  messageBytes = JSON.stringify(responseMessage)?.length ?? -1;
+                } catch {
+                  // circular/oversized — leave -1
+                }
+                console.warn(
+                  JSON.stringify({
+                    msg: "decopilot-finish-trace",
+                    threadId: mem.thread.id,
+                    pendingOps: pendingCount,
+                    saveMs: Math.round(saveMs),
+                    parts: responseMessage?.parts?.length ?? 0,
+                    messageBytes,
+                    rssDelta: heapAfter.rss - heapBefore.rss,
+                    heapUsedDelta: heapAfter.heapUsed - heapBefore.heapUsed,
+                    externalDelta: heapAfter.external - heapBefore.external,
+                  }),
+                );
+              }
 
               posthog.capture({
                 distinctId: input.userId,

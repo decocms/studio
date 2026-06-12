@@ -68,7 +68,7 @@ Decopilot ships with tools for coordinating work across any scope:
 
 When an agent is backed by a sandbox (a linked GitHub repo), decopilot also gets six **VM tools** — `bash`, `read`, `write`, `edit`, `grep`, `glob` — so it can execute and modify code in that sandbox.
 
-Sandboxes also mount the **organization filesystem** under `org/`: `org/skills` is the org-wide shared library, and `org/output` is the current run's shared output folder. Files written there sync to your organization's cloud storage and are visible to every member and agent; external changes appear inside the sandbox within about a second.
+Sandboxes also mount the **organization filesystem** under `org/`: `org/upload` holds the files attached to the current conversation (chat attachments land there automatically — no copy step), `org/output` is the current run's shared output folder, and `org/public/<set>` exposes curated read-only skill sets synced from versioned repositories. Files written to `org/output` sync to your organization's cloud storage and are visible to every member and agent; external changes appear inside the sandbox within about a second.
 
 <Callout type="info">
   **macOS desktop links:** when a sandbox runs on your machine (`deco link`),

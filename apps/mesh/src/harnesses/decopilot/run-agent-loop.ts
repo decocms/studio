@@ -220,6 +220,15 @@ export async function runAgentLoop(
     .then(() => {
       span.setStatus({ code: SpanStatusCode.OK });
     })
+    .catch((err: unknown) => {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : `${err}`;
+      span.setStatus({ code: SpanStatusCode.ERROR, message });
+    })
     .finally(() => span.end());
 
   return {

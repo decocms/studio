@@ -194,6 +194,7 @@ export class ClickHouseClientEngine implements QueryEngine {
         max_bytes_before_external_sort: String(
           Math.floor(Number(this.maxMemoryUsage) / 2),
         ),
+        max_threads: 1,
       },
     });
     return await result.json<Record<string, unknown>>();
