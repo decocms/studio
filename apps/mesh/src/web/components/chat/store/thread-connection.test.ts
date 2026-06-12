@@ -370,6 +370,62 @@ describe("submit", () => {
     expect(conn.finishReason.get()).toBe(null);
     await p;
   });
+
+  test("second user message does not sort before a streaming (un-timed) assistant", async () => {
+    // Regression: when the first assistant is streaming and has no top-level
+    // created_at (not yet persisted) and no server-injected metadata.created_at,
+    // readTimestamp returns +Infinity. A second user message carries a finite
+    // browser metadata.created_at, so mergeAndSort placed user2 BEFORE
+    // assistant1, giving the wrong user/user/assistant/assistant order.
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-order-regression", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Seed turn-1: user1 with a server timestamp, assistant1 streaming (no
+    // created_at anywhere — simulates server not injecting metadata.created_at).
+    stream.enqueue({ type: "start", messageId: "a1" });
+    stream.enqueue({
+      type: "text-delta",
+      textDelta: "Hello",
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // At this point messages should be [streaming-assistant a1].
+    // Now seed user1 directly into the store (simulating it having been loaded
+    // from the initial page with a server created_at before turn-1 started).
+    const u1: UIMessage & { created_at: string } = {
+      id: "u1",
+      role: "user",
+      parts: [{ type: "text", text: "hello" }],
+      created_at: "2026-01-01T00:00:01.000Z",
+      metadata: { created_at: "2026-01-01T00:00:01.000Z" },
+    } as never;
+    // biome-ignore lint/suspicious/noExplicitAny: test internals
+    (conn as any).messages.set([u1, ...(conn as any).messages.get()]);
+
+    // Submit second user message with a finite browser timestamp.
+    const u2: UIMessage = {
+      id: "u2",
+      role: "user",
+      parts: [{ type: "text", text: "second" }],
+      metadata: { created_at: "2026-01-01T00:00:05.000Z" },
+    };
+    // Don't await — we want to inspect the synchronous store update.
+    void conn.submit({ kind: "message", message: u2 }, baseOpts);
+
+    // The store must reflect the correct order: u1 → a1 → u2.
+    // Previously it was u1 → u2 → a1 because a1 sorted to +Infinity.
+    const ids = conn.messages.get().map((m) => m.id);
+    expect(ids).toEqual(["u1", "a1", "u2"]);
+
+    conn.dispose();
+  });
 });
 
 // ─── submit() — defer POST while client-side resolutions are pending ─────────

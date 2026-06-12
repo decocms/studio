@@ -313,6 +313,35 @@ export class ThreadConnection {
     if (!next) {
       throw new Error(`submit: target not found for ${describe(action)}`);
     }
+    // Anchor any in-flight assistant message (no top-level created_at yet)
+    // before sorting. Without this, a streaming assistant that the server
+    // hasn't persisted yet resolves to +Infinity in mergeAndSort, and a
+    // new user message — which carries a finite browser timestamp in
+    // metadata.created_at — sorts BEFORE it, producing the wrong
+    // user/user/assistant/assistant render order.
+    // Mirrors the same anchor stop() applies on cancel (see stop() below).
+    if (action.kind === "message") {
+      const userTs = (
+        action.message.metadata as { created_at?: string } | undefined
+      )?.created_at;
+      for (let i = next.length - 2; i >= 0; i--) {
+        const msg = next[i] as UIMessage & { created_at?: string };
+        if (msg.role !== "assistant") continue;
+        if (msg.created_at != null) break; // already anchored — stop scanning
+        // Prefer metadata.created_at set by the server at run-start; fall back
+        // to 1 ms before the new user message so the sort always places this
+        // assistant before user2.
+        const metaTs = (msg.metadata as { created_at?: string } | undefined)
+          ?.created_at;
+        const anchorTs =
+          metaTs ??
+          (userTs
+            ? new Date(new Date(userTs).getTime() - 1).toISOString()
+            : new Date(Date.now() - 1).toISOString());
+        next[i] = { ...msg, created_at: anchorTs } as UIMessage;
+        break; // only the most-recent un-anchored assistant needs fixing
+      }
+    }
     // Same sort pass refresh uses (mergeAndSort + DB `created_at`). Without
     // it, an in-flight SSE assistant row can sit above the user we just
     // appended because foldSubStream only upserts by id.
@@ -884,9 +913,28 @@ export class ThreadConnection {
       if (!pending) return;
       const msg = pending;
       pending = null;
-      this.messages.update((curr) =>
-        mergeAndSort(dropRedundantStubs(upsertById(curr, msg)), []),
-      );
+      this.messages.update((curr) => {
+        // The AI SDK's readUIMessageStream produces UIMessage objects without a
+        // top-level created_at. If submit() already anchored this assistant
+        // (to prevent it from sorting to +Infinity behind a new user message),
+        // we must carry that anchor forward on every streaming update —
+        // otherwise upsertById replaces it with the un-anchored version and
+        // mergeAndSort re-breaks the order on the very next frame.
+        // Once the server persists the message and refetchLatestPage returns a
+        // real top-level created_at, that canonical value wins on the next
+        // mergeAndSort pass.
+        const msgWithTs = msg as UIMessage & { created_at?: string };
+        let toUpsert: UIMessage = msg;
+        if (!msgWithTs.created_at) {
+          const existing = curr.find((m) => m.id === msg.id) as
+            | (UIMessage & { created_at?: string })
+            | undefined;
+          if (existing?.created_at) {
+            toUpsert = { ...msg, created_at: existing.created_at } as UIMessage;
+          }
+        }
+        return mergeAndSort(dropRedundantStubs(upsertById(curr, toUpsert)), []);
+      });
     };
     for await (const msg of iter) {
       last = msg;
