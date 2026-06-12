@@ -114,6 +114,7 @@ class ChunkBuffer {
 
 const BASE_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
+const DIRECT_EVENTS_PROBE_TIMEOUT_MS = 3_000;
 
 const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
   "lifecycle",
@@ -126,14 +127,45 @@ const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
 // `log` is broadcast separately — same SSE stream, different shape.
 const LOG_EVENT = "log" as const;
 
+export function buildDirectDaemonEventsUrl(
+  previewUrl: string | null | undefined,
+): string | null {
+  if (!previewUrl) return null;
+  try {
+    return new URL("/_sandbox/events", previewUrl).href;
+  } catch {
+    return null;
+  }
+}
+
+export function isDirectDaemonEventsGoneStatus(status: number): boolean {
+  return status === 404;
+}
+
+async function probeDirectDaemonEventsGone(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "text/event-stream" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(DIRECT_EVENTS_PROBE_TIMEOUT_MS),
+    });
+    await response.body?.cancel().catch(() => {});
+    return isDirectDaemonEventsGoneStatus(response.status);
+  } catch {
+    return false;
+  }
+}
+
 export function SandboxEventsProvider({
   virtualMcpId,
   branch,
+  previewUrl = null,
   enabled = true,
   children,
 }: {
   virtualMcpId: string | null;
   branch: string | null;
+  previewUrl?: string | null;
   /**
    * Open the events stream only when a sandbox exists (or is about to) for
    * this (virtualMcpId, branch). Mounting the provider with `enabled={false}`
@@ -161,6 +193,7 @@ export function SandboxEventsProvider({
   const chunkHandlers = useRef(new Set<ChunkHandler>());
   const reloadHandlers = useRef(new Set<ReloadHandler>());
   const prevPortRef = useRef<number | null>(null);
+  const directDaemonEventsUrl = buildDirectDaemonEventsUrl(previewUrl);
 
   const getOrCreateBuffer = (source: string) => {
     let buf = buffers.current.get(source);
@@ -191,7 +224,8 @@ export function SandboxEventsProvider({
     let disposed = false;
     let reconnectAttempt = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let es: EventSource | null = null;
+    let studioEs: EventSource | null = null;
+    let directEs: EventSource | null = null;
 
     const handleClaimPhase = (e: MessageEvent) => {
       try {
@@ -204,6 +238,9 @@ export function SandboxEventsProvider({
         if (next.kind !== "failed") {
           setNotFound(false);
           reconnectAttempt = 0;
+        }
+        if (next.kind === "ready") {
+          connectDirectDaemonEvents();
         }
       } catch (err) {
         console.warn("[vm-events] bad phase payload", err);
@@ -317,10 +354,11 @@ export function SandboxEventsProvider({
       }
     };
 
-    function connect() {
+    function connectStudioEvents() {
       if (disposed) return;
 
-      es = new EventSource(sseUrl);
+      const candidate = new EventSource(sseUrl);
+      studioEs = candidate;
 
       // NOTE: deliberately do NOT reset `reconnectAttempt` here. A connection
       // that opens, immediately receives `gone` (handle evicted), and closes
@@ -329,22 +367,75 @@ export function SandboxEventsProvider({
       // data/phase progress arrives (see handleLog/handleDaemonEvent/
       // handleClaimPhase), so repeated `gone`-only reconnects ramp toward the
       // 30s cap instead of hammering.
-      es.onopen = () => {};
+      candidate.onopen = () => {};
 
-      es.onerror = () => {
-        if (es?.readyState !== EventSource.CLOSED) return;
-        scheduleReconnect();
+      candidate.onerror = () => {
+        if (studioEs !== candidate) return;
+        if (candidate.readyState !== EventSource.CLOSED) return;
+        scheduleReconnect("studio");
       };
 
-      es.addEventListener("phase", handleClaimPhase);
-      es.addEventListener("gone", handleGone);
-      es.addEventListener(LOG_EVENT, handleLog);
+      candidate.addEventListener("phase", handleClaimPhase);
+      candidate.addEventListener("gone", handleGone);
+      candidate.addEventListener(LOG_EVENT, handleLog);
       for (const type of DAEMON_EVENT_TYPES) {
-        es.addEventListener(type, handleDaemonEvent);
+        candidate.addEventListener(type, handleDaemonEvent);
       }
     }
 
-    function scheduleReconnect() {
+    function connectDirectDaemonEvents() {
+      if (disposed || !directDaemonEventsUrl || directEs) return;
+
+      const candidate = new EventSource(directDaemonEventsUrl);
+      directEs = candidate;
+      let opened = false;
+
+      candidate.onopen = () => {
+        if (disposed || directEs !== candidate) return;
+        opened = true;
+        reconnectAttempt = 0;
+        const previousStudio = studioEs;
+        studioEs = null;
+        previousStudio?.close();
+      };
+
+      candidate.onerror = () => {
+        if (directEs !== candidate) return;
+        if (candidate.readyState !== EventSource.CLOSED) return;
+        void handleDirectDaemonEventsClosed(candidate, opened);
+      };
+
+      candidate.addEventListener(LOG_EVENT, handleLog);
+      for (const type of DAEMON_EVENT_TYPES) {
+        candidate.addEventListener(type, handleDaemonEvent);
+      }
+    }
+
+    async function handleDirectDaemonEventsClosed(
+      candidate: EventSource,
+      opened: boolean,
+    ) {
+      const gone = directDaemonEventsUrl
+        ? await probeDirectDaemonEventsGone(directDaemonEventsUrl)
+        : false;
+      if (disposed || directEs !== candidate) return;
+
+      candidate.close();
+      directEs = null;
+
+      if (gone) {
+        handleGone();
+        if (!studioEs) connectStudioEvents();
+        return;
+      }
+
+      if (opened) {
+        scheduleReconnect("direct");
+      }
+      // If direct never opened, leave the Studio stream alive as fallback.
+    }
+
+    function scheduleReconnect(target: "studio" | "direct") {
       if (disposed || reconnectTimer) return;
 
       const delay = Math.min(
@@ -356,19 +447,27 @@ export function SandboxEventsProvider({
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         if (disposed) return;
-        es?.close();
-        connect();
+        if (target === "direct") {
+          directEs?.close();
+          directEs = null;
+          connectDirectDaemonEvents();
+          return;
+        }
+        studioEs?.close();
+        studioEs = null;
+        connectStudioEvents();
       }, delay);
     }
 
-    connect();
+    connectStudioEvents();
 
     return () => {
       disposed = true;
-      es?.close();
+      studioEs?.close();
+      directEs?.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
     };
-  }, [virtualMcpId, branch, org.slug, enabled]);
+  }, [virtualMcpId, branch, org.slug, enabled, directDaemonEventsUrl]);
 
   const value: SandboxEventsValue = {
     phase,
