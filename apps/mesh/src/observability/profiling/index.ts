@@ -2,8 +2,6 @@ import { logCpuProfilingStatus } from "./cpu";
 import { startEventLoopMonitor } from "./event-loop";
 import { startHeapWatch } from "./heap";
 
-export { getEventLoopLagMs } from "./event-loop";
-
 /**
  * Single entry point for the profiling stack:
  * - CPU profiling status (Bun `--cpu-prof` launch flag — see cpu.ts)
