@@ -964,64 +964,46 @@ export async function* runDecopilotStream(
     | {
         kind: "queue";
         value: { done: false; value: UIMessageChunk } | { done: true };
-      }
-    | { kind: "title"; value: UIMessageChunk | null };
+      };
   const iter = uiMessageStream[Symbol.asyncIterator]();
   let mainDone = false;
   let titleDone = false;
+
+  const closeIfDone = () => {
+    if (mainDone && titleDone) chunkQueue.close();
+  };
+  void titlePromise.then((chunk) => {
+    titleDone = true;
+    if (chunk) chunkQueue.push(chunk);
+    closeIfDone();
+  });
+
   let mainPromise: Promise<Settled> = iter
     .next()
     .then((v) => ({ kind: "main" as const, value: v }));
   let queuePromise: Promise<Settled> = chunkQueue
     .next()
     .then((v) => ({ kind: "queue" as const, value: v }));
-  const titleResultPromise: Promise<Settled> = titlePromise.then((value) => ({
-    kind: "title" as const,
-    value,
-  }));
   try {
     while (true) {
-      if (mainDone && titleDone) {
-        // Main stream and title generation are both settled. Close the queue
-        // so the outstanding queue waiter resolves, then drain anything
-        // buffered by side-channel callbacks.
-        chunkQueue.close();
-        while (true) {
-          const remaining = await chunkQueue.next();
-          if (remaining.done) break;
-          yield remaining.value;
-        }
-        break;
-      }
-
-      const pending = [queuePromise];
+      const pending: Promise<Settled>[] = [queuePromise];
       if (!mainDone) pending.push(mainPromise);
-      if (!titleDone) pending.push(titleResultPromise);
 
       const settled = await Promise.race(pending);
       if (settled.kind === "main") {
         if (settled.value.done) {
           mainDone = true;
-          if (!titleDone) {
-            titleHandle.finish();
-          }
+          titleHandle.finish();
+          closeIfDone();
           continue;
         }
         yield settled.value.value;
         mainPromise = iter
           .next()
           .then((v) => ({ kind: "main" as const, value: v }));
-      } else if (settled.kind === "title") {
-        titleDone = true;
-        if (settled.value) yield settled.value;
       } else {
-        // Queue-side resolution. The queue is only closed by us
-        // (inside the main-done branch above), so a `done: true`
-        // here is unreachable during the main loop — the loop has
-        // already broken in that case.
-        if (!settled.value.done) {
-          yield settled.value.value;
-        }
+        if (settled.value.done) break;
+        yield settled.value.value;
         queuePromise = chunkQueue
           .next()
           .then((v) => ({ kind: "queue" as const, value: v }));
