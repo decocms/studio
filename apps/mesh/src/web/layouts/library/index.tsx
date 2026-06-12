@@ -49,6 +49,9 @@ import { Input } from "@deco/ui/components/input.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { homeMountPath } from "@/file-storage/home-mount";
 import { ErrorBoundary } from "@/web/components/error-boundary";
+import { FileTypeIcon } from "@/web/components/file-type-icon";
+import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
+import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   type OrgFsEntry,
@@ -72,7 +75,13 @@ import {
   type LibraryLocation,
   parseLibraryPath,
 } from "./location";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/web/components/resizable";
 import { LibraryPreviewDialog } from "./preview-dialog";
+import { LibraryPreviewPanel } from "./preview-panel";
 import { SkillPreviewDialog } from "./skill-preview-dialog";
 
 /** The volumes every sandbox mounts (see file-storage/mount/provisioning.ts).
@@ -117,35 +126,6 @@ function GridSkeleton({ rows = 1 }: { rows?: number }) {
 
 function EmptyNote({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
-}
-
-/** Folder filter pills — Shared/Private are a pending product decision. */
-function FolderFilterPills() {
-  return (
-    <div className="flex items-center gap-1">
-      <Button variant="secondary" size="sm" className="h-7 px-2.5 text-xs">
-        All
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 px-2.5 text-xs"
-        disabled
-        title="Coming soon"
-      >
-        Shared
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 px-2.5 text-xs"
-        disabled
-        title="Coming soon"
-      >
-        Private
-      </Button>
-    </div>
-  );
 }
 
 function VolumeFolderCard({
@@ -272,7 +252,6 @@ function RootView({
 
       <div className="flex flex-col gap-3">
         <SectionLabel>Folders</SectionLabel>
-        <FolderFilterPills />
         <CardsGrid>
           {VOLUMES.map((v) => (
             <VolumeFolderCard
@@ -460,6 +439,7 @@ function LibraryPage() {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const search = useSearch({ strict: false }) as {
     path?: string;
     preview?: string;
@@ -484,17 +464,6 @@ function LibraryPage() {
   const onOpenFile = (previewPath: string) =>
     setSearchParam("preview", previewPath);
   const onOpenSkill = (skillPath: string) => setSearchParam("skill", skillPath);
-  // "Browse files" from inside the skill preview: jump the page to the
-  // skill's folder and drop the overlay in one navigation.
-  const onBrowseSkill = (browsePath: string) =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        path: browsePath,
-        skill: undefined,
-      }),
-    });
 
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
     null,
@@ -648,19 +617,21 @@ function LibraryPage() {
         )}
       </div>
 
-      {/* Preview wins over skill: opening a bundled file stacks on top of the
-          skill dialog; closing it falls back to the still-set ?skill=. */}
+      {/* Preview wins over skill: opening a bundled file hides the skill
+          dialog; closing it falls back to the still-set ?skill=. On desktop
+          the preview renders as a side panel (in the outer Library), so only
+          mobile uses the dialog here. */}
       {search.preview ? (
-        <LibraryPreviewDialog
-          previewPath={search.preview}
-          onClose={() => setSearchParam("preview", null)}
-        />
+        isMobile && (
+          <LibraryPreviewDialog
+            previewPath={search.preview}
+            onClose={() => setSearchParam("preview", null)}
+          />
+        )
       ) : search.skill ? (
         <SkillPreviewDialog
           skillPath={search.skill}
           onClose={() => setSearchParam("skill", null)}
-          onOpenFile={onOpenFile}
-          onBrowse={onBrowseSkill}
         />
       ) : null}
 
@@ -726,6 +697,20 @@ function LibraryPage() {
 
 export default function Library() {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false }) as { preview?: string };
+  const previewPath = search.preview;
+  const previewName = previewPath
+    ? basename(parseLibraryPath(previewPath).dirPath)
+    : "";
+  const closePreview = () =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        preview: undefined,
+      }),
+    });
 
   if (isMobile) {
     return (
@@ -737,15 +722,54 @@ export default function Library() {
     );
   }
 
+  // Desktop: chat-style two-panel group — Library on the left and, when a
+  // file is open (`?preview=`), its preview as a tab-like panel on the right.
   return (
-    <div className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0">
-      <div className="h-full p-0.5 pt-0.25">
-        <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-          <ErrorBoundary>
-            <LibraryPage />
-          </ErrorBoundary>
+    <ResizablePanelGroup
+      direction="horizontal"
+      className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0"
+    >
+      <ResizablePanel order={1} minSize={30} defaultSize={55}>
+        <div className="h-full p-0.5 pt-0.25">
+          <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
+            <ErrorBoundary>
+              <LibraryPage />
+            </ErrorBoundary>
+          </div>
         </div>
-      </div>
-    </div>
+      </ResizablePanel>
+      {previewPath && (
+        <>
+          {/* Mirror the chat: an open file surfaces as a pill in the shared
+              top-right tab slot; clicking it closes the preview. */}
+          <Toolbar.Tabs>
+            <HeaderTabButton
+              title={previewName}
+              icon={{
+                kind: "component",
+                Component: (props) => (
+                  <FileTypeIcon filename={previewName} {...props} />
+                ),
+              }}
+              active
+              onClick={closePreview}
+            />
+          </Toolbar.Tabs>
+          <ResizableHandle className="bg-sidebar" />
+          <ResizablePanel order={2} minSize={25} defaultSize={45}>
+            <div className="h-full p-0.5 pt-0.25">
+              <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
+                <ErrorBoundary>
+                  <LibraryPreviewPanel
+                    previewPath={previewPath}
+                    onClose={closePreview}
+                  />
+                </ErrorBoundary>
+              </div>
+            </div>
+          </ResizablePanel>
+        </>
+      )}
+    </ResizablePanelGroup>
   );
 }
