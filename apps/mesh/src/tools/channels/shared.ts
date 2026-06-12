@@ -2,7 +2,7 @@ import z from "zod";
 import { getBaseUrl } from "@/core/server-constants";
 import type { ChannelInfo, ChannelType } from "@/storage/types";
 
-export const CHANNEL_TYPES = ["teams", "discord"] as const;
+export const CHANNEL_TYPES = ["teams", "discord", "whatsapp"] as const;
 
 export const channelStatusSchema = z.enum([
   "draft",
@@ -17,7 +17,7 @@ export const channelOutputSchema = z.object({
   channelType: z.enum(CHANNEL_TYPES),
   label: z.string(),
   agentId: z.string().nullable(),
-  botUserId: z.string(),
+  botUserId: z.string().nullable(),
   status: channelStatusSchema,
   webhookUrl: z.string(),
   metadata: z.record(z.string(), z.unknown()).nullable(),

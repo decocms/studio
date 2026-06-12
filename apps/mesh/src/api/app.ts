@@ -55,6 +55,7 @@ import {
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import { createWhatsappIngestRoutes } from "./routes/whatsapp-ingest";
 import { createLinkWorkRoutes } from "./routes/decopilot/link-work-routes";
 import { createLinkControlRoutes } from "./routes/decopilot/link-control-routes";
 import { createLinkProxyRoutes } from "./routes/decopilot/link-proxy-routes";
@@ -2146,6 +2147,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     watchHandler,
     betterAuthProtectedResourceHandler,
   });
+  // WhatsApp concierge ingest is global (routes by phone, not org). Mount BEFORE
+  // the `/api/:org` catch-all so `/api/whatsapp/ingest` isn't treated as an org
+  // slug.
+  app.route("/api/whatsapp", createWhatsappIngestRoutes({ db: database.db }));
   app.route("/api/:org", orgScopedApi);
 
   // ============================================================================

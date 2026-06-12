@@ -21,7 +21,8 @@ type IdPrefixes =
   | "vpc"
   | "tile"
   | "fcfg"
-  | "chan";
+  | "chan"
+  | "uph";
 
 export function generatePrefixedId(prefix: IdPrefixes) {
   return `${prefix}_${nanoid()}`;

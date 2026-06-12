@@ -319,6 +319,8 @@ export const KEYS = {
   // Connections offered as agent bindings in the channel wizard
   channelAgentOptions: (orgId: string) =>
     ["channel-agent-options", orgId] as const,
+  // Caller's WhatsApp phone link status (profile)
+  userPhone: (userId: string) => ["user-phone", userId] as const,
 
   // Secrets (scoped by org; user-scope filtering happens server-side)
   secrets: (orgId: string) => ["secrets", orgId] as const,

@@ -105,6 +105,17 @@ export function createChannelWebhookRoutes() {
       return ackResponse(c, parsed.ackResponse);
     }
 
+    // Teams/Discord channels always have a synthetic bot member; the agent runs
+    // as that bot. (WhatsApp — which has no bot — uses the global ingest route,
+    // not this per-org webhook.)
+    const botUserId = info.botUserId;
+    if (!botUserId) {
+      console.warn(
+        `[channel-webhook] channel ${channelId} has no bot user — skipping`,
+      );
+      return ackResponse(c, parsed.ackResponse);
+    }
+
     const { message } = parsed;
     const threadId = threadIdFor(channelId, message.conversationKey);
 
@@ -115,7 +126,7 @@ export function createChannelWebhookRoutes() {
       try {
         const { replyText } = await runChannelTurn({
           organizationId: orgId,
-          botUserId: info.botUserId,
+          userId: botUserId,
           agentId,
           threadId,
           userText: message.text,

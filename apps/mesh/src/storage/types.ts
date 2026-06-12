@@ -277,10 +277,10 @@ export interface ProviderKeyInfo {
 }
 
 // ============================================================================
-// Channels (org-chat integrations: Microsoft Teams, Discord)
+// Channels (org-chat integrations: Microsoft Teams, Discord, WhatsApp)
 // ============================================================================
 
-export type ChannelType = "teams" | "discord";
+export type ChannelType = "teams" | "discord" | "whatsapp";
 export type ChannelStatus = "draft" | "active" | "error" | "disabled";
 
 export interface ChannelTable {
@@ -292,8 +292,8 @@ export interface ChannelTable {
   encrypted_credentials: string | null;
   /** virtual_mcp_id of the Decopilot agent the bot runs. */
   agent_id: string | null;
-  /** Synthetic bot org-member (user.id). */
-  bot_user_id: string;
+  /** Synthetic bot org-member (user.id) for Teams/Discord; null for WhatsApp. */
+  bot_user_id: string | null;
   /** JSON, non-secret display metadata. */
   metadata: string | null;
   status: string; // ChannelStatus
@@ -307,12 +307,28 @@ export interface ChannelInfo {
   channelType: ChannelType;
   label: string;
   agentId: string | null;
-  botUserId: string;
+  botUserId: string | null;
   metadata: Record<string, unknown> | null;
   status: ChannelStatus;
   organizationId: string;
   createdBy: string;
   createdAt: string;
+}
+
+// ============================================================================
+// User phone links (WhatsApp concierge — verified phone → user)
+// ============================================================================
+
+export interface UserPhoneTable {
+  id: string;
+  user_id: string;
+  /** Canonical E.164 digits (no '+'); null until the verification code arrives. */
+  phone: string | null;
+  verified_at: ColumnType<Date, Date | string, Date | string> | null;
+  code: string | null;
+  code_expires_at: ColumnType<Date, Date | string, Date | string> | null;
+  selected_organization_id: string | null;
+  created_at: ColumnType<Date, Date | string, never>;
 }
 
 export type SecretScopeKind = "user" | "organization";
@@ -1469,8 +1485,11 @@ export interface Database {
   // AI Provider keys tables
   ai_provider_keys: AIProviderKeyTable;
 
-  // Org-chat channel integrations (Teams, Discord)
+  // Org-chat channel integrations (Teams, Discord, WhatsApp)
   channels: ChannelTable;
+
+  // Verified WhatsApp phone links (concierge routing)
+  user_phones: UserPhoneTable;
 
   // Generic secrets vault (org and user scoped)
   secrets: SecretTable;

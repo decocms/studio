@@ -88,6 +88,13 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
+
+  // WhatsApp concierge (shared-number channel). All four must be set for the
+  // WhatsApp channel + phone verification to be available.
+  whatsappWorkerUrl: string | undefined; // base URL of the deployed WABA worker
+  whatsappWorkerToken: string | undefined; // Studio→worker auth (its /send endpoint)
+  whatsappIngestSecret: string | undefined; // worker→Studio auth (/api/whatsapp/ingest)
+  whatsappConciergeNumber: string | undefined; // display number users text to verify/chat
 }
 
 export interface CliFlags {

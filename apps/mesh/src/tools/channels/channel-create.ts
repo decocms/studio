@@ -28,8 +28,39 @@ export const CHANNEL_CREATE = defineTool({
     const org = requireOrganization(ctx);
     await ctx.access.check();
 
-    const adapter = getChannelAdapter(input.channelType);
     const channelId = generatePrefixedId("chan");
+
+    // WhatsApp is a shared-number, enable-only channel: no synthetic bot, no
+    // credentials/endpoint/test — the real verified user answers. It requires an
+    // agent and goes straight to `active`.
+    if (input.channelType === "whatsapp") {
+      if (!input.agentId) {
+        throw new Error("WhatsApp channels require an agent");
+      }
+      const info = await ctx.storage.channels.create({
+        id: channelId,
+        channelType: "whatsapp",
+        label: input.label ?? "WhatsApp",
+        botUserId: null,
+        agentId: input.agentId,
+        status: "active",
+        organizationId: org.id,
+        createdBy: ctx.auth.user!.id,
+      });
+      posthog.capture({
+        distinctId: ctx.auth.user!.id,
+        event: "channel_created",
+        groups: { organization: org.id },
+        properties: {
+          organization_id: org.id,
+          channel_id: info.id,
+          channel_type: info.channelType,
+        },
+      });
+      return toChannelOutput(info, org.slug ?? org.id);
+    }
+
+    const adapter = getChannelAdapter(input.channelType);
     const label = input.label ?? `${adapter.info.name} bot`;
 
     const { botUserId } = await ensureChannelBot({

@@ -25,6 +25,7 @@ import {
   useChannelClient,
   useChannelPlatforms,
   type ChannelInstance,
+  type ChannelPlatform,
   type ChannelStatus,
   type ChannelType,
 } from "@/web/hooks/collections/use-channels";
@@ -52,7 +53,7 @@ export function PlatformAddButtons({
   onAdd,
   busy,
 }: {
-  onAdd: (platform: ChannelType) => void;
+  onAdd: (platform: ChannelPlatform) => void;
   busy: boolean;
 }) {
   const platforms = useChannelPlatforms();
@@ -64,7 +65,7 @@ export function PlatformAddButtons({
           size="sm"
           variant="outline"
           disabled={busy}
-          onClick={() => onAdd(p.id)}
+          onClick={() => onAdd(p)}
         >
           <Plus size={14} /> Add {p.name}
         </Button>
@@ -80,7 +81,7 @@ export function ConnectedChannelsSection({
   busy,
 }: {
   channels: ChannelInstance[];
-  onAdd: (platform: ChannelType) => void;
+  onAdd: (platform: ChannelPlatform) => void;
   onResume: (target: WizardTarget) => void;
   busy: boolean;
 }) {
@@ -168,7 +169,8 @@ function ChannelRow({
               >
                 <PlayCircle size={14} /> Resume setup
               </Button>
-            ) : (
+            ) : channel.channelType === "whatsapp" ? null : (
+              // WhatsApp has no wizard to edit; change the agent by re-adding.
               <Button
                 variant="ghost"
                 size="icon"

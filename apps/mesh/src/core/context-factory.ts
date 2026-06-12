@@ -469,6 +469,7 @@ import {
 import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { ChannelStorage } from "@/storage/channels";
+import { UserPhoneStorage } from "@/storage/user-phones";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
@@ -1201,6 +1202,7 @@ export async function createStudioContextFactory(
       config.providerKeyCache,
     ),
     channels: new ChannelStorage(config.db, vault),
+    userPhones: new UserPhoneStorage(config.db),
     secrets: new SecretStorage(config.db, vault),
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgFsEntries: new OrgFsEntryStorage(config.db),

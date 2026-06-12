@@ -108,6 +108,7 @@ import * as migration106automationtools from "./106-automation-tools.ts";
 import * as migration107orgfspublicorg from "./107-org-fs-public-org.ts";
 import * as migration108automationmaxagentsteps from "./108-automation-max-agent-steps.ts";
 import * as migration109channels from "./109-channels.ts";
+import * as migration110userphones from "./110-user-phones.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -238,6 +239,7 @@ const migrations: Record<string, Migration> = {
   "107-org-fs-public-org": migration107orgfspublicorg,
   "108-automation-max-agent-steps": migration108automationmaxagentsteps,
   "109-channels": migration109channels,
+  "110-user-phones": migration110userphones,
 };
 
 export default migrations;

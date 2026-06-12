@@ -17,7 +17,7 @@ import {
 } from "@tanstack/react-query";
 import { KEYS } from "../../lib/query-keys";
 
-export type ChannelType = "teams" | "discord";
+export type ChannelType = "teams" | "discord" | "whatsapp";
 export type ChannelStatus = "draft" | "active" | "error" | "disabled";
 
 export interface ChannelCredentialField {
@@ -35,11 +35,15 @@ export interface ChannelSetupStep {
   link?: { label: string; url: string };
 }
 
+export type ChannelSetupKind = "credentials" | "shared";
+
 export interface ChannelPlatform {
   id: ChannelType;
   name: string;
   description: string;
   logo?: string;
+  /** "credentials" = wizard (Teams/Discord); "shared" = enable-only (WhatsApp). */
+  setupKind: ChannelSetupKind;
   credentialFields: ChannelCredentialField[];
   setupInstructions: ChannelSetupStep[];
 }
@@ -49,7 +53,7 @@ export interface ChannelInstance {
   channelType: ChannelType;
   label: string;
   agentId: string | null;
-  botUserId: string;
+  botUserId: string | null;
   status: ChannelStatus;
   webhookUrl: string;
   metadata: Record<string, unknown> | null;
@@ -138,4 +142,41 @@ export function useChannelClient() {
 export function invalidateChannels(queryClient: QueryClient, orgId: string) {
   queryClient.invalidateQueries({ queryKey: KEYS.orgChannels(orgId) });
   queryClient.invalidateQueries({ queryKey: KEYS.channelPlatforms(orgId) });
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp phone linking (profile)
+// ---------------------------------------------------------------------------
+
+export interface UserPhoneState {
+  configured: boolean;
+  status: "none" | "pending" | "verified";
+  code?: string;
+  conciergeNumber?: string;
+  maskedPhone?: string;
+  selectedOrganizationId?: string | null;
+}
+
+/**
+ * Poll the caller's WhatsApp link status. While `pending`, refetch every few
+ * seconds so the UI flips to `verified` once the user's code arrives via the
+ * ingest route (effect-free — driven by `refetchInterval`).
+ */
+export function useUserPhone(userId: string) {
+  const { client } = useSelfClient();
+  return useQuery({
+    queryKey: KEYS.userPhone(userId),
+    staleTime: 10_000,
+    refetchInterval: (q) =>
+      (q.state.data as UserPhoneState | undefined)?.status === "pending"
+        ? 3000
+        : false,
+    queryFn: async (): Promise<UserPhoneState> => {
+      const result = (await client.callTool({
+        name: "PHONE_GET",
+        arguments: {},
+      })) as { structuredContent?: UserPhoneState };
+      return result.structuredContent ?? { configured: false, status: "none" };
+    },
+  });
 }

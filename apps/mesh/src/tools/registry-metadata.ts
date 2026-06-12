@@ -155,6 +155,11 @@ const ALL_TOOL_NAMES = [
   "CHANNEL_TEST",
   "CHANNEL_DELETE",
 
+  // Profile / self WhatsApp phone linking
+  "PHONE_LINK_START",
+  "PHONE_GET",
+  "PHONE_DELETE",
+
   // Secrets vault tools
   "SECRET_CREATE",
   "SECRET_LIST",
@@ -1124,6 +1129,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_THREADS_UPDATE",
       "COLLECTION_THREADS_DELETE",
       "COLLECTION_THREAD_MESSAGES_LIST",
+      // Self-service WhatsApp phone linking (a member manages their OWN phone)
+      "PHONE_LINK_START",
+      "PHONE_GET",
+      "PHONE_DELETE",
     ],
   },
   // Organization

@@ -22,7 +22,7 @@ import { requireChannelRuntime } from "./runtime";
  */
 export async function runChannelTurn(params: {
   organizationId: string;
-  botUserId: string;
+  userId: string;
   agentId: string;
   threadId: string;
   userText: string;
@@ -30,7 +30,7 @@ export async function runChannelTurn(params: {
   tier?: SimpleModeTier;
 }): Promise<{ taskId: string; replyText: string }> {
   const { meshContextFactory } = requireChannelRuntime();
-  const ctx = await meshContextFactory(params.organizationId, params.botUserId);
+  const ctx = await meshContextFactory(params.organizationId, params.userId);
   if (!ctx) {
     throw new Error(
       "Channel bot is not a member of the organization — cannot run agent turn",
@@ -44,7 +44,7 @@ export async function runChannelTurn(params: {
       title: `${params.sender.platform} · ${params.sender.senderName}`,
       status: "in_progress",
       virtual_mcp_id: params.agentId,
-      created_by: params.botUserId,
+      created_by: params.userId,
     });
   }
 
@@ -79,7 +79,7 @@ export async function runChannelTurn(params: {
     toolApprovalLevel: "auto",
     mode: "default",
     organizationId: params.organizationId,
-    userId: params.botUserId,
+    userId: params.userId,
     taskId: params.threadId,
   };
 

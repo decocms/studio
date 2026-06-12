@@ -21,7 +21,7 @@ interface ChannelRow {
   channel_type: string;
   label: string;
   agent_id: string | null;
-  bot_user_id: string;
+  bot_user_id: string | null;
   metadata: string | null;
   status: string;
   created_by: string;
@@ -77,7 +77,7 @@ export class ChannelStorage {
     id?: string;
     channelType: ChannelType;
     label: string;
-    botUserId: string;
+    botUserId: string | null;
     agentId?: string | null;
     credentials?: ChannelCredentials | null;
     metadata?: Record<string, unknown> | null;

@@ -10,6 +10,7 @@ import {
   invalidateChannels,
   useChannelClient,
   useOrgChannels,
+  type ChannelPlatform,
   type ChannelType,
 } from "@/web/hooks/collections/use-channels";
 import {
@@ -18,6 +19,7 @@ import {
   type WizardTarget,
 } from "./connected-channels-section";
 import { SetupWizardDialog } from "./setup-wizard-dialog";
+import { WhatsAppEnableDialog } from "./whatsapp-enable-dialog";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -34,7 +36,7 @@ function EmptyState({
   onAdd,
   busy,
 }: {
-  onAdd: (platform: ChannelType) => void;
+  onAdd: (platform: ChannelPlatform) => void;
   busy: boolean;
 }) {
   return (
@@ -57,6 +59,7 @@ function OrgChannelsContent() {
   const { org, client } = useChannelClient();
   const queryClient = useQueryClient();
   const [target, setTarget] = useState<WizardTarget | null>(null);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
 
   // Create the draft channel (+ its bot) on click, then open the wizard at the
   // first step. Done here (not in the dialog) so platform selection is a plain
@@ -83,17 +86,23 @@ function OrgChannelsContent() {
     onError: (err) => toast.error(`Failed to start setup: ${err.message}`),
   });
 
+  // WhatsApp is enable-only (no wizard); everything else is the draft→wizard flow.
+  const handleAdd = (platform: ChannelPlatform) => {
+    if (platform.setupKind === "shared") {
+      setWhatsappOpen(true);
+      return;
+    }
+    createDraft.mutate(platform.id);
+  };
+
   return (
     <>
       {channels.length === 0 ? (
-        <EmptyState
-          onAdd={(p) => createDraft.mutate(p)}
-          busy={createDraft.isPending}
-        />
+        <EmptyState onAdd={handleAdd} busy={createDraft.isPending} />
       ) : (
         <ConnectedChannelsSection
           channels={channels}
-          onAdd={(p) => createDraft.mutate(p)}
+          onAdd={handleAdd}
           onResume={setTarget}
           busy={createDraft.isPending}
         />
@@ -106,6 +115,10 @@ function OrgChannelsContent() {
           target={target}
           onOpenChange={(o) => !o && setTarget(null)}
         />
+      )}
+
+      {whatsappOpen && (
+        <WhatsAppEnableDialog open onOpenChange={setWhatsappOpen} />
       )}
     </>
   );

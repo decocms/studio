@@ -2,9 +2,11 @@ import { type Kysely, sql } from "kysely";
 
 /**
  * Org-chat channels. Each row is one configured chat-platform integration
- * (Microsoft Teams, Discord, ...) that registers a synthetic bot org-member.
- * Inbound platform messages run a Decopilot agent turn and the reply is posted
- * back to the platform.
+ * (Microsoft Teams, Discord, WhatsApp, ...). For per-org bot platforms
+ * (Teams/Discord) the row registers a synthetic bot org-member; for the shared
+ * WhatsApp concierge there is no bot (the real verified user answers), so
+ * `bot_user_id` is nullable. Inbound messages run a Decopilot agent turn and the
+ * reply is posted back to the platform.
  *
  * Mirrors the AI-provider-keys shape: org-scoped, secrets vault-encrypted into a
  * single opaque blob (`encrypted_credentials`), never columnized. `metadata`
@@ -30,9 +32,10 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     // virtual_mcp_id of the Decopilot agent the bot runs. Nullable: bound during
     // setup; runChannelTurn falls back to the org default home agent when unset.
     .addColumn("agent_id", "text")
-    // Synthetic bot org-member (user.id). Managed by the app (no FK cascade so
+    // Synthetic bot org-member (user.id) for Teams/Discord. Null for WhatsApp
+    // (no bot — the real verified user answers). App-managed (no FK cascade so
     // the bot user/member teardown stays explicit in CHANNEL_DELETE).
-    .addColumn("bot_user_id", "text", (col) => col.notNull())
+    .addColumn("bot_user_id", "text")
     // JSON, non-secret display metadata (e.g. bot display name surfaced by TEST).
     .addColumn("metadata", "text")
     // 'draft' | 'active' | 'error' | 'disabled'

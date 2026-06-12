@@ -21,11 +21,14 @@ export const CHANNEL_DELETE = defineTool({
     }
 
     await ctx.storage.channels.delete(input.id, org.id);
-    await removeChannelBot({
-      db: ctx.db,
-      organizationId: org.id,
-      botUserId: existing.botUserId,
-    });
+    // WhatsApp channels have no synthetic bot to tear down.
+    if (existing.botUserId) {
+      await removeChannelBot({
+        db: ctx.db,
+        organizationId: org.id,
+        botUserId: existing.botUserId,
+      });
+    }
 
     posthog.capture({
       distinctId: ctx.auth.user!.id,

@@ -31,6 +31,7 @@ import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
 import * as ChannelsTools from "./channels";
+import * as ProfileTools from "./profile";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
@@ -164,6 +165,9 @@ const CORE_TOOLS = [
   ChannelsTools.CHANNEL_PREVIEW,
   ChannelsTools.CHANNEL_TEST,
   ChannelsTools.CHANNEL_DELETE,
+  ProfileTools.PHONE_LINK_START,
+  ProfileTools.PHONE_GET,
+  ProfileTools.PHONE_DELETE,
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,
