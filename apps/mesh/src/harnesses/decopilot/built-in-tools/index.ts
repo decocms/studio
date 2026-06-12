@@ -34,12 +34,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   update_interests: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
-import { createReadPromptTool } from "@decocms/harness/decopilot/built-in-tools/prompts";
-import { createReadResourceTool } from "@decocms/harness/decopilot/built-in-tools/resources";
-import {
-  createSandboxTool,
-  type VirtualClient,
-} from "@decocms/harness/decopilot/built-in-tools/sandbox";
+import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlPageBuffer } from "./vm-tools/html-page-buffer";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
@@ -323,9 +318,6 @@ async function buildAllTools(
     update_interests: ReturnType<typeof createUpdateInterestsTool>;
     subtask: ReturnType<typeof createSubtaskTool>;
     read_tool_output: ReturnType<typeof createReadToolOutputTool>;
-    sandbox: ReturnType<typeof createSandboxTool>;
-    read_resource: ReturnType<typeof createReadResourceTool>;
-    read_prompt: ReturnType<typeof createReadPromptTool>;
     generate_image: ReturnType<typeof createGenerateImageTool>;
     web_search: ReturnType<typeof createWebSearchTool>;
     take_screenshot: ReturnType<typeof createTakeScreenshotTool>;

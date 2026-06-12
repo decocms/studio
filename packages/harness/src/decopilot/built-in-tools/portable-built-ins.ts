@@ -9,8 +9,7 @@ import {
   estimateJsonTokens,
   MAX_RESULT_TOKENS,
 } from "./read-tool-output";
-import { createReadPromptTool } from "./prompts";
-import { createSandboxTool, type VirtualClient } from "./sandbox";
+import { type VirtualClient } from "./sandbox";
 import { BROWSERLESS_BASE_URL } from "./constants";
 import type { ToolApprovalLevel } from "../mcp-tools";
 import { toMeshStorageUri } from "../mesh-storage-uri";
@@ -33,8 +32,6 @@ interface PortableObjectStorage extends PortableMediaObjectStorage {
   >;
 }
 
-const INLINE_RESOURCE_BYTE_LIMIT = 1_048_576;
-
 export interface BuildPortableBuiltInToolsParams {
   writer: UIMessageStreamWriter;
   toolOutputMap: Map<string, string>;
@@ -48,102 +45,6 @@ export interface BuildPortableBuiltInToolsParams {
     imageModelInfo: PortableImageModelInfo;
   };
   includeUnavailableClusterOnlyTools?: boolean;
-}
-
-function parseMeshStorageKey(uri: string): string | null {
-  const prefix = "mesh-storage://";
-  return uri.startsWith(prefix) ? uri.slice(prefix.length) : null;
-}
-
-function createPortableReadResourceTool(params: {
-  passthroughClient: VirtualClient;
-  toolOutputMap: Map<string, string>;
-  objectStorage?: PortableObjectStorage | null;
-}) {
-  const { passthroughClient, toolOutputMap, objectStorage } = params;
-  return tool({
-    description:
-      "Read a resource by its URI. Returns the content of the resource. " +
-      "Resource URIs (docs://...) are provided in prompt content. ",
-    inputSchema: zodSchema(
-      z.object({
-        uri: z
-          .string()
-          .min(1)
-          .describe("The URI of the resource to read (e.g. docs://store.md)."),
-      }),
-    ),
-    execute: async ({ uri }) => {
-      const meshKey = parseMeshStorageKey(uri);
-      if (meshKey !== null) {
-        if (!objectStorage?.getBytesOrPresign) {
-          return { result: "Object storage is not configured." };
-        }
-        try {
-          const data = await objectStorage.getBytesOrPresign(meshKey, {
-            presignWhenLargerThan: INLINE_RESOURCE_BYTE_LIMIT,
-          });
-          if ("error" in data) {
-            return {
-              result: `Resource too large to inline (${data.size} bytes). Presigned URL: ${data.presignedUrl}`,
-            };
-          }
-          const text = data.content;
-          const tokens = estimateJsonTokens(text);
-          if (tokens > MAX_RESULT_TOKENS) {
-            const toolCallId = `resource_${Date.now()}`;
-            toolOutputMap.set(toolCallId, text);
-            const preview = createOutputPreview(text);
-            return {
-              result: `Resource content too large (${tokens} tokens). Use read_tool_output with tool_call_id "${toolCallId}" to extract specific data.\n\nPreview:\n${preview}`,
-            };
-          }
-          return {
-            contents: [
-              { uri, mimeType: data.contentType || "text/markdown", text },
-            ],
-          };
-        } catch (err) {
-          return {
-            result: `Failed to read resource: ${err instanceof Error ? err.message : String(err)}`,
-          };
-        }
-      }
-
-      const result = await passthroughClient.readResource({ uri });
-      const contents = result.contents;
-      if (!contents || contents.length === 0) {
-        return { result: "Resource returned no content." };
-      }
-
-      const parts = contents.map((c) => {
-        if ("text" in c && c.text !== undefined) {
-          return { uri: c.uri, mimeType: c.mimeType, text: c.text };
-        }
-        if ("blob" in c && c.blob !== undefined) {
-          return {
-            uri: c.uri,
-            mimeType: c.mimeType,
-            blob: `[binary data, ${(c.blob as string).length} bytes base64]`,
-          };
-        }
-        return { uri: c.uri, mimeType: c.mimeType };
-      });
-
-      const serialized = JSON.stringify(parts, null, 2);
-      const tokens = estimateJsonTokens(serialized);
-      if (tokens > MAX_RESULT_TOKENS) {
-        const toolCallId = `resource_${Date.now()}`;
-        toolOutputMap.set(toolCallId, serialized);
-        const preview = createOutputPreview(serialized);
-        return {
-          result: `Resource content too large (${tokens} tokens). Use read_tool_output with tool_call_id "${toolCallId}" to extract specific data.\n\nPreview:\n${preview}`,
-        };
-      }
-
-      return { contents: parts };
-    },
-  });
 }
 
 function createPortableBrowserlessTool(
@@ -383,31 +284,16 @@ export function buildPortableBuiltInTools(
   const {
     writer,
     toolOutputMap,
-    passthroughClient,
-    toolApprovalLevel,
-    isPlanMode,
     objectStorage,
     pendingImages,
     imageTool,
     includeUnavailableClusterOnlyTools,
   } = params;
-  const sandboxNeedsApproval = isPlanMode || toolApprovalLevel !== "auto";
   const tools: Record<string, unknown> = {
     user_ask: userAskTool,
     todo_write: todoWriteTool,
     propose_plan: proposePlanTool,
     read_tool_output: createReadToolOutputTool({ toolOutputMap }),
-    read_resource: createPortableReadResourceTool({
-      passthroughClient,
-      toolOutputMap,
-      objectStorage,
-    }),
-    read_prompt: createReadPromptTool({ passthroughClient, toolOutputMap }),
-    sandbox: createSandboxTool({
-      passthroughClient,
-      toolOutputMap,
-      needsApproval: sandboxNeedsApproval,
-    }),
   };
 
   if (includeUnavailableClusterOnlyTools) {
