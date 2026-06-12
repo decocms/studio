@@ -630,6 +630,7 @@ function LibraryPage() {
         )
       ) : search.skill ? (
         <SkillPreviewDialog
+          key={search.skill}
           skillPath={search.skill}
           onClose={() => setSearchParam("skill", null)}
         />
@@ -700,9 +701,7 @@ export default function Library() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { preview?: string };
   const previewPath = search.preview;
-  const previewName = previewPath
-    ? basename(parseLibraryPath(previewPath).dirPath)
-    : "";
+  const previewName = previewPath ? basename(previewPath) : "";
   const closePreview = () =>
     navigate({
       to: ".",

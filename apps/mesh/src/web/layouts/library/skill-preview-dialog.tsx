@@ -83,7 +83,7 @@ export function SkillPreviewDialog({
       >
         {/* Header */}
         <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-violet-100 text-violet-600">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Zap size={18} />
           </div>
           <DialogTitle className="flex-1 truncate text-base font-medium text-foreground">

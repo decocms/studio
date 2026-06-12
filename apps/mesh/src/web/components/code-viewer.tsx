@@ -9,6 +9,7 @@
 import Editor, { loader } from "@monaco-editor/react";
 import { Loading01 } from "@untitledui/icons";
 import { getLanguageFromPath } from "@/web/components/sandbox/preview/file-explorer/utils";
+import { usePreferences } from "@/web/hooks/use-preferences";
 
 // Load Monaco from the same CDN as the other editors (idempotent — the
 // config is global and every consumer points at the same version).
@@ -25,17 +26,20 @@ export function CodeViewer({
   value: string;
   filename: string;
 }) {
+  const [preferences] = usePreferences();
+  const isDark =
+    preferences.theme === "dark" ||
+    (preferences.theme === "system" &&
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
+
   return (
     <Editor
       key={filename}
       path={filename}
       language={getLanguageFromPath(filename)}
       value={value}
-      theme={
-        document.documentElement.classList.contains("dark")
-          ? "vs-dark"
-          : "light"
-      }
+      theme={isDark ? "vs-dark" : "light"}
       loading={
         <div className="flex h-full w-full items-center justify-center">
           <Loading01 size={20} className="animate-spin text-muted-foreground" />

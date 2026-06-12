@@ -9,6 +9,7 @@
  */
 
 import type { ComponentType, ReactNode, SVGProps } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   DotsVertical,
@@ -372,6 +373,31 @@ export function SkillCard({
   );
 }
 
+/**
+ * Defers rendering children until the sentinel div enters the viewport.
+ * Prevents N parallel network requests when many thumbnails mount at once.
+ * The `setVisible` setter is stable across renders so capturing it in the
+ * lazy initializer is safe without a ref.
+ */
+function LazyThumb({ children }: { children: ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  const [attachSentinel] = useState(() => (node: HTMLDivElement | null) => {
+    if (!node) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    obs.observe(node);
+  });
+  if (visible) return <>{children}</>;
+  return <div ref={attachSentinel} className="h-full w-full" />;
+}
+
 function TextThumb({ url }: { url: string }) {
   const { data } = useQuery({
     queryKey: KEYS.fileText(url),
@@ -399,8 +425,7 @@ function CsvThumb({ url, ext }: { url: string; ext: string }) {
         credentials: "include",
         headers: { Range: "bytes=0-8191" },
       });
-      if (!res.ok && res.status !== 206)
-        throw new Error(`fetch failed: ${res.status}`);
+      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
       return res.text();
     },
     staleTime: 60_000,
@@ -463,29 +488,39 @@ function Thumb({
       />
     );
   } else if (VIDEO_EXTS.has(ext)) {
-    // `#t=0.1` + preload="metadata" makes the browser paint the first frame
-    // without downloading the whole file.
+    // `#t=0.1` + preload="metadata" paints the first frame without a full
+    // download — but only when the card is actually visible.
     inner = (
-      <video
-        src={`${downloadUrl}#t=0.1`}
-        preload="metadata"
-        muted
-        playsInline
-        className="pointer-events-none h-full w-full object-cover"
-      />
+      <LazyThumb>
+        <video
+          src={`${downloadUrl}#t=0.1`}
+          preload="metadata"
+          muted
+          playsInline
+          className="pointer-events-none h-full w-full object-cover"
+        />
+      </LazyThumb>
     );
   } else if (ext === "pdf") {
+    // Full PDF embed is too heavy for a card thumbnail; show the type icon
+    // and let the preview panel handle the real render.
     inner = (
-      <embed
-        src={`${downloadUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-        type="application/pdf"
-        className="pointer-events-none h-full w-full"
-      />
+      <div className="flex h-full w-full items-center justify-center">
+        <FileTypeIcon filename={filename} className="h-14 w-11 opacity-60" />
+      </div>
     );
   } else if (CSV_EXTS.has(ext)) {
-    inner = <CsvThumb url={downloadUrl} ext={ext} />;
+    inner = (
+      <LazyThumb>
+        <CsvThumb url={downloadUrl} ext={ext} />
+      </LazyThumb>
+    );
   } else if (TEXT_THUMB_EXTS.has(ext) && size <= MAX_TEXT_THUMB_BYTES) {
-    inner = <TextThumb url={downloadUrl} />;
+    inner = (
+      <LazyThumb>
+        <TextThumb url={downloadUrl} />
+      </LazyThumb>
+    );
   } else {
     inner = (
       <div className="flex h-full w-full items-center justify-center">
