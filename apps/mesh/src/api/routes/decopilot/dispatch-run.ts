@@ -101,6 +101,7 @@ import type { ThreadMessage } from "@/storage/types";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
 import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
+import { safeMemoryUsage } from "@/observability/profiling/safe-memory";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
 import { sleep } from "@decocms/std";
@@ -1375,7 +1376,7 @@ async function prepareRun(
               // event-loop stalls.
               await sleep(0);
 
-              const heapBefore = FINISH_TRACE ? process.memoryUsage() : null;
+              const heapBefore = FINISH_TRACE ? safeMemoryUsage() : null;
               const saveStart = performance.now();
 
               const threadStatus = resolveThreadStatus(
@@ -1397,7 +1398,7 @@ async function prepareRun(
               finishDurationHistogram.record(saveMs, { phase: "save" });
 
               if (FINISH_TRACE && heapBefore) {
-                const heapAfter = process.memoryUsage();
+                const heapAfter = safeMemoryUsage() ?? heapBefore;
                 let messageBytes = -1;
                 try {
                   messageBytes = JSON.stringify(responseMessage)?.length ?? -1;

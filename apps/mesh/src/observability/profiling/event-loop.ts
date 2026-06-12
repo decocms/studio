@@ -1,4 +1,5 @@
 import { meter } from "../index";
+import { safeMemoryUsage } from "./safe-memory";
 
 /**
  * Event-loop delay monitor (timer-drift technique).
@@ -69,16 +70,19 @@ export function startEventLoopMonitor(): () => void {
     delayHistogram.record(drift);
 
     if (drift > spikeMs) {
-      const m = process.memoryUsage();
+      // The lag is the signal worth keeping; memoryUsage() can throw under the
+      // very GC pressure that causes the stall, so read it defensively and omit
+      // the memory fields rather than crash the process logging a stall.
+      const m = safeMemoryUsage();
       console.warn(
         JSON.stringify({
           msg: "event-loop-stall",
           ts: new Date().toISOString(),
           lagMs: Math.round(drift),
-          rss: m.rss,
-          heapUsed: m.heapUsed,
-          heapTotal: m.heapTotal,
-          external: m.external,
+          rss: m?.rss,
+          heapUsed: m?.heapUsed,
+          heapTotal: m?.heapTotal,
+          external: m?.external,
         }),
       );
     }

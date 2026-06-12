@@ -1,3 +1,5 @@
+import { safeMemoryUsage } from "./safe-memory";
+
 let timer: ReturnType<typeof setInterval> | undefined;
 
 export function startHeapWatch(): () => void {
@@ -5,7 +7,10 @@ export function startHeapWatch(): () => void {
   const intervalMs = Number(process.env.HEAP_WATCH_INTERVAL_MS ?? 60_000);
 
   const tick = async () => {
-    const m = process.memoryUsage();
+    const m = safeMemoryUsage();
+    // memoryUsage() can transiently throw under GC pressure (EINTR). Skip this
+    // tick rather than crash — the next one will capture the trend.
+    if (!m) return;
     let jsc: {
       objectCount?: number;
       heapSize?: number;
@@ -40,8 +45,11 @@ export function startHeapWatch(): () => void {
     );
   };
 
-  void tick();
-  timer = setInterval(() => void tick(), intervalMs);
+  // Backstop: profiling must never crash the process, so swallow any rejection
+  // (e.g. a Bun internal throw from heapStats) instead of leaking it as an
+  // unhandled rejection.
+  void tick().catch(() => {});
+  timer = setInterval(() => void tick().catch(() => {}), intervalMs);
   timer.unref?.();
 
   process.on("SIGUSR2", () => {
