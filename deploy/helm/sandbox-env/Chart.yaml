@@ -9,10 +9,13 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.8.1: housekeeper no longer force-deletes claims on a transient
+# ReconcilerError (grace window + adopted-claim guard) — fixes the "did not
+# record an adopted Sandbox within 60s" auto-start freeze.
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.8.0
+version: 0.8.1
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "0.5.7"
 kubeVersion: ">=1.30.0-0"
