@@ -67,6 +67,7 @@ export function LibraryPreviewDialog({
           <>
             <DialogTitle className="sr-only">{filename}</DialogTitle>
             <HtmlPreviewPanel
+              key={previewPath}
               readUrl={file.downloadUrl}
               marker={`${entry.size}-${entry.updatedAt}`}
               title={filename}

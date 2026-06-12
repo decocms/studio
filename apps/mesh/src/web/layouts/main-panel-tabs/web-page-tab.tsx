@@ -91,6 +91,7 @@ export function WebPageTab({ slug }: { slug: string }) {
 
   return (
     <HtmlPreviewPanel
+      key={slug}
       readUrl={latest.url}
       marker={String(latest.bytes)}
       title={`${slug}.html`}

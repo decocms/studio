@@ -72,7 +72,11 @@ export function LibraryPreviewPanel({
   // it is pixel-identical to the chat deck tab.
   if (file && entry && isHtml(filename)) {
     return (
+      // Keyed per file: the editor hook holds per-file state (source
+      // cache, debounced saves, handshake) that must never survive a
+      // ?preview= switch — a pending save would PUT to the new path.
       <HtmlPreviewPanel
+        key={previewPath}
         readUrl={file.downloadUrl}
         marker={`${entry.size}-${entry.updatedAt}`}
         title={filename}

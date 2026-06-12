@@ -96,6 +96,10 @@ export function useDeckEditor(args: {
   const [savePending, setSavePending] = useState(false);
   const [displayedMarker, setDisplayedMarker] = useState<string | null>(null);
   const [seenMarker, setSeenMarker] = useState<string | null>(null);
+  // Forces an iframe reload even when the server marker hasn't changed —
+  // reload() after a failed op/save must resync the (diverged) iframe to
+  // server truth, and the marker alone is an identical-state no-op then.
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   // Mutable op machinery — a stable plain object (lazy useState init, not
   // a ref, so no render-time .current access); mutated only from event
@@ -126,6 +130,7 @@ export function useDeckEditor(args: {
     machine.source = null;
     setAgentUpdated(false);
     if (seenMarker) setDisplayedMarker(seenMarker);
+    setReloadNonce((n) => n + 1);
     invalidateStat();
   };
 
@@ -311,7 +316,8 @@ export function useDeckEditor(args: {
     iframeRef,
     deckDetected,
     writable,
-    displayedMarker,
+    displayedMarker:
+      displayedMarker === null ? null : `${displayedMarker}.${reloadNonce}`,
     editMode,
     setEditMode,
     railOpen,

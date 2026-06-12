@@ -146,7 +146,9 @@ export function DeckToolbar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={() => window.open(`${absoluteUrl}#print`, "_blank")}
+              onClick={() =>
+                window.open(`${absoluteUrl}#print`, "_blank", "noopener")
+              }
             >
               <Printer size={14} />
               Export as PDF

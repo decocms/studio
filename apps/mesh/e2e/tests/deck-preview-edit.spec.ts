@@ -39,6 +39,9 @@ test.describe("deck preview tab", () => {
   test("renders the deck and persists an inline structural edit", async ({
     authedPage,
   }) => {
+    // Cold dev-server boot + iframe handshake + save debounces add up;
+    // triple the budget so a busy host doesn't flake the save poll.
+    test.slow();
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
