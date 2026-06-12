@@ -65,7 +65,21 @@ function laneFor(status: Task["status"]): Lane {
 
 type Layout = "kanban" | "list";
 
+/** Route component — the same rounded content card every routed page sits in
+ *  (see Library): sidebar-colored gutter, then the card with the board. */
 export default function TasksBoard() {
+  return (
+    <div className="min-h-0 flex-1 pt-0 pr-1 pb-1 pl-0">
+      <div className="h-full p-0.5 pt-0.25">
+        <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
+          <TasksBoardPage />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TasksBoardPage() {
   const navigate = useNavigate();
   const { org } = useParams({ strict: false }) as { org?: string };
   const { org: organization } = useProjectContext();
