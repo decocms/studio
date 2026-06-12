@@ -55,7 +55,12 @@ export function HtmlPreviewPanel({
 
   return (
     <div className="flex h-full w-full flex-col bg-background">
-      <DeckToolbar readUrl={readUrl} editor={editor} trailing={trailing} />
+      <DeckToolbar
+        readUrl={readUrl}
+        editor={editor}
+        downloadName={title}
+        trailing={trailing}
+      />
       <div className="relative flex-1">
         <iframe
           key={src}

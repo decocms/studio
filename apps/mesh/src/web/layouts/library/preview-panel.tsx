@@ -6,9 +6,10 @@
  *
  * HTML files render the shared HtmlPreviewPanel instead — the SAME single
  * toolbar the chat deck tab shows (URL/copy/open, upgrading with rail/
- * edit/PDF on the deck-viewer handshake), with the Library's download and
- * close actions appended via `trailing`. Only home-volume files get a
- * savePath (the inline editor persists to the home volume).
+ * edit/download on the deck-viewer handshake), with the Library's close
+ * action appended via `trailing` (download lives in the shared toolbar).
+ * Only home-volume files get a savePath (the inline editor persists to
+ * the home volume).
  */
 
 import { Button } from "@deco/ui/components/button.tsx";
@@ -30,36 +31,16 @@ import { basename, parseLibraryPath } from "./location";
 
 const isHtml = (name: string) => /\.html?$/i.test(name);
 
-function PreviewActions({
-  downloadUrl,
-  filename,
-  onClose,
-}: {
-  downloadUrl: string;
-  filename: string;
-  onClose: () => void;
-}) {
+function PreviewClose({ onClose }: { onClose: () => void }) {
   return (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" asChild>
-            <a href={downloadUrl} download={filename}>
-              <Download01 size={14} />
-            </a>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Download</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <XClose size={14} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Close</TooltipContent>
-      </Tooltip>
-    </>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" onClick={onClose}>
+          <XClose size={14} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Close</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -96,13 +77,7 @@ export function LibraryPreviewPanel({
         marker={`${entry.size}-${entry.updatedAt}`}
         title={filename}
         savePath={volume === "home" ? filePath : undefined}
-        trailing={
-          <PreviewActions
-            downloadUrl={file.downloadUrl}
-            filename={filename}
-            onClose={onClose}
-          />
-        }
+        trailing={<PreviewClose onClose={onClose} />}
       />
     );
   }

@@ -13,6 +13,12 @@
 
 import { Button } from "@deco/ui/components/button.tsx";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@deco/ui/components/dropdown-menu.tsx";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -23,8 +29,10 @@ import {
   Copy01,
   Download01,
   Edit03,
+  File06,
   LayoutLeft,
   LinkExternal01,
+  Printer,
   RefreshCw01,
 } from "@untitledui/icons";
 import { type ReactNode, useState } from "react";
@@ -33,10 +41,13 @@ import type { DeckEditor } from "./use-deck-editor";
 export function DeckToolbar({
   readUrl,
   editor,
+  downloadName,
   trailing,
 }: {
   readUrl: string;
   editor: DeckEditor;
+  /** Filename for the Download action (`download` attribute). */
+  downloadName: string;
   /** Host-specific actions appended after the shared ones. */
   trailing?: ReactNode;
 }) {
@@ -124,21 +135,40 @@ export function DeckToolbar({
         </Tooltip>
       )}
 
-      {editor.deckDetected && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Export PDF"
-              onClick={() => window.open(`${absoluteUrl}#print`, "_blank")}
-            >
+      {editor.deckDetected ? (
+        // One download control: a deck exports as PDF (print) or as the
+        // raw HTML file. Plain pages get the simple download button below.
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Download">
               <Download01 size={14} />
             </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() => window.open(`${absoluteUrl}#print`, "_blank")}
+            >
+              <Printer size={14} />
+              Export as PDF
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a href={absoluteUrl} download={downloadName}>
+                <File06 size={14} />
+                Download HTML
+              </a>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Download" asChild>
+              <a href={absoluteUrl} download={downloadName}>
+                <Download01 size={14} />
+              </a>
+            </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Export PDF (opens print dialog)
-          </TooltipContent>
+          <TooltipContent side="bottom">Download</TooltipContent>
         </Tooltip>
       )}
 
