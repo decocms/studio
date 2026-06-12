@@ -50,15 +50,9 @@ async function isPluginEnabledForOrg(
   }
 
   // Check all virtual MCPs in the org
-  const virtualMcps = await ctx.storage.virtualMcps.list(orgId);
-  for (const virtualMcp of virtualMcps) {
-    const enabledPlugins = virtualMcp.metadata?.enabled_plugins;
-    if (Array.isArray(enabledPlugins) && enabledPlugins.includes(pluginId)) {
-      return true;
-    }
-  }
-
-  return false;
+  const virtualMcpPlugins =
+    await ctx.storage.virtualMcps.listEnabledPlugins(orgId);
+  return virtualMcpPlugins.includes(pluginId);
 }
 
 /**

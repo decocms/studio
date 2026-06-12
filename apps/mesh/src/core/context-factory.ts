@@ -16,7 +16,10 @@ import { CredentialVault } from "../encryption/credential-vault";
 import { getSettings } from "../settings";
 import { getBaseUrl } from "./server-constants";
 import { ConnectionStorage } from "../storage/connection";
-import { VirtualMCPStorage } from "../storage/virtual";
+import {
+  createRequestCachedVirtualMcps,
+  VirtualMCPStorage,
+} from "../storage/virtual";
 import {
   SqlMonitoringStorage,
   type SqlDialect,
@@ -1319,6 +1322,7 @@ export async function createStudioContextFactory(
 
     const storage = {
       ...baseStorage,
+      virtualMcps: createRequestCachedVirtualMcps(baseStorage.virtualMcps),
       threads: new OrgScopedThreadStorage(threadDb, organization?.id),
       asyncResearchJobs: new OrgScopedAsyncResearchJobStorage(
         asyncResearchJobDb,

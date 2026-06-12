@@ -11,6 +11,7 @@ import { Pool } from "pg";
 import type { Database as DatabaseSchema } from "../storage/types";
 import { getSettings } from "../settings";
 import { meter } from "../observability";
+import { getEventLoopLagMs } from "../observability/event-loop-delay";
 
 // ============================================================================
 // StudioDatabase Types
@@ -48,16 +49,30 @@ const createLog = (pool: Pool) => (event: LogEvent) => {
   };
 
   if (event.queryDurationMillis > SLOW_QUERY_TRESHOLD_MS) {
-    console.error("Slow query detected:", {
-      durationMs: event.queryDurationMillis,
-      sql: event.query.sql,
-      pool: {
-        total: pool.totalCount,
-        idle: pool.idleCount,
-        waiting: pool.waitingCount,
-        max: getPoolMax(),
+    // Kysely's queryDurationMillis is measured in JS: the timer starts when the
+    // query is dispatched and stops in the result callback, so a blocked event
+    // loop inflates the figure even when Postgres answered in sub-ms. When
+    // recent loop lag is on the same order as the "slow" duration, the SQL is
+    // almost certainly fast and the loop is the real bottleneck — say so
+    // instead of blaming the DB. See observability/event-loop-delay.ts.
+    const eventLoopLagMs = getEventLoopLagMs();
+    const likelyEventLoopLag = eventLoopLagMs > SLOW_QUERY_TRESHOLD_MS / 2;
+    console.error(
+      likelyEventLoopLag
+        ? "Slow query measurement — likely event-loop lag, not slow SQL:"
+        : "Slow query detected:",
+      {
+        durationMs: event.queryDurationMillis,
+        eventLoopLagMs: Math.round(eventLoopLagMs),
+        sql: event.query.sql,
+        pool: {
+          total: pool.totalCount,
+          idle: pool.idleCount,
+          waiting: pool.waitingCount,
+          max: getPoolMax(),
+        },
       },
-    });
+    );
   }
 
   queryDurationHistogram().record(event.queryDurationMillis, attributes);
