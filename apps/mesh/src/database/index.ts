@@ -16,19 +16,26 @@ import { meter } from "../observability";
 // StudioDatabase Types
 // ============================================================================
 
-const queryDurationHistogram = meter.createHistogram("db.query.duration", {
-  description: "Database query execution duration in milliseconds",
-  unit: "ms",
-});
+// Created lazily, not at module top: `meter` is a no-op until
+// initObservability() reassigns it, and module-top capture binds the dead
+// pre-init meter (instruments never export). First use happens post-init.
+let _queryDurationHistogram: ReturnType<typeof meter.createHistogram>;
+const queryDurationHistogram = () =>
+  (_queryDurationHistogram ??= meter.createHistogram("db.query.duration", {
+    description: "Database query execution duration in milliseconds",
+    unit: "ms",
+  }));
 
 // Kysely's queryDurationMillis measures SQL execution only — the timer starts
 // after the connection is checked out of the pool. Pool-acquisition wait is
 // invisible to it, so we measure that separately to tell genuinely slow SQL
 // apart from pool-capacity contention.
-const poolAcquireHistogram = meter.createHistogram("db.pool.acquire.duration", {
-  description: "Time spent waiting to acquire a connection from the pool",
-  unit: "ms",
-});
+let _poolAcquireHistogram: ReturnType<typeof meter.createHistogram>;
+const poolAcquireHistogram = () =>
+  (_poolAcquireHistogram ??= meter.createHistogram("db.pool.acquire.duration", {
+    description: "Time spent waiting to acquire a connection from the pool",
+    unit: "ms",
+  }));
 
 const SLOW_QUERY_TRESHOLD_MS = 400;
 const SLOW_ACQUIRE_THRESHOLD_MS = 100;
@@ -52,7 +59,7 @@ const createLog = (pool: Pool) => (event: LogEvent) => {
     });
   }
 
-  queryDurationHistogram.record(event.queryDurationMillis, attributes);
+  queryDurationHistogram().record(event.queryDurationMillis, attributes);
 
   if (event.level === "error") {
     console.error("Query failed:", {
@@ -74,13 +81,17 @@ function instrumentPool(pool: Pool): Pool {
   pool.connect = (cb?: unknown) => {
     if (typeof cb === "function") return originalConnect(cb as never);
     const start = performance.now();
+    // Snapshot BEFORE waiting: pg hands out an idle client when one exists, so
+    // if any are idle here a slow resolve is event-loop lag (pg defers the
+    // handoff through process.nextTick), NOT pool-capacity contention. Only a
+    // full pool with zero idle is genuine contention.
     const max = getPoolMax();
     const contended = pool.idleCount === 0 && pool.totalCount >= max;
     const idleAtStart = pool.idleCount;
     return originalConnect().then(
       (client) => {
         const waited = performance.now() - start;
-        poolAcquireHistogram.record(waited, {
+        poolAcquireHistogram().record(waited, {
           "db.pool.outcome": contended ? "contended" : "available",
         });
         if (waited > SLOW_ACQUIRE_THRESHOLD_MS) {
@@ -93,6 +104,8 @@ function instrumentPool(pool: Pool): Pool {
               max,
             });
           } else {
+            // A connection was free; the delay is the event loop being blocked,
+            // not the DB pool. See observability/event-loop-delay.ts.
             console.warn("Slow pool acquire — event-loop lag (not pool):", {
               waitMs: waited,
               idleAtStart,
@@ -104,7 +117,7 @@ function instrumentPool(pool: Pool): Pool {
         return client;
       },
       (err) => {
-        poolAcquireHistogram.record(performance.now() - start, {
+        poolAcquireHistogram().record(performance.now() - start, {
           "db.pool.outcome": "error",
         });
         throw err;
