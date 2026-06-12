@@ -20,11 +20,15 @@ import { runControlPollLoop } from "./control-poller";
 import { runProxyPollLoop } from "./proxy-poller";
 import * as runAbortRegistry from "./run-abort-registry";
 import * as proxyAbortRegistry from "./proxy-abort-registry";
-import { handleLocalDispatch } from "./handle-local-dispatch";
+import {
+  handleLocalDispatch,
+  relayWorkItemFailure,
+} from "./handle-local-dispatch";
 import type { ClusterConnectionHandle } from "./types";
 import type { ControlHandler } from "./control-handler";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
+import type { Outbox } from "./outbox";
 
 export interface ClusterConnectionPullInput {
   /**
@@ -94,6 +98,12 @@ export interface ClusterConnectionPullInput {
   pollTimeoutSecs?: number;
   /** Called once the pull loop has started (analogous to `onConnected` in the WS path). */
   onConnected?: () => void;
+  /**
+   * Durable chunk-relay outbox (spec §5.1). Opened once per daemon in index.ts
+   * and shared across every dispatch; forwarded to `handleLocalDispatch` so the
+   * relay survives a daemon restart mid-run.
+   */
+  outbox: Outbox;
 }
 
 /**
@@ -101,7 +111,8 @@ export interface ClusterConnectionPullInput {
  *
  * Priority:
  *   1. `item.sandbox.handle` — the authoritative handle resolved cluster-side
- *      by `resolveRemoteCliSandboxHandle` (Phase D fix). Always prefer this.
+ *      by `computeDesktopSandboxHandle` (the pure handle derivation in
+ *      `pullDispatch`). Always prefer this.
  *   2. Fallback derivation from `harnessInput.agent.id` + `harnessInput.branch`
  *      (legacy behavior for work items published before the `sandbox` field
  *      was added, or when sandbox config resolution failed).
@@ -119,6 +130,26 @@ function deriveHandle(item: WorkItem): string {
       ? input.branch
       : null;
   return branch ? `agent-${agentId}-${branch}` : `agent-${agentId}`;
+}
+
+async function relayClaimedWorkItemFailure(
+  input: ClusterConnectionPullInput,
+  signal: AbortSignal,
+  item: WorkItem,
+  code: string,
+  message: string,
+): Promise<void> {
+  await relayWorkItemFailure(
+    item,
+    {
+      clusterBaseUrl: input.clusterBaseUrl,
+      getClusterToken: input.getAccessToken,
+      fetchImpl: input.fetchImpl,
+      signal,
+    },
+    code,
+    message,
+  );
 }
 
 /**
@@ -167,6 +198,37 @@ export async function connectToClusterPull(
         `[cluster-connection-pull] work item runId=${item.runId} threadId=${item.threadId} handle=${handle}`,
       );
 
+      // Claim-time credential-expiry check (spec §Hard-Break-Mechanics / Q20).
+      // Work items carry a 1h MCP bearer; if the item sat in the queue too long
+      // and the bearer expired before we claimed it, fail the run cleanly via
+      // the relay channel rather than letting the sandbox attempt auth with a
+      // stale token.
+      // The item is already ACKed server-side (ACK-on-delivery at the HTTP
+      // layer) — we only decide whether to dispatch or relay a terminal failure.
+      // If relayWorkItemFailure itself throws (cluster unreachable), we re-throw
+      // so the work-poll loop logs it as "onWork threw (swallowed)" and continues
+      // to the next item. The max_age TTL on the JetStream stream (1h) is the
+      // backstop that evicts undelivered stale items before a daemon ever sees
+      // them; this check guards items that were claimed just at the boundary.
+      const mcp = (item.harnessInput as { mcp?: { expiresAt?: number } }).mcp;
+      if (typeof mcp?.expiresAt === "number" && mcp.expiresAt <= Date.now()) {
+        console.warn(
+          `[cluster-connection-pull] work item expired at claim time — relaying failure runId=${item.runId}`,
+        );
+        await relayWorkItemFailure(
+          item,
+          {
+            clusterBaseUrl: input.clusterBaseUrl,
+            getClusterToken: input.getAccessToken,
+            fetchImpl: input.fetchImpl,
+            signal: ac.signal,
+          },
+          "work_item_expired",
+          "work item credentials expired before the daemon claimed it — send the message again",
+        );
+        return;
+      }
+
       // (a) Ensure the sandbox is running.
       // Use the full sandbox config from the work item when available so the
       // daemon can spawn cold (repo clone + workload runtime configured).
@@ -214,15 +276,25 @@ export async function connectToClusterPull(
           `[cluster-connection-pull] ensureSandbox failed handle=${handle} runId=${item.runId}:`,
           err,
         );
-        // Re-throw so the work-poll loop logs it as "onWork threw (swallowed)"
-        // and continues to the next item.
-        throw err;
+        await relayClaimedWorkItemFailure(
+          input,
+          ac.signal,
+          item,
+          "sandbox_start_failed",
+          "desktop sandbox failed to start for this run; send the message again",
+        );
+        return;
       }
 
       // (b) + (c) Relay via handleLocalDispatch.
       // acquireDispatch pins the sandbox for the full duration of the relay so
       // the LRU eviction logic skips it (activeDispatchCount > 0). Released in
       // `finally` to guarantee the counter is always decremented.
+      // Note: an old-shape (pre-v2) work item that passes this point will fail
+      // the sandbox-daemon's `harnessStreamInputSchema` parse → `bad_input` SSE
+      // error → relay forwards it → kernel marks the run failed. No special
+      // handling needed here; the relay is the clean-failure path for stale-shape
+      // items too.
       const releaseDispatch = input.provider.acquireDispatch(handle);
       // Phase C: register a per-run AbortController so the control-poll loop
       // can abort this specific dispatch when the cluster sends a cancel frame.
@@ -238,7 +310,21 @@ export async function connectToClusterPull(
           getClusterToken: input.getAccessToken,
           fetchImpl: input.fetchImpl,
           signal: AbortSignal.any([ac.signal, runAc.signal]),
+          outbox: input.outbox,
         });
+      } catch (err) {
+        console.error(
+          `[cluster-connection-pull] local dispatch failed handle=${handle} runId=${item.runId}:`,
+          err,
+        );
+        await relayClaimedWorkItemFailure(
+          input,
+          ac.signal,
+          item,
+          "local_dispatch_failed",
+          "desktop harness dispatch failed before producing a terminal result; send the message again",
+        );
+        return;
       } finally {
         runAbortRegistry.unregister(item.runId);
         releaseDispatch();

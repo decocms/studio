@@ -4,10 +4,12 @@
  * Stream: LINK_WORK_QUEUE, subjects link.work.>, WorkQueue retention,
  * Memory storage. One subject per user (`link.work.<userSub>`).
  *
- * Work items are published idempotently keyed by `runId` (L1). A pod
- * acks each message immediately upon handing it to the HTTP response
- * (ACK-ON-DELIVERY). Redelivery-on-desktop-death is deferred to the
- * progress-staleness sweeper (a later phase) — this phase is best-effort.
+ * Work items are published idempotently keyed by the per-attempt
+ * `runFenceToken` (L1) — NOT `runId`, which aliases the threadId (see
+ * `workItemDedupKey`). A pod acks each message immediately upon handing it
+ * to the HTTP response (ACK-ON-DELIVERY). Redelivery-on-desktop-death is
+ * deferred to the progress-staleness sweeper (a later phase) — this phase
+ * is best-effort.
  */
 import {
   AckPolicy,
@@ -20,7 +22,7 @@ import {
   type JetStreamManager,
 } from "nats";
 import { z } from "zod";
-import type { MessagesRef } from "@/harnesses/offload-messages";
+import type { MessagesRef } from "@decocms/harness/offload-messages";
 
 const STREAM_NAME = "LINK_WORK_QUEUE";
 const SUBJECT_PREFIX = "link.work";
@@ -132,8 +134,7 @@ export const workItemSchema = z.object({
    * Present when the encoded harnessInput exceeded the NATS `MAX_PUBLISH_BYTES`
    * budget — `harnessInput.messages` is then `[]` inline and the real messages
    * are at the presigned URL. The daemon forwards this ref verbatim in the
-   * `/_sandbox/dispatch` POST body; the sandbox daemon re-inflates from it
-   * (same flow as the WS path's `remoteDispatch` offload).
+   * `/_sandbox/dispatch` POST body; the sandbox daemon re-inflates from it.
    *
    * Optional for back-compat: absent on small conversations (no offload needed).
    */
@@ -147,6 +148,26 @@ export const workItemSchema = z.object({
 });
 export type WorkItem = z.infer<typeof workItemSchema>;
 export type { MessagesRef };
+
+/**
+ * NATS publish dedup key (msgID) for a work item.
+ *
+ * MUST be unique per run *attempt*, not per thread. `runId` aliases the
+ * threadId — the run id IS the thread id (dispatch-run.ts: "the thread id is
+ * the run id") — so two sequential turns on one thread share a `runId`. Keying
+ * dedup on `runId` makes the second turn's publish collide with the first
+ * inside NATS's duplicate window (default 2 min), silently dropping it: the
+ * daemon never receives the second turn's work item and the run hangs.
+ *
+ * `runFenceToken` is a fresh `crypto.randomUUID()` minted per dispatch
+ * (`prepareRun`), so it uniquely identifies the attempt while still deduping a
+ * genuine double-publish of the SAME attempt (e.g. a DBOS step replay).
+ */
+export function workItemDedupKey(
+  item: Pick<WorkItem, "runFenceToken">,
+): string {
+  return item.runFenceToken;
+}
 
 const encoder = new TextEncoder();
 
@@ -180,6 +201,9 @@ export class LinkWorkQueue {
       // Old-discard evicts the oldest.
       max_msgs_per_subject: 1_000,
       num_replicas: 1,
+      // Items carry model secrets + a 1h MCP bearer; never let them rest longer
+      // than the bearer's TTL (decision Q20). nanoseconds.
+      max_age: 3_600 * 1_000_000_000, // 1h
     };
 
     try {
@@ -197,7 +221,9 @@ export class LinkWorkQueue {
   }
 
   /**
-   * Publish a work item idempotently keyed by runId (L1).
+   * Publish a work item idempotently keyed by the per-attempt fence token
+   * (L1 — see `workItemDedupKey`; NOT `runId`, which aliases the threadId and
+   * would collide across sequential turns).
    * If NATS is unavailable, logs a warning and returns — the gate handles
    * absence by failing the run (a later phase can add a Postgres fallback).
    */
@@ -211,7 +237,7 @@ export class LinkWorkQueue {
     }
     const subject = buildWorkSubject(userSub);
     const data = encoder.encode(JSON.stringify(item));
-    await this.js.publish(subject, data, { msgID: item.runId });
+    await this.js.publish(subject, data, { msgID: workItemDedupKey(item) });
   }
 
   /**

@@ -48,6 +48,7 @@
  */
 
 import { expect, getE2EAppOrigin, test } from "../fixtures/test";
+import { LINK_PROTOCOL_VERSION } from "../../src/links/protocol";
 
 // ---------------------------------------------------------------------------
 // Wire helpers
@@ -312,6 +313,7 @@ async function establishPresence(
   api: import("@playwright/test").APIRequestContext,
 ): Promise<{ refresh: () => void; dispose: () => Promise<void> }> {
   const headers = {
+    "x-link-protocol": String(LINK_PROTOCOL_VERSION),
     "x-link-capabilities": "claude-code",
     "x-link-machine-id": "e2e-proxy-sim",
     "x-link-cli-version": "test",

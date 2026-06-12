@@ -45,10 +45,11 @@ const PersistedToolModelInfoSchema = PersistedModelInfoSchema.extend({
 
 /** Raw DB shape may include legacy `toolApprovalLevel: "plan"`. */
 const PersistedRunConfigRawSchema = z.object({
+  // Legacy rows may carry a `coding` slot; the non-strict object drops it
+  // on parse (the slot was removed — D11).
   models: z.object({
     credentialId: z.string(),
     thinking: PersistedModelInfoSchema,
-    coding: PersistedModelInfoSchema.optional(),
     fast: PersistedModelInfoSchema.optional(),
     image: PersistedToolModelInfoSchema.optional(),
     deepResearch: PersistedToolModelInfoSchema.optional(),
@@ -109,7 +110,6 @@ export function toModelsConfig(models: PersistedRunConfig["models"]) {
   return {
     credentialId: chatCred,
     thinking: toModelInfo(models.thinking),
-    ...(models.coding && { coding: toModelInfo(models.coding) }),
     ...(models.fast && { fast: toModelInfo(models.fast) }),
     ...(models.image && {
       image: {

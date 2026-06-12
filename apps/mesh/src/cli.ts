@@ -333,6 +333,11 @@ if (command === "dev") {
   });
 
   const localSandboxProvider = values["local-sandbox-provider"] === true;
+  const { isDevLinkToxiProxyEnabled } = await import(
+    "./cli/lib/dev-link-toxiproxy"
+  );
+  const devLinkToxiProxy =
+    localSandboxProvider && isDevLinkToxiProxyEnabled(process.env);
   const devOptions = {
     port: values.port!,
     vitePort: values["vite-port"]!,
@@ -343,6 +348,7 @@ if (command === "dev") {
     localMode: values["no-local-mode"] !== true,
     localSandboxProvider,
     hotReload: values.hot === true,
+    devLinkToxiProxy,
   };
 
   if (noTui) {
@@ -361,7 +367,7 @@ if (command === "dev") {
     const { setDevMode } = await import("./cli/cli-store");
 
     const displayHome = decoHome.replace(homedir(), "~");
-    setDevMode({ localSandboxProvider });
+    setDevMode({ localSandboxProvider, devLinkToxiProxy });
     render(createElement(App, { home: displayHome }), {
       patchConsole: false,
     });

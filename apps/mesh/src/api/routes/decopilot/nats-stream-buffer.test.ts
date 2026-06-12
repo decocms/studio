@@ -400,4 +400,50 @@ describe("NatsStreamBuffer", () => {
       expect(tail.done).toBe(true);
     });
   });
+
+  describe("publishRawChunk", () => {
+    function bufferWithPublish() {
+      const published: Array<{ subj: string; data: Uint8Array }> = [];
+      const mockJs = {
+        publish: mockOf((subj: string, data: Uint8Array) => {
+          published.push({ subj, data });
+          return Promise.resolve({ seq: published.length });
+        }),
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+      return { buffer, published };
+    }
+
+    it("publishes the raw chunk under the {p} envelope on the run subject", async () => {
+      const { buffer, published } = bufferWithPublish();
+      const chunk = { type: "text-delta", id: "t", delta: "hi" };
+      await buffer.publishRawChunk("run_1", chunk);
+      expect(published).toHaveLength(1);
+      expect(published[0]!.subj).toBe("decopilot.stream.run_1");
+      expect(JSON.parse(new TextDecoder().decode(published[0]!.data))).toEqual({
+        p: chunk,
+      });
+    });
+
+    it("resolves false when JetStream is unavailable (no throw)", async () => {
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => null,
+        getJetStream: () => null,
+      });
+      expect(await buffer.publishRawChunk("run_1", { type: "start" })).toBe(
+        false,
+      );
+    });
+
+    it("resolves true after the publish is confirmed", async () => {
+      const { buffer } = bufferWithPublish();
+      expect(await buffer.publishRawChunk("run_1", { type: "start" })).toBe(
+        true,
+      );
+    });
+  });
 });

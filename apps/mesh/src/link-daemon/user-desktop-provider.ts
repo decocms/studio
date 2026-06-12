@@ -7,9 +7,8 @@
  *
  * Idle sandboxes are evicted when the population exceeds `maxSandboxes`
  * (default 20). Sandboxes with active dispatches are pinned — eviction
- * skips them and we tolerate going temporarily over the cap. The
- * cluster's `remoteDispatch` calls `provider.recordHit` indirectly via
- * the reverse-proxy hits, keeping warm sandboxes warm.
+ * skips them and we tolerate going temporarily over the cap. The daemon's
+ * proxy hits call `provider.recordHit`, keeping warm sandboxes warm.
  *
  * The actual process spawn / config-post / health-probe are passed in
  * as deps so the production wiring (apps/mesh/src/link-daemon/index.ts)

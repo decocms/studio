@@ -1,4 +1,4 @@
-import { sha256Hex } from "../../../../apps/mesh/src/harnesses/offload-messages";
+import { sha256Hex } from "@decocms/harness/offload-messages";
 import { retry } from "@decocms/std";
 
 /** Max size of an offloaded messages blob (bound to a realistic harness input,

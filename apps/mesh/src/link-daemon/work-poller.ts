@@ -4,7 +4,13 @@
  * Continuously long-polls GET /api/links/work. On a 200 response, parses
  * and validates the JSON body as a WorkItem (envelope carrying harnessInput +
  * runFenceToken) and invokes `onWork`. On 204 (no work), immediately re-polls.
- * On errors, backs off using exponentialBackoffWithJitter from @decocms/std.
+ * On 426 (protocol_mismatch — this daemon is too old for the cluster), logs
+ * the server's remediation message and stops polling permanently. On other
+ * errors, backs off using exponentialBackoffWithJitter from @decocms/std.
+ *
+ * Every poll advertises the daemon's link protocol version via the
+ * `x-link-protocol` header so the cluster's version gate can reject stale
+ * daemons explicitly instead of letting v2 inputs fail opaque Zod parses.
  *
  * The loop runs until `signal` is aborted. Each poll refreshes the presence
  * claim by piggy-backing on the request (the server updates `studio_links`
@@ -21,7 +27,11 @@ import {
   workItemSchema,
   type WorkItem,
 } from "../api/routes/decopilot/link-work-queue";
-import type { Capability } from "../links/protocol";
+import {
+  LINK_PROTOCOL_HEADER,
+  LINK_PROTOCOL_VERSION,
+  type Capability,
+} from "../links/protocol";
 
 export interface WorkPollerDeps {
   /** Fully-qualified base URL, e.g. "https://studio.deco.cx". */
@@ -77,9 +87,12 @@ const MAX_DELAY_MS = 30_000;
  *
  * The loop:
  *   1. Resolves a fresh bearer token via `getAccessToken` before each poll (per-poll resolver avoids pinning a stale credential).
- *   2. GETs /api/links/work?timeout=<N>.
+ *   2. GETs /api/links/work?timeout=<N> with `x-link-protocol` advertising
+ *      this daemon's protocol version.
  *   3. On 200: parses + validates the WorkItem via workItemSchema; calls onWork.
  *      On 204: no work available (server held the long-poll window); re-polls immediately.
+ *      On 426: protocol mismatch — logs the server's remediation and returns
+ *      (no retry can succeed until the daemon is upgraded).
  *      On error / bad-status: backs off with exponential-backoff-with-jitter.
  *   4. Stops immediately when signal is aborted.
  */
@@ -91,7 +104,11 @@ export async function runWorkPollLoop(deps: WorkPollerDeps): Promise<void> {
   let errorStreak = 0;
 
   // Build the static presence headers once — these don't change between polls.
-  const presenceHeaders: Record<string, string> = {};
+  // The protocol version is always sent so the cluster's 426 gate can tell a
+  // current daemon from a stale one (absent header = pre-v2 daemon).
+  const presenceHeaders: Record<string, string> = {
+    [LINK_PROTOCOL_HEADER]: String(LINK_PROTOCOL_VERSION),
+  };
   if (deps.capabilities && deps.capabilities.length > 0) {
     presenceHeaders["x-link-capabilities"] = deps.capabilities.join(",");
   }
@@ -180,7 +197,29 @@ export async function runWorkPollLoop(deps: WorkPollerDeps): Promise<void> {
       continue;
     }
 
-    // Step 3c: any other status (4xx/5xx) — back off.
+    // Step 3c: 426 — protocol mismatch: this daemon is too old for the
+    // cluster. Surface the server's remediation message (it reaches the
+    // `deco link` terminal) and stop polling permanently — retrying cannot
+    // succeed until the daemon is upgraded, and hot-looping would only
+    // re-arm the presence claim for a daemon that can't take work.
+    if (res.status === 426) {
+      let message = `link protocol v${LINK_PROTOCOL_VERSION} is not supported by the cluster. Re-run: bunx decocms@latest link`;
+      try {
+        const body = (await res.json()) as Record<string, unknown>;
+        if (typeof body?.message === "string" && body.message.length > 0) {
+          message = body.message;
+        }
+      } catch {
+        // Body not JSON — keep the local fallback message.
+      }
+      console.error(`[work-poller] ${message}`);
+      console.error(
+        "[work-poller] work polling stopped — upgrade the link daemon and restart `deco link`.",
+      );
+      return;
+    }
+
+    // Step 3d: any other status (4xx/5xx) — back off.
     console.error(
       `[work-poller] unexpected status ${res.status} from work poll`,
     );

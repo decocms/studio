@@ -284,6 +284,48 @@ export class NatsStreamBuffer implements StreamBuffer {
     })();
   }
 
+  /**
+   * Publish ONE raw chunk and AWAIT the JetStream ack (spec §5.3). This is the
+   * durable commit point for the publish-then-consume ingest: the caller
+   * advances its ack cursor only after this resolves `true`. Mirrors `pump`'s
+   * `publishChunk` fragmentation, but awaited (not fire-and-forget) so the
+   * caller knows the publish is confirmed. Returns `false` when JetStream is
+   * unavailable so the caller does NOT advance its cursor.
+   */
+  async publishRawChunk(taskId: string, chunk: unknown): Promise<boolean> {
+    const js = this.js;
+    if (!js) return false;
+    const subj = streamSubject(taskId);
+    const bytes = this.encoder.encode(JSON.stringify({ p: chunk }));
+    if (bytes.length > MAX_CHUNKED_BYTES) {
+      console.warn(
+        `[Decopilot] dropping oversized raw chunk for thread ${taskId}: ${(
+          bytes.length / (1024 * 1024)
+        ).toFixed(1)} MiB exceeds ${MAX_CHUNKED_BYTES / (1024 * 1024)} MiB cap`,
+      );
+      // Dropped, but the publish "succeeded" as far as the ack cursor is
+      // concerned — refusing to advance would wedge the run on a pathological
+      // chunk (loud-fail is the daemon-outbox cap's job, not ingest's).
+      return true;
+    }
+    if (bytes.length <= MAX_PUBLISH_BYTES) {
+      await js.publish(subj, bytes);
+      return true;
+    }
+    const total = Math.ceil(bytes.length / MAX_PUBLISH_BYTES);
+    for (let i = 0; i < total; i++) {
+      const slice = bytes.slice(
+        i * MAX_PUBLISH_BYTES,
+        (i + 1) * MAX_PUBLISH_BYTES,
+      );
+      const hdrs = natsHeaders();
+      hdrs.set(FRAG_INDEX_HEADER, String(i));
+      hdrs.set(FRAG_TOTAL_HEADER, String(total));
+      await js.publish(subj, slice, { headers: hdrs });
+    }
+    return true;
+  }
+
   async createTailStream(
     taskId: string,
     signal?: AbortSignal,

@@ -28,7 +28,7 @@ describe("PartRowBuilder", () => {
       })),
     ).toEqual([
       {
-        id: "thread_1:0",
+        id: "thread_1:assistant_1:0",
         seq: 0,
         kind: "text",
         message_id: "assistant_1",
@@ -37,7 +37,7 @@ describe("PartRowBuilder", () => {
         created_at: "2023-11-14T22:13:20.000Z",
       },
       {
-        id: "thread_1:1",
+        id: "thread_1:assistant_1:1",
         seq: 1,
         kind: "finish",
         message_id: "assistant_1",
@@ -68,10 +68,10 @@ describe("PartRowBuilder", () => {
     builder.acknowledge(finalRows);
     const repeatedFinalRows = builder.emitFinal(message);
 
-    expect(firstStep.map((row) => row.id)).toEqual(["thread_1:0"]);
+    expect(firstStep.map((row) => row.id)).toEqual(["thread_1:assistant_1:0"]);
     expect(secondStep).toEqual([]);
     expect(finalRows.map((row) => [row.id, row.kind])).toEqual([
-      ["thread_1:1", "finish"],
+      ["thread_1:assistant_1:1", "finish"],
     ]);
     expect(repeatedFinalRows).toEqual([]);
   });
@@ -112,7 +112,7 @@ describe("PartRowBuilder", () => {
       })),
     ).toEqual([
       {
-        id: "thread_1:0",
+        id: "thread_1:assistant_1:0",
         seq: 0,
         kind: "tool_result",
         payload: {
@@ -136,8 +136,12 @@ describe("PartRowBuilder", () => {
     const rows = builder.emitError("error_msg", "desktop failed");
 
     expect(rows.map((row) => [row.id, row.kind, row.payload])).toEqual([
-      ["thread_1:0", "error", { type: "text", text: "Error: desktop failed" }],
-      ["thread_1:1", "finish", {}],
+      [
+        "thread_1:error_msg:0",
+        "error",
+        { type: "text", text: "Error: desktop failed" },
+      ],
+      ["thread_1:error_msg:1", "finish", {}],
     ]);
   });
 
@@ -148,5 +152,71 @@ describe("PartRowBuilder", () => {
     expect(isFinalPart({ type: "text", state: "done", text: "hello" })).toBe(
       true,
     );
+  });
+
+  it("two builders sharing a runId but distinct message ids produce disjoint row ids (pull turn: user vs assistant)", () => {
+    // Regression for the v2 part-id collision: in the PULL path the user
+    // message is persisted by one PartRowBuilder (at dispatch) and the
+    // assistant message by a SEPARATE PartRowBuilder (in consumeRelayedRun),
+    // both with runId == threadId and seq restarting at 0. With per-RUN ids
+    // (`${runId}:${seq}`) the assistant's `${threadId}:0`/`:1` collided with
+    // the user's and were dropped by ON CONFLICT DO NOTHING. Per-MESSAGE ids
+    // (`${runId}:${messageId}:${seq}`) must keep the two sets disjoint.
+    const shared = {
+      orgId: "org_1",
+      threadId: "thread_1",
+      runId: "thread_1",
+    };
+
+    const userBuilder = new PartRowBuilder({ ...shared, baseTimeMs: 1_000 });
+    const userRows = userBuilder.emitUserMessage({
+      id: "user_1",
+      role: "user",
+      parts: [{ type: "text", text: "question" }],
+    });
+
+    const assistantBuilder = new PartRowBuilder({
+      ...shared,
+      baseTimeMs: 2_000,
+    });
+    const assistantRows = assistantBuilder.emitFinal({
+      id: "assistant_1",
+      role: "assistant",
+      parts: [{ type: "text", text: "answer" }],
+    });
+
+    const userIds = userRows.map((r) => r.id);
+    const assistantIds = assistantRows.map((r) => r.id);
+
+    // Both builders allocate seq 0,1 — but the messageId segment keeps the ids
+    // distinct, so neither set would be dropped by an id conflict.
+    expect(userIds).toEqual(["thread_1:user_1:0", "thread_1:user_1:1"]);
+    expect(assistantIds).toEqual([
+      "thread_1:assistant_1:0",
+      "thread_1:assistant_1:1",
+    ]);
+    const overlap = userIds.filter((id) => assistantIds.includes(id));
+    expect(overlap).toEqual([]);
+  });
+
+  it("emitFinal carries the message metadata on the finish anchor row", () => {
+    const builder = new PartRowBuilder({
+      orgId: "org_1",
+      threadId: "thread_1",
+      runId: "thread_1",
+      baseTimeMs: 1_700_000_000_000,
+    });
+    const rows = builder.emitFinal({
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "text", text: "hi" }],
+      metadata: {
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+        codingAgentSessionId: "sess-1",
+        codingAgentProvider: "claude-code",
+      },
+    } as Parameters<typeof builder.emitFinal>[0] & { metadata?: unknown });
+    const finish = rows.find((r) => r.kind === "finish");
+    expect(finish?.metadata).toMatchObject({ codingAgentSessionId: "sess-1" });
   });
 });

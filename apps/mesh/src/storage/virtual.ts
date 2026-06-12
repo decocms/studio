@@ -67,58 +67,60 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     const id = options?.id ?? generatePrefixedId("vir");
     const now = new Date().toISOString();
 
-    // Insert as a VIRTUAL connection
-    await this.db
-      .insertInto("connections")
-      .values({
-        id,
-        organization_id: organizationId,
-        created_by: userId,
-        title: data.title,
-        description: data.description ?? null,
-        icon: data.icon ?? null,
-        app_name: null,
-        app_id: null,
-        connection_type: "VIRTUAL",
-        pinned: data.pinned ?? false,
-        connection_url: `virtual://${id}`,
-        connection_token: null,
-        connection_headers: null,
-        oauth_config: null,
-        configuration_state: null,
-        configuration_scopes: null,
-        metadata: data.metadata ? JSON.stringify(data.metadata) : null,
-        bindings: null,
-        status: data.status ?? "active",
-        created_at: now,
-        updated_at: now,
-      })
-      .execute();
-
-    // Insert connection aggregations (all explicit connections are 'direct' dependencies)
-    if (data.connections.length > 0) {
-      await this.db
-        .insertInto("connection_aggregations")
-        .values(
-          data.connections.map((conn) => ({
-            id: generatePrefixedId("agg"),
-            parent_connection_id: id,
-            child_connection_id: conn.connection_id,
-            selected_tools: conn.selected_tools
-              ? JSON.stringify(conn.selected_tools)
-              : null,
-            selected_resources: conn.selected_resources
-              ? JSON.stringify(conn.selected_resources)
-              : null,
-            selected_prompts: conn.selected_prompts
-              ? JSON.stringify(conn.selected_prompts)
-              : null,
-            dependency_mode: "direct" as DependencyMode,
-            created_at: now,
-          })),
-        )
+    await this.db.transaction().execute(async (trx) => {
+      // Insert as a VIRTUAL connection
+      await trx
+        .insertInto("connections")
+        .values({
+          id,
+          organization_id: organizationId,
+          created_by: userId,
+          title: data.title,
+          description: data.description ?? null,
+          icon: data.icon ?? null,
+          app_name: null,
+          app_id: null,
+          connection_type: "VIRTUAL",
+          pinned: data.pinned ?? false,
+          connection_url: `virtual://${id}`,
+          connection_token: null,
+          connection_headers: null,
+          oauth_config: null,
+          configuration_state: null,
+          configuration_scopes: null,
+          metadata: data.metadata ? JSON.stringify(data.metadata) : null,
+          bindings: null,
+          status: data.status ?? "active",
+          created_at: now,
+          updated_at: now,
+        })
         .execute();
-    }
+
+      // Insert connection aggregations (all explicit connections are 'direct' dependencies)
+      if (data.connections.length > 0) {
+        await trx
+          .insertInto("connection_aggregations")
+          .values(
+            data.connections.map((conn) => ({
+              id: generatePrefixedId("agg"),
+              parent_connection_id: id,
+              child_connection_id: conn.connection_id,
+              selected_tools: conn.selected_tools
+                ? JSON.stringify(conn.selected_tools)
+                : null,
+              selected_resources: conn.selected_resources
+                ? JSON.stringify(conn.selected_resources)
+                : null,
+              selected_prompts: conn.selected_prompts
+                ? JSON.stringify(conn.selected_prompts)
+                : null,
+              dependency_mode: "direct" as DependencyMode,
+              created_at: now,
+            })),
+          )
+          .execute();
+      }
+    });
 
     const virtualMcp = await this.findById(id);
     if (!virtualMcp) {
@@ -408,65 +410,75 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
         : null;
     }
 
-    // Update the connection
-    await this.db
-      .updateTable("connections")
-      .set(updateData)
-      .where("id", "=", id)
-      .where("connection_type", "=", "VIRTUAL")
-      .execute();
+    const removedConnectionIds: string[] = [];
 
-    // Update aggregations if provided
-    if (data.connections !== undefined) {
-      // Collect current direct connection IDs before removing them
-      const currentAggs = await this.db
-        .selectFrom("connection_aggregations")
-        .select("child_connection_id")
-        .where("parent_connection_id", "=", id)
-        .where("dependency_mode", "=", "direct")
-        .execute();
-      const previousIds = new Set(
-        currentAggs.map((a) => a.child_connection_id),
-      );
-
-      // Only delete 'direct' dependencies - preserve 'indirect' ones from virtual tools
-      await this.db
-        .deleteFrom("connection_aggregations")
-        .where("parent_connection_id", "=", id)
-        .where("dependency_mode", "=", "direct")
+    await this.db.transaction().execute(async (trx) => {
+      // Update the connection
+      await trx
+        .updateTable("connections")
+        .set(updateData)
+        .where("id", "=", id)
+        .where("connection_type", "=", "VIRTUAL")
         .execute();
 
-      if (data.connections.length > 0) {
-        await this.db
-          .insertInto("connection_aggregations")
-          .values(
-            data.connections.map((conn) => ({
-              id: generatePrefixedId("agg"),
-              parent_connection_id: id,
-              child_connection_id: conn.connection_id,
-              selected_tools: conn.selected_tools
-                ? JSON.stringify(conn.selected_tools)
-                : null,
-              selected_resources: conn.selected_resources
-                ? JSON.stringify(conn.selected_resources)
-                : null,
-              selected_prompts: conn.selected_prompts
-                ? JSON.stringify(conn.selected_prompts)
-                : null,
-              dependency_mode: "direct" as DependencyMode,
-              created_at: now,
-            })),
-          )
+      // Update aggregations if provided
+      if (data.connections !== undefined) {
+        // Collect current direct connection IDs before removing them
+        const currentAggs = await trx
+          .selectFrom("connection_aggregations")
+          .select("child_connection_id")
+          .where("parent_connection_id", "=", id)
+          .where("dependency_mode", "=", "direct")
           .execute();
-      }
+        const previousIds = new Set(
+          currentAggs.map((a) => a.child_connection_id),
+        );
 
-      // Clean up pinned views for removed connections
-      const newIds = new Set(data.connections.map((c) => c.connection_id));
-      for (const prevId of previousIds) {
-        if (!newIds.has(prevId)) {
-          await this.cleanOrphanedPinnedViews([id], prevId);
+        // Only delete 'direct' dependencies - preserve 'indirect' ones from virtual tools
+        await trx
+          .deleteFrom("connection_aggregations")
+          .where("parent_connection_id", "=", id)
+          .where("dependency_mode", "=", "direct")
+          .execute();
+
+        if (data.connections.length > 0) {
+          await trx
+            .insertInto("connection_aggregations")
+            .values(
+              data.connections.map((conn) => ({
+                id: generatePrefixedId("agg"),
+                parent_connection_id: id,
+                child_connection_id: conn.connection_id,
+                selected_tools: conn.selected_tools
+                  ? JSON.stringify(conn.selected_tools)
+                  : null,
+                selected_resources: conn.selected_resources
+                  ? JSON.stringify(conn.selected_resources)
+                  : null,
+                selected_prompts: conn.selected_prompts
+                  ? JSON.stringify(conn.selected_prompts)
+                  : null,
+                dependency_mode: "direct" as DependencyMode,
+                created_at: now,
+              })),
+            )
+            .execute();
+        }
+
+        // Clean up pinned views for removed connections after the transaction
+        // commits. If the new aggregation insert fails, the old dependencies
+        // remain intact and there is nothing to clean up.
+        const newIds = new Set(data.connections.map((c) => c.connection_id));
+        for (const prevId of previousIds) {
+          if (!newIds.has(prevId)) {
+            removedConnectionIds.push(prevId);
+          }
         }
       }
+    });
+
+    for (const prevId of removedConnectionIds) {
+      await this.cleanOrphanedPinnedViews([id], prevId);
     }
 
     const virtualMcp = await this.findById(id);

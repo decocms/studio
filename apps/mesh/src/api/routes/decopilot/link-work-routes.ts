@@ -17,15 +17,21 @@
  * by the progress-staleness sweeper in a later phase.
  *
  * Claim headers (sent by the daemon on every poll, mirrors the hello frame):
+ *   x-link-protocol      — link protocol version (numeric string; absent = v1)
  *   x-link-capabilities  — comma-separated capability strings (e.g. "claude-code")
  *   x-link-machine-id    — stable machine identifier
  *   x-link-cli-version   — daemon CLI version string
  *   x-link-preview-port  — local preview server port (numeric string)
  */
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Env } from "../../hono-env";
 import type { LinkClaimRegistry, LinkClaim } from "@/links/link-claim-registry";
 import { capabilitiesArraySchema } from "@/links/protocol/schemas";
+import {
+  isVersionAcceptable,
+  LINK_PROTOCOL_HEADER,
+  MIN_SUPPORTED_LINK_PROTOCOL,
+} from "@/links/protocol/version";
 import type { LinkWorkQueue } from "./link-work-queue";
 
 export interface LinkWorkDeps {
@@ -37,10 +43,41 @@ export interface LinkWorkDeps {
 // consumer.fetch uses `expires` in ms; nats.js minimum is 1000 ms.
 const POLL_TIMEOUT_MS = 29_000;
 
+/**
+ * Protocol-version gate for daemon-facing handlers (v2 hard break).
+ *
+ * Reads `x-link-protocol`; a missing or unparsable header is treated as
+ * protocol 1 (pre-v2 daemons never sent it). Stale daemons get an explicit
+ * 426 `protocol_mismatch` with remediation instead of failing later with
+ * opaque Zod errors on the v2 input contract. The work poll doubles as the
+ * pull transport's registration/claim path, so rejecting here also keeps a
+ * stale daemon from minting a presence claim.
+ *
+ * Returns the 426 response for stale daemons, or null when acceptable.
+ * Call it at the top of every daemon-facing handler in this file.
+ */
+function gateLinkProtocol(c: Context<Env>): Response | null {
+  const raw = c.req.header(LINK_PROTOCOL_HEADER);
+  const parsed = raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
+  const version = Number.isFinite(parsed) ? parsed : 1;
+  if (isVersionAcceptable(version)) return null;
+  return c.json(
+    {
+      error: "protocol_mismatch",
+      minSupported: MIN_SUPPORTED_LINK_PROTOCOL,
+      message: `Link protocol v${version} is no longer supported. Re-run: bunx decocms@latest link`,
+    },
+    426,
+  );
+}
+
 export function createLinkWorkRoutes(deps: LinkWorkDeps) {
   const app = new Hono<Env>();
 
   app.get("/links/work", async (c) => {
+    const mismatch = gateLinkProtocol(c);
+    if (mismatch) return mismatch;
+
     const ctx = c.get("meshContext");
     const userId = ctx.auth?.user?.id;
     if (!userId) return c.json({ error: "unauthorized" }, 401);

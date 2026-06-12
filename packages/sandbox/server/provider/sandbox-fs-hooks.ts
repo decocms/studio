@@ -1,0 +1,330 @@
+/**
+ * createSandboxFsHooks — the harness→sandbox cycle-breaker (spec
+ * 2026-06-11-harness-extraction-design.md §4.3).
+ *
+ * Builds the flat filesystem hooks (`onRead`/`onWrite`/`onEdit`/`onBash`/
+ * `onGlob`/`onGrep`) that the harness consumes through `HarnessDeps` (§5.1) over
+ * a `SandboxProvider.proxyDaemonRequest`. The harness calls `deps.onRead(...)`
+ * and never sees `SandboxProvider` — the lifecycle (handle resolution, daemon
+ * reachability, auto-restart) is hidden behind these closures.
+ *
+ * The `DaemonUnreachableError` sentinel, the `daemonRequest` proxy wrapper, and
+ * the call-level retry layer are moved verbatim from
+ * `apps/mesh/src/harnesses/decopilot/built-in-tools/vm-tools/index.ts` (where
+ * they used to live in-tool). The richer LLM-visible read/write/edit/grep/glob/
+ * bash *tools* (truncation, image-queueing, html-buffer mirroring) stay in the
+ * harness and call these flat hooks.
+ *
+ * The hook payload shapes mirror `HarnessDeps`'s `EditOp`/`BashOpts`/
+ * `BashResult`/`GrepOpts`/`GrepHit` (apps/mesh/src/harnesses/harness-deps.ts) so
+ * the cluster bag can wire `deps.onRead = hooks.onRead`, etc. They are declared
+ * locally here because `packages/` may not import the `apps/mesh` tree
+ * (ban-cross-tree-imports).
+ */
+
+import type { SandboxProvider } from "./types";
+
+export interface SandboxFsEdit {
+  oldText: string;
+  newText: string;
+  replaceAll?: boolean;
+}
+
+export interface SandboxFsBashOpts {
+  cwd?: string;
+  timeoutMs?: number;
+}
+
+export interface SandboxFsBashResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+export interface SandboxFsGrepOpts {
+  path?: string;
+  glob?: string;
+  caseInsensitive?: boolean;
+}
+
+export interface SandboxFsGrepHit {
+  file: string;
+  line: number;
+  text: string;
+}
+
+export interface SandboxFsHooks {
+  onRead(path: string): Promise<string>;
+  onWrite(path: string, content: string): Promise<void>;
+  onEdit(path: string, edits: SandboxFsEdit[]): Promise<void>;
+  onBash(cmd: string, opts?: SandboxFsBashOpts): Promise<SandboxFsBashResult>;
+  onGlob(pattern: string): Promise<string[]>;
+  onGrep(
+    pattern: string,
+    opts?: SandboxFsGrepOpts,
+  ): Promise<SandboxFsGrepHit[]>;
+  /**
+   * Escape hatch — proxy an arbitrary `/_sandbox/*` daemon route and return its
+   * parsed JSON body, sharing the same handle-resolution + auto-restart retry
+   * layer as the flat ops above. The richer LLM-visible read/write/edit/grep/
+   * glob/bash *tools* in the harness use this to preserve behavior that the flat
+   * ops intentionally drop (the image-read branch, the html-buffer preview
+   * shapes of write/edit, and the `write_from_url`/`upload_to_url` transfer
+   * routes behind `copy_to_sandbox`/`share_with_user`). New harness code should
+   * prefer the typed flat ops; this exists only to cover the daemon surfaces
+   * those ops don't model.
+   */
+  onProxy(
+    path: string,
+    body: Record<string, unknown>,
+    method?: "POST" | "PUT",
+  ): Promise<unknown>;
+}
+
+export interface SandboxFsHooksLifecycle {
+  /**
+   * Lazy handle resolver. Invoked on every fs op; the caller is expected to
+   * memoise so the first invocation provisions and later calls reuse.
+   */
+  ensureHandle(): Promise<string>;
+  /**
+   * Invalidate the memoised handle (and, for ephemeral branches, reap the
+   * underlying sandbox map entry) so the next `ensureHandle` provisions a fresh
+   * sandbox. Used by the retry layer when the daemon proxy reports the sandbox
+   * is unreachable.
+   */
+  invalidateHandle(): Promise<void>;
+  /**
+   * When true, the call wrapper retries once on `DaemonUnreachableError` (after
+   * invalidating the handle). Enabled for ephemeral agents (no server-button UI
+   * to restart from); disabled for GitHub-linked agents where the user may have
+   * paused the sandbox intentionally.
+   */
+  canAutoRestart: boolean;
+}
+
+/**
+ * Sentinel error for "the daemon proxy itself threw" — meaning the sandbox is
+ * unreachable (dead, restarting, or never provisioned). The retry layer uses
+ * this to distinguish a recoverable sandbox-death from a request-level failure
+ * (4xx/5xx from a live daemon).
+ */
+class DaemonUnreachableError extends Error {
+  readonly code = "DAEMON_UNREACHABLE" as const;
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : "Daemon proxy failed");
+    if (cause instanceof Error) {
+      this.cause = cause;
+    }
+  }
+}
+
+async function daemonRequest(
+  runner: SandboxProvider,
+  handle: string,
+  path: string,
+  body: Record<string, unknown> | null,
+  method: "GET" | "POST" | "PUT" = "POST",
+): Promise<unknown> {
+  let res: Response;
+  try {
+    const init: {
+      method: string;
+      headers: Headers;
+      body: string | null;
+    } = {
+      method,
+      headers: new Headers({ "content-type": "application/json" }),
+      body: null,
+    };
+    // GET/HEAD must not carry a body; the runners' proxy strips it anyway,
+    // but constructing it is wasteful and obscures intent.
+    if (method !== "GET" && body !== null) {
+      init.body = JSON.stringify(body);
+    }
+    res = await runner.proxyDaemonRequest(handle, path, init);
+  } catch (cause) {
+    throw new DaemonUnreachableError(cause);
+  }
+  const rawText = await res.text();
+  let json: unknown;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    console.error(
+      "[sandbox-fs-hooks] Failed to parse JSON response runner=%s path=%s status=%d rawText=%s",
+      runner.kind,
+      path,
+      res.status,
+      rawText.slice(0, 2000),
+    );
+    const statusHint =
+      res.status >= 500
+        ? " (server error)"
+        : res.status === 0
+          ? " (no response)"
+          : "";
+    throw new Error(
+      `Daemon ${path} returned invalid JSON (HTTP ${res.status}${statusHint}): ${rawText.slice(0, 800)}`,
+    );
+  }
+  if (!res.ok) {
+    console.error(
+      "[sandbox-fs-hooks] Non-OK response runner=%s path=%s status=%d body=%s",
+      runner.kind,
+      path,
+      res.status,
+      rawText.slice(0, 2000),
+    );
+    const errorMessage =
+      (json as { error?: string }).error ??
+      `Daemon ${path} failed (${res.status})`;
+    if (res.status === 404 && errorMessage === "sandbox not found") {
+      throw new DaemonUnreachableError(new Error(errorMessage));
+    }
+    throw new Error(errorMessage);
+  }
+  return json;
+}
+
+/**
+ * Parse the daemon grep route's `output_mode: "content"` block — newline-
+ * separated `file:line:text` rows (ripgrep `--line-number`) — into structured
+ * hits. Rows that don't match the shape (e.g. ripgrep context separators) are
+ * skipped.
+ */
+function parseGrepResults(results: string): SandboxFsGrepHit[] {
+  const hits: SandboxFsGrepHit[] = [];
+  for (const row of results.split("\n")) {
+    if (!row) continue;
+    const firstColon = row.indexOf(":");
+    if (firstColon < 0) continue;
+    const secondColon = row.indexOf(":", firstColon + 1);
+    if (secondColon < 0) continue;
+    const file = row.slice(0, firstColon);
+    const line = Number.parseInt(row.slice(firstColon + 1, secondColon), 10);
+    if (!Number.isFinite(line)) continue;
+    hits.push({ file, line, text: row.slice(secondColon + 1) });
+  }
+  return hits;
+}
+
+/**
+ * Build the flat fs hooks over `provider.proxyDaemonRequest`. Typing `provider`
+ * as `SandboxProvider` enforces the §4.3 invariant (the harness depends on this
+ * package's provider surface, never the other way round).
+ */
+export function createSandboxFsHooks(
+  provider: SandboxProvider,
+  lifecycle: SandboxFsHooksLifecycle,
+): SandboxFsHooks {
+  const { ensureHandle, invalidateHandle, canAutoRestart } = lifecycle;
+
+  const formatUnreachableMessage = (cause: unknown): string => {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    return canAutoRestart
+      ? `Sandbox is unreachable and auto-restart did not recover it: ${detail}`
+      : "The sandbox is not running. Ask the user to start it by clicking the server button (left side of the header bar).";
+  };
+
+  const call = async (
+    daemonPath: string,
+    input: Record<string, unknown>,
+    method: "POST" | "PUT" = "POST",
+  ): Promise<unknown> => {
+    const tryOnce = async (handle: string) =>
+      daemonRequest(provider, handle, daemonPath, input, method);
+    const firstHandle = await ensureHandle();
+    try {
+      return await tryOnce(firstHandle);
+    } catch (firstErr) {
+      // Only retry on daemon-unreachable (sandbox dead). HTTP-level errors
+      // from a live daemon (4xx/5xx) are surfaced as-is — a retry would
+      // just repeat the same failure.
+      if (!(firstErr instanceof DaemonUnreachableError) || !canAutoRestart) {
+        if (firstErr instanceof DaemonUnreachableError) {
+          throw new Error(formatUnreachableMessage(firstErr.cause ?? firstErr));
+        }
+        throw firstErr;
+      }
+      console.warn(
+        `[sandbox-fs-hooks] daemon ${daemonPath} unreachable — reaping sandbox and retrying once`,
+        firstErr.cause ?? firstErr,
+      );
+      try {
+        await invalidateHandle();
+      } catch (reapErr) {
+        console.warn("[sandbox-fs-hooks] invalidateHandle failed", reapErr);
+      }
+      let secondHandle: string;
+      try {
+        secondHandle = await ensureHandle();
+      } catch (provisionErr) {
+        throw new Error(
+          `Failed to restart sandbox: ${
+            provisionErr instanceof Error
+              ? provisionErr.message
+              : String(provisionErr)
+          }`,
+        );
+      }
+      try {
+        return await tryOnce(secondHandle);
+      } catch (secondErr) {
+        if (secondErr instanceof DaemonUnreachableError) {
+          throw new Error(
+            formatUnreachableMessage(secondErr.cause ?? secondErr),
+          );
+        }
+        throw secondErr;
+      }
+    }
+  };
+
+  return {
+    onProxy: (path, body, method) => call(path, body, method),
+    onRead: async (path) => {
+      const r = (await call("/_sandbox/read", { path })) as { content: string };
+      return r.content;
+    },
+    onWrite: async (path, content) => {
+      await call("/_sandbox/write", { path, content });
+    },
+    onEdit: async (path, edits) => {
+      // The daemon edit route is single-edit (one old/new pair per call) and
+      // uses snake_case keys. Apply each edit in sequence.
+      for (const edit of edits) {
+        await call("/_sandbox/edit", {
+          path,
+          old_string: edit.oldText,
+          new_string: edit.newText,
+          replace_all: edit.replaceAll === true,
+        });
+      }
+    },
+    onBash: async (cmd, opts) => {
+      const r = (await call("/_sandbox/bash", {
+        command: cmd,
+        ...(opts?.cwd !== undefined ? { cwd: opts.cwd } : {}),
+        ...(opts?.timeoutMs !== undefined ? { timeout: opts.timeoutMs } : {}),
+      })) as SandboxFsBashResult;
+      return r;
+    },
+    onGlob: async (pattern) => {
+      const r = (await call("/_sandbox/glob", { pattern })) as {
+        files: string[];
+      };
+      return r.files;
+    },
+    onGrep: async (pattern, opts) => {
+      const r = (await call("/_sandbox/grep", {
+        pattern,
+        output_mode: "content",
+        ...(opts?.path !== undefined ? { path: opts.path } : {}),
+        ...(opts?.glob !== undefined ? { glob: opts.glob } : {}),
+        ...(opts?.caseInsensitive ? { ignore_case: true } : {}),
+      })) as { results: string };
+      return parseGrepResults(r.results);
+    },
+  };
+}
