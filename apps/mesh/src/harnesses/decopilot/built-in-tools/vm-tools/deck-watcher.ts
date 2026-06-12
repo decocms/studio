@@ -1,7 +1,8 @@
 /**
- * Deck watcher — detects presentation-deck writes (`decks/<name>.html` in
- * the org home volume) during a run and emits `data-deck-updated` UI parts
- * so the chat side panel opens/refreshes the live deck preview.
+ * Deck watcher — detects live-HTML writes in the org home volume
+ * (`decks/<name>.html` presentation decks, `pages/<name>.html` standalone
+ * pages) during a run and emits `data-deck-updated` UI parts so the chat
+ * side panel opens/refreshes the live preview.
  *
  * Detection is change-feed based rather than tool-based: every sandbox
  * write to the mounted `org/<slug>/` path flows through the WebDAV serve
@@ -33,6 +34,8 @@ export interface DeckUpdatedData {
   volume: string;
   path: string;
   name: string;
+  /** `deck` (decks/) or `page` (pages/) — drives chip icons. */
+  kind: "deck" | "page";
   /** Mount-relative path the agent sees, for chat-row display. */
   mountPath: string;
 }
@@ -90,6 +93,7 @@ export function createDeckWatcher(
             volume: HOME_VOLUME,
             path: deck.path,
             name: deck.name,
+            kind: deck.kind,
             mountPath: `org/${mountDir}/${deck.path}`,
           });
         }

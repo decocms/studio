@@ -6,14 +6,25 @@ describe("matchDeckEntryPath", () => {
     expect(matchDeckEntryPath("decks/q3-launch.html")).toEqual({
       path: "decks/q3-launch.html",
       name: "q3-launch",
+      kind: "deck",
     });
     expect(matchDeckEntryPath("decks/a.html")).toEqual({
       path: "decks/a.html",
       name: "a",
+      kind: "deck",
     });
     expect(matchDeckEntryPath("decks/My.Deck_2.HTML")).toEqual({
       path: "decks/My.Deck_2.HTML",
       name: "My.Deck_2",
+      kind: "deck",
+    });
+  });
+
+  test("matches standalone pages with kind page", () => {
+    expect(matchDeckEntryPath("pages/landing.html")).toEqual({
+      path: "pages/landing.html",
+      name: "landing",
+      kind: "page",
     });
   });
 
@@ -32,20 +43,28 @@ describe("matchDeckToolPath", () => {
     expect(matchDeckToolPath("org/acme/decks/launch.html", "acme")).toEqual({
       path: "decks/launch.html",
       name: "launch",
+      kind: "deck",
     });
     expect(matchDeckToolPath("./org/acme/decks/launch.html", "acme")).toEqual({
       path: "decks/launch.html",
       name: "launch",
+      kind: "deck",
     });
     expect(
       matchDeckToolPath("/app/repo/org/acme/decks/launch.html", "acme"),
-    ).toEqual({ path: "decks/launch.html", name: "launch" });
+    ).toEqual({ path: "decks/launch.html", name: "launch", kind: "deck" });
+    expect(matchDeckToolPath("org/acme/pages/landing.html", "acme")).toEqual({
+      path: "pages/landing.html",
+      name: "landing",
+      kind: "page",
+    });
   });
 
   test("works with the reserved-slug fallback mount path", () => {
     expect(matchDeckToolPath("org/home/decks/launch.html", "home")).toEqual({
       path: "decks/launch.html",
       name: "launch",
+      kind: "deck",
     });
   });
 
