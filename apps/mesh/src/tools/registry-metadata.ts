@@ -147,6 +147,15 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_TOPUP_URL",
   "AI_PROVIDER_CREDITS",
 
+  // Channel tools (org-chat integrations)
+  "CHANNELS_LIST",
+  "CHANNEL_CREATE",
+  "CHANNEL_UPDATE",
+  "CHANNEL_LIST",
+  "CHANNEL_PREVIEW",
+  "CHANNEL_TEST",
+  "CHANNEL_DELETE",
+
   // Secrets vault tools
   "SECRET_CREATE",
   "SECRET_LIST",
@@ -1260,6 +1269,22 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_PROVISION_KEY",
       "AI_PROVIDER_TOPUP_URL",
       "AI_PROVIDER_CREDITS",
+    ],
+  },
+  // Channels (org-chat integrations: Teams, Discord)
+  {
+    id: "channels:manage",
+    label: "Manage channels",
+    description: "Connect and configure chat channels (Teams, Discord)",
+    section: "Channels",
+    tools: [
+      "CHANNELS_LIST",
+      "CHANNEL_CREATE",
+      "CHANNEL_UPDATE",
+      "CHANNEL_LIST",
+      "CHANNEL_PREVIEW",
+      "CHANNEL_TEST",
+      "CHANNEL_DELETE",
     ],
   },
   // Organization (tags moved here from Developer)

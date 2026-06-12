@@ -315,6 +315,17 @@ export const KEYS = {
   aiProviderKeyPreview: (keyId: string) =>
     ["ai-provider-key-preview", keyId] as const,
 
+  // Channels — supported platform registry (static; staleTime: Infinity)
+  channelPlatforms: (orgId: string) => ["channel-platforms", orgId] as const,
+  // Channels — the org's configured channels
+  orgChannels: (orgId: string) => ["org-channels", orgId] as const,
+  // Channel masked-credential preview (for edit / setup resume)
+  channelPreview: (orgId: string, channelId: string) =>
+    ["channel-preview", orgId, channelId] as const,
+  // Connections offered as agent bindings in the channel wizard
+  channelAgentOptions: (orgId: string) =>
+    ["channel-agent-options", orgId] as const,
+
   // Secrets (scoped by org; user-scope filtering happens server-side)
   secrets: (orgId: string) => ["secrets", orgId] as const,
 

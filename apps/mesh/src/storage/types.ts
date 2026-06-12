@@ -276,6 +276,45 @@ export interface ProviderKeyInfo {
   createdAt: string;
 }
 
+// ============================================================================
+// Channels (org-chat integrations: Microsoft Teams, Discord)
+// ============================================================================
+
+export type ChannelType = "teams" | "discord";
+export type ChannelStatus = "draft" | "active" | "error" | "disabled";
+
+export interface ChannelTable {
+  id: string;
+  organization_id: string;
+  channel_type: string; // ChannelType — enforced at app level
+  label: string;
+  /** Vault-encrypted JSON blob of per-platform secrets. Null for drafts. */
+  encrypted_credentials: string | null;
+  /** virtual_mcp_id of the Decopilot agent the bot runs. */
+  agent_id: string | null;
+  /** Synthetic bot org-member (user.id). */
+  bot_user_id: string;
+  /** JSON, non-secret display metadata. */
+  metadata: string | null;
+  status: string; // ChannelStatus
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+}
+
+/** Public DTO for a channel — never exposes the encrypted credentials. */
+export interface ChannelInfo {
+  id: string;
+  channelType: ChannelType;
+  label: string;
+  agentId: string | null;
+  botUserId: string;
+  metadata: Record<string, unknown> | null;
+  status: ChannelStatus;
+  organizationId: string;
+  createdBy: string;
+  createdAt: string;
+}
+
 export type SecretScopeKind = "user" | "organization";
 
 export interface SecretTable {
@@ -1429,6 +1468,9 @@ export interface Database {
 
   // AI Provider keys tables
   ai_provider_keys: AIProviderKeyTable;
+
+  // Org-chat channel integrations (Teams, Discord)
+  channels: ChannelTable;
 
   // Generic secrets vault (org and user scoped)
   secrets: SecretTable;

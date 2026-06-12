@@ -30,6 +30,7 @@ import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
 import * as AiProvidersTools from "./ai-providers";
+import * as ChannelsTools from "./channels";
 import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
@@ -157,6 +158,13 @@ const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_PROVISION_KEY,
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
+  ChannelsTools.CHANNELS_LIST,
+  ChannelsTools.CHANNEL_CREATE,
+  ChannelsTools.CHANNEL_UPDATE,
+  ChannelsTools.CHANNEL_LIST,
+  ChannelsTools.CHANNEL_PREVIEW,
+  ChannelsTools.CHANNEL_TEST,
+  ChannelsTools.CHANNEL_DELETE,
   // Secrets tools
   SecretsTools.SECRET_CREATE,
   SecretsTools.SECRET_LIST,
