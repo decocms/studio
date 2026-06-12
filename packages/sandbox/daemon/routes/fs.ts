@@ -694,7 +694,35 @@ const GLOB_EXCLUDE_DIRS = new Set([
   ".aws",
   ".gnupg",
 ]);
-const GLOB_RESULT_LIMIT = 1000;
+/** Default cap for agent glob calls. */
+export const GLOB_RESULT_LIMIT = 1000;
+/** Hard ceiling when callers pass an explicit `limit` (file explorer). */
+export const GLOB_MAX_RESULT_LIMIT = 10_000;
+
+export function pathSegmentDepth(relPath: string): number {
+  return relPath.split("/").filter(Boolean).length;
+}
+
+/** Register repo-relative ancestor directories up to `maxDepth`. */
+export function registerGlobAncestorDirectories(
+  repoRelativePath: string,
+  maxDepth: number,
+  directoryPaths: Set<string>,
+  isFile: boolean,
+): void {
+  const parts = repoRelativePath.split("/").filter(Boolean);
+  const dirParts = isFile ? parts.slice(0, -1) : parts;
+  for (let i = 1; i <= Math.min(dirParts.length, maxDepth); i++) {
+    directoryPaths.add(dirParts.slice(0, i).join("/"));
+  }
+}
+
+function resolveGlobResultLimit(limit: unknown): number {
+  if (limit === undefined || limit === null) return GLOB_RESULT_LIMIT;
+  const n = typeof limit === "number" ? limit : Number(limit);
+  if (!Number.isFinite(n) || n < 1) return GLOB_RESULT_LIMIT;
+  return Math.min(Math.floor(n), GLOB_MAX_RESULT_LIMIT);
+}
 
 function isGlobPathAllowed(rel: string): boolean {
   for (const seg of rel.split("/")) {
@@ -759,7 +787,12 @@ export function collectEmptyDirectories(
 
 export function makeGlobHandler(deps: FsDeps) {
   return async (req: Request): Promise<Response> => {
-    let body: { pattern?: string; path?: string };
+    let body: {
+      pattern?: string;
+      path?: string;
+      limit?: number;
+      maxDepth?: number;
+    };
     try {
       body = (await parseJsonBody(req)) as typeof body;
     } catch (e) {
@@ -773,11 +806,18 @@ export function makeGlobHandler(deps: FsDeps) {
     if (!searchPath)
       return jsonResponse({ error: "Path escapes app root" }, 400);
 
+    const resultLimit = resolveGlobResultLimit(body.limit);
+    const maxDepth =
+      body.maxDepth === undefined || body.maxDepth === null
+        ? undefined
+        : Math.max(1, Math.floor(body.maxDepth));
+
     // Bun.Glob — no external binary dependency. Returns paths relative
     // to `cwd`, which we re-anchor to repoDir for consistent UX.
     const glob = new Bun.Glob(body.pattern);
     const filePaths: string[] = [];
     const directoryPaths = new Set<string>();
+    let truncated = false;
     try {
       for await (const rel of glob.scan({
         cwd: searchPath,
@@ -791,6 +831,16 @@ export function makeGlobHandler(deps: FsDeps) {
         try {
           const stat = fs.statSync(abs);
           relPath = toRepoRelativePath(abs, searchPath, deps.repoDir);
+          const depth = pathSegmentDepth(relPath);
+          if (maxDepth !== undefined && depth > maxDepth) {
+            registerGlobAncestorDirectories(
+              relPath,
+              maxDepth,
+              directoryPaths,
+              stat.isFile(),
+            );
+            continue;
+          }
           if (stat.isDirectory()) {
             directoryPaths.add(relPath);
           } else if (stat.isFile()) {
@@ -799,12 +849,19 @@ export function makeGlobHandler(deps: FsDeps) {
         } catch {
           continue;
         }
-        if (filePaths.length >= GLOB_RESULT_LIMIT) break;
+        if (filePaths.length >= resultLimit) {
+          truncated = true;
+          break;
+        }
       }
     } catch (e) {
       return jsonResponse({ error: (e as Error).message }, 500);
     }
     const directories = collectEmptyDirectories(filePaths, [...directoryPaths]);
-    return jsonResponse({ files: filePaths, directories });
+    return jsonResponse({
+      files: filePaths,
+      directories,
+      ...(truncated ? { truncated: true } : {}),
+    });
   };
 }

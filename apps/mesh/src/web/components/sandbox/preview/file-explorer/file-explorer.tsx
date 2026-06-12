@@ -49,17 +49,22 @@ import { FileTreeRow } from "./file-tree-row";
 import {
   buildFileTree,
   decoBlockKeyFromTreePath,
+  directoryNeedsLazyLoad,
+  EXPLORER_EAGER_DEPTH,
+  EXPLORER_GLOB_LIMIT,
   flattenTree,
   getAncestorDirectories,
   getDirectoryContextPath,
   getLanguageFromPath,
   getParentTreePath,
   joinTreePath,
+  mergeGlobLists,
   pathExistsInFileList,
   stripLineNumbers,
   toDaemonPath,
   toTreePath,
   validateExplorerEntryName,
+  type GlobListResult,
 } from "./utils";
 
 // Configure Monaco CDN (shared with workflow editor)
@@ -157,6 +162,8 @@ export function FileExplorer({
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [treeLoaded, setTreeLoaded] = useState(false);
+  const [loadedLazyDirs, setLoadedLazyDirs] = useState<Set<string>>(new Set());
+  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
 
   // File buffers: path -> { savedContent, editorValue, loaded }
   const [buffers, setBuffers] = useState<Map<string, FileBuffer>>(new Map());
@@ -444,43 +451,93 @@ export function FileExplorer({
     const pathToOpen = openPath;
     queueMicrotask(() => {
       if (isSafeExplorerOpenPath(pathToOpen)) {
-        handleFileClick(pathToOpen);
+        void handleFileClick(pathToOpen);
       }
     });
   }
 
+  async function fetchGlob(
+    body: Record<string, unknown>,
+  ): Promise<GlobListResult> {
+    const data = (await postSandbox("glob", body)) as GlobListResult & {
+      error?: string;
+    };
+    return {
+      files: data.files ?? [],
+      directories: data.directories ?? [],
+      truncated: data.truncated,
+    };
+  }
+
+  function applyGlobResult(result: GlobListResult, merge: boolean) {
+    if (merge) {
+      const merged = mergeGlobLists(files, directories, result);
+      setFiles(merged.files);
+      setDirectories(merged.directories);
+      if (merged.truncated) {
+        toast.warning("File list truncated — some files may be hidden");
+      }
+      return;
+    }
+    setFiles(result.files);
+    setDirectories(result.directories ?? []);
+    if (result.truncated) {
+      toast.warning("File list truncated — some files may be hidden");
+    }
+  }
+
+  async function fetchDirChildren(dirPath: string) {
+    const result = await fetchGlob({
+      pattern: "**/*",
+      path: toDaemonPath(dirPath),
+      limit: EXPLORER_GLOB_LIMIT,
+    });
+    applyGlobResult(result, true);
+    setLoadedLazyDirs((prev) => {
+      const next = new Set(prev);
+      next.add(dirPath);
+      return next;
+    });
+  }
+
+  async function ensureAncestorsLoaded(treePath: string) {
+    const loaded = new Set(loadedLazyDirs);
+    for (const dir of getAncestorDirectories(treePath)) {
+      if (!directoryNeedsLazyLoad(dir, loaded)) continue;
+      setLoadingDirs((prev) => new Set(prev).add(dir));
+      try {
+        await fetchDirChildren(dir);
+        loaded.add(dir);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to load folder",
+        );
+        throw err;
+      } finally {
+        setLoadingDirs((prev) => {
+          const next = new Set(prev);
+          next.delete(dir);
+          return next;
+        });
+      }
+    }
+  }
+
   async function fetchFileTree() {
     setLoading(true);
+    setLoadedLazyDirs(new Set());
     try {
-      const res = await fetch(
-        buildApiUrl(orgSlug, virtualMcpId, branch, "glob"),
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ pattern: "**/*" }),
-        },
-      );
-      if (!res.ok) {
-        if (treeLoaded) {
-          toast.error("Failed to refresh file tree");
-        }
-        return;
-      }
-      const data = (await res.json()) as {
-        files?: string[];
-        directories?: string[];
-      };
-      const nextFiles = data.files ?? [];
-      setFiles(nextFiles);
-      setDirectories((prev) => {
-        if (data.directories !== undefined) return data.directories;
-        // Legacy daemons omit `directories`; keep client-side empty dirs
-        // until the sandbox daemon is restarted with directory support.
-        return prev.filter(
-          (dir) => !pathExistsInFileList(toTreePath(dir), nextFiles),
-        );
+      const result = await fetchGlob({
+        pattern: "**/*",
+        limit: EXPLORER_GLOB_LIMIT,
+        maxDepth: EXPLORER_EAGER_DEPTH,
       });
+      applyGlobResult(result, false);
       setTreeLoaded(true);
+    } catch {
+      if (treeLoaded) {
+        toast.error("Failed to refresh file tree");
+      }
     } finally {
       setLoading(false);
     }
@@ -610,8 +667,37 @@ export function FileExplorer({
     });
   }
 
-  function handleFileClick(path: string) {
-    // Auto-expand ancestor directories
+  async function expandDirectory(dirPath: string) {
+    if (directoryNeedsLazyLoad(dirPath, loadedLazyDirs)) {
+      setLoadingDirs((prev) => new Set(prev).add(dirPath));
+      try {
+        await fetchDirChildren(dirPath);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to load folder",
+        );
+        return;
+      } finally {
+        setLoadingDirs((prev) => {
+          const next = new Set(prev);
+          next.delete(dirPath);
+          return next;
+        });
+      }
+    }
+    toggleDir(dirPath);
+  }
+
+  async function handleDirectoryOpen(dirPath: string, isExpanded: boolean) {
+    if (isExpanded) {
+      toggleDir(dirPath);
+      return;
+    }
+    await expandDirectory(dirPath);
+  }
+
+  async function handleFileClick(path: string) {
+    await ensureAncestorsLoaded(path);
     const ancestors = getAncestorDirectories(path);
     setExpandedDirs((prev) => {
       const next = new Set(prev);
@@ -783,6 +869,7 @@ export function FileExplorer({
               const isExpanded = expandedDirs.has(node.path);
               const isSelected = selectedTreeNode?.path === node.path;
               const parentDir = getDirectoryContextPath(node.path, node.kind);
+              const isDirLoading = isDir && loadingDirs.has(node.path);
 
               return (
                 <FileTreeRow
@@ -791,13 +878,14 @@ export function FileExplorer({
                   depth={depth}
                   isExpanded={isExpanded}
                   isSelected={isSelected}
+                  isLoading={isDirLoading}
                   fileVisual={getFileVisual(node.name)}
                   onSelect={() => setSelectedTreeNode(node)}
                   onOpen={() => {
                     if (isDir) {
-                      toggleDir(node.path);
+                      void handleDirectoryOpen(node.path, isExpanded);
                     } else {
-                      handleFileClick(node.path);
+                      void handleFileClick(node.path);
                     }
                   }}
                   onNewFile={() =>
