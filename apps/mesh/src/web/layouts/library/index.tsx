@@ -47,6 +47,7 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
+import { homeMountPath } from "@/file-storage/home-mount";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { KEYS } from "@/web/lib/query-keys";
 import {
@@ -277,9 +278,13 @@ function RootView({
             <VolumeFolderCard
               key={v.id}
               volume={v.id}
-              // The home volume presents as the org itself (mirrors the
-              // sandbox mount at org/<slug>).
-              displayName={v.id === "home" ? org.slug : undefined}
+              // The home volume presents as the org itself — through the same
+              // helper provisioning uses, so the label always matches the
+              // sandbox mount (incl. the reserved-slug fallback to "home",
+              // which avoids two cards both named e.g. "public").
+              displayName={
+                v.id === "home" ? homeMountPath(org.slug) : undefined
+              }
               description={v.description}
               glyph={v.glyph}
               onOpen={() => onOpenDir(v.id)}

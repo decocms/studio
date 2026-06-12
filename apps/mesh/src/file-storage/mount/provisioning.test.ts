@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { buildOrgFsConfig, homeMountPath } from "./provisioning";
+import { homeMountPath } from "../home-mount";
+import { buildOrgFsConfig } from "./provisioning";
 
 describe("buildOrgFsConfig", () => {
   it("returns home (slug-mounted) + outputs + uploads with the given identity", () => {
