@@ -90,26 +90,23 @@ export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
 export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
   {
     anthropic: [
-      "claude-fable-5",
       "claude-opus-4-8",
       "claude-sonnet-4-6",
       "claude-sonnet",
     ],
     openrouter: [
-      "anthropic/claude-fable-5",
       "anthropic/claude-opus-4.8",
       "anthropic/claude-sonnet-4.6:extended",
       "anthropic/claude-sonnet-4.6",
       "google/gemini-3-pro",
     ],
     deco: [
-      "anthropic/claude-fable",
       "anthropic/claude-opus",
       "anthropic/claude-sonnet-4.6",
       "anthropic/claude-sonnet",
     ],
     google: ["gemini-3-pro"],
-    "claude-code": ["claude-code:fable", "claude-code:sonnet"],
+    "claude-code": ["claude-code:opus", "claude-code:sonnet"],
     codex: ["codex:gpt-5.5"],
   };
 

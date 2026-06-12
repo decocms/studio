@@ -8,16 +8,15 @@ describe("resolveClaudeCodeModelId", () => {
     expect(resolveClaudeCodeModelId("claude-code:opus")).toBe("opus");
     expect(resolveClaudeCodeModelId("claude-code:sonnet")).toBe("sonnet");
     expect(resolveClaudeCodeModelId("claude-code:haiku")).toBe("haiku");
-    expect(resolveClaudeCodeModelId("claude-code:fable")).toBe("fable");
   });
 
   it("passes through already-resolved aliases / full model IDs unchanged", () => {
     expect(resolveClaudeCodeModelId("sonnet")).toBe("sonnet");
-    expect(resolveClaudeCodeModelId("claude-fable-5")).toBe("claude-fable-5");
+    expect(resolveClaudeCodeModelId("claude-opus-4-8")).toBe("claude-opus-4-8");
   });
 
   // Regression guard for the drift that broke the Thinking tier (PR #3760):
-  // the tier map was switched to `claude-code:fable` without adding the
+  // the tier map was switched to `claude-code:opus` without adding the
   // corresponding SDK mapping, so the composite ID leaked straight to the
   // CLI's `--model` flag. Every tier the harness can dispatch MUST resolve
   // to a non-composite SDK alias.

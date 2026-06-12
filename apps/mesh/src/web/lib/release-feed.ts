@@ -30,30 +30,6 @@ export interface Release {
  */
 export const RELEASES: Release[] = [
   {
-    id: "claude-fable-5",
-    date: "2026-06-09",
-    eyebrow: "Now Available",
-    title: "Claude Fable 5 leads the Thinking tier",
-    bullets: [
-      {
-        icon: Stars02,
-        title: "State-of-the-art reasoning",
-        body: "Fable 5 takes the Thinking tier, posting top scores across software engineering, knowledge work, and vision — and outperforming Opus 4.8 on nearly every benchmark Anthropic tested.",
-      },
-      {
-        icon: CheckCircle,
-        title: "Safety without the slowdown",
-        body: "New classifiers route the small slice of high-risk requests (cybersecurity, bio/chem) back to Opus 4.8. Anthropic reports more than 95% of sessions never trigger a fallback.",
-      },
-      {
-        icon: Zap,
-        title: "Nothing to change",
-        body: "Chats and agents pick up Fable 5 automatically wherever the Thinking tier is selected. Opus 4.8 stays available as the safety fallback.",
-      },
-    ],
-    learnMoreHref: "https://www.anthropic.com/news/claude-fable-5-mythos-5",
-  },
-  {
     id: "claude-opus-4-8",
     date: "2026-05-28",
     eyebrow: "Now Available",
