@@ -55,6 +55,8 @@ import { getDesktopSandboxFsBuilder } from "./desktop-sandbox-fs-registry";
 import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./desktop-prompt";
 import { resolveModeConfig } from "./mode-config";
 import { runNativeAgentLoopCore } from "./native-agent-loop-core";
+import { resolveMaxOutputTokens } from "./harness-constants";
+import { estimateJsonTokens } from "./built-in-tools/read-tool-output";
 import {
   spawnSubtask,
   type DecopilotToolRuntime,
@@ -200,7 +202,12 @@ function runDesktopEngine(
     tools,
     prepareStep: args.prepareStep,
     temperature: args.temperature,
-    maxOutputTokens: args.models.thinking.limits?.maxOutputTokens ?? 32768,
+    maxOutputTokens: resolveMaxOutputTokens(
+      args.models.thinking.limits,
+      estimateJsonTokens(systemMessages) +
+        estimateJsonTokens(args.messages) +
+        estimateJsonTokens(tools),
+    ),
     // Delegated subtask core runs cap at SUBAGENT_STEP_LIMIT (args.stepLimit);
     // top-level runs fall back to PARENT_STEP_LIMIT.
     stopWhen: stepCountIs(args.stepLimit ?? PARENT_STEP_LIMIT),

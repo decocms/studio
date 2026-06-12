@@ -30,7 +30,8 @@ import type { ModelsConfig } from "@decocms/harness/types";
 import type { ToolApprovalLevel } from "@decocms/harness/decopilot/mcp-tools";
 import type { GithubRepo, UsageStats } from "@decocms/mesh-sdk";
 import { createLanguageModel } from "@decocms/harness/decopilot/mesh-provider";
-import { DEFAULT_MAX_TOKENS } from "@decocms/harness/decopilot/harness-constants";
+import { resolveMaxOutputTokens } from "@decocms/harness/decopilot/harness-constants";
+import { estimateJsonTokens } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
 import {
   PARENT_STEP_LIMIT,
   SUBAGENT_STEP_LIMIT,
@@ -199,8 +200,12 @@ export async function runAgentLoop(
     tools,
     prepareStep: opts.prepareStep as never,
     temperature: opts.temperature,
-    maxOutputTokens:
-      opts.models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
+    maxOutputTokens: resolveMaxOutputTokens(
+      opts.models.thinking.limits,
+      estimateJsonTokens(systemMessages) +
+        estimateJsonTokens(opts.messages) +
+        estimateJsonTokens(tools),
+    ),
     stopWhen: stepCountIs(stepLimit),
     abortSignal: opts.abortSignal,
     onStepFinish: opts.onStepFinish,
