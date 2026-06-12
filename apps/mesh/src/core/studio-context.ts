@@ -266,6 +266,8 @@ import type { RegistryStorage } from "../storage/registry";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
+import { ChannelStorage } from "@/storage/channels";
+import { UserPhoneStorage } from "@/storage/user-phones";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
@@ -300,6 +302,8 @@ export interface MeshStorage {
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
   aiProviderKeys: AIProviderKeyStorage;
+  channels: ChannelStorage;
+  userPhones: UserPhoneStorage;
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
   orgFsEntries: OrgFsEntryStorage;

@@ -146,6 +146,12 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
+
+    // WhatsApp concierge channel
+    whatsappWorkerUrl: envVars.WHATSAPP_WORKER_URL,
+    whatsappWorkerToken: envVars.WHATSAPP_WORKER_TOKEN,
+    whatsappIngestSecret: envVars.WHATSAPP_INGEST_SECRET,
+    whatsappConciergeNumber: envVars.WHATSAPP_CONCIERGE_NUMBER,
   };
 
   return {

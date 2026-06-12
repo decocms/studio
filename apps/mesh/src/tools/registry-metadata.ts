@@ -146,6 +146,17 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_TOPUP_URL",
   "AI_PROVIDER_CREDITS",
 
+  // Channel tools (WhatsApp concierge)
+  "CHANNELS_LIST",
+  "CHANNEL_CREATE",
+  "CHANNEL_LIST",
+  "CHANNEL_DELETE",
+
+  // Profile / self WhatsApp phone linking
+  "PHONE_LINK_START",
+  "PHONE_GET",
+  "PHONE_DELETE",
+
   // Secrets vault tools
   "SECRET_CREATE",
   "SECRET_LIST",
@@ -1115,6 +1126,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_THREADS_UPDATE",
       "COLLECTION_THREADS_DELETE",
       "COLLECTION_THREAD_MESSAGES_LIST",
+      // Self-service WhatsApp phone linking (a member manages their OWN phone)
+      "PHONE_LINK_START",
+      "PHONE_GET",
+      "PHONE_DELETE",
     ],
   },
   // Organization
@@ -1253,6 +1268,19 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_PROVISION_KEY",
       "AI_PROVIDER_TOPUP_URL",
       "AI_PROVIDER_CREDITS",
+    ],
+  },
+  // Channels (org-chat integrations: WhatsApp)
+  {
+    id: "channels:manage",
+    label: "Manage channels",
+    description: "Connect and configure chat channels (WhatsApp)",
+    section: "Channels",
+    tools: [
+      "CHANNELS_LIST",
+      "CHANNEL_CREATE",
+      "CHANNEL_LIST",
+      "CHANNEL_DELETE",
     ],
   },
   // Organization (tags moved here from Developer)

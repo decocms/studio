@@ -85,6 +85,8 @@ describe("Connection Tools", () => {
         tags: null as never,
         virtualMcpPluginConfigs: null as never,
         aiProviderKeys: null as never,
+        channels: null as never,
+        userPhones: null as never,
         secrets: null as never,
         orgFileConfigs: null as never,
         orgFsEntries: null as never,

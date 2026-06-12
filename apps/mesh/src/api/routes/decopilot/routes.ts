@@ -193,7 +193,7 @@ function toModelInfo(resolved: Awaited<ReturnType<typeof resolveTier>>) {
  * can compose a ModelsConfig the same way HTTP chat does, instead of
  * duplicating the tier-resolution + tryResolve fallback logic.
  */
-async function resolvePerRequestModels(
+export async function resolvePerRequestModels(
   ctx: StudioContext,
   tier: SimpleModeTier | undefined,
   harnessId: HarnessId | null | undefined,
