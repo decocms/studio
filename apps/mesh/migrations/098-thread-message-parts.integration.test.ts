@@ -67,7 +67,13 @@ describe("migration 098 thread_message_parts", () => {
     expect(cols.rows[0]?.data_type).toBe("timestamp with time zone");
   });
 
-  it("enforces the unique constraint on (run_id, seq)", async () => {
+  it("allows the same (run_id, seq) across messages but rejects duplicate ids", async () => {
+    // Migration 106 dropped the old UNIQUE(run_id, seq) index: part ids are now
+    // `${runId}:${messageId}:${seq}` and `seq` is per-MESSAGE (restarts at 0 per
+    // message), so two messages in one run legitimately share (run_id, seq) —
+    // e.g. the user message (persisted at dispatch) and the assistant message
+    // (persisted at relay). Row uniqueness is guaranteed by the `id` primary
+    // key instead.
     const now = new Date().toISOString();
     const threadId = "thr_test_098";
     const runId = "run_test_098";
@@ -78,36 +84,23 @@ describe("migration 098 thread_message_parts", () => {
       VALUES (${threadId}, 'org_test', 'user_test', 'Test', 'idle', ${now}, ${now})
     `.execute(database.db);
 
-    const part = {
-      id: `${runId}:1`,
-      seq: 1,
-      org_id: "org_test",
-      thread_id: threadId,
-      run_id: runId,
-      message_id: "msg_1",
-      role: "assistant",
-      kind: "text",
-      payload: JSON.stringify({ text: "hello" }),
-      created_at: now,
-    };
-
-    await sql`
-      INSERT INTO thread_message_parts
-        (id, seq, org_id, thread_id, run_id, message_id, role, kind, payload, created_at)
-      VALUES
-        (${part.id}, ${part.seq}, ${part.org_id}, ${part.thread_id}, ${part.run_id},
-         ${part.message_id}, ${part.role}, ${part.kind}, ${part.payload}::jsonb, ${part.created_at})
-    `.execute(database.db);
-
-    // Inserting a duplicate (run_id, seq) must fail
-    await expect(
+    const insertPart = (id: string, seq: number, messageId: string) =>
       sql`
         INSERT INTO thread_message_parts
           (id, seq, org_id, thread_id, run_id, message_id, role, kind, payload, created_at)
         VALUES
-          (${"run_test_098:1_dup"}, ${1}, ${"org_test"}, ${threadId}, ${runId},
-           ${"msg_2"}, ${"assistant"}, ${"text"}, ${"{}"}::jsonb, ${now})
-      `.execute(database.db),
-    ).rejects.toThrow();
+          (${id}, ${seq}, ${"org_test"}, ${threadId}, ${runId},
+           ${messageId}, ${"assistant"}, ${"text"}, ${"{}"}::jsonb, ${now})
+      `.execute(database.db);
+
+    // First message's part at seq 1.
+    await insertPart(`${runId}:msg_1:1`, 1, "msg_1");
+
+    // A DIFFERENT message reusing (run_id, seq)=(runId, 1) is now allowed — the
+    // old UNIQUE(run_id, seq) index would have rejected this.
+    await insertPart(`${runId}:msg_2:1`, 1, "msg_2");
+
+    // A duplicate `id` (the primary key) is still rejected.
+    await expect(insertPart(`${runId}:msg_1:1`, 1, "msg_1")).rejects.toThrow();
   });
 });

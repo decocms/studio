@@ -39,6 +39,15 @@ export interface StreamBuffer {
   ): void;
 
   /**
+   * Publish ONE raw chunk to the per-task subject and AWAIT the publish ack.
+   * Unlike `pump` (fire-and-forget over a whole stream), this is the durable
+   * commit point for the publish-then-consume ingest (spec §5.3): the caller
+   * advances its ack cursor only after this resolves `true`. Returns `false`
+   * when JetStream is unavailable (caller must not advance the cursor).
+   */
+  publishRawChunk(taskId: string, chunk: unknown): Promise<boolean>;
+
+  /**
    * Subscribe to the per-task subject and stream chunks as a ReadableStream.
    * Returns null when JetStream is unavailable.
    *

@@ -4,19 +4,14 @@
  * Handles message processing, memory loading, and conversation state management.
  */
 
-import type { ModelsConfig } from "./types";
-import {
-  convertToModelMessages,
-  ModelMessage,
-  pruneMessages,
-  SystemModelMessage,
-  type ToolSet,
-  validateUIMessages,
-} from "ai";
 import type { ChatMessage } from "./types";
 import type { Memory } from "./memory";
-import { ThreadMessage } from "@/storage/types";
-import { keepLastTodoWrite } from "./todo-write-context";
+import type { ThreadMessage } from "@/storage/types";
+export {
+  denyPendingApprovals,
+  processConversation,
+} from "@decocms/harness/decopilot/conversation";
+export type { ProcessedConversation } from "@decocms/harness/decopilot/conversation";
 
 /**
  * Split request messages into system and the single request message.
@@ -29,71 +24,6 @@ export function splitRequestMessages(messages: ChatMessage[]): {
   const systemMessages = messages.filter((m) => m.role === "system");
   const requestMessage = messages.find((m) => m.role !== "system")!;
   return { systemMessages, requestMessage };
-}
-
-export interface ProcessedConversation {
-  systemMessages: SystemModelMessage[];
-  messages: ReturnType<typeof pruneMessages>;
-  originalMessages: ChatMessage[];
-}
-
-export function denyPendingApprovals(messages: ChatMessage[]): ChatMessage[] {
-  let patched = false;
-  const result = messages.map((msg) => {
-    if (msg.role !== "assistant") return msg;
-
-    const hasPending = msg.parts.some(
-      (part) => "state" in part && part.state === "approval-requested",
-    );
-    if (!hasPending) return msg;
-
-    patched = true;
-    return {
-      ...msg,
-      parts: msg.parts.map((part) => {
-        if (
-          !("state" in part) ||
-          part.state !== "approval-requested" ||
-          !("approval" in part) ||
-          !part.approval
-        ) {
-          return part;
-        }
-        return {
-          ...part,
-          state: "output-denied",
-          approval: {
-            ...part.approval,
-            approved: false as const,
-            reason: "User sent a new message without approving this tool call.",
-          },
-        };
-      }),
-    } as ChatMessage;
-  });
-
-  return patched ? result : messages;
-}
-
-function splitMessages(messages: ModelMessage[]): {
-  systemMessages: Extract<ModelMessage, { role: "system" }>[];
-  messages: Extract<ModelMessage, { role: "user" | "assistant" | "tool" }>[];
-} {
-  const [system, nonSystem] = messages.reduce(
-    (acc, m) => {
-      if (m.role === "system") acc[0].push(m);
-      else acc[1].push(m);
-      return acc;
-    },
-    [[], []] as [
-      Extract<ModelMessage, { role: "system" }>[],
-      Extract<ModelMessage, { role: "user" | "assistant" | "tool" }>[],
-    ],
-  );
-  return {
-    systemMessages: system,
-    messages: nonSystem,
-  };
 }
 
 async function loadMemory(memory: Memory, windowSize: number) {
@@ -131,116 +61,4 @@ export async function loadAndMergeMessages(
   const conversation = mergeMessages(threadMessages, requestMessage);
   const allMessages: ChatMessage[] = [...systemMessages, ...conversation];
   return allMessages;
-}
-/**
- * Process messages for the conversation (memory is created externally)
- */
-export async function processConversation(
-  allMessages: ChatMessage[],
-  config: { windowSize: number; models: ModelsConfig; tools?: ToolSet },
-): Promise<ProcessedConversation> {
-  // Filter out messages with empty parts before validation.
-  // Assistant messages saved after an LLM error (e.g. Gemini returning empty)
-  // have parts: [] which makes validateUIMessages throw "Message must contain
-  // at least one part", bricking the entire thread.
-  const sanitizedMessages = allMessages.filter(
-    (m) => m.role !== "assistant" || (m.parts && m.parts.length > 0),
-  );
-
-  const validUIMessages = await validateUIMessages<ChatMessage>({
-    messages: sanitizedMessages,
-  });
-
-  const patchedUIMessages = denyPendingApprovals(validUIMessages);
-
-  const modelMessages = await convertToModelMessages(patchedUIMessages, {
-    tools: config.tools,
-    ignoreIncompleteToolCalls: true,
-  });
-
-  const {
-    systemMessages: systemModelMessages,
-    messages: nonSystemModelMessages,
-  } = splitMessages(modelMessages);
-
-  // Keep only the most recent `todo_write` tool-call/result pair. The
-  // agent reads its current todo state directly from its own most-recent
-  // tool call in the visible stream; older calls are pure context bloat
-  // and are pruned here. The intra-loop strip+inject is gone — the agent
-  // loop sees its own todo_write calls live, with no manipulation.
-  const todoTrimmedMessages = keepLastTodoWrite(nonSystemModelMessages);
-
-  // Strip reasoning from all previous assistant messages.
-  // pruneMessages removes reasoning content parts, but leaves message-level
-  // and part-level providerOptions/providerMetadata intact. The AI SDK's
-  // Anthropic provider reconstructs thinking blocks from that metadata
-  // (including cryptographic signatures). When OpenRouter load-balances
-  // across backends (Anthropic direct, Azure, GCP), stale signatures from
-  // one backend cause "Invalid signature in thinking block" on another.
-  // We strip both reasoning parts AND all provider metadata from assistant
-  // messages to prevent this.
-  const prunedModelMessages = pruneMessages({
-    messages: todoTrimmedMessages,
-    reasoning: "all",
-    emptyMessages: "remove",
-    toolCalls: "none",
-  });
-
-  const cleanedModelMessages = prunedModelMessages.map((msg) => {
-    if (msg.role !== "assistant") return msg;
-
-    const content = Array.isArray(msg.content)
-      ? msg.content
-          .filter(
-            (part: { type: string }) =>
-              part.type !== "reasoning" &&
-              part.type !== "thinking" &&
-              part.type !== "redacted-reasoning",
-          )
-          .map((part) => {
-            const p = part as Record<string, unknown>;
-            if ("providerOptions" in p || "providerMetadata" in p) {
-              const {
-                providerOptions: _po,
-                providerMetadata: _pm,
-                ...rest
-              } = p;
-              // Don't strip Google's providerOptions from tool-call parts:
-              // it carries thoughtSignature which Gemini needs on subsequent
-              // turns when thinking is enabled.
-              if (p.type === "tool-call") {
-                const googleMeta = (_pm as Record<string, unknown>)?.google;
-                const googleOpts = (_po as Record<string, unknown>)?.google;
-                return {
-                  ...rest,
-                  ...(googleMeta
-                    ? { providerMetadata: { google: googleMeta } }
-                    : {}),
-                  ...(googleOpts
-                    ? { providerOptions: { google: googleOpts } }
-                    : {}),
-                } as typeof part;
-              }
-              return rest as typeof part;
-            }
-            return part;
-          })
-      : msg.content;
-
-    return {
-      ...msg,
-      content:
-        Array.isArray(content) && content.length === 0
-          ? [{ type: "text" as const, text: "" }]
-          : content,
-      providerOptions: undefined,
-      providerMetadata: undefined,
-    } as typeof msg;
-  });
-
-  return {
-    systemMessages: systemModelMessages,
-    messages: cleanedModelMessages,
-    originalMessages: validUIMessages,
-  };
 }

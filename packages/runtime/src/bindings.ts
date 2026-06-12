@@ -159,7 +159,6 @@ export const AgentOf = () =>
     id: z.string().optional(),
     credentialId: z.string().optional(),
     thinking: AgentModelInfoSchema.optional(),
-    coding: AgentModelInfoSchema.optional(),
     fast: AgentModelInfoSchema.optional(),
     toolApprovalLevel: z.enum(["auto", "readonly"]).default("auto"),
     mode: z

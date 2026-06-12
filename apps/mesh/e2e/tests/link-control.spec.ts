@@ -8,7 +8,7 @@
  *   (2) Cancel → durable flag → ingest 409 (hard invariant):
  *       - Seed a pull thread with a fence token.
  *       - POST /:org/decopilot/cancel/:threadId → expect 200/202.
- *       - POST /api/:org/links/runs/:threadId/stream with the valid fence
+ *       - POST /api/:org/links/runs/:threadId/chunks with the valid fence
  *         token → expect 409 { error: "cancelled" }.
  *       This is the correctness path: cancel must win over a valid fence.
  *
@@ -46,9 +46,10 @@ async function orgIdForSlug(
 }
 
 /**
- * Build a minimal dispatch SSE body (reused from link-dispatch-pull.spec.ts).
+ * Build a minimal NDJSON chunk-relay body (reused from
+ * link-dispatch-pull.spec.ts — seq-numbered RelayLines, protocol v2).
  */
-function buildSseBody(messageId: string, text: string): string {
+function buildRelayBody(messageId: string, text: string): string {
   const textId = `${messageId}-text-0`;
   const chunks: unknown[] = [
     { type: "start" },
@@ -64,7 +65,9 @@ function buildSseBody(messageId: string, text: string): string {
     chunk,
   }));
   events.push({ type: "done" });
-  return events.map((ev) => `data: ${JSON.stringify(ev)}\n\n`).join("");
+  return `${events
+    .map((event, i) => JSON.stringify({ seq: i + 1, event }))
+    .join("\n")}\n`;
 }
 
 /**
@@ -183,13 +186,14 @@ test.describe("link-control Phase C", () => {
       expect(rows[0]?.cancel_requested_at).not.toBeNull();
 
       // Ingest MUST be rejected with 409 even though the fence token is valid
-      const ingestBody = buildSseBody(`msg_ctrl_e2e_${Date.now()}`, "hello");
+      const ingestBody = buildRelayBody(`msg_ctrl_e2e_${Date.now()}`, "hello");
       const ingestRes = await api.post(
-        `/api/${orgSlug}/links/runs/${threadId}/stream`,
+        `/api/${orgSlug}/links/runs/${threadId}/chunks`,
         {
           headers: {
-            "content-type": "text/event-stream",
+            "content-type": "application/x-ndjson",
             "x-fence-token": fenceToken,
+            "x-relay-from": "1",
           },
           data: ingestBody,
         },

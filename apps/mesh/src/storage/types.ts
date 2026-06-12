@@ -1109,8 +1109,8 @@ export type PartKind =
   | "finish";
 
 export interface ThreadMessagePartTable {
-  id: string; // "<run_id>:<seq>"
-  seq: number; // integer, monotonic per run
+  id: string; // "<run_id>:<message_id>:<seq>"
+  seq: number; // integer, monotonic per message
   org_id: string;
   thread_id: string;
   run_id: string;

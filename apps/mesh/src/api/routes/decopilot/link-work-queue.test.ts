@@ -2,6 +2,9 @@ import { describe, expect, it } from "bun:test";
 import {
   buildConsumerName,
   buildWorkSubject,
+  LinkWorkQueue,
+  type WorkItem,
+  workItemDedupKey,
   workItemSchema,
 } from "./link-work-queue";
 
@@ -167,5 +170,62 @@ describe("workItemSchema", () => {
       harnessInput: { threadId: "thrd_07" },
     };
     expect(workItemSchema.safeParse(item).success).toBe(false);
+  });
+});
+
+describe("workItemDedupKey", () => {
+  // Regression: harness-conformance "claude-code session id round-trips" drove
+  // two turns on one thread; the second never enqueued because the publish
+  // deduped on `runId` (== threadId), colliding with turn 1 in NATS's
+  // duplicate window. The dedup key must be the per-attempt fence token.
+  it("is the per-attempt fence token, NOT the thread-scoped runId", () => {
+    const base: Omit<WorkItem, "runFenceToken"> = {
+      runId: "thrd_same", // runId aliases the threadId — identical across turns
+      threadId: "thrd_same",
+      orgId: "org_01",
+      userId: "usr_01",
+      harnessInput: {},
+      orgSlug: "test-org",
+    };
+    const turn1: WorkItem = { ...base, runFenceToken: "fence-turn-1" };
+    const turn2: WorkItem = { ...base, runFenceToken: "fence-turn-2" };
+
+    // Same thread/run id, distinct attempts → distinct dedup keys, so turn 2's
+    // publish is NOT swallowed by NATS dedup.
+    expect(workItemDedupKey(turn1)).toBe("fence-turn-1");
+    expect(workItemDedupKey(turn1)).not.toBe(workItemDedupKey(turn2));
+    expect(workItemDedupKey(turn1)).not.toBe(turn1.runId);
+  });
+});
+
+describe("LinkWorkQueue stream config", () => {
+  it("stream config includes max_age of 1h (3600 * 1e9 nanoseconds)", async () => {
+    // Capture the config passed to jsm.streams.add by stubbing JetStreamManager.
+    let capturedConfig: Record<string, unknown> | null = null;
+
+    const jsmStub = {
+      streams: {
+        info: async (_name: string) => {
+          // Simulate stream not found so add() is called.
+          throw new Error("stream not found");
+        },
+        add: async (config: Record<string, unknown>) => {
+          capturedConfig = config;
+        },
+        update: async (_name: string, _config: unknown) => {},
+      },
+    };
+
+    const queue = new LinkWorkQueue({
+      getJetStreamManager: async () =>
+        jsmStub as unknown as import("nats").JetStreamManager,
+      getJetStream: () => null,
+    });
+
+    await queue.init();
+
+    expect(capturedConfig).not.toBeNull();
+    // 1h in nanoseconds
+    expect(capturedConfig!["max_age"]).toBe(3_600 * 1_000_000_000);
   });
 });

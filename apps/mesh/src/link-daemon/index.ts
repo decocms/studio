@@ -22,6 +22,7 @@ import { createDefaultDaemonSpawn } from "@decocms/sandbox/daemon-spawn";
 import { ensureRclone } from "./ensure-rclone";
 import { createControlHandler } from "./control-handler";
 import { connectToClusterPull } from "./cluster-connection-pull";
+import { openOutbox } from "./outbox";
 import { startLocalIngress } from "./local-ingress";
 import { detectCapabilities } from "./capabilities";
 import { loadOrCreateMachineId } from "./machine-id";
@@ -225,10 +226,17 @@ export async function startLinkDaemon(
   const machineId = await loadOrCreateMachineId(opts.dataDir);
   const cliVersion = process.env.npm_package_version ?? "0.0.0";
   const capabilities = await detectCapabilities();
+  // Durable uplink outbox (spec §5.1). One DB per daemon under the leaf data
+  // dir (DATA_DIR is the leaf — do NOT append `.deco`; sandboxes live at
+  // `$DATA_DIR/link/sandboxes/...`). Survives daemon restart so a reconnect can
+  // resend the unacked relay prefix.
+  const outbox = openOutbox({ path: `${opts.dataDir}/link/outbox.sqlite` });
+
   const cluster = await connectToClusterPull({
     clusterBaseUrl: opts.clusterBaseUrl,
     getAccessToken,
     provider,
+    outbox,
     // The in-process control handler also serves the pull reverse-proxy loop's
     // `/_sandbox/*` (vm-events SSE, control RPC, vm-tools) locally and streams
     // the reply back.
@@ -264,6 +272,11 @@ export async function startLinkDaemon(
     }
     try {
       await provider.shutdown();
+    } catch {
+      /* */
+    }
+    try {
+      outbox.close();
     } catch {
       /* */
     }

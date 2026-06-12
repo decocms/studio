@@ -23,6 +23,8 @@ export interface FoldedMessage {
   parts: unknown[];
   created_at: string;
   status: "complete" | "in_progress";
+  /** Metadata from the finish anchor row (usage, codingAgentSessionId, etc.). */
+  metadata: unknown | null;
 }
 
 /**
@@ -50,6 +52,7 @@ export function foldParts(parts: ThreadMessagePart[]): FoldedMessage[] {
       status: sorted.some((p) => p.kind === "finish")
         ? "complete"
         : "in_progress",
+      metadata: sorted.find((p) => p.kind === "finish")?.metadata ?? null,
     });
   }
 

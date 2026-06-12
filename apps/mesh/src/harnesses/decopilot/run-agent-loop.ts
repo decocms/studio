@@ -20,28 +20,30 @@ import {
 } from "@opentelemetry/api";
 import {
   stepCountIs,
-  streamText,
   type ModelMessage,
-  type StreamTextResult,
+  type SystemModelMessage,
   type ToolSet,
   type StreamTextOnStepFinishCallback,
   type UIMessageStreamWriter,
 } from "ai";
-import type { ModelsConfig } from "../../api/routes/decopilot/types";
-import type { ToolApprovalLevel } from "../../api/routes/decopilot/helpers";
+import type { ModelsConfig } from "@decocms/harness/types";
+import type { ToolApprovalLevel } from "@decocms/harness/decopilot/mcp-tools";
 import type { GithubRepo, UsageStats } from "@decocms/mesh-sdk";
-import { OPENROUTER_CACHE_PROVIDER_OPTIONS } from "../../api/routes/decopilot/cache-instrumentation";
-import { createLanguageModel } from "../../ai-providers/language-model";
+import { createLanguageModel } from "@decocms/harness/decopilot/mesh-provider";
+import { DEFAULT_MAX_TOKENS } from "@decocms/harness/decopilot/harness-constants";
 import {
   PARENT_STEP_LIMIT,
-  resolveMaxOutputTokens,
   SUBAGENT_STEP_LIMIT,
-} from "../../api/routes/decopilot/constants";
-import { estimateJsonTokens } from "./built-in-tools/read-tool-output";
+} from "@decocms/harness/decopilot/prompt-constants";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
+import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import type { SubtaskParams } from "./built-in-tools/subtask";
-import type { ConnectionsBlockTool } from "./connections-block";
+import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
+import {
+  runNativeAgentLoopCore,
+  type NativeAgentLoopCoreHandle,
+} from "@decocms/harness/decopilot/native-agent-loop-core";
 
 export interface RunAgentLoopOptions {
   ctx: StudioContext;
@@ -59,6 +61,10 @@ export interface RunAgentLoopOptions {
   /** Current thread id — excluded from the user-context "history" recall. */
   currentThreadId?: string;
   kind: "agent" | "subagent";
+  /** Authenticated user identity for the user-context prompt block. */
+  user?: { id: string; name?: string | null; email?: string | null };
+  /** Pre-resolved prompt data (threads/interests/agents) for the system prompt. */
+  userContext?: import("@decocms/harness/types").HarnessUserContext;
   stepLimit?: number;
   toolApprovalLevel?: ToolApprovalLevel;
   planMode?: boolean;
@@ -108,9 +114,13 @@ export interface RunAgentLoopOptions {
 }
 
 export interface RunAgentLoopHandle {
-  result: StreamTextResult<ToolSet, never>;
+  result: NativeAgentLoopCoreHandle["result"];
   error: Promise<string | undefined>;
   span: Span;
+  /** The system messages this loop assembled and sent to the model. Exposed so
+   *  the parent (`runDecopilotStream`) can derive the `_request.systemSections`
+   *  debug metadata from the REAL prompt — the single surviving assembler. */
+  assembledSystemMessages: SystemModelMessage[];
 }
 
 export async function runAgentLoop(
@@ -122,17 +132,6 @@ export async function runAgentLoop(
     (opts.kind === "agent" ? PARENT_STEP_LIMIT : SUBAGENT_STEP_LIMIT);
   const planMode = opts.planMode ?? false;
   const toolApprovalLevel = opts.toolApprovalLevel ?? "auto";
-
-  // ── Error capture: a single promise resolved by onError/onAbort ──
-  let capturedError: string | undefined;
-  let resolveError!: (err: string | undefined) => void;
-  const errorPromise = new Promise<string | undefined>((resolve) => {
-    resolveError = resolve;
-  });
-  const finalizeError = (err: string | undefined) => {
-    if (capturedError === undefined) capturedError = err;
-    resolveError(capturedError);
-  };
 
   // ── OTel span ────────────────────────────────────────────────────
   const span = tracer.startSpan("decopilot.agent_loop", {
@@ -154,6 +153,8 @@ export async function runAgentLoop(
     isDecopilot: opts.isDecopilot,
     agentInstructions: opts.systemAgentInstructions,
     currentThreadId: opts.currentThreadId,
+    user: opts.user,
+    userContext: opts.userContext,
     passthroughClient: opts.passthroughClient,
     connectionsData: opts.connectionsData,
   });
@@ -165,6 +166,9 @@ export async function runAgentLoop(
       : baseSystemMessages;
 
   // ── Tools ─────────────────────────────────────────────────────────
+  // Cluster MCP tool-call hooks: storage-ref resolution + posthog
+  // analytics, built from ctx. The portable assembler forwards them as-is.
+  const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(opts.ctx);
   const { tools: assembledTools } = await assembleAgentTools({
     kind: opts.kind,
     ctx: opts.ctx,
@@ -173,6 +177,8 @@ export async function runAgentLoop(
     planMode,
     toolApprovalLevel,
     subtaskParams: opts.subtaskParams,
+    resolveArgs,
+    onToolCalled,
   });
   // Merge extra tools (e.g., parent's state-dependent `enable_tool`) after
   // the shared assembler. Parent extras shadow assembled tools intentionally.
@@ -180,62 +186,39 @@ export async function runAgentLoop(
     ? { ...assembledTools, ...opts.extraTools }
     : assembledTools;
 
-  // ── streamText (use shim if provided, else real) ──────────────────
-  const streamTextFn =
-    (opts as { __streamText?: unknown }).__streamText ?? streamText;
   // __streamText test shim bypasses real provider; model is only needed
   // for the real streamText path.
   const model = (opts as { __streamText?: unknown }).__streamText
     ? (undefined as never)
     : createLanguageModel(opts.provider, opts.models.thinking);
 
-  const result = (streamTextFn as typeof streamText)({
+  const handle = runNativeAgentLoopCore({
     model,
-    system: systemMessages,
+    systemMessages,
     messages: opts.messages,
     tools,
-    providerOptions: OPENROUTER_CACHE_PROVIDER_OPTIONS,
     prepareStep: opts.prepareStep as never,
     temperature: opts.temperature,
-    maxOutputTokens: resolveMaxOutputTokens(
-      opts.models.thinking.limits,
-      estimateJsonTokens(systemMessages) +
-        estimateJsonTokens(opts.messages) +
-        estimateJsonTokens(tools),
-    ),
+    maxOutputTokens:
+      opts.models.thinking.limits?.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
     stopWhen: stepCountIs(stepLimit),
     abortSignal: opts.abortSignal,
     onStepFinish: opts.onStepFinish,
-    onError: async (event: { error?: unknown }) => {
-      const error = event.error ?? event;
-      const message =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : `${error}`;
+    streamText: (opts as { __streamText?: typeof import("ai").streamText })
+      .__streamText,
+    onError: (message, error) => {
       console.error(
         `[runAgentLoop:${opts.kind}:${opts.virtualMcp.id}] Error`,
         message,
       );
       span.setStatus({ code: SpanStatusCode.ERROR, message });
       if (error instanceof Error) span.recordException(error);
-      finalizeError(message);
     },
-    onAbort: async () => {
-      console.error(
-        `[runAgentLoop:${opts.kind}:${opts.virtualMcp.id}] Aborted`,
-      );
-      finalizeError(capturedError ?? "Run aborted before completion.");
-    },
-  }) as StreamTextResult<ToolSet, never>;
+  });
 
-  Promise.resolve(result.finishReason)
+  Promise.resolve(handle.result.finishReason)
     .then(() => {
-      if (capturedError === undefined) {
-        resolveError(undefined);
-        span.setStatus({ code: SpanStatusCode.OK });
-      }
+      span.setStatus({ code: SpanStatusCode.OK });
     })
     .catch((err: unknown) => {
       const message =
@@ -245,9 +228,13 @@ export async function runAgentLoop(
             ? err
             : `${err}`;
       span.setStatus({ code: SpanStatusCode.ERROR, message });
-      finalizeError(message);
     })
     .finally(() => span.end());
 
-  return { result, error: errorPromise, span };
+  return {
+    result: handle.result,
+    error: handle.error,
+    span,
+    assembledSystemMessages: systemMessages,
+  };
 }

@@ -11,7 +11,7 @@ import type { UIMessageStreamWriter } from "ai";
 import {
   toolNeedsApproval,
   type ToolApprovalLevel,
-} from "../../../api/routes/decopilot/helpers";
+} from "@decocms/harness/decopilot/mcp-tools";
 
 // Known destructive/read-only classifications for built-in tools. Mirrors
 // the MCP annotations used by passthrough tools so dashboards can filter
@@ -33,27 +33,35 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   todo_write: { readOnly: false, destructive: false },
   update_interests: { readOnly: false, destructive: false },
 };
-import { createReadToolOutputTool } from "./read-tool-output";
-import { createReadPromptTool } from "./prompts";
-import { createReadResourceTool } from "./resources";
-import { createSandboxTool, type VirtualClient } from "./sandbox";
-import { createVmTools } from "./vm-tools";
+import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
+import { createReadPromptTool } from "@decocms/harness/decopilot/built-in-tools/prompts";
+import { createReadResourceTool } from "@decocms/harness/decopilot/built-in-tools/resources";
+import {
+  createSandboxTool,
+  type VirtualClient,
+} from "@decocms/harness/decopilot/built-in-tools/sandbox";
+import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlPageBuffer } from "./vm-tools/html-page-buffer";
-import { resolveSandboxProvider } from "@/sandbox/resolve-provider";
-import { ensureSandbox } from "@/tools/sandbox/start";
-import { removeSandboxMapEntry } from "@/tools/sandbox/sandbox-map";
+import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
 import { createSubtaskTool } from "./subtask";
-import { userAskTool } from "./user-ask";
-import { todoWriteTool } from "./todo-write";
-import { createUpdateInterestsTool } from "./update-interests";
-import { proposePlanTool } from "./propose-plan";
+import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
+import { todoWriteTool } from "@decocms/harness/decopilot/built-in-tools/todo-write";
+import { createUpdateInterestsTool } from "@decocms/harness/decopilot/built-in-tools/update-interests";
+import { proposePlanTool } from "@decocms/harness/decopilot/built-in-tools/propose-plan";
 import { createGenerateImageTool } from "./generate-image";
-import { createWebSearchTool } from "./web-search";
-import { createTakeScreenshotTool, type PendingImage } from "./take-screenshot";
-import { createScrapeUrlTool } from "./scrape-url";
-import { createInspectPageTool } from "./inspect-page";
-import type { ModelsConfig } from "../../../api/routes/decopilot/types";
+import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
+import { createClusterResearchJob } from "./cluster-research-job";
+import {
+  createTakeScreenshotTool,
+  type PendingImage,
+} from "@decocms/harness/decopilot/built-in-tools/take-screenshot";
+import { createScrapeUrlTool } from "@decocms/harness/decopilot/built-in-tools/scrape-url";
+import { createInspectPageTool } from "@decocms/harness/decopilot/built-in-tools/inspect-page";
+import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
+import { BROWSERLESS_BASE_URL } from "@decocms/harness/decopilot/built-in-tools/constants";
+import type { ModelsConfig } from "@decocms/harness/types";
 import type { MeshProvider } from "@/ai-providers/types";
+import { getSettings } from "@/settings";
 
 /**
  * Identifies the (virtual MCP, branch, user) tuple that the built-in VM
@@ -120,6 +128,13 @@ export interface BuiltinToolParams {
   /** Current agent (virtual MCP) id — scopes the per-agent interests memory
    *  written by `update_interests`. */
   agentId: string;
+  /** Usage roll-up sink (Task 17) — forwarded to the `subtask` tool so a
+   *  delegated child run's tokens fold into the parent run's accumulator. */
+  onChildUsage?: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }) => void;
 }
 
 export type { PendingImage };
@@ -151,36 +166,36 @@ async function buildAllTools(
     htmlPageBuffer,
     taskId,
     agentId,
+    onChildUsage,
   } = params;
   const approvalOpts = { isPlanMode };
   const userId = ctx.auth?.user?.id;
-  const tools: Record<string, unknown> = {
-    user_ask: userAskTool,
-    todo_write: todoWriteTool,
-    propose_plan: proposePlanTool,
-    ...(userId
-      ? {
-          update_interests: createUpdateInterestsTool({
-            ctx,
-            orgId: organization.id,
-            agentId,
-            userId,
-          }),
-        }
-      : {}),
-    read_tool_output: createReadToolOutputTool({
-      toolOutputMap,
-    }),
-    read_resource: createReadResourceTool({
-      passthroughClient,
-      toolOutputMap,
-      ctx,
-    }),
-    read_prompt: createReadPromptTool({
-      passthroughClient,
-      toolOutputMap,
-    }),
-  };
+  const tools: Record<string, unknown> = buildPortableBuiltInTools({
+    writer,
+    toolOutputMap,
+    passthroughClient,
+    toolApprovalLevel,
+    isPlanMode,
+    objectStorage: ctx.objectStorage,
+  });
+  if (userId) {
+    // Cluster `interests.write` hook: closes over ctx/storage and forwards the
+    // org/agent/user carried in the InterestsWrite payload. The tool itself no
+    // longer touches StudioContext (HarnessDeps conversion).
+    tools.update_interests = createUpdateInterestsTool({
+      write: async (input) => {
+        await ctx.storage.interests.setForAgent(
+          input.orgId,
+          input.agentId,
+          input.userId,
+          { interests: input.interests },
+        );
+      },
+      orgId: organization.id,
+      agentId,
+      userId,
+    });
+  }
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses
@@ -191,85 +206,19 @@ async function buildAllTools(
   const vmNeedsApproval =
     toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false;
   if (vmContext) {
-    // `dispatch-run` already populated `ctx.sandboxPreference` /
-    // `ctx.linkForCurrentRun` from the resolved `DispatchTarget`, so the
-    // resolver short-circuits on those ctx hints without reading sandboxMap —
-    // no DB hit on the decopilot hot path. The same `kind` flows into
-    // `ensureSandbox` below so `runner` and the provisioned handle are
-    // guaranteed to come from the same provider.
-    const { provider: runner, kind: providerKind } =
-      await resolveSandboxProvider(ctx, {
-        userId: vmContext.userId,
-        branch: vmContext.branch,
-        virtualMcpMetadata: null,
-      });
-    let cached: Promise<string> | null = null;
-    const ensureHandle = () => {
-      if (!cached) {
-        cached = ensureSandbox(
-          {
-            virtualMcpId: vmContext.virtualMcpId,
-            branch: vmContext.branch,
-            sandboxProviderKind: providerKind,
-          },
-          ctx,
-        ).then((entry) => entry.sandboxHandle);
-        // Reset on failure so the next tool call retries instead of
-        // permanently caching a rejected promise.
-        cached.catch(() => {
-          cached = null;
-        });
-      }
-      return cached;
-    };
-    // Ephemeral agents have no restart button, so the call layer auto-restarts on
-    // proxy failure. user-desktop sandboxes also auto-restart: the local daemon
-    // can drop/relink under the user at any time, and the iframe + ingress already
-    // render the reconnecting state, so a dead-daemon proxy error should reap +
-    // respawn rather than surface a sticky failure.
-    const canAutoRestart =
-      vmContext.branch === "ephemeral" || providerKind === "user-desktop";
-    const invalidateHandle = async () => {
-      // Capture before clearing — we need the dead handle to flush the
-      // captured runner's cache below.
-      const lastHandlePromise = cached;
-      cached = null;
-      if (!canAutoRestart) return;
-      // Reap the vmMap entry so the next `ensureVm` provisions fresh
-      // rather than returning the dead vmId from the fast path.
-      try {
-        await removeSandboxMapEntry(
-          ctx.storage.virtualMcps,
-          vmContext.virtualMcpId,
-          vmContext.userId,
-          vmContext.userId,
-          vmContext.branch,
-          providerKind,
-        );
-      } catch (err) {
-        console.warn("[built-in-tools] failed to reap vmMap entry", err);
-      }
-      // Flush the captured runner's in-process cache + state-store row.
-      // `ensureVm` constructs its own provider instance for the respawn, so
-      // without this the captured `runner` (used for proxy calls) would keep
-      // serving the dead URL out of its records map on the retry — even
-      // though the state store + new provider have already moved on.
-      if (lastHandlePromise && typeof runner.forgetHandle === "function") {
-        try {
-          const lastHandle = await lastHandlePromise;
-          await runner.forgetHandle(lastHandle);
-        } catch (err) {
-          console.warn("[built-in-tools] forgetHandle failed", err);
-        }
-      }
-    };
+    // The flat fs hooks (provider resolution + lazy handle + auto-restart retry
+    // layer) are built by the cluster glue so the portable tools never import
+    // `@decocms/sandbox` (spec §4.3). Provisioning stays lazy inside the hooks —
+    // `ensureSandbox` runs on the first VM-tool call, not here.
+    const fs = await buildClusterSandboxFs(ctx, {
+      virtualMcpId: vmContext.virtualMcpId,
+      branch: vmContext.branch,
+      userId: vmContext.userId,
+    });
     Object.assign(
       tools,
       createVmTools({
-        runner,
-        ensureHandle,
-        invalidateHandle,
-        canAutoRestart,
+        fs,
         htmlPageBuffer,
         toolOutputMap,
         needsApproval: vmNeedsApproval,
@@ -277,6 +226,7 @@ async function buildAllTools(
         ctx,
         threadId: vmContext.threadId,
         virtualMcpId: vmContext.virtualMcpId,
+        orgFs: getSettings().orgFsClusterMounts,
       }),
     );
   }
@@ -293,6 +243,8 @@ async function buildAllTools(
         self: { id: agentId },
         needsApproval:
           toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
+        // Roll the child run's usage into the parent's accumulator (Task 17).
+        onChildUsage,
       },
       ctx,
     );
@@ -301,41 +253,68 @@ async function buildAllTools(
   // The provider is picked from `imageProvider` so the org can pair the
   // image tier with a different credential than the chat tier (caller
   // aliases it to `provider` when they share a credential).
-  if (imageProvider && models.image) {
+  if (imageProvider && models.image && ctx.objectStorage) {
+    // Cluster builds the `objectStorage` + `allowHttpExternalUrls` hooks from
+    // StudioContext + settings; the tool itself no longer reads either
+    // (HarnessDeps conversion).
     tools.generate_image = createGenerateImageTool(writer, {
       provider: imageProvider,
       imageModelInfo: models.image,
-      ctx,
+      objectStorage: ctx.objectStorage,
+      allowHttpExternalUrls: getSettings().localMode,
     });
   }
-  // web_search requires a provider and a deep-research model.
-  // The provider is picked from `deepResearchProvider` so the deep
-  // research tier can use Gemini's async research API even when the
-  // chat model is served by another provider (e.g. LiteLLM).
+  // web_search consumes the cluster-built `researchJob` async-gen hook
+  // (HarnessDeps conversion, spec §6). The provider/DB lifecycle lives in
+  // `createClusterResearchJob`; the tool only drives the generator. The hook
+  // is built from `deepResearchProvider` so the deep-research tier can use
+  // Gemini's async research API even when the chat model is served by another
+  // provider (e.g. LiteLLM). Hook presence is the gate — desktop omits it and
+  // `web_search` is simply not in the set (§5.1).
   if (deepResearchProvider && models.deepResearch) {
-    tools.web_search = createWebSearchTool(writer, {
+    const researchJob = createClusterResearchJob({
       provider: deepResearchProvider,
       deepResearchModelInfo: models.deepResearch,
       ctx,
+    });
+    tools.web_search = createWebSearchTool(writer, {
+      researchJob,
       toolOutputMap,
       taskId,
     });
   }
   // take_screenshot, scrape_url, inspect_page require Browserless API token.
   if (process.env.BROWSERLESS_TOKEN) {
+    // Cluster builds the `browserless` + `objectStorage` hooks; the tools
+    // themselves no longer read ctx or process.env (HarnessDeps conversion).
+    // The Browserless gate stays env-based — `deps.browserless` presence
+    // equals `!!process.env.BROWSERLESS_TOKEN` as set by the cluster hook.
+    const browserless = {
+      baseUrl: BROWSERLESS_BASE_URL,
+      token: process.env.BROWSERLESS_TOKEN,
+    };
+    // take_screenshot keeps its nullable objectStorage (it has a data-URI
+    // fallback when storage is unavailable).
     tools.take_screenshot = createTakeScreenshotTool(writer, {
-      ctx,
+      objectStorage: ctx.objectStorage,
       toolOutputMap,
       pendingImages,
     });
-    tools.scrape_url = createScrapeUrlTool(writer, {
-      ctx,
-      toolOutputMap,
-    });
-    tools.inspect_page = createInspectPageTool(writer, {
-      ctx,
-      toolOutputMap,
-    });
+    // scrape_url / inspect_page require non-null objectStorage (the cluster's
+    // `deps.objectStorage` is universal). Object storage is effectively always
+    // present in the cluster; guard so the non-null hook type holds.
+    if (ctx.objectStorage) {
+      tools.scrape_url = createScrapeUrlTool(writer, {
+        browserless,
+        objectStorage: ctx.objectStorage,
+        toolOutputMap,
+      });
+      tools.inspect_page = createInspectPageTool(writer, {
+        browserless,
+        objectStorage: ctx.objectStorage,
+        toolOutputMap,
+      });
+    }
   }
   return tools as {
     user_ask: typeof userAskTool;

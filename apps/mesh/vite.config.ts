@@ -2,7 +2,6 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
-import deco from "@decocms/vite-plugin";
 import pkg from "./package.json" with { type: "json" };
 
 const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
@@ -21,7 +20,12 @@ export default defineConfig({
   define: {
     __MESH_VERSION__: JSON.stringify(pkg.version),
   },
+  build: {
+    outDir: "dist/client",
+  },
   server: {
+    port: parseInt(process.env.VITE_PORT || "4000", 10),
+    strictPort: true,
     // In a sandbox the daemon proxies the preview to Vite over IPv4
     // (127.0.0.1); Vite otherwise binds IPv6-only (localhost → [::1]) and the
     // proxy can't reach it. HOST=0.0.0.0 is the daemon's dev-env tell.
@@ -73,8 +77,5 @@ export default defineConfig({
     react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
     tailwindcss(),
     tsconfigPaths({ root: "." }),
-    deco({
-      target: "bun",
-    }),
   ],
 });

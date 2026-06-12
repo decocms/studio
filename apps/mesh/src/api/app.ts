@@ -55,6 +55,18 @@ import {
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import {
+  type LinkBearerAuthApi,
+  resolveLinkBearer,
+} from "./routes/decopilot/link-bearer-auth";
+import {
+  createUplinkIngestSession,
+  type UplinkIngestSession,
+} from "../links/uplink-ingest";
+import { registerUplinkResolve } from "../links/uplink-ws";
+import { registerUplinkConnectionFactory } from "../links/uplink-ws-handler";
+import { fenceMatches } from "../storage/run-fence";
+import { isCancelRequested } from "../storage/cancel-flag";
 import { createLinkWorkRoutes } from "./routes/decopilot/link-work-routes";
 import { createLinkControlRoutes } from "./routes/decopilot/link-control-routes";
 import { createLinkProxyRoutes } from "./routes/decopilot/link-proxy-routes";
@@ -164,6 +176,7 @@ import {
   PersistedRunConfigSchema,
   toModelsConfig,
 } from "./routes/decopilot/run-config";
+import { shouldResumeThreadInProcess } from "./routes/decopilot/orphan-recovery";
 import { getPodId } from "../core/pod-identity";
 import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
 import { createAutomationsStorage } from "../storage/automations";
@@ -171,6 +184,7 @@ import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 import { LinkWorkQueue } from "./routes/decopilot/link-work-queue";
+import type { HarnessId } from "@decocms/harness/types";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -917,6 +931,10 @@ export async function createApp(options: CreateAppOptions = {}) {
           }
         })();
       },
+      // No-NATS stub: there is no durable subject to commit to, so signal
+      // "unavailable" (false) — the publish-then-consume ingest must not
+      // advance its ack cursor when the chunk wasn't actually persisted.
+      publishRawChunk: async () => false,
       createTailStream: async () => null,
       purge: () => {},
       teardown: () => {},
@@ -995,6 +1013,41 @@ export async function createApp(options: CreateAppOptions = {}) {
           err,
         );
       });
+      // Durable explicit-ack projector consumer (spec §5.4), default-off. Only
+      // the §5.4 cutover (inline projector stops persisting) makes this the
+      // sole DB-writer, so it stays gated behind LINK_DURABLE_PROJECTOR until
+      // multi-pod e2e validates no double-write.
+      if (process.env.LINK_DURABLE_PROJECTOR === "true") {
+        void (async () => {
+          const nc = natsProvider!.getConnection();
+          const js = natsProvider!.getJetStream();
+          if (!nc || !js) return;
+          const jsm = await nc.jetstreamManager();
+          const { startDurableProjector } = await import(
+            "./routes/decopilot/start-durable-projector"
+          );
+          await startDurableProjector({
+            jsm,
+            js,
+            messageParts: new SqlThreadStorage(database.db).messageParts(),
+            resolveRunOrg: async (runId) => {
+              const row = await database.db
+                .selectFrom("threads")
+                .select(["organization_id", "message_storage_version"])
+                .where("id", "=", runId)
+                .executeTakeFirst();
+              return row
+                ? {
+                    orgId: row.organization_id,
+                    version: row.message_storage_version ?? 1,
+                  }
+                : null;
+            },
+          });
+        })().catch((err: unknown) => {
+          console.warn("[DurableProjector] Deferred init failed:", err);
+        });
+      }
     });
   }
 
@@ -1009,6 +1062,68 @@ export async function createApp(options: CreateAppOptions = {}) {
   setConnectionCircuitStore(connectionCircuitStore);
 
   const threadStorage = new SqlThreadStorage(database.db);
+
+  // WS uplink (return-leg), default-off. Register the bearer resolver + the
+  // per-connection session factory the Bun.serve handler (index.ts) dispatches
+  // to. The fence/cancel gate uses the global (threadId-only) thread storage;
+  // publishing reuses the same DECOPILOT_STREAMS path as the NDJSON ingest. Off
+  // by default so /api/links/uplink stays unmounted until multi-pod e2e
+  // validates the transport.
+  if (process.env.LINK_WS_UPLINK === "true") {
+    registerUplinkResolve((token) =>
+      resolveLinkBearer(token, auth.api as unknown as LinkBearerAuthApi),
+    );
+    registerUplinkConnectionFactory(({ userSub, send }) => {
+      const cache = new Map<string, Promise<UplinkIngestSession | null>>();
+      return {
+        sessionFor: (runId) => {
+          let pending = cache.get(runId);
+          if (!pending) {
+            pending = (async () => {
+              // ORG OWNERSHIP (parity with the NDJSON validateRunAccess gate):
+              // the authenticated daemon user MUST be a member of the run's org
+              // — the fence is a secret, not an org-bound token, so it can't be
+              // the sole authz. The getRunFence/getCancelRequestedAt lookups are
+              // unscoped (threadId-only); this check is the required caller guard.
+              const threadRow = await database.db
+                .selectFrom("threads")
+                .select(["organization_id"])
+                .where("id", "=", runId)
+                .executeTakeFirst();
+              if (!threadRow) return null;
+              const member = await database.db
+                .selectFrom("member")
+                .select(["role"])
+                .where("userId", "=", userSub)
+                .where("organizationId", "=", threadRow.organization_id)
+                .executeTakeFirst();
+              if (!member) return null;
+
+              const dbFence = await threadStorage.getRunFence(runId);
+              // No minted fence ⇒ no active pull run ⇒ reject (NDJSON 409 parity;
+              // fenceMatches(null, …) returns true, so the gate MUST short here).
+              if (dbFence === null) return null;
+
+              return createUplinkIngestSession({
+                fenceOk: (token) => fenceMatches(dbFence, token),
+                // Read FRESH per frame so a mid-stream cancel stops publishing.
+                cancelRequested: async () =>
+                  isCancelRequested(
+                    await threadStorage.getCancelRequestedAt(runId),
+                  ),
+                publish: async (chunk) => {
+                  await streamBuffer.publishRawChunk(runId, chunk);
+                },
+                send: (frame) => send(JSON.stringify(frame)),
+              });
+            })();
+            cache.set(runId, pending);
+          }
+          return pending;
+        },
+      };
+    });
+  }
 
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,
@@ -1497,6 +1612,13 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   /** Shared resume function for both startup recovery and pod-death watcher. */
   const resumeOrphanedThread = async (thread: Thread) => {
+    if (!shouldResumeThreadInProcess(thread)) {
+      console.warn(
+        `[recovery] Skipping in-process recovery for user-desktop thread ${thread.id}; thread-gate/pull transport owns recovery`,
+      );
+      return;
+    }
+
     const parsed = PersistedRunConfigSchema.safeParse(thread.run_config);
     if (!parsed.success) {
       console.warn(
@@ -1568,6 +1690,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         taskId: thread.id,
         windowSize: config.windowSize,
         isResume: true,
+        harnessId: thread.harness_id as HarnessId | null,
       },
       resumeCtx,
       { runRegistry, cancelBroadcast, sseHub },
@@ -1913,30 +2036,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     let userSub: string | null = null;
     if (match) {
       const token = (match[1] ?? "").trim();
-      // `X-MCP-Session-Auth: true` tells the apiKey plugin to skip so its
-      // customAPIKeyGetter doesn't throw INVALID_API_KEY on a non-key bearer.
-      // Server-set on a fresh Headers so the marker is never client-trusted.
-      const headers = new Headers({
-        authorization: `Bearer ${token}`,
-        "X-MCP-Session-Auth": "true",
-      });
-      const mcp = (await auth.api
-        .getMcpSession({ headers })
-        .catch(() => null)) as { userId?: string } | null;
-      if (mcp?.userId) {
-        userSub = mcp.userId;
-      } else {
-        // Dev fallback: a Better Auth API key as the bearer (no local OIDC).
-        const verified = (await auth.api
-          .verifyApiKey({ body: { key: token } })
-          .catch(() => null)) as {
-          valid?: boolean;
-          key?: { userId?: string };
-        } | null;
-        if (verified?.valid && verified.key?.userId) {
-          userSub = verified.key.userId;
-        }
-      }
+      // Shared dual-auth resolver (MCP OAuth session → Better Auth API key
+      // fallback). The same function authenticates the WS uplink upgrade in
+      // index.ts, which runs outside Hono's auth middleware.
+      userSub = await resolveLinkBearer(
+        token,
+        auth.api as unknown as LinkBearerAuthApi,
+      );
     } else {
       const ctx = (c.get as (key: string) => unknown)("meshContext") as
         | { auth?: { user?: { id?: string } } }

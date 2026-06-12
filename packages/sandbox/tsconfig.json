@@ -4,16 +4,16 @@
     "outDir": "./dist",
     "declaration": true,
     "declarationMap": true,
-    // The daemon imports a few harness leaves from apps/mesh by relative path.
-    // Those leaves are `@/`-free by design, but a transitively-reached
-    // type-only `@/...` specifier (e.g. shared SDK types) would otherwise fail
-    // `tsc` resolution here. Map `@/*` → apps/mesh/src/* so any such reference
-    // resolves. NOTE: this is a tsc-only safety net — the BUNDLE
-    // (`bun build daemon/entry.ts`) deliberately needs no alias because the
-    // decopilot-desktop tree imports every portable leaf by relative path.
+    // The harness extraction removed every daemon reach-in into apps/mesh EXCEPT
+    // the org-fs mount manager (daemon/org-fs/mount-manager.ts → apps/mesh's
+    // file-storage WebDAV/mount client). That lone exception is slated for a
+    // future @decocms/org-fs slice; until then, narrowly alias just
+    // `@/file-storage/*` (in case it reaches a `@/`-form file-storage type).
+    // The broad `@/*` → apps/mesh/src/* band-aid is gone: the daemon bundle is
+    // cluster-free and the desktop harness now lives in @decocms/harness.
     "baseUrl": ".",
     "paths": {
-      "@/*": ["../../apps/mesh/src/*"]
+      "@/file-storage/*": ["../../apps/mesh/src/file-storage/*"]
     }
   },
   "include": ["**/*.ts"],

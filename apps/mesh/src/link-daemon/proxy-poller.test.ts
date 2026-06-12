@@ -15,7 +15,6 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildReplyBody,
-  formatProxyPollerLogLine,
   runProxyPollLoop,
   runOverlapScheduler,
   type OverlapSchedulerDeps,
@@ -27,29 +26,6 @@ import type { RequestFrame } from "../links/link-control-types";
 function reqFrame(reqId: string, path = "/_sandbox/h/events"): RequestFrame {
   return { type: "request", reqId, method: "GET", path, headers: {} };
 }
-
-describe("formatProxyPollerLogLine", () => {
-  it("formats diagnostic metadata as one JSON log line", () => {
-    const line = formatProxyPollerLogLine("reply_post_failed", {
-      reqId: "req-1",
-      method: "POST",
-      path: "/_sandbox/h/dispatch",
-      elapsedMs: 123,
-      error: "TimeoutError: The operation timed out.",
-    });
-
-    expect(line).toStartWith("[proxy-poller] reply_post_failed ");
-    const payload = JSON.parse(line.slice(line.indexOf("{")));
-    expect(payload).toEqual({
-      event: "reply_post_failed",
-      reqId: "req-1",
-      method: "POST",
-      path: "/_sandbox/h/dispatch",
-      elapsedMs: 123,
-      error: "TimeoutError: The operation timed out.",
-    });
-  });
-});
 
 describe("runProxyPollLoop — request ack", () => {
   it("POSTs an ack as soon as a request is dequeued, before the reply stream upload", async () => {

@@ -9,8 +9,7 @@
 import { sleep } from "@decocms/std";
 import { getSettings } from "./settings";
 import { initObservability } from "./observability";
-import { startHeapWatch } from "./observability/heap-watch";
-import { startEventLoopMonitor } from "./observability/event-loop-delay";
+import { startProfiling } from "./observability/profiling";
 
 const settings = getSettings();
 
@@ -121,6 +120,18 @@ const previewProxyDeps = {
   getRunner: getOrInitRunnerForPreview,
 };
 
+// WS uplink (return-leg) — default-off (LINK_WS_UPLINK). The cluster registers
+// the bearer resolver + per-connection factory inside createApp() (where `auth`
+// + streamBuffer + storage live); this layer only dispatches. When the flag is
+// off the registries are empty → the upgrade falls through (404) and the
+// websocket handler ignores uplink data, so prod is unchanged until multi-pod
+// e2e validates the transport.
+const { tryUpgradeUplinkWs, getUplinkResolve } = await import(
+  "./links/uplink-ws"
+);
+const { uplinkWebSocketHandler } = await import("./links/uplink-ws-handler");
+const { isUplinkWsData } = await import("./links/uplink-ws");
+
 // Create the Hono app (any DBOS.registerWorkflow calls happen during this
 // import chain). Launch DBOS afterwards so the registry is sealed before
 // the executor starts dequeueing workflows.
@@ -172,6 +183,20 @@ const server = Bun.serve({
       if (httpRes) return httpRes;
     }
 
+    // WS uplink upgrade (return-leg). Registered only when LINK_WS_UPLINK is on
+    // (app.ts registers the resolver); otherwise getUplinkResolve() is null and
+    // this is skipped so /api/links/uplink falls through to the Hono 404.
+    const uplinkResolve = getUplinkResolve();
+    if (uplinkResolve) {
+      const uplinkRes = await tryUpgradeUplinkWs(
+        request,
+        server as unknown as Parameters<typeof tryUpgradeUplinkWs>[1],
+        { resolve: uplinkResolve },
+      );
+      if (uplinkRes === undefined) return; // upgraded
+      if (uplinkRes) return uplinkRes; // 401 / 426
+    }
+
     // Try assets first (static files or dev proxy), then API
     // Pass server as env so Hono's getConnInfo can access requestIP
     const assetRes = await handleAssets(request);
@@ -185,24 +210,29 @@ const server = Bun.serve({
     open(ws) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.open(ws);
+      } else if (isUplinkWsData(ws.data)) {
+        uplinkWebSocketHandler.open(ws);
       }
     },
     message(ws, message) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.message(ws, message);
+      } else if (isUplinkWsData(ws.data)) {
+        uplinkWebSocketHandler.message(ws, message);
       }
     },
     close(ws) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.close(ws);
+      } else if (isUplinkWsData(ws.data)) {
+        uplinkWebSocketHandler.close(ws);
       }
     },
   },
   development: false,
 });
 
-const stopHeapWatch = startHeapWatch();
-const stopEventLoopMonitor = startEventLoopMonitor();
+const stopProfiling = startProfiling();
 
 // Local mode: seed admin user + organization after server is listening
 // This must run after Bun.serve() so that the org seed can fetch tools
@@ -278,8 +308,7 @@ async function gracefulShutdown(signal: string) {
 
   let exitCode = 0;
   try {
-    stopHeapWatch();
-    stopEventLoopMonitor();
+    stopProfiling();
 
     // 1. Mark as shutting down — readiness returns 503 immediately
     app.markShuttingDown();

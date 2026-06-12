@@ -22,7 +22,6 @@
 import type { ToolSet, UIMessageStreamWriter } from "ai";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { StudioContext } from "@/core/studio-context";
-import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
 import type { MeshProvider } from "@/ai-providers/types";
 import {
@@ -31,9 +30,13 @@ import {
   type VmContext,
 } from "./built-in-tools";
 import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer";
-import type { ConnectionsBlockTool } from "./connections-block";
-import { toolsFromMCP } from "../../api/routes/decopilot/helpers";
-import type { HarnessStreamInput } from "../types";
+import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
+import {
+  toolsFromMCP,
+  type ToolCallAnalytics,
+} from "@decocms/harness/decopilot/mcp-tools";
+import { MCP_TOOL_CALL_TIMEOUT_MS } from "@decocms/harness/decopilot/harness-constants";
+import type { HarnessStreamInput } from "@decocms/harness/types";
 
 /** Raw MCP tool entries returned by `passthroughClient.listTools()`. */
 export type PassthroughToolList = Awaited<
@@ -108,6 +111,33 @@ export interface AssembleDecopilotToolsExtras {
    *  alongside `pendingOps` so the dispatch layer can also schedule a
    *  flush at step-end. */
   htmlPageBuffer: HtmlPageBuffer;
+  /** Usage roll-up sink (Task 17) — forwarded to the `subtask` built-in so a
+   *  delegated child run's tokens fold into the parent run's accumulator. */
+  onChildUsage?: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }) => void;
+  /**
+   * Portable MCP-client seam (HarnessDeps `mcpForAgent`). Generalizes the
+   * cluster's in-process `createVirtualClientFrom(virtualMcp, ctx,
+   * "passthrough", superUser, { listTimeoutMs })` so the daemon/desktop can
+   * swap in an HTTP `Client` at the agent's `mcp.url`. The cluster impl
+   * (supplied by `index.ts`) loads the Virtual MCP by id and returns a live
+   * `PassthroughClient`; the caller owns closing it via `result.close()`.
+   */
+  mcpForAgent: (
+    agentId: string,
+    opts?: { superUser?: boolean; listTimeoutMs?: number },
+  ) => Promise<PassthroughClient>;
+  /** Cluster-injected hook: resolve storage-ref args before each MCP tool
+   *  call. Omitted on desktop (no ctx) → args pass through unchanged. */
+  resolveArgs?: (
+    input: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  /** Cluster-injected hook: emit per-tool-call analytics (posthog). Omitted
+   *  on desktop → no analytics. */
+  onToolCalled?: (event: ToolCallAnalytics) => void;
 }
 
 /**
@@ -193,16 +223,10 @@ export async function assembleDecopilotTools(
   // per-tool AuthTransport check would block every non-public connection
   // tool (GitHub, Slack, etc.) for users who don't have explicit per-tool
   // permissions configured — the wrong enforcement layer for chat.
-  const passthroughClient = await createVirtualClientFrom(
-    // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`; the
-    // package widens the field to a loose bag so the daemon can ship
-    // without the cluster's storage types. Narrow back here.
-    input.virtualMcp as Parameters<typeof createVirtualClientFrom>[0],
-    ctx,
-    "passthrough",
-    true,
-    { listTimeoutMs: 1_000 },
-  );
+  const passthroughClient = await extras.mcpForAgent(input.agent.id, {
+    superUser: true,
+    listTimeoutMs: 1_000,
+  });
 
   // Once the passthrough client is open, every subsequent failure in
   // tool assembly (toolsFromMCP, getBuiltInTools, listTools, …) MUST
@@ -219,7 +243,12 @@ export async function assembleDecopilotTools(
         extras.toolOutputMap,
         extras.writer,
         input.toolApprovalLevel,
-        { ctx, isPlanMode },
+        {
+          isPlanMode,
+          timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
+          resolveArgs: extras.resolveArgs,
+          onToolCalled: extras.onToolCalled,
+        },
       );
     // Restrict to the allowlist (if any) so enable_tool enumeration, the
     // connections block, and the model-facing toolset all agree.
@@ -278,6 +307,7 @@ export async function assembleDecopilotTools(
         htmlPageBuffer: extras.htmlPageBuffer,
         taskId: extras.threadId,
         agentId: input.agent.id,
+        onChildUsage: extras.onChildUsage,
       },
       ctx,
     );

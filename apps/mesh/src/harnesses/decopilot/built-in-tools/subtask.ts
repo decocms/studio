@@ -15,9 +15,9 @@ import type { UIMessageStreamWriter } from "ai";
 import { tool, zodSchema } from "ai";
 import { z } from "zod";
 import type { MeshProvider } from "@/ai-providers/types";
-import type { ModelsConfig } from "../../../api/routes/decopilot/types";
+import type { ModelsConfig } from "@decocms/harness/types";
 import { runAgentLoop } from "../run-agent-loop";
-import { SUBAGENT_STEP_LIMIT } from "../../../api/routes/decopilot/constants";
+import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
 import { acquireSubagentSlot } from "./subagent-concurrency";
 
 export const SubtaskInputSchema = z.object({
@@ -74,6 +74,19 @@ export interface SubtaskParams {
   self?: {
     id: string;
   };
+  /**
+   * Usage roll-up sink (Task 17). When present, the subtask tool calls this
+   * with each completed child run's token totals so the PARENT run's usage
+   * accumulator can fold them into its final `message-metadata.usage` (the
+   * kernel sees one number). The cluster adapter wires this to
+   * `usageAccumulator.addExternal` for `kind: "main"` runs; absent on subtask
+   * runs (which expose no subtask tool — depth-1).
+   */
+  onChildUsage?: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }) => void;
 }
 
 const SUBTASK_ANNOTATIONS = {
@@ -88,7 +101,8 @@ export function createSubtaskTool(
   params: SubtaskParams,
   ctx: StudioContext,
 ) {
-  const { provider, organization, models, needsApproval, self } = params;
+  const { provider, organization, models, needsApproval, self, onChildUsage } =
+    params;
 
   return tool({
     description: SUBTASK_DESCRIPTION,
@@ -229,7 +243,17 @@ export function createSubtaskTool(
           `[subtask:${targetLabel}${isSelf ? ":self" : ""}] completed: finishReason=${finishReason}, steps=${steps.length}, textLength=${aggregatedText.length}, error=${error ? "yes" : "no"}, usage=${JSON.stringify({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens })}`,
         );
 
-        // 6. Emit metadata chunks to the parent's writer.
+        // 6. Roll the child's usage into the PARENT run's accumulator so the
+        //    parent's final `message-metadata.usage` includes child tokens
+        //    (Task 17 — the kernel sees one number). Per-subtask detail still
+        //    rides the `data-tool-subtask-metadata` chunk below.
+        onChildUsage?.({
+          inputTokens: usage.inputTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+          totalTokens: usage.totalTokens ?? 0,
+        });
+
+        // 6b. Emit metadata chunks to the parent's writer.
         const latencyMs = performance.now() - startTime;
         writer.write({
           type: "data-tool-metadata",

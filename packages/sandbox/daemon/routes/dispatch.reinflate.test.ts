@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseMessagesRef } from "../../../../apps/mesh/src/harnesses/offload-messages";
+import { parseMessagesRef } from "@decocms/harness/offload-messages";
 
 /**
  * Guards the detection contract the /dispatch re-inflate branch relies on.

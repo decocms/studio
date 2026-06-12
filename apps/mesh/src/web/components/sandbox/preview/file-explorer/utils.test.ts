@@ -2,10 +2,13 @@ import { describe, expect, it } from "bun:test";
 import {
   buildFileTree,
   decoBlockKeyFromTreePath,
+  directoryNeedsLazyLoad,
   flattenTree,
   getDirectoryContextPath,
   getParentTreePath,
+  getPathDepth,
   joinTreePath,
+  mergeGlobLists,
   pathExistsInFileList,
   toDaemonPath,
   toTreePath,
@@ -72,5 +75,49 @@ describe("file-explorer utils", () => {
     expect(toTreePath("src/index.ts")).toBe("/src/index.ts");
     expect(toTreePath("/src/index.ts")).toBe("/src/index.ts");
     expect(toTreePath("")).toBe("/");
+  });
+
+  it("getPathDepth counts tree path segments", () => {
+    expect(getPathDepth("/")).toBe(0);
+    expect(getPathDepth("/apps")).toBe(1);
+    expect(getPathDepth("/apps/mesh/src")).toBe(3);
+    expect(getPathDepth("/apps/mesh/src/index.ts")).toBe(4);
+  });
+
+  it("directoryNeedsLazyLoad is true only below eager depth boundary", () => {
+    const loaded = new Set(["/apps/mesh/src"]);
+    expect(directoryNeedsLazyLoad("/apps", loaded)).toBe(false);
+    expect(directoryNeedsLazyLoad("/apps/mesh/src", loaded)).toBe(false);
+    expect(directoryNeedsLazyLoad("/apps/mesh/src/components", loaded)).toBe(
+      true,
+    );
+  });
+
+  it("mergeGlobLists unions files and directories", () => {
+    expect(
+      mergeGlobLists(["a.ts"], ["src"], {
+        files: ["b.ts"],
+        directories: ["src/components"],
+      }),
+    ).toEqual({
+      files: ["a.ts", "b.ts"],
+      directories: ["src", "src/components"],
+      truncated: false,
+    });
+  });
+
+  it("mergeGlobLists preserves truncated across merges", () => {
+    expect(
+      mergeGlobLists(
+        ["a.ts"],
+        ["src"],
+        { files: [], directories: [], truncated: true },
+        true,
+      ),
+    ).toEqual({
+      files: ["a.ts"],
+      directories: ["src"],
+      truncated: true,
+    });
   });
 });

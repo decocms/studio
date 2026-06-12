@@ -110,7 +110,8 @@ export const COLLECTION_THREAD_MESSAGES_LIST = defineTool({
           thread_id: taskId,
           role: m.role,
           parts: m.parts as Record<string, unknown>[],
-          metadata: null,
+          // Folded from the finish-anchor row (usage, codingAgentSessionId, …).
+          metadata: m.metadata ?? null,
           created_at: m.created_at,
           updated_at: m.created_at,
         })),

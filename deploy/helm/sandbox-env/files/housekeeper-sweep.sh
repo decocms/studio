@@ -22,6 +22,16 @@ DAEMON_PORT=9000
 IDLE_PATH="/_sandbox/idle"
 LEGACY_IDLE_PATH="/_decopilot_vm/idle"
 
+# A transient optimistic-concurrency conflict on the SandboxClaim status write
+# surfaces as Ready=False/reason=ReconcilerError for ~1s before the operator
+# retries and recovers (a concurrent reconcile still lands status.sandbox.name).
+# Don't force-delete on first sight — require the error to persist this long, so
+# we never delete a freshly-adopted claim out from under a client still inside
+# its adoption wait (the "did not record an adopted Sandbox within 60s" freeze).
+# Override via the CronJob env if needed.
+: "${RECONCILER_ERROR_GRACE_SEC:=120}"
+RECONCILER_ERROR_SINCE_ANNOTATION="studio.decocms.com/reconciler-error-since"
+
 now_iso()   { date -u +%Y-%m-%dT%H:%M:%SZ; }
 now_micro() { date -u +%Y-%m-%dT%H:%M:%S.000000Z; }
 
@@ -163,9 +173,10 @@ PODS_FILE=$(mktemp)
 ROUTES_FILE=$(mktemp)
 trap 'rm -f "$CLAIMS_FILE" "$PODS_FILE" "$ROUTES_FILE"' EXIT
 
-# Pipe-delimited so `read` can split without jq.
+# Pipe-delimited so `read` can split without jq. Trailing field:
+#   reconciler-error-since — our epoch stamp tracking a ReconcilerError streak
 kubectl get sandboxclaims -n "$NS" -l "$CLAIM_SELECTOR" \
-  -o jsonpath='{range .items[*]}{.metadata.name}|{.status.conditions[?(@.type=="Ready")].status}|{.status.conditions[?(@.type=="Ready")].reason}{"\n"}{end}' \
+  -o jsonpath='{range .items[*]}{.metadata.name}|{.status.conditions[?(@.type=="Ready")].status}|{.status.conditions[?(@.type=="Ready")].reason}|{.metadata.annotations.studio\.decocms\.com/reconciler-error-since}{"\n"}{end}' \
   > "$CLAIMS_FILE" 2>/dev/null || true
 
 # Selector-mismatch detector: silent `claims=0` hides a missing STUDIO_ENV
@@ -192,14 +203,41 @@ skipped=0
 
 # Redirect (not pipe) so the loop stays in the parent shell — pipe-into-
 # while subshells the body and counter mutations would be lost.
-while IFS='|' read -r CLAIM READY REASON; do
+while IFS='|' read -r CLAIM READY REASON ERROR_SINCE; do
   [ -z "$CLAIM" ] && continue
   total=$((total + 1))
 
   if [ "$READY" = "False" ] && [ "$REASON" = "ReconcilerError" ]; then
-    force_delete_claim "$CLAIM" "ReconcilerError" "operator failed to reconcile"
+    now_s=$(date -u +%s)
+    # Treat an absent/garbage stamp as "first seen": start the grace clock and
+    # wait. A transient conflict clears well before the next 60s sweep.
+    case "$ERROR_SINCE" in
+      ''|*[!0-9]*)
+        kubectl annotate sandboxclaim "$CLAIM" -n "$NS" --overwrite \
+          "${RECONCILER_ERROR_SINCE_ANNOTATION}=${now_s}" >/dev/null 2>&1 || true
+        log "defer-delete claim=$CLAIM reason=ReconcilerError (first seen, grace ${RECONCILER_ERROR_GRACE_SEC}s)"
+        skipped=$((skipped + 1))
+        continue
+        ;;
+    esac
+    age_s=$((now_s - ERROR_SINCE))
+    if [ "$age_s" -lt "$RECONCILER_ERROR_GRACE_SEC" ]; then
+      log "defer-delete claim=$CLAIM reason=ReconcilerError age_s=$age_s grace_s=$RECONCILER_ERROR_GRACE_SEC"
+      skipped=$((skipped + 1))
+      continue
+    fi
+    # Error has persisted past the grace window — the operator really is stuck.
+    force_delete_claim "$CLAIM" "ReconcilerError" "persisted ${age_s}s past ${RECONCILER_ERROR_GRACE_SEC}s grace"
     reaped=$((reaped + 1))
     continue
+  fi
+
+  # Not in ReconcilerError this sweep — clear any stale streak stamp so a future
+  # transient error starts its grace window fresh (else a later blip would be
+  # judged against a long-expired timestamp and deleted immediately).
+  if [ -n "$ERROR_SINCE" ]; then
+    kubectl annotate sandboxclaim "$CLAIM" -n "$NS" \
+      "${RECONCILER_ERROR_SINCE_ANNOTATION}-" >/dev/null 2>&1 || true
   fi
 
   if [ "$READY" != "True" ]; then

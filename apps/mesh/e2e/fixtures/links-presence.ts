@@ -20,6 +20,7 @@
  */
 
 import { expect, type APIRequestContext } from "@playwright/test";
+import { LINK_PROTOCOL_VERSION } from "../../src/links/protocol";
 
 export function claimPullPresence(
   api: APIRequestContext,
@@ -31,6 +32,7 @@ export function claimPullPresence(
     .get(`/api/links/work`, {
       timeout: 1_500,
       headers: {
+        "x-link-protocol": String(LINK_PROTOCOL_VERSION),
         "x-link-capabilities": capabilities.join(","),
         "x-link-machine-id": "e2e-test-machine",
         "x-link-cli-version": "test",

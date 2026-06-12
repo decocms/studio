@@ -2,16 +2,23 @@
  * Unit tests for handleLocalDispatch.
  *
  * All tests inject a stub `fetchImpl` — no real HTTP, no NATS, no DB.
- * The ReadableStream body is simulated via a simple string-encoded SSE block.
+ * The sandbox SSE body is simulated via a string-encoded stream; the cluster
+ * `/chunks` endpoint is stubbed by reading the streaming NDJSON request body
+ * fully and answering `{ ok, lastSeq }` like the real route.
  */
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { UIMessageChunk } from "ai";
-import type { LinkIngestBatch } from "../api/routes/decopilot/link-ingest-batch-schema";
 import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
+import { type RelayLine, relayLineSchema } from "../links/protocol/relay";
 import {
   handleLocalDispatch,
+  relayWorkItemFailure,
   type LocalDispatchDeps,
 } from "./handle-local-dispatch";
+import { openInMemoryOutbox, openOutbox } from "./outbox";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -36,9 +43,13 @@ const validWorkItem: WorkItem = {
     runId: RUN_ID,
     taskId: "task_01",
     messages: [],
+    workspace: { cwd: "default" },
     models: {
-      credentialId: "cred_01",
-      thinking: { id: "claude-3-7-sonnet", title: "Sonnet" },
+      thinking: {
+        id: "claude-3-7-sonnet",
+        title: "Sonnet",
+        credentialId: "cred_01",
+      },
     },
     mcp: {
       url: "https://mcp.example.com",
@@ -92,12 +103,33 @@ function dispatchSSE(chunks: UIMessageChunk[]): string {
     .join("")}data: {"type":"done"}\n\n`;
 }
 
+/** Read a (streaming) NDJSON relay body fully and validate every line. */
+async function readRelayLines(body: unknown): Promise<RelayLine[]> {
+  const text =
+    typeof body === "string"
+      ? body
+      : await new Response(body as ReadableStream<Uint8Array>).text();
+  return text
+    .split("\n")
+    .filter((l) => l.length > 0)
+    .map((l) => relayLineSchema.parse(JSON.parse(l)));
+}
+
+/** Stub cluster /chunks handler: consume the body, ack everything. */
+async function ackChunksPost(init?: RequestInit): Promise<Response> {
+  const lines = await readRelayLines(init?.body);
+  return new Response(
+    JSON.stringify({ ok: true, lastSeq: lines.at(-1)?.seq ?? 0 }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
 // ── Test: successful relay ──────────────────────────────────────────────────
 
 describe("handleLocalDispatch", () => {
-  it("POSTs to sandbox dispatch and appends JSON part batches to cluster ingest", async () => {
+  it("POSTs to sandbox dispatch and streams seq-numbered NDJSON relay lines to the cluster", async () => {
     const capturedRequests: Array<{ url: string; init: RequestInit }> = [];
-    const capturedBatches: LinkIngestBatch[] = [];
+    const capturedPosts: RelayLine[][] = [];
     let clusterTokenCalls = 0;
 
     const fetchImpl = async (
@@ -115,17 +147,19 @@ describe("handleLocalDispatch", () => {
       }
 
       if (url.includes("/links/runs/")) {
-        capturedBatches.push(JSON.parse(init?.body as string));
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        const lines = await readRelayLines(init?.body);
+        capturedPosts.push(lines);
+        return new Response(
+          JSON.stringify({ ok: true, lastSeq: lines.at(-1)?.seq ?? 0 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
       }
 
       throw new Error(`Unexpected fetch to ${url}`);
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -162,34 +196,33 @@ describe("handleLocalDispatch", () => {
     expect(dispatchBody.harnessId).toBe("claude-code"); // derived from agent.id
     expect(dispatchBody.input).toEqual(validWorkItem.harnessInput);
 
-    // ── Assert cluster ingest call ──────────────────────────────────────────
-    const ingestCalls = capturedRequests.filter((r) =>
+    // ── Assert cluster chunk-relay call ────────────────────────────────────
+    const chunkCalls = capturedRequests.filter((r) =>
       r.url.includes("/links/runs/"),
     );
-    expect(ingestCalls).toHaveLength(3);
-    expect(ingestCalls.every((call) => call.url.endsWith("/parts"))).toBe(true);
-    expect(ingestCalls[0]!.url).toBe(
-      `${CLUSTER_BASE}/api/${ORG_SLUG}/links/runs/${RUN_ID}/parts`,
+    expect(chunkCalls).toHaveLength(1);
+    expect(chunkCalls[0]!.url).toBe(
+      `${CLUSTER_BASE}/api/${ORG_SLUG}/links/runs/${RUN_ID}/chunks`,
     );
     expect(clusterTokenCalls).toBe(1);
-    for (const call of ingestCalls) {
-      const ingestHeaders = call.init.headers as Record<string, string>;
-      expect(ingestHeaders.authorization).toBe(`Bearer ${CLUSTER_TOKEN}`);
-      expect(ingestHeaders["x-fence-token"]).toBe(FENCE_TOKEN);
-      expect(ingestHeaders["content-type"]).toBe("application/json");
-    }
+    const relayHeaders = chunkCalls[0]!.init.headers as Record<string, string>;
+    expect(relayHeaders.authorization).toBe(`Bearer ${CLUSTER_TOKEN}`);
+    expect(relayHeaders["x-fence-token"]).toBe(FENCE_TOKEN);
+    expect(relayHeaders["content-type"]).toBe("application/x-ndjson");
+    expect(relayHeaders["x-relay-from"]).toBe("1");
 
-    // ── Assert JSON batches were appended, not a streaming upload ──────────
-    expect(ingestCalls[0]!.init.body).toBeString();
-    expect(ingestCalls[0]!.init.body).not.toBeInstanceOf(ReadableStream);
-    expect(capturedBatches[0]?.batchId).toBe(`${RUN_ID}:0`);
-    expect(capturedBatches[0]?.done).toBe(false);
-    expect(capturedBatches[0]?.rows.length).toBeGreaterThan(0);
-    expect(capturedBatches.at(-1)).toEqual({
-      batchId: `${RUN_ID}:done`,
-      rows: [],
-      done: true,
-    });
+    // ── Assert a streaming NDJSON upload, not a pre-serialized JSON batch ──
+    expect(chunkCalls[0]!.init.body).toBeInstanceOf(ReadableStream);
+    expect(
+      (chunkCalls[0]!.init as RequestInit & { duplex?: string }).duplex,
+    ).toBe("half");
+
+    const lines = capturedPosts[0]!;
+    expect(lines.map((l) => l.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(lines.slice(0, 7).map((l) => l.event)).toEqual(
+      TEXT_CHUNKS.map((chunk) => ({ type: "ui-message-chunk", chunk })),
+    );
+    expect(lines.at(-1)!.event).toEqual({ type: "done" });
   });
 
   // ── Test: non-ok sandbox dispatch → throw ──────────────────────────────
@@ -206,6 +239,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -218,10 +252,56 @@ describe("handleLocalDispatch", () => {
     );
   });
 
-  // ── Test: non-ok cluster ingest → throw ────────────────────────────────
+  it("throws when sandbox dispatch does not return response headers before the start timeout", async () => {
+    let clusterTokenCalls = 0;
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (signal?.aborted) {
+            reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => {
+              reject(
+                signal.reason ?? new DOMException("aborted", "AbortError"),
+              );
+            },
+            { once: true },
+          );
+        });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    };
 
-  it("throws when the cluster ingest returns a non-2xx response", async () => {
-    let appendCount = 0;
+    const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      clusterBaseUrl: CLUSTER_BASE,
+      getClusterToken: async () => {
+        clusterTokenCalls++;
+        return CLUSTER_TOKEN;
+      },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      dispatchStartTimeoutMs: 5,
+    };
+
+    await expect(handleLocalDispatch(validWorkItem, deps)).rejects.toThrow(
+      "[handleLocalDispatch] dispatch start timed out after 5ms",
+    );
+    expect(clusterTokenCalls).toBe(0);
+  });
+
+  // ── Test: non-retriable cluster relay rejection → throw, single attempt ─
+
+  it("throws without retrying when the cluster relay returns a 4xx (fence loss)", async () => {
+    let relayPosts = 0;
 
     const fetchImpl = async (url: string): Promise<Response> => {
       if (url.includes("/_sandbox/dispatch")) {
@@ -231,13 +311,7 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        appendCount++;
-        if (appendCount === 1) {
-          return new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          });
-        }
+        relayPosts++;
         return new Response(JSON.stringify({ error: "fenced" }), {
           status: 409,
           headers: { "content-type": "application/json" },
@@ -247,6 +321,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -255,38 +330,51 @@ describe("handleLocalDispatch", () => {
     };
 
     await expect(handleLocalDispatch(validWorkItem, deps)).rejects.toThrow(
-      "[handleLocalDispatch] fenced",
+      "[handleLocalDispatch] relay failed (409)",
     );
-    expect(appendCount).toBe(2);
+    expect(relayPosts).toBe(1);
   });
 
-  it("retries a transient failed part append", async () => {
-    let appendAttempts = 0;
+  // ── Test: transient relay failure → reconnect resends the full prefix ──
 
-    const fetchImpl = async (url: string): Promise<Response> => {
+  it("retries a transient relay failure and resends the whole prefix from seq 1", async () => {
+    let relayAttempts = 0;
+    const capturedPosts: RelayLine[][] = [];
+    const capturedFromSeq: string[] = [];
+
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
       if (url.includes("/_sandbox/dispatch")) {
         return new Response(makeBodyStream(dispatchSSE(TEXT_CHUNKS)), {
           status: 200,
           headers: { "content-type": "text/event-stream" },
         });
       }
-      if (url.endsWith("/parts")) {
-        appendAttempts++;
-        if (appendAttempts === 1) {
+      if (url.endsWith("/chunks")) {
+        relayAttempts++;
+        const headers = (init?.headers ?? {}) as Record<string, string>;
+        capturedFromSeq.push(headers["x-relay-from"] ?? "<missing>");
+        if (relayAttempts === 1) {
+          // Reject without reading the body — like a 503 from an LB.
           return new Response(JSON.stringify({ error: "temporary" }), {
             status: 503,
             headers: { "content-type": "application/json" },
           });
         }
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        const lines = await readRelayLines(init?.body);
+        capturedPosts.push(lines);
+        return new Response(
+          JSON.stringify({ ok: true, lastSeq: lines.at(-1)?.seq ?? 0 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -296,7 +384,13 @@ describe("handleLocalDispatch", () => {
 
     await handleLocalDispatch(validWorkItem, deps);
 
-    expect(appendAttempts).toBeGreaterThan(1);
+    expect(relayAttempts).toBe(2);
+    expect(capturedFromSeq).toEqual(["1", "1"]);
+    // The reconnect attempt carries the complete prefix: all 7 chunks + done.
+    expect(capturedPosts[0]!.map((l) => l.seq)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
+    expect(capturedPosts[0]!.at(-1)!.event).toEqual({ type: "done" });
   });
 
   // ── Test: harnessId from explicit deps override ─────────────────────────
@@ -318,15 +412,13 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -357,10 +449,7 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
@@ -375,6 +464,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -413,10 +503,7 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
@@ -436,6 +523,7 @@ describe("handleLocalDispatch", () => {
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -476,15 +564,13 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -499,9 +585,91 @@ describe("handleLocalDispatch", () => {
     expect(capturedDispatchBody!.messagesRef).toBeUndefined();
   });
 
+  // ── Test: the injected durable outbox is the relay's resend store ──────
+
+  it("appends through the injected durable outbox and truncates on terminal ack", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hld-outbox-"));
+    const outbox = openOutbox({ path: join(dir, "ob.sqlite") });
+    const posted: RelayLine[] = [];
+
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        return new Response(makeBodyStream(dispatchSSE(TEXT_CHUNKS)), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      const lines = await readRelayLines(init?.body);
+      posted.push(...lines);
+      return new Response(
+        JSON.stringify({ ok: true, lastSeq: posted.at(-1)?.seq ?? 0 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+
+    await handleLocalDispatch(validWorkItem, {
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      clusterBaseUrl: CLUSTER_BASE,
+      getClusterToken: async () => CLUSTER_TOKEN,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      outbox,
+    });
+
+    expect(posted.at(-1)!.event).toEqual({ type: "done" });
+    // Terminal-acked → the run's rows are truncated from the injected outbox.
+    expect(
+      outbox.replay({ runId: RUN_ID, fenceToken: FENCE_TOKEN, fromSeq: 1 }),
+    ).toEqual([]);
+    outbox.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("survives a daemon crash: the injected file outbox holds the unacked prefix", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hld-crash-"));
+    const outbox = openOutbox({ path: join(dir, "ob.sqlite") });
+
+    // The cluster /chunks always fails — the run never reaches a terminal ack,
+    // so the prefix stays durable. If deps.outbox were not plumbed through, the
+    // injected file outbox would be empty here.
+    const fetchImpl = async (url: string): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        return new Response(makeBodyStream(dispatchSSE(TEXT_CHUNKS)), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      return new Response(JSON.stringify({ error: "down" }), { status: 503 });
+    };
+
+    await handleLocalDispatch(validWorkItem, {
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      clusterBaseUrl: CLUSTER_BASE,
+      getClusterToken: async () => CLUSTER_TOKEN,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      outbox,
+    }).catch(() => {}); // expected to fail after retries
+
+    outbox.close();
+    const reopened = openOutbox({ path: join(dir, "ob.sqlite") });
+    const rows = reopened.replay({
+      runId: RUN_ID,
+      fenceToken: FENCE_TOKEN,
+      fromSeq: 1,
+    });
+    // 7 chunk lines + the synthesized terminal done = 8.
+    expect(rows.map((r) => r.wireSeq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    reopened.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   // ── Test: abort signal is propagated ───────────────────────────────────
 
-  it("propagates abort signal to the dispatch fetch", async () => {
+  it("propagates abort signal to the dispatch and relay fetches", async () => {
     const ac = new AbortController();
     const capturedSignals: (AbortSignal | null | undefined)[] = [];
 
@@ -517,15 +685,13 @@ describe("handleLocalDispatch", () => {
         });
       }
       if (url.includes("/links/runs/")) {
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return ackChunksPost(init);
       }
       throw new Error(`Unexpected fetch to ${url}`);
     };
 
     const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       clusterBaseUrl: CLUSTER_BASE,
@@ -536,8 +702,132 @@ describe("handleLocalDispatch", () => {
 
     await handleLocalDispatch(validWorkItem, deps);
 
-    // Dispatch plus every cluster append fetch should receive the abort signal.
-    expect(capturedSignals.length).toBe(4);
-    expect(capturedSignals.every((signal) => signal === ac.signal)).toBe(true);
+    // The sandbox dispatch receives a composite signal that includes `ac`;
+    // the relay fetch receives the original run signal.
+    expect(capturedSignals.length).toBe(2);
+    expect(capturedSignals[0]).toBeInstanceOf(AbortSignal);
+    expect(capturedSignals[1]).toBe(ac.signal);
+  });
+});
+
+// ── relayWorkItemFailure tests ──────────────────────────────────────────────
+
+describe("relayWorkItemFailure", () => {
+  it("posts exactly error+done NDJSON lines with required headers to the correct URL", async () => {
+    const captured: Array<{ url: string; init: RequestInit }> = [];
+
+    const fetchImpl = async (
+      url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      captured.push({ url, init: init ?? {} });
+      return new Response(JSON.stringify({ ok: true, lastSeq: 2 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await relayWorkItemFailure(
+      validWorkItem,
+      {
+        clusterBaseUrl: CLUSTER_BASE,
+        getClusterToken: async () => CLUSTER_TOKEN,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      },
+      "work_item_expired",
+      "credentials expired",
+    );
+
+    expect(captured).toHaveLength(1);
+    const { url, init } = captured[0]!;
+
+    // Correct URL
+    expect(url).toBe(
+      `${CLUSTER_BASE}/api/${ORG_SLUG}/links/runs/${RUN_ID}/chunks`,
+    );
+
+    // Required headers
+    const headers = init.headers as Record<string, string>;
+    expect(headers["authorization"]).toBe(`Bearer ${CLUSTER_TOKEN}`);
+    expect(headers["x-fence-token"]).toBe(FENCE_TOKEN);
+    expect(headers["content-type"]).toBe("application/x-ndjson");
+    expect(headers["x-relay-from"]).toBe("1");
+
+    // Body: exactly 2 NDJSON lines
+    const lines = (init.body as string)
+      .split("\n")
+      .filter((l) => l.length > 0)
+      .map(
+        (l) =>
+          JSON.parse(l) as {
+            seq: number;
+            event: { type: string; code?: string; message?: string };
+          },
+      );
+
+    expect(lines).toHaveLength(2);
+
+    // Line 1: error event
+    expect(lines[0]!.seq).toBe(1);
+    expect(lines[0]!.event.type).toBe("error");
+    expect(lines[0]!.event.code).toBe("work_item_expired");
+    expect(lines[0]!.event.message).toBe("credentials expired");
+
+    // Line 2: done event
+    expect(lines[1]!.seq).toBe(2);
+    expect(lines[1]!.event.type).toBe("done");
+  });
+
+  it("throws when the cluster returns a non-2xx status", async () => {
+    const fetchImpl = async (): Promise<Response> => {
+      return new Response(JSON.stringify({ error: "fenced" }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await expect(
+      relayWorkItemFailure(
+        validWorkItem,
+        {
+          clusterBaseUrl: CLUSTER_BASE,
+          getClusterToken: async () => CLUSTER_TOKEN,
+          fetchImpl: fetchImpl as unknown as typeof fetch,
+        },
+        "work_item_expired",
+        "credentials expired",
+      ),
+    ).rejects.toThrow("cluster rejected failure relay (409)");
+  });
+
+  it("propagates the abort signal to the fetch", async () => {
+    const ac = new AbortController();
+    const capturedSignals: (AbortSignal | null | undefined)[] = [];
+
+    const fetchImpl = async (
+      _url: string,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      capturedSignals.push(init?.signal ?? null);
+      return new Response(JSON.stringify({ ok: true, lastSeq: 2 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await relayWorkItemFailure(
+      validWorkItem,
+      {
+        clusterBaseUrl: CLUSTER_BASE,
+        getClusterToken: async () => CLUSTER_TOKEN,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        signal: ac.signal,
+      },
+      "work_item_expired",
+      "credentials expired",
+    );
+
+    expect(capturedSignals).toHaveLength(1);
+    expect(capturedSignals[0]).toBe(ac.signal);
   });
 });

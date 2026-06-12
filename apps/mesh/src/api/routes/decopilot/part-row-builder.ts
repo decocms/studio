@@ -104,9 +104,15 @@ export class PartRowBuilder {
     seq: number,
     kind: PartKind,
     payload: unknown,
+    metadata: unknown | null = null,
   ): ThreadMessagePart {
     return {
-      id: `${this.ctx.runId}:${seq}`,
+      // Per-MESSAGE-scoped id: seq restarts at 0 per builder (per message), so
+      // the runId+seq pair alone is NOT unique across messages of one run (e.g.
+      // the user message and the assistant message of a pull turn each start at
+      // seq 0). The messageId segment keeps them disjoint while same-message
+      // re-emits (same messageId + same seq) stay idempotent for ON CONFLICT.
+      id: `${this.ctx.runId}:${messageId}:${seq}`,
       seq,
       org_id: this.ctx.orgId,
       thread_id: this.ctx.threadId,
@@ -116,7 +122,7 @@ export class PartRowBuilder {
       kind,
       payload,
       payload_ref: null,
-      metadata: null,
+      metadata,
       // Monotonic per run, derived from seq (NOT Date.now() per part).
       created_at: new Date(this.base + seq).toISOString(),
     };
@@ -154,10 +160,11 @@ export class PartRowBuilder {
   private markFinished(
     messageId: string,
     role: AnyMessage["role"],
+    metadata: unknown | null = null,
   ): ThreadMessagePart[] {
     if (this.finished.has(messageId)) return [];
     const seq = this.seqFor(`${messageId}#finish`);
-    const row = this.row(messageId, role, seq, "finish", {});
+    const row = this.row(messageId, role, seq, "finish", {}, metadata);
     this.finishMessageIdByRowId.set(row.id, messageId);
     return [row];
   }
@@ -184,7 +191,11 @@ export class PartRowBuilder {
   emitUserMessage(message: AnyMessage): ThreadMessagePart[] {
     return [
       ...this.emitMessageParts(message),
-      ...this.markFinished(message.id, message.role),
+      ...this.markFinished(
+        message.id,
+        message.role,
+        (message as { metadata?: unknown }).metadata ?? null,
+      ),
     ];
   }
 
@@ -198,12 +209,18 @@ export class PartRowBuilder {
 
   /**
    * `onFinish`: persist remaining final parts, then close the assistant
-   * message with a single `finish` anchor.
+   * message with a single `finish` anchor. The message metadata (usage,
+   * codingAgentSessionId, etc.) is carried on the finish anchor row so the
+   * v2 fold path can surface it on `FoldedMessage.metadata`.
    */
   emitFinal(message: AnyMessage): ThreadMessagePart[] {
     return [
       ...this.emitMessageParts(message),
-      ...this.markFinished(message.id, message.role),
+      ...this.markFinished(
+        message.id,
+        message.role,
+        (message as { metadata?: unknown }).metadata ?? null,
+      ),
     ];
   }
 

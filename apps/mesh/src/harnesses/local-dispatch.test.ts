@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
-import { registerHarnessFactory, resetRegistryForTests } from "./registry";
+import {
+  registerHarnessFactory,
+  resetRegistryForTests,
+} from "@decocms/harness/registry";
 import type {
   HarnessContext,
   HarnessFactory,
   HarnessStreamInput,
-} from "./types";
+} from "@decocms/harness/types";
 import type { StudioContext } from "../core/studio-context";
 import { localDispatch } from "./local-dispatch";
 
@@ -13,9 +16,9 @@ const makeInput = (): HarnessStreamInput => ({
   threadId: "t1",
   runId: "r1",
   messages: [],
+  workspace: { cwd: "default" },
   models: {
-    credentialId: "cred-1",
-    thinking: { id: "m-thinking", name: "Thinking", contextWindow: 0 },
+    thinking: { id: "m-thinking", title: "Thinking", credentialId: "cred-1" },
   } as unknown as HarnessStreamInput["models"],
   mcp: { url: "http://localhost/mcp", headers: {}, expiresAt: 0 },
   mode: "default",

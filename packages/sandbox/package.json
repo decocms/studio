@@ -1,6 +1,6 @@
 {
   "name": "@decocms/sandbox",
-  "version": "0.21.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "Sandbox runner for isolated per-user containerised tool execution",
   "scripts": {
@@ -17,10 +17,13 @@
     "./provider/desktop": "./server/provider/desktop/index.ts",
     "./daemon-client": "./server/daemon-client.ts",
     "./daemon/routes/dispatch": "./daemon/routes/dispatch.ts",
+    "./dispatch": "./dispatch/index.ts",
+    "./dispatch/*": "./dispatch/*.ts",
     "./proxy/http": "./proxy/http.ts",
     "./proxy/websocket": "./proxy/websocket.ts"
   },
   "dependencies": {
+    "@decocms/harness": "workspace:*",
     "@decocms/std": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",
     "@opentelemetry/api": "^1.9.0",

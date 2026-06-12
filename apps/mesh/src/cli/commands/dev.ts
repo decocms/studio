@@ -32,6 +32,8 @@ export interface DevOptions {
   localSandboxProvider: boolean;
   /** When true, hot-reload the managed link daemon and sandbox daemons. */
   hotReload?: boolean;
+  /** Dev-only: route managed user-desktop link traffic through ToxiProxy. */
+  devLinkToxiProxy?: boolean;
 }
 
 // Strip ANSI escape codes from a string
@@ -205,6 +207,58 @@ export async function startDevServer(
   updateService({ name: "Vite", status: "ready", port: Number(vitePort) });
   updateService({ name: "API", status: "ready", port: Number(settings.port) });
 
+  let linkClusterUrl = serverUrl;
+  let stopToxiProxy: (() => Promise<void>) | null = null;
+  try {
+    if (options.localSandboxProvider && options.devLinkToxiProxy) {
+      const {
+        DEV_LINK_TOXIPROXY_SERVICE_NAME,
+        ensureDevLinkToxiProxy,
+        resolveDevLinkClusterUrl,
+      } = await import("../lib/dev-link-toxiproxy");
+      const apiPort = await findAvailablePort(18474);
+      const listenPort = await findAvailablePort(18480);
+      const toxiproxy = await ensureDevLinkToxiProxy({
+        serverUrl,
+        apiPort,
+        listenPort,
+      });
+      stopToxiProxy = toxiproxy.stop;
+      linkClusterUrl = resolveDevLinkClusterUrl({
+        serverUrl,
+        toxiproxy: toxiproxy.config,
+      });
+      updateService({
+        name: DEV_LINK_TOXIPROXY_SERVICE_NAME,
+        status: "ready",
+        port: listenPort,
+      });
+      addLogEntry({
+        method: "",
+        path: "",
+        status: 0,
+        duration: 0,
+        timestamp: new Date(),
+        rawLine: toxiproxy.config.logLine,
+      });
+    }
+  } catch (error) {
+    if (stopToxiProxy) {
+      await stopToxiProxy().catch(() => null);
+    }
+    child.kill("SIGTERM");
+    await child.exited.catch(() => null);
+    if (managedServiceNames.length > 0) {
+      try {
+        const { stopServices } = await import("../../services/ensure-services");
+        await stopServices(settings.dataDir);
+      } catch {
+        /* best-effort cleanup; preserve the original startup error */
+      }
+    }
+    throw error;
+  }
+
   // ── Auto-spawn `deco link` (opt-in) ──────────────────────────────
   // Gated on --local-sandbox-provider. When set, once the cluster is up
   // on :PORT, spawn the link daemon so the dev session exercises the
@@ -236,7 +290,7 @@ export async function startDevServer(
         );
         await superviseLink({
           home: settings.dataDir,
-          clusterUrl: serverUrl,
+          clusterUrl: linkClusterUrl,
           linkDataDir,
           repoRoot,
           hotReload: options.hotReload,
@@ -260,7 +314,7 @@ export async function startDevServer(
               localMode: options.localMode,
               linkDataDir,
               studioDataDir: settings.dataDir,
-              serverUrl,
+              serverUrl: linkClusterUrl,
               isInteractive: Boolean(process.stdin.isTTY),
             });
           },
@@ -299,6 +353,13 @@ export async function startDevServer(
       const { stopLink } = await import("../../services/ensure-services");
       try {
         await stopLink(settings.dataDir);
+      } catch {
+        /* best-effort */
+      }
+    }
+    if (stopToxiProxy) {
+      try {
+        await stopToxiProxy();
       } catch {
         /* best-effort */
       }
