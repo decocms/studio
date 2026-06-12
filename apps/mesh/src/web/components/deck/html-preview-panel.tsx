@@ -27,6 +27,7 @@ export function HtmlPreviewPanel({
   marker,
   title,
   savePath,
+  chrome = "full",
 }: {
   readUrl: string;
   /** Content marker (org-fs `size-updatedAt` / publish byte count). */
@@ -34,6 +35,10 @@ export function HtmlPreviewPanel({
   title: string;
   /** Org-fs home-volume path for edit save-back; omit = read-only. */
   savePath?: string;
+  /** "full" = own toolbar with URL/copy/open. "controls" = the host
+   *  already has a header (e.g. the Library preview) — render only the
+   *  deck controls, and only once the handshake upgrades the panel. */
+  chrome?: "full" | "controls";
 }) {
   const editor = useDeckEditor({ readUrl, statMarker: marker, savePath });
 
@@ -50,9 +55,12 @@ export function HtmlPreviewPanel({
   const src = editor.railOpen ? `${baseSrc}#rail` : baseSrc;
   const iframeReady = readySrc === baseSrc;
 
+  const showToolbar = chrome === "full" || editor.deckDetected;
   return (
     <div className="flex h-full w-full flex-col bg-background">
-      <DeckToolbar readUrl={readUrl} editor={editor} />
+      {showToolbar && (
+        <DeckToolbar readUrl={readUrl} editor={editor} variant={chrome} />
+      )}
       <div className="relative flex-1">
         <iframe
           key={baseSrc}

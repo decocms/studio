@@ -21,9 +21,12 @@ import {
   FilePreviewShimmer,
   formatSize,
 } from "@/web/components/file-preview";
+import { HtmlPreviewPanel } from "@/web/components/deck/html-preview-panel";
 import { FileTypeIcon } from "@/web/components/file-type-icon";
 import { useOrgFsDownloadUrl, useOrgFsStat } from "@/web/hooks/use-org-fs";
 import { basename, parseLibraryPath } from "./location";
+
+const isHtml = (name: string) => /\.html?$/i.test(name);
 
 export function LibraryPreviewDialog({
   previewPath,
@@ -102,7 +105,20 @@ export function LibraryPreviewDialog({
           )}
         </div>
         <div className="relative min-h-0 flex-1 bg-background">
-          {file ? (
+          {file && entry && isHtml(filename) ? (
+            // HTML goes through the shared handshake-upgrading panel: a
+            // deck gains the rail toggle / edit mode / PDF export; a plain
+            // page stays a passive preview. Public volumes are read-only.
+            <HtmlPreviewPanel
+              readUrl={file.downloadUrl}
+              marker={`${entry.size}-${entry.updatedAt}`}
+              title={filename}
+              // The editor hook persists to the HOME volume specifically
+              // (deck convention) — only home files are inline-editable.
+              savePath={volume === "home" ? filePath : undefined}
+              chrome="controls"
+            />
+          ) : file ? (
             <FilePreview file={file} />
           ) : isPending ? (
             <FilePreviewShimmer />

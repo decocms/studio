@@ -33,9 +33,12 @@ import type { DeckEditor } from "./use-deck-editor";
 export function DeckToolbar({
   readUrl,
   editor,
+  variant = "full",
 }: {
   readUrl: string;
   editor: DeckEditor;
+  /** "controls" drops the URL row + copy/open (the host header has them). */
+  variant?: "full" | "controls";
 }) {
   const [copied, setCopied] = useState(false);
   const absoluteUrl = new URL(readUrl, window.location.origin).toString();
@@ -67,14 +70,18 @@ export function DeckToolbar({
           </TooltipContent>
         </Tooltip>
       )}
-      <button
-        type="button"
-        onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
-        className="flex min-w-0 flex-1 items-center rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        title={absoluteUrl}
-      >
-        <span className="truncate">{absoluteUrl}</span>
-      </button>
+      {variant === "full" ? (
+        <button
+          type="button"
+          onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
+          className="flex min-w-0 flex-1 items-center rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title={absoluteUrl}
+        >
+          <span className="truncate">{absoluteUrl}</span>
+        </button>
+      ) : (
+        <div className="flex-1" />
+      )}
 
       {editor.agentUpdated && (
         <Tooltip>
@@ -139,35 +146,39 @@ export function DeckToolbar({
         </Tooltip>
       )}
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Copy URL"
-            onClick={handleCopy}
-          >
-            {copied ? <Check size={14} /> : <Copy01 size={14} />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {copied ? "Copied" : "Copy URL"}
-        </TooltipContent>
-      </Tooltip>
+      {variant === "full" && (
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Copy URL"
+                onClick={handleCopy}
+              >
+                {copied ? <Check size={14} /> : <Copy01 size={14} />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {copied ? "Copied" : "Copy URL"}
+            </TooltipContent>
+          </Tooltip>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Open in new tab"
-            onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
-          >
-            <LinkExternal01 size={14} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Open in new tab</TooltipContent>
-      </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Open in new tab"
+                onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
+              >
+                <LinkExternal01 size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Open in new tab</TooltipContent>
+          </Tooltip>
+        </>
+      )}
     </div>
   );
 }
