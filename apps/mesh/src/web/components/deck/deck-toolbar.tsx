@@ -1,7 +1,9 @@
 /**
- * DeckToolbar — header strip for the deck preview tab: URL/copy/open
- * actions (mirrors WebPageTab's PreviewToolbar), the edit-mode toggle,
- * the agent-updated reload badge, and PDF export.
+ * DeckToolbar — header strip for the HtmlPreviewPanel: URL/copy/open
+ * actions always; the slide-rail toggle, edit mode, and PDF export only
+ * after the framed document completes the deck-viewer handshake
+ * (editor.deckDetected) — a plain HTML preview shows none of them. Edit
+ * mode additionally requires a writable source.
  *
  * PDF export opens the deck's read URL with a `#print` fragment in a new
  * tab: the deck-viewer runtime auto-triggers `window.print()` there and
@@ -46,21 +48,25 @@ export function DeckToolbar({
 
   return (
     <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={editor.railOpen ? "secondary" : "ghost"}
-            size="icon"
-            aria-label={editor.railOpen ? "Hide slide list" : "Show slide list"}
-            onClick={() => editor.setRailOpen(!editor.railOpen)}
-          >
-            <LayoutLeft size={14} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {editor.railOpen ? "Hide slide list" : "Show slide list"}
-        </TooltipContent>
-      </Tooltip>
+      {editor.deckDetected && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={editor.railOpen ? "secondary" : "ghost"}
+              size="icon"
+              aria-label={
+                editor.railOpen ? "Hide slide list" : "Show slide list"
+              }
+              onClick={() => editor.setRailOpen(!editor.railOpen)}
+            >
+              <LayoutLeft size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {editor.railOpen ? "Hide slide list" : "Show slide list"}
+          </TooltipContent>
+        </Tooltip>
+      )}
       <button
         type="button"
         onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
@@ -94,40 +100,44 @@ export function DeckToolbar({
         <span className="px-1 text-xs text-muted-foreground">Saving…</span>
       )}
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={editor.editMode ? "secondary" : "ghost"}
-            size="icon"
-            aria-label={editor.editMode ? "Done editing" : "Edit inline"}
-            className={cn(editor.editMode && "text-primary")}
-            onClick={() => editor.setEditMode(!editor.editMode)}
-          >
-            <Edit03 size={14} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {editor.editMode
-            ? "Done editing"
-            : "Edit inline (text, reorder, delete)"}
-        </TooltipContent>
-      </Tooltip>
+      {editor.deckDetected && editor.writable && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={editor.editMode ? "secondary" : "ghost"}
+              size="icon"
+              aria-label={editor.editMode ? "Done editing" : "Edit inline"}
+              className={cn(editor.editMode && "text-primary")}
+              onClick={() => editor.setEditMode(!editor.editMode)}
+            >
+              <Edit03 size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {editor.editMode
+              ? "Done editing"
+              : "Edit inline (text, reorder, delete)"}
+          </TooltipContent>
+        </Tooltip>
+      )}
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Export PDF"
-            onClick={() => window.open(`${absoluteUrl}#print`, "_blank")}
-          >
-            <Download01 size={14} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          Export PDF (opens print dialog)
-        </TooltipContent>
-      </Tooltip>
+      {editor.deckDetected && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Export PDF"
+              onClick={() => window.open(`${absoluteUrl}#print`, "_blank")}
+            >
+              <Download01 size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Export PDF (opens print dialog)
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       <Tooltip>
         <TooltipTrigger asChild>

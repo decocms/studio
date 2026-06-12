@@ -41,6 +41,12 @@ const TEXT_SAVE_DEBOUNCE_MS = 800;
 export interface DeckEditor {
   /** Ref callback for the preview iframe (attaches the message bridge). */
   iframeRef: (el: HTMLIFrameElement | null) => void;
+  /** The framed document completed the deck-viewer handshake (posted
+   *  `ready`) — gates the deck-specific toolbar controls. A plain HTML
+   *  page never posts it and stays a passive preview. */
+  deckDetected: boolean;
+  /** Edits can be persisted (an org-fs save path was provided). */
+  writable: boolean;
   /** Marker (`size-updatedAt`) the iframe src should be keyed by. Null
    *  until the file's stat has loaded once. */
   displayedMarker: string | null;
@@ -69,16 +75,21 @@ interface Machine {
 }
 
 export function useDeckEditor(args: {
-  path: string;
   readUrl: string;
-  /** `size-updatedAt` of the current server stat, or null while absent. */
+  /** Content marker the iframe src is keyed by (org-fs `size-updatedAt`,
+   *  or the publish event's byte count for read-only sources). */
   statMarker: string | null;
+  /** Org-fs home-volume path to persist edits to. Omit for read-only
+   *  sources (e.g. the legacy pages/ pipeline) — ops are then refused. */
+  savePath?: string;
 }): DeckEditor {
+  const writable = args.savePath !== undefined;
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const writeText = useOrgFsWriteText(HOME_VOLUME);
 
   const [editMode, setEditModeState] = useState(false);
+  const [deckDetected, setDeckDetected] = useState(false);
   const [railOpen, setRailOpenState] = useState(false);
   const [agentUpdated, setAgentUpdated] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -100,8 +111,9 @@ export function useDeckEditor(args: {
   const isEditing = editMode || savePending || saving;
 
   const invalidateStat = () => {
+    if (args.savePath === undefined) return;
     queryClient.invalidateQueries({
-      queryKey: KEYS.orgFsStat(org.id, HOME_VOLUME, args.path),
+      queryKey: KEYS.orgFsStat(org.id, HOME_VOLUME, args.savePath),
     });
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
   };
@@ -147,7 +159,10 @@ export function useDeckEditor(args: {
     }
     setSaving(true);
     try {
-      const entry = await writeText.mutateAsync({ path: args.path, body });
+      const entry = await writeText.mutateAsync({
+        path: args.savePath!,
+        body,
+      });
       machine.selfMarkers.add(`${entry.size}-${entry.updatedAt}`);
       invalidateStat();
     } catch (err) {
@@ -176,6 +191,12 @@ export function useDeckEditor(args: {
   };
 
   const handleOp = async (msg: DeckOpMessage) => {
+    if (!writable) {
+      // Read-only source (no save path) — the edit affordances are hidden,
+      // but refuse defensively in case the framed document emits anyway.
+      ack(msg.opId, false, "read-only preview");
+      return;
+    }
     try {
       if (machine.source === null) {
         const res = await fetch(args.readUrl, { credentials: "include" });
@@ -209,6 +230,7 @@ export function useDeckEditor(args: {
     const msg = parseDeckRuntimeMessage(e.data);
     if (!msg) return;
     if (msg.type === "ready") {
+      setDeckDetected(true);
       // Re-assert host-held view state after every (re)load of the
       // iframe document (the initial src hash only covers first paint).
       if (latestRef.current.editMode) {
@@ -287,6 +309,8 @@ export function useDeckEditor(args: {
 
   return {
     iframeRef,
+    deckDetected,
+    writable,
     displayedMarker,
     editMode,
     setEditMode,
