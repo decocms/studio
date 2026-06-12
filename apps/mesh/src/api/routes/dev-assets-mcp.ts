@@ -33,6 +33,7 @@ import { join, relative } from "node:path";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import type { StudioContext } from "../../core/studio-context";
 import { requireOrganization } from "../../core/studio-context";
 import { getContentType } from "./dev-assets";
@@ -491,7 +492,10 @@ export async function handleDevAssetsMcpRequest(
   // Create MCP server directly
   const server = new McpServer(
     { name: "dev-assets-mcp", version: "1.0.0" },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: { tools: {} },
+      jsonSchemaValidator: sharedJsonSchemaValidator,
+    },
   );
 
   // Register each tool with the server

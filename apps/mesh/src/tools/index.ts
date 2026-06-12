@@ -16,6 +16,7 @@ import {
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
@@ -249,7 +250,10 @@ export const managementMCP = async (ctx: StudioContext) => {
   // Create MCP server directly
   const server = new McpServer(
     { name: "mcp-cms-management", version: "1.0.0" },
-    { capabilities: { tools: {}, prompts: {}, resources: {} } },
+    {
+      capabilities: { tools: {}, prompts: {}, resources: {} },
+      jsonSchemaValidator: sharedJsonSchemaValidator,
+    },
   );
 
   // Register each tool with the server
@@ -460,7 +464,10 @@ export async function listManagementTools(
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
-  const client = new Client({ name: "tools-hydration", version: "1.0.0" });
+  const client = new Client(
+    { name: "tools-hydration", version: "1.0.0" },
+    { jsonSchemaValidator: sharedJsonSchemaValidator },
+  );
   try {
     await client.connect(clientTransport);
     const result = await client.listTools();

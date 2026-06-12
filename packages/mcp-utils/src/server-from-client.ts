@@ -29,6 +29,7 @@
 
 import type { IClient } from "./client-like.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { sharedJsonSchemaValidator } from "./shared-schema-validator.ts";
 import type {
   Implementation,
   ServerCapabilities,
@@ -85,6 +86,10 @@ export function createServerFromClient(
   const server = new McpServer(serverInfo, {
     capabilities,
     instructions,
+    // Share one content-memoized validator so the SDK doesn't mint a fresh Ajv
+    // (with an ever-growing compile cache) per server instance. See
+    // shared-schema-validator.ts.
+    jsonSchemaValidator: sharedJsonSchemaValidator,
   });
 
   // Set up request handlers that delegate to client methods

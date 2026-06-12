@@ -1,4 +1,5 @@
 export type { IClient } from "./client-like.ts";
+export { sharedJsonSchemaValidator } from "./shared-schema-validator.ts";
 export {
   composeTransport,
   WrapperTransport,

@@ -9,6 +9,7 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
   GetPromptResult,
@@ -54,7 +55,7 @@ export function createLazyClient(
   // Placeholder client — never connects to anything
   const placeholder = new Client(
     { name: `lazy-${connection.id}`, version: "1.0.0" },
-    { capabilities: {} },
+    { capabilities: {}, jsonSchemaValidator: sharedJsonSchemaValidator },
   );
 
   // Shared promise for the real client (single-flight)

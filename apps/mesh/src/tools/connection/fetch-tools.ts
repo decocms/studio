@@ -6,6 +6,7 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -128,10 +129,13 @@ async function fetchToolsFromHttpMCP(
       { requestInit: { headers } },
     );
 
-    client = new Client({
-      name: "mcp-cms-tool-fetcher",
-      version: "1.0.0",
-    });
+    client = new Client(
+      {
+        name: "mcp-cms-tool-fetcher",
+        version: "1.0.0",
+      },
+      { jsonSchemaValidator: sharedJsonSchemaValidator },
+    );
 
     // Add timeout to prevent hanging connections
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -209,7 +213,10 @@ async function fetchToolsFromSSEMCP(
       { requestInit: { headers } },
     );
 
-    client = new Client({ name: "mcp-cms-tool-fetcher", version: "1.0.0" });
+    client = new Client(
+      { name: "mcp-cms-tool-fetcher", version: "1.0.0" },
+      { jsonSchemaValidator: sharedJsonSchemaValidator },
+    );
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error("SSE connection timeout")), 15_000);
@@ -275,10 +282,13 @@ async function fetchToolsFromStdioMCP(
       cwd: stdioParams.cwd,
     });
 
-    client = new Client({
-      name: "mcp-cms-tool-fetcher",
-      version: "1.0.0",
-    });
+    client = new Client(
+      {
+        name: "mcp-cms-tool-fetcher",
+        version: "1.0.0",
+      },
+      { jsonSchemaValidator: sharedJsonSchemaValidator },
+    );
 
     // Add timeout to prevent hanging
     const timeoutPromise = new Promise<never>((_, reject) => {
