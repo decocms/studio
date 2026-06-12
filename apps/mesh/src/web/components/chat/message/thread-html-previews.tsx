@@ -92,10 +92,18 @@ export function ThreadHtmlPreviews() {
 
   if (chips.length === 0) return null;
 
+  const hasDecks = chips.some((c) => c.kind === "deck");
+  const hasPages = chips.some((c) => c.kind === "page");
+  const heading = hasDecks
+    ? hasPages
+      ? "Slides & pages in this chat"
+      : "Slides in this chat"
+    : "Pages in this chat";
+
   return (
     <div className="flex flex-col gap-1.5 py-2">
       <div className="text-[12px] text-muted-foreground/70 uppercase tracking-wide">
-        Pages in this chat
+        {heading}
       </div>
       <div className="flex flex-wrap gap-2">
         {chips.map((chip) => (
