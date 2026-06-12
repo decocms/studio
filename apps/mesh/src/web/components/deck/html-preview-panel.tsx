@@ -16,7 +16,7 @@
  */
 
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { DeckToolbar } from "./deck-toolbar";
 import { useDeckEditor } from "./use-deck-editor";
 
@@ -27,7 +27,7 @@ export function HtmlPreviewPanel({
   marker,
   title,
   savePath,
-  chrome = "full",
+  trailing,
 }: {
   readUrl: string;
   /** Content marker (org-fs `size-updatedAt` / publish byte count). */
@@ -35,10 +35,9 @@ export function HtmlPreviewPanel({
   title: string;
   /** Org-fs home-volume path for edit save-back; omit = read-only. */
   savePath?: string;
-  /** "full" = own toolbar with URL/copy/open. "controls" = the host
-   *  already has a header (e.g. the Library preview) — render only the
-   *  deck controls, and only once the handshake upgrades the panel. */
-  chrome?: "full" | "controls";
+  /** Host-specific actions appended to the (single) toolbar — e.g. the
+   *  Library's download/close buttons. Keeps every surface on one bar. */
+  trailing?: ReactNode;
 }) {
   const editor = useDeckEditor({ readUrl, statMarker: marker, savePath });
 
@@ -47,26 +46,22 @@ export function HtmlPreviewPanel({
 
   if (editor.displayedMarker === null) return null;
 
-  // Hash carries the runtime's view state (`#rail` opens the thumbnail
-  // rail) — kept out of the iframe `key` so toggling it is a fragment
-  // navigation inside the existing document, not a reload.
+  // Rail/edit state travels ONLY over postMessage — never the iframe
+  // src. Touching the src (even fragment-only: removing a fragment is a
+  // full navigation) reloads the document and resets the deck to slide 1.
   const sep = readUrl.includes("?") ? "&" : "?";
-  const baseSrc = `${readUrl}${sep}v=${encodeURIComponent(editor.displayedMarker)}`;
-  const src = editor.railOpen ? `${baseSrc}#rail` : baseSrc;
-  const iframeReady = readySrc === baseSrc;
+  const src = `${readUrl}${sep}v=${encodeURIComponent(editor.displayedMarker)}`;
+  const iframeReady = readySrc === src;
 
-  const showToolbar = chrome === "full" || editor.deckDetected;
   return (
     <div className="flex h-full w-full flex-col bg-background">
-      {showToolbar && (
-        <DeckToolbar readUrl={readUrl} editor={editor} variant={chrome} />
-      )}
+      <DeckToolbar readUrl={readUrl} editor={editor} trailing={trailing} />
       <div className="relative flex-1">
         <iframe
-          key={baseSrc}
+          key={src}
           ref={editor.iframeRef}
           src={src}
-          onLoad={() => setReadySrc(baseSrc)}
+          onLoad={() => setReadySrc(src)}
           sandbox="allow-scripts"
           className={cn(
             "absolute inset-0 block h-full w-full bg-white",

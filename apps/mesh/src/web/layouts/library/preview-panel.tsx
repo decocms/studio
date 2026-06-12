@@ -3,6 +3,12 @@
  * viewer, mirroring the chat's file tab (toolbar + preview). URL-driven
  * (`?preview=<browse path>`) so a preview link survives reload: the entry
  * is re-resolved via `stat`, not read off list caches.
+ *
+ * HTML files render the shared HtmlPreviewPanel instead — the SAME single
+ * toolbar the chat deck tab shows (URL/copy/open, upgrading with rail/
+ * edit/PDF on the deck-viewer handshake), with the Library's download and
+ * close actions appended via `trailing`. Only home-volume files get a
+ * savePath (the inline editor persists to the home volume).
  */
 
 import { Button } from "@deco/ui/components/button.tsx";
@@ -23,6 +29,39 @@ import { useOrgFsDownloadUrl, useOrgFsStat } from "@/web/hooks/use-org-fs";
 import { basename, parseLibraryPath } from "./location";
 
 const isHtml = (name: string) => /\.html?$/i.test(name);
+
+function PreviewActions({
+  downloadUrl,
+  filename,
+  onClose,
+}: {
+  downloadUrl: string;
+  filename: string;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" asChild>
+            <a href={downloadUrl} download={filename}>
+              <Download01 size={14} />
+            </a>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Download</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <XClose size={14} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Close</TooltipContent>
+      </Tooltip>
+    </>
+  );
+}
 
 export function LibraryPreviewPanel({
   previewPath,
@@ -47,6 +86,26 @@ export function LibraryPreviewPanel({
           downloadUrl: downloadUrl(entry.path),
         }
       : null;
+
+  // HTML: hand the whole panel (toolbar included) to the shared surface so
+  // it is pixel-identical to the chat deck tab.
+  if (file && entry && isHtml(filename)) {
+    return (
+      <HtmlPreviewPanel
+        readUrl={file.downloadUrl}
+        marker={`${entry.size}-${entry.updatedAt}`}
+        title={filename}
+        savePath={volume === "home" ? filePath : undefined}
+        trailing={
+          <PreviewActions
+            downloadUrl={file.downloadUrl}
+            filename={filename}
+            onClose={onClose}
+          />
+        }
+      />
+    );
+  }
 
   return (
     <div className="flex h-full w-full flex-col bg-background">
@@ -100,20 +159,7 @@ export function LibraryPreviewPanel({
         </Tooltip>
       </div>
       <div className="relative min-h-0 flex-1">
-        {file && entry && isHtml(filename) ? (
-          // HTML goes through the shared handshake-upgrading panel: a deck
-          // gains the rail toggle / edit mode / PDF export; a plain page
-          // stays a passive preview. Public volumes are read-only.
-          <HtmlPreviewPanel
-            readUrl={file.downloadUrl}
-            marker={`${entry.size}-${entry.updatedAt}`}
-            title={filename}
-            // The editor hook persists to the HOME volume specifically
-            // (deck convention) — only home files are inline-editable.
-            savePath={volume === "home" ? filePath : undefined}
-            chrome="controls"
-          />
-        ) : file ? (
+        {file ? (
           <FilePreview file={file} />
         ) : isPending ? (
           <FilePreviewShimmer />
