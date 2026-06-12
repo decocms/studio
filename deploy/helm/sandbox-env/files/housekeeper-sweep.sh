@@ -173,11 +173,10 @@ PODS_FILE=$(mktemp)
 ROUTES_FILE=$(mktemp)
 trap 'rm -f "$CLAIMS_FILE" "$PODS_FILE" "$ROUTES_FILE"' EXIT
 
-# Pipe-delimited so `read` can split without jq. Trailing fields:
-#   status.sandbox.name      — adopted sandbox; non-empty means adoption landed
-#   reconciler-error-since    — our epoch stamp tracking a ReconcilerError streak
+# Pipe-delimited so `read` can split without jq. Trailing field:
+#   reconciler-error-since — our epoch stamp tracking a ReconcilerError streak
 kubectl get sandboxclaims -n "$NS" -l "$CLAIM_SELECTOR" \
-  -o jsonpath='{range .items[*]}{.metadata.name}|{.status.conditions[?(@.type=="Ready")].status}|{.status.conditions[?(@.type=="Ready")].reason}|{.status.sandbox.name}|{.metadata.annotations.studio\.decocms\.com/reconciler-error-since}{"\n"}{end}' \
+  -o jsonpath='{range .items[*]}{.metadata.name}|{.status.conditions[?(@.type=="Ready")].status}|{.status.conditions[?(@.type=="Ready")].reason}|{.metadata.annotations.studio\.decocms\.com/reconciler-error-since}{"\n"}{end}' \
   > "$CLAIMS_FILE" 2>/dev/null || true
 
 # Selector-mismatch detector: silent `claims=0` hides a missing STUDIO_ENV
@@ -204,18 +203,11 @@ skipped=0
 
 # Redirect (not pipe) so the loop stays in the parent shell — pipe-into-
 # while subshells the body and counter mutations would be lost.
-while IFS='|' read -r CLAIM READY REASON SANDBOX_NAME ERROR_SINCE; do
+while IFS='|' read -r CLAIM READY REASON ERROR_SINCE; do
   [ -z "$CLAIM" ] && continue
   total=$((total + 1))
 
   if [ "$READY" = "False" ] && [ "$REASON" = "ReconcilerError" ]; then
-    # Adoption that only failed to write status back is NOT a dead operator —
-    # the sandbox is already bound. Never delete it.
-    if [ -n "$SANDBOX_NAME" ]; then
-      log "skip claim=$CLAIM reason=reconciler-error-but-adopted sandbox=$SANDBOX_NAME"
-      skipped=$((skipped + 1))
-      continue
-    fi
     now_s=$(date -u +%s)
     # Treat an absent/garbage stamp as "first seen": start the grace clock and
     # wait. A transient conflict clears well before the next 60s sweep.
