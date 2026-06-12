@@ -112,7 +112,7 @@ function instrumentPool(pool: Pool): Pool {
         });
         if (waited > SLOW_ACQUIRE_THRESHOLD_MS) {
           if (contended) {
-            console.error("Slow pool acquire — pool saturated:", {
+            console.error("Slow db pool acquire — pool saturated:", {
               waitMs: waited,
               total: pool.totalCount,
               idle: pool.idleCount,
@@ -122,7 +122,7 @@ function instrumentPool(pool: Pool): Pool {
           } else {
             // A connection was free; the delay is the event loop being blocked,
             // not the DB pool. See observability/profiling/event-loop.ts.
-            console.warn("Slow pool acquire — event-loop lag (not pool):", {
+            console.warn("Slow db pool acquire — event-loop lag (not pool):", {
               waitMs: waited,
               idleAtStart,
               total: pool.totalCount,
