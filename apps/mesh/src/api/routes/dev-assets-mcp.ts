@@ -11,6 +11,7 @@
  */
 
 import { getSettings } from "../../settings";
+import { serveMcpRequest } from "../utils/serve-mcp";
 import {
   type DeleteObjectInput,
   type DeleteObjectOutput,
@@ -537,7 +538,7 @@ export async function handleDevAssetsMcpRequest(
       req.headers.get("Accept")?.includes("application/json") ?? false,
   });
   await server.connect(transport);
-  return transport.handleRequest(req);
+  return serveMcpRequest(server, transport, req, "mcp:dev-assets");
 }
 
 /**

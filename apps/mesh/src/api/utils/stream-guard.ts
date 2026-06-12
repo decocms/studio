@@ -12,12 +12,32 @@
  * The guard catches the error, logs it for the operator, and closes the
  * controller cleanly. The client receives a well-formed but truncated SSE
  * response and can recover via its own retry/reconnect logic.
+ *
+ * `onDone`, when provided, fires exactly once when the response is finished —
+ * body fully streamed, errored, or cancelled by the client (or immediately for
+ * a body-less response). Use it to release per-request resources whose
+ * lifetime must span the full body, e.g. closing a per-request MCP server.
  */
 export function guardResponseStream(
   response: Response,
   label: string,
+  onDone?: () => void,
 ): Response {
-  if (!response.body) return response;
+  let doneFired = false;
+  const fireDone = () => {
+    if (doneFired) return;
+    doneFired = true;
+    try {
+      onDone?.();
+    } catch (err) {
+      console.error(`[stream-guard] ${label} onDone threw:`, err);
+    }
+  };
+
+  if (!response.body) {
+    fireDone();
+    return response;
+  }
 
   const source = response.body;
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
@@ -34,6 +54,7 @@ export function guardResponseStream(
       } catch (err) {
         console.error(`[stream-guard] ${label} stream errored:`, err);
       } finally {
+        fireDone();
         try {
           controller.close();
         } catch {
@@ -49,6 +70,7 @@ export function guardResponseStream(
       } else {
         await source.cancel(reason).catch(() => {});
       }
+      fireDone();
     },
   });
 
