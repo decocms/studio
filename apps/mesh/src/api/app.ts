@@ -55,6 +55,7 @@ import {
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import { createWhatsappIngestRoutes } from "./routes/whatsapp-ingest";
 import { createLinkWorkRoutes } from "./routes/decopilot/link-work-routes";
 import { createLinkControlRoutes } from "./routes/decopilot/link-control-routes";
 import { createLinkProxyRoutes } from "./routes/decopilot/link-proxy-routes";
@@ -155,6 +156,7 @@ import {
   sweepOrphanedWorkflows,
 } from "../dispatch-queue/dbos-orphan-recovery";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
+import { setChannelRuntime } from "../channels/runtime";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
   dispatchRunAndWait,
@@ -1422,6 +1424,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     meshContextFactory: automationContextFactory,
   });
 
+  // Channel inbound webhooks build a bot-scoped context the same way
+  // automations do (background context factory, no HTTP session).
+  setChannelRuntime({ meshContextFactory: automationContextFactory });
+
   // Same deps shape as automations — the per-thread gate calls
   // `dispatchRunAndWait` once the queue lets a message through. Wiring
   // happens before `DBOS.launch()` for the same reasons.
@@ -2139,6 +2145,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     watchHandler,
     betterAuthProtectedResourceHandler,
   });
+  // WhatsApp concierge ingest is global (routes by phone, not org). Mount BEFORE
+  // the `/api/:org` catch-all so `/api/whatsapp/ingest` isn't treated as an org
+  // slug.
+  app.route("/api/whatsapp", createWhatsappIngestRoutes({ db: database.db }));
   app.route("/api/:org", orgScopedApi);
 
   // ============================================================================

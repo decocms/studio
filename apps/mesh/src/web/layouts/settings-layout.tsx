@@ -37,6 +37,7 @@ import {
   Building02,
   ZapSquare,
   CpuChip01,
+  MessageTextSquare01,
   Loading01,
   Lock01,
   LogOut01,
@@ -113,6 +114,13 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           icon: <CpuChip01 size={14} />,
           to: "/$org/settings/ai-providers",
           requires: "ai-providers:manage",
+        },
+        {
+          key: "channels",
+          label: "Channels",
+          icon: <MessageTextSquare01 size={14} />,
+          to: "/$org/settings/channels",
+          requires: "channels:manage",
         },
         {
           key: "secrets",

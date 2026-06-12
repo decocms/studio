@@ -1,6 +1,16 @@
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, Copy01 } from "@untitledui/icons";
 import { Page } from "@/web/components/page";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
+import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
+import { KEYS } from "@/web/lib/query-keys";
+import {
+  useChannelClient,
+  useUserPhone,
+} from "@/web/hooks/collections/use-channels";
 import {
   Select,
   SelectContent,
@@ -125,6 +135,108 @@ function ProfileSection() {
             <span className="text-sm text-muted-foreground">{user?.email}</span>
           }
         />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+function WhatsAppLinkSection() {
+  const { data: session } = authClient.useSession();
+  const userId = session?.user?.id ?? "";
+  const { client } = useChannelClient();
+  const queryClient = useQueryClient();
+  const { data: phone } = useUserPhone(userId);
+  const [copied, setCopied] = useState(false);
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: KEYS.userPhone(userId) });
+
+  const start = useMutation({
+    mutationFn: async () => {
+      await client.callTool({ name: "PHONE_LINK_START", arguments: {} });
+    },
+    onSuccess: invalidate,
+    onError: (err) => toast.error(`Failed to start linking: ${err.message}`),
+  });
+
+  const remove = useMutation({
+    mutationFn: async () => {
+      await client.callTool({ name: "PHONE_DELETE", arguments: {} });
+    },
+    onSuccess: invalidate,
+    onError: (err) => toast.error(`Failed to unlink: ${err.message}`),
+  });
+
+  // Hidden entirely when the deployment has no WhatsApp concierge configured.
+  if (!phone || !phone.configured) return null;
+
+  const conciergeDisplay = phone.conciergeNumber
+    ? `+${phone.conciergeNumber.replace(/\D/g, "")}`
+    : "the concierge number";
+
+  return (
+    <SettingsSection
+      title="WhatsApp"
+      description="Link your number to chat with your organizations' agents over WhatsApp."
+    >
+      <SettingsCard>
+        {phone.status === "verified" ? (
+          <SettingsCardItem
+            title="WhatsApp number"
+            description={`Linked${phone.maskedPhone ? ` · ${phone.maskedPhone}` : ""}`}
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={remove.isPending}
+                onClick={() => remove.mutate()}
+              >
+                Remove
+              </Button>
+            }
+          />
+        ) : phone.status === "pending" && phone.code ? (
+          <SettingsCardItem
+            title="Verify your number"
+            description={`Send the code below to ${conciergeDisplay} on WhatsApp. This page updates automatically once it arrives.`}
+            action={
+              <div className="flex items-center gap-2">
+                <code className="rounded-md bg-muted px-2 py-1.5 text-xs">
+                  {phone.code}
+                </code>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => {
+                    navigator.clipboard.writeText(phone.code ?? "").then(() => {
+                      setCopied(true);
+                      toast.success("Code copied");
+                      setTimeout(() => setCopied(false), 1500);
+                    });
+                  }}
+                >
+                  {copied ? <Check size={14} /> : <Copy01 size={14} />}
+                </Button>
+                <Spinner size="sm" />
+              </div>
+            }
+          />
+        ) : (
+          <SettingsCardItem
+            title="WhatsApp number"
+            description="Not linked yet."
+            action={
+              <Button
+                size="sm"
+                disabled={start.isPending}
+                onClick={() => start.mutate()}
+              >
+                {start.isPending ? "Starting…" : "Link WhatsApp"}
+              </Button>
+            }
+          />
+        )}
       </SettingsCard>
     </SettingsSection>
   );
@@ -296,6 +408,7 @@ export function ProfilePreferencesPage() {
           <SettingsPage>
             <Page.Title>Profile & Preferences</Page.Title>
             <ProfileSection />
+            <WhatsAppLinkSection />
             <PreferencesSection />
           </SettingsPage>
         </Page.Body>

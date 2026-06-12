@@ -383,6 +383,14 @@ const settingsAiProvidersRoute = createRoute({
   ),
 });
 
+const settingsChannelsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: "/channels",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/channels.tsx"),
+  ),
+});
+
 const settingsSecretsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/secrets",
@@ -589,6 +597,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsFeaturesRoute,
   settingsBrandContextRoute,
   settingsAiProvidersRoute,
+  settingsChannelsRoute,
   settingsSecretsRoute,
   settingsFilesRoute,
   settingsBucketsRoute,

@@ -24,6 +24,7 @@ export type CapabilityId =
   | "secrets:manage"
   | "file-configs:manage"
   | "ai-providers:manage"
+  | "channels:manage"
   | "tags:manage"
   | "registry:manage"
   | "registry:monitor"
