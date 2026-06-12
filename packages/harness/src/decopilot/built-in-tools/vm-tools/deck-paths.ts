@@ -1,27 +1,34 @@
 /**
- * Deck path matching — pure logic shared by the cluster deck watcher (org-fs
- * change-feed entries) and any tool-path detection.
+ * Live-HTML path matching — pure logic shared by the cluster deck watcher
+ * (org-fs change-feed entries) and any tool-path detection.
  *
- * Convention: presentation decks live at `decks/<name>.html` inside the org
- * home volume, which sandboxes see mounted at `org/<homeMountPath>/`. The
- * `slides` sandbox skill writes there; the Studio web UI previews + edits
- * the same file.
+ * Convention: HTML artifacts the user should see live in the org home
+ * volume, which sandboxes see mounted at `org/<homeMountPath>/`:
+ *   - `decks/<name>.html` — presentation decks (the `slides` skill)
+ *   - `pages/<name>.html` — standalone pages (landing pages, one-pagers)
+ * The Studio web UI previews (and for decks, edits) the same files.
  */
 
-const DECK_ENTRY_PATTERN = /^decks\/([a-z0-9][a-z0-9._-]*)\.html$/i;
+const DECK_ENTRY_PATTERN = /^(decks|pages)\/([a-z0-9][a-z0-9._-]*)\.html$/i;
 
 export interface DeckRef {
   /** Volume-relative path, e.g. `decks/q3-launch.html`. */
   path: string;
-  /** Deck name (file stem), e.g. `q3-launch`. */
+  /** File stem, e.g. `q3-launch`. */
   name: string;
+  /** Which artifact dir matched. */
+  kind: "deck" | "page";
 }
 
 /** Match a HOME-VOLUME-relative entry path (org-fs change feed shape). */
 export function matchDeckEntryPath(entryPath: string): DeckRef | null {
   const m = DECK_ENTRY_PATTERN.exec(entryPath);
   if (!m) return null;
-  return { path: entryPath, name: m[1]! };
+  return {
+    path: entryPath,
+    name: m[2]!,
+    kind: m[1]!.toLowerCase() === "decks" ? "deck" : "page",
+  };
 }
 
 /**

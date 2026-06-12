@@ -137,19 +137,26 @@ export function buildWriteDescription(orgFs: boolean): string {
     "Write content to a file in the VM's project directory. " +
     "Creates parent directories if needed. Overwrites existing files entirely.\n\n" +
     (orgFs
-      ? "PRESENTATION DECKS / SLIDES: never `pages/` — read " +
-        "`/mnt/skills/public/slides/SKILL.md` and write the deck to " +
-        "`org/<your-org-slug>/decks/<name>.html` (lowercase kebab). That " +
-        "path gets a live preview with inline editing and persists in the " +
-        "org's shared folder.\n\n"
-      : "") +
-    "Reserved path — `pages/<slug>.html`: writes to this prefix are " +
-    "automatically published to the org's object storage and rendered as a " +
-    "live preview in the chat side panel. Use this for one-off viewable " +
-    "HTML pages (landing pages, brand kits, one-pagers)" +
-    (orgFs ? " — NOT for slides/decks (see above)" : "") +
-    ". Slug must be lowercase kebab (e.g. `pages/landing.html`). HTML " +
-    "written elsewhere stays sandbox-only and will not render a preview."
+      ? // Org-fs deployments: every live-preview HTML artifact lives in the
+        // org home volume (durable, Library-visible, deck editing). The
+        // legacy root `pages/` pipeline is intentionally not advertised.
+        "Viewable HTML artifacts get a LIVE PREVIEW in the chat side panel " +
+        "and persist in the org's shared folder when written under " +
+        "`org/<your-org-slug>/` (lowercase-kebab names):\n" +
+        "- Presentation decks / slides → `org/<your-org-slug>/decks/<name>.html` " +
+        "— read `/mnt/skills/public/slides/SKILL.md` FIRST and create the " +
+        "deck with its CLI.\n" +
+        "- Standalone pages (landing pages, brand kits, one-pagers) → " +
+        "`org/<your-org-slug>/pages/<name>.html` — single self-contained " +
+        "HTML file.\n" +
+        "HTML written anywhere else will not render a preview."
+      : "Reserved path — `pages/<slug>.html`: writes to this prefix are " +
+        "automatically published to the org's object storage and rendered " +
+        "as a live preview in the chat side panel. Use this whenever the " +
+        "user wants a viewable HTML page (landing pages, brand kits, " +
+        "one-pagers). Slug must be lowercase kebab (e.g. " +
+        "`pages/landing.html`). HTML written elsewhere stays sandbox-only " +
+        "and will not render a preview.")
   );
 }
 

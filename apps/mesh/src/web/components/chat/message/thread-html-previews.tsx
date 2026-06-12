@@ -31,6 +31,8 @@ interface HtmlPreviewRef {
 interface DeckRef {
   path: string;
   name: string;
+  /** `deck` (decks/) or `page` (pages/); older parts may omit it. */
+  kind?: "deck" | "page";
 }
 
 interface PreviewChip {
@@ -63,7 +65,7 @@ function collectChips(
           seen.set(key, {
             tabId: formatDeckTabId(deck.path),
             label: deck.name || deck.path,
-            kind: "deck",
+            kind: deck.kind === "page" ? "page" : "deck",
           });
         }
         continue;

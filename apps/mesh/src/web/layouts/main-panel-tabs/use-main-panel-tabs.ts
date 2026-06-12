@@ -12,7 +12,7 @@
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Monitor01 } from "@untitledui/icons";
+import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
 import {
   SELF_MCP_ALIAS_ID,
@@ -315,8 +315,9 @@ export function useMainPanelTabs(ctx: {
       ]
     : [];
 
-  // Ephemeral deck-preview tab (`?main=deck:<path>`): same pill semantics
-  // as file previews. Title is the deck name (file stem).
+  // Ephemeral live-HTML preview tab (`?main=deck:<path>` — decks AND
+  // standalone pages from the org home volume): same pill semantics as
+  // file previews. Title is the file stem; icon follows the artifact dir.
   const deckTabParsed = parseDeckTabId(activeTab);
   const deckTabs: Tab[] = deckTabParsed
     ? [
@@ -328,7 +329,11 @@ export function useMainPanelTabs(ctx: {
           kind: "file",
           icon: {
             kind: "component",
-            Component: (props) => createElement(Monitor01, props),
+            Component: (props) =>
+              createElement(
+                deckTabParsed.path.startsWith("pages/") ? Globe01 : Monitor01,
+                props,
+              ),
           },
         },
       ]
