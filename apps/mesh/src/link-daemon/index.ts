@@ -244,6 +244,12 @@ export async function startLinkDaemon(
   // resend the unacked relay prefix.
   const outbox = openOutbox({ path: `${opts.dataDir}/link/outbox.sqlite` });
 
+  // `shutdown` is declared below (it needs `cluster` in scope); the control
+  // poller can in principle deliver a frame before that line runs, so route
+  // the callback through a mutable holder instead of capturing `shutdown`
+  // directly (TDZ).
+  let onRemoteShutdown: () => void = () => {};
+
   const cluster = await connectToClusterPull({
     clusterBaseUrl: opts.clusterBaseUrl,
     getAccessToken,
@@ -261,6 +267,7 @@ export async function startLinkDaemon(
       opts.monitor?.onCluster?.("linked");
       console.log(`Linked to ${opts.clusterBaseUrl} (pull transport)`);
     },
+    onShutdown: () => onRemoteShutdown(),
   });
 
   let resolveStopped!: (code: number) => void;
@@ -297,6 +304,12 @@ export async function startLinkDaemon(
   };
   process.on("SIGINT", () => void shutdown());
   process.on("SIGTERM", () => void shutdown());
+  onRemoteShutdown = () => {
+    console.log(
+      "Disconnect requested from the Studio web UI — shutting down. Run `bunx decocms link` to reconnect.",
+    );
+    void shutdown();
+  };
 
   void cluster.closed.then(() => {
     opts.monitor?.onCluster?.("closed");

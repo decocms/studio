@@ -190,6 +190,7 @@ const CORE_TOOLS = [
 
   // Link tools
   LinkTools.LINK_CURRENT_GET,
+  LinkTools.LINK_DISCONNECT,
 
   // Search tools
   SearchTools.GLOBAL_SEARCH,

@@ -15,6 +15,7 @@ import type { Meter, Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
 import type { LinkClaim } from "../links/link-claim-registry";
 import type { LinkClaimRegistry } from "@/links/link-claim-registry";
+import type { ControlFrame } from "@/api/routes/decopilot/control-frames";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { Database, Permission } from "../storage/types";
 import type { AccessControl } from "./access-control";
@@ -441,6 +442,16 @@ export interface StudioContext extends HarnessContext {
    * that don't supply a registry.
    */
   linkClaimRegistry?: LinkClaimRegistry;
+
+  /**
+   * Publish a control frame onto a user's link control channel
+   * (`links.control.<userSub>`), where the desktop daemon's long-poll picks
+   * it up. Fire-and-forget: a no-op when NATS is unavailable. Deliberately
+   * narrower than the CancelBroadcast it delegates to — tools only ever
+   * publish (LINK_DISCONNECT sends `shutdown`); start/stop/broadcast stay
+   * with the app wiring. Undefined in test contexts without a broadcast.
+   */
+  publishLinkControlFrame?: (userSub: string, frame: ControlFrame) => void;
 }
 
 // ============================================================================

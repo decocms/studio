@@ -32,7 +32,7 @@ export async function detectCapabilities(
 
 /** CLI-backed capabilities that can appear after daemon startup (the user
  * installs / signs into the CLI while the daemon is running). */
-export const CLI_CAPABILITIES: readonly Capability[] = ["claude-code", "codex"];
+const CLI_CAPABILITIES: readonly Capability[] = ["claude-code", "codex"];
 
 /** CLI capabilities not present in `current` — the re-probe targets. */
 export function missingCliCapabilities(

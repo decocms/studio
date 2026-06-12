@@ -1480,6 +1480,8 @@ export async function createApp(options: CreateAppOptions = {}) {
     providerKeyCache,
     memberRoleCache,
     linkClaimRegistry,
+    publishLinkControlFrame: (userSub, frame) =>
+      cancelBroadcast.publishControlFrame(userSub, frame),
   });
   ContextFactory.set(factory);
 

@@ -53,6 +53,14 @@ export interface ControlPollerDeps {
    * optional so the WS-only paths / older callers compile unchanged.
    */
   onCancelReq?: (reqId: string) => void;
+  /**
+   * Called when a `shutdown` frame is received (LINK_DISCONNECT from the
+   * Studio UI). The daemon's shutdown function is the intended
+   * implementation. The loop RETURNS after dispatching — the process is on
+   * its way down, and one more long-poll would only race the exit and
+   * re-mint the presence claim the cluster just deleted.
+   */
+  onShutdown?: () => void;
 }
 
 const BASE_DELAY_MS = 1_000;
@@ -161,6 +169,16 @@ export async function runControlPollLoop(
         } catch (err) {
           console.error("[control-poller] onCancelReq threw (swallowed)", err);
         }
+      } else if (frame.type === "shutdown") {
+        console.log(
+          "[control-poller] shutdown frame received — stopping control poll",
+        );
+        try {
+          deps.onShutdown?.();
+        } catch (err) {
+          console.error("[control-poller] onShutdown threw (swallowed)", err);
+        }
+        return;
       }
       // keep_alive: no-op — continue to re-poll.
       continue;
