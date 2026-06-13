@@ -54,6 +54,7 @@ import { TagStorage } from "../storage/tags";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AccessControl } from "./access-control";
+import { buildWildcardPermission } from "./permission-wildcard";
 import { isOrgArchived } from "./org-archived";
 import type {
   BetterAuthInstance,
@@ -316,11 +317,12 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         }
 
         // Check wildcard permission: { resource: ["*"] }
-        // Better Auth may not handle wildcards, so we check explicitly
-        const wildcardPermission: Permission = {};
-        for (const resource of Object.keys(requestedPermission)) {
-          wildcardPermission[resource] = ["*"];
-        }
+        // Better Auth's authorize() matches actions literally with no wildcard
+        // expansion, so the `*` grant on a (custom) role is only reachable by
+        // probing for the literal `"*"` action — a SEPARATE call from the exact
+        // probe above (a merged array would be AND-matched and fail both). See
+        // permission-wildcard.ts.
+        const wildcardPermission = buildWildcardPermission(requestedPermission);
 
         const wildcardResult = await hasPermissionApi({
           headers,
