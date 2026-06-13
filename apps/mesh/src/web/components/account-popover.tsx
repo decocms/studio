@@ -41,6 +41,7 @@ import {
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { SidebarMenuButton } from "@deco/ui/components/sidebar.tsx";
 import { authClient, useActiveOrganizations } from "@/web/lib/auth-client";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { track } from "@/web/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/web/lib/query-persist";
 import { CreateOrganizationDialog } from "@/web/components/create-organization-dialog";
@@ -141,21 +142,25 @@ function MenuItemButton({
 }
 
 function OrganizationsPanel({
-  sortedOrgs,
   orgParam,
   onSelectOrg,
   onCreateOrg,
 }: {
-  sortedOrgs: Array<{
-    id: string;
-    name: string;
-    slug: string;
-    logo?: string | null;
-  }>;
   orgParam?: string;
   onSelectOrg: (slug: string) => void;
   onCreateOrg: () => void;
 }) {
+  // Fetched here, not in the parent: this panel only mounts inside the open
+  // popover/drawer, so the (potentially large) organization.list call is
+  // deferred until the switcher is actually opened — it no longer fires on
+  // every page load.
+  const { data: organizations } = useActiveOrganizations();
+  const sortedOrgs = [...(organizations ?? [])].sort((a, b) => {
+    if (a.slug === orgParam) return -1;
+    if (b.slug === orgParam) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -251,7 +256,6 @@ function AccountPopoverContent({
   themeOptions,
   preferences,
   setPreferences,
-  sortedOrgs,
   orgParam,
   onSelectOrg,
   onCreateOrg,
@@ -266,12 +270,6 @@ function AccountPopoverContent({
   themeOptions: { value: ThemeMode; icon: React.ReactNode; label: string }[];
   preferences: ReturnType<typeof usePreferences>[0];
   setPreferences: ReturnType<typeof usePreferences>[1];
-  sortedOrgs: Array<{
-    id: string;
-    name: string;
-    slug: string;
-    logo?: string | null;
-  }>;
   orgParam?: string;
   onSelectOrg: (slug: string) => void;
   onCreateOrg: () => void;
@@ -330,7 +328,6 @@ function AccountPopoverContent({
           <div className="border-b border-border pb-2">
             <OrganizationsPanel
               key={String(open)}
-              sortedOrgs={sortedOrgs}
               orgParam={orgParam}
               onSelectOrg={onSelectOrg}
               onCreateOrg={onCreateOrg}
@@ -514,7 +511,6 @@ function AccountPopoverContent({
       <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         <OrganizationsPanel
           key={String(open)}
-          sortedOrgs={sortedOrgs}
           orgParam={orgParam}
           onSelectOrg={onSelectOrg}
           onCreateOrg={onCreateOrg}
@@ -526,7 +522,10 @@ function AccountPopoverContent({
 
 export function AccountPopover() {
   const { data: session } = authClient.useSession();
-  const { data: organizations } = useActiveOrganizations();
+  // Current org comes from the already-loaded shell context (name + logo) so
+  // the trigger paints without fetching organization.list. The full list is
+  // fetched lazily inside OrganizationsPanel when the switcher opens.
+  const { org: currentOrg } = useProjectContext();
   const navigate = useNavigate();
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const orgParam = orgMatch?.params.org;
@@ -538,16 +537,6 @@ export function AccountPopover() {
 
   const user = session?.user;
   const userImage = (user as { image?: string } | undefined)?.image;
-
-  const currentOrg = organizations?.find(
-    (o: { slug: string }) => o.slug === orgParam,
-  );
-
-  const sortedOrgs = [...(organizations ?? [])].sort((a, b) => {
-    if (a.slug === orgParam) return -1;
-    if (b.slug === orgParam) return 1;
-    return a.name.localeCompare(b.name);
-  });
 
   const handleSelectOrg = (orgSlug: string) => {
     setOpen(false);
@@ -656,7 +645,6 @@ export function AccountPopover() {
     themeOptions,
     preferences,
     setPreferences,
-    sortedOrgs,
     orgParam,
     onSelectOrg: handleSelectOrg,
     onCreateOrg: () => {

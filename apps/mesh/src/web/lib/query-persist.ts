@@ -19,21 +19,44 @@ const STORAGE_KEY = "mesh:rq-cache";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
 const WRITE_DEBOUNCE_MS = 1000;
 
-// Only the public config is persisted. It's the outermost suspense gate
-// (theme/styling) and is identical for every user, so caching it is pure win.
+// Bootstrap queries that gate the home's first paint are persisted so a hard
+// refresh hydrates them from localStorage and the suspense reads resolve
+// synchronously (no spinner), revalidating in the background per their
+// staleTime. All of these are org-scoped, non-secret data:
+//   - publicConfig          theme/styling — identical for every user
+//   - ai-provider-keys      AI_PROVIDER_KEY_LIST — metadata only, never secrets
+//   - organization-settings ORGANIZATION_SETTINGS_GET — sidebar/plugins/config
+// plus the VIRTUAL_MCP collection reads (the home's displayed agent), matched
+// by key shape below.
 //
 // Auth-sensitive queries are deliberately NOT persisted: `activeOrganization`
 // is an authorization gate (a stale "you're a member" value would render the
 // org shell instead of the invite / no-access screen — see shell-layout.tsx),
 // and session state must always revalidate against the server.
-const PERSISTED_KEY_HEADS = new Set(["publicConfig"]);
+const PERSISTED_KEY_HEADS = new Set([
+  "publicConfig",
+  "ai-provider-keys",
+  "organization-settings",
+]);
+
+// Collection reads are keyed by `[client, orgId, scopeKey, "collection",
+// collectionName, ...]` — the leading `client` serializes to a stable
+// `mcp-client:<org>:<conn>` string via its `toJSON` (use-mcp-client.ts), so the
+// hash survives reloads and the entry is safe to persist. Limited to the
+// collections the home bootstrap reads.
+const PERSISTED_COLLECTIONS = new Set(["VIRTUAL_MCP"]);
 
 let cacheRestored = false;
 let orgCacheRestored = false;
 
 function isPersistable(queryKey: readonly unknown[]): boolean {
   const head = queryKey[0];
-  return typeof head === "string" && PERSISTED_KEY_HEADS.has(head);
+  if (typeof head === "string" && PERSISTED_KEY_HEADS.has(head)) return true;
+  return (
+    queryKey[3] === "collection" &&
+    typeof queryKey[4] === "string" &&
+    PERSISTED_COLLECTIONS.has(queryKey[4])
+  );
 }
 
 /**
