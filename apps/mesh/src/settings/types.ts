@@ -31,6 +31,10 @@ export interface Settings {
   // derived from those rows) instead of the local NDJSON files via DuckDB.
   // Traces/metrics tables are not read.
   clickhouseUrl: string | undefined;
+  // Per-query memory ceiling (bytes) sent as ClickHouse `max_memory_usage`.
+  // The monitoring queries read the wide `LogAttributes` map, so the default
+  // must be generous; tune down only on a memory-constrained ClickHouse.
+  clickhouseMaxMemoryUsage: number | undefined;
   // Dedicated OTLP collector base URL for monitoring/audit logs. Falls back to
   // OTEL_EXPORTER_OTLP_ENDPOINT (shared with infra logs) when unset. The "/v1/logs"
   // signal path is appended automatically.

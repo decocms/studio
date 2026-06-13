@@ -1151,8 +1151,17 @@ export async function createStudioContextFactory(
     // OTel-native otel_logs table — provisioned manually, see
     // monitoring/clickhouse-setup.md). Metrics are derived from those same log
     // rows, so both factories point at the view.
-    monitoringEngine = new ClickHouseClientEngine(clickhouseUrl!);
-    metricEngine = new ClickHouseClientEngine(clickhouseUrl!);
+    const clickhouseEngineOptions = settings.clickhouseMaxMemoryUsage
+      ? { maxMemoryUsage: String(settings.clickhouseMaxMemoryUsage) }
+      : undefined;
+    monitoringEngine = new ClickHouseClientEngine(
+      clickhouseUrl!,
+      clickhouseEngineOptions,
+    );
+    metricEngine = new ClickHouseClientEngine(
+      clickhouseUrl!,
+      clickhouseEngineOptions,
+    );
     logSourceFactory = (_orgId: string) => "studio_monitoring_logs";
     metricSourceFactory = (_orgId: string) => "studio_monitoring_logs";
   } else if (isGcsOtlp) {

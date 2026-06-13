@@ -168,7 +168,10 @@ export class ClickHouseClientEngine implements QueryEngine {
     url: string,
     options?: { maxMemoryUsage?: string; maxExecutionTime?: number },
   ) {
-    this.maxMemoryUsage = options?.maxMemoryUsage ?? "200000000";
+    // 4 GiB. The monitoring view reads the entire `LogAttributes` map per row
+    // (incl. input/output blobs), so a tight cap OOMs on busy orgs. Override
+    // via CLICKHOUSE_MAX_MEMORY_USAGE on a memory-constrained ClickHouse.
+    this.maxMemoryUsage = options?.maxMemoryUsage ?? "4294967296";
     this.maxExecutionTime = options?.maxExecutionTime ?? 30;
     this.initPromise = import("@clickhouse/client").then(({ createClient }) => {
       this.client = createClient({ url });
