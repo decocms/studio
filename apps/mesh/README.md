@@ -165,6 +165,7 @@ ENCRYPTION_KEY=<32 bytes>           # Credential vault key
 NATS_URL=nats://localhost:4222      # Optional: enable NATS notify strategy
 NODE_ENV=production                 # Production mode
 CLICKHOUSE_URL=http://localhost:8123  # Optional: remote ClickHouse for prod monitoring
+CLICKHOUSE_MAX_MEMORY_USAGE=4294967296  # Optional: per-query memory ceiling in bytes (default 4 GiB)
 ```
 
 Custom auth providers (Google, GitHub, SAML, magic-link, …) live in `auth-config.json`. See [`auth-config.example.json`](./auth-config.example.json) for the full shape.
