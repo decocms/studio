@@ -112,37 +112,39 @@ export async function createMCPClient({
 }
 
 /**
+ * React Query options for an MCP client connection. Single source of truth for
+ * the client query key + connect behavior, so a suspense consumer
+ * (`useMCPClient`) and a non-suspense pre-warm (e.g. the shell starting the self
+ * connection in parallel with the rest of bootstrap) target the EXACT same
+ * cache entry — the key cannot drift between them.
+ */
+export function mcpClientQueryOptions(options: UseMcpClientOptions) {
+  const { connectionId, token, meshUrl, orgId } = options;
+  return {
+    queryKey: KEYS.mcpClient(
+      orgId,
+      connectionId ?? "self",
+      token ?? "",
+      meshUrl ?? "",
+    ),
+    queryFn: () => createMCPClient(options),
+    staleTime: Infinity, // Keep client alive while query is active
+    // Keep the client cached for a minute after the last subscriber detaches so
+    // brief unmount/remount transitions (sidebar collapse toggle, popover open,
+    // etc.) re-use the same transport instead of re-establishing it.
+    gcTime: 60_000,
+  };
+}
+
+/**
  * Hook to create and manage an MCP client with Streamable HTTP transport.
  * Uses Suspense - must be used within a Suspense boundary.
  *
  * @param options - Configuration for the MCP client
  * @returns The MCP client instance (never null - suspends until ready)
  */
-export function useMCPClient({
-  connectionId,
-  orgId,
-  orgSlug,
-  token,
-  meshUrl,
-}: UseMcpClientOptions): Client {
-  const queryKey = KEYS.mcpClient(
-    orgId,
-    connectionId ?? "self",
-    token ?? "",
-    meshUrl ?? "",
-  );
-
-  const { data: client } = useSuspenseQuery({
-    queryKey,
-    queryFn: () =>
-      createMCPClient({ connectionId, orgId, orgSlug, token, meshUrl }),
-    staleTime: Infinity, // Keep client alive while query is active
-    // Keep the client cached for a minute after the last subscriber detaches so
-    // brief unmount/remount transitions (sidebar collapse toggle, popover open,
-    // etc.) re-use the same transport instead of re-establishing it.
-    gcTime: 60_000,
-  });
-
+export function useMCPClient(options: UseMcpClientOptions): Client {
+  const { data: client } = useSuspenseQuery(mcpClientQueryOptions(options));
   return client!;
 }
 
