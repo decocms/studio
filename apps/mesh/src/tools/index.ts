@@ -7,7 +7,6 @@
  * Plugin tools are collected at startup and combined with core tools.
  */
 
-import { AsyncLocalStorage } from "node:async_hooks";
 import type { ToolAnnotations } from "@/core/define-tool";
 import { StudioContext } from "@/core/studio-context";
 import {
@@ -36,6 +35,8 @@ import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import { getPrompts, getResources } from "./guides";
+import { getToolRegistration } from "./management-registration";
+export { managementContextStore } from "./management-registration";
 import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
@@ -225,89 +226,6 @@ export type MCPMeshTools = typeof ALL_TOOLS;
 
 // Derive tool name type from ALL_TOOLS
 export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
-
-/**
- * Per-request StudioContext for the management server's tool handlers.
- *
- * The serving routes build a fresh `McpServer` per request, but the tool
- * registrations below are built once and shared across every server: the
- * handler reads its `ctx` from this store at call time instead of closing over
- * it. A request runs its handler inside `managementContextStore.run(ctx, ...)`.
- * This keeps a server that survives `close()` (the production leak) from
- * pinning that request's ctx graph — the only heavy per-request state a tool
- * handler used to capture.
- */
-export const managementContextStore = new AsyncLocalStorage<StudioContext>();
-
-/**
- * Cache of per-tool MCP registrations (config + ctx-free handler), keyed by the
- * static tool object. Built lazily on first use and reused for the life of the
- * process, so the static tool set is never re-derived per request — only the
- * tiny `registerTool` map insertion happens on each `/mcp/self` build.
- */
-const toolRegistrationCache = new Map<
-  CombinedTool,
-  ReturnType<typeof buildToolRegistration>
->();
-
-function buildToolRegistration(tool: CombinedTool) {
-  const inputSchema =
-    tool.inputSchema &&
-    typeof tool.inputSchema === "object" &&
-    "shape" in tool.inputSchema
-      ? (tool.inputSchema as z.ZodObject<z.ZodRawShape>)
-      : z.object({});
-  const outputSchema =
-    tool.outputSchema &&
-    typeof tool.outputSchema === "object" &&
-    "shape" in tool.outputSchema
-      ? (tool.outputSchema as z.ZodObject<z.ZodRawShape>)
-      : undefined;
-
-  return {
-    config: {
-      description: tool.description ?? "",
-      inputSchema,
-      outputSchema,
-      annotations: tool.annotations,
-      _meta: tool._meta,
-    },
-    handler: async (args: unknown) => {
-      const ctx = managementContextStore.getStore();
-      if (!ctx) {
-        throw new Error(
-          `[managementMCP] tool ${tool.name} invoked outside a request context`,
-        );
-      }
-      ctx.access.setToolName(tool.name);
-      try {
-        const result = await tool.execute(args, ctx);
-        const modelText = tool.modelSummary
-          ? tool.modelSummary(result)
-          : JSON.stringify(result);
-        return {
-          content: [{ type: "text" as const, text: modelText }],
-          structuredContent: result as { [x: string]: unknown },
-        };
-      } catch (error) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
-          isError: true,
-        };
-      }
-    },
-  };
-}
-
-function getToolRegistration(tool: CombinedTool) {
-  let registration = toolRegistrationCache.get(tool);
-  if (!registration) {
-    registration = buildToolRegistration(tool);
-    toolRegistrationCache.set(tool, registration);
-  }
-  return registration;
-}
 
 export const managementMCP = async (ctx: StudioContext) => {
   // Get enabled plugins for this organization to filter plugin tools
