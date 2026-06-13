@@ -17,7 +17,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { Context, Hono } from "hono";
 import { endTime, startTime } from "hono/timing";
 import type { StudioContext } from "../../core/studio-context";
-import { managementMCP } from "../../tools";
+import { managementContextStore, managementMCP } from "../../tools";
 import { serveMcpRequest } from "../utils/serve-mcp";
 import { handleAuthError } from "./oauth-proxy";
 import { getMcpListCache } from "@/mcp-clients/mcp-list-cache";
@@ -97,11 +97,15 @@ export const createProxyRoutes = () => {
           false,
       });
       await server.connect(transport);
-      return serveMcpRequest(
-        server,
-        transport,
-        c.req.raw,
-        `mcp:self:${connectionId}`,
+      // Tool handlers read ctx from the ALS store, so the request must run
+      // inside its scope.
+      return managementContextStore.run(ctx, () =>
+        serveMcpRequest(
+          server,
+          transport,
+          c.req.raw,
+          `mcp:self:${connectionId}`,
+        ),
       );
     }
 

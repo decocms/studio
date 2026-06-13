@@ -35,6 +35,8 @@ import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import { getPrompts, getResources } from "./guides";
+import { getToolRegistration } from "./management-registration";
+export { managementContextStore } from "./management-registration";
 import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
@@ -257,55 +259,12 @@ export const managementMCP = async (ctx: StudioContext) => {
     },
   );
 
-  // Register each tool with the server
+  // Register each tool from its shared, prebuilt registration (config carries
+  // the prebuilt Zod schemas; the handler reads ctx from the ALS store at call
+  // time rather than capturing it). Only the map insertion is per-request.
   for (const tool of filteredTools) {
-    const inputSchema =
-      tool.inputSchema &&
-      typeof tool.inputSchema === "object" &&
-      "shape" in tool.inputSchema
-        ? (tool.inputSchema as z.ZodObject<z.ZodRawShape>)
-        : z.object({});
-    const outputSchema =
-      tool.outputSchema &&
-      typeof tool.outputSchema === "object" &&
-      "shape" in tool.outputSchema
-        ? (tool.outputSchema as z.ZodObject<z.ZodRawShape>)
-        : undefined;
-
-    // Pass the prebuilt Zod schemas directly instead of their `.shape`. The SDK
-    // returns a schema instance as-is, but rebuilds a fresh `z.object(...)` from
-    // a raw shape on every registration — ~2 ZodObject graphs per tool, per
-    // request. With ~150 tools rebuilt per `/mcp/self` hit, that rebuild is the
-    // dominant CPU cost under concurrent load.
-    server.registerTool(
-      tool.name,
-      {
-        description: tool.description ?? "",
-        inputSchema,
-        outputSchema,
-        annotations: tool.annotations,
-        _meta: tool._meta,
-      },
-      async (args) => {
-        ctx.access.setToolName(tool.name);
-        try {
-          const result = await tool.execute(args, ctx);
-          const modelText = tool.modelSummary
-            ? tool.modelSummary(result)
-            : JSON.stringify(result);
-          return {
-            content: [{ type: "text" as const, text: modelText }],
-            structuredContent: result as { [x: string]: unknown },
-          };
-        } catch (error) {
-          const err = error as Error;
-          return {
-            content: [{ type: "text" as const, text: `Error: ${err.message}` }],
-            isError: true,
-          };
-        }
-      },
-    );
+    const { config, handler } = getToolRegistration(tool);
+    server.registerTool(tool.name, config, handler);
   }
 
   // Register action prompts
