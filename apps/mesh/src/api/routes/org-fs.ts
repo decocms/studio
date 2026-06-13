@@ -26,6 +26,7 @@
  * with no route changes. See `.context/org-filesystem-proposal.md`.
  */
 
+import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -63,6 +64,12 @@ const MAX_RECENT_LIMIT = 200;
 const DEFAULT_RECENT_LIMIT = 50;
 /** Long-poll hold time, just under the usual 30s gateway/proxy timeout. */
 const CHANGES_LONG_POLL_MS = 28_000;
+/**
+ * Spread window for the post-nudge re-query. One write fans out to every mount
+ * watching that (org, volume); jittering keeps a herd from hitting the change
+ * feed in the same tick. Small enough to be invisible to file freshness.
+ */
+const CHANGES_NUDGE_JITTER_MS = 250;
 
 type Resolved =
   | { ok: true; ctx: StudioContext; fs: OrgFs }
@@ -106,6 +113,7 @@ async function waitForChanges(
       // ignore
     }
   };
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const first = await query();
     if (first.entries.length > 0) return first;
@@ -115,26 +123,38 @@ async function waitForChanges(
         once: true,
       });
 
-    await Promise.race([
+    // Wins as `true` on a nudge, `false` on the hold timeout (or when the
+    // subscription is closed by an abort). `.unref()` so a parked timer never
+    // keeps the process from exiting.
+    const nudged = await Promise.race([
       (async () => {
-        for await (const _msg of sub) return;
+        for await (const _msg of sub) return true;
+        return false;
       })(),
-      new Promise<void>((resolve) => {
-        setTimeout(() => {
-          try {
-            sub.unsubscribe();
-          } catch {
-            // ignore
-          }
-          resolve();
-        }, CHANGES_LONG_POLL_MS);
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), CHANGES_LONG_POLL_MS);
+        timer.unref?.();
       }),
     ]);
 
-    // A nudge may be coalesced/foreign, so the re-query can still be empty —
-    // that's fine, the daemon just loops and waits again.
+    if (!nudged) return first;
+
+    await sleep(
+      exponentialBackoffWithJitter(
+        CHANGES_NUDGE_JITTER_MS,
+        CHANGES_NUDGE_JITTER_MS,
+        0,
+        1,
+        1,
+      ),
+      {
+        signal: reqSignal ?? undefined,
+      },
+    ).catch(() => {});
+    if (reqSignal?.aborted) return first;
     return query();
   } finally {
+    if (timer) clearTimeout(timer);
     if (reqSignal && !reqSignal.aborted) {
       reqSignal.removeEventListener("abort", abortListener);
     }
