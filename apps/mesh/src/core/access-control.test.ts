@@ -394,7 +394,9 @@ describe("AccessControl", () => {
 
       expect(mockBoundAuth.hasPermission).toHaveBeenCalledWith(
         { self: ["TEST_TOOL"] },
-        undefined, // No path-resolved org passed, so options is undefined
+        // No path-resolved org (organizationId undefined). The effective-org
+        // role is forwarded so boundAuth can resolve built-in roles in-memory.
+        { organizationId: undefined, role: "user" },
       );
       expect(ac.granted()).toBe(true);
     });

@@ -225,13 +225,17 @@ export class AccessControl implements Disposable {
       permissionToCheck[this.connectionId] = [resource];
     }
 
-    // Delegate to Better Auth's hasPermission API. When an organizationId is
-    // set (path-resolved org), pass it through so Better Auth uses it instead
-    // of the session's active org.
-    return this.boundAuth.hasPermission(
-      permissionToCheck,
-      this.organizationId ? { organizationId: this.organizationId } : undefined,
-    );
+    // Delegate to the bound auth client. When an organizationId is set
+    // (path-resolved org), pass it through so Better Auth uses it instead of
+    // the session's active org. Pass `this.role` too: it is the member's role
+    // for THIS org (constructor + resolveOrgFromPath keep role and
+    // organizationId in lock-step), so boundAuth can resolve built-in roles
+    // in-memory without a Better Auth round-trip. admin/owner already returned
+    // above, so this only accelerates the `user` role; custom roles fall back.
+    return this.boundAuth.hasPermission(permissionToCheck, {
+      organizationId: this.organizationId,
+      role: this.role,
+    });
   }
 
   /**
