@@ -2,9 +2,11 @@ import { useState } from "react";
 import {
   authenticateMcp,
   isConnectionAuthenticated,
+  UI_RESOURCE_HTML_KEY,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { clearHtmlResourceCacheForConnection } from "@/web/lib/html-resource-persist";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
@@ -242,6 +244,14 @@ function ConnectionRow({
       setIsReplacingToken(false);
       setTokenValue("");
       markAuthenticated();
+      // Auth changed → upstream may return different content; drop cached UI
+      // HTML for this connection (IDB + in-memory query) so it re-reads fresh.
+      void clearHtmlResourceCacheForConnection(connectionId);
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[1] === UI_RESOURCE_HTML_KEY &&
+          query.queryKey[3] === connectionId,
+      });
       await probeQuery.refetch();
     } catch (err) {
       toast.error(
