@@ -76,6 +76,8 @@ import {
   Maximize01,
   Play,
   Plus,
+  Power01,
+  SlashCircle01,
   Stars01,
   Trash01,
   XClose,
@@ -263,6 +265,7 @@ function ConnectionItem({
         connectionDescription={connection.description}
         connectionIcon={connection.icon}
         connectionType={connection.connection_type}
+        connectionStatus={connection.status}
         slug={slug}
         orgSlug={org.slug}
         appName={connection.app_name}
@@ -406,6 +409,7 @@ function ConnectionItemWithAuth({
   connectionDescription,
   connectionIcon,
   connectionType,
+  connectionStatus,
   slug,
   orgSlug,
   appName,
@@ -421,6 +425,7 @@ function ConnectionItemWithAuth({
   connectionDescription?: string | null;
   connectionIcon?: string | null;
   connectionType: string;
+  connectionStatus: ConnectionEntity["status"];
   slug: string;
   orgSlug: string;
   appName?: string | null;
@@ -432,15 +437,33 @@ function ConnectionItemWithAuth({
   onNewInstance?: () => void;
 }) {
   const authStatus = useMCPAuthStatus({ connectionId: connection_id });
+  const connectionActions = useConnectionActions();
   const isVirtual = connectionType === "VIRTUAL";
   const needsAuth =
     !isVirtual && authStatus.supportsOAuth && !authStatus.isAuthenticated;
+  const isDisabled = connectionStatus !== "active";
+
+  const toggleStatus = async (status: "active" | "inactive") => {
+    try {
+      await connectionActions.update.mutateAsync({
+        id: connection_id,
+        data: { status },
+      });
+      toast.success(
+        status === "active" ? "Connection enabled" : "Connection disabled",
+      );
+    } catch {
+      toast.error("Failed to update connection");
+    }
+  };
 
   return (
     <div
       className={cn(
         "rounded-xl border overflow-hidden transition-colors",
-        needsAuth ? "border-destructive/50 bg-destructive/5" : "border-border",
+        needsAuth || isDisabled
+          ? "border-destructive/50 bg-destructive/5"
+          : "border-border",
       )}
     >
       {/* Body — clickable, navigates to connection detail */}
@@ -464,6 +487,10 @@ function ConnectionItemWithAuth({
             <span className="text-xs text-destructive font-medium">
               Needs authorization
             </span>
+          ) : isDisabled ? (
+            <span className="text-xs text-destructive font-medium">
+              {connectionStatus === "error" ? "Disabled (error)" : "Disabled"}
+            </span>
           ) : (
             connectionDescription && (
               <p className="text-xs text-muted-foreground truncate">
@@ -484,6 +511,20 @@ function ConnectionItemWithAuth({
             }}
           >
             Authorize
+          </Button>
+        ) : isDisabled ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1.5 shrink-0"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleStatus("active");
+            }}
+          >
+            <Power01 size={13} />
+            Enable
           </Button>
         ) : (
           <Tooltip delayDuration={0}>
@@ -525,6 +566,22 @@ function ConnectionItemWithAuth({
             </TooltipTrigger>
             <TooltipContent side="bottom">Configure resources</TooltipContent>
           </Tooltip>
+          {!isDisabled && (
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground"
+                  onClick={() => toggleStatus("inactive")}
+                  aria-label="Disable connection"
+                >
+                  <SlashCircle01 size={13} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Disable</TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <Button

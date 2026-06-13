@@ -561,6 +561,21 @@ function ConnectionInspectorViewWithConnection({
                   onConfigure={(inst) => setConfigureInstance(inst)}
                   onAuthenticate={(inst) => handleAuthenticateForId(inst.id)}
                   onDelete={(inst) => deleteConnection.requestDelete(inst)}
+                  onToggleStatus={async (inst, status) => {
+                    try {
+                      await connectionActions.update.mutateAsync({
+                        id: inst.id,
+                        data: { status },
+                      });
+                      toast.success(
+                        status === "active"
+                          ? "Connection enabled"
+                          : "Connection disabled",
+                      );
+                    } catch {
+                      toast.error("Failed to update connection");
+                    }
+                  }}
                   isAdding={isAddingInstance}
                   onAdd={async () => {
                     setIsAddingInstance(true);
