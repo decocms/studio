@@ -136,3 +136,60 @@ export function useMCPReadResource({
     retry: false,
   });
 }
+
+/**
+ * Query-key discriminator (segment [1]) for cached UI-resource HTML. Exported
+ * so a persister can select only these entries — the HTML is large, so it goes
+ * to IndexedDB, never the localStorage bootstrap cache.
+ */
+export const UI_RESOURCE_HTML_KEY = "ui-resource-html" as const;
+
+export interface UseUiResourceHtmlOptions
+  extends Omit<UseSuspenseQueryOptions<string, Error>, "queryKey" | "queryFn"> {
+  /** Org slug (the `:org` path segment). */
+  orgSlug: string;
+  /** Connection id serving the resource. */
+  connectionId: string;
+  /** Resource URI (e.g. `ui://...`). */
+  uri: string;
+  /** Base mesh URL; defaults to the current origin. */
+  meshUrl?: string;
+}
+
+/**
+ * Read a connection's UI-resource HTML via the cacheable GET endpoint
+ * (`/api/:org/mcp/:connectionId/ui-resource`) instead of the JSON-RPC
+ * `resources/read` POST. The GET carries an ETag + `Cache-Control`, so the
+ * browser HTTP-caches the (often multi-MiB) HTML and revalidates with cheap
+ * 304s — and the response is already CSP-injected server-side, ready for an
+ * iframe `srcDoc`.
+ */
+export function useUiResourceHtml({
+  orgSlug,
+  connectionId,
+  uri,
+  meshUrl,
+  ...queryOptions
+}: UseUiResourceHtmlOptions): UseSuspenseQueryResult<string, Error> {
+  return useSuspenseQuery<string, Error>({
+    ...queryOptions,
+    queryKey: KEYS.mcpUiResourceHtml(orgSlug, connectionId, uri),
+    queryFn: async () => {
+      const base =
+        meshUrl ??
+        (typeof window !== "undefined" ? window.location.origin : "");
+      const url = `${base}/api/${encodeURIComponent(
+        orgSlug,
+      )}/mcp/${encodeURIComponent(
+        connectionId,
+      )}/ui-resource?uri=${encodeURIComponent(uri)}`;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) {
+        throw new Error(`Failed to read UI resource (${res.status})`);
+      }
+      return res.text();
+    },
+    staleTime: queryOptions.staleTime ?? 30000,
+    retry: false,
+  });
+}

@@ -114,6 +114,10 @@ import {
   type McpListCache,
 } from "../mcp-clients/mcp-list-cache";
 import {
+  startMcpCacheInvalidation,
+  teardownMcpCacheInvalidation,
+} from "../mcp-clients/mcp-cache-invalidation";
+import {
   type ConnectionCircuitStore,
   JetStreamKVConnectionCircuitStore,
   NoopConnectionCircuitStore,
@@ -995,6 +999,8 @@ export async function createApp(options: CreateAppOptions = {}) {
       });
       // Subscribe to cross-replica key invalidations (idempotent).
       providerKeyCache.start();
+      // Subscribe to cross-replica MCP read/result cache invalidations.
+      startMcpCacheInvalidation(() => natsProvider!.getConnection());
       streamBuffer.init().catch((err: unknown) => {
         console.warn(
           "[StreamBuffer] Deferred init failed, late-join disabled:",
@@ -1211,6 +1217,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     mcpListCache.teardown();
     modelListCache.teardown();
     providerKeyCache.teardown();
+    teardownMcpCacheInvalidation();
     connectionCircuitStore.teardown();
     setMcpListCache(null);
     setConnectionCircuitStore(null);

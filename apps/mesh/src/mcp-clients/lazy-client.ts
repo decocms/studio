@@ -34,7 +34,44 @@ import {
   type McpListCache,
   REVALIDATE_MIN_INTERVAL_MS,
 } from "./mcp-list-cache";
-import { getMcpReadCache } from "./mcp-read-cache";
+import { getMcpReadCache, type ReadCacheScope } from "./mcp-read-cache";
+
+/**
+ * A read-only tool is eligible for result caching. We trust the upstream's
+ * `annotations.readOnlyHint` (surfaced in the cached tool list); a tool we
+ * can't confirm read-only is never cached.
+ */
+async function isReadOnlyTool(
+  cache: McpListCache | undefined,
+  connectionId: string,
+  toolName: string,
+): Promise<boolean> {
+  if (!cache) return false;
+  const tools = await cache.get("tools", connectionId).catch(() => null);
+  if (!tools) return false;
+  for (const t of tools) {
+    if (
+      typeof t === "object" &&
+      t !== null &&
+      (t as { name?: unknown }).name === toolName
+    ) {
+      return (
+        (t as { annotations?: { readOnlyHint?: boolean } }).annotations
+          ?.readOnlyHint === true
+      );
+    }
+  }
+  return false;
+}
+
+/**
+ * Cache scope for a connection's read-only results. Defaults to "org" (shared
+ * across all members). The per-connection "user" opt-out (key by principal) is
+ * a follow-up; the cache already keys by scope, so it's a resolver change only.
+ */
+function resolveReadCacheScope(): ReadCacheScope {
+  return { kind: "org" };
+}
 
 /**
  * Create a lazy-connecting client wrapper for a connection.
@@ -155,41 +192,91 @@ export function createLazyClient(
     (cached) => ({ prompts: cached as ListPromptsResult["prompts"] }),
   );
 
-  // Proxy non-list operations to the real client (always needs a connection)
-  placeholder.callTool = async (params, resultSchema, options) => {
-    const real = await getRealClient();
-    return real.callTool(params, resultSchema, options);
-  };
-
-  // Read-content cache (resources/read, prompts/get): per-pod TTL+LRU, shared
-  // across org members. VIRTUAL connections bypass (they compose other conns).
+  // Read-only results (tools/call for read-only tools, resources/read,
+  // prompts/get) are served stale-while-revalidate from the per-pod read cache,
+  // org-scoped by default and shared across org members. Writes, tools we can't
+  // confirm read-only, VIRTUAL connections (they compose other conns), and calls
+  // with a custom result schema bypass entirely. `options` (e.g. the timeout) is
+  // forwarded to the live fetch but excluded from the cache key.
   const readCache = getMcpReadCache();
   const cacheReads = connection.connection_type !== "VIRTUAL";
 
+  placeholder.callTool = async (params, resultSchema, options) => {
+    const toolName = (params as { name?: unknown })?.name;
+    const cacheable =
+      cacheReads &&
+      !resultSchema &&
+      typeof toolName === "string" &&
+      (await isReadOnlyTool(cache, connection.id, toolName));
+
+    if (!cacheable) {
+      const real = await getRealClient();
+      return real.callTool(params, resultSchema, options);
+    }
+
+    const result = await readCache.fetch({
+      type: "tools/call",
+      connectionId: connection.id,
+      scope: resolveReadCacheScope(),
+      params: {
+        name: toolName,
+        arguments: (params as { arguments?: unknown })?.arguments,
+      },
+      fetchLive: async () => {
+        const real = await getRealClient();
+        return real.callTool(params, resultSchema, options);
+      },
+      // Never cache error results — they're returned to the caller but not stored.
+      shouldCache: (value) =>
+        (value as { isError?: boolean })?.isError !== true,
+      onRevalidation: (p) => ctx.pendingRevalidations.push(p),
+    });
+    return result as Awaited<ReturnType<Client["callTool"]>>;
+  };
+
   placeholder.getPrompt = async (params, options) => {
-    if (cacheReads) {
-      const hit = readCache.get("prompts/get", connection.id, params);
-      if (hit !== null) return hit as GetPromptResult;
+    if (!cacheReads) {
+      const real = await getRealClient();
+      return real.getPrompt(params, options);
     }
-    const real = await getRealClient();
-    const result = await real.getPrompt(params, options);
-    if (cacheReads) {
-      readCache.set("prompts/get", connection.id, params, result);
-    }
-    return result;
+    const result = await readCache.fetch({
+      type: "prompts/get",
+      connectionId: connection.id,
+      scope: resolveReadCacheScope(),
+      params,
+      fetchLive: async () => {
+        const real = await getRealClient();
+        return real.getPrompt(params, options);
+      },
+      onRevalidation: (p) => ctx.pendingRevalidations.push(p),
+    });
+    return result as GetPromptResult;
   };
 
   placeholder.readResource = async (params, options) => {
-    if (cacheReads) {
-      const hit = readCache.get("resources/read", connection.id, params);
-      if (hit !== null) return hit as ReadResourceResult;
+    if (!cacheReads) {
+      if (process.env?.MCP_CACHE_DEBUG) {
+        console.log(
+          "[mcp-read-cache] BYPASS (VIRTUAL)",
+          connection.id,
+          "resources/read",
+        );
+      }
+      const real = await getRealClient();
+      return real.readResource(params, options);
     }
-    const real = await getRealClient();
-    const result = await real.readResource(params, options);
-    if (cacheReads) {
-      readCache.set("resources/read", connection.id, params, result);
-    }
-    return result;
+    const result = await readCache.fetch({
+      type: "resources/read",
+      connectionId: connection.id,
+      scope: resolveReadCacheScope(),
+      params,
+      fetchLive: async () => {
+        const real = await getRealClient();
+        return real.readResource(params, options);
+      },
+      onRevalidation: (p) => ctx.pendingRevalidations.push(p),
+    });
+    return result as ReadResourceResult;
   };
 
   placeholder.listResourceTemplates = async (params, options) => {

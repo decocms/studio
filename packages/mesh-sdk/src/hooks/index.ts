@@ -53,9 +53,12 @@ export {
   useMCPResourcesList,
   useMCPResourcesListQuery,
   useMCPReadResource,
+  useUiResourceHtml,
+  UI_RESOURCE_HTML_KEY,
   type UseMcpResourcesListOptions,
   type UseMcpResourcesListQueryOptions,
   type UseMcpReadResourceOptions,
+  type UseUiResourceHtmlOptions,
 } from "./use-mcp-resources";
 
 // MCP prompts hooks and helpers

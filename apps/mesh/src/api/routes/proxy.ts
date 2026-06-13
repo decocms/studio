@@ -21,6 +21,9 @@ import { managementContextStore, managementMCP } from "../../tools";
 import { serveMcpRequest } from "../utils/serve-mcp";
 import { handleAuthError } from "./oauth-proxy";
 import { getMcpListCache } from "@/mcp-clients/mcp-list-cache";
+import { createLazyClient } from "@/mcp-clients/lazy-client";
+import { injectCSP } from "@/mcp-apps/csp-injector";
+import type { McpUiResourceCsp } from "@/mcp-apps/types";
 import {
   assertCircuitClosed,
   CircuitOpenError,
@@ -71,6 +74,84 @@ export const createProxyRoutes = () => {
    */
   app.all("/", async (c) => {
     return handleVirtualMcpRequest(c, undefined);
+  });
+
+  /**
+   * Cacheable GET for a connection's UI resource HTML (MCP-apps).
+   *
+   * Route: GET /mcp/:connectionId/ui-resource?uri=<resource uri>
+   *
+   * Reads the resource through the lazy client (so the per-pod read cache + SWR
+   * apply — no upstream call on a warm hit), injects CSP server-side, then
+   * serves the HTML with an `ETag`: a matching `If-None-Match` returns 304 with
+   * no body, so the (often multi-MiB) HTML only re-transfers when it changes.
+   * `no-cache` makes the browser revalidate before use, so a server-side
+   * invalidation is picked up promptly. `private` because it's org/auth-scoped.
+   *
+   * This is the GET counterpart to the JSON-RPC `resources/read` POST, which is
+   * inherently uncacheable by the browser. The frontend renders the bytes into
+   * an iframe `srcDoc` (CSP already injected here).
+   */
+  app.get("/:connectionId/ui-resource", async (c) => {
+    const ctx = c.get("meshContext");
+    const connectionId = c.req.param("connectionId");
+    const uri = c.req.query("uri");
+    if (!uri) return c.json({ error: "uri query param is required" }, 400);
+    if (!ctx.organization?.id) {
+      return c.json({ error: "Organization context is required" }, 403);
+    }
+
+    const connection = await ctx.storage.connections.findById(
+      connectionId,
+      ctx.organization.id,
+    );
+    if (!connection || connection.organization_id !== ctx.organization.id) {
+      return c.json({ error: "Connection not found" }, 404);
+    }
+
+    const client = createLazyClient(
+      connection,
+      ctx,
+      false,
+      getMcpListCache() ?? undefined,
+    );
+    let text: string | undefined;
+    let resourceCsp: McpUiResourceCsp | undefined;
+    try {
+      const result = (await client.readResource({ uri })) as {
+        contents?: Array<{
+          text?: string;
+          _meta?: { ui?: { csp?: McpUiResourceCsp } };
+        }>;
+      };
+      const content = result.contents?.[0];
+      text = content?.text;
+      resourceCsp = content?._meta?.ui?.csp;
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 502);
+    } finally {
+      await client.close().catch(() => {});
+    }
+    if (typeof text !== "string") {
+      return c.json({ error: "Resource has no text content" }, 404);
+    }
+
+    const html = injectCSP(text, { resourceCsp });
+    const etag = `"${Bun.hash(html).toString(36)}"`;
+    const cacheControl = "private, no-cache";
+    if (c.req.header("if-none-match") === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: { ETag: etag, "Cache-Control": cacheControl },
+      });
+    }
+    return new Response(html, {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        ETag: etag,
+        "Cache-Control": cacheControl,
+      },
+    });
   });
 
   /**
