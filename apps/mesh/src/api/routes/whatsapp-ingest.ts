@@ -1,23 +1,28 @@
 /**
  * WhatsApp Concierge Ingest
  *
- * Global (NOT org-scoped) endpoint the deployed WhatsApp worker calls for every
- * inbound message. Routing is by the sender's verified phone, so the org is
- * resolved here — not from the URL.
+ * Global (NOT org-scoped) endpoint the decocms concierge worker calls for every
+ * inbound WhatsApp message. Routing is by the sender's verified phone, so the
+ * org is resolved here — not from the URL.
  *
  *   POST /api/whatsapp/ingest   (Authorization: Bearer WHATSAPP_INGEST_SECRET)
- *   { phone, text, messageId?, name? }  ->  202 (processed async)
+ *   { phone, text, messageId?, name? }  ->  { handled: boolean }
+ *
+ * `handled: false` means this message is NOT Studio's (unknown phone, or a
+ * verified user with no WhatsApp-enabled org) — the concierge should fall back
+ * to its own bot. `handled: true` means Studio owns it (a verification code, or
+ * a linked user with an enabled org); the classification is synchronous, and the
+ * reply is delivered asynchronously via the worker's send endpoint.
  *
  * Flow: verify pending code (inbound verification) → resolve phone→user →
  * resolve target org (selected / single / in-chat pick-list) → run the agent as
- * the real user → deliver the reply via the worker's /send.
+ * the real user → deliver the reply via the worker's send endpoint.
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Kysely } from "kysely";
-import { getBaseUrl } from "@/core/server-constants";
 import { canonicalizePhone } from "@/channels/phone";
 import { runChannelTurn } from "@/channels/run-channel-turn";
 import { sendWhatsApp } from "@/channels/whatsapp-worker";
@@ -147,37 +152,122 @@ export function createWhatsappIngestRoutes(deps: { db: Kysely<Database> }) {
     const name = body.name?.trim() || phone;
     if (!phone) return c.json({ error: "phone required" }, 400);
 
-    // ACK now; process out of band (agent runs can take a while).
-    void handleInbound({ db: deps.db, userPhones, phone, text, name }).catch(
+    // Classify synchronously (fast DB lookups) so we can tell the caller whether
+    // Studio OWNS this message. `handled: false` ⇒ the concierge runs its own
+    // bot (presales, etc.). The reply itself is delivered async via the worker's
+    // send endpoint, so we don't block on the agent loop here.
+    const decision = await classify({
+      db: deps.db,
+      userPhones,
+      phone,
+      text,
+    });
+
+    if (!decision.handled) return c.json({ handled: false }, 200);
+
+    void dispatch(decision, { db: deps.db, userPhones, phone, name }).catch(
       (err) =>
         console.error(
-          "[whatsapp-ingest] processing failed:",
+          "[whatsapp-ingest] dispatch failed:",
           err instanceof Error ? err.message : err,
         ),
     );
-
-    return c.json({ ok: true }, 202);
+    return c.json({ handled: true }, 200);
   });
 
   return app;
 }
 
-async function handleInbound(args: {
+type Decision =
+  | { handled: false }
+  | { handled: true; kind: "verify"; userId: string }
+  | {
+      handled: true;
+      kind: "pick";
+      userId: string;
+      orgs: WhatsappEnabledOrg[];
+    }
+  | {
+      handled: true;
+      kind: "route";
+      userId: string;
+      target: WhatsappEnabledOrg;
+      persistSelection: boolean;
+      text: string;
+    };
+
+/**
+ * Decide whether Studio owns this inbound. Studio handles only:
+ *  - a Studio-issued verification code (the user proving phone ownership), or
+ *  - a message from a phone linked to a user who has ≥1 WhatsApp-enabled org.
+ * Everything else returns `handled: false` so the concierge runs its own bot.
+ */
+async function classify(args: {
   db: Kysely<Database>;
   userPhones: UserPhoneStorage;
   phone: string;
   text: string;
-  name: string;
-}): Promise<void> {
-  const { db, userPhones, phone, text, name } = args;
+}): Promise<Decision> {
+  const { db, userPhones, phone, text } = args;
 
-  // 1) Verification: a Studio-issued code sent BY the user proves ownership.
   const codeCandidate = text.toUpperCase().replace(/\s+/g, "");
-  const pending = codeCandidate
-    ? await userPhones.findPendingByCode(codeCandidate)
-    : null;
-  if (pending) {
-    const result = await userPhones.bindVerified(pending.userId, phone);
+  if (codeCandidate) {
+    const pending = await userPhones.findPendingByCode(codeCandidate);
+    if (pending)
+      return { handled: true, kind: "verify", userId: pending.userId };
+  }
+
+  const link = await userPhones.findVerifiedByPhone(phone);
+  if (!link) return { handled: false };
+
+  const orgs = await listEnabledOrgs(db, link.userId);
+  const resolution = resolveTargetOrg({
+    text,
+    orgs,
+    selectedOrgId: link.selectedOrganizationId,
+  });
+
+  switch (resolution.kind) {
+    case "none":
+      return { handled: false };
+    case "switch":
+    case "pick":
+      return { handled: true, kind: "pick", userId: link.userId, orgs };
+    case "select":
+      return {
+        handled: true,
+        kind: "route",
+        userId: link.userId,
+        target: resolution.org,
+        persistSelection: true,
+        text,
+      };
+    case "route":
+      return {
+        handled: true,
+        kind: "route",
+        userId: link.userId,
+        target: resolution.org,
+        persistSelection: orgs.length === 1,
+        text,
+      };
+  }
+}
+
+/** Perform the side effects + reply for a handled message (async). */
+async function dispatch(
+  decision: Exclude<Decision, { handled: false }>,
+  deps: {
+    db: Kysely<Database>;
+    userPhones: UserPhoneStorage;
+    phone: string;
+    name: string;
+  },
+): Promise<void> {
+  const { userPhones, phone, name } = deps;
+
+  if (decision.kind === "verify") {
+    const result = await userPhones.bindVerified(decision.userId, phone);
     await sendWhatsApp(
       phone,
       result.ok
@@ -187,66 +277,31 @@ async function handleInbound(args: {
     return;
   }
 
-  // 2) Resolve the sender to a verified user.
-  const link = await userPhones.findVerifiedByPhone(phone);
-  if (!link) {
+  if (decision.kind === "pick") {
+    // `switch` resolves to "pick" too — clear any stale selection first.
+    await userPhones.setSelectedOrg(decision.userId, null);
+    await sendWhatsApp(phone, pickListText(decision.orgs));
+    return;
+  }
+
+  // route
+  if (decision.persistSelection) {
+    await userPhones.setSelectedOrg(decision.userId, decision.target.orgId);
+  }
+  if (!decision.target.agentId) {
     await sendWhatsApp(
       phone,
-      `This number isn't linked to a deco account yet. Link it from your profile at ${getBaseUrl()}.`,
+      `WhatsApp isn't fully set up for ${decision.target.orgName} yet (no agent selected).`,
     );
     return;
   }
 
-  // 3) Resolve the target organization.
-  const orgs = await listEnabledOrgs(db, link.userId);
-  const resolution = resolveTargetOrg({
-    text,
-    orgs,
-    selectedOrgId: link.selectedOrganizationId,
-  });
-
-  let target: WhatsappEnabledOrg;
-  switch (resolution.kind) {
-    case "none":
-      await sendWhatsApp(
-        phone,
-        "No organization has WhatsApp enabled for you yet.",
-      );
-      return;
-    case "switch":
-      await userPhones.setSelectedOrg(link.userId, null);
-      await sendWhatsApp(phone, pickListText(orgs));
-      return;
-    case "pick":
-      await sendWhatsApp(phone, pickListText(orgs));
-      return;
-    case "select":
-      await userPhones.setSelectedOrg(link.userId, resolution.org.orgId);
-      target = resolution.org;
-      break;
-    case "route":
-      target = resolution.org;
-      if (orgs.length === 1) {
-        await userPhones.setSelectedOrg(link.userId, target.orgId);
-      }
-      break;
-  }
-
-  if (!target.agentId) {
-    await sendWhatsApp(
-      phone,
-      `WhatsApp isn't fully set up for ${target.orgName} yet (no agent selected).`,
-    );
-    return;
-  }
-
-  // 4) Run the agent AS the real user, in a stable per-user+org thread.
   const { replyText } = await runChannelTurn({
-    organizationId: target.orgId,
-    userId: link.userId,
-    agentId: target.agentId,
-    threadId: threadIdFor(phone, target.orgId),
-    userText: text,
+    organizationId: decision.target.orgId,
+    userId: decision.userId,
+    agentId: decision.target.agentId,
+    threadId: threadIdFor(phone, decision.target.orgId),
+    userText: decision.text,
     sender: { platform: "whatsapp", senderId: phone, senderName: name },
   });
 
