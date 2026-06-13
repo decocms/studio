@@ -36,6 +36,12 @@
     "packages/mesh-sdk": {
       "ignoreDependencies": ["sonner"]
     },
+    "packages/telos": {
+      // `ai` is an intentional OPTIONAL peer dep: only the `@decocms/telos/ai`
+      // deliberator imports it, so consumers using just the rule deliberator
+      // pull nothing. knip flags referenced optional peers; this is by design.
+      "ignoreDependencies": ["ai"]
+    },
     "packages/sandbox": {
       // daemon/entry.ts is bundled via `bun build` into a standalone binary
       // that runs inside sandbox VMs; org-fs/sidecar-main.ts likewise into

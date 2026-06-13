@@ -1,0 +1,41 @@
+{
+  "name": "@decocms/telos",
+  "version": "0.1.0",
+  "description": "Domain-agnostic goal-pursuit agent core (telos = the fixed end pursued)",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "bun test",
+    "example": "bun run examples/run.ts",
+    "example:ai": "USE_AI=1 bun run examples/run.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./ai": "./src/deliberate-ai.ts"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "ai": ">=6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ai": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/decocms/studio.git",
+    "directory": "packages/telos"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
