@@ -140,8 +140,12 @@ export const createProxyRoutes = () => {
     const html = injectCSP(text, { resourceCsp });
     // ETag over the final HTML; a matching If-None-Match returns 304 (no body),
     // so the multi-MiB payload only re-transfers when the content changes.
+    // `no-cache` = the browser may store it but MUST revalidate before use, so a
+    // server-side invalidation (connection update/delete clears the read cache)
+    // is picked up on the next use instead of being masked by a max-age window.
+    // React Query's staleTime gates how often that revalidation actually fires.
     const etag = `"${Bun.hash(html).toString(36)}"`;
-    const cacheControl = "private, max-age=30, must-revalidate";
+    const cacheControl = "private, no-cache";
     if (c.req.header("if-none-match") === etag) {
       return new Response(null, {
         status: 304,

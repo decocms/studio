@@ -1,5 +1,6 @@
 import {
   SELF_MCP_ALIAS_ID,
+  UI_RESOURCE_HTML_KEY,
   useMCPClient,
   useProjectContext,
   type ConnectionEntity,
@@ -7,6 +8,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { clearHtmlResourceCacheForConnection } from "@/web/lib/html-resource-persist";
 
 export type DeleteConnectionState =
   | { mode: "idle" }
@@ -59,8 +61,18 @@ export function useDeleteConnection({
     });
   };
 
-  const handleSuccess = () => {
+  const evictUiResourceCache = (connectionId: string) => {
+    void clearHtmlResourceCacheForConnection(connectionId);
+    queryClient.invalidateQueries({
+      predicate: (query) =>
+        query.queryKey[1] === UI_RESOURCE_HTML_KEY &&
+        query.queryKey[3] === connectionId,
+    });
+  };
+
+  const handleSuccess = (connectionId: string) => {
     invalidateConnections();
+    evictUiResourceCache(connectionId);
     toast.success("Connection deleted successfully");
     setDeleteState({ mode: "idle" });
     onSuccess?.();
@@ -111,7 +123,7 @@ export function useDeleteConnection({
         return;
       }
 
-      handleSuccess();
+      handleSuccess(connection.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error(`Failed to delete connection: ${message}`);
@@ -135,7 +147,7 @@ export function useDeleteConnection({
         return;
       }
 
-      handleSuccess();
+      handleSuccess(id);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error(`Failed to delete connection: ${message}`);

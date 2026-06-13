@@ -48,25 +48,26 @@ interface TypeConfig {
   maxValueBytes: number;
 }
 
-const MIB = 1024 * 1024;
+const KiB = 1024 as const;
+const MiB = KiB * KiB;
 
 /** Per-method tuning. Content reads are slow-changing and can be large; tool
  * results change faster, so refresh sooner and cap their size tighter. */
-export const DEFAULT_READ_CACHE_CONFIG: Record<McpReadType, TypeConfig> = {
+const DEFAULT_READ_CACHE_CONFIG: Record<McpReadType, TypeConfig> = {
   "tools/call": {
     revalidateAfterMs: 30_000,
     maxStaleMs: 5 * 60_000,
-    maxValueBytes: 512 * 1024,
+    maxValueBytes: 512 * KiB,
   },
   "resources/read": {
     revalidateAfterMs: 60_000,
     maxStaleMs: 5 * 60_000,
-    maxValueBytes: 5 * MIB,
+    maxValueBytes: 4 * MiB,
   },
   "prompts/get": {
     revalidateAfterMs: 60_000,
     maxStaleMs: 5 * 60_000,
-    maxValueBytes: 2 * MIB,
+    maxValueBytes: 512 * KiB,
   },
 };
 
@@ -74,7 +75,7 @@ const READ_CACHE_MAX_ENTRIES = 2000;
 // Hard ceiling on aggregate cached bytes (per pod). With multi-MiB entries the
 // entry-count cap alone isn't enough — evict LRU until under this too, so the
 // cache can't grow into the heap-pressure territory that OOM'd pods before.
-const READ_CACHE_MAX_TOTAL_BYTES = 256 * MIB;
+const READ_CACHE_MAX_TOTAL_BYTES = 256 * MiB;
 
 // Opt-in tracing: `MCP_CACHE_DEBUG=1` logs every fetch outcome + store skip so
 // we can see hit/miss/stale and oversize rejections live. Temporary diagnostic.

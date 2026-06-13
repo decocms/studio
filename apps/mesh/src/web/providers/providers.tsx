@@ -10,6 +10,10 @@ import {
   hydrateQueryClient,
   persistQueryClient,
 } from "@/web/lib/query-persist";
+import {
+  persistHtmlResourceCache,
+  restoreHtmlResourceCache,
+} from "@/web/lib/html-resource-persist";
 import { Toaster } from "sonner";
 
 const queryClient = new QueryClient({
@@ -31,6 +35,10 @@ const queryClient = new QueryClient({
 
 hydrateQueryClient(queryClient);
 persistQueryClient(queryClient);
+// Large UI-resource HTML goes to IndexedDB (not the localStorage cache above):
+// warm-start from it, then keep it written on successful reads.
+void restoreHtmlResourceCache(queryClient);
+persistHtmlResourceCache(queryClient);
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
