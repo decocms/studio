@@ -2,8 +2,8 @@
  * Files Route
  *
  * Serves org-scoped storage files via a stable, non-expiring URL.
- * Redirects to a fresh presigned GET URL on every request, so the
- * caller never needs to manage URL expiry.
+ * Proxies the object bytes through mesh on every request (presigning
+ * internally), so the caller never sees storage URLs or manages expiry.
  *
  * Route: GET /api/:org/files/:key
  *
@@ -25,6 +25,40 @@ import { isBrowserNavigation } from "../utils/browser-navigation";
 type Variables = { meshContext: StudioContext };
 
 const app = new Hono<{ Variables: Variables }>();
+
+/** Request headers forwarded to storage so Range requests (media seeking)
+ * and conditional revalidation keep working through the proxy. */
+const FORWARDED_REQUEST_HEADERS = [
+  "range",
+  "if-none-match",
+  "if-modified-since",
+] as const;
+
+/** Response headers passed through from storage to the client. */
+const FORWARDED_RESPONSE_HEADERS = [
+  "content-type",
+  "content-length",
+  "content-range",
+  "accept-ranges",
+  "etag",
+  "last-modified",
+] as const;
+
+/** Now that bytes are served same-origin (no more redirect to the storage
+ * domain), member-authored active content must not run with mesh's origin.
+ * CSP-sandbox it so scripts get an opaque origin and can't make credentialed
+ * same-origin calls (same posture as the org-fs /read route). */
+function applyContentPolicy(headers: Headers, contentType: string): void {
+  if (
+    contentType.startsWith("text/html") ||
+    contentType.startsWith("image/svg")
+  ) {
+    headers.set(
+      "Content-Security-Policy",
+      "sandbox allow-scripts allow-modals",
+    );
+  }
+}
 
 app.get("/:org/files/*", async (c) => {
   const ctx = c.get("meshContext");
@@ -59,8 +93,7 @@ app.get("/:org/files/*", async (c) => {
     throw new HTTPException(503, { message: "Object storage not configured" });
   }
 
-  // DevObjectStorage returns data: URIs which browsers can't follow as 302
-  // redirects. Serve the bytes inline instead.
+  // DevObjectStorage returns data: URIs — serve the bytes inline.
   if (presignedUrl.startsWith("data:") && usesLocalObjectStorage()) {
     const match = presignedUrl.match(/^data:([^;]+);base64,(.+)$/s);
     if (!match) {
@@ -70,13 +103,47 @@ app.get("/:org/files/*", async (c) => {
     }
     const [, contentType, base64] = match;
     const bytes = Buffer.from(base64!, "base64");
-    return c.body(bytes, 200, {
+    const headers = new Headers({
       "Content-Type": contentType!,
       "Cache-Control": "private, max-age=86400",
     });
+    applyContentPolicy(headers, contentType!);
+    return new Response(bytes, { status: 200, headers });
   }
 
-  return c.redirect(presignedUrl, 302);
+  // Proxy the object through mesh instead of redirecting: the storage origin
+  // and signed URLs never reach the client.
+  const upstreamHeaders = new Headers();
+  for (const name of FORWARDED_REQUEST_HEADERS) {
+    const value = c.req.header(name);
+    if (value) upstreamHeaders.set(name, value);
+  }
+
+  const upstream = await fetch(presignedUrl, { headers: upstreamHeaders });
+
+  // 200 OK / 206 Partial Content / 304 Not Modified / 416 Range Not
+  // Satisfiable pass through; storage 403/404 both mean "no such object"
+  // to the caller; anything else is a storage-side failure.
+  if (upstream.status === 403 || upstream.status === 404) {
+    throw new HTTPException(404, { message: "File not found" });
+  }
+  if (!upstream.ok && upstream.status !== 304 && upstream.status !== 416) {
+    console.error(
+      `[files] upstream storage error ${upstream.status} for key:`,
+      key,
+    );
+    throw new HTTPException(502, { message: "Upstream storage error" });
+  }
+
+  const headers = new Headers();
+  for (const name of FORWARDED_RESPONSE_HEADERS) {
+    const value = upstream.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  headers.set("Cache-Control", "private, max-age=86400");
+  applyContentPolicy(headers, headers.get("content-type") ?? "");
+
+  return new Response(upstream.body, { status: upstream.status, headers });
 });
 
 export default app;

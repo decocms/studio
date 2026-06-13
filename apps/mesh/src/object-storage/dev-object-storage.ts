@@ -192,7 +192,7 @@ export class DevObjectStorage implements BoundObjectStorage {
    * AI SDK and vision models reject localhost URLs, so we inline the bytes
    * instead of generating an HMAC-signed redirect to /api/dev-assets/.
    * The /api/dev-assets/ route is still used by external clients (e.g. the UI)
-   * via the stable redirect endpoint (/api/:org/files/:key).
+   * via the stable files endpoint (/api/:org/files/:key).
    */
   async presignedGetUrl(
     key: string,
