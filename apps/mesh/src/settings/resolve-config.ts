@@ -96,6 +96,8 @@ export function resolveConfig(
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,
+    clickhouseMaxMemoryUsage:
+      Number(envVars.CLICKHOUSE_MAX_MEMORY_USAGE) || undefined,
     monitoringOtlpEndpoint: envVars.MONITORING_OTLP_ENDPOINT,
     otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
