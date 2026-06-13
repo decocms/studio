@@ -755,17 +755,3 @@ export const createWellKnownAuthServerRoutes = () => {
 
 // Note: The /oauth-proxy/:connectionId/:endpoint route is defined directly in app.ts
 // because app.route() doesn't properly register routes with dynamic segments at root level
-
-/**
- * Default export: a Hono app that mounts every route in this file.
- *
- * Kept for backward compatibility with `oauth-proxy.test.ts` (which mounts
- * the whole module under `/`) and as an escape hatch for any other caller
- * that wants the full surface in one go. Production code (`app.ts`) uses
- * the individual factories so it can apply `logDeprecatedRoute` to the
- * legacy mounts and dual-mount under `/api/:org/...`.
- */
-const app = new Hono<HonoEnv>();
-app.route("/", createLegacyWellKnownProtectedResourceRoutes());
-app.route("/", createWellKnownAuthServerRoutes());
-export default app;

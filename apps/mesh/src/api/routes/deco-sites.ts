@@ -347,7 +347,7 @@ interface TenantS3Credentials {
  * behaviour (the deco-sites import itself shouldn't fail just because
  * storage couldn't be provisioned).
  */
-export async function provisionDecoAssetsCredentials(
+async function provisionDecoAssetsCredentials(
   siteName: string,
   serviceAccountApiKey: string,
 ): Promise<TenantS3Credentials | null> {
@@ -397,7 +397,7 @@ export async function provisionDecoAssetsCredentials(
  * the same site), no-op — credentials there may have been rotated by
  * the user. Caller treats this as best-effort.
  */
-export async function provisionDecoAssetsFileConfig(params: {
+async function provisionDecoAssetsFileConfig(params: {
   ctx: StudioContext;
   orgId: string;
   userId: string;

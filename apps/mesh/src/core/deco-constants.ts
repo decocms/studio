@@ -5,7 +5,7 @@
  */
 
 /** Deco CMS API host for detecting deco-hosted MCPs */
-export const DECO_CMS_API_HOST = "api.decocms.com";
+const DECO_CMS_API_HOST = "api.decocms.com";
 
 /** The Deco Store registry URL (public, no OAuth) */
 export const DECO_STORE_URL =
