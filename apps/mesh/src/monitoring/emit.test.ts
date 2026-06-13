@@ -105,6 +105,25 @@ describe("emitMonitoringLog", () => {
     expect(input).toContain("[REDACTED:email]");
   });
 
+  it("should redact PII in nested values and object keys", () => {
+    emitMonitoringLog(
+      makeParams({
+        result: {
+          contact: { primary: "nested@example.com" },
+          "owner@example.com": "value",
+        },
+      }),
+    );
+
+    expect(emittedRecords.length).toBe(1);
+    const output = emittedRecords[0]!.attributes![
+      MONITORING_LOG_ATTR.OUTPUT
+    ] as string;
+    expect(output).not.toContain("nested@example.com");
+    expect(output).not.toContain("owner@example.com");
+    expect(output).toContain("[REDACTED:email]");
+  });
+
   it("should redact PII in error message", () => {
     emitMonitoringLog(
       makeParams({
