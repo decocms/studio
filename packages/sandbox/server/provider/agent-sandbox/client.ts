@@ -214,6 +214,14 @@ interface KubeFetchInit {
    *                         (and optionally `force=true`) to `path`.
    */
   patchType?: "merge" | "strategic-merge" | "apply";
+  /**
+   * Long-lived streaming request (a K8s `watch`). Disables Bun's default
+   * per-request fetch timeout — otherwise Bun aborts the idle stream between
+   * events with "The operation timed out", forcing a needless reconnect every
+   * few minutes. Watch lifetime is bounded by the caller's `signal` and the
+   * API server's own watch timeout instead.
+   */
+  stream?: boolean;
 }
 
 /**
@@ -246,12 +254,13 @@ export async function kubeFetch(
   } else if (init.body !== undefined && !("content-type" in headers)) {
     headers["content-type"] = "application/json";
   }
-  const reqInit: RequestInit & { tls?: typeof auth.tls } = {
+  const reqInit: RequestInit & { tls?: typeof auth.tls; timeout?: boolean } = {
     method: init.method,
     headers,
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
     signal: init.signal,
     tls: auth.tls,
+    ...(init.stream ? { timeout: false } : {}),
   };
   return fetch(`${auth.server}${init.path}`, reqInit as RequestInit);
 }
@@ -781,6 +790,7 @@ export function waitForSandboxReady(
         path,
         signal: controller.signal,
         headers: { accept: "application/json" },
+        stream: true,
       });
     } catch (err) {
       settleWith(() =>

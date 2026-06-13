@@ -748,6 +748,7 @@ async function runWatch<T>(opts: RunWatchOpts<T>): Promise<void> {
         path,
         signal,
         headers: { accept: "application/json" },
+        stream: true,
       });
       if (!resp.ok || !resp.body) {
         // Drain body before throwing so the connection can be reused.
