@@ -272,15 +272,17 @@ export const managementMCP = async (ctx: StudioContext) => {
         ? (tool.outputSchema as z.ZodObject<z.ZodRawShape>)
         : undefined;
 
-    const inputShape = inputSchema.shape;
-    const outputShape = outputSchema?.shape;
-
+    // Pass the prebuilt Zod schemas directly instead of their `.shape`. The SDK
+    // returns a schema instance as-is, but rebuilds a fresh `z.object(...)` from
+    // a raw shape on every registration — ~2 ZodObject graphs per tool, per
+    // request. With ~150 tools rebuilt per `/mcp/self` hit, that rebuild is the
+    // dominant CPU cost under concurrent load.
     server.registerTool(
       tool.name,
       {
         description: tool.description ?? "",
-        inputSchema: inputShape,
-        outputSchema: outputShape,
+        inputSchema,
+        outputSchema,
         annotations: tool.annotations,
         _meta: tool._meta,
       },
