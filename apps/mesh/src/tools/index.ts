@@ -7,6 +7,7 @@
  * Plugin tools are collected at startup and combined with core tools.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { ToolAnnotations } from "@/core/define-tool";
 import { StudioContext } from "@/core/studio-context";
 import {
@@ -225,6 +226,89 @@ export type MCPMeshTools = typeof ALL_TOOLS;
 // Derive tool name type from ALL_TOOLS
 export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
 
+/**
+ * Per-request StudioContext for the management server's tool handlers.
+ *
+ * The serving routes build a fresh `McpServer` per request, but the tool
+ * registrations below are built once and shared across every server: the
+ * handler reads its `ctx` from this store at call time instead of closing over
+ * it. A request runs its handler inside `managementContextStore.run(ctx, ...)`.
+ * This keeps a server that survives `close()` (the production leak) from
+ * pinning that request's ctx graph — the only heavy per-request state a tool
+ * handler used to capture.
+ */
+export const managementContextStore = new AsyncLocalStorage<StudioContext>();
+
+/**
+ * Cache of per-tool MCP registrations (config + ctx-free handler), keyed by the
+ * static tool object. Built lazily on first use and reused for the life of the
+ * process, so the static tool set is never re-derived per request — only the
+ * tiny `registerTool` map insertion happens on each `/mcp/self` build.
+ */
+const toolRegistrationCache = new Map<
+  CombinedTool,
+  ReturnType<typeof buildToolRegistration>
+>();
+
+function buildToolRegistration(tool: CombinedTool) {
+  const inputSchema =
+    tool.inputSchema &&
+    typeof tool.inputSchema === "object" &&
+    "shape" in tool.inputSchema
+      ? (tool.inputSchema as z.ZodObject<z.ZodRawShape>)
+      : z.object({});
+  const outputSchema =
+    tool.outputSchema &&
+    typeof tool.outputSchema === "object" &&
+    "shape" in tool.outputSchema
+      ? (tool.outputSchema as z.ZodObject<z.ZodRawShape>)
+      : undefined;
+
+  return {
+    config: {
+      description: tool.description ?? "",
+      inputSchema,
+      outputSchema,
+      annotations: tool.annotations,
+      _meta: tool._meta,
+    },
+    handler: async (args: unknown) => {
+      const ctx = managementContextStore.getStore();
+      if (!ctx) {
+        throw new Error(
+          `[managementMCP] tool ${tool.name} invoked outside a request context`,
+        );
+      }
+      ctx.access.setToolName(tool.name);
+      try {
+        const result = await tool.execute(args, ctx);
+        const modelText = tool.modelSummary
+          ? tool.modelSummary(result)
+          : JSON.stringify(result);
+        return {
+          content: [{ type: "text" as const, text: modelText }],
+          structuredContent: result as { [x: string]: unknown },
+        };
+      } catch (error) {
+        const err = error as Error;
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    },
+  };
+}
+
+function getToolRegistration(tool: CombinedTool) {
+  let registration = toolRegistrationCache.get(tool);
+  if (!registration) {
+    registration = buildToolRegistration(tool);
+    toolRegistrationCache.set(tool, registration);
+  }
+  return registration;
+}
+
 export const managementMCP = async (ctx: StudioContext) => {
   // Get enabled plugins for this organization to filter plugin tools
   // Check both org settings (legacy) and all virtual MCPs
@@ -257,55 +341,12 @@ export const managementMCP = async (ctx: StudioContext) => {
     },
   );
 
-  // Register each tool with the server
+  // Register each tool from its shared, prebuilt registration (config carries
+  // the prebuilt Zod schemas; the handler reads ctx from the ALS store at call
+  // time rather than capturing it). Only the map insertion is per-request.
   for (const tool of filteredTools) {
-    const inputSchema =
-      tool.inputSchema &&
-      typeof tool.inputSchema === "object" &&
-      "shape" in tool.inputSchema
-        ? (tool.inputSchema as z.ZodObject<z.ZodRawShape>)
-        : z.object({});
-    const outputSchema =
-      tool.outputSchema &&
-      typeof tool.outputSchema === "object" &&
-      "shape" in tool.outputSchema
-        ? (tool.outputSchema as z.ZodObject<z.ZodRawShape>)
-        : undefined;
-
-    // Pass the prebuilt Zod schemas directly instead of their `.shape`. The SDK
-    // returns a schema instance as-is, but rebuilds a fresh `z.object(...)` from
-    // a raw shape on every registration — ~2 ZodObject graphs per tool, per
-    // request. With ~150 tools rebuilt per `/mcp/self` hit, that rebuild is the
-    // dominant CPU cost under concurrent load.
-    server.registerTool(
-      tool.name,
-      {
-        description: tool.description ?? "",
-        inputSchema,
-        outputSchema,
-        annotations: tool.annotations,
-        _meta: tool._meta,
-      },
-      async (args) => {
-        ctx.access.setToolName(tool.name);
-        try {
-          const result = await tool.execute(args, ctx);
-          const modelText = tool.modelSummary
-            ? tool.modelSummary(result)
-            : JSON.stringify(result);
-          return {
-            content: [{ type: "text" as const, text: modelText }],
-            structuredContent: result as { [x: string]: unknown },
-          };
-        } catch (error) {
-          const err = error as Error;
-          return {
-            content: [{ type: "text" as const, text: `Error: ${err.message}` }],
-            isError: true,
-          };
-        }
-      },
-    );
+    const { config, handler } = getToolRegistration(tool);
+    server.registerTool(tool.name, config, handler);
   }
 
   // Register action prompts

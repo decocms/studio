@@ -7,7 +7,7 @@
 import { Hono } from "hono";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { StudioContext } from "../../core/studio-context";
-import { managementMCP } from "../../tools";
+import { managementContextStore, managementMCP } from "../../tools";
 import { serveMcpRequest } from "../utils/serve-mcp";
 
 // Define Hono variables type
@@ -27,13 +27,18 @@ export const createSelfRoutes = () => {
    * Exposes all PROJECT_* and CONNECTION_* tools via MCP protocol
    */
   app.all("/", async (c) => {
-    const server = await managementMCP(c.get("meshContext"));
+    const ctx = c.get("meshContext");
+    const server = await managementMCP(ctx);
     const transport = new WebStandardStreamableHTTPServerTransport({
       enableJsonResponse:
         c.req.raw.headers.get("Accept")?.includes("application/json") ?? false,
     });
     await server.connect(transport);
-    return serveMcpRequest(server, transport, c.req.raw, "mcp:self");
+    // Tool handlers read ctx from the ALS store, so the request must run inside
+    // its scope.
+    return managementContextStore.run(ctx, () =>
+      serveMcpRequest(server, transport, c.req.raw, "mcp:self"),
+    );
   });
 
   return app;
