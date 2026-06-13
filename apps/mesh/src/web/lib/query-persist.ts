@@ -13,6 +13,7 @@
  */
 
 import { type QueryClient, dehydrate, hydrate } from "@tanstack/react-query";
+import { clearHtmlResourceCache } from "./html-resource-persist";
 
 const STORAGE_KEY = "mesh:rq-cache";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
@@ -157,6 +158,8 @@ export function writeCachedOrg(
 
 /** Wipe all persisted caches. Call on sign-out so the next user starts clean. */
 export function clearPersistedQueryCache(): void {
+  // Drop the IndexedDB UI-resource HTML store too (org-scoped UI shells).
+  clearHtmlResourceCache();
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(STORAGE_KEY);

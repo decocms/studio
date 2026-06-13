@@ -220,6 +220,8 @@ function AgentUITile({
             <MCPAppRenderer
               resourceURI={tile.resourceUri}
               orgId={org.id}
+              orgSlug={org.slug}
+              connectionId={tile.connectionId}
               client={client}
               displayMode="fullscreen"
               minHeight={tile.minHeight ?? 200}

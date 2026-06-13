@@ -17,7 +17,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
-import { getMcpReadCache } from "../../mcp-clients/mcp-read-cache";
+import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
 import { ConnectionEntitySchema } from "./schema";
 
 const ConnectionDeleteInputSchema = CollectionDeleteInputSchema.extend({
@@ -113,8 +113,9 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
     getMcpListCache()
       ?.invalidate(input.id)
       .catch(() => {});
-    // Drop cached read content for this connection
-    getMcpReadCache().invalidate(input.id);
+    // Drop cached read content and tool results for this connection across ALL
+    // replicas (per-pod caches → NATS broadcast).
+    invalidateConnectionCaches(input.id);
 
     const userId = getUserId(ctx);
     if (userId) {
