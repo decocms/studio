@@ -76,6 +76,7 @@ function ConnectionRow({
   const updateAuth = useUpdateMonitorConnectionAuth();
   const { updateMutation } = useRegistryMutations();
   const { org } = useProjectContext();
+  const queryClient = useQueryClient();
   const connectionId = entry.mapping.connection_id;
   const authStatus = entry.mapping.auth_status;
   const title = entry.item?.title ?? entry.mapping.item_id;
