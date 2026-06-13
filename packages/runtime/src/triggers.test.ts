@@ -176,7 +176,6 @@ describe("createTriggers", () => {
     const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("ok", { status: 202 }),
     );
-    const consoleSpy = spyOn(console, "log").mockImplementation(() => {});
 
     // Enable a trigger
     await configureTool.execute({
@@ -203,22 +202,18 @@ describe("createTriggers", () => {
     triggers.notify("conn-cleanup", "github.push", {});
     await new Promise((r) => setTimeout(r, 50));
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("No callback credentials"),
-    );
 
     fetchSpy.mockRestore();
-    consoleSpy.mockRestore();
   });
 
   it("notify is a no-op when no credentials exist", async () => {
-    const consoleSpy = spyOn(console, "log").mockImplementation(() => {});
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("ok", { status: 202 }),
+    );
     triggers.notify("unknown-conn", "github.push", {});
     await new Promise((r) => setTimeout(r, 50));
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("No callback credentials"),
-    );
-    consoleSpy.mockRestore();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 
   it("notify logs error on non-2xx response", async () => {

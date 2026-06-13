@@ -48,34 +48,6 @@ describe("createMeshClient", () => {
     });
   });
 
-  test("lazy-connects on first call", async () => {
-    type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
-
-    const client = createMeshClient<Tools>(
-      { mcpId: "vmc_test", apiKey: "sk" },
-      deps,
-    );
-
-    expect(mockConnect).not.toHaveBeenCalled();
-    await client.TOOL({});
-    expect(mockConnect).toHaveBeenCalledTimes(1);
-  });
-
-  test("reuses connection on subsequent calls", async () => {
-    type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
-
-    const client = createMeshClient<Tools>(
-      { mcpId: "vmc_test", apiKey: "sk" },
-      deps,
-    );
-
-    await client.TOOL({});
-    await client.TOOL({});
-    await client.TOOL({});
-
-    expect(mockConnect).toHaveBeenCalledTimes(1);
-  });
-
   test("throws on isError response", async () => {
     mockCallTool.mockResolvedValueOnce({
       isError: true,

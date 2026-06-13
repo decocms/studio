@@ -31,69 +31,6 @@ import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
 // Since `deriveHandle` is module-private, we test the observable contract via
 // a stub work-poll loop that records the handles seen.
 
-describe("LINK_TRANSPORT_MODE gate (env var logic)", () => {
-  it("pull path is selected when LINK_TRANSPORT_MODE=pull", () => {
-    const originalMode = process.env.LINK_TRANSPORT_MODE;
-    try {
-      process.env.LINK_TRANSPORT_MODE = "pull";
-      const mode = process.env.LINK_TRANSPORT_MODE ?? "ws";
-      expect(mode).toBe("pull");
-    } finally {
-      if (originalMode === undefined) {
-        delete process.env.LINK_TRANSPORT_MODE;
-      } else {
-        process.env.LINK_TRANSPORT_MODE = originalMode;
-      }
-    }
-  });
-
-  it("WS path is selected when LINK_TRANSPORT_MODE is absent", () => {
-    const originalMode = process.env.LINK_TRANSPORT_MODE;
-    try {
-      delete process.env.LINK_TRANSPORT_MODE;
-      const mode = process.env.LINK_TRANSPORT_MODE ?? "ws";
-      expect(mode).toBe("ws");
-    } finally {
-      if (originalMode === undefined) {
-        delete process.env.LINK_TRANSPORT_MODE;
-      } else {
-        process.env.LINK_TRANSPORT_MODE = originalMode;
-      }
-    }
-  });
-
-  it("WS path is selected when LINK_TRANSPORT_MODE=ws", () => {
-    const originalMode = process.env.LINK_TRANSPORT_MODE;
-    try {
-      process.env.LINK_TRANSPORT_MODE = "ws";
-      const mode = process.env.LINK_TRANSPORT_MODE ?? "ws";
-      expect(mode).toBe("ws");
-    } finally {
-      if (originalMode === undefined) {
-        delete process.env.LINK_TRANSPORT_MODE;
-      } else {
-        process.env.LINK_TRANSPORT_MODE = originalMode;
-      }
-    }
-  });
-
-  it("WS path is selected when LINK_TRANSPORT_MODE=anything-else", () => {
-    const originalMode = process.env.LINK_TRANSPORT_MODE;
-    try {
-      process.env.LINK_TRANSPORT_MODE = "grpc";
-      const mode = process.env.LINK_TRANSPORT_MODE ?? "ws";
-      // The gate: linkTransportMode === "pull" → pull; else → ws
-      expect(mode === "pull").toBe(false);
-    } finally {
-      if (originalMode === undefined) {
-        delete process.env.LINK_TRANSPORT_MODE;
-      } else {
-        process.env.LINK_TRANSPORT_MODE = originalMode;
-      }
-    }
-  });
-});
-
 describe("sandbox config propagation", () => {
   /**
    * Creates a stub provider that records ensureSandbox calls.

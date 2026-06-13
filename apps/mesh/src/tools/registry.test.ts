@@ -23,13 +23,4 @@ describe("Tool Registry Sync", () => {
       ).toContain(toolName as string);
     }
   });
-
-  it("should have matching ToolName types", () => {
-    // Runtime check for registry tools being a subset of all tools
-    const allToolNames = ALL_TOOLS.map((t) => t.name);
-    const registryToolNames = MANAGEMENT_TOOLS.map((t) => t.name);
-    // Registry should have at most as many tools as ALL_TOOLS
-    // (could be fewer if plugin tools are present)
-    expect(registryToolNames.length).toBeLessThanOrEqual(allToolNames.length);
-  });
 });

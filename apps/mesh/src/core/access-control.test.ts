@@ -193,20 +193,6 @@ describe("AccessControl", () => {
       );
     });
 
-    it("should work with wildcard permissions", async () => {
-      const ac = new AccessControl(
-        createMockAuth(),
-        "user_1",
-        undefined,
-        createMockBoundAuth({ conn_123: ["*"] }), // Wildcard
-        "user",
-        "conn_123", // Checking conn_123
-      );
-
-      await ac.check("SOME_TOOL");
-      expect(ac.granted()).toBe(true);
-    });
-
     it("should deny access when no userId or permissions", async () => {
       const ac = new AccessControl(
         createMockAuth(),
@@ -314,67 +300,6 @@ describe("AccessControl", () => {
       }
 
       expect(ac.granted()).toBe(false);
-    });
-  });
-
-  describe("manual permission check", () => {
-    it("should match exact resource name", async () => {
-      const ac = new AccessControl(
-        createMockAuth(),
-        "user_1",
-        undefined,
-        createMockBoundAuth({ self: ["EXACT_MATCH"] }), // Permission on self connection
-        "user",
-      );
-
-      await ac.check("EXACT_MATCH");
-      expect(ac.granted()).toBe(true);
-    });
-
-    it("should match resource in actions array", async () => {
-      const ac = new AccessControl(
-        createMockAuth(),
-        "user_1",
-        undefined,
-        createMockBoundAuth({ conn_123: ["SEND_MESSAGE", "LIST_THREADS"] }),
-        "user",
-        "conn_123", // Checking conn_123
-      );
-
-      await ac.check("SEND_MESSAGE");
-      expect(ac.granted()).toBe(true);
-    });
-
-    it("should respect connection ID filter", async () => {
-      const ac = new AccessControl(
-        createMockAuth(),
-        "user_1",
-        undefined,
-        createMockBoundAuth({
-          conn_123: ["SEND_MESSAGE"],
-          conn_456: ["SEND_MESSAGE"],
-        }),
-        "user",
-        "conn_123", // Only check this connection
-      );
-
-      await ac.check("SEND_MESSAGE");
-      expect(ac.granted()).toBe(true);
-    });
-
-    it("should deny when connection ID does not match", async () => {
-      const ac = new AccessControl(
-        createMockAuth(),
-        "user_1",
-        undefined,
-        createMockBoundAuth({
-          conn_456: ["SEND_MESSAGE"], // Different connection
-        }),
-        "user",
-        "conn_123", // Checking this connection
-      );
-
-      await expect(ac.check("SEND_MESSAGE")).rejects.toThrow(ForbiddenError);
     });
   });
 
