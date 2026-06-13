@@ -97,6 +97,8 @@ import {
   Globe02,
   Loading01,
   Plus,
+  Power01,
+  SlashCircle01,
   Terminal,
   Trash01,
   XClose,
@@ -953,6 +955,21 @@ function ConnectionResults({
     exitSelectionMode();
   };
 
+  const handleToggleStatus = async (
+    id: string,
+    status: "active" | "inactive",
+  ) => {
+    try {
+      await actions.update.mutateAsync({ id, data: { status } });
+      invalidateConnections();
+      toast.success(
+        status === "active" ? "Connection enabled" : "Connection disabled",
+      );
+    } catch {
+      toast.error("Failed to update connection");
+    }
+  };
+
   const handleBulkToggleStatus = async (status: "active" | "inactive") => {
     const ids = [...selectedIds];
     track("connections_bulk_status_toggled", {
@@ -1192,6 +1209,34 @@ function ConnectionResults({
                                   Select
                                 </DropdownMenuItem>
                               )}
+                              {canManage &&
+                                (connection.status === "active" ? (
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleStatus(
+                                        connection.id,
+                                        "inactive",
+                                      );
+                                    }}
+                                  >
+                                    <SlashCircle01 size={16} />
+                                    Disable
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleStatus(
+                                        connection.id,
+                                        "active",
+                                      );
+                                    }}
+                                  >
+                                    <Power01 size={16} />
+                                    Enable
+                                  </DropdownMenuItem>
+                                ))}
                               {canManage && (
                                 <DropdownMenuItem
                                   variant="destructive"
