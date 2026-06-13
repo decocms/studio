@@ -1,5 +1,5 @@
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useMCPReadResource } from "@decocms/mesh-sdk";
+import { useMCPReadResource, useUiResourceHtml } from "@decocms/mesh-sdk";
 import type {
   McpUiDisplayMode,
   McpUiHostContext,
@@ -18,7 +18,7 @@ import { track } from "../web/lib/posthog-client";
 const openedMcpApps = new Set<string>();
 
 // ---------------------------------------------------------------------------
-// useResourceHtml
+// useResourceHtml — client-side CSP injection for the JSON-RPC read path
 // ---------------------------------------------------------------------------
 
 type ReadResourceData = {
@@ -45,6 +45,14 @@ function useResourceHtml(data: ReadResourceData | undefined): string | null {
 interface MCPAppRendererProps {
   resourceURI: string;
   orgId?: string;
+  /**
+   * When both `orgSlug` and `connectionId` are provided, the HTML is fetched
+   * via the cacheable GET endpoint (browser HTTP-caches it, ETag-revalidated,
+   * CSP injected server-side). Otherwise it falls back to the JSON-RPC
+   * `resources/read` path via `client`.
+   */
+  orgSlug?: string;
+  connectionId?: string;
   toolInfo?: McpUiHostContext["toolInfo"];
   toolInput?: Record<string, unknown>;
   toolResult?: CallToolResult;
@@ -64,11 +72,12 @@ interface MCPAppRendererProps {
 }
 
 // ---------------------------------------------------------------------------
-// Component
+// Frame — shared presentation + app bridge (identical for both data paths)
 // ---------------------------------------------------------------------------
 
-export function MCPAppRenderer({
-  resourceURI: uri,
+function MCPAppFrame({
+  html,
+  uri,
   orgId,
   toolInfo,
   toolInput,
@@ -82,13 +91,12 @@ export function MCPAppRenderer({
   onTeardown,
   onRequestDisplayMode,
   className,
-}: MCPAppRendererProps) {
-  const { data } = useMCPReadResource({ client, uri, staleTime: 30_000 });
-  const html = useResourceHtml(data);
-
+}: Omit<MCPAppRendererProps, "resourceURI" | "orgSlug" | "connectionId"> & {
+  html: string | null;
+  uri: string;
+}) {
   // Fire mcp_app_opened once per (page session × resource URI) — render-time
-  // dedupe via module Set. Display mode distinguishes inline (shown inside
-  // chat messages) from fullscreen (opened as a view panel).
+  // dedupe via module Set.
   if (uri && !openedMcpApps.has(uri)) {
     openedMcpApps.add(uri);
     track("mcp_app_opened", {
@@ -154,4 +162,56 @@ export function MCPAppRenderer({
       />
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Data paths
+// ---------------------------------------------------------------------------
+
+// Cacheable GET path: browser HTTP-caches the (server-CSP-injected) HTML.
+function MCPAppRendererViaGet({
+  resourceURI,
+  orgSlug,
+  connectionId,
+  ...frameProps
+}: MCPAppRendererProps & { orgSlug: string; connectionId: string }) {
+  const html = useUiResourceHtml({
+    orgSlug,
+    connectionId,
+    uri: resourceURI,
+    staleTime: 30_000,
+  });
+  return <MCPAppFrame html={html.data} uri={resourceURI} {...frameProps} />;
+}
+
+// JSON-RPC `resources/read` path (CSP injected client-side). Used wherever the
+// caller can't supply orgSlug + connectionId.
+function MCPAppRendererViaClient({
+  resourceURI,
+  ...frameProps
+}: MCPAppRendererProps) {
+  const { data } = useMCPReadResource({
+    client: frameProps.client,
+    uri: resourceURI,
+    staleTime: 30_000,
+  });
+  const html = useResourceHtml(data);
+  return <MCPAppFrame html={html} uri={resourceURI} {...frameProps} />;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export function MCPAppRenderer(props: MCPAppRendererProps) {
+  if (props.orgSlug && props.connectionId) {
+    return (
+      <MCPAppRendererViaGet
+        {...props}
+        orgSlug={props.orgSlug}
+        connectionId={props.connectionId}
+      />
+    );
+  }
+  return <MCPAppRendererViaClient {...props} />;
 }

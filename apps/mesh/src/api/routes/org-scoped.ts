@@ -128,6 +128,8 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   // --- MCP routes need mcpAuth in addition to resolveOrgFromPath ---
   // Order matters (preserve from legacy): virtual-mcp → self → proxy
   app.use("/mcp/:connectionId?", deps.mcpAuth);
+  // The single-segment matcher above does not cover the deeper UI-resource GET.
+  app.use("/mcp/:connectionId/ui-resource", deps.mcpAuth);
   app.use("/mcp/gateway/:virtualMcpId?", deps.mcpAuth);
   app.use("/mcp/virtual-mcp/:virtualMcpId?", deps.mcpAuth);
   app.use("/mcp/self", deps.mcpAuth);
