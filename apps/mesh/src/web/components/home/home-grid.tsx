@@ -177,11 +177,6 @@ function AgentUITile({
   tileWidth: number;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: tile.connectionId,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
   const { open, startBlank, dialog, starting } = usePromptEntryAction(
     tile.agentId,
   );
@@ -213,21 +208,16 @@ function AgentUITile({
       </button>
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border">
-          {/* Inner boundary so the slow resource read only blocks the embedded
-              panel — the tile chrome (agent name, Open chat, prompt chips)
-              renders immediately and stays interactive while the app loads. */}
+          {/* Inner boundary so the connect + resource read only block the
+              embedded panel — the tile chrome (agent name, Open chat, prompt
+              chips) renders immediately from cached tile data and stays
+              interactive while the connection establishes and the app loads.
+              The useMCPClient connect lives in TileAppPanel (below this
+              boundary) on purpose: hoisting it to the tile root would suspend
+              the whole tile on every reload, re-introducing a full-tile
+              skeleton even though the chrome needs no live connection. */}
           <Suspense fallback={<TilePanelSkeleton />}>
-            <MCPAppRenderer
-              resourceURI={tile.resourceUri}
-              orgId={org.id}
-              orgSlug={org.slug}
-              connectionId={tile.connectionId}
-              client={client}
-              displayMode="fullscreen"
-              minHeight={tile.minHeight ?? 200}
-              maxHeight={tile.maxHeight ?? 4000}
-              className="h-full"
-            />
+            <TileAppPanel tile={tile} orgId={org.id} orgSlug={org.slug} />
           </Suspense>
         </div>
         {promptChips.length > 0 && !isEditMode && tileWidth >= 2 && (
@@ -251,6 +241,37 @@ function AgentUITile({
       </div>
       {dialog}
     </div>
+  );
+}
+
+/** Owns the tile's live MCP connection so the connect suspends only the
+ *  embedded panel (via the inner boundary above), not the whole tile. */
+function TileAppPanel({
+  tile,
+  orgId,
+  orgSlug,
+}: {
+  tile: HomeTileEntry;
+  orgId: string;
+  orgSlug: string;
+}) {
+  const client = useMCPClient({
+    connectionId: tile.connectionId,
+    orgId,
+    orgSlug,
+  });
+  return (
+    <MCPAppRenderer
+      resourceURI={tile.resourceUri}
+      orgId={orgId}
+      orgSlug={orgSlug}
+      connectionId={tile.connectionId}
+      client={client}
+      displayMode="fullscreen"
+      minHeight={tile.minHeight ?? 200}
+      maxHeight={tile.maxHeight ?? 4000}
+      className="h-full"
+    />
   );
 }
 
