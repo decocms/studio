@@ -5,7 +5,7 @@
  * (toolbar, close) and data fetching.
  *
  * Rendering strategy by extension:
- *   - image → <img> (same-origin URL or 302→presigned; no CORS needed)
+ *   - image → <img> (same-origin URL, bytes proxied by mesh; no CORS needed)
  *   - pdf   → <iframe> (browser-native viewer; NOT sandboxed — a sandbox
  *             without allow-scripts would disable Chrome's PDF plugin)
  *   - html  → <iframe sandbox="allow-scripts"> (untrusted, mirrors WebPageTab)
@@ -14,8 +14,7 @@
  *   - other (xlsx/pptx/zip/…) → download card fallback
  *
  * Text-ish fetches go through `fetch(credentials: "include")`; if that
- * fails (e.g. a cross-origin presigned redirect without CORS headers),
- * the component degrades to the download card rather than erroring.
+ * fails, the component degrades to the download card rather than erroring.
  */
 
 import { useQuery } from "@tanstack/react-query";
