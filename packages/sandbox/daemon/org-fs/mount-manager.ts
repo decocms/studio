@@ -74,7 +74,9 @@ const defaultInvalidatorFactory: InvalidatorFactory = ({
 }) => {
   const ac = new AbortController();
   void runInvalidator({
-    changes: (since) => client.changes(since),
+    // wait: true → server holds the request open until a write nudge or its
+    // hold timeout, so this is push-driven with the poll floor as a safety net.
+    changes: (since) => client.changes(since, { wait: true }),
     refresh: makeRcRefresh(rcUrl),
     signal: ac.signal,
     log,

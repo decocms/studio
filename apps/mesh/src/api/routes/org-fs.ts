@@ -26,9 +26,11 @@
  * with no route changes. See `.context/org-filesystem-proposal.md`.
  */
 
+import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import type { NatsConnection } from "nats";
 import { ForbiddenError, UnauthorizedError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
 import type { OrgFs } from "@/file-storage/org-fs";
@@ -37,6 +39,10 @@ import {
   OrgFsQuotaError,
   OrgFsValidationError,
 } from "@/file-storage/org-fs";
+import {
+  notifyOrgFsChange,
+  orgFsChangeSubject,
+} from "@/file-storage/org-fs-notify";
 import { isValidVolume } from "@/file-storage/org-fs-path";
 import {
   buildPublicOrgFs,
@@ -56,6 +62,14 @@ const MAX_CHANGES_LIMIT = 1000;
 const DEFAULT_CHANGES_LIMIT = 500;
 const MAX_RECENT_LIMIT = 200;
 const DEFAULT_RECENT_LIMIT = 50;
+/** Long-poll hold time, just under the usual 30s gateway/proxy timeout. */
+const CHANGES_LONG_POLL_MS = 28_000;
+/**
+ * Spread window for the post-nudge re-query. One write fans out to every mount
+ * watching that (org, volume); jittering keeps a herd from hitting the change
+ * feed in the same tick. Small enough to be invisible to file freshness.
+ */
+const CHANGES_NUDGE_JITTER_MS = 250;
 
 type Resolved =
   | { ok: true; ctx: StudioContext; fs: OrgFs }
@@ -73,8 +87,97 @@ function fsErrorResponse(c: Ctx, err: unknown): Response {
   throw err;
 }
 
-export const createOrgFsRoutes = () => {
+/**
+ * Long-poll the change feed: return immediately if there's already data,
+ * otherwise hold until a NATS nudge for this volume or the hold timeout, then
+ * re-query once. Subscribes BEFORE the first query so a write landing in
+ * between can't be missed (NATS buffers it for the active subscription). Falls
+ * back to a plain immediate query when NATS is unavailable.
+ */
+async function waitForChanges(
+  c: Ctx,
+  fs: OrgFs,
+  nc: NatsConnection | null,
+  q: { orgId: string; volume: string; since: string; limit: number },
+): Promise<Awaited<ReturnType<OrgFs["changes"]>>> {
+  const query = () => fs.changes(q.volume, q.since, q.limit);
+  const subject = nc ? orgFsChangeSubject(q.orgId, q.volume) : null;
+  if (!nc || !subject) return query();
+
+  const sub = nc.subscribe(subject, { max: 1 });
+  const reqSignal = c.req.raw.signal;
+  const abortListener = () => {
+    try {
+      sub.unsubscribe();
+    } catch {
+      // ignore
+    }
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const first = await query();
+    if (first.entries.length > 0) return first;
+    if (reqSignal?.aborted) return first;
+    if (reqSignal)
+      reqSignal.addEventListener("abort", abortListener, {
+        once: true,
+      });
+
+    // Wins as `true` on a nudge, `false` on the hold timeout (or when the
+    // subscription is closed by an abort). `.unref()` so a parked timer never
+    // keeps the process from exiting.
+    const nudged = await Promise.race([
+      (async () => {
+        for await (const _msg of sub) return true;
+        return false;
+      })(),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), CHANGES_LONG_POLL_MS);
+        timer.unref?.();
+      }),
+    ]);
+
+    if (!nudged) return first;
+
+    await sleep(
+      exponentialBackoffWithJitter(
+        CHANGES_NUDGE_JITTER_MS,
+        CHANGES_NUDGE_JITTER_MS,
+        0,
+        1,
+        1,
+      ),
+      {
+        signal: reqSignal ?? undefined,
+      },
+    ).catch(() => {});
+    if (reqSignal?.aborted) return first;
+    return query();
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (reqSignal && !reqSignal.aborted) {
+      reqSignal.removeEventListener("abort", abortListener);
+    }
+    try {
+      sub.unsubscribe();
+    } catch {
+      // ignore double-unsubscribe
+    }
+  }
+}
+
+export interface OrgFsRoutesDeps {
+  /**
+   * Shared NATS connection (null until connected / when unconfigured). Powers
+   * the `/changes?wait=1` long-poll and the post-write wake-up nudge. Without
+   * it, `/changes` stays a plain immediate-return feed.
+   */
+  getConnection?: () => NatsConnection | null;
+}
+
+export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   const app = new Hono<{ Variables: Variables }>();
+  const getConnection = deps.getConnection ?? (() => null);
 
   /** access.check with the thrown auth errors mapped to explicit responses. */
   const checkPermission = async (
@@ -256,6 +359,13 @@ export const createOrgFsRoutes = () => {
   });
 
   // Change feed since a cursor ("0" = from the beginning).
+  //
+  // `?wait=1` long-polls: if nothing has changed since the cursor, the request
+  // is held open (subscribed to the volume's NATS notify) until a write nudges
+  // it or the hold time expires, then re-queried. This lets the mount
+  // invalidator wake instantly on writes instead of polling on a timer. Without
+  // a NATS connection it degrades to an immediate return (the daemon's own
+  // poll-timeout floor backs off so it never busy-loops).
   app.get("/:volume/changes", async (c) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_READ");
@@ -265,8 +375,19 @@ export const createOrgFsRoutes = () => {
       Math.max(Number(c.req.query("limit")) || DEFAULT_CHANGES_LIMIT, 1),
       MAX_CHANGES_LIMIT,
     );
+    const wait = c.req.query("wait") === "1" || c.req.query("wait") === "true";
     try {
-      return c.json(await r.fs.changes(volume, since, limit));
+      if (!wait) {
+        return c.json(await r.fs.changes(volume, since, limit));
+      }
+      return c.json(
+        await waitForChanges(c, r.fs, getConnection(), {
+          orgId: r.ctx.organization!.id,
+          volume,
+          since,
+          limit,
+        }),
+      );
     } catch (err) {
       return fsErrorResponse(c, err);
     }
@@ -309,6 +430,7 @@ export const createOrgFsRoutes = () => {
               ? contentType
               : undefined,
         });
+        notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
         return c.json({ entry });
       } catch (err) {
         return fsErrorResponse(c, err);
@@ -325,6 +447,7 @@ export const createOrgFsRoutes = () => {
       await r.fs.mkdir(volume, c.req.query("path") ?? "", {
         actor: r.ctx.auth!.user!.id,
       });
+      notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
       return c.json({ ok: true });
     } catch (err) {
       return fsErrorResponse(c, err);
@@ -340,6 +463,7 @@ export const createOrgFsRoutes = () => {
       await r.fs.delete(volume, c.req.query("path") ?? "", {
         actor: r.ctx.auth!.user!.id,
       });
+      notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
       return c.json({ ok: true });
     } catch (err) {
       return fsErrorResponse(c, err);
@@ -375,6 +499,7 @@ export const createOrgFsRoutes = () => {
         await r.fs.move(volume, body.from, body.to, {
           actor: r.ctx.auth!.user!.id,
         });
+        notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
         return c.json({ ok: true });
       } catch (err) {
         return fsErrorResponse(c, err);
