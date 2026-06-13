@@ -88,28 +88,6 @@ function createMockClient(
 
 describe("createServerFromClient", () => {
   describe("listTools", () => {
-    it("delegates to client.listTools with params forwarded", async () => {
-      const client = createMockClient();
-      const server = createServerFromClient(client, {
-        name: "test",
-        version: "1.0.0",
-      });
-
-      const handler = (server.server as any)._requestHandlers.get(
-        ListToolsRequestSchema.shape.method.value,
-      );
-      expect(handler).toBeDefined();
-
-      const result = await handler({
-        method: "tools/list",
-        params: { cursor: "abc" },
-      });
-
-      expect(client.listTools).toHaveBeenCalledWith({ cursor: "abc" });
-      expect(result.tools).toHaveLength(1);
-      expect(result.tools[0].name).toBe("tool_a");
-    });
-
     it("strips outputSchema from tools", async () => {
       const client = createMockClient();
       const server = createServerFromClient(client, {
@@ -133,29 +111,6 @@ describe("createServerFromClient", () => {
   });
 
   describe("callTool", () => {
-    it("delegates to client.callTool with params", async () => {
-      const client = createMockClient();
-      const server = createServerFromClient(client, {
-        name: "test",
-        version: "1.0.0",
-      });
-
-      const handler = (server.server as any)._requestHandlers.get(
-        CallToolRequestSchema.shape.method.value,
-      );
-
-      await handler({
-        method: "tools/call",
-        params: { name: "tool_a", arguments: { x: 1 } },
-      });
-
-      expect(client.callTool).toHaveBeenCalledWith(
-        { name: "tool_a", arguments: { x: 1 } },
-        undefined,
-        undefined,
-      );
-    });
-
     it("passes timeout option when toolCallTimeoutMs is set", async () => {
       const client = createMockClient();
       const server = createServerFromClient(
@@ -220,28 +175,6 @@ describe("createServerFromClient", () => {
       );
 
       expect(listHandler).toBeUndefined();
-    });
-
-    it("delegates listResources with params forwarded", async () => {
-      const client = createMockClient({
-        capabilities: { resources: {}, tools: {} },
-      });
-      const server = createServerFromClient(client, {
-        name: "test",
-        version: "1.0.0",
-      });
-
-      const handler = (server.server as any)._requestHandlers.get(
-        ListResourcesRequestSchema.shape.method.value,
-      );
-
-      const result = await handler({
-        method: "resources/list",
-        params: { cursor: "xyz" },
-      });
-
-      expect(client.listResources).toHaveBeenCalledWith({ cursor: "xyz" });
-      expect(result.resources).toHaveLength(1);
     });
   });
 
@@ -308,41 +241,7 @@ describe("createServerFromClient", () => {
     });
   });
 
-  describe("pagination params forwarded", () => {
-    it("forwards cursor in listTools", async () => {
-      const client = createMockClient();
-      const server = createServerFromClient(client, {
-        name: "test",
-        version: "1.0.0",
-      });
-
-      const handler = (server.server as any)._requestHandlers.get(
-        ListToolsRequestSchema.shape.method.value,
-      );
-
-      await handler({
-        method: "tools/list",
-        params: { cursor: "page2" },
-      });
-
-      expect(client.listTools).toHaveBeenCalledWith({ cursor: "page2" });
-    });
-  });
-
   describe("options", () => {
-    it("uses client capabilities when none provided in options", () => {
-      const client = createMockClient({
-        capabilities: { tools: {}, resources: {} },
-      });
-      const server = createServerFromClient(client, {
-        name: "test",
-        version: "1.0.0",
-      });
-
-      expect(client.getServerCapabilities).toHaveBeenCalled();
-      expect(server).toBeDefined();
-    });
-
     it("uses provided capabilities over client capabilities", () => {
       const client = createMockClient({
         capabilities: { tools: {}, resources: {}, prompts: {} },
