@@ -11,6 +11,7 @@
  * `refreshAndStore` here — same-module references cannot be mocked.
  */
 
+import { exponentialBackoffWithJitter } from "@decocms/std";
 import type { DownstreamToken } from "../storage/types";
 import type { DownstreamTokenStorage } from "../storage/downstream-token";
 import { refreshAccessToken } from "./refresh-access-token";
@@ -28,6 +29,30 @@ export function canRefresh(token: DownstreamToken): boolean {
 }
 
 const inflightRefreshes = new Map<string, Promise<string | null>>();
+
+/**
+ * Negative-cache for failed refreshes, keyed by connection. Single-flight
+ * (`inflightRefreshes`) only collapses *concurrent* refreshes; without this a
+ * down token endpoint (e.g. an upstream Cloudflare 525) is re-hit on every
+ * *sequential* proxy request — N requests = N network calls + N error logs.
+ * After a failure we suppress further attempts for an exponentially growing
+ * window so one broken upstream doesn't get hammered (and doesn't spam logs).
+ * Cleared on the next successful refresh. A freshly reconnected token is
+ * `valid` for ~1h, far past any cooldown, so it never refreshes through here
+ * while suppressed — no prod reset needed.
+ */
+const REFRESH_BACKOFF_BASE_MS = 30_000;
+const REFRESH_BACKOFF_CAP_MS = 5 * 60 * 1000;
+const refreshBackoff = new Map<
+  string,
+  { attempt: number; nextAttemptAt: number }
+>();
+
+/** Drop the suppression window for a connection (or all). Test/reconnect hook. */
+export function clearRefreshBackoff(connectionId?: string): void {
+  if (connectionId) refreshBackoff.delete(connectionId);
+  else refreshBackoff.clear();
+}
 
 async function refreshAndStoreOnce(
   token: DownstreamToken,
@@ -67,9 +92,36 @@ export function refreshAndStore(
   const existing = inflightRefreshes.get(token.connectionId);
   if (existing) return existing;
 
-  const refresh = refreshAndStoreOnce(token, tokenStorage).finally(() => {
-    inflightRefreshes.delete(token.connectionId);
-  });
+  const backoff = refreshBackoff.get(token.connectionId);
+  if (backoff && Date.now() < backoff.nextAttemptAt) {
+    // Still inside the suppression window from a recent failure — skip the
+    // network call (and its log) and report failure to the caller as usual.
+    return Promise.resolve(null);
+  }
+
+  const refresh = refreshAndStoreOnce(token, tokenStorage)
+    .then((accessToken) => {
+      if (accessToken) {
+        refreshBackoff.delete(token.connectionId);
+      } else {
+        const attempt = refreshBackoff.get(token.connectionId)?.attempt ?? 0;
+        const delay = exponentialBackoffWithJitter(
+          REFRESH_BACKOFF_CAP_MS,
+          REFRESH_BACKOFF_BASE_MS,
+          attempt,
+          2,
+          0.5,
+        );
+        refreshBackoff.set(token.connectionId, {
+          attempt: attempt + 1,
+          nextAttemptAt: Date.now() + delay,
+        });
+      }
+      return accessToken;
+    })
+    .finally(() => {
+      inflightRefreshes.delete(token.connectionId);
+    });
   inflightRefreshes.set(token.connectionId, refresh);
   return refresh;
 }

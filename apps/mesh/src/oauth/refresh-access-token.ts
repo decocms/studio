@@ -115,14 +115,22 @@ export async function refreshAccessToken(
         !!errorCode &&
         PERMANENT_REFRESH_ERROR_CODES.has(errorCode);
 
-      console.error("[TokenRefresh] refresh failed", {
-        connectionId: token.connectionId,
-        tokenEndpoint: token.tokenEndpoint,
-        status: response.status,
-        errorCode,
-        errorDescription,
-        permanent,
-      });
+      // Permanent failures (dead refresh_token) are actionable → error.
+      // Transient ones (5xx, non-spec codes like Cloudflare 525) are upstream
+      // blips the proxy recovers from → warn. The caller's backoff
+      // (refreshAndStore) rate-limits this so a down endpoint logs once per
+      // window, not once per request.
+      (permanent ? console.error : console.warn)(
+        "[TokenRefresh] refresh failed",
+        {
+          connectionId: token.connectionId,
+          tokenEndpoint: token.tokenEndpoint,
+          status: response.status,
+          errorCode,
+          errorDescription,
+          permanent,
+        },
+      );
 
       return {
         success: false,
@@ -152,7 +160,8 @@ export async function refreshAccessToken(
       scope: data.scope,
     };
   } catch (error) {
-    console.error("[TokenRefresh] network/parse error", {
+    // Network/parse errors are transient upstream failures → warn (see above).
+    console.warn("[TokenRefresh] network/parse error", {
       connectionId: token.connectionId,
       tokenEndpoint: token.tokenEndpoint,
       message: error instanceof Error ? error.message : String(error),

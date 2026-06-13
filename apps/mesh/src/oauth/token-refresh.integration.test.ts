@@ -29,7 +29,9 @@ mock.module("./refresh-access-token", () => ({
   refreshAccessToken: mockRefreshAccessToken,
 }));
 
-const { refreshAndStore } = await import("./token-refresh");
+const { refreshAndStore, clearRefreshBackoff } = await import(
+  "./token-refresh"
+);
 
 let database: StudioDatabase;
 let vault: CredentialVault;
@@ -62,6 +64,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   mockRefreshAccessToken.mockReset();
+  clearRefreshBackoff();
   await tokenStorage.delete(connectionId);
   await tokenStorage.upsert({
     connectionId,
@@ -177,6 +180,84 @@ describe("refreshAndStore", () => {
     await expect(first).resolves.toBe("fresh-single-flight");
     await expect(second).resolves.toBe("fresh-single-flight");
     expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("suppresses a re-attempt after a failure (backoff window)", async () => {
+    // First sequential call fails transiently → opens a backoff window.
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: false,
+      permanent: false,
+      status: 525,
+      error: "Origin SSL handshake failed",
+    });
+
+    const token = await tokenStorage.get(connectionId);
+    expect(await refreshAndStore(token!, tokenStorage)).toBeNull();
+    expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+
+    // Second sequential call within the window must NOT hit the endpoint.
+    expect(await refreshAndStore(token!, tokenStorage)).toBeNull();
+    expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-attempts once the backoff window is cleared", async () => {
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: false,
+      permanent: false,
+      status: 525,
+      error: "Origin SSL handshake failed",
+    });
+    const token = await tokenStorage.get(connectionId);
+    await refreshAndStore(token!, tokenStorage);
+    expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1);
+
+    // Simulate the window elapsing (or a manual reconnect clearing it).
+    clearRefreshBackoff(connectionId);
+
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: true,
+      accessToken: "fresh-after-backoff",
+      refreshToken: "rt",
+      expiresIn: 3600,
+      scope: "repo",
+    });
+    expect(await refreshAndStore(token!, tokenStorage)).toBe(
+      "fresh-after-backoff",
+    );
+    expect(mockRefreshAccessToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears the backoff window after a successful refresh", async () => {
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: false,
+      permanent: false,
+      status: 525,
+      error: "Origin SSL handshake failed",
+    });
+    const token = await tokenStorage.get(connectionId);
+    await refreshAndStore(token!, tokenStorage);
+
+    clearRefreshBackoff(connectionId);
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: true,
+      accessToken: "fresh",
+      refreshToken: "rt",
+      expiresIn: 3600,
+      scope: "repo",
+    });
+    await refreshAndStore(token!, tokenStorage);
+
+    // A subsequent failure should be allowed to hit the endpoint immediately
+    // (the prior success reset the attempt counter / window).
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: false,
+      permanent: false,
+      status: 525,
+      error: "Origin SSL handshake failed",
+    });
+    const after = await tokenStorage.get(connectionId);
+    expect(await refreshAndStore(after!, tokenStorage)).toBeNull();
+    expect(mockRefreshAccessToken).toHaveBeenCalledTimes(3);
   });
 });
 
