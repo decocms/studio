@@ -182,13 +182,21 @@ export class OrgFsClient implements OrgFsApi {
   }
 
   /**
-   * Poll the change feed from `since` ("0" = beginning). Drives the mount's
+   * Read the change feed from `since` ("0" = beginning). Drives the mount's
    * cache invalidation (see the daemon invalidator) — not part of OrgFsApi
    * since the WebDAV serve layer never needs it.
+   *
+   * `wait: true` long-polls: the server holds the request open until a write
+   * nudges it or its hold timeout elapses, so the invalidator wakes on writes
+   * instead of polling on a timer.
    */
-  async changes(since: string, limit?: number): Promise<OrgFsChangePage> {
+  async changes(
+    since: string,
+    opts?: { limit?: number; wait?: boolean },
+  ): Promise<OrgFsChangePage> {
     const params: Record<string, string> = { since };
-    if (limit != null) params.limit = String(limit);
+    if (opts?.limit != null) params.limit = String(opts.limit);
+    if (opts?.wait) params.wait = "1";
     const res = await this.fetch(this.url("changes", params), {
       headers: this.headers,
     });

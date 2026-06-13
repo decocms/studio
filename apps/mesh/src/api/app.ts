@@ -2246,6 +2246,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     eventsHandler,
     watchHandler,
     betterAuthProtectedResourceHandler,
+    getNatsConnection: () => natsProvider?.getConnection() ?? null,
   });
   app.route("/api/:org", orgScopedApi);
 

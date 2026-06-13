@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
+import type { NatsConnection } from "nats";
 import type { AutomationEventDispatcher } from "@/automations/automation-event-dispatcher";
 import type { CancelBroadcast } from "@/api/routes/decopilot/cancel-broadcast";
 import type { RunRegistry } from "@/api/routes/decopilot/run-registry";
@@ -72,6 +73,11 @@ interface OrgScopedDeps {
    * `/api/:org/mcp/:gateway?/:connectionId/.well-known/oauth-protected-resource/*`.
    */
   betterAuthProtectedResourceHandler: MiddlewareHandler<Env>;
+  /**
+   * Shared NATS connection accessor (null until connected). Powers the org-fs
+   * `/changes?wait=1` long-poll + post-write wake-up nudge.
+   */
+  getNatsConnection: () => NatsConnection | null;
 }
 
 export const createOrgScopedApi = (deps: OrgScopedDeps) => {
@@ -86,7 +92,10 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createObjectStorageRoutes()); // /api/:org/object-storage/*
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
   app.route("/", createFileUploadRoutes()); // /api/:org/file-configs/:id/upload
-  app.route("/fs", createOrgFsRoutes()); // /api/:org/fs/:volume/...
+  app.route(
+    "/fs",
+    createOrgFsRoutes({ getConnection: deps.getNatsConnection }),
+  ); // /api/:org/fs/:volume/...
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/", createHomeNextActionsRoutes());
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites

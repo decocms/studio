@@ -15,10 +15,12 @@
  * macOS NFS: hung writer + an empty flushed file). Refresh re-lists in place;
  * open handles and dirty cache entries survive.
  *
- * Result: external changes surface in ~1 poll interval instead of a dir-cache
- * TTL. The poll is the interim trigger; a NATS nudge can later wake this loop
- * instantly (the codebase's NatsNotify + polling-safety-net pattern), removing
- * the steady-state poll without changing the refresh logic.
+ * The change feed is long-polled (`changes` blocks server-side until a write
+ * nudge or its hold timeout), so steady state is push-driven: no timer poll
+ * while idle, and external changes surface as soon as the write commits. The
+ * `pollMs` floor only kicks in if the server returns fast with nothing — i.e.
+ * long-poll isn't available (NATS down) — so the loop degrades to timer polling
+ * instead of busy-looping.
  *
  * Deps are injected so the loop is unit-testable without a real mesh or rclone.
  */
@@ -26,7 +28,10 @@
 import { sleep } from "@decocms/std";
 
 export interface InvalidatorDeps {
-  /** Poll the change feed from `since` ("0" = beginning). */
+  /**
+   * Read the change feed from `since` ("0" = beginning). Long-polls: the call
+   * blocks until a change or the server's hold timeout.
+   */
   changes: (since: string) => Promise<{
     entries: { parent: string }[];
     cursor: string;
@@ -36,7 +41,7 @@ export interface InvalidatorDeps {
   refresh: (dir: string) => Promise<void>;
   /** Aborts the loop (mount teardown). */
   signal: AbortSignal;
-  /** Idle poll interval; default 1s. */
+  /** Floor between cycles when the long-poll returns fast-empty; default 1s. */
   pollMs?: number;
   log?: (msg: string, err?: unknown) => void;
 }
@@ -55,6 +60,7 @@ export async function runInvalidator(deps: InvalidatorDeps): Promise<void> {
   let primed = false;
 
   while (!deps.signal.aborted) {
+    const startedAt = Date.now();
     let page: Awaited<ReturnType<InvalidatorDeps["changes"]>>;
     try {
       page = await deps.changes(since);
@@ -81,7 +87,17 @@ export async function runInvalidator(deps: InvalidatorDeps): Promise<void> {
     since = page.cursor;
     if (!page.hasMore) {
       primed = true; // caught up to head; everything after this is a real change
-      await sleep(pollMs, { signal: deps.signal }).catch(() => {});
+      // Long-poll already absorbs the idle wait, so don't sleep on top of it.
+      // Only back off when it returned fast-empty (long-poll unavailable / NATS
+      // down) — that prevents a busy loop without delaying real changes.
+      if (page.entries.length === 0) {
+        const elapsed = Date.now() - startedAt;
+        if (elapsed < pollMs) {
+          await sleep(pollMs - elapsed, { signal: deps.signal }).catch(
+            () => {},
+          );
+        }
+      }
     }
     // hasMore → loop immediately to drain the backlog.
   }
