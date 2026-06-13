@@ -12,7 +12,9 @@ import { readCachedOrg, writeCachedOrg } from "@/web/lib/query-persist";
 import { PostHogGroupSync } from "@/web/providers/posthog-group-sync";
 import {
   getWellKnownDecopilotVirtualMCP,
+  mcpClientQueryOptions,
   ProjectContextProvider,
+  SELF_MCP_ALIAS_ID,
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
@@ -295,6 +297,20 @@ function ShellLayoutContent() {
   const orgId = activeOrg?.id;
   const orgSlug = activeOrg?.slug;
   const { data: ssoStatus } = useOrgSsoStatus(orgId, orgSlug);
+
+  // Warm the self-MCP connection in parallel with the rest of shell bootstrap,
+  // so the home's useMCPClient resolves without waiting on a fresh connect()
+  // round-trip after it mounts. Non-suspense (useQuery) — this only pre-warms
+  // the shared cache entry (same key as useMCPClient via mcpClientQueryOptions);
+  // it never blocks paint, and no-ops if the connect doesn't finish first.
+  useQuery({
+    ...mcpClientQueryOptions({
+      connectionId: SELF_MCP_ALIAS_ID,
+      orgId: orgId ?? "",
+      orgSlug: orgSlug ?? "",
+    }),
+    enabled: !!orgId && !!orgSlug,
+  });
 
   if (!activeOrg) {
     // Not a member: figure out which screen to show (no-access / pending

@@ -35,6 +35,7 @@ export {
   type UseConnectionsOptions,
   // MCP client hook and factory
   createMCPClient,
+  mcpClientQueryOptions,
   useMCPClient,
   useMCPClientOptional,
   type CreateMcpClientOptions,
