@@ -169,18 +169,14 @@ async function _buildRequestHeaders(
 
     if (tokenResult.accessToken) {
       accessToken = tokenResult.accessToken;
-    } else {
-      if (tokenResult.state === "expired_without_refresh") {
-        console.warn(
-          `[Proxy] Token expired for ${connectionId} with no refresh capability`,
-        );
-      } else if (tokenResult.state === "refresh_failed") {
-        console.error("[Proxy] token refresh failed", {
-          connectionId,
-          tokenState: tokenResult.state,
-        });
-      }
+    } else if (tokenResult.state === "expired_without_refresh") {
+      console.warn(
+        `[Proxy] Token expired for ${connectionId} with no refresh capability`,
+      );
     }
+    // `refresh_failed` is already logged (once per backoff window) by the
+    // refresh primitive with full detail; the proxy falls back to the
+    // connection token below, so no second log here.
   }
 
   // Fall back to connection token if no cached token
