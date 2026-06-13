@@ -41,6 +41,7 @@ import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
+import { hoistOrgLogo } from "./hoist-org-logo";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
 import { getBuiltinRoleStatements } from "./builtin-role-permission";
@@ -237,6 +238,18 @@ const plugins = [
     organizationCreation: {
       afterCreate: async (data) => {
         await seedOrgDb(data.organization.id, data.member.userId);
+      },
+    },
+    organizationHooks: {
+      // Keep base64 logos out of the org row (they bloat every
+      // organization.list response). Mirrors `backfill-assets
+      // --target organizations`; raster only — SVG stays inline.
+      beforeUpdateOrganization: async ({ organization, member }) => {
+        const logo = organization.logo;
+        if (typeof logo !== "string" || !logo.startsWith("data:")) return;
+        const hoisted = await hoistOrgLogo(member.organizationId, logo);
+        if (hoisted === logo) return;
+        return { data: { ...organization, logo: hoisted } };
       },
     },
     ac,

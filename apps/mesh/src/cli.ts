@@ -90,7 +90,7 @@ Usage:
   deco init <directory>              Scaffold a new MCP app
   deco auth <login|whoami|logout>    Manage CLI authentication
   deco link [studio-url] [options]   Start the desktop-side link daemon
-  deco backfill-assets               Hoist legacy inline media out of threads + connections
+  deco backfill-assets               Hoist legacy inline media out of threads + connections + org logos
   deco completion [shell]            Install shell completions
 
 Server Options:
@@ -116,7 +116,7 @@ Link Options:
   --port <port>     Local port for the daemon (default: 5174)
 
 Backfill Options (backfill-assets):
-  --target <t>          all | threads | connections (default: all)
+  --target <t>          all | threads | connections | organizations (default: all)
   --org <slug|id>       Restrict to a single organization
   --dry-run             Report what would change without uploading or writing
   --batch <n>           Rows scanned per page (default: 500)
@@ -215,9 +215,9 @@ if (command === "backfill-assets") {
     "./cli/commands/backfill-assets"
   );
   const targetArg = (values.target as string | undefined) ?? "all";
-  if (!["all", "threads", "connections"].includes(targetArg)) {
+  if (!["all", "threads", "connections", "organizations"].includes(targetArg)) {
     console.error(
-      `Invalid --target "${targetArg}". Use: all | threads | connections`,
+      `Invalid --target "${targetArg}". Use: all | threads | connections | organizations`,
     );
     process.exit(1);
   }
@@ -227,7 +227,7 @@ if (command === "backfill-assets") {
     limit: values.limit ? Number(values.limit) : undefined,
     baseUrl: values["base-url"],
     org: values.org as string | undefined,
-    target: targetArg as "all" | "threads" | "connections",
+    target: targetArg as "all" | "threads" | "connections" | "organizations",
   });
   process.exit(code);
 }
