@@ -26,6 +26,12 @@ const WRITE_DEBOUNCE_MS = 1000;
 //   - publicConfig          theme/styling — identical for every user
 //   - ai-provider-keys      AI_PROVIDER_KEY_LIST — metadata only, never secrets
 //   - organization-settings ORGANIZATION_SETTINGS_GET — sidebar/plugins/config
+//   - home-next-actions     the home grid's tiles + prompt chips. Plain (non-
+//                           suspense) query with staleTime 0, so without
+//                           hydration HomeGrid shows PromptChipsRowSkeleton and
+//                           the board reflows once it lands — the reload flicker.
+//                           Hydrated, it renders the prior grid instantly and
+//                           revalidates in the background.
 // plus the VIRTUAL_MCP collection reads (the home's displayed agent), matched
 // by key shape below.
 //
@@ -37,6 +43,7 @@ const PERSISTED_KEY_HEADS = new Set([
   "publicConfig",
   "ai-provider-keys",
   "organization-settings",
+  "home-next-actions",
 ]);
 
 // Collection reads are keyed by `[client, orgId, scopeKey, "collection",
