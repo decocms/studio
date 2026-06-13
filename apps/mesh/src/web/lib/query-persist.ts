@@ -43,8 +43,12 @@ const PERSISTED_KEY_HEADS = new Set([
 // collectionName, ...]` — the leading `client` serializes to a stable
 // `mcp-client:<org>:<conn>` string via its `toJSON` (use-mcp-client.ts), so the
 // hash survives reloads and the entry is safe to persist. Limited to the
-// collections the home bootstrap reads.
-const PERSISTED_COLLECTIONS = new Set(["VIRTUAL_MCP"]);
+// collections the home bootstrap reads: VIRTUAL_MCP (sidebar agents + displayed
+// agent) and CONNECTIONS (the composer's connection list — the one home-gating
+// suspense read that was previously cold on every reload, so the home blanked
+// until COLLECTION_CONNECTIONS_LIST returned). Both are org-scoped, non-secret
+// metadata (credentials live in the vault, never in the connection list).
+const PERSISTED_COLLECTIONS = new Set(["VIRTUAL_MCP", "CONNECTIONS"]);
 
 let cacheRestored = false;
 let orgCacheRestored = false;
