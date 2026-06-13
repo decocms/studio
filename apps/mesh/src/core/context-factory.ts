@@ -276,7 +276,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
   return {
     hasPermission: async (
       requestedPermission: Permission,
-      options?: { organizationId?: string },
+      options?: { organizationId?: string; role?: string },
     ): Promise<boolean> => {
       // Only owner/admin bypass all permission checks (full org access). The
       // built-in `user` role is enforced like any member: it gets basic-usage
@@ -291,7 +291,26 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
         return checkApiKeyPermission(permissions, requestedPermission);
       }
 
-      // Flow 2: Browser sessions - delegate to Better Auth's hasPermission API
+      // Flow 2: Browser sessions.
+      //
+      // Fast path: resolve BUILT-IN roles in-memory. The caller
+      // (AccessControl.checkResource) passes the member's role for the SAME
+      // effective org as `organizationId`, so this matches what Better Auth
+      // would resolve server-side — without two DB-backed calls. For custom /
+      // multi-role / unknown roles this returns "fallback" and we drop to the
+      // unchanged Better Auth path below. Admin/owner already bypassed above and
+      // in AccessControl, so in practice only `user` is resolved here.
+      // See auth/builtin-role-permission.ts for the full parity argument.
+      const builtinDecision = resolveBuiltinRolePermission(
+        options?.role,
+        requestedPermission,
+        getCachedBuiltinRoleStatements(),
+      );
+      if (builtinDecision !== "fallback") {
+        return builtinDecision === "grant";
+      }
+
+      // Slow path: delegate to Better Auth's hasPermission API.
       if (!hasPermissionApi) {
         console.error("[Auth] hasPermission API not available");
         return false;
@@ -471,6 +490,10 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 import { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import { ConnectionEntity } from "@/tools/connection/schema";
 import { ADMIN_ROLES, BUILTIN_ROLES } from "../auth/roles";
+import {
+  getCachedBuiltinRoleStatements,
+  resolveBuiltinRolePermission,
+} from "../auth/builtin-role-permission";
 import { OrgScopedThreadStorage, SqlThreadStorage } from "@/storage/threads";
 import {
   OrgScopedAsyncResearchJobStorage,

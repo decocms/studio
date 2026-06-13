@@ -10,7 +10,7 @@
  */
 
 import { getSettings } from "../settings";
-import { getToolsByCategory, USER_ROLE_TOOLS } from "@/tools/registry-metadata";
+import { getToolsByCategory } from "@/tools/registry-metadata";
 import { sso } from "@better-auth/sso";
 import { organization } from "@decocms/better-auth/plugins";
 import { betterAuth, BetterAuthOptions } from "better-auth";
@@ -29,11 +29,7 @@ import {
   adminAc as systemAdminAc,
   defaultRoles as systemDefaultRoles,
 } from "better-auth/plugins/admin/access";
-import {
-  adminAc,
-  defaultStatements,
-  memberAc,
-} from "@decocms/better-auth/plugins/organization/access";
+import { defaultStatements } from "@decocms/better-auth/plugins/organization/access";
 
 import { getConfig } from "@/core/config";
 import { posthog } from "@/posthog";
@@ -47,6 +43,7 @@ import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
+import { getBuiltinRoleStatements } from "./builtin-role-permission";
 import { createSSOConfig } from "./sso";
 
 /**
@@ -101,6 +98,11 @@ const statement = { ...defaultStatements, self: ["*", ...allTools] };
 
 const ac = createAccessControl(statement);
 
+// Single source of truth for built-in role → statement. The in-memory Flow 2
+// matcher (`builtin-role-permission.ts`) consumes the SAME builder, so the
+// org-plugin roles below and the in-memory resolution cannot drift.
+const builtinRoleStatements = getBuiltinRoleStatements(allTools);
+
 // The role-creating built-in roles (owner/admin) must enumerate every `self`
 // tool, not just `["*"]`. Better Auth's access-control `authorize()` matches
 // actions literally — `["*"]` authorizes only a request for the literal action
@@ -119,28 +121,27 @@ const ac = createAccessControl(statement);
 // Specific tool names match only via the exact check. A member otherwise gets
 // only basic-usage (granted out-of-band in AccessControl) plus connection-scoped
 // grants, and can't create roles (allowedRolesToCreateResources = ADMIN_ROLES).
-const creatorSelf = ["*", ...allTools];
-
 // `user` spreads `memberAc` (the org plugin's member role), NOT `adminAc`. These
 // org statements (organization/member/invitation/team/ac) gate Better Auth's
 // native org-plugin endpoints — not MCP tools, which our AccessControl checks on
 // `self`/connection buckets. `adminAc` grants org:update + member/invitation/team
 // management; spreading it here would let a plain member manage the org via those
 // endpoints. `memberAc` grants only `ac: ["read"]` (read roles for the UI).
-const user = ac.newRole({
-  self: [...USER_ROLE_TOOLS],
-  ...memberAc.statements,
-}) as Role;
+//
+// All three statements come from `getBuiltinRoleStatements` so the runtime
+// org-plugin roles and the in-memory Flow 2 matcher share one definition.
+// `getBuiltinRoleStatements` returns the loose `Permission` shape
+// (Record<string,string[]>); `newRole` wants the statement's literal `Subset`
+// type. The runtime values are exactly the statements compiled into `ac`, so
+// cast the argument to the parameter type — the result cast to `Role` is the
+// same one the original inline definitions used.
+type NewRoleArg = Parameters<typeof ac.newRole>[0];
 
-const admin = ac.newRole({
-  self: creatorSelf,
-  ...adminAc.statements,
-}) as Role;
+const user = ac.newRole(builtinRoleStatements.user as NewRoleArg) as Role;
 
-const owner = ac.newRole({
-  self: creatorSelf,
-  ...adminAc.statements,
-}) as Role;
+const admin = ac.newRole(builtinRoleStatements.admin as NewRoleArg) as Role;
+
+const owner = ac.newRole(builtinRoleStatements.owner as NewRoleArg) as Role;
 
 const scopes = Object.values(getToolsByCategory())
   .map((tool) => tool.map((t) => `self:${t.name}`))

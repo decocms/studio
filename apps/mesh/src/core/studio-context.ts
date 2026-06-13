@@ -81,10 +81,16 @@ export interface BoundAuthClient {
    * @param options.organizationId - Override the session-based active org.
    *   When set, Better Auth uses this org for the permission check instead
    *   of the user's session-active org. Used by path-resolved org middleware.
+   * @param options.role - The caller's `member.role` for the EFFECTIVE org
+   *   (the org in `options.organizationId`, else the session-active org). When
+   *   the role is a single built-in role, the check is resolved in-memory
+   *   instead of via two DB-backed Better Auth calls. MUST be the role for the
+   *   same org as `organizationId` — pass them together. Omit to force the
+   *   Better Auth path. See `auth/builtin-role-permission.ts`.
    */
   hasPermission(
     permission: Permission,
-    options?: { organizationId?: string },
+    options?: { organizationId?: string; role?: string },
   ): Promise<boolean>;
 
   // Organization APIs (bound with headers)
