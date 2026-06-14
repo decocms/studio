@@ -199,7 +199,10 @@ export function createLazyClient(
   // with a custom result schema bypass entirely. `options` (e.g. the timeout) is
   // forwarded to the live fetch but excluded from the cache key.
   const readCache = getMcpReadCache();
-  const cacheReads = connection.connection_type !== "VIRTUAL";
+  // Reads are only cached when the per-pod read cache is enabled (env-gated) and
+  // the connection isn't VIRTUAL (those compose other connections).
+  const cacheReads =
+    readCache !== null && connection.connection_type !== "VIRTUAL";
 
   placeholder.callTool = async (params, resultSchema, options) => {
     const toolName = (params as { name?: unknown })?.name;
@@ -214,7 +217,7 @@ export function createLazyClient(
       return real.callTool(params, resultSchema, options);
     }
 
-    const result = await readCache.fetch({
+    const result = await readCache!.fetch({
       type: "tools/call",
       connectionId: connection.id,
       scope: resolveReadCacheScope(),
@@ -239,7 +242,7 @@ export function createLazyClient(
       const real = await getRealClient();
       return real.getPrompt(params, options);
     }
-    const result = await readCache.fetch({
+    const result = await readCache!.fetch({
       type: "prompts/get",
       connectionId: connection.id,
       scope: resolveReadCacheScope(),
@@ -265,7 +268,7 @@ export function createLazyClient(
       const real = await getRealClient();
       return real.readResource(params, options);
     }
-    const result = await readCache.fetch({
+    const result = await readCache!.fetch({
       type: "resources/read",
       connectionId: connection.id,
       scope: resolveReadCacheScope(),

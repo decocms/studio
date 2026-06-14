@@ -271,9 +271,20 @@ export class InMemoryMcpReadCache {
   }
 }
 
-// Per-pod singleton — pure in-memory, no external deps, always available.
+// Per-pod singleton — pure in-memory, no external deps.
 const readCache = new InMemoryMcpReadCache();
 
-export function getMcpReadCache(): InMemoryMcpReadCache {
-  return readCache;
+/**
+ * MCP read/result caching is OPT-IN: callers fall back to live upstream calls
+ * unless `MCP_CACHE_ENABLED=true`. Same flag gates the cross-pod list cache.
+ */
+export function isMcpCacheEnabled(): boolean {
+  return (
+    typeof process !== "undefined" && process.env?.MCP_CACHE_ENABLED === "true"
+  );
+}
+
+/** The per-pod read cache, or null when MCP caching is disabled. */
+export function getMcpReadCache(): InMemoryMcpReadCache | null {
+  return isMcpCacheEnabled() ? readCache : null;
 }

@@ -113,6 +113,7 @@ import {
   setMcpListCache,
   type McpListCache,
 } from "../mcp-clients/mcp-list-cache";
+import { isMcpCacheEnabled } from "../mcp-clients/mcp-read-cache";
 import {
   startMcpCacheInvalidation,
   teardownMcpCacheInvalidation,
@@ -878,7 +879,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   }
 
   let eventBus: EventBus;
-  let mcpListCache: McpListCache;
+  let mcpListCache: McpListCache | null;
   let connectionCircuitStore: ConnectionCircuitStore;
   // Model lists are public, low-stakes metadata cached per-replica with a TTL —
   // no NATS needed, so this is shared across the test and production branches.
@@ -948,10 +949,14 @@ export async function createApp(options: CreateAppOptions = {}) {
     natsProvider = createNatsConnectionProvider();
     natsProvider.init(getSettings().natsUrls);
 
-    const tlc = new JetStreamKVMcpListCache({
-      getJetStream: () => natsProvider!.getJetStream(),
-    });
-    tlc.init().catch(() => {});
+    // Cross-pod MCP list cache is opt-in (same flag as the read cache). When
+    // disabled, leave mcpListCache null so getMcpListCache() callers fetch live.
+    const tlc = isMcpCacheEnabled()
+      ? new JetStreamKVMcpListCache({
+          getJetStream: () => natsProvider!.getJetStream(),
+        })
+      : null;
+    tlc?.init().catch(() => {});
     mcpListCache = tlc;
 
     const ccs = new JetStreamKVConnectionCircuitStore({
@@ -991,7 +996,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
     // When NATS connects, (re-)initialize all deferred consumers
     natsProvider.onReady(() => {
-      tlc.init().catch((err: unknown) => {
+      tlc?.init().catch((err: unknown) => {
         console.error("[McpListCache] Deferred init failed:", err);
       });
       ccs.init().catch((err: unknown) => {
@@ -1214,7 +1219,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     asyncResearchJobSweeper.dispose();
     cancelBroadcast.stop().catch(() => {});
     streamBuffer.teardown();
-    mcpListCache.teardown();
+    mcpListCache?.teardown();
     modelListCache.teardown();
     providerKeyCache.teardown();
     teardownMcpCacheInvalidation();
