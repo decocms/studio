@@ -97,7 +97,13 @@ describe("Eudaimon.pursue", () => {
       seen.push("reached");
     });
 
-    const agent = new Eudaimon("t", ledger, domain, bus, ruleDeliberator);
+    const agent = new Eudaimon({
+      tenant: "t",
+      ledger,
+      domain,
+      bus,
+      deliberator: ruleDeliberator,
+    });
     await agent.pursue();
     expect(seen).toEqual(["reached"]);
   });
@@ -112,7 +118,13 @@ describe("Eudaimon.pursue", () => {
       pursued.push(e.summary);
     });
 
-    const agent = new Eudaimon("t", ledger, domain, bus, ruleDeliberator);
+    const agent = new Eudaimon({
+      tenant: "t",
+      ledger,
+      domain,
+      bus,
+      deliberator: ruleDeliberator,
+    });
     await agent.pursue();
     expect(pursued.length).toBe(1);
     expect(pursued[0]).toContain("increment");
@@ -173,7 +185,13 @@ describe("Deliberator port is swappable", () => {
       events.push("eudaimon.pursued");
     });
 
-    const agent = new Eudaimon("t", ledger, domain, bus, noop);
+    const agent = new Eudaimon({
+      tenant: "t",
+      ledger,
+      domain,
+      bus,
+      deliberator: noop,
+    });
     await agent.pursue();
     expect(db.get("t")?.value ?? 0).toBe(0);
     expect(events).toEqual(["eudaimon.pursued"]);

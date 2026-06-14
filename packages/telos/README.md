@@ -204,14 +204,49 @@ const deliberator = aiDeliberator({
 });
 ```
 
+## Self-directed goals (anchored)
+
+By default goals come only from an authority (`goal.updated`). But you can let the **engine
+author its own goals after each cycle** — *anchored* so it can never run away. Provide a
+`GoalProposer`:
+
+```ts
+import { aiDeliberator } from "@decocms/telos/ai";
+
+wire({
+  bus, ledger, domain,
+  deliberator: aiDeliberator({ model }),
+  proposer: {
+    // after a cycle, propose the next SUBORDINATE goal — or null to leave it alone.
+    // `anchor` is the fixed parent telos; keep the proposal in its service.
+    propose: async ({ state, current, anchor, satisfied }) => nextGoalOrNull,
+  },
+  // optional gate: return false to reject. Omit → proposals auto-install.
+  approveGoal: async (proposed, ctx) => policy.allows(ctx.tenant, proposed),
+});
+```
+
+Two levels, kept distinct in the ledger by `source`:
+
+- **The anchor** (`source: "authority"`) — the fixed parent telos. Installed only via
+  `goal.updated`; the engine can **never** overwrite it. `ledger.anchor(tenant)` returns it.
+- **Subordinate goals** (`source: "engine"`) — what the proposer authors, recorded as new
+  ledger versions and pursued next. `ledger.latest(tenant)` returns the current one.
+
+The core guarantees the anchor is immovable-by-engine and that every version is audited by
+`source`; keeping a subordinate goal genuinely *in service of* the anchor is the proposer's
+job (it's handed the anchor to respect). This is the hierarchy of ends: the agent may set its
+own lesser goals, but not the fixed end they serve.
+
 ## Invariants (don't let a refactor erode these — they *are* the design)
 
 1. **The goal stays frozen.** `UnmovedMover` is `Object.freeze`d, all fields `readonly`. Never
    add a method that touches the world.
-2. **The agent never authors its own goal.** `Eudaimon` re-reads `ledger.latest()` every cycle
-   and holds no goal state. Goals change only via `goal.updated`. If deliberation ever set the
-   target from what it observed, the whole thing collapses into a system that congratulates
-   itself.
+2. **The agent never authors its *anchor*.** `Eudaimon` re-reads `ledger.latest()` every cycle
+   and holds no goal state. The anchor changes only via `goal.updated` (an authority). The
+   engine may propose *subordinate* goals (see above), but it can never overwrite the fixed
+   parent. If deliberation could set the anchor from what it observed, the whole thing
+   collapses into a system that congratulates itself.
 3. **Succession, not mutation.** A new goal is a new version; old versions stay in history,
    untouched.
 4. **The core is IO-free and AI-free.** The main entrypoint never imports `ai`. Only
