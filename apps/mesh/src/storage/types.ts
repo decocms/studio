@@ -1464,20 +1464,5 @@ export interface Database {
 
   sandbox_runner_state: SandboxProviderStateTable;
 
-  // Telos onboarding facts — tentative findings the user confirms/rejects.
-  // (The goal ledger lives in its own `telos` schema, owned by the package.)
-  telos_fact: TelosFactTable;
 }
 
-// Tentative onboarding findings the user confirms/rejects (status).
-export interface TelosFactTable {
-  id: string;
-  organization_id: string;
-  label: string;
-  value: string;
-  confidence: string; // "low" | "medium" | "high"
-  status: string; // "proposed" | "confirmed" | "rejected"
-  source_url: string | null;
-  created_at: ColumnType<Date, string | undefined, string>;
-  updated_at: ColumnType<Date, string | undefined, string>;
-}

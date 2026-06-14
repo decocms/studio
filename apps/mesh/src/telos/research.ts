@@ -1,4 +1,5 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import type { FactInput } from "@decocms/telos/postgres";
 import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import type { OnboardingTarget } from "./target";
@@ -6,15 +7,8 @@ import type { OnboardingTarget } from "./target";
 // From an email: scrape the domain (Firecrawl), web-search the person
 // (Perplexity via OpenRouter), then synthesize tentative facts + a candidate goal.
 
-export interface ResearchedFact {
-  label: string;
-  value: string;
-  confidence: "low" | "medium" | "high";
-  sourceUrl?: string;
-}
-
 export interface ResearchResult {
-  facts: ResearchedFact[];
+  facts: FactInput[];
   target: OnboardingTarget;
   rationale: string;
 }

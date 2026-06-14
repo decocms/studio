@@ -6,8 +6,8 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { telosBus } from "@/telos/durable/bus";
-import { FactStore, type FactStatus } from "@/telos/fact-store";
-import { onboardingLedger } from "@/telos/ledger";
+import { onboardingFacts, onboardingLedger } from "@/telos/store";
+import type { FactStatus } from "@decocms/telos/postgres";
 import { RESEARCH_EMAIL } from "@/telos/research";
 import { Hono } from "hono";
 
@@ -22,7 +22,7 @@ export function createTelosGoalRoutes() {
     if (!orgId) return c.json({ error: "Organization required" }, 400);
 
     const ledger = onboardingLedger(mesh.db);
-    const factStore = new FactStore(mesh.db);
+    const factStore = onboardingFacts(mesh.db);
 
     const [anchor, facts] = await Promise.all([
       Promise.resolve(ledger.anchor(orgId)).catch(() => null),
@@ -58,7 +58,7 @@ export function createTelosGoalRoutes() {
       return c.json({ error: "status must be confirmed or rejected" }, 400);
     }
 
-    await new FactStore(mesh.db).setStatus(orgId, c.req.param("id"), status);
+    await onboardingFacts(mesh.db).setStatus(orgId, c.req.param("id"), status);
     await telosBus.publish({ type: "facts.updated", organizationId: orgId });
     return c.json({ ok: true });
   });

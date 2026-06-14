@@ -1,5 +1,4 @@
-import { FactStore } from "@/telos/fact-store";
-import { onboardingLedger } from "@/telos/ledger";
+import { onboardingFacts, onboardingLedger } from "@/telos/store";
 import { researchUser } from "@/telos/research";
 import { telosBus } from "../durable/bus";
 import { defineCapability } from "../durable/capability";
@@ -13,7 +12,7 @@ defineCapability({
   key: (event) => event.organizationId,
   run: async (event, { runtime, step }) => {
     const ledger = onboardingLedger(runtime.db);
-    const facts = new FactStore(runtime.db);
+    const facts = onboardingFacts(runtime.db);
 
     // Skip orgs that already have a goal (OAOO covers re-fires of the same org).
     const seeded = await step("check-existing", async () => {

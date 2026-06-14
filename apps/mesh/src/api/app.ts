@@ -17,6 +17,7 @@ import {
 import "@/telos/capabilities"; // load defineCapability side effects before registration
 import { registerTelosCapabilities } from "@/telos/durable/registry";
 import { setTelosRuntime } from "@/telos/durable/runtime";
+import { migrateTelosStore } from "@/telos/store";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -1527,8 +1528,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // workflow no-ops when ORGFS_PUBLIC_SETS is unset.
   setPublicSetsSyncRuntime({ db: database.db, baseUrl: getPublicUrl() });
 
-  // Telos durable capabilities: inject runtime deps for capability bodies.
-  // Safe before launch — only stashes a module-level pointer.
+  // Telos owns its `telos` schema and migrates it itself (DBOS-style), so mesh
+  // carries no telos tables or migration files — it just triggers init + wires deps.
+  await migrateTelosStore(database.db);
   setTelosRuntime({ db: database.db });
 
   // ============================================================================

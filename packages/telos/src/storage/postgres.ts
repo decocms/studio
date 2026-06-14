@@ -1,16 +1,16 @@
-// @decocms/telos/postgres — a Postgres GoalLedger adapter (Kysely). The core
-// stays infra-free; this subpath is opt-in, with `kysely` as an optional peer.
+// @decocms/telos/postgres — Postgres storage for telos (Kysely). The core stays
+// infra-free; this subpath is opt-in, with `kysely` as an optional peer.
 //
-// Like DBOS, telos owns its own DB SCHEMA (`telos`) so its tables never mingle
-// with the host's `public` schema. Hosts hand in a connection and register the
-// migration; they map their own tenant id (e.g. org) to `tenant`.
+// Like DBOS, telos OWNS its DB schema (`telos`) and migrates it itself — the
+// host calls migrateTelos() at boot and never declares telos tables or carries
+// telos migration files. Hosts map their own tenant id (e.g. org) to `tenant`.
 
 import { type ColumnType, type Kysely, sql } from "kysely";
 import { type GoalLedger, type GoalSource, UnmovedMover } from "../core";
 
 const SCHEMA = "telos";
 
-export interface TelosGoalRow {
+interface GoalRow {
   id: string;
   tenant: string;
   version: number;
@@ -19,17 +19,51 @@ export interface TelosGoalRow {
   created_at: ColumnType<Date, string | undefined, string>;
 }
 
-// Table key is unqualified; the adapter scopes queries with `.withSchema(SCHEMA)`.
-export interface TelosLedgerTables {
-  goals: TelosGoalRow;
+interface FactRow {
+  id: string;
+  tenant: string;
+  label: string;
+  value: string;
+  confidence: string;
+  status: string;
+  source_url: string | null;
+  created_at: ColumnType<Date, string | undefined, string>;
+  updated_at: ColumnType<Date, string | undefined, string>;
 }
 
-export async function up(db: Kysely<unknown>): Promise<void> {
+// Table keys are unqualified; queries are scoped with `.withSchema(SCHEMA)`.
+export interface TelosTables {
+  goals: GoalRow;
+  facts: FactRow;
+}
+
+export type FactStatus = "proposed" | "confirmed" | "rejected";
+
+// A finding the elenchus uncovered about a tenant — tentative until confirmed.
+export interface FactInput {
+  label: string;
+  value: string;
+  confidence: string;
+  sourceUrl?: string;
+}
+
+export interface Fact {
+  id: string;
+  label: string;
+  value: string;
+  confidence: string;
+  status: FactStatus;
+  sourceUrl: string | null;
+}
+
+// Idempotent self-migration. Safe to call on every boot.
+export async function migrateTelos(db: Kysely<TelosTables>): Promise<void> {
   await db.schema.createSchema(SCHEMA).ifNotExists().execute();
   const schema = db.withSchema(SCHEMA).schema;
 
   await schema
     .createTable("goals")
+    .ifNotExists()
     .addColumn("id", "text", (c) => c.primaryKey())
     .addColumn("tenant", "text", (c) => c.notNull())
     .addColumn("version", "integer", (c) => c.notNull())
@@ -39,23 +73,43 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       c.notNull().defaultTo(sql`now()`),
     )
     .execute();
-
   await schema
     .createIndex("goals_tenant_version_idx")
+    .ifNotExists()
     .on("goals")
     .columns(["tenant", "version"])
     .unique()
     .execute();
-}
 
-export async function down(db: Kysely<unknown>): Promise<void> {
-  await db.schema.dropSchema(SCHEMA).ifExists().cascade().execute();
+  await schema
+    .createTable("facts")
+    .ifNotExists()
+    .addColumn("id", "text", (c) => c.primaryKey())
+    .addColumn("tenant", "text", (c) => c.notNull())
+    .addColumn("label", "text", (c) => c.notNull())
+    .addColumn("value", "text", (c) => c.notNull())
+    .addColumn("confidence", "text", (c) => c.notNull())
+    .addColumn("status", "text", (c) => c.notNull().defaultTo("proposed"))
+    .addColumn("source_url", "text")
+    .addColumn("created_at", "timestamptz", (c) =>
+      c.notNull().defaultTo(sql`now()`),
+    )
+    .addColumn("updated_at", "timestamptz", (c) =>
+      c.notNull().defaultTo(sql`now()`),
+    )
+    .execute();
+  await schema
+    .createIndex("facts_tenant_idx")
+    .ifNotExists()
+    .on("facts")
+    .column("tenant")
+    .execute();
 }
 
 // Append-only GoalLedger over telos.goals. One lineage per tenant; `target` is
 // stored as jsonb and round-tripped as T.
 export function createPostgresGoalLedger<T>(
-  db: Kysely<TelosLedgerTables>,
+  db: Kysely<TelosTables>,
 ): GoalLedger<T> {
   const scoped = db.withSchema(SCHEMA);
 
@@ -103,13 +157,68 @@ export function createPostgresGoalLedger<T>(
       const a = (await movers(tenant))
         .filter((m) => m.source === "authority")
         .at(-1);
-      if (!a)
-        throw new Error(`no anchor (authority goal) for tenant ${tenant}`);
+      if (!a) throw new Error(`no anchor (authority goal) for tenant ${tenant}`);
       return a;
     },
 
     async history(tenant) {
       return movers(tenant);
+    },
+  };
+}
+
+// Tentative elenchus findings over telos.facts; the tenant confirms/rejects each.
+export function createPostgresFactStore(db: Kysely<TelosTables>) {
+  const scoped = db.withSchema(SCHEMA);
+
+  return {
+    async insertMany(tenant: string, facts: FactInput[]): Promise<void> {
+      if (facts.length === 0) return;
+      await scoped
+        .insertInto("facts")
+        .values(
+          facts.map((f) => ({
+            id: `fact_${crypto.randomUUID()}`,
+            tenant,
+            label: f.label,
+            value: f.value,
+            confidence: f.confidence,
+            status: "proposed",
+            source_url: f.sourceUrl ?? null,
+          })),
+        )
+        .execute();
+    },
+
+    async list(tenant: string): Promise<Fact[]> {
+      const rows = await scoped
+        .selectFrom("facts")
+        .selectAll()
+        .where("tenant", "=", tenant)
+        .where("status", "!=", "rejected")
+        .orderBy("created_at", "asc")
+        .execute();
+      return rows.map((r) => ({
+        id: r.id,
+        label: r.label,
+        value: r.value,
+        confidence: r.confidence,
+        status: r.status as FactStatus,
+        sourceUrl: r.source_url,
+      }));
+    },
+
+    async setStatus(
+      tenant: string,
+      factId: string,
+      status: FactStatus,
+    ): Promise<void> {
+      await scoped
+        .updateTable("facts")
+        .set({ status, updated_at: new Date().toISOString() })
+        .where("tenant", "=", tenant)
+        .where("id", "=", factId)
+        .execute();
     },
   };
 }

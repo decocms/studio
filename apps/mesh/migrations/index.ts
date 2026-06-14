@@ -108,8 +108,6 @@ import * as migration106automationtools from "./106-automation-tools.ts";
 import * as migration107orgfspublicorg from "./107-org-fs-public-org.ts";
 import * as migration108automationmaxagentsteps from "./108-automation-max-agent-steps.ts";
 import * as migration109threadmessagepartspermessageseq from "./109-thread-message-parts-per-message-seq.ts";
-import * as migration110telosgoal from "./110-telos-goal.ts";
-import * as migration111telosfact from "./111-telos-fact.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -241,8 +239,6 @@ const migrations: Record<string, Migration> = {
   "108-automation-max-agent-steps": migration108automationmaxagentsteps,
   "109-thread-message-parts-per-message-seq":
     migration109threadmessagepartspermessageseq,
-  "110-telos-goal": migration110telosgoal,
-  "111-telos-fact": migration111telosfact,
 };
 
 export default migrations;
