@@ -45,6 +45,19 @@ function isToolConnected(tool: ToolTarget, state: OnboardingState): boolean {
   });
 }
 
+// Target tools that became connected between two observed states — drives the
+// connection-aware acknowledgment ("you just connected GitHub"). Labels, not raw
+// identifiers, so it reads cleanly in a prompt or thought.
+export function toolsJustConnected(
+  prev: OnboardingState,
+  next: OnboardingState,
+  target: OnboardingTarget,
+): string[] {
+  return (target.tools ?? [])
+    .filter((t) => isToolConnected(t, next) && !isToolConnected(t, prev))
+    .map((t) => t.label);
+}
+
 // Per-tool connected/not, for the UI's checklist. Tolerant of legacy targets.
 export async function onboardingProgress(
   db: Kysely<Database>,

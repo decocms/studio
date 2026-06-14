@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
   type Deliberator,
   type Domain,
-  type DomainEvent,
   Eudaimon,
   inMemoryBus,
   InMemoryGoalLedger,
@@ -86,48 +85,38 @@ describe("InMemoryGoalLedger", () => {
 });
 
 describe("Eudaimon.pursue", () => {
-  test("publishes unmovedMover.reached when already satisfied", async () => {
+  test("reports satisfied when already at the goal", async () => {
     const { domain, db } = counterFixture();
     db.set("t", { value: 5 });
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 5 });
-    const seen: string[] = [];
-    bus.subscribe("unmovedMover.reached", async () => {
-      seen.push("reached");
-    });
 
     const agent = new Eudaimon({
       tenant: "t",
       ledger,
       domain,
-      bus,
       deliberator: ruleDeliberator,
     });
-    await agent.pursue();
-    expect(seen).toEqual(["reached"]);
+    const outcome = await agent.pursue();
+    expect(outcome.satisfied).toBe(true);
+    expect(outcome.summary).toBeUndefined();
   });
 
-  test("deliberates and publishes eudaimon.pursued when there is a gap", async () => {
+  test("deliberates and reports the summary when there is a gap", async () => {
     const { domain } = counterFixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 3 });
-    const pursued: string[] = [];
-    bus.subscribe("eudaimon.pursued", async (e) => {
-      pursued.push(e.summary);
-    });
 
     const agent = new Eudaimon({
       tenant: "t",
       ledger,
       domain,
-      bus,
       deliberator: ruleDeliberator,
     });
-    await agent.pursue();
-    expect(pursued.length).toBe(1);
-    expect(pursued[0]).toContain("increment");
+    const outcome = await agent.pursue();
+    expect(outcome.satisfied).toBe(false);
+    expect(outcome.summary).toContain("increment");
+    expect(outcome.applied.map((a) => a.kind)).toContain("increment");
   });
 });
 
@@ -171,7 +160,6 @@ describe("wire — causal separation", () => {
 describe("Deliberator port is swappable", () => {
   test("a custom deliberator is honored by Eudaimon", async () => {
     const { domain, db } = counterFixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 10 });
 
@@ -180,20 +168,17 @@ describe("Deliberator port is swappable", () => {
         return { summary: "did nothing", actionsTaken: [] };
       },
     };
-    const events: DomainEvent<CounterTarget>["type"][] = [];
-    bus.subscribe("eudaimon.pursued", async () => {
-      events.push("eudaimon.pursued");
-    });
 
     const agent = new Eudaimon({
       tenant: "t",
       ledger,
       domain,
-      bus,
       deliberator: noop,
     });
-    await agent.pursue();
+    const outcome = await agent.pursue();
     expect(db.get("t")?.value ?? 0).toBe(0);
-    expect(events).toEqual(["eudaimon.pursued"]);
+    expect(outcome.satisfied).toBe(false);
+    expect(outcome.summary).toBe("did nothing");
+    expect(outcome.applied).toEqual([]);
   });
 });

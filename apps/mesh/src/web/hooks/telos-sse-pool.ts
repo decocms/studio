@@ -9,6 +9,8 @@ import {
 const TELOS_SSE_EVENT_TYPES = [
   "telos.goal.installed",
   "telos.facts.updated",
+  "telos.goal.suggestion",
+  "telos.goal.thought",
 ] as const;
 
 export const telosSSE: SSESubscription = createSSESubscription({

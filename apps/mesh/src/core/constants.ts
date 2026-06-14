@@ -23,6 +23,14 @@ export const CIRCUIT_BREAKER_COOLDOWN_MS = 30_000; // 30 seconds
 /** Maximum number of circuit breaker entries to retain in memory */
 export const CIRCUIT_BREAKER_MAX_ENTRIES = 1000;
 
+/**
+ * Consecutive credential-decryption failures (per replica) before a connection
+ * is durably disabled (status="error"). A decrypt failure is deterministic — the
+ * same key never recovers — so a small buffer is enough; it only guards against a
+ * transient key-load race at boot. Mirrors CIRCUIT_BREAKER_FAILURE_THRESHOLD.
+ */
+export const CONNECTION_DECRYPT_DISABLE_THRESHOLD = 3;
+
 /*
  * Durable connection auto-disable (cross-replica, via the shared circuit store).
  *

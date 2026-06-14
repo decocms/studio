@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import {
-  type Domain,
-  Eudaimon,
-  inMemoryBus,
-  InMemoryGoalLedger,
-} from "../core";
+import { type Domain, Eudaimon, InMemoryGoalLedger } from "../core";
 import { ruleDeliberator } from "../deliberators/rule";
 import { type Daimonion, guardedBy } from "./daimonion";
 
@@ -42,21 +37,11 @@ function fixture() {
 }
 
 describe("daimonion — apophatic guardrail", () => {
-  test("a vetoed action never applies and emits eudaimon.action.vetoed", async () => {
+  test("a vetoed action never applies and is reported as vetoed", async () => {
     const { db, domain } = fixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 3 });
     db.set("t", { value: 0 });
-
-    const applied: string[] = [];
-    const vetoed: string[] = [];
-    bus.subscribe("eudaimon.action.applied", async (e) => {
-      applied.push(e.kind);
-    });
-    bus.subscribe("eudaimon.action.vetoed", async (e) => {
-      vetoed.push(`${e.kind}:${e.reason}`);
-    });
 
     const daimonion: Daimonion = {
       veto: async ({ kind }) =>
@@ -67,19 +52,19 @@ describe("daimonion — apophatic guardrail", () => {
       tenant: "t",
       ledger,
       domain: guardedBy(daimonion)(domain),
-      bus,
       deliberator: ruleDeliberator,
     });
-    await agent.pursue();
+    const outcome = await agent.pursue();
 
     expect(db.get("t")?.value).toBe(0); // side effect blocked
-    expect(applied).toEqual([]); // not recorded as applied
-    expect(vetoed).toEqual(["increment:forbidden"]);
+    expect(outcome.applied).toEqual([]); // not recorded as applied
+    expect(outcome.vetoed.map((v) => `${v.kind}:${v.reason}`)).toEqual([
+      "increment:forbidden",
+    ]);
   });
 
   test("a silent daimonion (null) allows the action through", async () => {
     const { db, domain } = fixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 3 });
     db.set("t", { value: 0 });
@@ -89,7 +74,6 @@ describe("daimonion — apophatic guardrail", () => {
       tenant: "t",
       ledger,
       domain: guardedBy(daimonion)(domain),
-      bus,
       deliberator: ruleDeliberator,
     });
     await agent.pursue();
@@ -131,7 +115,6 @@ describe("daimonion — apophatic guardrail", () => {
         { kind: "risky_step", input: {} },
       ],
     };
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 999 });
     db.set("t", { value: 0 });
@@ -144,7 +127,6 @@ describe("daimonion — apophatic guardrail", () => {
       tenant: "t",
       ledger,
       domain: guardedBy(daimonion)(domain),
-      bus,
       deliberator: ruleDeliberator,
     });
     await agent.pursue();

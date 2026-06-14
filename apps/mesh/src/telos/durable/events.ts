@@ -23,6 +23,16 @@ export type TelosEvent =
       version: number;
       kind: string;
       reason?: string;
+    }
+  // Ephemeral reasoning surfaced live as the agent works — research progress and
+  // pursuit deliberation. SSE-only (notify, never enqueued): a missed thought is
+  // harmless. `version` is absent during research (no goal yet).
+  | {
+      type: "goal.thought";
+      organizationId: string;
+      text: string;
+      phase: "research" | "pursuit";
+      version?: number;
     };
 
 export type TelosEventType = TelosEvent["type"];

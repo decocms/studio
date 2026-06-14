@@ -1,15 +1,36 @@
-// Fire `onChange` on any telos SSE notification for the org. useSyncExternalStore
-// (not useEffect) for the subscription lifecycle; the EventSource is pooled.
+// Deliver each telos SSE notification (parsed) to `onEvent` for the org.
+// useSyncExternalStore (not useEffect) for the subscription lifecycle; the
+// EventSource is pooled.
 
 import { useRef, useSyncExternalStore } from "react";
 import { telosSSE } from "./telos-sse-pool";
 
+// The CloudEvent envelope carries the TelosEvent in `data`; `type` is the SSE
+// event name (e.g. "telos.goal.thought").
+export interface TelosClientEvent {
+  type: string;
+  // The TelosEvent payload — shape varies by type; consumers narrow on `type`.
+  data: Record<string, unknown>;
+}
+
 const getSnapshot = () => 0;
 
-export function useTelosEvents(orgSlug: string, onChange: () => void): void {
-  const onChangeRef = useRef(onChange);
+function parse(e: MessageEvent): TelosClientEvent | null {
+  try {
+    const envelope = JSON.parse(e.data) as { data?: Record<string, unknown> };
+    return { type: e.type, data: envelope.data ?? {} };
+  } catch {
+    return null;
+  }
+}
+
+export function useTelosEvents(
+  orgSlug: string,
+  onEvent: (evt: TelosClientEvent) => void,
+): void {
+  const onEventRef = useRef(onEvent);
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- callback kept in a ref so `subscribe` identity is stable
-  onChangeRef.current = onChange;
+  onEventRef.current = onEvent;
 
   const subscribeRef = useRef<
     ((onStoreChange: () => void) => () => void) | null
@@ -27,8 +48,9 @@ export function useTelosEvents(orgSlug: string, onChange: () => void): void {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- rebuild subscribe only when org changes
     subscribeRef.current = (onStoreChange: () => void) => {
       if (!orgSlug) return () => {};
-      const handler = () => {
-        onChangeRef.current();
+      const handler = (e: MessageEvent) => {
+        const evt = parse(e);
+        if (evt) onEventRef.current(evt);
         onStoreChange();
       };
       return telosSSE.subscribe(orgSlug, handler);

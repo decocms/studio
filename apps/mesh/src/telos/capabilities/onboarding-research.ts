@@ -2,6 +2,7 @@ import { resolveCatalog } from "@/telos/catalog";
 import { researchUser } from "@/telos/research";
 import { telosBus } from "../durable/bus";
 import { defineCapability } from "../durable/capability";
+import { publishThought } from "../durable/thought";
 
 // On user.signup, research the owner and set the org's first goal. Steps journal
 // so a crash after research resumes without re-charging the LLM/scrape.
@@ -28,6 +29,8 @@ defineCapability({
         researchUser(
           { email: event.email, name: event.name },
           await resolveCatalog(event.organizationId),
+          (text) =>
+            publishThought(event.organizationId, { text, phase: "research" }),
         ),
       {
         retriesAllowed: true,

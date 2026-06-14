@@ -267,9 +267,14 @@ async function planNextQuestion(
   return object;
 }
 
+// Best-effort live trace of the research as it runs. Called from the durable
+// research step, so it may repeat across retries — fine for ephemeral SSE.
+export type OnThought = (text: string) => void;
+
 export async function researchUser(
   subject: ResearchSubject,
   catalog: CatalogApp[],
+  onThought?: OnThought,
 ): Promise<ResearchResult> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
@@ -277,6 +282,7 @@ export async function researchUser(
 
   const { email, name } = subject;
   const domain = (email.split("@")[1] ?? "").toLowerCase();
+  const think = (text: string) => onThought?.(text);
 
   // Every URL we actually visited; a fact may only cite a host in this set.
   const sources = new Map<string, string>();
@@ -290,6 +296,7 @@ export async function researchUser(
   };
 
   const findings: Finding[] = [];
+  if (domain) think(`Looking up ${domain}…`);
   const site = await scrapeDomain(domain);
   if (site) {
     findings.push({
@@ -305,6 +312,7 @@ export async function researchUser(
   // citable URLs (GitHub/LinkedIn/etc.) into the allow-set so person facts survive
   // even when sonar returns no citations of its own.
   if (name) {
+    think(`Searching for ${name}'s profiles…`);
     const hits = await searchWeb(
       `${name} ${domain} GitHub OR LinkedIn OR personal site`,
     );
@@ -348,12 +356,14 @@ export async function researchUser(
       if (next.done || !next.question.trim()) break;
       question = next.question;
     }
+    think(question);
     const { text, sources: s } = await ask(openrouter, question);
     findings.push({ question, answer: text, sources: s });
     remember(s);
     asked++;
   }
 
+  think("Synthesizing what I found into your first goal…");
   const { object } = await generateObject({
     model: openrouter(SYNTH_MODEL),
     schema: Synthesis,

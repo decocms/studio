@@ -1,13 +1,17 @@
-import { onboardingDomain, type OnboardingState } from "@/telos/domain";
+import {
+  onboardingDomain,
+  type OnboardingState,
+  toolsJustConnected,
+} from "@/telos/domain";
 import { resolvePursuitModel } from "@/telos/model";
-import type { OnboardingTarget } from "@/telos/target";
 import { DBOS, Debouncer } from "@dbos-inc/dbos-sdk";
-import { type DomainEvent, Eudaimon, type EventBus } from "@decocms/telos";
+import { Eudaimon } from "@decocms/telos";
 import { adaptiveDeliberator } from "../capabilities/deliberator";
 import { telosBus } from "./bus";
 import { telosSalt } from "./dev-salt";
 import { TELOS_QUEUE } from "./queue";
 import { requireTelosRuntime } from "./runtime";
+import { publishThought } from "./thought";
 
 // The agent's latest recommended next step for an org — captured from the cycle's
 // suggestion so the UI can surface it (SSE is ephemeral; this survives a reload
@@ -56,9 +60,8 @@ export interface PursuitOutcome {
 
 // One pursuit cycle for an org: observe the world, and only when it has moved,
 // deliberate (AI when a model is configured, deterministic otherwise) and act.
-// The package's in-process pursuit events are bridged onto mesh's durable bus; we
-// surface what mesh cares about — goal reached, the recommended next step — and
-// drop the rest. The returned outcome lets the loop rest, re-arm, or stop.
+// The kernel's pursue() reports the cycle's outcome; we bridge what mesh cares
+// about — goal reached, the recommended next step — onto the durable bus and SSE.
 export async function runPursuitCycle(
   organizationId: string,
 ): Promise<PursuitOutcome> {
@@ -91,52 +94,77 @@ export async function runPursuitCycle(
   // actually moved. Unchanged cycles re-arm cheaply with no model call.
   const prev = lastObserved.get(organizationId);
   const changed = !prev || prev.version !== mover.version || prev.sig !== sig;
+  // What the user wired up since the last cycle (same goal only) — so the agent's
+  // reasoning can acknowledge it. Reconstruct the prior world from the cached sig.
+  const justConnected =
+    prev && prev.version === mover.version
+      ? toolsJustConnected(
+          { connectedTools: prev.sig.split("|").filter(Boolean) },
+          state,
+          mover.target,
+        )
+      : [];
   lastObserved.set(organizationId, { version: mover.version, sig });
   if (!changed) return { reached: false, changed: false };
 
-  let reached = false;
-  let sleepMs: number | undefined;
-
-  const bus: EventBus<OnboardingTarget> = {
-    async publish(event: DomainEvent<OnboardingTarget>) {
-      if (event.type === "unmovedMover.reached") {
-        reached = true;
-        await telosBus.publish({
-          type: "goal.reached",
-          organizationId,
-          version: event.moverVersion,
-        });
-      } else if (event.type === "eudaimon.action.suggested") {
-        const reason = readReason(event.payload);
-        latestSuggestion.set(organizationId, {
-          kind: event.kind,
-          reason,
-          version: event.moverVersion,
-        });
-        await telosBus.publish({
-          type: "goal.suggestion",
-          organizationId,
-          version: event.moverVersion,
-          kind: event.kind,
-          reason,
-        });
-      } else if (event.type === "eudaimon.pursued") {
-        sleepMs = event.nextReviewMs;
+  // When the user just connected something, ask the agent to acknowledge it in its
+  // reasoning before recommending the next step (the thought then reads naturally).
+  const cycleDomain: typeof domain = justConnected.length
+    ? {
+        ...domain,
+        prompt: (args) =>
+          `${domain.prompt(args)} The user just connected ` +
+          `${justConnected.join(", ")} — acknowledge that before recommending ` +
+          `the next step.`,
       }
-    },
-    subscribe() {},
-  };
+    : domain;
 
   const eudaimon = new Eudaimon({
     tenant: organizationId,
     ledger: runtime.store.ledger,
-    domain,
-    bus,
+    domain: cycleDomain,
     deliberator: adaptiveDeliberator({ resolveModel: resolvePursuitModel }),
   });
-  await eudaimon.pursue();
+  const outcome = await eudaimon.pursue();
 
-  return { reached, changed: true, sleepMs };
+  // Bridge the kernel's report onto mesh's durable bus + SSE: surface what mesh
+  // cares about (goal reached, the recommended next step, the live reasoning) and
+  // drop the rest. The returned outcome lets the loop rest, re-arm, or stop.
+  if (outcome.satisfied) {
+    await telosBus.publish({
+      type: "goal.reached",
+      organizationId,
+      version: outcome.moverVersion,
+    });
+    return { reached: true, changed: true };
+  }
+
+  for (const suggestion of outcome.suggested) {
+    const reason = readReason(suggestion.payload);
+    latestSuggestion.set(organizationId, {
+      kind: suggestion.kind,
+      reason,
+      version: outcome.moverVersion,
+    });
+    await telosBus.publish({
+      type: "goal.suggestion",
+      organizationId,
+      version: outcome.moverVersion,
+      kind: suggestion.kind,
+      reason,
+    });
+  }
+
+  // The deliberation's reasoning, streamed live as the agent's thought.
+  if (outcome.summary?.trim()) {
+    publishThought(organizationId, {
+      text: outcome.summary,
+      phase: "pursuit",
+      version: outcome.moverVersion,
+    });
+  }
+
+  return { reached: false, changed: true, sleepMs: outcome.nextReviewMs };
 }
 
 // === The pursuit schedule: a self-re-arming debounced loop ===

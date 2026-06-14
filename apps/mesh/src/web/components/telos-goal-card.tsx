@@ -33,8 +33,16 @@ const sourceHost = (url: string | null): string | null => {
 const normalizeAppId = (appId: string): string => appId.replace(/^@/, "");
 
 export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
-  const { goal, facts, suggestion, progress, status, confirmFact, rejectFact } =
-    useTelosGoal(orgSlug);
+  const {
+    goal,
+    facts,
+    suggestion,
+    thought,
+    progress,
+    status,
+    confirmFact,
+    rejectFact,
+  } = useTelosGoal(orgSlug);
   const queryClient = useQueryClient();
   // Clicking a tool installs it in place — the exact flow the "Import GitHub"
   // button uses (fetch app detail → create connection → OAuth), generalized.
@@ -65,7 +73,7 @@ export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
       <Card className="w-full flex-row items-center gap-3 p-4">
         <Loading01 className="size-5 animate-spin text-muted-foreground" />
         <span className="text-sm text-muted-foreground">
-          Researching you to set up your first goal…
+          {thought?.text ?? "Researching you to set up your first goal…"}
         </span>
       </Card>
     );
@@ -131,6 +139,15 @@ export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {goal && thought?.phase === "pursuit" && thought.text && (
+        <div className="flex flex-row items-start gap-2">
+          <Loading01 className="mt-0.5 size-3.5 shrink-0 animate-spin text-muted-foreground" />
+          <span className="text-xs italic text-muted-foreground">
+            {thought.text}
+          </span>
         </div>
       )}
 

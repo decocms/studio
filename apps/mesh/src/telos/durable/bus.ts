@@ -10,7 +10,9 @@ class DbosTelosBus {
     this.notify(event);
   }
 
-  private notify(event: TelosEvent): void {
+  // Live SSE nudge with no durable side effects — for ephemeral events (thoughts)
+  // that drive no capability and need not survive a restart.
+  notify(event: TelosEvent): void {
     try {
       sseHub.emit(event.organizationId, {
         id: crypto.randomUUID(),

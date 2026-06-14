@@ -36,10 +36,17 @@ export interface TelosSuggestion {
   version: number;
 }
 
+export interface TelosThought {
+  text: string;
+  phase: "research" | "pursuit";
+  version?: number;
+}
+
 export interface TelosState {
   goal: TelosGoal | null;
   facts: TelosFact[];
   suggestion: TelosSuggestion | null;
+  thought: TelosThought | null;
   progress: TelosToolProgress[] | null;
   status: "researching" | "ready";
 }
@@ -62,11 +69,53 @@ export function useTelosGoal(orgSlug: string) {
   const query = useQuery(telosGoalQueryOptions(orgSlug));
   const client = useQueryClient();
 
-  // Live updates: research finishing (goal.installed) and fact edits push a
-  // telos SSE event → refetch. No polling.
-  useTelosEvents(orgSlug, () =>
-    client.invalidateQueries({ queryKey: KEYS.telosGoal(orgSlug) }),
-  );
+  // Live updates over SSE, no polling. Thoughts and suggestions stream in and
+  // patch the cache in place (real-time feedback, no round-trip); goal/fact
+  // changes refetch the authoritative state.
+  useTelosEvents(orgSlug, (evt) => {
+    if (evt.type === "telos.goal.thought") {
+      client.setQueryData(
+        KEYS.telosGoal(orgSlug),
+        (prev: TelosState | undefined) =>
+          prev
+            ? {
+                ...prev,
+                thought: {
+                  text: String(evt.data.text ?? ""),
+                  phase: evt.data.phase === "research" ? "research" : "pursuit",
+                  version:
+                    typeof evt.data.version === "number"
+                      ? evt.data.version
+                      : undefined,
+                },
+              }
+            : prev,
+      );
+      return;
+    }
+    if (evt.type === "telos.goal.suggestion") {
+      client.setQueryData(
+        KEYS.telosGoal(orgSlug),
+        (prev: TelosState | undefined) =>
+          prev
+            ? {
+                ...prev,
+                suggestion: {
+                  kind: String(evt.data.kind ?? ""),
+                  reason:
+                    typeof evt.data.reason === "string"
+                      ? evt.data.reason
+                      : undefined,
+                  version:
+                    typeof evt.data.version === "number" ? evt.data.version : 0,
+                },
+              }
+            : prev,
+      );
+      return;
+    }
+    client.invalidateQueries({ queryKey: KEYS.telosGoal(orgSlug) });
+  });
 
   const setFactStatus = useMutation({
     mutationFn: async (input: {
@@ -89,6 +138,7 @@ export function useTelosGoal(orgSlug: string) {
     goal: query.data?.goal ?? null,
     facts: query.data?.facts ?? [],
     suggestion: query.data?.suggestion ?? null,
+    thought: query.data?.thought ?? null,
     progress: query.data?.progress ?? null,
     status: query.data?.status ?? "researching",
     confirmFact: (id: string) =>

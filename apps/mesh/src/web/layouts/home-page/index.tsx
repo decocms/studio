@@ -3,7 +3,6 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  useVirtualMCP,
   virtualMcpItemQueryOptions,
 } from "@decocms/mesh-sdk";
 import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
@@ -14,26 +13,17 @@ import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Chat } from "@/web/components/chat";
 import { useChatPrefs } from "@/web/components/chat/context";
-import { NoAiProviderEmptyState } from "@/web/components/chat/no-ai-provider-empty-state";
 import { AddTileDrawer } from "@/web/components/home/add-tile-drawer";
 import {
   HomeEditProvider,
   useHomeEdit,
 } from "@/web/components/home/home-edit-context";
 import { HomeGrid, useHomeGridStats } from "@/web/components/home/home-grid";
-import {
-  aiProviderKeysQueryOptions,
-  useAiProviderKeys,
-} from "@/web/hooks/collections/use-ai-providers";
-import { useCurrentLink } from "@/web/hooks/use-current-link";
+import { aiProviderKeysQueryOptions } from "@/web/hooks/collections/use-ai-providers";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { homeNextActionsQueryOptions } from "@/web/hooks/use-home-next-actions";
 import { TelosGoalCard } from "@/web/components/telos-goal-card";
 import { organizationSettingsQueryOptions } from "@/web/hooks/use-organization-settings";
-import {
-  agentHasClonableSource,
-  hasLocalCliHarness,
-} from "@/web/lib/agent-capabilities";
 import { authClient } from "@/web/lib/auth-client";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { HomeBackground } from "./background";
@@ -42,7 +32,6 @@ export function HomePage() {
   const { data: session } = authClient.useSession();
   const { org } = useProjectContext();
   const isMobile = useIsMobile();
-  const link = useCurrentLink();
   const { selectedVirtualMcp } = useChatPrefs();
   const defaultAgent = getWellKnownDecopilotVirtualMCP(org.id);
   const displayAgent = selectedVirtualMcp ?? defaultAgent;
@@ -69,8 +58,6 @@ export function HomePage() {
     ],
   });
 
-  const allKeys = useAiProviderKeys();
-  const fullVm = useVirtualMCP(displayAgent.id);
   const {
     hasDecoKey,
     isZeroBalance,
@@ -79,20 +66,6 @@ export function HomePage() {
     hasOnlyDecoProvider,
   } = useDecoCredits();
   const { hasVisibleTiles } = useHomeGridStats(org.slug);
-
-  const isClonableAgent = agentHasClonableSource(fullVm?.metadata);
-  const showProviderEmptyState =
-    allKeys.length === 0 && !(isClonableAgent && hasLocalCliHarness(link));
-
-  if (showProviderEmptyState) {
-    return (
-      <div className="flex-1 overflow-y-auto">
-        <div className="min-h-full flex items-center justify-center px-4 py-10">
-          <NoAiProviderEmptyState />
-        </div>
-      </div>
-    );
-  }
 
   const userName = session?.user?.name?.split(" ")[0] || "there";
   const showEyebrow =

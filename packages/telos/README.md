@@ -108,19 +108,37 @@ given. When the goal is reached, the world has, in the small precise sense the g
 
 ## Architecture
 
-The core enforces one structural rule above all: **two causes, kept apart.** There are exactly
-two ways anything ever changes, wired as two separate event subscriptions in `wire()`
-(`core/eudaimon.ts`):
+### The kernel reports; the host reacts
+
+The package is two layers, and the seam between them is the whole point:
+
+- **The kernel** is `Domain` + `Eudaimon.pursue()` + the `GoalLedger`/`FactStore` ports + a
+  `Deliberator`. `pursue()` runs **one cycle** — observe → satisfy? → gap → deliberate → act —
+  and **returns a `PursuitOutcome`** (what it did: applied/vetoed/suggested actions, a summary,
+  an advisory `nextReviewMs`, any proposed goal). It never publishes, schedules, or owns a loop.
+  This is what a real host depends on: it drives `pursue()` on its own clock, persists through
+  its own ledger adapter, and decides what to notify from the returned outcome.
+- **The single-process runtime** is `wire()` + `inMemoryBus`. It's *batteries* for a demo or a
+  simple host: one `Eudaimon` per tenant in memory, a cycle fired on `state.changed`, the
+  outcome fanned back out onto the bus. A durable host (DBOS, a queue, multiple pods) skips
+  `wire()` entirely and calls `pursue()` directly — see [Teaching it a new world](#teaching-it-a-new-world-the-one-extension-point).
+
+### Two causes, kept apart
+
+Above the kernel, the core enforces one structural rule: **two causes, never crossed.** In the
+single-process runtime they're two separate event subscriptions in `wire()` (`core/eudaimon.ts`);
+a durable host keeps the same two paths distinct in its own orchestration:
 
 ```
   the world moved        →   state.changed   →   Eudaimon.pursue()      (the agent reacts)
   an authority decides   →   goal.updated    →   GoalLedger.install()    (a new fixed star)
 ```
 
-The agent reacts to `state.changed`. A new goal arrives only via `goal.updated`, which only an
-authority emits. **The agent is never on the goal-setting path.** This is what keeps the
-metaphor — and the safety property — intact: an agent that pursues a goal cannot redefine the
-goal to declare itself finished.
+The agent reacts to the world moving. A new *anchor* goal arrives only from an authority. **The
+agent is never on the anchor-setting path.** This is what keeps the metaphor — and the safety
+property — intact: an agent that pursues a goal cannot redefine the goal to declare itself
+finished. (It may author *subordinate* goals beneath the anchor, if you wire a proposer; `pursue()`
+returns each one in `outcome.proposal`.)
 
 ```
 src/
@@ -129,8 +147,8 @@ src/
     ledger.ts       #   GoalLedger port + InMemoryGoalLedger (the default)
     domain.ts       #   Domain / Action ports — the one thing you write
     deliberator.ts  #   Deliberator port + applyAction
-    events.ts       #   EventBus types + inMemoryBus (the default)
-    eudaimon.ts     #   Eudaimon + wire() — the two-causes wiring
+    events.ts       #   EventBus types + inMemoryBus (single-process runtime only)
+    eudaimon.ts     #   Eudaimon (pursue → PursuitOutcome) + wire() (the runtime)
   deliberators/
     rule.ts         #   ruleDeliberator — offline, deterministic, zero dependencies
     ai.ts           #   aiDeliberator ("@decocms/telos/ai") — the ONLY file using `ai`
@@ -145,9 +163,10 @@ examples/
   domains/          # two example worlds (storefront, calendar) on the same core
 ```
 
-Everything except `core/` is a *default you can replace*. The ledger, the bus, and the
+Everything except the kernel is a *default you can replace*. The ledger, the bus, and the
 deliberator are all ports; the in-memory implementations exist so the thing runs today, and
-`@decocms/telos/postgres` is a shipped DB-backed ledger for when you need durability.
+`@decocms/telos/postgres` is a shipped DB-backed ledger + fact store for when you need durability.
+The bus and `wire()` are the single-process runtime — a durable host supplies its own.
 
 ---
 
@@ -213,6 +232,26 @@ await bus.publish({ type: "state.changed", tenant: "tenant-1" });  // the world 
 `actions` are framework-agnostic: the rule deliberator calls them via `plan()`, and the AI
 deliberator wraps each one as an LLM tool. You write the action once; both paths use it.
 
+### Driving it yourself (durable hosts)
+
+`wire()` is the single-process convenience. A durable host owns its own bus, scheduler, and
+storage, so it skips `wire()` and drives the kernel directly — `pursue()` returns the cycle's
+outcome and the host reacts to it. No fake bus, no event round-trip:
+
+```ts
+import { Eudaimon } from "@decocms/telos";
+
+const agent = new Eudaimon({ tenant, ledger, domain: myDomain, deliberator });
+const outcome = await agent.pursue();   // ONE cycle; the host owns the loop
+
+if (outcome.satisfied) notifyReached(tenant, outcome.moverVersion);
+for (const s of outcome.suggested) surfaceToUser(tenant, s.kind, s.payload);
+scheduleNext(tenant, outcome.nextReviewMs);   // honor, clamp, or ignore the agent's cadence
+```
+
+This is exactly how the Studio host runs telos on DBOS: durable workflows call `pursue()` and
+map `outcome` onto their own event bus + scheduler. The kernel never knew there was a queue.
+
 ## The LLM deliberator
 
 `@decocms/telos/ai` wraps each domain `Action` as an AI SDK v6 tool and lets a model decide
@@ -236,6 +275,19 @@ The default `InMemoryGoalLedger` keeps everything in process. For durable storag
 database schema** (`telos`) and migrates it itself. The host never declares telos tables or
 carries telos migration files: it hands in a connection, calls `migrateTelos` once at boot,
 and maps its own tenant id (e.g. an org id) to `tenant`.
+
+One call gives you the two durable ports — migrate the schema, then build the ledger + fact
+store over the host's connection:
+
+```ts
+import { initTelos } from "@decocms/telos/postgres";
+
+const { ledger, facts } = await initTelos<MyTarget>({ db }); // migrates + builds both ports
+```
+
+`initTelos` returns **only `{ ledger, facts }`** — no bus, no scheduler. Orchestration is the
+host's (it owns the loop and the event bus; see [Driving it yourself](#driving-it-yourself-durable-hosts)).
+Prefer the pieces if you want to migrate and construct separately:
 
 ```ts
 import {

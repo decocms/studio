@@ -60,36 +60,32 @@ function onceProposer(
 describe("anchored proposing — mechanics", () => {
   test("an engine proposal installs as a subordinate; the anchor stays authority-owned", async () => {
     const { domain } = counterFixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 5 }); // authority anchor (and current goal)
-
-    const proposed: CounterTarget[] = [];
-    bus.subscribe("eudaimon.goal.proposed", async (e) => {
-      proposed.push(e.target);
-    });
 
     const agent = new Eudaimon({
       tenant: "t",
       ledger,
       domain,
-      bus,
       deliberator: ruleDeliberator,
       proposer: onceProposer({ goal: 3 }),
     });
-    await agent.pursue();
+    const outcome = await agent.pursue();
 
     expect(ledger.latest("t").target).toEqual({ goal: 3 });
     expect(ledger.latest("t").source).toBe("engine");
     expect(ledger.anchor("t").target).toEqual({ goal: 5 });
     expect(ledger.anchor("t").source).toBe("authority");
     expect(ledger.history("t").length).toBe(2);
-    expect(proposed).toEqual([{ goal: 3 }]);
+    expect(outcome.proposal).toEqual({
+      target: { goal: 3 },
+      version: 2,
+      installed: true,
+    });
   });
 
   test("the proposer receives the fixed anchor, not the working goal", async () => {
     const { domain } = counterFixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 9 }); // authority anchor
     ledger.install("t", { goal: 4 }, "engine"); // current working goal (subordinate)
@@ -106,7 +102,6 @@ describe("anchored proposing — mechanics", () => {
       tenant: "t",
       ledger,
       domain,
-      bus,
       deliberator: ruleDeliberator,
       proposer,
     });
@@ -116,29 +111,22 @@ describe("anchored proposing — mechanics", () => {
 
   test("no proposer → no proposal, history unchanged", async () => {
     const { domain } = counterFixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 3 });
-    let proposals = 0;
-    bus.subscribe("eudaimon.goal.proposed", async () => {
-      proposals++;
-    });
 
     const agent = new Eudaimon({
       tenant: "t",
       ledger,
       domain,
-      bus,
       deliberator: ruleDeliberator,
     });
-    await agent.pursue();
+    const outcome = await agent.pursue();
     expect(ledger.history("t").length).toBe(1);
-    expect(proposals).toBe(0);
+    expect(outcome.proposal).toBeUndefined();
   });
 
   test("proposer returning null installs nothing", async () => {
     const { domain } = counterFixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 3 });
 
@@ -146,44 +134,37 @@ describe("anchored proposing — mechanics", () => {
       tenant: "t",
       ledger,
       domain,
-      bus,
       deliberator: ruleDeliberator,
       proposer: { propose: async () => null },
     });
-    await agent.pursue();
+    const outcome = await agent.pursue();
     expect(ledger.history("t").length).toBe(1);
+    expect(outcome.proposal).toBeUndefined();
   });
 });
 
 describe("anchored proposing — gating", () => {
   test("approveGoal=false rejects the proposal (not installed)", async () => {
     const { domain } = counterFixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 5 });
-    const rejected: CounterTarget[] = [];
-    bus.subscribe("eudaimon.goal.rejected", async (e) => {
-      rejected.push(e.target);
-    });
 
     const agent = new Eudaimon({
       tenant: "t",
       ledger,
       domain,
-      bus,
       deliberator: ruleDeliberator,
       proposer: onceProposer({ goal: 3 }),
       approveGoal: async () => false,
     });
-    await agent.pursue();
+    const outcome = await agent.pursue();
     expect(ledger.history("t").length).toBe(1);
     expect(ledger.latest("t").target).toEqual({ goal: 5 });
-    expect(rejected).toEqual([{ goal: 3 }]);
+    expect(outcome.proposal).toEqual({ target: { goal: 3 }, installed: false });
   });
 
   test("approveGoal=true installs the proposal", async () => {
     const { domain } = counterFixture();
-    const bus = inMemoryBus<CounterTarget>();
     const ledger = new InMemoryGoalLedger<CounterTarget>();
     ledger.install("t", { goal: 5 });
 
@@ -191,7 +172,6 @@ describe("anchored proposing — gating", () => {
       tenant: "t",
       ledger,
       domain,
-      bus,
       deliberator: ruleDeliberator,
       proposer: onceProposer({ goal: 3 }),
       approveGoal: async () => true,

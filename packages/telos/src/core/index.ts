@@ -29,6 +29,10 @@ export {
   type ApproveGoal,
   Eudaimon,
   type EudaimonDeps,
+  type GoalProposal,
   type GoalProposer,
+  type PursuitAction,
+  type PursuitOutcome,
+  type VetoedAction,
   wire,
 } from "./eudaimon";

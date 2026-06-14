@@ -9,6 +9,7 @@ import { telos } from "@/telos";
 import { onboardingProgress } from "@/telos/domain";
 import { telosBus } from "@/telos/durable/bus";
 import { getLatestSuggestion } from "@/telos/durable/pursuit";
+import { getLatestThought } from "@/telos/durable/thought";
 import { pullRefit } from "@/telos/durable/refit";
 import { requireTelosRuntime } from "@/telos/durable/runtime";
 import type { FactStatus } from "@decocms/telos/postgres";
@@ -66,6 +67,7 @@ export function createTelosGoalRoutes() {
       goal,
       facts,
       suggestion,
+      thought: getLatestThought(orgId),
       progress,
       status: goal ? "ready" : "researching",
     });
