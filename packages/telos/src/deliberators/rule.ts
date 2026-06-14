@@ -1,5 +1,4 @@
-import type { Deliberator } from "./core";
-import { isVetoError } from "./daimonion";
+import { applyAction, type Deliberator } from "../core";
 
 // Offline deliberation: run the domain's deterministic plan(). No LLM, no key.
 export const ruleDeliberator: Deliberator = {
@@ -10,14 +9,8 @@ export const ruleDeliberator: Deliberator = {
     for (const step of plan) {
       const action = domain.actions.find((a) => a.kind === step.kind);
       if (!action) continue;
-      try {
-        await action.apply(ctx.tenant, step.input);
-        await ctx.record(action.kind, step.input);
-        actionsTaken.push(action.kind);
-      } catch (err) {
-        if (!isVetoError(err)) throw err;
-        await ctx.vetoed(action.kind, err.reason, step.input);
-      }
+      const outcome = await applyAction(action, ctx, step.input);
+      if (outcome.applied) actionsTaken.push(action.kind);
     }
 
     return {

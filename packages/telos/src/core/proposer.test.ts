@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { type Domain, Eudaimon, type GoalProposer, wire } from "./core";
-import { inMemoryBus } from "./bus";
-import { InMemoryGoalLedger } from "./ledger";
-import { ruleDeliberator } from "./deliberate-rule";
+import {
+  type Domain,
+  Eudaimon,
+  type GoalProposer,
+  inMemoryBus,
+  InMemoryGoalLedger,
+  wire,
+} from "./index";
+import { ruleDeliberator } from "../deliberators/rule";
 
 interface CounterState {
   value: number;

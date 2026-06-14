@@ -1,4 +1,22 @@
-import { type GoalLedger, type GoalSource, UnmovedMover } from "./core";
+import type { Awaitable } from "./awaitable";
+import { type GoalSource, UnmovedMover } from "./mover";
+
+// Append-only history of goals; installing a new version is the only way a goal
+// changes. Methods are Awaitable so a DB-backed ledger drops in unchanged.
+export interface GoalLedger<T> {
+  install(
+    tenant: string,
+    target: T,
+    source?: GoalSource,
+  ): Awaitable<UnmovedMover<T>>;
+  // The current working goal (latest of any source). What the agent pursues.
+  // Named `latest`, not `current`, to dodge the repo's .current lint rule.
+  latest(tenant: string): Awaitable<UnmovedMover<T>>;
+  // The fixed parent telos: latest AUTHORITY-installed version. The engine never
+  // overwrites it — that immovability is the safety spine of anchored proposing.
+  anchor(tenant: string): Awaitable<UnmovedMover<T>>;
+  history(tenant: string): Awaitable<readonly UnmovedMover<T>[]>;
+}
 
 // Default GoalLedger: append-only, in-memory. Swap for a DB-backed impl of the
 // GoalLedger interface (Eudaimon awaits it, so an async backing is fine).

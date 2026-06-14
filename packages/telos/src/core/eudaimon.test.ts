@@ -5,12 +5,12 @@ import {
   type Domain,
   type DomainEvent,
   Eudaimon,
+  inMemoryBus,
+  InMemoryGoalLedger,
   UnmovedMover,
   wire,
-} from "./core";
-import { inMemoryBus } from "./bus";
-import { InMemoryGoalLedger } from "./ledger";
-import { ruleDeliberator } from "./deliberate-rule";
+} from "./index";
+import { ruleDeliberator } from "../deliberators/rule";
 
 // ── A tiny REAL domain (not a mock): a counter pursued toward a target. ───────
 interface CounterState {

@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { type Domain, type EventBus, wire } from "./core";
-import { inMemoryBus } from "./bus";
-import { InMemoryGoalLedger } from "./ledger";
-import { ruleDeliberator } from "./deliberate-rule";
+import {
+  type Domain,
+  type EventBus,
+  inMemoryBus,
+  InMemoryGoalLedger,
+  wire,
+} from "./index";
+import { ruleDeliberator } from "../deliberators/rule";
 
 // A small storefront-like world: three metrics that improve as actions land,
 // so the agent provably converges to the fixed target under the rule planner.

@@ -1,8 +1,10 @@
 // LLM deliberation via the Vercel AI SDK v6. The ONLY module that imports `ai`
-// (an optional peer dep), exposed under the "@decocms/telos/ai" subpath so the
-// core stays AI-free. The model is INJECTED — resolution is the caller's job, so
-// this works the same standalone (a gateway string) or inside a host (a provider
-// model instance).
+// (an optional peer dependency), exposed under the "@decocms/telos/ai" subpath so
+// the core stays AI-free.
+//
+// The model is INJECTED (an AI SDK v6 `LanguageModel`, or a provider/gateway model
+// string). Model resolution is the caller's concern — standalone you might pass a
+// gateway model; inside a host you pass whatever your provider stack produced.
 
 import {
   type LanguageModel,
@@ -12,8 +14,7 @@ import {
   ToolLoopAgent,
 } from "ai";
 import { z } from "zod";
-import type { Deliberator } from "./core";
-import { isVetoError } from "./daimonion";
+import { applyAction, type Deliberator } from "../core";
 
 const Report = z.object({
   actionsTaken: z
@@ -24,8 +25,9 @@ const Report = z.object({
 
 export interface AiDeliberatorOptions {
   model: LanguageModel;
+  // Hard cap on tool-loop steps per cycle (safety rail). Default 8.
   maxSteps?: number;
-  // Cap on actions actually applied per cycle (a per-tenant safety rail).
+  // Optional cap on actions actually applied per cycle (per-tenant safety rail).
   maxActionsPerCycle?: number;
 }
 
@@ -49,16 +51,12 @@ export function aiDeliberator(opts: AiDeliberatorOptions): Deliberator {
               ) {
                 return `skipped ${action.kind}: per-cycle action cap (${maxActionsPerCycle}) reached`;
               }
-              try {
-                await action.apply(ctx.tenant, input);
-                await ctx.record(action.kind, input);
-                applied++;
-                return `applied ${action.kind}`;
-              } catch (err) {
-                if (!isVetoError(err)) throw err;
-                await ctx.vetoed(action.kind, err.reason, input);
-                return `vetoed ${action.kind}: ${err.reason}`;
+              const outcome = await applyAction(action, ctx, input);
+              if (!outcome.applied) {
+                return `vetoed ${action.kind}: ${outcome.vetoed}`;
               }
+              applied++;
+              return `applied ${action.kind}`;
             },
           }),
         ]),

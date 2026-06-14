@@ -6,7 +6,7 @@
 // the Eudaimon is about to do. Keep the two distinct: the Eudaimon drives, the
 // Daimonion only ever says "no".
 
-import type { Action, Awaitable, Domain } from "./core";
+import { type Action, type Awaitable, type Domain, VetoError } from "../core";
 
 export interface Veto {
   reason: string;
@@ -23,24 +23,9 @@ export interface Daimonion {
   }): Awaitable<Veto | null>;
 }
 
-// Thrown by a guarded action when the daimonion forbids it. The built-in
-// deliberators catch it, skip the action, and emit eudaimon.action.vetoed via
-// ctx.vetoed(); a custom deliberator should do the same.
-export class VetoError extends Error {
-  readonly reason: string;
-  constructor(reason: string) {
-    super(`action vetoed: ${reason}`);
-    this.name = "VetoError";
-    this.reason = reason;
-  }
-}
-
-export function isVetoError(err: unknown): err is VetoError {
-  return err instanceof VetoError;
-}
-
 // Screen every action through the daimonion before its side effect runs. A
-// forbidden action never applies. Composes over any Domain without the core or
+// forbidden action throws VetoError (which the deliberators turn into an
+// eudaimon.action.vetoed event); it composes over any Domain without the core or
 // the deliberators knowing the conscience exists.
 export function guardedBy(daimonion: Daimonion) {
   return <S, T, G>(domain: Domain<S, T, G>): Domain<S, T, G> => ({

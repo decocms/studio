@@ -1,25 +1,6 @@
 // @decocms/telos — domain-agnostic goal-pursuit agent core. This entrypoint is
-// IO-free and AI-free; the optional LLM deliberator lives at "@decocms/telos/ai".
+// IO-free and AI-free; the optional LLM deliberator lives at "@decocms/telos/ai",
+// and the Socratic/Platonic pieces at "/daimonion", "/elenchus", "/demiurge".
 
-export {
-  type Action,
-  type ApproveGoal,
-  type Awaitable,
-  type Deliberator,
-  type Domain,
-  type DomainEvent,
-  type DomainEventType,
-  Eudaimon,
-  type EudaimonDeps,
-  type EventBus,
-  type EventHandler,
-  type GoalLedger,
-  type GoalProposer,
-  type GoalSource,
-  type PursuitContext,
-  UnmovedMover,
-  wire,
-} from "./core";
-export { InMemoryGoalLedger } from "./ledger";
-export { inMemoryBus } from "./bus";
-export { ruleDeliberator } from "./deliberate-rule";
+export * from "./core";
+export { ruleDeliberator } from "./deliberators/rule";

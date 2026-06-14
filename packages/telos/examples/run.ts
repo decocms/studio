@@ -24,7 +24,7 @@ import {
 async function pickDeliberator(): Promise<Deliberator> {
   if (process.env.USE_AI === "1") {
     // dynamic import: only pull in `ai` when actually used
-    const { aiDeliberator } = await import("../src/deliberate-ai");
+    const { aiDeliberator } = await import("../src/deliberators/ai");
     return aiDeliberator({
       model: process.env.MODEL ?? "anthropic/claude-opus-4-6",
     });
