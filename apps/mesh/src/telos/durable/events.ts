@@ -14,7 +14,8 @@ export type TelosEvent =
       version: number;
       title: string;
     }
-  | { type: "facts.updated"; organizationId: string };
+  | { type: "facts.updated"; organizationId: string }
+  | { type: "goal.reached"; organizationId: string; version: number };
 
 export type TelosEventType = TelosEvent["type"];
 

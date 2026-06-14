@@ -6,7 +6,13 @@
 // telos migration files. Hosts map their own tenant id (e.g. org) to `tenant`.
 
 import { type ColumnType, type Kysely, sql } from "kysely";
-import { type GoalLedger, type GoalSource, UnmovedMover } from "../core";
+import {
+  type EventBus,
+  type GoalLedger,
+  type GoalSource,
+  inMemoryBus,
+  UnmovedMover,
+} from "../core";
 
 const SCHEMA = "telos";
 
@@ -54,6 +60,32 @@ export interface Fact {
   confidence: string;
   status: FactStatus;
   sourceUrl: string | null;
+}
+
+// A wired telos: the Postgres-backed goal ledger + fact store over the `telos`
+// schema, plus the core pubsub bus. The single thing a host holds onto.
+export interface Telos<T> {
+  ledger: GoalLedger<T>;
+  facts: ReturnType<typeof createPostgresFactStore>;
+  // Pursuit-loop bus (state.changed / goal.updated). In-memory by default; pass
+  // `pubsub` to fan out across pods (NATS/Redis-backed EventBus). Reserved for
+  // when a host wires an Eudaimon — wire({ bus: telos.bus, ledger, ... }).
+  bus: EventBus<T>;
+}
+
+// The single init: migrate the `telos` schema, then build the stores + bus over
+// the host's connection. The host maps its own tenant id (e.g. org) to `tenant`
+// and supplies the goal target type T. Safe to call on every boot.
+export async function initTelos<T>(config: {
+  db: Kysely<TelosTables>;
+  pubsub?: EventBus<T>;
+}): Promise<Telos<T>> {
+  await migrateTelos(config.db);
+  return {
+    ledger: createPostgresGoalLedger<T>(config.db),
+    facts: createPostgresFactStore(config.db),
+    bus: config.pubsub ?? inMemoryBus<T>(),
+  };
 }
 
 // Idempotent self-migration. Safe to call on every boot.
@@ -157,7 +189,8 @@ export function createPostgresGoalLedger<T>(
       const a = (await movers(tenant))
         .filter((m) => m.source === "authority")
         .at(-1);
-      if (!a) throw new Error(`no anchor (authority goal) for tenant ${tenant}`);
+      if (!a)
+        throw new Error(`no anchor (authority goal) for tenant ${tenant}`);
       return a;
     },
 

@@ -1463,6 +1463,4 @@ export interface Database {
   organization_domains: OrganizationDomainTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
-
 }
-

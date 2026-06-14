@@ -14,10 +14,7 @@ import {
   registerPublicSetsSyncWorkflow,
   setPublicSetsSyncRuntime,
 } from "../file-storage/dbos-public-sets-sync";
-import "@/telos/capabilities"; // load defineCapability side effects before registration
-import { registerTelosCapabilities } from "@/telos/durable/registry";
-import { setTelosRuntime } from "@/telos/durable/runtime";
-import { migrateTelosStore } from "@/telos/store";
+import { bootTelos } from "@/telos";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -1529,9 +1526,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   setPublicSetsSyncRuntime({ db: database.db, baseUrl: getPublicUrl() });
 
   // Telos owns its `telos` schema and migrates it itself (DBOS-style), so mesh
-  // carries no telos tables or migration files — it just triggers init + wires deps.
-  await migrateTelosStore(database.db);
-  setTelosRuntime({ db: database.db });
+  // carries no telos tables or migration files. One call: migrate, build stores,
+  // wire deps, and register durable capabilities (before DBOS.launch()).
+  await bootTelos(database.db);
 
   // ============================================================================
   // Automation Runtime — wire storage + streaming into the DBOS workflow
@@ -1578,7 +1575,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
-  registerTelosCapabilities();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,

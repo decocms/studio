@@ -109,7 +109,8 @@ given. When the goal is reached, the world has, in the small precise sense the g
 ## Architecture
 
 The core enforces one structural rule above all: **two causes, kept apart.** There are exactly
-two ways anything ever changes, wired as two separate event subscriptions in `core.ts`:
+two ways anything ever changes, wired as two separate event subscriptions in `wire()`
+(`core/eudaimon.ts`):
 
 ```
   the world moved        →   state.changed   →   Eudaimon.pursue()      (the agent reacts)
@@ -123,19 +124,30 @@ goal to declare itself finished.
 
 ```
 src/
-  core.ts             # UnmovedMover, the GoalLedger / Domain / Action / Deliberator ports,
-                      #   EventBus types, Eudaimon, wire()  — depends only on zod, never `ai`
-  ledger.ts           # InMemoryGoalLedger — the default, swappable for a DB-backed one
-  bus.ts              # inMemoryBus — the default, swappable for Redis / SNS / PubSub
-  deliberate-rule.ts  # ruleDeliberator — offline, deterministic, zero dependencies
-  deliberate-ai.ts    # aiDeliberator (import: "@decocms/telos/ai") — the ONLY file using `ai`
+  core/             # the Aristotelian core — depends only on zod, never `ai`
+    mover.ts        #   UnmovedMover — the frozen goal
+    ledger.ts       #   GoalLedger port + InMemoryGoalLedger (the default)
+    domain.ts       #   Domain / Action ports — the one thing you write
+    deliberator.ts  #   Deliberator port + applyAction
+    events.ts       #   EventBus types + inMemoryBus (the default)
+    eudaimon.ts     #   Eudaimon + wire() — the two-causes wiring
+  deliberators/
+    rule.ts         #   ruleDeliberator — offline, deterministic, zero dependencies
+    ai.ts           #   aiDeliberator ("@decocms/telos/ai") — the ONLY file using `ai`
+  extensions/
+    daimonion.ts    #   the veto guardrail ("@decocms/telos/daimonion")
+    elenchus.ts     #   goal-discovery dialectic, interface ("@decocms/telos/elenchus")
+    demiurge.ts     #   transcendent-ideal interface, reserved ("@decocms/telos/demiurge")
+  storage/
+    postgres.ts     #   Postgres adapter ("@decocms/telos/postgres") — optional peer `kysely`
 examples/
-  run.ts              # a runnable demo
-  domains/            # two example worlds (storefront, content-calendar) on the same core
+  run.ts            # a runnable demo
+  domains/          # two example worlds (storefront, calendar) on the same core
 ```
 
-Everything except `core.ts` is a *default you can replace*. The ledger, the bus, and the
-deliberator are all ports; the in-memory implementations exist so the thing runs today.
+Everything except `core/` is a *default you can replace*. The ledger, the bus, and the
+deliberator are all ports; the in-memory implementations exist so the thing runs today, and
+`@decocms/telos/postgres` is a shipped DB-backed ledger for when you need durability.
 
 ---
 
@@ -144,12 +156,13 @@ deliberator are all ports; the in-memory implementations exist so the thing runs
 ```bash
 bun add @decocms/telos
 
-# optional — only if you want the LLM-driven deliberator:
-bun add ai
+bun add ai      # optional — only for the LLM-driven deliberator (@decocms/telos/ai)
+bun add kysely  # optional — only for the Postgres storage adapter (@decocms/telos/postgres)
 ```
 
-The core depends only on `zod`. `ai` is an **optional peer dependency** used solely by the
-`@decocms/telos/ai` subpath; if you only ever use `ruleDeliberator`, you pull nothing extra.
+The core depends only on `zod`. `ai` and `kysely` are **optional peer dependencies**, each
+pulled by a single subpath; if you use only `ruleDeliberator` + the in-memory ledger, you pull
+nothing extra.
 
 ## Quickstart
 
@@ -171,7 +184,7 @@ final state: { conversionRate: 0.06, avgOrderValue: 95, bounceRate: 0.3, ... }
 ## Teaching it a new world (the one extension point)
 
 A `Domain` is everything world-specific. Implement it once per world your agent should inhabit;
-nothing in `core.ts` changes.
+nothing in `core/` changes.
 
 ```ts
 import {
@@ -215,6 +228,34 @@ const deliberator = aiDeliberator({
   maxActionsPerCycle: 5,  // optional safety rail: cap actions actually applied per cycle
 });
 ```
+
+## Persistence (`@decocms/telos/postgres`)
+
+The default `InMemoryGoalLedger` keeps everything in process. For durable storage,
+`@decocms/telos/postgres` is a Postgres adapter (Kysely) that — like DBOS — **owns its own
+database schema** (`telos`) and migrates it itself. The host never declares telos tables or
+carries telos migration files: it hands in a connection, calls `migrateTelos` once at boot,
+and maps its own tenant id (e.g. an org id) to `tenant`.
+
+```ts
+import {
+  migrateTelos,
+  createPostgresGoalLedger,
+  createPostgresFactStore,
+} from "@decocms/telos/postgres";
+
+await migrateTelos(db); // idempotent; creates the `telos` schema + tables
+const ledger = createPostgresGoalLedger<MyTarget>(db); // GoalLedger<T> over telos.goals
+const facts = createPostgresFactStore(db); // tentative elenchus findings over telos.facts
+```
+
+- **`telos.goals`** — the append-only ledger (`tenant, version, source, target` jsonb), one
+  lineage per tenant. Drops straight into `wire({ ledger })`.
+- **`telos.facts`** — tentative elenchus findings (`label, value, confidence, status`) the
+  tenant confirms or rejects: the persistence side of the goal-discovery dialectic.
+
+`kysely` is an **optional peer dependency**, pulled only by this subpath — the same arrangement
+as `ai` for the deliberator. The core stays IO-free.
 
 ## Self-directed goals (anchored)
 
@@ -265,7 +306,8 @@ job its metaphysics suits.
 - **`@decocms/telos/elenchus`** — *the goal-discovery dialectic* (interface). The goal is
   **uncovered by questioning**, not installed: `deliver(tenant) → GoalProposal<T>`. It births
   a candidate; an authority then installs it (the `goal.updated` path). This is the contract
-  the onboarding "research the user → propose a goal" flow implements.
+  the host's onboarding "research the user → propose a goal" flow implements; the tentative
+  findings it surfaces are persisted as `telos.facts` (see [Persistence](#persistence-decocmstelospostgres)).
 - **`@decocms/telos/demiurge`** — *the transcendent ideal you only approach* (interface only,
   **reserved**). Plato's Form: one shared, timeless standard every tenant resembles imperfectly,
   forever. `participation(state): number` (0..1) replaces `satisfied()` — you approach, never
@@ -326,18 +368,23 @@ the implementation is future work.)
    collapses into a system that congratulates itself.
 3. **Succession, not mutation.** A new goal is a new version; old versions stay in history,
    untouched.
-4. **The core is IO-free and AI-free.** The main entrypoint never imports `ai`. Only
-   `@decocms/telos/ai` may. That's what keeps the offline path light and the package portable.
+4. **The core is IO-free and AI-free.** The main entrypoint never imports `ai` or `kysely` —
+   only the `@decocms/telos/ai` and `@decocms/telos/postgres` subpaths may. That's what keeps
+   the offline path light and the package portable.
+5. **Telos owns its persistence.** The `@decocms/telos/postgres` adapter lives in its own DB
+   schema (`telos`) and self-migrates; a host never declares telos tables or carries telos
+   migrations. It maps its own tenant id to `tenant` and otherwise stays out of the way.
 
 ## Using telos as its own repo
 
-It's self-contained (deps: `zod`; optional peer: `ai`). To lift it out of this monorepo:
+It's self-contained (deps: `zod`; optional peers: `ai`, `kysely`). To lift it out of this monorepo:
 inline the compiler options from the root `tsconfig.json` into this package's `tsconfig.json`
 (it currently `extends` the root), add a minimal root config + CI, then
 `bun install && bun test && bun run example`.
 
 ---
 
-*v1 — standalone and inert. Nothing in the wider codebase imports it yet; see
-[`MESH-INTEGRATION.md`](./MESH-INTEGRATION.md) for how it would later attach to a host, and
-[`SPEC.md`](./SPEC.md) for the full contract.*
+*The core is standalone and host-agnostic (deps: `zod`; optional peers: `ai`, `kysely`). It's
+wired into the Studio host today for new-user onboarding — the elenchus researches a new
+tenant, persists tentative facts, and proposes the first goal — but nothing in the core depends
+on that host, and the package can be lifted into its own repo unchanged.*
