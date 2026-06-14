@@ -1,11 +1,5 @@
-/**
- * Shared telos SSE pool.
- *
- * One ref-counted EventSource per `orgSlug` for `/api/:org/watch` filtered to
- * the telos notification events. Lets the home subscribe for live goal/fact
- * updates instead of polling. EventSource listens to named events, so the
- * concrete type list is enumerated here (no client-side wildcard).
- */
+// One ref-counted EventSource per org over /api/:org/watch, filtered to the telos
+// notification types (EventSource listens to named events, so they're enumerated).
 
 import {
   createSSESubscription,

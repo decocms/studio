@@ -1,19 +1,8 @@
-/**
- * Telos onboarding
- *
- * `GET  /api/:org/telos-goal`        → { goal, facts, status }
- * `POST /api/:org/telos-facts/:id`   → { status: "confirmed" | "rejected" }
- *
- * On first access we publish a `user.signup` trigger onto the durable telos bus,
- * which enqueues the onboarding-research capability (Firecrawl + Perplexity via
- * OpenRouter → tentative FACTS + a GOAL installed as the authority anchor). The
- * enqueue is durable + OAOO-idempotent, so this also backfills orgs that predate
- * the signup hook, and a re-fire collapses onto the in-flight run. GET reports
- * `status: "researching"` until the goal lands; the client updates live via the
- * `telos.goal.installed` SSE notification (see use-telos-goal).
- *
- * The research email is MOCKED (RESEARCH_EMAIL) — no real signup data yet.
- */
+// GET /api/:org/telos-goal → { goal, facts, status }
+// POST /api/:org/telos-facts/:id → confirm/reject a fact
+//
+// No goal yet → publish a user.signup trigger (durable, OAOO), which also
+// backfills orgs predating the signup hook; the client updates live via SSE.
 
 import type { StudioContext } from "@/core/studio-context";
 import { telosBus } from "@/telos/durable/bus";
@@ -44,8 +33,7 @@ export function createTelosGoalRoutes() {
       ? { ...anchor.target, version: anchor.version, source: anchor.source }
       : null;
 
-    // No goal yet → kick the durable research capability (OAOO-deduped) and tell
-    // the client we're working on it. Survives restarts; no in-process bookkeeping.
+    // No goal yet → kick the durable research capability (OAOO-deduped).
     if (!goal) {
       await telosBus.publish({
         type: "user.signup",

@@ -1,8 +1,5 @@
-/**
- * useTelosEvents — fire `onChange` whenever a telos SSE notification arrives for
- * the org. Uses useSyncExternalStore for a stable React 19 subscription
- * lifecycle (no useEffect); the EventSource is ref-counted in the pool.
- */
+// Fire `onChange` on any telos SSE notification for the org. useSyncExternalStore
+// (not useEffect) for the subscription lifecycle; the EventSource is pooled.
 
 import { useRef, useSyncExternalStore } from "react";
 import { telosSSE } from "./telos-sse-pool";

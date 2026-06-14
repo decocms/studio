@@ -13,8 +13,7 @@ export interface TelosFact {
   sourceUrl: string | null;
 }
 
-// DB access for the tentative onboarding facts. Append on research; the user
-// then confirms/rejects each from the home.
+// Tentative onboarding facts: appended by research, confirmed/rejected by the user.
 export class FactStore {
   constructor(private readonly db: Kysely<Database>) {}
 

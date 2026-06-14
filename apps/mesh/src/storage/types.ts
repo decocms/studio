@@ -1470,11 +1470,7 @@ export interface Database {
   telos_fact: TelosFactTable;
 }
 
-/**
- * Append-only goal ledger for the telos engine. One lineage per organization;
- * `source` separates the fixed anchor ("authority") from engine-proposed
- * subordinate goals ("engine"). `target` is the serialized UnmovedMover target.
- */
+// Append-only goal ledger; one lineage per org. source = "authority" | "engine".
 export interface TelosGoalTable {
   id: string;
   organization_id: string;
@@ -1485,11 +1481,7 @@ export interface TelosGoalTable {
   created_at: ColumnType<Date, string | undefined, string>;
 }
 
-/**
- * Tentative findings the onboarding research (elenchus) uncovered about an org's
- * owner. PROPOSED until the user confirms or rejects each — `status` carries that
- * dialectic. Surfaced on the home so the user can curate what we believe.
- */
+// Tentative onboarding findings the user confirms/rejects (status).
 export interface TelosFactTable {
   id: string;
   organization_id: string;

@@ -4,11 +4,8 @@ import { researchUser } from "@/telos/research";
 import { telosBus } from "../durable/bus";
 import { defineCapability } from "../durable/capability";
 
-// Capability #1 — the elenchus, made durable. On user.signup we research the
-// owner (Firecrawl + Perplexity via OpenRouter) and let the telos engine set the
-// org's first goal. Each step journals: a crash after `research` resumes at
-// `persist-facts` without re-charging the LLM/scrape. OAOO on the workflow ID
-// (key = organizationId) makes a double-signup collapse onto one run.
+// On user.signup, research the owner and set the org's first goal. Steps journal
+// so a crash after research resumes without re-charging the LLM/scrape.
 defineCapability({
   name: "onboarding-research",
   version: "v1",
@@ -18,8 +15,7 @@ defineCapability({
     const ledger = new KyselyGoalLedger(runtime.db);
     const facts = new FactStore(runtime.db);
 
-    // Skip orgs already seeded (e.g. before this capability existed). OAOO covers
-    // re-fires; this covers a pre-existing goal from an earlier seeding path.
+    // Skip orgs that already have a goal (OAOO covers re-fires of the same org).
     const seeded = await step("check-existing", () =>
       ledger.history(event.organizationId).then((h) => h.length > 0),
     );
@@ -33,7 +29,6 @@ defineCapability({
       ledger.install(event.organizationId, result.target, "authority"),
     );
 
-    // Notify connected clients the goal landed (best-effort live push).
     await telosBus.publish({
       type: "goal.installed",
       organizationId: event.organizationId,

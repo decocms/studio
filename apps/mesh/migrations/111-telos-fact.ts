@@ -1,11 +1,7 @@
 import { type Kysely, sql } from "kysely";
 
-/**
- * telos_fact — tentative findings the elenchus uncovered about an org's owner
- * during onboarding research. They are PROPOSED, not asserted: the user confirms
- * or rejects each one, so `status` carries the dialectic ("proposed" → the
- * person half-knew it, "confirmed" → recollected/agreed, "rejected" → refuted).
- */
+// telos_fact — tentative findings from onboarding research. status is
+// proposed | confirmed | rejected; the user curates them.
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema
     .createTable("telos_fact")

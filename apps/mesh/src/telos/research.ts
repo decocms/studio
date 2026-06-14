@@ -3,10 +3,8 @@ import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import type { OnboardingTarget } from "./target";
 
-// Real onboarding research — the elenchus made concrete. From an email we scrape
-// the person's domain (Firecrawl), web-search who they are (Perplexity via
-// OpenRouter), then synthesize TENTATIVE facts + a candidate goal (a capable
-// OpenRouter model). Facts are proposals: the user confirms or rejects them.
+// From an email: scrape the domain (Firecrawl), web-search the person
+// (Perplexity via OpenRouter), then synthesize tentative facts + a candidate goal.
 
 export interface ResearchedFact {
   label: string;
@@ -21,8 +19,7 @@ export interface ResearchResult {
   rationale: string;
 }
 
-// The onboarding research subject. Mocked to a fixed address — we don't have
-// real signup data wired yet; override with TELOS_RESEARCH_EMAIL.
+// Mocked research subject — no real signup data yet. Override with TELOS_RESEARCH_EMAIL.
 export const RESEARCH_EMAIL =
   process.env.TELOS_RESEARCH_EMAIL ?? "pedrofrxncx@deco.cx";
 
@@ -48,8 +45,7 @@ const Synthesis = z.object({
   }),
 });
 
-// Best-effort Firecrawl scrape of the email's domain. Returns markdown context
-// for the synthesis step, or "" if the key is missing or the call fails.
+// Best-effort: returns "" if the key is missing or the scrape fails.
 async function scrapeDomain(domain: string): Promise<string> {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key || !domain) return "";
@@ -88,7 +84,6 @@ export async function researchUser(email: string): Promise<ResearchResult> {
 
   const domain = (email.split("@")[1] ?? "").toLowerCase();
 
-  // 1) Scrape the domain + web-search the person in parallel.
   const [site, dossier] = await Promise.all([
     scrapeDomain(domain),
     generateText({
@@ -107,7 +102,6 @@ export async function researchUser(email: string): Promise<ResearchResult> {
     ),
   ]);
 
-  // 2) Synthesize tentative facts + a candidate goal from the gathered context.
   const { object } = await generateObject({
     model: openrouter(SYNTH_MODEL),
     schema: Synthesis,

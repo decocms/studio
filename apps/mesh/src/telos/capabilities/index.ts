@@ -1,4 +1,3 @@
-// Importing this barrel loads every capability for its `defineCapability` side
-// effect (populating CAPABILITIES). app boot imports it before
-// registerTelosCapabilities() so the registry sees them all.
+// Side-effect import: loads each capability's defineCapability() call into
+// CAPABILITIES. app boot imports this before registerTelosCapabilities().
 import "./onboarding-research";

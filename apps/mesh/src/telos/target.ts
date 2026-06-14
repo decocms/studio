@@ -1,5 +1,4 @@
-// The org's first goal — deliberately measurable from Mesh's own data (the world
-// a future Eudaimon would observe: connections made, automations run, …).
+// The org's first goal — measurable from Mesh's own data.
 export interface OnboardingTarget {
   title: string;
   metric: "connections" | "automations_run";

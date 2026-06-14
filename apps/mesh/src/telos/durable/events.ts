@@ -1,12 +1,6 @@
-// Mesh-native telos event union — the things the durable bus carries.
-//
-// Two kinds flow through the same bus:
-//  - TRIGGERS (e.g. user.signup) start durable capabilities.
-//  - NOTIFICATIONS (e.g. goal.installed) report that durable work finished, so
-//    connected clients can update live (via the SSE hub).
-//
-// Every event carries `organizationId` (tenant === org in mesh) so the bus can
-// scope the client notification without a per-type accessor.
+// Triggers (user.signup) start capabilities; notifications (goal.installed)
+// report durable work finished. Every event carries organizationId so the bus
+// can scope the SSE notification.
 export type TelosEvent =
   | {
       type: "user.signup";

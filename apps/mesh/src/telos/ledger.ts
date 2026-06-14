@@ -3,8 +3,7 @@ import { type GoalLedger, type GoalSource, UnmovedMover } from "@decocms/telos";
 import type { Kysely } from "kysely";
 import type { OnboardingTarget } from "./target";
 
-// DB-backed telos GoalLedger over the `telos_goal` table — the adapter that lets
-// the in-memory engine persist per-org goals. Append-only; one lineage per org.
+// DB-backed GoalLedger over telos_goal. Append-only; one lineage per org.
 export class KyselyGoalLedger implements GoalLedger<OnboardingTarget> {
   constructor(private readonly db: Kysely<Database>) {}
 
