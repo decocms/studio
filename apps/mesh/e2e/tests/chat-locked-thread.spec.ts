@@ -14,7 +14,7 @@
  *     after sending a conflicting body.
  *
  *   - Task 5 / Task 6 (UI affordance): on a locked thread the harness pill
- *     and branch chip render as `harness-picker-locked` /
+ *     and branch chip render as `mode-picker-locked` /
  *     `branch-picker-locked` with the original values, and the same is true
  *     after a hard reload.
  *
@@ -251,7 +251,7 @@ test.describe("Thread runtime is locked after first message", () => {
     try {
       // Seed an AI provider key so the thread route renders the
       // composer instead of `NoAiProviderEmptyState`. Without this,
-      // `harness-picker-locked` never mounts because the chat input
+      // `mode-picker-locked` never mounts because the chat input
       // itself is short-circuited away.
       await seedAiProviderKey(api, orgSlug);
 
@@ -282,13 +282,13 @@ test.describe("Thread runtime is locked after first message", () => {
       // harness/branch pickers entirely.
       await page.goto(`/${orgSlug}/${threadId}?virtualmcpid=${agentId}`);
 
-      const lockedHarness = page.getByTestId("harness-picker-locked");
+      const lockedHarness = page.getByTestId("mode-picker-locked");
       await expect(lockedHarness).toBeVisible({ timeout: 60_000 });
       await expect(lockedHarness).toHaveAccessibleName(/claude code/i);
 
       // The unlocked-state harness trigger must NOT be present — that
       // would mean the lock chip is shadowed by the live picker.
-      await expect(page.getByTestId("harness-picker")).toHaveCount(0);
+      await expect(page.getByTestId("mode-picker")).toHaveCount(0);
 
       // Note: the branch-picker-locked chip is intentionally not asserted
       // here. `ChatModeRow` gates `BranchPill` on
@@ -303,7 +303,7 @@ test.describe("Thread runtime is locked after first message", () => {
 
       // Hard reload — locked affordance must survive a fresh mount.
       await page.reload();
-      await expect(page.getByTestId("harness-picker-locked")).toBeVisible({
+      await expect(page.getByTestId("mode-picker-locked")).toBeVisible({
         timeout: 60_000,
       });
     } finally {
