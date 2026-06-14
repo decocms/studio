@@ -266,11 +266,21 @@ export class NatsStreamBuffer implements StreamBuffer {
 
     void (async () => {
       const reader = stream.getReader();
+      let sinceYield = 0;
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           publishChunk(value);
+          // `reader.read()` normally yields to the event loop between chunks,
+          // but a producer with many buffered chunks can resolve reads
+          // synchronously in a burst — starving I/O (health checks, other
+          // streams' encodes). Yield via setImmediate every N chunks so the
+          // loop always gets a turn even under a synchronous burst.
+          if (++sinceYield >= 64) {
+            sinceYield = 0;
+            await new Promise<void>((resolve) => setImmediate(resolve));
+          }
         }
       } catch (err) {
         console.warn(

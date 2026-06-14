@@ -1746,15 +1746,25 @@ export async function pullDispatch(
       // /_sandbox/dispatch (which re-inflates from messagesRef).
       let effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
       let messagesRef: MessagesRef | null = null;
-      const encodedInput = JSON.stringify(wireHarnessInput);
-      if (shouldOffload(Buffer.byteLength(encodedInput, "utf8"))) {
+      // `messages` dominates the payload — serialize it once and reuse the same
+      // bytes for both the offload size-gate and the object-storage body,
+      // instead of stringifying the whole input and then the messages array
+      // again on the offload path.
+      const messagesBytes = new TextEncoder().encode(
+        JSON.stringify(wireHarnessInput.messages),
+      );
+      const inputByteLength =
+        messagesBytes.byteLength +
+        Buffer.byteLength(
+          JSON.stringify({ ...wireHarnessInput, messages: undefined }),
+          "utf8",
+        );
+      if (shouldOffload(inputByteLength)) {
         if (ctx.objectStorage) {
           try {
             const reqId = crypto.randomUUID();
-            const messagesJson = JSON.stringify(wireHarnessInput.messages);
-            const bytes = new TextEncoder().encode(messagesJson);
             const key = offloadKey(reqId);
-            await ctx.objectStorage.put(key, bytes, {
+            await ctx.objectStorage.put(key, messagesBytes, {
               contentType: "application/json",
             });
             const url = await ctx.objectStorage.presignedGetUrl(key, 600, {
@@ -1762,13 +1772,13 @@ export async function pullDispatch(
             });
             messagesRef = {
               url,
-              bytes: bytes.byteLength,
-              sha256: await sha256Hex(bytes),
+              bytes: messagesBytes.byteLength,
+              sha256: await sha256Hex(messagesBytes),
             };
             // Replace messages inline with [] — the real messages live at the ref.
             effectiveHarnessInput = { ...wireHarnessInput, messages: [] };
             console.log(
-              `[pullDispatch] offloaded messages to object storage key=${key} bytes=${bytes.byteLength} runId=${taskId}`,
+              `[pullDispatch] offloaded messages to object storage key=${key} bytes=${messagesBytes.byteLength} runId=${taskId}`,
             );
           } catch (err) {
             // Offload failed — fall through with the full payload and let
