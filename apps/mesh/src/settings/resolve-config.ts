@@ -13,6 +13,15 @@ function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
 
+/** Tri-state flag: unset/empty → `fallback`, otherwise parse as boolean. */
+function toBoolWithDefault(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
+  if (value === undefined || value === "") return fallback;
+  return value === "true" || value === "1";
+}
+
 /**
  * Determine if a URL points to a non-local host (i.e., an external service).
  * Returns the URL string if external, null if local or not set.
@@ -110,6 +119,12 @@ export function resolveConfig(
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
+    // MCP caching is on by default in production, off in development. Set
+    // MCP_CACHE_ENABLED=false to disable in prod, =true to enable in dev.
+    mcpCacheEnabled: toBoolWithDefault(
+      envVars.MCP_CACHE_ENABLED,
+      nodeEnv !== "development",
+    ),
     orgFsClusterMounts: toBool(envVars.ORGFS_CLUSTER_MOUNTS),
     orgFsPublicSetsJson: envVars.ORGFS_PUBLIC_SETS,
 

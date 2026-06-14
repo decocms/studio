@@ -198,6 +198,7 @@ export function createLazyClient(
   // confirm read-only, VIRTUAL connections (they compose other conns), and calls
   // with a custom result schema bypass entirely. `options` (e.g. the timeout) is
   // forwarded to the live fetch but excluded from the cache key.
+  // null when MCP caching is disabled (settings-gated).
   const readCache = getMcpReadCache();
   const cacheReads = connection.connection_type !== "VIRTUAL";
 
@@ -209,7 +210,7 @@ export function createLazyClient(
       typeof toolName === "string" &&
       (await isReadOnlyTool(cache, connection.id, toolName));
 
-    if (!cacheable) {
+    if (!readCache || !cacheable) {
       const real = await getRealClient();
       return real.callTool(params, resultSchema, options);
     }
@@ -235,7 +236,7 @@ export function createLazyClient(
   };
 
   placeholder.getPrompt = async (params, options) => {
-    if (!cacheReads) {
+    if (!readCache || !cacheReads) {
       const real = await getRealClient();
       return real.getPrompt(params, options);
     }
@@ -254,7 +255,7 @@ export function createLazyClient(
   };
 
   placeholder.readResource = async (params, options) => {
-    if (!cacheReads) {
+    if (!readCache || !cacheReads) {
       if (process.env?.MCP_CACHE_DEBUG) {
         console.log(
           "[mcp-read-cache] BYPASS (VIRTUAL)",
