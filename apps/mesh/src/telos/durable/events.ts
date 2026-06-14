@@ -16,7 +16,6 @@ export type TelosEvent =
       title: string;
     }
   | { type: "facts.updated"; organizationId: string }
-  | { type: "goal.reached"; organizationId: string; version: number }
   | {
       type: "goal.suggestion";
       organizationId: string;

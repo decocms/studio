@@ -2,4 +2,3 @@
 // CAPABILITIES. app boot imports this before registerTelosCapabilities().
 import "./onboarding-research";
 import "./goal-pursuit";
-import "./goal-progression";

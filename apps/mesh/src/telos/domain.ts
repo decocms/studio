@@ -17,22 +17,34 @@ export type Step =
   | { kind: "action"; id: string; label: string; signal: string };
 
 // The ordered curriculum toward a Goal — hardcoded by us, walked by the engine.
-// Today: bring the user's core storefront tools into Studio. Apps are verified
-// registry bindings (never something we can't install). The list grows as the
-// engine learns new moves; it branches on the Goal once there's more than one.
+// Today: bring the user's core storefront tools into Studio. `appName` is the
+// EXACT scoped id COLLECTION_REGISTRY_APP_GET resolves (verified against the live
+// Deco Store) — never a guess, so a step can never reference an app we can't
+// install. The list grows as the engine learns new moves; it branches on the Goal
+// once there's more than one.
 export function curriculumFor(_goal: Goal): Step[] {
   return [
     {
       kind: "connect-app",
       id: "connect-github",
       label: "Connect GitHub",
-      app: { label: "GitHub", match: ["github"], appName: "@deco/github" },
+      app: {
+        label: "GitHub",
+        match: ["github"],
+        appName: "deco/mcp-github",
+        icon: "https://github.githubassets.com/assets/GitHub-Mark-ea2971cee799.png",
+      },
     },
     {
       kind: "connect-app",
-      id: "connect-shopify",
-      label: "Connect Shopify",
-      app: { label: "Shopify", match: ["shopify"], appName: "@deco/shopify" },
+      id: "connect-vtex",
+      label: "Connect VTEX",
+      app: {
+        label: "VTEX",
+        match: ["vtex"],
+        appName: "deco/vtex",
+        icon: "https://assets.decocache.com/decocms/d08dbe46-1ce2-4e3a-a99b-d2d0e7de7e61/vtex-logo.png",
+      },
     },
   ];
 }
@@ -175,10 +187,12 @@ export function onboardingDomain(
   return {
     name: "studio-onboarding",
     observe: (tenant) => observeState(db, tenant),
-    satisfied: (state, goal) => {
-      const steps = curriculumFor(goal);
-      return steps.length > 0 && steps.every((s) => isStepComplete(s, state));
-    },
+    // The anchor Goal ("100x your storefront operation") is enduring — it has no
+    // terminal condition, so it is NEVER satisfied. This is deliberate: the kernel
+    // only deliberates while `!satisfied`, so a continuously-unsatisfied Goal keeps
+    // the engine alive — it re-thinks (and produces a thought) on every state
+    // change and never rests. The curriculum is the gap, not the finish line.
+    satisfied: () => false,
     gap: (state, goal) => {
       const missing = curriculumFor(goal)
         .filter((s) => !isStepComplete(s, state))
@@ -186,19 +200,33 @@ export function onboardingDomain(
       return { missing, remaining: missing.length };
     },
     instructions:
-      "Pursue the FIXED Goal you cannot change. Guide the org through the steps " +
-      "the engine derives toward it, in order; once it has no further step to " +
-      "recommend, rest. Never redefine the Goal or invent steps.",
+      "Pursue the FIXED Goal you cannot change. While the org still has foundational " +
+      "steps the engine names, guide it through them in order. Once they are all done, " +
+      "keep advancing the Goal with what is now connected — never rest, never redefine " +
+      "the Goal, and never invent tools to connect.",
     actions: onboardingActions,
-    prompt: ({ state, target: goal, gap }) =>
-      `Goal: ${goal.title}. Steps still to do: ` +
-      `${gap.missing.join(", ") || "none"}.` +
-      (state.confirmedFacts.length
+    prompt: ({ state, target: goal, gap }) => {
+      const facts = state.confirmedFacts.length
         ? ` What the user has confirmed about themselves: ` +
           `${state.confirmedFacts.map((f) => `${f.label} — ${f.value}`).join("; ")}.`
-        : "") +
-      ` Recommend the single next step the user should take, named, and why it ` +
-      `moves them toward the Goal.`,
+        : "";
+      // Two phases of the same enduring Goal: connect the foundation, then act on it.
+      if (gap.remaining > 0) {
+        return (
+          `Goal: ${goal.title}. Tools still to connect: ${gap.missing.join(", ")}.` +
+          facts +
+          ` Recommend the single next tool the user should connect, named, and why ` +
+          `it moves them toward the Goal.`
+        );
+      }
+      return (
+        `Goal: ${goal.title}. The foundational tools are all connected.` +
+        facts +
+        ` Reflect on the single most valuable next move toward this Goal with what ` +
+        `is now connected. Speak to the user directly. Do NOT suggest connecting ` +
+        `more tools — focus on what to do with what they have.`
+      );
+    },
     // Deterministic fallback: recommend the next incomplete connect-app step. Action
     // steps have no engine-emittable action yet, so they're skipped by plan().
     plan: ({ state, target: goal }) => {

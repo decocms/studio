@@ -59,7 +59,6 @@ const readReason = (payload: unknown): string | undefined => {
 
 // The shape a cycle reports back so the loop can decide what to do next.
 export interface PursuitOutcome {
-  reached: boolean;
   // No installed goal — nothing to pursue; the loop must not re-arm.
   noGoal?: boolean;
   // Did the observed world move since the last cycle? Drives diff-gating + cadence.
@@ -70,8 +69,8 @@ export interface PursuitOutcome {
 
 // One pursuit cycle for an org: observe the world, and only when it has moved,
 // deliberate (AI when a model is configured, deterministic otherwise) and act.
-// The kernel's pursue() reports the cycle's outcome; we bridge what mesh cares
-// about — goal reached, the recommended next step — onto the durable bus and SSE.
+// The Goal is enduring and never "satisfied" (see domain.ts), so a cycle never
+// declares the org done — it keeps producing the next step/thought toward the Goal.
 export async function runPursuitCycle(
   organizationId: string,
 ): Promise<PursuitOutcome> {
@@ -83,26 +82,11 @@ export async function runPursuitCycle(
   try {
     mover = await runtime.store.ledger.latest(organizationId);
   } catch {
-    return { reached: false, noGoal: true };
+    return { noGoal: true };
   }
 
   const state = await domain.observe(organizationId);
-
   const sig = sigOf(state);
-
-  if (domain.satisfied(state, mover.target)) {
-    lastObserved.set(organizationId, {
-      version: mover.version,
-      sig,
-      tools: state.connectedTools,
-    });
-    await telosBus.publish({
-      type: "goal.reached",
-      organizationId,
-      version: mover.version,
-    });
-    return { reached: true };
-  }
 
   // Diff-gate: only spend deliberation when the goal or the connected tools
   // actually moved. Unchanged cycles re-arm cheaply with no model call.
@@ -119,7 +103,7 @@ export async function runPursuitCycle(
     sig,
     tools: state.connectedTools,
   });
-  if (!changed) return { reached: false, changed: false };
+  if (!changed) return { changed: false };
 
   // When the user just connected something, ask the agent to acknowledge it in its
   // reasoning before recommending the next step (the thought then reads naturally).
@@ -141,18 +125,9 @@ export async function runPursuitCycle(
   });
   const outcome = await eudaimon.pursue();
 
-  // Bridge the kernel's report onto mesh's durable bus + SSE: surface what mesh
-  // cares about (goal reached, the recommended next step, the live reasoning) and
-  // drop the rest. The returned outcome lets the loop rest, re-arm, or stop.
-  if (outcome.satisfied) {
-    await telosBus.publish({
-      type: "goal.reached",
-      organizationId,
-      version: outcome.moverVersion,
-    });
-    return { reached: true, changed: true };
-  }
-
+  // Bridge the kernel's report onto mesh's SSE: surface the recommended next step
+  // and the live reasoning, drop the rest. The Goal is never satisfied, so every
+  // changed cycle produces a thought — the engine is never silent after a change.
   for (const suggestion of outcome.suggested) {
     const reason = readReason(suggestion.payload);
     latestSuggestion.set(organizationId, {
@@ -160,7 +135,9 @@ export async function runPursuitCycle(
       reason,
       version: outcome.moverVersion,
     });
-    await telosBus.publish({
+    // Ephemeral UI state (cached above + live SSE), no capability listens — so
+    // notify, never publish: this runs in a step and publish would enqueue.
+    telosBus.notify({
       type: "goal.suggestion",
       organizationId,
       version: outcome.moverVersion,
@@ -178,17 +155,18 @@ export async function runPursuitCycle(
     });
   }
 
-  return { reached: false, changed: true, sleepMs: outcome.nextReviewMs };
+  return { changed: true, sleepMs: outcome.nextReviewMs };
 }
 
 // === The pursuit schedule: a self-re-arming debounced loop ===
 //
 // DBOS gives us a debouncer; we don't need a schedules table. Each cycle re-arms
-// the next one after a dynamic delay clamped to [MIN, MAX]; reaching the goal
-// simply stops the re-arm (the striver rests). Event triggers debounce the SAME
-// key to pull the next cycle sooner, coalescing with the scheduled tick — so a
-// goal runs at least on its cadence AND promptly on relevant events, never twice
-// at once. "Many schedules" = more keys; "always ≥1 basic" = ensure the basic key.
+// the next one after a dynamic delay clamped to [MIN, MAX]. The Goal is enduring,
+// so the loop never stops on its own while a goal is installed — only a missing
+// goal (or pod death, caught by the safety net) ends it. Event triggers debounce
+// the SAME key to pull the next cycle sooner, coalescing with the scheduled tick —
+// so a goal runs at least on its cadence AND promptly on relevant events, never
+// twice at once. "Many schedules" = more keys; "always ≥1 basic" = ensure the key.
 
 const HOUR_MS = 60 * 60 * 1000;
 const positiveMs = (raw: string | undefined, fallback: number): number => {
@@ -220,28 +198,19 @@ const pursuitKey = (organizationId: string, kind = "basic"): string =>
 // next cycle toward MIN.
 const nextPursuitDelayMs = (): number => clampDelay(PURSUIT_MAX_MS);
 
-// Cheap reached-check (observe only, no deliberation) so the safety net doesn't
-// wake a resting, already-flourishing goal.
-async function isGoalReached(organizationId: string): Promise<boolean> {
-  const runtime = requireTelosRuntime();
-  const domain = onboardingDomain(runtime.db);
-  const mover = await runtime.store.ledger.latest(organizationId);
-  const state = await domain.observe(organizationId);
-  return domain.satisfied(state, mover.target);
-}
-
-// One tick of the loop: pursue, then re-arm the next unless the goal is reached.
-// The pause is what the AGENT decided this cycle (clamped to [MIN, MAX]), else the
-// fallback cadence. The re-arm is a debounced wait — durable, and an event can cut
-// it short by debouncing the same key. debounce() starts a workflow, so it runs in
-// the workflow body, never inside a step.
+// One tick of the loop: pursue, then re-arm the next cycle. The Goal never
+// "completes", so the loop always re-arms while a goal is installed — backing off
+// to MAX when idle, pulled toward MIN by activity. The pause is what the AGENT
+// decided this cycle (clamped to [MIN, MAX]), else the fallback cadence. The re-arm
+// is a debounced wait — durable, and an event can cut it short by debouncing the
+// same key. debounce() starts a workflow, so it runs in the workflow body.
 async function pursuitTickFn(organizationId: string): Promise<void> {
-  const { reached, noGoal, changed, sleepMs } = await DBOS.runStep(
+  const { noGoal, changed, sleepMs } = await DBOS.runStep(
     () => runPursuitCycle(organizationId),
     { name: "telos.pursuit:cycle" },
   );
-  // Reached → rest. No goal → nothing to pursue. Neither re-arms.
-  if (reached || noGoal) return;
+  // No goal → nothing to pursue; don't re-arm.
+  if (noGoal) return;
   // Stay responsive while the world is moving (the agent's pace, or MIN), back off
   // to MAX when idle. Activity pulls (pullPursuit) cut below MIN when the user acts.
   const delay = changed ? (sleepMs ?? PURSUIT_MIN_MS) : PURSUIT_MAX_MS;
@@ -249,8 +218,9 @@ async function pursuitTickFn(organizationId: string): Promise<void> {
 }
 
 // Safety net: a goal whose loop chain dies (e.g. a tick fails permanently) would
-// silently stop being pursued. This re-arms the basic loop for every not-yet-
-// reached goal on a heartbeat — cheap insurance that every goal keeps striving.
+// silently stop being pursued. This re-arms the basic loop for every org with a
+// goal on a heartbeat — cheap insurance that every goal keeps striving. The tick
+// diff-gates, so reviving a quiet org is nearly free (observe, no model call).
 async function pursuitSafetyNetFn(
   _scheduledTime: Date,
   _startedAt: Date,
@@ -261,10 +231,7 @@ async function pursuitSafetyNetFn(
     { name: "telos.pursuit:safety-net-tenants" },
   );
   for (const organizationId of tenants) {
-    const reached = await DBOS.runStep(() => isGoalReached(organizationId), {
-      name: "telos.pursuit:safety-net-check",
-    });
-    if (!reached) await armPursuit(organizationId, nextPursuitDelayMs());
+    await armPursuit(organizationId, nextPursuitDelayMs());
   }
 }
 
