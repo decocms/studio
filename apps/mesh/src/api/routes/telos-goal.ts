@@ -8,7 +8,7 @@ import type { StudioContext } from "@/core/studio-context";
 import { telos } from "@/telos";
 import { telosBus } from "@/telos/durable/bus";
 import type { FactStatus } from "@decocms/telos/postgres";
-import { RESEARCH_EMAIL } from "@/telos/research";
+import { researchSubject } from "@/telos/research";
 import { Hono } from "hono";
 
 type Variables = { meshContext: StudioContext };
@@ -34,11 +34,16 @@ export function createTelosGoalRoutes() {
 
     // No goal yet → kick the durable research capability (OAOO-deduped).
     if (!goal) {
+      const subject = researchSubject(
+        mesh.auth.user?.email,
+        mesh.auth.user?.name,
+      );
       await telosBus.publish({
         type: "user.signup",
         organizationId: orgId,
         userId: mesh.auth.user?.id ?? "",
-        email: RESEARCH_EMAIL,
+        email: subject.email,
+        name: subject.name,
       });
     }
 

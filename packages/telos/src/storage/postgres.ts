@@ -197,6 +197,15 @@ export function createPostgresGoalLedger<T>(
     async history(tenant) {
       return movers(tenant);
     },
+
+    async tenants() {
+      const rows = await scoped
+        .selectFrom("goals")
+        .select("tenant")
+        .distinct()
+        .execute();
+      return rows.map((r) => r.tenant);
+    },
   };
 }
 

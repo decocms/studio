@@ -1,7 +1,22 @@
 import { useTelosGoal } from "@/web/hooks/use-telos-goal";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
-import { Check, Loading01, Target04, X } from "@untitledui/icons";
+import {
+  Check,
+  LinkExternal01,
+  Loading01,
+  Target04,
+  X,
+} from "@untitledui/icons";
+
+const sourceHost = (url: string | null): string | null => {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+};
 
 export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
   const { goal, facts, status, confirmFact, rejectFact } =
@@ -55,11 +70,22 @@ export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
               key={fact.id}
               className="flex flex-row items-center justify-between gap-3"
             >
-              <div className="flex flex-col">
+              <div className="flex flex-col gap-0.5">
                 <span className="text-sm text-foreground">
                   <span className="text-muted-foreground">{fact.label}:</span>{" "}
                   {fact.value}
                 </span>
+                {sourceHost(fact.sourceUrl) && (
+                  <a
+                    href={fact.sourceUrl ?? undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <LinkExternal01 className="size-3" />
+                    {sourceHost(fact.sourceUrl)}
+                  </a>
+                )}
               </div>
               <div className="flex shrink-0 flex-row gap-1">
                 <Button

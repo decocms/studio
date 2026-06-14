@@ -42,7 +42,7 @@ import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
 import { telosBus } from "@/telos/durable/bus";
-import { RESEARCH_EMAIL } from "@/telos/research";
+import { researchSubject } from "@/telos/research";
 import { hoistOrgLogo } from "./hoist-org-logo";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
@@ -245,11 +245,13 @@ const plugins = [
         // workflow, so signup never waits on LLM latency. Best-effort — the
         // home's GET also backfills, and OAOO collapses the two into one run.
         try {
+          const subject = researchSubject(data.user.email, data.user.name);
           await telosBus.publish({
             type: "user.signup",
             organizationId: data.organization.id,
             userId: data.member.userId,
-            email: RESEARCH_EMAIL,
+            email: subject.email,
+            name: subject.name,
           });
         } catch (err) {
           console.error("[telos] signup trigger failed", err);

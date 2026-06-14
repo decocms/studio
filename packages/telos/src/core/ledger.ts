@@ -16,6 +16,9 @@ export interface GoalLedger<T> {
   // overwrites it — that immovability is the safety spine of anchored proposing.
   anchor(tenant: string): Awaitable<UnmovedMover<T>>;
   history(tenant: string): Awaitable<readonly UnmovedMover<T>[]>;
+  // Every tenant with at least one installed goal. Lets a host iterate all goals
+  // under pursuit — e.g. a safety-net sweep that re-arms a stalled pursuit loop.
+  tenants(): Awaitable<string[]>;
 }
 
 // Default GoalLedger: append-only, in-memory. Swap for a DB-backed impl of the
@@ -57,5 +60,9 @@ export class InMemoryGoalLedger<T> implements GoalLedger<T> {
 
   history(tenant: string): readonly UnmovedMover<T>[] {
     return this.lineages.get(tenant) ?? [];
+  }
+
+  tenants(): string[] {
+    return [...this.lineages.keys()];
   }
 }

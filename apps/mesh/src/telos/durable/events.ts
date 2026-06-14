@@ -7,6 +7,7 @@ export type TelosEvent =
       organizationId: string;
       userId: string;
       email: string;
+      name?: string;
     }
   | {
       type: "goal.installed";

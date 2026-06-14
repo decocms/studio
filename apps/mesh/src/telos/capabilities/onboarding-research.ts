@@ -6,7 +6,7 @@ import { defineCapability } from "../durable/capability";
 // so a crash after research resumes without re-charging the LLM/scrape.
 defineCapability({
   name: "onboarding-research",
-  version: "v1",
+  version: "v3",
   on: "user.signup",
   key: (event) => event.organizationId,
   run: async (event, { runtime, step }) => {
@@ -21,11 +21,15 @@ defineCapability({
 
     // Network + LLM + scrape: retry transient failures with backoff rather than
     // failing the whole onboarding. Journaled, so a success never re-charges.
-    const result = await step("research", () => researchUser(event.email), {
-      retriesAllowed: true,
-      maxAttempts: 5,
-      intervalSeconds: 2,
-    });
+    const result = await step(
+      "research",
+      () => researchUser({ email: event.email, name: event.name }),
+      {
+        retriesAllowed: true,
+        maxAttempts: 5,
+        intervalSeconds: 2,
+      },
+    );
     await step("persist-facts", () =>
       facts.insertMany(event.organizationId, result.facts),
     );
