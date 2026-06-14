@@ -238,6 +238,30 @@ The core guarantees the anchor is immovable-by-engine and that every version is 
 job (it's handed the anchor to respect). This is the hierarchy of ends: the agent may set its
 own lesser goals, but not the fixed end they serve.
 
+## Beyond the core: three metaphysics of purpose
+
+The Aristotelian core above (reach an immanent, per-tenant goal) is one of three
+pictures of purpose, shipped as subpaths. They **compose**; each does the job its
+metaphysics suits.
+
+- **`@decocms/telos/daimonion`** — *the veto guardrail* (Socrates' inner sign). Apophatic:
+  it only ever **forbids**, never proposes. `guardedBy(daimonion)(domain)` screens every
+  action *before* its side effect; a forbidden action never runs and emits
+  `eudaimon.action.vetoed`. **Built and tested.**
+  > Not to be confused with the **Eudaimon** — the striving agent that *drives*. The
+  > **Daimonion** is the conscience that only says *no*. Different beasts, similar Greek root.
+- **`@decocms/telos/elenchus`** — *the goal-discovery dialectic* (interface). The goal is
+  **uncovered by questioning**, not installed: `deliver(tenant) → GoalProposal<T>`. It births
+  a candidate; an authority then installs it (the `goal.updated` path). This is the contract
+  the onboarding "research the user → propose a goal" flow implements.
+- **`@decocms/telos/demiurge`** — *the transcendent ideal you only approach* (interface only,
+  **reserved**). Plato's Form: one shared, timeless standard every tenant resembles imperfectly,
+  forever. `participation(state): number` (0..1) replaces `satisfied()` — you approach, never
+  arrive. No implementation yet; the shape is reserved until a real Platonic feature exists.
+
+The whole distinction lives in the return type: `satisfied(): boolean` (reach) vs
+`participation(): number` (approach) vs `veto(): Veto | null` (forbid).
+
 ## Invariants (don't let a refactor erode these — they *are* the design)
 
 1. **The goal stays frozen.** `UnmovedMover` is `Object.freeze`d, all fields `readonly`. Never

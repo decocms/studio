@@ -52,6 +52,8 @@ export interface PursuitContext {
   readonly tenant: string;
   readonly moverVersion: number;
   record(kind: string, payload?: unknown): Promise<void>;
+  // The daimonion forbade this action; it was not applied. (See ./daimonion.)
+  vetoed(kind: string, reason: string, payload?: unknown): Promise<void>;
 }
 
 // A framework-agnostic "hand": the rule deliberator calls it via plan(), the AI
@@ -124,6 +126,15 @@ export type DomainEvent<T> =
       tenant: string;
       moverVersion: number;
       kind: string;
+      payload?: unknown;
+    }
+  // The Eudaimon's action, forbidden by a Daimonion before it ran (see ./daimonion).
+  | {
+      type: "eudaimon.action.vetoed";
+      tenant: string;
+      moverVersion: number;
+      kind: string;
+      reason: string;
       payload?: unknown;
     }
   | {
@@ -209,6 +220,15 @@ export class Eudaimon<S, T, G = unknown> {
             tenant: this.tenant,
             moverVersion: mover.version,
             kind,
+            payload,
+          }),
+        vetoed: (kind, reason, payload) =>
+          this.bus.publish({
+            type: "eudaimon.action.vetoed",
+            tenant: this.tenant,
+            moverVersion: mover.version,
+            kind,
+            reason,
             payload,
           }),
       };

@@ -13,6 +13,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import type { Deliberator } from "./core";
+import { isVetoError } from "./daimonion";
 
 const Report = z.object({
   actionsTaken: z
@@ -48,10 +49,16 @@ export function aiDeliberator(opts: AiDeliberatorOptions): Deliberator {
               ) {
                 return `skipped ${action.kind}: per-cycle action cap (${maxActionsPerCycle}) reached`;
               }
-              await action.apply(ctx.tenant, input);
-              await ctx.record(action.kind, input);
-              applied++;
-              return `applied ${action.kind}`;
+              try {
+                await action.apply(ctx.tenant, input);
+                await ctx.record(action.kind, input);
+                applied++;
+                return `applied ${action.kind}`;
+              } catch (err) {
+                if (!isVetoError(err)) throw err;
+                await ctx.vetoed(action.kind, err.reason, input);
+                return `vetoed ${action.kind}: ${err.reason}`;
+              }
             },
           }),
         ]),

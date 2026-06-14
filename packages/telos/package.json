@@ -14,7 +14,10 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./ai": "./src/deliberate-ai.ts"
+    "./ai": "./src/deliberate-ai.ts",
+    "./daimonion": "./src/daimonion.ts",
+    "./elenchus": "./src/elenchus.ts",
+    "./demiurge": "./src/demiurge.ts"
   },
   "dependencies": {
     "zod": "^4.0.0"
