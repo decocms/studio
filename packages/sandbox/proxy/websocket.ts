@@ -276,13 +276,23 @@ function encodeFrame(
     );
   }
 
+  // Write header + (mask) + payload into one allocation instead of concat'ing
+  // three buffers, masking in place for client frames.
+  const maskLen = isClient ? 4 : 0;
+  const frame = Buffer.allocUnsafe(header.length + maskLen + len);
+  let pos = 0;
+  for (let i = 0; i < header.length; i++) frame[pos++] = header[i]!;
   if (isClient) {
     const mask = randomBytes(4);
-    const masked = Buffer.alloc(len);
-    for (let i = 0; i < len; i++) masked[i] = payloadBuf[i]! ^ mask[i & 3]!;
-    return Buffer.concat([Buffer.from(header), mask, masked]);
+    frame[pos++] = mask[0]!;
+    frame[pos++] = mask[1]!;
+    frame[pos++] = mask[2]!;
+    frame[pos++] = mask[3]!;
+    for (let i = 0; i < len; i++) frame[pos++] = payloadBuf[i]! ^ mask[i & 3]!;
+  } else {
+    payloadBuf.copy(frame, pos);
   }
-  return Buffer.concat([Buffer.from(header), payloadBuf]);
+  return frame;
 }
 
 function decodeClosePayload(payload: ByteBuffer): {
