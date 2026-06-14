@@ -19,7 +19,9 @@ describe("decrypt-failure-tracker", () => {
       expect(r.thresholdCrossed).toBe(false);
     }
     const crossing = recordDecryptFailure(id);
-    expect(crossing.consecutiveFailures).toBe(CONNECTION_DECRYPT_DISABLE_THRESHOLD);
+    expect(crossing.consecutiveFailures).toBe(
+      CONNECTION_DECRYPT_DISABLE_THRESHOLD,
+    );
     expect(crossing.thresholdCrossed).toBe(true);
   });
 
