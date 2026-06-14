@@ -1,7 +1,10 @@
+import { useInstallApp } from "@/web/hooks/use-install-app";
 import { useTelosGoal } from "@/web/hooks/use-telos-goal";
+import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   Lightbulb02,
@@ -27,15 +30,29 @@ const sourceHost = (url: string | null): string | null => {
   }
 };
 
+const normalizeAppId = (appId: string): string => appId.replace(/^@/, "");
+
 export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
   const { goal, facts, suggestion, progress, status, confirmFact, rejectFact } =
     useTelosGoal(orgSlug);
+  const queryClient = useQueryClient();
+  // Clicking a tool installs it in place — the exact flow the "Import GitHub"
+  // button uses (fetch app detail → create connection → OAuth), generalized.
+  const { install, activeAppId, isBusy } = useInstallApp({
+    onConnected: () =>
+      queryClient.invalidateQueries({ queryKey: KEYS.telosGoal(orgSlug) }),
+  });
 
-  // Prefer live per-tool progress; fall back to the goal's tools as unchecked.
+  // Merge the goal's tools (label/appName/icon) with live progress (connected).
   const tools =
-    progress ??
-    goal?.tools.map((t) => ({ label: t.label, connected: false })) ??
-    [];
+    goal?.tools.map((t) => ({
+      label: t.label,
+      appName: t.appName,
+      icon: t.icon,
+      connected: progress?.find((p) => p.label === t.label)?.connected ?? false,
+      installing:
+        isBusy && !!t.appName && activeAppId === normalizeAppId(t.appName),
+    })) ?? [];
 
   const proposed = facts.filter((f) => f.status === "proposed");
   const confirmed = facts.filter((f) => f.status === "confirmed");
@@ -71,14 +88,29 @@ export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
             {tools.length > 0 && (
               <div className="mt-1 flex flex-col gap-1">
                 {tools.map((tool) => (
-                  <div
+                  <button
+                    type="button"
                     key={tool.label}
-                    className="flex flex-row items-center gap-2 text-xs"
+                    disabled={tool.connected || isBusy}
+                    onClick={() => install(tool.appName)}
+                    className={cn(
+                      "group flex w-fit flex-row items-center gap-2 text-xs",
+                      !tool.connected && "cursor-pointer hover:underline",
+                    )}
                   >
                     {tool.connected ? (
                       <Check className="size-3.5 shrink-0 text-primary" />
+                    ) : tool.installing ? (
+                      <Loading01 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
                     ) : (
                       <div className="size-3.5 shrink-0 rounded-full border border-muted-foreground/40" />
+                    )}
+                    {tool.icon && (
+                      <img
+                        src={tool.icon}
+                        alt=""
+                        className="size-3.5 shrink-0 rounded-sm object-cover"
+                      />
                     )}
                     <span
                       className={cn(
@@ -89,7 +121,12 @@ export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
                     >
                       {tool.label}
                     </span>
-                  </div>
+                    {!tool.connected && (
+                      <span className="text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                        {tool.installing ? "Connecting…" : "Connect →"}
+                      </span>
+                    )}
+                  </button>
                 ))}
               </div>
             )}

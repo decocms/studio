@@ -21,13 +21,15 @@ const Report = z.object({
     .array(z.string())
     .describe("kinds of actions applied this cycle"),
   reasoning: z.string().describe("why these moves close the gap"),
+  // Nullable (not optional) and unconstrained: strict structured-output
+  // validators (OpenAI) require every property in `required` and reject numeric
+  // keywords like exclusiveMinimum. Use null for "host default"; clamped by the host.
   nextReviewMinutes: z
     .number()
-    .positive()
-    .optional()
+    .nullable()
     .describe(
       "how long you can rest before re-checking this goal, in minutes; " +
-        "omit to use the host default. An event can still wake you sooner.",
+        "null to use the host default. An event can still wake you sooner.",
     ),
 });
 

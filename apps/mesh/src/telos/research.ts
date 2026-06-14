@@ -2,6 +2,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { FactInput } from "@decocms/telos/postgres";
 import { generateObject, generateText } from "ai";
 import { z } from "zod";
+import { type CatalogApp, catalogForPrompt, validateTools } from "./catalog";
 import type { OnboardingTarget } from "./target";
 
 // Socratic intake (elenchus): from a signup identity (name + email), research the
@@ -105,9 +106,8 @@ const Synthesis = z.object({
         }),
       )
       .describe(
-        "2-3 SPECIFIC, high-value integrations this person should connect first, " +
-          "grounded in what they actually do — concrete products, not categories " +
-          "where you can name one",
+        "2-3 integrations to connect first, chosen ONLY from the supported tools " +
+          "list in the prompt — use their exact names, never invent an app",
       ),
     rationale: z.string().describe("why this goal fits what we found"),
   }),
@@ -269,6 +269,7 @@ async function planNextQuestion(
 
 export async function researchUser(
   subject: ResearchSubject,
+  catalog: CatalogApp[],
 ): Promise<ResearchResult> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
@@ -361,9 +362,11 @@ export async function researchUser(
       `and run automations). Below are research rounds and the SOURCES we ` +
       `actually visited.\n\n` +
       `Extract tentative facts about the user, then propose ONE concrete first ` +
-      `goal: connect 2-3 SPECIFIC, high-value integrations this person should ` +
-      `wire up first, named after what they actually do (e.g. GitHub + a CMS for ` +
-      `a web team). Name real products where you can — never a generic count.\n\n` +
+      `goal: connect 2-3 high-value integrations this person should wire up first, ` +
+      `CHOSEN ONLY from this list of tools we actually support — use their exact ` +
+      `names, never invent an app:\n  ${catalogForPrompt(catalog)}\n` +
+      `Pick the ones most relevant to what they do. Frame the title around the ` +
+      `outcome those tools unlock.\n\n` +
       `HARD RULES for facts:\n` +
       `- Every fact MUST set sourceUrl to an exact URL from SOURCES that backs ` +
       `it. If nothing in SOURCES backs a claim, OMIT the fact entirely.\n` +
@@ -389,12 +392,23 @@ export async function researchUser(
       sourceUrl: f.sourceUrl,
     }));
 
+  // Validate the proposed tools against the real catalog — drop anything that
+  // isn't an app we actually support, attach canonical slugs for the connect
+  // links. If the model picked nothing real, fall back to the top catalog apps so
+  // the goal is never empty.
+  const tools = validateTools(object.goal.tools, catalog);
+  const finalTools = tools.length
+    ? tools
+    : catalog.slice(0, 2).map((a) => ({
+        label: a.label,
+        appName: a.appName,
+        match: a.match,
+        icon: a.icon,
+      }));
+
   return {
     facts,
-    target: {
-      title: object.goal.title,
-      tools: object.goal.tools,
-    },
+    target: { title: object.goal.title, tools: finalTools },
     rationale: object.goal.rationale,
   };
 }
@@ -407,6 +421,7 @@ export async function researchUser(
 export async function refitGoalFromFacts(
   confirmed: Array<{ label: string; value: string }>,
   current: OnboardingTarget,
+  catalog: CatalogApp[],
 ): Promise<OnboardingTarget | null> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey || confirmed.length === 0) return null;
@@ -432,14 +447,16 @@ export async function refitGoalFromFacts(
       `\n\nTheir current onboarding goal: "${current.title}" — connect: ` +
       `${current.tools.map((t) => t.label).join(", ")}.\n\n` +
       `If the confirmed facts clearly imply a better set of first tools to ` +
-      `connect, set change=true and provide an updated title + tools (label + ` +
-      `lowercase match keywords). Otherwise set change=false and echo the current ` +
-      `goal. Be conservative — only change the goal when the facts plainly ` +
-      `warrant it.`,
+      `connect — CHOSEN ONLY from this supported list, exact names, never invent ` +
+      `one: ${catalogForPrompt(catalog)} — set change=true and provide an updated ` +
+      `title + tools. Otherwise set change=false and echo the current goal. Be ` +
+      `conservative — only change the goal when the facts plainly warrant it.`,
   });
 
   if (!object.change) return null;
-  const next: OnboardingTarget = { title: object.title, tools: object.tools };
+  const tools = validateTools(object.tools, catalog);
+  if (tools.length === 0) return null;
+  const next: OnboardingTarget = { title: object.title, tools };
   // No-op if effectively identical to the current goal.
   if (JSON.stringify(next) === JSON.stringify(current)) return null;
   return next;

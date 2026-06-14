@@ -3,11 +3,15 @@
 // "connect GitHub and a CMS" is concretely measurable (and meaningful), where
 // "connect 3 tools" never was.
 export interface ToolTarget {
-  // Human-facing name, e.g. "GitHub" or "CMS".
+  // Human-facing name, e.g. "GitHub".
   label: string;
   // Lowercase keywords matched (substring) against a connection's app_name /
-  // slug / title, e.g. ["github"] or ["contentful", "sanity", "strapi", "cms"].
+  // slug / title, e.g. ["github"].
   match: string[];
+  // Registry binding id used to install the app in-place
+  // (useInstallFromRegistry.installByBinding), e.g. "@deco/github".
+  appName?: string;
+  icon?: string;
 }
 
 export interface OnboardingTarget {

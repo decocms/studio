@@ -1,3 +1,4 @@
+import { resolveCatalog } from "@/telos/catalog";
 import type { OnboardingTarget } from "@/telos/target";
 import { refitGoalFromFacts } from "@/telos/research";
 import { DBOS, Debouncer } from "@dbos-inc/dbos-sdk";
@@ -33,7 +34,11 @@ async function computeRefit(
   const confirmed = (await facts.list(organizationId))
     .filter((f) => f.status === "confirmed")
     .map((f) => ({ label: f.label, value: f.value }));
-  return refitGoalFromFacts(confirmed, current.target);
+  return refitGoalFromFacts(
+    confirmed,
+    current.target,
+    await resolveCatalog(organizationId),
+  );
 }
 
 async function refitTickFn(organizationId: string): Promise<void> {

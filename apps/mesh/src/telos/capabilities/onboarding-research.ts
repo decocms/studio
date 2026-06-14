@@ -1,3 +1,4 @@
+import { resolveCatalog } from "@/telos/catalog";
 import { researchUser } from "@/telos/research";
 import { telosBus } from "../durable/bus";
 import { defineCapability } from "../durable/capability";
@@ -23,7 +24,11 @@ defineCapability({
     // failing the whole onboarding. Journaled, so a success never re-charges.
     const result = await step(
       "research",
-      () => researchUser({ email: event.email, name: event.name }),
+      async () =>
+        researchUser(
+          { email: event.email, name: event.name },
+          await resolveCatalog(event.organizationId),
+        ),
       {
         retriesAllowed: true,
         maxAttempts: 5,

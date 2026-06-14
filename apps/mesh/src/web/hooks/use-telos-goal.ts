@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 export interface TelosGoalTool {
   label: string;
   match: string[];
+  appName?: string;
+  icon?: string;
 }
 
 export interface TelosGoal {
