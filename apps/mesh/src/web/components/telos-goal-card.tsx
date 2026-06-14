@@ -1,13 +1,22 @@
 import { useTelosGoal } from "@/web/hooks/use-telos-goal";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Check,
+  Lightbulb02,
   LinkExternal01,
   Loading01,
   Target04,
   X,
 } from "@untitledui/icons";
+
+const SUGGESTION_LABELS: Record<string, string> = {
+  connect_a_tool: "Connect a tool",
+};
+
+const suggestionLabel = (kind: string): string =>
+  SUGGESTION_LABELS[kind] ?? kind.replace(/_/g, " ");
 
 const sourceHost = (url: string | null): string | null => {
   if (!url) return null;
@@ -19,8 +28,14 @@ const sourceHost = (url: string | null): string | null => {
 };
 
 export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
-  const { goal, facts, status, confirmFact, rejectFact } =
+  const { goal, facts, suggestion, progress, status, confirmFact, rejectFact } =
     useTelosGoal(orgSlug);
+
+  // Prefer live per-tool progress; fall back to the goal's tools as unchecked.
+  const tools =
+    progress ??
+    goal?.tools.map((t) => ({ label: t.label, connected: false })) ??
+    [];
 
   const proposed = facts.filter((f) => f.status === "proposed");
   const confirmed = facts.filter((f) => f.status === "confirmed");
@@ -53,9 +68,52 @@ export function TelosGoalCard({ orgSlug }: { orgSlug: string }) {
             <span className="text-sm font-medium text-foreground">
               {goal.title}
             </span>
-            <span className="text-xs text-muted-foreground">
-              Target: {goal.targetValue} {goal.metric.replace(/_/g, " ")}
+            {tools.length > 0 && (
+              <div className="mt-1 flex flex-col gap-1">
+                {tools.map((tool) => (
+                  <div
+                    key={tool.label}
+                    className="flex flex-row items-center gap-2 text-xs"
+                  >
+                    {tool.connected ? (
+                      <Check className="size-3.5 shrink-0 text-primary" />
+                    ) : (
+                      <div className="size-3.5 shrink-0 rounded-full border border-muted-foreground/40" />
+                    )}
+                    <span
+                      className={cn(
+                        tool.connected
+                          ? "text-muted-foreground line-through"
+                          : "text-foreground",
+                      )}
+                    >
+                      {tool.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {goal && suggestion && (
+        <div className="flex flex-row items-start gap-3 rounded-md bg-muted/50 p-3">
+          <div className="mt-0.5 text-primary">
+            <Lightbulb02 className="size-5" />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Recommended next step
             </span>
+            <span className="text-sm font-medium text-foreground">
+              {suggestionLabel(suggestion.kind)}
+            </span>
+            {suggestion.reason && (
+              <span className="text-xs text-muted-foreground">
+                {suggestion.reason}
+              </span>
+            )}
           </div>
         </div>
       )}

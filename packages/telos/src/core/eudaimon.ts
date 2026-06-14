@@ -97,7 +97,7 @@ export class Eudaimon<S, T, G = unknown> {
           }),
       };
 
-      const { summary } = await this.deliberator.run({
+      const { summary, nextReviewMs } = await this.deliberator.run({
         domain: this.domain,
         state,
         target: mover.target,
@@ -118,6 +118,7 @@ export class Eudaimon<S, T, G = unknown> {
         tenant: this.tenant,
         moverVersion: mover.version,
         summary,
+        nextReviewMs,
       });
     }
 

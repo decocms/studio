@@ -2,18 +2,18 @@ import type { Database } from "@/storage/types";
 import type { Action, Domain } from "@decocms/telos";
 import type { Kysely } from "kysely";
 import { z } from "zod";
-import type { OnboardingTarget } from "./target";
+import type { OnboardingTarget, ToolTarget } from "./target";
 
-// What the agent perceives: the two onboarding metrics, counted from Mesh's data.
+// What the agent perceives: the integrations the org has actually wired up.
 export interface OnboardingState {
-  connections: number;
-  automations_run: number;
+  // Lowercased identifiers (app_name / slug / title) of active, non-virtual
+  // connections — the real tools the org has connected.
+  connectedTools: string[];
 }
 
-// The distance left on the target metric — feeds the prompt and telemetry.
+// The tools still to connect — feeds the prompt, the suggestion, and telemetry.
 export interface OnboardingGap {
-  metric: OnboardingTarget["metric"];
-  current: number;
+  missing: string[];
   remaining: number;
 }
 
@@ -21,57 +21,59 @@ async function measure(
   db: Kysely<Database>,
   orgId: string,
 ): Promise<OnboardingState> {
-  const [conn, runs] = await Promise.all([
-    // Real, external tool connections the user has wired up (VIRTUAL = agents).
-    db
-      .selectFrom("connections")
-      .select((eb) => eb.fn.countAll().as("n"))
-      .where("organization_id", "=", orgId)
-      .where("connection_type", "!=", "VIRTUAL")
-      .executeTakeFirst(),
-    // Automation runs = run threads linked to the org's automation triggers.
-    db
-      .selectFrom("threads as th")
-      .innerJoin("automation_triggers as t", "t.id", "th.trigger_id")
-      .select((eb) => eb.fn.count("th.id").as("n"))
-      .where("th.organization_id", "=", orgId)
-      .where("th.hidden", "=", false)
-      .executeTakeFirst(),
-  ]);
-  return {
-    connections: Number(conn?.n ?? 0),
-    automations_run: Number(runs?.n ?? 0),
-  };
+  const rows = await db
+    .selectFrom("connections")
+    .select(["app_name", "slug", "title"])
+    .where("organization_id", "=", orgId)
+    .where("connection_type", "!=", "VIRTUAL")
+    .where("status", "=", "active")
+    .execute();
+  const connectedTools = rows.flatMap((r) =>
+    [r.app_name, r.slug, r.title]
+      .filter((s): s is string => Boolean(s))
+      .map((s) => s.toLowerCase()),
+  );
+  return { connectedTools };
 }
 
-// The agent's only honest "hands" during onboarding are recommendations: the
-// metrics move when the USER connects a tool or runs an automation, which the
-// server can't do for them. So these are "user"-audience actions — the engine
-// surfaces them (ctx.suggest → goal.suggestion event) and never performs them.
+// A tool counts as connected when any of its match keywords appears in any
+// connected integration's identifier.
+function isToolConnected(tool: ToolTarget, state: OnboardingState): boolean {
+  return tool.match.some((m) => {
+    const needle = m.toLowerCase();
+    return state.connectedTools.some((c) => c.includes(needle));
+  });
+}
+
+// Per-tool connected/not, for the UI's checklist. Tolerant of legacy targets.
+export async function onboardingProgress(
+  db: Kysely<Database>,
+  orgId: string,
+  target: OnboardingTarget,
+): Promise<Array<{ label: string; connected: boolean }>> {
+  const state = await measure(db, orgId);
+  return (target.tools ?? []).map((t) => ({
+    label: t.label,
+    connected: isToolConnected(t, state),
+  }));
+}
+
+// The agent's only honest "hands" during onboarding are recommendations: a tool
+// connects when the USER wires it up, which the server can't do for them. So this
+// is a "user"-audience action — the engine surfaces it and never performs it.
 const SuggestInput = z.object({
-  reason: z.string().describe("why this moves the org toward its goal"),
+  reason: z.string().describe("which tool to connect next and why it helps"),
 });
 
 const onboardingActions: Action[] = [
   {
     kind: "connect_a_tool",
-    description: "Connect an external tool / MCP to the org.",
+    description: "Connect a specific external tool / MCP to the org.",
     audience: "user",
     schema: SuggestInput,
     apply: async () => {
       throw new Error(
         "connect_a_tool is user-only; the engine cannot perform it",
-      );
-    },
-  },
-  {
-    kind: "run_an_automation",
-    description: "Create and run an automation in the org.",
-    audience: "user",
-    schema: SuggestInput,
-    apply: async () => {
-      throw new Error(
-        "run_an_automation is user-only; the engine cannot perform it",
       );
     },
   },
@@ -83,37 +85,33 @@ export function onboardingDomain(
   return {
     name: "mesh-onboarding",
     observe: (tenant) => measure(db, tenant),
-    satisfied: (state, target) => state[target.metric] >= target.targetValue,
+    satisfied: (state, target) => {
+      const tools = target.tools ?? [];
+      return tools.length > 0 && tools.every((t) => isToolConnected(t, state));
+    },
     gap: (state, target) => {
-      const current = state[target.metric];
-      return {
-        metric: target.metric,
-        current,
-        remaining: Math.max(0, target.targetValue - current),
-      };
+      const missing = (target.tools ?? [])
+        .filter((t) => !isToolConnected(t, state))
+        .map((t) => t.label);
+      return { missing, remaining: missing.length };
     },
     instructions:
-      "Pursue the FIXED onboarding target you cannot change. Help the org reach " +
-      "it; once reached, stop. Never redefine the target.",
+      "Pursue the FIXED onboarding target you cannot change. Help the org connect " +
+      "the specific tools it names; once all are connected, stop. Never redefine " +
+      "the target.",
     actions: onboardingActions,
     prompt: ({ target, gap }) =>
-      `Onboarding target: ${target.title} — reach ${target.targetValue} ` +
-      `${target.metric.replace(/_/g, " ")}. Currently ${gap.current}; ` +
-      `${gap.remaining} to go. Recommend the next step the user should take.`,
-    // Deterministic fallback: while there's a gap, recommend the step that maps
-    // to the target metric. Both paths surface it as a suggestion (user audience).
-    plan: ({ target, gap }) => {
+      `Onboarding goal: ${target.title}. Tools still to connect: ` +
+      `${gap.missing.join(", ") || "none"}. Recommend the single next tool the ` +
+      `user should connect, named, and why it helps them.`,
+    // Deterministic fallback: recommend connecting the next missing tool by name.
+    plan: ({ gap }) => {
       if (gap.remaining <= 0) return [];
-      const kind =
-        target.metric === "connections"
-          ? "connect_a_tool"
-          : "run_an_automation";
+      const next = gap.missing[0];
       return [
         {
-          kind,
-          input: {
-            reason: `${gap.remaining} ${target.metric.replace(/_/g, " ")} to go`,
-          },
+          kind: "connect_a_tool",
+          input: { reason: `Connect ${next} to make progress on your goal` },
         },
       ];
     },

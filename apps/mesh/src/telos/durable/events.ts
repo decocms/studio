@@ -22,6 +22,7 @@ export type TelosEvent =
       organizationId: string;
       version: number;
       kind: string;
+      reason?: string;
     };
 
 export type TelosEventType = TelosEvent["type"];

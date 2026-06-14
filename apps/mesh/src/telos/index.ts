@@ -1,4 +1,5 @@
 import "./capabilities"; // load defineCapability side effects before registration
+import { orgActivity } from "@/core/activity";
 import type { Database } from "@/storage/types";
 import {
   initTelos,
@@ -6,7 +7,8 @@ import {
   type TelosTables,
 } from "@decocms/telos/postgres";
 import type { Kysely } from "kysely";
-import { registerPursuitWorkflows } from "./durable/pursuit";
+import { pullPursuit, registerPursuitWorkflows } from "./durable/pursuit";
+import { registerRefitWorkflows } from "./durable/refit";
 import { registerTelosCapabilities } from "./durable/registry";
 import { setTelosRuntime } from "./durable/runtime";
 import type { OnboardingTarget } from "./target";
@@ -26,6 +28,14 @@ export async function bootTelos(db: Kysely<Database>): Promise<void> {
   setTelosRuntime({ db, store });
   registerTelosCapabilities();
   registerPursuitWorkflows();
+  registerRefitWorkflows();
+
+  // Reactivity: any org activity (a mutating tool call, a fired automation) pulls
+  // that org's next pursuit cycle forward. Decoupled — producers know nothing of
+  // telos. Best-effort; the debouncer coalesces and the tick guards goal-less orgs.
+  orgActivity.subscribe((activity) => {
+    void pullPursuit(activity.organizationId);
+  });
 }
 
 export function telos(): Telos<OnboardingTarget> {

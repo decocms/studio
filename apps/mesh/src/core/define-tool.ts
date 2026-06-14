@@ -11,6 +11,7 @@
 
 import { SpanStatusCode } from "@opentelemetry/api";
 import { z } from "zod";
+import { orgActivity } from "./activity";
 import type { StudioContext } from "./studio-context";
 
 // ============================================================================
@@ -169,6 +170,21 @@ export function defineTool<
 
                 // Mark span as successful
                 span.setStatus({ code: SpanStatusCode.OK });
+
+                // A state-mutating tool that succeeded is org activity worth
+                // reacting to (e.g. telos re-observes its goal). readOnly tools
+                // are skipped; consumers debounce + re-observe so a stray emit is
+                // cheap. Best-effort — never let a listener affect the tool path.
+                if (
+                  definition.annotations?.readOnlyHint !== true &&
+                  ctx.organization?.id
+                ) {
+                  orgActivity.emit({
+                    organizationId: ctx.organization.id,
+                    source: "tool",
+                    name: definition.name,
+                  });
+                }
 
                 return output;
               } catch (error) {

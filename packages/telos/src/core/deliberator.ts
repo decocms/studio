@@ -10,7 +10,14 @@ export interface Deliberator {
     ctx: PursuitContext;
     instructions: string;
     prompt: string;
-  }): Promise<{ summary: string; actionsTaken: string[] }>;
+    // Advisory: how long the agent judges it can rest before this is worth
+    // re-checking. The host's scheduler may honor it (e.g. as the next pause) or
+    // ignore it; omit to leave cadence entirely to the host.
+  }): Promise<{
+    summary: string;
+    actionsTaken: string[];
+    nextReviewMs?: number;
+  }>;
 }
 
 // Thrown by a guarded action when a Daimonion forbids it (see ../extensions/daimonion).

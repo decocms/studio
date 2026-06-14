@@ -6,6 +6,7 @@
  * the event bus hot path.
  */
 
+import { orgActivity } from "@/core/activity";
 import type { AutomationsStorage } from "@/storage/automations";
 import type { Automation, AutomationTrigger } from "@/storage/types";
 import type { ContextMessage } from "./dbos-workflow";
@@ -152,6 +153,7 @@ export class AutomationEventDispatcher {
       ),
     );
 
+    let fired = 0;
     for (const [i, result] of results.entries()) {
       const trigger = triggersToFire[i]!;
       if (result.status === "rejected") {
@@ -159,7 +161,19 @@ export class AutomationEventDispatcher {
           `[AutomationDispatch] Trigger ${trigger.id} ("${trigger.automation.name}") REJECTED:`,
           result.reason,
         );
+      } else {
+        fired++;
       }
+    }
+
+    // A fired automation moves the org's "automations run" metric — signal it so
+    // telos (and any other consumer) can react. Best-effort, never blocks dispatch.
+    if (fired > 0) {
+      orgActivity.emit({
+        organizationId: event.organizationId,
+        source: "automation",
+        name: event.type,
+      });
     }
   }
 

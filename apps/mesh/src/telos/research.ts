@@ -82,12 +82,33 @@ const Synthesis = z.object({
         "cannot cite — fewer grounded facts beat many guesses",
     ),
   goal: z.object({
-    title: z.string().describe("a concrete first goal phrased for the user"),
-    metric: z.enum(["connections", "automations_run"]),
-    // No int/positive constraints: the structured-output validator rejects
-    // every numeric JSON-schema keyword (exclusiveMinimum/minimum/maximum).
-    // Clamped to a positive integer in code instead.
-    targetValue: z.number().describe("a positive integer target, e.g. 3 or 5"),
+    title: z
+      .string()
+      .describe(
+        "a concrete, outcome-framed first goal that NAMES the tools, e.g. " +
+          "'Connect GitHub and a CMS to automate your release notes' — never a " +
+          "generic count like 'connect 3 tools'",
+      ),
+    tools: z
+      .array(
+        z.object({
+          label: z
+            .string()
+            .describe("display name of the tool to connect, e.g. 'GitHub'"),
+          match: z
+            .array(z.string())
+            .describe(
+              "lowercase keywords that identify this tool in a connection's " +
+                "name/app, e.g. ['github'] or " +
+                "['contentful','sanity','strapi','wordpress','cms']",
+            ),
+        }),
+      )
+      .describe(
+        "2-3 SPECIFIC, high-value integrations this person should connect first, " +
+          "grounded in what they actually do — concrete products, not categories " +
+          "where you can name one",
+      ),
     rationale: z.string().describe("why this goal fits what we found"),
   }),
 });
@@ -139,6 +160,40 @@ async function scrapeDomain(domain: string): Promise<string> {
   } catch (err) {
     console.warn("[telos] firecrawl failed", err);
     return "";
+  }
+}
+
+// Firecrawl web search: a second source of real URLs so person facts survive even
+// when sonar returns no citations. Returns ranked results (url + title + snippet).
+// Best-effort: [] if the key is missing or the search fails.
+async function searchWeb(query: string): Promise<Source[]> {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key || !query) return [];
+  try {
+    const res = await fetch("https://api.firecrawl.dev/v1/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({ query, limit: 5 }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) {
+      console.warn(`[telos] firecrawl search → ${res.status}`);
+      return [];
+    }
+    const json = (await res.json()) as {
+      data?: Array<{ url?: string; title?: string; description?: string }>;
+    };
+    return (json.data ?? [])
+      .filter((r): r is { url: string; title?: string; description?: string } =>
+        Boolean(r.url),
+      )
+      .map((r) => ({ url: r.url, title: r.title || r.description || r.url }));
+  } catch (err) {
+    console.warn("[telos] firecrawl search failed", err);
+    return [];
   }
 }
 
@@ -245,6 +300,23 @@ export async function researchUser(
   }
   if (domain) allowedHosts.add(domain);
 
+  // Second source: a direct web search for the person's profiles. This seeds real,
+  // citable URLs (GitHub/LinkedIn/etc.) into the allow-set so person facts survive
+  // even when sonar returns no citations of its own.
+  if (name) {
+    const hits = await searchWeb(
+      `${name} ${domain} GitHub OR LinkedIn OR personal site`,
+    );
+    if (hits.length) {
+      remember(hits);
+      findings.push({
+        question: `Web search for ${name} (${domain})`,
+        answer: hits.map((h) => `- ${h.title}: ${h.url}`).join("\n"),
+        sources: hits,
+      });
+    }
+  }
+
   // Identity-anchored seed questions. The person's name is the search key; the
   // company query grounds industry/size. Order person-first when we have a name.
   const who = name
@@ -289,9 +361,9 @@ export async function researchUser(
       `and run automations). Below are research rounds and the SOURCES we ` +
       `actually visited.\n\n` +
       `Extract tentative facts about the user, then propose ONE concrete first ` +
-      `goal measured by "connections" (tools connected) or "automations_run", ` +
-      `with a target value that genuinely fits — do not default to a fixed ` +
-      `number.\n\n` +
+      `goal: connect 2-3 SPECIFIC, high-value integrations this person should ` +
+      `wire up first, named after what they actually do (e.g. GitHub + a CMS for ` +
+      `a web team). Name real products where you can — never a generic count.\n\n` +
       `HARD RULES for facts:\n` +
       `- Every fact MUST set sourceUrl to an exact URL from SOURCES that backs ` +
       `it. If nothing in SOURCES backs a claim, OMIT the fact entirely.\n` +
@@ -321,9 +393,54 @@ export async function researchUser(
     facts,
     target: {
       title: object.goal.title,
-      metric: object.goal.metric,
-      targetValue: Math.max(1, Math.round(object.goal.targetValue)),
+      tools: object.goal.tools,
     },
     rationale: object.goal.rationale,
   };
+}
+
+// Re-fit the first goal from facts the user has CONFIRMED about themselves. The
+// user editing facts is strong signal; this turns it into a possibly-updated goal.
+// Conservative by design: returns null (no change) unless the confirmed facts
+// clearly imply a different metric or target. No numeric schema constraints (the
+// structured-output validator rejects them); the target is clamped in code.
+export async function refitGoalFromFacts(
+  confirmed: Array<{ label: string; value: string }>,
+  current: OnboardingTarget,
+): Promise<OnboardingTarget | null> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey || confirmed.length === 0) return null;
+  const openrouter = createOpenRouter({ apiKey });
+
+  const { object } = await generateObject({
+    model: openrouter(SYNTH_MODEL),
+    schema: z.object({
+      change: z
+        .boolean()
+        .describe("true ONLY if the goal should change; conservative default"),
+      title: z.string(),
+      tools: z.array(
+        z.object({
+          label: z.string(),
+          match: z.array(z.string()),
+        }),
+      ),
+    }),
+    prompt:
+      `A new user CONFIRMED these facts about themselves:\n` +
+      confirmed.map((f) => `- ${f.label}: ${f.value}`).join("\n") +
+      `\n\nTheir current onboarding goal: "${current.title}" — connect: ` +
+      `${current.tools.map((t) => t.label).join(", ")}.\n\n` +
+      `If the confirmed facts clearly imply a better set of first tools to ` +
+      `connect, set change=true and provide an updated title + tools (label + ` +
+      `lowercase match keywords). Otherwise set change=false and echo the current ` +
+      `goal. Be conservative — only change the goal when the facts plainly ` +
+      `warrant it.`,
+  });
+
+  if (!object.change) return null;
+  const next: OnboardingTarget = { title: object.title, tools: object.tools };
+  // No-op if effectively identical to the current goal.
+  if (JSON.stringify(next) === JSON.stringify(current)) return null;
+  return next;
 }

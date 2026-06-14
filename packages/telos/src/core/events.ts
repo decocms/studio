@@ -30,6 +30,8 @@ export type DomainEvent<T> =
       tenant: string;
       moverVersion: number;
       summary: string;
+      // The agent's advisory cadence for the next cycle (see Deliberator).
+      nextReviewMs?: number;
     }
   | { type: "unmovedMover.reached"; tenant: string; moverVersion: number }
   | {

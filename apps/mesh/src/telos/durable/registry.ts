@@ -1,5 +1,6 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { CAPABILITIES, type CapabilityDef } from "./capability";
+import { telosSalt } from "./dev-salt";
 import type { TelosEvent } from "./events";
 import { TELOS_QUEUE } from "./queue";
 import { requireTelosRuntime } from "./runtime";
@@ -29,7 +30,7 @@ export function registerTelosCapabilities(): void {
     handles.set(cap, (event) =>
       DBOS.startWorkflow(wf, {
         queueName: TELOS_QUEUE,
-        workflowID: `telos:${cap.name}:${cap.version}:${cap.key(event as never)}`,
+        workflowID: `telos:${cap.name}:${cap.version}:${cap.key(event as never)}${telosSalt()}`,
       })(event),
     );
   }

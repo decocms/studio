@@ -6,7 +6,11 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { telos } from "@/telos";
+import { onboardingProgress } from "@/telos/domain";
 import { telosBus } from "@/telos/durable/bus";
+import { getLatestSuggestion } from "@/telos/durable/pursuit";
+import { pullRefit } from "@/telos/durable/refit";
+import { requireTelosRuntime } from "@/telos/durable/runtime";
 import type { FactStatus } from "@decocms/telos/postgres";
 import { researchSubject } from "@/telos/research";
 import { Hono } from "hono";
@@ -23,13 +27,24 @@ export function createTelosGoalRoutes() {
 
     const { ledger, facts: factStore } = telos();
 
-    const [anchor, facts] = await Promise.all([
-      Promise.resolve(ledger.anchor(orgId)).catch(() => null),
+    // The current working goal (latest of any source) — so an engine-authored
+    // progression goal shows, not just the original authority anchor.
+    const [current, facts] = await Promise.all([
+      Promise.resolve(ledger.latest(orgId)).catch(() => null),
       factStore.list(orgId),
     ]);
 
-    const goal = anchor
-      ? { ...anchor.target, version: anchor.version, source: anchor.source }
+    const goal = current
+      ? { ...current.target, version: current.version, source: current.source }
+      : null;
+    const suggestion = goal ? getLatestSuggestion(orgId) : null;
+    // Per-tool connected/not, so the card shows real progress (GitHub ✓, CMS ◯).
+    const progress = current
+      ? await onboardingProgress(
+          requireTelosRuntime().db,
+          orgId,
+          current.target,
+        )
       : null;
 
     // No goal yet → kick the durable research capability (OAOO-deduped).
@@ -47,7 +62,13 @@ export function createTelosGoalRoutes() {
       });
     }
 
-    return c.json({ goal, facts, status: goal ? "ready" : "researching" });
+    return c.json({
+      goal,
+      facts,
+      suggestion,
+      progress,
+      status: goal ? "ready" : "researching",
+    });
   });
 
   app.post("/telos-facts/:id", async (c) => {
@@ -64,6 +85,9 @@ export function createTelosGoalRoutes() {
 
     await telos().facts.setStatus(orgId, c.req.param("id"), status);
     await telosBus.publish({ type: "facts.updated", organizationId: orgId });
+    // The user telling us who they are is signal: debounced re-fit of the goal
+    // from confirmed facts. Best-effort — never blocks the fact edit response.
+    void pullRefit(orgId);
     return c.json({ ok: true });
   });
 

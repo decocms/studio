@@ -21,6 +21,14 @@ const Report = z.object({
     .array(z.string())
     .describe("kinds of actions applied this cycle"),
   reasoning: z.string().describe("why these moves close the gap"),
+  nextReviewMinutes: z
+    .number()
+    .positive()
+    .optional()
+    .describe(
+      "how long you can rest before re-checking this goal, in minutes; " +
+        "omit to use the host default. An event can still wake you sooner.",
+    ),
 });
 
 export interface AiDeliberatorOptions {
@@ -82,7 +90,14 @@ export function aiDeliberator(opts: AiDeliberatorOptions): Deliberator {
       });
 
       const { output } = await agent.generate({ prompt });
-      return { summary: output.reasoning, actionsTaken: output.actionsTaken };
+      return {
+        summary: output.reasoning,
+        actionsTaken: output.actionsTaken,
+        nextReviewMs:
+          output.nextReviewMinutes != null
+            ? Math.round(output.nextReviewMinutes * 60_000)
+            : undefined,
+      };
     },
   };
 }

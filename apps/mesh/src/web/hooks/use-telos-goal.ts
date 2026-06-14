@@ -2,12 +2,21 @@ import { KEYS } from "@/web/lib/query-keys";
 import { useTelosEvents } from "@/web/hooks/use-telos-events";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+export interface TelosGoalTool {
+  label: string;
+  match: string[];
+}
+
 export interface TelosGoal {
   title: string;
-  metric: string;
-  targetValue: number;
+  tools: TelosGoalTool[];
   version: number;
   source: string;
+}
+
+export interface TelosToolProgress {
+  label: string;
+  connected: boolean;
 }
 
 export interface TelosFact {
@@ -19,9 +28,17 @@ export interface TelosFact {
   sourceUrl: string | null;
 }
 
+export interface TelosSuggestion {
+  kind: string;
+  reason?: string;
+  version: number;
+}
+
 export interface TelosState {
   goal: TelosGoal | null;
   facts: TelosFact[];
+  suggestion: TelosSuggestion | null;
+  progress: TelosToolProgress[] | null;
   status: "researching" | "ready";
 }
 
@@ -69,6 +86,8 @@ export function useTelosGoal(orgSlug: string) {
     isLoading: query.isLoading,
     goal: query.data?.goal ?? null,
     facts: query.data?.facts ?? [],
+    suggestion: query.data?.suggestion ?? null,
+    progress: query.data?.progress ?? null,
     status: query.data?.status ?? "researching",
     confirmFact: (id: string) =>
       setFactStatus.mutate({ id, status: "confirmed" }),
