@@ -38,8 +38,20 @@ outside authority installs a new version — never by the agent's own hand.
 
 ## The philosophy (and why the names matter)
 
-The names aren't decoration; they're the design. They come from Aristotle, and you don't need
-to have read him — here are the four ideas, in plain language.
+The names aren't decoration; they're the design. "Goal" turns out not to be one thing —
+there are **three metaphysics of purpose**, and naming them correctly *is* the architecture:
+
+| Picture | Goal is… | The test | You can… |
+| --- | --- | --- | --- |
+| **Aristotelian** (the core, below) | immanent, per-tenant, **reachable** | `satisfied(): boolean` | **reach** it |
+| **Platonic** (`/demiurge`) | one transcendent, **shared** ideal | `participation(): number` | only **approach** it |
+| **Socratic** (`/daimonion`, `/elenchus`) | **uncovered** by questioning; actions **guarded** | `veto(): Veto \| null` | **forbid**, or discover |
+
+The agent skeleton (observe → consider → act) is identical in all three; the only real
+difference is *what the goal is and whether you can ever arrive.* Most of what follows is the
+Aristotelian core; the other two are in [Beyond the core](#beyond-the-core-three-metaphysics-of-purpose).
+
+The four Aristotelian ideas, in plain language — you don't need to have read him:
 
 ### 1. *Telos* — the end something is *for*
 
@@ -240,9 +252,9 @@ own lesser goals, but not the fixed end they serve.
 
 ## Beyond the core: three metaphysics of purpose
 
-The Aristotelian core above (reach an immanent, per-tenant goal) is one of three
-pictures of purpose, shipped as subpaths. They **compose**; each does the job its
-metaphysics suits.
+The Aristotelian core (reach an immanent, per-tenant goal) is one of three pictures of
+purpose, shipped as subpaths. They are **not alternatives — they compose**, each doing the
+job its metaphysics suits.
 
 - **`@decocms/telos/daimonion`** — *the veto guardrail* (Socrates' inner sign). Apophatic:
   it only ever **forbids**, never proposes. `guardedBy(daimonion)(domain)` screens every
@@ -259,8 +271,49 @@ metaphysics suits.
   forever. `participation(state): number` (0..1) replaces `satisfied()` — you approach, never
   arrive. No implementation yet; the shape is reserved until a real Platonic feature exists.
 
-The whole distinction lives in the return type: `satisfied(): boolean` (reach) vs
-`participation(): number` (approach) vs `veto(): Veto | null` (forbid).
+### How they compose — a tenant's lifecycle
+
+```ts
+// 1. Socratic intake: the goal is BORN by questioning, not installed…
+const proposal = await elenchus.deliver(tenant);
+await ledger.install(tenant, proposal.target); // …then an authority confirms it → the anchor
+
+// 2. Aristotelian pursuit: the Eudaimon chases the goal — every action screened
+//    by the daimonion's veto first (the conscience layers over any domain).
+wire({ bus, ledger, domain: guardedBy(daimonion)(domain), deliberator });
+
+// 3. Platonic conformance (future): a Demiurge holds the same tenant to the one
+//    universal Form, regardless of that tenant's own KPI.
+// const demiurge = new Demiurge(idealStorefront, craft);
+```
+
+Socratic intake births the goal → the Aristotelian Eudaimon pursues it → the Platonic
+Demiurge holds it to a universal ideal → the daimonion's veto screens every action. Three
+agents, three metaphysics, one platform.
+
+### Example (future, not implemented): the Deco Store as a Form
+
+The strongest Platonic candidate is a **quality/design-conformance** feature. There is one
+ideal of *"an excellent storefront"* — fast, accessible, well-merchandised, trustworthy — that
+**every** tenant's store participates in, imperfectly, forever. It is not any tenant's own
+target (that's Aristotelian — "hit 6% conversion"); it's a *universal floor of good*, the same
+ideal imposed gently everywhere.
+
+```ts
+import type { Form } from "@decocms/telos/demiurge";
+
+// ONE shared, timeless ideal — not per-tenant, not versioned.
+const idealStorefront: Form<Storefront> = {
+  name: "deco-store/excellent-storefront",
+  // 0..1 — how closely this store resembles the ideal. Approaches 1, never reaches it.
+  participation: (store) => scoreAgainstIdeal(store),
+};
+```
+
+A `Demiurge` would gaze at this Form and shape each tenant's store toward its likeness on a
+cadence, scoring `participation` and emitting `participation.increased` — never "reached",
+because no real store is ever *perfectly* excellent. (Sketch only; the interface is reserved,
+the implementation is future work.)
 
 ## Invariants (don't let a refactor erode these — they *are* the design)
 
