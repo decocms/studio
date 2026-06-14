@@ -30,6 +30,30 @@ export interface Release {
  */
 export const RELEASES: Release[] = [
   {
+    id: "fable-5-suspension",
+    date: "2026-06-13",
+    eyebrow: "Important Update",
+    title: "Fable 5 & Mythos 5 suspended — Opus 4.8 takes over",
+    bullets: [
+      {
+        icon: CheckCircle,
+        title: "US government directive",
+        body: "Anthropic received an export control directive requiring the suspension of Fable 5 and Mythos 5 access for all users, citing national security concerns. Anthropic is complying while it works to resolve the matter.",
+      },
+      {
+        icon: Stars02,
+        title: "Opus 4.8 steps in as the Thinking tier",
+        body: "The Thinking tier now runs on Claude Opus 4.8, which remains fully operational. Performance on most tasks is comparable, and Anthropic reports more than 95% of sessions were unaffected by the Fable 5 classifiers anyway.",
+      },
+      {
+        icon: Zap,
+        title: "Nothing to change",
+        body: "The switch is automatic — any chat or agent already using the Thinking tier is now served by Opus 4.8. Anthropic will share further details within 24 hours.",
+      },
+    ],
+    learnMoreHref: "https://www.anthropic.com/news/fable-mythos-access",
+  },
+  {
     id: "claude-fable-5",
     date: "2026-06-09",
     eyebrow: "Now Available",
