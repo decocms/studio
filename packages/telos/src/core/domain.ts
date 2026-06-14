@@ -4,7 +4,7 @@ export interface PursuitContext {
   readonly tenant: string;
   readonly moverVersion: number;
   record(kind: string, payload?: unknown): Promise<void>;
-  // The daimonion forbade this action; it was not applied. (See ../socratic/daimonion.)
+  // The daimonion forbade this action; it was not applied. (See ../extensions/daimonion.)
   vetoed(kind: string, reason: string, payload?: unknown): Promise<void>;
 }
 

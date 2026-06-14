@@ -8,7 +8,7 @@ export type DomainEvent<T> =
       kind: string;
       payload?: unknown;
     }
-  // The Eudaimon's action, forbidden by a Daimonion before it ran (see ../socratic/daimonion).
+  // The Eudaimon's action, forbidden by a Daimonion before it ran (see ../extensions/daimonion).
   | {
       type: "eudaimon.action.vetoed";
       tenant: string;

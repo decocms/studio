@@ -41,6 +41,7 @@ import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
+import { seedOnboardingGoal } from "@/telos/onboarding";
 import { hoistOrgLogo } from "./hoist-org-logo";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
@@ -238,6 +239,25 @@ const plugins = [
     organizationCreation: {
       afterCreate: async (data) => {
         await seedOrgDb(data.organization.id, data.member.userId);
+        // Onboarding: research the new owner (mocked) and let the telos engine
+        // set the org's first goal. Best-effort — never block org creation.
+        try {
+          const db = getDb().db;
+          const owner = await db
+            .selectFrom("user")
+            .select("email")
+            .where("id", "=", data.member.userId)
+            .executeTakeFirst();
+          if (owner?.email) {
+            await seedOnboardingGoal({
+              db,
+              organizationId: data.organization.id,
+              email: owner.email,
+            });
+          }
+        } catch (err) {
+          console.error("[telos] onboarding goal seeding failed", err);
+        }
       },
     },
     organizationHooks: {

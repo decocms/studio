@@ -1463,4 +1463,22 @@ export interface Database {
   organization_domains: OrganizationDomainTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
+
+  // Telos goal ledger (append-only, org-scoped) — @decocms/telos
+  telos_goal: TelosGoalTable;
+}
+
+/**
+ * Append-only goal ledger for the telos engine. One lineage per organization;
+ * `source` separates the fixed anchor ("authority") from engine-proposed
+ * subordinate goals ("engine"). `target` is the serialized UnmovedMover target.
+ */
+export interface TelosGoalTable {
+  id: string;
+  organization_id: string;
+  version: number;
+  source: string; // "authority" | "engine"
+  target: unknown; // jsonb — the goal target
+  created_by: string | null;
+  created_at: ColumnType<Date, string | undefined, string>;
 }

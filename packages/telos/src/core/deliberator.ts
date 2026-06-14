@@ -13,7 +13,7 @@ export interface Deliberator {
   }): Promise<{ summary: string; actionsTaken: string[] }>;
 }
 
-// Thrown by a guarded action when a Daimonion forbids it (see ../socratic/daimonion).
+// Thrown by a guarded action when a Daimonion forbids it (see ../extensions/daimonion).
 // `applyAction` turns it into an eudaimon.action.vetoed event; deliberators that
 // don't use `applyAction` should catch it the same way.
 export class VetoError extends Error {

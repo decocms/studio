@@ -15,9 +15,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./ai": "./src/deliberators/ai.ts",
-    "./daimonion": "./src/socratic/daimonion.ts",
-    "./elenchus": "./src/socratic/elenchus.ts",
-    "./demiurge": "./src/platonic/demiurge.ts"
+    "./daimonion": "./src/extensions/daimonion.ts",
+    "./elenchus": "./src/extensions/elenchus.ts",
+    "./demiurge": "./src/extensions/demiurge.ts"
   },
   "dependencies": {
     "zod": "^4.0.0"
