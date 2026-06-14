@@ -3,23 +3,68 @@ import type { Action, Domain } from "@decocms/telos";
 import type { Kysely } from "kysely";
 import { z } from "zod";
 import { requireTelosRuntime } from "./durable/runtime";
-import type { OnboardingTarget, ToolTarget } from "./target";
+import type { Goal, ToolTarget } from "./target";
 
-// What the agent perceives: the integrations the org has wired up, and what the
-// user has confirmed about themselves. Both are observed — when either moves, the
-// agent re-thinks the next step.
+// A move the engine knows how to make toward the Goal. The engine PRODUCES these;
+// they are not part of the Goal (a Goal is a destination, not a plan).
+export type Step =
+  // The user connects an external app. We can only recommend — a connection is
+  // wired up by the USER — so "done" = the app shows up among active connections.
+  | { kind: "connect-app"; id: string; label: string; app: ToolTarget }
+  // A concrete task whose completion the engine observes via a named signal (e.g.
+  // "mark your storefront repos"). Modeled, but not yet populated — a step is only
+  // added once its `signal` is observable in OnboardingState.
+  | { kind: "action"; id: string; label: string; signal: string };
+
+// The ordered curriculum toward a Goal — hardcoded by us, walked by the engine.
+// Today: bring the user's core storefront tools into Studio. Apps are verified
+// registry bindings (never something we can't install). The list grows as the
+// engine learns new moves; it branches on the Goal once there's more than one.
+export function curriculumFor(_goal: Goal): Step[] {
+  return [
+    {
+      kind: "connect-app",
+      id: "connect-github",
+      label: "Connect GitHub",
+      app: { label: "GitHub", match: ["github"], appName: "@deco/github" },
+    },
+    {
+      kind: "connect-app",
+      id: "connect-shopify",
+      label: "Connect Shopify",
+      app: { label: "Shopify", match: ["shopify"], appName: "@deco/shopify" },
+    },
+  ];
+}
+
+// The connect-app steps' tools, in order — what the UI renders as the connect
+// checklist and what connection-matching measures against.
+export function connectTools(goal: Goal): ToolTarget[] {
+  return curriculumFor(goal)
+    .filter((s): s is Extract<Step, { kind: "connect-app" }> => {
+      return s.kind === "connect-app";
+    })
+    .map((s) => s.app);
+}
+
+// What the agent perceives: the integrations the org has wired up, the user's
+// confirmed self-facts, and which action steps the engine has observed complete.
+// When any of these move, the agent re-thinks the next step.
 export interface OnboardingState {
   // Lowercased identifiers (app_name / slug / title) of active, non-virtual
   // connections — the real tools the org has connected.
   connectedTools: string[];
   // Self-facts the user has confirmed — context the agent reasons over.
   confirmedFacts: Array<{ label: string; value: string }>;
+  // Signals for completed action steps. Empty until action steps go live; an
+  // action step whose `signal` isn't here is treated as not-yet-done.
+  completedActions: string[];
 }
 
 // The connection-only slice — enough to decide whether a tool is wired up.
 type ToolView = { connectedTools: string[] };
 
-// The tools still to connect — feeds the prompt, the suggestion, and telemetry.
+// The steps still to complete — feeds the prompt, the suggestion, and telemetry.
 export interface OnboardingGap {
   missing: string[];
   remaining: number;
@@ -41,7 +86,8 @@ async function measure(db: Kysely<Database>, orgId: string): Promise<ToolView> {
   return { connectedTools };
 }
 
-// Full observation: connected tools + the self-facts the user has confirmed.
+// Full observation: connected tools + confirmed self-facts. Action-step signals
+// plug in here once they exist; none are observable yet, so completedActions = [].
 async function observeState(
   db: Kysely<Database>,
   orgId: string,
@@ -53,41 +99,52 @@ async function observeState(
   const confirmedFacts = facts
     .filter((f) => f.status === "confirmed")
     .map((f) => ({ label: f.label, value: f.value }));
-  return { connectedTools, confirmedFacts };
+  return { connectedTools, confirmedFacts, completedActions: [] };
 }
 
-// A tool counts as connected when any of its match keywords appears in any
+// A connect-app step counts as done when any of its match keywords appears in any
 // connected integration's identifier.
-function isToolConnected(tool: ToolTarget, state: ToolView): boolean {
-  return tool.match.some((m) => {
+function isConnected(match: string[], state: ToolView): boolean {
+  return match.some((m) => {
     const needle = m.toLowerCase();
     return state.connectedTools.some((c) => c.includes(needle));
   });
 }
 
-// Target tools that became connected between two observed states — drives the
-// connection-aware acknowledgment ("you just connected GitHub"). Labels, not raw
-// identifiers, so it reads cleanly in a prompt or thought.
+// Whether a curriculum step is complete given the observed world.
+function isStepComplete(
+  step: Step,
+  state: OnboardingState | ToolView,
+): boolean {
+  if (step.kind === "connect-app") return isConnected(step.app.match, state);
+  // Action step: complete when its signal has been observed.
+  return "completedActions" in state
+    ? state.completedActions.includes(step.signal)
+    : false;
+}
+
+// Connect-app steps the user just wired up between two observed states — drives the
+// acknowledgment ("you just connected GitHub"). Labels, not raw identifiers.
 export function toolsJustConnected(
   prev: ToolView,
   next: ToolView,
-  target: OnboardingTarget,
+  goal: Goal,
 ): string[] {
-  return (target.tools ?? [])
-    .filter((t) => isToolConnected(t, next) && !isToolConnected(t, prev))
+  return connectTools(goal)
+    .filter((t) => isConnected(t.match, next) && !isConnected(t.match, prev))
     .map((t) => t.label);
 }
 
-// Per-tool connected/not, for the UI's checklist. Tolerant of legacy targets.
+// Per-connect-step connected/not, for the UI's checklist.
 export async function onboardingProgress(
   db: Kysely<Database>,
   orgId: string,
-  target: OnboardingTarget,
+  goal: Goal,
 ): Promise<Array<{ label: string; connected: boolean }>> {
   const state = await measure(db, orgId);
-  return (target.tools ?? []).map((t) => ({
+  return connectTools(goal).map((t) => ({
     label: t.label,
-    connected: isToolConnected(t, state),
+    connected: isConnected(t.match, state),
   }));
 }
 
@@ -114,42 +171,43 @@ const onboardingActions: Action[] = [
 
 export function onboardingDomain(
   db: Kysely<Database>,
-): Domain<OnboardingState, OnboardingTarget, OnboardingGap> {
+): Domain<OnboardingState, Goal, OnboardingGap> {
   return {
-    name: "mesh-onboarding",
+    name: "studio-onboarding",
     observe: (tenant) => observeState(db, tenant),
-    satisfied: (state, target) => {
-      const tools = target.tools ?? [];
-      return tools.length > 0 && tools.every((t) => isToolConnected(t, state));
+    satisfied: (state, goal) => {
+      const steps = curriculumFor(goal);
+      return steps.length > 0 && steps.every((s) => isStepComplete(s, state));
     },
-    gap: (state, target) => {
-      const missing = (target.tools ?? [])
-        .filter((t) => !isToolConnected(t, state))
-        .map((t) => t.label);
+    gap: (state, goal) => {
+      const missing = curriculumFor(goal)
+        .filter((s) => !isStepComplete(s, state))
+        .map((s) => s.label);
       return { missing, remaining: missing.length };
     },
     instructions:
-      "Pursue the FIXED onboarding target you cannot change. Help the org connect " +
-      "the specific tools it names; once all are connected, stop. Never redefine " +
-      "the target.",
+      "Pursue the FIXED Goal you cannot change. Guide the org through the steps " +
+      "the engine derives toward it, in order; once it has no further step to " +
+      "recommend, rest. Never redefine the Goal or invent steps.",
     actions: onboardingActions,
-    prompt: ({ state, target, gap }) =>
-      `Onboarding goal: ${target.title}. Tools still to connect: ` +
+    prompt: ({ state, target: goal, gap }) =>
+      `Goal: ${goal.title}. Steps still to do: ` +
       `${gap.missing.join(", ") || "none"}.` +
       (state.confirmedFacts.length
         ? ` What the user has confirmed about themselves: ` +
           `${state.confirmedFacts.map((f) => `${f.label} — ${f.value}`).join("; ")}.`
         : "") +
-      ` Recommend the single next tool the user should connect, named, and why ` +
-      `it helps them.`,
-    // Deterministic fallback: recommend connecting the next missing tool by name.
-    plan: ({ gap }) => {
-      if (gap.remaining <= 0) return [];
-      const next = gap.missing[0];
+      ` Recommend the single next step the user should take, named, and why it ` +
+      `moves them toward the Goal.`,
+    // Deterministic fallback: recommend the next incomplete connect-app step. Action
+    // steps have no engine-emittable action yet, so they're skipped by plan().
+    plan: ({ state, target: goal }) => {
+      const next = curriculumFor(goal).find((s) => !isStepComplete(s, state));
+      if (!next || next.kind !== "connect-app") return [];
       return [
         {
           kind: "connect_a_tool",
-          input: { reason: `Connect ${next} to make progress on your goal` },
+          input: { reason: `${next.label} to make progress toward your Goal` },
         },
       ];
     },

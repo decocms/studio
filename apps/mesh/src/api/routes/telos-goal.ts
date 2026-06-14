@@ -6,11 +6,10 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { telos } from "@/telos";
-import { onboardingProgress } from "@/telos/domain";
+import { connectTools, onboardingProgress } from "@/telos/domain";
 import { telosBus } from "@/telos/durable/bus";
 import { getLatestSuggestion, pullPursuit } from "@/telos/durable/pursuit";
 import { getLatestThought } from "@/telos/durable/thought";
-import { pullRefit } from "@/telos/durable/refit";
 import { requireTelosRuntime } from "@/telos/durable/runtime";
 import type { FactStatus } from "@decocms/telos/postgres";
 import { researchSubject } from "@/telos/research";
@@ -35,8 +34,15 @@ export function createTelosGoalRoutes() {
       factStore.list(orgId),
     ]);
 
+    // Project the Goal to the wire shape the card consumes: title + the connect-app
+    // steps' tools (the connect checklist). The full step model stays server-side.
     const goal = current
-      ? { ...current.target, version: current.version, source: current.source }
+      ? {
+          title: current.target.title,
+          tools: connectTools(current.target),
+          version: current.version,
+          source: current.source,
+        }
       : null;
     const suggestion = goal ? getLatestSuggestion(orgId) : null;
     // Per-tool connected/not, so the card shows real progress (GitHub ✓, CMS ◯).
@@ -48,7 +54,8 @@ export function createTelosGoalRoutes() {
         )
       : null;
 
-    // No goal yet → kick the durable research capability (OAOO-deduped).
+    // No goal yet → kick onboarding (installs the fixed Goal + gathers facts),
+    // OAOO-deduped on the org.
     if (!goal) {
       const subject = researchSubject(
         mesh.auth.user?.email,
@@ -89,11 +96,10 @@ export function createTelosGoalRoutes() {
     await telosBus.publish({ type: "facts.updated", organizationId: orgId });
 
     // The user telling us who they are is signal. The agent observes confirmed
-    // facts, so pull a pursuit cycle: it re-thinks the next step with the new
-    // fact in view (a fast model produces the reasoning + picks the action), and
-    // re-fit reconsiders the goal itself. Both debounced; never block the edit.
+    // facts, so pull a pursuit cycle: it re-thinks the next step with the new fact
+    // in view (a fast model produces the reasoning + picks the action). The Goal
+    // itself is fixed and never changes. Debounced; never blocks the edit.
     void pullPursuit(orgId);
-    void pullRefit(orgId);
     return c.json({ ok: true });
   });
 

@@ -8,10 +8,9 @@ import {
 } from "@decocms/telos/postgres";
 import type { Kysely } from "kysely";
 import { pullPursuit, registerPursuitWorkflows } from "./durable/pursuit";
-import { registerRefitWorkflows } from "./durable/refit";
 import { registerTelosCapabilities } from "./durable/registry";
 import { setTelosRuntime } from "./durable/runtime";
-import type { OnboardingTarget } from "./target";
+import type { Goal } from "./target";
 
 export { initTelosDbos } from "./durable/queue";
 
@@ -19,16 +18,15 @@ export { initTelosDbos } from "./durable/queue";
 // where mesh's Kysely<Database> meets telos's own tables over the same Postgres.
 const asTelos = (db: Kysely<Database>) => db as unknown as Kysely<TelosTables>;
 
-let store: TelosStore<OnboardingTarget> | null = null;
+let store: TelosStore<Goal> | null = null;
 
 // One call at app boot, before DBOS.launch(): migrate the telos schema, build
 // the stores, stash deps for capability steps, and register durable capabilities.
 export async function bootTelos(db: Kysely<Database>): Promise<void> {
-  store = await initTelos<OnboardingTarget>({ db: asTelos(db) });
+  store = await initTelos<Goal>({ db: asTelos(db) });
   setTelosRuntime({ db, store });
   registerTelosCapabilities();
   registerPursuitWorkflows();
-  registerRefitWorkflows();
 
   // Reactivity: any org activity (a mutating tool call, a fired automation) pulls
   // that org's next pursuit cycle forward. Decoupled — producers know nothing of
@@ -38,7 +36,7 @@ export async function bootTelos(db: Kysely<Database>): Promise<void> {
   });
 }
 
-export function telos(): TelosStore<OnboardingTarget> {
+export function telos(): TelosStore<Goal> {
   if (!store) {
     throw new Error(
       "[telos] not initialized — bootTelos() must run at app boot",

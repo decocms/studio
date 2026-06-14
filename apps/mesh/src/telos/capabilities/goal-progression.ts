@@ -1,15 +1,14 @@
-import type { OnboardingTarget } from "@/telos/target";
+import type { Goal } from "@/telos/target";
 import { telosBus } from "../durable/bus";
 import { defineCapability } from "../durable/capability";
 
-// The onboarding curriculum: once a goal is reached, optionally author the next.
-// A meaningful next goal must be SPECIFIC and grounded in the person (e.g. "now
-// connect Slack to get notified") — which requires research, not a hardcoded
-// rung. Until that's wired, the striver rests rather than inventing busywork:
+// The whole onboarding curriculum lives inside the one fixed Goal (its ordered
+// steps), so progression happens WITHIN a goal via the domain's gap/plan — there's
+// no separate "next goal" to author here. Reaching the Goal means every step is
+// done: a milestone, and the striver rests. A richer post-onboarding Goal (manage
+// sites, drive metrics) would be installed here once its domain exists; until then,
 // returning null is the whole lesson — better no goal than a dumb one.
-function nextOnboardingGoal(
-  _reached: OnboardingTarget,
-): OnboardingTarget | null {
+function nextGoal(_reached: Goal): Goal | null {
   return null;
 }
 
@@ -30,7 +29,7 @@ defineCapability({
       return mover.target;
     });
 
-    const next = nextOnboardingGoal(reached);
+    const next = nextGoal(reached);
     if (!next) return;
 
     const mover = await step("install-next", () =>

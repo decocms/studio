@@ -2,13 +2,12 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { FactInput } from "@decocms/telos/postgres";
 import { generateObject, generateText } from "ai";
 import { z } from "zod";
-import { type CatalogApp, catalogForPrompt, validateTools } from "./catalog";
-import type { OnboardingTarget } from "./target";
 
 // Socratic intake (elenchus): from a signup identity (name + email), research the
 // person in a short web-search loop — each round inspects what's known and asks
-// the single most valuable next question — then synthesize tentative facts + a
-// candidate goal. Two principles keep it honest:
+// the single most valuable next question — then synthesize tentative FACTS about
+// them. Facts personalize the engine's recommendations; they never author the Goal
+// (the Goal is fixed). Two principles keep it honest:
 //   1. Identity-anchored: the person's NAME drives the search; without it we can
 //      only find the company, never the individual.
 //   2. Cited-or-dropped: every fact must point at a real source URL we actually
@@ -22,8 +21,6 @@ export interface ResearchSubject {
 
 export interface ResearchResult {
   facts: FactInput[];
-  target: OnboardingTarget;
-  rationale: string;
 }
 
 // Mocked research subject — used only as the last-resort fallback when a signup
@@ -44,8 +41,8 @@ export function researchSubject(
 }
 
 // Perplexity sonar searches the web and returns citations; the synth model turns
-// findings into grounded facts + a goal. Default synth to a strong model — a weak
-// one pads to the fact limit and confabulates.
+// findings into grounded facts. Default synth to a strong model — a weak one pads
+// to the fact limit and confabulates.
 const RESEARCH_MODEL = process.env.TELOS_RESEARCH_MODEL ?? "perplexity/sonar";
 const SYNTH_MODEL =
   process.env.TELOS_SYNTH_MODEL ?? "anthropic/claude-sonnet-4.6";
@@ -82,35 +79,6 @@ const Synthesis = z.object({
       "at most 5 facts you can attribute to a listed source; omit anything you " +
         "cannot cite — fewer grounded facts beat many guesses",
     ),
-  goal: z.object({
-    title: z
-      .string()
-      .describe(
-        "a concrete, outcome-framed first goal that NAMES the tools, e.g. " +
-          "'Connect GitHub and a CMS to automate your release notes' — never a " +
-          "generic count like 'connect 3 tools'",
-      ),
-    tools: z
-      .array(
-        z.object({
-          label: z
-            .string()
-            .describe("display name of the tool to connect, e.g. 'GitHub'"),
-          match: z
-            .array(z.string())
-            .describe(
-              "lowercase keywords that identify this tool in a connection's " +
-                "name/app, e.g. ['github'] or " +
-                "['contentful','sanity','strapi','wordpress','cms']",
-            ),
-        }),
-      )
-      .describe(
-        "2-3 integrations to connect first, chosen ONLY from the supported tools " +
-          "list in the prompt — use their exact names, never invent an app",
-      ),
-    rationale: z.string().describe("why this goal fits what we found"),
-  }),
 });
 
 // Decide whether we know enough, or what to ask next to fill the biggest gap.
@@ -256,8 +224,8 @@ async function planNextQuestion(
     schema: NextStep,
     prompt:
       `You are researching a new user (${who}, company domain "${domain}") of ` +
-      `an MCP control plane, to learn enough to set them a first goal. What you ` +
-      `have found so far:\n\n${renderFindings(findings)}\n\n` +
+      `an MCP control plane, to learn enough about them to personalize their ` +
+      `onboarding. What you have found so far:\n\n${renderFindings(findings)}\n\n` +
       `Do you have specific, citable details — who they are, their public ` +
       `profiles (GitHub/LinkedIn/site), what they build, the company's product, ` +
       `industry and team size? If not, give the single most valuable next ` +
@@ -273,7 +241,6 @@ export type OnThought = (text: string) => void;
 
 export async function researchUser(
   subject: ResearchSubject,
-  catalog: CatalogApp[],
   onThought?: OnThought,
 ): Promise<ResearchResult> {
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -363,7 +330,7 @@ export async function researchUser(
     asked++;
   }
 
-  think("Synthesizing what I found into your first goal…");
+  think("Synthesizing what I found about you…");
   const { object } = await generateObject({
     model: openrouter(SYNTH_MODEL),
     schema: Synthesis,
@@ -371,12 +338,7 @@ export async function researchUser(
       `You are onboarding a new user of an MCP control plane (they connect tools ` +
       `and run automations). Below are research rounds and the SOURCES we ` +
       `actually visited.\n\n` +
-      `Extract tentative facts about the user, then propose ONE concrete first ` +
-      `goal: connect 2-3 high-value integrations this person should wire up first, ` +
-      `CHOSEN ONLY from this list of tools we actually support — use their exact ` +
-      `names, never invent an app:\n  ${catalogForPrompt(catalog)}\n` +
-      `Pick the ones most relevant to what they do. Frame the title around the ` +
-      `outcome those tools unlock.\n\n` +
+      `Extract tentative facts about the user.\n\n` +
       `HARD RULES for facts:\n` +
       `- Every fact MUST set sourceUrl to an exact URL from SOURCES that backs ` +
       `it. If nothing in SOURCES backs a claim, OMIT the fact entirely.\n` +
@@ -402,72 +364,5 @@ export async function researchUser(
       sourceUrl: f.sourceUrl,
     }));
 
-  // Validate the proposed tools against the real catalog — drop anything that
-  // isn't an app we actually support, attach canonical slugs for the connect
-  // links. If the model picked nothing real, fall back to the top catalog apps so
-  // the goal is never empty.
-  const tools = validateTools(object.goal.tools, catalog);
-  const finalTools = tools.length
-    ? tools
-    : catalog.slice(0, 2).map((a) => ({
-        label: a.label,
-        appName: a.appName,
-        match: a.match,
-        icon: a.icon,
-      }));
-
-  return {
-    facts,
-    target: { title: object.goal.title, tools: finalTools },
-    rationale: object.goal.rationale,
-  };
-}
-
-// Re-fit the first goal from facts the user has CONFIRMED about themselves. The
-// user editing facts is strong signal; this turns it into a possibly-updated goal.
-// Conservative by design: returns null (no change) unless the confirmed facts
-// clearly imply a different metric or target. No numeric schema constraints (the
-// structured-output validator rejects them); the target is clamped in code.
-export async function refitGoalFromFacts(
-  confirmed: Array<{ label: string; value: string }>,
-  current: OnboardingTarget,
-  catalog: CatalogApp[],
-): Promise<OnboardingTarget | null> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey || confirmed.length === 0) return null;
-  const openrouter = createOpenRouter({ apiKey });
-
-  const { object } = await generateObject({
-    model: openrouter(SYNTH_MODEL),
-    schema: z.object({
-      change: z
-        .boolean()
-        .describe("true ONLY if the goal should change; conservative default"),
-      title: z.string(),
-      tools: z.array(
-        z.object({
-          label: z.string(),
-          match: z.array(z.string()),
-        }),
-      ),
-    }),
-    prompt:
-      `A new user CONFIRMED these facts about themselves:\n` +
-      confirmed.map((f) => `- ${f.label}: ${f.value}`).join("\n") +
-      `\n\nTheir current onboarding goal: "${current.title}" — connect: ` +
-      `${current.tools.map((t) => t.label).join(", ")}.\n\n` +
-      `If the confirmed facts clearly imply a better set of first tools to ` +
-      `connect — CHOSEN ONLY from this supported list, exact names, never invent ` +
-      `one: ${catalogForPrompt(catalog)} — set change=true and provide an updated ` +
-      `title + tools. Otherwise set change=false and echo the current goal. Be ` +
-      `conservative — only change the goal when the facts plainly warrant it.`,
-  });
-
-  if (!object.change) return null;
-  const tools = validateTools(object.tools, catalog);
-  if (tools.length === 0) return null;
-  const next: OnboardingTarget = { title: object.title, tools };
-  // No-op if effectively identical to the current goal.
-  if (JSON.stringify(next) === JSON.stringify(current)) return null;
-  return next;
+  return { facts };
 }

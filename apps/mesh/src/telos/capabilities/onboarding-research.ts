@@ -1,14 +1,16 @@
-import { resolveCatalog } from "@/telos/catalog";
+import { buildStudioGoal } from "@/telos/goal";
 import { researchUser } from "@/telos/research";
 import { telosBus } from "../durable/bus";
 import { defineCapability } from "../durable/capability";
 import { publishThought } from "../durable/thought";
 
-// On user.signup, research the owner and set the org's first goal. Steps journal
-// so a crash after research resumes without re-charging the LLM/scrape.
+// On user.signup, install the org's FIXED Goal (set by us, deterministic — no LLM,
+// no research) and arm its pursuit, then gather facts about the owner in the
+// background to personalize the recommendations. Steps journal, so a crash after
+// the goal install or after research resumes without re-charging the LLM/scrape.
 defineCapability({
   name: "onboarding-research",
-  version: "v3",
+  version: "v4",
   on: "user.signup",
   key: (event) => event.organizationId,
   run: async (event, { runtime, step }) => {
@@ -21,16 +23,28 @@ defineCapability({
     });
     if (seeded) return;
 
-    // Network + LLM + scrape: retry transient failures with backoff rather than
-    // failing the whole onboarding. Journaled, so a success never re-charges.
+    // Install the fixed Goal first — deterministic, never fails — so the user
+    // always has their Goal even if research later errors out.
+    const goal = buildStudioGoal();
+    const mover = await step("install-goal", () =>
+      Promise.resolve(ledger.install(event.organizationId, goal, "authority")),
+    );
+
+    await telosBus.publish({
+      type: "goal.installed",
+      organizationId: event.organizationId,
+      version: mover.version,
+      title: goal.title,
+    });
+
+    // Facts are personalization, not the Goal: research the owner best-effort and
+    // attach what we can cite. Network + LLM + scrape — retry transient failures
+    // with backoff; journaled, so a success never re-charges.
     const result = await step(
       "research",
-      async () =>
-        researchUser(
-          { email: event.email, name: event.name },
-          await resolveCatalog(event.organizationId),
-          (text) =>
-            publishThought(event.organizationId, { text, phase: "research" }),
+      () =>
+        researchUser({ email: event.email, name: event.name }, (text) =>
+          publishThought(event.organizationId, { text, phase: "research" }),
         ),
       {
         retriesAllowed: true,
@@ -38,20 +52,14 @@ defineCapability({
         intervalSeconds: 2,
       },
     );
-    await step("persist-facts", () =>
-      facts.insertMany(event.organizationId, result.facts),
-    );
-    const mover = await step("install-goal", () =>
-      Promise.resolve(
-        ledger.install(event.organizationId, result.target, "authority"),
-      ),
-    );
-
-    await telosBus.publish({
-      type: "goal.installed",
-      organizationId: event.organizationId,
-      version: mover.version,
-      title: result.target.title,
-    });
+    if (result.facts.length > 0) {
+      await step("persist-facts", () =>
+        facts.insertMany(event.organizationId, result.facts),
+      );
+      await telosBus.publish({
+        type: "facts.updated",
+        organizationId: event.organizationId,
+      });
+    }
   },
 });
