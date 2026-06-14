@@ -80,6 +80,20 @@ export interface RelayDispatchSSEAsChunkStreamInput {
    * opened once per daemon.
    */
   outbox?: Outbox;
+  /**
+   * Retry policy for the streaming POST. The defaults widen the window to
+   * ~2.5 min (vs the old 5-attempt/~8s budget) so a TRANSIENT cluster/edge
+   * reset — confirmed in the field as a fast `ECONNRESET` with no response,
+   * where all retries fall inside one brief reset window — is recovered
+   * instead of failing the run. `jitter` de-synchronizes concurrent runs so
+   * they don't retry in lockstep into the same window. Tests/ops override.
+   */
+  retry?: {
+    maxAttempts?: number;
+    minTimeout?: number;
+    maxTimeout?: number;
+    jitter?: number;
+  };
 }
 
 const encoder = new TextEncoder();
@@ -165,6 +179,16 @@ export async function relayDispatchSSEAsChunkStream(
   })().catch((err: unknown) => {
     pumpError =
       err ?? new Error(`[chunk-relay] runId=${input.runId}: chunk pump failed`);
+    // `rootCause === null` ⇒ this leg failed FIRST, so it is the real root.
+    // (A poster failure aborts `internal`, which cancels the SSE reader and
+    // lands here too — but then rootCause is already set, so we stay quiet.)
+    if (rootCause === null) {
+      // ROOT = SANDBOX leg: the loopback dispatch SSE broke (sandbox daemon
+      // closed the stream / died → "socket connection closed unexpectedly").
+      console.error(
+        `[relay-diag] ROOT=SANDBOX-SSE-pump runId=${input.runId} name=${pumpError instanceof Error ? pumpError.name : typeof pumpError} msg=${pumpError instanceof Error ? pumpError.message : String(pumpError)}`,
+      );
+    }
     signalChange(); // wake attempt bodies so they error out promptly
     failWith(pumpError);
     throw pumpError;
@@ -241,19 +265,35 @@ export async function relayDispatchSSEAsChunkStream(
     outbox.truncateRun({ runId: input.runId, fenceToken });
   };
 
+  // Widened defaults (see the `retry` field doc): ~2.5 min total window so a
+  // brief ECONNRESET reset window can't swallow the whole budget.
   const posterPromise = retry(postOnce, {
-    maxAttempts: 5,
-    minTimeout: 250,
-    maxTimeout: 5_000,
+    maxAttempts: input.retry?.maxAttempts ?? 12,
+    minTimeout: input.retry?.minTimeout ?? 250,
+    maxTimeout: input.retry?.maxTimeout ?? 30_000,
+    jitter: input.retry?.jitter ?? 0.5,
     signal: internal.signal,
     isRetriable: (err) => {
       // A pump failure is the root cause — retrying the POST cannot fix it.
       if (pumpError !== null && err === pumpError) return false;
       const status = (err as { status?: number }).status;
+      // Network drops (ECONNRESET etc.) carry no `.status` → retriable; a 4xx
+      // (fence/cancel) is permanent; 5xx is retriable.
       return status === undefined || status >= 500;
     },
   }).catch((err: unknown) => {
     const cause = err instanceof RetryError ? err.cause : err;
+    // Only the FIRST failure is the root (see the pump catch above). A pump
+    // failure that aborts an in-flight POST also lands here, but by then
+    // rootCause is already set, so we don't mislabel it as a cluster fault.
+    if (rootCause === null) {
+      // ROOT = CLUSTER-RELAY leg: the streaming POST to the cluster failed
+      // (after exhausting the retry budget) — socket reset, non-2xx, or ack
+      // mismatch.
+      console.error(
+        `[relay-diag] ROOT=CLUSTER-RELAY runId=${input.runId} retried=${err instanceof RetryError} name=${cause instanceof Error ? cause.name : typeof cause} msg=${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
     failWith(cause);
     throw cause;
   });

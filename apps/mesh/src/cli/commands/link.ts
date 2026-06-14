@@ -151,12 +151,18 @@ export async function runLinkCommand(
         setMachine,
       } = await import("../link-store");
 
-      // Combined log file: both the parent's intercepted console output and
-      // every spawned sandbox daemon's stdout/stderr land here, keeping the
-      // Ink canvas clean. Append mode so it survives across restarts.
+      // link.log — the daemon's own intercepted console (cluster connection,
+      // work/control/proxy polls, [user-desktop] lifecycle, dispatch +
+      // chunk-relay diagnostics). The transport log. Opened with "w"
+      // (truncate) — RECREATED every restart; the previous "a" (append) is what
+      // let it balloon to 100+ MB across sessions.
+      //
+      // Each spawned sandbox daemon's (very noisy) stdout/stderr goes to its
+      // OWN `<workdir>/tmp/daemon.log` instead (see `perSandboxLogs` below), so
+      // this file stays a legible transport timeline.
       mkdirSync(dataDir, { recursive: true });
       const logPath = join(dataDir, "link.log");
-      logFd = openSync(logPath, "a");
+      logFd = openSync(logPath, "w");
       setLogPath(logPath);
 
       setClusterUrl(clusterBaseUrl);
@@ -174,6 +180,11 @@ export async function runLinkCommand(
       printBanner(opts.version ?? "0.0.0");
     }
 
+    // Standalone `deco link` isolates each sandbox daemon's output into its own
+    // `<workdir>/tmp/daemon.log`. The managed/dev daemon leaves it off so its
+    // sandboxes' output streams to the parent `dev`/`serve` process instead.
+    const perSandboxLogs = process.env.DECOCMS_LINK_MANAGED !== "1";
+
     const handle = await startLinkDaemon({
       port,
       clusterBaseUrl,
@@ -181,6 +192,7 @@ export async function runLinkCommand(
       session,
       monitor,
       logFd,
+      perSandboxLogs,
       hotReload: opts.hotReload,
     });
     return await handle.stopped;

@@ -652,6 +652,9 @@ describe("handleLocalDispatch", () => {
       getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       outbox,
+      // Fast budget — this test asserts durability after exhaustion, not the
+      // (widened) production retry window.
+      relayRetry: { maxAttempts: 2, minTimeout: 1, maxTimeout: 2, jitter: 0 },
     }).catch(() => {}); // expected to fail after retries
 
     outbox.close();

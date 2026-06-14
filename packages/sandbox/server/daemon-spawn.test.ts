@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildSandboxDaemonSpawnCommand,
   resolveDaemonStdio,
+  sandboxDaemonLogPath,
 } from "./daemon-spawn";
 
 describe("resolveDaemonStdio", () => {
@@ -12,6 +13,22 @@ describe("resolveDaemonStdio", () => {
 
   it("returns the provided fd so the child writes to the log file", () => {
     expect(resolveDaemonStdio(7)).toBe(7);
+  });
+});
+
+describe("sandboxDaemonLogPath", () => {
+  it("co-locates the per-sandbox daemon log under the sandbox's tmp/", () => {
+    expect(
+      sandboxDaemonLogPath("/Users/me/deco/sandboxes/thin-crest-abc123"),
+    ).toBe("/Users/me/deco/sandboxes/thin-crest-abc123/tmp/daemon.log");
+  });
+
+  it("is a sibling of the sandbox repo/, not inside it", () => {
+    const workdir = "/data/sandboxes/h1";
+    expect(sandboxDaemonLogPath(workdir)).not.toContain("/repo/");
+    expect(sandboxDaemonLogPath(workdir)).toBe(
+      "/data/sandboxes/h1/tmp/daemon.log",
+    );
   });
 });
 
