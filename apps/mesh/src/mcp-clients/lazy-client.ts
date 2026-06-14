@@ -29,6 +29,7 @@ import {
   recordSuccess,
 } from "./circuit-breaker";
 import { clientFromConnection } from "./client";
+import { invalidateConnectionCaches } from "./mcp-cache-invalidation";
 import {
   fetchWithCache,
   type McpListCache,
@@ -204,35 +205,52 @@ export function createLazyClient(
 
   placeholder.callTool = async (params, resultSchema, options) => {
     const toolName = (params as { name?: unknown })?.name;
-    const cacheable =
+    const readOnly =
       cacheReads &&
-      !resultSchema &&
       typeof toolName === "string" &&
       (await isReadOnlyTool(cache, connection.id, toolName));
 
-    if (!readCache || !cacheable) {
-      const real = await getRealClient();
-      return real.callTool(params, resultSchema, options);
+    // Read-only tools are served stale-while-revalidate from the per-pod read
+    // cache (when caching is enabled). A custom result schema bypasses caching
+    // (the value is reshaped).
+    if (readCache && readOnly && !resultSchema) {
+      const result = await readCache.fetch({
+        type: "tools/call",
+        connectionId: connection.id,
+        scope: resolveReadCacheScope(),
+        params: {
+          name: toolName,
+          arguments: (params as { arguments?: unknown })?.arguments,
+        },
+        fetchLive: async () => {
+          const real = await getRealClient();
+          return real.callTool(params, resultSchema, options);
+        },
+        // Never cache error results — returned to the caller but not stored.
+        shouldCache: (value) =>
+          (value as { isError?: boolean })?.isError !== true,
+        onRevalidation: (p) => ctx.pendingRevalidations.push(p),
+      });
+      return result as Awaited<ReturnType<Client["callTool"]>>;
     }
 
-    const result = await readCache.fetch({
-      type: "tools/call",
-      connectionId: connection.id,
-      scope: resolveReadCacheScope(),
-      params: {
-        name: toolName,
-        arguments: (params as { arguments?: unknown })?.arguments,
-      },
-      fetchLive: async () => {
-        const real = await getRealClient();
-        return real.callTool(params, resultSchema, options);
-      },
-      // Never cache error results — they're returned to the caller but not stored.
-      shouldCache: (value) =>
-        (value as { isError?: boolean })?.isError !== true,
-      onRevalidation: (p) => ctx.pendingRevalidations.push(p),
-    });
-    return result as Awaited<ReturnType<Client["callTool"]>>;
+    const real = await getRealClient();
+
+    // Any tool we can't confirm read-only is treated as a mutation: after the
+    // call, evict this connection's cached read results on every replica so the
+    // next read sees fresh data. Invalidate even on throw — a partial mutation
+    // may have landed. Only when caching is enabled (readCache present) and the
+    // connection caches reads; VIRTUAL connections route through the upstream
+    // connections' own lazy clients, which invalidate themselves.
+    if (readCache && cacheReads && !readOnly) {
+      try {
+        return await real.callTool(params, resultSchema, options);
+      } finally {
+        invalidateConnectionCaches(connection.id);
+      }
+    }
+
+    return real.callTool(params, resultSchema, options);
   };
 
   placeholder.getPrompt = async (params, options) => {
