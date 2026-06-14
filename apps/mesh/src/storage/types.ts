@@ -1464,21 +1464,9 @@ export interface Database {
 
   sandbox_runner_state: SandboxProviderStateTable;
 
-  // Telos goal ledger (append-only, org-scoped) — @decocms/telos
-  telos_goal: TelosGoalTable;
-  // Telos onboarding facts — tentative findings the user confirms/rejects
+  // Telos onboarding facts — tentative findings the user confirms/rejects.
+  // (The goal ledger lives in its own `telos` schema, owned by the package.)
   telos_fact: TelosFactTable;
-}
-
-// Append-only goal ledger; one lineage per org. source = "authority" | "engine".
-export interface TelosGoalTable {
-  id: string;
-  organization_id: string;
-  version: number;
-  source: string; // "authority" | "engine"
-  target: unknown; // jsonb — the goal target
-  created_by: string | null;
-  created_at: ColumnType<Date, string | undefined, string>;
 }
 
 // Tentative onboarding findings the user confirms/rejects (status).

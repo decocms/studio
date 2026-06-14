@@ -1,5 +1,5 @@
 import { FactStore } from "@/telos/fact-store";
-import { KyselyGoalLedger } from "@/telos/ledger";
+import { onboardingLedger } from "@/telos/ledger";
 import { researchUser } from "@/telos/research";
 import { telosBus } from "../durable/bus";
 import { defineCapability } from "../durable/capability";
@@ -12,13 +12,14 @@ defineCapability({
   on: "user.signup",
   key: (event) => event.organizationId,
   run: async (event, { runtime, step }) => {
-    const ledger = new KyselyGoalLedger(runtime.db);
+    const ledger = onboardingLedger(runtime.db);
     const facts = new FactStore(runtime.db);
 
     // Skip orgs that already have a goal (OAOO covers re-fires of the same org).
-    const seeded = await step("check-existing", () =>
-      ledger.history(event.organizationId).then((h) => h.length > 0),
-    );
+    const seeded = await step("check-existing", async () => {
+      const history = await ledger.history(event.organizationId);
+      return history.length > 0;
+    });
     if (seeded) return;
 
     const result = await step("research", () => researchUser(event.email));
@@ -26,7 +27,9 @@ defineCapability({
       facts.insertMany(event.organizationId, result.facts),
     );
     const mover = await step("install-goal", () =>
-      ledger.install(event.organizationId, result.target, "authority"),
+      Promise.resolve(
+        ledger.install(event.organizationId, result.target, "authority"),
+      ),
     );
 
     await telosBus.publish({

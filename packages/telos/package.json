@@ -17,16 +17,24 @@
     "./ai": "./src/deliberators/ai.ts",
     "./daimonion": "./src/extensions/daimonion.ts",
     "./elenchus": "./src/extensions/elenchus.ts",
-    "./demiurge": "./src/extensions/demiurge.ts"
+    "./demiurge": "./src/extensions/demiurge.ts",
+    "./postgres": "./src/storage/postgres.ts"
   },
   "dependencies": {
     "zod": "^4.0.0"
   },
+  "devDependencies": {
+    "kysely": "^0.28.12"
+  },
   "peerDependencies": {
-    "ai": ">=6.0.0"
+    "ai": ">=6.0.0",
+    "kysely": ">=0.27.0"
   },
   "peerDependenciesMeta": {
     "ai": {
+      "optional": true
+    },
+    "kysely": {
       "optional": true
     }
   },

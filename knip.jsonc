@@ -40,6 +40,7 @@
       // `ai` is an intentional OPTIONAL peer dep: only the `@decocms/telos/ai`
       // deliberator imports it, so consumers using just the rule deliberator
       // pull nothing. knip flags referenced optional peers; this is by design.
+      // (`kysely` is also a devDependency, so it resolves without an ignore.)
       "ignoreDependencies": ["ai"]
     },
     "packages/sandbox": {

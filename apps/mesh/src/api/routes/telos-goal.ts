@@ -7,7 +7,7 @@
 import type { StudioContext } from "@/core/studio-context";
 import { telosBus } from "@/telos/durable/bus";
 import { FactStore, type FactStatus } from "@/telos/fact-store";
-import { KyselyGoalLedger } from "@/telos/ledger";
+import { onboardingLedger } from "@/telos/ledger";
 import { RESEARCH_EMAIL } from "@/telos/research";
 import { Hono } from "hono";
 
@@ -21,11 +21,11 @@ export function createTelosGoalRoutes() {
     const orgId = mesh.organization?.id;
     if (!orgId) return c.json({ error: "Organization required" }, 400);
 
-    const ledger = new KyselyGoalLedger(mesh.db);
+    const ledger = onboardingLedger(mesh.db);
     const factStore = new FactStore(mesh.db);
 
     const [anchor, facts] = await Promise.all([
-      ledger.anchor(orgId).catch(() => null),
+      Promise.resolve(ledger.anchor(orgId)).catch(() => null),
       factStore.list(orgId),
     ]);
 
