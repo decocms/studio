@@ -112,7 +112,11 @@ export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
       "anthropic/claude-fable",
     ],
     google: ["gemini-3-pro"],
-    "claude-code": ["claude-code:opus", "claude-code:sonnet"],
+    "claude-code": [
+      "claude-code:opus-1m",
+      "claude-code:opus",
+      "claude-code:sonnet",
+    ],
     codex: ["codex:gpt-5.5"],
   };
 

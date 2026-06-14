@@ -37,4 +37,13 @@ export const CLAUDE_CODE_MODELS: ModelInfo[] = [
     limits: null,
     costs: null,
   },
+  {
+    providerId: "claude-code",
+    modelId: "claude-code:opus-1m",
+    title: "Claude Code Opus 4.8 1M",
+    description: "Most capable, 1M context window",
+    capabilities: ["text", "reasoning"],
+    limits: { contextWindow: 1_000_000, maxOutputTokens: null },
+    costs: null,
+  },
 ];
