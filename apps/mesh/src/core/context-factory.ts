@@ -219,8 +219,9 @@ function checkApiKeyPermission(
       if (wildcardTools.includes("*")) {
         continue; // Wildcard grants all tools
       }
+      const wildcardSet = new Set(wildcardTools);
       for (const tool of tools) {
-        if (!wildcardTools.includes(tool)) {
+        if (!wildcardSet.has(tool)) {
           return false;
         }
       }
@@ -233,8 +234,9 @@ function checkApiKeyPermission(
     }
 
     // Check each requested tool
+    const grantedSet = new Set(grantedTools);
     for (const tool of tools) {
-      if (!grantedTools.includes(tool)) {
+      if (!grantedSet.has(tool)) {
         return false;
       }
     }
