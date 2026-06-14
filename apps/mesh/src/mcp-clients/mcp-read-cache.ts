@@ -28,6 +28,7 @@
  */
 
 import { meter } from "../observability";
+import { getSettings } from "../settings";
 
 const cacheCounter = meter.createCounter("mcp_read_cache.fetches", {
   description: "MCP read cache outcomes (hit, stale, miss, error)",
@@ -271,9 +272,19 @@ export class InMemoryMcpReadCache {
   }
 }
 
-// Per-pod singleton — pure in-memory, no external deps, always available.
+// Per-pod singleton — pure in-memory, no external deps.
 const readCache = new InMemoryMcpReadCache();
 
-export function getMcpReadCache(): InMemoryMcpReadCache {
-  return readCache;
+/**
+ * MCP read/list caching. On by default in production, off in development;
+ * MCP_CACHE_ENABLED overrides either way (resolved in settings). Same flag
+ * gates the cross-pod NATS KV list cache.
+ */
+export function isMcpCacheEnabled(): boolean {
+  return getSettings().mcpCacheEnabled;
+}
+
+/** The per-pod read cache, or null when MCP caching is disabled. */
+export function getMcpReadCache(): InMemoryMcpReadCache | null {
+  return isMcpCacheEnabled() ? readCache : null;
 }

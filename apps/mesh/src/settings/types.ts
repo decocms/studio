@@ -53,6 +53,9 @@ export interface Settings {
 
   // Feature Flags
   enableDecoImport: boolean;
+  /** MCP read/list caching. On by default in production, off in development;
+   *  MCP_CACHE_ENABLED explicitly overrides either default. */
+  mcpCacheEnabled: boolean;
   /** Mint org-fs tokens for hosted (agent-sandbox) pods too — only useful
    *  when the sandbox-env chart runs the org-fs sidecar (orgFs.enabled). */
   orgFsClusterMounts: boolean;

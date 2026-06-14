@@ -28,7 +28,7 @@ let sub: Subscription | null = null;
 
 /** Drop this connection's per-pod cached read results (content + tool calls). */
 function evictLocal(connectionId: string): void {
-  getMcpReadCache().invalidate(connectionId);
+  getMcpReadCache()?.invalidate(connectionId);
 }
 
 /**
