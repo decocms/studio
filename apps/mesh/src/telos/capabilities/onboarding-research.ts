@@ -19,7 +19,13 @@ defineCapability({
     });
     if (seeded) return;
 
-    const result = await step("research", () => researchUser(event.email));
+    // Network + LLM + scrape: retry transient failures with backoff rather than
+    // failing the whole onboarding. Journaled, so a success never re-charges.
+    const result = await step("research", () => researchUser(event.email), {
+      retriesAllowed: true,
+      maxAttempts: 5,
+      intervalSeconds: 2,
+    });
     await step("persist-facts", () =>
       facts.insertMany(event.organizationId, result.facts),
     );

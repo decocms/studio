@@ -17,6 +17,14 @@ export type DomainEvent<T> =
       reason: string;
       payload?: unknown;
     }
+  // A "user"-audience action the agent recommends but cannot perform itself.
+  | {
+      type: "eudaimon.action.suggested";
+      tenant: string;
+      moverVersion: number;
+      kind: string;
+      payload?: unknown;
+    }
   | {
       type: "eudaimon.pursued";
       tenant: string;

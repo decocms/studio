@@ -5,7 +5,12 @@
 export type { Awaitable } from "./awaitable";
 export { type GoalSource, UnmovedMover } from "./mover";
 export { type GoalLedger, InMemoryGoalLedger } from "./ledger";
-export type { Action, Domain, PursuitContext } from "./domain";
+export type {
+  Action,
+  ActionAudience,
+  Domain,
+  PursuitContext,
+} from "./domain";
 export {
   type DomainEvent,
   type DomainEventType,

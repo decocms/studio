@@ -1,12 +1,22 @@
 import type { TelosEventOf, TelosEventType } from "./events";
 import type { TelosRuntime } from "./runtime";
 
+// Opt-in automatic retries for a step. Use on transient/idempotent work
+// (network reads, scrapes, LLM calls); leave off for steps with side effects
+// that aren't safe to repeat. Maps straight onto DBOS's StepConfig.
+export interface StepRetry {
+  retriesAllowed?: boolean;
+  maxAttempts?: number;
+  intervalSeconds?: number;
+  backoffRate?: number;
+}
+
 // A named, versioned, durable reaction to a telos event. The registry owns the
 // DBOS mechanics (registration, idempotent workflow IDs, journaled steps).
 export interface CapabilityCtx {
   runtime: TelosRuntime;
   /** Wraps DBOS.runStep — each step journals, so a crash resumes at the next. */
-  step<R>(name: string, fn: () => Promise<R>): Promise<R>;
+  step<R>(name: string, fn: () => Promise<R>, retry?: StepRetry): Promise<R>;
 }
 
 export interface CapabilityDef<K extends TelosEventType = TelosEventType> {

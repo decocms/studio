@@ -6,9 +6,12 @@ import {
   type TelosTables,
 } from "@decocms/telos/postgres";
 import type { Kysely } from "kysely";
+import { registerPursuitWorkflows } from "./durable/pursuit";
 import { registerTelosCapabilities } from "./durable/registry";
 import { setTelosRuntime } from "./durable/runtime";
 import type { OnboardingTarget } from "./target";
+
+export { initTelosDbos } from "./durable/queue";
 
 // telos owns its storage (the `telos` schema); the cast is the one boundary
 // where mesh's Kysely<Database> meets telos's own tables over the same Postgres.
@@ -22,6 +25,7 @@ export async function bootTelos(db: Kysely<Database>): Promise<void> {
   store = await initTelos<OnboardingTarget>({ db: asTelos(db) });
   setTelosRuntime({ db, store });
   registerTelosCapabilities();
+  registerPursuitWorkflows();
 }
 
 export function telos(): Telos<OnboardingTarget> {

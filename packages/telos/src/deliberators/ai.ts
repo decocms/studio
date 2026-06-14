@@ -39,27 +39,38 @@ export function aiDeliberator(opts: AiDeliberatorOptions): Deliberator {
       let applied = 0;
 
       const tools = Object.fromEntries(
-        domain.actions.map((action) => [
-          action.kind,
-          tool({
-            description: action.description,
-            inputSchema: action.schema,
-            execute: async (input) => {
-              if (
-                maxActionsPerCycle !== undefined &&
-                applied >= maxActionsPerCycle
-              ) {
-                return `skipped ${action.kind}: per-cycle action cap (${maxActionsPerCycle}) reached`;
-              }
-              const outcome = await applyAction(action, ctx, input);
-              if (!outcome.applied) {
-                return `vetoed ${action.kind}: ${outcome.vetoed}`;
-              }
-              applied++;
-              return `applied ${action.kind}`;
-            },
-          }),
-        ]),
+        domain.actions.map((action) => {
+          const audience = action.audience ?? "any";
+          return [
+            action.kind,
+            tool({
+              description:
+                audience === "user"
+                  ? `${action.description} (the USER must do this; calling it recommends it to them)`
+                  : action.description,
+              inputSchema: action.schema,
+              execute: async (input) => {
+                // "user" actions are surfaced as recommendations, never performed.
+                if (audience === "user") {
+                  await ctx.suggest(action.kind, input);
+                  return `suggested ${action.kind} to the user`;
+                }
+                if (
+                  maxActionsPerCycle !== undefined &&
+                  applied >= maxActionsPerCycle
+                ) {
+                  return `skipped ${action.kind}: per-cycle action cap (${maxActionsPerCycle}) reached`;
+                }
+                const outcome = await applyAction(action, ctx, input);
+                if (!outcome.applied) {
+                  return `vetoed ${action.kind}: ${outcome.vetoed}`;
+                }
+                applied++;
+                return `applied ${action.kind}`;
+              },
+            }),
+          ];
+        }),
       );
 
       const agent = new ToolLoopAgent({

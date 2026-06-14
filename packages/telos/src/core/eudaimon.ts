@@ -87,6 +87,14 @@ export class Eudaimon<S, T, G = unknown> {
             reason,
             payload,
           }),
+        suggest: (kind, payload) =>
+          this.bus.publish({
+            type: "eudaimon.action.suggested",
+            tenant: this.tenant,
+            moverVersion: mover.version,
+            kind,
+            payload,
+          }),
       };
 
       const { summary } = await this.deliberator.run({

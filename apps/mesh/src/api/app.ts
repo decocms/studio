@@ -14,7 +14,7 @@ import {
   registerPublicSetsSyncWorkflow,
   setPublicSetsSyncRuntime,
 } from "../file-storage/dbos-public-sets-sync";
-import { bootTelos } from "@/telos";
+import { bootTelos, initTelosDbos } from "@/telos";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -2357,6 +2357,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       partitionQueue: true,
       concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
     });
+
+    // Telos's shared work queue (onboarding research + goal pursuit). Registered
+    // here for the same reason as the gate queue: registerQueue needs launch.
+    await initTelosDbos();
+
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.

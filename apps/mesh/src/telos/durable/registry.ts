@@ -1,6 +1,7 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { CAPABILITIES, type CapabilityDef } from "./capability";
 import type { TelosEvent } from "./events";
+import { TELOS_QUEUE } from "./queue";
 import { requireTelosRuntime } from "./runtime";
 
 type Enqueue = (event: TelosEvent) => Promise<unknown>;
@@ -17,12 +18,17 @@ export function registerTelosCapabilities(): void {
     const workflowFn = (event: TelosEvent): Promise<void> =>
       cap.run(event as never, {
         runtime: requireTelosRuntime(),
-        step: (name, fn) => DBOS.runStep(fn, { name: `${cap.name}:${name}` }),
+        step: (name, fn, retry) =>
+          DBOS.runStep(fn, { name: `${cap.name}:${name}`, ...retry }),
       });
 
     const wf = DBOS.registerWorkflow(workflowFn, { name: `telos.${cap.name}` });
+    // Enqueue onto the shared telos queue so capability fires obey its
+    // concurrency + rate limits; the deterministic workflowID still gives OAOO
+    // exactly-once on top of the queue.
     handles.set(cap, (event) =>
       DBOS.startWorkflow(wf, {
+        queueName: TELOS_QUEUE,
         workflowID: `telos:${cap.name}:${cap.version}:${cap.key(event as never)}`,
       })(event),
     );
