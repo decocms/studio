@@ -293,6 +293,28 @@ describe("relayDispatchSSEAsChunkStream", () => {
     expect(postCalls).toBe(1);
   });
 
+  it("retries a network drop (no status) up to the configured maxAttempts, then gives up", async () => {
+    // ECONNRESET-style failure: no `.status` → retriable. The widened retry
+    // budget is what lets a transient cluster/edge reset recover; here we use a
+    // small override and assert the relay honors it exactly before failing.
+    let postCalls = 0;
+
+    await expect(
+      relayDispatchSSEAsChunkStream({
+        dispatchBody: sseBody([CHUNK_A, DONE]),
+        runId: "run_econnreset",
+        retry: { maxAttempts: 4, minTimeout: 1, maxTimeout: 2, jitter: 0 },
+        post: async (body): Promise<RelayPostResult> => {
+          postCalls += 1;
+          await readAllLines(body);
+          throw new Error("The socket connection was closed unexpectedly");
+        },
+      }),
+    ).rejects.toThrow("socket connection was closed");
+
+    expect(postCalls).toBe(4);
+  });
+
   it("throws when the relay buffer exceeds RELAY_BUFFER_MAX_BYTES", async () => {
     // Enough 1 MiB deltas to push the serialized lines past the cap.
     const deltaBytes = 1024 * 1024;
@@ -389,6 +411,9 @@ describe("relayDispatchSSEAsChunkStream + durable outbox", () => {
       runId: "run_crash",
       fenceToken: FENCE,
       outbox,
+      // Fast retry budget — this test asserts on-disk durability after the
+      // budget is exhausted, not the (widened) production timing.
+      retry: { maxAttempts: 2, minTimeout: 1, maxTimeout: 2, jitter: 0 },
       post: async (body): Promise<RelayPostResult> => {
         for await (const _line of ndjsonLines(
           body as ReadableStream<Uint8Array>,

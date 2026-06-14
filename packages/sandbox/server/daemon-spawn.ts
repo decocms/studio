@@ -21,9 +21,9 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export interface DaemonProcess {
@@ -97,6 +97,16 @@ export function resolveDaemonStdio(outFd?: number): "inherit" | number {
   return outFd ?? "inherit";
 }
 
+/**
+ * Per-sandbox daemon log path: `<workdir>/tmp/daemon.log`. Each spawned sandbox
+ * daemon writes its stdout/stderr here — co-located with the sandbox's `repo/`
+ * and isolated from every other sandbox (the old single combined file
+ * interleaved them all). Truncated on every spawn (see `createDefaultDaemonSpawn`).
+ */
+export function sandboxDaemonLogPath(workdir: string): string {
+  return join(workdir, "tmp", "daemon.log");
+}
+
 export function canHotReloadDaemon(opts: {
   daemonExec: string;
   sourceDaemonPath: string;
@@ -123,7 +133,7 @@ export function buildSandboxDaemonSpawnCommand(opts: {
  */
 export function createDefaultDaemonSpawn(
   homeDir: string,
-  opts: { outFd?: number; hotReload?: boolean } = {},
+  opts: { outFd?: number; perSandboxLog?: boolean; hotReload?: boolean } = {},
 ): SpawnDaemonFn {
   return async (args) => {
     const daemonExec = await resolveDaemonExec(homeDir);
@@ -133,7 +143,22 @@ export function createDefaultDaemonSpawn(
     const nodePath = existingNodePath
       ? `${ptyNodeModulesDir}:${existingNodePath}`
       : ptyNodeModulesDir;
-    const stdio = resolveDaemonStdio(opts.outFd);
+    // Per-sandbox log: open `<workdir>/tmp/daemon.log` (truncate every spawn)
+    // and point this sandbox daemon's stdout/stderr at it, so each sandbox's
+    // (noisy) output is isolated + co-located with its repo. Falls back to
+    // `outFd`/terminal-inherit for managed/dev mode, where output is meant to
+    // stream to the parent process.
+    let perSandboxFd: number | undefined;
+    let stdio: "inherit" | number;
+    if (opts.perSandboxLog) {
+      const logPath = sandboxDaemonLogPath(args.workdir);
+      mkdirSync(dirname(logPath), { recursive: true });
+      perSandboxFd = openSync(logPath, "w");
+      stdio = perSandboxFd;
+      console.log(`[user-desktop] sandbox daemon logs → ${logPath}`);
+    } else {
+      stdio = resolveDaemonStdio(opts.outFd);
+    }
     const proc = Bun.spawn({
       cmd: buildSandboxDaemonSpawnCommand({
         daemonExec,
@@ -149,6 +174,18 @@ export function createDefaultDaemonSpawn(
       stderr: stdio,
       stdin: "ignore",
     });
+    // Close the parent's copy of the log fd once the child exits — the child
+    // holds its own dup for its lifetime, so this only releases our handle.
+    if (perSandboxFd !== undefined) {
+      const fd = perSandboxFd;
+      void proc.exited.finally(() => {
+        try {
+          closeSync(fd);
+        } catch {
+          /* already closed */
+        }
+      });
+    }
     return {
       pid: proc.pid,
       kill: (sig) => {

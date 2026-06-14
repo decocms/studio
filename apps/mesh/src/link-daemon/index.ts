@@ -58,12 +58,21 @@ export interface StartLinkDaemonOptions {
   /** Optional TUI hooks. Omitted in --no-tui mode. */
   monitor?: LinkDaemonMonitor;
   /**
-   * When set, spawned sandbox daemons write stdout/stderr to this file
-   * descriptor (the `deco link` log file) instead of inheriting the
-   * terminal. Omitted in `--no-tui` / managed mode so their output streams
-   * to the parent process.
+   * The daemon's own log file descriptor (`link.log`). The parent process
+   * intercepts `console.*` onto this fd before calling us, so daemon-level
+   * logs (cluster connection, polls, dispatch/relay diagnostics) land here.
+   * Also the fallback stdio for spawned sandbox daemons when `perSandboxLogs`
+   * is off (managed/dev mode) — otherwise each sandbox logs to its own file.
    */
   logFd?: number;
+  /**
+   * When true, each spawned sandbox daemon writes its stdout/stderr to its own
+   * `<workdir>/tmp/daemon.log` (truncated on every spawn) instead of `logFd` /
+   * the terminal — keeping the (very noisy) per-sandbox vite/harness output
+   * isolated and co-located with that sandbox's `repo/`. Off in managed/dev
+   * mode so the output streams to the parent process.
+   */
+  perSandboxLogs?: boolean;
   /** Hot-reload sandbox daemons spawned from source. */
   hotReload?: boolean;
 }
@@ -80,7 +89,10 @@ export async function startLinkDaemon(
   opts.monitor?.onMachine?.(hostname ?? "this machine");
 
   const innerSpawn = createDefaultDaemonSpawn(opts.dataDir, {
+    // Per-sandbox `<workdir>/tmp/daemon.log` when enabled; otherwise fall back
+    // to the daemon's log fd / terminal inherit (managed/dev mode).
     outFd: opts.logFd,
+    perSandboxLog: opts.perSandboxLogs,
     hotReload: opts.hotReload,
   });
   // Forward declaration so `resolvePreviewUrl` can read the ingress port

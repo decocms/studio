@@ -52,6 +52,18 @@ import type { Outbox } from "./outbox";
 const DISPATCH_START_TIMEOUT_MS = 15_000;
 
 /**
+ * Relay retry budget, env-tunable for ops without a rebuild (undefined → the
+ * widened chunk-relay defaults: 12 attempts / 30s max backoff ≈ 2.5 min). The
+ * wide window lets a transient cluster/edge ECONNRESET recover instead of
+ * exhausting the budget and failing the run. `Number("")`/`Number(undefined)`
+ * collapse to NaN → `|| undefined`, so an unset/blank env keeps the defaults.
+ */
+const RELAY_MAX_ATTEMPTS =
+  Number(process.env.DECO_LINK_RELAY_MAX_ATTEMPTS) || undefined;
+const RELAY_MAX_TIMEOUT_MS =
+  Number(process.env.DECO_LINK_RELAY_MAX_TIMEOUT_MS) || undefined;
+
+/**
  * Relay a synthesized terminal failure for a work item that cannot run
  * (expired credentials, etc.) over the normal /chunks channel, so the
  * cluster kernel persists the failure and the gate unblocks.
@@ -153,6 +165,18 @@ export interface LocalDispatchDeps {
    * production durability is never silently lost to the in-memory fallback.
    */
   outbox: Outbox;
+  /**
+   * Override the chunk-relay retry budget. Production leaves this unset → the
+   * env-tunable widened defaults apply (so a transient ECONNRESET recovers).
+   * Tests inject a fast budget to exercise retry-exhaustion without waiting on
+   * the ~2.5 min production window.
+   */
+  relayRetry?: {
+    maxAttempts?: number;
+    minTimeout?: number;
+    maxTimeout?: number;
+    jitter?: number;
+  };
 }
 
 /**
@@ -254,6 +278,15 @@ export async function handleLocalDispatch(
         { cause: err },
       );
     }
+    // SANDBOX leg: opening the loopback dispatch SSE threw (e.g. the sandbox
+    // daemon died / reset → "socket connection closed unexpectedly"). Label it
+    // so it's distinguishable from a CLUSTER-RELAY failure in link.log. Quiet
+    // on an intentional abort (cancel/shutdown).
+    if (!deps.signal?.aborted) {
+      console.error(
+        `[relay-diag] SANDBOX dispatch-open threw runId=${work.runId} url=${deps.sandboxDispatchUrl}/_sandbox/dispatch name=${err instanceof Error ? err.name : typeof err} msg=${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     throw err;
   } finally {
     if (timeoutId !== undefined) {
@@ -294,8 +327,23 @@ export async function handleLocalDispatch(
     fenceToken: work.runFenceToken,
     outbox: deps.outbox,
     signal: deps.signal,
+    // Injected budget wins (tests); else env-tunable widened defaults. Either
+    // way, undefined entries fall back to chunk-relay's defaults.
+    retry: deps.relayRetry ?? {
+      maxAttempts: RELAY_MAX_ATTEMPTS,
+      maxTimeout: RELAY_MAX_TIMEOUT_MS,
+    },
     post: async (body, fromSeq) => {
-      const res = await fetcher(chunksUrl, {
+      // Bun-specific fetch options absent from the DOM RequestInit typings:
+      //  - `duplex: "half"` — required by the Fetch spec for streaming request
+      //    bodies; supported by Node/Bun/undici. Verified on Bun 1.3.14: the
+      //    upload is delivered incrementally.
+      //  - `verbose` — env-gated (DECO_LINK_FETCH_VERBOSE=1). Prints Bun's
+      //    HTTP/connection transcript to stderr so a "socket connection closed
+      //    unexpectedly" reveals its real cause (HTTP/2 GOAWAY / idle timeout /
+      //    RST) on the next relay reset. Noisy (fires on every POST) — keep off
+      //    by default; flip it on only while hunting a relay-reset.
+      const init: RequestInit & { duplex: "half"; verbose?: boolean } = {
         method: "POST",
         headers: {
           authorization: `Bearer ${clusterToken}`,
@@ -304,14 +352,40 @@ export async function handleLocalDispatch(
           "x-relay-from": String(fromSeq),
         },
         body,
-        // @ts-expect-error — `duplex: "half"` is required by the Fetch spec
-        // for streaming request bodies; supported by Node/Bun/undici but not
-        // yet in TS DOM typings (same pattern as proxy-poller.ts). Verified
-        // on Bun 1.3.14: the upload is delivered incrementally.
         duplex: "half",
         signal: deps.signal,
-      });
+        ...(process.env.DECO_LINK_FETCH_VERBOSE === "1"
+          ? { verbose: true }
+          : {}),
+      };
+      let res: Response;
+      try {
+        res = await fetcher(chunksUrl, init);
+      } catch (err) {
+        // The streaming POST to the cluster threw (e.g. "socket connection
+        // closed unexpectedly"). This is per-ATTEMPT and factual (the POST to
+        // chunksUrl errored), but it can ALSO fire as downstream fallout when
+        // the SANDBOX leg failed first — the errored request body propagates
+        // here. chunk-relay's `[relay-diag] ROOT=...` line is the definitive
+        // leg. Re-thrown so chunk-relay's retry/backoff still applies.
+        const e = err as {
+          name?: string;
+          message?: string;
+          code?: string;
+          errno?: number;
+          cause?: unknown;
+        };
+        const causeStr =
+          e?.cause instanceof Error ? e.cause.message : String(e?.cause ?? "?");
+        console.error(
+          `[relay-diag] cluster-POST attempt errored runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} name=${e?.name ?? typeof err} code=${e?.code ?? "?"} errno=${e?.errno ?? "?"} cause=${causeStr} msg=${e?.message ?? String(err)}`,
+        );
+        throw err;
+      }
       if (!res.ok) {
+        console.error(
+          `[relay-diag] CLUSTER-RELAY POST non-ok runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} status=${res.status}`,
+        );
         const err = new Error(
           `[handleLocalDispatch] relay failed (${res.status})`,
         );
