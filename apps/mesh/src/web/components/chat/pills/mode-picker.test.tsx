@@ -113,6 +113,83 @@ describe("ModePickerPure", () => {
     expect(button).toBeDisabled();
   });
 
+  it("locked=true gives the button data-testid='mode-picker-locked' and disabled", () => {
+    const { getByTestId } = render(
+      <ModePickerPure
+        mode="cloud-decopilot"
+        availability={{
+          agentSandbox: true,
+          userDesktop: true,
+          claudeCode: true,
+          codex: true,
+        }}
+        locked={true}
+        onSelect={() => {}}
+      />,
+    );
+    const button = getByTestId("mode-picker-locked");
+    expect(button).toBeDisabled();
+  });
+
+  it("locked=false gives the button data-testid='mode-picker' and not disabled", () => {
+    const { getByTestId } = render(
+      <ModePickerPure
+        mode="cloud-decopilot"
+        availability={{
+          agentSandbox: true,
+          userDesktop: true,
+          claudeCode: true,
+          codex: true,
+        }}
+        locked={false}
+        onSelect={() => {}}
+      />,
+    );
+    const button = getByTestId("mode-picker");
+    expect(button).not.toBeDisabled();
+  });
+
+  it("locked=true with lockedHarness='claude-code' uses harness-specific aria-label", () => {
+    const { getByTestId } = render(
+      <ModePickerPure
+        mode="local-claude-code"
+        availability={{
+          agentSandbox: true,
+          userDesktop: true,
+          claudeCode: true,
+          codex: true,
+        }}
+        locked={true}
+        lockedHarness="claude-code"
+        onSelect={() => {}}
+      />,
+    );
+    const button = getByTestId("mode-picker-locked");
+    expect(button).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining("Claude Code"),
+    );
+  });
+
+  it("locked=true with lockedHarness=null uses mode text as aria-label", () => {
+    const { getByTestId } = render(
+      <ModePickerPure
+        mode="cloud-decopilot"
+        availability={{
+          agentSandbox: true,
+          userDesktop: true,
+          claudeCode: true,
+          codex: true,
+        }}
+        locked={true}
+        lockedHarness={null}
+        onSelect={() => {}}
+      />,
+    );
+    const button = getByTestId("mode-picker-locked");
+    expect(button).toHaveAttribute("aria-label", "Cloud");
+  });
+
   it("opens the popover and shows stitched rows in order", () => {
     const { getByRole, getAllByRole } = render(
       <ModePickerPure
