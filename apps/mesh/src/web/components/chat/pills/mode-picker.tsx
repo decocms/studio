@@ -222,7 +222,13 @@ export function ModePickerPure({
                 )}
               >
                 {icon}
-                <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100">
+                <span
+                  className={cn(
+                    "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+                    !locked &&
+                      "@[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100",
+                  )}
+                >
                   {text}
                 </span>
                 {!locked && (
