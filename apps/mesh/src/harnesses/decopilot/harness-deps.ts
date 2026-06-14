@@ -44,6 +44,7 @@ import type {
   RunEngineArgs,
 } from "@decocms/harness/decopilot/engine";
 import { runAgentLoop } from "./run-agent-loop";
+import { resolveAgentTelos } from "./telos";
 import type { DecopilotTelemetry } from "@decocms/harness/decopilot/run-stream";
 
 /**
@@ -58,11 +59,21 @@ async function runClusterEngine(
   organization: OrganizationScope,
   args: RunEngineArgs,
 ): Promise<AssembledEngineHandle> {
+  // Carry the agent's telos (purpose) into this run: its charter joins the
+  // system prompt, its guard screens tool calls. Only top-level agents carry one
+  // — subagents inherit their parent's task scope. Best-effort: a resolution
+  // failure (no purpose, telos not booted) just means the agent runs untethered.
+  const telos =
+    args.kind === "agent"
+      ? await resolveAgentTelos(args.virtualMcp.id).catch(() => null)
+      : null;
   const handle = await runAgentLoop({
     kind: args.kind,
     ctx,
     organization,
     virtualMcp: args.virtualMcp,
+    telosCharter: telos?.charter,
+    telosGuard: telos?.guard,
     mcpClient: args.mcpClient,
     provider: args.provider,
     models: args.models,

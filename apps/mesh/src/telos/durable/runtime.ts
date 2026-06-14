@@ -1,5 +1,5 @@
 import type { Database } from "@/storage/types";
-import type { Telos } from "@decocms/telos/postgres";
+import type { TelosStore } from "@decocms/telos/postgres";
 import type { Kysely } from "kysely";
 import type { OnboardingTarget } from "../target";
 
@@ -7,7 +7,7 @@ import type { OnboardingTarget } from "../target";
 // module-level pointer (wired by app boot) and read lazily inside steps.
 export interface TelosRuntime {
   db: Kysely<Database>;
-  store: Telos<OnboardingTarget>;
+  store: TelosStore<OnboardingTarget>;
 }
 
 let runtime: TelosRuntime | null = null;

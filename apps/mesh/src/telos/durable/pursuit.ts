@@ -33,11 +33,21 @@ export function getLatestSuggestion(
 // so activity noise and idle ticks are cheap. Keyed on version too, so a new goal
 // (e.g. a progression rung) always deliberates even if the metrics haven't moved.
 // In-memory: after a restart the first cycle just deliberates once (treated as new).
-const lastObserved = new Map<string, { version: number; sig: string }>();
+const lastObserved = new Map<
+  string,
+  { version: number; sig: string; tools: string[] }
+>();
 
-// A stable signature of the observed world, for diff-gating.
-const sigOf = (state: OnboardingState): string =>
-  [...state.connectedTools].sort().join("|");
+// A stable signature of the observed world (connected tools + confirmed facts),
+// for diff-gating. Confirming a fact moves the signature, so the agent re-thinks.
+const sigOf = (state: OnboardingState): string => {
+  const tools = [...state.connectedTools].sort().join("|");
+  const facts = state.confirmedFacts
+    .map((f) => `${f.label}=${f.value}`)
+    .sort()
+    .join("|");
+  return `${tools}§${facts}`;
+};
 
 const readReason = (payload: unknown): string | undefined => {
   if (payload && typeof payload === "object" && "reason" in payload) {
@@ -81,7 +91,11 @@ export async function runPursuitCycle(
   const sig = sigOf(state);
 
   if (domain.satisfied(state, mover.target)) {
-    lastObserved.set(organizationId, { version: mover.version, sig });
+    lastObserved.set(organizationId, {
+      version: mover.version,
+      sig,
+      tools: state.connectedTools,
+    });
     await telosBus.publish({
       type: "goal.reached",
       organizationId,
@@ -98,13 +112,13 @@ export async function runPursuitCycle(
   // reasoning can acknowledge it. Reconstruct the prior world from the cached sig.
   const justConnected =
     prev && prev.version === mover.version
-      ? toolsJustConnected(
-          { connectedTools: prev.sig.split("|").filter(Boolean) },
-          state,
-          mover.target,
-        )
+      ? toolsJustConnected({ connectedTools: prev.tools }, state, mover.target)
       : [];
-  lastObserved.set(organizationId, { version: mover.version, sig });
+  lastObserved.set(organizationId, {
+    version: mover.version,
+    sig,
+    tools: state.connectedTools,
+  });
   if (!changed) return { reached: false, changed: false };
 
   // When the user just connected something, ask the agent to acknowledge it in its

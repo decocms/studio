@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { type Domain, Eudaimon, InMemoryGoalLedger } from "../core";
 import { ruleDeliberator } from "../deliberators/rule";
-import { type Daimonion, guardedBy } from "./daimonion";
+import { type Daimonion, guardedBy, guardTools } from "./daimonion";
 
 interface CounterState {
   value: number;
@@ -132,5 +132,63 @@ describe("daimonion — apophatic guardrail", () => {
     await agent.pursue();
 
     expect(db.get("t")?.value).toBe(1); // safe applied (+1), risky vetoed (+100 blocked)
+  });
+});
+
+describe("daimonion — guardTools (host agent's tools)", () => {
+  const ran: string[] = [];
+  const tools = {
+    safe_tool: {
+      description: "ok",
+      execute: async (input: unknown, _options: unknown) => {
+        ran.push("safe_tool");
+        return `did safe with ${JSON.stringify(input)}`;
+      },
+    },
+    risky_tool: {
+      description: "danger",
+      execute: async (_input: unknown, _options: unknown) => {
+        ran.push("risky_tool");
+        return "did risky";
+      },
+    },
+    no_exec_tool: { description: "client-side only" },
+  };
+
+  test("a vetoed tool never executes and returns a refusal result", async () => {
+    ran.length = 0;
+    const daimonion: Daimonion = {
+      veto: async ({ kind }) =>
+        kind === "risky_tool" ? { reason: "too risky" } : null,
+    };
+    const guarded = guardTools(tools, daimonion, "agent-1");
+
+    const safe = await guarded.safe_tool.execute?.({ a: 1 }, {});
+    const risky = await guarded.risky_tool.execute?.({}, {});
+
+    expect(safe).toBe('did safe with {"a":1}');
+    expect(risky).toBe("Action vetoed (risky_tool): too risky");
+    expect(ran).toEqual(["safe_tool"]); // risky never ran its side effect
+  });
+
+  test("the veto sees the tool name as `kind` and the call args as `input`", async () => {
+    const seen: Array<{ kind: string; tenant: string; input: unknown }> = [];
+    const daimonion: Daimonion = {
+      veto: async (a) => {
+        seen.push(a);
+        return null;
+      },
+    };
+    const guarded = guardTools(tools, daimonion, "agent-7");
+    await guarded.safe_tool.execute?.({ x: "y" }, {});
+    expect(seen).toEqual([
+      { kind: "safe_tool", tenant: "agent-7", input: { x: "y" } },
+    ]);
+  });
+
+  test("tools without an execute (client-side) pass through untouched", () => {
+    const daimonion: Daimonion = { veto: async () => null };
+    const guarded = guardTools(tools, daimonion, "agent-1");
+    expect(guarded.no_exec_tool).toBe(tools.no_exec_tool);
   });
 });

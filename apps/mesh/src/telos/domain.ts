@@ -2,14 +2,22 @@ import type { Database } from "@/storage/types";
 import type { Action, Domain } from "@decocms/telos";
 import type { Kysely } from "kysely";
 import { z } from "zod";
+import { requireTelosRuntime } from "./durable/runtime";
 import type { OnboardingTarget, ToolTarget } from "./target";
 
-// What the agent perceives: the integrations the org has actually wired up.
+// What the agent perceives: the integrations the org has wired up, and what the
+// user has confirmed about themselves. Both are observed — when either moves, the
+// agent re-thinks the next step.
 export interface OnboardingState {
   // Lowercased identifiers (app_name / slug / title) of active, non-virtual
   // connections — the real tools the org has connected.
   connectedTools: string[];
+  // Self-facts the user has confirmed — context the agent reasons over.
+  confirmedFacts: Array<{ label: string; value: string }>;
 }
+
+// The connection-only slice — enough to decide whether a tool is wired up.
+type ToolView = { connectedTools: string[] };
 
 // The tools still to connect — feeds the prompt, the suggestion, and telemetry.
 export interface OnboardingGap {
@@ -17,10 +25,7 @@ export interface OnboardingGap {
   remaining: number;
 }
 
-async function measure(
-  db: Kysely<Database>,
-  orgId: string,
-): Promise<OnboardingState> {
+async function measure(db: Kysely<Database>, orgId: string): Promise<ToolView> {
   const rows = await db
     .selectFrom("connections")
     .select(["app_name", "slug", "title"])
@@ -36,9 +41,24 @@ async function measure(
   return { connectedTools };
 }
 
+// Full observation: connected tools + the self-facts the user has confirmed.
+async function observeState(
+  db: Kysely<Database>,
+  orgId: string,
+): Promise<OnboardingState> {
+  const [{ connectedTools }, facts] = await Promise.all([
+    measure(db, orgId),
+    requireTelosRuntime().store.facts.list(orgId),
+  ]);
+  const confirmedFacts = facts
+    .filter((f) => f.status === "confirmed")
+    .map((f) => ({ label: f.label, value: f.value }));
+  return { connectedTools, confirmedFacts };
+}
+
 // A tool counts as connected when any of its match keywords appears in any
 // connected integration's identifier.
-function isToolConnected(tool: ToolTarget, state: OnboardingState): boolean {
+function isToolConnected(tool: ToolTarget, state: ToolView): boolean {
   return tool.match.some((m) => {
     const needle = m.toLowerCase();
     return state.connectedTools.some((c) => c.includes(needle));
@@ -49,8 +69,8 @@ function isToolConnected(tool: ToolTarget, state: OnboardingState): boolean {
 // connection-aware acknowledgment ("you just connected GitHub"). Labels, not raw
 // identifiers, so it reads cleanly in a prompt or thought.
 export function toolsJustConnected(
-  prev: OnboardingState,
-  next: OnboardingState,
+  prev: ToolView,
+  next: ToolView,
   target: OnboardingTarget,
 ): string[] {
   return (target.tools ?? [])
@@ -97,7 +117,7 @@ export function onboardingDomain(
 ): Domain<OnboardingState, OnboardingTarget, OnboardingGap> {
   return {
     name: "mesh-onboarding",
-    observe: (tenant) => measure(db, tenant),
+    observe: (tenant) => observeState(db, tenant),
     satisfied: (state, target) => {
       const tools = target.tools ?? [];
       return tools.length > 0 && tools.every((t) => isToolConnected(t, state));
@@ -113,10 +133,15 @@ export function onboardingDomain(
       "the specific tools it names; once all are connected, stop. Never redefine " +
       "the target.",
     actions: onboardingActions,
-    prompt: ({ target, gap }) =>
+    prompt: ({ state, target, gap }) =>
       `Onboarding goal: ${target.title}. Tools still to connect: ` +
-      `${gap.missing.join(", ") || "none"}. Recommend the single next tool the ` +
-      `user should connect, named, and why it helps them.`,
+      `${gap.missing.join(", ") || "none"}.` +
+      (state.confirmedFacts.length
+        ? ` What the user has confirmed about themselves: ` +
+          `${state.confirmedFacts.map((f) => `${f.label} — ${f.value}`).join("; ")}.`
+        : "") +
+      ` Recommend the single next tool the user should connect, named, and why ` +
+      `it helps them.`,
     // Deterministic fallback: recommend connecting the next missing tool by name.
     plan: ({ gap }) => {
       if (gap.remaining <= 0) return [];

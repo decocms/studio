@@ -14,7 +14,6 @@ import { HIGHLIGHT_COLLAPSED_HEIGHT_PX } from "./highlight/collapsible-highlight
 import { useHighlightCount } from "./highlight/use-highlight-count";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
-import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
 import { CreditsEmptyState } from "./credits-empty-state";
 import { CreditsExhaustedBanner } from "./credits-exhausted-banner";
 import { CreditsEyebrow, NoCreditsEyebrow } from "./credits-eyebrow";
@@ -225,7 +224,6 @@ export const Chat = Object.assign(ChatRoot, {
   ActiveTaskProvider: ActiveTaskProvider,
   Skeleton: DecoChatSkeleton,
   IceBreakers: IceBreakers,
-  NoAiProviderEmptyState: NoAiProviderEmptyState,
   CreditsEmptyState: CreditsEmptyState,
   CreditsEyebrow: CreditsEyebrow,
   NoCreditsEyebrow: NoCreditsEyebrow,

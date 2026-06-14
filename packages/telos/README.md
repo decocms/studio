@@ -252,6 +252,12 @@ scheduleNext(tenant, outcome.nextReviewMs);   // honor, clamp, or ignore the age
 This is exactly how the Studio host runs telos on DBOS: durable workflows call `pursue()` and
 map `outcome` onto their own event bus + scheduler. The kernel never knew there was a queue.
 
+> **Bring your own durable bus.** The kernel ships **no** bus — `inMemoryBus`/`wire()` are
+> single-process only and are not on a durable host's path. For multi-pod or restart-surviving
+> work, react to the `pursue()` outcome from your own infra (NATS, DBOS, a queue) and keep
+> durable truth in your ledger/store. You only need a package-level `EventBus` — e.g. a
+> NATS-backed one passed to `wire()` — if you want the built-in runtime instead of your own.
+
 ## The LLM deliberator
 
 `@decocms/telos/ai` wraps each domain `Action` as an AI SDK v6 tool and lets a model decide

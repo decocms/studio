@@ -36,6 +36,8 @@ import {
   PARENT_STEP_LIMIT,
   SUBAGENT_STEP_LIMIT,
 } from "@decocms/harness/decopilot/prompt-constants";
+import type { Guard } from "@decocms/telos";
+import { guardTools } from "@decocms/telos/daimonion";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
@@ -69,6 +71,11 @@ export interface RunAgentLoopOptions {
   stepLimit?: number;
   toolApprovalLevel?: ToolApprovalLevel;
   planMode?: boolean;
+  /** The agent's telos (purpose), resolved for this run. `telosCharter` is added
+   *  to the system prompt (what the agent is FOR); `telosGuard` screens every
+   *  tool call through a conscience before it runs. Both absent ⇒ no telos. */
+  telosCharter?: string;
+  telosGuard?: Guard;
   temperature?: number;
   abortSignal: AbortSignal;
   tracer?: Tracer;
@@ -153,6 +160,7 @@ export async function runAgentLoop(
     planMode,
     isDecopilot: opts.isDecopilot,
     agentInstructions: opts.systemAgentInstructions,
+    telosCharter: opts.telosCharter,
     currentThreadId: opts.currentThreadId,
     user: opts.user,
     userContext: opts.userContext,
@@ -183,9 +191,15 @@ export async function runAgentLoop(
   });
   // Merge extra tools (e.g., parent's state-dependent `enable_tool`) after
   // the shared assembler. Parent extras shadow assembled tools intentionally.
-  const tools: ToolSet = opts.extraTools
+  const mergedTools: ToolSet = opts.extraTools
     ? { ...assembledTools, ...opts.extraTools }
     : assembledTools;
+  // The telos conscience screens every tool — including parent extras — so a
+  // call that betrays the agent's purpose is refused before it runs (the model
+  // gets the refusal as the tool result and adapts). No guard ⇒ tools untouched.
+  const tools: ToolSet = opts.telosGuard
+    ? guardTools(mergedTools, opts.telosGuard, opts.virtualMcp.id)
+    : mergedTools;
 
   // __streamText test shim bypasses real provider; model is only needed
   // for the real streamText path.

@@ -48,3 +48,38 @@ function guardAction<P>(action: Action<P>, daimonion: Daimonion): Action<P> {
     },
   };
 }
+
+// The tool-level analog of `guardedBy`, for screening a HOST agent's tools (an LLM
+// harness's toolset) rather than a Domain's actions. Each tool's `execute` runs
+// the daimonion first; a forbidden call never executes and, unlike an Action veto,
+// RETURNS a result string instead of throwing — so the host's tool loop keeps
+// going and the model sees it was refused and adapts. AI-free: tools are typed
+// structurally, so this works on AI SDK tools without importing `ai`.
+interface GuardableTool {
+  execute?: (input: unknown, options: unknown) => unknown;
+  [key: string]: unknown;
+}
+
+export function guardTools<TS extends Record<string, GuardableTool>>(
+  tools: TS,
+  daimonion: Daimonion,
+  tenant: string,
+): TS {
+  const guarded: Record<string, GuardableTool> = {};
+  for (const [kind, t] of Object.entries(tools)) {
+    if (typeof t.execute !== "function") {
+      guarded[kind] = t;
+      continue;
+    }
+    const execute = t.execute.bind(t);
+    guarded[kind] = {
+      ...t,
+      execute: async (input: unknown, options: unknown) => {
+        const verdict = await daimonion.veto({ kind, tenant, input });
+        if (verdict) return `Action vetoed (${kind}): ${verdict.reason}`;
+        return execute(input, options);
+      },
+    };
+  }
+  return guarded as TS;
+}

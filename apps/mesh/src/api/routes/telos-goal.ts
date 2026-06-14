@@ -8,7 +8,7 @@ import type { StudioContext } from "@/core/studio-context";
 import { telos } from "@/telos";
 import { onboardingProgress } from "@/telos/domain";
 import { telosBus } from "@/telos/durable/bus";
-import { getLatestSuggestion } from "@/telos/durable/pursuit";
+import { getLatestSuggestion, pullPursuit } from "@/telos/durable/pursuit";
 import { getLatestThought } from "@/telos/durable/thought";
 import { pullRefit } from "@/telos/durable/refit";
 import { requireTelosRuntime } from "@/telos/durable/runtime";
@@ -87,8 +87,12 @@ export function createTelosGoalRoutes() {
 
     await telos().facts.setStatus(orgId, c.req.param("id"), status);
     await telosBus.publish({ type: "facts.updated", organizationId: orgId });
-    // The user telling us who they are is signal: debounced re-fit of the goal
-    // from confirmed facts. Best-effort — never blocks the fact edit response.
+
+    // The user telling us who they are is signal. The agent observes confirmed
+    // facts, so pull a pursuit cycle: it re-thinks the next step with the new
+    // fact in view (a fast model produces the reasoning + picks the action), and
+    // re-fit reconsiders the goal itself. Both debounced; never block the edit.
+    void pullPursuit(orgId);
     void pullRefit(orgId);
     return c.json({ ok: true });
   });

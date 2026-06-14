@@ -3,7 +3,7 @@ import { orgActivity } from "@/core/activity";
 import type { Database } from "@/storage/types";
 import {
   initTelos,
-  type Telos,
+  type TelosStore,
   type TelosTables,
 } from "@decocms/telos/postgres";
 import type { Kysely } from "kysely";
@@ -19,7 +19,7 @@ export { initTelosDbos } from "./durable/queue";
 // where mesh's Kysely<Database> meets telos's own tables over the same Postgres.
 const asTelos = (db: Kysely<Database>) => db as unknown as Kysely<TelosTables>;
 
-let store: Telos<OnboardingTarget> | null = null;
+let store: TelosStore<OnboardingTarget> | null = null;
 
 // One call at app boot, before DBOS.launch(): migrate the telos schema, build
 // the stores, stash deps for capability steps, and register durable capabilities.
@@ -38,7 +38,7 @@ export async function bootTelos(db: Kysely<Database>): Promise<void> {
   });
 }
 
-export function telos(): Telos<OnboardingTarget> {
+export function telos(): TelosStore<OnboardingTarget> {
   if (!store) {
     throw new Error(
       "[telos] not initialized — bootTelos() must run at app boot",

@@ -128,6 +128,17 @@ export const COLLECTION_VIRTUAL_MCP_CREATE = defineTool({
       dataWithIcon,
     );
 
+    // Provision the agent's telos (purpose) from its instructions: the agent's
+    // instructions ARE what it exists to serve, so they become its authority-
+    // installed, versioned goal. Best-effort — never fail agent creation over it.
+    const statement = virtualMcp.metadata?.instructions?.trim();
+    if (statement) {
+      const { installAgentGoal } = await import("@/telos/agents");
+      await installAgentGoal(virtualMcp.id, { statement }).catch((err) => {
+        console.warn("[telos] install agent goal on create failed", err);
+      });
+    }
+
     // Return virtual MCP entity directly (already in correct format)
     return {
       item: virtualMcp,

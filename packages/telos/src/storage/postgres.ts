@@ -56,10 +56,11 @@ export interface Fact {
   sourceUrl: string | null;
 }
 
-// A wired telos: the Postgres-backed goal ledger + fact store over the `telos`
-// schema. The two durable ports a host holds onto. Orchestration (bus, scheduler,
-// the pursuit loop) is the host's — the kernel reports, the host reacts.
-export interface Telos<T> {
+// The Postgres-backed goal ledger + fact store over the `telos` schema — the two
+// durable ports a host holds onto. (Named `TelosStore`, not `Telos`: a `Telos` is
+// a PURPOSE you attach to an agent; this is where purposes are stored.)
+// Orchestration (bus, scheduler, the pursuit loop) is the host's.
+export interface TelosStore<T> {
   ledger: GoalLedger<T>;
   facts: ReturnType<typeof createPostgresFactStore>;
 }
@@ -69,7 +70,7 @@ export interface Telos<T> {
 // supplies the goal target type T. Safe to call on every boot.
 export async function initTelos<T>(config: {
   db: Kysely<TelosTables>;
-}): Promise<Telos<T>> {
+}): Promise<TelosStore<T>> {
   await migrateTelos(config.db);
   return {
     ledger: createPostgresGoalLedger<T>(config.db),

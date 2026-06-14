@@ -85,6 +85,10 @@ export interface BuildAgentSystemPromptOptions {
    */
   isDecopilot?: boolean;
   agentInstructions?: string;
+  /** The agent's telos (purpose) rendered as a charter block — what this agent
+   *  exists to serve. Resolved from the agent's installed goal; absent when the
+   *  agent has no purpose installed. */
+  telosCharter?: string;
   date?: Date;
   /** Current thread id, excluded from the "history together" recall so the
    *  agent doesn't "remember" the conversation it's currently in. */
@@ -178,6 +182,10 @@ export async function buildAgentSystemPrompt(
   add("todoWrite", buildTodoWritePrompt());
 
   add("agentInstructions", opts.agentInstructions);
+
+  // The agent's fixed purpose. Sits with its instructions — instructions say HOW
+  // to behave; the telos says WHAT the agent is ultimately for.
+  add("telos", opts.telosCharter);
 
   if (opts.kind === "agent" && opts.user) {
     add(

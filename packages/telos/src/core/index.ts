@@ -36,3 +36,10 @@ export {
   type VetoedAction,
   wire,
 } from "./eudaimon";
+export {
+  type Guard,
+  type Telos,
+  type TelosMeasure,
+  telosProgress,
+  type TelosProgress,
+} from "./telos";
