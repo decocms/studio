@@ -19,7 +19,6 @@ import { project } from "./run-projector";
 import type { RunReactorDeps } from "./run-reactor";
 import { reactAll } from "./run-reactor";
 import { isRunStuck } from "./liveness";
-import type { Thread } from "@/storage/types";
 import { meter } from "@/observability";
 
 export type { RunReactorDeps };
@@ -179,43 +178,6 @@ export class RunRegistry {
     }
     // 3. In-memory: clear map
     this.states.clear();
-  }
-
-  /**
-   * Recover all orphaned runs on startup. Server crashes shouldn't
-   * punish users — every in-progress run gets resumed automatically.
-   * Concurrency is capped at 5 concurrent resumes.
-   */
-  async recoverOrphanedRuns(
-    resumeFn: (thread: Thread) => Promise<void>,
-  ): Promise<void> {
-    const orphans = await this.deps.storage.listOrphanedRuns(this.podId);
-    if (orphans.length === 0) return;
-
-    // Concurrency cap: max 5 concurrent resumes
-    const CONCURRENCY = 5;
-    for (let i = 0; i < orphans.length; i += CONCURRENCY) {
-      const batch = orphans.slice(i, i + CONCURRENCY);
-      await Promise.allSettled(
-        batch.map(async (thread) => {
-          const claimed = await this.deps.storage.claimOrphanedRun(
-            thread.id,
-            thread.organization_id,
-            this.podId,
-          );
-          if (!claimed) return; // Another pod got it
-
-          try {
-            await resumeFn(thread);
-          } catch (err) {
-            console.error(`[RunRegistry] Failed to resume ${thread.id}:`, err);
-            await this.deps.storage
-              .forceFailIfInProgress(thread.id, thread.organization_id)
-              .catch(() => {});
-          }
-        }),
-      );
-    }
   }
 
   /** Stop the reaper timer. Call once during server shutdown. */

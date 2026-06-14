@@ -150,7 +150,6 @@ import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { SqlThreadStorage } from "../storage/threads";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
-import type { Thread } from "../storage/types";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
@@ -173,18 +172,12 @@ import {
   dispatchRunAndWait,
   pullDispatch,
 } from "./routes/decopilot/dispatch-run";
-import {
-  PersistedRunConfigSchema,
-  toModelsConfig,
-} from "./routes/decopilot/run-config";
-import { shouldResumeThreadInProcess } from "./routes/decopilot/orphan-recovery";
 import { getPodId } from "../core/pod-identity";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 import { LinkWorkQueue } from "./routes/decopilot/link-work-queue";
-import type { HarnessId } from "@decocms/harness/types";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -1584,107 +1577,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     ).setAutomationEventDispatcher(automationEventDispatcher);
   }
 
-  // ============================================================================
-  // Crash Recovery — resume orphaned automation runs after rolling deploy
-  // ============================================================================
-
-  /** Shared resume function for both startup recovery and pod-death watcher. */
-  const resumeOrphanedThread = async (thread: Thread) => {
-    if (!shouldResumeThreadInProcess(thread)) {
-      console.warn(
-        `[recovery] Skipping in-process recovery for user-desktop thread ${thread.id}; thread-gate/pull transport owns recovery`,
-      );
-      return;
-    }
-
-    const parsed = PersistedRunConfigSchema.safeParse(thread.run_config);
-    if (!parsed.success) {
-      console.warn(
-        `[recovery] Invalid run_config for ${thread.id}, force-failing`,
-      );
-      await threadStorage.forceFailIfInProgress(
-        thread.id,
-        thread.organization_id,
-      );
-      return;
-    }
-    const config = parsed.data;
-
-    // Build context for the original user
-    const resumeCtx = await automationContextFactory(
-      thread.organization_id,
-      thread.created_by,
-    );
-    if (!resumeCtx) {
-      console.warn(
-        `[recovery] Cannot build context for ${thread.id}, force-failing`,
-      );
-      await threadStorage.forceFailIfInProgress(
-        thread.id,
-        thread.organization_id,
-      );
-      return;
-    }
-
-    // Audit trail: record that this run was auto-resumed
-    const now = new Date().toISOString();
-    await threadStorage.saveMessages(
-      [
-        {
-          id: crypto.randomUUID(),
-          thread_id: thread.id,
-          role: "system",
-          parts: [
-            {
-              type: "text",
-              text: "Run resumed automatically after infrastructure restart.",
-            },
-          ],
-          metadata: undefined,
-          created_at: now,
-          updated_at: now,
-        },
-      ],
-      thread.organization_id,
-    );
-
-    // Pod-death recovery: a different pod's run was claimed by us. Drain
-    // synchronously to know when the run completes server-side. We
-    // deliberately don't pass a streamBuffer here — this background
-    // recovery is the safety net for threads no DBOS replay or attached
-    // client picks up; clients reconnecting via /stream see the run via
-    // the workflow's own JetStream pump on the pod that DBOS replayed it
-    // onto.
-    await dispatchRunAndWait(
-      {
-        messages: [],
-        models: toModelsConfig(config.models),
-        agent: config.agent,
-        temperature: config.temperature,
-        toolApprovalLevel: config.toolApprovalLevel,
-        mode: config.mode,
-        organizationId: thread.organization_id,
-        userId: thread.created_by,
-        taskId: thread.id,
-        windowSize: config.windowSize,
-        isResume: true,
-        harnessId: thread.harness_id as HarnessId | null,
-      },
-      resumeCtx,
-      { runRegistry, cancelBroadcast, sseHub },
-    );
-  };
-
-  // Boot-time orphan recovery for decopilot runs. Cross-pod (dead-pod) recovery
-  // and DBOS-workflow orphan cleanup are now handled by the external DBOS
-  // Conductor (which recovers a dead executor's PENDING workflows onto a live
-  // one); this boot sweep stays as the self-recovery path on (re)start. The 10s
-  // grace lets a rolling deploy settle before sweeping.
-  setTimeout(() => {
-    runRegistry.recoverOrphanedRuns(resumeOrphanedThread).catch((err) => {
-      console.error("[recovery] Orphan recovery failed:", err);
-    });
-  }, 10_000);
+  // Orphan/crash recovery is owned by the external DBOS Conductor now: it
+  // recovers a dead executor's PENDING workflows (incl. the thread-gate
+  // workflows backing decopilot runs) onto a live executor. Mesh no longer
+  // runs its own boot sweep or pod-death recovery. The reaper (RunRegistry)
+  // still force-fails runs with no progress as a zombie backstop.
 
   // NDJSON monitoring retention cleanup runs as a DBOS scheduled workflow
   // (see `initDbos` below). Kick off a single eager sweep at boot so a fresh
