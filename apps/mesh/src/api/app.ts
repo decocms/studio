@@ -167,10 +167,6 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import {
-  cancelDeadPodWorkflows,
-  sweepOrphanedWorkflows,
-} from "../dispatch-queue/dbos-orphan-recovery";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
@@ -183,7 +179,6 @@ import {
 } from "./routes/decopilot/run-config";
 import { shouldResumeThreadInProcess } from "./routes/decopilot/orphan-recovery";
 import { getPodId } from "../core/pod-identity";
-import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
@@ -1182,38 +1177,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   });
 
-  // Per-pod heartbeat via NATS KV (only when NATS is available)
-  let podHeartbeat: NatsPodHeartbeat | null = null;
-  if (natsProvider) {
-    podHeartbeat = new NatsPodHeartbeat({
-      getConnection: () => natsProvider!.getConnection(),
-      getJetStream: () => natsProvider!.getJetStream(),
-    });
-
-    // Attempt immediate init (may no-op if NATS not ready)
-    podHeartbeat
-      .init()
-      .then(() => {
-        podHeartbeat!.start(POD_ID);
-      })
-      .catch(() => {});
-
-    // Re-init when NATS connects
-    natsProvider.onReady(() => {
-      podHeartbeat!
-        .init()
-        .then(() => {
-          podHeartbeat!.start(POD_ID);
-        })
-        .catch((err: unknown) => {
-          console.error("[PodHeartbeat] Deferred init failed:", err);
-        });
-    });
-  }
-
   currentDecopilotCleanup = async () => {
-    // Delete KV key first → watcher fires on other pods → immediate handoff
-    await podHeartbeat?.stop();
     await runRegistry.stopAll();
     runRegistry.dispose();
     asyncResearchJobSweeper.dispose();
@@ -1711,45 +1675,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   };
 
-  // Wire pod death watcher → orphan recovery. Two independent layers off the
-  // same dead-pod signal: the run-registry resumes/force-fails the user-facing
-  // run; `cancelDeadPodWorkflows` cancels the dead pod's orphaned DBOS rows so
-  // they stop pinning queue slots (fatal for the per-thread gate, concurrency=1).
-  if (podHeartbeat) {
-    podHeartbeat.onPodDeath((deadPodId) => {
-      runRegistry
-        .handlePodDeath(deadPodId, resumeOrphanedThread, cancelBroadcast)
-        .catch((err) => {
-          console.error(
-            `[Decopilot] Pod death recovery failed for ${deadPodId}:`,
-            err,
-          );
-        });
-      cancelDeadPodWorkflows(deadPodId).catch((err) => {
-        console.error(
-          `[dbos-recovery] dead-pod workflow cleanup failed for ${deadPodId}:`,
-          err,
-        );
-      });
-    });
-  }
-
+  // Boot-time orphan recovery for decopilot runs. Cross-pod (dead-pod) recovery
+  // and DBOS-workflow orphan cleanup are now handled by the external DBOS
+  // Conductor (which recovers a dead executor's PENDING workflows onto a live
+  // one); this boot sweep stays as the self-recovery path on (re)start. The 10s
+  // grace lets a rolling deploy settle before sweeping.
   setTimeout(() => {
     runRegistry.recoverOrphanedRuns(resumeOrphanedThread).catch((err) => {
       console.error("[recovery] Orphan recovery failed:", err);
     });
-    // Boot-time DBOS sweep — safety net for orphans the onPodDeath event
-    // missed (hard crash, simultaneous full restart). Runs post-launch (this
-    // fires well after DBOS.launch in index.ts) behind the same grace window.
-    (async () => {
-      const alive = podHeartbeat
-        ? await podHeartbeat.listAlivePods()
-        : new Set<string>();
-      await sweepOrphanedWorkflows(alive, POD_ID);
-    })().catch((err) => {
-      console.error("[dbos-recovery] boot sweep failed:", err);
-    });
-  }, 10_000); // 10s grace for rolling deploys
+  }, 10_000);
 
   // NDJSON monitoring retention cleanup runs as a DBOS scheduled workflow
   // (see `initDbos` below). Kick off a single eager sweep at boot so a fresh

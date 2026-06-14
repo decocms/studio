@@ -2,8 +2,8 @@
  * RunRegistry — storage-integration tests (real Postgres).
  *
  * The methods exercised here orchestrate real SQL: stopAll (orphanRunsByPod),
- * recoverOrphanedRuns + handlePodDeath (listOrphanedRuns* + claimOrphanedRun
- * CAS + forceFailIfInProgress), and the reaper's terminal DB write. A previous
+ * recoverOrphanedRuns (listOrphanedRuns + claimOrphanedRun CAS +
+ * forceFailIfInProgress), and the reaper's terminal DB write. A previous
  * version mocked the entire ThreadStoragePort and asserted `toHaveBeenCalled`,
  * which proved nothing about the queries themselves — the orphan filters and
  * the claim CAS would all be untested. See TESTING.md: don't mock your own
@@ -244,60 +244,6 @@ describe("RunRegistry storage orchestration (real Postgres)", () => {
     // reproduced deterministically single-pod — the orphan list only contains
     // in_progress rows, which claimOrphanedRun always wins in isolation. That
     // branch belongs to the multi-pod suite.
-  });
-
-  describe("handlePodDeath", () => {
-    it("claims + resumes every orphan owned by the dead pod and broadcasts cancel", async () => {
-      const { registry } = makeRegistry();
-      const orphans = [
-        await seedRunningThread("dead-pod"),
-        await seedRunningThread("dead-pod"),
-        await seedRunningThread("dead-pod"),
-      ];
-      const resumed: string[] = [];
-      const broadcasted: string[] = [];
-
-      await registry.handlePodDeath(
-        "dead-pod",
-        (thread) => {
-          resumed.push(thread.id);
-          return Promise.resolve();
-        },
-        { broadcast: (id) => broadcasted.push(id) },
-      );
-
-      const ids = orphans.map((t) => t.id).sort();
-      expect(resumed.sort()).toEqual(ids);
-      expect(broadcasted.sort()).toEqual(ids);
-      for (const t of orphans) {
-        expect((await storage.get(t.id, ORG))?.run_owner_pod).toBe(POD);
-      }
-    });
-
-    it("force-fails the run when resumeFn throws", async () => {
-      const { registry } = makeRegistry();
-      const orphan = await seedRunningThread("dead-pod");
-
-      await registry.handlePodDeath("dead-pod", () =>
-        Promise.reject(new Error("boom")),
-      );
-
-      expect((await storage.get(orphan.id, ORG))?.status).toBe("failed");
-    });
-
-    it("no-ops when the dead pod owns no in_progress runs", async () => {
-      const { registry } = makeRegistry();
-      // Seeded run is owned by a different, live pod.
-      await seedRunningThread("other-pod");
-      let called = false;
-
-      await registry.handlePodDeath("dead-pod", () => {
-        called = true;
-        return Promise.resolve();
-      });
-
-      expect(called).toBe(false);
-    });
   });
 
   describe("reapStaleRuns (terminal side effects)", () => {

@@ -857,19 +857,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return rows.map((row) => this.threadFromDbRow(row));
   }
 
-  async listOrphanedRunsByPod(deadPodId: string): Promise<Thread[]> {
-    const rows = await this.db
-      .selectFrom("threads")
-      .selectAll()
-      .where("status", "=", "in_progress")
-      .where("run_config", "is not", null)
-      .where("run_owner_pod", "=", deadPodId)
-      .orderBy("run_started_at", "asc")
-      .limit(100)
-      .execute();
-    return rows.map((row) => this.threadFromDbRow(row));
-  }
-
   async claimRunStart(
     taskId: string,
     organizationId: string,
