@@ -19,7 +19,11 @@ export function resolvePlaywrightDevServerConfig(
 
   return {
     appOrigin,
-    webServerCommand: `BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev:servers`,
+    // e2e exercises production-like behavior; the MCP read/list cache is on in
+    // prod but defaults off under NODE_ENV=development (which `dev:server` sets),
+    // so opt it back in here. Without this, cache-dependent specs (e.g. proxy
+    // roundtrip's no-re-handshake assertion) fail against the dev server.
+    webServerCommand: `MCP_CACHE_ENABLED=true BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev:servers`,
   };
 }
 
