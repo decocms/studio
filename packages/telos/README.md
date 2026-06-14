@@ -258,6 +258,49 @@ map `outcome` onto their own event bus + scheduler. The kernel never knew there 
 > durable truth in your ledger/store. You only need a package-level `EventBus` — e.g. a
 > NATS-backed one passed to `wire()` — if you want the built-in runtime instead of your own.
 
+## Carrying a telos into an existing agent
+
+Everything above builds an agent *out of* telos: `Eudaimon` owns the loop, `Deliberator` is
+the brain, `Action[]` are the hands. But sometimes you **already have an agent** — an LLM
+harness with its own loop, tools, and prompt — and you only want to give it a **purpose**. The
+agent is already the Eudaimon; you don't want a second one.
+
+For that, a `Telos<T>` is just the purpose the agent carries — three faculties, only the
+charter required:
+
+```ts
+import { type Telos, telosProgress } from "@decocms/telos";
+
+const telos: Telos<AgentGoal> = {
+  // what the agent is FOR → goes into the host's system prompt
+  charter: (goal) => `Your telos: ${goal.statement}. Everything you do serves it; when it's met, stop.`,
+  // optional conscience: forbid tool calls that betray the purpose
+  guard: { veto: async ({ kind, input }) => /* a reason to forbid, or null */ null },
+  // optional measurement: is the purpose met, and how far?
+  measure: { observe, satisfied, gap },
+};
+```
+
+The host wires it into its own loop at three points — telos owns none of them:
+
+```ts
+import { guardTools } from "@decocms/telos/daimonion";
+
+const goal = await ledger.latest(agentId);            // the agent's purpose (tenant = agent id)
+
+systemPrompt.add(telos.charter(goal.target));         // 1. charter → system prompt
+const tools = telos.guard                             // 2. guard → screen the agent's tools
+  ? guardTools(hostTools, telos.guard, agentId)       //    (a vetoed call returns a refusal, doesn't run)
+  : hostTools;
+const progress = await telosProgress(telos, goal.target, agentId);  // 3. measure → done/progress signal
+```
+
+`guardTools` is the tool-level analog of `guardedBy`: it wraps each tool's `execute` so the
+conscience runs first, and a forbidden call returns a refusal string (the model adapts) instead
+of throwing. It types the toolset structurally, so an AI SDK `ToolSet` drops in with no `ai`
+dependency. This is how the Studio host gives each decopilot agent (and any agent a user
+creates) its own purpose — the harness keeps its loop; the telos just rides along.
+
 ## The LLM deliberator
 
 `@decocms/telos/ai` wraps each domain `Action` as an AI SDK v6 tool and lets a model decide

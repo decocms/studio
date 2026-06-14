@@ -53,27 +53,28 @@ function guardAction<P>(action: Action<P>, daimonion: Daimonion): Action<P> {
 // harness's toolset) rather than a Domain's actions. Each tool's `execute` runs
 // the daimonion first; a forbidden call never executes and, unlike an Action veto,
 // RETURNS a result string instead of throwing — so the host's tool loop keeps
-// going and the model sees it was refused and adapts. AI-free: tools are typed
-// structurally, so this works on AI SDK tools without importing `ai`.
-interface GuardableTool {
+// going and the model sees it was refused and adapts. AI-free: the toolset is
+// typed structurally (`Record<string, unknown>`), so an AI SDK `ToolSet` drops in
+// without importing `ai`; the per-tool shape is narrowed internally.
+type ExecutableTool = {
   execute?: (input: unknown, options: unknown) => unknown;
-  [key: string]: unknown;
-}
+};
 
-export function guardTools<TS extends Record<string, GuardableTool>>(
+export function guardTools<TS extends Record<string, unknown>>(
   tools: TS,
   daimonion: Daimonion,
   tenant: string,
 ): TS {
-  const guarded: Record<string, GuardableTool> = {};
-  for (const [kind, t] of Object.entries(tools)) {
+  const guarded: Record<string, unknown> = {};
+  for (const [kind, value] of Object.entries(tools)) {
+    const t = value as ExecutableTool;
     if (typeof t.execute !== "function") {
-      guarded[kind] = t;
+      guarded[kind] = value;
       continue;
     }
     const execute = t.execute.bind(t);
     guarded[kind] = {
-      ...t,
+      ...(value as object),
       execute: async (input: unknown, options: unknown) => {
         const verdict = await daimonion.veto({ kind, tenant, input });
         if (verdict) return `Action vetoed (${kind}): ${verdict.reason}`;

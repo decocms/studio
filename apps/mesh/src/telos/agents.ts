@@ -1,7 +1,6 @@
-import type { Database } from "@/storage/types";
+import type { GoalLedger } from "@decocms/telos";
 import {
   createPostgresGoalLedger,
-  type GoalLedger,
   type TelosTables,
 } from "@decocms/telos/postgres";
 import type { Kysely } from "kysely";
