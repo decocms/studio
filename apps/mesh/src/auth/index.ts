@@ -41,7 +41,8 @@ import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
 import { seedOrgDb } from "./org";
-import { seedOnboardingGoal } from "@/telos/onboarding";
+import { telosBus } from "@/telos/durable/bus";
+import { RESEARCH_EMAIL } from "@/telos/research";
 import { hoistOrgLogo } from "./hoist-org-logo";
 import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
@@ -239,24 +240,19 @@ const plugins = [
     organizationCreation: {
       afterCreate: async (data) => {
         await seedOrgDb(data.organization.id, data.member.userId);
-        // Onboarding: research the new owner (mocked) and let the telos engine
-        // set the org's first goal. Best-effort — never block org creation.
+        // Telos onboarding: publish a durable trigger; the onboarding-research
+        // capability (Firecrawl + Perplexity → facts + first goal) runs in a DBOS
+        // workflow, so signup never waits on LLM latency. Best-effort — the
+        // home's GET also backfills, and OAOO collapses the two into one run.
         try {
-          const db = getDb().db;
-          const owner = await db
-            .selectFrom("user")
-            .select("email")
-            .where("id", "=", data.member.userId)
-            .executeTakeFirst();
-          if (owner?.email) {
-            await seedOnboardingGoal({
-              db,
-              organizationId: data.organization.id,
-              email: owner.email,
-            });
-          }
+          await telosBus.publish({
+            type: "user.signup",
+            organizationId: data.organization.id,
+            userId: data.member.userId,
+            email: RESEARCH_EMAIL,
+          });
         } catch (err) {
-          console.error("[telos] onboarding goal seeding failed", err);
+          console.error("[telos] signup trigger failed", err);
         }
       },
     },

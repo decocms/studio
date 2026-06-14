@@ -23,6 +23,7 @@ import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
 import { createSelfRoutes } from "./self";
 import { createHomeNextActionsRoutes } from "./home-next-actions";
+import { createTelosGoalRoutes } from "./telos-goal";
 import { createObjectStorageRoutes } from "./object-storage";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
@@ -98,6 +99,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   ); // /api/:org/fs/:volume/...
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/", createHomeNextActionsRoutes());
+  app.route("/", createTelosGoalRoutes()); // /api/:org/telos-goal
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(

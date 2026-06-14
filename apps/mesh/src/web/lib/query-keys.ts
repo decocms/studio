@@ -76,6 +76,9 @@ export const KEYS = {
   // Home next-actions — agent prompts under Chat.Input.
   homeNextActions: (orgSlug: string) => ["home-next-actions", orgSlug] as const,
 
+  // The org's telos goal (scoped by org slug)
+  telosGoal: (orgSlug: string) => ["telos-goal", orgSlug] as const,
+
   // Home tile-board layout (positions/sizes/hidden), KV-backed per org.
   boardLayout: (orgSlug: string) => ["board-layout", orgSlug] as const,
 

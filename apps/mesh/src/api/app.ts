@@ -14,6 +14,9 @@ import {
   registerPublicSetsSyncWorkflow,
   setPublicSetsSyncRuntime,
 } from "../file-storage/dbos-public-sets-sync";
+import "@/telos/capabilities"; // load defineCapability side effects before registration
+import { registerTelosCapabilities } from "@/telos/durable/registry";
+import { setTelosRuntime } from "@/telos/durable/runtime";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
@@ -1524,6 +1527,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // workflow no-ops when ORGFS_PUBLIC_SETS is unset.
   setPublicSetsSyncRuntime({ db: database.db, baseUrl: getPublicUrl() });
 
+  // Telos durable capabilities: inject runtime deps for capability bodies.
+  // Safe before launch — only stashes a module-level pointer.
+  setTelosRuntime({ db: database.db });
+
   // ============================================================================
   // Automation Runtime — wire storage + streaming into the DBOS workflow
   // ============================================================================
@@ -1569,6 +1576,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
+  registerTelosCapabilities();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,

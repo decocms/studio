@@ -28,6 +28,7 @@ import {
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { homeNextActionsQueryOptions } from "@/web/hooks/use-home-next-actions";
+import { TelosGoalCard } from "@/web/components/telos-goal-card";
 import { organizationSettingsQueryOptions } from "@/web/hooks/use-organization-settings";
 import {
   agentHasClonableSource,
@@ -126,6 +127,7 @@ function MobileHome({
   eyebrow: ReactNode;
   userName: string;
 }) {
+  const { org } = useProjectContext();
   return (
     <div className="flex-1 relative flex flex-col items-center overflow-y-auto">
       <HomeBackground />
@@ -137,6 +139,7 @@ function MobileHome({
       </div>
       <div className="relative w-full flex flex-col gap-4 pb-8 px-4">
         <Chat.Input showConnectionsBanner />
+        <TelosGoalCard orgSlug={org.slug} />
       </div>
       <div className="relative w-full px-4 pb-8">
         <HomeGrid isEditMode={false} />
@@ -156,6 +159,7 @@ function DesktopHome({
 }) {
   const { isEditMode, enter, save, cancel, hasChanges } = useHomeEdit();
   const [addTileOpen, setAddTileOpen] = useState(false);
+  const { org } = useProjectContext();
 
   return (
     <>
@@ -189,6 +193,9 @@ function DesktopHome({
               <div className="relative w-full">
                 <Capybara />
                 <Chat.Input showConnectionsBanner />
+              </div>
+              <div className="relative w-full mt-6">
+                <TelosGoalCard orgSlug={org.slug} />
               </div>
             </div>
             <div className="relative w-full mt-10 mx-auto max-w-[1280px] px-2 pb-16">

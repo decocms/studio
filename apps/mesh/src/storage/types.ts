@@ -1466,6 +1466,8 @@ export interface Database {
 
   // Telos goal ledger (append-only, org-scoped) — @decocms/telos
   telos_goal: TelosGoalTable;
+  // Telos onboarding facts — tentative findings the user confirms/rejects
+  telos_fact: TelosFactTable;
 }
 
 /**
@@ -1481,4 +1483,21 @@ export interface TelosGoalTable {
   target: unknown; // jsonb — the goal target
   created_by: string | null;
   created_at: ColumnType<Date, string | undefined, string>;
+}
+
+/**
+ * Tentative findings the onboarding research (elenchus) uncovered about an org's
+ * owner. PROPOSED until the user confirms or rejects each — `status` carries that
+ * dialectic. Surfaced on the home so the user can curate what we believe.
+ */
+export interface TelosFactTable {
+  id: string;
+  organization_id: string;
+  label: string;
+  value: string;
+  confidence: string; // "low" | "medium" | "high"
+  status: string; // "proposed" | "confirmed" | "rejected"
+  source_url: string | null;
+  created_at: ColumnType<Date, string | undefined, string>;
+  updated_at: ColumnType<Date, string | undefined, string>;
 }
