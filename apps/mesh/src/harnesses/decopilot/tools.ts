@@ -241,19 +241,22 @@ export async function assembleDecopilotTools(
   // try/finally only covers post-construction errors, so the cleanup
   // belongs inside the helper.
   try {
-    const { tools: rawPassthroughTools, nameMap: passthroughNameMap } =
-      await toolsFromMCP(
-        passthroughClient,
-        extras.toolOutputMap,
-        extras.writer,
-        input.toolApprovalLevel,
-        {
-          isPlanMode,
-          timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
-          resolveArgs: extras.resolveArgs,
-          onToolCalled: extras.onToolCalled,
-        },
-      );
+    const {
+      tools: rawPassthroughTools,
+      nameMap: passthroughNameMap,
+      rawTools: passthroughToolList,
+    } = await toolsFromMCP(
+      passthroughClient,
+      extras.toolOutputMap,
+      extras.writer,
+      input.toolApprovalLevel,
+      {
+        isPlanMode,
+        timeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
+        resolveArgs: extras.resolveArgs,
+        onToolCalled: extras.onToolCalled,
+      },
+    );
     // Restrict to the allowlist (if any) so enable_tool enumeration, the
     // connections block, and the model-facing toolset all agree.
     const passthroughTools = filterPassthroughByAllowlist(
@@ -323,8 +326,8 @@ export async function assembleDecopilotTools(
 
     // Collect (rawName, safeName, connectionId) triples for the
     // connections block and the per-tool annotations used for plan-mode
-    // gating — both from a single listTools() round-trip.
-    const passthroughToolList = (await passthroughClient.listTools()).tools;
+    // gating — both from the single listTools() round-trip toolsFromMCP
+    // already issued (reused via its `rawTools`), as the docstring intends.
     const connectionsBlockTools: ConnectionsBlockTool[] = [];
     const toolAnnotations = new Map<string, { readOnlyHint?: boolean }>();
     for (const t of passthroughToolList) {

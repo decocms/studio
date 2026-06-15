@@ -164,7 +164,11 @@ export async function toolsFromMCP(
   writer?: UIMessageStreamWriter,
   toolApprovalLevel: ToolApprovalLevel = "auto",
   options: ToolsFromMcpOptions = {},
-): Promise<{ tools: ToolSet; nameMap: Map<string, string> }> {
+): Promise<{
+  tools: ToolSet;
+  nameMap: Map<string, string>;
+  rawTools: Awaited<ReturnType<Client["listTools"]>>["tools"];
+}> {
   const truncate = !options.disableOutputTruncation;
   const list = await client.listTools();
   const visibleTools = list.tools.filter((t) =>
@@ -289,5 +293,12 @@ export async function toolsFromMCP(
     ];
   });
 
-  return { tools: Object.fromEntries(toolEntries), nameMap };
+  // Return the raw listing too: callers (desktop-runtime's connections-block)
+  // otherwise re-call client.listTools(), doubling the list+parse pass over the
+  // full tool surface every run — costly at high tool counts (100s of tools).
+  return {
+    tools: Object.fromEntries(toolEntries),
+    nameMap,
+    rawTools: list.tools,
+  };
 }
