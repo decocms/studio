@@ -291,7 +291,11 @@ function createDesktopToolRuntime(args: {
 
       try {
         // 2. Passthrough tools from the MCP endpoint.
-        const { tools: passthroughTools, nameMap } = await toolsFromMCP(
+        const {
+          tools: passthroughTools,
+          nameMap,
+          rawTools: passthroughToolList,
+        } = await toolsFromMCP(
           mcpClient,
           toolOutputMap,
           undefined,
@@ -304,8 +308,9 @@ function createDesktopToolRuntime(args: {
 
         // 3. Connections-block list + read-only annotations from the raw
         //    listing (drives enable_tool + the connections prompt block +
-        //    plan-mode gating).
-        const passthroughToolList = (await mcpClient.listTools()).tools;
+        //    plan-mode gating). Reuses the listing toolsFromMCP already
+        //    fetched — avoids a second full listTools round-trip per run,
+        //    which is costly at high tool counts (100s of tools).
         const connectionsBlockTools: ConnectionsBlockTool[] = [];
         const toolAnnotations = new Map<string, { readOnlyHint?: boolean }>();
         for (const t of passthroughToolList) {
