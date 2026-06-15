@@ -14,6 +14,15 @@ export const MCP_MESH_KEY = "mcp.mesh";
  */
 export const MCP_TOOL_CALL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Timeout for the live `listTools()` probe used when filtering a connection
+ * collection by binding (e.g. the Automations event-trigger picker, which lists
+ * every TRIGGER-capable connection). The probe eagerly connects to the
+ * downstream MCP server, so without a bound a single slow/hung connection
+ * stalls the whole fan-out and the UI hangs until the SDK's 60s default fires.
+ */
+export const MCP_LIST_TOOLS_TIMEOUT_MS = 5_000; // 5 seconds
+
 /** Number of consecutive failures before opening the circuit breaker for a connection */
 export const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3;
 

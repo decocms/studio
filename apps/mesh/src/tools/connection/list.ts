@@ -35,7 +35,8 @@ import {
   getMcpListCache,
   fetchWithCache,
 } from "../../mcp-clients/mcp-list-cache";
-import { clientFromConnection } from "../../mcp-clients";
+import { listToolsWithTimeout } from "../../mcp-clients";
+import { MCP_LIST_TOOLS_TIMEOUT_MS } from "../../core/constants";
 import {
   createDevAssetsConnectionEntity,
   usesLocalObjectStorage,
@@ -177,19 +178,12 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
                   const { listManagementTools } = await import("../../tools");
                   return listManagementTools(ctx) as Promise<unknown[]>;
                 }
-              : async () => {
-                  const client = await clientFromConnection(
+              : () =>
+                  listToolsWithTimeout(
                     connection,
                     ctx,
-                    true,
+                    MCP_LIST_TOOLS_TIMEOUT_MS,
                   );
-                  try {
-                    const result = await client.listTools();
-                    return result.tools;
-                  } finally {
-                    await client.close().catch(() => {});
-                  }
-                };
           const tools = await fetchWithCache(
             "tools",
             connection.id,
