@@ -3,6 +3,13 @@
 Reading and inspection of `.pptx` files. Editing and creation are not yet
 supported.
 
+> **Making a presentation, slide deck, or "slides"?** This is NOT the
+> skill — use the **`slides`** skill (`/mnt/skills/public/slides/SKILL.md`),
+> which authors HTML decks with a live, editable preview. Reach for `pptx`
+> ONLY when the user explicitly works with a PowerPoint `.pptx` file —
+> reading one they uploaded, or when they specifically ask for `.pptx`
+> output (not yet supported here).
+
 ## Quick reference
 
 | Task                          | Command                                       |
