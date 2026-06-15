@@ -28,6 +28,9 @@ export function createDeckBuffer(ctx: StudioContext): DeckBuffer {
   const actor = ctx.auth?.user?.id ?? null;
   if (!orgFs || !orgSlug || !actor) return NOOP;
   const mountDir = homeMountPath(orgSlug);
+  // Stamp the writing chat so the deck watcher can scope its preview to this
+  // run instead of every org-wide change (the home volume is shared).
+  const threadId = ctx.metadata?.threadId ?? null;
 
   const pending = new Map<string, string>();
 
@@ -47,6 +50,7 @@ export function createDeckBuffer(ctx: StudioContext): DeckBuffer {
             await orgFs.write(HOME_VOLUME, path, content, {
               actor,
               contentType: "text/html; charset=utf-8",
+              threadId,
             });
           } catch (err) {
             console.error("[deck-buffer] org-fs write failed", { path }, err);

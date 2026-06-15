@@ -18,7 +18,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { homeMountPath } from "@/file-storage/home-mount";
-import { matchDeckEntryPath } from "@decocms/harness/decopilot/built-in-tools/vm-tools/deck-paths";
+import { matchOwnDeckEntry } from "@decocms/harness/decopilot/built-in-tools/vm-tools/deck-paths";
 import type { UIMessageStreamWriter } from "ai";
 
 const HOME_VOLUME = "home";
@@ -45,10 +45,16 @@ export function createDeckWatcher(
 ): DeckWatcher {
   const orgFs = ctx.orgFs;
   const orgSlug = ctx.organization?.slug ?? null;
-  if (!orgFs || !orgSlug) {
+  const ownerId = ctx.auth?.user?.id ?? null;
+  if (!orgFs || !orgSlug || !ownerId) {
     return { sweep: async () => {} };
   }
   const mountDir = homeMountPath(orgSlug);
+  // The home volume is org-wide and shared across every chat and member; emit
+  // only entries this run produced. Exact thread match for tool-written decks
+  // (the deck-buffer stamps `thread_id`); same-user fallback for unstamped
+  // bash/slides write-backs, which still blocks cross-member leaks.
+  const scope = { threadId: ctx.metadata?.threadId ?? null, ownerId };
 
   // Snapshot the cursor at run start so the first sweep only sees writes
   // made during this run. Errors degrade to a dead watcher, never a
@@ -81,8 +87,7 @@ export function createDeckWatcher(
       for (let pages = 0; pages < 20; pages++) {
         const page = await orgFs.changes(HOME_VOLUME, cursor, PAGE_SIZE);
         for (const entry of page.entries) {
-          if (entry.kind !== "file" || entry.deletedAt) continue;
-          const deck = matchDeckEntryPath(entry.path);
+          const deck = matchOwnDeckEntry(entry, scope);
           if (!deck) continue;
           if (entry.contentHash) {
             if (emittedHash.get(deck.path) === entry.contentHash) continue;

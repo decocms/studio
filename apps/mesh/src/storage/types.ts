@@ -358,6 +358,10 @@ export interface OrgFsEntryTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  /** Chat/run that last wrote this file; null for writes not tied to a
+   *  dispatch (mount write-backs, backfill). Scopes live deck previews to
+   *  the originating chat. */
+  thread_id: string | null;
 }
 
 /** Public DTO for a file config — never exposes access key / secret key. */

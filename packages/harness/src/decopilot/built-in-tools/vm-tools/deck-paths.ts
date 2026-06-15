@@ -31,6 +31,51 @@ export function matchDeckEntryPath(entryPath: string): DeckRef | null {
   };
 }
 
+/** Minimal shape of an org-fs change-feed entry the deck watcher inspects. */
+export interface DeckChangeEntry {
+  kind: "file" | "dir";
+  deletedAt: string | null;
+  /** Actor of the change (org-fs `updated_by`). */
+  updatedBy: string;
+  /** Chat/run that wrote it (org-fs `thread_id`); null when not thread-tied. */
+  threadId: string | null;
+  /** Volume-relative path. */
+  path: string;
+}
+
+export interface DeckEmitScope {
+  /** The current run's thread id — entries it stamped always belong here. */
+  threadId: string | null;
+  /**
+   * The run owner's user id — fallback scope for entries with no thread stamp.
+   * Bash/slides decks reach org-fs via the mount write-back, decoupled from the
+   * dispatch, so they can't be thread-attributed without changing the storage
+   * path; scope them to the same user to at least block cross-member leaks.
+   */
+  ownerId: string;
+}
+
+/**
+ * Decide whether a home-volume change-feed entry belongs to this run, and which
+ * deck/page it is. The home volume is org-wide and shared across every chat and
+ * member, so an entry another chat or user produced must not surface in this
+ * run's live preview. Prefer exact thread provenance; fall back to same-user
+ * when the entry carries no thread stamp. Returns null for foreign, deleted,
+ * non-file, or non-deck entries.
+ */
+export function matchOwnDeckEntry(
+  entry: DeckChangeEntry,
+  scope: DeckEmitScope,
+): DeckRef | null {
+  if (entry.kind !== "file" || entry.deletedAt) return null;
+  const ownedByThread =
+    scope.threadId != null && entry.threadId === scope.threadId;
+  const ownedByUserFallback =
+    entry.threadId == null && entry.updatedBy === scope.ownerId;
+  if (!ownedByThread && !ownedByUserFallback) return null;
+  return matchDeckEntryPath(entry.path);
+}
+
 /**
  * Match a SANDBOX tool path (`write`/`edit`/bash cwd-relative or absolute)
  * against the mounted deck dir, e.g. `org/acme/decks/launch.html` or

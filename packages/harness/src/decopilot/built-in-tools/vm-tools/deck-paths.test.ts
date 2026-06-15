@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { matchDeckEntryPath, matchDeckToolPath } from "./deck-paths";
+import {
+  type DeckChangeEntry,
+  matchDeckEntryPath,
+  matchDeckToolPath,
+  matchOwnDeckEntry,
+} from "./deck-paths";
 
 describe("matchDeckEntryPath", () => {
   test("matches volume-relative deck paths", () => {
@@ -78,6 +83,78 @@ describe("matchDeckToolPath", () => {
     expect(matchDeckToolPath("org/acme/decks/launch.html", "")).toBeNull();
     expect(
       matchDeckToolPath("org/acme/decks/nested/launch.html", "acme"),
+    ).toBeNull();
+  });
+});
+
+describe("matchOwnDeckEntry", () => {
+  const entry = (over: Partial<DeckChangeEntry> = {}): DeckChangeEntry => ({
+    kind: "file",
+    deletedAt: null,
+    updatedBy: "user-a",
+    threadId: "thread-1",
+    path: "decks/launch.html",
+    ...over,
+  });
+  const scope = { threadId: "thread-1", ownerId: "user-a" };
+
+  test("emits decks stamped with the current thread", () => {
+    expect(matchOwnDeckEntry(entry(), scope)).toEqual({
+      path: "decks/launch.html",
+      name: "launch",
+      kind: "deck",
+    });
+  });
+
+  test("drops another chat's deck (same user, different thread)", () => {
+    // The reported same-user-two-chats leak: a tool-written deck from the
+    // user's other chat carries that chat's thread stamp, not this run's.
+    expect(
+      matchOwnDeckEntry(entry({ threadId: "thread-2" }), scope),
+    ).toBeNull();
+  });
+
+  test("drops another member's deck (foreign thread)", () => {
+    expect(
+      matchOwnDeckEntry(
+        entry({ threadId: "thread-2", updatedBy: "user-b" }),
+        scope,
+      ),
+    ).toBeNull();
+  });
+
+  test("falls back to same-user scope for unstamped (bash/slides) writes", () => {
+    expect(matchOwnDeckEntry(entry({ threadId: null }), scope)).toEqual({
+      path: "decks/launch.html",
+      name: "launch",
+      kind: "deck",
+    });
+  });
+
+  test("drops another member's unstamped write (cross-member, no thread)", () => {
+    expect(
+      matchOwnDeckEntry(entry({ threadId: null, updatedBy: "user-b" }), scope),
+    ).toBeNull();
+  });
+
+  test("ignores tombstones, dirs, and non-deck paths", () => {
+    expect(
+      matchOwnDeckEntry(entry({ deletedAt: "2026-06-15" }), scope),
+    ).toBeNull();
+    expect(matchOwnDeckEntry(entry({ kind: "dir" }), scope)).toBeNull();
+    expect(
+      matchOwnDeckEntry(entry({ path: "notes/launch.html" }), scope),
+    ).toBeNull();
+  });
+
+  test("with no current thread, only same-user unstamped writes pass", () => {
+    const noThread = { threadId: null, ownerId: "user-a" };
+    expect(
+      matchOwnDeckEntry(entry({ threadId: null }), noThread),
+    ).not.toBeNull();
+    // A stamped deck can't be confirmed as this run's when we have no thread id.
+    expect(
+      matchOwnDeckEntry(entry({ threadId: "thread-1" }), noThread),
     ).toBeNull();
   });
 });

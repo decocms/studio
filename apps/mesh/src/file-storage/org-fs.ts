@@ -126,7 +126,14 @@ export class OrgFs {
     volume: string,
     path: string,
     body: string | Uint8Array,
-    opts: { actor: string; contentType?: string; skipVolumeQuota?: boolean },
+    opts: {
+      actor: string;
+      contentType?: string;
+      skipVolumeQuota?: boolean;
+      /** Chat/run writing this file — scopes live deck previews. Omit for
+       *  writes not tied to a dispatch (mount write-backs, backfill). */
+      threadId?: string | null;
+    },
   ): Promise<OrgFsEntry> {
     assertValidVolume(volume);
     const normalized = normalizeFsPath(path);
@@ -187,6 +194,7 @@ export class OrgFs {
       contentHash: sha256(bytes),
       size: bytes.byteLength,
       actor: opts.actor,
+      threadId: opts.threadId ?? null,
     });
   }
 
