@@ -174,7 +174,16 @@ export function AnyOfField({
     const handleRefChange = (rt: string) => {
       setSelectedRt(rt);
       const targetRef = refs.find((r) => r.resolveType === rt);
-      const allowed = new Set(Object.keys(targetRef?.schema?.properties ?? {}));
+      const resolvedTargetSchema = resolveNestedBlockRefSchema(
+        editorValue,
+        meta,
+        targetRef?.schema,
+      );
+      const allowed = new Set(
+        Object.keys(
+          (resolvedTargetSchema ?? targetRef?.schema)?.properties ?? {},
+        ),
+      );
       const existing =
         value !== null && typeof value === "object" && !Array.isArray(value)
           ? (value as Record<string, unknown>)

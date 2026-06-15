@@ -98,6 +98,7 @@ import {
   updateMultivariateSectionVariantValue,
 } from "./section-variants";
 import { PageJsonDialog } from "./page-json-dialog";
+import { createReferencedBlockSaver } from "./save-referenced-block";
 
 function SchemaFormPanel({
   activeSchema,
@@ -557,6 +558,15 @@ export function SectionsEditor({
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) => {
+    saveBlock.mutate(
+      { blockKey: refKey, data },
+      {
+        onSuccess: () => onSaved?.(),
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2234,6 +2244,7 @@ export function SectionsEditor({
             emptyMessage="No editable fields for this variant."
             meta={meta}
             decofile={decofile}
+            onSaveReferencedBlock={saveReferencedBlock}
           />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
@@ -2248,6 +2259,7 @@ export function SectionsEditor({
             emptyMessage="No editable fields for this global block."
             meta={meta}
             decofile={decofile}
+            onSaveReferencedBlock={saveReferencedBlock}
           />
         </ScrollArea>
       ) : (

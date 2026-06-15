@@ -49,13 +49,14 @@ export function findPageForPath(
   preferredKey?: string | null,
 ): PageEntry | null {
   const norm = normalizePagePath;
-  const matches = pages.filter((p) => norm(p.path) === norm(path));
-  if (matches.length === 0) return null;
 
   if (preferredKey) {
-    const preferred = matches.find((p) => p.key === preferredKey);
+    const preferred = pages.find((p) => p.key === preferredKey);
     if (preferred) return preferred;
   }
+
+  const matches = pages.filter((p) => norm(p.path) === norm(path));
+  if (matches.length === 0) return null;
 
   if (matches.length === 1) return matches[0] ?? null;
   return [...matches].sort((a, b) => a.key.localeCompare(b.key))[0] ?? null;

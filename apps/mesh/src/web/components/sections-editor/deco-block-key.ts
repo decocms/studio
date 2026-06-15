@@ -2,13 +2,31 @@
  * Decofile block ids are object keys (may include spaces, % encoding).
  * Reject anything that could escape `.deco/blocks/<key>.json` via path segments.
  */
-export function assertSafeDecoBlockKey(blockKey: string): void {
+function containsPathTraversal(segment: string): boolean {
   if (
-    !blockKey ||
-    blockKey.includes("/") ||
-    blockKey.includes("\\") ||
-    blockKey.includes("..")
+    !segment ||
+    segment.includes("/") ||
+    segment.includes("\\") ||
+    segment.includes("..") ||
+    segment.includes("\0")
   ) {
+    return true;
+  }
+  try {
+    const decoded = decodeURIComponent(segment);
+    return (
+      decoded.includes("/") ||
+      decoded.includes("\\") ||
+      decoded.includes("..") ||
+      decoded.includes("\0")
+    );
+  } catch {
+    return true;
+  }
+}
+
+export function assertSafeDecoBlockKey(blockKey: string): void {
+  if (containsPathTraversal(blockKey)) {
     throw new Error(`Invalid block key: ${blockKey || "(empty)"}`);
   }
 }

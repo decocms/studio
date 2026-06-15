@@ -5,6 +5,7 @@ import {
   isArrayDrillDownField,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
+  isBreadcrumbInsideObject,
 } from "./schema-form-breadcrumb";
 import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
 
@@ -169,5 +170,57 @@ describe("resolveArrayItemSelection", () => {
         itemSchema,
       ),
     ).toEqual({ index: 0, innerPath: ["Button"] });
+  });
+});
+
+describe("isBreadcrumbInsideObject", () => {
+  const alertSchema = {
+    title: "Alert",
+    type: "object",
+    properties: {
+      alerts: {
+        title: "Alerts",
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            text: { type: "string", title: "Text" },
+            url: { type: "string", title: "Url" },
+          },
+        },
+      },
+      sliderInterval: { type: "number", title: "Slider interval" },
+    },
+  } as SchemaProperty;
+
+  test("detects nested array drill-down without object label in trail", () => {
+    expect(
+      isBreadcrumbInsideObject(
+        "alert",
+        "Alert",
+        alertSchema,
+        {
+          alerts: [{ text: "A Utah Proud Brand Since 1921", url: "/sale" }],
+        },
+        ["A Utah Proud Brand Since 1921"],
+      ),
+    ).toBe(true);
+  });
+
+  test("detects breadcrumb that starts with object label", () => {
+    expect(
+      isBreadcrumbInsideObject("alert", "Alert", alertSchema, { alerts: [] }, [
+        "Alert",
+        "Alerts",
+      ]),
+    ).toBe(true);
+  });
+
+  test("returns false when breadcrumb targets another object", () => {
+    expect(
+      isBreadcrumbInsideObject("alert", "Alert", alertSchema, { alerts: [] }, [
+        "Logos",
+      ]),
+    ).toBe(false);
   });
 });

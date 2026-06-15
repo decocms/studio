@@ -44,6 +44,24 @@ describe("page-list", () => {
     expect(findPageForPath(pages, "/")?.key).toBe(pages[0]!.key);
   });
 
+  it("findPageForPath returns preferred key even when path no longer matches", () => {
+    const pages = [
+      {
+        key: "pages-home-old",
+        name: "Home",
+        path: "/old",
+      },
+      {
+        key: "pages-home-new",
+        name: "Home",
+        path: "/",
+      },
+    ];
+    expect(findPageForPath(pages, "/", "pages-home-old")?.key).toBe(
+      "pages-home-old",
+    );
+  });
+
   it("extractApps finds installed app blocks", () => {
     const meta: LiveMeta = {
       manifest: {

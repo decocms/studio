@@ -1,5 +1,6 @@
 import { extractUrl } from "./fields/extract-url";
 import type { SchemaProperty } from "./resolve-schema";
+import { labelFromResolveType } from "./section-types";
 import { safeEditorImageUrl } from "./safe-editor-image-url";
 
 function resolveResolvable(obj: Record<string, unknown>): string | undefined {
@@ -94,14 +95,6 @@ function readTitleByValue(
     if (joined) return joined;
   }
   return undefined;
-}
-
-function labelFromResolveType(resolveType: string): string {
-  const lastPart = resolveType.split("/").at(-1) ?? resolveType;
-  return lastPart
-    .replace(/\.tsx?$/, "")
-    .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function getArrayItemLabel(

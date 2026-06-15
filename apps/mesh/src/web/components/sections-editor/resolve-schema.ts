@@ -2,7 +2,10 @@ import {
   isManifestAppResolveType,
   parseSavedBlockSchemaTitle,
 } from "./block-type-utils";
-import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
+import {
+  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+  labelFromResolveType,
+} from "./section-types";
 
 /**
  * Schema resolution for /live/_meta JSON Schemas.
@@ -408,11 +411,7 @@ export function resolveSchema(
               title:
                 typeof branch.title === "string"
                   ? branch.title
-                  : (rt
-                      .split("/")
-                      .pop()
-                      ?.replace(/\.tsx?$/, "")
-                      .replace(/[-_]/g, " ") ?? rt),
+                  : labelFromResolveType(rt),
               description:
                 typeof branch.description === "string"
                   ? branch.description
@@ -513,11 +512,7 @@ export function resolveSchema(
                 title ??
                 (typeof def.title === "string" && !def.title.startsWith("#")
                   ? def.title
-                  : (rt
-                      .split("/")
-                      .pop()
-                      ?.replace(/\.tsx?$/, "")
-                      .replace(/[-_]/g, " ") ?? rt)),
+                  : labelFromResolveType(rt)),
               description:
                 typeof def.description === "string"
                   ? def.description

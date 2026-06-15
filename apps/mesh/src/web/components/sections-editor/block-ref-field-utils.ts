@@ -32,7 +32,7 @@ export function moduleResolveTypeFromBlockData(
   return rt;
 }
 
-export function isMultivariateFlagResolveType(resolveType: string): boolean {
+function isMultivariateFlagResolveType(resolveType: string): boolean {
   return resolveType.includes("flags/multivariate");
 }
 
