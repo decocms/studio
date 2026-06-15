@@ -21,8 +21,6 @@
  */
 
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { sql, type Kysely } from "kysely";
-import type { Database as DatabaseSchema } from "@/storage/types";
 import type {
   DispatchRunDeps,
   DispatchRunInput,
@@ -485,42 +483,6 @@ export async function enqueueThreadRun(
     workflowID: opts?.workflowID,
   })(ctx);
   return { workflowID: handle.workflowID };
-}
-
-/**
- * Hand this executor's in-flight thread-gate runs back to the queue on graceful
- * shutdown so another executor finishes them.
- *
- * Flips this executor's PENDING thread-gate workflows to ENQUEUED and clears the
- * owning executor, so another executor re-dequeues and re-runs them. The
- * workflow's `application_version` is preserved, so only a matching-version
- * executor picks it up — same-version peers during a crash, or the overlap
- * window of a rolling deploy. The dispatch step is retriable, so the re-dequeued
- * workflow re-executes the run.
- *
- * Ordering: must run AFTER `DBOS.shutdown()` has left the interrupted workflows
- * PENDING and BEFORE the pg pool closes. Pairs with the run-registry abort that
- * cancels the daemon first, so the re-dispatch can't race a live first dispatch.
- *
- * Returns the number of workflows re-enqueued.
- */
-export async function requeueInflightThreadGateWorkflows(
-  db: Kysely<DatabaseSchema>,
-): Promise<number> {
-  const executorID = DBOS.executorID;
-  if (!executorID || executorID === "local") return 0;
-  const result = await sql`
-    UPDATE ${sql.id("dbos", "workflow_status")}
-    SET status = 'ENQUEUED',
-        executor_id = NULL,
-        started_at_epoch_ms = NULL,
-        recovery_attempts = 0,
-        updated_at = ${Date.now()}
-    WHERE queue_name = ${THREAD_GATE_QUEUE}
-      AND status = 'PENDING'
-      AND executor_id = ${executorID}
-  `.execute(db);
-  return Number(result.numAffectedRows ?? 0n);
 }
 
 /**

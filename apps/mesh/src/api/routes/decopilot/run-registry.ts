@@ -157,9 +157,9 @@ export class RunRegistry {
 
   /**
    * Graceful shutdown: abort in-memory controllers (stops streamText loops and
-   * cancels the daemon via the run's abort path) and clear state. Re-enqueueing
-   * the backing thread-gate DBOS workflows for handoff happens separately in
-   * app shutdown (`requeueInflightThreadGateWorkflows`), after `DBOS.shutdown()`.
+   * cancels the daemon via the run's abort path) and clear state. Recovery of an
+   * interrupted run is DBOS's job — the thread-gate workflow is durable and its
+   * dispatch step is retriable, so DBOS re-runs it on another executor.
    */
   async stopAll(): Promise<void> {
     for (const [, state] of this.states) {
