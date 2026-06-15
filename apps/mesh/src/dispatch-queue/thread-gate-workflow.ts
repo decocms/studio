@@ -430,6 +430,7 @@ async function threadGateWorkflowFn(
   await DBOS.runStep(() => trackMessageStartedStep(ctx), {
     name: "trackMessageStarted",
   });
+  try {
     // Retriable EXCEPT for `user-desktop` runs. A user-desktop run dispatches to
     // a daemon on the user's laptop that keeps running after the pod dies; a DBOS
     // replay on another executor would open a SECOND concurrent dispatch against
