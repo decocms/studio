@@ -1,5 +1,5 @@
 import { getArrayItemLabel } from "./array-item-display";
-import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
+import { isPageMultivariateSectionArrayField } from "./page-variants";
 import type { SchemaProperty } from "./resolve-schema";
 
 function humanize(key: string): string {
@@ -16,14 +16,7 @@ export function fieldDisplayLabel(key: string, schema: SchemaProperty): string {
 /** Breadcrumb drill-down applies to array fields only (not nested objects). */
 export function isArrayDrillDownField(schema: SchemaProperty): boolean {
   if (schema.type === "array" && schema.items) return true;
-  return (
-    schema.anyOfRefs?.some((ref) => {
-      if (ref.resolveType !== PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE) return false;
-      const valueField =
-        ref.schema?.properties?.variants?.items?.properties?.value;
-      return valueField?.type === "array";
-    }) ?? false
-  );
+  return isPageMultivariateSectionArrayField(schema);
 }
 
 /** Resolve which top-level property is active for the current breadcrumb trail. */

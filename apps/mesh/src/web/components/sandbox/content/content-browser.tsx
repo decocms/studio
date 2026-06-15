@@ -1,4 +1,5 @@
-import { type Query, Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useState } from "react";
+import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
   BookOpen01,

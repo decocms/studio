@@ -141,7 +141,7 @@ describe("resolveSchema – app resolveType aliases", () => {
             "site/apps/site.ts": {
               $ref: "#/definitions/SiteApp",
               definitions: {},
-            },
+            } as { $ref: string },
           },
         },
       },
@@ -278,6 +278,10 @@ describe("resolveSchema – type-discriminated unions", () => {
                   },
                 },
               },
+            } as {
+              $ref?: string;
+              type?: string;
+              properties?: Record<string, unknown>;
             },
           },
         },
@@ -325,6 +329,10 @@ describe("resolveSchema – type-discriminated unions", () => {
                   },
                 },
               },
+            } as {
+              $ref?: string;
+              type?: string;
+              properties?: Record<string, unknown>;
             },
           },
         },

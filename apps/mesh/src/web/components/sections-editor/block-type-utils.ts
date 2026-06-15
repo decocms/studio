@@ -80,7 +80,11 @@ export function isManifestMatcherResolveType(
 
 /** Block id reference (no module path) — e.g. `Header`, not `site/sections/Header.tsx`. */
 export function isSavedBlockResolveType(resolveType: string): boolean {
-  return !resolveType.includes("/");
+  if (resolveType.includes("/")) return false;
+  if (resolveType === "__proto__" || resolveType === "constructor") {
+    return false;
+  }
+  return true;
 }
 
 /** Auto-generated preview stubs under `.deco/blocks/Preview …`. */

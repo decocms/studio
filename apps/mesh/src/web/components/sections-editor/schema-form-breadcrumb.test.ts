@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { SchemaProperty } from "./resolve-schema";
 import {
   fieldDisplayLabel,
+  isArrayDrillDownField,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
 } from "./schema-form-breadcrumb";
+import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
 
 describe("fieldDisplayLabel", () => {
   test("prefers schema title", () => {
@@ -23,7 +25,11 @@ describe("fieldDisplayLabel", () => {
 describe("resolveActiveFieldKey", () => {
   const properties = {
     layout: { title: "Layout" } as SchemaProperty,
-    cards: { title: "Cards", type: "array", items: {} } as SchemaProperty,
+    cards: {
+      title: "Cards",
+      type: "array",
+      items: { type: "object" },
+    } as SchemaProperty,
   };
 
   test("matches array field label at head of breadcrumb", () => {
@@ -54,9 +60,49 @@ describe("resolveActiveFieldKey", () => {
   });
 });
 
+describe("isArrayDrillDownField", () => {
+  test("detects plain arrays", () => {
+    expect(
+      isArrayDrillDownField({
+        type: "array",
+        items: { type: "object" },
+      } as SchemaProperty),
+    ).toBe(true);
+  });
+
+  test("detects page multivariate section arrays", () => {
+    expect(
+      isArrayDrillDownField({
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+            title: "Page Variants",
+            schema: {
+              type: "object",
+              properties: {
+                variants: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      value: { type: "array", items: { type: "object" } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      } as SchemaProperty),
+    ).toBe(true);
+  });
+});
+
 describe("resolveArrayItemSelection", () => {
   const itemSchema = {
-    properties: { title: { title: "Title" } },
+    type: "object",
+    properties: { title: { type: "string", title: "Title" } },
   } as SchemaProperty;
   const items = [{ title: "Men's" }, { title: "Women's" }];
 

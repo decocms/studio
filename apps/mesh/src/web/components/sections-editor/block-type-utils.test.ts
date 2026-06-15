@@ -50,6 +50,8 @@ describe("block-type-utils", () => {
     expect(isSavedBlockResolveType("site/sections/Header/Header.tsx")).toBe(
       false,
     );
+    expect(isSavedBlockResolveType("__proto__")).toBe(false);
+    expect(isSavedBlockResolveType("constructor")).toBe(false);
   });
 
   it("isAutoPreviewBlockKey detects generated preview stubs", () => {

@@ -11,10 +11,15 @@ import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
 import {
   isMultivariateArrayWrapper,
+  isPageMultivariateSectionArrayField,
   unwrapMultivariateArrayValue,
   wrapMultivariateArrayValue,
 } from "./page-variants";
-import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
+import {
+  fieldDisplayLabel,
+  isArrayDrillDownField,
+  resolveActiveFieldKey,
+} from "./schema-form-breadcrumb";
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
@@ -47,14 +52,6 @@ function inferArrayItemsFromBlockRefSchema(
   return undefined;
 }
 
-function isPageMultivariateSectionArrayField(schema: SchemaProperty): boolean {
-  return (
-    schema.anyOfRefs?.some(
-      (ref) => ref.resolveType === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
-    ) ?? false
-  );
-}
-
 function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
   if (schema.type === "array" && schema.items) return schema;
   const inferredItems =
@@ -62,12 +59,6 @@ function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
   if (!inferredItems) return null;
   return { ...schema, type: "array", items: inferredItems };
 }
-
-import {
-  fieldDisplayLabel,
-  isArrayDrillDownField,
-  resolveActiveFieldKey,
-} from "./schema-form-breadcrumb";
 
 function defaultForType(
   type: string | undefined,

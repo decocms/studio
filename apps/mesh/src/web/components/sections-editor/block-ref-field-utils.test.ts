@@ -1,16 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import {
+  blockRefLoaderConfigHasData,
   detectBlockRefType,
   enrichBlockRefOptions,
   moduleResolveTypeFromBlockData,
   resolveNestedBlockRefSchema,
+  schemaWithoutDiscriminator,
+  type BlockRefOption,
 } from "./block-ref-field-utils";
 
 const SECTION_VARIANTS = "website/flags/multivariate/section.ts";
 const THEME_SECTION = "site/sections/Theme/Theme.tsx";
 
-const baseRefs = [
+const baseRefs: BlockRefOption[] = [
   {
     resolveType: SECTION_VARIANTS,
     title: "Section Variants",
@@ -71,7 +74,7 @@ describe("detectBlockRefType", () => {
   });
 
   test("matches union branch by hidden type discriminator", () => {
-    const cardRefs = [
+    const cardRefs: BlockRefOption[] = [
       {
         resolveType: "image-card",
         title: "ImageCard",
@@ -103,6 +106,45 @@ describe("detectBlockRefType", () => {
     expect(detectBlockRefType({ type: "text-card", line1: {} }, cardRefs)).toBe(
       "text-card",
     );
+  });
+
+  test("prefers __resolveType over type discriminator", () => {
+    const cardRefs: BlockRefOption[] = [
+      {
+        resolveType: "image-card",
+        title: "ImageCard",
+        discriminatorValue: "image-card",
+        schema: {
+          type: "object",
+          properties: {
+            type: { type: "string", default: "image-card" },
+            image: { type: "string" },
+          },
+        } satisfies SchemaProperty,
+      },
+      {
+        resolveType: "text-card",
+        title: "TextCard",
+        discriminatorValue: "text-card",
+        schema: {
+          type: "object",
+          properties: {
+            type: { type: "string", default: "text-card" },
+            line1: { type: "object" },
+          },
+        } satisfies SchemaProperty,
+      },
+    ];
+    expect(
+      detectBlockRefType(
+        {
+          __resolveType: "image-card",
+          type: "text-card",
+          line1: {},
+        },
+        cardRefs,
+      ),
+    ).toBe("image-card");
   });
 });
 
@@ -198,5 +240,39 @@ describe("moduleResolveTypeFromBlockData", () => {
         section: { __resolveType: THEME_SECTION },
       }),
     ).toBe(THEME_SECTION);
+  });
+});
+
+describe("schemaWithoutDiscriminator", () => {
+  test("removes discriminator property from nested schema", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        type: { type: "string", default: "image-card" },
+        image: { type: "string" },
+      },
+    } satisfies SchemaProperty;
+    const stripped = schemaWithoutDiscriminator(schema, "type");
+    expect(stripped?.properties?.type).toBeUndefined();
+    expect(stripped?.properties?.image).toBeDefined();
+  });
+});
+
+describe("blockRefLoaderConfigHasData", () => {
+  test("returns true when editing a saved block pointer", () => {
+    expect(blockRefLoaderConfigHasData({}, "Deco")).toBe(true);
+  });
+
+  test("returns false for empty object values", () => {
+    expect(blockRefLoaderConfigHasData({})).toBe(false);
+  });
+
+  test("returns true when multivariate flag has variants", () => {
+    expect(
+      blockRefLoaderConfigHasData({
+        __resolveType: SECTION_VARIANTS,
+        variants: [{ value: [] }],
+      }),
+    ).toBe(true);
   });
 });

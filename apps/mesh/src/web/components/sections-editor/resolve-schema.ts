@@ -43,6 +43,8 @@ export interface SchemaProperty {
   hidden?: boolean;
 }
 
+export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
+
 export interface LiveMeta {
   manifest: {
     blocks: Record<
@@ -211,7 +213,7 @@ export function resolveSchema(
     if (typeof s.$ref !== "string") return s;
     if (s.properties || s.anyOf || s.allOf || s.oneOf || s.type) return s;
     const key = s.$ref.split("/").pop() ?? "";
-    if (seen.has(key)) return s;
+    if (!key || seen.has(key)) return s;
     return unwrapRefAliases(resolveRef(s.$ref), new Set([...seen, key]));
   };
 
@@ -476,12 +478,7 @@ export function resolveSchema(
         // All branches are $refs to block/loader defs
         const allRefs = nonNull.every((a) => typeof a.$ref === "string");
         if (allRefs) {
-          const anyOfRefs: Array<{
-            resolveType: string;
-            title: string;
-            description?: string;
-            schema?: SchemaProperty;
-          }> = [];
+          const anyOfRefs: SchemaAnyOfRef[] = [];
           for (const branch of nonNull) {
             const def = resolveRef(branch.$ref as string);
             let rt: string | undefined;

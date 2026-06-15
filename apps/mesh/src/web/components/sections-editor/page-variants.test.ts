@@ -4,6 +4,8 @@ import {
   buildPageSectionsFromVariants,
   countSavedMatcherBlockReferences,
   getPageVariantCount,
+  getPageVariantSectionsAt,
+  parsePageVariants,
   unwrapMultivariateArrayValue,
   variantHasRule,
   wrapMultivariateArrayValue,
@@ -23,6 +25,44 @@ describe("page-variants", () => {
         variants: [{ value: sections }],
       }),
     ).toEqual(sections);
+    expect(
+      unwrapMultivariateArrayValue({
+        __resolveType: PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+        variants: "not-an-array",
+      }),
+    ).toBeNull();
+  });
+
+  it("parses flat and multivariate page sections", () => {
+    const flat = [{ __resolveType: "Hero" }];
+    expect(parsePageVariants(flat, {}, () => "Rule")).toEqual([
+      { label: "Default", sections: flat },
+    ]);
+
+    const decofile = {
+      home: {
+        __resolveType: "website/pages/Page.tsx",
+        path: "/",
+        sections: {
+          variants: [
+            {
+              rule: { __resolveType: "website/matchers/always.ts" },
+              value: [{ __resolveType: "A" }],
+            },
+          ],
+        },
+      },
+    };
+    const variants = parsePageVariants(
+      decofile.home.sections,
+      decofile,
+      () => "Always",
+    );
+    expect(variants).toHaveLength(1);
+    expect(variants[0]?.sections).toEqual([{ __resolveType: "A" }]);
+    expect(getPageVariantSectionsAt(decofile, "home", 0)).toEqual([
+      { __resolveType: "A" },
+    ]);
   });
 
   it("wraps multivariate global section arrays on save", () => {

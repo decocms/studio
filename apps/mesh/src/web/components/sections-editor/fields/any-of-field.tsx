@@ -19,6 +19,7 @@ import {
   detectBlockRefType,
   enrichBlockRefOptions,
   resolveNestedBlockRefSchema,
+  schemaWithoutDiscriminator,
 } from "../block-ref-field-utils";
 import {
   embeddedUnionBlockId,
@@ -47,16 +48,6 @@ function defaultsForSchema(schema?: SchemaProperty): Record<string, unknown> {
     }
   }
   return out;
-}
-
-function schemaWithoutDiscriminator(
-  schema: SchemaProperty | null | undefined,
-  discriminatorKey?: string,
-): SchemaProperty | null {
-  if (!schema?.properties || !discriminatorKey) return schema ?? null;
-  if (!(discriminatorKey in schema.properties)) return schema;
-  const { [discriminatorKey]: _, ...properties } = schema.properties;
-  return { ...schema, properties };
 }
 
 function GlobalLoaderBadge({ blockKey }: { blockKey: string }) {

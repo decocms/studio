@@ -1,4 +1,4 @@
-import type { LiveMeta } from "./resolve-schema";
+import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import {
   isSavedMatcherBlockReference,
   resolveVariantRuleLabel,
@@ -21,6 +21,19 @@ export interface PageVariant {
   rule?: Record<string, unknown>;
 }
 
+export function isPageMultivariateSectionArrayField(
+  schema: SchemaProperty,
+): boolean {
+  return (
+    schema.anyOfRefs?.some((ref) => {
+      if (ref.resolveType !== PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE) return false;
+      const valueField =
+        ref.schema?.properties?.variants?.items?.properties?.value;
+      return valueField?.type === "array";
+    }) ?? false
+  );
+}
+
 /** Site `global` and page `sections` can be a plain array or page multivariate wrapper. */
 export function isMultivariateArrayWrapper(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -35,7 +48,7 @@ export function unwrapMultivariateArrayValue(value: unknown): unknown[] | null {
   const variants = (value as Record<string, unknown>).variants as
     | Array<{ value?: unknown }>
     | undefined;
-  if (!Array.isArray(variants)) return [];
+  if (!Array.isArray(variants)) return null;
   const first = variants[0]?.value;
   return Array.isArray(first) ? first : null;
 }

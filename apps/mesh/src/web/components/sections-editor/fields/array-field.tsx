@@ -67,7 +67,8 @@ export function ArrayField({
     const next = [...items, defaultVal];
     onChange(next);
     const nextIndex = next.length - 1;
-    openItem(nextIndex);
+    const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema);
+    onBreadcrumbChange?.([...breadcrumbPath, label, labelText]);
   };
 
   const removeItem = (index: number) => {

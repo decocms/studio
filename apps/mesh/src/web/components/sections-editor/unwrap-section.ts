@@ -18,7 +18,7 @@ function resolveSavedBlockData(
   blockKey: string,
   decofile: Record<string, unknown>,
 ): { data: Record<string, unknown>; resolveType: string } | null {
-  if (!(blockKey in decofile)) return null;
+  if (!Object.hasOwn(decofile, blockKey)) return null;
   const blockData = (decofile[blockKey] as Record<string, unknown>) ?? {};
   const rt = (blockData.__resolveType as string) ?? blockKey;
   return { data: { ...blockData }, resolveType: rt };
@@ -44,11 +44,10 @@ function unwrapSectionValue(
     return unwrapSectionValue(firstVariant, decofile);
   }
 
-  if (!rt.includes("/") && rt in decofile) {
-    return resolveSavedBlockData(rt, decofile);
+  if (!isSavedBlockResolveType(rt) || !Object.hasOwn(decofile, rt)) {
+    return { data: { ...value }, resolveType: rt };
   }
-
-  return { data: { ...value }, resolveType: rt };
+  return resolveSavedBlockData(rt, decofile);
 }
 
 function unwrapLazyInner(
@@ -66,11 +65,10 @@ function unwrapLazyInner(
     return unwrapSectionValue(firstVariant, decofile);
   }
 
-  if (!innerRt.includes("/") && innerRt in decofile) {
-    return resolveSavedBlockData(innerRt, decofile);
+  if (!isSavedBlockResolveType(innerRt) || !Object.hasOwn(decofile, innerRt)) {
+    return { data: { ...inner }, resolveType: innerRt };
   }
-
-  return { data: { ...inner }, resolveType: innerRt };
+  return resolveSavedBlockData(innerRt, decofile);
 }
 
 /**
@@ -91,7 +89,7 @@ export function unwrapBlockReference(
   if (typeof blockKey !== "string" || !isSavedBlockResolveType(blockKey)) {
     return null;
   }
-  if (!(blockKey in decofile)) return null;
+  if (!Object.hasOwn(decofile, blockKey)) return null;
   const resolved = resolveSavedBlockData(blockKey, decofile);
   return resolved ? { blockKey, ...resolved } : null;
 }
