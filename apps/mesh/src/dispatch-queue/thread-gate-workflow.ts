@@ -10,9 +10,9 @@
  * is what gives us "queue behavior" — DBOS won't dequeue the next message
  * on the same thread until this run is finished.
  *
- * Used by user-message POSTs (later: automation fires too). Automations
- * layer their existing per-automation and global gates above this
- * per-thread one; user messages enter here directly.
+ * Used by user-message POSTs. Automation fires do NOT pass through this
+ * queue — each fire is a fresh thread (no per-thread contention), so it runs
+ * the shared `runDispatchSteps` body directly on its own per-org queue slot.
  *
  * Runtime dependencies (dispatch fn, studio-context factory, dispatch deps)
  * are looked up via a module-level registry. App boot wires them via
@@ -424,7 +424,22 @@ async function trackMessageFailedStep(
   });
 }
 
-async function threadGateWorkflowFn(
+/**
+ * The dispatch execution body: track-started → dispatch → track-failed,
+ * as recorded DBOS steps. Shared by two callers so the executor lives in one
+ * place:
+ *
+ *  - `threadGateWorkflow` (user messages) runs it behind the per-thread queue
+ *    slot, which is what serializes messages on the same thread.
+ *  - `fireAutomationWorkflow` calls it directly on its own per-org queue slot.
+ *    Automation fires each create a fresh thread, so they need no per-thread
+ *    gate — routing them through the thread-gate queue was only ever a way to
+ *    reuse this body, at the cost of a second queue hop.
+ *
+ * MUST be called from within a DBOS workflow context (it issues `runStep`s).
+ * The analytics steps no-op for non-`user-message` sources.
+ */
+export async function runDispatchSteps(
   ctx: ThreadGateContext,
 ): Promise<ThreadGateOutcome> {
   await DBOS.runStep(() => trackMessageStartedStep(ctx), {
@@ -462,6 +477,12 @@ async function threadGateWorkflowFn(
   return { taskId: ctx.request.taskId ?? ctx.threadId };
 }
 
+async function threadGateWorkflowFn(
+  ctx: ThreadGateContext,
+): Promise<ThreadGateOutcome> {
+  return runDispatchSteps(ctx);
+}
+
 const threadGateWorkflow = DBOS.registerWorkflow(threadGateWorkflowFn, {
   name: "threadGateWorkflow",
 });
@@ -476,8 +497,6 @@ const threadGateWorkflow = DBOS.registerWorkflow(threadGateWorkflowFn, {
  * existing workflow handle instead of duplicating the run.
  *
  * Fire-and-forget: returns the workflowID without awaiting completion.
- * Use `awaitThreadRun` when the caller needs to block on the dispatch
- * outcome (e.g. parent workflows that hold their own queue slot).
  */
 export async function enqueueThreadRun(
   ctx: ThreadGateContext,
@@ -489,23 +508,4 @@ export async function enqueueThreadRun(
     workflowID: opts?.workflowID,
   })(ctx);
   return { workflowID: handle.workflowID };
-}
-
-/**
- * Enqueue and await completion. Used by callers that hold an outer
- * workflow slot and need the dispatch outcome to advance — chiefly the
- * automation fire path, which layers its own per-automation and global
- * gates above this per-thread one. Failures from the inner workflow
- * propagate so the caller's step is recorded as failed by DBOS.
- */
-export async function awaitThreadRun(
-  ctx: ThreadGateContext,
-  opts?: { workflowID?: string },
-): Promise<ThreadGateOutcome> {
-  const handle = await DBOS.startWorkflow(threadGateWorkflow, {
-    queueName: THREAD_GATE_QUEUE,
-    enqueueOptions: { queuePartitionKey: ctx.threadId },
-    workflowID: opts?.workflowID,
-  })(ctx);
-  return await handle.getResult();
 }
