@@ -48,10 +48,12 @@ export function PreviewFrame({ url, html }: { url: string; html: string }) {
       </div>
       <div className="min-h-0 flex-1 bg-white">
         {html ? (
+          // key on html → each preview change fades in (masks the srcDoc swap)
           <iframe
+            key={html}
             title={url}
             srcDoc={html}
-            className="size-full border-0"
+            className="size-full border-0 animate-in fade-in duration-700"
             sandbox=""
           />
         ) : (

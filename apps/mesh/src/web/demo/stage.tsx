@@ -14,15 +14,25 @@ import { Director } from "./director";
 import { runAutoplay } from "./runner";
 import { useCaption } from "./use-demo-stores";
 import { GhostCursor } from "./ghost-cursor";
+import { EndCard } from "./end-card";
 import type { DemoStores } from "./director-stores";
 import type { Scenario } from "./types";
+
+const DEFAULT_END = {
+  title: "Build this on your own data",
+  subtitle: "Spin up your first agent in minutes — free to start.",
+};
 
 function DemoCaption({ stores }: { stores: DemoStores }) {
   const caption = useCaption(stores);
   if (!caption) return null;
   return (
-    <div className="pointer-events-none absolute bottom-6 left-1/2 z-50 -translate-x-1/2">
-      <div className="rounded-full bg-foreground/90 px-4 py-1.5 text-sm font-medium text-background shadow-lg backdrop-blur">
+    <div className="pointer-events-none absolute bottom-7 left-1/2 z-50 -translate-x-1/2">
+      {/* key on text so each new caption fades/slides in fresh */}
+      <div
+        key={caption}
+        className="animate-in fade-in slide-in-from-bottom-2 duration-500 rounded-full bg-foreground/90 px-4 py-1.5 text-sm font-medium text-background shadow-lg backdrop-blur"
+      >
         {caption}
       </div>
     </div>
@@ -100,6 +110,11 @@ export function DemoStage({ scenarios }: { scenarios: Scenario[] }) {
         <ActiveStage stores={stores} />
         <DemoCaption stores={stores} />
         <GhostCursor stores={stores} />
+        <EndCard
+          stores={stores}
+          title={active.endCard?.title ?? DEFAULT_END.title}
+          subtitle={active.endCard?.subtitle ?? DEFAULT_END.subtitle}
+        />
       </div>
     </DemoProviders>
   );
