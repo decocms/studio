@@ -9,6 +9,7 @@
   "dependencies": {
     "@cloudflare/workers-types": "^4.20250617.0",
     "@decocms/bindings": "^1.0.7",
+    "@decocms/mcp-utils": "^1.0.5",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@ai-sdk/provider": "^3.0.10",
     "jose": "^6.0.11",

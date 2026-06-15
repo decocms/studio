@@ -3,6 +3,8 @@
   "version": "1.0.5",
   "description": "Primitives for building MCP proxies, gateways, and sandboxes",
   "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test"
