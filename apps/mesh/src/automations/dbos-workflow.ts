@@ -38,7 +38,7 @@
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
 import type { Pool } from "pg";
 import {
-  awaitThreadRun,
+  runDispatchSteps,
   type SerializableDispatchRunInput,
 } from "@/dispatch-queue";
 import {
@@ -306,13 +306,11 @@ type BuildDispatchRequestOutcome =
  *
  * Runs as a step so the request payload — including `crypto.randomUUID()`
  * message ids — is recorded in the workflow journal and replay returns the
- * same payload. `awaitThreadRun` is invoked from the workflow body (not
- * here) because DBOS forbids workflow-to-workflow calls from inside a
- * step.
+ * same payload. `runDispatchSteps` is invoked from the workflow body (not
+ * here) because its inner steps can't be nested inside another step.
  *
- * The membership check is intentionally repeated by the thread-gate
- * workflow on dispatch; doing it here as well lets us early-exit before
- * the thread-gate queue takes a slot.
+ * The membership check is intentionally repeated by the dispatch body; doing
+ * it here as well lets us early-exit before running the dispatch.
  */
 async function buildDispatchRequestStep(
   automation: Automation,
@@ -404,9 +402,10 @@ async function fireAutomationWorkflowFn(
   //   1. `buildDispatchRequest` step — membership pre-check + assemble the
   //      serializable request. Recorded in the journal so replays reuse the
   //      same message ids.
-  //   2. `awaitThreadRun` from the workflow body — calls
-  //      `DBOS.startWorkflow(threadGateWorkflow, ...)`, which is illegal
-  //      from inside a step. Errors are caught here to preserve the
+  //   2. `runDispatchSteps` from the workflow body — runs the dispatch (and
+  //      its analytics steps) directly. We already hold this org's queue slot,
+  //      and each fire is a fresh thread, so there's no per-thread gate to
+  //      cross — no second queue hop. Errors are caught here to preserve the
   //      `FireAutomationOutcome` API (callers expect a resolved
   //      `{taskId, error}` outcome, not a thrown promise).
   const built = await DBOS.runStep(
@@ -428,7 +427,7 @@ async function fireAutomationWorkflowFn(
 
   const rt = requireRuntime();
   try {
-    await awaitThreadRun({
+    await runDispatchSteps({
       threadId: taskId,
       request: built.request,
       timeoutMs: rt.runTimeoutMs ?? AUTOMATIONS_RUN_TIMEOUT_MS,
