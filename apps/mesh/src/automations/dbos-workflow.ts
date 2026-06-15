@@ -76,6 +76,16 @@ import { computeNextRunAt, type StudioContextFactory } from "./fire";
 export const AUTOMATIONS_QUEUE = "automations";
 /** Per-org (per-partition) concurrency cap. */
 export const AUTOMATIONS_PARTITION_CONCURRENCY = 10;
+/**
+ * Poll interval for the automations dequeue loop. DBOS dispatches queued
+ * workflows by polling the system DB (no notify path), and the loop only backs
+ * off on DB contention — never when idle — so the default 1s means a steady
+ * ~1 dequeue txn/sec/replica even with zero automations. Automation fires are
+ * event/cron-triggered background work, not interactive, so trading up to ~5s
+ * of dispatch latency for ~5× less idle DB polling is a good deal. The
+ * thread-gate queue is left at the 1s default because it gates live agent runs.
+ */
+export const AUTOMATIONS_POLL_INTERVAL_MS = 5_000;
 /** Prefix of the retired per-org queues — kept only for migration cleanup. */
 const AUTOMATIONS_ORG_QUEUE_PREFIX = "automations-org-";
 const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;

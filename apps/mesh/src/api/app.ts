@@ -156,6 +156,7 @@ import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
 import {
   AUTOMATIONS_PARTITION_CONCURRENCY,
+  AUTOMATIONS_POLL_INTERVAL_MS,
   AUTOMATIONS_QUEUE,
   AutomationEventDispatcher,
   cleanupOrphanedOrgQueues,
@@ -2184,6 +2185,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     await DBOS.registerQueue(AUTOMATIONS_QUEUE, {
       partitionQueue: true,
       concurrency: AUTOMATIONS_PARTITION_CONCURRENCY,
+      minPollingIntervalMs: AUTOMATIONS_POLL_INTERVAL_MS,
     });
     // Per-thread agent-run gate. Partition key = threadId, concurrency=1,
     // so messages on the same thread serialize behind the active run while
