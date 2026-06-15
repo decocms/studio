@@ -46,6 +46,10 @@ export interface DemoUiState {
   caption: string | null;
   /** which org/workspace the viewer is currently looking at (multi-org nav) */
   currentOrg: string | null;
+  /** the demo has finished a full play-through — show the end card */
+  ended: boolean;
+  /** bumped by the end card's "Replay" button to restart the scenario */
+  replayToken: number;
 }
 
 const DEFAULT_CHAT: DemoChatState = { messages: [], status: "ready" };
@@ -63,6 +67,8 @@ export class DemoStores {
     inputs: {},
     caption: null,
     currentOrg: null,
+    ended: false,
+    replayToken: 0,
   });
 
   private readonly chats = new Map<string, Store<DemoChatState>>();
@@ -82,12 +88,15 @@ export class DemoStores {
     for (const store of this.chats.values()) {
       store.set({ messages: [], status: "ready" });
     }
-    this.ui.set({
+    // Preserve replayToken (monotonic) so awaitReplay can detect the next bump.
+    this.ui.update((s) => ({
       openDialogs: [],
       inputs: {},
       caption: null,
       currentOrg: null,
-    });
+      ended: false,
+      replayToken: s.replayToken,
+    }));
     this.cursor.set({
       x: 0,
       y: 0,

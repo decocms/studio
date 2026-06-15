@@ -93,70 +93,103 @@ export const storefrontScenario: Scenario = {
   id: "storefront",
   title: "Drop in your site, get a diagnosis",
   Stage: StorefrontStage,
+  endCard: {
+    title: "Optimize your storefront, automatically",
+    subtitle:
+      "Connect your site and let agents ship the fixes — free to start.",
+  },
   run: async (d) => {
-    d.caption("A store owner drops in their URL → an accurate diagnosis");
-    await d.wait(500);
+    // 1) Setup — let the layout settle, then frame the story.
+    await d.beat(700);
+    d.caption("A store owner pastes their URL");
+    await d.beat(1400);
 
+    // 2) The ask.
     await d.user(
       "Here's my store: https://acme.com — can you make it faster and rank better?",
     );
+    await d.beat(700);
     await d.think(
-      "I'll capture the live homepage, run a performance + SEO audit, then rank the issues by impact before touching anything.",
+      "I'll capture the live homepage, run a performance + SEO audit, then rank every issue by impact before touching anything.",
+      { cps: 80 },
     );
-    await d.stream("On it. Loading acme.com and running a full audit.");
-    await d.tool(takeScreenshot({ url: "https://acme.com", image: SHOT }));
+    await d.stream("On it — capturing your homepage now.", { cps: 44 });
+
+    // 3) Look at the real page.
+    await d.tool(
+      takeScreenshot({ url: "https://acme.com", image: SHOT, latencyMs: 1900 }),
+    );
+    await d.beat(1200);
+
+    // 4) Audit → diagnosis (hold long enough to read).
+    d.caption("Running a full performance + SEO audit");
+    await d.beat(900);
     await d.tool(
       genericTool({
         name: "lighthouse_audit",
         input: { url: "https://acme.com", categories: ["performance", "seo"] },
         output: { result: "Performance 38 · SEO 64 · 11 opportunities found" },
-        latencyMs: 2000,
+        latencyMs: 2200,
       }),
     );
-
-    d.caption("Accurate diagnosis — measured, not guessed");
+    await d.stream("Here's what I found — measured, not guessed:", { cps: 44 });
+    d.caption("An accurate diagnosis");
     await d.stream(DIAGNOSIS, { instant: true });
-    await d.wait(1400);
+    await d.beat(4800);
 
-    await d.stream("Here's the plan I'd apply:");
+    // 5) The plan.
+    d.caption("A plan, ranked by impact");
+    await d.beat(800);
+    await d.stream("Here's the plan I'd apply:", { cps: 44 });
     await d.tool(proposePlan({ plan: PLAN, approved: true }));
-    await d.stream("Approved — applying every fix on a preview branch.");
+    await d.beat(900);
+    await d.stream("Approved — applying every fix on a preview branch.", {
+      cps: 44,
+    });
 
+    // 6) Fixes cascade in parallel.
     d.caption("Fixing the highest-impact issues in parallel");
-    await d.parallel([
-      genericTool({
-        name: "optimize_images",
-        output: { result: "14 images → WebP · 2.4 MB → 380 KB" },
-        latencyMs: 2600,
-      }),
-      genericTool({
-        name: "inline_critical_css",
-        output: { result: "Critical CSS inlined · 3 stylesheets deferred" },
-        latencyMs: 2100,
-      }),
-      genericTool({
-        name: "add_structured_data",
-        output: { result: "Product + Organization JSON-LD added to 24 pages" },
-        latencyMs: 1700,
-      }),
-      genericTool({
-        name: "fix_layout_shift",
-        output: { result: "Media sized + font preloaded · CLS 0.27 → 0.02" },
-        latencyMs: 1400,
-      }),
-    ]);
+    await d.beat(600);
+    await d.parallel(
+      [
+        genericTool({
+          name: "optimize_images",
+          output: { result: "14 images → WebP · 2.4 MB → 380 KB" },
+          latencyMs: 2600,
+        }),
+        genericTool({
+          name: "inline_critical_css",
+          output: { result: "Critical CSS inlined · 3 stylesheets deferred" },
+          latencyMs: 2400,
+        }),
+        genericTool({
+          name: "add_structured_data",
+          output: { result: "Product + Organization JSON-LD on 24 pages" },
+          latencyMs: 2200,
+        }),
+        genericTool({
+          name: "fix_layout_shift",
+          output: { result: "Media sized + font preloaded · CLS 0.27 → 0.02" },
+          latencyMs: 2000,
+        }),
+      ],
+      650,
+    );
+    await d.beat(900);
 
+    // 7) Ship + re-audit (hold to read).
+    d.caption("Re-auditing and shipping to production");
+    await d.beat(600);
     await d.tool(
       genericTool({
         name: "deploy_to_production",
         output: { result: "Promoted preview → production · acme.com" },
-        latencyMs: 1800,
+        latencyMs: 1900,
       }),
     );
-
-    d.caption("Re-audited and deployed");
     await d.stream(RESULT, { instant: true });
     await d.endTurn();
-    await d.wait(1500);
+    d.caption("From audit to deployed — automatically");
+    await d.beat(4500);
   },
 };

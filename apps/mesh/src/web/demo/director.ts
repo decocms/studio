@@ -170,9 +170,15 @@ export class Track {
     this.commit();
   }
 
-  /** Run several tool steps concurrently within this turn (fan-out). */
-  async parallel(steps: ToolStep[]): Promise<void> {
-    await Promise.all(steps.map((s) => this.tool(s)));
+  /** Run several tool steps concurrently within this turn (fan-out). `staggerMs`
+   *  delays each successive start so they don't all pop at once. */
+  async parallel(steps: ToolStep[], staggerMs = 0): Promise<void> {
+    await Promise.all(
+      steps.map(async (s, i) => {
+        if (staggerMs && i > 0) await this.wait(staggerMs * i);
+        await this.tool(s);
+      }),
+    );
   }
 
   /** Finalize the current assistant turn (status → ready). */
@@ -215,8 +221,8 @@ export class Director {
   tool(step: ToolStep) {
     return this.track().tool(step);
   }
-  parallel(steps: ToolStep[]) {
-    return this.track().parallel(steps);
+  parallel(steps: ToolStep[], staggerMs = 0) {
+    return this.track().parallel(steps, staggerMs);
   }
   endTurn() {
     this.track().endTurn();
@@ -229,9 +235,39 @@ export class Director {
     return sleep(ms, { signal: this.signal });
   }
 
+  /** Semantic pause between beats (reads better than bare `wait` in scripts). */
+  beat(ms = 900): Promise<void> {
+    return this.wait(ms);
+  }
+
   /** Set the chapter caption shown over the stage (null clears it). */
   caption(text: string | null): void {
     this.stores.ui.update((s) => ({ ...s, caption: text }));
+  }
+
+  // ---- ending / replay ----------------------------------------------------
+
+  /** Mark the demo finished — the stage shows the end card (replay / sign up). */
+  markEnded(): void {
+    this.stores.ui.update((s) => ({ ...s, ended: true, caption: null }));
+    this.stores.cursor.update((c) => ({ ...c, visible: false }));
+  }
+
+  /** Resolve when the viewer clicks "Replay" (bumps `replayToken`) or on abort. */
+  awaitReplay(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.signal.aborted) return resolve();
+      const start = this.stores.ui.get().replayToken;
+      const finish = () => {
+        unsub();
+        this.signal.removeEventListener("abort", finish);
+        resolve();
+      };
+      const unsub = this.stores.ui.subscribe(() => {
+        if (this.stores.ui.get().replayToken !== start) finish();
+      });
+      this.signal.addEventListener("abort", finish, { once: true });
+    });
   }
 
   /** Type text into a demo input/terminal char by char (drives `ui.inputs[id]`). */
@@ -269,15 +305,15 @@ export class Director {
 
   // ---- ghost cursor -------------------------------------------------------
 
-  /** Show the ghost cursor, optionally at a starting viewport point. */
+  /** Show the ghost cursor. Preserves its last position so re-showing glides
+   *  from where it was (not a reset point); falls back to bottom-center. */
   showCursor(x?: number, y?: number): void {
-    const cx =
-      x ?? (typeof window !== "undefined" ? window.innerWidth / 2 : 640);
-    const cy =
-      y ?? (typeof window !== "undefined" ? window.innerHeight - 120 : 600);
+    const cur = this.stores.cursor.get();
+    const fbX = typeof window !== "undefined" ? window.innerWidth / 2 : 640;
+    const fbY = typeof window !== "undefined" ? window.innerHeight - 120 : 600;
     this.stores.cursor.set({
-      x: cx,
-      y: cy,
+      x: x ?? cur.x ?? fbX,
+      y: y ?? cur.y ?? fbY,
       clicking: false,
       visible: true,
       moveMs: 0,

@@ -13,4 +13,6 @@ export interface Scenario {
   title: string;
   Stage: ComponentType<{ stores: DemoStores }>;
   run: (d: Director) => Promise<void>;
+  /** Copy for the end card shown after a full play-through. */
+  endCard?: { title: string; subtitle: string };
 }
