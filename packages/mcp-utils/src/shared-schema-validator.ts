@@ -48,6 +48,14 @@ function createAjv(): Ajv {
     validateFormats: true,
     validateSchema: false,
     allErrors: true,
+    // Skip Ajv's codegen optimization pass. `compile()` is synchronous and
+    // blocks the event loop; under bursty concurrent MCP-proxy load a tick can
+    // stack several cold compiles (measured: a single rich tool schema ~62ms
+    // cold, and N concurrent cold compiles serialize — 16 → ~600ms of loop
+    // block). The optimize pass is the most expensive part of codegen;
+    // disabling it cut compile time ~35% in a microbenchmark, for a negligible
+    // per-validate cost (validation is already <50µs even on 1MB payloads).
+    code: { optimize: false },
   });
   addFormats(ajv);
   return ajv;
