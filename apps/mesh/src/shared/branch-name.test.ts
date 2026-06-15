@@ -3,18 +3,17 @@ import { describe, expect, test } from "bun:test";
 import { generateBranchName } from "./branch-name";
 
 describe("generateBranchName", () => {
-  test("returns a string with the deco/ prefix", () => {
+  test("returns a hyphenated two-word Bayer-style name", () => {
     const name = generateBranchName();
-    expect(name.startsWith("deco/")).toBe(true);
-  });
-
-  test("returns a hyphenated two-word body after the prefix", () => {
-    const name = generateBranchName();
-    const body = name.slice("deco/".length);
-    const parts = body.split("-");
+    const parts = name.split("-");
     expect(parts.length).toBe(2);
     expect(parts[0]!.length).toBeGreaterThan(0);
     expect(parts[1]!.length).toBeGreaterThan(0);
+  });
+
+  test("does not include a namespace prefix", () => {
+    const name = generateBranchName();
+    expect(name.includes("/")).toBe(false);
   });
 
   test("is valid for git ref syntax", () => {
