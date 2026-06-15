@@ -195,7 +195,11 @@ export function buildBashDescription(orgFs: boolean): string {
     "Pre-installed file-handling skills also live at " +
     "`/mnt/skills/public/<name>/SKILL.md` (pptx, docx, xlsx, pdf, " +
     "file-reading, slides, templating). Run `ls /mnt/skills/public/` for " +
-    "that index. To make a presentation deck, read the `slides` skill first." +
+    "that index. To make a presentation/slides/deck, ALWAYS use the " +
+    "`slides` skill (HTML decks with a live editable preview) — read its " +
+    "SKILL.md first. `pptx` is NOT for this: it only reads/inspects " +
+    "existing `.pptx` files, and is the right tool only when the user " +
+    "explicitly needs a PowerPoint `.pptx` file as input or output." +
     // Without org-fs there is no org/upload or org/output — the legacy
     // transfer tools (also only registered then) are the one way to move
     // files in and out.
