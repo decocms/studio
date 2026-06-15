@@ -12,10 +12,9 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { Automation, AutomationTrigger } from "@/storage/types";
 import {
+  AUTOMATIONS_QUEUE,
   cronEntryWorkflow,
-  ensureOrgQueue,
   fireAutomationWorkflow,
-  orgQueueName,
   type FireAutomationContext,
   type FireAutomationOutcome,
 } from "./dbos-workflow";
@@ -122,11 +121,11 @@ export async function fireAutomationNow(
   ctx: FireAutomationContext,
   opts?: { idempotencyKey?: string },
 ): Promise<FireAutomationOutcome> {
-  await ensureOrgQueue(ctx.organizationId);
   const workflowID = workflowIdFromIdempotencyKey(ctx, opts?.idempotencyKey);
   const handle = await DBOS.startWorkflow(fireAutomationWorkflow, {
     workflowID,
-    queueName: orgQueueName(ctx.organizationId),
+    queueName: AUTOMATIONS_QUEUE,
+    enqueueOptions: { queuePartitionKey: ctx.organizationId },
   })(ctx);
   return await handle.getResult();
 }
@@ -136,10 +135,10 @@ export async function enqueueAutomationFire(
   ctx: FireAutomationContext,
   opts?: { idempotencyKey?: string },
 ): Promise<void> {
-  await ensureOrgQueue(ctx.organizationId);
   const workflowID = workflowIdFromIdempotencyKey(ctx, opts?.idempotencyKey);
   await DBOS.startWorkflow(fireAutomationWorkflow, {
     workflowID,
-    queueName: orgQueueName(ctx.organizationId),
+    queueName: AUTOMATIONS_QUEUE,
+    enqueueOptions: { queuePartitionKey: ctx.organizationId },
   })(ctx);
 }
