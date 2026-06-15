@@ -105,6 +105,20 @@ const oauthCallbackAiProviderRoute = createRoute({
   ),
 });
 
+// Public, full-screen scripted product demos (see web/demo/). Unauthenticated,
+// outside the org shell. `/demo` is a chooser; each demo plays at `/demo/<id>`.
+const demoIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/demo",
+  component: lazyRouteComponent(() => import("./routes/demo.tsx")),
+});
+
+const demoScenarioRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/demo/$scenario",
+  component: lazyRouteComponent(() => import("./routes/demo-scenario.tsx")),
+});
+
 // ============================================
 // SHELL LAYOUT (authenticated wrapper)
 // ============================================
@@ -638,6 +652,8 @@ const routeTree = rootRoute.addChildren([
   betterAuthRoutes,
   oauthCallbackRoute,
   oauthCallbackAiProviderRoute,
+  demoIndexRoute,
+  demoScenarioRoute,
 ]);
 
 const router = createRouter({

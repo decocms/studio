@@ -323,6 +323,13 @@ interface TaskProviderInternals {
 // ============================================================================
 
 const ChatStreamCtx = createContext<ChatStreamContextValue | null>(null);
+/**
+ * Exposed so Demo Mode (`web/demo/`) can supply a scripted `ChatStreamContextValue`
+ * directly — feeding the real chat renderers a recorded stream without the live
+ * `ActiveTaskProvider` (MCP transport, SSE, etc.). Not for app use; prefer the
+ * hooks. See `web/demo/demo-chat-stream.tsx`.
+ */
+export { ChatStreamCtx as DemoChatStreamContext };
 const ChatTaskCtx = createContext<ChatTaskContextValue | null>(null);
 const ChatPrefsCtx = createContext<ChatPrefsContextValue | null>(null);
 
