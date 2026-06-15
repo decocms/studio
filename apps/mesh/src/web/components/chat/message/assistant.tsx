@@ -29,6 +29,7 @@ import {
   ConnectionListPart,
 } from "./parts/tool-call-part/index.ts";
 import { NextActionChip } from "./next-action-chip.tsx";
+import { SmartAutoScroll } from "./smart-auto-scroll.tsx";
 import { ThreadHtmlPreviews } from "./thread-html-previews.tsx";
 import { MessageProducedFiles } from "./thread-outputs.tsx";
 import {
@@ -792,6 +793,8 @@ export function MessageAssistant({
       ) : (
         <EmptyAssistantState isRunInProgress={isLast && isRunInProgress} />
       )}
+      {/* Smart auto-scroll sentinel - only rendered for the last message during streaming */}
+      {isLast && isStreaming && <SmartAutoScroll parts={message?.parts} />}
     </Container>
   );
 }
