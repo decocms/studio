@@ -1,6 +1,7 @@
 export { AutomationEventDispatcher } from "./automation-event-dispatcher";
 export {
   AUTOMATIONS_PARTITION_CONCURRENCY,
+  AUTOMATIONS_POLL_INTERVAL_MS,
   AUTOMATIONS_QUEUE,
   cleanupOrphanedOrgQueues,
   setAutomationRuntime,
