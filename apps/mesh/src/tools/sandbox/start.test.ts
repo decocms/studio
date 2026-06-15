@@ -487,14 +487,16 @@ describe("SANDBOX_START", () => {
     expect(result.isNewVm).toBe(false);
   });
 
-  it("generates deco/* branch when input.branch is omitted and threads it into the ref", async () => {
+  it("generates a Bayer-style branch when input.branch is omitted and threads it into the ref", async () => {
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
     const ctx = makeCtx({ virtualMcp, updateSpy });
 
     const result = await SANDBOX_START.handler({ virtualMcpId: VMCP_ID }, ctx);
 
-    expect(result.branch.startsWith("deco/")).toBe(true);
+    // <greek-letter>-<constellation>, no namespace prefix.
+    expect(result.branch).toMatch(/^[a-z]+-[a-z]+$/);
+    expect(result.branch.includes("/")).toBe(false);
     const [id] = mockEnsure.mock.calls[0]! as [SandboxId];
     expect(id.projectRef).toBe(
       composeSandboxRef({

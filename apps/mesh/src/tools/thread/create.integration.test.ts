@@ -38,7 +38,7 @@ describe("COLLECTION_THREADS_CREATE", () => {
       env.ctx,
     );
 
-    expect(result.item.branch).toMatch(/^deco\/[a-z]+-[a-z]+$/);
+    expect(result.item.branch).toMatch(/^[a-z]+-[a-z]+$/);
     expect(result.item.virtual_mcp_id).toBe(vmcp.id);
   });
 

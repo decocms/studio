@@ -7,8 +7,9 @@
  *   1. Honor `data.branch` when provided.
  *   2. Otherwise pick the most-recently-touched branch from the user's
  *      `sandboxMap[userId]` so a new task lands on a warm sandbox.
- *   3. Fall back to a freshly generated `deco/<adj>-<noun>` name when the
- *      user has no sandboxMap entries for this vMCP.
+ *   3. Fall back to a freshly generated Bayer-style `<greek>-<constellation>`
+ *      name (e.g. `alpha-centauri`) when the user has no sandboxMap entries
+ *      for this vMCP.
  *
  * Threads created on a vMCP without a githubRepo always get `branch = null`.
  *

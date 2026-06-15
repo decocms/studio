@@ -1,8 +1,8 @@
 /**
  * SANDBOX_START. Keyed by (userId, branch, sandboxProviderKind) in the Virtual MCP's `sandboxMap`.
  * Provider-agnostic — dispatches through the active `SandboxProvider`; this
- * handler only does `sandboxMap` bookkeeping. Branch defaults to
- * `deco/<adjective>-<noun>` when omitted.
+ * handler only does `sandboxMap` bookkeeping. Branch defaults to a Bayer-style
+ * `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) when omitted.
  *
  * Different sandbox provider kinds coexist as siblings under the same
  * (user, branch) key — no stale-sandbox teardown is needed on kind change.
@@ -84,7 +84,7 @@ export const SANDBOX_START = defineTool({
       .min(1)
       .optional()
       .describe(
-        "Optional git branch to check out. When omitted the handler generates `deco/<adjective>-<noun>` and uses it. The resolved branch is returned in the response so callers can persist it.",
+        "Optional git branch to check out. When omitted the handler generates a Bayer-style `<greek-letter>-<constellation>` name (e.g. `alpha-centauri`) and uses it. The resolved branch is returned in the response so callers can persist it.",
       ),
     sandboxProviderKind: sandboxProviderKindInputSchema
       .optional()
