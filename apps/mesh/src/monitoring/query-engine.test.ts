@@ -7,7 +7,7 @@ import {
   buildOtlpFlatSourceFromGlob,
   normalizeS3Endpoint,
 } from "./query-engine";
-import { mkdtemp, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -210,6 +210,33 @@ describe("buildOtlpFlatSource", () => {
     ).toThrow();
     expect(() => buildOtlpFlatSource({ bucket: "b", prefix: "p'" })).toThrow();
   });
+
+  it("reads the whole prefix (no Hive pruning) without a date range", () => {
+    const src = buildOtlpFlatSource({ bucket: "b", prefix: "logs" });
+    expect(src).toContain("s3://b/logs/**/*");
+    expect(src).not.toContain("hive_partitioning");
+    expect(src).not.toContain("make_date");
+  });
+
+  it("turns on Hive pruning with a ±1-day date predicate given a range", () => {
+    const src = buildOtlpFlatSource({
+      bucket: "b",
+      prefix: "logs",
+      range: {
+        startDate: new Date("2026-03-15T00:00:00.000Z"),
+        endDate: new Date("2026-03-15T23:59:59.000Z"),
+      },
+    });
+    // Glob rooted at year=*/ so legacy non-Hive objects are excluded.
+    expect(src).toContain("s3://b/logs/year=*/**/*");
+    expect(src).toContain("hive_partitioning=true");
+    // Padded -1/+1 day so partition-day pruning never drops a file that could
+    // hold an in-range row, regardless of the collector's partition timezone.
+    expect(src).toContain(
+      "make_date(CAST(year AS INT), CAST(month AS INT), CAST(day AS INT)) >= DATE '2026-03-14'",
+    );
+    expect(src).toContain("<= DATE '2026-03-16'");
+  });
 });
 
 describe.skipIf(!duckdbAvailable)("OTLP flat source over local fixture", () => {
@@ -272,3 +299,122 @@ describe.skipIf(!duckdbAvailable)("OTLP flat source over local fixture", () => {
     expect(Number(b.duration_ms)).toBe(250.5);
   });
 });
+
+describe.skipIf(!duckdbAvailable)(
+  "Hive-partition pruning over local fixture",
+  () => {
+    let tmpDir: string;
+    let engine: DuckDBEngine;
+
+    beforeAll(async () => {
+      tmpDir = await mkdtemp(join(tmpdir(), "otlp-hive-test-"));
+      // Two day partitions far apart so a one-day range prunes the other file.
+      const fixtures: Array<[string, string, string]> = [
+        ["01", "2026-03-01T12:00:00.000Z", "span_old"],
+        ["15", "2026-03-15T12:00:00.000Z", "span_new"],
+      ];
+      for (const [day, ts, id] of fixtures) {
+        const dir = join(
+          tmpDir,
+          "year=2026",
+          "month=03",
+          `day=${day}`,
+          "hour=12",
+        );
+        await mkdir(dir, { recursive: true });
+        await writeTestOtlpJson(dir, [
+          makeTestOtlpLogRecord({ id, tool_name: "TOOL", timestamp: ts }),
+        ]);
+      }
+      engine = new DuckDBEngine();
+    });
+
+    afterAll(async () => {
+      await engine.destroy();
+      await rm(tmpDir, { recursive: true, force: true });
+    });
+
+    const glob = () => `${tmpDir}/**/*`;
+
+    it("prunes the data scan to the in-range day partition", async () => {
+      const source = buildOtlpFlatSourceFromGlob(glob(), {
+        range: {
+          startDate: new Date("2026-03-15T00:00:00.000Z"),
+          endDate: new Date("2026-03-15T23:59:59.000Z"),
+        },
+      });
+      const rows = await engine.query(
+        `SELECT id FROM ${source} WHERE organization_id = 'org_test'`,
+      );
+      expect(rows.map((r) => r.id)).toEqual(["span_new"]);
+
+      // Prove DuckDB pruned the file (didn't just row-filter): the day=01 object
+      // is never read by the data scan, which is where the OOM-causing flatten
+      // happens.
+      const explain = await engine.query(
+        `EXPLAIN ANALYZE SELECT id FROM ${source} WHERE organization_id = 'org_test'`,
+      );
+      const text = explain.map((r) => Object.values(r).join(" ")).join("\n");
+      expect(text).toMatch(/Total Files Read:\s*1\b/);
+    });
+
+    it("reads every partition when no range is given", async () => {
+      const source = buildOtlpFlatSourceFromGlob(glob());
+      const rows = await engine.query(
+        `SELECT id FROM ${source} WHERE organization_id = 'org_test' ORDER BY id`,
+      );
+      expect(rows.map((r) => r.id)).toEqual(["span_new", "span_old"]);
+    });
+  },
+);
+
+describe.skipIf(!duckdbAvailable)(
+  "Hive pruning skips legacy non-partitioned garbage",
+  () => {
+    let tmpDir: string;
+    let engine: DuckDBEngine;
+
+    beforeAll(async () => {
+      tmpDir = await mkdtemp(join(tmpdir(), "otlp-garbage-test-"));
+      // Good OTLP under the documented year=/month=/day= layout (in range).
+      const good = join(tmpDir, "year=2026", "month=03", "day=15", "hour=12");
+      await mkdir(good, { recursive: true });
+      await writeTestOtlpJson(good, [
+        makeTestOtlpLogRecord({
+          id: "span_good",
+          timestamp: "2026-03-15T12:00:00.000Z",
+        }),
+      ]);
+      // Legacy leftovers NOT under the Hive layout: a flat object at the prefix
+      // root, and an older key=value scheme. With a root **/* glob these trip
+      // DuckDB's "Hive partition mismatch"; the year=*/ glob root excludes them.
+      await writeFile(
+        join(tmpDir, "legacy_dump.json"),
+        JSON.stringify({ old: "format" }),
+      );
+      const oldScheme = join(tmpDir, "region=us", "svc=mesh");
+      await mkdir(oldScheme, { recursive: true });
+      await writeFile(join(oldScheme, "old"), JSON.stringify({ legacy: 1 }));
+      engine = new DuckDBEngine();
+    });
+
+    afterAll(async () => {
+      await engine.destroy();
+      await rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("excludes flat / old-layout objects without erroring", async () => {
+      // Mirrors the glob buildOtlpFlatSource roots at year=*/ when pruning.
+      const source = buildOtlpFlatSourceFromGlob(`${tmpDir}/year=*/**/*`, {
+        range: {
+          startDate: new Date("2026-03-15T00:00:00.000Z"),
+          endDate: new Date("2026-03-15T23:59:59.000Z"),
+        },
+      });
+      const rows = await engine.query(
+        `SELECT id FROM ${source} WHERE organization_id = 'org_test'`,
+      );
+      expect(rows.map((r) => r.id)).toEqual(["span_good"]);
+    });
+  },
+);
