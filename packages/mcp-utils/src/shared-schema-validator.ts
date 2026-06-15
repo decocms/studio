@@ -57,8 +57,16 @@ class MemoizingJsonSchemaValidator {
   // One backing Ajv, compiled into once per distinct schema.
   readonly #ajv = createAjv();
   readonly #cache = new Map<string, ValidateFunction>();
+  // Fast path keyed by schema object identity. Tool schemas are long-lived,
+  // reused references, so the common case skips `stableStringify` entirely —
+  // it was a full recursive key-sort + JSON.stringify on EVERY validation
+  // (cache hit included) and showed up in event-loop stalls under load.
+  readonly #byRef = new WeakMap<object, Validator<unknown>>();
 
   getValidator<T>(schema: object): Validator<T> {
+    const cached = this.#byRef.get(schema);
+    if (cached) return cached as Validator<T>;
+
     const key = stableStringify(schema);
     let compiled = this.#cache.get(key);
     if (!compiled) {
@@ -66,7 +74,7 @@ class MemoizingJsonSchemaValidator {
       this.#cache.set(key, compiled);
     }
     const validate = compiled;
-    return (input: unknown): ValidatorResult<T> => {
+    const validator: Validator<T> = (input: unknown): ValidatorResult<T> => {
       if (validate(input)) {
         return { valid: true, data: input as T, errorMessage: undefined };
       }
@@ -76,6 +84,8 @@ class MemoizingJsonSchemaValidator {
         errorMessage: this.#ajv.errorsText(validate.errors),
       };
     };
+    this.#byRef.set(schema, validator as Validator<unknown>);
+    return validator;
   }
 }
 
