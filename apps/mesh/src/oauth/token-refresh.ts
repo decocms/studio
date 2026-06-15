@@ -28,6 +28,34 @@ export function canRefresh(token: DownstreamToken): boolean {
   return !!token.refreshToken && !!token.tokenEndpoint && !!token.clientId;
 }
 
+/**
+ * Should we re-discover the origin token endpoint from the connection's
+ * *current* metadata instead of trusting the stored one? Yes when the stored
+ * value is unusable for a direct server-side refresh:
+ *   - it routes back through our own oauth-proxy (`/oauth-proxy/:id/token`), or
+ *   - its host no longer matches the connection's host — a stale endpoint
+ *     captured at authorize time. Deco-serverless integrations were authorized
+ *     against the `*.decocache.com` canonical host, which now fails the
+ *     Cloudflare→origin TLS handshake (HTTP 525), while the connection itself
+ *     lives on the working `*.deco.site` alias.
+ *
+ * Re-resolution is best-effort and fail-safe: a legitimate external IdP (host
+ * intentionally differs from the connection) re-discovers the same correct
+ * endpoint via metadata, and a failed discovery keeps the stored value. A
+ * successful refresh persists the re-resolved endpoint, so the row self-heals.
+ */
+export function needsTokenEndpointReresolution(
+  tokenEndpoint: string,
+  connectionUrl: string,
+): boolean {
+  if (tokenEndpoint.includes("/oauth-proxy/")) return true;
+  try {
+    return new URL(tokenEndpoint).host !== new URL(connectionUrl).host;
+  } catch {
+    return false;
+  }
+}
+
 const inflightRefreshes = new Map<string, Promise<string | null>>();
 
 /**
@@ -158,7 +186,11 @@ export async function getValidDownstreamAccessToken(params: {
   }
 
   let tokenEndpoint = token.tokenEndpoint;
-  if (connectionUrl && tokenEndpoint?.includes("/oauth-proxy/")) {
+  if (
+    connectionUrl &&
+    tokenEndpoint &&
+    needsTokenEndpointReresolution(tokenEndpoint, connectionUrl)
+  ) {
     const originEndpoint = await resolveOriginTokenEndpoint(connectionUrl);
     if (originEndpoint) tokenEndpoint = originEndpoint;
   }

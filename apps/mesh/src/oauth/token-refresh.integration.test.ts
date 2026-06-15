@@ -19,6 +19,7 @@ import { CredentialVault } from "../encryption/credential-vault";
 import { DownstreamTokenStorage } from "../storage/downstream-token";
 import { ConnectionStorage } from "../storage/connection";
 import type { TokenRefreshResult } from "./refresh-access-token";
+import type { DownstreamToken } from "../storage/types";
 
 // Narrow justified mock per TESTING.md: refreshAccessToken makes a real
 // HTTP call to a third-party OAuth token endpoint we can't wire up in
@@ -27,6 +28,14 @@ const mockRefreshAccessToken =
   vi.fn<(...args: unknown[]) => Promise<TokenRefreshResult>>();
 mock.module("./refresh-access-token", () => ({
   refreshAccessToken: mockRefreshAccessToken,
+}));
+
+// resolveOriginTokenEndpoint makes real metadata HTTP calls to the origin we
+// can't wire up in tests; mock it to assert the re-resolution wiring.
+const mockResolveOriginTokenEndpoint =
+  vi.fn<(url: string) => Promise<string | null>>();
+mock.module("./resolve-token-endpoint", () => ({
+  resolveOriginTokenEndpoint: mockResolveOriginTokenEndpoint,
 }));
 
 const { refreshAndStore, clearRefreshBackoff } = await import(
@@ -64,6 +73,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   mockRefreshAccessToken.mockReset();
+  mockResolveOriginTokenEndpoint.mockReset();
   clearRefreshBackoff();
   await tokenStorage.delete(connectionId);
   await tokenStorage.upsert({
@@ -309,5 +319,80 @@ describe("getValidDownstreamAccessToken", () => {
       accessToken: null,
     });
     expect(await tokenStorage.get(connectionId)).toBeNull();
+  });
+
+  it("re-resolves a stale-host token endpoint and self-heals the stored row", async () => {
+    // Captured at authorize time against the canonical `*.decocache.com` host,
+    // which now 525s; the connection lives on the working `*.deco.site` alias.
+    await tokenStorage.delete(connectionId);
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "stale",
+      refreshToken: "rt",
+      scope: "repo",
+      expiresAt: new Date(Date.now() - 1000),
+      clientId: "cid",
+      clientSecret: null,
+      tokenEndpoint: "https://sites-google-calendar.decocache.com/token",
+    });
+    mockResolveOriginTokenEndpoint.mockResolvedValueOnce(
+      "https://sites-google-calendar.deco.site/token",
+    );
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: true,
+      accessToken: "fresh",
+      refreshToken: "rt",
+      expiresIn: 3600,
+      scope: "repo",
+    });
+
+    const result = await getValidDownstreamAccessToken({
+      connectionId,
+      connectionUrl: "https://sites-google-calendar.deco.site/mcp",
+      tokenStorage,
+    });
+
+    expect(result).toEqual({ state: "refreshed", accessToken: "fresh" });
+    expect(mockResolveOriginTokenEndpoint).toHaveBeenCalledWith(
+      "https://sites-google-calendar.deco.site/mcp",
+    );
+    // Refreshed against the re-resolved endpoint, not the stale one.
+    expect(
+      (mockRefreshAccessToken.mock.calls[0]![0] as DownstreamToken)
+        .tokenEndpoint,
+    ).toBe("https://sites-google-calendar.deco.site/token");
+    // Self-heal: the persisted endpoint is the good one.
+    expect((await tokenStorage.get(connectionId))?.tokenEndpoint).toBe(
+      "https://sites-google-calendar.deco.site/token",
+    );
+  });
+
+  it("does not re-resolve when the stored endpoint host matches the connection", async () => {
+    await tokenStorage.delete(connectionId);
+    await tokenStorage.upsert({
+      connectionId,
+      accessToken: "stale",
+      refreshToken: "rt",
+      scope: "repo",
+      expiresAt: new Date(Date.now() - 1000),
+      clientId: "cid",
+      clientSecret: null,
+      tokenEndpoint: "https://sites-google-calendar.deco.site/token",
+    });
+    mockRefreshAccessToken.mockResolvedValueOnce({
+      success: true,
+      accessToken: "fresh",
+      refreshToken: "rt",
+      expiresIn: 3600,
+      scope: "repo",
+    });
+
+    await getValidDownstreamAccessToken({
+      connectionId,
+      connectionUrl: "https://sites-google-calendar.deco.site/mcp",
+      tokenStorage,
+    });
+
+    expect(mockResolveOriginTokenEndpoint).not.toHaveBeenCalled();
   });
 });
