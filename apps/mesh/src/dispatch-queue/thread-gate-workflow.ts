@@ -492,11 +492,11 @@ export async function enqueueThreadRun(
  * shutdown so another executor finishes them.
  *
  * Flips this executor's PENDING thread-gate workflows to ENQUEUED and clears the
- * owning executor + app version, so ANY live executor — including a new rollout
- * version — re-dequeues and re-runs them (the queue dequeue allows
- * `application_version IS NULL`; cross-version recovery via the SDK's PENDING
- * path does not). The dispatch step is retriable, so the re-dequeued workflow
- * re-executes the run.
+ * owning executor, so another executor re-dequeues and re-runs them. The
+ * workflow's `application_version` is preserved, so only a matching-version
+ * executor picks it up — same-version peers during a crash, or the overlap
+ * window of a rolling deploy. The dispatch step is retriable, so the re-dequeued
+ * workflow re-executes the run.
  *
  * Ordering: must run AFTER `DBOS.shutdown()` has left the interrupted workflows
  * PENDING and BEFORE the pg pool closes. Pairs with the run-registry abort that
@@ -512,7 +512,6 @@ export async function requeueInflightThreadGateWorkflows(
   const result = await sql`
     UPDATE ${sql.id("dbos", "workflow_status")}
     SET status = 'ENQUEUED',
-        application_version = NULL,
         executor_id = NULL,
         started_at_epoch_ms = NULL,
         recovery_attempts = 0,
