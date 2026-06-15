@@ -7,13 +7,20 @@ FROM oven/bun:1-slim
 # byte-identical to `bunx @decocms/mesh@<version>` and avoids any npm-registry
 # round-trip (and propagation race) at image-build time.
 
-# Install runtime dependencies (unzip needed by embedded-postgres) plus the
-# toolchain needed to compile node-pty from source. node-pty ships prebuilt
-# binaries only for darwin/win32, so on Linux `bun add` always falls back to
-# `node-gyp rebuild` — which needs python3 + build-essential. We purge the
-# build toolchain after install to keep the layer lean.
+# Install runtime dependencies plus the toolchain needed to compile node-pty.
+# - ca-certificates: the oven/bun:1-slim base ships NO system CA bundle, but
+#   DuckDB's native httpfs (OpenSSL) needs the OS trust store to verify TLS to
+#   storage.googleapis.com. Without it the GCS monitoring read fails with
+#   "Problem with the SSL CA cert (path? access rights?)". Bun/Node bundle their
+#   own roots so they're unaffected; only the native extension needs this.
+#   Named explicitly so it's marked manually-installed and survives the
+#   --auto-remove purge below.
+# - unzip: needed by embedded-postgres.
+# - python3 + build-essential: node-pty ships prebuilt binaries only for
+#   darwin/win32, so on Linux `bun add` falls back to `node-gyp rebuild`. We
+#   purge this toolchain after install to keep the layer lean.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      unzip python3 build-essential && \
+      ca-certificates unzip python3 build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and app directories
