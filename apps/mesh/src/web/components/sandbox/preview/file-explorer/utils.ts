@@ -1,4 +1,5 @@
 import type { FlatNode, TreeNode } from "./types";
+import { decoBlockKeyFromFileStem } from "@/web/components/sections-editor/deco-block-key";
 
 /** File explorer glob cap (agent default stays 1000 on the daemon). */
 export const EXPLORER_GLOB_LIMIT = 10_000;
@@ -124,11 +125,7 @@ export function decoBlockKeyFromTreePath(treePath: string): string | null {
     return null;
   }
   const stem = daemonPath.slice(prefix.length, -".json".length);
-  try {
-    return decodeURIComponent(stem);
-  } catch {
-    return stem;
-  }
+  return decoBlockKeyFromFileStem(stem);
 }
 
 export function getLanguageFromPath(filepath: string | null) {

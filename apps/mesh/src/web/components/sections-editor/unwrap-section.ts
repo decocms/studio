@@ -1,3 +1,4 @@
+import { isSavedBlockResolveType } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
 import type { ParsedSection } from "./parse-sections";
 import {
@@ -17,7 +18,7 @@ function resolveSavedBlockData(
   blockKey: string,
   decofile: Record<string, unknown>,
 ): { data: Record<string, unknown>; resolveType: string } | null {
-  if (!(blockKey in decofile)) return null;
+  if (!Object.hasOwn(decofile, blockKey)) return null;
   const blockData = (decofile[blockKey] as Record<string, unknown>) ?? {};
   const rt = (blockData.__resolveType as string) ?? blockKey;
   return { data: { ...blockData }, resolveType: rt };
@@ -43,11 +44,10 @@ function unwrapSectionValue(
     return unwrapSectionValue(firstVariant, decofile);
   }
 
-  if (!rt.includes("/") && rt in decofile) {
-    return resolveSavedBlockData(rt, decofile);
+  if (!isSavedBlockResolveType(rt) || !Object.hasOwn(decofile, rt)) {
+    return { data: { ...value }, resolveType: rt };
   }
-
-  return { data: { ...value }, resolveType: rt };
+  return resolveSavedBlockData(rt, decofile);
 }
 
 function unwrapLazyInner(
@@ -65,11 +65,33 @@ function unwrapLazyInner(
     return unwrapSectionValue(firstVariant, decofile);
   }
 
-  if (!innerRt.includes("/") && innerRt in decofile) {
-    return resolveSavedBlockData(innerRt, decofile);
+  if (!isSavedBlockResolveType(innerRt) || !Object.hasOwn(decofile, innerRt)) {
+    return { data: { ...inner }, resolveType: innerRt };
   }
+  return resolveSavedBlockData(innerRt, decofile);
+}
 
-  return { data: { ...inner }, resolveType: innerRt };
+/**
+ * When a field value is a saved-block pointer (`{ __resolveType: "Deco" }`),
+ * load the referenced decofile entry for editing (site theme, global sections, …).
+ */
+export function unwrapBlockReference(
+  value: unknown,
+  decofile: Record<string, unknown>,
+): {
+  blockKey: string;
+  data: Record<string, unknown>;
+  resolveType: string;
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const obj = value as Record<string, unknown>;
+  const blockKey = obj.__resolveType;
+  if (typeof blockKey !== "string" || !isSavedBlockResolveType(blockKey)) {
+    return null;
+  }
+  if (!Object.hasOwn(decofile, blockKey)) return null;
+  const resolved = resolveSavedBlockData(blockKey, decofile);
+  return resolved ? { blockKey, ...resolved } : null;
 }
 
 /**

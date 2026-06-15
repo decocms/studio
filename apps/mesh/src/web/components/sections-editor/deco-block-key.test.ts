@@ -3,10 +3,11 @@ import {
   assertSafeDecoBlockKey,
   blockKeyToFileStem,
   decoBlockFilePath,
+  decoBlockKeyFromFileStem,
 } from "./deco-block-key";
 
 describe("deco-block-key", () => {
-  it("decoBlockFilePath encodes spaces for the blocks json path", () => {
+  it("decoBlockFilePath encodes the block id exactly like deco admin", () => {
     expect(decoBlockFilePath("Banner Category")).toBe(
       ".deco/blocks/Banner%20Category.json",
     );
@@ -15,8 +16,13 @@ describe("deco-block-key", () => {
     );
   });
 
-  it("blockKeyToFileStem does not double-encode an already-encoded key", () => {
-    expect(blockKeyToFileStem("Banner%20Category")).toBe("Banner%20Category");
+  it("round-trips legacy page files with double-encoded spaces", () => {
+    const uuid = "2292abcd-1234-5678-90ab-cdef12345678";
+    const blockKey = `pages-Home%20Page-${uuid}`;
+    const stem = `pages-Home%2520Page-${uuid}`;
+    expect(blockKeyToFileStem(blockKey)).toBe(stem);
+    expect(decoBlockKeyFromFileStem(stem)).toBe(blockKey);
+    expect(decoBlockFilePath(blockKey)).toBe(`.deco/blocks/${stem}.json`);
   });
 
   it("allows spaces and encoded names", () => {

@@ -2,6 +2,10 @@ import {
   isManifestAppResolveType,
   parseSavedBlockSchemaTitle,
 } from "./block-type-utils";
+import {
+  PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+  labelFromResolveType,
+} from "./section-types";
 
 /**
  * Schema resolution for /live/_meta JSON Schemas.
@@ -33,8 +37,16 @@ export interface SchemaProperty {
     title: string;
     description?: string;
     schema?: SchemaProperty;
+    /** Value of the union discriminator field (e.g. `image-card`). */
+    discriminatorValue?: string;
   }>;
+  /** Property used to pick the active union branch (e.g. `type`). */
+  discriminatorKey?: string;
+  /** When true, the field should not be rendered in the form. */
+  hidden?: boolean;
 }
+
+export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
 
 export interface LiveMeta {
   manifest: {
@@ -47,6 +59,11 @@ export interface LiveMeta {
 }
 
 type RawSchema = Record<string, unknown>;
+
+function isArraySchemaBranch(schema: RawSchema): boolean {
+  const t = schema.type;
+  return t === "array" || (Array.isArray(t) && t.includes("array"));
+}
 
 // deco.cx convention: VideoWidget schemas don't carry `format` in their
 // JSON Schema definition, so we inject it here so the UI can render a
@@ -137,10 +154,11 @@ export function resolveSchema(
 ): SchemaProperty | null {
   const globalSchema = meta.schema ?? {};
   const blockSchema = lookupManifestBlockSchema(resolveType, meta);
-
-  // Merge exactly as admin-mcp does: { ...schema, ...blockSchema }
-  const merged: RawSchema = { ...globalSchema, ...blockSchema };
-  const defs = (merged.$defs ?? merged.definitions ?? {}) as Record<
+  // Always read $defs/definitions from the global live schema. Manifest block
+  // entries often carry `$ref` plus an empty `definitions` object; spreading
+  // blockSchema over globalSchema clobbers the real defs and breaks $ref
+  // resolution (common for site/apps/site.ts → SiteApp).
+  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
     string,
     unknown
   >;
@@ -148,6 +166,63 @@ export function resolveSchema(
   const resolveRef = (ref: string): RawSchema => {
     const key = ref.split("/").pop() ?? "";
     return (defs[key] as RawSchema | undefined) ?? {};
+  };
+
+  let schemaRoot: RawSchema;
+  if (typeof blockSchema.$ref === "string") {
+    schemaRoot = resolveRef(blockSchema.$ref);
+  } else if (Object.keys(blockSchema).length > 0) {
+    schemaRoot = blockSchema;
+  } else {
+    schemaRoot = globalSchema;
+  }
+
+  const resolveBranchDef = (branch: RawSchema): RawSchema => {
+    if (typeof branch.$ref === "string") {
+      return resolveRef(branch.$ref);
+    }
+    return branch;
+  };
+
+  const typeDiscriminatorFromBranch = (
+    branch: RawSchema,
+  ): string | undefined => {
+    const def = resolveBranchDef(branch);
+    const typeProp = (def.properties as RawSchema | undefined)?.type as
+      | RawSchema
+      | undefined;
+    if (!typeProp) return undefined;
+    if (typeof typeProp.const === "string") return typeProp.const;
+    if (typeof typeProp.default === "string") return typeProp.default;
+    if (Array.isArray(typeProp.enum) && typeof typeProp.enum[0] === "string") {
+      return typeProp.enum[0];
+    }
+    return undefined;
+  };
+
+  const branchTitle = (branch: RawSchema, fallback: string): string => {
+    const def = resolveBranchDef(branch);
+    if (typeof def.title === "string" && !def.title.startsWith("#")) {
+      return def.title;
+    }
+    return fallback;
+  };
+
+  /** Follow pure `$ref` aliases (e.g. CardType → ImageCard|TextCard). */
+  const unwrapRefAliases = (
+    s: RawSchema,
+    seen: Set<string> = new Set(),
+  ): RawSchema => {
+    if (typeof s.$ref !== "string") return s;
+    if (s.properties || s.anyOf || s.allOf || s.oneOf || s.type) return s;
+    const key = s.$ref.split("/").pop() ?? "";
+    if (!key || seen.has(key)) return s;
+    return unwrapRefAliases(resolveRef(s.$ref), new Set([...seen, key]));
+  };
+
+  const isSchemaHidden = (s: RawSchema): boolean => {
+    const hide = s.hide;
+    return hide === true || hide === "true";
   };
 
   /**
@@ -209,6 +284,7 @@ export function resolveSchema(
         resolved = { ...resolved, format: "video-uri" };
       }
     }
+    resolved = unwrapRefAliases(resolved);
 
     // Extract enum values from anyOf/oneOf const/enum branches
     let enumFromConsts: unknown[] | undefined;
@@ -295,6 +371,35 @@ export function resolveSchema(
           )?.enum;
           return Array.isArray(rtEnum) && typeof rtEnum[0] === "string";
         });
+
+        // Site `global` / page `sections`: plain section arrays with an optional
+        // page multivariate flag branch. Prefer the array (admin hides the flag UI).
+        const arrayBranch = nonNull.find(isArraySchemaBranch);
+        const hasPageMultivariateLoader = loaderBranches.some((branch) => {
+          const rtEnum = (
+            (branch.properties as RawSchema | undefined)?.__resolveType as
+              | RawSchema
+              | undefined
+          )?.enum;
+          return (
+            Array.isArray(rtEnum) &&
+            rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
+          );
+        });
+        if (arrayBranch && hasPageMultivariateLoader) {
+          const built = buildProperty(arrayBranch, depth + 1);
+          return {
+            ...built,
+            type: "array",
+            title:
+              typeof resolved.title === "string" ? resolved.title : built.title,
+            description:
+              typeof resolved.description === "string"
+                ? resolved.description
+                : built.description,
+          };
+        }
+
         if (loaderBranches.length > 0) {
           const anyOfRefs = loaderBranches.map((branch) => {
             const rtSchema = (branch.properties as RawSchema | undefined)
@@ -306,11 +411,7 @@ export function resolveSchema(
               title:
                 typeof branch.title === "string"
                   ? branch.title
-                  : (rt
-                      .split("/")
-                      .pop()
-                      ?.replace(/\.tsx?$/, "")
-                      .replace(/[-_]/g, " ") ?? rt),
+                  : labelFromResolveType(rt),
               description:
                 typeof branch.description === "string"
                   ? branch.description
@@ -331,15 +432,52 @@ export function resolveSchema(
           };
         }
 
+        // Unions discriminated by a `type` field (e.g. ImageCard | TextCard).
+        const typeDiscriminators = nonNull.map((branch) =>
+          typeDiscriminatorFromBranch(branch),
+        );
+        const isTypeDiscriminatedUnion =
+          nonNull.length > 1 &&
+          typeDiscriminators.every((disc) => typeof disc === "string");
+
+        if (isTypeDiscriminatedUnion) {
+          const anyOfRefs = nonNull.map((branch, index) => {
+            const def = resolveBranchDef(branch);
+            const discriminatorValue = typeDiscriminators[index]!;
+            return {
+              resolveType: discriminatorValue,
+              title: branchTitle(branch, discriminatorValue),
+              description:
+                typeof def.description === "string"
+                  ? def.description
+                  : undefined,
+              discriminatorValue,
+              schema: depth + 1 < 6 ? buildProperty(def, depth + 1) : undefined,
+            };
+          });
+          return {
+            type: "block-ref",
+            title:
+              typeof v.title === "string"
+                ? v.title
+                : typeof resolved.title === "string"
+                  ? resolved.title
+                  : undefined,
+            description:
+              typeof v.description === "string"
+                ? v.description
+                : typeof resolved.description === "string"
+                  ? resolved.description
+                  : undefined,
+            discriminatorKey: "type",
+            anyOfRefs,
+          };
+        }
+
         // All branches are $refs to block/loader defs
         const allRefs = nonNull.every((a) => typeof a.$ref === "string");
         if (allRefs) {
-          const anyOfRefs: Array<{
-            resolveType: string;
-            title: string;
-            description?: string;
-            schema?: SchemaProperty;
-          }> = [];
+          const anyOfRefs: SchemaAnyOfRef[] = [];
           for (const branch of nonNull) {
             const def = resolveRef(branch.$ref as string);
             let rt: string | undefined;
@@ -367,21 +505,19 @@ export function resolveSchema(
             if (!rt) {
               rt = (branch.$ref as string).split("/").pop() ?? "";
             }
+            const discriminatorValue = typeDiscriminatorFromBranch(branch);
             anyOfRefs.push({
-              resolveType: rt,
+              resolveType: discriminatorValue ?? rt,
               title:
                 title ??
                 (typeof def.title === "string" && !def.title.startsWith("#")
                   ? def.title
-                  : (rt
-                      .split("/")
-                      .pop()
-                      ?.replace(/\.tsx?$/, "")
-                      .replace(/[-_]/g, " ") ?? rt)),
+                  : labelFromResolveType(rt)),
               description:
                 typeof def.description === "string"
                   ? def.description
                   : undefined,
+              discriminatorValue,
               schema: depth + 1 < 6 ? buildProperty(def, depth + 1) : undefined,
             });
           }
@@ -474,6 +610,7 @@ export function resolveSchema(
           : fromLeaf<string>("format"),
       properties: nestedProperties,
       items: itemsSchema,
+      hidden: isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
       titleBy:
         typeof resolved.titleBy === "string"
           ? resolved.titleBy
@@ -486,7 +623,7 @@ export function resolveSchema(
   };
 
   // Collect top-level properties and build typed map
-  const topRaw = collectProps(merged);
+  const topRaw = collectProps(schemaRoot);
   const properties: Record<string, SchemaProperty> = {};
   for (const [key, raw] of Object.entries(topRaw)) {
     if (key.startsWith("__") || key === "@type") continue;
@@ -497,7 +634,7 @@ export function resolveSchema(
 
   return {
     type: "object",
-    title: typeof merged.title === "string" ? merged.title : undefined,
+    title: typeof schemaRoot.title === "string" ? schemaRoot.title : undefined,
     properties,
   };
 }
@@ -519,9 +656,7 @@ export function resolveBlockSchemaMetadata(
 ): BlockSchemaMetadata {
   const globalSchema = meta.schema ?? {};
   const blockSchema = lookupManifestBlockSchema(resolveType, meta);
-
-  const merged: RawSchema = { ...globalSchema, ...blockSchema };
-  const defs = (merged.$defs ?? merged.definitions ?? {}) as Record<
+  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
     string,
     RawSchema
   >;
@@ -529,7 +664,9 @@ export function resolveBlockSchemaMetadata(
   const resolved =
     typeof blockSchema.$ref === "string"
       ? (defs[blockSchema.$ref.split("/").pop() ?? ""] ?? {})
-      : { ...globalSchema, ...blockSchema };
+      : Object.keys(blockSchema).length > 0
+        ? blockSchema
+        : { ...globalSchema, ...blockSchema };
 
   const icon = (resolved as { icon?: string }).icon;
   const logo = (resolved as { logo?: string }).logo;

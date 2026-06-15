@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { parseSections } from "./parse-sections";
-import { unwrapSection } from "./unwrap-section";
+import { unwrapBlockReference, unwrapSection } from "./unwrap-section";
 
 const HERO = "site/sections/Hero/Hero.tsx";
 const LAZY = "website/sections/Rendering/Lazy.tsx";
@@ -107,6 +107,24 @@ describe("unwrapSection", () => {
       Header: { __resolveType: HERO, title: "Header block" },
     })[0]!;
     expect(unwrapSection(raw, parsed, {})).toBeNull();
+  });
+
+  it("unwrapBlockReference loads saved block data for site theme pointers", () => {
+    const decofile = {
+      Deco: {
+        __resolveType: "site/sections/Theme/Theme.tsx",
+        variants: [{ value: { primary: "#000" } }],
+      },
+      site: { theme: { __resolveType: "Deco" } },
+    };
+    expect(unwrapBlockReference({ __resolveType: "Deco" }, decofile)).toEqual({
+      blockKey: "Deco",
+      data: {
+        __resolveType: "site/sections/Theme/Theme.tsx",
+        variants: [{ value: { primary: "#000" } }],
+      },
+      resolveType: "site/sections/Theme/Theme.tsx",
+    });
   });
 
   it("returns null for multivariate sections", () => {

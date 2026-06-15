@@ -1,4 +1,5 @@
 import { Suspense, lazy, useState } from "react";
+import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
   BookOpen01,
@@ -57,7 +58,8 @@ import { authClient } from "@/web/lib/auth-client";
 import { useChatTask } from "@/web/components/chat/context";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
-import { resolveSchema } from "@/web/components/sections-editor/resolve-schema";
+import { hasEditableAppEditorSchema } from "./app-editor-schema";
+import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
 import { useDeleteBlock } from "@/web/components/sections-editor/use-delete-block";
 import {
@@ -241,6 +243,24 @@ export function ContentBrowser() {
   );
 }
 
+const SCHEMA_POLL_INTERVAL_MS = 2000;
+const SCHEMA_POLL_MAX_ATTEMPTS = 15;
+
+function liveMetaSchemaPollIntervalMs(
+  query: Query<LiveMeta>,
+  resolveType: string | undefined,
+  meta: LiveMeta | undefined,
+  excludeFields?: readonly string[],
+): number | false {
+  if (typeof resolveType !== "string") return false;
+  if (!meta) return SCHEMA_POLL_INTERVAL_MS;
+  if (hasEditableAppEditorSchema(resolveType, meta, excludeFields)) {
+    return false;
+  }
+  if (query.state.dataUpdateCount >= SCHEMA_POLL_MAX_ATTEMPTS) return false;
+  return SCHEMA_POLL_INTERVAL_MS;
+}
+
 function ContentBrowserReady({
   orgSlug,
   virtualMcpId,
@@ -269,32 +289,56 @@ function ContentBrowserReady({
     setSearchQuery("");
   }
 
-  const SCHEMA_POLL_INTERVAL_MS = 2000;
-  const SCHEMA_POLL_MAX_ATTEMPTS = 15;
-
-  const { data: meta, isLoading: metaLoading } = useLiveMeta(fetchParams, {
+  const {
+    data: meta,
+    isLoading: metaLoading,
+    isFetching: metaFetching,
+  } = useLiveMeta(fetchParams, {
     refetchInterval: (query) => {
-      if (
-        activeCollection !== "apps" ||
-        !selection ||
-        selection.collection !== "apps"
-      ) {
-        return false;
-      }
-      const block = decofile?.[selection.key] as
-        | Record<string, unknown>
-        | undefined;
-      const resolveType = block?.__resolveType;
-      if (typeof resolveType !== "string") return false;
       const currentMeta = query.state.data;
-      if (!currentMeta) return SCHEMA_POLL_INTERVAL_MS;
-      if (resolveSchema(resolveType, currentMeta)) return false;
-      if (query.state.dataUpdateCount >= SCHEMA_POLL_MAX_ATTEMPTS) {
-        return false;
+
+      if (
+        activeCollection === "apps" &&
+        selection &&
+        selection.collection === "apps"
+      ) {
+        const block = decofile?.[selection.key] as
+          | Record<string, unknown>
+          | undefined;
+        return liveMetaSchemaPollIntervalMs(
+          query,
+          typeof block?.__resolveType === "string"
+            ? block.__resolveType
+            : undefined,
+          currentMeta,
+        );
       }
-      return SCHEMA_POLL_INTERVAL_MS;
+
+      if (activeCollection === "site" && decofile) {
+        const siteEntry = currentMeta
+          ? findSiteAppEntry(decofile, currentMeta)
+          : null;
+        const siteBlock = decofile.site as Record<string, unknown> | undefined;
+        const resolveType =
+          siteEntry?.resolveType ??
+          (typeof siteBlock?.__resolveType === "string"
+            ? siteBlock.__resolveType
+            : undefined);
+        return liveMetaSchemaPollIntervalMs(query, resolveType, currentMeta, [
+          "seo",
+        ]);
+      }
+
+      return false;
     },
   });
+
+  const isAppSchemaLoading = (
+    resolveType: string | undefined,
+    excludeFields?: readonly string[],
+  ) =>
+    !hasEditableAppEditorSchema(resolveType, meta, excludeFields) &&
+    (metaLoading || metaFetching);
 
   const { catalog: appCatalog, isLoading: appCatalogLoading } =
     useDecoAppsCatalog(meta ?? undefined, decofile ?? undefined, {
@@ -707,9 +751,11 @@ function ContentBrowserReady({
                 branch={branch}
                 blockKey={siteApp.key}
                 block={decofile[siteApp.key] as Record<string, unknown>}
+                decofile={decofile}
                 meta={meta}
                 title="Site"
                 excludeFields={["seo"]}
+                schemaPending={isAppSchemaLoading(siteApp.resolveType, ["seo"])}
               />
             ) : (
               <EmptyMessage
@@ -736,18 +782,17 @@ function ContentBrowserReady({
                 branch={branch}
                 blockKey={selection.key}
                 block={decofile[selection.key] as Record<string, unknown>}
+                decofile={decofile}
                 meta={meta}
-                schemaPending={
+                schemaPending={isAppSchemaLoading(
                   typeof (decofile[selection.key] as Record<string, unknown>)
-                    ?.__resolveType === "string" &&
-                  !resolveSchema(
-                    String(
-                      (decofile[selection.key] as Record<string, unknown>)
-                        .__resolveType,
-                    ),
-                    meta,
-                  )
-                }
+                    ?.__resolveType === "string"
+                    ? String(
+                        (decofile[selection.key] as Record<string, unknown>)
+                          .__resolveType,
+                      )
+                    : undefined,
+                )}
               />
             ) : selection.collection === "posts" ? (
               <PostEditor

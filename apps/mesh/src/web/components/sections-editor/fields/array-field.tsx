@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { DotsGrid, DotsHorizontal, Plus, Trash01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -9,6 +8,7 @@ import {
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
+import { resolveArrayItemSelection } from "../schema-form-breadcrumb";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
 
@@ -20,13 +20,27 @@ export function ArrayField({
   label,
   breadcrumbPath = [],
   onBreadcrumbChange,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
 }: FieldProps) {
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const selection = resolveArrayItemSelection(
+    label,
+    breadcrumbPath,
+    items,
+    itemSchema,
+  );
+  const selectedIndex = selection?.index ?? null;
 
   const itemLabel = (item: unknown, index: number) =>
     getArrayItemLabel(item, index, itemSchema);
+
+  const openItem = (index: number) => {
+    const labelText = itemLabel(items[index], index);
+    onBreadcrumbChange?.([...breadcrumbPath, labelText]);
+  };
 
   const addItem = () => {
     const t = itemSchema?.type;
@@ -53,15 +67,18 @@ export function ArrayField({
     const next = [...items, defaultVal];
     onChange(next);
     const nextIndex = next.length - 1;
-    setSelectedIndex(nextIndex);
-    onBreadcrumbChange?.([...breadcrumbPath, itemLabel(defaultVal, nextIndex)]);
+    const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema);
+    onBreadcrumbChange?.([...breadcrumbPath, labelText]);
   };
 
   const removeItem = (index: number) => {
     onChange(items.filter((_, i) => i !== index));
     if (selectedIndex === index) {
-      setSelectedIndex(null);
-      onBreadcrumbChange?.(breadcrumbPath);
+      const itemName = itemLabel(items[index], index);
+      const itemIndex = breadcrumbPath.indexOf(itemName);
+      onBreadcrumbChange?.(
+        itemIndex >= 0 ? breadcrumbPath.slice(0, itemIndex) : [],
+      );
     }
   };
 
@@ -70,26 +87,45 @@ export function ArrayField({
     next[index] = val;
     onChange(next);
     if (selectedIndex === index) {
-      onBreadcrumbChange?.([...breadcrumbPath, itemLabel(val, index)]);
+      const previousName = itemLabel(items[index], index);
+      const labelText = itemLabel(val, index);
+      const itemIndex = breadcrumbPath.indexOf(previousName);
+      if (itemIndex >= 0) {
+        const nextPath = [...breadcrumbPath];
+        nextPath[itemIndex] = labelText;
+        onBreadcrumbChange?.(nextPath);
+        return;
+      }
+      onBreadcrumbChange?.([...breadcrumbPath, labelText]);
     }
   };
 
   if (selectedIndex !== null && selectedIndex < items.length) {
     const item = items[selectedIndex];
-    const itemBreadcrumbPath = [
-      ...breadcrumbPath,
-      itemLabel(item, selectedIndex),
-    ];
+    const arrayItemPrefix = () => {
+      const itemName = itemLabel(item, selectedIndex);
+      const itemIndex = breadcrumbPath.indexOf(itemName);
+      if (itemIndex >= 0) {
+        return breadcrumbPath.slice(0, itemIndex + 1);
+      }
+      return [...breadcrumbPath, itemName];
+    };
+
     return (
-      <div className="min-w-0 space-y-4">
+      <div className="min-w-0">
         {itemSchema?.type === "object" && itemSchema.properties ? (
           <SchemaForm
             schema={itemSchema}
             value={item}
             onChange={(val) => updateItem(selectedIndex, val)}
             basePath={`${path}.${selectedIndex}`}
-            breadcrumbPath={itemBreadcrumbPath}
-            onBreadcrumbChange={onBreadcrumbChange}
+            breadcrumbPath={selection?.innerPath ?? []}
+            onBreadcrumbChange={(nextPath) => {
+              onBreadcrumbChange?.([...arrayItemPrefix(), ...nextPath]);
+            }}
+            meta={meta}
+            decofile={decofile}
+            onSaveReferencedBlock={onSaveReferencedBlock}
           />
         ) : itemSchema ? (
           renderField({
@@ -98,8 +134,13 @@ export function ArrayField({
             onChange: (val) => updateItem(selectedIndex, val),
             path: `${path}.${selectedIndex}`,
             label: itemSchema.title ?? `Item ${selectedIndex + 1}`,
-            breadcrumbPath: itemBreadcrumbPath,
-            onBreadcrumbChange,
+            breadcrumbPath: selection?.innerPath ?? [],
+            onBreadcrumbChange: (nextPath) => {
+              onBreadcrumbChange?.([...arrayItemPrefix(), ...nextPath]);
+            },
+            meta,
+            decofile,
+            onSaveReferencedBlock,
           })
         ) : null}
       </div>
@@ -137,10 +178,7 @@ export function ArrayField({
                 <DotsGrid className="size-3.5 shrink-0 cursor-grab text-muted-foreground/40" />
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedIndex(i);
-                    onBreadcrumbChange?.([...breadcrumbPath, labelText]);
-                  }}
+                  onClick={() => openItem(i)}
                   className="flex min-w-0 flex-1 items-center gap-2.5 text-left text-sm"
                   title={labelText}
                 >

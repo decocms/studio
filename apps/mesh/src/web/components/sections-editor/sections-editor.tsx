@@ -29,15 +29,18 @@ import {
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "./use-save-block";
-import { extractPages, globalSectionLabel } from "./page-list";
-import { normalizePagePath } from "./page-path-utils";
+import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
 import { unwrapSection } from "./unwrap-section";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
-import { resolveSchema, type SchemaProperty } from "./resolve-schema";
+import {
+  resolveSchema,
+  type LiveMeta,
+  type SchemaProperty,
+} from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -95,6 +98,7 @@ import {
   updateMultivariateSectionVariantValue,
 } from "./section-variants";
 import { PageJsonDialog } from "./page-json-dialog";
+import { createReferencedBlockSaver } from "./save-referenced-block";
 
 function SchemaFormPanel({
   activeSchema,
@@ -102,20 +106,31 @@ function SchemaFormPanel({
   formResetKey,
   onFormChange,
   onBreadcrumbChange,
+  breadcrumbPath = [],
   emptyMessage,
   beforeForm,
   seoResolveType,
   siteDefaultSeo,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
   formResetKey: number;
   onFormChange: (v: unknown) => void;
   onBreadcrumbChange: (path: string[]) => void;
+  breadcrumbPath?: string[];
   emptyMessage: string;
   beforeForm?: ReactNode;
   seoResolveType?: string;
   siteDefaultSeo?: Record<string, unknown>;
+  meta?: LiveMeta;
+  decofile?: Record<string, unknown>;
+  onSaveReferencedBlock?: (
+    blockKey: string,
+    data: Record<string, unknown>,
+  ) => void;
 }) {
   const formBody =
     activeSchema && formValue ? (
@@ -136,8 +151,11 @@ function SchemaFormPanel({
           value={formValue}
           onChange={onFormChange}
           basePath=""
-          breadcrumbPath={[]}
+          breadcrumbPath={breadcrumbPath}
           onBreadcrumbChange={onBreadcrumbChange}
+          meta={meta}
+          decofile={decofile}
+          onSaveReferencedBlock={onSaveReferencedBlock}
         />
       )
     ) : null;
@@ -540,6 +558,15 @@ export function SectionsEditor({
   }
 
   const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
+  const saveReferencedBlock = createReferencedBlockSaver((refKey, data) => {
+    saveBlock.mutate(
+      { blockKey: refKey, data },
+      {
+        onSuccess: () => onSaved?.(),
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  });
   const deleteBlock = useDeleteBlock({ orgSlug, virtualMcpId, branch });
   const [renameVariantPending, setRenameVariantPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -589,13 +616,10 @@ export function SectionsEditor({
   }
 
   const pages = extractPages(decofile);
-  const norm = normalizePagePath;
   const isGlobalBlockMode = !!activeGlobalBlockKey;
   const activePage = isGlobalBlockMode
     ? null
-    : activePageBlockKey
-      ? (pages.find((p) => p.key === activePageBlockKey) ?? null)
-      : (pages.find((p) => norm(p.path) === norm(currentPath)) ?? null);
+    : findPageForPath(pages, currentPath, activePageBlockKey);
   const activePageKey = isGlobalBlockMode
     ? activeGlobalBlockKey
     : (activePage?.key ?? null);
@@ -2216,7 +2240,11 @@ export function SectionsEditor({
             formResetKey={formResetKey}
             onFormChange={handleFormChange}
             onBreadcrumbChange={setFieldBreadcrumbs}
+            breadcrumbPath={fieldBreadcrumbs}
             emptyMessage="No editable fields for this variant."
+            meta={meta}
+            decofile={decofile}
+            onSaveReferencedBlock={saveReferencedBlock}
           />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
@@ -2227,7 +2255,11 @@ export function SectionsEditor({
             formResetKey={formResetKey}
             onFormChange={handleFormChange}
             onBreadcrumbChange={setFieldBreadcrumbs}
+            breadcrumbPath={fieldBreadcrumbs}
             emptyMessage="No editable fields for this global block."
+            meta={meta}
+            decofile={decofile}
+            onSaveReferencedBlock={saveReferencedBlock}
           />
         </ScrollArea>
       ) : (

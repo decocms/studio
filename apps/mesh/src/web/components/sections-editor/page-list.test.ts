@@ -3,6 +3,7 @@ import {
   extractApps,
   extractGlobalSections,
   extractPages,
+  findPageForPath,
   findSiteAppEntry,
   hasEditableDecoContent,
 } from "./page-list";
@@ -24,6 +25,41 @@ describe("page-list", () => {
     expect(extractPages(decofile)).toEqual([
       { key: "pages-home-abc123456789", name: "Home", path: "/" },
     ]);
+  });
+
+  it("findPageForPath prefers an explicit block key when paths collide", () => {
+    const pages = [
+      {
+        key: "pages-Home Page-11111111-1111-4111-8111-111111111111",
+        name: "Home",
+        path: "/",
+      },
+      {
+        key: "pages-Home Page-22222222-2222-4222-8222-222222222222",
+        name: "Home copy",
+        path: "/",
+      },
+    ];
+    expect(findPageForPath(pages, "/", pages[1]!.key)?.key).toBe(pages[1]!.key);
+    expect(findPageForPath(pages, "/")?.key).toBe(pages[0]!.key);
+  });
+
+  it("findPageForPath returns preferred key even when path no longer matches", () => {
+    const pages = [
+      {
+        key: "pages-home-old",
+        name: "Home",
+        path: "/old",
+      },
+      {
+        key: "pages-home-new",
+        name: "Home",
+        path: "/",
+      },
+    ];
+    expect(findPageForPath(pages, "/", "pages-home-old")?.key).toBe(
+      "pages-home-old",
+    );
   });
 
   it("extractApps finds installed app blocks", () => {
@@ -96,6 +132,35 @@ describe("page-list", () => {
       key: "site",
       name: "Site settings",
       resolveType: "site/apps/site.ts",
+    });
+  });
+
+  it("findSiteAppEntry resolves legacy manifest keys for the site app", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          apps: {
+            "deco/apps/site.ts": { $ref: "#/definitions/SiteApp" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          SiteApp: { title: "Site settings" },
+        },
+      },
+    };
+    const decofile = {
+      site: {
+        __resolveType: "site/apps/deco/site.ts",
+        siteName: "My Store",
+      },
+    };
+
+    expect(findSiteAppEntry(decofile, meta)).toEqual({
+      key: "site",
+      name: "Site settings",
+      resolveType: "site/apps/deco/site.ts",
     });
   });
 

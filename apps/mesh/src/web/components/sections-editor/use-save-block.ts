@@ -104,18 +104,19 @@ export function useDebouncedSaveBlock(
   opts?: { onSaved?: () => void },
 ) {
   const saveBlock = useSaveBlock(params);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestRef = useRef<{ blockKey: string; data: SaveData } | null>(null);
+  const pendingRef = useRef<Map<string, SaveData>>(new Map());
+  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
 
-  const runPendingSave = () => {
-    const pending = latestRef.current;
+  const runPendingSave = (blockKey: string) => {
+    const pending = pendingRef.current.get(blockKey);
     if (!pending) return;
-    const resolved =
-      typeof pending.data === "function" ? pending.data() : pending.data;
+    const resolved = typeof pending === "function" ? pending() : pending;
+    pendingRef.current.delete(blockKey);
     if (!resolved) return;
-    latestRef.current = null;
     saveBlock.mutate(
-      { blockKey: pending.blockKey, data: resolved },
+      { blockKey, data: resolved },
       {
         onSuccess: () => opts?.onSaved?.(),
         onError: (err) => toast.error(`Save failed: ${err.message}`),
@@ -124,30 +125,39 @@ export function useDebouncedSaveBlock(
   };
 
   const flush = () => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
+    for (const timer of timersRef.current.values()) {
+      clearTimeout(timer);
     }
-    runPendingSave();
+    timersRef.current.clear();
+    for (const blockKey of [...pendingRef.current.keys()]) {
+      runPendingSave(blockKey);
+    }
   };
 
-  // Cancel a pending debounced save on unmount so it can't fire against a torn
+  // Cancel pending debounced saves on unmount so they can't fire against a torn
   // -down editor after navigation. Call `flush()` explicitly when closing a sheet
   // or leaving an editor so edits inside the debounce window still persist.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — timer lifecycle cleanup on unmount
   useEffect(() => {
+    const timers = timersRef.current;
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      for (const timer of timers.values()) {
+        clearTimeout(timer);
+      }
     };
   }, []);
 
   const save = (blockKey: string, data: SaveData) => {
-    latestRef.current = { blockKey, data };
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      debounceRef.current = null;
-      runPendingSave();
-    }, AUTOSAVE_DELAY);
+    pendingRef.current.set(blockKey, data);
+    const existing = timersRef.current.get(blockKey);
+    if (existing) clearTimeout(existing);
+    timersRef.current.set(
+      blockKey,
+      setTimeout(() => {
+        timersRef.current.delete(blockKey);
+        runPendingSave(blockKey);
+      }, AUTOSAVE_DELAY),
+    );
   };
 
   return { save, flush, isPending: saveBlock.isPending };
