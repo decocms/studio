@@ -441,7 +441,8 @@ async function threadGateWorkflowFn(
     // daemon to race, so they're retriable and DBOS recovers them. The thread-gate
     // queue (concurrency=1 per threadId) still guarantees a single in-flight
     // dispatch per thread.
-    const retriable = ctx.request.target?.sandboxProviderKind !== "user-desktop";
+    const retriable =
+      ctx.request.target?.sandboxProviderKind !== "user-desktop";
     await DBOS.runStep(() => dispatchRunAndWaitStep(ctx), {
       name: "dispatchRunAndWait",
       retriesAllowed: retriable,
