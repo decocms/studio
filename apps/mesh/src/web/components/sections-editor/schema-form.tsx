@@ -17,7 +17,6 @@ import {
 } from "./page-variants";
 import {
   fieldDisplayLabel,
-  isArrayDrillDownField,
   resolveActiveFieldKey,
 } from "./schema-form-breadcrumb";
 
@@ -273,10 +272,7 @@ export function SchemaForm({
       ? resolveActiveFieldKey(keys, properties, objValue, breadcrumbPath)
       : null;
   const activeSchema = activeKey ? properties[activeKey] : null;
-  const visibleKeys =
-    activeKey && activeSchema && isArrayDrillDownField(activeSchema)
-      ? [activeKey]
-      : keys;
+  const visibleKeys = activeKey && activeSchema ? [activeKey] : keys;
   return (
     <div className="min-w-0 space-y-6">
       {visibleKeys.map((key) => {

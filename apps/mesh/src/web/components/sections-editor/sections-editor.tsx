@@ -36,7 +36,11 @@ import { unwrapSection } from "./unwrap-section";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { SchemaForm } from "./schema-form";
-import { resolveSchema, type SchemaProperty } from "./resolve-schema";
+import {
+  resolveSchema,
+  type LiveMeta,
+  type SchemaProperty,
+} from "./resolve-schema";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -106,6 +110,9 @@ function SchemaFormPanel({
   beforeForm,
   seoResolveType,
   siteDefaultSeo,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -117,6 +124,12 @@ function SchemaFormPanel({
   beforeForm?: ReactNode;
   seoResolveType?: string;
   siteDefaultSeo?: Record<string, unknown>;
+  meta?: LiveMeta;
+  decofile?: Record<string, unknown>;
+  onSaveReferencedBlock?: (
+    blockKey: string,
+    data: Record<string, unknown>,
+  ) => void;
 }) {
   const formBody =
     activeSchema && formValue ? (
@@ -139,6 +152,9 @@ function SchemaFormPanel({
           basePath=""
           breadcrumbPath={breadcrumbPath}
           onBreadcrumbChange={onBreadcrumbChange}
+          meta={meta}
+          decofile={decofile}
+          onSaveReferencedBlock={onSaveReferencedBlock}
         />
       )
     ) : null;
@@ -2216,6 +2232,8 @@ export function SectionsEditor({
             onBreadcrumbChange={setFieldBreadcrumbs}
             breadcrumbPath={fieldBreadcrumbs}
             emptyMessage="No editable fields for this variant."
+            meta={meta}
+            decofile={decofile}
           />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
@@ -2228,6 +2246,8 @@ export function SectionsEditor({
             onBreadcrumbChange={setFieldBreadcrumbs}
             breadcrumbPath={fieldBreadcrumbs}
             emptyMessage="No editable fields for this global block."
+            meta={meta}
+            decofile={decofile}
           />
         </ScrollArea>
       ) : (

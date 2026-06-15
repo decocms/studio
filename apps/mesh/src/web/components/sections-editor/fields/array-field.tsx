@@ -39,7 +39,7 @@ export function ArrayField({
 
   const openItem = (index: number) => {
     const labelText = itemLabel(items[index], index);
-    onBreadcrumbChange?.([...breadcrumbPath, label, labelText]);
+    onBreadcrumbChange?.([...breadcrumbPath, labelText]);
   };
 
   const addItem = () => {
@@ -68,15 +68,16 @@ export function ArrayField({
     onChange(next);
     const nextIndex = next.length - 1;
     const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema);
-    onBreadcrumbChange?.([...breadcrumbPath, label, labelText]);
+    onBreadcrumbChange?.([...breadcrumbPath, labelText]);
   };
 
   const removeItem = (index: number) => {
     onChange(items.filter((_, i) => i !== index));
     if (selectedIndex === index) {
-      const labelIndex = breadcrumbPath.indexOf(label);
+      const itemName = itemLabel(items[index], index);
+      const itemIndex = breadcrumbPath.indexOf(itemName);
       onBreadcrumbChange?.(
-        labelIndex >= 0 ? breadcrumbPath.slice(0, labelIndex) : [],
+        itemIndex >= 0 ? breadcrumbPath.slice(0, itemIndex) : [],
       );
     }
   };
@@ -86,20 +87,28 @@ export function ArrayField({
     next[index] = val;
     onChange(next);
     if (selectedIndex === index) {
+      const previousName = itemLabel(items[index], index);
       const labelText = itemLabel(val, index);
-      onBreadcrumbChange?.([...breadcrumbPath, label, labelText]);
+      const itemIndex = breadcrumbPath.indexOf(previousName);
+      if (itemIndex >= 0) {
+        const nextPath = [...breadcrumbPath];
+        nextPath[itemIndex] = labelText;
+        onBreadcrumbChange?.(nextPath);
+        return;
+      }
+      onBreadcrumbChange?.([...breadcrumbPath, labelText]);
     }
   };
 
   if (selectedIndex !== null && selectedIndex < items.length) {
     const item = items[selectedIndex];
     const arrayItemPrefix = () => {
-      const labelIndex = breadcrumbPath.indexOf(label);
       const itemName = itemLabel(item, selectedIndex);
-      if (labelIndex >= 0) {
-        return breadcrumbPath.slice(0, labelIndex + 2);
+      const itemIndex = breadcrumbPath.indexOf(itemName);
+      if (itemIndex >= 0) {
+        return breadcrumbPath.slice(0, itemIndex + 1);
       }
-      return [...breadcrumbPath, label, itemName];
+      return [...breadcrumbPath, itemName];
     };
 
     return (

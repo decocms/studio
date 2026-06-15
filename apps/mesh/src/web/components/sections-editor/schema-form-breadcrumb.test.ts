@@ -58,6 +58,43 @@ describe("resolveActiveFieldKey", () => {
   test("returns null when breadcrumb empty", () => {
     expect(resolveActiveFieldKey(["layout"], properties, {}, [])).toBeNull();
   });
+
+  test("finds nested array field inside object ancestor", () => {
+    const globalHeader = {
+      logos: { title: "Logos", type: "object", properties: {} },
+      alert: {
+        title: "Alert",
+        type: "object",
+        properties: {
+          alerts: {
+            title: "Alerts",
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                text: { type: "string", title: "Text" },
+                url: { type: "string", title: "Url" },
+              },
+            },
+          },
+          sliderInterval: { type: "number", title: "Slider interval" },
+        },
+      },
+    } satisfies Record<string, SchemaProperty>;
+
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(globalHeader),
+        globalHeader,
+        {
+          alert: {
+            alerts: [{ text: "A Utah Proud Brand Since 1921", url: "/sale" }],
+          },
+        },
+        ["A Utah Proud Brand Since 1921"],
+      ),
+    ).toBe("alert");
+  });
 });
 
 describe("isArrayDrillDownField", () => {
@@ -119,16 +156,11 @@ describe("resolveArrayItemSelection", () => {
 
   test("returns inner path for nested array drill-down", () => {
     expect(
-      resolveArrayItemSelection(
-        "Cards",
-        ["Cards", "Men's", "Tags", "Sale"],
-        items,
-        itemSchema,
-      ),
-    ).toEqual({ index: 0, innerPath: ["Tags", "Sale"] });
+      resolveArrayItemSelection("Cards", ["Men's", "Sale"], items, itemSchema),
+    ).toEqual({ index: 0, innerPath: ["Sale"] });
   });
 
-  test("supports legacy breadcrumb without array label", () => {
+  test("supports breadcrumb without array label", () => {
     expect(
       resolveArrayItemSelection(
         "Cards",
