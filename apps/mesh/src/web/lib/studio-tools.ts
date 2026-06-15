@@ -13,7 +13,7 @@ import { useProjectContext } from "@decocms/mesh-sdk";
 import type { ToolIO, ToolName } from "@/tools/io-types";
 
 /** Thrown when a tool REST call returns a non-2xx status. `status` is the HTTP code. */
-export class StudioToolError extends Error {
+class StudioToolError extends Error {
   constructor(
     message: string,
     readonly status: number,
@@ -27,7 +27,7 @@ export class StudioToolError extends Error {
  * Call a builtin tool over REST. `orgSlug` scopes the org; `name` is the tool
  * identifier (also the permission identifier checked server-side).
  */
-export async function callStudioTool<N extends ToolName>(
+async function callStudioTool<N extends ToolName>(
   orgSlug: string,
   name: N,
   input: ToolIO[N]["input"],

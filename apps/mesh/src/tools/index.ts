@@ -246,7 +246,7 @@ const TOOL_BY_NAME: Map<string, CombinedTool> = new Map(
  * when none). Skips the storage reads when no plugin tools exist — transitional,
  * since the plugin system is being retired.
  */
-export async function computeEnabledPlugins(
+async function computeEnabledPlugins(
   ctx: StudioContext,
 ): Promise<string[] | null> {
   if (PLUGIN_TOOLS.length === 0 || !ctx.organization) return null;
