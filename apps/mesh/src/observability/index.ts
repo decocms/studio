@@ -470,7 +470,11 @@ export function initObservability(): void {
     monitoringProcessors.push(
       new BatchLogRecordProcessor(monitoringLogExporter, {
         scheduledDelayMillis: 60_000,
-        maxExportBatchSize: 1000,
+        // Smaller batches → the synchronous NDJSONLogExporter.export() burst
+        // (attr copy + BigInt hrTime + per-row JSON.stringify) runs ~4x
+        // shorter per flush, with a yield between batches, instead of blocking
+        // the loop on up to 1000 records at once.
+        maxExportBatchSize: 250,
       }),
     );
   }

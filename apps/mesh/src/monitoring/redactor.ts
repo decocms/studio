@@ -26,36 +26,31 @@ export interface Redactor {
 // Regex-Based Redactor (Default Implementation)
 // ============================================================================
 
-interface RedactionPattern {
-  type: string;
-  regex: RegExp;
-}
+// Redaction types in match-precedence order. A single combined regex (below)
+// scans the string ONCE; the first alternative to match at a position wins —
+// replacing the old per-type sequential `replace()` loop, which walked the
+// whole (up-to-64KB) string five times per emit and showed up in event-loop
+// stalls. Named groups carry the type label through to the replacement.
+const REDACTION_TYPES = [
+  "jwt",
+  "api_key",
+  "email",
+  "credit_card",
+  "ssn",
+] as const;
+
+const COMBINED_PII_REGEX = new RegExp(
+  [
+    `(?<jwt>eyJ[A-Za-z0-9-_]+\\.eyJ[A-Za-z0-9-_]+\\.[A-Za-z0-9-_.+/=]*)`,
+    `(?<api_key>(?:api[_-]?key|token|secret|password|bearer)\\s*[:=]\\s*['"]?[\\w-]{16,}['"]?)`,
+    `(?<email>[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})`,
+    `(?<credit_card>\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b)`,
+    `(?<ssn>\\b\\d{3}-\\d{2}-\\d{4}\\b)`,
+  ].join("|"),
+  "gi",
+);
 
 export class RegexRedactor implements Redactor {
-  private patterns: RedactionPattern[] = [
-    {
-      type: "email",
-      regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
-    },
-    {
-      type: "api_key",
-      regex:
-        /(?:api[_-]?key|token|secret|password|bearer)\s*[:=]\s*['"]?[\w-]{16,}['"]?/gi,
-    },
-    {
-      type: "jwt",
-      regex: /eyJ[A-Za-z0-9-_]+\.eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_.+/=]*/g,
-    },
-    {
-      type: "credit_card",
-      regex: /\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g,
-    },
-    {
-      type: "ssn",
-      regex: /\b\d{3}-\d{2}-\d{4}\b/g,
-    },
-  ];
-
   redact(data: unknown): unknown {
     if (data === null || data === undefined) {
       return data;
@@ -86,12 +81,16 @@ export class RegexRedactor implements Redactor {
   }
 
   redactString(text: string): string {
-    let redacted = text;
-
-    for (const pattern of this.patterns) {
-      redacted = redacted.replace(pattern.regex, `[REDACTED:${pattern.type}]`);
-    }
-
-    return redacted;
+    return text.replace(COMBINED_PII_REGEX, (match, ...args) => {
+      const groups = args[args.length - 1] as
+        | Record<string, string | undefined>
+        | undefined;
+      if (groups) {
+        for (const type of REDACTION_TYPES) {
+          if (groups[type] != null) return `[REDACTED:${type}]`;
+        }
+      }
+      return match;
+    });
   }
 }
