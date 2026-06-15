@@ -108,8 +108,9 @@ function OrgTab({
   const busy = useTrackBusy(stores, id);
   return (
     <span
+      data-demo-target={`org:${id}`}
       className={cn(
-        "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+        "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors duration-300",
         active ? "bg-muted text-foreground" : "text-muted-foreground",
       )}
     >
@@ -165,9 +166,13 @@ function AgentsStage({ stores }: { stores: DemoStores }) {
         }
         right={<LinkButton stores={stores} />}
       />
-      <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 p-3">
+      {/* key on org → the workspace crossfades when switching contexts */}
+      <div
+        key={current}
+        className="grid min-h-0 flex-1 grid-cols-2 gap-3 p-3 animate-in fade-in duration-500"
+      >
         <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
-          <DemoChatStreamProvider key={current} store={stores.getChat(current)}>
+          <DemoChatStreamProvider store={stores.getChat(current)}>
             <Chat className="bg-card">
               <Chat.Messages />
             </Chat>
@@ -206,60 +211,83 @@ const ITERM_LINKED = `$ bunx decocms link
 /** Opening beat: click the topbar link button → modal → iTerm runs
  *  `bunx decocms link` → minimize → modal shows connected. */
 async function connectDesktop(d: Director) {
+  d.caption("Drive your local Claude Code from the web");
+  await d.beat(1300);
+
   d.showCursor();
-  d.caption("Link your machine — drive local Claude Code from the web");
-  await d.wait(600);
+  await d.beat(500);
   await d.click("link-button");
   d.setInput("link", "waiting"); // modal opens
-  await d.wait(900);
+  await d.beat(1100);
 
-  d.setInput("iterm", "open"); // iTerm window appears
+  // iTerm window appears and the dev runs the link command.
+  d.setInput("iterm", "open");
   d.setInput("iterm:text", "");
-  await d.type("iterm:text", "$ bunx decocms link", { cps: 22 });
-  await d.wait(500);
+  await d.beat(500);
+  await d.type("iterm:text", "$ bunx decocms link", { cps: 18 });
+  await d.beat(750);
   d.setInput("iterm:text", ITERM_AUTH);
-  await d.wait(850);
+  await d.beat(1300);
   d.setInput("iterm:text", ITERM_LINKED);
-  await d.wait(1100);
+  await d.beat(1700); // read the linked output
 
   d.setInput("iterm", "min"); // dev minimizes the terminal
   d.hideCursor();
-  await d.wait(800);
+  await d.beat(950);
   d.setInput("link", "connected"); // modal flips to connected
-  await d.wait(1700);
+  await d.beat(2300); // let "Desktop connected" land
   d.setInput("link", ""); // close modal
   d.setInput("iterm", ""); // unmount terminal
-  await d.wait(400);
+  await d.beat(700);
+}
+
+/** Move the ghost cursor onto an org tab, click it, and switch the view. */
+async function switchOrg(d: Director, id: string) {
+  d.showCursor();
+  await d.beat(450);
+  await d.click(`org:${id}`);
+  d.setOrg(id);
+  await d.beat(550);
+  d.hideCursor();
 }
 
 /** Acme storefront redesign — runs in the background while the viewer is away. */
 async function acmeRedesign(d: Director, t: Track) {
   await t.think(
     "I'll add a Summer Sale hero banner, then widen the product grid to 4-up.",
+    { cps: 80 },
   );
-  await t.stream("Adding the Summer Sale banner and refreshing the hero.");
+  await t.stream("Adding the Summer Sale banner and refreshing the hero.", {
+    cps: 44,
+  });
   await t.tool(codeTool("edit_section", "hero → banner + bold headline", 2400));
   d.setPreview("acme", storefront({ banner: true, cols: 3 }));
-  await t.stream("Now widening the product grid to four columns.");
+  await t.wait(1000); // let the preview change register
+  await t.stream("Now widening the product grid to four columns.", { cps: 44 });
   await t.tool(codeTool("update_layout", "product grid → 4 columns", 2200));
   d.setPreview("acme", storefront({ banner: true, cols: 4 }));
-  await t.tool(codeTool("build", "vite build · 0 errors", 2200));
-  await t.tool(codeTool("deploy", "acme.com · v43 live", 1700));
-  await t.stream("✅ Live on acme.com — new banner + 4-up grid.");
+  await t.wait(1000);
+  await t.tool(codeTool("build", "vite build · 0 errors", 2000));
+  await t.tool(codeTool("deploy", "acme.com · v43 live", 1800));
+  await t.stream("✅ Live on acme.com — new banner + 4-up grid.", { cps: 44 });
   t.endTurn();
 }
 
 /** Northwind MCP swap — done while Acme keeps building. */
 async function northSwap(d: Director, t: Track) {
   await t.think(
-    "Swap the payments MCP: disconnect Stripe, connect Adyen, re-run checkout tests.",
+    "I'll disconnect Stripe, connect Adyen, then re-run the checkout tests.",
+    { cps: 80 },
   );
-  await t.stream("Swapping the payments MCP from Stripe to Adyen.");
-  await t.tool(codeTool("disconnect_mcp", "Stripe · removed", 1600));
-  await t.tool(codeTool("connect_mcp", "Adyen · connected", 1900));
+  await t.stream("Swapping the payments MCP from Stripe to Adyen.", {
+    cps: 44,
+  });
+  await t.tool(codeTool("disconnect_mcp", "Stripe · removed", 1700));
+  await t.tool(codeTool("connect_mcp", "Adyen · connected", 2000));
   d.setPreview("north", connections("adyen"));
+  await t.wait(1000);
   await t.tool(codeTool("run_tests", "checkout smoke · 6 passed", 2200));
-  await t.stream("✅ Adyen is now live for checkout.");
+  await t.stream("✅ Adyen is now live for checkout.", { cps: 44 });
   t.endTurn();
 }
 
@@ -267,39 +295,46 @@ export const agentsScenario: Scenario = {
   id: "agents",
   title: "Drive agents across orgs in parallel",
   Stage: AgentsStage,
+  endCard: {
+    title: "Build & ship agents across your orgs",
+    subtitle: "Link your machine and drive agents anywhere — free to start.",
+  },
   run: async (d: Director) => {
     const acme = d.track("acme");
     const north = d.track("north");
 
     d.setOrg("acme");
     d.setPreview("acme", storefront({ banner: false, cols: 3 }));
+    await d.beat(500);
 
     await connectDesktop(d);
 
+    // 1) Kick off a storefront redesign in Acme — runs in the background.
     d.caption("Start in Acme — ask the agent to redesign the storefront");
-    await d.wait(500);
+    await d.beat(900);
     await acme.user("Add a Summer Sale banner and make the product grid 4-up.");
-
-    // Kick Acme off in the BACKGROUND — we don't await it yet. Swallow the
-    // abort rejection so an unmount mid-flight doesn't surface as unhandled.
+    await d.beat(500);
     const acmeDone = acmeRedesign(d, acme).catch(() => {});
-    await d.wait(3600);
+    await d.beat(4200); // watch Acme start working + the first preview change
 
-    // Switch orgs while Acme keeps working (its tab pulses).
-    d.setOrg("north");
+    // 2) Jump to a second org while Acme keeps building (its tab pulses).
+    d.caption("Jump to another org — Acme keeps building in the background");
+    await d.beat(800);
+    await switchOrg(d, "north");
     d.setPreview("north", connections("stripe"));
-    d.caption("Switch to Northwind — Acme keeps building in the background");
-    await d.wait(700);
+    await d.beat(700);
     await north.user("Swap the payments MCP from Stripe to Adyen.");
+    await d.beat(400);
     await northSwap(d, north);
-    await d.wait(900);
+    await d.beat(1500); // read the Adyen result
 
-    // Back to Acme — the redesign finished while we were away.
-    d.setOrg("acme");
-    d.caption("Back in Acme — the redesign finished while you were away");
+    // 3) Back to Acme — the redesign finished while we were away.
+    d.caption("Back to Acme — the redesign finished while you were away");
+    await d.beat(700);
+    await switchOrg(d, "acme");
     await acmeDone;
-    await d.wait(1200);
+    await d.beat(1700);
     d.caption("Parallel work across orgs — switch context, nothing waits");
-    await d.wait(2200);
+    await d.beat(3200);
   },
 };
