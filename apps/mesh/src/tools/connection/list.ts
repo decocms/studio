@@ -34,8 +34,10 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   getMcpListCache,
   fetchWithCache,
+  REVALIDATE_MIN_INTERVAL_MS,
 } from "../../mcp-clients/mcp-list-cache";
-import { clientFromConnection } from "../../mcp-clients";
+import { listToolsWithTimeout } from "../../mcp-clients";
+import { MCP_LIST_TOOLS_TIMEOUT_MS } from "../../core/constants";
 import {
   createDevAssetsConnectionEntity,
   usesLocalObjectStorage,
@@ -43,6 +45,17 @@ import {
 import { type ConnectionEntity, ConnectionEntitySchema } from "./schema";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { connectionMatchesWhere } from "./where-match";
+import { mapWithConcurrency } from "./map-with-concurrency";
+
+/**
+ * Max concurrent live tool probes during binding filtering. Each probe eagerly
+ * connects to a downstream MCP server (transport handshake + a `downstream_tokens`
+ * read), so an unbounded `Promise.all` over a large org fires dozens at once —
+ * saturating the DB pool and blocking the single-threaded event loop while it
+ * parses every tool list. Bounding the fan-out keeps a cold cache from spiking
+ * CPU and tripping the HPA into a needless replica.
+ */
+const BINDING_PROBE_CONCURRENCY = 8;
 
 /**
  * Registry binding: matches connections that expose COLLECTION_REGISTRY_APP_LIST
@@ -166,8 +179,10 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
     if (bindingChecker) {
       const cache = getMcpListCache();
       const selfId = WellKnownOrgMCPId.SELF(organization.id);
-      await Promise.all(
-        connections.map(async (connection) => {
+      await mapWithConcurrency(
+        connections,
+        BINDING_PROBE_CONCURRENCY,
+        async (connection) => {
           if (connection.tools !== null) return;
           // The self MCP requires session auth, so an HTTP round-trip would
           // fail without forwarding cookies. Use in-process transport instead.
@@ -177,29 +192,28 @@ export const COLLECTION_CONNECTIONS_LIST = defineTool({
                   const { listManagementTools } = await import("../../tools");
                   return listManagementTools(ctx) as Promise<unknown[]>;
                 }
-              : async () => {
-                  const client = await clientFromConnection(
+              : () =>
+                  listToolsWithTimeout(
                     connection,
                     ctx,
-                    true,
+                    MCP_LIST_TOOLS_TIMEOUT_MS,
                   );
-                  try {
-                    const result = await client.listTools();
-                    return result.tools;
-                  } finally {
-                    await client.close().catch(() => {});
-                  }
-                };
           const tools = await fetchWithCache(
             "tools",
             connection.id,
             fetchLive,
             cache,
+            // Track background revalidations so the request lifecycle awaits
+            // (and bounds) them instead of leaking a detached MCP handshake per
+            // connection, and throttle them so a polling UI doesn't reconnect to
+            // every downstream on every request. Matches connection/get.ts.
+            (p) => ctx.pendingRevalidations.push(p),
+            REVALIDATE_MIN_INTERVAL_MS,
           );
           if (tools !== null) {
             connection.tools = tools as Tool[];
           }
-        }),
+        },
       );
     }
 

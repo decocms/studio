@@ -7,4 +7,5 @@
  */
 
 export { clientFromConnection } from "./client";
+export { listToolsWithTimeout } from "./list-tools-with-timeout";
 export { serverFromConnection } from "./server";
