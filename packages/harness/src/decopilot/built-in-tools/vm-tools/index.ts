@@ -42,7 +42,7 @@ export function createVmTools(params: VmToolsParams) {
 
   // Proxy an arbitrary `/_sandbox/*` route through the fs hooks' retry layer.
   // Used by the tools whose daemon surface the typed flat ops don't model
-  // (image-read, html-buffer write/edit, write_from_url, upload_to_url).
+  // (image-read, html-buffer write/edit).
   const call = (
     daemonPath: string,
     input: Record<string, unknown>,

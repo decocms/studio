@@ -39,9 +39,8 @@ import {
  * "Failed to parse [file://...]", others silently ignore the file), and
  * the sandbox skills (pptx-extract, docx, xlsx) consistently produce
  * better results than any provider's native parser. The model picks
- * these up from the annotation text emitted by uploadFileParts: with
- * org-fs mounts they're already at `org/upload/<name>`; otherwise it
- * pulls them in via copy_to_sandbox.
+ * these up from the annotation text emitted by uploadFileParts — they
+ * are already at `org/upload/<name>` in the mounted org filesystem.
  *
  * PDFs stay on the native path — every provider with a `file` capability
  * handles them fine and going through the sandbox would be a regression.
@@ -454,8 +453,9 @@ export async function resolveStorageRefs(
   if (!ctx.organization) return messages;
 
   // First pass: drop sandbox-only file parts (Office formats). The model
-  // reads these via copy_to_sandbox using the mesh-storage URI in the
-  // annotation text emitted by uploadFileParts.
+  // reads these directly from `org/upload/<name>` (the uploads volume is
+  // mounted in the sandbox); the annotation text from uploadFileParts
+  // points at the path.
   const filtered = messages.map((msg) => {
     const filteredParts = msg.parts.filter(
       (part) => !isSandboxOnlyFilePart(part),
