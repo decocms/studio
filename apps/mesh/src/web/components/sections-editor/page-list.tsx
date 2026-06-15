@@ -3,7 +3,6 @@ import {
   resolveBlockSchemaMetadata,
   type LiveMeta,
 } from "./resolve-schema";
-import { normalizeDecoBlockKey } from "./deco-block-key";
 import { normalizePagePath } from "./page-path-utils";
 import { listSavedSectionBlocks } from "./section-catalog";
 
@@ -54,11 +53,7 @@ export function findPageForPath(
   if (matches.length === 0) return null;
 
   if (preferredKey) {
-    const preferred = matches.find(
-      (p) =>
-        p.key === preferredKey ||
-        normalizeDecoBlockKey(p.key) === normalizeDecoBlockKey(preferredKey),
-    );
+    const preferred = matches.find((p) => p.key === preferredKey);
     if (preferred) return preferred;
   }
 

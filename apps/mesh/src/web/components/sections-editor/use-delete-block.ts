@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
-import { decoBlockFilePath, normalizeDecoBlockKey } from "./deco-block-key";
+import { decoBlockFilePath } from "./deco-block-key";
 
 interface UseDeleteBlockParams {
   orgSlug: string;
@@ -23,7 +23,7 @@ export function useDeleteBlock({
 
   return useMutation({
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
-      const path = decoBlockFilePath(normalizeDecoBlockKey(blockKey));
+      const path = decoBlockFilePath(blockKey);
       const res = await fetch(
         `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/unlink`,
         {
@@ -41,7 +41,6 @@ export function useDeleteBlock({
       return res.json() as Promise<{ ok: true; existed: boolean }>;
     },
     onMutate: async ({ blockKey }) => {
-      const normalizedKey = normalizeDecoBlockKey(blockKey);
       const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       const queryKey = KEYS.decofile(cacheKey);
       await queryClient.cancelQueries({ queryKey });
@@ -51,12 +50,8 @@ export function useDeleteBlock({
         queryKey,
         (current: Record<string, unknown> | undefined) => {
           if (!current) return current;
-          const next = { ...current };
-          delete next[blockKey];
-          if (normalizedKey !== blockKey) {
-            delete next[normalizedKey];
-          }
-          return next;
+          const { [blockKey]: _removed, ...rest } = current;
+          return rest;
         },
       );
       return { previous, queryKey };
