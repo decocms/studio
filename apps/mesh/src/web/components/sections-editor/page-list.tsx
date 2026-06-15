@@ -1,4 +1,3 @@
-import { isManifestAppResolveType } from "./block-type-utils";
 import {
   isResolvableManifestApp,
   resolveBlockSchemaMetadata,
@@ -142,7 +141,7 @@ export function findSiteAppEntry(
     const resolveType = obj.__resolveType;
     if (
       typeof resolveType === "string" &&
-      isManifestAppResolveType(meta, resolveType)
+      isResolvableManifestApp(meta, resolveType)
     ) {
       return {
         key: SITE_APP_BLOCK_KEY,
@@ -158,7 +157,7 @@ export function findSiteAppEntry(
 
     const obj = val as Record<string, unknown>;
     if (obj.__resolveType !== SITE_APP_RESOLVE_TYPE) continue;
-    if (!isManifestAppResolveType(meta, SITE_APP_RESOLVE_TYPE)) continue;
+    if (!isResolvableManifestApp(meta, SITE_APP_RESOLVE_TYPE)) continue;
 
     return {
       key,

@@ -96,6 +96,14 @@ function readTitleByValue(
   return undefined;
 }
 
+function labelFromResolveType(resolveType: string): string {
+  const lastPart = resolveType.split("/").at(-1) ?? resolveType;
+  return lastPart
+    .replace(/\.tsx?$/, "")
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function getArrayItemLabel(
   item: unknown,
   index: number,
@@ -111,11 +119,6 @@ export function getArrayItemLabel(
       const fromTitleBy = readTitleByValue(obj, itemSchema.titleBy);
       if (fromTitleBy) return fromTitleBy;
     }
-    if (itemSchema?.title) {
-      const rendered = renderMustacheTemplate(itemSchema.title, obj);
-      if (rendered) return rendered;
-      if (!itemSchema.title.includes("{")) return itemSchema.title;
-    }
     for (const key of ["name", "label", "title", "alt", "text", "href", "id"]) {
       const value = obj[key];
       if (typeof value === "string" && value) return value;
@@ -129,8 +132,12 @@ export function getArrayItemLabel(
     }
     const resolveType = obj.__resolveType;
     if (typeof resolveType === "string" && resolveType) {
-      const lastPart = resolveType.split("/").at(-1);
-      if (lastPart) return lastPart.replace(/\.tsx?$/, "");
+      return labelFromResolveType(resolveType);
+    }
+    if (itemSchema?.title) {
+      const rendered = renderMustacheTemplate(itemSchema.title, obj);
+      if (rendered) return rendered;
+      if (!itemSchema.title.includes("{")) return itemSchema.title;
     }
   }
   return `Item ${index + 1}`;

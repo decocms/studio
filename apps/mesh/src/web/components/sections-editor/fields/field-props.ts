@@ -1,4 +1,4 @@
-import type { SchemaProperty } from "../resolve-schema";
+import type { LiveMeta, SchemaProperty } from "../resolve-schema";
 
 export interface FieldProps {
   schema: SchemaProperty;
@@ -8,4 +8,10 @@ export interface FieldProps {
   label: string;
   breadcrumbPath?: string[];
   onBreadcrumbChange?: (path: string[]) => void;
+  meta?: LiveMeta;
+  decofile?: Record<string, unknown>;
+  onSaveReferencedBlock?: (
+    blockKey: string,
+    data: Record<string, unknown>,
+  ) => void;
 }

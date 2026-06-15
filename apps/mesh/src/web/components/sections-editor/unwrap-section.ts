@@ -1,3 +1,4 @@
+import { isSavedBlockResolveType } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
 import type { ParsedSection } from "./parse-sections";
 import {
@@ -70,6 +71,29 @@ function unwrapLazyInner(
   }
 
   return { data: { ...inner }, resolveType: innerRt };
+}
+
+/**
+ * When a field value is a saved-block pointer (`{ __resolveType: "Deco" }`),
+ * load the referenced decofile entry for editing (site theme, global sections, …).
+ */
+export function unwrapBlockReference(
+  value: unknown,
+  decofile: Record<string, unknown>,
+): {
+  blockKey: string;
+  data: Record<string, unknown>;
+  resolveType: string;
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const obj = value as Record<string, unknown>;
+  const blockKey = obj.__resolveType;
+  if (typeof blockKey !== "string" || !isSavedBlockResolveType(blockKey)) {
+    return null;
+  }
+  if (!(blockKey in decofile)) return null;
+  const resolved = resolveSavedBlockData(blockKey, decofile);
+  return resolved ? { blockKey, ...resolved } : null;
 }
 
 /**

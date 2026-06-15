@@ -9,8 +9,9 @@ export function ObjectField({
   onChange,
   path,
   label,
-  breadcrumbPath,
-  onBreadcrumbChange,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
 }: FieldProps) {
   const [open, setOpen] = useState(false);
   const objValue =
@@ -21,15 +22,6 @@ export function ObjectField({
   if (!schema.properties) return null;
 
   const contentId = `${path}-fields`;
-  const nestedBreadcrumbPath = [...(breadcrumbPath ?? []), label];
-
-  const handleToggle = () => {
-    const nextOpen = !open;
-    setOpen(nextOpen);
-    onBreadcrumbChange?.(
-      nextOpen ? nestedBreadcrumbPath : (breadcrumbPath ?? []),
-    );
-  };
 
   return (
     <div className="min-w-0 space-y-2">
@@ -37,7 +29,7 @@ export function ObjectField({
         type="button"
         aria-expanded={open}
         aria-controls={contentId}
-        onClick={handleToggle}
+        onClick={() => setOpen((prev) => !prev)}
         className="group flex w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
       >
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover:text-accent-foreground">
@@ -62,8 +54,9 @@ export function ObjectField({
             value={objValue}
             onChange={onChange}
             basePath={path}
-            breadcrumbPath={nestedBreadcrumbPath}
-            onBreadcrumbChange={onBreadcrumbChange}
+            meta={meta}
+            decofile={decofile}
+            onSaveReferencedBlock={onSaveReferencedBlock}
           />
         </div>
       )}

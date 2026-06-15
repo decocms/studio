@@ -1,4 +1,4 @@
-import type { SchemaProperty } from "./resolve-schema";
+import type { LiveMeta, SchemaProperty } from "./resolve-schema";
 import type { FieldProps } from "./fields/field-props";
 import { StringField } from "./fields/string-field";
 import { NumberField } from "./fields/number-field";
@@ -9,18 +9,16 @@ import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
+import {
+  isMultivariateArrayWrapper,
+  unwrapMultivariateArrayValue,
+  wrapMultivariateArrayValue,
+} from "./page-variants";
+import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
 
-/**
- * Deco wraps media fields (ImageWidget, VideoWidget) in a multivariate flag
- * loader so authors can A/B-test which asset shows. In JSON Schema that
- * surfaces as a block-ref whose only option is `website/flags/multivariate/{kind}.ts`.
- * For editing UX we don't want to expose the variant selector for the
- * common single-asset case — render the inner media widget instead and
- * persist a plain URL string (deco resolves plain strings at render time).
- */
 function multivariateMediaKind(
   schema: SchemaProperty,
 ): "image" | "file" | null {
@@ -33,12 +31,43 @@ function multivariateMediaKind(
   return null;
 }
 
-function humanize(key: string): string {
-  return key
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]/g, " ")
-    .replace(/^\w/, (c) => c.toUpperCase());
+/** Infer section array items from a page-multivariate block-ref stub (site `global`). */
+function inferArrayItemsFromBlockRefSchema(
+  schema: SchemaProperty,
+): SchemaProperty | undefined {
+  if (!isPageMultivariateSectionArrayField(schema)) return undefined;
+  for (const ref of schema.anyOfRefs ?? []) {
+    const variants = ref.schema?.properties?.variants;
+    const variantItem = variants?.items;
+    const valueField = variantItem?.properties?.value;
+    if (valueField?.type === "array" && valueField.items) {
+      return valueField.items;
+    }
+  }
+  return undefined;
 }
+
+function isPageMultivariateSectionArrayField(schema: SchemaProperty): boolean {
+  return (
+    schema.anyOfRefs?.some(
+      (ref) => ref.resolveType === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
+    ) ?? false
+  );
+}
+
+function arraySchemaForValue(schema: SchemaProperty): SchemaProperty | null {
+  if (schema.type === "array" && schema.items) return schema;
+  const inferredItems =
+    schema.items ?? inferArrayItemsFromBlockRefSchema(schema);
+  if (!inferredItems) return null;
+  return { ...schema, type: "array", items: inferredItems };
+}
+
+import {
+  fieldDisplayLabel,
+  isArrayDrillDownField,
+  resolveActiveFieldKey,
+} from "./schema-form-breadcrumb";
 
 function defaultForType(
   type: string | undefined,
@@ -64,6 +93,43 @@ function defaultForType(
 
 export function renderField(props: FieldProps) {
   const { schema, value } = props;
+
+  if (isMultivariateArrayWrapper(value)) {
+    const multivariateArray = unwrapMultivariateArrayValue(value);
+    const arraySchema = arraySchemaForValue(schema);
+    if (multivariateArray !== null && arraySchema) {
+      return (
+        <ArrayField
+          key={props.path}
+          {...props}
+          schema={arraySchema}
+          value={multivariateArray}
+          onChange={(next) =>
+            props.onChange(wrapMultivariateArrayValue(value, next as unknown[]))
+          }
+        />
+      );
+    }
+  }
+
+  if (
+    Array.isArray(value) &&
+    schema.type === "block-ref" &&
+    isPageMultivariateSectionArrayField(schema)
+  ) {
+    const arraySchema = arraySchemaForValue(schema);
+    if (arraySchema) {
+      return (
+        <ArrayField
+          key={props.path}
+          {...props}
+          schema={arraySchema}
+          value={value}
+          onChange={props.onChange}
+        />
+      );
+    }
+  }
 
   // Block-ref field (loader/section selector with anyOfRefs)
   if (
@@ -170,6 +236,9 @@ export function SchemaForm({
   basePath,
   breadcrumbPath = [],
   onBreadcrumbChange,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
 }: {
   schema: SchemaProperty;
   value: unknown;
@@ -177,6 +246,12 @@ export function SchemaForm({
   basePath: string;
   breadcrumbPath?: string[];
   onBreadcrumbChange?: (path: string[]) => void;
+  meta?: LiveMeta;
+  decofile?: Record<string, unknown>;
+  onSaveReferencedBlock?: (
+    blockKey: string,
+    data: Record<string, unknown>,
+  ) => void;
 }) {
   const properties = schema.properties;
   if (!properties) return null;
@@ -186,7 +261,9 @@ export function SchemaForm({
       ? (value as Record<string, unknown>)
       : {};
 
-  const keys = Object.keys(properties).filter((k) => !HIDDEN_PROPS.has(k));
+  const keys = Object.keys(properties).filter(
+    (k) => !HIDDEN_PROPS.has(k) && properties[k]?.hidden !== true,
+  );
 
   if (keys.length === 0) {
     return (
@@ -200,13 +277,22 @@ export function SchemaForm({
     onChange({ ...objValue, [key]: fieldValue });
   };
 
+  const activeKey =
+    breadcrumbPath.length > 0
+      ? resolveActiveFieldKey(keys, properties, objValue, breadcrumbPath)
+      : null;
+  const activeSchema = activeKey ? properties[activeKey] : null;
+  const visibleKeys =
+    activeKey && activeSchema && isArrayDrillDownField(activeSchema)
+      ? [activeKey]
+      : keys;
   return (
     <div className="min-w-0 space-y-6">
-      {keys.map((key) => {
+      {visibleKeys.map((key) => {
         const propSchema = properties[key];
         if (!propSchema) return null;
         const fieldPath = basePath ? `${basePath}.${key}` : key;
-        const label = propSchema.title ?? humanize(key);
+        const label = fieldDisplayLabel(key, propSchema);
 
         return renderField({
           schema: propSchema,
@@ -216,6 +302,9 @@ export function SchemaForm({
           label,
           breadcrumbPath,
           onBreadcrumbChange,
+          meta,
+          decofile,
+          onSaveReferencedBlock,
         });
       })}
     </div>

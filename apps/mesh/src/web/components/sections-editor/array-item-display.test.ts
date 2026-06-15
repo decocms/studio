@@ -23,12 +23,21 @@ describe("getArrayItemLabel", () => {
   });
 
   test("falls back to schema title mustache", () => {
-    const item = { name: "Hero", price: 10 };
+    const item = { headline: "Hero", price: 10 };
     const schema: SchemaProperty = {
       type: "object",
-      title: "{{name}} - {{price}}",
+      title: "{{headline}} - {{price}}",
     };
     expect(getArrayItemLabel(item, 0, schema)).toBe("Hero - 10");
+  });
+
+  test("prefers resolveType over static schema title", () => {
+    const item = {
+      __resolveType:
+        "https://cdn.jsdelivr.net/gh/deco-cx/apps@0.151.1/website/flags/audience.ts",
+    };
+    const schema: SchemaProperty = { type: "object", title: "Routes" };
+    expect(getArrayItemLabel(item, 0, schema)).toBe("Audience");
   });
 });
 

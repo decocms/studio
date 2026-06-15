@@ -99,6 +99,35 @@ describe("page-list", () => {
     });
   });
 
+  it("findSiteAppEntry resolves legacy manifest keys for the site app", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          apps: {
+            "deco/apps/site.ts": { $ref: "#/definitions/SiteApp" },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          SiteApp: { title: "Site settings" },
+        },
+      },
+    };
+    const decofile = {
+      site: {
+        __resolveType: "site/apps/deco/site.ts",
+        siteName: "My Store",
+      },
+    };
+
+    expect(findSiteAppEntry(decofile, meta)).toEqual({
+      key: "site",
+      name: "Site settings",
+      resolveType: "site/apps/deco/site.ts",
+    });
+  });
+
   it("extractGlobalSections uses catalog filters for saved blocks", () => {
     const meta: LiveMeta = {
       manifest: {

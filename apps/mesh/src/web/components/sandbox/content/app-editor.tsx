@@ -2,10 +2,8 @@ import { Loading01 } from "@untitledui/icons";
 import { useState } from "react";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import { appLabel } from "@/web/components/sections-editor/page-list";
-import {
-  resolveSchema,
-  type LiveMeta,
-} from "@/web/components/sections-editor/resolve-schema";
+import type { LiveMeta } from "@/web/components/sections-editor/resolve-schema";
+import { resolveAppEditorSchema } from "./app-editor-schema";
 import { SchemaForm } from "@/web/components/sections-editor/schema-form";
 import { useDebouncedSaveBlock } from "@/web/components/sections-editor/use-save-block";
 import { SaveStatus } from "./blog/save-status";
@@ -17,6 +15,7 @@ export function AppEditor({
   blockKey,
   block,
   meta,
+  decofile,
   title: titleOverride,
   excludeFields,
   schemaPending = false,
@@ -27,6 +26,7 @@ export function AppEditor({
   blockKey: string;
   block: Record<string, unknown> | undefined;
   meta: LiveMeta;
+  decofile: Record<string, unknown>;
   title?: string;
   /** Top-level schema fields to omit (e.g. site `seo` is edited in the SEO tab). */
   excludeFields?: readonly string[];
@@ -34,18 +34,9 @@ export function AppEditor({
 }) {
   const resolveType =
     typeof block?.__resolveType === "string" ? block.__resolveType : "";
-  const baseSchema = resolveType ? resolveSchema(resolveType, meta) : null;
-  const schema =
-    baseSchema && excludeFields?.length
-      ? {
-          ...baseSchema,
-          properties: Object.fromEntries(
-            Object.entries(baseSchema.properties ?? {}).filter(
-              ([key]) => !excludeFields.includes(key),
-            ),
-          ),
-        }
-      : baseSchema;
+  const schema = resolveAppEditorSchema(resolveType, meta, excludeFields);
+  const hasEditableFields =
+    !!schema && Object.keys(schema.properties ?? {}).length > 0;
   const title =
     titleOverride ?? (block ? appLabel(blockKey, block, meta) : blockKey);
 
@@ -90,15 +81,18 @@ export function AppEditor({
       <ScrollArea className="min-w-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:!block">
         <div className="px-6 py-6">
           <div className="mx-auto max-w-xl">
-            {schema ? (
+            {hasEditableFields ? (
               <SchemaForm
                 key={`${blockKey}:${formResetKey}`}
-                schema={schema}
+                schema={schema!}
                 value={effectiveValue}
                 onChange={handleChange}
                 basePath=""
                 breadcrumbPath={breadcrumbs}
                 onBreadcrumbChange={setBreadcrumbs}
+                decofile={decofile}
+                meta={meta}
+                onSaveReferencedBlock={(refKey, data) => save(refKey, data)}
               />
             ) : schemaPending ? (
               <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">

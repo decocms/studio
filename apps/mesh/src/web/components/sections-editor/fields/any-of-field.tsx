@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronRight } from "@untitledui/icons";
+import { ChevronDown, ChevronRight, Globe01 } from "@untitledui/icons";
 import {
   Select,
   SelectContent,
@@ -8,15 +8,26 @@ import {
   SelectValue,
 } from "@deco/ui/components/select.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import {
+  blockRefLoaderConfigHasData,
+  detectBlockRefType,
+  enrichBlockRefOptions,
+  resolveNestedBlockRefSchema,
+} from "../block-ref-field-utils";
 import {
   embeddedUnionBlockId,
   isEmbeddedUnionResolveType,
-  unionRefMatchesValue,
 } from "../block-type-utils";
 import type { SchemaProperty } from "../resolve-schema";
 import type { FieldProps } from "./field-props";
 import { SchemaForm } from "../schema-form";
+import { unwrapBlockReference } from "../unwrap-section";
 
 function defaultsForSchema(schema?: SchemaProperty): Record<string, unknown> {
   if (!schema?.properties) return {};
@@ -38,51 +49,31 @@ function defaultsForSchema(schema?: SchemaProperty): Record<string, unknown> {
   return out;
 }
 
-function detectCurrentType(
-  value: unknown,
-  refs: Array<{ resolveType: string; schema?: SchemaProperty }>,
-): string {
-  const fallback = refs[0]?.resolveType ?? "";
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    return fallback;
-  const obj = value as Record<string, unknown>;
+function schemaWithoutDiscriminator(
+  schema: SchemaProperty | null | undefined,
+  discriminatorKey?: string,
+): SchemaProperty | null {
+  if (!schema?.properties || !discriminatorKey) return schema ?? null;
+  if (!(discriminatorKey in schema.properties)) return schema;
+  const { [discriminatorKey]: _, ...properties } = schema.properties;
+  return { ...schema, properties };
+}
 
-  if (typeof obj.__resolveType === "string") {
-    const match = refs.find((r) =>
-      unionRefMatchesValue(r.resolveType, obj.__resolveType as string),
-    );
-    if (match) return match.resolveType;
-  }
-
-  // Prefer branch-specific keys over shared ones (alt, action) so
-  // ImageBanner|VideoBanner items don't always collapse to the first branch.
-  let best = fallback;
-  let bestScore = -1;
-  for (const ref of refs) {
-    if (!ref.schema?.properties) continue;
-    const keys = Object.keys(ref.schema.properties).filter(
-      (k) =>
-        !k.startsWith("__") && k !== "@type" && k !== "action" && k !== "alt",
-    );
-    const score = keys.filter((k) => obj[k] !== undefined).length;
-    if (score > 0 && score > bestScore) {
-      bestScore = score;
-      best = ref.resolveType;
-    }
-  }
-  if (bestScore > 0) return best;
-
-  for (const ref of refs) {
-    if (!ref.schema?.properties) continue;
-    const score = Object.keys(ref.schema.properties).filter(
-      (k) => obj[k] !== undefined,
-    ).length;
-    if (score > 0 && score > bestScore) {
-      bestScore = score;
-      best = ref.resolveType;
-    }
-  }
-  return best;
+function GlobalLoaderBadge({ blockKey }: { blockKey: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+          <Globe01 size={11} />
+          Global
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[260px]">
+        Edits the saved block &ldquo;{blockKey}&rdquo;. Changes apply everywhere
+        this loader is referenced on your site.
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function CollapsibleLoaderConfig({
@@ -92,6 +83,7 @@ function CollapsibleLoaderConfig({
   title,
   nested,
   nestedBlockRef,
+  globalBlockKey,
 }: {
   path: string;
   open: boolean;
@@ -99,6 +91,7 @@ function CollapsibleLoaderConfig({
   title: string;
   nested: ReactNode;
   nestedBlockRef?: boolean;
+  globalBlockKey?: string;
 }) {
   const contentId = `${path}-loader-config`;
 
@@ -119,8 +112,11 @@ function CollapsibleLoaderConfig({
         <span className="flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors group-hover:text-foreground">
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
-        <span className="min-w-0 truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          {title}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            {title}
+          </span>
+          {globalBlockKey && <GlobalLoaderBadge blockKey={globalBlockKey} />}
         </span>
       </button>
       {open && (
@@ -143,19 +139,46 @@ export function AnyOfField({
   label,
   breadcrumbPath,
   onBreadcrumbChange,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
 }: FieldProps) {
-  const refs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
+  const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
+  const savedRef =
+    decofile && value ? unwrapBlockReference(value, decofile) : null;
+  const editorValue = savedRef?.data ?? value;
+  const refs = enrichBlockRefOptions(baseRefs, {
+    savedBlockKey: savedRef?.blockKey,
+    editorValue,
+  });
   const inferredRt =
     refs.length > 0
-      ? detectCurrentType(value, refs)
+      ? detectBlockRefType(editorValue, refs, savedRef?.blockKey)
       : (refs[0]?.resolveType ?? "");
   const [selectedRt, setSelectedRt] = useState(inferredRt);
-  const [loaderConfigOpen, setLoaderConfigOpen] = useState(false);
+  const [prevInferredRt, setPrevInferredRt] = useState(inferredRt);
+  if (prevInferredRt !== inferredRt) {
+    setPrevInferredRt(inferredRt);
+    setSelectedRt(inferredRt);
+  }
+  const [loaderConfigOpen, setLoaderConfigOpen] = useState(() =>
+    blockRefLoaderConfigHasData(editorValue, savedRef?.blockKey),
+  );
 
   // ── block-ref mode (anyOfRefs from schema resolution) ─────────────
   if (refs.length > 0) {
     const activeRt = selectedRt || inferredRt;
     const selectedRef = refs.find((r) => r.resolveType === activeRt);
+    const resolvedNestedSchema = resolveNestedBlockRefSchema(
+      editorValue,
+      meta,
+      selectedRef?.schema,
+    );
+    const nestedSchema = schemaWithoutDiscriminator(
+      resolvedNestedSchema ?? selectedRef?.schema ?? null,
+      schema.discriminatorKey,
+    );
+    const discriminatorKey = schema.discriminatorKey;
 
     const handleRefChange = (rt: string) => {
       setSelectedRt(rt);
@@ -173,6 +196,12 @@ export function AnyOfField({
         ...filtered,
       };
 
+      if (discriminatorKey) {
+        const discValue = targetRef?.discriminatorValue ?? rt;
+        onChange({ ...next, [discriminatorKey]: discValue });
+        return;
+      }
+
       // Embedded union variants (ImageBanner | VideoBanner in Carousel.tsx)
       // must not get a persisted __resolveType — deco only expects plain props.
       if (isEmbeddedUnionResolveType(rt)) {
@@ -184,6 +213,7 @@ export function AnyOfField({
 
     const persistUnionValue = (next: unknown) => {
       if (
+        discriminatorKey ||
         !isEmbeddedUnionResolveType(activeRt) ||
         next === null ||
         typeof next !== "object" ||
@@ -196,27 +226,45 @@ export function AnyOfField({
       onChange(rest);
     };
 
-    const nestedProps = selectedRef?.schema?.properties ? (
+    const nestedProps = nestedSchema?.properties ? (
       <SchemaForm
-        schema={selectedRef.schema}
-        value={value}
-        onChange={persistUnionValue}
+        schema={nestedSchema}
+        value={editorValue}
+        onChange={(next) => {
+          if (savedRef && onSaveReferencedBlock) {
+            onSaveReferencedBlock(
+              savedRef.blockKey,
+              next as Record<string, unknown>,
+            );
+            return;
+          }
+          persistUnionValue(next);
+        }}
         basePath={path}
         breadcrumbPath={breadcrumbPath}
         onBreadcrumbChange={onBreadcrumbChange}
+        meta={meta}
+        decofile={decofile}
+        onSaveReferencedBlock={onSaveReferencedBlock}
       />
     ) : null;
 
-    // Block-ref loaders (jsonLD, slug, …): nest props in a card so they read
-    // as configuration for the selected block, not siblings of parent fields.
+    // Module loaders (jsonLD, slug, …): nest props in a collapsible card.
     const isBlockRef = schema.type === "block-ref";
+    const isModuleLoaderUnion =
+      isBlockRef &&
+      refs.some(
+        (r) =>
+          r.resolveType.includes("/") &&
+          !isEmbeddedUnionResolveType(r.resolveType),
+      );
     const isNestedBlockRef = path.includes(".");
 
     return (
       <div className="space-y-3">
         <div className="space-y-1.5">
           <Label htmlFor={path}>{label}</Label>
-          <Select value={activeRt} onValueChange={handleRefChange}>
+          <Select value={activeRt || undefined} onValueChange={handleRefChange}>
             <SelectTrigger>
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
@@ -237,7 +285,7 @@ export function AnyOfField({
           )}
         </div>
         {nestedProps &&
-          (isBlockRef ? (
+          (isModuleLoaderUnion ? (
             <CollapsibleLoaderConfig
               path={path}
               open={loaderConfigOpen}
@@ -247,6 +295,7 @@ export function AnyOfField({
               }
               nested={nestedProps}
               nestedBlockRef={isNestedBlockRef}
+              globalBlockKey={savedRef?.blockKey}
             />
           ) : (
             nestedProps

@@ -102,6 +102,7 @@ function SchemaFormPanel({
   formResetKey,
   onFormChange,
   onBreadcrumbChange,
+  breadcrumbPath = [],
   emptyMessage,
   beforeForm,
   seoResolveType,
@@ -112,6 +113,7 @@ function SchemaFormPanel({
   formResetKey: number;
   onFormChange: (v: unknown) => void;
   onBreadcrumbChange: (path: string[]) => void;
+  breadcrumbPath?: string[];
   emptyMessage: string;
   beforeForm?: ReactNode;
   seoResolveType?: string;
@@ -136,7 +138,7 @@ function SchemaFormPanel({
           value={formValue}
           onChange={onFormChange}
           basePath=""
-          breadcrumbPath={[]}
+          breadcrumbPath={breadcrumbPath}
           onBreadcrumbChange={onBreadcrumbChange}
         />
       )
@@ -2216,6 +2218,7 @@ export function SectionsEditor({
             formResetKey={formResetKey}
             onFormChange={handleFormChange}
             onBreadcrumbChange={setFieldBreadcrumbs}
+            breadcrumbPath={fieldBreadcrumbs}
             emptyMessage="No editable fields for this variant."
           />
         </ScrollArea>
@@ -2227,6 +2230,7 @@ export function SectionsEditor({
             formResetKey={formResetKey}
             onFormChange={handleFormChange}
             onBreadcrumbChange={setFieldBreadcrumbs}
+            breadcrumbPath={fieldBreadcrumbs}
             emptyMessage="No editable fields for this global block."
           />
         </ScrollArea>

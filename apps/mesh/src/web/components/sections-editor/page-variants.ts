@@ -21,6 +21,42 @@ export interface PageVariant {
   rule?: Record<string, unknown>;
 }
 
+/** Site `global` and page `sections` can be a plain array or page multivariate wrapper. */
+export function isMultivariateArrayWrapper(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return (
+    (value as Record<string, unknown>).__resolveType ===
+    PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
+  );
+}
+
+export function unwrapMultivariateArrayValue(value: unknown): unknown[] | null {
+  if (!isMultivariateArrayWrapper(value)) return null;
+  const variants = (value as Record<string, unknown>).variants as
+    | Array<{ value?: unknown }>
+    | undefined;
+  if (!Array.isArray(variants)) return [];
+  const first = variants[0]?.value;
+  return Array.isArray(first) ? first : null;
+}
+
+export function wrapMultivariateArrayValue(
+  original: unknown,
+  nextArray: unknown[],
+): unknown {
+  if (!isMultivariateArrayWrapper(original)) return nextArray;
+  const obj = structuredClone(original) as Record<string, unknown>;
+  const variants = [
+    ...((obj.variants as Array<Record<string, unknown>>) ?? []),
+  ];
+  if (variants.length === 0) {
+    variants.push({ rule: defaultPageVariantRule(), value: nextArray });
+  } else {
+    variants[0] = { ...variants[0], value: nextArray };
+  }
+  return { ...obj, variants };
+}
+
 function isPageBlock(val: unknown): val is Record<string, unknown> {
   if (!val || typeof val !== "object" || Array.isArray(val)) return false;
   const obj = val as Record<string, unknown>;
