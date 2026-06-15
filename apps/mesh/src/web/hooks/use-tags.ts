@@ -2,17 +2,14 @@
  * Tags Hooks
  *
  * Provides React hooks for managing organization tags and member tag assignments.
- * Uses MCP tools for all operations.
+ * Calls builtin tools over REST via the typed studio-tools client.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  useMCPClient,
-  useProjectContext,
-  SELF_MCP_ALIAS_ID,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
 import { KEYS } from "../lib/query-keys";
+import { useStudioTools } from "../lib/studio-tools";
 
 /**
  * Tag data structure
@@ -24,29 +21,18 @@ export interface Tag {
   createdAt: string;
 }
 
-type TagsListOutput = { tags: Tag[] };
-type TagCreateOutput = { tag: Tag };
-
 /**
  * Hook to fetch all organization tags
  */
 export function useTags() {
-  const { org, locator } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
 
   return useQuery({
     queryKey: KEYS.tags(locator),
     queryFn: async () => {
-      const result = (await client.callTool({
-        name: "TAGS_LIST",
-        arguments: {},
-      })) as { structuredContent?: unknown };
-      const payload = (result.structuredContent ?? result) as TagsListOutput;
-      return payload.tags;
+      const { tags } = await studio.call("TAGS_LIST", {});
+      return tags;
     },
     staleTime: 30000, // 30 seconds
   });
@@ -57,21 +43,13 @@ export function useTags() {
  */
 export function useCreateTag() {
   const queryClient = useQueryClient();
-  const { org, locator } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
 
   return useMutation({
     mutationFn: async (name: string) => {
-      const result = (await client.callTool({
-        name: "TAGS_CREATE",
-        arguments: { name },
-      })) as { structuredContent?: unknown };
-      const payload = (result.structuredContent ?? result) as TagCreateOutput;
-      return payload.tag;
+      const { tag } = await studio.call("TAGS_CREATE", { name });
+      return tag;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.tags(locator) });
@@ -88,30 +66,18 @@ export function useCreateTag() {
 // Member Tags Hooks
 // ============================================================================
 
-type MemberTagsGetOutput = { tags: Tag[] };
-type MemberTagsSetOutput = { success: boolean; tags: Tag[] };
-
 /**
  * Hook to fetch tags for a specific member
  */
 export function useMemberTags(memberId: string) {
-  const { org, locator } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
 
   return useQuery({
     queryKey: KEYS.memberTags(locator, memberId),
     queryFn: async () => {
-      const result = (await client.callTool({
-        name: "MEMBER_TAGS_GET",
-        arguments: { memberId },
-      })) as { structuredContent?: unknown };
-      const payload = (result.structuredContent ??
-        result) as MemberTagsGetOutput;
-      return payload.tags;
+      const { tags } = await studio.call("MEMBER_TAGS_GET", { memberId });
+      return tags;
     },
     staleTime: 30000, // 30 seconds
     enabled: !!memberId,
@@ -123,12 +89,8 @@ export function useMemberTags(memberId: string) {
  */
 export function useSetMemberTags() {
   const queryClient = useQueryClient();
-  const { org, locator } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const { locator } = useProjectContext();
+  const studio = useStudioTools();
 
   return useMutation({
     mutationFn: async ({
@@ -138,13 +100,7 @@ export function useSetMemberTags() {
       memberId: string;
       tagIds: string[];
     }) => {
-      const result = (await client.callTool({
-        name: "MEMBER_TAGS_SET",
-        arguments: { memberId, tagIds },
-      })) as { structuredContent?: unknown };
-      const payload = (result.structuredContent ??
-        result) as MemberTagsSetOutput;
-      return payload;
+      return await studio.call("MEMBER_TAGS_SET", { memberId, tagIds });
     },
     onSuccess: (_data, variables) => {
       // Invalidate the specific member's tags

@@ -45,7 +45,7 @@ import * as LinkTools from "./links";
 import * as SearchTools from "./search";
 import { ToolName } from "./registry-metadata";
 // Core tools - always available
-const CORE_TOOLS = [
+export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_CREATE,
   OrganizationTools.ORGANIZATION_LIST,
   OrganizationTools.ORGANIZATION_GET,
@@ -203,7 +203,7 @@ const CORE_TOOLS = [
 const PLUGIN_TOOLS = collectPluginTools();
 
 // Tool type for combined core + plugin tools
-interface CombinedTool {
+export interface CombinedTool {
   name: string;
   description: string;
   inputSchema: unknown;
@@ -227,27 +227,63 @@ export type MCPMeshTools = typeof ALL_TOOLS;
 // Derive tool name type from ALL_TOOLS
 export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
 
-export const managementMCP = async (ctx: StudioContext) => {
-  // Get enabled plugins for this organization to filter plugin tools
-  // Check both org settings (legacy) and all virtual MCPs
-  let enabledPlugins: string[] | null = null;
-  if (ctx.organization) {
-    const settings = await ctx.storage.organizationSettings.get(
-      ctx.organization.id,
-    );
-    const virtualMcpPlugins = await ctx.storage.virtualMcps.listEnabledPlugins(
-      ctx.organization.id,
-    );
-    // Merge enabled plugins from org settings + all virtual MCPs
-    const merged = new Set<string>(settings?.enabled_plugins ?? []);
-    for (const pluginId of virtualMcpPlugins) {
-      merged.add(pluginId);
-    }
-    enabledPlugins = merged.size > 0 ? [...merged] : null;
-  }
+/**
+ * Tuple type of the core tools, preserving each tool's concrete Zod
+ * input/output schema types (unlike the widened `ALL_TOOLS: CombinedTool[]`).
+ * Type-only consumers derive per-tool input/output types from this — see
+ * `./io-types`. Import as `import type` only; importing as a value would pull
+ * the entire server tool graph into a bundle.
+ */
+export type CoreTools = typeof CORE_TOOLS;
 
-  // Filter tools based on enabled plugins
-  // Core tools are always included, plugin tools only if their plugin is enabled
+/** Static name→tool map over ALL_TOOLS, built once at module load. */
+const TOOL_BY_NAME: Map<string, CombinedTool> = new Map(
+  ALL_TOOLS.map((tool) => [tool.name, tool]),
+);
+
+/**
+ * Plugins enabled for an org, merged from org settings + virtual MCPs (null
+ * when none). Skips the storage reads when no plugin tools exist — transitional,
+ * since the plugin system is being retired.
+ */
+async function computeEnabledPlugins(
+  ctx: StudioContext,
+): Promise<string[] | null> {
+  if (PLUGIN_TOOLS.length === 0 || !ctx.organization) return null;
+  const settings = await ctx.storage.organizationSettings.get(
+    ctx.organization.id,
+  );
+  const virtualMcpPlugins = await ctx.storage.virtualMcps.listEnabledPlugins(
+    ctx.organization.id,
+  );
+  const merged = new Set<string>(settings?.enabled_plugins ?? []);
+  for (const pluginId of virtualMcpPlugins) {
+    merged.add(pluginId);
+  }
+  return merged.size > 0 ? [...merged] : null;
+}
+
+/**
+ * Tools visible to an org as a name→tool map — core always, plugin tools only
+ * when enabled. Mirrors the MCP server's surface for the REST dispatch + list
+ * endpoints, so REST and MCP stay in lockstep on plugin gating.
+ */
+export async function getFilteredTools(
+  ctx: StudioContext,
+): Promise<Map<string, CombinedTool>> {
+  if (PLUGIN_TOOLS.length === 0) return TOOL_BY_NAME;
+  const enabledPlugins = await computeEnabledPlugins(ctx);
+  return new Map(
+    filterToolsByEnabledPlugins(ALL_TOOLS, enabledPlugins).map((tool) => [
+      tool.name,
+      tool,
+    ]),
+  );
+}
+
+export const managementMCP = async (ctx: StudioContext) => {
+  // Filter tools based on enabled plugins: core always, plugin tools when on.
+  const enabledPlugins = await computeEnabledPlugins(ctx);
   const filteredTools = filterToolsByEnabledPlugins(ALL_TOOLS, enabledPlugins);
 
   // Create MCP server directly

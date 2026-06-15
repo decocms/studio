@@ -25,6 +25,7 @@ import { createSelfRoutes } from "./self";
 import { createHomeNextActionsRoutes } from "./home-next-actions";
 import { createObjectStorageRoutes } from "./object-storage";
 import { createThreadOutputsRoutes } from "./thread-outputs";
+import { createToolsRestRoutes } from "./tools-rest";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
@@ -89,6 +90,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   // --- Routes that don't need extra middleware ---
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
+  app.route("/tools", createToolsRestRoutes()); // /api/:org/tools[/:toolName] — REST builtin-tool dispatch
   app.route("/", createObjectStorageRoutes()); // /api/:org/object-storage/*
   app.route("/", createKVRoutes({ kvStorage: deps.kvStorage }));
   app.route("/", createFileUploadRoutes()); // /api/:org/file-configs/:id/upload
