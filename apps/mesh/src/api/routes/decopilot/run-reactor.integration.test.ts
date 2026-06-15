@@ -3,12 +3,11 @@
  *
  * The reactor is "the only layer in the pipeline that performs I/O" (see the
  * module header). Its whole contract is the side effects it applies to the
- * threads table — claim-on-start CAS, status transitions, and clearing the
- * run_* columns on terminal events. A previous version of this file mocked
- * the entire ThreadStoragePort and asserted `toHaveBeenCalledWith(...)`, which
- * only proved the reactor calls the function it calls — it would stay green
- * even if `claimRunStart`'s CAS SQL were broken, the exact bug that layer can
- * have. See TESTING.md: don't mock your own code.
+ * threads table — status transitions and clearing the run_* columns on terminal
+ * events. A previous version of this file mocked the entire ThreadStoragePort
+ * and asserted `toHaveBeenCalledWith(...)`, which only proved the reactor calls
+ * the function it calls — it would stay green even if the underlying SQL were
+ * broken. See TESTING.md: don't mock your own code.
  *
  * So here `storage` is a real SqlThreadStorage against real Postgres, and we
  * assert the actual row state after each event. The two remaining deps —
@@ -36,7 +35,7 @@ import {
 import type { SSEEvent } from "@/event-bus";
 import { SqlThreadStorage } from "@/storage/threads";
 import type { Thread } from "@/storage/types";
-import { reactAll, RunClaimError, type RunReactorDeps } from "./run-reactor";
+import { reactAll, type RunReactorDeps } from "./run-reactor";
 import type { RunEvent } from "./run-state";
 import type { StreamBuffer } from "./stream-buffer";
 
@@ -103,20 +102,13 @@ function createThread(overrides: Partial<Thread> = {}) {
   });
 }
 
-/** Drive a thread into in_progress, owned by `pod`, with a non-null run_config. */
-async function setInProgress(id: string, pod = "pod-1") {
-  const claimed = await storage.claimRunStart(
-    id,
-    ORG,
-    {
-      status: "in_progress",
-      run_owner_pod: pod,
-      run_config: { resume: true },
-      run_started_at: new Date().toISOString(),
-    },
-    pod,
-  );
-  expect(claimed).toBe(true);
+/** Drive a thread into in_progress with a non-null run_config. */
+async function setInProgress(id: string) {
+  await storage.update(id, ORG, {
+    status: "in_progress",
+    run_config: { resume: true },
+    run_started_at: new Date().toISOString(),
+  });
 }
 
 /** Status-event payloads carry thread metadata on `data`. */
@@ -130,7 +122,7 @@ function statusData(event: SSEEvent): Record<string, unknown> {
 
 describe("reactAll (real Postgres)", () => {
   describe("RUN_STARTED", () => {
-    it("claims the run via real CAS: row flips to in_progress, 1 status event", async () => {
+    it("flips the row to in_progress and emits 1 status event", async () => {
       const { deps, sseEvents, purged } = makeReactor();
       const thread = await createThread(); // default status "completed"
 
@@ -147,9 +139,7 @@ describe("reactAll (real Postgres)", () => {
 
       const row = await storage.get(thread.id, ORG);
       expect(row?.status).toBe("in_progress");
-      // No podId on the event → owner pod and started_at stay null.
-      expect(row?.run_owner_pod).toBeNull();
-      expect(row?.run_started_at).toBeNull();
+      expect(row?.run_started_at).not.toBeNull();
       expect(sseEvents).toHaveLength(1);
       expect(purged).toHaveLength(0);
     });
@@ -173,8 +163,8 @@ describe("reactAll (real Postgres)", () => {
         deps,
       );
 
-      // claimRunStart bumps updated_at, so compare against the row as it is
-      // *after* the claim — the source the reactor read from.
+      // RUN_STARTED bumps updated_at, so compare against the row as it is
+      // *after* the write — the source the reactor read from.
       const row = await storage.get(thread.id, ORG);
       const data = statusData(sseEvents[0]!.event);
       expect(data.title).toBe("Test thread");
@@ -182,36 +172,10 @@ describe("reactAll (real Postgres)", () => {
       expect(data.created_at).toBe(row?.created_at);
       expect(data.updated_at).toBe(row?.updated_at);
     });
-
-    it("throws RunClaimError on real CAS contention (already running on another pod)", async () => {
-      const { deps, sseEvents } = makeReactor();
-      const thread = await createThread();
-      await setInProgress(thread.id, "pod-other");
-
-      // Event carries no podId → CAS cannot match the foreign pod → 0 rows.
-      await expect(
-        react(
-          {
-            type: "RUN_STARTED",
-            taskId: thread.id,
-            orgId: ORG,
-            userId: USER,
-            abortController: new AbortController(),
-          },
-          deps,
-        ),
-      ).rejects.toBeInstanceOf(RunClaimError);
-
-      expect(sseEvents).toHaveLength(0);
-      // Row is untouched — still owned by the other pod.
-      const row = await storage.get(thread.id, ORG);
-      expect(row?.status).toBe("in_progress");
-      expect(row?.run_owner_pod).toBe("pod-other");
-    });
   });
 
   describe("RUN_RESUMED", () => {
-    it("sets run_owner_pod + run_started_at WITHOUT touching status; emits 1 event", async () => {
+    it("sets run_started_at WITHOUT touching status; emits 1 event", async () => {
       const { deps, sseEvents, purged } = makeReactor();
       const thread = await createThread(); // status "completed"
 
@@ -228,7 +192,6 @@ describe("reactAll (real Postgres)", () => {
       );
 
       const row = await storage.get(thread.id, ORG);
-      expect(row?.run_owner_pod).toBe("pod-1");
       expect(row?.run_started_at).toBeTruthy();
       // Proof the status column was never written: it stays "completed".
       expect(row?.status).toBe("completed");
@@ -375,48 +338,6 @@ describe("reactAll (real Postgres)", () => {
       const after = await storage.get(thread.id, ORG);
       expect(after).toEqual(before); // byte-for-byte unchanged
       expect(purged).toHaveLength(0);
-      expect(sseEvents).toHaveLength(0);
-    });
-  });
-
-  describe("reactAll error propagation", () => {
-    it("stops on the first thrown error; later events are not processed", async () => {
-      const { deps, sseEvents } = makeReactor();
-      const thread = await createThread();
-      await setInProgress(thread.id);
-
-      // First event: RUN_STARTED for a thread that doesn't exist → claimRunStart
-      // updates 0 rows → RunClaimError. Second event would complete `thread`.
-      await expect(
-        reactAll(
-          [
-            {
-              event: {
-                type: "RUN_STARTED",
-                taskId: "thrd_does_not_exist",
-                orgId: ORG,
-                userId: USER,
-                abortController: new AbortController(),
-              },
-              state: undefined,
-            },
-            {
-              event: {
-                type: "RUN_COMPLETED",
-                taskId: thread.id,
-                orgId: ORG,
-                stepCount: 1,
-              },
-              state: undefined,
-            },
-          ],
-          deps,
-        ),
-      ).rejects.toBeInstanceOf(RunClaimError);
-
-      // The RUN_COMPLETED never ran: `thread` is still in_progress.
-      const row = await storage.get(thread.id, ORG);
-      expect(row?.status).toBe("in_progress");
       expect(sseEvents).toHaveLength(0);
     });
   });

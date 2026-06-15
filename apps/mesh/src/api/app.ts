@@ -162,6 +162,7 @@ import {
   setAutomationRuntime,
 } from "../automations";
 import {
+  requeueInflightThreadGateWorkflows,
   setThreadGateRuntime,
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
@@ -172,7 +173,6 @@ import {
   dispatchRunAndWait,
   pullDispatch,
 } from "./routes/decopilot/dispatch-run";
-import { getPodId } from "../core/pod-identity";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
@@ -1130,8 +1130,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     sseHub,
   };
 
-  const POD_ID = getPodId();
-  const runRegistry = new RunRegistry(cancelReactorDeps, POD_ID);
+  const runRegistry = new RunRegistry(cancelReactorDeps);
 
   // Shared async-research-job storage — used both by the background
   // sweeper and by the automation context factory below, which rebinds it
@@ -2153,6 +2152,17 @@ export async function createApp(options: CreateAppOptions = {}) {
     await flushMonitoringData().catch((err: unknown) =>
       console.error("[shutdown] Telemetry flush error:", err),
     );
+
+    // Phase 4b: Hand in-flight runs back to the queue. Runs AFTER DBOS.shutdown()
+    // (index.ts) left the interrupted thread-gate workflows PENDING and AFTER the
+    // run-registry abort cancelled their daemons, but BEFORE the pool closes, so
+    // another executor re-dequeues and finishes them.
+    console.log("[shutdown] Re-enqueuing in-flight runs...");
+    await requeueInflightThreadGateWorkflows(database.db)
+      .then((n) => console.log(`[shutdown] Re-enqueued ${n} in-flight run(s).`))
+      .catch((err: unknown) =>
+        console.error("[shutdown] Re-enqueue error:", err),
+      );
 
     // Phase 5: Close database (last — other steps may need DB)
     console.log("[shutdown] Closing database...");

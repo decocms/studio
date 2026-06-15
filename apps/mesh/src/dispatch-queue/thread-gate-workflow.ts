@@ -21,6 +21,8 @@
  */
 
 import { DBOS } from "@dbos-inc/dbos-sdk";
+import { sql, type Kysely } from "kysely";
+import type { Database as DatabaseSchema } from "@/storage/types";
 import type {
   DispatchRunDeps,
   DispatchRunInput,
@@ -431,15 +433,15 @@ async function threadGateWorkflowFn(
     name: "trackMessageStarted",
   });
   try {
-    // The dispatch step is non-retriable for v1. If a pod dies mid-stream,
-    // the desktop daemon (if remote-cli) keeps running, and a DBOS replay
-    // would open a second concurrent dispatch against the same workdir —
-    // racing on git state and tool output. Marking the step non-retriable
-    // converts pod death into a clean "run failed" rather than a corruption
-    // hazard. Re-attach semantics (stable runId, daemon-side dedupe) are v2.
+    // The dispatch step is retriable so a re-enqueued run (pod death / rollout)
+    // is re-executed on another executor. Graceful shutdown aborts the in-flight
+    // run and cancels the daemon (down-channel `cancel` frame) before the
+    // workflow is re-enqueued, and the daemon fences stale epochs by fenceToken,
+    // so a replay can't race a still-running first dispatch against the same
+    // workdir. The thread-gate queue (concurrency=1 per threadId) guarantees a
+    // single in-flight dispatch per thread regardless of retries.
     await DBOS.runStep(() => dispatchRunAndWaitStep(ctx), {
       name: "dispatchRunAndWait",
-      retriesAllowed: false,
     });
   } catch (err) {
     // Setup errors (prepareRun) propagate out of `dispatchRunAndWait`; in-flight
@@ -483,6 +485,43 @@ export async function enqueueThreadRun(
     workflowID: opts?.workflowID,
   })(ctx);
   return { workflowID: handle.workflowID };
+}
+
+/**
+ * Hand this executor's in-flight thread-gate runs back to the queue on graceful
+ * shutdown so another executor finishes them.
+ *
+ * Flips this executor's PENDING thread-gate workflows to ENQUEUED and clears the
+ * owning executor + app version, so ANY live executor — including a new rollout
+ * version — re-dequeues and re-runs them (the queue dequeue allows
+ * `application_version IS NULL`; cross-version recovery via the SDK's PENDING
+ * path does not). The dispatch step is retriable, so the re-dequeued workflow
+ * re-executes the run.
+ *
+ * Ordering: must run AFTER `DBOS.shutdown()` has left the interrupted workflows
+ * PENDING and BEFORE the pg pool closes. Pairs with the run-registry abort that
+ * cancels the daemon first, so the re-dispatch can't race a live first dispatch.
+ *
+ * Returns the number of workflows re-enqueued.
+ */
+export async function requeueInflightThreadGateWorkflows(
+  db: Kysely<DatabaseSchema>,
+): Promise<number> {
+  const executorID = DBOS.executorID;
+  if (!executorID || executorID === "local") return 0;
+  const result = await sql`
+    UPDATE ${sql.id("dbos", "workflow_status")}
+    SET status = 'ENQUEUED',
+        application_version = NULL,
+        executor_id = NULL,
+        started_at_epoch_ms = NULL,
+        recovery_attempts = 0,
+        updated_at = ${Date.now()}
+    WHERE queue_name = ${THREAD_GATE_QUEUE}
+      AND status = 'PENDING'
+      AND executor_id = ${executorID}
+  `.execute(db);
+  return Number(result.numAffectedRows ?? 0n);
 }
 
 /**

@@ -63,7 +63,6 @@ export class RunRegistry {
 
   constructor(
     private readonly deps: RunReactorDeps,
-    private readonly podId: string,
     private readonly clock: () => Date = () => new Date(),
   ) {
     this.reaperTimer = setInterval(() => {
@@ -157,26 +156,17 @@ export class RunRegistry {
   }
 
   /**
-   * Graceful shutdown: orphan all runs in the DB first (so they are resumable
-   * if the process dies), then abort in-memory controllers and clear state.
-   * The DB write MUST happen before states.clear() — if the process dies
-   * between clear() and the DB write, threads would be permanently stuck.
+   * Graceful shutdown: abort in-memory controllers (stops streamText loops and
+   * cancels the daemon via the run's abort path) and clear state. Re-enqueueing
+   * the backing thread-gate DBOS workflows for handoff happens separately in
+   * app shutdown (`requeueInflightThreadGateWorkflows`), after `DBOS.shutdown()`.
    */
   async stopAll(): Promise<void> {
-    // 1. DB: orphan all runs owned by this pod FIRST
-    //    (if process dies after this, runs are resumable)
-    try {
-      await this.deps.storage.orphanRunsByPod(this.podId);
-    } catch (err) {
-      console.error("[RunRegistry] Failed to orphan runs in DB:", err);
-    }
-    // 2. In-memory: abort all controllers (stops streamText loops)
     for (const [, state] of this.states) {
       if (state.status.tag === "running") {
         state.status.abortController.abort();
       }
     }
-    // 3. In-memory: clear map
     this.states.clear();
   }
 
