@@ -17,12 +17,11 @@ import {
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
 import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
   useProjectContext,
   type AiProviderInfo,
   type AiProviderKey,
 } from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   OPENAI_COMPATIBLE_PRESETS,
@@ -37,11 +36,7 @@ interface ProviderKeyRowProps {
 
 export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -69,10 +64,7 @@ export function ProviderKeyRow({ providerKey, provider }: ProviderKeyRowProps) {
 
   const { mutate: deleteKey, isPending: isDeleting } = useMutation({
     mutationFn: async () => {
-      await client.callTool({
-        name: "AI_PROVIDER_KEY_DELETE",
-        arguments: { keyId: providerKey.id },
-      });
+      await studio.call("AI_PROVIDER_KEY_DELETE", { keyId: providerKey.id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });

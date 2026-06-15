@@ -12,17 +12,14 @@ import {
   DrawerTitle,
 } from "@deco/ui/components/drawer.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 import { Check, Copy01, Key01, Loading01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { track } from "@/web/lib/posthog-client";
+import { useStudioTools } from "@/web/lib/studio-tools";
 
 /**
  * Unicode-safe base64 encoding for browser environments
@@ -187,15 +184,10 @@ function InstallClaudeButton({ url, serverName, agentId }: ShareWithNameProps) {
 }
 
 /**
- * Typegen section inner — uses Suspense-based useMCPClient
+ * Typegen section inner — calls builtin tools via useStudioTools
  */
 function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -209,14 +201,10 @@ function TypegenSectionInner({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
   const handleGenerateKey = async () => {
     setGenerating(true);
     try {
-      const result = (await client.callTool({
-        name: "API_KEY_CREATE",
-        arguments: {
-          name: `typegen-${agentName}`,
-          permissions: { [mcpId]: ["*"] },
-        },
-      })) as { structuredContent?: { key?: string } };
-      const key = result.structuredContent?.key;
+      const { key } = await studio.call("API_KEY_CREATE", {
+        name: `typegen-${agentName}`,
+        permissions: { [mcpId]: ["*"] },
+      });
       if (!key) throw new Error("No key in response");
       setApiKey(key);
       track("agent_typegen_key_generated", { agent_id: mcpId });

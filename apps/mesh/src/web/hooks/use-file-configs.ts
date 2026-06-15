@@ -1,16 +1,12 @@
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import {
   useMutation,
   useQuery,
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "../lib/query-keys";
-import { unwrapToolResult } from "../lib/unwrap-tool-result";
 
 export interface FileConfigInfo {
   id: string;
@@ -30,22 +26,12 @@ export interface FileConfigInfo {
 
 export function useFileConfigs() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const { data } = useSuspenseQuery({
     queryKey: KEYS.fileConfigs(org.id),
     staleTime: 60_000,
-    queryFn: async () => {
-      const result = await client.callTool({
-        name: "FILE_CONFIG_LIST",
-        arguments: {},
-      });
-      return unwrapToolResult<{ configs: FileConfigInfo[] }>(result);
-    },
+    queryFn: () => studio.call("FILE_CONFIG_LIST", {}),
   });
 
   return data.configs;
@@ -60,22 +46,12 @@ export function useFileConfigs() {
  */
 export function useFileConfigsQuery() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   return useQuery({
     queryKey: KEYS.fileConfigs(org.id),
     staleTime: 60_000,
-    queryFn: async () => {
-      const result = await client.callTool({
-        name: "FILE_CONFIG_LIST",
-        arguments: {},
-      });
-      return unwrapToolResult<{ configs: FileConfigInfo[] }>(result);
-    },
+    queryFn: () => studio.call("FILE_CONFIG_LIST", {}),
   });
 }
 
@@ -94,21 +70,12 @@ export interface CreateFileConfigInput {
 
 export function useCreateFileConfig() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: CreateFileConfigInput) => {
-      const result = await client.callTool({
-        name: "FILE_CONFIG_CREATE",
-        arguments: { ...input },
-      });
-      return unwrapToolResult<FileConfigInfo>(result);
-    },
+    mutationFn: (input: CreateFileConfigInput) =>
+      studio.call("FILE_CONFIG_CREATE", { ...input }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.fileConfigs(org.id) });
     },
@@ -117,21 +84,11 @@ export function useCreateFileConfig() {
 
 export function useDeleteFileConfig() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      const result = await client.callTool({
-        name: "FILE_CONFIG_DELETE",
-        arguments: { id },
-      });
-      return unwrapToolResult<{ success: true }>(result);
-    },
+    mutationFn: (id: string) => studio.call("FILE_CONFIG_DELETE", { id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.fileConfigs(org.id) });
     },

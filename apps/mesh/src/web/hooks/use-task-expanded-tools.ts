@@ -5,45 +5,29 @@
  * the most recent expansion for a given tool name wins.
  */
 
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ThreadExpandedTool, ThreadMetadata } from "../../storage/types";
 import type { Task } from "../components/chat/task/types";
 import { useOptionalThreadManager } from "../components/chat/store/hooks";
 import { KEYS } from "../lib/query-keys";
+import { useStudioTools } from "@/web/lib/studio-tools";
 
 export type { ThreadExpandedTool };
-
-type ThreadGetItem = {
-  metadata?: ThreadMetadata;
-} | null;
-
-type ThreadGetOutput = { item: ThreadGetItem };
 
 export function useTaskExpandedTools(taskId: string | null) {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const manager = useOptionalThreadManager();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const mutation = useMutation({
     mutationFn: async (tool: Omit<ThreadExpandedTool, "expandedAt">) => {
       if (!taskId) throw new Error("useTaskExpandedTools: no task in context");
-      const getResult = (await client.callTool({
-        name: "COLLECTION_THREADS_GET",
-        arguments: { id: taskId },
-      })) as { structuredContent?: unknown };
-      const getPayload = (getResult.structuredContent ??
-        getResult) as ThreadGetOutput;
+      const getPayload = await studio.call("COLLECTION_THREADS_GET", {
+        id: taskId,
+      });
       const currentMetadata: ThreadMetadata = getPayload.item?.metadata ?? {};
       const currentTools: ThreadExpandedTool[] =
         currentMetadata.expanded_tools ?? [];
@@ -56,12 +40,9 @@ export function useTaskExpandedTools(taskId: string | null) {
         expanded_tools: next,
       };
 
-      await client.callTool({
-        name: "COLLECTION_THREADS_UPDATE",
-        arguments: {
-          id: taskId,
-          data: { metadata: nextMetadata },
-        },
+      await studio.call("COLLECTION_THREADS_UPDATE", {
+        id: taskId,
+        data: { metadata: nextMetadata },
       });
 
       return next;

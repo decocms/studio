@@ -1,21 +1,6 @@
 import { useState } from "react";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import type { RegistryToolMeta } from "@/web/lib/registry/types";
-
-interface DiscoverToolsResponse {
-  tools: RegistryToolMeta[];
-  error?: string | null;
-}
-
-interface ToolResult<T> {
-  structuredContent?: T;
-  isError?: boolean;
-  content?: Array<{ type?: string; text?: string }>;
-}
 
 export type DiscoverStatus =
   | "idle"
@@ -28,12 +13,7 @@ export function useDiscoverTools() {
   const [discoverStatus, setDiscoverStatus] = useState<DiscoverStatus>("idle");
   const [discoverError, setDiscoverError] = useState<string | null>(null);
 
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const discover = async (
     remoteUrl: string,
@@ -44,25 +24,10 @@ export function useDiscoverTools() {
     setDiscoverError(null);
 
     try {
-      const result = (await client.callTool({
-        name: "REGISTRY_DISCOVER_TOOLS",
-        arguments: {
-          url: remoteUrl,
-          type: remoteType === "sse" ? "sse" : "http",
-        },
-      })) as ToolResult<DiscoverToolsResponse>;
-
-      const data = (result.structuredContent ??
-        result) as DiscoverToolsResponse;
-
-      if (result.isError) {
-        const message =
-          result.content?.find((item) => item.type === "text")?.text ??
-          "Tool returned an error";
-        setDiscoverError(message);
-        setDiscoverStatus("error");
-        return null;
-      }
+      const data = await studio.call("REGISTRY_DISCOVER_TOOLS", {
+        url: remoteUrl,
+        type: remoteType === "sse" ? "sse" : "http",
+      });
 
       if (data.error) {
         // Detect auth-required errors — server IS reachable but needs credentials

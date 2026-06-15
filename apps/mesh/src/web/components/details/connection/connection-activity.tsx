@@ -9,12 +9,9 @@ import {
   ChartTooltipContent,
 } from "@deco/ui/components/chart.tsx";
 import { KEYS } from "@/web/lib/query-keys.ts";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { cn } from "@deco/ui/lib/utils.ts";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
 import { Bar, BarChart, Cell } from "recharts";
@@ -47,37 +44,23 @@ const CHART_CONFIG = {
 interface ActivityChartProps {
   connectionId: string;
   orgId: string;
-  orgSlug: string;
   timeframe: Timeframe;
 }
 
-function ActivityChart({
-  connectionId,
-  orgId,
-  orgSlug,
-  timeframe,
-}: ActivityChartProps) {
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId,
-    orgSlug,
-  });
+function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
+  const studio = useStudioTools();
   const dateRange = getDateRange(timeframe);
 
   const { data } = useSuspenseQuery({
     queryKey: KEYS.connectionActivity(connectionId, timeframe, orgId),
     queryFn: async () => {
-      const result = (await client.callTool({
-        name: "MONITORING_LOGS_LIST",
-        arguments: {
-          startDate: dateRange.startDate.toISOString(),
-          endDate: dateRange.endDate.toISOString(),
-          connectionId,
-          limit: 2000,
-          offset: 0,
-        },
-      })) as { structuredContent?: unknown };
-      return (result.structuredContent ?? result) as BaseMonitoringLogsResponse;
+      return (await studio.call("MONITORING_LOGS_LIST", {
+        startDate: dateRange.startDate.toISOString(),
+        endDate: dateRange.endDate.toISOString(),
+        connectionId,
+        limit: 2000,
+        offset: 0,
+      })) as BaseMonitoringLogsResponse;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -227,7 +210,6 @@ export function ConnectionActivity({ connectionId }: ConnectionActivityProps) {
         <ActivityChart
           connectionId={connectionId}
           orgId={org.id}
-          orgSlug={org.slug}
           timeframe={timeframe}
         />
       </Suspense>

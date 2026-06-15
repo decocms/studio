@@ -1,11 +1,8 @@
 import { invalidateOrganizationListCache } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { track } from "@/web/lib/posthog-client";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,28 +29,11 @@ export function DeleteOrganizationSection() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmName, setConfirmName] = useState("");
 
-  const selfClient = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgSlug: org.slug,
-    orgId: org.id,
-  });
+  const studio = useStudioTools();
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const result = await selfClient.callTool({
-        name: "ORGANIZATION_DELETE",
-        arguments: { id: org.id },
-      });
-      if (result.isError) {
-        const content = result.content;
-        const text =
-          Array.isArray(content) &&
-          content[0]?.type === "text" &&
-          typeof content[0].text === "string"
-            ? content[0].text
-            : "Failed to delete organization";
-        throw new Error(text);
-      }
+      await studio.call("ORGANIZATION_DELETE", { id: org.id });
     },
     onSuccess: () => {
       track("organization_deleted", { organization_id: org.id });

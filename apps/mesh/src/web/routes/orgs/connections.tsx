@@ -76,15 +76,14 @@ import {
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
-  SELF_MCP_ALIAS_ID,
   useConnectionActions,
   useConnections,
-  useMCPClient,
   useProjectContext,
   type ConnectionEntity,
   useVirtualMCPs,
   type VirtualMCPEntity,
 } from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
@@ -912,11 +911,7 @@ function ConnectionResults({
     }
   };
 
-  const selfClient = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const invalidateConnections = () => {
     queryClient.invalidateQueries({
@@ -940,11 +935,8 @@ function ConnectionResults({
 
     for (const id of ids) {
       try {
-        const result = await selfClient!.callTool({
-          name: "COLLECTION_CONNECTIONS_DELETE",
-          arguments: { id, force: true },
-        });
-        if (!result.isError) deleted++;
+        await studio.call("COLLECTION_CONNECTIONS_DELETE", { id, force: true });
+        deleted++;
       } catch {
         // continue with next
       }
@@ -996,7 +988,7 @@ function ConnectionResults({
 
   const handleAddToAgent = async (agentId: string) => {
     const agent = agents.find((a) => a.id === agentId);
-    if (!agent || !selfClient) return;
+    if (!agent) return;
     track("connections_bulk_add_to_agent", {
       agent_id: agentId,
       count: selectedIds.size,
@@ -1020,13 +1012,10 @@ function ConnectionResults({
     }
 
     try {
-      await selfClient.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_UPDATE",
-        arguments: {
-          id: agentId,
-          data: {
-            connections: [...agent.connections, ...newConns],
-          },
+      await studio.call("COLLECTION_VIRTUAL_MCP_UPDATE", {
+        id: agentId,
+        data: {
+          connections: [...agent.connections, ...newConns],
         },
       });
 

@@ -6,16 +6,12 @@ import {
   ProviderGrid,
   type ProviderSelection,
 } from "@/web/views/settings/ai-providers/provider-grid";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useAiProviders } from "@/web/hooks/collections/use-ai-providers";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { KEYS } from "@/web/lib/query-keys";
-import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { useQuery } from "@tanstack/react-query";
 import type { BrandContext } from "@/storage/types";
 import { ConnectDesktopDialog } from "./connect-desktop-dialog";
@@ -27,21 +23,13 @@ interface NoAiProviderEmptyStateProps {
 
 function useDefaultBrand(): BrandContext | null {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const { data } = useQuery<BrandContext | null>({
     queryKey: KEYS.defaultBrand(org.id),
     queryFn: async () => {
-      const result = await client.callTool({
-        name: "BRAND_CONTEXT_LIST",
-        arguments: {},
-      });
-      const data = unwrapToolResult<{ items?: BrandContext[] }>(result);
-      const brands = Array.isArray(data?.items) ? data.items : [];
+      const { items } = await studio.call("BRAND_CONTEXT_LIST", {});
+      const brands = (Array.isArray(items) ? items : []) as BrandContext[];
       return brands.find((b) => b.isDefault && !b.archivedAt) ?? null;
     },
   });

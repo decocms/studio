@@ -11,14 +11,11 @@ import { Check, Copy01 } from "@untitledui/icons";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import type { Capability } from "@/links/protocol";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { KEYS } from "@/web/lib/query-keys";
+import { useStudioTools } from "@/web/lib/studio-tools";
 
 const INSTALL_SNIPPET = "bunx decocms link";
 
@@ -64,26 +61,14 @@ export function ConnectDesktopDialog({
   const [copied, setCopied] = useState(false);
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   // Tells the linked daemon to shut down (a `shutdown` control frame rides
   // its held control long-poll) and removes the presence claim, so the link
   // flips offline immediately. The dialog then shows the reconnect snippet.
   const disconnect = useMutation({
     mutationFn: async () => {
-      const result = (await client.callTool({
-        name: "LINK_DISCONNECT",
-        arguments: {},
-      })) as { isError?: boolean; content?: { text?: string }[] };
-      if (result?.isError) {
-        throw new Error(
-          result.content?.[0]?.text ?? "Failed to disconnect desktop",
-        );
-      }
+      await studio.call("LINK_DISCONNECT", {});
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({

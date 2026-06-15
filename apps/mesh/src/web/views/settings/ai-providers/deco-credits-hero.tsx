@@ -24,11 +24,8 @@ import {
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
 import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 import { cn } from "@deco/ui/lib/utils.ts";
 
@@ -40,34 +37,17 @@ const TOP_UP_PRESETS = {
 } as const;
 
 function QuickTopUp() {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const [customOpen, setCustomOpen] = useState(false);
 
   const { mutate: topUp, isPending } = useMutation({
     mutationFn: async (amountCents: number) => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_TOPUP_URL",
-        arguments: {
-          providerId: "deco",
-          amountCents,
-          currency,
-        },
-      })) as {
-        structuredContent?: { url: string };
-        isError?: boolean;
-        content?: { text?: string }[];
-      };
-      if (result?.isError) {
-        throw new Error(
-          result.content?.[0]?.text ?? "Failed to get top-up URL",
-        );
-      }
-      return result.structuredContent?.url;
+      const { url } = await studio.call("AI_PROVIDER_TOPUP_URL", {
+        providerId: "deco",
+        amountCents,
+        currency,
+      });
+      return url;
     },
     onSuccess: (url) => {
       if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -177,11 +157,7 @@ function creditColorClass(dollars: number): string {
 
 export function DecoCreditsHero() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
   const allKeys = useAiProviderKeys();
   const decoKey = allKeys.find((k) => k.providerId === "deco");
@@ -190,10 +166,7 @@ export function DecoCreditsHero() {
   const { mutate: disconnect, isPending: isDisconnecting } = useMutation({
     mutationFn: async () => {
       if (!decoKey) return;
-      await client.callTool({
-        name: "AI_PROVIDER_KEY_DELETE",
-        arguments: { keyId: decoKey.id },
-      });
+      await studio.call("AI_PROVIDER_KEY_DELETE", { keyId: decoKey.id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: KEYS.aiProviderKeys(org.id) });
@@ -211,15 +184,11 @@ export function DecoCreditsHero() {
     enabled: !!decoKey,
     staleTime: 60_000,
     queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_CREDITS",
-        arguments: { providerId: "deco" },
-      })) as {
-        structuredContent?: { balanceCents: number };
-        isError?: boolean;
-      };
-      if (result?.isError) return null;
-      return result.structuredContent ?? null;
+      try {
+        return await studio.call("AI_PROVIDER_CREDITS", { providerId: "deco" });
+      } catch {
+        return null;
+      }
     },
   });
 

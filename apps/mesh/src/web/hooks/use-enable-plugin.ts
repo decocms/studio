@@ -6,34 +6,15 @@
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  useProjectContext,
-  useMCPClient,
-  SELF_MCP_ALIAS_ID,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 import { toast } from "sonner";
-
-type ProjectUpdateOutput = {
-  project: {
-    id: string;
-    organizationId: string;
-    slug: string;
-    name: string;
-    description: string | null;
-    enabledPlugins: string[] | null;
-  } | null;
-};
 
 export function useEnablePlugin() {
   const { org, project } = useProjectContext();
   const queryClient = useQueryClient();
-
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const mutation = useMutation({
     mutationFn: async (pluginId: string) => {
@@ -46,21 +27,14 @@ export function useEnablePlugin() {
 
       const enabledPlugins = [...currentPlugins, pluginId];
 
-      const result = await client.callTool({
-        name: "COLLECTION_VIRTUAL_MCP_UPDATE",
-        arguments: {
-          id: project.id,
-          data: {
-            metadata: {
-              enabled_plugins: enabledPlugins,
-            },
+      return await studio.call("COLLECTION_VIRTUAL_MCP_UPDATE", {
+        id: project.id,
+        data: {
+          metadata: {
+            enabled_plugins: enabledPlugins,
           },
         },
       });
-
-      const payload =
-        (result as { structuredContent?: unknown }).structuredContent ?? result;
-      return payload as ProjectUpdateOutput;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

@@ -14,11 +14,8 @@ import {
   CommandItem,
   CommandList,
 } from "@deco/ui/components/command.tsx";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { McpAvatar } from "./mcp-avatar";
@@ -51,11 +48,7 @@ export function GlobalSearchDialog({
   const [query, setQuery] = useState("");
   const { org } = useProjectContext();
   const { setTaskId } = usePanelActions();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const trimmed = query.trim();
 
@@ -63,12 +56,10 @@ export function GlobalSearchDialog({
     queryKey: KEYS.globalSearch(org.id, trimmed),
     enabled: open && trimmed.length > 0,
     queryFn: async (): Promise<SearchResponse> => {
-      if (!client) throw new Error("MCP client unavailable");
-      const result = (await client.callTool({
-        name: "GLOBAL_SEARCH",
-        arguments: { query: trimmed, limit: 20 },
-      })) as { structuredContent?: unknown };
-      return (result.structuredContent ?? result) as SearchResponse;
+      return await studio.call("GLOBAL_SEARCH", {
+        query: trimmed,
+        limit: 20,
+      });
     },
     staleTime: 10_000,
   });

@@ -38,6 +38,7 @@ import { useMembers } from "@/web/hooks/use-members";
 import { KEYS } from "@/web/lib/query-keys";
 import { STATUS_CONFIG } from "@/web/lib/task-status";
 import { useAutomationRunStats } from "@/web/hooks/use-automations";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import {
   ThreadSheetBody,
   type ThreadEntity,
@@ -204,6 +205,7 @@ export function AutomationRunsView({
     orgId: org.id,
     orgSlug: org.slug,
   });
+  const studio = useStudioTools();
   const allConnections = useConnections();
   const allVirtualMcps = useVirtualMCPs();
   const { data: membersData } = useMembers();
@@ -216,15 +218,11 @@ export function AutomationRunsView({
     useInfiniteQuery({
       queryKey: KEYS.automationRuns(org.id, automationId, triggerIds),
       queryFn: async ({ pageParam = 0 }) => {
-        const result = (await client.callTool({
-          name: "COLLECTION_THREADS_LIST",
-          arguments: {
-            limit: RUNS_PAGE_SIZE,
-            offset: pageParam,
-            where: { trigger_ids: triggerIds },
-          },
-        })) as { structuredContent?: unknown };
-        return (result.structuredContent ?? result) as {
+        return (await studio.call("COLLECTION_THREADS_LIST", {
+          limit: RUNS_PAGE_SIZE,
+          offset: pageParam,
+          where: { trigger_ids: triggerIds },
+        })) as {
           items: ThreadEntity[];
           totalCount: number;
           hasMore: boolean;
@@ -252,15 +250,11 @@ export function AutomationRunsView({
       JSON.stringify({ ids: threadIds, ...range }),
     ),
     queryFn: async () => {
-      const result = (await client.callTool({
-        name: "MONITORING_THREAD_USAGE",
-        arguments: {
-          threadIds,
-          ...(range.startDate ? { startDate: range.startDate } : {}),
-          ...(range.endDate ? { endDate: range.endDate } : {}),
-        },
-      })) as { structuredContent?: unknown };
-      return (result.structuredContent ?? result) as {
+      return (await studio.call("MONITORING_THREAD_USAGE", {
+        threadIds,
+        ...(range.startDate ? { startDate: range.startDate } : {}),
+        ...(range.endDate ? { endDate: range.endDate } : {}),
+      })) as {
         items: Array<ThreadUsage & { threadId: string }>;
       };
     },
