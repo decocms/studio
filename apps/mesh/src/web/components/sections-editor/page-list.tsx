@@ -3,6 +3,8 @@ import {
   resolveBlockSchemaMetadata,
   type LiveMeta,
 } from "./resolve-schema";
+import { normalizeDecoBlockKey } from "./deco-block-key";
+import { normalizePagePath } from "./page-path-utils";
 import { listSavedSectionBlocks } from "./section-catalog";
 
 export interface PageEntry {
@@ -28,20 +30,40 @@ function parsePageName(key: string): string {
   // "pages-Category%20Page-69217" -> "Category Page"
   let name = key;
   if (name.startsWith("pages-")) name = name.slice(6);
-  // Remove trailing hash suffix (last segment after last -)
-  const lastDash = name.lastIndexOf("-");
-  if (lastDash > 0) {
-    const suffix = name.slice(lastDash + 1);
-    // Only strip if suffix looks like a hash (hex or short number)
-    if (/^[a-f0-9]+$/i.test(suffix) && suffix.length >= 8) {
-      name = name.slice(0, lastDash);
-    }
-  }
+  // Remove trailing uuid suffix (dashed uuid or legacy hex blob).
+  name = name.replace(
+    /-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    "",
+  );
+  name = name.replace(/-[0-9a-f]{8,}$/i, "");
   try {
     return decodeURIComponent(name);
   } catch {
     return name;
   }
+}
+
+/** Pick the page block for a path; honors an explicit key when paths collide. */
+export function findPageForPath(
+  pages: PageEntry[],
+  path: string,
+  preferredKey?: string | null,
+): PageEntry | null {
+  const norm = normalizePagePath;
+  const matches = pages.filter((p) => norm(p.path) === norm(path));
+  if (matches.length === 0) return null;
+
+  if (preferredKey) {
+    const preferred = matches.find(
+      (p) =>
+        p.key === preferredKey ||
+        normalizeDecoBlockKey(p.key) === normalizeDecoBlockKey(preferredKey),
+    );
+    if (preferred) return preferred;
+  }
+
+  if (matches.length === 1) return matches[0] ?? null;
+  return [...matches].sort((a, b) => a.key.localeCompare(b.key))[0] ?? null;
 }
 
 const PAGE_RESOLVE_TYPES = new Set([

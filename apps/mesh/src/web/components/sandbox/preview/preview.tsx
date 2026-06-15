@@ -46,8 +46,10 @@ import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
   extractPages,
+  findPageForPath,
   hasEditableDecoContent,
   type GlobalSectionEntry,
+  type PageEntry,
 } from "@/web/components/sections-editor/page-list";
 import {
   normalizePagePath,
@@ -157,6 +159,8 @@ export function PreviewContent() {
 
   // Current iframe path (for sections editor)
   const [currentPath, setCurrentPath] = useState("/");
+  /** Explicit page block key from the page picker; disambiguates duplicate paths. */
+  const [pinnedPageKey, setPinnedPageKey] = useState<string | null>(null);
 
   // SEO panel state
   const [cmsInitialEditSeo, setCmsInitialEditSeo] = useState(false);
@@ -212,7 +216,7 @@ export function PreviewContent() {
   });
   const currentPage = activeGlobalSection
     ? null
-    : (pages.find((p) => normPath(p.path) === normPath(currentPath)) ?? null);
+    : findPageForPath(pages, currentPath, pinnedPageKey);
   const currentPageName = activeGlobalSection
     ? activeGlobalSection.name
     : currentPage?.name;
@@ -268,6 +272,7 @@ export function PreviewContent() {
       intendedPathRef.current = null;
       setCurrentPath("/");
       setDirectPreviewUrl(null);
+      setPinnedPageKey(null);
       setActiveGlobalSection(null);
     }
   }
@@ -456,11 +461,12 @@ export function PreviewContent() {
     }
   })();
 
-  const navigatePreviewToPage = (path: string) => {
-    intendedPathRef.current = path;
+  const navigatePreviewToPage = (page: PageEntry) => {
+    intendedPathRef.current = page.path;
     setActiveGlobalSection(null);
     setDirectPreviewUrl(null);
-    setCurrentPath(path);
+    setPinnedPageKey(page.key);
+    setCurrentPath(page.path);
     setCmsSelectedSectionIndex(null);
     setCmsInitialEditSeo(false);
   };
@@ -511,7 +517,11 @@ export function PreviewContent() {
       setCreatePageDialogOpen(false);
       toast.success(`Page "${name}" created`);
       await new Promise((resolve) => setTimeout(resolve, DEV_SERVER_SETTLE_MS));
-      navigatePreviewToPage(result.path);
+      navigatePreviewToPage({
+        key: result.key,
+        name: result.name,
+        path: result.path,
+      });
       handleViewModeChange("cms");
     } catch (error) {
       setCreatePageError(
@@ -700,7 +710,7 @@ export function PreviewContent() {
                                     e.preventDefault();
                                     setPagesOpen(false);
                                     setPagesSearch("");
-                                    navigatePreviewToPage(page.path);
+                                    navigatePreviewToPage(page);
                                   }}
                                 >
                                   <LayoutAlt01
@@ -869,6 +879,7 @@ export function PreviewContent() {
                   previewReady={devServerReady}
                   previewUrl={previewUrl}
                   currentPath={currentPath}
+                  activePageBlockKey={currentPageKey}
                   activeGlobalBlockKey={activeGlobalSection?.key ?? null}
                   externalSelectedIndex={
                     activeGlobalSection ? null : cmsSelectedSectionIndex

@@ -1,7 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { decoBlockFilePath } from "./deco-block-key";
+import {
+  decoBlockFilePath,
+  legacyDecoBlockFilePaths,
+  normalizeDecoBlockKey,
+} from "./deco-block-key";
 import { KEYS } from "@/web/lib/query-keys";
 
 /** Debounce window for form-driven block autosaves (ms). */
@@ -11,6 +15,21 @@ interface UseSaveBlockParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+}
+
+async function unlinkDecoBlockFile(
+  params: UseSaveBlockParams,
+  path: string,
+): Promise<void> {
+  const res = await fetch(
+    `/api/${params.orgSlug}/sandbox/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}/unlink`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path }),
+    },
+  );
+  if (!res.ok) return;
 }
 
 export function useSaveBlock({
@@ -28,7 +47,8 @@ export function useSaveBlock({
       blockKey: string;
       data: unknown;
     }) => {
-      const path = decoBlockFilePath(blockKey);
+      const normalizedKey = normalizeDecoBlockKey(blockKey);
+      const path = decoBlockFilePath(normalizedKey);
       const content = JSON.stringify(data, null, 2);
       const res = await fetch(
         `/api/${orgSlug}/sandbox/${encodeURIComponent(virtualMcpId)}/${encodeURIComponent(branch)}/write`,
@@ -44,9 +64,21 @@ export function useSaveBlock({
           (body as { error?: string }).error ?? `Write failed (${res.status})`,
         );
       }
+
+      const canonicalPath = path;
+      for (const legacyPath of legacyDecoBlockFilePaths(blockKey)) {
+        if (legacyPath !== canonicalPath) {
+          await unlinkDecoBlockFile(
+            { orgSlug, virtualMcpId, branch },
+            legacyPath,
+          );
+        }
+      }
+
       return res.json();
     },
     onMutate: async ({ blockKey, data }) => {
+      const normalizedKey = normalizeDecoBlockKey(blockKey);
       const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       const queryKey = KEYS.decofile(cacheKey);
       await queryClient.cancelQueries({ queryKey });
@@ -54,12 +86,16 @@ export function useSaveBlock({
         queryClient.getQueryData<Record<string, unknown>>(queryKey);
       queryClient.setQueryData(
         queryKey,
-        (current: Record<string, unknown> | undefined) => ({
-          ...(current ?? {}),
-          [blockKey]: data,
-        }),
+        (current: Record<string, unknown> | undefined) => {
+          const next = { ...(current ?? {}) };
+          if (normalizedKey !== blockKey) {
+            delete next[blockKey];
+          }
+          next[normalizedKey] = data;
+          return next;
+        },
       );
-      return { previous, queryKey };
+      return { previous, queryKey, normalizedKey };
     },
     onError: (_error, _variables, context) => {
       if (context?.queryKey) {
@@ -67,14 +103,20 @@ export function useSaveBlock({
       }
     },
     onSuccess: (_result, { blockKey, data }) => {
+      const normalizedKey = normalizeDecoBlockKey(blockKey);
       const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       queryClient.setQueryData(
         KEYS.decofile(cacheKey),
-        (current: Record<string, unknown> | undefined) => ({
-          ...(current ?? {}),
-          [blockKey]: data,
-        }),
+        (current: Record<string, unknown> | undefined) => {
+          const next = { ...(current ?? {}) };
+          if (normalizedKey !== blockKey) {
+            delete next[blockKey];
+          }
+          next[normalizedKey] = data;
+          return next;
+        },
       );
+      void queryClient.invalidateQueries({ queryKey: KEYS.decofile(cacheKey) });
     },
   });
 }

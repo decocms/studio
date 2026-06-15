@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { normalizeDecofileKeys } from "./deco-block-key";
 import { KEYS } from "@/web/lib/query-keys";
 
 interface UseDecofileParams {
@@ -27,7 +28,9 @@ export function useDecofile(
         (err as { status?: number }).status = res.status;
         throw err;
       }
-      return (await res.json()) as Record<string, unknown>;
+      return normalizeDecofileKeys(
+        (await res.json()) as Record<string, unknown>,
+      );
     },
     enabled: !!params && fetchEnabled,
     staleTime: 30_000,

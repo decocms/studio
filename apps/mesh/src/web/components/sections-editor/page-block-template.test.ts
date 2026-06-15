@@ -16,9 +16,9 @@ describe("page-block-template", () => {
     });
   });
 
-  it("generatePageBlockKey encodes the page name with a unique suffix", () => {
+  it("generatePageBlockKey uses the page name in the block id", () => {
     expect(generatePageBlockKey("My Page")).toMatch(
-      /^pages-My%20Page-[0-9a-f-]{36}$/,
+      /^pages-My Page-[0-9a-f-]{36}$/,
     );
   });
 });

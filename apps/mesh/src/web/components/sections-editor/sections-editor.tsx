@@ -29,8 +29,7 @@ import {
   useDebouncedSaveBlock,
   useSaveBlock,
 } from "./use-save-block";
-import { extractPages, globalSectionLabel } from "./page-list";
-import { normalizePagePath } from "./page-path-utils";
+import { extractPages, findPageForPath, globalSectionLabel } from "./page-list";
 import { SectionList, parseSections } from "./section-list";
 import { isLazyResolveType } from "./section-lazy";
 import { unwrapSection } from "./unwrap-section";
@@ -591,13 +590,10 @@ export function SectionsEditor({
   }
 
   const pages = extractPages(decofile);
-  const norm = normalizePagePath;
   const isGlobalBlockMode = !!activeGlobalBlockKey;
   const activePage = isGlobalBlockMode
     ? null
-    : activePageBlockKey
-      ? (pages.find((p) => p.key === activePageBlockKey) ?? null)
-      : (pages.find((p) => norm(p.path) === norm(currentPath)) ?? null);
+    : findPageForPath(pages, currentPath, activePageBlockKey);
   const activePageKey = isGlobalBlockMode
     ? activeGlobalBlockKey
     : (activePage?.key ?? null);
