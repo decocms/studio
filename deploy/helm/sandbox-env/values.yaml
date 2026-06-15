@@ -193,8 +193,8 @@ dnsConfig:
 # user-namespaced pods, and Bidirectional propagation requires privileged.
 # Enabling this trades the userns-remap hardening for org-fs mounts; the
 # template fails to render otherwise so the trade-off stays explicit.
-# Mesh side: set ORGFS_CLUSTER_MOUNTS=1 on the studio install so it mints
-# org-fs tokens for hosted sandboxes.
+# Mesh side mints org-fs tokens for hosted sandboxes unconditionally now —
+# this sidecar must be enabled wherever those mounts are expected.
 orgFs:
   enabled: false
   image:
