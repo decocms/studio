@@ -1,6 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { SELF_MCP_ALIAS_ID } from "../lib/constants";
 import { KEYS } from "../lib/query-keys";
+import { createRestSelfClient } from "../lib/rest-self-client";
 import { StreamableHTTPClientTransport } from "../lib/streamable-http-client-transport";
 
 const DEFAULT_CLIENT_INFO = {
@@ -68,6 +70,25 @@ export async function createMCPClient({
   token,
   meshUrl,
 }: CreateMcpClientOptions): Promise<Client> {
+  const queryKey = KEYS.mcpClient(
+    orgId,
+    connectionId ?? "self",
+    token ?? "",
+    meshUrl ?? "",
+  );
+
+  // Self/management connection → REST-backed client. The browser no longer
+  // speaks MCP to the mesh server for builtin tools; they're called over plain
+  // REST (`/api/:org/tools/:name`). The MCP SDK stays for outbound connections.
+  if (!connectionId || connectionId === SELF_MCP_ALIAS_ID) {
+    return createRestSelfClient({
+      orgSlug,
+      token,
+      meshUrl,
+      toJSONString: `mcp-client:${queryKey.join(":")}`,
+    });
+  }
+
   const url = buildMcpUrl(connectionId, orgSlug, meshUrl);
 
   const client = new Client(DEFAULT_CLIENT_INFO, {
@@ -98,13 +119,6 @@ export async function createMCPClient({
 
   // Add toJSON method for query key serialization
   // This allows the client to be used directly in query keys
-  const queryKey = KEYS.mcpClient(
-    orgId,
-    connectionId ?? "self",
-    token ?? "",
-    meshUrl ?? "",
-  );
-
   (client as Client & { toJSON: () => string }).toJSON = () =>
     `mcp-client:${queryKey.join(":")}`;
 
