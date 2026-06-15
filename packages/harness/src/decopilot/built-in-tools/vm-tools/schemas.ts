@@ -144,8 +144,8 @@ export function buildWriteDescription(orgFs: boolean): string {
         "and persist in the org's shared folder when written under " +
         "`org/<your-org-slug>/` (lowercase-kebab names):\n" +
         "- Presentation decks / slides → `org/<your-org-slug>/decks/<name>.html` " +
-        "— read `/mnt/skills/public/slides/SKILL.md` FIRST and create the " +
-        "deck with its CLI.\n" +
+        "— read the slides skill (`org/public/core/slides/SKILL.md`) FIRST " +
+        "and create the deck with its CLI.\n" +
         "- Standalone pages (landing pages, brand kits, one-pagers) → " +
         "`org/<your-org-slug>/pages/<name>.html` — single self-contained " +
         "HTML file.\n" +
@@ -175,37 +175,44 @@ export const GLOB_DESCRIPTION =
 /** `orgFs`: deployment mounts org-fs into hosted sandboxes — the caller
  *  passes the settings flag (this module stays dependency-free). */
 export function buildBashDescription(orgFs: boolean): string {
+  // Shared tail: skill-selection steering, independent of WHERE skills
+  // live (org/public on org-fs, /mnt on legacy).
+  const skillSteering =
+    "To make a presentation/slides/deck, ALWAYS use the `slides` skill " +
+    "(HTML decks with a live editable preview) — read its SKILL.md first. " +
+    "`pptx` is NOT for this: it only reads/inspects existing `.pptx` files, " +
+    "and is the right tool only when the user explicitly needs a PowerPoint " +
+    "`.pptx` file as input or output.";
+
   return (
     "Execute a shell command in the VM's project directory. " +
     "Working directory is the project root. Timeout default 30s, max 2min.\n\n" +
     (orgFs
-      ? "The organization filesystem is mounted at `org/` (when available):\n" +
+      ? // Org-fs deployments: ONE skill mechanism — the synced public sets
+        // mounted at `org/public/<set>/`. The image-baked `/mnt/skills/public`
+        // is not advertised here (it is the legacy non-org-fs fallback below).
+        "The organization filesystem is mounted at `org/`:\n" +
         "- `org/<your-org-slug>/` — the org's shared home folder (editable, " +
         "shared across runs; `ls org/` shows the actual name). Organize it " +
         "freely; check it before non-trivial work and record durable facts, " +
         "decisions, and learnings as small markdown files.\n" +
-        "- `org/public/<set>/` — curated read-only skill sets. Run " +
-        "`ls org/public/` for the sets and `cat org/public/<set>/<name>/SKILL.md` " +
-        "before using a skill.\n" +
+        "- `org/public/<set>/` — curated read-only skill sets (file-handling: " +
+        "pptx, docx, xlsx, pdf, file-reading; plus slides + templating). Run " +
+        "`ls org/public/` for the sets and read " +
+        "`org/public/<set>/<name>/SKILL.md` before using a skill.\n" +
         "- `org/upload/` — files the user attached to this conversation are " +
         "already here; read them directly.\n" +
         "- `org/output/` — write deliverables here; they are shared back to the " +
-        "organization under this run's folder.\n\n"
-      : "") +
-    "Pre-installed file-handling skills also live at " +
-    "`/mnt/skills/public/<name>/SKILL.md` (pptx, docx, xlsx, pdf, " +
-    "file-reading, slides, templating). Run `ls /mnt/skills/public/` for " +
-    "that index. To make a presentation/slides/deck, ALWAYS use the " +
-    "`slides` skill (HTML decks with a live editable preview) — read its " +
-    "SKILL.md first. `pptx` is NOT for this: it only reads/inspects " +
-    "existing `.pptx` files, and is the right tool only when the user " +
-    "explicitly needs a PowerPoint `.pptx` file as input or output." +
-    // Without org-fs there is no org/upload or org/output — the legacy
-    // transfer tools (also only registered then) are the one way to move
-    // files in and out.
-    (orgFs
-      ? ""
-      : "\n\nTo bring chat attachments / presigned URLs into the sandbox FS " +
+        "organization under this run's folder.\n\n" +
+        skillSteering
+      : // Legacy non-org-fs deployments: skills are image-baked and the
+        // transfer tools are the only way to move files in/out.
+        "Pre-installed file-handling skills live at " +
+        "`/mnt/skills/public/<name>/SKILL.md` (pptx, docx, xlsx, pdf, " +
+        "file-reading, slides, templating). Run `ls /mnt/skills/public/` for " +
+        "that index. " +
+        skillSteering +
+        "\n\nTo bring chat attachments / presigned URLs into the sandbox FS " +
         "use `copy_to_sandbox` (NOT bash + curl). To deliver a file you " +
         "produced back to the user as a download chip, use `share_with_user`.")
   );

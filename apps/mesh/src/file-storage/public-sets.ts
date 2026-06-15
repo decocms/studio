@@ -50,9 +50,28 @@ const setSchema = z.object({
 export type PublicSkillSetSource = z.infer<typeof setSchema>;
 
 /**
- * Parse the deployment's ORGFS_PUBLIC_SETS (a JSON array of sets). Malformed
- * config returns [] with a warn — public sets must never break boot.
+ * Built-in skill sets, present in EVERY deployment with no configuration —
+ * so a freshly-cloned local studio (and any prod deploy) pulls the core
+ * skills automatically. `core` is the canonical skill source: the
+ * file-handling skills (pptx/docx/xlsx/pdf/file-reading) plus slides +
+ * templating, synced from the studio repo and mounted read-only at
+ * `org/public/core`. This is what replaces the image-baked
+ * `/mnt/skills/public`.
+ *
+ * `ORGFS_PUBLIC_SETS` does NOT replace these — it overrides by set name
+ * and adds new sets (env wins on a name collision). So a deployment can
+ * repoint `core` (e.g. at a pinned ref) or add its own sets without
+ * losing the built-ins.
  */
+export const DEFAULT_PUBLIC_SETS: PublicSkillSetSource[] = [
+  {
+    set: "core",
+    repo: "decocms/studio",
+    ref: "main",
+    paths: [{ from: "packages/sandbox/image/skills" }],
+  },
+];
+
 const setsSchema = z
   .array(setSchema)
   // Duplicate names share one volume — each sync cycle would delete the
@@ -62,18 +81,34 @@ const setsSchema = z
     message: "duplicate set names",
   });
 
-export function getPublicSets(): PublicSkillSetSource[] {
-  const raw = getSettings().orgFsPublicSetsJson;
-  if (!raw) return [];
-  try {
-    return setsSchema.parse(JSON.parse(raw));
-  } catch (err) {
-    console.warn(
-      "[org-fs] invalid ORGFS_PUBLIC_SETS — public sets disabled",
-      err,
-    );
-    return [];
+/**
+ * Resolve the effective public sets from a raw `ORGFS_PUBLIC_SETS` value:
+ * the hardcoded defaults, then the parsed env overlaid by set name (env
+ * wins). Malformed env is ignored with a warn — it must never break boot,
+ * and never drop the defaults. Pure (no settings/IO) so it's unit-testable.
+ */
+export function resolvePublicSets(
+  raw: string | undefined,
+): PublicSkillSetSource[] {
+  const byName = new Map<string, PublicSkillSetSource>(
+    DEFAULT_PUBLIC_SETS.map((s) => [s.set, s]),
+  );
+  if (raw) {
+    try {
+      for (const s of setsSchema.parse(JSON.parse(raw))) byName.set(s.set, s);
+    } catch (err) {
+      console.warn(
+        "[org-fs] invalid ORGFS_PUBLIC_SETS — using built-in defaults only",
+        err,
+      );
+    }
   }
+  return [...byName.values()];
+}
+
+/** The deployment's effective public sets (defaults + env override). */
+export function getPublicSets(): PublicSkillSetSource[] {
+  return resolvePublicSets(getSettings().orgFsPublicSetsJson);
 }
 
 /**
