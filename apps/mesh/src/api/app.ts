@@ -172,7 +172,6 @@ import {
   dispatchRunAndWait,
   pullDispatch,
 } from "./routes/decopilot/dispatch-run";
-import { getPodId } from "../core/pod-identity";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
@@ -1130,8 +1129,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     sseHub,
   };
 
-  const POD_ID = getPodId();
-  const runRegistry = new RunRegistry(cancelReactorDeps, POD_ID);
+  const runRegistry = new RunRegistry(cancelReactorDeps);
 
   // Shared async-research-job storage — used both by the background
   // sweeper and by the automation context factory below, which rebinds it

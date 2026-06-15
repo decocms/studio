@@ -799,58 +799,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     };
   }
 
-  async claimRunStart(
-    taskId: string,
-    organizationId: string,
-    data: Partial<Thread>,
-    podId: string | null,
-  ): Promise<boolean> {
-    const now = new Date().toISOString();
-
-    const updateData: Record<string, unknown> = { updated_at: now };
-    if (data.status !== undefined) updateData.status = data.status;
-    if (data.run_owner_pod !== undefined)
-      updateData.run_owner_pod = data.run_owner_pod;
-    if (data.run_config !== undefined) {
-      updateData.run_config = data.run_config
-        ? JSON.stringify(data.run_config)
-        : null;
-    }
-    if (data.run_started_at !== undefined)
-      updateData.run_started_at = data.run_started_at;
-
-    // CAS: only claim if not already running on a different pod
-    const result = await this.db
-      .updateTable("threads")
-      .set(updateData)
-      .where("id", "=", taskId)
-      .where("organization_id", "=", organizationId)
-      .where(({ eb, or }) =>
-        or([
-          // Not currently in_progress → fresh start
-          eb("status", "!=", "in_progress"),
-          // Orphan → null pod
-          eb("run_owner_pod", "is", null),
-          // Same pod restart
-          ...(podId ? [eb("run_owner_pod", "=", podId)] : []),
-        ]),
-      )
-      .executeTakeFirst();
-
-    return (result?.numUpdatedRows ?? 0n) > 0n;
-  }
-
-  async orphanRunsByPod(podId: string): Promise<string[]> {
-    const rows = await this.db
-      .updateTable("threads")
-      .set({ run_owner_pod: null, updated_at: new Date().toISOString() })
-      .where("run_owner_pod", "=", podId)
-      .where("status", "=", "in_progress")
-      .returning("id")
-      .execute();
-    return rows.map((r) => r.id);
-  }
-
   async bumpProgress(taskId: string, organizationId: string): Promise<void> {
     // Single-column heartbeat write — intentionally does NOT touch
     // `updated_at` (that's the user-facing "last activity" timestamp; a

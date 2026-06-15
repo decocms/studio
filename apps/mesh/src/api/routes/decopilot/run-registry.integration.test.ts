@@ -1,8 +1,8 @@
 /**
  * RunRegistry — storage-integration tests (real Postgres).
  *
- * The methods exercised here orchestrate real SQL: stopAll (orphanRunsByPod)
- * and the reaper's terminal DB write. A previous version mocked the entire
+ * The methods exercised here orchestrate real SQL: the reaper's terminal DB
+ * write. A previous version mocked the entire
  * ThreadStoragePort and asserted `toHaveBeenCalled`, which proved nothing about
  * the queries themselves. See TESTING.md: don't mock your own code.
  *
@@ -40,7 +40,6 @@ import type { StreamBuffer } from "./stream-buffer";
 
 const ORG = "org_1";
 const USER = "user_1";
-const POD = "test-pod";
 // Progress-based reaper idle timeout (run-registry.ts RUN_IDLE_TIMEOUT_MS).
 const RUN_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -71,7 +70,7 @@ afterEach(() => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeRegistry(opts: { podId?: string; clock?: () => Date } = {}) {
+function makeRegistry(opts: { clock?: () => Date } = {}) {
   const sseEvents: Array<{ orgId: string; event: SSEEvent }> = [];
   const purged: string[] = [];
   const deps: RunReactorDeps = {
@@ -87,10 +86,9 @@ function makeRegistry(opts: { podId?: string; clock?: () => Date } = {}) {
       },
     } as unknown as StreamBuffer,
   };
-  const podId = opts.podId ?? POD;
   const registry = opts.clock
-    ? new RunRegistry(deps, podId, opts.clock)
-    : new RunRegistry(deps, podId);
+    ? new RunRegistry(deps, opts.clock)
+    : new RunRegistry(deps);
   createdRegistries.push(registry);
   return { registry, sseEvents, purged };
 }
@@ -105,27 +103,17 @@ function startThread(registry: RunRegistry, taskId: string, orgId = ORG) {
   });
 }
 
-/**
- * Create a thread and drive it to in_progress with a non-null run_config,
- * owned by `pod` (or orphaned when null).
- */
-async function seedRunningThread(pod: string | null): Promise<Thread> {
+/** Create a thread and drive it to in_progress with a non-null run_config. */
+async function seedRunningThread(): Promise<Thread> {
   const thread = await storage.create({
     organization_id: ORG,
     created_by: USER,
   });
-  const claimed = await storage.claimRunStart(
-    thread.id,
-    ORG,
-    {
-      status: "in_progress",
-      run_owner_pod: pod,
-      run_config: { resume: true },
-      run_started_at: new Date().toISOString(),
-    },
-    pod,
-  );
-  expect(claimed).toBe(true);
+  await storage.update(thread.id, ORG, {
+    status: "in_progress",
+    run_config: { resume: true },
+    run_started_at: new Date().toISOString(),
+  });
   return thread;
 }
 
@@ -148,10 +136,14 @@ async function waitFor(
 
 describe("RunRegistry storage orchestration (real Postgres)", () => {
   describe("stopAll", () => {
-    it("orphans this pod's in_progress rows in the DB, aborts controllers, clears state", async () => {
+    it("aborts in-flight controllers and clears in-memory state", async () => {
+      // stopAll no longer writes the DB (no run-owner claim to release) — it
+      // aborts the in-flight controllers (which cancels their daemons) and
+      // clears the in-memory map. Re-enqueueing the backing DBOS workflows for
+      // handoff happens separately in app shutdown.
       const { registry } = makeRegistry();
-      const t1 = await seedRunningThread(POD);
-      const t2 = await seedRunningThread(POD);
+      const t1 = await seedRunningThread();
+      const t2 = await seedRunningThread();
       startThread(registry, t1.id);
       startThread(registry, t2.id);
       const s1 = registry.getAbortSignal(t1.id)!;
@@ -159,40 +151,10 @@ describe("RunRegistry storage orchestration (real Postgres)", () => {
 
       await registry.stopAll();
 
-      // DB: run_owner_pod cleared (resumable) but status preserved.
-      for (const t of [t1, t2]) {
-        const row = await storage.get(t.id, ORG);
-        expect(row?.run_owner_pod).toBeNull();
-        expect(row?.status).toBe("in_progress");
-      }
-      // In-memory: controllers aborted and state cleared.
       expect(s1.aborted).toBe(true);
       expect(s2.aborted).toBe(true);
       expect(registry.isRunning(t1.id)).toBe(false);
       expect(registry.isRunning(t2.id)).toBe(false);
-    });
-
-    it("still aborts + clears in-memory state when the DB orphan write fails", async () => {
-      // Real failure, not a mock: a SqlThreadStorage on a destroyed pool. The
-      // contract is that stopAll's try/catch guarantees in-memory cleanup even
-      // when orphanRunsByPod throws.
-      const brokenDb = await connectTestPgDatabase();
-      await closeTestPgDatabase(brokenDb);
-      const deps: RunReactorDeps = {
-        storage: new SqlThreadStorage(brokenDb.db),
-        sseHub: { emit() {} },
-        streamBuffer: { purge() {} } as unknown as StreamBuffer,
-      };
-      const registry = new RunRegistry(deps, POD);
-      createdRegistries.push(registry);
-
-      startThread(registry, "t1"); // in-memory only
-      const signal = registry.getAbortSignal("t1")!;
-
-      await registry.stopAll(); // must not throw
-
-      expect(signal.aborted).toBe(true);
-      expect(registry.isRunning("t1")).toBe(false);
     });
   });
 
@@ -200,7 +162,7 @@ describe("RunRegistry storage orchestration (real Postgres)", () => {
     it("reaps a stuck run: real terminal DB write (failed, run_* cleared) + purge", async () => {
       let now = new Date("2024-01-01T00:00:00Z");
       const { registry, purged } = makeRegistry({ clock: () => now });
-      const thread = await seedRunningThread(POD);
+      const thread = await seedRunningThread();
       startThread(registry, thread.id); // in-memory running, startedAt = now
 
       const signal = registry.getAbortSignal(thread.id)!;

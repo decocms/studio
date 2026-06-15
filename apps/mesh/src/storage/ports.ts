@@ -76,20 +76,6 @@ export interface ThreadStoragePort {
     options?: { limit?: number; offset?: number },
   ): Promise<{ threads: Thread[]; total: number }>;
   /**
-   * Atomically claim a run start via CAS. Returns true if this pod won.
-   * Allows: new runs (not in_progress), orphans (null pod), or same-pod restarts.
-   */
-  claimRunStart(
-    taskId: string,
-    organizationId: string,
-    data: Partial<Thread>,
-    podId: string | null,
-  ): Promise<boolean>;
-
-  /** Release ownership for all runs owned by this pod (graceful shutdown). */
-  orphanRunsByPod(podId: string): Promise<string[]>;
-
-  /**
    * Stamp `last_progress_at = now()` on a thread. Cheap single-column UPDATE
    * used by the progress-liveness heartbeat (throttled by the caller). No-op
    * if the row doesn't exist.

@@ -431,15 +431,21 @@ async function threadGateWorkflowFn(
     name: "trackMessageStarted",
   });
   try {
-    // The dispatch step is non-retriable for v1. If a pod dies mid-stream,
-    // the desktop daemon (if remote-cli) keeps running, and a DBOS replay
-    // would open a second concurrent dispatch against the same workdir —
-    // racing on git state and tool output. Marking the step non-retriable
-    // converts pod death into a clean "run failed" rather than a corruption
-    // hazard. Re-attach semantics (stable runId, daemon-side dedupe) are v2.
+    // Retriable EXCEPT for `user-desktop` runs. A user-desktop run dispatches to
+    // a daemon on the user's laptop that keeps running after the pod dies; a DBOS
+    // replay on another executor would open a SECOND concurrent dispatch against
+    // the same workdir, racing on git state and tool output. We can't reliably
+    // stop that daemon on a hard crash (the graceful abort doesn't run), so these
+    // stay non-retriable: pod death = clean "run failed", not a corruption hazard.
+    // Hosted/in-process runs (agent-sandbox, undefined target) have no external
+    // daemon to race, so they're retriable and DBOS recovers them. The thread-gate
+    // queue (concurrency=1 per threadId) still guarantees a single in-flight
+    // dispatch per thread.
+    const retriable =
+      ctx.request.target?.sandboxProviderKind !== "user-desktop";
     await DBOS.runStep(() => dispatchRunAndWaitStep(ctx), {
       name: "dispatchRunAndWait",
-      retriesAllowed: false,
+      retriesAllowed: retriable,
     });
   } catch (err) {
     // Setup errors (prepareRun) propagate out of `dispatchRunAndWait`; in-flight

@@ -34,8 +34,6 @@ function inertDeps(): RunReactorDeps {
       listMessages: async () => ({ messages: [], total: 0 }),
       listByTriggerIds: async () => ({ threads: [], total: 0 }),
       forceFailIfInProgress: async () => false,
-      claimRunStart: async () => true,
-      orphanRunsByPod: async () => [],
       bumpProgress: noop,
       // null → reaper falls back to the run's in-memory startedAt baseline,
       // which is exactly the timing these pure tests exercise.
@@ -55,10 +53,9 @@ afterEach(() => {
 
 /** Create a registry and register it for reaper-timer cleanup. */
 function createRegistry(clock?: () => Date): RunRegistry {
-  const podId = "test-pod";
   const r = clock
-    ? new RunRegistry(inertDeps(), podId, clock)
-    : new RunRegistry(inertDeps(), podId);
+    ? new RunRegistry(inertDeps(), clock)
+    : new RunRegistry(inertDeps());
   createdRegistries.push(r);
   return r;
 }
