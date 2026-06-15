@@ -15,7 +15,6 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { homeMountPath } from "@/file-storage/home-mount";
-import { getSettings } from "@/settings";
 import { matchDeckToolPath } from "@decocms/harness/decopilot/built-in-tools/vm-tools/deck-paths";
 import type { DeckBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 
@@ -24,7 +23,7 @@ const HOME_VOLUME = "home";
 const NOOP: DeckBuffer = { enqueue: () => {}, flush: async () => {} };
 
 export function createDeckBuffer(ctx: StudioContext): DeckBuffer {
-  const orgFs = getSettings().orgFsClusterMounts ? ctx.orgFs : null;
+  const orgFs = ctx.orgFs;
   const orgSlug = ctx.organization?.slug ?? null;
   const actor = ctx.auth?.user?.id ?? null;
   if (!orgFs || !orgSlug || !actor) return NOOP;

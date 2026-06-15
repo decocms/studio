@@ -125,7 +125,6 @@ export function resolveConfig(
       envVars.MCP_CACHE_ENABLED,
       nodeEnv !== "development",
     ),
-    orgFsClusterMounts: toBool(envVars.ORGFS_CLUSTER_MOUNTS),
     orgFsPublicSetsJson: envVars.ORGFS_PUBLIC_SETS,
 
     // Object Storage (S3-compatible)

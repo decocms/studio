@@ -18,7 +18,6 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import { homeMountPath } from "@/file-storage/home-mount";
-import { getSettings } from "@/settings";
 import { matchDeckEntryPath } from "@decocms/harness/decopilot/built-in-tools/vm-tools/deck-paths";
 import type { UIMessageStreamWriter } from "ai";
 
@@ -44,7 +43,7 @@ export function createDeckWatcher(
   ctx: StudioContext,
   writer: UIMessageStreamWriter,
 ): DeckWatcher {
-  const orgFs = getSettings().orgFsClusterMounts ? ctx.orgFs : null;
+  const orgFs = ctx.orgFs;
   const orgSlug = ctx.organization?.slug ?? null;
   if (!orgFs || !orgSlug) {
     return { sweep: async () => {} };

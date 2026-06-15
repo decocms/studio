@@ -56,11 +56,8 @@ export interface Settings {
   /** MCP read/list caching. On by default in production, off in development;
    *  MCP_CACHE_ENABLED explicitly overrides either default. */
   mcpCacheEnabled: boolean;
-  /** Mint org-fs tokens for hosted (agent-sandbox) pods too — only useful
-   *  when the sandbox-env chart runs the org-fs sidecar (orgFs.enabled). */
-  orgFsClusterMounts: boolean;
-  /** JSON array of public skill-set sources (see file-storage/public-sets.ts);
-   *  unset = no public sets. */
+  /** JSON array of public skill-set sources overlaid on the built-in
+   *  defaults (see file-storage/public-sets.ts). */
   orgFsPublicSetsJson: string | undefined;
 
   // Object Storage (S3-compatible)

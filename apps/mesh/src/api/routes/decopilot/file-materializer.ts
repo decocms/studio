@@ -26,7 +26,6 @@ import { isLocalMode } from "@/auth/local-mode";
 import type { StudioContext } from "@/core/studio-context";
 import { fsObjectKey } from "@/file-storage/org-fs-path";
 import { detectContentType, toFilesUrl } from "@/object-storage/key-utils";
-import { getSettings } from "@/settings";
 import type { ChatMessage } from "./types";
 import {
   toMeshStorageUri,
@@ -40,9 +39,8 @@ import {
  * "Failed to parse [file://...]", others silently ignore the file), and
  * the sandbox skills (pptx-extract, docx, xlsx) consistently produce
  * better results than any provider's native parser. The model picks
- * these up from the annotation text emitted by uploadFileParts: with
- * org-fs mounts they're already at `org/upload/<name>`; otherwise it
- * pulls them in via copy_to_sandbox.
+ * these up from the annotation text emitted by uploadFileParts — they
+ * are already at `org/upload/<name>` in the mounted org filesystem.
  *
  * PDFs stay on the native path — every provider with a `file` capability
  * handles them fine and going through the sandbox would be a regression.
@@ -246,11 +244,9 @@ async function storeAttachment(
     });
     return {
       key: fsObjectKey("uploads", path),
-      // The in-sandbox path only exists on deployments that mount org-fs
-      // into sandboxes — don't promise it to the model elsewhere.
-      sandboxPath: getSettings().orgFsClusterMounts
-        ? `org/upload/${filename}`
-        : null,
+      // org-fs is mounted into every sandbox, so the upload is always
+      // reachable at this in-sandbox path.
+      sandboxPath: `org/upload/${filename}`,
     };
   } catch (err) {
     console.error("[file-materializer] uploads-volume write failed:", err);
@@ -457,8 +453,9 @@ export async function resolveStorageRefs(
   if (!ctx.organization) return messages;
 
   // First pass: drop sandbox-only file parts (Office formats). The model
-  // reads these via copy_to_sandbox using the mesh-storage URI in the
-  // annotation text emitted by uploadFileParts.
+  // reads these directly from `org/upload/<name>` (the uploads volume is
+  // mounted in the sandbox); the annotation text from uploadFileParts
+  // points at the path.
   const filtered = messages.map((msg) => {
     const filteredParts = msg.parts.filter(
       (part) => !isSandboxOnlyFilePart(part),

@@ -10,9 +10,9 @@ export { generateMessageId } from "@decocms/harness/decopilot/harness-constants"
  * skill sets so the agent surfaces them when asked about its capabilities.
  * Settings-stable per deployment, so it lives in the cached prompt prefix.
  *
- * Portable pure function but kept mesh-side (consumed by the cluster
- * `build-agent-system-prompt`, which gates it on `getSettings().orgFsClusterMounts`
- * + `getPublicSets()` — both cluster-only).
+ * Portable pure function kept mesh-side (consumed by the cluster
+ * `build-agent-system-prompt` with `getPublicSets()`). org-fs is mounted
+ * into every sandbox now, so it is emitted unconditionally.
  */
 export function buildOrgFilesystemPrompt(publicSets: string[]): string {
   const sets =

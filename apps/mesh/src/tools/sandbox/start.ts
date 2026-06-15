@@ -413,14 +413,12 @@ async function provisionSandbox(
       : null;
 
   // Org-fs mounts: mint an fs-scoped token + build the daemon's ORGFS_CONFIG.
-  // Desktop links always mount; hosted pods only when the cluster runs the
-  // privileged org-fs sidecar (settings.orgFsClusterMounts ↔ the sandbox-env
-  // chart's orgFs.enabled — without the sidecar the minted key would just go
-  // unused). Guarded inside the helper: a mint failure → undefined → no
-  // mounting, never breaks provisioning.
+  // org-fs is the universal substrate now — both desktop links and hosted
+  // pods always mount (hosted relies on the privileged org-fs sidecar
+  // shipping in the default deploy). Guarded inside the helper: a mint
+  // failure → undefined → no mounting, never breaks provisioning.
   const wantsOrgFs =
-    runner.kind === "user-desktop" ||
-    (runner.kind === "agent-sandbox" && getSettings().orgFsClusterMounts);
+    runner.kind === "user-desktop" || runner.kind === "agent-sandbox";
   // ctx.organization is unset on the decopilot vm-tools dispatch path (the
   // org travels as the `orgId` param there) — resolve the slug from the row
   // so chat-ephemeral sandboxes get mounts too.
