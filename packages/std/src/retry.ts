@@ -156,6 +156,8 @@ export async function retry<T>(
       );
       await delay(timeout, signal ? { signal } : undefined);
     }
+    // Increment after the delay so attempt 0 always runs immediately (no
+    // leading sleep) and the backoff is computed for the *next* wait.
     attempt++;
   }
 }
