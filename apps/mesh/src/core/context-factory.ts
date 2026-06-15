@@ -1195,8 +1195,12 @@ export async function createStudioContextFactory(
       extensionDirectory,
     };
     // One shared engine: same files for logs and log-derived metrics, so the
-    // httpfs + SECRET setup runs once.
-    const gcsEngine = new DuckDBEngine(gcs);
+    // httpfs + SECRET setup runs once. Memory tuning lets constrained
+    // containers cap DuckDB so the OTLP-flatten query spills instead of OOMing.
+    const gcsEngine = new DuckDBEngine(gcs, {
+      memoryLimit: settings.duckdbMemoryLimit,
+      threads: settings.duckdbThreads,
+    });
     monitoringEngine = gcsEngine;
     metricEngine = gcsEngine;
     const otlpSource = buildOtlpFlatSource({

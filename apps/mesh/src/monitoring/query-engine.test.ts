@@ -88,6 +88,29 @@ describe.skipIf(!duckdbAvailable)("DuckDBEngine", () => {
     expect(r2[0]!.tool_name).toBe("TOOL_B");
     expect(Number(r3[0]!.avg_ms)).toBe(150);
   });
+
+  it("enables disk spill and applies memory tuning so large queries don't hard-OOM", async () => {
+    const tuned = new DuckDBEngine(undefined, {
+      memoryLimit: "512MiB",
+      threads: 2,
+    });
+    try {
+      const [order, mem, threads, temp] = await Promise.all([
+        tuned.query("SELECT current_setting('preserve_insertion_order') AS v"),
+        tuned.query("SELECT current_setting('memory_limit') AS v"),
+        tuned.query("SELECT current_setting('threads') AS v"),
+        tuned.query("SELECT current_setting('temp_directory') AS v"),
+      ]);
+      expect(String(order[0]!.v)).toBe("false");
+      // DuckDB normalizes the byte unit (512MiB → "512.0 MiB").
+      expect(String(mem[0]!.v)).toContain("512");
+      expect(Number(threads[0]!.v)).toBe(2);
+      // A non-empty temp_directory is what lets in-memory DuckDB spill.
+      expect(String(temp[0]!.v).length).toBeGreaterThan(0);
+    } finally {
+      await tuned.destroy();
+    }
+  });
 });
 
 describe("createMonitoringEngine", () => {

@@ -150,6 +150,10 @@ export function resolveConfig(
     monitoringS3Prefix: envVars.MONITORING_S3_PREFIX,
     duckdbExtensionDirectory:
       envVars.DUCKDB_EXTENSION_DIRECTORY || "/opt/duckdb/extensions",
+    duckdbMemoryLimit: envVars.DUCKDB_MEMORY_LIMIT || undefined,
+    duckdbThreads: envVars.DUCKDB_THREADS
+      ? Number(envVars.DUCKDB_THREADS)
+      : undefined,
 
     // Runtime flags
     isCli: true,

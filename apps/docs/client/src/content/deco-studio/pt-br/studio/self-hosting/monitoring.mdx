@@ -191,6 +191,7 @@ gcloud storage buckets update "gs://${BUCKET}" --lifecycle-file=/tmp/lifecycle.j
 - **`403 storage.buckets.get denied` no startup:** a service account do collector precisa de `storage.admin` no escopo do bucket (ou ao menos `storage.buckets.get` + escrita de objetos) — veja o passo 2.
 - **Dashboard vazio / "Monitoring stats unavailable":** confirme que os objetos existem com `gcloud storage ls "gs://${BUCKET}/logs/"`; e confirme que `MONITORING_S3_PREFIX` **bate exatamente** com o `partition.prefix` do collector.
 - **Studio falha ao iniciar com erro de config:** quando `MONITORING_S3_BUCKET` está definida, a access key e o secret HMAC são obrigatórios (o diretório de extensão do DuckDB já vem embutido na imagem oficial).
+- **`Out of Memory Error` em `queryMetricTimeseries` / `queryLlmUsageStats`:** o engine DuckDB embutido lê todo o prefixo do bucket a cada query e estoura memória em containers pequenos. O engine já faz spill para um diretório temporário, mas com pouca memória você pode limitá-lo explicitamente com `DUCKDB_MEMORY_LIMIT` (ex. `2GB`) e reduzir o paralelismo com `DUCKDB_THREADS` (ex. `2`); menos threads reduz o pico de memória. Defina também uma regra de retenção/lifecycle no bucket para o prefixo não crescer indefinidamente.
 
 ## Variáveis de ambiente
 
@@ -205,3 +206,5 @@ gcloud storage buckets update "gs://${BUCKET}" --lifecycle-file=/tmp/lifecycle.j
 | `MONITORING_S3_REGION` | usa `S3_REGION` como fallback | Região para assinatura SigV4 (`auto` para GCS) |
 | `MONITORING_S3_ACCESS_KEY_ID` | usa `S3_ACCESS_KEY_ID` como fallback | Chave HMAC do GCS |
 | `MONITORING_S3_SECRET_ACCESS_KEY` | usa `S3_SECRET_ACCESS_KEY` como fallback | Segredo HMAC do GCS |
+| `DUCKDB_MEMORY_LIMIT` | *(80% da RAM)* | Limite de memória do engine DuckDB embutido, ex. `2GB`. Reduza em containers com pouca memória |
+| `DUCKDB_THREADS` | *(todas as CPUs)* | Número de threads do engine DuckDB embutido. Menos threads reduz o pico de memória |
