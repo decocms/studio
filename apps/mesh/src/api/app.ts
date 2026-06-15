@@ -155,7 +155,10 @@ import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
 import {
+  AUTOMATIONS_PARTITION_CONCURRENCY,
+  AUTOMATIONS_QUEUE,
   AutomationEventDispatcher,
+  cleanupOrphanedOrgQueues,
   enqueueAutomationFire,
   fireAutomationNow,
   reconcileAutomationSchedules,
@@ -2174,12 +2177,16 @@ export async function createApp(options: CreateAppOptions = {}) {
    * — they don't need any setup here.
    */
   const initDbos = async () => {
-    // Automation fires run directly on the per-org queue
-    // `automations-org-<orgId>` — the queue's concurrency IS the per-org
-    // tenant-fairness cap. Those queues are NOT registered here: they are
-    // created on demand by `ensureOrgQueue` and auto-discovered by every
-    // replica's dispatcher via `wfQueueRunner.discoverAndLaunchDbQueues`.
-    //
+    // Automation fires run on ONE partitioned queue, partitioned by orgId.
+    // Per-partition concurrency gives each org its own fairness cap (a
+    // saturated org blocks only its own partition), while a single queue
+    // means one dequeue-polling loop per replica instead of one per org —
+    // and DBOS only polls partitions with ENQUEUED work, so idle poll cost
+    // is flat regardless of org count.
+    await DBOS.registerQueue(AUTOMATIONS_QUEUE, {
+      partitionQueue: true,
+      concurrency: AUTOMATIONS_PARTITION_CONCURRENCY,
+    });
     // Per-thread agent-run gate. Partition key = threadId, concurrency=1,
     // so messages on the same thread serialize behind the active run while
     // different threads progress in parallel. Used by user-message POSTs
@@ -2191,7 +2198,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.
-    // Fires now run directly on the per-org queue, so these rows are orphaned;
+    // Fires now run on the partitioned queue, so these rows are orphaned;
     // deleteQueue is a no-op once they're gone. Stale gate workflows still
     // ENQUEUED from a previous version are cancelled by the reconciler.
     await Promise.allSettled(
@@ -2199,6 +2206,10 @@ export async function createApp(options: CreateAppOptions = {}) {
         DBOS.deleteQueue(q),
       ),
     );
+    // MIGRATION: drop the retired per-org `automations-org-<orgId>` queue rows
+    // (empty ones only) so DBOS stops launching a dequeue loop for each. Runs
+    // every boot; idempotent. Remove once prod shows zero such rows.
+    await cleanupOrphanedOrgQueues(database.pool);
 
     // Fire-and-forget backfill of studio pack agents for every org. Safe
     // to skip awaiting — the workflow IDs are deterministic per-org, so

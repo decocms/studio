@@ -2,25 +2,24 @@
  * DBOS workflow definitions for automation fires.
  *
  * Single cap — per-org tenant fairness:
- * - `automations-org-<orgId>` — one queue per organization, lazily created
- *   on first fire via `ensureOrgQueue`. Per-org `concurrency` is mutable at
- *   runtime through `WorkflowQueue.setConcurrency`, so users/admins can
- *   self-tune the cap from a settings UI without redeploying. The
- *   `dbos.queues` row is the source of truth for the limit — mesh keeps
- *   no copy.
+ * - One partitioned queue (`AUTOMATIONS_QUEUE`), partitioned by orgId. DBOS
+ *   enforces `concurrency` per partition, so the per-org cap is preserved —
+ *   one org saturating its slots only blocks its own partition, never
+ *   another org's — without paying for one queue (and one dequeue loop) per
+ *   org. See `AUTOMATIONS_QUEUE` below for the idle-polling rationale.
  *
- * `fireAutomationWorkflow` runs *directly* on the per-org queue, so the
- * queue's concurrency IS the cap — no dedicated gate workflow holds a slot
- * just to enforce it. A queue caps whatever runs on it; one org saturating
- * its slots only blocks its own fires, never another org's.
+ * `fireAutomationWorkflow` runs *directly* on the partitioned queue, so the
+ * queue's per-partition concurrency IS the cap — no dedicated gate workflow
+ * holds a slot just to enforce it.
  *
  * Two workflows:
- * - `fireAutomationWorkflow` — runs on the per-org queue, split into recorded
- *   steps (prepare → createRunThread → updateTriggerTiming → dispatchRunAndWait).
+ * - `fireAutomationWorkflow` — runs on the partitioned queue, split into
+ *   recorded steps (prepare → createRunThread → updateTriggerTiming →
+ *   dispatchRunAndWait).
  * - `cronEntryWorkflow` — bound to `DBOS.createSchedule`. The Schedule API
- *   can't target a dynamic per-org queue name, so this fire-and-forget shim
- *   re-enqueues `fireAutomationWorkflow` on the org queue and returns without
- *   awaiting so the scheduler tick is never blocked.
+ *   can't target a partition key directly, so this fire-and-forget shim
+ *   re-enqueues `fireAutomationWorkflow` on the org's partition and returns
+ *   without awaiting so the scheduler tick is never blocked.
  *
  * Exactly-once semantics:
  * Cron is intrinsically exactly-once: `DBOS.createSchedule` assigns each tick
@@ -37,6 +36,7 @@
  */
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
+import type { Pool } from "pg";
 import {
   awaitThreadRun,
   type SerializableDispatchRunInput,
@@ -57,34 +57,58 @@ import {
 import { computeNextRunAt, type StudioContextFactory } from "./fire";
 
 /**
- * Per-org queueing uses one DB-backed queue per organization, named
- * `automations-org-<orgId>`. The `dbos.queues` row IS the per-org config:
- * `concurrency` is mutable at runtime via the `WorkflowQueue` setters,
- * and `discoverAndLaunchDbQueues` makes every replica honor changes
- * within one poll cycle. Mesh stores no copy of these limits — DBOS owns
- * them end-to-end.
+ * Automation fires run on ONE partitioned queue, partitioned by orgId.
  *
- * Lazy-created on the first enqueue (`ensureOrgQueue`) with default
- * concurrency.
+ * DBOS enforces `concurrency` PER PARTITION (its dequeue counts running
+ * workflows scoped to the partition key), so each org still gets its own
+ * fairness cap — a saturated org blocks only its own partition, never
+ * another's — exactly like the retired per-org-queue model. The win: one
+ * queue means one dequeue-polling loop per replica instead of one loop per
+ * org, and DBOS only polls partitions that currently have ENQUEUED work
+ * (`getQueuePartitions`), so idle queue-poll cost is flat regardless of how
+ * many orgs exist. The per-org model paid one dequeue/sec/org forever — even
+ * for orgs that fired once and never again — which scaled linearly with org
+ * count.
+ *
+ * Registered once at boot in `app.initDbos` (like the thread-gate queue),
+ * not lazily per fire.
  */
+export const AUTOMATIONS_QUEUE = "automations";
+/** Per-org (per-partition) concurrency cap. */
+export const AUTOMATIONS_PARTITION_CONCURRENCY = 10;
+/** Prefix of the retired per-org queues — kept only for migration cleanup. */
 const AUTOMATIONS_ORG_QUEUE_PREFIX = "automations-org-";
-/** Concurrency a new org's queue starts at. Updatable per-org afterwards. */
-const DEFAULT_ORG_CONCURRENCY = 10;
 const AUTOMATIONS_RUN_TIMEOUT_MS = 5 * 60 * 1000;
-export function orgQueueName(orgId: string): string {
-  return `${AUTOMATIONS_ORG_QUEUE_PREFIX}${orgId}`;
-}
 
 /**
- * Idempotently create the org's queue with default concurrency. Safe to
- * call on every fire — `onConflict: "never_update"` means an existing
- * user-tuned `concurrency` value is never clobbered by this call.
+ * MIGRATION (remove once no `automations-org-*` rows remain): delete the
+ * retired per-org queue rows so DBOS stops launching a dequeue loop for each.
+ * Only deletes queues with NO non-terminal (ENQUEUED/PENDING) workflows, so
+ * fires enqueued before the cutover drain on their original queue first — a
+ * later boot removes the now-empty row. Same Postgres as the app DB
+ * (`systemDatabaseUrl` = app `databaseUrl`, schema `dbos`), so the app pool
+ * can reach `dbos.queues`. Idempotent and best-effort.
  */
-export async function ensureOrgQueue(orgId: string): Promise<void> {
-  await DBOS.registerQueue(orgQueueName(orgId), {
-    concurrency: DEFAULT_ORG_CONCURRENCY,
-    onConflict: "never_update",
-  });
+export async function cleanupOrphanedOrgQueues(pool: Pool): Promise<void> {
+  try {
+    const { rows } = await pool.query<{ name: string }>(
+      `SELECT q.name FROM dbos.queues q
+        WHERE q.name LIKE $1
+          AND NOT EXISTS (
+            SELECT 1 FROM dbos.workflow_status w
+             WHERE w.queue_name = q.name
+               AND w.status IN ('ENQUEUED', 'PENDING')
+          )`,
+      [`${AUTOMATIONS_ORG_QUEUE_PREFIX}%`],
+    );
+    if (rows.length === 0) return;
+    await Promise.allSettled(rows.map((r) => DBOS.deleteQueue(r.name)));
+    console.log(
+      `[automations] migration: removed ${rows.length} orphaned per-org queue(s)`,
+    );
+  } catch (err) {
+    console.error("[automations] per-org queue cleanup failed:", err);
+  }
 }
 
 export interface AutomationRuntime {
@@ -444,16 +468,16 @@ export const fireAutomationWorkflow = DBOS.registerWorkflow(
 
 /**
  * Scheduled-fire entry. Bound to DBOS schedules created per cron trigger.
- * Ensures the org queue exists, then re-enqueues `fireAutomationWorkflow` on
- * it. Returns without awaiting so the scheduler tick stays fast.
+ * Re-enqueues `fireAutomationWorkflow` on the org's partition of the shared
+ * automations queue. Returns without awaiting so the scheduler tick stays fast.
  */
 async function cronEntryWorkflowFn(
   _scheduledTime: Date,
   ctx: FireAutomationContext,
 ): Promise<void> {
-  await ensureOrgQueue(ctx.organizationId);
   await DBOS.startWorkflow(fireAutomationWorkflow, {
-    queueName: orgQueueName(ctx.organizationId),
+    queueName: AUTOMATIONS_QUEUE,
+    enqueueOptions: { queuePartitionKey: ctx.organizationId },
   })(ctx);
 }
 
