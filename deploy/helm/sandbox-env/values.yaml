@@ -181,22 +181,22 @@ dnsConfig:
       value: "1"
 
 # ── org-fs sidecar (organization filesystem mounts) ───────────────────
-# Opt-in: a privileged sidecar that FUSE-mounts the org filesystem volumes
-# (skills + outputs) at /app/org/* via WebDAV→rclone, propagated into the
-# unprivileged sandbox container (Bidirectional → HostToContainer). The
-# mount config arrives post-bind: mesh POSTs it to the daemon's
-# /_sandbox/orgfs-config, which relays it onto the shared /run/orgfs
-# control volume the sidecar watches (warm-pool claims reject spec.env,
-# so boot env can't carry it).
+# Mandatory, always deployed: a privileged sidecar that FUSE-mounts the org
+# filesystem volumes (skills + outputs + home) at /app/org/* via
+# WebDAV→rclone, propagated into the unprivileged sandbox container
+# (Bidirectional → HostToContainer). The mount config arrives post-bind:
+# mesh POSTs it to the daemon's /_sandbox/orgfs-config, which relays it onto
+# the shared /run/orgfs control volume the sidecar watches (warm-pool claims
+# reject spec.env, so boot env can't carry it).
 #
-# REQUIRES hostUsers: true — Kubernetes forbids privileged containers in
-# user-namespaced pods, and Bidirectional propagation requires privileged.
-# Enabling this trades the userns-remap hardening for org-fs mounts; the
-# template fails to render otherwise so the trade-off stays explicit.
-# Mesh side mints org-fs tokens for hosted sandboxes unconditionally now —
-# this sidecar must be enabled wherever those mounts are expected.
+# org-fs is a hard product requirement (skills, uploads, outputs, home all
+# live here), so there is no toggle. It forces `hostUsers: true` (no
+# user-namespace remap) — Kubernetes forbids privileged containers +
+# Bidirectional propagation in user-namespaced pods. Security note: only
+# THIS sidecar is privileged; the untrusted agent container keeps drop-ALL
+# caps, no privilege escalation, runAsNonRoot, and seccomp RuntimeDefault
+# (see the sandbox container in templates/sandbox-template.yaml).
 orgFs:
-  enabled: false
   image:
     repository: ghcr.io/decocms/studio/orgfs-sidecar
     # Bump to ship a new sidecar image — release-orgfs-sidecar.yaml reads
@@ -210,20 +210,6 @@ orgFs:
     limits:
       cpu: 500m
       memory: 512Mi
-
-# ── sandbox-pod hardening ──────────────────────────────────────────────
-# User namespace remap (`spec.hostUsers: false`): UID 1000 inside the pod
-# maps to a high, unprivileged subordinate UID on the node, so a
-# container escape doesn't land as a real node UID. Requires K8s 1.30+
-# with a containerd/kernel that support userns (EKS default AMIs from
-# late 2024 onward are fine; kind nodes vary).
-#
-# Defaults to the secure path because this chart runs untrusted user
-# code. Override to true (back to host users) ONLY on clusters whose
-# kernel/containerd doesn't support userns — symptoms of unsupported
-# runtime are pod scheduling failures with messages like "user
-# namespaces are not enabled".
-hostUsers: false
 
 # Read-only root filesystem. When true, /app + /tmp + /home/sandbox are
 # remounted as emptyDirs and `safe.directory '*'` is set so git works

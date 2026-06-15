@@ -23,9 +23,8 @@ resources:
     memory: "3Gi"
 
 # ── pod hardening (relaxed for kind) ───────────────────────────────────
-# Plain host-users mode. userns remap requires K8s 1.30+ on a kernel that
-# supports it; kind nodes can vary. Keep simple for local dev.
-hostUsers: true
+# hostUsers is fixed true by the template now (org-fs's privileged sidecar
+# is incompatible with userns remap), so nothing to set here.
 readOnlyRootFilesystem: false
 
 # ── no preview Gateway in kind ─────────────────────────────────────────

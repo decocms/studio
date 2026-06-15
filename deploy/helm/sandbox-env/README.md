@@ -21,7 +21,7 @@ installed (it ships the CRDs + controller).
 ## Prerequisites
 
 - `sandbox-operator` chart installed in `agent-sandbox-system`.
-- Kubernetes 1.30+ (for `spec.hostUsers: false` user namespace remap).
+- Kubernetes with `spec.hostUsers: true` privileged-sidecar support (org-fs FUSE mount).
 - The studio release for THIS environment must point its mesh runner at
   the env-suffixed SandboxTemplate by setting
   `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<envName>` in the studio
@@ -179,7 +179,6 @@ See `values.yaml` for the full set. The most-tuned ones:
 | `resources.*` | 0.5/2 CPU, 1/4Gi RAM | per sandbox pod |
 | `nodeSelector` / `tolerations` / `affinity` | `{}` | for sandbox isolation NodePool |
 | `topologySpreadConstraints` | `[]` | spread sandbox pods across AZs; see `values.yaml` for the recommended config |
-| `hostUsers` | `false` | userns remap; flip to `true` if kernel/containerd doesn't support userns |
 | `readOnlyRootFilesystem` | `true` | RO rootfs + emptyDirs on /app, /tmp, /home |
 | `networkPolicy.enabled` | `true` | locks down ingress/egress |
 | `warmPool.enabled` / `warmPool.size` | `false` / `0` | only after measuring cold-start pain |
