@@ -51,3 +51,11 @@ export const CONNECTION_DISABLE_MIN_WINDOW_MS = 60_000; // 60 seconds
 
 /** TTL for shared failure-counter entries — a connection that stops failing self-resets. */
 export const CONNECTION_CIRCUIT_TTL_MS = 5 * 60_000; // 5 minutes
+
+/**
+ * Cooldown before an auto-disabled (status="error") connection is re-probed.
+ * After this window a single request triggers a half-open handshake; success
+ * re-activates the connection, failure restarts the window. Manual "inactive"
+ * disables never auto-recover.
+ */
+export const CONNECTION_ERROR_REPROBE_COOLDOWN_MS = 60_000; // 60 seconds

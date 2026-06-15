@@ -31,6 +31,7 @@ import {
   recordSuccess,
 } from "@/mcp-clients/circuit-breaker";
 import { getConnectionCircuitStore } from "@/mcp-clients/connection-circuit-store";
+import { CONNECTION_ERROR_REPROBE_COOLDOWN_MS } from "@/core/constants";
 import { peekRpcMethod, probeDecision } from "./proxy-handshake";
 import { handleVirtualMcpRequest } from "./virtual-mcp";
 export { toServerClient, type MCPProxyClient } from "./mcp-proxy-factory";
@@ -235,9 +236,30 @@ export const createProxyRoutes = () => {
           );
         }
 
-        // Check connection status
+        // Check connection status.
+        // "inactive" = deliberate manual disable: permanent until re-enabled.
+        // "error" = auto-disable after sustained failures: self-heals via a
+        // half-open re-probe once the cooldown (measured from updated_at, the
+        // disable time) elapses. Within the cooldown we fast-fail with a
+        // Retry-After hint so callers stop hammering.
+        let recovering = false;
         if (connection.status !== "active") {
-          throw new Error(`Connection inactive: ${connection.status}`);
+          const sinceDisabledMs =
+            Date.now() - new Date(connection.updated_at).getTime();
+          const canReprobe =
+            connection.status === "error" &&
+            !!connection.connection_url &&
+            sinceDisabledMs >= CONNECTION_ERROR_REPROBE_COOLDOWN_MS;
+          if (canReprobe) {
+            recovering = true;
+          } else {
+            if (connection.status === "error" && connection.connection_url) {
+              const remainingMs =
+                CONNECTION_ERROR_REPROBE_COOLDOWN_MS - sinceDisabledMs;
+              c.header("Retry-After", String(Math.ceil(remainingMs / 1000)));
+            }
+            throw new Error(`Connection inactive: ${connection.status}`);
+          }
         }
 
         // For HTTP connections, eagerly attempt the upstream MCP handshake to
@@ -262,6 +284,7 @@ export const createProxyRoutes = () => {
             ? (await listCache.get(listType, connectionId)) === null
             : true;
         }
+        if (recovering) probe = true; // half-open: a real handshake must test recovery
         if (connection.connection_url && probe) {
           assertCircuitClosed(connectionId);
           await ctx.tracer.startActiveSpan(
@@ -278,6 +301,15 @@ export const createProxyRoutes = () => {
                 await clientFromConnection(connection, ctx, false);
                 recordSuccess(connectionId);
                 void getConnectionCircuitStore().recordSuccess(connectionId);
+                if (recovering) {
+                  await ctx.storage.connections.update(connectionId, {
+                    status: "active",
+                  });
+                  console.info(
+                    "[proxy] auto-recovered connection after successful re-probe",
+                    { connectionId, org: ctx.organization?.slug },
+                  );
+                }
                 span.setStatus({ code: SpanStatusCode.OK });
               } catch (err) {
                 span.setStatus({
