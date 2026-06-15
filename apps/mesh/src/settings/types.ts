@@ -58,7 +58,6 @@ export interface Settings {
   mcpCacheEnabled: boolean;
   /** Mint org-fs tokens for hosted (agent-sandbox) pods too — only useful
    *  when the sandbox-env chart runs the org-fs sidecar (orgFs.enabled). */
-  orgFsClusterMounts: boolean;
   /** JSON array of public skill-set sources (see file-storage/public-sets.ts);
    *  unset = no public sets. */
   orgFsPublicSetsJson: string | undefined;

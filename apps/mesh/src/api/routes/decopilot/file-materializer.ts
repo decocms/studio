@@ -26,7 +26,6 @@ import { isLocalMode } from "@/auth/local-mode";
 import type { StudioContext } from "@/core/studio-context";
 import { fsObjectKey } from "@/file-storage/org-fs-path";
 import { detectContentType, toFilesUrl } from "@/object-storage/key-utils";
-import { getSettings } from "@/settings";
 import type { ChatMessage } from "./types";
 import {
   toMeshStorageUri,
@@ -246,11 +245,9 @@ async function storeAttachment(
     });
     return {
       key: fsObjectKey("uploads", path),
-      // The in-sandbox path only exists on deployments that mount org-fs
-      // into sandboxes — don't promise it to the model elsewhere.
-      sandboxPath: getSettings().orgFsClusterMounts
-        ? `org/upload/${filename}`
-        : null,
+      // org-fs is mounted into every sandbox, so the upload is always
+      // reachable at this in-sandbox path.
+      sandboxPath: `org/upload/${filename}`,
     };
   } catch (err) {
     console.error("[file-materializer] uploads-volume write failed:", err);

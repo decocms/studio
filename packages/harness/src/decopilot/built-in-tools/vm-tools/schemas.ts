@@ -79,47 +79,12 @@ export const BashInputSchema = z.object({
     .describe("Timeout in milliseconds (default 30000, max 120000)"),
 });
 
-export const CopyToSandboxInputSchema = z.object({
-  url: z
-    .string()
-    .describe(
-      "Org-scoped storage reference. Accepts a mesh-storage:// URI from " +
-        "chat (e.g. mesh-storage://chat-uploads/abc.pdf) or a bare key " +
-        "(e.g. chat-uploads/abc.pdf). Arbitrary http(s):// URLs are NOT " +
-        "accepted — for public URLs use the bash tool with curl.",
-    ),
-  target: z
-    .string()
-    .describe(
-      "Destination path on the sandbox FS (relative to project root). " +
-        "Parent directories are created as needed.",
-    ),
-});
-
-export const ShareWithUserInputSchema = z.object({
-  source: z
-    .string()
-    .describe(
-      "Path to a file on the sandbox FS to share back to the user. " +
-        "Must be a single file (not a directory).",
-    ),
-  name: z
-    .string()
-    .optional()
-    .describe(
-      "Filename to surface in the chat UI (default: basename of source). " +
-        "Cannot contain slashes.",
-    ),
-});
-
 export type ReadInput = z.infer<typeof ReadInputSchema>;
 export type WriteInput = z.infer<typeof WriteInputSchema>;
 export type EditInput = z.infer<typeof EditInputSchema>;
 export type GrepInput = z.infer<typeof GrepInputSchema>;
 export type GlobInput = z.infer<typeof GlobInputSchema>;
 export type BashInput = z.infer<typeof BashInputSchema>;
-export type CopyToSandboxInput = z.infer<typeof CopyToSandboxInputSchema>;
-export type ShareWithUserInput = z.infer<typeof ShareWithUserInputSchema>;
 
 export const READ_DESCRIPTION =
   "Read a file. For text files, returns content with line numbers (use offset " +
@@ -129,36 +94,21 @@ export const READ_DESCRIPTION =
   "binary formats are not supported; use a format-specific skill " +
   "(e.g. pptx-extract for .pptx).";
 
-/** `orgFs`: mirrors buildBashDescription — when the org filesystem is
- *  mounted, decks/durable files belong under `org/`, and `pages/` must
- *  not swallow slide requests. */
-export function buildWriteDescription(orgFs: boolean): string {
-  return (
-    "Write content to a file in the VM's project directory. " +
-    "Creates parent directories if needed. Overwrites existing files entirely.\n\n" +
-    (orgFs
-      ? // Org-fs deployments: every live-preview HTML artifact lives in the
-        // org home volume (durable, Library-visible, deck editing). The
-        // legacy root `pages/` pipeline is intentionally not advertised.
-        "Viewable HTML artifacts get a LIVE PREVIEW in the chat side panel " +
-        "and persist in the org's shared folder when written under " +
-        "`org/<your-org-slug>/` (lowercase-kebab names):\n" +
-        "- Presentation decks / slides → `org/<your-org-slug>/decks/<name>.html` " +
-        "— read the slides skill (`org/public/core/slides/SKILL.md`) FIRST " +
-        "and create the deck with its CLI.\n" +
-        "- Standalone pages (landing pages, brand kits, one-pagers) → " +
-        "`org/<your-org-slug>/pages/<name>.html` — single self-contained " +
-        "HTML file.\n" +
-        "HTML written anywhere else will not render a preview."
-      : "Reserved path — `pages/<slug>.html`: writes to this prefix are " +
-        "automatically published to the org's object storage and rendered " +
-        "as a live preview in the chat side panel. Use this whenever the " +
-        "user wants a viewable HTML page (landing pages, brand kits, " +
-        "one-pagers). Slug must be lowercase kebab (e.g. " +
-        "`pages/landing.html`). HTML written elsewhere stays sandbox-only " +
-        "and will not render a preview.")
-  );
-}
+export const WRITE_DESCRIPTION =
+  "Write content to a file in the VM's project directory. " +
+  "Creates parent directories if needed. Overwrites existing files entirely.\n\n" +
+  // Every live-preview HTML artifact lives in the org home volume
+  // (durable, Library-visible, deck editing).
+  "Viewable HTML artifacts get a LIVE PREVIEW in the chat side panel " +
+  "and persist in the org's shared folder when written under " +
+  "`org/<your-org-slug>/` (lowercase-kebab names):\n" +
+  "- Presentation decks / slides → `org/<your-org-slug>/decks/<name>.html` " +
+  "— read the slides skill (`org/public/core/slides/SKILL.md`) FIRST " +
+  "and create the deck with its CLI.\n" +
+  "- Standalone pages (landing pages, brand kits, one-pagers) → " +
+  "`org/<your-org-slug>/pages/<name>.html` — single self-contained " +
+  "HTML file.\n" +
+  "HTML written anywhere else will not render a preview.";
 
 export const EDIT_DESCRIPTION =
   "Perform exact string replacement in a file in the VM. " +
@@ -172,78 +122,29 @@ export const GLOB_DESCRIPTION =
   "Find files by name pattern in the VM's project directory. " +
   "Uses ripgrep for gitignore-aware matching. Returns relative file paths.";
 
-/** `orgFs`: deployment mounts org-fs into hosted sandboxes — the caller
- *  passes the settings flag (this module stays dependency-free). */
-export function buildBashDescription(orgFs: boolean): string {
-  // Shared tail: skill-selection steering, independent of WHERE skills
-  // live (org/public on org-fs, /mnt on legacy).
-  const skillSteering =
-    "To make a presentation/slides/deck, ALWAYS use the `slides` skill " +
-    "(HTML decks with a live editable preview) — read its SKILL.md first. " +
-    "`pptx` is NOT for this: it only reads/inspects existing `.pptx` files, " +
-    "and is the right tool only when the user explicitly needs a PowerPoint " +
-    "`.pptx` file as input or output.";
-
-  return (
-    "Execute a shell command in the VM's project directory. " +
-    "Working directory is the project root. Timeout default 30s, max 2min.\n\n" +
-    (orgFs
-      ? // Org-fs deployments: ONE skill mechanism — the synced public sets
-        // mounted at `org/public/<set>/`. The image-baked `/mnt/skills/public`
-        // is not advertised here (it is the legacy non-org-fs fallback below).
-        "The organization filesystem is mounted at `org/`:\n" +
-        "- `org/<your-org-slug>/` — the org's shared home folder (editable, " +
-        "shared across runs; `ls org/` shows the actual name). Organize it " +
-        "freely; check it before non-trivial work and record durable facts, " +
-        "decisions, and learnings as small markdown files.\n" +
-        "- `org/public/<set>/` — curated read-only skill sets (file-handling: " +
-        "pptx, docx, xlsx, pdf, file-reading; plus slides + templating). Run " +
-        "`ls org/public/` for the sets and read " +
-        "`org/public/<set>/<name>/SKILL.md` before using a skill.\n" +
-        "- `org/upload/` — files the user attached to this conversation are " +
-        "already here; read them directly.\n" +
-        "- `org/output/` — write deliverables here; they are shared back to the " +
-        "organization under this run's folder.\n\n" +
-        skillSteering
-      : // Legacy non-org-fs deployments: skills are image-baked and the
-        // transfer tools are the only way to move files in/out.
-        "Pre-installed file-handling skills live at " +
-        "`/mnt/skills/public/<name>/SKILL.md` (pptx, docx, xlsx, pdf, " +
-        "file-reading, slides, templating). Run `ls /mnt/skills/public/` for " +
-        "that index. " +
-        skillSteering +
-        "\n\nTo bring chat attachments / presigned URLs into the sandbox FS " +
-        "use `copy_to_sandbox` (NOT bash + curl). To deliver a file you " +
-        "produced back to the user as a download chip, use `share_with_user`.")
-  );
-}
-
-export const COPY_TO_SANDBOX_DESCRIPTION =
-  "Copy a chat-attached or org-storage file into the sandbox filesystem " +
-  "at `target`. Use this BEFORE running format-specific skills " +
-  "(pptx-extract, pdf, docx, ...) on user-uploaded files. Accepts " +
-  "mesh-storage:// URIs and bare org-storage keys only — for arbitrary " +
-  "public URLs use bash + curl. Bytes stream directly from S3 to the " +
-  "sandbox; they do not pass through the model.";
-
-export const SHARE_WITH_USER_DESCRIPTION =
-  "Upload a file from the sandbox FS back to the user's chat as a download " +
-  "chip on this turn. Use this for artifacts the user should be able to " +
-  "save (CSV reports, generated decks, zipped builds, etc). The file " +
-  "lands under the current thread's outputs prefix; the UI surfaces it " +
-  "automatically when the turn finishes.";
+export const BASH_DESCRIPTION =
+  "Execute a shell command in the VM's project directory. " +
+  "Working directory is the project root. Timeout default 30s, max 2min.\n\n" +
+  "The organization filesystem is mounted at `org/`:\n" +
+  "- `org/<your-org-slug>/` — the org's shared home folder (editable, " +
+  "shared across runs; `ls org/` shows the actual name). Organize it " +
+  "freely; check it before non-trivial work and record durable facts, " +
+  "decisions, and learnings as small markdown files.\n" +
+  "- `org/public/<set>/` — curated read-only skill sets (file-handling: " +
+  "pptx, docx, xlsx, pdf, file-reading; plus slides + templating). Run " +
+  "`ls org/public/` for the sets and read " +
+  "`org/public/<set>/<name>/SKILL.md` before using a skill.\n" +
+  "- `org/upload/` — files the user attached to this conversation are " +
+  "already here; read them directly.\n" +
+  "- `org/output/` — write deliverables here; they are shared back to the " +
+  "organization under this run's folder.\n\n" +
+  "To make a presentation/slides/deck, ALWAYS use the `slides` skill " +
+  "(HTML decks with a live editable preview) — read its SKILL.md first. " +
+  "`pptx` is NOT for this: it only reads/inspects existing `.pptx` files, " +
+  "and is the right tool only when the user explicitly needs a PowerPoint " +
+  "`.pptx` file as input or output.";
 
 // read/grep/glob are non-mutating; write/edit/bash mutate.
-//
-// copy_to_sandbox + share_with_user are intentionally NOT approval-gated.
-// Both write side effects technically mutate state — copy_to_sandbox
-// drops bytes on the sandbox FS (already gated by `safePath`, no escape
-// outside `/app`), and share_with_user uploads to a thread-scoped S3
-// prefix the user already owns. Gating either would surface an approval
-// prompt on the most natural path the model takes for chat artifacts
-// (download → process → share), which is high-friction for a flow the
-// user just initiated by attaching a file. Reserve approvals for shell
-// + project-FS mutation where the blast radius is broader.
 export const TOOL_APPROVAL = {
   read: false,
   write: true,
@@ -251,6 +152,4 @@ export const TOOL_APPROVAL = {
   grep: false,
   glob: false,
   bash: true,
-  copy_to_sandbox: false,
-  share_with_user: false,
 } as const;

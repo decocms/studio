@@ -67,27 +67,14 @@ export interface VmToolsParams {
    */
   readonly pendingImages: PendingImage[];
   /**
-   * Mesh context for tools that need to mint presigned URLs against the
-   * org's object storage (`copy_to_sandbox`, `share_with_user`) or
-   * resolve the org id for stable file URLs.
+   * Mesh context for tools that resolve the org id / object storage for
+   * stable file URLs (and the deck fast-path mirror).
    */
   readonly ctx: VmToolContext;
-  /**
-   * Current chat thread id. `share_with_user` writes artifacts under
-   * `model-outputs/<threadId>/<filename>` so the chat UI can list them.
-   */
+  /** Current chat thread id (accepted for parity across callers). */
   readonly threadId: string;
   /**
-   * Virtual MCP ID. `set_vm_config` mirrors packageManager / previewPort
-   * back to the Virtual MCP metadata so new branch sandboxes are
-   * provisioned with the updated workload rather than stale defaults.
+   * Virtual MCP ID (accepted for parity across callers).
    */
   readonly virtualMcpId: string;
-  /**
-   * Whether the org filesystem (`org/`) is mounted in the sandbox (the cluster's
-   * `getSettings().orgFsClusterMounts`). Injected (the portable tool can't read
-   * cluster settings): drives the `bash` description's org-fs guidance and
-   * replaces the legacy `share_with_user` tool with `org/output/` when on.
-   */
-  readonly orgFs?: boolean;
 }
