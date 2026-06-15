@@ -397,6 +397,11 @@ async function pruneNodeModules(): Promise<Set<string>> {
     // Workspace packages stay inlined (bun build will pull source directly).
     // @decocms/better-auth is the one published @decocms/* dep, so it ships
     // like any other.
+    //
+    // Because workspace deps (e.g. @decocms/harness) are inlined from source
+    // rather than read from npm at runtime, the published `decocms` CLI only
+    // picks up a harness change when mesh itself re-releases and re-bundles.
+    // A harness-only version bump does NOT reach `decocms@latest` on its own.
     if (
       packageName.startsWith("@decocms/") &&
       packageName !== "@decocms/better-auth"
