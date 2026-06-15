@@ -84,6 +84,12 @@ export interface Settings {
   // Absolute path to the DuckDB extension directory baked into the image
   // (contains httpfs). Required for the GCS OTLP monitoring path.
   duckdbExtensionDirectory: string | undefined;
+  // Optional memory tuning for the embedded DuckDB monitoring engine on
+  // memory-constrained containers. memory_limit (e.g. "2GB") and thread count;
+  // unset → DuckDB defaults (80% RAM / all CPUs). The engine always spills to a
+  // temp dir and disables insertion-order preservation regardless.
+  duckdbMemoryLimit: string | undefined;
+  duckdbThreads: number | undefined;
 
   // Runtime flags (set by CLI)
   isCli: boolean;

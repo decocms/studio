@@ -6,6 +6,7 @@
  * - ClickHouseClientEngine: production, uses @clickhouse/client over HTTP
  */
 
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { getLogsDir } from "./schema";
 
@@ -41,6 +42,24 @@ export interface DuckDBGcsConfig {
   extensionDirectory: string;
 }
 
+/**
+ * Memory tuning for the embedded DuckDB engine. The OTLP-flatten query reads
+ * the whole bucket prefix (no time pruning) and `unnest`s nested arrays into a
+ * `map_from_entries` per row, which is memory-heavy. On a small container the
+ * default 80%-of-RAM limit is easily blown, so we (a) enable an on-disk
+ * `temp_directory` — an in-memory DuckDB has none and therefore CANNOT spill,
+ * turning any over-limit operator into a hard OOM instead of a slow query — and
+ * (b) disable `preserve_insertion_order` so large results aren't buffered whole.
+ */
+export interface DuckDBTuning {
+  /** DuckDB `memory_limit` (e.g. "2GB"). Unset → DuckDB's default (80% RAM). */
+  memoryLimit?: string;
+  /** DuckDB `threads`. Unset → all CPUs. Fewer threads → lower peak memory. */
+  threads?: number;
+  /** Spill directory. Unset → a subdir of the OS temp dir. */
+  tempDirectory?: string;
+}
+
 /** Escape a value for a single-quoted DuckDB SQL literal. */
 function escSqlLiteral(value: string): string {
   return value.replace(/'/g, "''");
@@ -74,12 +93,22 @@ export class DuckDBEngine implements QueryEngine {
     import("@duckdb/node-api").DuckDBConnection
   >;
 
-  constructor(gcs?: DuckDBGcsConfig) {
+  constructor(gcs?: DuckDBGcsConfig, tuning?: DuckDBTuning) {
     this.connectionPromise = import("@duckdb/node-api").then(
       async ({ DuckDBInstance }) => {
         const { cpus } = await import("node:os");
-        const threads = String(Math.max(1, cpus().length));
-        const instance = await DuckDBInstance.create("", { threads });
+        const threads = String(Math.max(1, tuning?.threads ?? cpus().length));
+        // An in-memory DuckDB ("") has no temp_directory and so cannot spill —
+        // any operator that exceeds memory_limit throws OutOfMemory instead of
+        // going out-of-core. Point it at a real dir and disable insertion-order
+        // preservation so the OTLP-flatten query streams instead of buffering.
+        const config: Record<string, string> = {
+          threads,
+          temp_directory: tuning?.tempDirectory ?? `${tmpdir()}/duckdb-spill`,
+          preserve_insertion_order: "false",
+        };
+        if (tuning?.memoryLimit) config.memory_limit = tuning.memoryLimit;
+        const instance = await DuckDBInstance.create("", config);
         const connection = await instance.connect();
         if (gcs) {
           await DuckDBEngine.setupGcs(connection, gcs);
