@@ -10,7 +10,10 @@
  * This adapter is read-only — it queries NDJSON files on disk or a ClickHouse table.
  */
 
-import type { QueryEngine } from "../monitoring/query-engine";
+import type {
+  MonitoringDateRange,
+  QueryEngine,
+} from "../monitoring/query-engine";
 import type { MonitoringLog } from "./types";
 import type {
   AggregationParams,
@@ -431,9 +434,17 @@ function applyStartDateBound(
 export class SqlMonitoringStorage implements MonitoringStorage {
   constructor(
     private engine: QueryEngine,
-    private sourceFactory: (organizationId: string) => string,
+    // The range lets the GCS OTLP source prune its bucket glob to the relevant
+    // Hive day partitions; other source factories ignore it.
+    private sourceFactory: (
+      organizationId: string,
+      range?: MonitoringDateRange,
+    ) => string,
     private metricEngine: QueryEngine,
-    private metricSourceFactory: (organizationId: string) => string,
+    private metricSourceFactory: (
+      organizationId: string,
+      range?: MonitoringDateRange,
+    ) => string,
     private dialect: SqlDialect = "clickhouse",
     // When true (DuckDB reading OTLP flat-log rows from GCS), metrics are
     // derived from the log rows (count/avg/quantile over duration_ms + is_error)
@@ -459,7 +470,10 @@ export class SqlMonitoringStorage implements MonitoringStorage {
       throw new Error("organizationId is required");
     }
 
-    const source = this.sourceFactory(filters.organizationId);
+    const source = this.sourceFactory(filters.organizationId, {
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+    });
 
     const where: string[] = [
       `organization_id = '${esc(filters.organizationId)}'`,
@@ -530,6 +544,9 @@ export class SqlMonitoringStorage implements MonitoringStorage {
   ): Promise<MonitoringLog | null> {
     if (!organizationId || !id) return null;
 
+    // No date range available (lookup is by random span id), so the GCS OTLP
+    // path can't partition-prune here and reads the whole prefix. Acceptable:
+    // single-row detail open, far rarer than the date-ranged list/timeseries.
     const source = this.sourceFactory(organizationId);
     const sql = `SELECT * FROM ${source} WHERE organization_id = '${esc(organizationId)}' AND id = '${esc(id)}' LIMIT 1`;
     const rows = await this.engine.query(sql);
@@ -550,7 +567,10 @@ export class SqlMonitoringStorage implements MonitoringStorage {
       throw new Error("organizationId is required");
     }
 
-    const source = this.sourceFactory(filters.organizationId);
+    const source = this.sourceFactory(filters.organizationId, {
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+    });
 
     const where: string[] = [
       `organization_id = '${esc(filters.organizationId)}'`,
@@ -659,7 +679,10 @@ export class SqlMonitoringStorage implements MonitoringStorage {
 
     const dialect = this.dialect;
     const isCh = dialect === "clickhouse";
-    const source = this.sourceFactory(params.organizationId);
+    const source = this.sourceFactory(params.organizationId, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
     const bucketExpr = intervalToSQL(params.interval, dialect, "timestamp");
 
     // Tokens/cost are read from `properties` (small, never truncated) rather
@@ -802,7 +825,10 @@ LIMIT ${topN}`;
 
     const dialect = this.dialect;
     const isCh = dialect === "clickhouse";
-    const source = this.sourceFactory(params.organizationId);
+    const source = this.sourceFactory(params.organizationId, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
     const threadExpr = jsonExtractString("properties", "$.thread_id", dialect);
     // Tokens/cost from `properties` (never truncated), not `output` (64KB cap).
     const num = (key: string) =>
@@ -863,7 +889,10 @@ GROUP BY thread_id`;
       throw new Error("organizationId is required");
     }
 
-    const source = this.sourceFactory(params.organizationId);
+    const source = this.sourceFactory(params.organizationId, {
+      startDate: params.filters?.startDate,
+      endDate: params.filters?.endDate,
+    });
     const jsonPath = validateJsonPath(params.path);
     const sourceCol = params.from === "input" ? "input" : "output";
 
@@ -977,7 +1006,10 @@ GROUP BY thread_id`;
       throw new Error("organizationId is required");
     }
 
-    const source = this.sourceFactory(params.organizationId);
+    const source = this.sourceFactory(params.organizationId, {
+      startDate: params.filters?.startDate,
+      endDate: params.filters?.endDate,
+    });
     const jsonPath = validateJsonPath(params.path);
     const sourceCol = params.from === "input" ? "input" : "output";
     const extractExpr = jsonExtractString(sourceCol, jsonPath, this.dialect);
@@ -1053,7 +1085,10 @@ GROUP BY thread_id`;
     }
 
     // ── DuckDB path (local NDJSON, pre-aggregated histograms) ──────────────
-    const source = this.metricSourceFactory(params.organizationId);
+    const source = this.metricSourceFactory(params.organizationId, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
     const bucketExpr = intervalToSQL(
       params.interval,
       this.dialect,
@@ -1286,7 +1321,10 @@ LIMIT 1000`;
       }>;
     },
   ): Promise<typeof emptyResult> {
-    const source = this.metricSourceFactory(params.organizationId);
+    const source = this.metricSourceFactory(params.organizationId, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
     const bucketExpr = intervalToSQL(
       params.interval,
       "clickhouse",
@@ -1443,7 +1481,10 @@ WHERE ${whereClause}`;
       }>;
     },
   ): Promise<typeof emptyResult> {
-    const source = this.metricSourceFactory(params.organizationId);
+    const source = this.metricSourceFactory(params.organizationId, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
     const bucketExpr = intervalToSQL(params.interval, "duckdb", "timestamp");
 
     const where: string[] = [
@@ -1600,7 +1641,10 @@ WHERE ${whereClause}`;
     }
 
     // ── DuckDB path (local NDJSON, pre-aggregated histograms) ──────────────
-    const source = this.metricSourceFactory(params.organizationId);
+    const source = this.metricSourceFactory(params.organizationId, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
     const bucketExpr = intervalToSQL(
       params.interval,
       this.dialect,
@@ -1759,7 +1803,10 @@ ORDER BY bucket ASC, tool_name ASC`;
       }>;
     },
   ): Promise<typeof emptyResult> {
-    const source = this.metricSourceFactory(params.organizationId);
+    const source = this.metricSourceFactory(params.organizationId, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
     const bucketExpr = intervalToSQL(
       params.interval,
       "clickhouse",
@@ -1894,7 +1941,10 @@ ORDER BY bucket ASC, tool_name ASC`;
       }>;
     },
   ): Promise<typeof emptyResult> {
-    const source = this.metricSourceFactory(params.organizationId);
+    const source = this.metricSourceFactory(params.organizationId, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
     const bucketExpr = intervalToSQL(params.interval, "duckdb", "timestamp");
     const where: string[] = [
       `organization_id = '${esc(params.organizationId)}'`,

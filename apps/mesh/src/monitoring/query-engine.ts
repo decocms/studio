@@ -19,6 +19,17 @@ export interface QueryEngine {
 }
 
 /**
+ * Time window used to prune which storage partitions a query reads. Passed
+ * through the source factory so the GCS OTLP path can scope the bucket glob to
+ * the relevant Hive day partitions (see buildHivePartitionFilter). Other paths
+ * (ClickHouse, local NDJSON) ignore it.
+ */
+export interface MonitoringDateRange {
+  startDate?: Date;
+  endDate?: Date;
+}
+
+/**
  * Credentials + extension dir for reading object storage (GCS via its
  * S3-compatible endpoint) through DuckDB's httpfs extension. When supplied to
  * DuckDBEngine, the connection is primed once with `LOAD httpfs` + a `CREATE
@@ -295,21 +306,34 @@ const MONITORING_ATTR_PREFIX = "studio.monitoring.";
  * data, so a direct `value.intValue` reference bind-errors on files that only
  * contain `stringValue`. The JSON path returns NULL for absent fields instead.
  *
- * COST: the glob has no time-based pruning — every query reads every object in
- * the prefix over httpfs, regardless of the dashboard's date range (the
- * collector writes Hive-style `year=/month=/day=/hour=` partitions, but the
- * query filters on the row-content `timestamp`, not the path). Bound the cost
- * with a bucket lifecycle/retention rule (see monitoring docs). A future
- * improvement is to thread the query date range in and prune via Hive
- * partition predicates.
+ * A date range turns on Hive partition pruning: the glob is read with
+ * `hive_partitioning=true` and `opts.range` becomes a `year=/month=/day=` path
+ * predicate that DuckDB pushes into file listing — so a dashboard date range
+ * flattens only the relevant day partitions instead of every object in the
+ * prefix (the cause of the embedded-engine OOM). This assumes the documented
+ * collector layout; without a range it's a plain read of the whole glob.
+ *
+ * COST: pruning covers the *data* scan (the memory-heavy flatten). Schema
+ * detection still lists/samples objects under the prefix, and a query filters
+ * rows by the row-content `timestamp` (not the path) for sub-day precision — so
+ * a bucket lifecycle/retention rule still bounds the per-query listing cost as
+ * history grows (see monitoring docs).
  */
-export function buildOtlpFlatSourceFromGlob(glob: string): string {
+export function buildOtlpFlatSourceFromGlob(
+  glob: string,
+  opts?: { range?: MonitoringDateRange },
+): string {
   const A = MONITORING_ATTR_PREFIX;
   const attr = (key: string) => `attrs['${A}${key}']`;
+  // A range turns on Hive pruning (we assume the documented year=/month=/day=
+  // layout); hive_partitioning is emitted only alongside the predicate that
+  // needs those columns, so a range-less read stays a plain scan.
+  const partitionFilter = buildHivePartitionFilter(opts?.range);
+  const readArgs = `format='auto', union_by_name=true, maximum_object_size=33554432, ignore_errors=true${partitionFilter ? ", hive_partitioning=true" : ""}`;
   return `(
   WITH _raw AS (
     SELECT unnest(resourceLogs) AS rl
-    FROM read_json('${glob}', format='auto', union_by_name=true, maximum_object_size=33554432, ignore_errors=true)
+    FROM read_json('${glob}', ${readArgs})${partitionFilter ? `\n    WHERE ${partitionFilter}` : ""}
   ),
   _scopes AS (SELECT unnest(rl.scopeLogs) AS sl FROM _raw),
   _recs AS (SELECT unnest(sl.logRecords) AS lr FROM _scopes),
@@ -353,25 +377,66 @@ export function buildOtlpFlatSourceFromGlob(glob: string): string {
 }
 
 /**
- * Build the GCS-backed OTLP flat source for a bucket/prefix. Org scoping is the
- * caller's outer WHERE (see buildOtlpFlatSourceFromGlob).
+ * Build a Hive-partition predicate that prunes OTLP objects by their
+ * `year=/month=/day=` path *before* any are read. DuckDB pushes this into file
+ * listing (verified: it reports it as a "File Filter"), so a dashboard date
+ * range opens only the matching day partitions instead of the whole prefix.
  *
- * The glob matches every object under the prefix (`**​/*`), not just `*.json`,
- * because the OTel `google_cloud_storage` exporter writes objects with no file
- * extension (e.g. `logs_<uuid>`). `read_json(format='auto')` detects the JSON
- * content regardless. The prefix is therefore expected to be dedicated to the
- * monitoring logs.
+ * Day granularity (not hour): precise second-level filtering still happens in
+ * the caller's row-level WHERE on `timestamp`; this only decides which files to
+ * open. The range is padded ±1 day so pruning can never drop a file holding an
+ * in-range row regardless of the collector's partition timezone (max TZ skew is
+ * < 24h). Partition columns are CAST explicitly because zero-padded values like
+ * `month=06` are inferred as VARCHAR while `day=15` comes back BIGINT.
+ *
+ * Returns null when the range is open on both ends — no predicate, read all.
+ */
+function buildHivePartitionFilter(range?: MonitoringDateRange): string | null {
+  if (!range?.startDate && !range?.endDate) return null;
+  const day =
+    "make_date(CAST(year AS INT), CAST(month AS INT), CAST(day AS INT))";
+  const ymd = (d: Date, deltaDays: number) =>
+    new Date(d.getTime() + deltaDays * 86_400_000).toISOString().slice(0, 10);
+  const clauses: string[] = [];
+  if (range.startDate) {
+    clauses.push(`${day} >= DATE '${ymd(range.startDate, -1)}'`);
+  }
+  if (range.endDate) {
+    clauses.push(`${day} <= DATE '${ymd(range.endDate, 1)}'`);
+  }
+  return clauses.join(" AND ");
+}
+
+/**
+ * Build the GCS-backed OTLP flat source for a bucket/prefix. Org scoping is the
+ * caller's outer WHERE (see buildOtlpFlatSourceFromGlob). A `range` prunes the
+ * read to the relevant Hive day partitions.
+ *
+ * The glob matches every object via a recursive wildcard, not just `*.json`,
+ * because the OTel `google_cloud_storage` exporter writes extensionless objects
+ * (`logs_<uuid>`); `read_json(format='auto')` detects the JSON regardless.
+ *
+ * When pruning (a range is given), the glob is rooted at the `year=` partition
+ * dir so it matches only the documented Hive layout. This both enables pruning
+ * and skips legacy non-partitioned leftovers (flat objects at the prefix root,
+ * or an older `key=value` scheme) — otherwise `hive_partitioning=true` errors
+ * with "Hive partition mismatch" when the prefix mixes layouts. (A malformed or
+ * truncated object inside a `year=` path still errors: DuckDB can't ignore parse
+ * errors for single-object JSON, so rely on retention/cleanup for those.)
  */
 export function buildOtlpFlatSource(opts: {
   bucket: string;
   prefix: string;
+  range?: MonitoringDateRange;
 }): string {
   if (/[';]/.test(opts.bucket) || /[';]/.test(opts.prefix)) {
     throw new Error("Invalid monitoring GCS bucket/prefix");
   }
   const prefix = opts.prefix.replace(/^\/+|\/+$/g, "");
-  const glob = prefix
-    ? `s3://${opts.bucket}/${prefix}/**/*`
-    : `s3://${opts.bucket}/**/*`;
-  return buildOtlpFlatSourceFromGlob(glob);
+  const base = prefix ? `s3://${opts.bucket}/${prefix}` : `s3://${opts.bucket}`;
+  // Must match buildHivePartitionFilter's "is there a range" test so the glob
+  // root and hive_partitioning stay in lockstep.
+  const pruning = !!(opts.range?.startDate || opts.range?.endDate);
+  const glob = pruning ? `${base}/year=*/**/*` : `${base}/**/*`;
+  return buildOtlpFlatSourceFromGlob(glob, { range: opts.range });
 }

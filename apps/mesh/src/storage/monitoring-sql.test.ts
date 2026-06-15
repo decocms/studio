@@ -6,6 +6,10 @@ import {
   DuckDBEngine,
   buildOtlpFlatSourceFromGlob,
 } from "../monitoring/query-engine";
+import type {
+  MonitoringDateRange,
+  QueryEngine,
+} from "../monitoring/query-engine";
 import type { MetricRow } from "../monitoring/schema";
 import {
   makeTestMonitoringRow,
@@ -786,6 +790,68 @@ describe.skipIf(!duckdbAvailable)(
     });
   },
 );
+
+// ============================================================================
+// Date-range threading — the source factory receives the window so the GCS
+// OTLP path can partition-prune. Stubbed engine, so it needs no DuckDB.
+// ============================================================================
+
+describe("SqlMonitoringStorage forwards the date range to its source factory", () => {
+  function recordingStorage() {
+    const ranges: Array<MonitoringDateRange | undefined> = [];
+    const factory = (_orgId: string, range?: MonitoringDateRange) => {
+      ranges.push(range);
+      return "src";
+    };
+    const engine: QueryEngine = { query: async () => [] };
+    const storage = new SqlMonitoringStorage(
+      engine,
+      factory,
+      engine,
+      factory,
+      "duckdb",
+      true, // metricsFromLogs (the GCS OTLP shape)
+    );
+    return { storage, ranges };
+  }
+
+  const startDate = new Date("2026-03-15T00:00:00.000Z");
+  const endDate = new Date("2026-03-16T00:00:00.000Z");
+
+  test("queryMetricTimeseries forwards startDate/endDate", async () => {
+    const { storage, ranges } = recordingStorage();
+    await storage.queryMetricTimeseries({
+      organizationId: "org_test",
+      interval: "1d",
+      startDate,
+      endDate,
+    });
+    expect(
+      ranges.some((r) => r?.startDate === startDate && r?.endDate === endDate),
+    ).toBe(true);
+  });
+
+  test("query forwards startDate/endDate", async () => {
+    const { storage, ranges } = recordingStorage();
+    await storage.query({ organizationId: "org_test", startDate, endDate });
+    expect(ranges[0]?.startDate).toBe(startDate);
+    expect(ranges[0]?.endDate).toBe(endDate);
+  });
+
+  test("queryLlmUsageStats forwards startDate/endDate", async () => {
+    const { storage, ranges } = recordingStorage();
+    await storage.queryLlmUsageStats({
+      organizationId: "org_test",
+      connectionId: "conn_1",
+      interval: "1d",
+      startDate,
+      endDate,
+    });
+    expect(
+      ranges.some((r) => r?.startDate === startDate && r?.endDate === endDate),
+    ).toBe(true);
+  });
+});
 
 // ============================================================================
 // queryLlmUsageStats — token + cost aggregation from log rows

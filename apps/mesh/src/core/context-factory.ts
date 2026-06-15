@@ -30,7 +30,11 @@ import {
   DuckDBEngine,
   buildOtlpFlatSource,
 } from "../monitoring/query-engine";
-import type { QueryEngine, DuckDBGcsConfig } from "../monitoring/query-engine";
+import type {
+  QueryEngine,
+  DuckDBGcsConfig,
+  MonitoringDateRange,
+} from "../monitoring/query-engine";
 import { getLogsDir, getMetricsDir } from "../monitoring/schema";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { VirtualMcpPluginConfigsStorage } from "../storage/virtual-mcp-plugin-configs";
@@ -1134,8 +1138,11 @@ export async function createStudioContextFactory(
 
   let monitoringEngine: QueryEngine;
   let metricEngine: QueryEngine;
-  let logSourceFactory: (orgId: string) => string;
-  let metricSourceFactory: (orgId: string) => string;
+  let logSourceFactory: (orgId: string, range?: MonitoringDateRange) => string;
+  let metricSourceFactory: (
+    orgId: string,
+    range?: MonitoringDateRange,
+  ) => string;
   // When true, metrics are derived from flat log rows instead of histogram
   // MetricRow files (the GCS OTLP path; see SqlMonitoringStorage).
   let metricsFromLogs = false;
@@ -1203,12 +1210,17 @@ export async function createStudioContextFactory(
     });
     monitoringEngine = gcsEngine;
     metricEngine = gcsEngine;
-    const otlpSource = buildOtlpFlatSource({
-      bucket: settings.monitoringS3Bucket!,
-      prefix: settings.monitoringS3Prefix ?? "",
-    });
-    logSourceFactory = (_orgId: string) => otlpSource;
-    metricSourceFactory = (_orgId: string) => otlpSource;
+
+    const gcsBucket = settings.monitoringS3Bucket!;
+    const gcsPrefix = settings.monitoringS3Prefix ?? "";
+    // Source is rebuilt per query so the dashboard date range scopes the read to
+    // the relevant year=/month=/day= partitions (the documented collector layout
+    // is assumed) instead of flattening the whole prefix — the embedded-DuckDB
+    // OOM cause. A range-less query still reads everything.
+    const gcsSourceFactory = (_orgId: string, range?: MonitoringDateRange) =>
+      buildOtlpFlatSource({ bucket: gcsBucket, prefix: gcsPrefix, range });
+    logSourceFactory = gcsSourceFactory;
+    metricSourceFactory = gcsSourceFactory;
     metricsFromLogs = true;
   } else {
     const { engine: me } = await createMonitoringEngine({
