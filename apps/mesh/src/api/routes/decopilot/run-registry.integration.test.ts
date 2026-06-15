@@ -1,13 +1,10 @@
 /**
  * RunRegistry — storage-integration tests (real Postgres).
  *
- * The methods exercised here orchestrate real SQL: stopAll (orphanRunsByPod),
- * recoverOrphanedRuns + handlePodDeath (listOrphanedRuns* + claimOrphanedRun
- * CAS + forceFailIfInProgress), and the reaper's terminal DB write. A previous
- * version mocked the entire ThreadStoragePort and asserted `toHaveBeenCalled`,
- * which proved nothing about the queries themselves — the orphan filters and
- * the claim CAS would all be untested. See TESTING.md: don't mock your own
- * code.
+ * The methods exercised here orchestrate real SQL: stopAll (orphanRunsByPod)
+ * and the reaper's terminal DB write. A previous version mocked the entire
+ * ThreadStoragePort and asserted `toHaveBeenCalled`, which proved nothing about
+ * the queries themselves. See TESTING.md: don't mock your own code.
  *
  * So `storage` is a real SqlThreadStorage against real Postgres, and we assert
  * the actual row state. The injected callbacks (`resumeFn`, `cancelBroadcast`)
@@ -109,8 +106,8 @@ function startThread(registry: RunRegistry, taskId: string, orgId = ORG) {
 }
 
 /**
- * Create a thread and drive it to in_progress with a non-null run_config (the
- * filter `listOrphanedRuns*` require), owned by `pod` (or orphaned when null).
+ * Create a thread and drive it to in_progress with a non-null run_config,
+ * owned by `pod` (or orphaned when null).
  */
 async function seedRunningThread(pod: string | null): Promise<Thread> {
   const thread = await storage.create({
@@ -196,107 +193,6 @@ describe("RunRegistry storage orchestration (real Postgres)", () => {
 
       expect(signal.aborted).toBe(true);
       expect(registry.isRunning("t1")).toBe(false);
-    });
-  });
-
-  describe("recoverOrphanedRuns", () => {
-    it("claims orphaned in_progress runs to this pod and resumes them", async () => {
-      const { registry } = makeRegistry();
-      const orphan = await seedRunningThread(null); // null owner = orphan
-      const resumed: string[] = [];
-
-      await registry.recoverOrphanedRuns((thread) => {
-        resumed.push(thread.id);
-        return Promise.resolve();
-      });
-
-      expect(resumed).toContain(orphan.id);
-      // Real claimOrphanedRun CAS took ownership.
-      expect((await storage.get(orphan.id, ORG))?.run_owner_pod).toBe(POD);
-    });
-
-    it("force-fails the run when resumeFn throws", async () => {
-      const { registry } = makeRegistry();
-      const orphan = await seedRunningThread(null);
-
-      await registry.recoverOrphanedRuns(() =>
-        Promise.reject(new Error("boom")),
-      );
-
-      // Real forceFailIfInProgress flipped the row.
-      expect((await storage.get(orphan.id, ORG))?.status).toBe("failed");
-    });
-
-    it("does nothing when there are no orphaned runs", async () => {
-      const { registry } = makeRegistry();
-      let called = false;
-
-      await registry.recoverOrphanedRuns(() => {
-        called = true;
-        return Promise.resolve();
-      });
-
-      expect(called).toBe(false);
-    });
-
-    // NOTE: the "lost the claim CAS to another pod" branch (claimOrphanedRun
-    // returns false → skip resume) is genuine cross-pod contention and can't be
-    // reproduced deterministically single-pod — the orphan list only contains
-    // in_progress rows, which claimOrphanedRun always wins in isolation. That
-    // branch belongs to the multi-pod suite.
-  });
-
-  describe("handlePodDeath", () => {
-    it("claims + resumes every orphan owned by the dead pod and broadcasts cancel", async () => {
-      const { registry } = makeRegistry();
-      const orphans = [
-        await seedRunningThread("dead-pod"),
-        await seedRunningThread("dead-pod"),
-        await seedRunningThread("dead-pod"),
-      ];
-      const resumed: string[] = [];
-      const broadcasted: string[] = [];
-
-      await registry.handlePodDeath(
-        "dead-pod",
-        (thread) => {
-          resumed.push(thread.id);
-          return Promise.resolve();
-        },
-        { broadcast: (id) => broadcasted.push(id) },
-      );
-
-      const ids = orphans.map((t) => t.id).sort();
-      expect(resumed.sort()).toEqual(ids);
-      expect(broadcasted.sort()).toEqual(ids);
-      for (const t of orphans) {
-        expect((await storage.get(t.id, ORG))?.run_owner_pod).toBe(POD);
-      }
-    });
-
-    it("force-fails the run when resumeFn throws", async () => {
-      const { registry } = makeRegistry();
-      const orphan = await seedRunningThread("dead-pod");
-
-      await registry.handlePodDeath("dead-pod", () =>
-        Promise.reject(new Error("boom")),
-      );
-
-      expect((await storage.get(orphan.id, ORG))?.status).toBe("failed");
-    });
-
-    it("no-ops when the dead pod owns no in_progress runs", async () => {
-      const { registry } = makeRegistry();
-      // Seeded run is owned by a different, live pod.
-      await seedRunningThread("other-pod");
-      let called = false;
-
-      await registry.handlePodDeath("dead-pod", () => {
-        called = true;
-        return Promise.resolve();
-      });
-
-      expect(called).toBe(false);
     });
   });
 

@@ -18,9 +18,8 @@ import type { RunReactorDeps } from "./run-reactor";
  * dependency whose output drives the behavior under test — an unused
  * collaborator is not that.)
  *
- * The storage-orchestrating methods (stopAll, recoverOrphanedRuns,
- * handlePodDeath, and the reaper's terminal DB write) are tested against real
- * Postgres in run-registry.integration.test.ts.
+ * The storage-orchestrating methods (stopAll and the reaper's terminal DB
+ * write) are tested against real Postgres in run-registry.integration.test.ts.
  */
 function inertDeps(): RunReactorDeps {
   const noop = async () => undefined as never;
@@ -35,10 +34,7 @@ function inertDeps(): RunReactorDeps {
       listMessages: async () => ({ messages: [], total: 0 }),
       listByTriggerIds: async () => ({ threads: [], total: 0 }),
       forceFailIfInProgress: async () => false,
-      claimOrphanedRun: async () => false,
       claimRunStart: async () => true,
-      listOrphanedRuns: async () => [],
-      listOrphanedRunsByPod: async () => [],
       orphanRunsByPod: async () => [],
       bumpProgress: noop,
       // null → reaper falls back to the run's in-memory startedAt baseline,
