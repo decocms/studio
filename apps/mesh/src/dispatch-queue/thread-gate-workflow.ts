@@ -430,16 +430,20 @@ async function threadGateWorkflowFn(
   await DBOS.runStep(() => trackMessageStartedStep(ctx), {
     name: "trackMessageStarted",
   });
-  try {
-    // The dispatch step is retriable so a re-enqueued run (pod death / rollout)
-    // is re-executed on another executor. Graceful shutdown aborts the in-flight
-    // run and cancels the daemon (down-channel `cancel` frame) before the
-    // workflow is re-enqueued, and the daemon fences stale epochs by fenceToken,
-    // so a replay can't race a still-running first dispatch against the same
-    // workdir. The thread-gate queue (concurrency=1 per threadId) guarantees a
-    // single in-flight dispatch per thread regardless of retries.
+    // Retriable EXCEPT for `user-desktop` runs. A user-desktop run dispatches to
+    // a daemon on the user's laptop that keeps running after the pod dies; a DBOS
+    // replay on another executor would open a SECOND concurrent dispatch against
+    // the same workdir, racing on git state and tool output. We can't reliably
+    // stop that daemon on a hard crash (the graceful abort doesn't run), so these
+    // stay non-retriable: pod death = clean "run failed", not a corruption hazard.
+    // Hosted/in-process runs (agent-sandbox, undefined target) have no external
+    // daemon to race, so they're retriable and DBOS recovers them. The thread-gate
+    // queue (concurrency=1 per threadId) still guarantees a single in-flight
+    // dispatch per thread.
+    const retriable = ctx.request.target?.sandboxProviderKind !== "user-desktop";
     await DBOS.runStep(() => dispatchRunAndWaitStep(ctx), {
       name: "dispatchRunAndWait",
+      retriesAllowed: retriable,
     });
   } catch (err) {
     // Setup errors (prepareRun) propagate out of `dispatchRunAndWait`; in-flight
