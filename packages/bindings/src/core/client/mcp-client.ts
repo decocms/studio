@@ -14,6 +14,7 @@ import {
   ListToolsResult,
   ListToolsResultSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { MCPConnection } from "../connection";
 import { HTTPClientTransport } from "./http-client-transport";
 
@@ -26,7 +27,10 @@ import { HTTPClientTransport } from "./http-client-transport";
  */
 class Client extends BaseClient {
   constructor(_clientInfo: Implementation, options?: ClientOptions) {
-    super(_clientInfo, options);
+    super(_clientInfo, {
+      jsonSchemaValidator: sharedJsonSchemaValidator,
+      ...options,
+    });
   }
 
   override async listTools(

@@ -7,6 +7,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@decocms/mcp-utils": "^1.0.5",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@tanstack/react-router": "1.169.2",
     "react": "^19.2.6",

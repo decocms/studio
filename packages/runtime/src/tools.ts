@@ -5,6 +5,7 @@ import {
   OnEventsOutputSchema,
   type EventBusBindingClient,
 } from "@decocms/bindings";
+import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport as HttpServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type {
@@ -1086,6 +1087,7 @@ export const createMCPServer = <
       },
       {
         capabilities: { tools: {}, prompts: {}, resources: {} },
+        jsonSchemaValidator: sharedJsonSchemaValidator,
         ...(instructions && { instructions }),
       },
     );
