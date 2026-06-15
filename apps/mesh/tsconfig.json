@@ -47,6 +47,7 @@
     "src/**/*",
     "**/*.test.ts",
     "**/*.spec.ts",
+    "ct/**/*",
     "scripts/generate-migrations.ts"
   ],
   "exclude": ["node_modules", "dist", "data"]

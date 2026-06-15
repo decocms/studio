@@ -39,6 +39,12 @@ logs/
 # Test coverage
 coverage/
 
+# Playwright component-testing artifacts
+test-results/
+playwright-report/
+.cache/
+playwright/.cache/
+
 # Temporary files
 /tmp/
 

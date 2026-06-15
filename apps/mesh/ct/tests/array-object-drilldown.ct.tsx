@@ -1,0 +1,217 @@
+import { expect, test } from "@playwright/experimental-ct-react";
+import { SchemaFormHarness } from "../harness/schema-form-harness";
+import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
+import { readBreadcrumb, readFormValue } from "../harness/ct-utils";
+
+/**
+ * ArrayField with OBJECT items + breadcrumb drill-down, exercised through the
+ * full SchemaFormHarness (raw JSON Schema -> resolveSchema -> SchemaForm).
+ *
+ * The card item schema carries titleBy="name", so item rows are labelled by
+ * their `name` value; drilling into a row swaps the list for that item's
+ * nested object form (Name + Count) and pushes the row label onto the
+ * breadcrumb trail.
+ */
+const cardArrayProps = {
+  cards: {
+    type: "array",
+    title: "Cards",
+    items: {
+      type: "object",
+      title: "Card",
+      titleBy: "name",
+      properties: {
+        name: { type: "string", title: "Name" },
+        count: { type: "number", title: "Count" },
+      },
+    },
+  },
+};
+
+test("add object item: appends empty {} and drills into the nested fields", async ({
+  mount,
+}) => {
+  const meta = sectionWithProps(cardArrayProps);
+  const component = await mount(
+    <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
+  );
+
+  await component.getByRole("button", { name: "Add item" }).click();
+
+  // Empty object default pushed onto the array.
+  await expect.poll(() => readFormValue(component)).toEqual({ cards: [{}] });
+
+  // Breadcrumb drilled into the new row (label falls back to the item title).
+  await expect.poll(() => readBreadcrumb(component)).toEqual(["Card"]);
+
+  // Nested fields are now visible inline at paths cards.0.name / cards.0.count.
+  const nameInput = component.getByLabel("Name");
+  const countInput = component.getByLabel("Count");
+  await expect(nameInput).toBeVisible();
+  await expect(countInput).toBeVisible();
+  await expect(nameInput).toHaveAttribute("id", "cards.0.name");
+  await expect(countInput).toHaveAttribute("id", "cards.0.count");
+});
+
+test("add object item then edit Name updates cards[0].name", async ({
+  mount,
+}) => {
+  const meta = sectionWithProps(cardArrayProps);
+  const component = await mount(
+    <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
+  );
+
+  await component.getByRole("button", { name: "Add item" }).click();
+  await expect.poll(() => readFormValue(component)).toEqual({ cards: [{}] });
+
+  await component.getByLabel("Name").fill("Hero");
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ cards: [{ name: "Hero" }] });
+});
+
+test("editing a drilled-in object item sets both fields", async ({ mount }) => {
+  const meta = sectionWithProps(cardArrayProps);
+  const component = await mount(
+    <SchemaFormHarness meta={meta} resolveType={TEST_RESOLVE_TYPE} />,
+  );
+
+  await component.getByRole("button", { name: "Add item" }).click();
+  await component.getByLabel("Name").fill("Hero");
+  await component.getByLabel("Count").fill("3");
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ cards: [{ name: "Hero", count: 3 }] });
+});
+
+test("item rows are labelled by titleBy with a count badge", async ({
+  mount,
+}) => {
+  const meta = sectionWithProps(cardArrayProps);
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ cards: [{ name: "Alpha" }, { name: "Beta" }] }}
+    />,
+  );
+
+  // Empty breadcrumb -> list view with both rows.
+  await expect.poll(() => readBreadcrumb(component)).toEqual([]);
+  await expect(
+    component.getByRole("button", { name: "Alpha", exact: true }),
+  ).toBeVisible();
+  await expect(
+    component.getByRole("button", { name: "Beta", exact: true }),
+  ).toBeVisible();
+
+  // Count badge reflects the number of items.
+  await expect(component.getByText("2", { exact: true })).toBeVisible();
+});
+
+test("clicking a row drills into that item and shows its Name value", async ({
+  mount,
+}) => {
+  const meta = sectionWithProps(cardArrayProps);
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ cards: [{ name: "Alpha" }, { name: "Beta" }] }}
+    />,
+  );
+
+  await component.getByRole("button", { name: "Alpha", exact: true }).click();
+
+  // Breadcrumb drilled into the Alpha row.
+  await expect.poll(() => readBreadcrumb(component)).toContain("Alpha");
+
+  // The drilled-in Name field renders with the row's value.
+  const nameInput = component.getByLabel("Name");
+  await expect(nameInput).toBeVisible();
+  await expect(nameInput).toHaveAttribute("id", "cards.0.name");
+  await expect(nameInput).toHaveValue("Alpha");
+});
+
+test("editing a drilled-in item updates the correct index", async ({
+  mount,
+}) => {
+  const meta = sectionWithProps(cardArrayProps);
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ cards: [{ name: "Alpha" }, { name: "Beta" }] }}
+    />,
+  );
+
+  // Drill into the second row (index 1).
+  await component.getByRole("button", { name: "Beta", exact: true }).click();
+  await expect.poll(() => readBreadcrumb(component)).toContain("Beta");
+
+  const nameInput = component.getByLabel("Name");
+  await expect(nameInput).toHaveAttribute("id", "cards.1.name");
+  await nameInput.fill("Beta2");
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ cards: [{ name: "Alpha" }, { name: "Beta2" }] });
+});
+
+test("deleting a row removes the right item from the array", async ({
+  mount,
+  page,
+}) => {
+  const meta = sectionWithProps(cardArrayProps);
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ cards: [{ name: "Alpha" }, { name: "Beta" }] }}
+    />,
+  );
+
+  // Open the actions menu for the Alpha row (button is in the DOM though hidden).
+  await component
+    .getByRole("button", { name: "Open actions for Alpha" })
+    .click();
+  // DropdownMenu content is portaled onto document.body -> query via page.
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+
+  await expect
+    .poll(() => readFormValue(component))
+    .toEqual({ cards: [{ name: "Beta" }] });
+});
+
+test("fallback label 'Item 1' when itemSchema has no titleBy/title and item has no name", async ({
+  mount,
+}) => {
+  // No titleBy and no title on the item schema, and the item carries no
+  // name/label/title key -> getArrayItemLabel falls back to "Item <n>".
+  const meta = sectionWithProps({
+    cards: {
+      type: "array",
+      title: "Cards",
+      items: {
+        type: "object",
+        properties: {
+          count: { type: "number", title: "Count" },
+        },
+      },
+    },
+  });
+  const component = await mount(
+    <SchemaFormHarness
+      meta={meta}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ cards: [{ count: 7 }] }}
+    />,
+  );
+
+  await expect.poll(() => readBreadcrumb(component)).toEqual([]);
+  await expect(
+    component.getByRole("button", { name: "Item 1", exact: true }),
+  ).toBeVisible();
+});
