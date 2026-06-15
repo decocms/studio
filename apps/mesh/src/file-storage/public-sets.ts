@@ -70,6 +70,16 @@ export const DEFAULT_PUBLIC_SETS: PublicSkillSetSource[] = [
     ref: "main",
     paths: [{ from: "packages/sandbox/image/skills" }],
   },
+  {
+    set: "storefront",
+    repo: "decocms/storefront-skills",
+    ref: "main",
+    paths: [
+      { from: ".claude-seo/skills" },
+      { from: ".claude-performance/skills" },
+      { from: ".claude-deco/skills" },
+    ],
+  },
 ];
 
 const setsSchema = z
