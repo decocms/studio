@@ -8,8 +8,15 @@
  * on boot we restore them into the query cache (best-effort warm start), and on
  * every successful read we write the latest HTML back.
  *
- * The GET endpoint already gives the browser HTTP cache (ETag + max-age), so
- * this is the "instant cross-session / offline" layer on top of that.
+ * Freshness is the server's job, not ours. The GET endpoint serves the HTML with
+ * `Cache-Control: private, no-cache` and a content-hash `ETag`, so the browser
+ * revalidates every read with a cheap conditional request: a 304 reuses the
+ * cached bytes, a 200 means the MCP server's HTML actually changed. We therefore
+ * restore entries as already-stale so that revalidation always runs, and the
+ * ETag — keyed to the resource's content, which the MCP server owns and changes
+ * independently of Studio — decides what's current. (We deliberately do NOT gate
+ * this on Studio's build version: that's the wrong identity for someone else's
+ * HTML, and bumping it would needlessly evict still-valid multi-MiB bundles.)
  */
 
 import type { QueryClient } from "@tanstack/react-query";
@@ -24,12 +31,6 @@ const MAX_VALUE_BYTES = 16 * 1024 * 1024; // mirror the server-side resources/re
 interface StoredHtml {
   html: string;
   updatedAt: number;
-  /** Build version, so a deploy invalidates stale cached HTML. */
-  buster: string;
-}
-
-function version(): string {
-  return typeof __MESH_VERSION__ === "string" ? __MESH_VERSION__ : "dev";
 }
 
 function isHtmlResourceKey(key: readonly unknown[]): boolean {
@@ -63,8 +64,8 @@ function reqToPromise<T>(req: IDBRequest<T>): Promise<T> {
 /**
  * Restore persisted UI-resource HTML into the query cache before the app reads
  * it (best-effort: IndexedDB is async, so a query that runs first just fetches —
- * which is HTTP-cached anyway). Prunes expired / over-budget / stale-version
- * entries. Safe to call once at startup.
+ * which is HTTP-cached anyway). Prunes expired / over-budget entries. Safe to
+ * call once at startup.
  */
 export async function restoreHtmlResourceCache(
   queryClient: QueryClient,
@@ -76,7 +77,6 @@ export async function restoreHtmlResourceCache(
     const keys = (await reqToPromise(store.getAllKeys())) as IDBValidKey[];
     const values = (await reqToPromise(store.getAll())) as StoredHtml[];
     const now = Date.now();
-    const ver = version();
 
     // Pair + sort newest-first so over-budget pruning drops the oldest.
     const entries = keys
@@ -87,10 +87,7 @@ export async function restoreHtmlResourceCache(
     let kept = 0;
     for (const { key, value } of entries) {
       const expired =
-        !value ||
-        value.buster !== ver ||
-        now - value.updatedAt > MAX_AGE_MS ||
-        kept >= MAX_ENTRIES;
+        !value || now - value.updatedAt > MAX_AGE_MS || kept >= MAX_ENTRIES;
       if (expired) {
         stale.push(key);
         continue;
@@ -99,12 +96,12 @@ export async function restoreHtmlResourceCache(
       try {
         const queryKey = JSON.parse(String(key)) as unknown[];
         if (queryClient.getQueryData(queryKey) === undefined) {
-          // Restore with the original timestamp so an entry older than the
-          // query's staleTime revalidates immediately on mount (instant render
-          // from IDB + background refresh) instead of being treated as fresh.
-          queryClient.setQueryData(queryKey, value.html, {
-            updatedAt: value.updatedAt,
-          });
+          // Restore as already-stale (updatedAt: 0) so the query always
+          // revalidates on mount: instant render from IDB, then a cheap
+          // no-cache + ETag conditional GET that 304s when unchanged or 200s
+          // with fresh HTML when the MCP server's resource actually changed.
+          // Never treated as fresh — the server's ETag is the source of truth.
+          queryClient.setQueryData(queryKey, value.html, { updatedAt: 0 });
         }
       } catch {
         stale.push(key);
@@ -144,7 +141,6 @@ export function persistHtmlResourceCache(queryClient: QueryClient): () => void {
           {
             html,
             updatedAt: Date.now(),
-            buster: version(),
           } satisfies StoredHtml,
           JSON.stringify(query.queryKey),
         );
