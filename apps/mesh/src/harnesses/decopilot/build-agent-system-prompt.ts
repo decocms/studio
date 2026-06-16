@@ -135,8 +135,16 @@ export async function buildAgentSystemPrompt(
 
   // Org filesystem layout + the deployment's public skill sets. org-fs is
   // mounted into every sandbox now (desktop + cluster), so this is
-  // unconditional. Settings-stable, so still cache-safe.
-  add("orgFs", buildOrgFilesystemPrompt(getPublicSets().map((s) => s.set)));
+  // unconditional. Passing the slug lets the prompt name `org/<slug>/`
+  // directly instead of telling the agent to `ls org/` to discover it.
+  // Stable per org, so still cache-safe.
+  add(
+    "orgFs",
+    buildOrgFilesystemPrompt(
+      getPublicSets().map((s) => s.set),
+      opts.organization.slug,
+    ),
+  );
 
   if (opts.kind === "agent") {
     if (opts.isDecopilot) {
