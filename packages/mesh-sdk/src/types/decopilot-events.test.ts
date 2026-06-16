@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildRunningSummary,
+  createDecopilotRunningSummaryEvent,
   createDecopilotThreadStatusEvent,
   DECOPILOT_EVENTS,
+  DECOPILOT_RUNNING_SUMMARY_EVENT,
+  type RunningThread,
 } from "./decopilot-events";
 
 describe("createDecopilotThreadStatusEvent", () => {
@@ -74,5 +78,62 @@ describe("createDecopilotThreadStatusEvent — enriched fields", () => {
       branch: null,
     });
     expect(e.data.branch).toBeNull();
+  });
+});
+
+describe("buildRunningSummary", () => {
+  test("returns zeros for no running threads", () => {
+    expect(buildRunningSummary([])).toEqual({
+      totalRunning: 0,
+      agentCount: 0,
+      agents: [],
+    });
+  });
+
+  test("counts tasks and distinct agents, busiest first", () => {
+    const threads: RunningThread[] = [
+      { id: "t1", virtual_mcp_id: "a", title: "Alpha" },
+      { id: "t2", virtual_mcp_id: "a", title: "Alpha" },
+      { id: "t3", virtual_mcp_id: "b", title: "Beta" },
+    ];
+    const summary = buildRunningSummary(threads);
+    expect(summary.totalRunning).toBe(3);
+    expect(summary.agentCount).toBe(2);
+    expect(summary.agents).toEqual([
+      { virtual_mcp_id: "a", title: "Alpha", count: 2 },
+      { virtual_mcp_id: "b", title: "Beta", count: 1 },
+    ]);
+  });
+
+  test("counts agentless threads toward tasks but not agents", () => {
+    const threads: RunningThread[] = [
+      { id: "t1", virtual_mcp_id: "", title: null },
+      { id: "t2", virtual_mcp_id: "a", title: "Alpha" },
+    ];
+    const summary = buildRunningSummary(threads);
+    expect(summary.totalRunning).toBe(2);
+    expect(summary.agentCount).toBe(1);
+  });
+
+  test("backfills a missing title from a later thread of the same agent", () => {
+    const threads: RunningThread[] = [
+      { id: "t1", virtual_mcp_id: "a", title: null },
+      { id: "t2", virtual_mcp_id: "a", title: "Alpha" },
+    ];
+    expect(buildRunningSummary(threads).agents[0]?.title).toBe("Alpha");
+  });
+});
+
+describe("createDecopilotRunningSummaryEvent", () => {
+  test("wraps threads with a derived summary", () => {
+    const threads: RunningThread[] = [
+      { id: "t1", virtual_mcp_id: "a", title: "Alpha" },
+    ];
+    const event = createDecopilotRunningSummaryEvent(threads);
+    expect(event.type).toBe(DECOPILOT_RUNNING_SUMMARY_EVENT);
+    expect(event.source).toBe("decopilot");
+    expect(event.data.threads).toEqual(threads);
+    expect(event.data.summary.totalRunning).toBe(1);
+    expect(event.data.summary.agentCount).toBe(1);
   });
 });

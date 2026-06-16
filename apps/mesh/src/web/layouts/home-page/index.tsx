@@ -28,6 +28,7 @@ import {
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { homeNextActionsQueryOptions } from "@/web/hooks/use-home-next-actions";
+import { useRunningSummary } from "@/web/hooks/use-running-summary";
 import { organizationSettingsQueryOptions } from "@/web/hooks/use-organization-settings";
 import {
   agentHasClonableSource,
@@ -134,6 +135,7 @@ function MobileHome({
         <p className="text-3xl font-medium text-foreground text-center max-w-[280px]">
           What's on your mind, {userName}?
         </p>
+        <RunningSummaryLine />
       </div>
       <div className="relative w-full flex flex-col gap-4 pb-8 px-4">
         <Chat.Input showConnectionsBanner />
@@ -185,6 +187,7 @@ function DesktopHome({
                 <p className="text-3xl font-medium text-foreground">
                   What's on your mind, {userName}?
                 </p>
+                <RunningSummaryLine />
               </div>
               <div className="relative w-full">
                 <Capybara />
@@ -259,6 +262,40 @@ function CustomizeToolbar({
       <LayoutAlt04 size={14} />
       Customize
     </button>
+  );
+}
+
+/**
+ * "X agents working on N tasks" — live count of in_progress threads in the org,
+ * seeded by the /watch connect snapshot and kept fresh by the reactor's
+ * running-summary broadcasts. Renders nothing when nothing is running.
+ */
+function RunningSummaryLine() {
+  const { org } = useProjectContext();
+  const summary = useRunningSummary(org.slug);
+
+  if (summary.totalRunning === 0) {
+    return null;
+  }
+
+  const tasks = `${summary.totalRunning} task${
+    summary.totalRunning === 1 ? "" : "s"
+  }`;
+  const label =
+    summary.agentCount > 0
+      ? `${summary.agentCount} agent${
+          summary.agentCount === 1 ? "" : "s"
+        } working on ${tasks}`
+      : `${tasks} running`;
+
+  return (
+    <div className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+      </span>
+      {label}
+    </div>
   );
 }
 

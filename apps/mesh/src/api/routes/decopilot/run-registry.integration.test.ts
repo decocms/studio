@@ -37,6 +37,8 @@ import type { Thread } from "@/storage/types";
 import { RunRegistry } from "./run-registry";
 import type { RunReactorDeps } from "./run-reactor";
 import type { StreamBuffer } from "./stream-buffer";
+import { NoopRunningThreadsStore } from "./running-threads-store";
+import { DECOPILOT_RUNNING_SUMMARY_EVENT } from "@decocms/mesh-sdk";
 
 const ORG = "org_1";
 const USER = "user_1";
@@ -77,6 +79,9 @@ function makeRegistry(opts: { clock?: () => Date } = {}) {
     storage,
     sseHub: {
       emit(orgId, event) {
+        // running.summary is an orthogonal cross-cutting broadcast; these
+        // tests assert the run-lifecycle event sequence, so filter it out.
+        if (event.type === DECOPILOT_RUNNING_SUMMARY_EVENT) return;
         sseEvents.push({ orgId, event });
       },
     },
@@ -85,6 +90,7 @@ function makeRegistry(opts: { clock?: () => Date } = {}) {
         purged.push(taskId);
       },
     } as unknown as StreamBuffer,
+    runningStore: new NoopRunningThreadsStore(),
   };
   const registry = opts.clock
     ? new RunRegistry(deps, opts.clock)

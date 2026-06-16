@@ -36,6 +36,8 @@ import type { SSEEvent } from "@/event-bus";
 import { SqlThreadStorage } from "@/storage/threads";
 import type { Thread } from "@/storage/types";
 import { reactAll, type RunReactorDeps } from "./run-reactor";
+import { NoopRunningThreadsStore } from "./running-threads-store";
+import { DECOPILOT_RUNNING_SUMMARY_EVENT } from "@decocms/mesh-sdk";
 import type { RunEvent } from "./run-state";
 import type { StreamBuffer } from "./stream-buffer";
 
@@ -78,6 +80,9 @@ function makeReactor(): {
     storage,
     sseHub: {
       emit(orgId, event) {
+        // running.summary is an orthogonal cross-cutting broadcast; these
+        // tests assert the run-lifecycle event sequence, so filter it out.
+        if (event.type === DECOPILOT_RUNNING_SUMMARY_EVENT) return;
         sseEvents.push({ orgId, event });
       },
     },
@@ -87,6 +92,7 @@ function makeReactor(): {
         purged.push(taskId);
       },
     } as unknown as StreamBuffer,
+    runningStore: new NoopRunningThreadsStore(),
   };
   return { deps, sseEvents, purged };
 }

@@ -17,7 +17,10 @@ import {
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
+import {
+  createDecopilotRunningSummaryEvent,
+  WellKnownOrgMCPId,
+} from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
@@ -124,6 +127,11 @@ import {
   NoopConnectionCircuitStore,
   setConnectionCircuitStore,
 } from "../mcp-clients/connection-circuit-store";
+import {
+  DbRunningThreadsStore,
+  JetStreamKVRunningThreadsStore,
+  type RunningThreadsStore,
+} from "./routes/decopilot/running-threads-store";
 import {
   InMemoryModelListCache,
   type ModelListCache,
@@ -714,9 +722,13 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
  *
  * On connect, emits in order:
  *   1. `event: connected` — listener metadata
- *   2. Live events from the SSE hub.
+ *   2. `event: decopilot.running.summary` — snapshot of in_progress threads
+ *      grouped by agent ("X agents working on N tasks"), re-sent on reconnect.
+ *   3. Live events from the SSE hub.
  *
- * Clients use `COLLECTION_THREADS_LIST` for their initial state.
+ * Clients use `COLLECTION_THREADS_LIST` for their initial thread state and keep
+ * the running summary live from the reactor's `decopilot.running.summary`
+ * broadcasts.
  */
 export const watchHandler: MiddlewareHandler<Env> = async (c) => {
   const meshContext = c.var.meshContext;
@@ -754,6 +766,21 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
         connectedAt: new Date().toISOString(),
       }),
     });
+
+    // Snapshot of currently-running threads grouped by agent. Authoritative
+    // and cross-pod (DB-backed), unlike the per-pod run registry. Best-effort:
+    // a failed snapshot must not tear down the live stream.
+    try {
+      const running = await meshContext.storage.threads.summarizeRunning();
+      const summaryEvent = createDecopilotRunningSummaryEvent(running);
+      await stream.writeSSE({
+        id: summaryEvent.id,
+        event: summaryEvent.type,
+        data: JSON.stringify(summaryEvent),
+      });
+    } catch (err) {
+      console.error("[watch] running summary snapshot failed", err);
+    }
 
     // Register listener with the SSE hub
     const registered = sseHub.add({
@@ -884,6 +911,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   let linkClaimRegistry: LinkClaimRegistry;
   let linkWorkQueue: LinkWorkQueue | null = null;
   let natsProvider: NatsConnectionProvider | null = null;
+  // KV-backed in the NATS branch; falls back to a DB-backed store once
+  // threadStorage exists (assigned below). Powers the reactor's running-summary
+  // broadcast.
+  let runningThreadsStore: RunningThreadsStore | null = null;
 
   if (options.eventBus) {
     // Test mode: use provided event bus and no-op stubs (no NATS required)
@@ -955,6 +986,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
     ccs.init().catch(() => {});
     connectionCircuitStore = ccs;
+
+    const rts = new JetStreamKVRunningThreadsStore({
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    rts.init().catch(() => {});
+    runningThreadsStore = rts;
 
     providerKeyCache = createProviderKeyCache({
       getConnection: () => natsProvider!.getConnection(),
@@ -1127,10 +1164,17 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   }
 
+  // No NATS (test / dev single-pod) → read the running set straight from the DB,
+  // which the reactor has already updated by the time it asks for the summary.
+  if (!runningThreadsStore) {
+    runningThreadsStore = new DbRunningThreadsStore(threadStorage);
+  }
+
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,
     streamBuffer,
     sseHub,
+    runningStore: runningThreadsStore,
   };
 
   const runRegistry = new RunRegistry(cancelReactorDeps);
@@ -1183,6 +1227,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     providerKeyCache.teardown();
     teardownMcpCacheInvalidation();
     connectionCircuitStore.teardown();
+    runningThreadsStore?.teardown();
     setMcpListCache(null);
     setConnectionCircuitStore(null);
   };

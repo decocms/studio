@@ -95,6 +95,92 @@ export type DecopilotSSEEvent =
   | DecopilotFinishEvent
   | DecopilotThreadStatusEvent;
 
+// ============================================================================
+// Running Summary (home "X agents working on N tasks")
+// ============================================================================
+
+/**
+ * Connect-time snapshot event written directly to the `/watch` stream (not a
+ * broadcast type, so it stays out of `ALL_DECOPILOT_EVENT_TYPES`). Re-fires on
+ * every reconnect, and the run reactor broadcasts a fresh one on each thread
+ * transition. Clients store the latest `summary` and render it.
+ */
+export const DECOPILOT_RUNNING_SUMMARY_EVENT = "decopilot.running.summary";
+
+/** A single in_progress thread, with the agent (virtual MCP) it belongs to. */
+export interface RunningThread {
+  id: string;
+  /** Empty string when the thread has no agent bound. */
+  virtual_mcp_id: string;
+  /** Agent title resolved from the connection; null when unknown/agentless. */
+  title: string | null;
+}
+
+export interface RunningAgentSummary {
+  virtual_mcp_id: string;
+  title: string | null;
+  count: number;
+}
+
+export interface RunningSummary {
+  /** Total threads currently in_progress — the "N tasks". */
+  totalRunning: number;
+  /** Distinct agents with at least one in_progress thread — the "X agents". */
+  agentCount: number;
+  /** Per-agent breakdown, busiest first. */
+  agents: RunningAgentSummary[];
+}
+
+export interface DecopilotRunningSummaryEvent {
+  id: string;
+  type: typeof DECOPILOT_RUNNING_SUMMARY_EVENT;
+  source: "decopilot";
+  time: string;
+  data: {
+    summary: RunningSummary;
+    /** Per-thread descriptors so server and client can recompute identically. */
+    threads: RunningThread[];
+  };
+}
+
+/**
+ * Pure aggregation of running threads into the home summary. Shared by the
+ * server (snapshot + broadcast) and the client so both sides count identically.
+ * Threads with no agent bound count toward `totalRunning` but not `agentCount`.
+ */
+export function buildRunningSummary(threads: RunningThread[]): RunningSummary {
+  const byAgent = new Map<string, RunningAgentSummary>();
+  for (const t of threads) {
+    const key = t.virtual_mcp_id || "";
+    if (!key) continue;
+    const existing = byAgent.get(key);
+    if (existing) {
+      existing.count++;
+      if (existing.title == null && t.title != null) existing.title = t.title;
+    } else {
+      byAgent.set(key, {
+        virtual_mcp_id: key,
+        title: t.title ?? null,
+        count: 1,
+      });
+    }
+  }
+  const agents = [...byAgent.values()].sort((a, b) => b.count - a.count);
+  return { totalRunning: threads.length, agentCount: agents.length, agents };
+}
+
+export function createDecopilotRunningSummaryEvent(
+  threads: RunningThread[],
+): DecopilotRunningSummaryEvent {
+  return {
+    id: crypto.randomUUID(),
+    type: DECOPILOT_RUNNING_SUMMARY_EVENT,
+    source: "decopilot",
+    time: new Date().toISOString(),
+    data: { summary: buildRunningSummary(threads), threads },
+  };
+}
+
 /** Map from event type string → typed payload (useful for generic handlers) */
 export interface DecopilotEventMap {
   [DECOPILOT_EVENTS.STEP]: DecopilotStepEvent;
