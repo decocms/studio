@@ -48,7 +48,6 @@ import {
 import { buildPortableBuiltInTools } from "@decocms/harness/decopilot/built-in-tools/portable-built-ins";
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import { createLocalSubtaskTool } from "@decocms/harness/decopilot/built-in-tools/local-subtask";
-import type { HtmlPageBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/html-page-buffer-core";
 import type { ModelsConfig } from "@decocms/harness/types";
 
 const writer = {
@@ -82,11 +81,6 @@ const inertRunner: SandboxProvider = {
   proxyDaemonRequest: async () => Response.json({}),
 };
 
-const noopHtmlPageBuffer: HtmlPageBuffer = {
-  enqueue: () => null,
-  flush: async () => {},
-};
-
 /** The shared VM + subtask builder names — environment-symmetric (one shared
  *  builder, identical names cluster + desktop). Enumerated inertly. */
 function sharedVmAndSubtaskNames(): Set<string> {
@@ -96,7 +90,6 @@ function sharedVmAndSubtaskNames(): Set<string> {
       invalidateHandle: async () => {},
       canAutoRestart: false,
     }),
-    htmlPageBuffer: noopHtmlPageBuffer,
     toolOutputMap: new Map(),
     needsApproval: false,
     pendingImages: [],

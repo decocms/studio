@@ -18,23 +18,15 @@ export interface PendingImage {
   label?: string;
 }
 
-export interface HtmlPageBuffer {
-  enqueue(
-    rawPath: string,
-    content: string,
-  ): { slug: string; key: string; url: string; bytes: number } | null;
-  flush(): Promise<void>;
-}
-
 /**
- * Fast-path mirror for presentation decks (`org/<slug>/decks/<name>.html`).
- * `write`/`edit` enqueue the full post-write content; the cluster flush
- * writes it server-side into org-fs, skipping the sandbox mount's multi-
- * second vfs write-back so the preview (and the change-feed deck watcher)
- * see the bytes at step end. Bash-created decks skip this and are caught
- * by the watcher after write-back.
+ * Fast-path mirror for live HTML artifacts (`org/<slug>/{decks,pages}/
+ * <name>.html`). `write`/`edit` enqueue the full post-write content; the
+ * cluster flush writes it server-side into org-fs, skipping the sandbox
+ * mount's multi-second vfs write-back so the preview (and the change-feed
+ * watcher) see the bytes at step end. Bash-created artifacts skip this and
+ * are caught by the watcher after write-back.
  */
-export interface DeckBuffer {
+export interface HtmlArtifactBuffer {
   enqueue(rawPath: string, content: string): void;
   flush(): Promise<void>;
 }
@@ -49,15 +41,8 @@ export interface VmToolsParams {
    * re-introduce the harness→sandbox cycle (spec §4.3).
    */
   readonly fs: SandboxFsHooks;
-  /**
-   * Buffer for coalescing `pages/<slug>.html` mirrors. `write`/`edit` calls
-   * enqueue the new content and return the preview shape synchronously; the
-   * actual S3 PUT runs from `flush()`, which the dispatch layer wires into
-   * `onStepFinish` so the iframe never races the write.
-   */
-  readonly htmlPageBuffer: HtmlPageBuffer;
-  /** Optional deck fast-path mirror (cluster-only; see `DeckBuffer`). */
-  readonly deckBuffer?: DeckBuffer;
+  /** Optional HTML-artifact fast-path mirror (cluster-only; see `HtmlArtifactBuffer`). */
+  readonly htmlArtifactBuffer?: HtmlArtifactBuffer;
   readonly toolOutputMap: Map<string, string>;
   readonly needsApproval: boolean;
   /**

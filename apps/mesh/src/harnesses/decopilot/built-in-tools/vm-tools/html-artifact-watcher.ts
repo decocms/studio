@@ -1,35 +1,36 @@
 /**
- * Deck watcher — detects live-HTML writes in the org home volume
+ * HTML-artifact watcher — detects live-HTML writes in the org home volume
  * (`decks/<name>.html` presentation decks, `pages/<name>.html` standalone
  * pages) during a run and emits `data-deck-updated` UI parts so the chat
  * side panel opens/refreshes the live preview.
  *
  * Detection is change-feed based rather than tool-based: every sandbox
  * write to the mounted `org/<slug>/` path flows through the WebDAV serve
- * layer into `OrgFs.write` and the manifest change feed, so decks created
- * via bash (the `slides-create` CLI) are caught the same as `write`-tool
- * edits. The cursor snapshots at run start; `sweep()` is hooked into
- * `onStepFinish` (and once more at run end — rclone's vfs write-back can
+ * layer into `OrgFs.write` and the manifest change feed, so artifacts
+ * created via bash (the `slides-create` CLI) are caught the same as
+ * `write`-tool edits. The cursor snapshots at run start; `sweep()` is hooked
+ * into `onStepFinish` (and once more at run end — rclone's vfs write-back can
  * land a few seconds after the file is closed in the sandbox).
  *
- * Parts use a stable `id` per deck path so the AI SDK reconciles repeated
- * updates into one part per deck.
+ * Parts use a stable `id` per artifact path so the AI SDK reconciles repeated
+ * updates into one part per artifact. (`data-deck-updated` is the legacy wire
+ * name; it covers both decks and pages.)
  */
 
 import type { StudioContext } from "@/core/studio-context";
 import { homeMountPath } from "@/file-storage/home-mount";
-import { matchDeckEntryPath } from "@decocms/harness/decopilot/built-in-tools/vm-tools/deck-paths";
+import { matchOwnHtmlArtifact } from "@decocms/harness/decopilot/built-in-tools/vm-tools/html-artifact-paths";
 import type { UIMessageStreamWriter } from "ai";
 
 const HOME_VOLUME = "home";
 const PAGE_SIZE = 200;
 
-export interface DeckWatcher {
-  /** Query the change feed since the last sweep and emit deck parts. */
+export interface HtmlArtifactWatcher {
+  /** Query the change feed since the last sweep and emit artifact parts. */
   sweep(): Promise<void>;
 }
 
-export interface DeckUpdatedData {
+export interface HtmlArtifactUpdatedData {
   volume: string;
   path: string;
   name: string;
@@ -39,16 +40,22 @@ export interface DeckUpdatedData {
   mountPath: string;
 }
 
-export function createDeckWatcher(
+export function createHtmlArtifactWatcher(
   ctx: StudioContext,
   writer: UIMessageStreamWriter,
-): DeckWatcher {
+): HtmlArtifactWatcher {
   const orgFs = ctx.orgFs;
   const orgSlug = ctx.organization?.slug ?? null;
-  if (!orgFs || !orgSlug) {
+  const ownerId = ctx.auth?.user?.id ?? null;
+  if (!orgFs || !orgSlug || !ownerId) {
     return { sweep: async () => {} };
   }
   const mountDir = homeMountPath(orgSlug);
+  // The home volume is org-wide and shared across every chat and member; emit
+  // only entries this run produced. Exact thread match for tool-written decks
+  // (the deck-buffer stamps `thread_id`); same-user fallback for unstamped
+  // bash/slides write-backs, which still blocks cross-member leaks.
+  const scope = { threadId: ctx.metadata?.threadId ?? null, ownerId };
 
   // Snapshot the cursor at run start so the first sweep only sees writes
   // made during this run. Errors degrade to a dead watcher, never a
@@ -62,7 +69,7 @@ export function createDeckWatcher(
   let cursor: string | null = null;
   let cursorInitialized = false;
   let sweeping = false;
-  // Last emitted content hash per deck — the mount's vfs write-back
+  // Last emitted content hash per artifact — the mount's vfs write-back
   // re-writes the same bytes the fast-path mirror already stored, which
   // bumps the change feed but changes nothing; skip those echoes so the
   // UI doesn't reload/re-open the preview for identical content.
@@ -77,12 +84,11 @@ export function createDeckWatcher(
         cursorInitialized = true;
       }
       if (cursor === null) return;
-      const updated = new Map<string, DeckUpdatedData>();
+      const updated = new Map<string, HtmlArtifactUpdatedData>();
       for (let pages = 0; pages < 20; pages++) {
         const page = await orgFs.changes(HOME_VOLUME, cursor, PAGE_SIZE);
         for (const entry of page.entries) {
-          if (entry.kind !== "file" || entry.deletedAt) continue;
-          const deck = matchDeckEntryPath(entry.path);
+          const deck = matchOwnHtmlArtifact(entry, scope);
           if (!deck) continue;
           if (entry.contentHash) {
             if (emittedHash.get(deck.path) === entry.contentHash) continue;

@@ -16,7 +16,6 @@ import { PreviewTab } from "./preview-tab";
 import { ContentTab } from "./content-tab";
 import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
-import { WebPageTab } from "./web-page-tab";
 import { FileTab } from "./file-tab";
 import { DeckTab } from "./deck-tab";
 import { MainPanelLoading } from "./main-panel-loading";
@@ -25,7 +24,6 @@ import {
   parseDeckTabId,
   parseFileTabId,
   parsePinnedViewTabId,
-  parseWebPageTabId,
 } from "./tab-id";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 
@@ -82,11 +80,6 @@ function TabBody({
   }
   if (automationTabParsed) {
     return <AutomationTab tabId={activeTab} />;
-  }
-
-  const webPage = parseWebPageTabId(activeTab);
-  if (webPage) {
-    return <WebPageTab slug={webPage.slug} />;
   }
 
   const deckTab = parseDeckTabId(activeTab);

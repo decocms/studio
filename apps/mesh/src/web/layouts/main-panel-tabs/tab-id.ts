@@ -8,7 +8,6 @@
  *   - Expanded-from-chat: <toolName> (from task.metadata.expanded_tools)
  *   - Pinned view: "app:<connectionId>:<toolName>" (from metadata.ui.pinnedViews)
  *   - Ephemeral automation: "automation:<id>"
- *   - Ephemeral web page: "web-page:<slug>" (web-developer agent preview)
  *   - Ephemeral file preview: "file:<encoded output key>" (thread output viewer)
  *   - Ephemeral deck preview: "deck:<encoded home-volume path>" (slides skill)
  *   - "0" = closed sentinel (not an actual tab id)
@@ -68,19 +67,6 @@ export function parsePinnedViewTabId(
   const toolName = rest.slice(sep + 1);
   if (!connectionId || !toolName) return null;
   return { connectionId, toolName };
-}
-
-export interface WebPageTabParsed {
-  slug: string;
-}
-
-export function parseWebPageTabId(
-  tabId: string | undefined,
-): WebPageTabParsed | null {
-  if (!tabId || !tabId.startsWith("web-page:")) return null;
-  const slug = tabId.slice("web-page:".length);
-  if (!slug) return null;
-  return { slug };
 }
 
 export interface DeckTabParsed {
@@ -147,15 +133,13 @@ const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
  * Returns true for tab ids that are scoped to a specific thread and must not
  * be carried across task switches:
  *   - "app:<connectionId>:<toolName>"  (expanded tool / pinned view)
- *   - "web-page:<slug>"               (ephemeral web preview)
  *   - "automation:<id>"               (ephemeral automation detail)
  *   - "file:<encoded key>"            (ephemeral thread-output file preview)
- *   - "deck:<encoded path>"           (ephemeral deck preview/editor)
+ *   - "deck:<encoded path>"           (ephemeral HTML-artifact preview/editor)
  */
 export function isPerThreadTab(tabId: string): boolean {
   return (
     tabId.startsWith("app:") ||
-    tabId.startsWith("web-page:") ||
     tabId.startsWith("automation:") ||
     tabId.startsWith("file:") ||
     tabId.startsWith("deck:")

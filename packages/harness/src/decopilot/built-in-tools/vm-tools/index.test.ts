@@ -1,12 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SandboxFsHooks } from "./sandbox-fs-hooks-types";
 import { createVmTools } from "./index";
-import type { HtmlPageBuffer } from "./types";
-
-const noopBuffer: HtmlPageBuffer = {
-  enqueue: () => null,
-  flush: async () => {},
-};
 
 /**
  * Build a `SandboxFsHooks` stub whose `onProxy` records the last daemon path
@@ -56,7 +50,6 @@ describe("createVmTools", () => {
     }));
     const tools = createVmTools({
       fs,
-      htmlPageBuffer: noopBuffer,
       toolOutputMap: new Map(),
       needsApproval: false,
       pendingImages: [],
@@ -81,7 +74,6 @@ describe("createVmTools", () => {
     const pendingImages: Array<{ url: string; mediaType: string }> = [];
     const tools = createVmTools({
       fs,
-      htmlPageBuffer: noopBuffer,
       toolOutputMap: new Map(),
       needsApproval: false,
       pendingImages: pendingImages as never,

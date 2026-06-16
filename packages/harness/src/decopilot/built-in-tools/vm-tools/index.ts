@@ -32,8 +32,7 @@ export type { VmToolsParams } from "./types";
 export function createVmTools(params: VmToolsParams) {
   const {
     fs,
-    htmlPageBuffer,
-    deckBuffer,
+    htmlArtifactBuffer,
     toolOutputMap,
     needsApproval,
     pendingImages,
@@ -89,16 +88,11 @@ export function createVmTools(params: VmToolsParams) {
     inputSchema: zodSchema(WriteInputSchema),
     execute: async (input) => {
       const daemonResult = await call("/_sandbox/write", input);
-      // Enqueue the mirror; the actual S3 PUT happens once per step from
-      // `htmlPageBuffer.flush()`, so a burst of writes/edits to the same
-      // slug collapses to a single round-trip.
-      const preview = htmlPageBuffer.enqueue(input.path, input.content);
-      // Deck fast path: mirror `org/<slug>/decks/*.html` content server-
-      // side at step end (skips the mount's slow vfs write-back).
-      deckBuffer?.enqueue(input.path, input.content);
-      return preview
-        ? { ...(daemonResult as object), htmlPreview: preview }
-        : daemonResult;
+      // Fast path: mirror `org/<slug>/{decks,pages}/*.html` content into
+      // org-fs server-side at step end (skips the mount's slow vfs write-back)
+      // so the live-preview watcher sees the bytes in the same step.
+      htmlArtifactBuffer?.enqueue(input.path, input.content);
+      return daemonResult;
     },
   });
 
@@ -115,11 +109,8 @@ export function createVmTools(params: VmToolsParams) {
       const postEditContent = daemonResult.content;
       const { content: _omit, ...resultForClient } = daemonResult;
       if (typeof postEditContent !== "string") return resultForClient;
-      const preview = htmlPageBuffer.enqueue(input.path, postEditContent);
-      deckBuffer?.enqueue(input.path, postEditContent);
-      return preview
-        ? { ...resultForClient, htmlPreview: preview }
-        : resultForClient;
+      htmlArtifactBuffer?.enqueue(input.path, postEditContent);
+      return resultForClient;
     },
   });
 

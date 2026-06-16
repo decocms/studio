@@ -18,6 +18,8 @@ export interface OrgFsEntry {
   createdAt: string;
   updatedBy: string;
   updatedAt: string;
+  /** Chat/run that last wrote this file; null when not tied to a dispatch. */
+  threadId: string | null;
 }
 
 type OrgFsEntryRow = {
@@ -34,6 +36,7 @@ type OrgFsEntryRow = {
   created_at: Date | string;
   updated_by: string;
   updated_at: Date | string;
+  thread_id: string | null;
 };
 
 function toIso(value: Date | string | null): string | null {
@@ -56,6 +59,7 @@ function rowToEntry(row: OrgFsEntryRow): OrgFsEntry {
     createdAt: toIso(row.created_at) ?? "",
     updatedBy: row.updated_by,
     updatedAt: toIso(row.updated_at) ?? "",
+    threadId: row.thread_id,
   };
 }
 
@@ -73,6 +77,7 @@ const COLUMNS = [
   "created_at",
   "updated_by",
   "updated_at",
+  "thread_id",
 ] as const satisfies readonly (keyof OrgFsEntryTable)[];
 
 /** Bump `seq` to the next value of the global sequence on every write. */
@@ -95,8 +100,11 @@ export class OrgFsEntryStorage {
     contentHash: string;
     size: number;
     actor: string;
+    /** Chat/run writing this file. Null for writes not tied to a dispatch. */
+    threadId?: string | null;
   }): Promise<OrgFsEntry> {
     const now = new Date();
+    const threadId = params.threadId ?? null;
     const row = await this.db
       .insertInto("org_fs_entry")
       .values({
@@ -112,6 +120,7 @@ export class OrgFsEntryStorage {
         created_at: now,
         updated_by: params.actor,
         updated_at: now,
+        thread_id: threadId,
       })
       .onConflict((oc) =>
         oc.columns(["organization_id", "volume", "path"]).doUpdateSet({
@@ -122,6 +131,12 @@ export class OrgFsEntryStorage {
           updated_by: params.actor,
           updated_at: now,
           seq: NEXT_SEQ,
+          // Keep the existing thread stamp when this write isn't thread-tied
+          // (e.g. the mount's vfs write-back echoes the deck-buffer's bytes
+          // with no thread) so the fast-path provenance isn't nulled out.
+          thread_id: sql<
+            string | null
+          >`coalesce(cast(${threadId} as text), org_fs_entry.thread_id)`,
         }),
       )
       .returning(COLUMNS)
