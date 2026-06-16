@@ -13,6 +13,8 @@ interface MessageTextPartProps {
   extraActions?: ReactNode;
   /** When true, actions row is always visible instead of hover-only */
   alwaysShowActions?: boolean;
+  /** Fade newly streamed words in — true only while the last message streams. */
+  animate?: boolean;
 }
 
 export function MessageTextPart({
@@ -21,6 +23,7 @@ export function MessageTextPart({
   copyable = false,
   extraActions,
   alwaysShowActions = false,
+  animate = false,
 }: MessageTextPartProps) {
   const { handleCopy } = useCopy();
   const [isCopied, setIsCopied] = useState(false);
@@ -41,7 +44,7 @@ export function MessageTextPart({
 
   return (
     <div className="group/part relative">
-      <MemoizedMarkdown id={id} text={part.text} />
+      <MemoizedMarkdown id={id} text={part.text} animate={animate} />
       {showActions && (
         <div
           className={cn(

@@ -494,6 +494,7 @@ function MessagePart({
           extraActions={usageStats}
           copyable
           alwaysShowActions={!!usageStats && !isLoading}
+          animate={isLoading && isLastMessage}
         />
       );
     case "reasoning":
