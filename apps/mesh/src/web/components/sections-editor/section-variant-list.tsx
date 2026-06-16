@@ -24,6 +24,8 @@ const VARIANT_ROW_CLASS =
   "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]";
 const VARIANT_SELECTED_ROW_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.2)]";
+export const VARIANT_MENU_ITEM_CLASS =
+  "text-[oklch(0.45_0.15_160)] focus:bg-[oklch(0.65_0.15_160/0.12)] focus:text-[oklch(0.45_0.15_160)] dark:text-[oklch(0.78_0.15_160)] dark:focus:bg-[oklch(0.65_0.15_160/0.15)] dark:focus:text-[oklch(0.78_0.15_160)]";
 
 export interface SectionVariantEntry {
   index: number;

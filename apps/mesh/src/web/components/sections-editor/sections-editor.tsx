@@ -395,6 +395,26 @@ function PageHeaderInputs({
   );
 }
 
+function AddVariantButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Add variant"
+          className="size-7 shrink-0 text-[oklch(0.65_0.15_160)]"
+          onClick={onClick}
+        >
+          <Flag01 size={14} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Add variant</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /**
  * Side panel for editing deco.cx page sections.
  * Renders sections for the currently active page and a schema-driven form.
@@ -2111,22 +2131,7 @@ export function SectionsEditor({
                 !isEditingMultivariateSection &&
                 !selectedParsed?.isHidden &&
                 activePageKey && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Add variant"
-                        className="size-7 shrink-0"
-                        style={{ color: "oklch(0.65 0.15 160)" }}
-                        onClick={() => handleAddSectionVariant()}
-                      >
-                        <Flag01 size={14} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Add variant</TooltipContent>
-                  </Tooltip>
+                  <AddVariantButton onClick={() => handleAddSectionVariant()} />
                 )}
             </div>
             {showGlobalBanner && (
@@ -2180,22 +2185,7 @@ export function SectionsEditor({
               </TooltipTrigger>
               <TooltipContent side="bottom">View JSON</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Add variant"
-                  className="size-7 shrink-0"
-                  style={{ color: "oklch(0.65 0.15 160)" }}
-                  onClick={handleAddPageVariant}
-                >
-                  <Flag01 size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Add variant</TooltipContent>
-            </Tooltip>
+            <AddVariantButton onClick={handleAddPageVariant} />
           </div>
         )}
       </div>

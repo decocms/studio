@@ -39,6 +39,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { canMakeSectionReusable } from "./page-sections";
+import { VARIANT_MENU_ITEM_CLASS } from "./section-variant-list";
 import { canAddSectionVariant } from "./section-variants";
 import { isLazyResolveType } from "./section-lazy";
 import { getSectionPreviewImageSrc } from "./section-preview-image";
@@ -298,7 +299,7 @@ function SortableSectionItem({
           </DropdownMenuItem>
           {enableAddVariant && (
             <DropdownMenuItem
-              className="text-[oklch(0.45_0.15_160)] focus:bg-[oklch(0.65_0.15_160/0.12)] focus:text-[oklch(0.45_0.15_160)] dark:text-[oklch(0.78_0.15_160)] dark:focus:bg-[oklch(0.65_0.15_160/0.15)] dark:focus:text-[oklch(0.78_0.15_160)]"
+              className={VARIANT_MENU_ITEM_CLASS}
               onClick={(e) => {
                 e.stopPropagation();
                 onAddVariant();

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   appendSectionVariant,
+  canAddSectionVariant,
   deleteMultivariateSectionVariant,
   duplicateMultivariateSectionVariant,
   flattenMultivariateSection,
@@ -492,5 +493,26 @@ describe("section-variants", () => {
         isHidden: true,
       }),
     ).toBeNull();
+  });
+
+  it("appendSectionVariant rejects saved-block sections", () => {
+    expect(
+      appendSectionVariant({ __resolveType: "Header" } as never, {
+        index: 0,
+        resolveType: "Header",
+        label: "Header",
+        isSavedBlock: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("canAddSectionVariant blocks hidden and saved-block sections, allows others", () => {
+    expect(canAddSectionVariant({ isHidden: true })).toBe(false);
+    expect(canAddSectionVariant({ isSavedBlock: true })).toBe(false);
+    expect(canAddSectionVariant({ isHidden: false, isSavedBlock: false })).toBe(
+      true,
+    );
+    expect(canAddSectionVariant({})).toBe(true);
+    expect(canAddSectionVariant({ isMultivariate: true })).toBe(true);
   });
 });

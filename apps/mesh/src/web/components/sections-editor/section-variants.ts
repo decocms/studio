@@ -1,7 +1,7 @@
 import type { ParsedSection } from "./parse-sections";
 import { isLazyResolveType, LAZY_RENDER_RESOLVE_TYPE } from "./section-lazy";
 import {
-  ALWAYS_MATCHER_RESOLVE_TYPE,
+  defaultVariantRule,
   NEVER_MATCHER_RESOLVE_TYPE,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
   type RawSection,
@@ -354,15 +354,11 @@ export function deleteMultivariateSectionVariant(
   return { ...mvObj, variants };
 }
 
-function defaultSectionVariantRule(): Record<string, unknown> {
-  return { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
-}
-
 function createSectionVariantEntry(
   value: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
-    rule: defaultSectionVariantRule(),
+    rule: defaultVariantRule(),
     value: structuredClone(value),
   };
 }
@@ -379,12 +375,15 @@ function createMultivariateSectionObject(
 }
 
 /** Whether a section can be converted to (or extended with) variants. */
-export function canAddSectionVariant(section: { isHidden?: boolean }): boolean {
-  return section.isHidden !== true;
+export function canAddSectionVariant(section: {
+  isHidden?: boolean;
+  isSavedBlock?: boolean;
+}): boolean {
+  return section.isHidden !== true && section.isSavedBlock !== true;
 }
 
 /** Extract the variant payload from a raw section for wrapping or seeding. */
-export function extractSectionVariantSeed(
+function extractSectionVariantSeed(
   raw: RawSection,
   parsed: ParsedSection,
 ): Record<string, unknown> | null {
@@ -411,7 +410,7 @@ export function extractSectionVariantSeed(
  * Wrap a plain or lazy section in a multivariate block with two variants
  * (original + clone). Returns null for hidden or unsupported shapes.
  */
-export function wrapSectionAsMultivariate(
+function wrapSectionAsMultivariate(
   raw: RawSection,
   parsed: ParsedSection,
   seedValue?: Record<string, unknown>,
@@ -445,7 +444,7 @@ export function appendSectionVariant(
   parsed: ParsedSection,
   seedValue?: Record<string, unknown>,
 ): { section: RawSection; newVariantIndex: number } | null {
-  if (parsed.isHidden) return null;
+  if (parsed.isHidden || parsed.isSavedBlock) return null;
 
   if (parsed.isMultivariate) {
     const mvObj = getMultivariateSectionObject(raw, parsed);
