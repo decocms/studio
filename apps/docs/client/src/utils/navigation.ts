@@ -65,6 +65,7 @@ export async function getNavigationLinks(
 
     // 9. API Reference
     "studio/api-reference/connection-proxy",
+    "studio/api-reference/external-agent-integration",
     "studio/api-reference/built-in-tools",
     "studio/api-reference/built-in-tools/tool-search",
     "studio/api-reference/built-in-tools/tool-enable",
