@@ -438,6 +438,19 @@ export class ThreadConnection {
       };
       const items = payload.items ?? [];
       this.messages.update((curr) => mergeAndSort(curr, items));
+      // Re-surface a settled turn's finish reason (e.g. the step-limit
+      // "tool-calls" pause) so the "Response incomplete" banner persists
+      // across reloads. Live runs set this from the stream's finish chunk;
+      // here we seed it from the persisted finish anchor when none is set.
+      if (this.finishReason.get() === null) {
+        const last = this.messages.get().at(-1);
+        const fr =
+          last?.role === "assistant"
+            ? (last.metadata as { finishReason?: string } | undefined)
+                ?.finishReason
+            : undefined;
+        if (fr) this.finishReason.set(fr);
+      }
       this.serverFetchedCount = items.length;
       this.hasMoreOlder.set(payload.hasMore ?? false);
       if (this.status.get().kind === "loading") {
