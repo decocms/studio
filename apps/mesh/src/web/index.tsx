@@ -121,19 +121,15 @@ const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
   beforeLoad: async () => {
-    // lastOrgSlug is the authoritative "last org": it updates on every org view
-    // (including switching to an org's home). lastLocation only updates when a
-    // *thread* is opened, so after an org switch the two disagree — and the
-    // slug wins. Reads are synchronous so cold entry stays instant.
-    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
-
-    // Restore the exact thread (same org + agent + thread) only when it belongs
-    // to the org the user was last in. Without this guard, switching orgs would
-    // be undone on reopen by restoring a stale thread from the previous org. A
-    // stale org/thread self-heals — OrgAccessGate clears it and bounces back to
+    // Restore where the user last was. lastLocation is recorded on every
+    // org-scoped navigation (orgLayout writes the org; the thread route adds
+    // the taskId), so it's always current — including after an in-app org
+    // switch, which the queryFn-driven lastOrgSlug can miss when the new org
+    // is already cached. Reads are synchronous so cold entry stays instant. A
+    // stale org/thread self-heals: OrgAccessGate clears it and bounces back to
     // "/", and an unknown taskId is re-fetched/created by useEnsureTask.
     const lastLocation = readLastLocation();
-    if (lastLocation && (!lastOrgSlug || lastLocation.org === lastOrgSlug)) {
+    if (lastLocation?.taskId) {
       throw redirect({
         to: "/$org/$taskId",
         params: { org: lastLocation.org, taskId: lastLocation.taskId },
@@ -142,12 +138,16 @@ const homeRoute = createRoute({
           : {},
       });
     }
+    if (lastLocation) {
+      throw redirect({ to: "/$org", params: { org: lastLocation.org } });
+    }
 
     // Fast path: redirect returning users immediately from the cached slug,
     // WITHOUT awaiting the org-list network call. This is what keeps a cold
     // load from blocking on a round-trip (the previous blank/white screen).
     // The org layout validates membership via getFullOrganization, and a stale
     // slug self-heals in OrgAccessGate (clears the slug + bounces back to "/").
+    const lastOrgSlug = localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug());
     if (lastOrgSlug) {
       throw redirect({
         to: "/$org",
@@ -197,6 +197,12 @@ const onboardingRoute = createRoute({
 const orgLayout = createRoute({
   getParentRoute: () => shellLayout,
   path: "/$org",
+  // Record the org on every entry/switch (this re-runs whenever the $org param
+  // changes). Clears any prior taskId; the thread route re-adds it right after
+  // for /$org/$taskId, since this parent beforeLoad runs before the child's.
+  beforeLoad: ({ params }) => {
+    saveLastLocation({ org: params.org });
+  },
   component: lazyRouteComponent(() => import("./layouts/org-layout.tsx")),
 });
 

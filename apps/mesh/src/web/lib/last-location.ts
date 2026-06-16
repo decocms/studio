@@ -1,9 +1,14 @@
 import { LOCALSTORAGE_KEYS } from "./localstorage-keys";
 
-/** The thread the user last had open, restored on cold app entry ("/"). */
+/**
+ * Where the user last was, restored on cold app entry ("/"). Recorded on every
+ * org-scoped navigation: `org` alone for an org home / non-thread route, plus
+ * `taskId` + `virtualmcpid` once a thread is open. Single source of truth, so
+ * it can never disagree with itself the way two separate keys could.
+ */
 export interface LastLocation {
   org: string;
-  taskId: string;
+  taskId?: string;
   virtualmcpid?: string;
 }
 
@@ -20,10 +25,10 @@ export function readLastLocation(): LastLocation | null {
     const raw = localStorage.getItem(LOCALSTORAGE_KEYS.lastLocation());
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<LastLocation>;
-    if (typeof parsed?.org === "string" && typeof parsed?.taskId === "string") {
+    if (typeof parsed?.org === "string") {
       return {
         org: parsed.org,
-        taskId: parsed.taskId,
+        taskId: typeof parsed.taskId === "string" ? parsed.taskId : undefined,
         virtualmcpid:
           typeof parsed.virtualmcpid === "string"
             ? parsed.virtualmcpid
