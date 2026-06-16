@@ -24,7 +24,11 @@
  */
 
 import { homeMountPath } from "../home-mount";
-import { getPublicSets, publicVolumeForSet } from "../public-sets";
+import {
+  getPublicSets,
+  isPublicVolume,
+  publicVolumeForSet,
+} from "../public-sets";
 
 /** Shape the daemon parses from ORGFS_CONFIG (mirrors OrgFsMountConfig). */
 export interface OrgFsProvisionConfig {
@@ -44,6 +48,27 @@ const DEFAULT_MOUNTS: ReadonlyArray<{ volume: string; path: string }> = [
   { volume: "outputs", path: ORG_FS_OUTPUTS_MOUNT_PATH },
   { volume: "uploads", path: ORG_FS_UPLOADS_MOUNT_PATH },
 ];
+
+/**
+ * The sandbox path an org-fs (volume, path) is reachable at inside a run —
+ * the inverse of the mount table above. Lets server-side code (e.g. the agent
+ * knowledge block) tell the agent exactly where to read an attached file.
+ * `path` "" returns the volume's mount root.
+ */
+export function orgFsSandboxPath(
+  volume: string,
+  path: string,
+  orgSlug: string,
+): string {
+  let base: string;
+  if (volume === "home") base = `org/${homeMountPath(orgSlug)}`;
+  else if (volume === "outputs") base = `org/${ORG_FS_OUTPUTS_MOUNT_PATH}`;
+  else if (volume === "uploads") base = `org/${ORG_FS_UPLOADS_MOUNT_PATH}`;
+  else if (isPublicVolume(volume)) {
+    base = `org/public/${volume.slice("public-".length)}`;
+  } else base = `org/${volume}`;
+  return path ? `${base}/${path}` : base;
+}
 
 export function buildOrgFsConfig(opts: {
   baseUrl: string;

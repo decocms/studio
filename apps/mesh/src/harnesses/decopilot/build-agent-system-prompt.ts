@@ -29,6 +29,7 @@ import {
   type SystemMessage,
 } from "@decocms/harness/decopilot/system-prompt";
 import { listPromptsBlock, listConnectionsBlock } from "./prompt";
+import { buildKnowledgeBlock } from "./knowledge-block";
 import { buildAgentsBlock } from "@decocms/harness/decopilot/agents-block";
 import { renderUserContextBlock } from "@decocms/harness/decopilot/user-context-block";
 import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
@@ -173,6 +174,11 @@ export async function buildAgentSystemPrompt(
   add("todoWrite", buildTodoWritePrompt());
 
   add("agentInstructions", opts.agentInstructions);
+
+  add(
+    "knowledge",
+    await buildKnowledgeBlock(opts.ctx, opts.organization, opts.virtualMcp.id),
+  );
 
   if (opts.kind === "agent" && opts.user) {
     add(
