@@ -61,6 +61,12 @@ const FRAG_TOTAL_HEADER = "Dp-Frag-Total";
 // (prod publish path stays byte-for-byte unchanged).
 const STREAM_ENCODE_TRACE = process.env.STREAM_ENCODE_TRACE === "1";
 
+// Per-run publish tracing (off by default). When "1", logs how many chunks a
+// pump actually published to the subject — the producer-side counterpart to
+// the /stream `deliveredChunks` log, so a "published N but tail delivered 0"
+// divergence is visible.
+const STREAM_TAIL_TRACE = process.env.DECOPILOT_STREAM_TRACE === "1";
+
 class StreamEncodeProfiler {
   private chunks = 0;
   private encodeMs = 0;
@@ -164,7 +170,15 @@ export class NatsStreamBuffer implements StreamBuffer {
 
   async init(): Promise<void> {
     const nc = this.options.getConnection();
-    if (!nc) return; // NATS not ready — stream buffer disabled
+    if (!nc) {
+      // Expected once at startup (eager init before NATS connects); the
+      // onReady callback re-runs init after connect. If this is the LAST
+      // init log with no following "ready", live /stream stays disabled.
+      console.log(
+        "[Decopilot] StreamBuffer.init skipped: NATS not connected yet",
+      );
+      return;
+    }
     const jsm = await nc.jetstreamManager();
 
     const config = {
@@ -194,6 +208,11 @@ export class NatsStreamBuffer implements StreamBuffer {
 
     this.js = this.options.getJetStream();
     this.jsm = jsm;
+    // `getJetStream()` returns null while the connection is mid-(re)connect; a
+    // null `js` here means pump/tail will no-op until the next init.
+    console.log(
+      `[Decopilot] StreamBuffer.init ${this.js ? "ready" : "degraded (js=null)"}`,
+    );
   }
 
   pump(
@@ -203,7 +222,15 @@ export class NatsStreamBuffer implements StreamBuffer {
     orgId?: string,
   ): void {
     const js = this.js;
-    if (!js) return;
+    if (!js) {
+      // No JetStream client — every chunk for this run is silently dropped
+      // (message still persists upstream). This is the producer side of a
+      // "total stream silence, no error" report.
+      console.warn(
+        `[Decopilot] pump: JetStream client unavailable for thread ${taskId}; chunks NOT published to NATS`,
+      );
+      return;
+    }
 
     const subj = streamSubject(taskId);
     const tracker = createPublishTracker(taskId, orgId);
@@ -267,11 +294,13 @@ export class NatsStreamBuffer implements StreamBuffer {
     void (async () => {
       const reader = stream.getReader();
       let sinceYield = 0;
+      let publishedChunks = 0;
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           publishChunk(value);
+          publishedChunks++;
           // `reader.read()` normally yields to the event loop between chunks,
           // but a producer with many buffered chunks can resolve reads
           // synchronously in a burst — starving I/O (health checks, other
@@ -290,6 +319,17 @@ export class NatsStreamBuffer implements StreamBuffer {
       } finally {
         reader.releaseLock();
         publishDone();
+        if (STREAM_TAIL_TRACE) {
+          console.warn(
+            JSON.stringify({
+              msg: "decopilot-stream-diag",
+              event: "pump-done",
+              taskId,
+              publishedChunks,
+              publishErrors: tracker.errorCount,
+            }),
+          );
+        }
       }
     })();
   }
@@ -345,7 +385,15 @@ export class NatsStreamBuffer implements StreamBuffer {
     },
   ): Promise<ReadableStream | null> {
     const js = this.js;
-    if (!js) return null;
+    if (!js) {
+      // No JetStream client — the caller (/stream → 204, or dispatchRunAndWait
+      // → silent direct-drain fallback) gets no tail. Logged here so the
+      // consumer-side blind spot isn't silent.
+      console.warn(
+        `[Decopilot] createTailStream: JetStream client unavailable for thread ${taskId}; no live tail`,
+      );
+      return null;
+    }
 
     const deliverPolicy =
       opts?.deliverPolicy === "new" ? DeliverPolicy.New : DeliverPolicy.All;

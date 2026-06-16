@@ -57,6 +57,14 @@ import { shouldPinV2FromEnv } from "./v2-canary";
 import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 
+// Per-connection /stream tail diagnostics. Flip to "1" in an environment where
+// the live stream intermittently delivers no chunks — logs the resolved
+// deliverPolicy, run age, and the delivered chunk count per connection so a
+// "policy=new + 0 chunks delivered, message still persisted" case (the
+// deliverPolicy / cross-run replay race) is visible. The null-tail (204) case
+// is logged unconditionally below since it always means a degraded buffer.
+const STREAM_TAIL_TRACE = process.env.DECOPILOT_STREAM_TRACE === "1";
+
 // ============================================================================
 // Canonical serialization helper
 // ============================================================================
@@ -791,15 +799,44 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // The buffer is purged on terminal events (run-reactor), so `"all"`
       // only ever replays the current in-flight run.
       const deliverPolicy = thread.status === "in_progress" ? "all" : "new";
+      const runStartedAgoMs = thread.run_started_at
+        ? Date.now() - new Date(thread.run_started_at).getTime()
+        : null;
       const tailChunkStream = await streamBuffer.createTailStream(
         taskId,
         c.req.raw.signal,
         { deliverPolicy },
       );
       if (!tailChunkStream) {
+        // A null tail means the JetStream buffer is degraded on this pod
+        // (client gets 204 → no live chunks). High-signal, always logged.
+        console.warn(
+          JSON.stringify({
+            msg: "decopilot-stream-diag",
+            event: "tail-unavailable-204",
+            taskId,
+            threadStatus: thread.status,
+            deliverPolicy,
+            runStartedAgoMs,
+          }),
+        );
         return c.body(null, 204);
       }
 
+      if (STREAM_TAIL_TRACE) {
+        console.warn(
+          JSON.stringify({
+            msg: "decopilot-stream-diag",
+            event: "tail-open",
+            taskId,
+            threadStatus: thread.status,
+            deliverPolicy,
+            runStartedAgoMs,
+          }),
+        );
+      }
+
+      let deliveredChunks = 0;
       const tailStream = createUIMessageStream({
         execute: async ({ writer }) => {
           const reader = tailChunkStream.getReader();
@@ -807,10 +844,24 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
+              deliveredChunks++;
               writer.write(value);
             }
           } finally {
             reader.releaseLock();
+            if (STREAM_TAIL_TRACE) {
+              console.warn(
+                JSON.stringify({
+                  msg: "decopilot-stream-diag",
+                  event: "tail-closed",
+                  taskId,
+                  threadStatus: thread.status,
+                  deliverPolicy,
+                  runStartedAgoMs,
+                  deliveredChunks,
+                }),
+              );
+            }
           }
         },
       });
