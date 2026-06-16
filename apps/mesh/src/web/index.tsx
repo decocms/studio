@@ -20,6 +20,7 @@ import "../../index.css";
 
 import { listOrganizationsCached } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { readLastLocation, saveLastLocation } from "@/web/lib/last-location";
 import { initPwaInstallCapture } from "@/web/lib/pwa-install";
 
 import { sourcePlugins } from "./plugins.ts";
@@ -120,6 +121,21 @@ const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
   beforeLoad: async () => {
+    // Restore the user where they left off: same org + agent + thread. Read
+    // synchronously so cold entry stays instant (no network round-trip). A
+    // stale org/thread self-heals — OrgAccessGate clears it and bounces back
+    // to "/", and an unknown taskId is re-fetched/created by useEnsureTask.
+    const lastLocation = readLastLocation();
+    if (lastLocation) {
+      throw redirect({
+        to: "/$org/$taskId",
+        params: { org: lastLocation.org, taskId: lastLocation.taskId },
+        search: lastLocation.virtualmcpid
+          ? { virtualmcpid: lastLocation.virtualmcpid }
+          : {},
+      });
+    }
+
     // Fast path: redirect returning users immediately from the cached slug,
     // WITHOUT awaiting the org-list network call. This is what keeps a cold
     // load from blocking on a round-trip (the previous blank/white screen).
@@ -226,6 +242,15 @@ const unifiedChatRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/$taskId",
   validateSearch: unifiedChatSearchSchema,
+  // Remember the open thread so cold entry ("/") can restore it. Preloading is
+  // off (defaultPreload unset), so this only fires on real navigation.
+  beforeLoad: ({ params, search }) => {
+    saveLastLocation({
+      org: params.org,
+      taskId: params.taskId,
+      virtualmcpid: search.virtualmcpid,
+    });
+  },
   component: () => null,
 });
 

@@ -2,6 +2,7 @@ import { AutoDomainJoinScreen } from "@/web/components/auto-domain-join-screen";
 import { NoAccessScreen } from "@/web/components/no-access-screen";
 import { PendingInviteScreen } from "@/web/components/pending-invite-screen";
 import { useOrgAccessStatus } from "@/web/hooks/use-org-access-status";
+import { clearLastLocation, readLastLocation } from "@/web/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 
 /**
@@ -13,14 +14,19 @@ export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
   const { data } = useOrgAccessStatus(orgSlug);
 
   // Self-heal the home route's optimistic redirect: if we sent the user here
-  // from a cached slug that turned out to be stale (org deleted or membership
-  // lost), clear it and bounce back to "/" so the home loader can pick a valid
-  // destination — instead of dead-ending on the not-found / no-access screen.
+  // from a cached slug (or restored last-location) that turned out to be stale
+  // (org deleted or membership lost), clear it and bounce back to "/" so the
+  // home loader can pick a valid destination — instead of dead-ending on the
+  // not-found / no-access screen, or looping straight back to the same org.
+  const staleSlug =
+    localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug;
+  const staleLocation = readLastLocation()?.org === orgSlug;
   if (
     (data.status === "not-found" || data.status === "no-access") &&
-    localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug
+    (staleSlug || staleLocation)
   ) {
-    localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    if (staleSlug) localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    if (staleLocation) clearLastLocation();
     window.location.href = "/";
     return null;
   }

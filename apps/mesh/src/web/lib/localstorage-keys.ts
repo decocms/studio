@@ -35,6 +35,7 @@ export const LOCALSTORAGE_KEYS = {
   pluginConnection: (org: string, pluginId: string) =>
     `mesh:plugin:connection:${org}:${pluginId}`,
   lastOrgSlug: () => `mesh:last-org-slug`,
+  lastLocation: () => `mesh:last-location`,
   connectionsTab: (org: string) => `mesh:connections:tab:${org}`,
   taskLastViewed: (locator: ProjectLocator) =>
     `mesh:chat:task-last-viewed:${locator}`,
