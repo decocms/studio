@@ -38,7 +38,10 @@ import { RunRegistry } from "./run-registry";
 import type { RunReactorDeps } from "./run-reactor";
 import type { StreamBuffer } from "./stream-buffer";
 import { NoopRunningThreadsStore } from "./running-threads-store";
-import { DECOPILOT_RUNNING_SUMMARY_EVENT } from "@decocms/mesh-sdk";
+import {
+  DECOPILOT_RUNNING_SUMMARY_EVENT,
+  DECOPILOT_USER_RUNNING_SUMMARY_EVENT,
+} from "@decocms/mesh-sdk";
 
 const ORG = "org_1";
 const USER = "user_1";
@@ -79,8 +82,13 @@ function makeRegistry(opts: { clock?: () => Date } = {}) {
     storage,
     sseHub: {
       emit(orgId, event) {
-        // These tests assert the run-lifecycle sequence; drop the summary broadcast.
-        if (event.type === DECOPILOT_RUNNING_SUMMARY_EVENT) return;
+        // These tests assert the run-lifecycle sequence; drop the summary broadcasts.
+        if (
+          event.type === DECOPILOT_RUNNING_SUMMARY_EVENT ||
+          event.type === DECOPILOT_USER_RUNNING_SUMMARY_EVENT
+        ) {
+          return;
+        }
         sseEvents.push({ orgId, event });
       },
     },

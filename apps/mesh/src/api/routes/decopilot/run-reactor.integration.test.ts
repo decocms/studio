@@ -37,7 +37,10 @@ import { SqlThreadStorage } from "@/storage/threads";
 import type { Thread } from "@/storage/types";
 import { reactAll, type RunReactorDeps } from "./run-reactor";
 import { NoopRunningThreadsStore } from "./running-threads-store";
-import { DECOPILOT_RUNNING_SUMMARY_EVENT } from "@decocms/mesh-sdk";
+import {
+  DECOPILOT_RUNNING_SUMMARY_EVENT,
+  DECOPILOT_USER_RUNNING_SUMMARY_EVENT,
+} from "@decocms/mesh-sdk";
 import type { RunEvent } from "./run-state";
 import type { StreamBuffer } from "./stream-buffer";
 
@@ -80,8 +83,13 @@ function makeReactor(): {
     storage,
     sseHub: {
       emit(orgId, event) {
-        // These tests assert the run-lifecycle sequence; drop the summary broadcast.
-        if (event.type === DECOPILOT_RUNNING_SUMMARY_EVENT) return;
+        // These tests assert the run-lifecycle sequence; drop the summary broadcasts.
+        if (
+          event.type === DECOPILOT_RUNNING_SUMMARY_EVENT ||
+          event.type === DECOPILOT_USER_RUNNING_SUMMARY_EVENT
+        ) {
+          return;
+        }
         sseEvents.push({ orgId, event });
       },
     },

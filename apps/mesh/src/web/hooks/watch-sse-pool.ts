@@ -16,7 +16,7 @@ import {
 } from "./create-sse-subscription";
 
 /** Concrete workflow event names emitted on `/watch`. */
-export const WORKFLOW_EVENT_TYPES = [
+const WORKFLOW_EVENT_TYPES = [
   "workflow.execution.created",
   "workflow.execution.resumed",
   "workflow.step.execute",
@@ -45,7 +45,7 @@ const WATCH_EVENT_TYPES = [
 ];
 
 /** The single shared, cross-tab `/watch` connection (streams the full union). */
-export const watchSSE: SSESubscription = createSSESubscription({
+const watchSSE: SSESubscription = createSSESubscription({
   name: "watch",
   buildUrl: (orgSlug) =>
     `/api/${encodeURIComponent(orgSlug)}/watch?types=${WATCH_URL_TYPES.join(",")}`,
