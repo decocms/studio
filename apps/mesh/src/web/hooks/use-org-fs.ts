@@ -136,15 +136,54 @@ export function useOrgFsUsage(volume: string) {
  * Library home's feed. The query key is limit-agnostic (single consumer);
  * mutations invalidate it alongside the volume prefix.
  */
-export function useOrgFsRecent(limit = 60) {
+export function useOrgFsRecent(limit = 60, opts?: { enabled?: boolean }) {
   const { org } = useProjectContext();
   return useQuery({
     queryKey: KEYS.orgFsRecent(org.id),
+    enabled: opts?.enabled,
     queryFn: async () => {
       const res = await fsFetch(
         `/api/${encodeURIComponent(org.slug)}/fs/recent?limit=${limit}`,
       );
       return ((await res.json()) as { entries: OrgFsRecentEntry[] }).entries;
+    },
+  });
+}
+
+/** A skill folder (dir containing SKILL.md) in the org filesystem. */
+export interface OrgFsSkill {
+  volume: string;
+  path: string;
+}
+
+/**
+ * Skill folders (dirs containing SKILL.md) across the home volume and the
+ * deployment's public skill sets — the attachable-skill set for agent
+ * knowledge. Lists each volume's root and keeps the `hasSkill` dirs.
+ */
+export function useOrgFsSkills(opts?: { enabled?: boolean }) {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.orgFsSkills(org.id),
+    enabled: opts?.enabled,
+    queryFn: async (): Promise<OrgFsSkill[]> => {
+      const setsRes = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/public-sets`,
+      );
+      const { sets } = (await setsRes.json()) as { sets: string[] };
+      const volumes = ["home", ...sets.map((s) => `public-${s}`)];
+      const perVolume = await Promise.all(
+        volumes.map(async (volume) => {
+          const res = await fsFetch(
+            fsUrl(org.slug, volume, "list", { path: "" }),
+          );
+          const { entries } = (await res.json()) as { entries: OrgFsEntry[] };
+          return entries
+            .filter((e) => e.kind === "dir" && e.hasSkill)
+            .map((e) => ({ volume, path: e.path }));
+        }),
+      );
+      return perVolume.flat();
     },
   });
 }

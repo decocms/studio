@@ -172,6 +172,9 @@ export async function buildAgentSystemPrompt(
 
   add("todoWrite", buildTodoWritePrompt());
 
+  // Attached files/skills ride along in agentInstructions (folded in by the
+  // passthrough client's getInstructions), so they reach both the cluster and
+  // sandbox-daemon run paths uniformly — no separate block here.
   add("agentInstructions", opts.agentInstructions);
 
   if (opts.kind === "agent" && opts.user) {

@@ -25,6 +25,7 @@ export {
   type VirtualMCPCreateData,
   type VirtualMCPUpdateData,
   type VirtualMCPConnection,
+  type KnowledgeFile,
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
   type VirtualMcpHomeTile,

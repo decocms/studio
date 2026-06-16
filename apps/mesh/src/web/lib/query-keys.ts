@@ -338,6 +338,9 @@ export const KEYS = {
   // volume named like the segment can never collide; mutations invalidate it
   // explicitly alongside the volume prefix.
   orgFsRecent: (orgId: string) => ["org-fs-recent", orgId] as const,
+  // Skill folders (dirs with SKILL.md) across home + public sets — the
+  // attachable-skill set for agent knowledge.
+  orgFsSkills: (orgId: string) => ["org-fs-skills", orgId] as const,
 
   // File picker — objects listed from a configured bucket
   filePickerObjects: (orgId: string, configId: string | null) =>

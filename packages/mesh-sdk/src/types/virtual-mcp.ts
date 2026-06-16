@@ -473,6 +473,55 @@ export function normalizeSandboxMap(raw: unknown): SandboxMap {
 }
 
 /**
+ * A file attached to an agent as reference knowledge. Stored in object
+ * storage and recorded on `metadata.knowledge`. At system-prompt build time
+ * the agent gets a `<knowledge>` block listing these files — small text
+ * documents are inlined in full (always in context), larger or binary files
+ * are listed as references the agent can retrieve on demand.
+ *
+ * Only the reference is stored here (not the content) so the entity payload
+ * stays lean across list/get reads.
+ */
+const KnowledgeFileSchema = z.object({
+  id: z.string().describe("Stable identifier for this knowledge file"),
+  name: z.string().describe("File name shown in the UI"),
+  kind: z
+    .enum(["file", "skill"])
+    .optional()
+    .describe(
+      "'file' (a single document) or 'skill' (a Claude Code skill folder containing SKILL.md). Defaults to 'file'.",
+    ),
+  volume: z
+    .string()
+    .describe("Org filesystem (Library) volume the file lives in"),
+  path: z.string().describe("Path within the volume"),
+  url: z
+    .string()
+    .describe("Same-origin URL to read the file (display/download)"),
+  contentType: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("MIME type, used to decide whether to inline the content"),
+  size: z.number().nullable().optional().describe("File size in bytes"),
+  addedAt: z.string().describe("ISO timestamp when the file was attached"),
+});
+
+export type KnowledgeFile = z.infer<typeof KnowledgeFileSchema>;
+
+/**
+ * Reusable `metadata.knowledge` field definition shared by the entity, create,
+ * and update schemas so the three stay in sync.
+ */
+const knowledgeMetadataField = z
+  .array(KnowledgeFileSchema)
+  .nullable()
+  .optional()
+  .describe(
+    "Files attached to the agent as reference knowledge. Surfaced in the system prompt: small text documents are inlined, others are listed as retrievable references.",
+  );
+
+/**
  * Virtual MCP entity schema - single source of truth
  * Compliant with collections binding pattern
  */
@@ -528,6 +577,7 @@ export const VirtualMCPEntitySchema = z.object({
       sandboxMap: SandboxMapSchema.optional().describe(
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
+      knowledge: knowledgeMetadataField,
     })
     .loose()
     .describe("Metadata"),
@@ -592,6 +642,7 @@ export const VirtualMCPCreateDataSchema = z.object({
       sandboxMap: SandboxMapSchema.optional().describe(
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
+      knowledge: knowledgeMetadataField,
     })
     .loose()
     .nullable()
@@ -652,6 +703,7 @@ export const VirtualMCPUpdateDataSchema = z.object({
       sandboxMap: SandboxMapSchema.optional().describe(
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
+      knowledge: knowledgeMetadataField,
     })
     .loose()
     .nullable()

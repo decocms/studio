@@ -89,7 +89,19 @@ export function SubAgentsSection({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium text-foreground">Sub-agents</h2>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-sm font-medium text-foreground">Sub-agents</h2>
+          {mode === "all" && (
+            <p className="text-sm text-muted-foreground">
+              Can delegate to any agent in the organization.
+            </p>
+          )}
+          {mode === "self" && (
+            <p className="text-sm text-muted-foreground">
+              Can only delegate to a fresh copy of itself, no other agents.
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {mode === "selected" && selectedAgents.length > 0 && (
             <Button
@@ -118,18 +130,6 @@ export function SubAgentsSection({
       </div>
 
       <div className="flex flex-col gap-2">
-        {mode === "all" && (
-          <p className="text-sm text-muted-foreground px-1">
-            Can delegate to any agent in the organization.
-          </p>
-        )}
-
-        {mode === "self" && (
-          <p className="text-sm text-muted-foreground px-1">
-            Can only delegate to a fresh copy of itself — no other agents.
-          </p>
-        )}
-
         {mode === "selected" &&
           (selectedAgents.length > 0 ? (
             selectedAgents.map((agent) => (
