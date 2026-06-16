@@ -52,6 +52,44 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
+# Pod dispatch-role split (see apps/mesh MESH_DISPATCH_ROLE). One release, one
+# Argo app: the main Deployment serves HTTP; an optional `worker` Deployment
+# runs the agent loop. Workers carry a distinct `app.kubernetes.io/name`
+# (`<name>-worker`), so the main Deployment selector AND the Service selector
+# do NOT match them — workers stay OFF the load balancer and receive work only
+# by pulling the DBOS queue. /stream is served by the (api) main pods, which
+# tail NATS for chunks the workers published. Health probes hit pods directly,
+# so workers stay live regardless of Service membership.
+#
+# Rollout: set worker.enabled=true first (workers come up; main is still "all"
+# so nothing breaks), confirm workers dequeue, THEN set dispatchRole=api so the
+# main pods stop running the agent loop. Rollback = unset both.
+#
+# dispatchRole controls the MAIN deployment's MESH_DISPATCH_ROLE.
+#   "" (default) → unset → "all" (unchanged behavior). Set to "api" once
+#   workers exist so HTTP pods stop dequeuing runs. Env-only update (rolling,
+#   no recreate); does NOT touch the immutable selector.
+dispatchRole: ""
+
+worker:
+  # When true, render a second Deployment (`<fullname>-worker`) that dequeues
+  # only the agent/automation run queues (MESH_DISPATCH_ROLE=worker). Default
+  # false → chart output is identical to before.
+  enabled: false
+  replicaCount: 2
+  # Workers are CPU-bound on LLM streams — give headroom and scale on CPU.
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 30
+    targetCPUUtilizationPercentage: 65
+  # Extra env for worker pods only (merged after the shared envFrom).
+  env: []
+
 configMap:
   meshConfig:
     NODE_ENV: "production"
