@@ -20,7 +20,14 @@
         "src/api/routes/dev-only.ts",
         // Browser asset served verbatim from the Vite public dir; deck HTML
         // files reference it via <script src="/deck-runtime/v1/...">.
-        "public/deck-runtime/**/*.js"
+        "public/deck-runtime/**/*.js",
+        // Playwright Component Testing harness. The mount template is loaded
+        // via ct/playwright/index.html + ctTemplateDir (index.css is imported
+        // from it), and the I/O stubs are wired only through resolve.alias in
+        // playwright-ct.config.ts — both are reachable by tooling knip can't
+        // trace. The *.ct.tsx specs are already entries via the playwright config.
+        "ct/playwright/index.tsx",
+        "ct/harness/stubs/**"
       ],
       "ignore": ["src/api/index.ts"],
       "ignoreDependencies": [

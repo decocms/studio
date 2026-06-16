@@ -8,7 +8,7 @@ export const TEST_RESOLVE_TYPE = "site/sections/Test.tsx";
  * the `metaWithSchema` helper used by the co-located resolve-schema unit tests.
  * `defs` populates the global `schema.$defs` for $ref resolution.
  */
-export function metaWithSchema(
+function metaWithSchema(
   blockSchema: Record<string, unknown>,
   defs?: Record<string, unknown>,
 ): LiveMeta {
