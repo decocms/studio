@@ -1,0 +1,48 @@
+import { describe, expect, it } from "bun:test";
+import { classifyStreamError, sanitizeStreamError } from "./stream-error";
+
+describe("sanitizeStreamError", () => {
+  it("strips provider URLs and branding from Error messages", () => {
+    const err = new Error(
+      "Model failed. See https://openrouter.ai/docs for details. Try again.",
+    );
+    const out = sanitizeStreamError(err);
+    expect(out).not.toContain("openrouter");
+    expect(out).not.toContain("https://");
+  });
+
+  it("extracts the message from non-Error gateway objects (no raw JSON)", () => {
+    // The shape a 504 idle timeout arrives as — a plain object, not an Error.
+    const err = {
+      code: 504,
+      message: "Upstream idle timeout exceeded",
+      metadata: { error_type: "timeout" },
+    };
+    expect(sanitizeStreamError(err)).toBe("Upstream idle timeout exceeded.");
+  });
+
+  it("tags 402 plain objects as credit errors via numeric code", () => {
+    const err = { code: 402, message: "Insufficient funds" };
+    expect(sanitizeStreamError(err)).toContain("[CREDITS]");
+  });
+
+  it("detects credit errors from message text on plain objects", () => {
+    const err = { message: "Your account has insufficient balance" };
+    expect(sanitizeStreamError(err)).toContain("[CREDITS]");
+  });
+
+  it("falls back to JSON for opaque objects without a message", () => {
+    expect(sanitizeStreamError({ foo: "bar" })).toContain("foo");
+  });
+});
+
+describe("classifyStreamError", () => {
+  it("classifies a plain 504 idle-timeout object as timeout", () => {
+    const err = {
+      code: 504,
+      message: "Upstream idle timeout exceeded",
+      metadata: { error_type: "timeout" },
+    };
+    expect(classifyStreamError(err)).toBe("timeout");
+  });
+});
