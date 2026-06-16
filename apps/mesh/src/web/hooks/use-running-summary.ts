@@ -17,7 +17,21 @@ import {
 } from "@decocms/mesh-sdk";
 import { useSyncExternalStore } from "react";
 import { Store } from "@/web/components/chat/store/store-primitive";
-import { decopilotSSE } from "./decopilot-sse-pool";
+import { createSSESubscription } from "./create-sse-subscription";
+
+/**
+ * Dedicated `/watch` connection for the running summary — NOT the shared
+ * decopilot pool. The summary's authoritative value arrives as the connect
+ * snapshot (and on reconnect); a late subscriber joining the already-open
+ * shared pool would miss that one-shot snapshot and sit at 0 until the next
+ * transition. A dedicated, ref-counted connection guarantees every mount gets a
+ * fresh snapshot. Filtered to just the summary type so it's a thin stream.
+ */
+const runningSummarySSE = createSSESubscription({
+  buildUrl: (orgSlug) =>
+    `/api/${encodeURIComponent(orgSlug)}/watch?types=${DECOPILOT_RUNNING_SUMMARY_EVENT}`,
+  eventTypes: [DECOPILOT_RUNNING_SUMMARY_EVENT],
+});
 
 const EMPTY: RunningSummary = Object.freeze({
   totalRunning: 0,
@@ -58,7 +72,7 @@ function createEntry(orgSlug: string): SummaryEntry {
       const storeUnsub = store.subscribe(onChange);
       entry.sseRefCount++;
       if (entry.sseRefCount === 1) {
-        entry.sseUnsub = decopilotSSE.subscribe(orgSlug, handleMessage);
+        entry.sseUnsub = runningSummarySSE.subscribe(orgSlug, handleMessage);
       }
       return () => {
         storeUnsub();
