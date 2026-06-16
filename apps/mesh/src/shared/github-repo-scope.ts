@@ -104,6 +104,6 @@ export function getRepoScope(connection: {
  */
 export function getOrgGithubConnections<
   T extends { metadata: Record<string, unknown> | null },
->(connections: T[]): T[] {
-  return connections.filter((c) => getRepoScope(c) === null);
+>(connections: T[] | undefined | null): T[] {
+  return (connections ?? []).filter((c) => getRepoScope(c) === null);
 }
