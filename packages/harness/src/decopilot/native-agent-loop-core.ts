@@ -30,11 +30,21 @@ export interface NativeAgentLoopCoreHandle {
 }
 
 function stringifyProviderError(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : typeof error === "string"
-      ? error
-      : `${error}`;
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  // Provider/gateway errors often arrive as plain objects (e.g. the
+  // `{ code, message, metadata }` shape a 504 idle timeout carries). Prefer a
+  // string `message` field; `${error}` would otherwise log `[object Object]`.
+  if (typeof error === "object" && error !== null) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }
 
 export function runNativeAgentLoopCore(
