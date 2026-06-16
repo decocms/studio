@@ -1,5 +1,7 @@
+import type { ParsedSection } from "./parse-sections";
 import { isLazyResolveType, LAZY_RENDER_RESOLVE_TYPE } from "./section-lazy";
 import {
+  ALWAYS_MATCHER_RESOLVE_TYPE,
   NEVER_MATCHER_RESOLVE_TYPE,
   SECTION_MULTIVARIATE_RESOLVE_TYPE,
   type RawSection,
@@ -350,4 +352,124 @@ export function deleteMultivariateSectionVariant(
 
   variants.splice(variantIndex, 1);
   return { ...mvObj, variants };
+}
+
+function defaultSectionVariantRule(): Record<string, unknown> {
+  return { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
+}
+
+function createSectionVariantEntry(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    rule: defaultSectionVariantRule(),
+    value: structuredClone(value),
+  };
+}
+
+function createMultivariateSectionObject(
+  variants: Array<Record<string, unknown>>,
+  existing?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...existing,
+    __resolveType: SECTION_MULTIVARIATE_RESOLVE_TYPE,
+    variants,
+  };
+}
+
+/** Whether a section can be converted to (or extended with) variants. */
+export function canAddSectionVariant(section: { isHidden?: boolean }): boolean {
+  return section.isHidden !== true;
+}
+
+/** Extract the variant payload from a raw section for wrapping or seeding. */
+export function extractSectionVariantSeed(
+  raw: RawSection,
+  parsed: ParsedSection,
+): Record<string, unknown> | null {
+  if (parsed.isHidden) return null;
+
+  if (parsed.isMultivariate) {
+    const mvObj = getMultivariateSectionObject(raw, parsed);
+    const variants = (mvObj?.variants as Array<Record<string, unknown>>) ?? [];
+    const last = variants[variants.length - 1]?.value as
+      | Record<string, unknown>
+      | undefined;
+    return last ? structuredClone(last) : null;
+  }
+
+  if (parsed.isLazy) {
+    const inner = raw.section as Record<string, unknown> | undefined;
+    return inner ? structuredClone(inner) : null;
+  }
+
+  return structuredClone(raw) as Record<string, unknown>;
+}
+
+/**
+ * Wrap a plain or lazy section in a multivariate block with two variants
+ * (original + clone). Returns null for hidden or unsupported shapes.
+ */
+export function wrapSectionAsMultivariate(
+  raw: RawSection,
+  parsed: ParsedSection,
+  seedValue?: Record<string, unknown>,
+): RawSection | null {
+  if (parsed.isMultivariate || parsed.isHidden) return null;
+
+  const seed = seedValue ?? extractSectionVariantSeed(raw, parsed);
+  if (!seed) return null;
+
+  const mvObj = createMultivariateSectionObject([
+    createSectionVariantEntry(seed),
+    createSectionVariantEntry(seed),
+  ]);
+
+  if (parsed.isLazy) {
+    return {
+      ...raw,
+      section: mvObj,
+    } as RawSection;
+  }
+
+  return mvObj as RawSection;
+}
+
+/**
+ * Append a section variant. Wraps plain/lazy sections on first use; extends
+ * existing multivariate sections. Returns null when the shape cannot be extended.
+ */
+export function appendSectionVariant(
+  raw: RawSection,
+  parsed: ParsedSection,
+  seedValue?: Record<string, unknown>,
+): { section: RawSection; newVariantIndex: number } | null {
+  if (parsed.isHidden) return null;
+
+  if (parsed.isMultivariate) {
+    const mvObj = getMultivariateSectionObject(raw, parsed);
+    if (!mvObj) return null;
+
+    const variants = (mvObj.variants as Array<Record<string, unknown>>) ?? [];
+    const seed =
+      seedValue ??
+      (variants[variants.length - 1]?.value as
+        | Record<string, unknown>
+        | undefined);
+    if (!seed) return null;
+
+    const updatedMvObj = createMultivariateSectionObject(
+      [...variants, createSectionVariantEntry(seed)],
+      mvObj,
+    );
+    return {
+      section: rebuildSectionWithMultivariate(raw, parsed, updatedMvObj),
+      newVariantIndex: variants.length,
+    };
+  }
+
+  const wrapped = wrapSectionAsMultivariate(raw, parsed, seedValue);
+  if (!wrapped) return null;
+  return { section: wrapped, newVariantIndex: 1 };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  appendSectionVariant,
   deleteMultivariateSectionVariant,
   duplicateMultivariateSectionVariant,
   flattenMultivariateSection,
@@ -396,12 +397,100 @@ describe("section-variants", () => {
     ).toBeNull();
   });
 
-  it("showSection returns null when there are no variants", () => {
+  it("appendSectionVariant wraps a plain section with two variants", () => {
+    const hero = {
+      __resolveType: "site/sections/Hero.tsx",
+      title: "Hello",
+    } as never;
+
+    const result = appendSectionVariant(hero, {
+      index: 0,
+      resolveType: "site/sections/Hero.tsx",
+      label: "Hero",
+    });
+
+    expect(result?.newVariantIndex).toBe(1);
+    expect(result?.section).toEqual({
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: hero,
+        },
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: hero,
+        },
+      ],
+    });
+    expect(parseSections([result!.section], {})[0]?.isMultivariate).toBe(true);
+  });
+
+  it("appendSectionVariant keeps lazy wrapper outside multivariate", () => {
+    const lazy = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: { __resolveType: "site/sections/Hero.tsx", title: "Lazy" },
+    } as never;
+
+    const result = appendSectionVariant(lazy, {
+      index: 0,
+      resolveType: "website/sections/Rendering/Lazy.tsx",
+      label: "Hero",
+      isLazy: true,
+    });
+
+    expect(result?.section.__resolveType).toBe(
+      "website/sections/Rendering/Lazy.tsx",
+    );
     expect(
-      showSection({
-        __resolveType: "website/flags/multivariate/section.ts",
-        variants: [],
-      } as never),
+      (result?.section.section as Record<string, unknown> | undefined)
+        ?.__resolveType,
+    ).toBe("website/flags/multivariate/section.ts");
+  });
+
+  it("appendSectionVariant extends an existing multivariate section", () => {
+    const mvSection = {
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        {
+          rule: { __resolveType: "website/matchers/always.ts" },
+          value: { __resolveType: "site/sections/Hero.tsx", title: "A" },
+        },
+        {
+          rule: {
+            __resolveType: "website/matchers/device.ts",
+            mobile: true,
+          },
+          value: { __resolveType: "site/sections/Hero.tsx", title: "B" },
+        },
+      ],
+    } as never;
+
+    const result = appendSectionVariant(mvSection, {
+      index: 0,
+      resolveType: "website/flags/multivariate/section.ts",
+      label: "Variants of Hero",
+      isMultivariate: true,
+    });
+
+    expect(result?.newVariantIndex).toBe(2);
+    expect((result?.section as { variants: unknown[] }).variants).toHaveLength(
+      3,
+    );
+  });
+
+  it("appendSectionVariant rejects hidden sections", () => {
+    const hidden = hideSection({
+      __resolveType: "site/sections/Hero.tsx",
+    } as never);
+
+    expect(
+      appendSectionVariant(hidden as never, {
+        index: 0,
+        resolveType: hidden.__resolveType as string,
+        label: "Hero",
+        isHidden: true,
+      }),
     ).toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import {
   Copy01,
   DotsHorizontal,
   LayoutAlt01,
+  Plus,
   Trash01,
 } from "@untitledui/icons";
 import {
@@ -117,6 +118,7 @@ export function SectionVariantList({
   onDuplicate,
   onDelete,
   onRemoveAll,
+  onAdd,
 }: {
   variants: SectionVariantEntry[];
   selectedIndex: number;
@@ -124,6 +126,7 @@ export function SectionVariantList({
   onDuplicate: (index: number) => void;
   onDelete: (index: number) => void;
   onRemoveAll: () => void;
+  onAdd: () => void;
 }) {
   const canDelete = variants.length > 1;
 
@@ -133,21 +136,38 @@ export function SectionVariantList({
         <span className="text-xs font-medium text-muted-foreground">
           Variants
         </span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Remove all variants"
-              className="size-6 text-muted-foreground hover:text-destructive"
-              onClick={onRemoveAll}
-            >
-              <Trash01 size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Remove all variants</TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Add variant"
+                className="size-6"
+                onClick={onAdd}
+              >
+                <Plus size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Add variant</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Remove all variants"
+                className="size-6 text-muted-foreground hover:text-destructive"
+                onClick={onRemoveAll}
+              >
+                <Trash01 size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Remove all variants</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
       <div className="space-y-0.5">
         {variants.map((variant) => (
