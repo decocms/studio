@@ -142,6 +142,16 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
       streamFinished = true;
       await Promise.allSettled(pending);
       if (!errored) {
+        // Persist the finish reason on the message metadata so a returning
+        // user sees the same banner the live stream showed (e.g. the
+        // step-limit "tool-calls" "Response incomplete" card) after reload.
+        if (finishReason) {
+          (responseMessage as { metadata?: Record<string, unknown> }).metadata =
+            {
+              ...((responseMessage.metadata as Record<string, unknown>) ?? {}),
+              finishReason,
+            };
+        }
         await options.persistence
           .emitFinal(responseMessage)
           .catch((e) =>
