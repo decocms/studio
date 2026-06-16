@@ -25,13 +25,22 @@ import { sleep } from "@decocms/std";
 import type { Store } from "@/web/components/chat/store/store-primitive";
 import type { ChatMessage } from "@/web/components/chat/types";
 import {
+  dailyDigestPart,
   emptyAssistant,
+  pullRequestPart,
   toolMetadataPart,
   toolPartPending,
   userMessage,
+  workPlanPart,
   type ToolStep,
 } from "./message-builders";
-import type { DemoChatState, DemoStores } from "./director-stores";
+import type {
+  DemoChatState,
+  DemoStores,
+  DigestState,
+  PRState,
+  PlanState,
+} from "./director-stores";
 
 type Part = ChatMessage["parts"][number];
 /** Mutable typed handle for the part the typewriter is revealing into. */
@@ -56,6 +65,15 @@ export class Track {
   private draft: ChatMessage[] = [];
   private activeId: string | null = null;
   private status: DemoChatState["status"] = "ready";
+  /** message ids holding live inline cards (plan/PR) — always re-cloned on
+   *  commit so their updates render even after the turn ends. */
+  private readonly cardMsgIds = new Set<string>();
+  // Live handles to the card parts. We replace `.output` with a NEW object on
+  // every update (never mutate in place) so the card's prop identity changes
+  // and React (compiler-memoized) actually re-renders.
+  private planPart: { output: PlanState } | null = null;
+  private prPart: { output: PRState } | null = null;
+  private digestPart: { output: DigestState } | null = null;
 
   constructor(
     private readonly store: Store<DemoChatState>,
@@ -74,7 +92,7 @@ export class Track {
    *  its parts (so memoized renderers re-render). Other messages keep identity. */
   private commit() {
     const messages = this.draft.map((m) =>
-      m.id === this.activeId
+      m.id === this.activeId || this.cardMsgIds.has(m.id)
         ? { ...m, parts: m.parts.map((p) => ({ ...p })) }
         : m,
     );
@@ -179,6 +197,85 @@ export class Track {
         await this.tool(s);
       }),
     );
+  }
+
+  // ---- inline work-plan (sprint) + PR cards ------------------------------
+
+  /** Append an inline work-plan card to the current turn (tasks queued). */
+  showPlan(title: string, tasks: { title: string; detail?: string }[]): void {
+    this.ensureAssistant();
+    const output: PlanState = {
+      title,
+      accepted: false,
+      tasks: tasks.map((t) => ({ ...t, status: "queued" })),
+    };
+    const part = workPlanPart(output);
+    this.planPart = part as unknown as { output: PlanState };
+    this.active.parts.push(part);
+    this.cardMsgIds.add(this.active.id);
+    this.commit();
+  }
+
+  acceptPlan(): void {
+    if (!this.planPart) return;
+    this.planPart.output = { ...this.planPart.output, accepted: true };
+    this.commit();
+  }
+
+  setTask(index: number, status: "queued" | "active" | "done"): void {
+    if (!this.planPart) return;
+    const o = this.planPart.output;
+    this.planPart.output = {
+      ...o,
+      tasks: o.tasks.map((t, i) => (i === index ? { ...t, status } : t)),
+    };
+    this.commit();
+  }
+
+  /** Append an inline PR card (checks running). */
+  openPR(pr: {
+    number: number;
+    title: string;
+    branch: string;
+    files: number;
+    additions: number;
+    deletions: number;
+  }): void {
+    this.ensureAssistant();
+    const output: PRState = { ...pr, checks: "running", merged: false };
+    const part = pullRequestPart(output);
+    this.prPart = part as unknown as { output: PRState };
+    this.active.parts.push(part);
+    this.cardMsgIds.add(this.active.id);
+    this.commit();
+  }
+
+  passPRChecks(): void {
+    if (!this.prPart) return;
+    this.prPart.output = { ...this.prPart.output, checks: "passed" };
+    this.commit();
+  }
+
+  mergePR(): void {
+    if (!this.prPart) return;
+    this.prPart.output = { ...this.prPart.output, merged: true };
+    this.commit();
+  }
+
+  /** Append an inline "get this every day" digest CTA card. */
+  showDigest(): void {
+    this.ensureAssistant();
+    const part = dailyDigestPart({ connected: null } as DigestState);
+    this.digestPart = part as unknown as { output: DigestState };
+    this.active.parts.push(part);
+    this.cardMsgIds.add(this.active.id);
+    this.commit();
+  }
+
+  connectDigest(channel: "slack" | "teams"): void {
+    if (!this.digestPart) return;
+    this.digestPart.output = { connected: channel };
+    this.commit();
   }
 
   /** Finalize the current assistant turn (status → ready). */
@@ -297,10 +394,24 @@ export class Director {
     }));
   }
 
-  /** Switch which org/workspace the viewer is looking at. Background tracks keep
-   *  streaming, so returning to an org shows the work that ran while away. */
+  /** Switch which agent the viewer is looking at (clears its notification).
+   *  Background tracks keep streaming, so returning shows the work done while away. */
   setOrg(orgId: string): void {
-    this.stores.ui.update((s) => ({ ...s, currentOrg: orgId }));
+    this.stores.ui.update((s) => ({
+      ...s,
+      currentOrg: orgId,
+      notified: s.notified.filter((n) => n !== orgId),
+    }));
+  }
+
+  /** Flag an agent as finished-while-away — shows a sidebar notification dot.
+   *  No-op if the viewer is already looking at that agent. */
+  notify(agentId: string): void {
+    this.stores.ui.update((s) =>
+      s.currentOrg === agentId || s.notified.includes(agentId)
+        ? s
+        : { ...s, notified: [...s.notified, agentId] },
+    );
   }
 
   // ---- ghost cursor -------------------------------------------------------
@@ -350,6 +461,40 @@ export class Director {
   /** Set the preview HTML for an org's preview pane (rendered in an iframe). */
   setPreview(orgId: string, html: string): void {
     this.setInput(`preview:${orgId}`, html);
+  }
+
+  // ---- work plan / sprint + PR (inline cards, proxy to main track) --------
+
+  showPlan(title: string, tasks: { title: string; detail?: string }[]) {
+    return this.track().showPlan(title, tasks);
+  }
+  acceptPlan() {
+    this.track().acceptPlan();
+  }
+  setTask(index: number, status: "queued" | "active" | "done") {
+    this.track().setTask(index, status);
+  }
+  openPR(pr: {
+    number: number;
+    title: string;
+    branch: string;
+    files: number;
+    additions: number;
+    deletions: number;
+  }) {
+    this.track().openPR(pr);
+  }
+  passPRChecks() {
+    this.track().passPRChecks();
+  }
+  mergePR() {
+    this.track().mergePR();
+  }
+  showDigest() {
+    this.track().showDigest();
+  }
+  connectDigest(channel: "slack" | "teams") {
+    this.track().connectDigest(channel);
   }
 
   // ---- lifecycle ----------------------------------------------------------

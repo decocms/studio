@@ -1,11 +1,12 @@
 /**
- * Scenario 2 — Studio as a web Conductor: drive work across orgs in parallel.
+ * Scenario 2 — Studio as a web Conductor: drive several agents in parallel.
  *
- * One workspace: chat on the left, a live PREVIEW on the right. The viewer
- * kicks off a storefront redesign in one org, switches to a second org to swap
- * an MCP, then returns to the first — where the redesign finished in the
- * background. Demonstrates: parallel requests, org switching, and seeing the
- * other work being done. Uses the REAL chat; the preview is an isolated iframe.
+ * A sidebar lists the workspace's agents (like the real Studio shell). The
+ * viewer kicks one agent off on a long task, switches to another agent via the
+ * sidebar to do more work, and the first agent keeps running in the background
+ * — when it finishes, a notification dot appears on its sidebar icon. Switching
+ * back shows the completed work. Chat (real) on the left, a live preview on the
+ * right (isolated iframe).
  */
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Chat } from "@/web/components/chat";
@@ -13,18 +14,37 @@ import { DemoChatStreamProvider } from "../demo-chat-stream";
 import { DemoTopBar, PreviewFrame } from "../chrome";
 import { DemoLinkDialog, ITermWindow } from "../link-flow";
 import { genericTool } from "../message-builders";
-import { useCurrentOrg, useDemoInput, useTrackBusy } from "../use-demo-stores";
+import {
+  useCurrentOrg,
+  useDemoInput,
+  useNotified,
+  useTrackBusy,
+} from "../use-demo-stores";
 import type { Director, Track } from "../director";
 import type { DemoStores } from "../director-stores";
 import type { Scenario } from "../types";
 
-const ORGS = [
-  { id: "acme", org: "Acme Store", agent: "Storefront Agent", url: "acme.com" },
+const AGENTS = [
+  {
+    id: "acme",
+    name: "Storefront Bot",
+    sub: "Acme Store",
+    url: "acme.com",
+    glyph: "A",
+  },
   {
     id: "north",
-    org: "Northwind",
-    agent: "Payments Agent",
+    name: "Payments Agent",
+    sub: "Northwind",
     url: "app.northwind.com/connections",
+    glyph: "N",
+  },
+  {
+    id: "support",
+    name: "Support Triage",
+    sub: "Helpdesk",
+    url: "helpdesk.app/inbox",
+    glyph: "H",
   },
 ] as const;
 
@@ -94,31 +114,89 @@ function connections(active: "stripe" | "adyen"): string {
 
 // ---- stage -----------------------------------------------------------------
 
-function OrgTab({
+type Agent = (typeof AGENTS)[number];
+
+function SidebarAgent({
   stores,
-  id,
-  label,
+  agent,
   active,
 }: {
   stores: DemoStores;
-  id: string;
-  label: string;
+  agent: Agent;
   active: boolean;
 }) {
-  const busy = useTrackBusy(stores, id);
+  const busy = useTrackBusy(stores, agent.id);
+  const notified = useNotified(stores, agent.id);
   return (
     <span
-      data-demo-target={`org:${id}`}
+      data-demo-target={`agent:${agent.id}`}
       className={cn(
-        "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors duration-300",
-        active ? "bg-muted text-foreground" : "text-muted-foreground",
+        "flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors duration-300",
+        active ? "bg-muted" : "hover:bg-muted/50",
       )}
     >
-      {label}
-      {busy && !active && (
-        <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-      )}
+      <span className="relative shrink-0">
+        <span
+          className={cn(
+            "flex size-7 items-center justify-center rounded-md text-[12px] font-semibold",
+            active
+              ? "bg-foreground text-background"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {agent.glyph}
+        </span>
+        {notified && (
+          <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-primary ring-2 ring-background animate-in zoom-in duration-300" />
+        )}
+        {busy && !active && !notified && (
+          <span className="absolute -right-1 -top-1 size-2 animate-pulse rounded-full bg-primary/70 ring-2 ring-background" />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span
+          className={cn(
+            "truncate text-[13px] font-medium",
+            active ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {agent.name}
+        </span>
+        <span className="truncate text-[11px] text-muted-foreground">
+          {agent.sub}
+        </span>
+      </span>
     </span>
+  );
+}
+
+function DemoSidebar({
+  stores,
+  current,
+}: {
+  stores: DemoStores;
+  current: string;
+}) {
+  return (
+    <nav className="flex w-60 shrink-0 flex-col gap-0.5 border-r border-border bg-card/40 p-2">
+      <div className="flex items-center gap-2 px-2 py-2">
+        <span className="flex size-6 items-center justify-center rounded-md bg-foreground text-[11px] font-bold text-background">
+          d
+        </span>
+        <span className="text-sm font-semibold text-foreground">deco</span>
+      </div>
+      <div className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+        Agents
+      </div>
+      {AGENTS.map((a) => (
+        <SidebarAgent
+          key={a.id}
+          stores={stores}
+          agent={a}
+          active={a.id === current}
+        />
+      ))}
+    </nav>
   );
 }
 
@@ -142,43 +220,33 @@ function LinkButton({ stores }: { stores: DemoStores }) {
 }
 
 function AgentsStage({ stores }: { stores: DemoStores }) {
-  const current = useCurrentOrg(stores) ?? ORGS[0].id;
-  const meta = ORGS.find((o) => o.id === current) ?? ORGS[0];
+  const current = useCurrentOrg(stores) ?? AGENTS[0].id;
+  const meta = AGENTS.find((a) => a.id === current) ?? AGENTS[0];
   const previewHtml = useDemoInput(stores, `preview:${current}`);
 
   return (
-    <div className="flex h-full flex-col">
-      <DemoTopBar
-        org={meta.org}
-        agent={meta.agent}
-        left={
-          <div className="ml-3 flex items-center gap-1 rounded-lg border border-border p-0.5">
-            {ORGS.map((o) => (
-              <OrgTab
-                key={o.id}
-                stores={stores}
-                id={o.id}
-                label={o.org}
-                active={o.id === current}
-              />
-            ))}
+    <div className="flex h-full">
+      <DemoSidebar stores={stores} current={current} />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <DemoTopBar
+          org={meta.sub}
+          agent={meta.name}
+          right={<LinkButton stores={stores} />}
+        />
+        {/* key on agent → the workspace crossfades when switching agents */}
+        <div
+          key={current}
+          className="grid min-h-0 flex-1 grid-cols-2 gap-3 p-3 animate-in fade-in duration-500"
+        >
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
+            <DemoChatStreamProvider store={stores.getChat(current)}>
+              <Chat className="bg-card">
+                <Chat.Messages />
+              </Chat>
+            </DemoChatStreamProvider>
           </div>
-        }
-        right={<LinkButton stores={stores} />}
-      />
-      {/* key on org → the workspace crossfades when switching contexts */}
-      <div
-        key={current}
-        className="grid min-h-0 flex-1 grid-cols-2 gap-3 p-3 animate-in fade-in duration-500"
-      >
-        <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
-          <DemoChatStreamProvider store={stores.getChat(current)}>
-            <Chat className="bg-card">
-              <Chat.Messages />
-            </Chat>
-          </DemoChatStreamProvider>
+          <PreviewFrame url={meta.url} html={previewHtml} />
         </div>
-        <PreviewFrame url={meta.url} html={previewHtml} />
       </div>
       <DemoLinkDialog stores={stores} />
       <ITermWindow stores={stores} />
@@ -241,11 +309,11 @@ async function connectDesktop(d: Director) {
   await d.beat(700);
 }
 
-/** Move the ghost cursor onto an org tab, click it, and switch the view. */
-async function switchOrg(d: Director, id: string) {
+/** Move the ghost cursor onto a sidebar agent, click it, and switch the view. */
+async function switchAgent(d: Director, id: string) {
   d.showCursor();
   await d.beat(450);
-  await d.click(`org:${id}`);
+  await d.click(`agent:${id}`);
   d.setOrg(id);
   await d.beat(550);
   d.hideCursor();
@@ -309,32 +377,37 @@ export const agentsScenario: Scenario = {
 
     await connectDesktop(d);
 
-    // 1) Kick off a storefront redesign in Acme — runs in the background.
-    d.caption("Start in Acme — ask the agent to redesign the storefront");
+    // 1) Kick off a storefront redesign on the first agent — runs in the
+    //    background. When it finishes it notifies (sidebar dot).
+    d.caption("Give Storefront Bot a task");
     await d.beat(900);
     await acme.user("Add a Summer Sale banner and make the product grid 4-up.");
     await d.beat(500);
-    const acmeDone = acmeRedesign(d, acme).catch(() => {});
-    await d.beat(4200); // watch Acme start working + the first preview change
+    const acmeDone = acmeRedesign(d, acme)
+      .then(() => d.notify("acme"))
+      .catch(() => {});
+    await d.beat(4200); // watch it start working + the first preview change
 
-    // 2) Jump to a second org while Acme keeps building (its tab pulses).
-    d.caption("Jump to another org — Acme keeps building in the background");
+    // 2) Switch to another agent via the sidebar — the first keeps running.
+    d.caption("Switch agents in the sidebar — work keeps running");
     await d.beat(800);
-    await switchOrg(d, "north");
+    await switchAgent(d, "north");
     d.setPreview("north", connections("stripe"));
     await d.beat(700);
     await north.user("Swap the payments MCP from Stripe to Adyen.");
     await d.beat(400);
     await northSwap(d, north);
-    await d.beat(1500); // read the Adyen result
+    await d.beat(1200);
 
-    // 3) Back to Acme — the redesign finished while we were away.
-    d.caption("Back to Acme — the redesign finished while you were away");
-    await d.beat(700);
-    await switchOrg(d, "acme");
+    // 3) The first agent finished while we were away — sidebar dot appears.
     await acmeDone;
-    await d.beat(1700);
-    d.caption("Parallel work across orgs — switch context, nothing waits");
+    d.caption("Storefront Bot finished — see the dot on its sidebar icon");
+    await d.beat(2800);
+
+    // 4) Switch back — the dot clears and the finished work is right there.
+    await switchAgent(d, "acme");
+    await d.beat(1900);
+    d.caption("Switch anytime — agents keep working and ping you when done");
     await d.beat(3200);
   },
 };

@@ -11,7 +11,7 @@ import { Chat } from "@/web/components/chat";
 import { DemoChatStreamProvider } from "../demo-chat-stream";
 import type { DemoStores } from "../director-stores";
 import type { Scenario } from "../types";
-import { genericTool, proposePlan, takeScreenshot } from "../message-builders";
+import { genericTool, takeScreenshot } from "../message-builders";
 
 const SHOT =
   "data:image/svg+xml;utf8," +
@@ -64,18 +64,6 @@ const DIAGNOSIS = `### Audit results for acme.com
 2. **Render-blocking CSS** — 3 stylesheets (180 KB) block first paint.
 3. **No structured data** — missing Product & Organization JSON-LD, so you're invisible to rich results.
 4. **Layout shift** from unsized images and late-loading web fonts.`;
-
-const PLAN = `**Performance**
-- Convert & compress images to WebP, resize the hero to its display size
-- Inline critical CSS, defer the rest
-- Reserve space for media + preload the primary font
-
-**SEO**
-- Add Product, Offer, and Organization JSON-LD
-- Generate descriptive alt text for product imagery
-
-**Safety**
-- Apply on a preview branch, verify Lighthouse ≥ 90, then promote to production`;
 
 const RESULT = `### Re-audit — deployed to production ✅
 
@@ -135,61 +123,109 @@ export const storefrontScenario: Scenario = {
     await d.stream("Here's what I found — measured, not guessed:", { cps: 44 });
     d.caption("An accurate diagnosis");
     await d.stream(DIAGNOSIS, { instant: true });
+    d.endTurn(); // close the turn so later cards don't collapse into it
     await d.beat(4800);
 
-    // 5) The plan.
-    d.caption("A plan, ranked by impact");
-    await d.beat(800);
-    await d.stream("Here's the plan I'd apply:", { cps: 44 });
-    await d.tool(proposePlan({ plan: PLAN, approved: true }));
-    await d.beat(900);
-    await d.stream("Approved — applying every fix on a preview branch.", {
+    // 5) A real work plan — shown as a sprint, awaiting approval.
+    d.caption("A work plan, laid out as a sprint");
+    await d.beat(700);
+    await d.stream("I've turned this into a sprint — review and approve:", {
       cps: 44,
     });
+    d.showPlan("Sprint · Storefront performance", [
+      { title: "Convert & compress images to WebP", detail: "2.4 MB → 380 KB" },
+      {
+        title: "Inline critical CSS, defer the rest",
+        detail: "−180 KB blocking",
+      },
+      {
+        title: "Add Product + Organization JSON-LD",
+        detail: "across 24 pages",
+      },
+      { title: "Fix layout shift", detail: "sized media + font preload" },
+      {
+        title: "Open a PR & deploy to preview",
+        detail: "reviewable, reversible",
+      },
+    ]);
+    await d.beat(2000); // read the sprint
 
-    // 6) Fixes cascade in parallel.
-    d.caption("Fixing the highest-impact issues in parallel");
-    await d.beat(600);
-    await d.parallel(
-      [
-        genericTool({
-          name: "optimize_images",
-          output: { result: "14 images → WebP · 2.4 MB → 380 KB" },
-          latencyMs: 2600,
-        }),
-        genericTool({
-          name: "inline_critical_css",
-          output: { result: "Critical CSS inlined · 3 stylesheets deferred" },
-          latencyMs: 2400,
-        }),
-        genericTool({
-          name: "add_structured_data",
-          output: { result: "Product + Organization JSON-LD on 24 pages" },
-          latencyMs: 2200,
-        }),
-        genericTool({
-          name: "fix_layout_shift",
-          output: { result: "Media sized + font preloaded · CLS 0.27 → 0.02" },
-          latencyMs: 2000,
-        }),
-      ],
-      650,
-    );
-    await d.beat(900);
+    // 6) Approve — the viewer clicks (ghost cursor).
+    d.caption("Review the plan, then approve");
+    d.showCursor();
+    await d.beat(700);
+    await d.click("approve-plan");
+    d.acceptPlan();
+    d.hideCursor();
+    await d.beat(700);
+    d.endTurn();
 
-    // 7) Ship + re-audit (hold to read).
-    d.caption("Re-auditing and shipping to production");
-    await d.beat(600);
+    // 7) Execute — the sprint board ticks as the agent works.
+    d.caption("Approved — running the sprint");
+    await d.stream("On it — working through the sprint on a preview branch.", {
+      cps: 44,
+    });
+    for (const i of [0, 1, 2, 3]) {
+      d.setTask(i, "active");
+      await d.beat(1700);
+      d.setTask(i, "done");
+      await d.beat(400);
+    }
+
+    // 8) First deliverable: a pull request with the code changes.
+    d.setTask(4, "active");
+    d.caption("Opening a pull request with the changes");
+    await d.stream("Opening a PR with the changes for review…", { cps: 44 });
+    await d.beat(1400);
+    d.openPR({
+      number: 128,
+      title: "perf: optimize storefront",
+      branch: "perf/storefront-optimizations",
+      files: 6,
+      additions: 214,
+      deletions: 88,
+    });
+    await d.beat(2000); // CI running
+    d.passPRChecks();
+    d.setTask(4, "done");
+    await d.beat(1300);
+
+    // 9) Merge (ghost cursor) → deploy → re-audit.
+    d.caption("Checks pass — merge & ship");
+    d.showCursor();
+    await d.beat(700);
+    await d.click("merge-pr");
+    d.mergePR();
+    d.hideCursor();
+    await d.beat(500);
+    await d.stream("Merged. Deploying to production…", { cps: 44 });
     await d.tool(
       genericTool({
         name: "deploy_to_production",
         output: { result: "Promoted preview → production · acme.com" },
-        latencyMs: 1900,
+        latencyMs: 1800,
       }),
     );
     await d.stream(RESULT, { instant: true });
-    await d.endTurn();
-    d.caption("From audit to deployed — automatically");
-    await d.beat(4500);
+    d.endTurn(); // close (pull_request + deploy = 2 tools — no collapse)
+    await d.beat(1600);
+
+    // 10) Offer to run this every day, posted to Slack / Teams.
+    d.caption("Get this every morning — in Slack or Teams");
+    await d.stream(
+      "Want this every morning? I can audit your storefront daily and post the report to your team.",
+      { cps: 44 },
+    );
+    d.showDigest();
+    await d.beat(1800);
+    d.showCursor();
+    await d.beat(600);
+    await d.click("connect-slack");
+    d.connectDigest("slack");
+    d.hideCursor();
+    await d.beat(800);
+    d.endTurn();
+    d.caption("From a one-off audit to a daily, automated report");
+    await d.beat(4200);
   },
 };

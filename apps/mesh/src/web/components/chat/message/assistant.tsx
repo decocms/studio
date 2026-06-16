@@ -9,6 +9,7 @@ import {
 import type { ToolUIPart } from "ai";
 import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
+import { getPartRenderer as getExtraPartRenderer } from "./parts/extra-part-renderers.ts";
 import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
@@ -424,6 +425,11 @@ function MessagePart({
     dataParts.toolMetadata.get(toolCallId);
   const getSubtaskMeta = (toolCallId: string) =>
     dataParts.toolSubtaskMetadata.get(toolCallId);
+
+  // Custom part renderers (e.g. Demo Mode) take precedence over the built-in
+  // switch. Empty registry in normal use — see extra-part-renderers.ts.
+  const extraRenderer = getExtraPartRenderer(part.type);
+  if (extraRenderer) return <>{extraRenderer(part as { type: string })}</>;
 
   switch (part.type) {
     case "dynamic-tool":

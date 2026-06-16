@@ -64,6 +64,36 @@ export function toolPartPending(
   } as unknown as Part;
 }
 
+/** Inline work-plan (sprint) card part — rendered by the demo part registry. */
+export function workPlanPart(output: unknown): Part {
+  return {
+    type: "tool-work_plan",
+    toolCallId: crypto.randomUUID(),
+    state: "output-available",
+    output,
+  } as unknown as Part;
+}
+
+/** Inline pull-request card part — rendered by the demo part registry. */
+export function pullRequestPart(output: unknown): Part {
+  return {
+    type: "tool-pull_request",
+    toolCallId: crypto.randomUUID(),
+    state: "output-available",
+    output,
+  } as unknown as Part;
+}
+
+/** Inline "get this daily" digest card part — rendered by the demo registry. */
+export function dailyDigestPart(output: unknown): Part {
+  return {
+    type: "tool-daily_digest",
+    toolCallId: crypto.randomUUID(),
+    state: "output-available",
+    output,
+  } as unknown as Part;
+}
+
 /** The latency-carrying metadata part (id MUST equal the tool's toolCallId). */
 export function toolMetadataPart(toolCallId: string, latencyMs: number): Part {
   return {
