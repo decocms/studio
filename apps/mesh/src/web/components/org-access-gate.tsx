@@ -13,22 +13,22 @@ import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
   const { data } = useOrgAccessStatus(orgSlug);
 
-  // Self-heal the home route's optimistic redirect: if we sent the user here
-  // from a cached slug (or restored last-location) that turned out to be stale
-  // (org deleted or membership lost), clear it and bounce back to "/" so the
-  // home loader can pick a valid destination — instead of dead-ending on the
-  // not-found / no-access screen, or looping straight back to the same org.
-  const staleSlug =
-    localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug;
-  const staleLocation = readLastLocation()?.org === orgSlug;
-  if (
-    (data.status === "not-found" || data.status === "no-access") &&
-    (staleSlug || staleLocation)
-  ) {
-    if (staleSlug) localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
-    if (staleLocation) clearLastLocation();
-    window.location.href = "/";
-    return null;
+  if (data.status === "not-found" || data.status === "no-access") {
+    // A bad org must never be restored on the next cold entry. orgLayout's
+    // beforeLoad records the current org optimistically (before membership is
+    // known), so clear it here whether the user arrived deliberately or via a
+    // stale restore — otherwise homeRoute would keep bouncing them back here.
+    if (readLastLocation()?.org === orgSlug) clearLastLocation();
+
+    // Self-heal the home route's optimistic cached-slug redirect: bounce back
+    // to "/" so the loader can pick a valid destination instead of dead-ending.
+    // Only for the cached slug — a deliberate visit to a bad org (e.g. a shared
+    // link) should show the not-found / no-access screen, not silently bounce.
+    if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug) {
+      localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+      window.location.href = "/";
+      return null;
+    }
   }
 
   if (data.status === "not-found") {
