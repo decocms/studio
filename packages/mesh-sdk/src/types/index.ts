@@ -67,6 +67,7 @@ export {
   createDecopilotFinishEvent,
   createDecopilotThreadStatusEvent,
   DECOPILOT_RUNNING_SUMMARY_EVENT,
+  DECOPILOT_USER_RUNNING_SUMMARY_EVENT,
   buildRunningSummary,
   createDecopilotRunningSummaryEvent,
   type ThreadStatus,
@@ -79,5 +80,6 @@ export {
   type DecopilotEventMap,
   type RunningThread,
   type RunningSummary,
+  type RunningSummaryScope,
   type DecopilotRunningSummaryEvent,
 } from "./decopilot-events";

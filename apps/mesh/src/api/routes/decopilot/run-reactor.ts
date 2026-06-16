@@ -72,7 +72,7 @@ function emitUserRunningSummary(
     .then((threads) =>
       deps.sseHub.emit(
         `user:${userId}`,
-        createDecopilotRunningSummaryEvent(threads),
+        createDecopilotRunningSummaryEvent(threads, "user"),
       ),
     )
     .catch((err) =>

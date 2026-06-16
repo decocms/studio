@@ -125,6 +125,11 @@ export class OrgScopedThreadStorage {
     return this.inner.summarizeRunning(this.requireOrg());
   }
 
+  /** Cross-org by design (the per-user feed) — intentionally not org-bound. */
+  summarizeRunningForUser(userId: string): Promise<RunningThread[]> {
+    return this.inner.summarizeRunningForUser(userId);
+  }
+
   findLastUsedByVirtualMcpIds(
     virtualMcpIds: string[],
   ): Promise<Map<string, { last_used_at: string; last_used_by: string }>> {

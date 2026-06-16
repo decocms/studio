@@ -1,5 +1,6 @@
 import {
   getWellKnownDecopilotVirtualMCP,
+  isDecopilot,
   type RunningThread,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -409,9 +410,10 @@ function RunningThreadsList({
 }) {
   const { data: orgs } = useActiveOrganizations();
   const slugByOrgId = new Map<string, string>(
-    (orgs ?? []).map(
-      (o: { id: string; slug: string }): [string, string] => [o.id, o.slug],
-    ),
+    (orgs ?? []).map((o: { id: string; slug: string }): [string, string] => [
+      o.id,
+      o.slug,
+    ]),
   );
 
   if (threads.length === 0) {
@@ -446,9 +448,17 @@ function RunningThreadRow({
 }) {
   const navigate = useNavigate();
   const agent = useVirtualMCP(thread.virtual_mcp_id);
-  // Resolve agent from the current org's cache; for cross-org rows that misses,
-  // so fall back to the server-supplied agent_title.
-  const agentName = agent?.title ?? thread.agent_title ?? "Agent";
+  // Agent identity, in order of fidelity:
+  //  1. useVirtualMCP — full resolve for agents in the CURRENT org.
+  //  2. Decopilot (the default agent) is derivable from any org id with no
+  //     fetch, so cross-org Decopilot rows still get the right name + icon.
+  //  3. agent_title from the server (custom cross-org agents — name only).
+  const decopilot = isDecopilot(thread.virtual_mcp_id)
+    ? getWellKnownDecopilotVirtualMCP(thread.organization_id)
+    : null;
+  const agentName =
+    agent?.title ?? decopilot?.title ?? thread.agent_title ?? "Agent";
+  const agentIcon = agent?.icon ?? decopilot?.icon ?? null;
 
   // Latest message, fetched lazily when the popover mounts, against the THREAD's
   // own org (cross-org threads need their own client). A running thread's newest
@@ -495,7 +505,7 @@ function RunningThreadRow({
       disabled={!orgSlug}
       className="flex w-full items-start gap-2 rounded-md p-2 text-left transition-colors hover:bg-muted disabled:opacity-60"
     >
-      <AgentAvatar icon={agent?.icon ?? null} name={agentName} size="sm" />
+      <AgentAvatar icon={agentIcon} name={agentName} size="sm" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-foreground">
           {thread.title || "Untitled task"}

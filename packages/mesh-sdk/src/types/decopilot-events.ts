@@ -106,6 +106,13 @@ export type DecopilotSSEEvent =
  * transition. Clients store the latest `summary` and render it.
  */
 export const DECOPILOT_RUNNING_SUMMARY_EVENT = "decopilot.running.summary";
+/** Same payload, but the per-user (cross-org) scope. Distinct type so a single
+ *  `/watch` connection can carry both org and user summaries and the client can
+ *  route them. */
+export const DECOPILOT_USER_RUNNING_SUMMARY_EVENT =
+  "decopilot.running.summary.user";
+
+export type RunningSummaryScope = "org" | "user";
 
 /**
  * A single in_progress thread. `title` is the THREAD's title (the hover row's
@@ -135,7 +142,9 @@ export interface RunningSummary {
 
 export interface DecopilotRunningSummaryEvent {
   id: string;
-  type: typeof DECOPILOT_RUNNING_SUMMARY_EVENT;
+  type:
+    | typeof DECOPILOT_RUNNING_SUMMARY_EVENT
+    | typeof DECOPILOT_USER_RUNNING_SUMMARY_EVENT;
   source: "decopilot";
   time: string;
   data: {
@@ -161,10 +170,14 @@ export function buildRunningSummary(threads: RunningThread[]): RunningSummary {
 
 export function createDecopilotRunningSummaryEvent(
   threads: RunningThread[],
+  scope: RunningSummaryScope = "org",
 ): DecopilotRunningSummaryEvent {
   return {
     id: crypto.randomUUID(),
-    type: DECOPILOT_RUNNING_SUMMARY_EVENT,
+    type:
+      scope === "user"
+        ? DECOPILOT_USER_RUNNING_SUMMARY_EVENT
+        : DECOPILOT_RUNNING_SUMMARY_EVENT,
     source: "decopilot",
     time: new Date().toISOString(),
     data: { summary: buildRunningSummary(threads), threads },

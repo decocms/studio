@@ -19,6 +19,8 @@ import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
 import {
   createDecopilotRunningSummaryEvent,
+  DECOPILOT_RUNNING_SUMMARY_EVENT,
+  DECOPILOT_USER_RUNNING_SUMMARY_EVENT,
   WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
@@ -754,6 +756,18 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     : null;
 
   const listenerId = crypto.randomUUID();
+  // A connection can opt into either running-summary scope via ?types. The home
+  // badge requests both over THIS one connection; the chat pool requests neither
+  // (so it doesn't pay the snapshot query or hold a user-channel listener).
+  const wantsOrgSummary =
+    !typePatterns || typePatterns.includes(DECOPILOT_RUNNING_SUMMARY_EVENT);
+  const wantsUserSummary =
+    !typePatterns ||
+    typePatterns.includes(DECOPILOT_USER_RUNNING_SUMMARY_EVENT);
+  // Second listener for the cross-org user channel, so a single connection can
+  // carry both org and user summaries (no separate /api/me/watch connection).
+  const userListenerId = crypto.randomUUID();
+  const userChannel = `user:${userId}`;
 
   return streamSSE(c, async (stream) => {
     // Send initial connection event
@@ -767,41 +781,68 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
       }),
     });
 
-    // Snapshot of currently-running threads grouped by agent. Authoritative
-    // and cross-pod (DB-backed), unlike the per-pod run registry. Best-effort:
+    // Connect-time snapshots (authoritative, cross-pod, DB-backed). Best-effort:
     // a failed snapshot must not tear down the live stream.
-    try {
-      const running = await meshContext.storage.threads.summarizeRunning();
-      const summaryEvent = createDecopilotRunningSummaryEvent(running);
-      await stream.writeSSE({
-        id: summaryEvent.id,
-        event: summaryEvent.type,
-        data: JSON.stringify(summaryEvent),
-      });
-    } catch (err) {
-      console.error("[watch] running summary snapshot failed", err);
+    if (wantsOrgSummary) {
+      try {
+        const running = await meshContext.storage.threads.summarizeRunning();
+        const ev = createDecopilotRunningSummaryEvent(running, "org");
+        await stream.writeSSE({
+          id: ev.id,
+          event: ev.type,
+          data: JSON.stringify(ev),
+        });
+      } catch (err) {
+        console.error("[watch] org running summary snapshot failed", err);
+      }
+    }
+    if (wantsUserSummary) {
+      try {
+        const running =
+          await meshContext.storage.threads.summarizeRunningForUser(userId);
+        const ev = createDecopilotRunningSummaryEvent(running, "user");
+        await stream.writeSSE({
+          id: ev.id,
+          event: ev.type,
+          data: JSON.stringify(ev),
+        });
+      } catch (err) {
+        console.error("[watch] user running summary snapshot failed", err);
+      }
     }
 
-    // Register listener with the SSE hub
+    const push = (event: SSEEvent) => {
+      // Write to the SSE stream — fire-and-forget
+      stream
+        .writeSSE({
+          id: event.id,
+          event: event.type,
+          data: JSON.stringify(event),
+        })
+        .catch(() => {
+          // Stream broken — remove immediately so no further events are
+          // attempted. onAbort handles interval cleanup.
+          sseHub.remove(orgId, listenerId);
+          if (wantsUserSummary) sseHub.remove(userChannel, userListenerId);
+        });
+    };
+
+    // Org-channel listener (org events + org summary).
     const registered = sseHub.add({
       id: listenerId,
       organizationId: orgId,
       typePatterns: typePatterns?.length ? typePatterns : null,
-      push: (event: SSEEvent) => {
-        // Write to the SSE stream — fire-and-forget
-        stream
-          .writeSSE({
-            id: event.id,
-            event: event.type,
-            data: JSON.stringify(event),
-          })
-          .catch(() => {
-            // Stream broken — remove immediately so no further events are
-            // attempted. onAbort handles interval cleanup.
-            sseHub.remove(orgId, listenerId);
-          });
-      },
+      push,
     });
+    // User-channel listener (cross-org user summary), same stream.
+    if (wantsUserSummary) {
+      sseHub.add({
+        id: userListenerId,
+        organizationId: userChannel,
+        typePatterns: typePatterns?.length ? typePatterns : null,
+        push,
+      });
+    }
 
     if (!registered) {
       await stream.writeSSE({
@@ -826,6 +867,7 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
       stream.onAbort(() => {
         clearInterval(keepaliveInterval);
         sseHub.remove(orgId, listenerId);
+        if (wantsUserSummary) sseHub.remove(userChannel, userListenerId);
         resolve();
       });
     });
@@ -1951,95 +1993,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       cliVersion: claim.cliVersion,
       previewPort: claim.previewPort,
       connectedAt: claim.connectedAt,
-    });
-  });
-
-  // Per-user (cross-org) running-threads feed for the home "all my work" view.
-  // The channel is the USER, not an org, so it's mounted here (before the
-  // /api/:org aggregator, which would otherwise capture "me" as an org slug).
-  // SSE channels are opaque strings, so we reuse the hub + NATS broadcast via a
-  // `user:<id>` channel — no hub changes. The reactor emits each transition to
-  // that channel for the thread's creator.
-  app.get("/api/me/watch", async (c) => {
-    const meshContext = c.var.meshContext;
-    const userId = meshContext.auth.user?.id ?? meshContext.auth.apiKey?.userId;
-    if (!userId) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    const typesParam = c.req.query("types");
-    const typePatterns = typesParam
-      ? typesParam
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : null;
-
-    const channel = `user:${userId}`;
-    const listenerId = crypto.randomUUID();
-
-    return streamSSE(c, async (stream) => {
-      await stream.writeSSE({
-        event: "connected",
-        data: JSON.stringify({
-          listenerId,
-          channel,
-          typePatterns,
-          connectedAt: new Date().toISOString(),
-        }),
-      });
-
-      // Cross-org snapshot from the DB (membership-gated), authoritative.
-      try {
-        const running = await threadStorage.summarizeRunningForUser(userId);
-        const summaryEvent = createDecopilotRunningSummaryEvent(running);
-        await stream.writeSSE({
-          id: summaryEvent.id,
-          event: summaryEvent.type,
-          data: JSON.stringify(summaryEvent),
-        });
-      } catch (err) {
-        console.error("[me/watch] running summary snapshot failed", err);
-      }
-
-      const registered = sseHub.add({
-        id: listenerId,
-        organizationId: channel,
-        typePatterns: typePatterns?.length ? typePatterns : null,
-        push: (event: SSEEvent) => {
-          stream
-            .writeSSE({
-              id: event.id,
-              event: event.type,
-              data: JSON.stringify(event),
-            })
-            .catch(() => {
-              sseHub.remove(channel, listenerId);
-            });
-        },
-      });
-
-      if (!registered) {
-        await stream.writeSSE({
-          event: "error",
-          data: JSON.stringify({ error: "Too many connections" }),
-        });
-        return;
-      }
-
-      const keepaliveInterval = setInterval(() => {
-        stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
-          clearInterval(keepaliveInterval);
-        });
-      }, 30_000);
-
-      await new Promise<void>((resolve) => {
-        stream.onAbort(() => {
-          clearInterval(keepaliveInterval);
-          sseHub.remove(channel, listenerId);
-          resolve();
-        });
-      });
     });
   });
 
