@@ -1,32 +1,23 @@
 /**
- * ThreadHtmlPreviews — chips for every distinct HTML artifact the model
- * has produced in this thread: decks (slides skill, org-fs home volume)
- * and legacy `pages/` HTML pages. Clicking a chip sets `?main=deck:<path>`
- * / `?main=web-page:<slug>` so the preview side-panel mounts.
+ * ThreadHtmlPreviews — chips for every distinct HTML artifact the model has
+ * produced in this thread: decks (`decks/`) and pages (`pages/`) in the org
+ * home volume. Clicking a chip sets `?main=deck:<path>` so the preview
+ * side-panel mounts.
  *
- * Why this exists: the preview panel is opened solely by URL state, and
- * the `data-deck-updated` / `data-html-page-published` data parts render
- * to null in the chat. Once the panel is closed (reload, manual dismiss),
- * there was no way back without URL surgery. This row is the missing
- * affordance.
+ * Why this exists: the preview panel is opened solely by URL state, and the
+ * `data-deck-updated` data part renders to null in the chat. Once the panel
+ * is closed (reload, manual dismiss), there was no way back without URL
+ * surgery. This row is the missing affordance.
  *
- * Sources: pages come from `write`/`edit` tool outputs (`htmlPreview`);
- * decks come from the persisted `data-deck-updated` parts the deck
- * watcher emits — decks can be created via bash (`slides-create`), so
- * there is no tool output to scan for them.
+ * Source: the persisted `data-deck-updated` parts the html-artifact watcher
+ * emits — artifacts can be created via bash (`slides-create`), so there is no
+ * tool output to scan for them.
  */
 
 import { useNavigate } from "@tanstack/react-router";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useOptionalChatStream } from "../context.tsx";
-
-interface HtmlPreviewRef {
-  slug: string;
-  key: string;
-  url: string;
-  bytes: number;
-}
 
 interface DeckRef {
   path: string;
@@ -36,7 +27,7 @@ interface DeckRef {
 }
 
 interface PreviewChip {
-  /** Tab id to navigate to (`deck:…` / `web-page:…`). */
+  /** Tab id to navigate to (`deck:…`). */
   tabId: string;
   label: string;
   kind: "deck" | "page";
@@ -51,35 +42,16 @@ function collectChips(
     const parts = messages[i]?.parts;
     if (!parts) continue;
     for (const raw of parts) {
-      const p = raw as {
-        type?: string;
-        state?: string;
-        data?: unknown;
-        output?: { htmlPreview?: HtmlPreviewRef };
-      };
-      if (p.type === "data-deck-updated") {
-        const deck = p.data as DeckRef | undefined;
-        if (!deck?.path) continue;
-        const key = `deck:${deck.path}`;
-        if (!seen.has(key)) {
-          seen.set(key, {
-            tabId: formatDeckTabId(deck.path),
-            label: deck.name || deck.path,
-            kind: deck.kind === "page" ? "page" : "deck",
-          });
-        }
-        continue;
-      }
-      if (p.type !== "tool-edit" && p.type !== "tool-write") continue;
-      if (p.state !== "output-available") continue;
-      const preview = p.output?.htmlPreview;
-      if (!preview?.slug) continue;
-      const key = `page:${preview.slug}`;
+      const p = raw as { type?: string; data?: unknown };
+      if (p.type !== "data-deck-updated") continue;
+      const deck = p.data as DeckRef | undefined;
+      if (!deck?.path) continue;
+      const key = `deck:${deck.path}`;
       if (!seen.has(key)) {
         seen.set(key, {
-          tabId: `web-page:${preview.slug}`,
-          label: preview.slug,
-          kind: "page",
+          tabId: formatDeckTabId(deck.path),
+          label: deck.name || deck.path,
+          kind: deck.kind === "page" ? "page" : "deck",
         });
       }
     }

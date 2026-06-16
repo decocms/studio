@@ -877,22 +877,6 @@ export function ActiveTaskProvider({
           });
           return;
         }
-        // Auto-open the preview panel on every published HTML page. Latest
-        // slug always wins — matches the model's current focus.
-        if (chunk.type === "data-html-page-published") {
-          const data = (chunk as unknown as { data: { slug?: string } }).data;
-          if (!data?.slug) return;
-          const slug = data.slug;
-          cbRef.current.navigate({
-            to: ".",
-            search: (prev: Record<string, unknown>) => ({
-              ...prev,
-              main: `web-page:${slug}`,
-            }),
-            replace: true,
-          });
-          return;
-        }
         // Deck preview (slides skill): the harness emits `data-deck-updated`
         // when `decks/<name>.html` changes in the org home volume. Refresh
         // the stat (rolls the deck tab's cache-busted iframe src) and

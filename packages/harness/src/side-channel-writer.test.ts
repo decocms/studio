@@ -32,9 +32,9 @@ describe("createSideChannelWriter", () => {
     await side.writer.merge(
       (async function* () {
         yield {
-          type: "data-html-page-published",
-          id: "home",
-          data: { slug: "home" },
+          type: "data-deck-updated",
+          id: "decks/home.html",
+          data: { path: "decks/home.html" },
         } as UIMessageChunk;
       })() as never,
     );
@@ -42,9 +42,9 @@ describe("createSideChannelWriter", () => {
 
     await expect(collect(side.stream)).resolves.toEqual([
       {
-        type: "data-html-page-published",
-        id: "home",
-        data: { slug: "home" },
+        type: "data-deck-updated",
+        id: "decks/home.html",
+        data: { path: "decks/home.html" },
       },
     ]);
   });

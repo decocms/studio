@@ -74,7 +74,6 @@ import type { VirtualClient } from "./built-in-tools/sandbox";
 import type { PendingImage } from "./built-in-tools/vm-tools/types";
 import { createLocalSubtaskTool } from "./built-in-tools/local-subtask";
 import type { DesktopToolCtx } from "./desktop-tool-ctx";
-import { createHtmlPageBufferFromStorage } from "./built-in-tools/vm-tools/html-page-buffer-core";
 import {
   createSideChannelWriter,
   type SideChannelWriter,
@@ -332,7 +331,7 @@ function createDesktopToolRuntime(args: {
           }
         }
 
-        // 4. LOCAL-OK built-in tools (+ html-page buffer flush hook).
+        // 4. LOCAL-OK built-in tools.
         const objectStorage = await openObjectStorageSource(
           streamInput.objectStorageSource,
         );
@@ -340,13 +339,6 @@ function createDesktopToolRuntime(args: {
         const baseUrl = streamInput.objectStorageSource
           ? new URL(streamInput.objectStorageSource.baseUrl).origin
           : "";
-        const htmlPageBuffer = createHtmlPageBufferFromStorage({
-          storage: objectStorage,
-          baseUrl,
-          orgSlug,
-          writer: sideChannel.writer,
-          logPrefix: "decopilot-desktop:html-page-buffer",
-        });
         const toolCtx: DesktopToolCtx = {
           objectStorage,
           organization: { id: streamInput.organizationId, slug: orgSlug },
@@ -374,7 +366,6 @@ function createDesktopToolRuntime(args: {
           // VM/sandbox + prompt scope to the target agent (parent or subtask).
           virtualMcpId: targetAgentId,
           fs,
-          htmlPageBuffer,
           // Real desktop-local subtask, only on the parent run. Absent on
           // delegated subtask runtimes (depth-1; the core strips it too).
           subtask: args.subtask,
@@ -403,11 +394,6 @@ function createDesktopToolRuntime(args: {
           pendingImages,
           sideChunks: sideChannel.stream,
           closeSideChunks: sideChannel.close,
-          onStepFinish: async () => {
-            await htmlPageBuffer.flush().catch((err) => {
-              console.error("[decopilot-desktop] html-page flush failed", err);
-            });
-          },
           close: openedMcp.close,
         };
         return bundle;

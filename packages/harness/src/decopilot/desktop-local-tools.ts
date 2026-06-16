@@ -16,7 +16,6 @@ import type { VirtualClient } from "./built-in-tools/sandbox";
 import { createVmTools } from "./built-in-tools/vm-tools/index";
 import type { PendingImage } from "./built-in-tools/vm-tools/types";
 import type { SandboxFsHooks } from "./built-in-tools/vm-tools/sandbox-fs-hooks-types";
-import type { HtmlPageBuffer } from "./built-in-tools/vm-tools/html-page-buffer-core";
 import type { ToolApprovalLevel } from "./mcp-tools";
 import type { DesktopToolCtx } from "./desktop-tool-ctx";
 
@@ -38,19 +37,11 @@ export interface BuildLocalToolsParams {
   fs: SandboxFsHooks;
   imageProvider?: PortableImageProvider;
   imageModelInfo?: PortableImageModelInfo;
-  htmlPageBuffer?: HtmlPageBuffer;
   /** The real desktop-local `subtask` tool (built by the harness factory from
    *  `createLocalSubtaskTool` + the daemon `runSubtask`). Injected here so it
    *  joins the desktop toolset alongside the VM + portable built-ins. Absent on
    *  delegated subtask runs (depth-1 — the core strips it anyway). */
   subtask?: Tool;
-}
-
-function createNoopHtmlPageBuffer(): HtmlPageBuffer {
-  return {
-    enqueue: () => null,
-    flush: async () => {},
-  };
 }
 
 export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
@@ -76,7 +67,6 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
     params.isPlanMode || params.toolApprovalLevel !== "auto";
   const vmTools = createVmTools({
     fs: params.fs,
-    htmlPageBuffer: params.htmlPageBuffer ?? createNoopHtmlPageBuffer(),
     toolOutputMap: params.toolOutputMap,
     needsApproval: vmNeedsApproval,
     pendingImages: params.pendingImages,

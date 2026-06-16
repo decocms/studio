@@ -8,7 +8,7 @@
  *   - image → <img> (same-origin URL, bytes proxied by mesh; no CORS needed)
  *   - pdf   → <iframe> (browser-native viewer; NOT sandboxed — a sandbox
  *             without allow-scripts would disable Chrome's PDF plugin)
- *   - html  → <iframe sandbox="allow-scripts"> (untrusted, mirrors WebPageTab)
+ *   - html  → <iframe sandbox="allow-scripts"> (untrusted; opaque-origin sandbox)
  *   - md    → fetched and rendered through the chat markdown renderer
  *   - text  → fetched and rendered in a read-only Monaco code viewer
  *   - other (xlsx/pptx/zip/…) → download card fallback

@@ -36,7 +36,6 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
 import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
-import type { HtmlPageBuffer } from "./vm-tools/html-page-buffer";
 import type { DeckBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
 import { createSubtaskTool } from "./subtask";
@@ -111,14 +110,7 @@ export interface BuiltinToolParams {
    * When null, no VM-backed code execution tool is included.
    */
   vmContext?: VmContext | null;
-  /**
-   * Per-turn coalescing buffer for `pages/<slug>.html` writes. Created once
-   * per run in the dispatch layer; the VM tools enqueue here and the
-   * dispatch layer flushes (and emits the UI signal) at step-end so a
-   * burst of edits collapses to one S3 PUT.
-   */
-  htmlPageBuffer: HtmlPageBuffer;
-  /** Per-turn deck fast-path mirror (see `DeckBuffer`). */
+  /** Per-turn HTML-artifact fast-path mirror (see `DeckBuffer`). */
   deckBuffer?: DeckBuffer;
   /** Thread (task) id of the current run — needed by tools that persist
    *  thread-scoped state (e.g. web_search reconnecting to Gemini Deep Research). */
@@ -161,7 +153,6 @@ async function buildAllTools(
     pendingImages,
     passthroughClient,
     vmContext,
-    htmlPageBuffer,
     deckBuffer,
     taskId,
     agentId,
@@ -219,7 +210,6 @@ async function buildAllTools(
     });
     vmTools = createVmTools({
       fs,
-      htmlPageBuffer,
       deckBuffer,
       toolOutputMap,
       needsApproval: vmNeedsApproval,
@@ -442,7 +432,7 @@ export async function getBuiltInTools(
  * read_tool_output, propose_plan) as a synchronous ToolSet. Unlike
  * `getBuiltInTools`, this does NOT include VM/sandbox/web_search/
  * screenshot/browser tools — those depend on heavy infrastructure
- * (vmContext, pendingImages, htmlPageBuffer) that the subagent path
+ * (vmContext, pendingImages) that the subagent path
  * doesn't carry. The caller is responsible for filtering out any of
  * these tools that don't apply for the current agent kind.
  */
