@@ -4,18 +4,6 @@
  * the board stays generic.
  */
 
-export type TileSizeKey =
-  | "S"
-  | "M"
-  | "L"
-  | "XL"
-  | "W"
-  | "T"
-  | "LT"
-  | "WT"
-  | "XLT"
-  | "XXLT";
-
 export interface TileSize {
   w: number;
   h: number;

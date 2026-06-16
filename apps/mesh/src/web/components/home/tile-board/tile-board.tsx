@@ -20,7 +20,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
@@ -29,15 +28,13 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { DotsGrid, DotsHorizontal, Trash01 } from "@untitledui/icons";
 import { type ReactNode, useRef, useState } from "react";
 import {
-  ALL_SIZES,
   GRID_COLS,
   GRID_GAP_PX,
+  MAX_TILE_ROWS,
   ROW_HEIGHT_PX,
-  SIZE_LABELS,
-  SIZE_PRESETS,
 } from "./constants";
 import { TileErrorBoundary } from "./tile-error-boundary";
-import type { TileInstance, TileSizeKey } from "./types";
+import type { TileInstance } from "./types";
 
 interface TileBoardProps {
   tiles: TileInstance[];
@@ -294,27 +291,10 @@ function TileMenu({
   onResize: (id: string, size: { w: number; h: number }) => void;
   onRemove: (id: string) => void;
 }) {
-  const minW = tile.minW ?? 1;
-  const minH = tile.minH ?? 1;
-  // Drop presets that would shrink the tile below its declared minimum —
-  // e.g. an embedded UI tile needs at least 2 rows to leave room for the
-  // iframe under the header.
-  const allowed = ALL_SIZES.filter((key) => {
-    const size = SIZE_PRESETS[key];
-    return size.w >= minW && size.h >= minH;
-  });
-
-  const matchSizeKey = (): TileSizeKey | null => {
-    for (const key of ALL_SIZES) {
-      const size = SIZE_PRESETS[key];
-      if (size.w === tile.w && size.h === tile.h) return key;
-    }
-    return null;
-  };
-  const currentKey = matchSizeKey();
+  const [open, setOpen] = useState(false);
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -324,23 +304,14 @@ function TileMenu({
           <DotsHorizontal size={16} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuLabel>Size</DropdownMenuLabel>
-        {allowed.map((key) => {
-          const size = SIZE_PRESETS[key];
-          return (
-            <DropdownMenuItem
-              key={key}
-              onSelect={() => onResize(tile.id, size)}
-              className="flex items-center justify-between"
-            >
-              <span>{SIZE_LABELS[key]}</span>
-              <span className="text-xs text-muted-foreground">
-                {currentKey === key ? "✓" : `${size.w}×${size.h}`}
-              </span>
-            </DropdownMenuItem>
-          );
-        })}
+      <DropdownMenuContent align="end" className="w-auto">
+        <TileSizeGrid
+          tile={tile}
+          onPick={(size) => {
+            onResize(tile.id, size);
+            setOpen(false);
+          }}
+        />
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => onRemove(tile.id)}
@@ -351,5 +322,64 @@ function TileMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** Word-processor-style size picker: hover the grid to choose width×height,
+ *  click to apply. Cells below the tile's min size are disabled. */
+function TileSizeGrid({
+  tile,
+  onPick,
+}: {
+  tile: TileInstance;
+  onPick: (size: { w: number; h: number }) => void;
+}) {
+  const minW = tile.minW ?? 1;
+  const minH = tile.minH ?? 1;
+  const [hover, setHover] = useState<{ w: number; h: number } | null>(null);
+  const active = hover ?? { w: tile.w, h: tile.h };
+
+  return (
+    <div className="px-2 py-1.5">
+      <div className="mb-2 flex items-center justify-between gap-4">
+        <span className="text-xs text-muted-foreground">Size</span>
+        <span className="text-xs font-medium tabular-nums">
+          {active.w} × {active.h}
+        </span>
+      </div>
+      <div
+        className="grid w-max gap-1"
+        style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1.25rem)` }}
+        onPointerLeave={() => setHover(null)}
+      >
+        {Array.from({ length: MAX_TILE_ROWS }, (_, ri) =>
+          Array.from({ length: GRID_COLS }, (_, ci) => {
+            const w = ci + 1;
+            const h = ri + 1;
+            const disabled = w < minW || h < minH;
+            const selected = w <= active.w && h <= active.h;
+            return (
+              <button
+                key={`${w}x${h}`}
+                type="button"
+                disabled={disabled}
+                aria-label={`${w} by ${h}`}
+                onPointerEnter={() => setHover({ w, h })}
+                onClick={() => onPick({ w, h })}
+                className={cn(
+                  "size-5 rounded-sm border transition-colors",
+                  selected
+                    ? "border-primary bg-primary/30"
+                    : "border-border bg-muted",
+                  disabled
+                    ? "cursor-not-allowed opacity-40"
+                    : "cursor-pointer hover:border-primary/60",
+                )}
+              />
+            );
+          }),
+        )}
+      </div>
+    </div>
   );
 }
