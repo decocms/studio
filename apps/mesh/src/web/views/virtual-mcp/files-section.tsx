@@ -351,7 +351,7 @@ export function FilesSection({ form }: { form: VirtualMcpFormReturn }) {
           : files.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-background"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl border bg-card"
               >
                 {file.kind === "skill" ? (
                   <div className="flex items-center justify-center h-8 w-6.5 shrink-0 rounded-md bg-muted text-muted-foreground">
