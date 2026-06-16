@@ -941,11 +941,34 @@ export class ThreadConnection {
   }
 }
 
-function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {
+/**
+ * Keep the prior row's authoritative `created_at` when its replacement lacks
+ * one. A `deliverPolicy: "all"` replay on reconnect re-delivers an
+ * already-persisted run as timestamp-less streamed UIMessages; upserting one
+ * over its DB-seeded row would otherwise strip the `created_at`, so
+ * `readTimestamp` returns +Infinity and the message jumps to the end of the
+ * sort — it renders under the NEXT turn's user message and leaves its own slot
+ * empty ("No response was generated"). Only fills a missing timestamp; a
+ * genuine persisted update (incoming has `created_at`) overwrites as before.
+ */
+function preserveCreatedAt(
+  prev: UIMessage | undefined,
+  next: UIMessage,
+): UIMessage {
+  if (!prev) return next;
+  const prevTs = (prev as { created_at?: unknown }).created_at;
+  const nextTs = (next as { created_at?: unknown }).created_at;
+  if (nextTs == null && prevTs != null) {
+    return { ...next, created_at: prevTs } as UIMessage;
+  }
+  return next;
+}
+
+export function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {
   const idx = list.findIndex((m) => m.id === msg.id);
   if (idx === -1) return [...list, msg];
   const next = [...list];
-  next[idx] = msg;
+  next[idx] = preserveCreatedAt(next[idx], msg);
   return next;
 }
 
@@ -1030,7 +1053,8 @@ export function mergeAndSort(
   incoming: UIMessage[],
 ): UIMessage[] {
   const byId = new Map(prev.map((m) => [m.id, m] as const));
-  for (const m of incoming) byId.set(m.id, m);
+  for (const m of incoming)
+    byId.set(m.id, preserveCreatedAt(byId.get(m.id), m));
   const merged = [...byId.values()];
   merged.sort((a, b) => {
     const ta = readTimestamp(a);
