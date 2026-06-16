@@ -12,8 +12,8 @@ import { sql, type Kysely } from "kysely";
 export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`
     UPDATE downstream_tokens
-    SET expires_at = created_at + INTERVAL '55 minutes'
-    WHERE expires_at IS NULL
+    SET "expiresAt" = "createdAt" + INTERVAL '55 minutes'
+    WHERE "expiresAt" IS NULL
   `.execute(db);
 }
 
