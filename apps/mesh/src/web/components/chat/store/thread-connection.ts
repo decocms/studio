@@ -951,6 +951,52 @@ export class ThreadConnection {
  * empty ("No response was generated"). Only fills a missing timestamp; a
  * genuine persisted update (incoming has `created_at`) overwrites as before.
  */
+/**
+ * Carry each tool call part's persisted `created_at` forward across a merge.
+ * The durable (DB-loaded) copy of an in-flight message has a per-part
+ * `created_at` (stamped by `foldParts`); the streamed/replayed copy that
+ * upserts over it does not. Without this, a late-attaching or reconnecting
+ * client loses the fire time of a still-running call (e.g. the `bash` `sleep`
+ * countdown anchor) and restarts the timer. Matched by `toolCallId`; only fills
+ * a missing timestamp, so a genuine durable update still wins.
+ */
+function preservePartCreatedAt(
+  prev: UIMessage,
+  next: UIMessage,
+): UIMessage["parts"] {
+  const prevByToolCall = new Map<string, unknown>();
+  for (const p of prev.parts) {
+    if (
+      p &&
+      typeof p === "object" &&
+      "toolCallId" in p &&
+      "created_at" in p &&
+      typeof (p as { toolCallId?: unknown }).toolCallId === "string"
+    ) {
+      prevByToolCall.set(
+        (p as { toolCallId: string }).toolCallId,
+        (p as { created_at: unknown }).created_at,
+      );
+    }
+  }
+  if (prevByToolCall.size === 0) return next.parts;
+  return next.parts.map((p) => {
+    if (
+      p &&
+      typeof p === "object" &&
+      "toolCallId" in p &&
+      !("created_at" in p) &&
+      typeof (p as { toolCallId?: unknown }).toolCallId === "string"
+    ) {
+      const carried = prevByToolCall.get(
+        (p as { toolCallId: string }).toolCallId,
+      );
+      if (carried != null) return { ...p, created_at: carried };
+    }
+    return p;
+  });
+}
+
 function preserveCreatedAt(
   prev: UIMessage | undefined,
   next: UIMessage,
@@ -958,10 +1004,12 @@ function preserveCreatedAt(
   if (!prev) return next;
   const prevTs = (prev as { created_at?: unknown }).created_at;
   const nextTs = (next as { created_at?: unknown }).created_at;
+  const parts = preservePartCreatedAt(prev, next);
+  let result = parts === next.parts ? next : ({ ...next, parts } as UIMessage);
   if (nextTs == null && prevTs != null) {
-    return { ...next, created_at: prevTs } as UIMessage;
+    result = { ...result, created_at: prevTs } as UIMessage;
   }
-  return next;
+  return result;
 }
 
 export function upsertById(list: UIMessage[], msg: UIMessage): UIMessage[] {

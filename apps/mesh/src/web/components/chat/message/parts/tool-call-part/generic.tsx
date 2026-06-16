@@ -44,13 +44,16 @@ import {
   XClose,
 } from "@untitledui/icons";
 import { TOOL_DISPLAY_MAP } from "./tool-display-map.ts";
+import { BashWaitSummary } from "./bash-wait.tsx";
+import { parseSleepMs } from "./bash-sleep.ts";
+import { toEpochMs } from "@/web/lib/format-time.ts";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
 import type React from "react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "@/web/components/error-boundary.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 
-import { getToolPartErrorText, safeStringify } from "../utils.ts";
+import { getToolPartErrorText, safeStringifyFormatted } from "../utils.ts";
 import { ToolCallShell } from "./common.tsx";
 import { getEffectiveState } from "./utils.tsx";
 
@@ -70,14 +73,28 @@ interface GenericToolCallPartProps {
   toolMeta?: ToolDefinition["_meta"];
 }
 
-function safeStringifyFormatted(value: unknown): string {
-  const str = safeStringify(value);
-  if (str === "" || str === "[Non-serializable value]") return str;
-  try {
-    return JSON.stringify(JSON.parse(str), null, 2);
-  } catch {
-    return str;
-  }
+/**
+ * Read the part's own persisted `created_at` (epoch ms). `foldParts` stamps it
+ * onto each part on the v2 read path — it's the only per-part timestamp the
+ * client gets, and it anchors the `bash` `sleep` countdown to when that
+ * specific call fired (correct across reload / late attach). Null while the
+ * turn is still in-flight (parts not yet folded from storage).
+ */
+function partCreatedAtMs(part: unknown): number | null {
+  const raw =
+    part && typeof part === "object" && "created_at" in part
+      ? (part as { created_at?: unknown }).created_at
+      : undefined;
+  return typeof raw === "string" || raw instanceof Date ? toEpochMs(raw) : null;
+}
+
+/** Effective bash timeout (ms) the daemon enforces — mirrors BashInputSchema. */
+function bashTimeoutMs(input: unknown): number {
+  const t =
+    input && typeof input === "object" && "timeout" in input
+      ? (input as { timeout?: unknown }).timeout
+      : undefined;
+  return Math.min(typeof t === "number" ? t : 30_000, 120_000);
 }
 
 function AnnotationBadge({
@@ -337,11 +354,38 @@ export function GenericToolCallPart({
   const errorText =
     part.state === "output-error" ? getToolPartErrorText(part) : undefined;
 
-  const summary = isStaleApproval
-    ? "Cancelled"
-    : isOutputError
-      ? "Failed"
-      : getSummary(part.state, part.output, errorText);
+  // While a `bash` `sleep` is still running, replace the generic "Preparing…"
+  // with a live countdown. Duration is parsed from the command (capped at the
+  // daemon timeout, since a longer sleep is killed there); the countdown anchors
+  // on this part's own persisted `created_at` (when the call fired) so the
+  // remaining time stays correct across reload / late attach.
+  const sleepCommand =
+    toolName === "bash" &&
+    effectiveState === "loading" &&
+    part.input &&
+    typeof part.input === "object" &&
+    typeof (part.input as { command?: unknown }).command === "string"
+      ? (part.input as { command: string }).command
+      : null;
+  const sleepMs = sleepCommand !== null ? parseSleepMs(sleepCommand) : null;
+  const sleepDurationMs =
+    sleepMs !== null ? Math.min(sleepMs, bashTimeoutMs(part.input)) : null;
+  const toolCallId = "toolCallId" in part ? part.toolCallId : "";
+
+  const summary =
+    sleepDurationMs !== null ? (
+      <BashWaitSummary
+        toolCallId={toolCallId}
+        durationMs={sleepDurationMs}
+        anchorMs={partCreatedAtMs(part)}
+      />
+    ) : isStaleApproval ? (
+      "Cancelled"
+    ) : isOutputError ? (
+      "Failed"
+    ) : (
+      getSummary(part.state, part.output, errorText)
+    );
 
   // Build expanded content
   let detail = "";

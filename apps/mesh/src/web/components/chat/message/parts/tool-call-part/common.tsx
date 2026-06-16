@@ -24,8 +24,8 @@ export interface ToolCallShellProps {
   usage?: UsageStatsType | null;
   /** Latency in seconds for the operation (optional) */
   latency?: number;
-  /** Short status text shown inline after the label */
-  summary?: string;
+  /** Short status text (or node, e.g. a live countdown) shown inline after the label */
+  summary?: ReactNode;
   /** Derived UI state computed by caller based on their loading semantics */
   state: "loading" | "error" | "idle";
   /** Detail shown in expanded view */

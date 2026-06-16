@@ -835,6 +835,38 @@ describe("upsertById", () => {
       "2026-01-01T00:00:09Z",
     );
   });
+
+  test("carries a tool part's created_at forward when the streamed copy lacks it", () => {
+    // Durable (DB-loaded) copy has the per-part fire time; the streamed replay
+    // that upserts over it does not — without preservation a late-attaching /
+    // reconnecting client loses the bash-sleep countdown anchor.
+    const durable = {
+      id: "m1",
+      role: "assistant",
+      created_at: "2026-01-01T00:00:00Z",
+      parts: [
+        {
+          type: "tool-bash",
+          toolCallId: "tc1",
+          state: "input-available",
+          created_at: "2026-01-01T00:00:05Z",
+        },
+      ],
+      // biome-ignore lint/suspicious/noExplicitAny: test helper
+    } as any;
+    const streamed = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        { type: "tool-bash", toolCallId: "tc1", state: "input-available" },
+      ],
+      // biome-ignore lint/suspicious/noExplicitAny: test helper
+    } as any;
+    const out = upsertById([durable], streamed);
+    expect((out[0]!.parts[0] as { created_at?: unknown }).created_at).toBe(
+      "2026-01-01T00:00:05Z",
+    );
+  });
 });
 
 describe("dropRedundantStubs", () => {
