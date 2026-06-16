@@ -29,6 +29,17 @@ export function safeStringify(value: unknown): string {
   }
 }
 
+/** Like {@link safeStringify} but pretty-printed (2-space indent) for expandable detail panels. */
+export function safeStringifyFormatted(value: unknown): string {
+  const str = safeStringify(value);
+  if (str === "" || str === "[Non-serializable value]") return str;
+  try {
+    return JSON.stringify(JSON.parse(str), null, 2);
+  } catch {
+    return str;
+  }
+}
+
 const isToolLike = (
   p: UIMessagePart<UIDataTypes, UITools>,
 ): p is DynamicToolUIPart | ToolUIPart => {
