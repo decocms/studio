@@ -15,24 +15,10 @@
 import { useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { createSSESubscription } from "../../../../hooks/create-sse-subscription";
+import { workflowWatchView } from "../../../../hooks/watch-sse-pool";
 
-// ============================================================================
-// Shared connection pool
-// ============================================================================
-
-const WORKFLOW_EVENT_TYPES = [
-  "workflow.execution.created",
-  "workflow.execution.resumed",
-  "workflow.step.execute",
-  "workflow.step.completed",
-];
-
-const workflowSSE = createSSESubscription({
-  buildUrl: (orgSlug) =>
-    `/api/${encodeURIComponent(orgSlug)}/watch?types=workflow.*`,
-  eventTypes: WORKFLOW_EVENT_TYPES,
-});
+// Workflow view of the unified `/watch` pool (watch-sse-pool.ts).
+const workflowSSE = workflowWatchView;
 
 /** Tool names whose query caches should be invalidated on workflow events */
 const INVALIDATION_TARGETS = [

@@ -21,6 +21,8 @@ import {
   createDecopilotRunningSummaryEvent,
   DECOPILOT_RUNNING_SUMMARY_EVENT,
   DECOPILOT_USER_RUNNING_SUMMARY_EVENT,
+  type RunningSummaryScope,
+  type RunningThread,
   WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
@@ -722,15 +724,8 @@ const eventsHandler: MiddlewareHandler<Env> = async (c) => {
  * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
  * on the `/api/:org/watch` mount). Auth is required.
  *
- * On connect, emits in order:
- *   1. `event: connected` — listener metadata
- *   2. `event: decopilot.running.summary` — snapshot of in_progress threads
- *      grouped by agent ("X agents working on N tasks"), re-sent on reconnect.
- *   3. Live events from the SSE hub.
- *
- * Clients use `COLLECTION_THREADS_LIST` for their initial thread state and keep
- * the running summary live from the reactor's `decopilot.running.summary`
- * broadcasts.
+ * On connect, emits a `connected` event, then running-summary snapshots (org
+ * and/or per-user scope, per `?types`), then live events from the SSE hub.
  */
 export const watchHandler: MiddlewareHandler<Env> = async (c) => {
   const meshContext = c.var.meshContext;
@@ -756,16 +751,13 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     : null;
 
   const listenerId = crypto.randomUUID();
-  // A connection can opt into either running-summary scope via ?types. The home
-  // badge requests both over THIS one connection; the chat pool requests neither
-  // (so it doesn't pay the snapshot query or hold a user-channel listener).
+  // Either running-summary scope is opt-in via ?types; the home badge requests
+  // both over this one connection, the chat pool requests neither.
   const wantsOrgSummary =
     !typePatterns || typePatterns.includes(DECOPILOT_RUNNING_SUMMARY_EVENT);
   const wantsUserSummary =
     !typePatterns ||
     typePatterns.includes(DECOPILOT_USER_RUNNING_SUMMARY_EVENT);
-  // Second listener for the cross-org user channel, so a single connection can
-  // carry both org and user summaries (no separate /api/me/watch connection).
   const userListenerId = crypto.randomUUID();
   const userChannel = `user:${userId}`;
 
@@ -781,38 +773,34 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
       }),
     });
 
-    // Connect-time snapshots (authoritative, cross-pod, DB-backed). Best-effort:
-    // a failed snapshot must not tear down the live stream.
-    if (wantsOrgSummary) {
+    // Connect-time snapshots, best-effort: a failure must not tear down the stream.
+    const writeSnapshot = async (
+      scope: RunningSummaryScope,
+      load: () => Promise<RunningThread[]>,
+    ) => {
       try {
-        const running = await meshContext.storage.threads.summarizeRunning();
-        const ev = createDecopilotRunningSummaryEvent(running, "org");
+        const ev = createDecopilotRunningSummaryEvent(await load(), scope);
         await stream.writeSSE({
           id: ev.id,
           event: ev.type,
           data: JSON.stringify(ev),
         });
       } catch (err) {
-        console.error("[watch] org running summary snapshot failed", err);
+        console.error(`[watch] ${scope} running summary snapshot failed`, err);
       }
+    };
+    if (wantsOrgSummary) {
+      await writeSnapshot("org", () =>
+        meshContext.storage.threads.summarizeRunning(),
+      );
     }
     if (wantsUserSummary) {
-      try {
-        const running =
-          await meshContext.storage.threads.summarizeRunningForUser(userId);
-        const ev = createDecopilotRunningSummaryEvent(running, "user");
-        await stream.writeSSE({
-          id: ev.id,
-          event: ev.type,
-          data: JSON.stringify(ev),
-        });
-      } catch (err) {
-        console.error("[watch] user running summary snapshot failed", err);
-      }
+      await writeSnapshot("user", () =>
+        meshContext.storage.threads.summarizeRunningForUser(userId),
+      );
     }
 
     const push = (event: SSEEvent) => {
-      // Write to the SSE stream — fire-and-forget
       stream
         .writeSSE({
           id: event.id,
@@ -820,21 +808,18 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
           data: JSON.stringify(event),
         })
         .catch(() => {
-          // Stream broken — remove immediately so no further events are
-          // attempted. onAbort handles interval cleanup.
+          // Stream broken — remove now; onAbort handles interval cleanup.
           sseHub.remove(orgId, listenerId);
           if (wantsUserSummary) sseHub.remove(userChannel, userListenerId);
         });
     };
 
-    // Org-channel listener (org events + org summary).
     const registered = sseHub.add({
       id: listenerId,
       organizationId: orgId,
       typePatterns: typePatterns?.length ? typePatterns : null,
       push,
     });
-    // User-channel listener (cross-org user summary), same stream.
     if (wantsUserSummary) {
       sseHub.add({
         id: userListenerId,
@@ -953,9 +938,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   let linkClaimRegistry: LinkClaimRegistry;
   let linkWorkQueue: LinkWorkQueue | null = null;
   let natsProvider: NatsConnectionProvider | null = null;
-  // KV-backed in the NATS branch; falls back to a DB-backed store once
-  // threadStorage exists (assigned below). Powers the reactor's running-summary
-  // broadcast.
+  // KV-backed under NATS; DB-backed fallback assigned below when absent.
   let runningThreadsStore: RunningThreadsStore | null = null;
 
   if (options.eventBus) {
@@ -1206,8 +1189,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   }
 
-  // No NATS (test / dev single-pod) → read the running set straight from the DB,
-  // which the reactor has already updated by the time it asks for the summary.
+  // No NATS (test / dev single-pod) → read the running set straight from the DB.
   if (!runningThreadsStore) {
     runningThreadsStore = new DbRunningThreadsStore(threadStorage);
   }

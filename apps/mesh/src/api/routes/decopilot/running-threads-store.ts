@@ -1,24 +1,5 @@
 /**
  * Cross-pod running-thread set for the home "X agents working on N tasks" badge.
- *
- * The authoritative count is spread across pods (each pod's run registry only
- * knows its own in-flight runs), so this store materializes it in a shared
- * place. Two backends sit behind one interface:
- *
- *   - JetStreamKVRunningThreadsStore (prod): a NATS JetStream KV key per org
- *     holding the org's running threads. Cheap reads, cross-pod, and a per-entry
- *     `lastProgressAt` lets a crashed/orphaned run be pruned on the same idle
- *     timeline the reaper uses — without depending on the reaper (which only
- *     sweeps the owning pod's memory).
- *   - DbRunningThreadsStore (dev / no-NATS): reads the threads table directly via
- *     `summarizeRunning`. The reactor updates the row BEFORE calling the store,
- *     so a fresh read reflects the transition. Single-pod, so a per-transition
- *     query is fine.
- *
- * The run reactor calls markRunning/markStopped on each transition and emits the
- * returned list as a `decopilot.running.summary` event through the SSE hub. The
- * `/watch` connect snapshot is served separately from the DB (authoritative and
- * infrequent, so it sidesteps KV cold-start undercounts after a deploy).
  * Best-effort throughout: a counter for a homepage badge must never block or
  * fail a run.
  */
@@ -29,6 +10,7 @@ import {
   StorageType,
   type JetStreamClient,
   type KV,
+  type KvEntry,
 } from "nats";
 import type { RunningThread } from "@decocms/mesh-sdk";
 import {
@@ -38,13 +20,9 @@ import {
 import type { ThreadStoragePort } from "@/storage/ports";
 
 export interface RunningThreadsStore {
-  /** Record a thread as running; returns the org's current running set. */
   markRunning(orgId: string, thread: RunningThread): Promise<RunningThread[]>;
-  /** Record a thread as no longer running; returns the org's running set. */
   markStopped(orgId: string, threadId: string): Promise<RunningThread[]>;
-  /** Refresh a running thread's liveness (no emit). No-op if absent. */
   touch(orgId: string, threadId: string): Promise<void>;
-  /** Current running set for an org (stale entries excluded). */
   summarize(orgId: string): Promise<RunningThread[]>;
   teardown(): void;
 }
@@ -53,14 +31,11 @@ export interface RunningThreadsStore {
 // JetStream KV backend
 // ============================================================================
 
+// Compact stored shape; p = lastProgressAt (epoch ms), drives idle pruning.
 interface StoredEntry {
-  /** virtual_mcp_id; "" when agentless. */
   v: string;
-  /** thread title; null when untitled. */
   t: string | null;
-  /** organization id (the channel's org — kept so toRunningThreads is complete). */
   o: string;
-  /** lastProgressAt, epoch ms. */
   p: number;
 }
 
@@ -69,7 +44,6 @@ type StoredOrg = Record<string, StoredEntry>;
 const KV_BUCKET = "DECOCMS_RUNNING_THREADS";
 const MAX_CAS_ATTEMPTS = 5;
 
-/** Drop entries idle past the timeout (orphaned/crashed runs self-heal here). */
 function prune(org: StoredOrg, now: number): StoredOrg {
   const cutoff = now - RUNNING_THREAD_IDLE_MS;
   const out: StoredOrg = {};
@@ -98,19 +72,29 @@ export class JetStreamKVRunningThreadsStore implements RunningThreadsStore {
 
   async init(): Promise<void> {
     const js = this.options.getJetStream();
-    if (!js) return; // NATS not ready — paused until re-init
+    if (!js) return;
     this.kv = await js.views.kv(KV_BUCKET, {
       storage: StorageType.Memory,
       ttl: nanos(RUNNING_THREADS_KV_TTL_MS),
     });
   }
 
-  /**
-   * Optimistic read-modify-write across replicas, mirroring the connection
-   * circuit store: create() rejects if the key exists, update() rejects on a
-   * stale revision — both mean another replica raced us, so we retry. After a
-   * few attempts we give up; a lost update only briefly skews a cosmetic count.
-   */
+  private async read(
+    orgId: string,
+  ): Promise<{ live: KvEntry | null; org: StoredOrg }> {
+    const entry = await this.kv!.get(orgId);
+    const live =
+      entry &&
+      entry.operation !== "DEL" &&
+      entry.operation !== "PURGE" &&
+      entry.value?.length
+        ? entry
+        : null;
+    return { live, org: live ? this.codec.decode(live.value) : {} };
+  }
+
+  // Optimistic read-modify-write: create()/update() reject on a concurrent
+  // replica write, so we retry. A lost update only briefly skews the count.
   private async mutate(
     orgId: string,
     fn: (org: StoredOrg, now: number) => StoredOrg,
@@ -119,30 +103,19 @@ export class JetStreamKVRunningThreadsStore implements RunningThreadsStore {
     for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt++) {
       try {
         const now = Date.now();
-        const entry = await this.kv.get(orgId);
-        const live =
-          entry &&
-          entry.operation !== "DEL" &&
-          entry.operation !== "PURGE" &&
-          entry.value?.length;
-
-        const prev: StoredOrg = live ? this.codec.decode(entry.value) : {};
+        const { live, org: prev } = await this.read(orgId);
         const next = fn(prune(prev, now), now);
 
         if (Object.keys(next).length === 0) {
-          // Nothing running — drop the key so an idle org leaves no footprint.
           if (live) await this.kv.delete(orgId);
           return [];
         }
         const encoded = this.codec.encode(next);
-        if (live) {
-          await this.kv.update(orgId, encoded, entry.revision);
-        } else {
-          await this.kv.create(orgId, encoded);
-        }
+        if (live) await this.kv.update(orgId, encoded, live.revision);
+        else await this.kv.create(orgId, encoded);
         return toRunningThreads(next);
       } catch {
-        // create race / revision conflict — retry the read-modify-write
+        // create race / revision conflict — retry
       }
     }
     return [];
@@ -179,18 +152,8 @@ export class JetStreamKVRunningThreadsStore implements RunningThreadsStore {
   async summarize(orgId: string): Promise<RunningThread[]> {
     if (!this.kv) return [];
     try {
-      const entry = await this.kv.get(orgId);
-      if (
-        !entry ||
-        entry.operation === "DEL" ||
-        entry.operation === "PURGE" ||
-        !entry.value?.length
-      ) {
-        return [];
-      }
-      return toRunningThreads(
-        prune(this.codec.decode(entry.value), Date.now()),
-      );
+      const { org } = await this.read(orgId);
+      return toRunningThreads(prune(org, Date.now()));
     } catch {
       return [];
     }
@@ -202,14 +165,10 @@ export class JetStreamKVRunningThreadsStore implements RunningThreadsStore {
 }
 
 // ============================================================================
-// DB backend (dev / no-NATS)
+// DB backend (dev / no-NATS) — reactor updates the row before asking, so a
+// fresh read reflects the transition.
 // ============================================================================
 
-/**
- * Reads the threads table. The reactor updates the row's status BEFORE calling
- * markRunning/markStopped, so re-reading reflects the transition. Single-pod,
- * so a query per transition is acceptable.
- */
 export class DbRunningThreadsStore implements RunningThreadsStore {
   constructor(private readonly storage: ThreadStoragePort) {}
 
@@ -244,5 +203,4 @@ export class NoopRunningThreadsStore implements RunningThreadsStore {
   teardown(): void {}
 }
 
-// Exposed for unit tests.
 export const __test = { prune, toRunningThreads };

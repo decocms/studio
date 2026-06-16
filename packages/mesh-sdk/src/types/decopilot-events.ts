@@ -99,44 +99,25 @@ export type DecopilotSSEEvent =
 // Running Summary (home "X agents working on N tasks")
 // ============================================================================
 
-/**
- * Connect-time snapshot event written directly to the `/watch` stream (not a
- * broadcast type, so it stays out of `ALL_DECOPILOT_EVENT_TYPES`). Re-fires on
- * every reconnect, and the run reactor broadcasts a fresh one on each thread
- * transition. Clients store the latest `summary` and render it.
- */
 export const DECOPILOT_RUNNING_SUMMARY_EVENT = "decopilot.running.summary";
-/** Same payload, but the per-user (cross-org) scope. Distinct type so a single
- *  `/watch` connection can carry both org and user summaries and the client can
- *  route them. */
+// Per-user (cross-org) scope; distinct type so one /watch connection can carry both.
 export const DECOPILOT_USER_RUNNING_SUMMARY_EVENT =
   "decopilot.running.summary.user";
 
 export type RunningSummaryScope = "org" | "user";
 
-/**
- * A single in_progress thread. `title` is the THREAD's title (the hover row's
- * heading). The agent is resolved client-side from `virtual_mcp_id` when it
- * lives in the current org; for cross-org rows (the per-user feed) the client
- * can't resolve it, so the server fills `agent_title`.
- */
 export interface RunningThread {
   id: string;
   /** Empty string when the thread has no agent bound. */
   virtual_mcp_id: string;
-  /** Thread title; null when untitled. */
   title: string | null;
-  /** Org the thread belongs to — drives cross-org navigation. */
   organization_id: string;
-  /** Agent (connection) title, server-resolved. Present on the cross-org feed;
-   *  omitted on the org feed, where the client resolves it from virtual_mcp_id. */
+  /** Server-resolved agent title; only on the cross-org feed (the client can't resolve a cross-org agent). */
   agent_title?: string | null;
 }
 
 export interface RunningSummary {
-  /** Total threads currently in_progress — the "N tasks". */
   totalRunning: number;
-  /** Distinct agents with at least one in_progress thread — the "X agents". */
   agentCount: number;
 }
 
@@ -149,17 +130,12 @@ export interface DecopilotRunningSummaryEvent {
   time: string;
   data: {
     summary: RunningSummary;
-    /** Per-thread descriptors — drives the hover list and the counts. */
     threads: RunningThread[];
   };
 }
 
-/**
- * Pure aggregation of running threads into the home summary counts. Shared by
- * the server (snapshot + broadcast) and the client so both sides count
- * identically. Threads with no agent bound count toward `totalRunning` but not
- * `agentCount`.
- */
+// Shared by server and client so both count identically. Agentless threads
+// count toward totalRunning but not agentCount.
 export function buildRunningSummary(threads: RunningThread[]): RunningSummary {
   const agentIds = new Set<string>();
   for (const t of threads) {

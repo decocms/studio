@@ -107,20 +107,10 @@ export interface ThreadStoragePort {
     virtualMcpIds: string[],
   ): Promise<Map<string, { last_used_at: string; last_used_by: string }>>;
 
-  /**
-   * Threads currently `in_progress` for an org, each tagged with its agent
-   * (virtual MCP) title. Backs the home "X agents working on N tasks" snapshot
-   * emitted on `/watch` connect. Org-wide and authoritative (cross-pod), unlike
-   * the per-pod in-memory run registry.
-   */
+  /** An org's `in_progress` threads — backs the home running-summary snapshot. */
   summarizeRunning(organizationId: string): Promise<RunningThread[]>;
 
-  /**
-   * A user's in_progress threads across EVERY org they're a member of — backs
-   * the per-user "all my work" feed. Membership-gated and not org-scoped.
-   * `agent_title` is resolved here since cross-org agents can't be resolved on
-   * the client.
-   */
+  /** A user's `in_progress` threads across every org they're a member of (membership-gated, agent_title resolved server-side). */
   summarizeRunningForUser(userId: string): Promise<RunningThread[]>;
 
   // Message operations - upserts by id (updates existing rows)

@@ -280,17 +280,9 @@ function CustomizeToolbar({
   );
 }
 
-/**
- * "X agents working on N tasks" — live count of in_progress threads in the org,
- * seeded by the /watch connect snapshot and kept fresh by the reactor's
- * running-summary broadcasts. Renders nothing when nothing is running. Hovering
- * reveals the running threads, each with its agent and latest assistant snippet;
- * clicking a row opens that thread.
- */
 const SCOPE_STORAGE_KEY = "running-summary-scope";
 
 function readScope(): RunningScope {
-  // Default to "user" (All my work); only "org" when explicitly chosen.
   try {
     return localStorage.getItem(SCOPE_STORAGE_KEY) === "org" ? "org" : "user";
   } catch {
@@ -298,6 +290,13 @@ function readScope(): RunningScope {
   }
 }
 
+function emptyRunningLabel(scope: RunningScope): string {
+  return scope === "user"
+    ? "Nothing running across your orgs"
+    : "Nothing running in this org";
+}
+
+// "X agents working on N tasks" badge; hover lists the running threads.
 function RunningSummaryLine() {
   const { org } = useProjectContext();
   const [scope, setScopeState] = useState<RunningScope>(readScope);
@@ -310,8 +309,7 @@ function RunningSummaryLine() {
     }
   };
 
-  // Subscribe to both feeds so the badge is visible (and the scope toggle
-  // reachable) whenever EITHER scope has work — switching never unmounts it.
+  // Subscribe to both feeds so the badge stays mounted whenever either has work.
   const orgState = useRunningSummary(org.slug, "org");
   const userState = useRunningSummary(org.slug, "user");
 
@@ -324,13 +322,9 @@ function RunningSummaryLine() {
 
   const state = scope === "user" ? userState : orgState;
   const { totalRunning, agentCount } = state.summary;
-  const emptyLabel =
-    scope === "user"
-      ? "Nothing running across your orgs"
-      : "Nothing running in this org";
   const label =
     totalRunning === 0
-      ? emptyLabel
+      ? emptyRunningLabel(scope)
       : agentCount > 0
         ? `${agentCount} agent${agentCount === 1 ? "" : "s"} working on ${totalRunning} task${totalRunning === 1 ? "" : "s"}`
         : `${totalRunning} task${totalRunning === 1 ? "" : "s"} running`;
@@ -424,9 +418,7 @@ function RunningThreadsList({
   if (threads.length === 0) {
     return (
       <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-        {scope === "user"
-          ? "Nothing running across your orgs."
-          : "Nothing running in this org."}
+        {emptyRunningLabel(scope)}
       </div>
     );
   }
@@ -463,11 +455,8 @@ function RunningThreadRow({
 }) {
   const navigate = useNavigate();
   const agent = useVirtualMCP(thread.virtual_mcp_id);
-  // Agent identity, in order of fidelity:
-  //  1. useVirtualMCP — full resolve for agents in the CURRENT org.
-  //  2. Decopilot (the default agent) is derivable from any org id with no
-  //     fetch, so cross-org Decopilot rows still get the right name + icon.
-  //  3. agent_title from the server (custom cross-org agents — name only).
+  // Fidelity order: current-org resolve → Decopilot (derivable from any org id,
+  // no fetch) → server-provided agent_title for custom cross-org agents.
   const decopilot = isDecopilot(thread.virtual_mcp_id)
     ? getWellKnownDecopilotVirtualMCP(thread.organization_id)
     : null;
@@ -475,9 +464,7 @@ function RunningThreadRow({
     agent?.title ?? decopilot?.title ?? thread.agent_title ?? "Agent";
   const agentIcon = agent?.icon ?? decopilot?.icon ?? null;
 
-  // Latest message, fetched lazily when the popover mounts, against the THREAD's
-  // own org (cross-org threads need their own client). A running thread's newest
-  // message is normally the streaming assistant turn.
+  // Latest message, fetched lazily against the thread's own org (cross-org).
   const client = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: thread.organization_id,

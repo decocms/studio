@@ -23,6 +23,24 @@ function toIsoString(v: Date | string): string {
   return typeof v === "string" ? v : v.toISOString();
 }
 
+function toRunningThread(row: {
+  id: string;
+  virtual_mcp_id: string | null;
+  title: string | null;
+  organization_id: string;
+  agent_title?: string | null;
+}): RunningThread {
+  const thread: RunningThread = {
+    id: row.id,
+    virtual_mcp_id: row.virtual_mcp_id ?? "",
+    title: row.title ?? null,
+    organization_id: row.organization_id,
+  };
+  if (row.agent_title !== undefined)
+    thread.agent_title = row.agent_title ?? null;
+  return thread;
+}
+
 // ============================================================================
 // Org-Scoped Thread Storage (repository pattern)
 // ============================================================================
@@ -590,9 +608,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   async summarizeRunning(organizationId: string): Promise<RunningThread[]> {
-    // Org feed: thread id + agent id + thread title. The agent display
-    // name/icon is resolved client-side from virtual_mcp_id (same org), so no
-    // connections join here.
+    // No connections join: the agent name/icon is resolved client-side from
+    // virtual_mcp_id (same org).
     const rows = await this.db
       .selectFrom("threads")
       .select(["id", "virtual_mcp_id", "title", "organization_id"])
@@ -601,19 +618,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("hidden", "=", false)
       .execute();
 
-    return rows.map((row) => ({
-      id: row.id,
-      virtual_mcp_id: row.virtual_mcp_id ?? "",
-      title: row.title ?? null,
-      organization_id: row.organization_id,
-    }));
+    return rows.map(toRunningThread);
   }
 
   async summarizeRunningForUser(userId: string): Promise<RunningThread[]> {
-    // Per-user (cross-org) feed: the user's own in_progress threads in every
-    // org they're STILL a member of (the member join is the access gate). The
-    // connections join resolves the agent title, since the client can't resolve
-    // a cross-org agent from the current org's cache.
+    // The member join is the access gate; the connections join resolves the
+    // agent title, which the client can't do for a cross-org agent.
     const rows = await this.db
       .selectFrom("threads as t")
       .innerJoin("member as m", (join) =>
@@ -634,13 +644,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("t.hidden", "=", false)
       .execute();
 
-    return rows.map((row) => ({
-      id: row.id,
-      virtual_mcp_id: row.virtual_mcp_id ?? "",
-      title: row.title ?? null,
-      organization_id: row.organization_id,
-      agent_title: row.agent_title ?? null,
-    }));
+    return rows.map(toRunningThread);
   }
 
   async findLastUsedByVirtualMcpIds(

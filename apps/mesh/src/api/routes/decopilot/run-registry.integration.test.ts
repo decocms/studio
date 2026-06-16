@@ -79,8 +79,7 @@ function makeRegistry(opts: { clock?: () => Date } = {}) {
     storage,
     sseHub: {
       emit(orgId, event) {
-        // running.summary is an orthogonal cross-cutting broadcast; these
-        // tests assert the run-lifecycle event sequence, so filter it out.
+        // These tests assert the run-lifecycle sequence; drop the summary broadcast.
         if (event.type === DECOPILOT_RUNNING_SUMMARY_EVENT) return;
         sseEvents.push({ orgId, event });
       },
