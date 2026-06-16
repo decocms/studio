@@ -94,6 +94,11 @@ async function mintRepoToken(
 // rate-limit-expensive on the caller's GitHub budget).
 const inflight = new Map<string, Promise<string>>();
 
+// GitHub App installation tokens always expire in ~1 hour. If MINT_REPO_TOKEN
+// doesn't return expiresAt, use a 55-minute fallback so isExpired() correctly
+// detects the token as stale on re-open instead of treating it as "never expires".
+const GHS_TOKEN_LIFETIME_MS = 55 * 60 * 1000;
+
 async function mintAndStore(
   ctx: StudioContext,
   connectionId: string,
@@ -101,12 +106,14 @@ async function mintAndStore(
   tokenStorage: DownstreamTokenStorage,
 ): Promise<string> {
   const minted = await mintRepoToken(ctx, recipe);
+  const expiresAt =
+    minted.expiresAt ?? new Date(Date.now() + GHS_TOKEN_LIFETIME_MS);
   await tokenStorage.upsert({
     connectionId,
     accessToken: minted.accessToken,
     refreshToken: null,
     scope: null,
-    expiresAt: minted.expiresAt,
+    expiresAt,
     clientId: null,
     clientSecret: null,
     tokenEndpoint: null,
