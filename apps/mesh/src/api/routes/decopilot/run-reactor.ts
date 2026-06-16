@@ -14,10 +14,13 @@ import type { SSEEvent } from "@/event-bus";
 import type { ThreadStoragePort } from "@/storage/ports";
 import {
   createDecopilotFinishEvent,
+  createDecopilotRunningSummaryEvent,
   createDecopilotStepEvent,
   createDecopilotThreadStatusEvent,
+  type RunningThread,
 } from "@decocms/mesh-sdk";
 import type { StreamBuffer } from "./stream-buffer";
+import type { RunningThreadsStore } from "./running-threads-store";
 import type { RunEvent, RunTransition } from "./run-state";
 
 // ============================================================================
@@ -32,6 +35,26 @@ export interface RunReactorDeps {
   storage: ThreadStoragePort;
   streamBuffer: StreamBuffer;
   sseHub: { emit(orgId: string, event: SSEEvent): void };
+  /** Cross-pod running-thread set powering the home "agents working" badge. */
+  runningStore: RunningThreadsStore;
+}
+
+/**
+ * Apply a running-set mutation and broadcast the resulting summary through the
+ * SSE hub. Best-effort: the badge must never block or fail a run transition, so
+ * store/emit errors are swallowed.
+ */
+async function syncRunningSummary(
+  deps: RunReactorDeps,
+  orgId: string,
+  action: (store: RunningThreadsStore) => Promise<RunningThread[]>,
+): Promise<void> {
+  try {
+    const threads = await action(deps.runningStore);
+    deps.sseHub.emit(orgId, createDecopilotRunningSummaryEvent(threads));
+  } catch (err) {
+    console.error("[run-reactor] running summary sync failed", err);
+  }
 }
 
 // ============================================================================
@@ -71,6 +94,9 @@ async function handleTerminalStatus(
     }),
   );
   sseHub.emit(orgId, createDecopilotFinishEvent(taskId, status));
+  await syncRunningSummary(deps, orgId, (store) =>
+    store.markStopped(orgId, taskId),
+  );
 }
 
 // ============================================================================
@@ -104,6 +130,13 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           updatedAt: startedThread?.updated_at,
         }),
       );
+      await syncRunningSummary(deps, event.orgId, (store) =>
+        store.markRunning(event.orgId, {
+          id: event.taskId,
+          virtual_mcp_id: startedThread?.virtual_mcp_id ?? "",
+          title: startedThread?.title ?? null,
+        }),
+      );
       return;
     }
 
@@ -124,6 +157,13 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           updatedAt: resumedThread?.updated_at,
         }),
       );
+      await syncRunningSummary(deps, event.orgId, (store) =>
+        store.markRunning(event.orgId, {
+          id: event.taskId,
+          virtual_mcp_id: resumedThread?.virtual_mcp_id ?? "",
+          title: resumedThread?.title ?? null,
+        }),
+      );
       return;
     }
 
@@ -132,6 +172,9 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         event.orgId,
         createDecopilotStepEvent(event.taskId, event.stepCount),
       );
+      // Refresh liveness so a long, actively-streaming run isn't pruned from
+      // the running count. Best-effort, no summary emit (count is unchanged).
+      deps.runningStore.touch(event.orgId, event.taskId).catch(() => {});
       return;
 
     case "RUN_COMPLETED":
@@ -184,6 +227,9 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
       sseHub.emit(
         event.orgId,
         createDecopilotFinishEvent(event.taskId, "failed"),
+      );
+      await syncRunningSummary(deps, event.orgId, (store) =>
+        store.markStopped(event.orgId, event.taskId),
       );
       return;
     }

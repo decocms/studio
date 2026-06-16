@@ -44,6 +44,8 @@ import { todoWriteTool } from "@decocms/harness/decopilot/built-in-tools/todo-wr
 import { createUpdateInterestsTool } from "@decocms/harness/decopilot/built-in-tools/update-interests";
 import { proposePlanTool } from "@decocms/harness/decopilot/built-in-tools/propose-plan";
 import { createGenerateImageTool } from "./generate-image";
+import { makeBackgroundable } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
 import {
@@ -125,6 +127,12 @@ export interface BuiltinToolParams {
     outputTokens: number;
     totalTokens: number;
   }) => void;
+  /**
+   * When present, slow built-ins flagged backgroundable (today: generate_image)
+   * enqueue a durable background job and return immediately instead of holding
+   * the turn open. Absent on desktop/tests → those tools run inline.
+   */
+  backgroundDispatcher?: BackgroundDispatcher | null;
 }
 
 export type { PendingImage };
@@ -157,6 +165,7 @@ async function buildAllTools(
     taskId,
     agentId,
     onChildUsage,
+    backgroundDispatcher,
   } = params;
   const approvalOpts = { isPlanMode };
   const userId = ctx.auth?.user?.id;
@@ -250,12 +259,22 @@ async function buildAllTools(
     // Cluster builds the `objectStorage` + `allowHttpExternalUrls` hooks from
     // StudioContext + settings; the tool itself no longer reads either
     // (HarnessDeps conversion).
-    tools.generate_image = createGenerateImageTool(writer, {
-      provider: imageProvider,
-      imageModelInfo: models.image,
-      objectStorage: ctx.objectStorage,
-      allowHttpExternalUrls: getSettings().localMode,
-    });
+    // generate_image is slow (tens of seconds). When a background dispatcher
+    // is wired (cluster, hosted runs) it's made backgroundable: the call
+    // enqueues a durable job and returns immediately so the turn finishes and
+    // the thread keeps accepting messages; the job delivers the image + a
+    // reaction turn later. Without a dispatcher it runs inline (today's
+    // behavior).
+    tools.generate_image = makeBackgroundable(
+      "generate_image",
+      createGenerateImageTool(writer, {
+        provider: imageProvider,
+        imageModelInfo: models.image,
+        objectStorage: ctx.objectStorage,
+        allowHttpExternalUrls: getSettings().localMode,
+      }),
+      backgroundDispatcher,
+    ) as ReturnType<typeof createGenerateImageTool>;
   }
   // web_search consumes the cluster-built `researchJob` async-gen hook
   // (HarnessDeps conversion, spec §6). The provider/DB lifecycle lives in

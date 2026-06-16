@@ -6,6 +6,7 @@
  */
 
 import { sql, type Kysely } from "kysely";
+import type { RunningThread } from "@decocms/mesh-sdk";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type { ThreadStoragePort, ThreadUpdateData } from "./ports";
@@ -122,6 +123,10 @@ export class OrgScopedThreadStorage {
     options?: { limit?: number; offset?: number },
   ): Promise<{ threads: Thread[]; total: number }> {
     return this.inner.listByTriggerIds(this.requireOrg(), triggerIds, options);
+  }
+
+  summarizeRunning(): Promise<RunningThread[]> {
+    return this.inner.summarizeRunning(this.requireOrg());
   }
 
   findLastUsedByVirtualMcpIds(
@@ -671,6 +676,27 @@ export class SqlThreadStorage implements ThreadStoragePort {
       threads: rows.map((row) => this.threadFromDbRow(row)),
       total: Number(countResult?.count || 0),
     };
+  }
+
+  async summarizeRunning(organizationId: string): Promise<RunningThread[]> {
+    // Left-join so a running thread with a missing/empty virtual_mcp_id still
+    // appears (counts toward "N tasks", not toward "X agents"). `connections`
+    // holds the agent (VIRTUAL connection) the thread runs under; its `title`
+    // is the agent display name.
+    const rows = await this.db
+      .selectFrom("threads as t")
+      .leftJoin("connections as c", "c.id", "t.virtual_mcp_id")
+      .select(["t.id as id", "t.virtual_mcp_id as virtual_mcp_id", "c.title"])
+      .where("t.organization_id", "=", organizationId)
+      .where("t.status", "=", "in_progress")
+      .where("t.hidden", "=", false)
+      .execute();
+
+    return rows.map((row) => ({
+      id: row.id,
+      virtual_mcp_id: row.virtual_mcp_id ?? "",
+      title: row.title ?? null,
+    }));
   }
 
   async findLastUsedByVirtualMcpIds(

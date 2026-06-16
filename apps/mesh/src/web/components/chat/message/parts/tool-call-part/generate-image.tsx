@@ -28,6 +28,9 @@ interface GenerateImageResult {
   images?: Array<{ uri?: string; url?: string; mediaType: string }>;
   model?: string;
   usage?: { inputTokens?: number; outputTokens?: number };
+  /** Set when the tool was dispatched as a background job: the call returned
+   *  immediately with a handle and the image arrives later as its own message. */
+  background?: boolean;
 }
 
 interface GenerateImageInput {
@@ -116,6 +119,21 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
         title="Generating image"
         summary={input?.prompt ? `"${input.prompt.slice(0, 80)}…"` : undefined}
         state="loading"
+      />
+    );
+  }
+
+  // Backgrounded: the call returned a handle immediately and the image will
+  // arrive later as its own message. Show a generating card (not the "no
+  // images" error path) using the prompt the model passed.
+  if (result?.background) {
+    return (
+      <ToolCallShell
+        icon={<Image01 size={14} />}
+        title="Generating image in the background"
+        summary={input?.prompt ? `"${input.prompt.slice(0, 80)}…"` : undefined}
+        state="loading"
+        trailing={latencyLabel}
       />
     );
   }

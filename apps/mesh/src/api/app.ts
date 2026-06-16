@@ -19,6 +19,10 @@ import {
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
+import {
+  createDecopilotRunningSummaryEvent,
+  WellKnownOrgMCPId,
+} from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
@@ -114,6 +118,11 @@ import {
   NoopConnectionCircuitStore,
   setConnectionCircuitStore,
 } from "../mcp-clients/connection-circuit-store";
+import {
+  DbRunningThreadsStore,
+  JetStreamKVRunningThreadsStore,
+  type RunningThreadsStore,
+} from "./routes/decopilot/running-threads-store";
 import {
   InMemoryModelListCache,
   type ModelListCache,
@@ -686,9 +695,12 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
  *
  * On connect, emits in order:
  *   1. `event: connected` — listener metadata
- *   2. Live events from the SSE hub.
+ *   2. `event: decopilot.running.summary` — snapshot of in_progress threads
+ *      grouped by agent ("X agents working on N tasks"), re-sent on reconnect.
+ *   3. Live events from the SSE hub.
  *
- * Clients use `COLLECTION_THREADS_LIST` for their initial state.
+ * Clients use `COLLECTION_THREADS_LIST` for their initial thread state and keep
+ * the running summary live by applying `decopilot.thread.*` deltas.
  */
 export const watchHandler: MiddlewareHandler<Env> = async (c) => {
   const meshContext = c.var.meshContext;
@@ -726,6 +738,21 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
         connectedAt: new Date().toISOString(),
       }),
     });
+
+    // Snapshot of currently-running threads grouped by agent. Authoritative
+    // and cross-pod (DB-backed), unlike the per-pod run registry. Best-effort:
+    // a failed snapshot must not tear down the live stream.
+    try {
+      const running = await meshContext.storage.threads.summarizeRunning();
+      const summaryEvent = createDecopilotRunningSummaryEvent(running);
+      await stream.writeSSE({
+        id: summaryEvent.id,
+        event: summaryEvent.type,
+        data: JSON.stringify(summaryEvent),
+      });
+    } catch (err) {
+      console.error("[watch] running summary snapshot failed", err);
+    }
 
     // Register listener with the SSE hub
     const registered = sseHub.add({
@@ -794,6 +821,8 @@ import { Env } from "./hono-env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
 import { type SSEEvent, sseHub } from "../event-bus";
+import { BACKGROUND_TOOLS_PARTITION_CONCURRENCY, BACKGROUND_TOOLS_QUEUE, setBackgroundToolRuntime } from "@/harnesses/decopilot/background-tool-workflow";
+import { isCancelRequested } from "@/storage/cancel-flag";
 const getHandleOAuthProtectedResourceMetadata = () =>
   oAuthProtectedResourceMetadata(auth);
 const getHandleOAuthDiscoveryMetadata = () => oAuthDiscoveryMetadata(auth);
@@ -852,6 +881,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   let linkStatusProbe: ReturnType<typeof createTunnelStatusProbe> | undefined;
   let linkWorkPublisher: LinkWorkPublisher | undefined;
   let natsProvider: NatsConnectionProvider | null = null;
+  // KV-backed in the NATS branch; falls back to a DB-backed store once
+  // threadStorage exists (assigned below). Powers the reactor's running-summary
+  // broadcast.
+  let runningThreadsStore: RunningThreadsStore | null = null;
 
   if (options.disableNats) {
     // Test mode: no-op stubs (no NATS required)
@@ -940,6 +973,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
     ccs.init().catch(() => {});
     connectionCircuitStore = ccs;
+
+    const rts = new JetStreamKVRunningThreadsStore({
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    rts.init().catch(() => {});
+    runningThreadsStore = rts;
 
     providerKeyCache = createProviderKeyCache({
       getConnection: () => natsProvider!.getConnection(),
@@ -1050,10 +1089,79 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   const threadStorage = new SqlThreadStorage(database.db);
 
+  // WS uplink (return-leg), default-off. Register the bearer resolver + the
+  // per-connection session factory the Bun.serve handler (index.ts) dispatches
+  // to. The fence/cancel gate uses the global (threadId-only) thread storage;
+  // publishing reuses the same DECOPILOT_STREAMS path as the NDJSON ingest. Off
+  // by default so /api/links/uplink stays unmounted until multi-pod e2e
+  // validates the transport.
+  if (process.env.LINK_WS_UPLINK === "true") {
+    registerUplinkResolve((token) =>
+      resolveLinkBearer(token, auth.api as unknown as LinkBearerAuthApi),
+    );
+    registerUplinkConnectionFactory(({ userSub, send }) => {
+      const cache = new Map<string, Promise<UplinkIngestSession | null>>();
+      return {
+        sessionFor: (runId) => {
+          let pending = cache.get(runId);
+          if (!pending) {
+            pending = (async () => {
+              // ORG OWNERSHIP (parity with the NDJSON validateRunAccess gate):
+              // the authenticated daemon user MUST be a member of the run's org
+              // — the fence is a secret, not an org-bound token, so it can't be
+              // the sole authz. The getRunFence/getCancelRequestedAt lookups are
+              // unscoped (threadId-only); this check is the required caller guard.
+              const threadRow = await database.db
+                .selectFrom("threads")
+                .select(["organization_id"])
+                .where("id", "=", runId)
+                .executeTakeFirst();
+              if (!threadRow) return null;
+              const member = await database.db
+                .selectFrom("member")
+                .select(["role"])
+                .where("userId", "=", userSub)
+                .where("organizationId", "=", threadRow.organization_id)
+                .executeTakeFirst();
+              if (!member) return null;
+
+              const dbFence = await threadStorage.getRunFence(runId);
+              // No minted fence ⇒ no active pull run ⇒ reject (NDJSON 409 parity;
+              // fenceMatches(null, …) returns true, so the gate MUST short here).
+              if (dbFence === null) return null;
+
+              return createUplinkIngestSession({
+                fenceOk: (token) => fenceMatches(dbFence, token),
+                // Read FRESH per frame so a mid-stream cancel stops publishing.
+                cancelRequested: async () =>
+                  isCancelRequested(
+                    await threadStorage.getCancelRequestedAt(runId),
+                  ),
+                publish: async (chunk) => {
+                  await streamBuffer.publishRawChunk(runId, chunk);
+                },
+                send: (frame) => send(JSON.stringify(frame)),
+              });
+            })();
+            cache.set(runId, pending);
+          }
+          return pending;
+        },
+      };
+    });
+  }
+
+  // No NATS (test / dev single-pod) → read the running set straight from the DB,
+  // which the reactor has already updated by the time it asks for the summary.
+  if (!runningThreadsStore) {
+    runningThreadsStore = new DbRunningThreadsStore(threadStorage);
+  }
+
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,
     streamBuffer,
     sseHub,
+    runningStore: runningThreadsStore,
   };
 
   const runRegistry = new RunRegistry(cancelReactorDeps);
@@ -1109,6 +1217,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     providerKeyCache.teardown();
     teardownMcpCacheInvalidation();
     connectionCircuitStore.teardown();
+    runningThreadsStore?.teardown();
     setMcpListCache(null);
     setConnectionCircuitStore(null);
   };
@@ -1516,6 +1625,14 @@ export async function createApp(options: CreateAppOptions = {}) {
         fenceToken,
         newSeq,
       ),
+  });
+
+  // Background-tool jobs reuse the same mesh-context factory to rebuild the
+  // org context + re-resolve models on whatever pod runs the job. Wired before
+  // DBOS.launch() like the others (module-level pointer, no DBOS API calls).
+  setBackgroundToolRuntime({
+    meshContextFactory: automationContextFactory,
+    linkClaimRegistry,
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
@@ -2117,6 +2234,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     await DBOS.registerQueue(PROJECTOR_QUEUE, {
       partitionQueue: true,
       concurrency: PROJECTOR_PARTITION_CONCURRENCY,
+    });
+    // Slow backgroundable built-ins (generate_image) run here, partitioned by
+    // orgId for per-org fairness. The reaction turn hops to the thread-gate.
+    await DBOS.registerQueue(BACKGROUND_TOOLS_QUEUE, {
+      partitionQueue: true,
+      concurrency: BACKGROUND_TOOLS_PARTITION_CONCURRENCY,
     });
     await reconcileAutomationSchedules(automationsStorage);
 
