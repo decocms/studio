@@ -63,7 +63,7 @@ export function wrapMultivariateArrayValue(
     ...((obj.variants as Array<Record<string, unknown>>) ?? []),
   ];
   if (variants.length === 0) {
-    variants.push({ rule: defaultPageVariantRule(), value: nextArray });
+    variants.push({ rule: defaultVariantRule(), value: nextArray });
   } else {
     variants[0] = { ...variants[0], value: nextArray };
   }

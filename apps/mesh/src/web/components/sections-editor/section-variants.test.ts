@@ -513,6 +513,6 @@ describe("section-variants", () => {
       true,
     );
     expect(canAddSectionVariant({})).toBe(true);
-    expect(canAddSectionVariant({ isMultivariate: true })).toBe(true);
+    expect(canAddSectionVariant({ isHidden: false })).toBe(true);
   });
 });
