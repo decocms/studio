@@ -36,7 +36,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
 import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
-import type { DeckBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
+import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
 import { createSubtaskTool } from "./subtask";
 import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
@@ -110,8 +110,8 @@ export interface BuiltinToolParams {
    * When null, no VM-backed code execution tool is included.
    */
   vmContext?: VmContext | null;
-  /** Per-turn HTML-artifact fast-path mirror (see `DeckBuffer`). */
-  deckBuffer?: DeckBuffer;
+  /** Per-turn HTML-artifact fast-path mirror (see `HtmlArtifactBuffer`). */
+  htmlArtifactBuffer?: HtmlArtifactBuffer;
   /** Thread (task) id of the current run — needed by tools that persist
    *  thread-scoped state (e.g. web_search reconnecting to Gemini Deep Research). */
   taskId: string;
@@ -153,7 +153,7 @@ async function buildAllTools(
     pendingImages,
     passthroughClient,
     vmContext,
-    deckBuffer,
+    htmlArtifactBuffer,
     taskId,
     agentId,
     onChildUsage,
@@ -210,7 +210,7 @@ async function buildAllTools(
     });
     vmTools = createVmTools({
       fs,
-      deckBuffer,
+      htmlArtifactBuffer,
       toolOutputMap,
       needsApproval: vmNeedsApproval,
       pendingImages,

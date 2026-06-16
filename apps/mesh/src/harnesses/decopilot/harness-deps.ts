@@ -10,7 +10,7 @@
  *   - `buildClusterEnvironmentTools` (here) — the StudioContext-backed branch:
  *     the in-process virtual-MCP passthrough client + the full cluster tool set
  *     (web_search / update_interests / Browserless built-ins) + the per-run
- *     html-page buffer, plus the ctx-coupled `runAgentLoop` engine + telemetry.
+ *     HTML-artifact buffer/watcher, plus the ctx-coupled `runAgentLoop` engine.
  *   - `buildDesktopEnvironmentTools` (`./desktop-runtime.ts`) — the import-
  *     isolated daemon branch: an HTTP MCP passthrough client + the local-OK
  *     built-ins + the portable `runNativeAgentLoopCore` engine with a
@@ -30,8 +30,8 @@ import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import type { SideChannelWriter } from "@decocms/harness/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
-import { createDeckBuffer } from "./built-in-tools/vm-tools/deck-buffer";
-import { createDeckWatcher } from "./built-in-tools/vm-tools/deck-watcher";
+import { createHtmlArtifactBuffer } from "./built-in-tools/vm-tools/html-artifact-buffer";
+import { createHtmlArtifactWatcher } from "./built-in-tools/vm-tools/html-artifact-watcher";
 import type { PendingImage } from "./built-in-tools";
 import type {
   DecopilotToolRuntime,
@@ -100,7 +100,7 @@ async function runClusterEngine(
 /**
  * Build the CLUSTER environment deps: the StudioContext-backed tool runtime
  * (in-process virtual-MCP passthrough + full cluster built-ins + the per-run
- * html-page buffer) and the cluster telemetry sink. `cleanup.close` is assigned
+ * HTML-artifact buffer) and the cluster telemetry sink. `cleanup.close` is assigned
  * inside `buildEnvironmentTools` so the factory's `finally` can close the live
  * passthrough client even if the core throws mid-stream.
  */
@@ -116,8 +116,11 @@ export function buildClusterEnvironmentTools(args: {
   // parts for `decks/`|`pages/` writes in the org home volume, plus the
   // write/edit fast-path mirror that lands tool content in org-fs at step end
   // (ahead of the mount's slow vfs write-back).
-  const deckWatcher = createDeckWatcher(ctx, sideChannel.writer);
-  const deckBuffer = createDeckBuffer(ctx);
+  const htmlArtifactWatcher = createHtmlArtifactWatcher(
+    ctx,
+    sideChannel.writer,
+  );
+  const htmlArtifactBuffer = createHtmlArtifactBuffer(ctx);
 
   const toolRuntime: DecopilotToolRuntime = {
     buildEnvironmentTools: async ({ input: streamInput, onChildUsage }) => {
@@ -154,7 +157,7 @@ export function buildClusterEnvironmentTools(args: {
           modelRuntime.image?.provider ?? modelRuntime.thinking.provider,
         deepResearchProvider:
           modelRuntime.deepResearch?.provider ?? modelRuntime.thinking.provider,
-        deckBuffer,
+        htmlArtifactBuffer,
         // Roll subtask child usage into the parent run's accumulator
         // (Task 17). Threaded into the subtask tool via getBuiltInTools.
         onChildUsage,
@@ -177,8 +180,8 @@ export function buildClusterEnvironmentTools(args: {
           // entry it creates is picked up in the same step. Both swallow
           // their own errors; late rclone write-backs are caught by the next
           // step's sweep or the tab's stat poll.
-          await deckBuffer.flush();
-          await deckWatcher.sweep();
+          await htmlArtifactBuffer.flush();
+          await htmlArtifactWatcher.sweep();
         },
         close: assembled.close,
       };

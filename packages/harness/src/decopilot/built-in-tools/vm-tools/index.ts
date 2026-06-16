@@ -30,8 +30,13 @@ import type { VmToolsParams } from "./types";
 export type { VmToolsParams } from "./types";
 
 export function createVmTools(params: VmToolsParams) {
-  const { fs, deckBuffer, toolOutputMap, needsApproval, pendingImages } =
-    params;
+  const {
+    fs,
+    htmlArtifactBuffer,
+    toolOutputMap,
+    needsApproval,
+    pendingImages,
+  } = params;
   const approvalFor = (mutating: boolean) => (mutating ? needsApproval : false);
 
   // Proxy an arbitrary `/_sandbox/*` route through the fs hooks' retry layer.
@@ -86,7 +91,7 @@ export function createVmTools(params: VmToolsParams) {
       // Fast path: mirror `org/<slug>/{decks,pages}/*.html` content into
       // org-fs server-side at step end (skips the mount's slow vfs write-back)
       // so the live-preview watcher sees the bytes in the same step.
-      deckBuffer?.enqueue(input.path, input.content);
+      htmlArtifactBuffer?.enqueue(input.path, input.content);
       return daemonResult;
     },
   });
@@ -104,7 +109,7 @@ export function createVmTools(params: VmToolsParams) {
       const postEditContent = daemonResult.content;
       const { content: _omit, ...resultForClient } = daemonResult;
       if (typeof postEditContent !== "string") return resultForClient;
-      deckBuffer?.enqueue(input.path, postEditContent);
+      htmlArtifactBuffer?.enqueue(input.path, postEditContent);
       return resultForClient;
     },
   });

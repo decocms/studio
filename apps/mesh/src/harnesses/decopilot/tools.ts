@@ -29,7 +29,7 @@ import {
   type PendingImage,
   type VmContext,
 } from "./built-in-tools";
-import type { DeckBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
+import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
 import {
   toolsFromMCP,
@@ -109,7 +109,7 @@ export interface AssembleDecopilotToolsExtras {
   deepResearchProvider: MeshProvider | null;
   /** Per-turn HTML-artifact fast-path mirror (`org/<slug>/{decks,pages}/
    *  *.html`) — flushed into org-fs at step-end by the dispatch layer. */
-  deckBuffer?: DeckBuffer;
+  htmlArtifactBuffer?: HtmlArtifactBuffer;
   /** Usage roll-up sink (Task 17) — forwarded to the `subtask` built-in so a
    *  delegated child run's tokens fold into the parent run's accumulator. */
   onChildUsage?: (usage: {
@@ -306,7 +306,7 @@ export async function assembleDecopilotTools(
         pendingImages: extras.pendingImages,
         passthroughClient,
         vmContext,
-        deckBuffer: extras.deckBuffer,
+        htmlArtifactBuffer: extras.htmlArtifactBuffer,
         taskId: extras.threadId,
         agentId: input.agent.id,
         onChildUsage: extras.onChildUsage,

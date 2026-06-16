@@ -26,7 +26,7 @@ export interface PendingImage {
  * watcher) see the bytes at step end. Bash-created artifacts skip this and
  * are caught by the watcher after write-back.
  */
-export interface DeckBuffer {
+export interface HtmlArtifactBuffer {
   enqueue(rawPath: string, content: string): void;
   flush(): Promise<void>;
 }
@@ -41,8 +41,8 @@ export interface VmToolsParams {
    * re-introduce the harness→sandbox cycle (spec §4.3).
    */
   readonly fs: SandboxFsHooks;
-  /** Optional HTML-artifact fast-path mirror (cluster-only; see `DeckBuffer`). */
-  readonly deckBuffer?: DeckBuffer;
+  /** Optional HTML-artifact fast-path mirror (cluster-only; see `HtmlArtifactBuffer`). */
+  readonly htmlArtifactBuffer?: HtmlArtifactBuffer;
   readonly toolOutputMap: Map<string, string>;
   readonly needsApproval: boolean;
   /**

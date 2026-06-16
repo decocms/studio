@@ -1,6 +1,6 @@
 /**
- * Live-HTML path matching — pure logic shared by the cluster deck watcher
- * (org-fs change-feed entries) and any tool-path detection.
+ * Live-HTML path matching — pure logic shared by the cluster HTML-artifact
+ * watcher (org-fs change-feed entries) and any tool-path detection.
  *
  * Convention: HTML artifacts the user should see live in the org home
  * volume, which sandboxes see mounted at `org/<homeMountPath>/`:
@@ -11,7 +11,7 @@
 
 const DECK_ENTRY_PATTERN = /^(decks|pages)\/([a-z0-9][a-z0-9._-]*)\.html$/i;
 
-export interface DeckRef {
+export interface HtmlArtifactRef {
   /** Volume-relative path, e.g. `decks/q3-launch.html`. */
   path: string;
   /** File stem, e.g. `q3-launch`. */
@@ -21,7 +21,9 @@ export interface DeckRef {
 }
 
 /** Match a HOME-VOLUME-relative entry path (org-fs change feed shape). */
-export function matchDeckEntryPath(entryPath: string): DeckRef | null {
+export function matchHtmlArtifactEntry(
+  entryPath: string,
+): HtmlArtifactRef | null {
   const m = DECK_ENTRY_PATTERN.exec(entryPath);
   if (!m) return null;
   return {
@@ -31,8 +33,8 @@ export function matchDeckEntryPath(entryPath: string): DeckRef | null {
   };
 }
 
-/** Minimal shape of an org-fs change-feed entry the deck watcher inspects. */
-export interface DeckChangeEntry {
+/** Minimal shape of an org-fs change-feed entry the watcher inspects. */
+export interface HtmlArtifactChangeEntry {
   kind: "file" | "dir";
   deletedAt: string | null;
   /** Actor of the change (org-fs `updated_by`). */
@@ -43,7 +45,7 @@ export interface DeckChangeEntry {
   path: string;
 }
 
-export interface DeckEmitScope {
+export interface HtmlArtifactEmitScope {
   /** The current run's thread id — entries it stamped always belong here. */
   threadId: string | null;
   /**
@@ -63,17 +65,17 @@ export interface DeckEmitScope {
  * when the entry carries no thread stamp. Returns null for foreign, deleted,
  * non-file, or non-deck entries.
  */
-export function matchOwnDeckEntry(
-  entry: DeckChangeEntry,
-  scope: DeckEmitScope,
-): DeckRef | null {
+export function matchOwnHtmlArtifact(
+  entry: HtmlArtifactChangeEntry,
+  scope: HtmlArtifactEmitScope,
+): HtmlArtifactRef | null {
   if (entry.kind !== "file" || entry.deletedAt) return null;
   const ownedByThread =
     scope.threadId != null && entry.threadId === scope.threadId;
   const ownedByUserFallback =
     entry.threadId == null && entry.updatedBy === scope.ownerId;
   if (!ownedByThread && !ownedByUserFallback) return null;
-  return matchDeckEntryPath(entry.path);
+  return matchHtmlArtifactEntry(entry.path);
 }
 
 /**
@@ -81,14 +83,14 @@ export function matchOwnDeckEntry(
  * against the mounted deck dir, e.g. `org/acme/decks/launch.html` or
  * `/app/repo/org/acme/decks/launch.html`. Returns the volume-relative ref.
  */
-export function matchDeckToolPath(
+export function matchHtmlArtifactToolPath(
   rawPath: string,
   homeMountPath: string,
-): DeckRef | null {
+): HtmlArtifactRef | null {
   if (!homeMountPath) return null;
   const normalized = rawPath.replace(/^\.\//, "");
   const marker = `org/${homeMountPath}/`;
   const idx = normalized.indexOf(marker);
   if (idx !== 0 && (idx < 0 || normalized[idx - 1] !== "/")) return null;
-  return matchDeckEntryPath(normalized.slice(idx + marker.length));
+  return matchHtmlArtifactEntry(normalized.slice(idx + marker.length));
 }
