@@ -47,7 +47,23 @@ export function foldParts(parts: ThreadMessagePart[]): FoldedMessage[] {
     messages.push({
       id: messageId,
       role: first.role,
-      parts: sorted.filter((p) => p.kind !== "finish").map((p) => p.payload),
+      // Preserve each part's own `created_at` on the part itself — it's the
+      // only per-part timestamp the client gets (the AI-SDK part type has
+      // none), and the UI uses it to anchor e.g. the bash `sleep` countdown to
+      // when that specific call actually fired. Non-object payloads (none in
+      // practice) pass through untouched.
+      parts: sorted
+        .filter((p) => p.kind !== "finish")
+        .map((p) =>
+          p.payload &&
+          typeof p.payload === "object" &&
+          !Array.isArray(p.payload)
+            ? {
+                ...(p.payload as Record<string, unknown>),
+                created_at: p.created_at,
+              }
+            : p.payload,
+        ),
       created_at: first.created_at,
       status: sorted.some((p) => p.kind === "finish")
         ? "complete"

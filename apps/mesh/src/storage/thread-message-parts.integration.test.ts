@@ -108,7 +108,13 @@ describe("SqlThreadMessagePartStorage", () => {
     const { messages } = await parts.loadWindow(threadId, { limit: 50 });
     const m = messages.find((x) => x.id === "m_c1")!;
     expect(m.status).toBe("complete");
-    expect(m.parts).toEqual([{ type: "text", text: "answer" }]);
+    expect(m.parts).toEqual([
+      {
+        type: "text",
+        text: "answer",
+        created_at: new Date(1700000000000).toISOString(),
+      },
+    ]);
   });
 
   it("C5: order follows seq-derived created_at, not insertion order", async () => {

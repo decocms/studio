@@ -43,8 +43,33 @@ describe("foldParts", () => {
     expect(out).toHaveLength(1);
     expect(out[0]!.id).toBe("m1");
     expect(out[0]!.parts).toEqual([
-      { type: "text", text: "A" },
-      { type: "text", text: "B" },
+      { type: "text", text: "A", created_at: "2026-01-01T00:00:00.000Z" },
+      { type: "text", text: "B", created_at: "2026-01-01T00:00:00.000Z" },
+    ]);
+  });
+
+  it("preserves each part's own created_at on the part", () => {
+    const out = foldParts([
+      part({
+        id: "r1:0",
+        seq: 0,
+        payload: { type: "tool-bash", state: "input-available" },
+        created_at: "2026-01-01T00:00:01.000Z",
+      }),
+      part({
+        id: "r1:1",
+        seq: 1,
+        payload: { type: "text", text: "B" },
+        created_at: "2026-01-01T00:00:09.000Z",
+      }),
+    ]);
+    expect(out[0]!.parts).toEqual([
+      {
+        type: "tool-bash",
+        state: "input-available",
+        created_at: "2026-01-01T00:00:01.000Z",
+      },
+      { type: "text", text: "B", created_at: "2026-01-01T00:00:09.000Z" },
     ]);
   });
 
@@ -55,9 +80,9 @@ describe("foldParts", () => {
       part({ id: "r1:1", seq: 1, payload: { type: "text", text: "B" } }),
     ]);
     expect(out[0]!.parts).toEqual([
-      { type: "text", text: "A" },
-      { type: "text", text: "B" },
-      { type: "text", text: "C" },
+      { type: "text", text: "A", created_at: "2026-01-01T00:00:00.000Z" },
+      { type: "text", text: "B", created_at: "2026-01-01T00:00:00.000Z" },
+      { type: "text", text: "C", created_at: "2026-01-01T00:00:00.000Z" },
     ]);
   });
 
@@ -157,8 +182,12 @@ describe("foldParts", () => {
     // Both messages survive (neither set was dropped by an id collision) and
     // order user-before-assistant by created_at.
     expect(out.map((m) => m.id)).toEqual(["user_1", "assistant_1"]);
-    expect(out[0]!.parts).toEqual([{ type: "text", text: "question" }]);
-    expect(out[1]!.parts).toEqual([{ type: "text", text: "answer" }]);
+    expect(out[0]!.parts).toEqual([
+      { type: "text", text: "question", created_at: `${userBase}Z` },
+    ]);
+    expect(out[1]!.parts).toEqual([
+      { type: "text", text: "answer", created_at: `${assistantBase}Z` },
+    ]);
     expect(out[0]!.status).toBe("complete");
     expect(out[1]!.status).toBe("complete");
   });
