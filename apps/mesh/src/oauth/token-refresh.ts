@@ -21,6 +21,11 @@ export type { TokenRefreshResult } from "./refresh-access-token";
 
 export const PROACTIVE_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
+// GitHub App installation tokens (ghs_) always expire in ~1 hour and have no
+// refresh_token. This constant is the fallback lifetime used when MINT_REPO_TOKEN
+// omits expiresAt, giving a 10-minute safety margin before GitHub's 60-min limit.
+export const GHS_TOKEN_LIFETIME_MS = 55 * 60 * 1000;
+
 export const RECONNECT_ERROR =
   "GitHub token refresh failed — reconnect the mcp-github integration.";
 
