@@ -7,6 +7,7 @@ import {
   DotsHorizontal,
   Eye,
   EyeOff,
+  Flag01,
   LayoutAlt01,
   Plus,
   Trash01,
@@ -38,6 +39,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { canMakeSectionReusable } from "./page-sections";
+import { VARIANT_MENU_ITEM_CLASS } from "./section-variant-list";
+import { canAddSectionVariant } from "./section-variants";
 import { isLazyResolveType } from "./section-lazy";
 import { getSectionPreviewImageSrc } from "./section-preview-image";
 import type { LiveMeta } from "./resolve-schema";
@@ -163,6 +166,7 @@ function SortableSectionItem({
   onMakeReusable,
   onToggleHidden,
   onToggleLazy,
+  onAddVariant,
 }: {
   section: ParsedSection;
   raw: RawSection | undefined;
@@ -175,10 +179,12 @@ function SortableSectionItem({
   onMakeReusable: () => void;
   onToggleHidden: () => void;
   onToggleLazy: () => void;
+  onAddVariant: () => void;
 }) {
   const isAsyncRender = raw
     ? isLazyResolveType(raw.__resolveType ?? "")
     : false;
+  const enableAddVariant = canAddSectionVariant(section);
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({
       id: sortableId,
@@ -291,6 +297,18 @@ function SortableSectionItem({
             <Copy01 className="h-4 w-4" />
             Duplicate
           </DropdownMenuItem>
+          {enableAddVariant && (
+            <DropdownMenuItem
+              className={VARIANT_MENU_ITEM_CLASS}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddVariant();
+              }}
+            >
+              <Flag01 className="h-4 w-4" />
+              Add variant
+            </DropdownMenuItem>
+          )}
           {enableMakeReusable && (
             <DropdownMenuItem
               className={GLOBAL_SECTION_MENU_ITEM_CLASS}
@@ -334,6 +352,7 @@ export function SectionList({
   onMakeReusable,
   onToggleHidden,
   onToggleLazy,
+  onAddVariant,
   onAddSection,
   canAddSection = true,
 }: {
@@ -349,6 +368,7 @@ export function SectionList({
   onMakeReusable: (index: number) => void;
   onToggleHidden: (index: number) => void;
   onToggleLazy: (index: number) => void;
+  onAddVariant: (index: number) => void;
   onAddSection: () => void;
   canAddSection?: boolean;
 }) {
@@ -472,6 +492,7 @@ export function SectionList({
                   onMakeReusable={() => onMakeReusable(entry.index)}
                   onToggleHidden={() => onToggleHidden(entry.index)}
                   onToggleLazy={() => onToggleLazy(entry.index)}
+                  onAddVariant={() => onAddVariant(entry.index)}
                 />
               );
             })}

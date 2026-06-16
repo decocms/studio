@@ -88,3 +88,11 @@ test("remove-all fires onRemoveAll", async ({ mount }) => {
     .poll(() => readEvents(component))
     .toEqual([{ type: "removeAll" }]);
 });
+
+test("add-variant button fires onAdd", async ({ mount }) => {
+  const component = await mount(
+    <SectionVariantListHarness variants={TWO} selectedIndex={0} />,
+  );
+  await component.getByRole("button", { name: "Add variant" }).click();
+  await expect.poll(() => readEvents(component)).toEqual([{ type: "add" }]);
+});

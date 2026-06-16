@@ -84,6 +84,7 @@ import {
   validateBlockId,
 } from "./page-sections";
 import {
+  appendSectionVariant,
   deleteMultivariateSectionVariant,
   duplicateMultivariateSectionVariant,
   flattenMultivariateSection,
@@ -391,6 +392,26 @@ function PageHeaderInputs({
         placeholder="/path"
       />
     </div>
+  );
+}
+
+function AddVariantButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Add variant"
+          className="size-7 shrink-0 text-[oklch(0.65_0.15_160)]"
+          onClick={onClick}
+        >
+          <Flag01 size={14} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Add variant</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -1252,6 +1273,36 @@ export function SectionsEditor({
     savePageSections(updatedSections);
   };
 
+  const handleAddSectionVariant = (index?: number) => {
+    const sectionIndex = index ?? selectedSectionIndex;
+    if (sectionIndex === null || !activePageKey) return;
+
+    const rawSection = rawSections[sectionIndex];
+    const parsed = parsedSections[sectionIndex];
+    if (!rawSection || !parsed) return;
+
+    const result = appendSectionVariant(rawSection, parsed);
+    if (!result) {
+      toast.error("This section cannot have variants.");
+      return;
+    }
+
+    const updatedSections = [...rawSections];
+    updatedSections[sectionIndex] = result.section;
+    const nextParsed = parseSections(updatedSections, decofile)[sectionIndex];
+    if (!nextParsed?.isMultivariate) {
+      toast.error("Could not add variant.");
+      return;
+    }
+
+    setSelectedSectionIndex(sectionIndex);
+    setActiveSectionVariantIndex(result.newVariantIndex);
+    setFieldBreadcrumbs([]);
+    setFormResetKey((key) => key + 1);
+    applySectionVariant(result.section, nextParsed, result.newVariantIndex);
+    savePageSections(updatedSections);
+  };
+
   const handleRemoveAllSectionVariants = () => {
     if (selectedSectionIndex === null || !activePageKey) return;
     const rawSection = rawSections[selectedSectionIndex];
@@ -2076,6 +2127,12 @@ export function SectionsEditor({
                   </TooltipContent>
                 </Tooltip>
               )}
+              {isEditingSection &&
+                !isEditingMultivariateSection &&
+                !selectedParsed?.isHidden &&
+                activePageKey && (
+                  <AddVariantButton onClick={() => handleAddSectionVariant()} />
+                )}
             </div>
             {showGlobalBanner && (
               <p className="mt-1.5 py-1.5 pl-1 text-sm leading-snug text-foreground">
@@ -2128,22 +2185,7 @@ export function SectionsEditor({
               </TooltipTrigger>
               <TooltipContent side="bottom">View JSON</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Add variant"
-                  className="size-7 shrink-0"
-                  style={{ color: "oklch(0.65 0.15 160)" }}
-                  onClick={handleAddPageVariant}
-                >
-                  <Flag01 size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Add variant</TooltipContent>
-            </Tooltip>
+            <AddVariantButton onClick={handleAddPageVariant} />
           </div>
         )}
       </div>
@@ -2208,6 +2250,7 @@ export function SectionsEditor({
                 onDuplicate={handleDuplicateSectionVariant}
                 onDelete={handleDeleteSectionVariant}
                 onRemoveAll={handleRemoveAllSectionVariants}
+                onAdd={() => handleAddSectionVariant()}
               />
               {isEditingMultivariateSection && (
                 <div className="px-3 py-3 border-b space-y-2">
@@ -2333,6 +2376,7 @@ export function SectionsEditor({
               onMakeReusable={setMakeReusableIndex}
               onToggleHidden={handleToggleHidden}
               onToggleLazy={handleToggleLazy}
+              onAddVariant={handleAddSectionVariant}
               onAddSection={() => setAddSectionOpen(true)}
               canAddSection={canAddSection}
             />

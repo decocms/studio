@@ -6,7 +6,7 @@ import {
 import { isDefaultVariantRule } from "./section-variants";
 import type { RawSection } from "./section-types";
 import {
-  ALWAYS_MATCHER_RESOLVE_TYPE,
+  defaultVariantRule,
   PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE,
 } from "./section-types";
 
@@ -63,7 +63,7 @@ export function wrapMultivariateArrayValue(
     ...((obj.variants as Array<Record<string, unknown>>) ?? []),
   ];
   if (variants.length === 0) {
-    variants.push({ rule: defaultPageVariantRule(), value: nextArray });
+    variants.push({ rule: defaultVariantRule(), value: nextArray });
   } else {
     variants[0] = { ...variants[0], value: nextArray };
   }
@@ -156,13 +156,9 @@ export function parsePageVariants(
   return [];
 }
 
-function defaultPageVariantRule(): Record<string, unknown> {
-  return { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
-}
-
 function createPageVariantEntry(value: RawSection[]): Record<string, unknown> {
   return {
-    rule: defaultPageVariantRule(),
+    rule: defaultVariantRule(),
     value,
   };
 }

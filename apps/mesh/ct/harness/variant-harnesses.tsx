@@ -41,6 +41,7 @@ export function SectionVariantListHarness({
         onDuplicate={(index) => push({ type: "duplicate", index })}
         onDelete={(index) => push({ type: "delete", index })}
         onRemoveAll={() => push({ type: "removeAll" })}
+        onAdd={() => push({ type: "add" })}
       />
       <EventLog events={events} />
     </div>

@@ -22,6 +22,11 @@ export const PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE =
 export const SECTION_MULTIVARIATE_RESOLVE_TYPE =
   "website/flags/multivariate/section.ts";
 
+/** Default variant rule — always matches, used as the seed for new variants. */
+export function defaultVariantRule(): Record<string, unknown> {
+  return { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
+}
+
 /** Human label from a deco resolve type path or block id. */
 export function labelFromResolveType(rt: string): string {
   const segments = rt.split("/");
