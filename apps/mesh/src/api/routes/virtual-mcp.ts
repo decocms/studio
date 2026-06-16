@@ -177,10 +177,10 @@ export async function handleVirtualMcpRequest(
     // Create server from client using the bridge
     const server = createServerFromClient(client, serverInfo, {
       capabilities: { tools: {}, resources: {}, prompts: {} },
-      instructions:
-        typeof virtualMcp.metadata?.instructions === "string"
-          ? virtualMcp.metadata.instructions
-          : undefined,
+      // Use the client's instructions (not raw metadata) so attached
+      // files/skills ride along to the sandbox daemon, which reads server
+      // instructions over this endpoint to assemble its system prompt.
+      instructions: client.getInstructions(),
       toolCallTimeoutMs: MCP_TOOL_CALL_TIMEOUT_MS,
     });
 

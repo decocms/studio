@@ -22,6 +22,7 @@ import {
   resolveStudioPackChecklist,
 } from "../../tools/virtual/studio-pack";
 import { createLazyClient } from "../lazy-client";
+import { withKnowledge } from "./knowledge";
 import type { VirtualClientOptions } from "./types";
 
 /**
@@ -131,7 +132,15 @@ export class PassthroughClient extends GatewayClient {
   }
 
   override getInstructions(): string | undefined {
-    return this.options.virtualMcp.metadata?.instructions ?? undefined;
+    // Fold the agent's attached files/skills into its served instructions so
+    // they reach the model on every run path (cluster engine AND sandbox
+    // daemon both read instructions; only the cluster runs the richer
+    // buildAgentSystemPrompt).
+    return withKnowledge(
+      this.options.virtualMcp.metadata?.instructions ?? undefined,
+      this.options.virtualMcp.metadata?.knowledge,
+      this.ctx.organization?.slug ?? "",
+    );
   }
 
   getConnectionTitleMap(): Map<string, string> {
