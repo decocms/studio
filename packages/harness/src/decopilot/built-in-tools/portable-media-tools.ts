@@ -230,8 +230,17 @@ export function createPortableGenerateImageTool(
           );
         }
 
+        // Thinking image models (e.g. Gemini 3 Pro Image) emit intermediate
+        // draft images alongside the final one in a single response. Keep only
+        // the last N — the final renders — so we don't surface duplicate drafts.
+        const requested = input.n ?? 1;
+        const finalImages =
+          result.images.length > requested
+            ? result.images.slice(-requested)
+            : result.images;
+
         const images = await Promise.all(
-          result.images.map(async (img) => {
+          finalImages.map(async (img) => {
             const mediaType = img.mediaType ?? "image/png";
             const ext = mediaType.split("/")[1] ?? "png";
             const key = `generated-images/${crypto.randomUUID()}.${ext}`;
