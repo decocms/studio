@@ -73,7 +73,8 @@ import { computeNextRunAt, type StudioContextFactory } from "./fire";
  * Registered once at boot in `app.initDbos` (like the thread-gate queue),
  * not lazily per fire.
  */
-export const AUTOMATIONS_QUEUE = "automations";
+export { AUTOMATIONS_QUEUE } from "../dispatch-queue/queue-names";
+import { AUTOMATIONS_QUEUE } from "../dispatch-queue/queue-names";
 /** Per-org (per-partition) concurrency cap. */
 export const AUTOMATIONS_PARTITION_CONCURRENCY = 10;
 /**

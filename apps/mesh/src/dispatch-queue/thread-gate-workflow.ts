@@ -37,7 +37,8 @@ import type {
   WorkItemSandbox,
 } from "@/api/routes/decopilot/link-work-queue";
 
-export const THREAD_GATE_QUEUE = "thread-gate";
+export { THREAD_GATE_QUEUE } from "./queue-names";
+import { THREAD_GATE_QUEUE } from "./queue-names";
 
 /** Thread statuses that indicate a run has reached a terminal state. */
 export const TERMINAL_STATUSES = new Set([

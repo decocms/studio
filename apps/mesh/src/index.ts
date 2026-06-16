@@ -7,6 +7,12 @@
  */
 
 import { sleep } from "@decocms/std";
+// Side-effect-free queue names — safe to import before DBOS.setConfig (unlike
+// the workflow modules, which register workflows at import time).
+import {
+  AUTOMATIONS_QUEUE,
+  THREAD_GATE_QUEUE,
+} from "./dispatch-queue/queue-names";
 import { getSettings } from "./settings";
 import { initObservability } from "./observability";
 import { startProfiling } from "./observability/profiling";
@@ -42,6 +48,40 @@ function withSslmode(url: string, ssl: boolean): string {
   }
   return u.toString();
 }
+// ── Pod dispatch role (horizontal split) ────────────────────────────────────
+// `MESH_DISPATCH_ROLE` selects which DBOS queues this pod DEQUEUES (via the
+// SDK's `listenQueues` filter). It lets you run two Deployments off the SAME
+// image/DB/auth and scale them independently:
+//   - "all"    (default) — dequeue every queue. Unchanged single-deployment
+//                          behavior; safe default, no opt-in required.
+//   - "worker" — dequeue only the agent/automation RUN queues, so these pods
+//                execute decopilot streams + automation fires. Scale these on
+//                CPU (the LLM-stream load) without touching API pods.
+//   - "api"    — dequeue NOTHING (only DBOS's internal queue still runs). These
+//                pods serve HTTP, enqueue runs, and tail NATS for /stream, but
+//                never run the heavy agent loop.
+// Scheduled (cron) workflows and enqueueing are unaffected — they run on every
+// pod and stay exactly-once via DBOS's row-locked schedule, so an "api" pod can
+// still fire a cron that a "worker" pod then executes. REQUIREMENT: at least
+// one "worker" (or "all") pod must exist or runs never dispatch.
+const dispatchRole = (process.env.MESH_DISPATCH_ROLE ?? "all").trim();
+const RUN_QUEUES = [AUTOMATIONS_QUEUE, THREAD_GATE_QUEUE];
+const listenQueues: string[] | undefined =
+  dispatchRole === "worker"
+    ? RUN_QUEUES
+    : dispatchRole === "api"
+      ? []
+      : undefined; // "all" → omit → DBOS listens to every queue
+if (
+  dispatchRole !== "all" &&
+  dispatchRole !== "worker" &&
+  dispatchRole !== "api"
+) {
+  console.warn(
+    `[dispatch-role] unknown MESH_DISPATCH_ROLE="${dispatchRole}" — falling back to "all" (dequeue every queue)`,
+  );
+}
+
 DBOS.setConfig({
   name: "decocms",
   systemDatabaseUrl: withSslmode(settings.databaseUrl, settings.databasePgSsl),
@@ -54,6 +94,9 @@ DBOS.setConfig({
   // over port 3001. Re-enable per-process once we need workflow admin HTTP.
   runAdminServer: false,
   executorID: settings.podName,
+  // Pod-role queue filter (see above). Omitted for "all" so behavior is
+  // identical to before unless a role is explicitly set.
+  ...(listenQueues !== undefined ? { listenQueues } : {}),
 });
 
 const { createApp } = await import("./api/app");
