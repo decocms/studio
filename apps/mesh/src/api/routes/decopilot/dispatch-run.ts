@@ -500,7 +500,21 @@ export async function dispatchRunAndWait(
         // Fallback: no JetStream tail available — drain uiStream directly.
         // Preserves the previous behavior for test environments and any
         // deployment without NATS. No chunks are observable to tailers in
-        // this mode.
+        // this mode. In a NATS deployment this branch means the buffer is
+        // degraded on the producer pod: the run completes and persists, but
+        // NOTHING is published to the subject, so every `/stream` tailer sees
+        // total silence with no error. High-signal — always logged.
+        if (buffer) {
+          console.warn(
+            JSON.stringify({
+              msg: "decopilot-stream-diag",
+              event: "producer-fallback-no-pump",
+              taskId,
+              hasTail: !!tail,
+              note: "createTailStream returned null — chunks NOT published to NATS; message still persisted upstream",
+            }),
+          );
+        }
         const reader = uiStream.getReader();
         try {
           while (true) {
