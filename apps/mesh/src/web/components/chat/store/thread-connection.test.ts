@@ -6,6 +6,7 @@ import {
   mergeAndSort,
   type RequestOptions,
   type ThreadObserver,
+  upsertById,
 } from "./thread-connection";
 import type { UIMessage } from "ai";
 
@@ -647,6 +648,20 @@ describe("mergeAndSort", () => {
     expect(mergeAndSort(prev, incoming).map((m) => m.id)).toEqual(["a", "opt"]);
   });
 
+  test("timestamp-less incoming does NOT strip an existing created_at (replay)", () => {
+    // deliverPolicy:"all" reconnect replays turn-1's assistant as a streamed
+    // (timestamp-less) UIMessage over the DB-seeded row. Without preservation
+    // it loses created_at → sorts to the end → renders under turn-2's user.
+    const prev = [
+      msg("u1", "2026-01-01T00:00:00Z", "user"),
+      msg("a1", "2026-01-01T00:00:01Z", "assistant"),
+      msg("u2", "2026-01-01T00:00:02Z", "user"),
+    ];
+    const replayedA1 = msg("a1", undefined, "assistant");
+    const out = mergeAndSort(prev, [replayedA1]);
+    expect(out.map((m) => m.id)).toEqual(["u1", "a1", "u2"]);
+  });
+
   test("stable id tiebreaker when two rows share a timestamp", () => {
     const incoming = [
       msg("z", "2026-01-01T00:00:00Z"),
@@ -780,6 +795,47 @@ describe("mergeAndSort", () => {
 });
 
 // ─── async-research stub dedup ───────────────────────────────────────────────
+
+describe("upsertById", () => {
+  function msg(
+    id: string,
+    createdAt: string | undefined,
+    role: "user" | "assistant" = "assistant",
+  ): UIMessage {
+    return {
+      id,
+      role,
+      parts: [{ type: "text", text: id }],
+      ...(createdAt !== undefined ? { created_at: createdAt } : {}),
+      // biome-ignore lint/suspicious/noExplicitAny: test helper
+    } as any;
+  }
+
+  test("appends when id is absent", () => {
+    const out = upsertById([msg("a", "t0")], msg("b", "t1"));
+    expect(out.map((m) => m.id)).toEqual(["a", "b"]);
+  });
+
+  test("replaces in place and keeps the prior created_at when incoming lacks one", () => {
+    const prev = [msg("a", "2026-01-01T00:00:01Z")];
+    const streamed = msg("a", undefined);
+    const out = upsertById(prev, streamed);
+    expect(out).toHaveLength(1);
+    expect((out[0] as { created_at?: unknown }).created_at).toBe(
+      "2026-01-01T00:00:01Z",
+    );
+    // fresher parts from the streamed copy are still applied
+    expect(out[0]?.parts).toEqual(streamed.parts);
+  });
+
+  test("incoming created_at overwrites when present (persisted update)", () => {
+    const prev = [msg("a", "2026-01-01T00:00:01Z")];
+    const out = upsertById(prev, msg("a", "2026-01-01T00:00:09Z"));
+    expect((out[0] as { created_at?: unknown }).created_at).toBe(
+      "2026-01-01T00:00:09Z",
+    );
+  });
+});
 
 describe("dropRedundantStubs", () => {
   // biome-ignore lint/suspicious/noExplicitAny: test helper
