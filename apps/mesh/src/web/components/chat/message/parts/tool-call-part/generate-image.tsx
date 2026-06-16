@@ -10,6 +10,7 @@ import type { ToolUIPart } from "ai";
 import { useOrg } from "@decocms/mesh-sdk";
 import { ToolCallShell } from "./common.tsx";
 import { getEffectiveState } from "./utils.tsx";
+import { getToolPartErrorText, safeStringifyFormatted } from "../utils.ts";
 import { ImageLightbox } from "../../../image-lightbox.tsx";
 import type { UsageStats } from "@/web/lib/usage-utils.ts";
 import { formatDuration } from "@/web/lib/format-time.ts";
@@ -120,6 +121,19 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
   }
 
   if (state === "error" || !images || images.length === 0) {
+    const errorText =
+      state === "error" ? getToolPartErrorText(part) : undefined;
+    let detail = "";
+    if (input !== undefined) {
+      detail += "# Input\n" + safeStringifyFormatted(input);
+    }
+    if (errorText) {
+      if (detail) detail += "\n\n";
+      detail += "# Error\n" + errorText;
+    } else if (result !== undefined) {
+      if (detail) detail += "\n\n";
+      detail += "# Output\n" + safeStringifyFormatted(result);
+    }
     return (
       <ToolCallShell
         icon={<Image01 size={14} />}
@@ -128,6 +142,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
         state={state === "error" ? "error" : "idle"}
         usage={usage}
         trailing={latencyLabel}
+        detail={detail || null}
       />
     );
   }
