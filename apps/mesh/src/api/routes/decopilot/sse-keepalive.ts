@@ -36,7 +36,14 @@
 
 const KEEPALIVE_BYTES = new TextEncoder().encode(": keepalive\n\n");
 const LF = 0x0a;
-const DEFAULT_INTERVAL_MS = 15_000;
+// 10s, not 15s. The tightest proxy idle timeout in the path is Istio's 15s
+// (see below); a 15s heartbeat lands ON that boundary, so a silent model gap
+// (slow time-to-first-token, between-step pauses — worse with proxied/liteLLM
+// providers but provider-agnostic) can race-lose and get the socket cut
+// mid-run. The client reconnects and the JetStream tail replays the whole
+// in-flight run as one burst — the "frozen then everything at once" symptom.
+// 10s keeps a ~5s margin so a silent turn survives without a reconnect.
+const DEFAULT_INTERVAL_MS = 10_000;
 
 /**
  * Wrap an SSE response body with periodic keepalive comments.
