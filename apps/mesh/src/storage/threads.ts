@@ -585,17 +585,14 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   async summarizeRunning(organizationId: string): Promise<RunningThread[]> {
-    // Left-join so a running thread with a missing/empty virtual_mcp_id still
-    // appears (counts toward "N tasks", not toward "X agents"). `connections`
-    // holds the agent (VIRTUAL connection) the thread runs under; its `title`
-    // is the agent display name.
+    // Thread id + its agent (virtual_mcp_id) + the thread's own title. The agent
+    // display name/icon is resolved client-side from virtual_mcp_id, so no join.
     const rows = await this.db
-      .selectFrom("threads as t")
-      .leftJoin("connections as c", "c.id", "t.virtual_mcp_id")
-      .select(["t.id as id", "t.virtual_mcp_id as virtual_mcp_id", "c.title"])
-      .where("t.organization_id", "=", organizationId)
-      .where("t.status", "=", "in_progress")
-      .where("t.hidden", "=", false)
+      .selectFrom("threads")
+      .select(["id", "virtual_mcp_id", "title"])
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .where("hidden", "=", false)
       .execute();
 
     return rows.map((row) => ({

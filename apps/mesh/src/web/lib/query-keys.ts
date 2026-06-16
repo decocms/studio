@@ -183,6 +183,9 @@ export const KEYS = {
     ["threads", "list-infinite", locator, paramsKey] as const,
   threadMessages: (locator: string, threadId: string) =>
     ["threads", "messages", locator, threadId] as const,
+  // Latest assistant snippet for a running thread (home hover popover).
+  runningThreadLatest: (orgSlug: string, threadId: string) =>
+    ["running-thread-latest", orgSlug, threadId] as const,
   threadModelLogs: (locator: string, dateKey: string) =>
     ["threads", "model-logs", locator, dateKey] as const,
   threadSandbox: (orgKey: string, taskId: string | undefined) =>

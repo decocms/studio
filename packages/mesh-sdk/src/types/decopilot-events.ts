@@ -107,19 +107,17 @@ export type DecopilotSSEEvent =
  */
 export const DECOPILOT_RUNNING_SUMMARY_EVENT = "decopilot.running.summary";
 
-/** A single in_progress thread, with the agent (virtual MCP) it belongs to. */
+/**
+ * A single in_progress thread. `title` is the THREAD's title (used for the
+ * hover row); the agent (icon + name) is resolved client-side from
+ * `virtual_mcp_id`, so it isn't duplicated here.
+ */
 export interface RunningThread {
   id: string;
   /** Empty string when the thread has no agent bound. */
   virtual_mcp_id: string;
-  /** Agent title resolved from the connection; null when unknown/agentless. */
+  /** Thread title; null when untitled. */
   title: string | null;
-}
-
-export interface RunningAgentSummary {
-  virtual_mcp_id: string;
-  title: string | null;
-  count: number;
 }
 
 export interface RunningSummary {
@@ -127,8 +125,6 @@ export interface RunningSummary {
   totalRunning: number;
   /** Distinct agents with at least one in_progress thread — the "X agents". */
   agentCount: number;
-  /** Per-agent breakdown, busiest first. */
-  agents: RunningAgentSummary[];
 }
 
 export interface DecopilotRunningSummaryEvent {
@@ -138,35 +134,23 @@ export interface DecopilotRunningSummaryEvent {
   time: string;
   data: {
     summary: RunningSummary;
-    /** Per-thread descriptors so server and client can recompute identically. */
+    /** Per-thread descriptors — drives the hover list and the counts. */
     threads: RunningThread[];
   };
 }
 
 /**
- * Pure aggregation of running threads into the home summary. Shared by the
- * server (snapshot + broadcast) and the client so both sides count identically.
- * Threads with no agent bound count toward `totalRunning` but not `agentCount`.
+ * Pure aggregation of running threads into the home summary counts. Shared by
+ * the server (snapshot + broadcast) and the client so both sides count
+ * identically. Threads with no agent bound count toward `totalRunning` but not
+ * `agentCount`.
  */
 export function buildRunningSummary(threads: RunningThread[]): RunningSummary {
-  const byAgent = new Map<string, RunningAgentSummary>();
+  const agentIds = new Set<string>();
   for (const t of threads) {
-    const key = t.virtual_mcp_id || "";
-    if (!key) continue;
-    const existing = byAgent.get(key);
-    if (existing) {
-      existing.count++;
-      if (existing.title == null && t.title != null) existing.title = t.title;
-    } else {
-      byAgent.set(key, {
-        virtual_mcp_id: key,
-        title: t.title ?? null,
-        count: 1,
-      });
-    }
+    if (t.virtual_mcp_id) agentIds.add(t.virtual_mcp_id);
   }
-  const agents = [...byAgent.values()].sort((a, b) => b.count - a.count);
-  return { totalRunning: threads.length, agentCount: agents.length, agents };
+  return { totalRunning: threads.length, agentCount: agentIds.size };
 }
 
 export function createDecopilotRunningSummaryEvent(

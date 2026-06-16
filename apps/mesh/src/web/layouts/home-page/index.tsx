@@ -1,5 +1,6 @@
 import {
   getWellKnownDecopilotVirtualMCP,
+  type RunningThread,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
@@ -10,6 +11,15 @@ import { useQuery, useSuspenseQueries } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { Check, LayoutAlt04, Plus, X } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@deco/ui/components/hover-card.tsx";
+import { AgentAvatar } from "@/web/components/agent-icon";
+import { extractTextFromOutput } from "@/web/components/chat/message/parts/utils.ts";
+import { usePanelActions } from "@/web/layouts/shell-layout";
+import { KEYS } from "@/web/lib/query-keys";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Chat } from "@/web/components/chat";
@@ -268,11 +278,13 @@ function CustomizeToolbar({
 /**
  * "X agents working on N tasks" — live count of in_progress threads in the org,
  * seeded by the /watch connect snapshot and kept fresh by the reactor's
- * running-summary broadcasts. Renders nothing when nothing is running.
+ * running-summary broadcasts. Renders nothing when nothing is running. Hovering
+ * reveals the running threads, each with its agent and latest assistant snippet;
+ * clicking a row opens that thread.
  */
 function RunningSummaryLine() {
   const { org } = useProjectContext();
-  const summary = useRunningSummary(org.slug);
+  const { summary, threads } = useRunningSummary(org.slug);
 
   if (summary.totalRunning === 0) {
     return null;
@@ -289,13 +301,119 @@ function RunningSummaryLine() {
       : `${tasks} running`;
 
   return (
-    <div className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-      <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-      </span>
-      {label}
+    <HoverCard openDelay={120} closeDelay={120}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+          </span>
+          {label}
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent align="center" className="w-80 p-1">
+        <RunningThreadsList threads={threads} />
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+function RunningThreadsList({ threads }: { threads: RunningThread[] }) {
+  const { org } = useProjectContext();
+  const { setTaskId } = usePanelActions();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+
+  if (threads.length === 0) {
+    return (
+      <div className="px-2 py-3 text-center text-xs text-muted-foreground">
+        Nothing running right now.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
+      {threads.map((thread) => (
+        <RunningThreadRow
+          key={thread.id}
+          thread={thread}
+          orgSlug={org.slug}
+          client={client}
+          onOpen={() =>
+            setTaskId(thread.id, thread.virtual_mcp_id || undefined)
+          }
+        />
+      ))}
     </div>
+  );
+}
+
+function RunningThreadRow({
+  thread,
+  orgSlug,
+  client,
+  onOpen,
+}: {
+  thread: RunningThread;
+  orgSlug: string;
+  client: ReturnType<typeof useMCPClient>;
+  onOpen: () => void;
+}) {
+  const agent = useVirtualMCP(thread.virtual_mcp_id);
+  // Latest message; fetched lazily when the popover (and thus this row) mounts.
+  // A running thread's newest message is normally the streaming assistant turn.
+  const { data: snippet } = useQuery({
+    queryKey: KEYS.runningThreadLatest(orgSlug, thread.id),
+    queryFn: async () => {
+      if (!client) return null;
+      const result = (await client.callTool({
+        name: "COLLECTION_THREAD_MESSAGES_LIST",
+        arguments: {
+          thread_id: thread.id,
+          limit: 1,
+          orderBy: [{ field: "created_at", direction: "desc" }],
+        },
+      })) as { structuredContent?: { items?: unknown[] }; items?: unknown[] };
+      const items = result.structuredContent?.items ?? result.items ?? [];
+      const latest = items[0] as { role?: string } | undefined;
+      if (!latest || latest.role !== "assistant") return null;
+      return extractTextFromOutput(latest);
+    },
+    staleTime: 5_000,
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-start gap-2 rounded-md p-2 text-left transition-colors hover:bg-muted"
+    >
+      <AgentAvatar
+        icon={agent?.icon ?? null}
+        name={agent?.title ?? "Agent"}
+        size="sm"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-foreground">
+          {thread.title || "Untitled task"}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">
+          {agent?.title ?? "Agent"}
+        </div>
+        {snippet ? (
+          <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+            {snippet}
+          </div>
+        ) : null}
+      </div>
+    </button>
   );
 }
 

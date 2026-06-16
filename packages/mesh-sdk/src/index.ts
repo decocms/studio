@@ -159,7 +159,6 @@ export {
   type DecopilotSSEEvent,
   type DecopilotEventMap,
   type RunningThread,
-  type RunningAgentSummary,
   type RunningSummary,
   type DecopilotRunningSummaryEvent,
 } from "./types";

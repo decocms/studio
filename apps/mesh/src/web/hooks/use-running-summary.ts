@@ -1,19 +1,21 @@
 /**
- * useRunningSummary — live "X agents working on N tasks" for an org.
+ * useRunningSummary — live running-thread state for an org, powering the home
+ * "X agents working on N tasks" badge and its hover list.
  *
  * The server is authoritative: `/watch` emits a `decopilot.running.summary`
  * snapshot on connect (and re-emits on reconnect), and the run reactor
- * broadcasts a fresh summary through the SSE hub on every thread transition. So
- * the client just stores the latest summary it receives — no delta bookkeeping.
+ * broadcasts a fresh one through the SSE hub on every thread transition. So the
+ * client just stores the latest payload it receives — no delta bookkeeping.
  *
  * State lives in a module-level, ref-counted store keyed by orgSlug so every
- * call-site shares one value and the single pooled `/watch` connection.
+ * call-site shares one value and one dedicated `/watch` connection.
  */
 
 import {
   DECOPILOT_RUNNING_SUMMARY_EVENT,
   type DecopilotRunningSummaryEvent,
   type RunningSummary,
+  type RunningThread,
 } from "@decocms/mesh-sdk";
 import { useSyncExternalStore } from "react";
 import { Store } from "@/web/components/chat/store/store-primitive";
@@ -33,24 +35,28 @@ const runningSummarySSE = createSSESubscription({
   eventTypes: [DECOPILOT_RUNNING_SUMMARY_EVENT],
 });
 
-const EMPTY: RunningSummary = Object.freeze({
-  totalRunning: 0,
-  agentCount: 0,
-  agents: [],
+export interface RunningState {
+  summary: RunningSummary;
+  threads: RunningThread[];
+}
+
+const EMPTY: RunningState = Object.freeze({
+  summary: { totalRunning: 0, agentCount: 0 },
+  threads: [],
 });
 
 interface SummaryEntry {
-  store: Store<RunningSummary>;
+  store: Store<RunningState>;
   sseRefCount: number;
   sseUnsub: (() => void) | null;
   subscribe: (onChange: () => void) => () => void;
-  getSnapshot: () => RunningSummary;
+  getSnapshot: () => RunningState;
 }
 
 const entries = new Map<string, SummaryEntry>();
 
 function createEntry(orgSlug: string): SummaryEntry {
-  const store = new Store<RunningSummary>(EMPTY);
+  const store = new Store<RunningState>(EMPTY);
 
   const handleMessage = (e: MessageEvent): void => {
     let event: DecopilotRunningSummaryEvent;
@@ -60,7 +66,7 @@ function createEntry(orgSlug: string): SummaryEntry {
       return;
     }
     if (event.type !== DECOPILOT_RUNNING_SUMMARY_EVENT) return;
-    store.set(event.data.summary);
+    store.set({ summary: event.data.summary, threads: event.data.threads });
   };
 
   const entry: SummaryEntry = {
@@ -100,10 +106,10 @@ function getEntry(orgSlug: string): SummaryEntry {
 }
 
 /**
- * Live running-thread summary for an org. Returns zeros until the connect
- * snapshot lands.
+ * Live running-thread state for an org: the summary counts plus the per-thread
+ * list (for the hover popover). Returns empties until the connect snapshot lands.
  */
-export function useRunningSummary(orgSlug: string): RunningSummary {
+export function useRunningSummary(orgSlug: string): RunningState {
   const entry = getEntry(orgSlug);
   return useSyncExternalStore(
     entry.subscribe,

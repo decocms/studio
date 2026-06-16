@@ -86,23 +86,18 @@ describe("buildRunningSummary", () => {
     expect(buildRunningSummary([])).toEqual({
       totalRunning: 0,
       agentCount: 0,
-      agents: [],
     });
   });
 
-  test("counts tasks and distinct agents, busiest first", () => {
+  test("counts tasks and distinct agents", () => {
     const threads: RunningThread[] = [
-      { id: "t1", virtual_mcp_id: "a", title: "Alpha" },
-      { id: "t2", virtual_mcp_id: "a", title: "Alpha" },
-      { id: "t3", virtual_mcp_id: "b", title: "Beta" },
+      { id: "t1", virtual_mcp_id: "a", title: "Refactor login" },
+      { id: "t2", virtual_mcp_id: "a", title: "Fix tests" },
+      { id: "t3", virtual_mcp_id: "b", title: "Write docs" },
     ];
     const summary = buildRunningSummary(threads);
     expect(summary.totalRunning).toBe(3);
     expect(summary.agentCount).toBe(2);
-    expect(summary.agents).toEqual([
-      { virtual_mcp_id: "a", title: "Alpha", count: 2 },
-      { virtual_mcp_id: "b", title: "Beta", count: 1 },
-    ]);
   });
 
   test("counts agentless threads toward tasks but not agents", () => {
@@ -113,14 +108,6 @@ describe("buildRunningSummary", () => {
     const summary = buildRunningSummary(threads);
     expect(summary.totalRunning).toBe(2);
     expect(summary.agentCount).toBe(1);
-  });
-
-  test("backfills a missing title from a later thread of the same agent", () => {
-    const threads: RunningThread[] = [
-      { id: "t1", virtual_mcp_id: "a", title: null },
-      { id: "t2", virtual_mcp_id: "a", title: "Alpha" },
-    ];
-    expect(buildRunningSummary(threads).agents[0]?.title).toBe("Alpha");
   });
 });
 
