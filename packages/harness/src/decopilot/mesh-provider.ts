@@ -9,8 +9,11 @@
  * tsc stack overflow that cluster types induce.
  */
 
+import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ProviderV3 } from "@ai-sdk/provider";
+import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
 import type { ModelCapability, ProviderId } from "@decocms/mesh-sdk";
+import { isCreditError } from "./stream-error";
 
 export interface ProviderInfo {
   id: ProviderId;
@@ -98,19 +101,53 @@ interface LanguageModelSelection {
 }
 
 const FREE_FALLBACK_MODEL = "openrouter/free";
-const OPENROUTER_FAMILY = new Set(["openrouter", "deco"]);
+
+/**
+ * Re-issues the SAME call against `free` on an account-level credit rejection
+ * (402) from `primary`, before any chunk is produced. This is the gap the
+ * in-request `models` array can't cover: a 402 terminates the whole request
+ * before model routing, so the array never reaches the free model. If the free
+ * retry also fails, the original error propagates. Only fires for the
+ * 402-at-request-start path (rejected `doStream`/`doGenerate`); mid-stream
+ * errors aren't credit errors.
+ */
+function withCreditFallback(
+  primary: LanguageModelV3,
+  free: LanguageModelV3,
+): LanguageModelV3 {
+  const middleware: LanguageModelMiddleware = {
+    specificationVersion: "v3",
+    wrapStream: async ({ doStream, params }) => {
+      try {
+        return await doStream();
+      } catch (err) {
+        if (!isCreditError(err)) throw err;
+        return free.doStream(params);
+      }
+    },
+    wrapGenerate: async ({ doGenerate, params }) => {
+      try {
+        return await doGenerate();
+      } catch (err) {
+        if (!isCreditError(err)) throw err;
+        return free.doGenerate(params);
+      }
+    },
+  };
+  return wrapLanguageModel({ model: primary, middleware });
+}
 
 /**
  * Creates a language model from the provider.
  *
  * - Enables reasoning when the model advertises the "reasoning" capability
  *   (e.g. OpenRouter thinking models).
- * - For OpenRouter-family providers, attaches a native model-fallback list
- *   (`models: [primary, openrouter/free]`). When the primary fails for ANY
- *   reason — rate-limit, downtime, context-length, or a budget/credit
- *   rejection — OpenRouter retries on the free model instead of surfacing a
- *   hard error to the user. The response's `model` field reports whichever
- *   model actually served the request.
+ * - For the raw OpenRouter provider, attaches a native model-fallback list
+ *   (`models: [primary, openrouter/free]`) for transient model failures
+ *   (provider down / rate-limit / moderation) handled at OpenRouter's edge,
+ *   AND wraps the model with `withCreditFallback` for account-level 402s the
+ *   array can't reach. Excluded for the deco AI gateway, which gates even free
+ *   models on the org credit balance, so a free fallback can't succeed there.
  */
 export function createLanguageModel(
   provider: LanguageModelProvider,
@@ -121,21 +158,24 @@ export function createLanguageModel(
   if (model.capabilities?.reasoning !== false) {
     settings.reasoning = { enabled: true, effort: "medium" };
   }
-  if (
-    provider.info &&
-    OPENROUTER_FAMILY.has(provider.info.id) &&
-    model.id !== FREE_FALLBACK_MODEL
-  ) {
+  const useFreeFallback =
+    provider.info?.id === "openrouter" && model.id !== FREE_FALLBACK_MODEL;
+  if (useFreeFallback) {
     settings.models = [model.id, FREE_FALLBACK_MODEL];
-  }
-
-  if (Object.keys(settings).length === 0) {
-    return provider.aiSdk.languageModel(model.id);
   }
 
   // Provider-specific settings (reasoning / models fallback) are not part of
   // the generic ProviderV3 interface, so we cast to pass them through.
-  // biome-ignore lint/complexity/noBannedTypes: pass-through provider settings
-  const lm = (provider.aiSdk.languageModel as Function)(model.id, settings);
-  return lm as ReturnType<typeof provider.aiSdk.languageModel>;
+  const make = (id: string, s?: Record<string, unknown>): LanguageModelV3 =>
+    (s && Object.keys(s).length > 0
+      ? // biome-ignore lint/complexity/noBannedTypes: pass-through provider settings
+        (provider.aiSdk.languageModel as Function)(id, s)
+      : provider.aiSdk.languageModel(id)) as LanguageModelV3;
+
+  const primary = make(model.id, settings);
+  if (!useFreeFallback) return primary;
+
+  // Free model is plain (no reasoning, no nested models array) so the retry is
+  // a clean single-model call.
+  return withCreditFallback(primary, make(FREE_FALLBACK_MODEL));
 }

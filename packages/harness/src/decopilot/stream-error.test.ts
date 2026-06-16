@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { classifyStreamError, sanitizeStreamError } from "./stream-error";
+import {
+  classifyStreamError,
+  isCreditError,
+  sanitizeStreamError,
+} from "./stream-error";
 
 describe("sanitizeStreamError", () => {
   it("strips provider URLs and branding from Error messages", () => {
@@ -33,6 +37,31 @@ describe("sanitizeStreamError", () => {
 
   it("falls back to JSON for opaque objects without a message", () => {
     expect(sanitizeStreamError({ foo: "bar" })).toContain("foo");
+  });
+});
+
+describe("isCreditError", () => {
+  it("matches a 402 statusCode on an Error instance", () => {
+    const err = Object.assign(new Error("Payment Required"), {
+      statusCode: 402,
+    });
+    expect(isCreditError(err)).toBe(true);
+  });
+
+  it("matches a numeric 402 code on a plain gateway object", () => {
+    expect(isCreditError({ code: 402, message: "boom" })).toBe(true);
+  });
+
+  it("matches credit/billing phrasing in the message", () => {
+    expect(isCreditError(new Error("insufficient funds"))).toBe(true);
+    expect(isCreditError({ message: "quota exceeded" })).toBe(true);
+  });
+
+  it("does not match unrelated errors", () => {
+    expect(isCreditError(new Error("model is overloaded"))).toBe(false);
+    expect(isCreditError({ code: 503, message: "service unavailable" })).toBe(
+      false,
+    );
   });
 });
 
