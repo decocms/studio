@@ -19,6 +19,7 @@ import {
 } from "@deco/ui/components/hover-card.tsx";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { extractTextFromOutput } from "@/web/components/chat/message/parts/utils.ts";
+import { OrgIcon } from "@/web/components/account-popover";
 import { KEYS } from "@/web/lib/query-keys";
 import { useNavigate } from "@tanstack/react-router";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
@@ -401,6 +402,13 @@ function ScopeTab({
   );
 }
 
+interface OrgItem {
+  id: string;
+  slug: string;
+  name: string;
+  logo?: string | null;
+}
+
 function RunningThreadsList({
   threads,
   scope,
@@ -409,11 +417,8 @@ function RunningThreadsList({
   scope: RunningScope;
 }) {
   const { data: orgs } = useActiveOrganizations();
-  const slugByOrgId = new Map<string, string>(
-    (orgs ?? []).map((o: { id: string; slug: string }): [string, string] => [
-      o.id,
-      o.slug,
-    ]),
+  const orgById = new Map<string, OrgItem>(
+    (orgs ?? []).map((o: OrgItem): [string, OrgItem] => [o.id, o]),
   );
 
   if (threads.length === 0) {
@@ -428,13 +433,19 @@ function RunningThreadsList({
 
   return (
     <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
-      {threads.map((thread) => (
-        <RunningThreadRow
-          key={`${thread.organization_id}:${thread.id}`}
-          thread={thread}
-          orgSlug={slugByOrgId.get(thread.organization_id)}
-        />
-      ))}
+      {threads.map((thread) => {
+        const org = orgById.get(thread.organization_id);
+        return (
+          <RunningThreadRow
+            key={`${thread.organization_id}:${thread.id}`}
+            thread={thread}
+            orgSlug={org?.slug}
+            org={org ?? null}
+            // Only disambiguate by org in the cross-org "All my work" view.
+            showOrg={scope === "user"}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -442,9 +453,13 @@ function RunningThreadsList({
 function RunningThreadRow({
   thread,
   orgSlug,
+  org,
+  showOrg,
 }: {
   thread: RunningThread;
   orgSlug: string | undefined;
+  org: OrgItem | null;
+  showOrg: boolean;
 }) {
   const navigate = useNavigate();
   const agent = useVirtualMCP(thread.virtual_mcp_id);
@@ -510,8 +525,15 @@ function RunningThreadRow({
         <div className="truncate text-sm font-medium text-foreground">
           {thread.title || "Untitled task"}
         </div>
-        <div className="truncate text-xs text-muted-foreground">
-          {agentName}
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          {showOrg && org ? (
+            <>
+              <OrgIcon org={org} size="xs" />
+              <span className="truncate">{org.name}</span>
+              <span aria-hidden>·</span>
+            </>
+          ) : null}
+          <span className="truncate">{agentName}</span>
         </div>
         {snippet ? (
           <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
