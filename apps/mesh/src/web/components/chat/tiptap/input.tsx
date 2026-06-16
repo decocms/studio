@@ -132,10 +132,10 @@ export function TiptapProvider({
   // Sync editor content when tiptapDoc changes externally
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
-    if (editor?.isDestroyed) return;
+    if (!editor || editor.isDestroyed) return;
 
     // Only update if the content is different to avoid unnecessary updates
-    const currentJson = JSON.stringify(editor?.getJSON());
+    const currentJson = JSON.stringify(editor.getJSON());
     const newJson = JSON.stringify(tiptapDoc || { type: "doc", content: [] });
 
     if (currentJson !== newJson) {
