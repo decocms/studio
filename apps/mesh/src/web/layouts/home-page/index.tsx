@@ -18,8 +18,8 @@ import {
 } from "@deco/ui/components/hover-card.tsx";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { extractTextFromOutput } from "@/web/components/chat/message/parts/utils.ts";
-import { usePanelActions } from "@/web/layouts/shell-layout";
 import { KEYS } from "@/web/lib/query-keys";
+import { useNavigate } from "@tanstack/react-router";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { Chat } from "@/web/components/chat";
@@ -38,13 +38,16 @@ import {
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { homeNextActionsQueryOptions } from "@/web/hooks/use-home-next-actions";
-import { useRunningSummary } from "@/web/hooks/use-running-summary";
+import {
+  type RunningScope,
+  useRunningSummary,
+} from "@/web/hooks/use-running-summary";
 import { organizationSettingsQueryOptions } from "@/web/hooks/use-organization-settings";
 import {
   agentHasClonableSource,
   hasLocalCliHarness,
 } from "@/web/lib/agent-capabilities";
-import { authClient } from "@/web/lib/auth-client";
+import { authClient, useActiveOrganizations } from "@/web/lib/auth-client";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
 import { HomeBackground } from "./background";
 
@@ -282,23 +285,52 @@ function CustomizeToolbar({
  * reveals the running threads, each with its agent and latest assistant snippet;
  * clicking a row opens that thread.
  */
+const SCOPE_STORAGE_KEY = "running-summary-scope";
+
+function readScope(): RunningScope {
+  try {
+    return localStorage.getItem(SCOPE_STORAGE_KEY) === "user" ? "user" : "org";
+  } catch {
+    return "org";
+  }
+}
+
 function RunningSummaryLine() {
   const { org } = useProjectContext();
-  const { summary, threads } = useRunningSummary(org.slug);
+  const [scope, setScopeState] = useState<RunningScope>(readScope);
+  const setScope = (next: RunningScope) => {
+    setScopeState(next);
+    try {
+      localStorage.setItem(SCOPE_STORAGE_KEY, next);
+    } catch {
+      // ignore (private mode / disabled storage)
+    }
+  };
 
-  if (summary.totalRunning === 0) {
+  // Subscribe to both feeds so the badge is visible (and the scope toggle
+  // reachable) whenever EITHER scope has work — switching never unmounts it.
+  const orgState = useRunningSummary(org.slug, "org");
+  const userState = useRunningSummary(org.slug, "user");
+
+  if (
+    orgState.summary.totalRunning === 0 &&
+    userState.summary.totalRunning === 0
+  ) {
     return null;
   }
 
-  const tasks = `${summary.totalRunning} task${
-    summary.totalRunning === 1 ? "" : "s"
-  }`;
+  const state = scope === "user" ? userState : orgState;
+  const { totalRunning, agentCount } = state.summary;
+  const emptyLabel =
+    scope === "user"
+      ? "Nothing running across your orgs"
+      : "Nothing running in this org";
   const label =
-    summary.agentCount > 0
-      ? `${summary.agentCount} agent${
-          summary.agentCount === 1 ? "" : "s"
-        } working on ${tasks}`
-      : `${tasks} running`;
+    totalRunning === 0
+      ? emptyLabel
+      : agentCount > 0
+        ? `${agentCount} agent${agentCount === 1 ? "" : "s"} working on ${totalRunning} task${totalRunning === 1 ? "" : "s"}`
+        : `${totalRunning} task${totalRunning === 1 ? "" : "s"} running`;
 
   return (
     <HoverCard openDelay={120} closeDelay={120}>
@@ -307,33 +339,86 @@ function RunningSummaryLine() {
           type="button"
           className="mt-3 flex items-center justify-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-          </span>
+          {totalRunning > 0 ? (
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            </span>
+          ) : null}
           {label}
         </button>
       </HoverCardTrigger>
       <HoverCardContent align="center" className="w-80 p-1">
-        <RunningThreadsList threads={threads} />
+        <div className="flex items-center gap-1 px-1 pb-1">
+          <ScopeTab
+            active={scope === "org"}
+            count={orgState.summary.totalRunning}
+            onClick={() => setScope("org")}
+          >
+            This org
+          </ScopeTab>
+          <ScopeTab
+            active={scope === "user"}
+            count={userState.summary.totalRunning}
+            onClick={() => setScope("user")}
+          >
+            All my work
+          </ScopeTab>
+        </div>
+        <RunningThreadsList threads={state.threads} scope={scope} />
       </HoverCardContent>
     </HoverCard>
   );
 }
 
-function RunningThreadsList({ threads }: { threads: RunningThread[] }) {
-  const { org } = useProjectContext();
-  const { setTaskId } = usePanelActions();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+function ScopeTab({
+  active,
+  count,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  count: number;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+        active
+          ? "bg-muted text-foreground"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+      {count > 0 ? ` (${count})` : ""}
+    </button>
+  );
+}
+
+function RunningThreadsList({
+  threads,
+  scope,
+}: {
+  threads: RunningThread[];
+  scope: RunningScope;
+}) {
+  const { data: orgs } = useActiveOrganizations();
+  const slugByOrgId = new Map<string, string>(
+    (orgs ?? []).map(
+      (o: { id: string; slug: string }): [string, string] => [o.id, o.slug],
+    ),
+  );
 
   if (threads.length === 0) {
     return (
       <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-        Nothing running right now.
+        {scope === "user"
+          ? "Nothing running across your orgs."
+          : "Nothing running in this org."}
       </div>
     );
   }
@@ -342,13 +427,9 @@ function RunningThreadsList({ threads }: { threads: RunningThread[] }) {
     <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
       {threads.map((thread) => (
         <RunningThreadRow
-          key={thread.id}
+          key={`${thread.organization_id}:${thread.id}`}
           thread={thread}
-          orgSlug={org.slug}
-          client={client}
-          onOpen={() =>
-            setTaskId(thread.id, thread.virtual_mcp_id || undefined)
-          }
+          orgSlug={slugByOrgId.get(thread.organization_id)}
         />
       ))}
     </div>
@@ -358,19 +439,27 @@ function RunningThreadsList({ threads }: { threads: RunningThread[] }) {
 function RunningThreadRow({
   thread,
   orgSlug,
-  client,
-  onOpen,
 }: {
   thread: RunningThread;
-  orgSlug: string;
-  client: ReturnType<typeof useMCPClient>;
-  onOpen: () => void;
+  orgSlug: string | undefined;
 }) {
+  const navigate = useNavigate();
   const agent = useVirtualMCP(thread.virtual_mcp_id);
-  // Latest message; fetched lazily when the popover (and thus this row) mounts.
-  // A running thread's newest message is normally the streaming assistant turn.
+  // Resolve agent from the current org's cache; for cross-org rows that misses,
+  // so fall back to the server-supplied agent_title.
+  const agentName = agent?.title ?? thread.agent_title ?? "Agent";
+
+  // Latest message, fetched lazily when the popover mounts, against the THREAD's
+  // own org (cross-org threads need their own client). A running thread's newest
+  // message is normally the streaming assistant turn.
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: thread.organization_id,
+    orgSlug: orgSlug ?? "",
+  });
   const { data: snippet } = useQuery({
-    queryKey: KEYS.runningThreadLatest(orgSlug, thread.id),
+    queryKey: KEYS.runningThreadLatest(thread.organization_id, thread.id),
+    enabled: !!orgSlug && !!client,
     queryFn: async () => {
       if (!client) return null;
       const result = (await client.callTool({
@@ -389,23 +478,29 @@ function RunningThreadRow({
     staleTime: 5_000,
   });
 
+  const open = () => {
+    if (!orgSlug) return;
+    navigate({
+      to: "/$org/$taskId",
+      params: { org: orgSlug, taskId: thread.id },
+      search: { chat: 1, virtualmcpid: thread.virtual_mcp_id || undefined },
+    });
+  };
+
   return (
     <button
       type="button"
-      onClick={onOpen}
-      className="flex w-full items-start gap-2 rounded-md p-2 text-left transition-colors hover:bg-muted"
+      onClick={open}
+      disabled={!orgSlug}
+      className="flex w-full items-start gap-2 rounded-md p-2 text-left transition-colors hover:bg-muted disabled:opacity-60"
     >
-      <AgentAvatar
-        icon={agent?.icon ?? null}
-        name={agent?.title ?? "Agent"}
-        size="sm"
-      />
+      <AgentAvatar icon={agent?.icon ?? null} name={agentName} size="sm" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-foreground">
           {thread.title || "Untitled task"}
         </div>
         <div className="truncate text-xs text-muted-foreground">
-          {agent?.title ?? "Agent"}
+          {agentName}
         </div>
         {snippet ? (
           <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">

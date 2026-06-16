@@ -1954,6 +1954,95 @@ export async function createApp(options: CreateAppOptions = {}) {
     });
   });
 
+  // Per-user (cross-org) running-threads feed for the home "all my work" view.
+  // The channel is the USER, not an org, so it's mounted here (before the
+  // /api/:org aggregator, which would otherwise capture "me" as an org slug).
+  // SSE channels are opaque strings, so we reuse the hub + NATS broadcast via a
+  // `user:<id>` channel — no hub changes. The reactor emits each transition to
+  // that channel for the thread's creator.
+  app.get("/api/me/watch", async (c) => {
+    const meshContext = c.var.meshContext;
+    const userId = meshContext.auth.user?.id ?? meshContext.auth.apiKey?.userId;
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const typesParam = c.req.query("types");
+    const typePatterns = typesParam
+      ? typesParam
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : null;
+
+    const channel = `user:${userId}`;
+    const listenerId = crypto.randomUUID();
+
+    return streamSSE(c, async (stream) => {
+      await stream.writeSSE({
+        event: "connected",
+        data: JSON.stringify({
+          listenerId,
+          channel,
+          typePatterns,
+          connectedAt: new Date().toISOString(),
+        }),
+      });
+
+      // Cross-org snapshot from the DB (membership-gated), authoritative.
+      try {
+        const running = await threadStorage.summarizeRunningForUser(userId);
+        const summaryEvent = createDecopilotRunningSummaryEvent(running);
+        await stream.writeSSE({
+          id: summaryEvent.id,
+          event: summaryEvent.type,
+          data: JSON.stringify(summaryEvent),
+        });
+      } catch (err) {
+        console.error("[me/watch] running summary snapshot failed", err);
+      }
+
+      const registered = sseHub.add({
+        id: listenerId,
+        organizationId: channel,
+        typePatterns: typePatterns?.length ? typePatterns : null,
+        push: (event: SSEEvent) => {
+          stream
+            .writeSSE({
+              id: event.id,
+              event: event.type,
+              data: JSON.stringify(event),
+            })
+            .catch(() => {
+              sseHub.remove(channel, listenerId);
+            });
+        },
+      });
+
+      if (!registered) {
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({ error: "Too many connections" }),
+        });
+        return;
+      }
+
+      const keepaliveInterval = setInterval(() => {
+        stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+          clearInterval(keepaliveInterval);
+        });
+      }, 30_000);
+
+      await new Promise<void>((resolve) => {
+        stream.onAbort(() => {
+          clearInterval(keepaliveInterval);
+          sseHub.remove(channel, listenerId);
+          resolve();
+        });
+      });
+    });
+  });
+
   // User-scoped link daemon long-poll routes. The link is the USER, not an org:
   // each handler reads ctx.auth.user.id (populated by the global
   // ContextFactory.create middleware, which resolves the MCP OAuth bearer via

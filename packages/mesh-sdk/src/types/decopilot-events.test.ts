@@ -91,9 +91,24 @@ describe("buildRunningSummary", () => {
 
   test("counts tasks and distinct agents", () => {
     const threads: RunningThread[] = [
-      { id: "t1", virtual_mcp_id: "a", title: "Refactor login" },
-      { id: "t2", virtual_mcp_id: "a", title: "Fix tests" },
-      { id: "t3", virtual_mcp_id: "b", title: "Write docs" },
+      {
+        id: "t1",
+        virtual_mcp_id: "a",
+        title: "Refactor login",
+        organization_id: "o1",
+      },
+      {
+        id: "t2",
+        virtual_mcp_id: "a",
+        title: "Fix tests",
+        organization_id: "o1",
+      },
+      {
+        id: "t3",
+        virtual_mcp_id: "b",
+        title: "Write docs",
+        organization_id: "o2",
+      },
     ];
     const summary = buildRunningSummary(threads);
     expect(summary.totalRunning).toBe(3);
@@ -102,8 +117,8 @@ describe("buildRunningSummary", () => {
 
   test("counts agentless threads toward tasks but not agents", () => {
     const threads: RunningThread[] = [
-      { id: "t1", virtual_mcp_id: "", title: null },
-      { id: "t2", virtual_mcp_id: "a", title: "Alpha" },
+      { id: "t1", virtual_mcp_id: "", title: null, organization_id: "o1" },
+      { id: "t2", virtual_mcp_id: "a", title: "Alpha", organization_id: "o1" },
     ];
     const summary = buildRunningSummary(threads);
     expect(summary.totalRunning).toBe(2);
@@ -114,7 +129,7 @@ describe("buildRunningSummary", () => {
 describe("createDecopilotRunningSummaryEvent", () => {
   test("wraps threads with a derived summary", () => {
     const threads: RunningThread[] = [
-      { id: "t1", virtual_mcp_id: "a", title: "Alpha" },
+      { id: "t1", virtual_mcp_id: "a", title: "Alpha", organization_id: "o1" },
     ];
     const event = createDecopilotRunningSummaryEvent(threads);
     expect(event.type).toBe(DECOPILOT_RUNNING_SUMMARY_EVENT);

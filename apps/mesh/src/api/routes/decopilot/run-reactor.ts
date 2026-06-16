@@ -57,6 +57,29 @@ async function syncRunningSummary(
   }
 }
 
+/**
+ * Fire-and-forget per-user (cross-org) summary on the `user:<id>` channel.
+ * Computed from the DB — lower-traffic than the org channel and where the
+ * agent-title join lives — and never awaited, so it can't slow a transition.
+ */
+function emitUserRunningSummary(
+  deps: RunReactorDeps,
+  userId: string | null | undefined,
+): void {
+  if (!userId) return;
+  deps.storage
+    .summarizeRunningForUser(userId)
+    .then((threads) =>
+      deps.sseHub.emit(
+        `user:${userId}`,
+        createDecopilotRunningSummaryEvent(threads),
+      ),
+    )
+    .catch((err) =>
+      console.error("[run-reactor] user running summary failed", err),
+    );
+}
+
 // ============================================================================
 // handleTerminalStatus — shared helper for RUN_COMPLETED / RUN_REQUIRES_ACTION
 // ============================================================================
@@ -92,6 +115,7 @@ async function handleTerminalStatus(
   await syncRunningSummary(deps, orgId, (store) =>
     store.markStopped(orgId, taskId),
   );
+  emitUserRunningSummary(deps, thread?.created_by);
 }
 
 // ============================================================================
@@ -129,8 +153,10 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           id: event.taskId,
           virtual_mcp_id: startedThread?.virtual_mcp_id ?? "",
           title: startedThread?.title ?? null,
+          organization_id: event.orgId,
         }),
       );
+      emitUserRunningSummary(deps, startedThread?.created_by);
       return;
     }
 
@@ -156,8 +182,10 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           id: event.taskId,
           virtual_mcp_id: resumedThread?.virtual_mcp_id ?? "",
           title: resumedThread?.title ?? null,
+          organization_id: event.orgId,
         }),
       );
+      emitUserRunningSummary(deps, resumedThread?.created_by);
       return;
     }
 
@@ -225,6 +253,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
       await syncRunningSummary(deps, event.orgId, (store) =>
         store.markStopped(event.orgId, event.taskId),
       );
+      emitUserRunningSummary(deps, failedThread?.created_by);
       return;
     }
 

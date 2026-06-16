@@ -108,9 +108,10 @@ export type DecopilotSSEEvent =
 export const DECOPILOT_RUNNING_SUMMARY_EVENT = "decopilot.running.summary";
 
 /**
- * A single in_progress thread. `title` is the THREAD's title (used for the
- * hover row); the agent (icon + name) is resolved client-side from
- * `virtual_mcp_id`, so it isn't duplicated here.
+ * A single in_progress thread. `title` is the THREAD's title (the hover row's
+ * heading). The agent is resolved client-side from `virtual_mcp_id` when it
+ * lives in the current org; for cross-org rows (the per-user feed) the client
+ * can't resolve it, so the server fills `agent_title`.
  */
 export interface RunningThread {
   id: string;
@@ -118,6 +119,11 @@ export interface RunningThread {
   virtual_mcp_id: string;
   /** Thread title; null when untitled. */
   title: string | null;
+  /** Org the thread belongs to — drives cross-org navigation. */
+  organization_id: string;
+  /** Agent (connection) title, server-resolved. Present on the cross-org feed;
+   *  omitted on the org feed, where the client resolves it from virtual_mcp_id. */
+  agent_title?: string | null;
 }
 
 export interface RunningSummary {

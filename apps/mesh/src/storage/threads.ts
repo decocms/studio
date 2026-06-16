@@ -585,11 +585,12 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   async summarizeRunning(organizationId: string): Promise<RunningThread[]> {
-    // Thread id + its agent (virtual_mcp_id) + the thread's own title. The agent
-    // display name/icon is resolved client-side from virtual_mcp_id, so no join.
+    // Org feed: thread id + agent id + thread title. The agent display
+    // name/icon is resolved client-side from virtual_mcp_id (same org), so no
+    // connections join here.
     const rows = await this.db
       .selectFrom("threads")
-      .select(["id", "virtual_mcp_id", "title"])
+      .select(["id", "virtual_mcp_id", "title", "organization_id"])
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
       .where("hidden", "=", false)
@@ -599,6 +600,41 @@ export class SqlThreadStorage implements ThreadStoragePort {
       id: row.id,
       virtual_mcp_id: row.virtual_mcp_id ?? "",
       title: row.title ?? null,
+      organization_id: row.organization_id,
+    }));
+  }
+
+  async summarizeRunningForUser(userId: string): Promise<RunningThread[]> {
+    // Per-user (cross-org) feed: the user's own in_progress threads in every
+    // org they're STILL a member of (the member join is the access gate). The
+    // connections join resolves the agent title, since the client can't resolve
+    // a cross-org agent from the current org's cache.
+    const rows = await this.db
+      .selectFrom("threads as t")
+      .innerJoin("member as m", (join) =>
+        join
+          .onRef("m.organizationId", "=", "t.organization_id")
+          .on("m.userId", "=", userId),
+      )
+      .leftJoin("connections as c", "c.id", "t.virtual_mcp_id")
+      .select([
+        "t.id as id",
+        "t.virtual_mcp_id as virtual_mcp_id",
+        "t.title as title",
+        "t.organization_id as organization_id",
+        "c.title as agent_title",
+      ])
+      .where("t.created_by", "=", userId)
+      .where("t.status", "=", "in_progress")
+      .where("t.hidden", "=", false)
+      .execute();
+
+    return rows.map((row) => ({
+      id: row.id,
+      virtual_mcp_id: row.virtual_mcp_id ?? "",
+      title: row.title ?? null,
+      organization_id: row.organization_id,
+      agent_title: row.agent_title ?? null,
     }));
   }
 

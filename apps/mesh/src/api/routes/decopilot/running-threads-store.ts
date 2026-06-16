@@ -56,8 +56,10 @@ export interface RunningThreadsStore {
 interface StoredEntry {
   /** virtual_mcp_id; "" when agentless. */
   v: string;
-  /** agent title; null when unknown. */
+  /** thread title; null when untitled. */
   t: string | null;
+  /** organization id (the channel's org — kept so toRunningThreads is complete). */
+  o: string;
   /** lastProgressAt, epoch ms. */
   p: number;
 }
@@ -82,6 +84,7 @@ function toRunningThreads(org: StoredOrg): RunningThread[] {
     id,
     virtual_mcp_id: e.v,
     title: e.t,
+    organization_id: e.o,
   }));
 }
 
@@ -148,7 +151,12 @@ export class JetStreamKVRunningThreadsStore implements RunningThreadsStore {
   markRunning(orgId: string, thread: RunningThread): Promise<RunningThread[]> {
     return this.mutate(orgId, (org, now) => ({
       ...org,
-      [thread.id]: { v: thread.virtual_mcp_id, t: thread.title, p: now },
+      [thread.id]: {
+        v: thread.virtual_mcp_id,
+        t: thread.title,
+        o: thread.organization_id,
+        p: now,
+      },
     }));
   }
 

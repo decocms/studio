@@ -115,6 +115,14 @@ export interface ThreadStoragePort {
    */
   summarizeRunning(organizationId: string): Promise<RunningThread[]>;
 
+  /**
+   * A user's in_progress threads across EVERY org they're a member of — backs
+   * the per-user "all my work" feed. Membership-gated and not org-scoped.
+   * `agent_title` is resolved here since cross-org agents can't be resolved on
+   * the client.
+   */
+  summarizeRunningForUser(userId: string): Promise<RunningThread[]>;
+
   // Message operations - upserts by id (updates existing rows)
   saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;
   listMessages(

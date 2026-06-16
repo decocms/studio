@@ -1,14 +1,17 @@
 /**
- * useRunningSummary — live running-thread state for an org, powering the home
- * "X agents working on N tasks" badge and its hover list.
+ * useRunningSummary — live running-thread state for the home badge + hover list.
  *
- * The server is authoritative: `/watch` emits a `decopilot.running.summary`
- * snapshot on connect (and re-emits on reconnect), and the run reactor
- * broadcasts a fresh one through the SSE hub on every thread transition. So the
- * client just stores the latest payload it receives — no delta bookkeeping.
+ * Two scopes:
+ *   - "org"  → the current org's running threads (`/api/:org/watch`), team view.
+ *   - "user" → your own running threads across every org (`/api/me/watch`).
  *
- * State lives in a module-level, ref-counted store keyed by orgSlug so every
- * call-site shares one value and one dedicated `/watch` connection.
+ * The server is authoritative: each feed emits a `decopilot.running.summary`
+ * snapshot on connect (and on reconnect), and the run reactor broadcasts a fresh
+ * one on every thread transition (to the org channel and the creator's user
+ * channel). The client just stores the latest payload — no delta bookkeeping.
+ *
+ * State lives in module-level, ref-counted stores keyed by `scope:key`, so every
+ * call-site shares one value and one dedicated `/watch` connection per feed.
  */
 
 import {
@@ -21,17 +24,18 @@ import { useSyncExternalStore } from "react";
 import { Store } from "@/web/components/chat/store/store-primitive";
 import { createSSESubscription } from "./create-sse-subscription";
 
-/**
- * Dedicated `/watch` connection for the running summary — NOT the shared
- * decopilot pool. The summary's authoritative value arrives as the connect
- * snapshot (and on reconnect); a late subscriber joining the already-open
- * shared pool would miss that one-shot snapshot and sit at 0 until the next
- * transition. A dedicated, ref-counted connection guarantees every mount gets a
- * fresh snapshot. Filtered to just the summary type so it's a thin stream.
- */
-const runningSummarySSE = createSSESubscription({
+export type RunningScope = "org" | "user";
+
+// Dedicated, ref-counted `/watch` connections (one per feed). NOT the shared
+// decopilot pool: a late subscriber joining an already-open shared connection
+// would miss the one-shot connect snapshot. Filtered to just the summary type.
+const orgRunningSummarySSE = createSSESubscription({
   buildUrl: (orgSlug) =>
     `/api/${encodeURIComponent(orgSlug)}/watch?types=${DECOPILOT_RUNNING_SUMMARY_EVENT}`,
+  eventTypes: [DECOPILOT_RUNNING_SUMMARY_EVENT],
+});
+const userRunningSummarySSE = createSSESubscription({
+  buildUrl: () => `/api/me/watch?types=${DECOPILOT_RUNNING_SUMMARY_EVENT}`,
   eventTypes: [DECOPILOT_RUNNING_SUMMARY_EVENT],
 });
 
@@ -55,8 +59,9 @@ interface SummaryEntry {
 
 const entries = new Map<string, SummaryEntry>();
 
-function createEntry(orgSlug: string): SummaryEntry {
+function createEntry(scope: RunningScope, connKey: string): SummaryEntry {
   const store = new Store<RunningState>(EMPTY);
+  const sse = scope === "user" ? userRunningSummarySSE : orgRunningSummarySSE;
 
   const handleMessage = (e: MessageEvent): void => {
     let event: DecopilotRunningSummaryEvent;
@@ -78,7 +83,7 @@ function createEntry(orgSlug: string): SummaryEntry {
       const storeUnsub = store.subscribe(onChange);
       entry.sseRefCount++;
       if (entry.sseRefCount === 1) {
-        entry.sseUnsub = runningSummarySSE.subscribe(orgSlug, handleMessage);
+        entry.sseUnsub = sse.subscribe(connKey, handleMessage);
       }
       return () => {
         storeUnsub();
@@ -96,21 +101,26 @@ function createEntry(orgSlug: string): SummaryEntry {
   return entry;
 }
 
-function getEntry(orgSlug: string): SummaryEntry {
-  let entry = entries.get(orgSlug);
+function getEntry(scope: RunningScope, connKey: string): SummaryEntry {
+  const mapKey = `${scope}:${connKey}`;
+  let entry = entries.get(mapKey);
   if (!entry) {
-    entry = createEntry(orgSlug);
-    entries.set(orgSlug, entry);
+    entry = createEntry(scope, connKey);
+    entries.set(mapKey, entry);
   }
   return entry;
 }
 
 /**
- * Live running-thread state for an org: the summary counts plus the per-thread
- * list (for the hover popover). Returns empties until the connect snapshot lands.
+ * Live running-thread state for the given scope. The org feed is keyed by
+ * orgSlug; the user feed is a single per-session connection. Returns empties
+ * until the connect snapshot lands.
  */
-export function useRunningSummary(orgSlug: string): RunningState {
-  const entry = getEntry(orgSlug);
+export function useRunningSummary(
+  orgSlug: string,
+  scope: RunningScope,
+): RunningState {
+  const entry = getEntry(scope, scope === "user" ? "me" : orgSlug);
   return useSyncExternalStore(
     entry.subscribe,
     entry.getSnapshot,
