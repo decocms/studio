@@ -462,7 +462,7 @@ function ConnectionItemWithAuth({
         "rounded-xl border overflow-hidden transition-colors",
         needsAuth || isDisabled
           ? "border-destructive/50 bg-destructive/5"
-          : "border-border",
+          : "border-border bg-card",
       )}
     >
       {/* Body — clickable, navigates to connection detail */}
