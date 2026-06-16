@@ -1,0 +1,157 @@
+---
+title: Call an Agent from Your App
+description: Drive a Studio agent from an external system with a scoped API key — create a thread, run the agent, stream the response, and read the thread back
+icon: MessageCircle
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+## Overview
+
+You can drive any Studio agent from an external system — a chatbot backend, a
+webhook handler, a CRON job — using a scoped **API key** over plain HTTP. The
+flow is the same one the Studio web client uses:
+
+1. **Create a thread** for the agent.
+2. **Post a message** to enqueue a run.
+3. **Stream** the agent's response in real time.
+4. **Read the full thread** back later from durable storage.
+
+No SDK is required — every step is a normal HTTP request authenticated with
+`Authorization: Bearer <api-key>`.
+
+## Create the API key
+
+The fastest way is from the agent's **Connect** dialog → **Call from your app** →
+**Create API key**. It mints a key scoped to exactly the tools this flow needs
+and shows it once.
+
+To create it programmatically, call the `API_KEY_CREATE` tool with these
+permissions:
+
+```json
+{
+  "name": "chat-bridge-my-agent",
+  "permissions": {
+    "self": [
+      "COLLECTION_THREADS_CREATE",
+      "COLLECTION_THREADS_GET",
+      "COLLECTION_THREAD_MESSAGES_LIST",
+      "COLLECTION_THREADS_LIST"
+    ]
+  },
+  "expiresIn": 7776000
+}
+```
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `name` | `string` | Human-readable label |
+| `permissions` | `{ [resource]: string[] }` | `self` holds the management tools above |
+| `expiresIn` | `number` | Lifetime in **seconds** (here, 90 days). Omit for no expiry |
+
+<Callout type="warning">
+  `expiresIn` is a **number** of seconds, not a string. The key value is
+  returned only once, at creation — store it immediately.
+</Callout>
+
+The run and stream endpoints below only require that the key belongs to a
+member of the org, so no connection-scoped grant is needed. The `self`
+permissions are only what the thread read/write **tools** require.
+
+## Endpoints
+
+All paths are org-scoped, where `:org` is your organization **slug**.
+
+| Step | Method & path |
+|------|---------------|
+| Create thread | `POST /api/:org/tools/COLLECTION_THREADS_CREATE` |
+| Run agent | `POST /api/:org/decopilot/threads/:threadId/messages` |
+| Stream | `GET /api/:org/decopilot/threads/:threadId/stream` |
+| Read thread | `POST /api/:org/tools/COLLECTION_THREAD_MESSAGES_LIST` |
+| Thread status | `POST /api/:org/tools/COLLECTION_THREADS_GET` |
+
+### 1. Create a thread
+
+The `virtual_mcp_id` is the agent (Virtual MCP) id — find it in the agent's URL
+or via `COLLECTION_CONNECTIONS_LIST`.
+
+```bash
+curl -X POST "$MESH_BASE_URL/api/$MESH_ORG/tools/COLLECTION_THREADS_CREATE" \
+  -H "Authorization: Bearer $MESH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "data": { "title": "Support chat", "virtual_mcp_id": "'"$MESH_AGENT_ID"'" } }'
+# → { "item": { "id": "thrd_...", "status": "...", ... } }
+```
+
+Use the returned `item.id` as `:threadId` for the next steps. (You may also
+supply your own `data.id`.)
+
+### 2. Run the agent
+
+This enqueues a run and returns `202` immediately — the body carries no output.
+
+```bash
+curl -X POST "$MESH_BASE_URL/api/$MESH_ORG/decopilot/threads/$THREAD_ID/messages" \
+  -H "Authorization: Bearer $MESH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{ "role": "user", "parts": [{ "type": "text", "text": "Hello!" }] }],
+    "agent": { "id": "'"$MESH_AGENT_ID"'" },
+    "tier": "smart"
+  }'
+# → 202 { "taskId": "thrd_..." }
+```
+
+<Callout type="info">
+  The request body is validated strictly — send only `messages`, `agent`, and
+  optional `tier` / `temperature`. Exactly one non-system message is allowed per
+  call. The thread id lives in the URL; don't also put a mismatched `thread_id`
+  in the body.
+</Callout>
+
+### 3. Stream the response
+
+The agent output is a [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
+stream (AI SDK UI-message chunks), backed by NATS JetStream server-side.
+
+```bash
+curl -N "$MESH_BASE_URL/api/$MESH_ORG/decopilot/threads/$THREAD_ID/stream" \
+  -H "Authorization: Bearer $MESH_API_KEY" \
+  -H "Accept: text/event-stream"
+```
+
+<Callout type="tip">
+  Open the stream **before** posting the message so you don't miss early chunks.
+  The browser's native `EventSource` cannot send an `Authorization` header — use
+  `fetch()` and read the response body as a stream instead.
+</Callout>
+
+<Callout type="warning">
+  The stream is an ephemeral live buffer (~5 minutes retention), not the system
+  of record. For the durable transcript, read the thread (step 4).
+</Callout>
+
+### 4. Read the thread back
+
+The authoritative, durable transcript is available any time:
+
+```bash
+curl -X POST "$MESH_BASE_URL/api/$MESH_ORG/tools/COLLECTION_THREAD_MESSAGES_LIST" \
+  -H "Authorization: Bearer $MESH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "thread_id": "'"$THREAD_ID"'", "limit": 200 }'
+```
+
+Poll run progress with `COLLECTION_THREADS_GET` (`{ "id": "<threadId>" }`) and
+watch `status` move from `in_progress` to `completed` or `failed`.
+
+## Scoping & security
+
+- A key is bound to a single organization (embedded at creation). The `:org` in
+  the path must match that org's slug.
+- The `self` thread permissions gate the read/write **tools**, but the run and
+  stream endpoints authorize on org membership alone — so any valid org key can
+  drive agents. Treat these keys like any production credential: name them per
+  integration, set an expiry, and rotate by deleting (`API_KEY_DELETE`) and
+  re-creating.
