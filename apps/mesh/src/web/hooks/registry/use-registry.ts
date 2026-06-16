@@ -4,13 +4,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-  WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
+import { useProjectContext, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "@/web/lib/registry/query-keys";
 import type {
   PublishApiKeyGenerateResult,
@@ -28,39 +24,21 @@ import type {
 
 const DEFAULT_LIMIT = 24;
 
-type ToolResult<T> = { structuredContent?: T } & T;
-
 function normalizeSearch(search: string): string {
   return search.trim();
 }
 
+type StudioTools = ReturnType<typeof useStudioTools>;
+
 async function callTool<T>(
-  client: ReturnType<typeof useMCPClient>,
+  studio: StudioTools,
   name: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  const result = (await client.callTool({
-    name,
-    arguments: args,
-  })) as
-    | (ToolResult<T> & {
-        isError?: boolean;
-        content?: Array<{ type?: string; text?: string }>;
-      })
-    | undefined;
-
-  if (!result || typeof result !== "object") {
-    throw new Error(`Invalid tool response for ${name}`);
-  }
-
-  if (result.isError) {
-    const message =
-      result.content?.find((item) => item.type === "text")?.text ??
-      `Tool ${name} returned an error`;
-    throw new Error(message);
-  }
-
-  return (result.structuredContent ?? result) as T;
+  return studio.call(
+    name as Parameters<StudioTools["call"]>[0],
+    args as Parameters<StudioTools["call"]>[1],
+  ) as Promise<T>;
 }
 
 export function useRegistryItems(params: {
@@ -69,12 +47,7 @@ export function useRegistryItems(params: {
   categories: string[];
   limit?: number;
 }) {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const search = normalizeSearch(params.search);
   const limit = params.limit ?? DEFAULT_LIMIT;
 
@@ -110,7 +83,7 @@ export function useRegistryItems(params: {
             }
           : undefined;
 
-      return callTool<RegistryListResponse>(client, "REGISTRY_ITEM_LIST", {
+      return callTool<RegistryListResponse>(studio, "REGISTRY_ITEM_LIST", {
         cursor: pageParam as string | undefined,
         limit,
         tags: params.tags.length ? params.tags : undefined,
@@ -125,17 +98,12 @@ export function useRegistryItems(params: {
 }
 
 export function useRegistryFilters() {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   return useQuery({
     queryKey: KEYS.filters(),
     queryFn: async () =>
-      callTool<RegistryFilters>(client, "REGISTRY_ITEM_FILTERS", {}),
+      callTool<RegistryFilters>(studio, "REGISTRY_ITEM_FILTERS", {}),
     placeholderData: { tags: [], categories: [] },
     staleTime: 60_000,
   });
@@ -143,12 +111,7 @@ export function useRegistryFilters() {
 
 export function useRegistryMutations() {
   const queryClient = useQueryClient();
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const invalidateAll = async () => {
     await Promise.all([
@@ -160,7 +123,7 @@ export function useRegistryMutations() {
   const createMutation = useMutation({
     mutationFn: async (data: RegistryCreateInput) => {
       const response = await callTool<{ item: RegistryItem }>(
-        client,
+        studio,
         "REGISTRY_ITEM_CREATE",
         { data },
       );
@@ -178,7 +141,7 @@ export function useRegistryMutations() {
       data: RegistryUpdateInput;
     }) => {
       const response = await callTool<{ item: RegistryItem }>(
-        client,
+        studio,
         "REGISTRY_ITEM_UPDATE",
         { id, data },
       );
@@ -190,7 +153,7 @@ export function useRegistryMutations() {
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const response = await callTool<{ item: RegistryItem | null }>(
-        client,
+        studio,
         "REGISTRY_ITEM_DELETE",
         { id },
       );
@@ -201,7 +164,7 @@ export function useRegistryMutations() {
 
   const bulkCreateMutation = useMutation({
     mutationFn: async (items: RegistryCreateInput[]) =>
-      callTool<RegistryBulkCreateResult>(client, "REGISTRY_ITEM_BULK_CREATE", {
+      callTool<RegistryBulkCreateResult>(studio, "REGISTRY_ITEM_BULK_CREATE", {
         items,
       }),
     onSuccess: invalidateAll,
@@ -234,11 +197,7 @@ interface RegistryConfigSettings {
 
 export function useRegistryConfig(pluginId: string) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
 
   const selfConnectionId = WellKnownOrgMCPId.SELF(org.id);
@@ -246,7 +205,7 @@ export function useRegistryConfig(pluginId: string) {
   const configQuery = useQuery({
     queryKey: KEYS.registryConfigByPlugin(selfConnectionId, pluginId),
     queryFn: async () =>
-      callTool<PluginConfigResponse>(client, "VIRTUAL_MCP_PLUGIN_CONFIG_GET", {
+      callTool<PluginConfigResponse>(studio, "VIRTUAL_MCP_PLUGIN_CONFIG_GET", {
         virtualMcpId: selfConnectionId,
         pluginId,
       }),
@@ -258,7 +217,7 @@ export function useRegistryConfig(pluginId: string) {
   const configMutation = useMutation({
     mutationFn: async (settingsPatch: RegistryConfigSettings) => {
       const latestData = await callTool<PluginConfigResponse>(
-        client,
+        studio,
         "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
         {
           virtualMcpId: selfConnectionId,
@@ -269,7 +228,7 @@ export function useRegistryConfig(pluginId: string) {
         (latestData?.config?.settings as RegistryConfigSettings | null) ?? {};
 
       return callTool<PluginConfigResponse>(
-        client,
+        studio,
         "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
         {
           virtualMcpId: selfConnectionId,
@@ -355,11 +314,7 @@ export function usePublishRequests(params: {
   sortDirection: "asc" | "desc";
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const limit = DEFAULT_LIMIT;
 
   return useInfiniteQuery({
@@ -371,7 +326,7 @@ export function usePublishRequests(params: {
     ),
     queryFn: async ({ pageParam }) =>
       callTool<PublishRequestListResponse>(
-        client,
+        studio,
         "REGISTRY_PUBLISH_REQUEST_LIST",
         {
           status: params.status,
@@ -396,17 +351,13 @@ export function usePublishRequests(params: {
 
 export function usePublishRequestCount() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   return useQuery({
     queryKey: KEYS.publishRequestsCountByOrg(org.id),
     queryFn: async () =>
       callTool<{ pending: number }>(
-        client,
+        studio,
         "REGISTRY_PUBLISH_REQUEST_COUNT",
         {},
       ),
@@ -416,12 +367,7 @@ export function usePublishRequestCount() {
 
 export function usePublishRequestMutations() {
   const queryClient = useQueryClient();
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const invalidateAll = async () => {
     await Promise.all([
@@ -436,7 +382,7 @@ export function usePublishRequestMutations() {
       reviewerNotes?: string;
     }) => {
       return callTool<{ item: PublishRequest }>(
-        client,
+        studio,
         "REGISTRY_PUBLISH_REQUEST_REVIEW",
         data,
       );
@@ -447,7 +393,7 @@ export function usePublishRequestMutations() {
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       return callTool<{ item: PublishRequest | null }>(
-        client,
+        studio,
         "REGISTRY_PUBLISH_REQUEST_DELETE",
         { id },
       );
@@ -461,18 +407,13 @@ export function usePublishRequestMutations() {
 // ─── Publish API Keys ───
 
 export function usePublishApiKeys() {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   return useQuery({
     queryKey: KEYS.publishApiKeys(),
     queryFn: async () =>
       callTool<PublishApiKeyListResponse>(
-        client,
+        studio,
         "REGISTRY_PUBLISH_API_KEY_LIST",
         {},
       ),
@@ -482,17 +423,12 @@ export function usePublishApiKeys() {
 
 export function usePublishApiKeyMutations() {
   const queryClient = useQueryClient();
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const generateMutation = useMutation({
     mutationFn: async (name: string) =>
       callTool<PublishApiKeyGenerateResult>(
-        client,
+        studio,
         "REGISTRY_PUBLISH_API_KEY_GENERATE",
         { name },
       ),
@@ -506,7 +442,7 @@ export function usePublishApiKeyMutations() {
   const revokeMutation = useMutation({
     mutationFn: async (keyId: string) =>
       callTool<{ success: boolean; keyId: string }>(
-        client,
+        studio,
         "REGISTRY_PUBLISH_API_KEY_REVOKE",
         { keyId },
       ),

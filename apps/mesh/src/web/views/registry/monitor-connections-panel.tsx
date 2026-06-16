@@ -7,6 +7,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { clearHtmlResourceCacheForConnection } from "@/web/lib/html-resource-persist";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Card } from "@deco/ui/components/card.tsx";
@@ -76,6 +77,7 @@ function ConnectionRow({
   const updateAuth = useUpdateMonitorConnectionAuth();
   const { updateMutation } = useRegistryMutations();
   const { org } = useProjectContext();
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
   const connectionId = entry.mapping.connection_id;
   const authStatus = entry.mapping.auth_status;
@@ -211,26 +213,10 @@ function ConnectionRow({
   };
 
   const saveTokenInternal = async (token: string) => {
-    const res = await fetch(`/api/${org.slug}/mcp/self`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: "COLLECTION_CONNECTIONS_UPDATE",
-          arguments: {
-            id: connectionId,
-            data: { connection_token: token },
-          },
-        },
-      }),
+    await studio.call("COLLECTION_CONNECTIONS_UPDATE", {
+      id: connectionId,
+      data: { connection_token: token },
     });
-    if (!res.ok) {
-      throw new Error("Failed to save token");
-    }
   };
 
   const handleSaveToken = async () => {

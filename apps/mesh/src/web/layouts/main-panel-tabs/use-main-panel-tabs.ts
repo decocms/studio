@@ -15,13 +15,12 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
 import {
-  SELF_MCP_ALIAS_ID,
   useConnections,
-  useMCPClient,
   useProjectContext,
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import {
   agentHasClonableSource,
   agentHasConnectedGithub,
@@ -83,11 +82,7 @@ export interface MainPanelTabs {
 
 function useTaskMetadata(taskId: string): ThreadMetadata | null {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const manager = useThreadManager();
   // Subscribe to the store so a row that lands AFTER first render (snapshot
   // arrives late, manager.create prepends, etc.) re-renders this hook with
@@ -111,16 +106,12 @@ function useTaskMetadata(taskId: string): ThreadMetadata | null {
   >({
     queryKey: KEYS.ensureTask(org.id, taskId),
     queryFn: async () => {
-      if (!taskId || !client) return null;
+      if (!taskId) return null;
       try {
-        const result = (await client.callTool({
-          name: "COLLECTION_THREADS_GET",
-          arguments: { id: taskId },
-        })) as { structuredContent?: unknown };
-        const payload = (result.structuredContent ?? result) as {
-          item?: Task | null;
-        };
-        return payload.item ?? null;
+        const { item } = await studio.call("COLLECTION_THREADS_GET", {
+          id: taskId,
+        });
+        return (item as Task | null) ?? null;
       } catch {
         return null;
       }

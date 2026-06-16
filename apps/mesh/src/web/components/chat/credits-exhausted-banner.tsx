@@ -25,13 +25,10 @@ import { Input } from "@deco/ui/components/input.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { useDecoCredits } from "@/web/hooks/use-deco-credits";
+import { useStudioTools } from "@/web/lib/studio-tools";
 
 const QUICK_AMOUNTS = {
   usd: [
@@ -60,11 +57,7 @@ export function CreditsExhaustedBanner({
   const { org } = useProjectContext();
   const navigate = useNavigate();
   const { decoKeyId } = useDecoCredits();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const [customAmount, setCustomAmount] = useState("");
   const [showCustom, setShowCustom] = useState(false);
@@ -78,24 +71,12 @@ export function CreditsExhaustedBanner({
 
   const { mutate: topUp, isPending } = useMutation({
     mutationFn: async (amountCents: number) => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_TOPUP_URL",
-        arguments: {
-          providerId: "deco",
-          amountCents,
-          currency,
-        },
-      })) as {
-        structuredContent?: { url: string };
-        isError?: boolean;
-        content?: { text?: string }[];
-      };
-      if (result?.isError) {
-        throw new Error(
-          result.content?.[0]?.text ?? "Failed to get top-up URL",
-        );
-      }
-      return result.structuredContent?.url;
+      const { url } = await studio.call("AI_PROVIDER_TOPUP_URL", {
+        providerId: "deco",
+        amountCents,
+        currency,
+      });
+      return url;
     },
     onSuccess: (url) => {
       if (url) window.open(url, "_blank", "noopener,noreferrer");

@@ -16,13 +16,12 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
   useProjectContext,
   type AiProviderInfo,
   type AiProviderKey,
 } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import {
   OPENAI_COMPATIBLE_PRESETS,
   type OpenAICompatiblePreset,
@@ -65,11 +64,7 @@ function EditForm({
   onSuccess,
 }: EditFormProps) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [showKey, setShowKey] = useState(false);
 
@@ -118,13 +113,10 @@ function EditForm({
         });
       }
 
-      await client.callTool({
-        name: "AI_PROVIDER_KEY_UPDATE",
-        arguments: {
-          keyId: providerKey.id,
-          label: data.label,
-          ...(apiKeyValue !== undefined ? { apiKey: apiKeyValue } : {}),
-        },
+      await studio.call("AI_PROVIDER_KEY_UPDATE", {
+        keyId: providerKey.id,
+        label: data.label,
+        ...(apiKeyValue !== undefined ? { apiKey: apiKeyValue } : {}),
       });
     },
     onSuccess: () => {
@@ -224,12 +216,7 @@ export function EditProviderKeyDialog({
   open,
   onOpenChange,
 }: EditProviderKeyDialogProps) {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const preset: OpenAICompatiblePreset | undefined =
     provider.id === "openai-compatible" && providerKey.presetId
@@ -240,19 +227,8 @@ export function EditProviderKeyDialog({
 
   const { data: preview, isLoading } = useQuery({
     queryKey: KEYS.aiProviderKeyPreview(providerKey.id),
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_KEY_PREVIEW",
-        arguments: { keyId: providerKey.id },
-      })) as {
-        structuredContent?: {
-          label: string;
-          maskedKey: string;
-          baseUrl?: string;
-        };
-      };
-      return result.structuredContent!;
-    },
+    queryFn: () =>
+      studio.call("AI_PROVIDER_KEY_PREVIEW", { keyId: providerKey.id }),
     enabled: open,
     staleTime: 0,
   });

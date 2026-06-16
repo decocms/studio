@@ -1,16 +1,13 @@
 import { useState } from "react";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
 import {
   useThreadManager,
   useThreads,
 } from "@/web/components/chat/store/hooks";
 import type { Task } from "@/web/components/chat/task/types";
-import { extractToolErrorMessage } from "@/web/components/chat/store/mcp-utils";
+import { useStudioTools } from "@/web/lib/studio-tools";
+import type { ToolInput } from "@/tools/io-types";
 import {
   groupShowMoreIdentity,
   shouldDeferGroupProbe,
@@ -49,8 +46,7 @@ function parseListResult(result: unknown): {
   hasMore: boolean;
   totalCount?: number;
 } {
-  const payload = ((result as { structuredContent?: unknown })
-    .structuredContent ?? result) as {
+  const payload = result as {
     items?: Task[];
     hasMore?: boolean;
     totalCount?: number;
@@ -125,11 +121,7 @@ export function useGroupShowMore(
     globalHasMore,
   );
 
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   if (state.identity === identity && state.serverHasMore === null) {
     const resolvedWithoutProbe =
@@ -162,15 +154,10 @@ export function useGroupShowMore(
       identity,
       async () => {
         const args = buildShowMoreArgs(kind, key, 0, filters, 1);
-        const result = await client.callTool({
-          name: "COLLECTION_THREADS_LIST",
-          arguments: args as unknown as Record<string, unknown>,
-        });
-        if ((result as { isError?: boolean }).isError) {
-          throw new Error(
-            extractToolErrorMessage(result, "COLLECTION_THREADS_LIST failed"),
-          );
-        }
+        const result = await studio.call(
+          "COLLECTION_THREADS_LIST",
+          args as unknown as ToolInput<"COLLECTION_THREADS_LIST">,
+        );
         const { totalCount } = parseListResult(result);
         const visible = nextPageOffset(
           manager.threads.get(),
@@ -211,17 +198,11 @@ export function useGroupShowMore(
       );
 
       const result = await enqueueGroupThreadsFetch(() =>
-        client.callTool({
-          name: "COLLECTION_THREADS_LIST",
-          arguments: args as unknown as Record<string, unknown>,
-        }),
+        studio.call(
+          "COLLECTION_THREADS_LIST",
+          args as unknown as ToolInput<"COLLECTION_THREADS_LIST">,
+        ),
       );
-
-      if ((result as { isError?: boolean }).isError) {
-        throw new Error(
-          extractToolErrorMessage(result, "COLLECTION_THREADS_LIST failed"),
-        );
-      }
 
       const {
         items,

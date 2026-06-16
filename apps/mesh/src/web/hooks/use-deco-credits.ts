@@ -5,13 +5,10 @@
  * chat error banners, and settings page into a single source of truth.
  */
 
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "../lib/query-keys";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { useAiProviderKeys } from "./collections/use-ai-providers";
 import { track } from "../lib/posthog-client";
 import { useRef } from "react";
@@ -24,11 +21,7 @@ const lastSeenBalance = new Map<string, number>();
 
 export function useDecoCredits() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const keys = useAiProviderKeys();
 
   const decoKey = keys.find((k) => k.providerId === "deco");
@@ -38,15 +31,11 @@ export function useDecoCredits() {
     enabled: !!decoKey,
     staleTime: 60_000,
     queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_CREDITS",
-        arguments: { providerId: "deco" },
-      })) as {
-        structuredContent?: { balanceCents: number };
-        isError?: boolean;
-      };
-      if (result?.isError) return null;
-      return result.structuredContent ?? null;
+      try {
+        return await studio.call("AI_PROVIDER_CREDITS", { providerId: "deco" });
+      } catch {
+        return null;
+      }
     },
   });
 

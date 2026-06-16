@@ -8,14 +8,10 @@
  * `@aws-sdk/lib-storage`.
  */
 
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { KEYS } from "../lib/query-keys";
-import { unwrapToolResult } from "../lib/unwrap-tool-result";
 
 export interface PickerObject {
   key: string;
@@ -41,11 +37,7 @@ export function useFilePickerObjects(params: {
   enabled?: boolean;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   return useInfiniteQuery({
     queryKey: KEYS.filePickerObjects(org.id, params.configId),
@@ -53,14 +45,11 @@ export function useFilePickerObjects(params: {
     staleTime: 30_000,
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
-      const result = await client.callTool({
-        name: "FILE_OBJECTS_LIST",
-        arguments: {
-          configId: params.configId,
-          cursor: pageParam ?? undefined,
-        },
+      // configId is non-null here: the query is gated by `enabled: !!configId`.
+      return await studio.call("FILE_OBJECTS_LIST", {
+        configId: params.configId as string,
+        cursor: pageParam ?? undefined,
       });
-      return unwrapToolResult<ListObjectsResponse>(result);
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });

@@ -7,11 +7,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "../lib/query-keys";
-import {
-  useMCPClient,
-  useProjectContext,
-  SELF_MCP_ALIAS_ID,
-} from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
 
 /**
  * User data returned by the API
@@ -23,8 +19,6 @@ export interface UserData {
   image: string | null;
 }
 
-type UserGetOutput = { user: UserData | null };
-
 /**
  * Hook for fetching user data
  *
@@ -32,22 +26,13 @@ type UserGetOutput = { user: UserData | null };
  * @returns React Query result with user data
  */
 export function useUserById(userId: string) {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   return useQuery({
     queryKey: KEYS.user(userId),
     queryFn: async () => {
-      const result = (await client.callTool({
-        name: "USER_GET",
-        arguments: { id: userId },
-      })) as { structuredContent?: unknown };
-      const payload = (result.structuredContent ?? result) as UserGetOutput;
-      return payload.user;
+      const { user } = await studio.call("USER_GET", { id: userId });
+      return user;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes - users don't change frequently
     retry: 1,

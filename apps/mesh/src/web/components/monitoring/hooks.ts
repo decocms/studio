@@ -1,11 +1,7 @@
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
+import { useStudioTools } from "@/web/lib/studio-tools";
 
 /** Connection ID used for all LLM calls emitted by Decopilot. Must match server-side DECOPILOT_CONNECTION_ID. */
 const DECOPILOT_CONNECTION_ID = "decopilot";
@@ -28,28 +24,11 @@ interface MonitoringStatsParams extends MonitoringMetricFilters {
   endDate: string;
 }
 
-/**
- * MCP tools can return a successful HTTP response with `isError: true` in the
- * body. React Query treats that as success, so we promote it to a thrown error
- * here — that way `isError`/`error` on the hook reflect tool failures.
- */
 async function callMonitoringTool<TData>(
-  client: Client,
+  studio: ReturnType<typeof useStudioTools>,
   toolArguments: Record<string, unknown>,
 ): Promise<TData> {
-  const result = (await client.callTool({
-    name: "MONITORING_STATS",
-    arguments: toolArguments,
-  })) as {
-    isError?: boolean;
-    structuredContent?: unknown;
-  };
-
-  if (result.isError) {
-    throw new Error("MONITORING_STATS tool returned an error");
-  }
-
-  return (result.structuredContent ?? result) as TData;
+  return (await studio.call("MONITORING_STATS", toolArguments)) as TData;
 }
 
 interface MonitoringStatsResult {
@@ -81,11 +60,7 @@ export function useMonitoringStats(
   queryOptions?: MonitoringQueryOptions,
 ) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const toolArguments = {
     ...params,
@@ -101,7 +76,7 @@ export function useMonitoringStats(
       JSON.stringify(toolArguments),
     ),
     queryFn: () =>
-      callMonitoringTool<MonitoringStatsResult>(client, toolArguments),
+      callMonitoringTool<MonitoringStatsResult>(studio, toolArguments),
     staleTime: 30_000,
     retry: false,
     ...queryOptions,
@@ -151,11 +126,7 @@ export function useMonitoringLlmStats(
   queryOptions?: MonitoringQueryOptions,
 ) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const toolArguments = {
     ...params,
@@ -168,7 +139,7 @@ export function useMonitoringLlmStats(
   return useQuery<MonitoringLlmStatsResult, Error>({
     queryKey: KEYS.monitoringStatsLlm(org.id, JSON.stringify(toolArguments)),
     queryFn: () =>
-      callMonitoringTool<MonitoringLlmStatsResult>(client, toolArguments),
+      callMonitoringTool<MonitoringLlmStatsResult>(studio, toolArguments),
     staleTime: 30_000,
     retry: false,
     ...queryOptions,

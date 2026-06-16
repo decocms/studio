@@ -32,7 +32,6 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   getHomeTiles,
   isDecopilot,
-  SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
   useVirtualMCPActions,
@@ -69,7 +68,7 @@ import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { KEYS } from "@/web/lib/query-keys";
-import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
 
 /** How many agents the home view can actually display — adding past this is
@@ -596,12 +595,7 @@ function AgentToolList({
   connectionIds: string[];
   pinnedResourceUris: Set<string>;
 }) {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const { data, isLoading } = useQuery({
     queryKey: KEYS.projectConnectionDetails(agent.id, connectionIds),
@@ -610,21 +604,9 @@ function AgentToolList({
       const results = await Promise.all(
         connectionIds.map(async (connId) => {
           try {
-            const result = await client.callTool({
-              name: "COLLECTION_CONNECTIONS_GET",
-              arguments: { id: connId },
+            const { item } = await studio.call("COLLECTION_CONNECTIONS_GET", {
+              id: connId,
             });
-            const { item } = unwrapToolResult<{
-              item: {
-                title?: string;
-                icon?: string | null;
-                tools?: Array<{
-                  name: string;
-                  description?: string;
-                  _meta?: Record<string, unknown>;
-                }> | null;
-              } | null;
-            }>(result);
             const uiTools: UITool[] = (item?.tools ?? []).flatMap((t) => {
               const resourceUri = getUIResourceUri(t._meta);
               if (!resourceUri) return [];

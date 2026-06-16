@@ -19,14 +19,13 @@ import {
 import type { PluginRenderHeaderProps } from "@decocms/bindings/plugins";
 import { PluginContextProvider } from "@decocms/mesh-sdk/plugins";
 import {
-  SELF_MCP_ALIAS_ID,
   useConnections,
-  useMCPClient,
   useMCPClientOptional,
   useProjectContext,
   type ConnectionEntity,
 } from "@decocms/mesh-sdk";
 import { authClient } from "@/web/lib/auth-client";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import {
   Outlet,
   useParams,
@@ -84,16 +83,6 @@ function toPluginConnectionEntity(
  * valid connections are available. Connection-related fields are
  * null in that case.
  */
-type PluginConfigOutput = {
-  config: {
-    id: string;
-    projectId: string;
-    pluginId: string;
-    connectionId: string | null;
-    settings: Record<string, unknown> | null;
-  } | null;
-};
-
 export function PluginLayout({
   bindingName,
   renderEmptyState,
@@ -114,23 +103,15 @@ export function PluginLayout({
   const { data: authSession } = authClient.useSession();
 
   // Fetch project's plugin config to get configured connection
-  const selfClient = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const { data: pluginConfig, isLoading: isLoadingConfig } = useQuery({
     queryKey: KEYS.projectPluginConfig(project.id ?? "", pluginId),
     queryFn: async () => {
-      const result = (await selfClient.callTool({
-        name: "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
-        arguments: {
-          virtualMcpId: project.id,
-          pluginId,
-        },
-      })) as { structuredContent?: unknown };
-      return (result.structuredContent ?? result) as PluginConfigOutput;
+      return await studio.call("VIRTUAL_MCP_PLUGIN_CONFIG_GET", {
+        virtualMcpId: project.id,
+        pluginId,
+      });
     },
     enabled: !!project.id && !!pluginId,
   });

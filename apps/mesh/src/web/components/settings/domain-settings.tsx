@@ -1,11 +1,7 @@
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
-import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,21 +22,11 @@ export function DomainSettings() {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const { data, isPending } = useQuery<DomainData>({
     queryKey: KEYS.organizationDomain(org.id),
-    queryFn: async () => {
-      const result = await client.callTool({
-        name: "ORGANIZATION_DOMAIN_GET",
-        arguments: {},
-      });
-      return unwrapToolResult<DomainData>(result);
-    },
+    queryFn: () => studio.call("ORGANIZATION_DOMAIN_GET", {}),
   });
 
   const userEmail = session?.user?.email ?? "";
@@ -55,13 +41,11 @@ export function DomainSettings() {
     });
 
   const setDomainMutation = useMutation({
-    mutationFn: async () => {
-      const result = await client.callTool({
-        name: "ORGANIZATION_DOMAIN_SET",
-        arguments: { domain: userDomain, autoJoinEnabled: false },
-      });
-      return unwrapToolResult(result);
-    },
+    mutationFn: () =>
+      studio.call("ORGANIZATION_DOMAIN_SET", {
+        domain: userDomain,
+        autoJoinEnabled: false,
+      }),
     onSuccess: () => {
       track("organization_domain_claimed", {
         organization_id: org.id,
@@ -83,13 +67,7 @@ export function DomainSettings() {
   });
 
   const clearDomainMutation = useMutation({
-    mutationFn: async () => {
-      const result = await client.callTool({
-        name: "ORGANIZATION_DOMAIN_CLEAR",
-        arguments: {},
-      });
-      return unwrapToolResult(result);
-    },
+    mutationFn: () => studio.call("ORGANIZATION_DOMAIN_CLEAR", {}),
     onSuccess: () => {
       track("organization_domain_cleared", {
         organization_id: org.id,
@@ -117,11 +95,9 @@ export function DomainSettings() {
         organization_id: org.id,
         enabled,
       });
-      const result = await client.callTool({
-        name: "ORGANIZATION_DOMAIN_UPDATE",
-        arguments: { autoJoinEnabled: enabled },
+      return studio.call("ORGANIZATION_DOMAIN_UPDATE", {
+        autoJoinEnabled: enabled,
       });
-      return unwrapToolResult(result);
     },
     onSuccess: () => {
       invalidate();

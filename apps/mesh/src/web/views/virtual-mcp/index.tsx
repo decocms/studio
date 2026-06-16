@@ -16,7 +16,7 @@ import {
   isConnectionAuthenticated,
 } from "@/web/lib/mcp-oauth";
 import { KEYS } from "@/web/lib/query-keys";
-import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
+import { useStudioTools } from "@/web/lib/studio-tools";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import {
   AlertDialog,
@@ -56,12 +56,10 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   type ConnectionEntity,
   ENV_VAR_KEY_RE,
-  SELF_MCP_ALIAS_ID,
   StudioPackAgentId,
   useConnection,
   useConnectionActions,
   useConnections,
-  useMCPClient,
   useProjectContext,
   useVirtualMCP,
   useVirtualMCPActions,
@@ -687,12 +685,7 @@ function LayoutTabContent({
   form: VirtualMcpFormReturn;
   flushAndSave: () => Promise<unknown>;
 }) {
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
 
@@ -707,22 +700,9 @@ function LayoutTabContent({
       const results = await Promise.all(
         connectionIds.map(async (connId) => {
           try {
-            const result = await client.callTool({
-              name: "COLLECTION_CONNECTIONS_GET",
-              arguments: { id: connId },
+            const { item } = await studio.call("COLLECTION_CONNECTIONS_GET", {
+              id: connId,
             });
-            const { item } = unwrapToolResult<{
-              item: {
-                title?: string;
-                icon?: string | null;
-                tools?: Array<{
-                  name: string;
-                  title?: string;
-                  description?: string;
-                  _meta?: Record<string, unknown>;
-                }> | null;
-              } | null;
-            }>(result);
             const uiTools: UITool[] = (item?.tools ?? []).flatMap((t) => {
               const resourceUri = getUIResourceUri(t._meta);
               if (!resourceUri) return [];
@@ -1157,11 +1137,7 @@ function VirtualMcpDetailViewWithData({
   const lastUsedAt = lastUsedMap?.get(virtualMcp.id)?.last_used_at;
   const connectionActions = useConnectionActions();
   const queryClient = useQueryClient();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   // Form setup
   const form = useForm<VirtualMcpFormData>({
@@ -1399,13 +1375,9 @@ function VirtualMcpDetailViewWithData({
 
     // We need the full connection entity to clone from
     try {
-      const result = await client.callTool({
-        name: "COLLECTION_CONNECTIONS_GET",
-        arguments: { id: connectionId },
+      const { item: base } = await studio.call("COLLECTION_CONNECTIONS_GET", {
+        id: connectionId,
       });
-      const { item: base } = (result.structuredContent ?? {}) as {
-        item: ConnectionEntity | null;
-      };
       if (!base) return;
 
       const baseName = base.title.replace(/\s*\(.*?\)\s*$/, "");
