@@ -13,6 +13,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import {
+  GHS_TOKEN_LIFETIME_MS,
   PROACTIVE_REFRESH_BUFFER_MS,
   RECONNECT_ERROR,
 } from "@/oauth/token-refresh";
@@ -94,19 +95,43 @@ async function mintRepoToken(
 // rate-limit-expensive on the caller's GitHub budget).
 const inflight = new Map<string, Promise<string>>();
 
+/**
+ * Resolve the expiry date to persist for a freshly minted ghs_ token.
+ *
+ * Rules:
+ * - Use the server-provided expiry only when it is strictly after `mintStartedAt`
+ *   (guards against clock-skewed or already-past values from the upstream).
+ * - Otherwise fall back to `mintStartedAt + GHS_TOKEN_LIFETIME_MS` so the token
+ *   is never stored with a null or past expiry (which would loop or "never expire").
+ *
+ * Exported for unit testing; not part of the module's public API.
+ */
+export function resolveGhsExpiry(
+  mintedExpiresAt: Date | null,
+  mintStartedAt: number,
+): Date {
+  const providedExpiry = mintedExpiresAt?.getTime() ?? 0;
+  return providedExpiry > mintStartedAt
+    ? mintedExpiresAt!
+    : new Date(mintStartedAt + GHS_TOKEN_LIFETIME_MS);
+}
+
 async function mintAndStore(
   ctx: StudioContext,
   connectionId: string,
   recipe: RepoScopeRecipe,
   tokenStorage: DownstreamTokenStorage,
 ): Promise<string> {
+  // Anchor the clock before the async RPC so latency doesn't inflate the stored expiry.
+  const mintStartedAt = Date.now();
   const minted = await mintRepoToken(ctx, recipe);
+  const expiresAt = resolveGhsExpiry(minted.expiresAt, mintStartedAt);
   await tokenStorage.upsert({
     connectionId,
     accessToken: minted.accessToken,
     refreshToken: null,
     scope: null,
-    expiresAt: minted.expiresAt,
+    expiresAt,
     clientId: null,
     clientSecret: null,
     tokenEndpoint: null,
