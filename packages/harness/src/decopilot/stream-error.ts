@@ -108,15 +108,14 @@ function extractErrorParts(error: unknown): {
 }
 
 /**
- * Returns a sanitized, user-facing error message.
- * Provider-specific URLs and branding are stripped so they are never
- * surfaced to the client.
+ * Whether an error is an account-level credit/billing rejection (402 and
+ * friends). Shared by `sanitizeStreamError` (UI `[CREDITS]` tagging) and the
+ * free-model fallback middleware (`mesh-provider.ts`) so the two never drift.
  */
-// TODO @pedrofrxncx: remove this code in favor of a better solution
-export function sanitizeStreamError(error: unknown): string {
+export function isCreditError(error: unknown): boolean {
   const { message, statusCode } = extractErrorParts(error);
   const lower = message.toLowerCase();
-  if (
+  return (
     statusCode === 402 ||
     lower.includes("credit") ||
     lower.includes("insufficient funds") ||
@@ -125,7 +124,18 @@ export function sanitizeStreamError(error: unknown): string {
     lower.includes("quota exceeded") ||
     lower.includes("key limit") ||
     lower.includes("payment required")
-  ) {
+  );
+}
+
+/**
+ * Returns a sanitized, user-facing error message.
+ * Provider-specific URLs and branding are stripped so they are never
+ * surfaced to the client.
+ */
+// TODO @pedrofrxncx: remove this code in favor of a better solution
+export function sanitizeStreamError(error: unknown): string {
+  const { message } = extractErrorParts(error);
+  if (isCreditError(error)) {
     // Prefix with [CREDITS] so the frontend can detect credit errors
     // without fragile string matching on provider-specific messages.
     return `[CREDITS] ${stripProviderSpecificDetails(message)}`;
