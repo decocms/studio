@@ -190,4 +190,20 @@
       transform: translateY(0);
     }
   }
+
+  /* Per-word fade-in for streamed assistant text (see markdown.tsx AnimatedText).
+     Opacity-only so layout never shifts; runs once on mount. Tune the duration
+     to taste (lower = snappier). */
+  .stream-word {
+    animation: streamWordIn 0.5s ease-out both;
+  }
+
+  @keyframes streamWordIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 }

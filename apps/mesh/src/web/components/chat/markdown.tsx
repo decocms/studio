@@ -153,19 +153,115 @@ const markdownComponents = {
   },
 } as typeof sharedMarkdownComponents;
 
+// ── Streaming word fade-in ───────────────────────────────────────────────────
+// Splits a text run into per-word spans that fade in once on mount. Keys are
+// the word INDEX: streaming only ever appends, so settled words keep their key
+// (React updates them in place → the CSS fade never re-runs) and only new
+// trailing words mount and animate. `memo` keeps unchanged runs from
+// re-rendering. This index-keyed leaf is the whole trick — it's what an earlier
+// rehype-plugin attempt lacked, which made entire blocks re-fade.
+const WORD_SPLIT = /(\s+)/;
+const AnimatedText = memo(function AnimatedText({ text }: { text: string }) {
+  const tokens = useMemo(
+    () => text.split(WORD_SPLIT).filter((t) => t.length > 0),
+    [text],
+  );
+  return (
+    <>
+      {tokens.map((tok, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: stable for append-only streaming
+        <span key={i} className="stream-word">
+          {tok}
+        </span>
+      ))}
+    </>
+  );
+});
+AnimatedText.displayName = "AnimatedText";
+
+// Wrap string children in the per-word animator; pass elements through so they
+// animate via their own (animated) component override.
+const animateText = (children: React.ReactNode): React.ReactNode =>
+  React.Children.map(children, (child) =>
+    typeof child === "string" ? <AnimatedText text={child} /> : child,
+  );
+
+type MdProps = {
+  node?: unknown;
+  children?: React.ReactNode;
+} & Record<string, unknown>;
+
+// Same design-system styling as `markdownComponents`, but text-bearing elements
+// route their text through `animateText`. Used only while a message streams.
+const animatedComponents = {
+  ...markdownComponents,
+  h1: ({ node: _n, children, ...p }: MdProps) => (
+    <h1 {...p} className="text-2xl font-bold mt-6 mb-3 first:mt-0">
+      {animateText(children)}
+    </h1>
+  ),
+  h2: ({ node: _n, children, ...p }: MdProps) => (
+    <h2 {...p} className="text-xl font-semibold mt-5 mb-2 first:mt-0">
+      {animateText(children)}
+    </h2>
+  ),
+  h3: ({ node: _n, children, ...p }: MdProps) => (
+    <h3 {...p} className="text-lg font-semibold mt-4 mb-2 first:mt-0">
+      {animateText(children)}
+    </h3>
+  ),
+  h4: ({ node: _n, children, ...p }: MdProps) => (
+    <h4 {...p} className="text-base font-semibold mt-3 mb-1 first:mt-0">
+      {animateText(children)}
+    </h4>
+  ),
+  p: ({ node: _n, children, ...p }: MdProps) => (
+    <p {...p} className="leading-relaxed text-[14px] mb-2 last:mb-0">
+      {animateText(children)}
+    </p>
+  ),
+  strong: ({ node: _n, children, ...p }: MdProps) => (
+    <strong {...p} className="font-bold">
+      {animateText(children)}
+    </strong>
+  ),
+  em: ({ node: _n, children, ...p }: MdProps) => (
+    <em {...p} className="italic">
+      {animateText(children)}
+    </em>
+  ),
+  li: ({ node: _n, children, ...p }: MdProps) => (
+    <li {...p} className="leading-relaxed text-[14px]">
+      {animateText(children)}
+    </li>
+  ),
+  a: ({ node: _n, children, ...p }: MdProps) => (
+    <a
+      {...p}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary-dark hover:underline break-all font-medium"
+    >
+      {animateText(children)}
+    </a>
+  ),
+} as typeof markdownComponents;
+
 const MemoizedMarkdownBlock = memo(
-  ({ content }: { content: string }) => {
+  ({ content, animate }: { content: string; animate?: boolean }) => {
     return (
       <ReactMarkdown
         remarkPlugins={remarkPluginsMemo}
         rehypePlugins={rehypePluginsMemo}
-        components={markdownComponents}
+        components={animate ? animatedComponents : markdownComponents}
       >
         {content}
       </ReactMarkdown>
     );
   },
-  (prevProps, nextProps) => prevProps.content === nextProps.content,
+  (prevProps, nextProps) =>
+    prevProps.content === nextProps.content &&
+    prevProps.animate === nextProps.animate,
 );
 
 function CodeBlock({
@@ -204,9 +300,15 @@ MemoizedMarkdownBlock.displayName = "MemoizedMarkdownBlock";
 interface MemoizedMarkdownProps {
   id: string;
   text: string;
+  /** Fade newly streamed words in — set only for the in-progress message. */
+  animate?: boolean;
 }
 
-export const MemoizedMarkdown = ({ id, text }: MemoizedMarkdownProps) => {
+export const MemoizedMarkdown = ({
+  id,
+  text,
+  animate,
+}: MemoizedMarkdownProps) => {
   const blocks = useMemo(() => marked.lexer(text), [text]);
 
   return blocks.map((block, index) => {
@@ -221,7 +323,11 @@ export const MemoizedMarkdown = ({ id, text }: MemoizedMarkdownProps) => {
     }
 
     return (
-      <MemoizedMarkdownBlock content={block.raw} key={`${id}-block_${index}`} />
+      <MemoizedMarkdownBlock
+        content={block.raw}
+        animate={animate}
+        key={`${id}-block_${index}`}
+      />
     );
   });
 };
