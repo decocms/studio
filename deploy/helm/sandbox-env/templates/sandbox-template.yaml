@@ -78,13 +78,14 @@ spec:
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      # org-fs is a hard requirement, and its privileged FUSE sidecar +
-      # Bidirectional mount propagation are incompatible with user-namespace
-      # remapping — so `hostUsers: true` is fixed (no userns-remap). The
-      # untrusted agent container is still locked down independently
+      # org-fs's privileged FUSE sidecar + Bidirectional mount propagation
+      # are incompatible with user-namespace remapping, so hostUsers tracks
+      # the sidecar: true (no userns-remap) when org-fs is on (the default),
+      # false (userns-remap restored) when disableFsSidecar opts out. The
+      # untrusted agent container is locked down independently either way
       # (drop ALL caps, no privilege escalation, runAsNonRoot, seccomp
       # RuntimeDefault below); only the org-fs sidecar is privileged.
-      hostUsers: true
+      hostUsers: {{ not .Values.disableFsSidecar }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -198,12 +199,14 @@ spec:
             - name: GIT_CONFIG_VALUE_0
               value: "*"
             {{- end }}
+            {{- if not .Values.disableFsSidecar }}
             # org-fs relay: the daemon writes the mount config here for the
             # sidecar, and gates the per-run output link on its status file.
             - name: ORGFS_SIDECAR_CONFIG_PATH
               value: "/run/orgfs/config.json"
             - name: ORGFS_SIDECAR_STATUS_PATH
               value: "/run/orgfs/status.json"
+            {{- end }}
           ports:
             - name: daemon
               containerPort: 9000
@@ -227,12 +230,15 @@ spec:
             {{- end }}
             - name: home
               mountPath: /home/sandbox
+            {{- if not .Values.disableFsSidecar }}
             # The sidecar's FUSE mounts under /app/org surface here.
             - name: orgfs-org
               mountPath: /app/org
               mountPropagation: HostToContainer
             - name: orgfs-ctl
               mountPath: /run/orgfs
+            {{- end }}
+        {{- if not .Values.disableFsSidecar }}
         # Privileged org-fs mounter: waits for the daemon to relay the mount
         # config onto /run/orgfs (post-bind push), FUSE-mounts the org volumes
         # under the shared /app/org, and Bidirectional propagation surfaces
@@ -258,6 +264,7 @@ spec:
               mountPropagation: Bidirectional
             - name: orgfs-ctl
               mountPath: /run/orgfs
+        {{- end }}
       volumes:
         {{- if .Values.readOnlyRootFilesystem }}
         # Sized to match the per-container ephemeral-storage limit shape;
@@ -272,6 +279,7 @@ spec:
         - name: home
           emptyDir:
             sizeLimit: 5Gi
+        {{- if not .Values.disableFsSidecar }}
         # Mount surface (volumes attach under it) + relay control files.
         - name: orgfs-org
           emptyDir:
@@ -279,3 +287,4 @@ spec:
         - name: orgfs-ctl
           emptyDir:
             sizeLimit: 1Mi
+        {{- end }}
