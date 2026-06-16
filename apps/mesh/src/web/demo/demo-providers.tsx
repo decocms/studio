@@ -15,6 +15,8 @@
 import { useState, type PropsWithChildren } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProjectContextProvider } from "@decocms/mesh-sdk";
+// Side effect: register the demo's inline chat-part renderers (work plan / PR).
+import "./register-parts";
 
 export const DEMO_ORG = {
   id: "demo-org",

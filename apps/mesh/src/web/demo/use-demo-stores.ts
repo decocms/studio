@@ -29,6 +29,15 @@ export function useCurrentOrg(stores: DemoStores): string | null {
   );
 }
 
+/** Whether an agent has an unseen completion (sidebar notification dot). */
+export function useNotified(stores: DemoStores, agentId: string): boolean {
+  return useSyncExternalStore(
+    stores.ui.subscribe,
+    () => stores.ui.get().notified.includes(agentId),
+    () => stores.ui.get().notified.includes(agentId),
+  );
+}
+
 /** True when a given org's agent track is mid-stream — drives the "working in
  *  the background" pulse on inactive org tabs. */
 export function useTrackBusy(stores: DemoStores, orgId: string): boolean {

@@ -37,6 +37,32 @@ export interface CursorState {
   moveMs: number;
 }
 
+export type PlanTaskStatus = "queued" | "active" | "done";
+export interface PlanTask {
+  title: string;
+  detail?: string;
+  status: PlanTaskStatus;
+}
+export interface PlanState {
+  title: string;
+  tasks: PlanTask[];
+  /** false until the viewer approves; gates execution */
+  accepted: boolean;
+}
+export interface PRState {
+  number: number;
+  title: string;
+  branch: string;
+  files: number;
+  additions: number;
+  deletions: number;
+  checks: "running" | "passed";
+  merged: boolean;
+}
+export interface DigestState {
+  connected: "slack" | "teams" | null;
+}
+
 export interface DemoUiState {
   /** ids of dialogs the director has opened (real components read this) */
   openDialogs: readonly string[];
@@ -44,8 +70,10 @@ export interface DemoUiState {
   inputs: Readonly<Record<string, string>>;
   /** optional chapter caption shown over the stage */
   caption: string | null;
-  /** which org/workspace the viewer is currently looking at (multi-org nav) */
+  /** which agent/workspace the viewer is currently looking at (sidebar nav) */
   currentOrg: string | null;
+  /** agent ids with an unseen completion — drives the sidebar notification dot */
+  notified: readonly string[];
   /** the demo has finished a full play-through — show the end card */
   ended: boolean;
   /** bumped by the end card's "Replay" button to restart the scenario */
@@ -67,6 +95,7 @@ export class DemoStores {
     inputs: {},
     caption: null,
     currentOrg: null,
+    notified: [],
     ended: false,
     replayToken: 0,
   });
@@ -94,6 +123,7 @@ export class DemoStores {
       inputs: {},
       caption: null,
       currentOrg: null,
+      notified: [],
       ended: false,
       replayToken: s.replayToken,
     }));
