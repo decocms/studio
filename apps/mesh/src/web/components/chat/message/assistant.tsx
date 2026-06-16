@@ -42,6 +42,7 @@ import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
 import { GridLoader } from "../../grid-loader.tsx";
 import { formatDuration, toEpochMs } from "../../../lib/format-time.ts";
+import { useClockTick } from "../../../lib/use-clock-tick.ts";
 
 type ThinkingStage = "planning" | "thinking";
 
@@ -106,6 +107,51 @@ function GeneratingFooter({ startedAt }: { startedAt: number }) {
     <div className="flex items-center gap-2.5 mt-1 pb-1 text-muted-foreground/40 select-none">
       <GridLoader />
       <LiveTimer since={startedAt} />
+    </div>
+  );
+}
+
+// After this long with no streamed content, the turn looks frozen even though
+// the model may just be slow to first token (common with proxied/liteLLM
+// providers). Surface the elapsed time + a cancel escape hatch rather than a
+// silent "Thinking…".
+const SLOW_AFTER_MS = 20_000;
+
+/**
+ * Waiting state for a turn that has produced no parts yet. Pairs the
+ * `TypingIndicator` with a live elapsed clock and, once the wait crosses
+ * `SLOW_AFTER_MS`, a "taking longer than usual" hint + Cancel. `useClockTick`
+ * (singleton interval via useSyncExternalStore — no useEffect) re-renders this
+ * once per second so the threshold flips without a per-component timer.
+ */
+function ThinkingState({ startedAt }: { startedAt: number | null }) {
+  useClockTick(1000);
+  const stream = useOptionalChatStream();
+  const elapsedMs = startedAt !== null ? Date.now() - startedAt : 0;
+  const isSlow = elapsedMs >= SLOW_AFTER_MS;
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-2">
+        <TypingIndicator />
+        {startedAt !== null && (
+          <span className="opacity-60">
+            <LiveTimer since={startedAt} />
+          </span>
+        )}
+      </div>
+      {isSlow && stream?.stop && (
+        <div className="flex items-center gap-2 pb-1 text-[13px] text-muted-foreground/60">
+          <span>This is taking longer than usual.</span>
+          <button
+            type="button"
+            onClick={() => stream.stop()}
+            className="text-muted-foreground hover:text-foreground underline underline-offset-2"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -790,7 +836,7 @@ export function MessageAssistant({
           )}
         </div>
       ) : isLoading ? (
-        <TypingIndicator />
+        <ThinkingState startedAt={startedAt} />
       ) : (
         <EmptyAssistantState isRunInProgress={isLast && isRunInProgress} />
       )}
