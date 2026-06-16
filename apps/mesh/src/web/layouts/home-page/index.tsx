@@ -288,10 +288,11 @@ function CustomizeToolbar({
 const SCOPE_STORAGE_KEY = "running-summary-scope";
 
 function readScope(): RunningScope {
+  // Default to "user" (All my work); only "org" when explicitly chosen.
   try {
-    return localStorage.getItem(SCOPE_STORAGE_KEY) === "user" ? "user" : "org";
+    return localStorage.getItem(SCOPE_STORAGE_KEY) === "org" ? "org" : "user";
   } catch {
-    return "org";
+    return "user";
   }
 }
 
