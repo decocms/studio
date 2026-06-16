@@ -20,6 +20,7 @@ import "../../index.css";
 
 import { listOrganizationsCached } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { readLastLocation, saveLastLocation } from "@/web/lib/last-location";
 import { initPwaInstallCapture } from "@/web/lib/pwa-install";
 
 import { sourcePlugins } from "./plugins.ts";
@@ -120,6 +121,27 @@ const homeRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/",
   beforeLoad: async () => {
+    // Restore where the user last was. lastLocation is recorded on every
+    // org-scoped navigation (orgLayout writes the org; the thread route adds
+    // the taskId), so it's always current — including after an in-app org
+    // switch, which the queryFn-driven lastOrgSlug can miss when the new org
+    // is already cached. Reads are synchronous so cold entry stays instant. A
+    // stale org/thread self-heals: OrgAccessGate clears it and bounces back to
+    // "/", and an unknown taskId is re-fetched/created by useEnsureTask.
+    const lastLocation = readLastLocation();
+    if (lastLocation?.taskId) {
+      throw redirect({
+        to: "/$org/$taskId",
+        params: { org: lastLocation.org, taskId: lastLocation.taskId },
+        search: lastLocation.virtualmcpid
+          ? { virtualmcpid: lastLocation.virtualmcpid }
+          : {},
+      });
+    }
+    if (lastLocation) {
+      throw redirect({ to: "/$org", params: { org: lastLocation.org } });
+    }
+
     // Fast path: redirect returning users immediately from the cached slug,
     // WITHOUT awaiting the org-list network call. This is what keeps a cold
     // load from blocking on a round-trip (the previous blank/white screen).
@@ -175,6 +197,12 @@ const onboardingRoute = createRoute({
 const orgLayout = createRoute({
   getParentRoute: () => shellLayout,
   path: "/$org",
+  // Record the org on every entry/switch (this re-runs whenever the $org param
+  // changes). Clears any prior taskId; the thread route re-adds it right after
+  // for /$org/$taskId, since this parent beforeLoad runs before the child's.
+  beforeLoad: ({ params }) => {
+    saveLastLocation({ org: params.org });
+  },
   component: lazyRouteComponent(() => import("./layouts/org-layout.tsx")),
 });
 
@@ -226,6 +254,15 @@ const unifiedChatRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/$taskId",
   validateSearch: unifiedChatSearchSchema,
+  // Remember the open thread so cold entry ("/") can restore it. Preloading is
+  // off (defaultPreload unset), so this only fires on real navigation.
+  beforeLoad: ({ params, search }) => {
+    saveLastLocation({
+      org: params.org,
+      taskId: params.taskId,
+      virtualmcpid: search.virtualmcpid,
+    });
+  },
   component: () => null,
 });
 
