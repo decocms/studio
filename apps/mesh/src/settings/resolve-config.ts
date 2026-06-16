@@ -126,6 +126,7 @@ export function resolveConfig(
       nodeEnv !== "development",
     ),
     orgFsPublicSetsJson: envVars.ORGFS_PUBLIC_SETS,
+    orgFsMountsDisabled: toBool(envVars.DISABLE_ORGFS_MOUNTS),
 
     // Object Storage (S3-compatible)
     s3Endpoint: envVars.S3_ENDPOINT,
