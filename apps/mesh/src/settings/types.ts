@@ -59,6 +59,10 @@ export interface Settings {
   /** JSON array of public skill-set sources overlaid on the built-in
    *  defaults (see file-storage/public-sets.ts). */
   orgFsPublicSetsJson: string | undefined;
+  /** Debug escape hatch: skip provisioning org-fs mounts into sandboxes
+   *  (DISABLE_ORGFS_MOUNTS). org-fs is otherwise always mounted; this is
+   *  for low-level mount debugging, not a supported org-fs-off mode. */
+  orgFsMountsDisabled: boolean;
 
   // Object Storage (S3-compatible)
   s3Endpoint: string | undefined;

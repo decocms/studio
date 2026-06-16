@@ -417,8 +417,15 @@ async function provisionSandbox(
   // pods always mount (hosted relies on the privileged org-fs sidecar
   // shipping in the default deploy). Guarded inside the helper: a mint
   // failure → undefined → no mounting, never breaks provisioning.
+  //
+  // DISABLE_ORGFS_MOUNTS is a debug escape hatch (opt-out, default off): it
+  // skips provisioning the mount so a sandbox boots without org-fs, for
+  // low-level mount debugging. NOT a supported "org-fs-off" product mode —
+  // the prompt/tools still assume org-fs, so the agent's `org/` paths just
+  // won't exist while it's set.
   const wantsOrgFs =
-    runner.kind === "user-desktop" || runner.kind === "agent-sandbox";
+    (runner.kind === "user-desktop" || runner.kind === "agent-sandbox") &&
+    !getSettings().orgFsMountsDisabled;
   // ctx.organization is unset on the decopilot vm-tools dispatch path (the
   // org travels as the `orgId` param there) — resolve the slug from the row
   // so chat-ephemeral sandboxes get mounts too.
