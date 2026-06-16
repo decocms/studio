@@ -359,6 +359,153 @@ function TypegenSection({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
 }
 
 /**
+ * Permissions for an "agent chat bridge" API key: enough to create a thread,
+ * run this agent, and read the thread back from an external app. The run and
+ * stream endpoints only require org membership, so no connection-scoped grant
+ * is needed — just the thread tools on `self`.
+ */
+const CHAT_BRIDGE_PERMISSIONS: Record<string, string[]> = {
+  self: [
+    "COLLECTION_THREADS_CREATE",
+    "COLLECTION_THREADS_GET",
+    "COLLECTION_THREAD_MESSAGES_LIST",
+    "COLLECTION_THREADS_LIST",
+  ],
+};
+const CHAT_BRIDGE_EXPIRES_IN = 60 * 60 * 24 * 90; // 90 days
+
+/**
+ * Chat bridge section — mints a scoped API key for driving this agent from an
+ * external system (create thread → POST messages → stream → read thread back).
+ */
+function ChatBridgeSectionInner({
+  virtualMcp,
+}: {
+  virtualMcp: VirtualMCPEntity;
+}) {
+  const studio = useStudioTools();
+  const { org } = useProjectContext();
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const mcpId = virtualMcp.id;
+  const agentName = virtualMcp.title || `agent-${mcpId.slice(0, 8)}`;
+  const baseUrl = window.location.origin;
+
+  const envBlock = [
+    `MESH_BASE_URL=${baseUrl}`,
+    `MESH_ORG=${org.slug}`,
+    `MESH_AGENT_ID=${mcpId}`,
+    `MESH_API_KEY=${apiKey ?? "<api-key>"}`,
+  ].join("\n");
+
+  const handleGenerateKey = async () => {
+    setGenerating(true);
+    try {
+      const { key } = await studio.call("API_KEY_CREATE", {
+        name: `chat-bridge-${agentName}`,
+        permissions: CHAT_BRIDGE_PERMISSIONS,
+        expiresIn: CHAT_BRIDGE_EXPIRES_IN,
+      });
+      if (!key) throw new Error("No key in response");
+      setApiKey(key);
+      track("agent_chat_bridge_key_generated", { agent_id: mcpId });
+    } catch {
+      track("agent_chat_bridge_key_failed", { agent_id: mcpId });
+      toast.error("Failed to create API key");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    track("agent_connect_action", {
+      agent_id: mcpId,
+      action: "chat_bridge_copy_env",
+      has_api_key: Boolean(apiKey),
+    });
+    await navigator.clipboard.writeText(envBlock);
+    setCopied(true);
+    toast.success("Connection details copied to clipboard");
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h4 className="text-sm font-medium text-foreground">
+            Call from your app
+          </h4>
+          <p className="text-xs text-muted-foreground">
+            Create a scoped API key to start a thread, run this agent, and
+            stream results from an external system (e.g. a chatbot webhook).
+          </p>
+        </div>
+        {!apiKey && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5"
+            onClick={handleGenerateKey}
+            disabled={generating}
+          >
+            {generating ? (
+              <Loading01 size={14} className="animate-spin" />
+            ) : (
+              <Key01 size={14} />
+            )}
+            <span>{generating ? "Creating…" : "Create API key"}</span>
+          </Button>
+        )}
+      </div>
+
+      {apiKey && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Store this key securely — it won't be shown again.
+        </p>
+      )}
+
+      <p className="text-xs font-medium text-muted-foreground">
+        Connection details
+      </p>
+      <div className="rounded-md border border-input bg-muted/50 px-3 py-2.5">
+        <div className="flex items-start gap-2">
+          <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs text-muted-foreground">
+            {envBlock}
+          </code>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            onClick={handleCopy}
+          >
+            {copied ? (
+              <Check size={12} className="text-green-600" />
+            ) : (
+              <Copy01 size={12} />
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatBridgeSection({ virtualMcp }: { virtualMcp: VirtualMCPEntity }) {
+  return (
+    <Suspense
+      fallback={<div className="h-20 animate-pulse rounded-md bg-muted" />}
+    >
+      <ChatBridgeSectionInner virtualMcp={virtualMcp} />
+    </Suspense>
+  );
+}
+
+/**
  * Share Modal - Virtual MCP sharing and IDE integration
  */
 export function VirtualMCPShareModal({
@@ -406,6 +553,11 @@ export function VirtualMCPShareModal({
 
       {/* Typegen */}
       <TypegenSection virtualMcp={virtualMcp} />
+
+      <div className="border-t border-border" />
+
+      {/* Chat bridge — scoped key for external integrations */}
+      <ChatBridgeSection virtualMcp={virtualMcp} />
     </div>
   );
 
