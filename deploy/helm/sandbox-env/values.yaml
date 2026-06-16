@@ -190,12 +190,21 @@ dnsConfig:
 # reject spec.env, so boot env can't carry it).
 #
 # org-fs is a hard product requirement (skills, uploads, outputs, home all
-# live here), so there is no toggle. It forces `hostUsers: true` (no
-# user-namespace remap) — Kubernetes forbids privileged containers +
+# live here), so it is ON by default. When on it forces `hostUsers: true`
+# (no user-namespace remap) — Kubernetes forbids privileged containers +
 # Bidirectional propagation in user-namespaced pods. Security note: only
 # THIS sidecar is privileged; the untrusted agent container keeps drop-ALL
 # caps, no privilege escalation, runAsNonRoot, and seccomp RuntimeDefault
 # (see the sandbox container in templates/sandbox-template.yaml).
+#
+# disableFsSidecar (opt-out, default false): a DEBUG escape hatch — drops
+# the sidecar + its mounts entirely and restores userns remap
+# (hostUsers: false). The mesh side still teaches `org/` paths, so this is
+# for low-level pod/mount debugging, not a supported org-fs-off mode. NOT
+# used in prod. (Mirror the mesh-side DISABLE_ORGFS_MOUNTS flag, which
+# skips minting the mount config without removing the sidecar.)
+disableFsSidecar: false
+
 orgFs:
   image:
     repository: ghcr.io/decocms/studio/orgfs-sidecar
