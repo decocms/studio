@@ -37,6 +37,7 @@ import {
   type RenderItem,
   useFilterParts,
 } from "./use-filter-parts.ts";
+import { RUN_STATUS_COPY } from "../run-status.ts";
 import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
 import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
@@ -74,21 +75,43 @@ const THINKING_STAGES: Record<ThinkingStage, ThinkingStageConfig> = {
 
 const PLANNING_DURATION = 1200;
 
-function TypingIndicator() {
-  const [stage, setStage] = useState<ThinkingStage>("planning");
+function RunStatusIndicator() {
+  const stage = useOptionalChatStream()?.runStatusStage ?? null;
+  const [fallbackStage, setFallbackStage] = useState<ThinkingStage>("planning");
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
+    if (stage !== null) return;
     const planningTimer = setTimeout(() => {
-      setStage("thinking");
+      setFallbackStage("thinking");
     }, PLANNING_DURATION);
 
     return () => {
       clearTimeout(planningTimer);
     };
-  }, []);
+  }, [stage]);
 
-  const config = THINKING_STAGES[stage];
+  if (stage !== null) {
+    const copy = RUN_STATUS_COPY[stage];
+    return (
+      <div className="flex items-start gap-1.5 py-2 opacity-70">
+        <Stars01
+          className="text-muted-foreground shrink-0 animate-pulse mt-0.5"
+          size={14}
+        />
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-[14px] text-muted-foreground shimmer">
+            {copy.label}...
+          </span>
+          <span className="text-[12px] leading-4 text-muted-foreground/60">
+            {copy.detail}
+          </span>
+        </span>
+      </div>
+    );
+  }
+
+  const config = THINKING_STAGES[fallbackStage];
 
   return (
     <div className="flex items-center gap-1.5 py-2 opacity-60">
@@ -119,7 +142,7 @@ const SLOW_AFTER_MS = 20_000;
 
 /**
  * Waiting state for a turn that has produced no parts yet. Pairs the
- * `TypingIndicator` with a live elapsed clock and, once the wait crosses
+ * `RunStatusIndicator` with a live elapsed clock and, once the wait crosses
  * `SLOW_AFTER_MS`, a "taking longer than usual" hint + Cancel. `useClockTick`
  * (singleton interval via useSyncExternalStore — no useEffect) re-renders this
  * once per second so the threshold flips without a per-component timer.
@@ -133,7 +156,7 @@ function ThinkingState({ startedAt }: { startedAt: number | null }) {
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-center gap-2">
-        <TypingIndicator />
+        <RunStatusIndicator />
         {startedAt !== null && (
           <span className="opacity-60">
             <LiveTimer since={startedAt} />
@@ -720,11 +743,9 @@ export function MessageAssistant({
   }
   const startedAt = turnEpochMs ?? clientFallbackStartedAt;
 
-  // Handle null message or empty parts
-  const hasContent = message !== null && message.parts.length > 0;
-
   // Use hook to extract reasoning groups, build render order, and data parts
   const { reasoningGroups, renderOrder, dataParts } = useFilterParts(message);
+  const hasVisibleContent = message !== null && renderOrder.length > 0;
 
   // Reasoning is actively streaming only when the last part in the array
   // is a reasoning part (the model is currently inside a thinking block).
@@ -769,7 +790,7 @@ export function MessageAssistant({
     });
   const shouldCollapse =
     !isLoading &&
-    hasContent &&
+    hasVisibleContent &&
     isTerminallyDone &&
     (() => {
       let toolCallCount = 0;
@@ -790,7 +811,7 @@ export function MessageAssistant({
 
   return (
     <Container className={className}>
-      {hasContent ? (
+      {hasVisibleContent ? (
         <div className="flex flex-col gap-3 sm:gap-2">
           {collapsed.length > 0 && (
             <CollapsedSection

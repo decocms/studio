@@ -101,6 +101,7 @@ import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
 import type { Task } from "./task/types";
 import type { SendMessageParams, SetAppContextParams } from "./store/types";
+import type { RunStatusStage } from "./run-status";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
@@ -125,6 +126,7 @@ export interface ChatStreamContextValue {
   error: Error | null;
   clearError: () => void;
   finishReason: string | null;
+  runStatusStage: RunStatusStage | null;
   clearFinishReason: () => void;
   isStreaming: boolean;
   isChatEmpty: boolean;
@@ -840,6 +842,7 @@ export function ActiveTaskProvider({
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
   const finishReason = useStore(conn.finishReason);
+  const runStatusStage = useStore(conn.runStatusStage);
   const hasMoreOlder = useStore(conn.hasMoreOlder);
   const isFetchingOlder = useStore(conn.isFetchingOlder);
 
@@ -1131,6 +1134,7 @@ export function ActiveTaskProvider({
     error: chatError,
     clearError: () => setChatError(null),
     finishReason,
+    runStatusStage,
     clearFinishReason: () => conn.finishReason.set(null),
     isStreaming,
     isChatEmpty,
