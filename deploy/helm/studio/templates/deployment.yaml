@@ -34,6 +34,13 @@ spec:
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        {{- if and .Values.web.frontDoorLabels (not .Values.web.enabled) }}
+        # Front-door labels live on the API pods until web is enabled, then move
+        # to the nginx pods (see web-deployment.yaml). Lets an external LB
+        # retarget via a stable selector when web.enabled flips. Pod-template
+        # labels only — never added to the immutable selector.
+        {{- toYaml .Values.web.frontDoorLabels | nindent 8 }}
+        {{- end }}
     spec:
       {{- if .Values.terminationGracePeriodSeconds }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}

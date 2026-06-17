@@ -45,6 +45,10 @@ spec:
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        {{- with .Values.web.frontDoorLabels }}
+        # External LB retargets here once web.enabled flips (see deployment.yaml).
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:

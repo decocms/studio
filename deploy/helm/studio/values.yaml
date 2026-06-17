@@ -105,6 +105,13 @@ web:
   # host:port of the API (main) Service. Empty → in-namespace main Service.
   # Set to an FQDN (<svc>.<ns>.svc.cluster.local:80) for cross-namespace.
   apiUpstream: ""
+  # Front-door pod labels for blue-green LB retargeting. When non-empty, these
+  # labels sit on the API pods while web.enabled=false and move to the nginx
+  # pods when web.enabled=true. Point your external LB/NLB selector at them
+  # ONCE; then cutover/rollback is just flipping web.enabled. Flipping rolls the
+  # pods that gain/lose the label once. Default {} → no labels, output unchanged.
+  frontDoorLabels: {}
+  #   decocms.com/frontdoor: "true"
   service:
     type: ClusterIP
     port: 80
