@@ -70,10 +70,10 @@ import {
 import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
 import {
   classifyStreamError,
-  sanitizeStreamError,
   stringifyError,
 } from "@decocms/harness/decopilot/stream-error";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
+import { mintRunFenceToken } from "./dispatch-fence";
 import { loadAndMergeMessages } from "./conversation";
 import { PartEmitter } from "./part-emitter";
 import { ProgressBumpThrottle } from "./progress-bump";
@@ -85,7 +85,11 @@ export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
 import { buildOnTitleUpdated } from "./on-title-updated";
-import { consumeHarnessStream } from "./consume-harness-stream";
+import type {
+  HarnessStreamConsumerHooks,
+  HarnessStreamTitleOptions,
+} from "./consume-harness-stream";
+import { ingestRun } from "./ingest-run";
 import {
   checkModelPermission,
   fetchModelPermissions,
@@ -97,7 +101,6 @@ import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
-import type { ThreadMessage } from "@/storage/types";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
 import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
@@ -105,15 +108,6 @@ import { safeMemoryUsage } from "@/observability/profiling/safe-memory";
 import { getPodId } from "@/core/pod-identity";
 import type { SSEEvent } from "@/event-bus";
 import { sleep } from "@decocms/std";
-
-// B5/I1: counter for message-save failures — tagged by org.id (low cardinality).
-// Incremented at every save .catch site inside dispatch-run.ts so the frequency
-// of DB write failures is visible in OTEL without log scraping.
-const saveErrorsCounter = meter.createCounter("decopilot.save.errors", {
-  description:
-    "Number of message-save failures during decopilot run dispatch (v1 and v2 paths)",
-  unit: "{errors}",
-});
 
 // Attributes onFinish event-loop cost by phase (settle = awaiting the
 // accumulated pendingOps; save = the synchronous message-serialization +
@@ -211,6 +205,74 @@ function lazyStream<T>(factory: () => ReadableStream<T>): ReadableStream<T> {
     },
     { highWaterMark: 0 },
   );
+}
+
+/**
+ * Inputs to the agent-sandbox stream branch — the unified-pipeline pieces fed
+ * into `ingestRun`.
+ */
+export interface AgentSandboxUiStreamInput {
+  runId: string;
+  fenceToken: string;
+  chunks: AsyncIterable<UIMessageChunk>;
+  streamBuffer: Pick<StreamBuffer, "publishRawChunk" | "publishDone">;
+  /** Title interception + `onTitleUpdated` SSE. `persistTitle` is replaced with
+   *  a NO-OP here — the durable projector is the sole title writer. */
+  title: HarnessStreamTitleOptions;
+  hooks: HarnessStreamConsumerHooks;
+}
+
+/**
+ * Build the agent-sandbox run's UI stream (unified pipeline — the only path).
+ *
+ * The raw harness chunks are wrapped as `(seq, chunk)` (monotonic counter) and
+ * fed through the shared `ingestRun` unit, which publishes each chunk to
+ * JetStream with a seq-keyed `Nats-Msg-Id` and drives the live hooks (usage /
+ * posthog completion / SSE finish) + title-chunk injection — but with a NO-OP
+ * `persistTitle`, because the durable projector is the sole writer of parts +
+ * status + title. The returned stream yields NOTHING (raw chunks are the NATS
+ * source); the pump that drains it still publishes the `{done}` sentinel so
+ * tails close.
+ */
+export function buildAgentSandboxUiStream(
+  input: AgentSandboxUiStreamInput,
+): ReadableStream {
+  // Route through the shared ingestRun unit. Raw chunks → JetStream (seq-keyed
+  // dedup); hooks + title injection fire once; ZERO DB writes here.
+  let seq = 0;
+  async function* seqChunks(): AsyncGenerator<{
+    seq: number;
+    chunk: UIMessageChunk;
+  }> {
+    for await (const chunk of input.chunks) {
+      yield { seq: ++seq, chunk };
+    }
+  }
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        await ingestRun(
+          {
+            runId: input.runId,
+            fenceToken: input.fenceToken,
+            chunks: seqChunks(),
+          },
+          {
+            streamBuffer: input.streamBuffer,
+            hooks: input.hooks,
+            title: {
+              ...input.title,
+              // Projector owns the title write — neutralize the inline one.
+              persistTitle: async () => {},
+            },
+          },
+        );
+        controller.close();
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+  });
 }
 
 /**
@@ -413,8 +475,9 @@ export interface DispatchRunDeps {
   /** When provided, the auto-titler emits a `decopilot.thread.status` SSE
    *  event after committing the new title to the DB so tabs not subscribed
    *  to the per-thread `/stream` see the updated title in real-time.
-   *  Optional — callers without an sseHub (e.g. the orphan-recovery path)
-   *  may omit it; the omission is safe and the auto-title still persists. */
+   *  Optional — callers without an sseHub (e.g. background/non-interactive
+   *  dispatch paths) may omit it; the omission is safe and the auto-title
+   *  still persists. */
   sseHub?: { emit(orgId: string, event: SSEEvent): void };
 }
 
@@ -536,7 +599,7 @@ export async function dispatchRunAndWait(
  * The fully-assembled, JSON-serializable wire shape of a run's harness
  * input — everything `HarnessStreamInput` carries EXCEPT the non-serializable
  * `signal` field. This is exactly what the desktop daemon validates against
- * `harnessStreamInputSchema` and what the pull-transport work item carries.
+ * `harnessStreamInputSchema` and what the pull work item carries.
  *
  * Built eagerly in `prepareRun`'s main body (mcp mint + message
  * materialization + field assembly) so it's available without consuming
@@ -557,13 +620,13 @@ interface PreparedRun {
    */
   uiStream: ReadableStream<unknown>;
   registrySignal: AbortSignal;
-  /** Minted by prepareRun for pull-transport threads (spec §3.5). */
+  /** Minted by prepareRun for pull-dispatched threads. */
   runFenceToken: string;
   /**
    * Fully-assembled wire harness input (mcp minted, messages materialized,
    * fence token attached). `dispatchRunAndWait` ignores this (it consumes
-   * `uiStream`); `pullDispatch` returns it so the gate can publish it as the
-   * pull work item's `harnessInput` (Phase D daemon pull loop consumes it).
+   * `uiStream`); `pullDispatch` returns it so the gate can publish
+   * it as the pull work item's `harnessInput`.
    */
   wireHarnessInput: WireHarnessInput;
 }
@@ -884,38 +947,18 @@ async function prepareRun(
       }
     }
 
-    const saveMessagesToThread = async (
-      ...messages: (ChatMessage | undefined)[]
-    ) => {
-      const now = Date.now();
-      const messagesToSave = [
-        ...new Map(messages.filter(Boolean).map((m) => [m!.id, m!])).values(),
-      ]
-        .filter((m) => m.parts && m.parts.length > 0)
-        .map((message, i) => ({
-          ...message,
-          thread_id: mem.thread.id,
-          created_at: new Date(now + i).toISOString(),
-          updated_at: new Date(now + i).toISOString(),
-        }));
-      if (messagesToSave.length === 0) return;
-      await mem.save(messagesToSave as ThreadMessage[]).catch((error) => {
-        // B5/I1: count DB save failures so the metric fires even when logs
-        // aren't being watched. Tagged by org.id (low cardinality).
-        saveErrorsCounter.add(1, { "org.id": input.organizationId });
-        console.error("[decopilot:stream] Error saving messages", error);
-      });
-    };
-
-    // ── Stream-of-record v2 write path (canary-gated; OFF by default) ───────
+    // ── Stream-of-record v2 write path (unified pipeline) ───────────────────
     // `isV2` is read straight off the thread row's pinned
-    // `message_storage_version`. When 1 (the default for every existing
-    // thread), `partEmitter` is null and the v1 `saveMessagesToThread` path
-    // below runs byte-for-byte unchanged. When 2 (only ever set on a
-    // brand-new thread by the canary at the first-message pin site in
-    // routes.ts), parts are emitted via the PartEmitter at the same hooks
-    // INSTEAD of `saveMessagesToThread`. The two paths are mutually exclusive
-    // — no thread is ever written through both.
+    // `message_storage_version`. New threads are pinned v2 unconditionally at
+    // the first-message site in routes.ts (Phase C cutover — v2 is the only
+    // write path), so `partEmitter` is present for every new run. Pre-existing
+    // v1 threads
+    // (`message_storage_version === 1`) are DEPRECATED read-only legacy: the v1
+    // write path was deleted in the Phase C cutover, so `partEmitter` is null
+    // for them and the persistence hooks below no-op. The user message is
+    // persisted here (before dispatch); the assistant parts + terminal status
+    // + title are written by the durable projector — `buildAgentSandboxUiStream`
+    // only publishes raw chunks to JetStream (zero DB writes).
     const isV2 = mem.thread.message_storage_version === 2;
     const partEmitter = isV2
       ? new PartEmitter({
@@ -982,11 +1025,14 @@ async function prepareRun(
     // included in HarnessStreamInput so the daemon presents it on every
     // ingest append. Minting after START ensures the run is claimed before
     // the token exists; clearing on FINISH is the gate's responsibility.
+    // It is fresh PER TURN (runId == threadId is stable across turns) so the
+    // fence-scoped JetStream dedup key (`runId:fenceToken:seq`) and the
+    // projector's per-(runId, fenceToken) accumulator never collide two turns.
     // On DBOS replay this re-mints a new token while a queued work item carries the old one —
     // reconcile when Phase D wires the publish off the persisted column.
-    // Note: a failed pull run leaves run_fence_token set until Task 7 clears it
+    // Note: a failed link run leaves run_fence_token set until Task 7 clears it
     // (harmless: next run overwrites; ws/cloud never read it).
-    const runFenceToken = crypto.randomUUID();
+    const runFenceToken = mintRunFenceToken();
     await ctx.storage.threads.setRunFence(mem.thread.id, runFenceToken);
 
     const registrySignal = runRegistry.getAbortSignal(mem.thread.id);
@@ -1048,7 +1094,8 @@ async function prepareRun(
       }
       if (partEmitter) {
         // v2: persist the user message's parts + a finish anchor so the
-        // message is immediately complete in the parts read path.
+        // message is immediately complete in the parts read path. (v1 threads
+        // are deprecated read-only legacy — no write path; partEmitter is null.)
         await partEmitter
           .emitUserMessage(materializedRequestMessage)
           .catch((error) => {
@@ -1057,8 +1104,6 @@ async function prepareRun(
               error,
             );
           });
-      } else {
-        await saveMessagesToThread(materializedRequestMessage);
       }
     }
 
@@ -1091,8 +1136,8 @@ async function prepareRun(
     //   - hosted dispatch (`dispatchHarnessChunks` below) layers the
     //     non-serializable `signal` on top:
     //     `{ ...wireHarnessInput, signal: registrySignal }`.
-    //   - `pullDispatch` returns it verbatim so the thread gate can publish
-    //     it as the pull work item's `harnessInput` (Phase D daemon loop).
+    //   - `pullDispatch` returns it verbatim so the thread gate can
+    //     publish it as the pull work item's `harnessInput`.
 
     // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
     // Also handles legacy data: URLs from threads predating this pipeline.
@@ -1133,7 +1178,7 @@ async function prepareRun(
     // ⚠️ SECURITY: Decopilot receives resolved model secret sources, never
     // activated provider objects. For hosted cluster execution these stay
     // in-process; for user-desktop execution they transit to the daemon over
-    // the link transport so the same harness contract works in both places.
+    // the pull transport so the same harness contract works in both places.
     // Never log `modelSources` (any slot) or `mcp.headers` values.
 
     const mcp: HarnessStreamInput["mcp"] = mcpBase;
@@ -1231,7 +1276,7 @@ async function prepareRun(
     //
     // Transport Convergence: this generator only ever runs HOSTED
     // (agent-sandbox / legacy) harnesses via `localDispatch`. EVERY user-desktop
-    // run goes through the PULL transport (`pullDispatch` + work queue), which
+    // run goes through the pull transport (`pullDispatch` + work queue), which
     // never consumes this stream — so a user-desktop target reaching here is a
     // hard bug (the guard below throws). The push `remoteDispatch` path is
     // deleted.
@@ -1245,11 +1290,10 @@ async function prepareRun(
           signal: registrySignal,
         };
 
-        // Transport Convergence: user-desktop runs use the PULL transport
-        // exclusively (the gate routes them to `pullDispatch`, which never
-        // consumes this lazy stream). The push `remoteDispatch` path is
-        // deleted, so reaching this generator for a user-desktop target means
-        // the gate routing diverged from the dispatch path — a hard bug.
+        // User-desktop runs are routed by the gate to the work queue,
+        // which never consumes this lazy stream. Reaching this generator for a
+        // user-desktop target means the gate routing diverged from the dispatch
+        // path — a hard bug.
         if (target.sandboxProviderKind === "user-desktop") {
           throw new Error(
             "user-desktop runs use the pull transport — dispatchRunAndWait must not run a local harness for them",
@@ -1285,51 +1329,28 @@ async function prepareRun(
     // high-water mark), starting the harness for never-consumed pull runs.
     const uiStream = lazyStream(() =>
       tapProgress(
-        consumeHarnessStream({
+        buildAgentSandboxUiStream({
+          runId: mem.thread.id,
+          fenceToken: runFenceToken,
+          streamBuffer: streamBuffer ?? {
+            publishRawChunk: async () => false,
+            publishDone: async () => false,
+          },
           chunks: dispatchHarnessChunks(),
-          originalMessages: allMessages,
           title: {
             currentThreadTitle: mem.thread.title,
             threadId: mem.thread.id,
+            // Projector owns the title write — neutralized inside
+            // `buildAgentSandboxUiStream`. The chunk interception +
+            // `onTitleUpdated` SSE still fire here.
             persistTitle: async (threadId, title) => {
               await ctx.storage.threads.update(threadId, { title });
             },
             onTitleUpdated,
           },
-          persistence: {
-            emitStepParts: async (responseMessage) => {
-              if (!partEmitter) return;
-              await partEmitter.emitStepParts(responseMessage);
-            },
-            emitFinal: async (responseMessage) => {
-              if (partEmitter) {
-                await partEmitter.emitFinal(responseMessage);
-                return;
-              }
-              await saveMessagesToThread(responseMessage as ChatMessage);
-            },
-            emitError: async (messageId, errorText) => {
-              if (registrySignal.aborted) return;
-              const sanitized = sanitizeStreamError(errorText);
-              if (partEmitter) {
-                await partEmitter.emitError(messageId, sanitized);
-                return;
-              }
-              await saveMessagesToThread({
-                id: messageId,
-                role: "assistant",
-                parts: [{ type: "text", text: `Error: ${sanitized}` }],
-                metadata: { errorCategory: classifyStreamError(errorText) },
-              } as ChatMessage);
-            },
-          },
-          // Wire error chunks synthesized from thrown source errors carry
-          // sanitized text — the dissolved outer wrapper returned
-          // `sanitizeStreamError(error)` from its onError for exactly this.
-          sanitizeErrorText: sanitizeStreamError,
           hooks: {
             onUsage: onUsageAggregated,
-            onStep: (responseMessage) => {
+            onStep: () => {
               const transitions = runRegistry.dispatch({
                 type: "STEP_DONE",
                 taskId: mem.thread.id,
@@ -1342,35 +1363,14 @@ async function prepareRun(
                   );
                 }),
               );
-              if (!partEmitter) {
-                // v1: whole-message checkpoints on every step.
-                const stepEvent = transitions[0]?.event;
-                const shouldSave = stepEvent?.type === "STEP_COMPLETED";
-                if (shouldSave) {
-                  pendingOps.push(
-                    saveMessagesToThread(responseMessage as ChatMessage).catch(
-                      (e) => {
-                        saveErrorsCounter.add(1, {
-                          "org.id": input.organizationId,
-                        });
-                        console.error(
-                          "[decopilot:stream] onStepFinish save failed",
-                          e,
-                        );
-                      },
-                    ),
-                  );
-                }
-              }
             },
             onFinish: async (responseMessage, finishReason) => {
               const pendingCount = pendingOps.length;
 
               // Phase 1 (settle): await the dispatch-level side-effect ops
-              // accumulated during the run (step reactors, v1 checkpoints).
-              // The kernel already settled its own persistence pending +
-              // emitFinal before invoking this hook, so this segment isolates
-              // the dispatch-side flush cost.
+              // accumulated during the run (step reactors). The kernel already
+              // settled its own pending before invoking this hook, so this
+              // segment isolates the dispatch-side flush cost.
               const settleStart = performance.now();
               await Promise.allSettled(pendingOps);
               finishDurationHistogram.record(performance.now() - settleStart, {
@@ -1504,7 +1504,7 @@ async function prepareRun(
                 });
             },
           },
-        }).uiStream,
+        }),
         ctx,
         mem.thread.id,
       ),
@@ -1698,32 +1698,28 @@ async function resolvePullSandboxConfig(
 }
 
 /**
- * Pull-transport variant of `dispatchRunAndWait` (Phase B, spec §3.4).
+ * Prepare a user-desktop run for downstream link execution.
  *
- * Claims the run and mints the fence (via prepareRun), then returns the
- * fence token, task id, AND the fully-assembled wire `HarnessStreamInput`
- * for the gate step to thread into the work item published to the JetStream
- * WorkQueue.
+ * Claims the run and mints the fence (via prepareRun), then returns the fence
+ * token, task id, and fully assembled wire `HarnessStreamInput` for the gate
+ * step to publish as a pull work item.
  *
- * IMPORTANT: `uiStream` from prepareRun is never consumed here — and since
+ * IMPORTANT: `uiStream` from prepareRun is never consumed here. Since
  * prepareRun's stream is lazy (harness dispatch happens on first pull), the
- * local harness does NOT run for pull-transport threads (the daemon runs
- * remotely). The uiStream will be garbage-collected naturally; the run
- * transitions to terminal when the ingest finish handler fires FINISH.
+ * local harness does NOT run for pull-dispatched threads. The daemon runs it
+ * remotely and the run transitions to terminal when the ingest finish handler
+ * fires FINISH.
  *
  * The work item's `harnessInput` is the complete `wireHarnessInput` that
- * prepareRun now builds eagerly (mcp endpoint minted, messages
- * materialized, virtualMcp + fence token attached) — exactly the shape the
- * daemon validates against `harnessStreamInputSchema`. The non-serializable
- * `signal` member is intentionally absent (it only exists for the hosted
- * dispatch path). This closes the prior work-item gap;
- * the item is consumed by the Phase D daemon pull loop.
+ * prepareRun builds eagerly (mcp endpoint minted, messages materialized,
+ * virtualMcp + fence token attached), exactly the shape the daemon validates
+ * against `harnessStreamInputSchema`. The non-serializable `signal` member is
+ * intentionally absent; it only exists for the hosted dispatch path.
  *
  * Also resolves the sandbox provisioning config (handle, repo clone URL,
- * workload runtime) for CLI harnesses targeting user-desktop, so the daemon
- * can spawn the sandbox cold without a prior WS-path ensure. Carries
- * `orgSlug` so the daemon ingest path can construct the URL without a DB
- * lookup.
+ * workload runtime) for harnesses targeting user-desktop, so the daemon can
+ * spawn the sandbox cold. Carries `orgSlug` so the daemon ingest path can
+ * construct the URL without a DB lookup.
  */
 export async function pullDispatch(
   input: DispatchRunInput,
@@ -1748,13 +1744,13 @@ export async function pullDispatch(
       );
 
       // ── Message offload ─────────────────────────────────────────────────
-      // The work item is published to the JetStream WorkQueue as a NATS
-      // message; NATS rejects payloads exceeding MAX_PUBLISH_BYTES. The
-      // conversation `messages` array is the dominant large part — when the
-      // encoded harnessInput exceeds the budget, offload it to object storage
-      // (via the shared `offload-messages` helpers), then carry the ref on the
-      // work item so the daemon can forward it to the sandbox daemon's
-      // /_sandbox/dispatch (which re-inflates from messagesRef).
+      // The work item is published to the JetStream WorkQueue as a NATS message; NATS
+      // rejects payloads exceeding MAX_PUBLISH_BYTES. The conversation
+      // `messages` array is the dominant large part — when the encoded
+      // harnessInput exceeds the budget, offload it to object storage (via the
+      // shared `offload-messages` helpers), then carry the ref on the work item
+      // so the daemon can forward it to the sandbox daemon's /_sandbox/dispatch
+      // (which re-inflates from messagesRef).
       let effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
       let messagesRef: MessagesRef | null = null;
       // `messages` dominates the payload — serialize it once and reuse the same
@@ -1847,8 +1843,8 @@ export async function pullDispatch(
         }
       }
 
-      // The pull daemon is user-scoped and no longer carries a startup org, so
-      // the work item MUST carry the org slug for the ingest URL. Prefer the
+      // The daemon is user-scoped and no longer carries a startup org, so the
+      // work item MUST carry the org slug for the ingest URL. Prefer the
       // request-resolved org; fall back to a slug lookup by org id so it can
       // never be missing (the daemon has no DB access to resolve it).
       // ctx.organization is normally populated by the org-scoped route middleware
@@ -1894,12 +1890,9 @@ export async function pullDispatch(
  * `deriveHandle(item)`. Both sides agree by construction.
  *
  * Safe to call at dispatch-run sites where the daemon will self-ensure the
- * sandbox from the work item (cluster-connection-pull.ts:214 —
- * `input.provider.ensureSandbox(ensureInput)`). The warm-ensure
- * round-trip at those sites is therefore redundant and is replaced by this
- * pure call (C-bis S4 landmine #7). Pull is the sole local transport now
- * (Transport Convergence), so this is the only handle-derivation site —
- * the push/preview-URL ensure helpers were deleted with the push path.
+ * sandbox from the work item (cluster-connection-pull.ts calls
+ * `input.provider.ensureSandbox(ensureInput)`). The warm-ensure round-trip at
+ * those sites is therefore redundant and is replaced by this pure call.
  *
  * Exported for unit tests.
  */

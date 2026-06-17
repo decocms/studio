@@ -44,7 +44,7 @@ async function handleTerminalStatus(
   status: "completed" | "requires_action",
   deps: RunReactorDeps,
 ): Promise<void> {
-  const { storage, streamBuffer, sseHub } = deps;
+  const { storage, sseHub } = deps;
   const thread = await storage.get(taskId, orgId);
 
   await storage.update(taskId, orgId, {
@@ -52,7 +52,12 @@ async function handleTerminalStatus(
     run_config: null,
     run_started_at: null,
   });
-  streamBuffer.purge(taskId);
+  // Purge ownership moved to the durable projector workflow's success path
+  // (`cleanupRunStep` in projector-workflow.ts, after the run is reconstructed
+  // from JetStream + completed). Purging here on the live finish event would
+  // race the workflow's JetStream read and poison the projection — the exact
+  // bug this plan fixes. Failed runs are NOT projected, so RUN_FAILED still
+  // purges below as explicit abandoned-state cleanup.
   sseHub.emit(
     orgId,
     createDecopilotThreadStatusEvent(taskId, status, {

@@ -88,6 +88,11 @@ export interface RelaySessionRegistry {
    * Create the session for a run, tagged with the fence token it relays for.
    * Throws if one is already open for this runId — callers evict the stale
    * session first on a fence mismatch.
+   *
+   * The session always starts with `lastSeq=0` — it delivers the FULL prefix
+   * from seq 1, keeping the re-numbered seq space consistent across sessions.
+   * Resume dedup (skip re-publishing already-durable chunks) is handled at the
+   * ingest layer (`ingestRun`'s `initialAckSeq`), not here.
    */
   open(
     runId: string,
@@ -109,7 +114,7 @@ export interface RelaySessionRegistry {
 }
 
 class RelaySessionImpl implements RelaySession {
-  lastSeq = 0;
+  lastSeq: number;
   ended = false;
   readonly whenComplete: Promise<void>;
 
@@ -133,6 +138,7 @@ class RelaySessionImpl implements RelaySession {
     private readonly idleTimeoutMs: number,
     private readonly onIdle: () => void,
   ) {
+    this.lastSeq = 0;
     // Flatten a synchronous throw from `consume` into a rejection so
     // `whenComplete` is the single settlement signal either way.
     this.whenComplete = (async () => await deps.consume(this.iterate()))();
