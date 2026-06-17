@@ -1,4 +1,5 @@
 {{- if .Values.autoscaling.enabled }}
+{{- $rolloutsEnabled := and .Values.argoRollouts .Values.argoRollouts.enabled }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -6,9 +7,18 @@ metadata:
   labels:
     {{- include "chart-deco-studio.labels" . | nindent 4 }}
 spec:
+  # When argoRollouts.enabled, the workload is a Rollout (argoproj.io/v1alpha1)
+  # instead of a Deployment — HPA must target it directly so the controller can
+  # read/write `.spec.replicas` on the right kind. Pointing HPA at a Deployment
+  # that no longer exists leaves autoscaling silently broken.
   scaleTargetRef:
+    {{- if $rolloutsEnabled }}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    {{- else }}
     apiVersion: apps/v1
     kind: Deployment
+    {{- end }}
     name: {{ include "chart-deco-studio.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}

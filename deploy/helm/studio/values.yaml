@@ -52,6 +52,50 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
+# Argo Rollouts opt-in.
+#
+# When `argoRollouts.enabled: true`, the chart renders a Rollout (argoproj.io/v1alpha1)
+# in place of the standard Deployment. The pod template is shared between both
+# kinds via the `podTemplate` helper, so toggling this flag changes ONLY the
+# orchestration around traffic switching — never the workload itself.
+#
+# Requires: argo-rollouts controller installed in the cluster
+# (https://argo-rollouts.readthedocs.io/).
+#
+# IMPORTANT: blue-green amplifies the schema/code overlap window. Destructive
+# DB migrations (DROP/RENAME/type changes) on a single release WILL break the
+# old (blue) ReplicaSet while it still serves traffic. Adopt expand-contract
+# migration discipline at the code level (migration N adds, code N+1 stops
+# using old, migration N+2 drops) so both old and new pods are safe to run
+# against the migrated schema during the cutover window.
+argoRollouts:
+  enabled: false
+  # revisionHistoryLimit: 5  # how many old ReplicaSets to keep
+  strategy:
+    # Pick exactly ONE of `blueGreen.enabled` or `canary.enabled`.
+    blueGreen:
+      enabled: true
+      # autoPromotionEnabled: false → manual promote in the Argo UI after
+      # validating preview. Set true (or wire prePromotionAnalysis) to
+      # auto-promote once the new ReplicaSet is healthy.
+      autoPromotionEnabled: false
+      # autoPromotionSeconds: 0  # auto-promote N seconds after preview becomes available
+      # Keep the old ReplicaSet alive for N seconds after promotion so in-flight
+      # requests drain cleanly. Reasonable default for long-lived sessions
+      # (MCP / chat connections).
+      scaleDownDelaySeconds: 30
+      # previewReplicaCount: 1  # scale preview to <full replicas> until promote
+      # activeServiceName: ""  # default: <fullname>
+      # previewServiceName: "" # default: <fullname>-preview
+      # prePromotionAnalysis: {}
+      # postPromotionAnalysis: {}
+    canary:
+      enabled: false
+      # canaryService: ""
+      # stableService: ""
+      # steps: []
+      # trafficRouting: {}
+
 configMap:
   meshConfig:
     NODE_ENV: "production"
