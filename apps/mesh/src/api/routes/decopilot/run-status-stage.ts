@@ -36,10 +36,11 @@ export function shouldPublishThreadGateRunStatus(input: {
   sandboxProviderKind?: string | null;
 }): boolean {
   // Legacy requests may have no target; those replay through hosted dispatch
-  // unless the target is explicitly user-desktop.
+  // alongside explicit agent-sandbox targets.
   return (
-    input.sandboxProviderKind !== "user-desktop" &&
-    input.harnessId === "decopilot"
+    input.harnessId === "decopilot" &&
+    (input.sandboxProviderKind == null ||
+      input.sandboxProviderKind === "agent-sandbox")
   );
 }
 

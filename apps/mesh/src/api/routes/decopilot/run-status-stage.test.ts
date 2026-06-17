@@ -133,10 +133,22 @@ describe("shouldPublishThreadGateRunStatus", () => {
         harnessId: "decopilot",
       }),
     ).toBe(true);
+    expect(
+      shouldPublishThreadGateRunStatus({
+        sandboxProviderKind: null,
+        harnessId: "decopilot",
+      }),
+    ).toBe(true);
 
     expect(
       shouldPublishThreadGateRunStatus({
         sandboxProviderKind: "user-desktop",
+        harnessId: "decopilot",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishThreadGateRunStatus({
+        sandboxProviderKind: "other-provider-kind",
         harnessId: "decopilot",
       }),
     ).toBe(false);
@@ -169,5 +181,6 @@ describe("shouldPublishThreadGateRunStatus", () => {
         sandboxProviderKind: "agent-sandbox",
       }),
     ).toBe(false);
+    expect(shouldPublishThreadGateRunStatus({})).toBe(false);
   });
 });

@@ -674,14 +674,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.
-      await enqueueThreadRun(
-        {
-          threadId: taskId,
-          request: serializableRequest,
-          source: "user-message",
-        },
-        { workflowID },
-      );
       if (
         shouldPublishClusterRunStatus({
           harnessId: pinnedHarness,
@@ -690,6 +682,14 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       ) {
         await publishRunStatusStage(streamBuffer, taskId, "waiting-runner");
       }
+      await enqueueThreadRun(
+        {
+          threadId: taskId,
+          request: serializableRequest,
+          source: "user-message",
+        },
+        { workflowID },
+      );
       return c.json({ taskId }, 202);
     } catch (err) {
       console.error("[decopilot:messages] Error", err);

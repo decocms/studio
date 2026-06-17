@@ -86,6 +86,7 @@ import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
 import { buildOnTitleUpdated } from "./on-title-updated";
 import {
+  PREPARE_RUN_STATUS_STAGES,
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
 } from "./run-status-stage";
@@ -843,7 +844,7 @@ async function prepareRun(
       await publishRunStatusStage(
         streamBuffer,
         input.taskId,
-        "gathering-context",
+        PREPARE_RUN_STATUS_STAGES[0],
       );
     }
 
@@ -900,7 +901,7 @@ async function prepareRun(
       await publishRunStatusStage(
         streamBuffer,
         input.taskId,
-        "preparing-tools",
+        PREPARE_RUN_STATUS_STAGES[1],
       );
     }
 
@@ -1305,7 +1306,7 @@ async function prepareRun(
       await publishRunStatusStage(
         streamBuffer,
         input.taskId,
-        "starting-assistant",
+        PREPARE_RUN_STATUS_STAGES[2],
       );
     }
     const dispatchHarnessChunks =
@@ -1335,7 +1336,7 @@ async function prepareRun(
           await publishRunStatusStage(
             streamBuffer,
             mem.thread.id,
-            "analyzing-scope",
+            PREPARE_RUN_STATUS_STAGES[3],
           );
         }
         const sandboxClient = new InProcessSandboxClient({ ctx, harnessId });
