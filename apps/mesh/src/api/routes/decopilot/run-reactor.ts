@@ -52,23 +52,24 @@ async function syncRunningSummary(
   }
 }
 
-// Fire-and-forget per-user (cross-org) summary on the `user:<id>` channel.
-function emitUserRunningSummary(
+// Per-user (cross-org) summary on the `user:<id>` channel. Awaited (not
+// fire-and-forget) so the cross-org query completes within the reactor's flow
+// instead of racing per-request teardown — otherwise the count-0 on completion
+// is lost and "All my work" stays stale. Errors are swallowed, never thrown.
+async function emitUserRunningSummary(
   deps: RunReactorDeps,
   userId: string | null | undefined,
-): void {
+): Promise<void> {
   if (!userId) return;
-  deps.storage
-    .summarizeRunningForUser(userId)
-    .then((threads) =>
-      deps.sseHub.emit(
-        `user:${userId}`,
-        createDecopilotRunningSummaryEvent(threads, "user"),
-      ),
-    )
-    .catch((err) =>
-      console.error("[run-reactor] user running summary failed", err),
+  try {
+    const threads = await deps.storage.summarizeRunningForUser(userId);
+    deps.sseHub.emit(
+      `user:${userId}`,
+      createDecopilotRunningSummaryEvent(threads, "user"),
     );
+  } catch (err) {
+    console.error("[run-reactor] user running summary failed", err);
+  }
 }
 
 // Mark a thread running in the cross-pod store and refresh both summary feeds.
@@ -93,7 +94,7 @@ async function markThreadRunning(
       organization_id: orgId,
     }),
   );
-  emitUserRunningSummary(deps, thread?.created_by);
+  await emitUserRunningSummary(deps, thread?.created_by);
 }
 
 // ============================================================================
@@ -131,7 +132,7 @@ async function handleTerminalStatus(
   await syncRunningSummary(deps, orgId, (store) =>
     store.markStopped(orgId, taskId),
   );
-  emitUserRunningSummary(deps, thread?.created_by);
+  await emitUserRunningSummary(deps, thread?.created_by);
 }
 
 // ============================================================================
@@ -252,7 +253,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
       await syncRunningSummary(deps, event.orgId, (store) =>
         store.markStopped(event.orgId, event.taskId),
       );
-      emitUserRunningSummary(deps, failedThread?.created_by);
+      await emitUserRunningSummary(deps, failedThread?.created_by);
       return;
     }
 

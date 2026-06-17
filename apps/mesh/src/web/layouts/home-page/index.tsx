@@ -1,4 +1,5 @@
 import {
+  buildRunningSummary,
   getWellKnownDecopilotVirtualMCP,
   isDecopilot,
   type RunningThread,
@@ -42,6 +43,7 @@ import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { homeNextActionsQueryOptions } from "@/web/hooks/use-home-next-actions";
 import {
   type RunningScope,
+  type RunningState,
   useRunningSummary,
 } from "@/web/hooks/use-running-summary";
 import { organizationSettingsQueryOptions } from "@/web/hooks/use-organization-settings";
@@ -311,7 +313,16 @@ function RunningSummaryLine() {
 
   // Subscribe to both feeds so the badge stays mounted whenever either has work.
   const orgState = useRunningSummary(org.slug, "org");
-  const userState = useRunningSummary(org.slug, "user");
+  const userFeed = useRunningSummary(org.slug, "user");
+  // "All my work" is the cross-org view — the current org already has its own
+  // tab, so drop its threads here to avoid showing them twice.
+  const crossOrgThreads = userFeed.threads.filter(
+    (t) => t.organization_id !== org.id,
+  );
+  const userState: RunningState = {
+    threads: crossOrgThreads,
+    summary: buildRunningSummary(crossOrgThreads),
+  };
 
   if (
     orgState.summary.totalRunning === 0 &&
