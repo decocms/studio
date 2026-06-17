@@ -42,13 +42,6 @@ import type {
 import { createOutputPreview } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
 import { LARGE_RESULT_TOKEN_THRESHOLD } from "@decocms/harness/decopilot/built-in-tools/constants";
 
-// tool_call_id is used verbatim as a btree key in two places —
-// UNIQUE(organization_id, tool_call_id) on async_research_jobs and the
-// thread_messages PK via stubMessageId() — each capped at Postgres's 2704-byte
-// index-row limit. Untrusted gateways (LiteLLM) can emit multi-KB ids; reject
-// well below the cap.
-const MAX_TOOL_CALL_ID_BYTES = 512;
-
 /**
  * Single grep-friendly log prefix for the async path. Combined with
  * `tool_call_id` / `interaction_id`, one filter pulls the whole lifecycle:
@@ -124,13 +117,6 @@ async function* runAsyncResearch({
   ResearchResult
 > {
   const toolCallId = params.toolCallId;
-  // Reject oversized ids before they reach the btree insert (raw 54000 otherwise).
-  const tcByteLength = new TextEncoder().encode(toolCallId).length;
-  if (tcByteLength > MAX_TOOL_CALL_ID_BYTES) {
-    throw new AsyncResearchTerminalError(
-      `tool_call_id too large (${tcByteLength} bytes, max ${MAX_TOOL_CALL_ID_BYTES}); refusing durable research job`,
-    );
-  }
   const taskId = params.taskId;
   const logFields = {
     tc: toolCallId,
