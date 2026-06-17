@@ -48,7 +48,7 @@ import type {
   PublishRequest,
   PublishRequestStatus,
 } from "@/web/lib/registry/types";
-import { useInfiniteScroll } from "@/web/hooks/registry/use-infinite-scroll";
+import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 
 const STATUS_OPTIONS: Array<{ value: PublishRequestStatus; label: string }> = [
   { value: "pending", label: "Pending" },

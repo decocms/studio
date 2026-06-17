@@ -9,7 +9,12 @@
  * - Connection configuration state (may contain secrets)
  */
 
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16; // For AES, this is always 16
@@ -29,8 +34,7 @@ export class CredentialVault {
       this.key = Buffer.from(encryptionKey, "base64");
     } else {
       // Hash the key to get 32 bytes
-      const crypto = require("crypto");
-      this.key = crypto.createHash("sha256").update(encryptionKey).digest();
+      this.key = createHash("sha256").update(encryptionKey).digest();
     }
   }
 

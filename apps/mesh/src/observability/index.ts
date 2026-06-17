@@ -14,7 +14,6 @@ import {
   trace,
   type Attributes,
   type Context,
-  type Exception,
   type Link,
   type Span,
   type SpanKind,
@@ -607,11 +606,6 @@ export const withRequest = (req: Request): Context => {
   });
   return extracted.setValue(REQUEST_CONTEXT_KEY, req);
 };
-
-/**
- * Export context utilities for setting request context
- */
-export { type Exception, type Span };
 
 /**
  * Flush all buffered monitoring data.

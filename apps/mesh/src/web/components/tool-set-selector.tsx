@@ -14,7 +14,7 @@ import {
   useProjectContext,
 } from "@decocms/mesh-sdk";
 import { useSuspenseInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { memo, useDeferredValue, useRef, useState } from "react";
+import { useDeferredValue, useRef, useState } from "react";
 import { CollectionSearch } from "@/web/components/collections/collection-search.tsx";
 
 export interface ToolSetSelectorProps {
@@ -42,7 +42,7 @@ interface ConnectionItemProps {
   onToggle: () => void;
 }
 
-const ConnectionItem = memo(function ConnectionItem({
+function ConnectionItem({
   connection,
   isSelected,
   hasToolsEnabled,
@@ -87,7 +87,7 @@ const ConnectionItem = memo(function ConnectionItem({
       )}
     </div>
   );
-});
+}
 
 interface ToolItemProps {
   connectionId: string;
@@ -96,12 +96,7 @@ interface ToolItemProps {
   onToggle: () => void;
 }
 
-const ToolItem = memo(function ToolItem({
-  connectionId,
-  tool,
-  isSelected,
-  onToggle,
-}: ToolItemProps) {
+function ToolItem({ connectionId, tool, isSelected, onToggle }: ToolItemProps) {
   return (
     <label
       className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 cursor-pointer group will-change-auto"
@@ -134,7 +129,7 @@ const ToolItem = memo(function ToolItem({
       </div>
     </label>
   );
-});
+}
 
 type FilterMode = "all" | "selected" | "unselected";
 

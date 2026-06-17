@@ -19,7 +19,7 @@ import { useListState } from "@/web/hooks/use-list-state";
 import { authClient } from "@/web/lib/auth-client";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 import { useMergedStoreDiscovery } from "@/web/hooks/use-merged-store-discovery";
-import { getGitHubAvatarUrl } from "@/web/utils/github";
+import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
 import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import {
   AlertDialog,

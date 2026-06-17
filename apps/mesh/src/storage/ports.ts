@@ -524,7 +524,6 @@ export interface MonitoringStorage {
 // Virtual MCP Storage Port
 // ============================================================================
 
-// Re-export types from schema for convenience
 export type {
   VirtualMCPEntity,
   VirtualMCPCreateData,

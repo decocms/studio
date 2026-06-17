@@ -57,9 +57,6 @@ export const StepActionSchema = z.union([
   CodeActionSchema.describe(
     "Run pure TypeScript code for data transformation. Useful to merge data from multiple steps and transform it.",
   ),
-  // WaitForSignalActionSchema.describe(
-  //   "Pause execution until an external signal is received (human-in-the-loop)",
-  // ),
 ]);
 export type StepAction = z.infer<typeof StepActionSchema>;
 
@@ -691,41 +688,6 @@ export function groupStepsByLevel<T extends DAGStep>(steps: T[]): T[][] {
   }
 
   return grouped;
-}
-
-/**
- * Get the dependency signature for a step (for grouping steps with same deps).
- *
- * @param step - The step to get signature for
- * @returns Comma-separated sorted list of dependencies
- */
-export function getRefSignature(step: DAGStep): string {
-  const inputRefs = getAllRefs(step.input);
-  const allRefs = [...new Set([...inputRefs])].sort();
-  return allRefs.join(",");
-}
-
-/**
- * Build a dependency graph for visualization.
- * Returns edges as [fromStep, toStep] pairs.
- *
- * @param steps - Array of steps
- * @returns Array of [source, target] pairs representing edges
- */
-export function buildDependencyEdges<T extends DAGStep>(
-  steps: T[],
-): [string, string][] {
-  const stepNames = new Set(steps.map((s) => s.name));
-  const edges: [string, string][] = [];
-
-  for (const step of steps) {
-    const deps = getStepDependencies(step, stepNames);
-    for (const dep of deps) {
-      edges.push([dep, step.name]);
-    }
-  }
-
-  return edges;
 }
 
 /**

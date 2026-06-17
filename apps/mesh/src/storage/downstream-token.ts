@@ -26,34 +26,9 @@ export interface DownstreamTokenData {
 }
 
 /**
- * Port interface for downstream token storage
- */
-export interface DownstreamTokenStoragePort {
-  /**
-   * Get cached token for a connection
-   */
-  get(connectionId: string): Promise<DownstreamToken | null>;
-
-  /**
-   * Save or update a token
-   */
-  upsert(data: DownstreamTokenData): Promise<DownstreamToken>;
-
-  /**
-   * Delete token for a connection
-   */
-  delete(connectionId: string): Promise<void>;
-
-  /**
-   * Check if token is expired or will expire within buffer time
-   */
-  isExpired(token: DownstreamToken, bufferMs?: number): boolean;
-}
-
-/**
  * Downstream Token Storage Implementation
  */
-export class DownstreamTokenStorage implements DownstreamTokenStoragePort {
+export class DownstreamTokenStorage {
   constructor(
     private db: Kysely<Database>,
     private vault: CredentialVault,

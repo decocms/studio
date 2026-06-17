@@ -54,27 +54,6 @@ function isApiPath(path: string): boolean {
   return path.startsWith(PATH_PREFIXES.API);
 }
 
-/** Check if a path is an MCP route */
-function isMcpPath(path: string): boolean {
-  // Match both /mcp (exact) and /mcp/* (prefix)
-  return path === "/mcp" || path.startsWith(PATH_PREFIXES.MCP);
-}
-
-/** Check if a path is an OAuth proxy route */
-function isOAuthProxyPath(path: string): boolean {
-  return path.startsWith(PATH_PREFIXES.OAUTH_PROXY);
-}
-
-/** Check if a path is a static file based on extension */
-function isStaticFilePath(path: string): boolean {
-  return STATIC_FILE_PATTERN.test(path);
-}
-
-/** Check if a path is an organization route */
-function isOrgPath(path: string): boolean {
-  return path.startsWith(PATH_PREFIXES.ORG);
-}
-
 /**
  * Check if a path should be handled by the API server (Hono routes)
  * Returns true for API routes, MCP routes, OAuth proxy routes, org routes, and system endpoints
@@ -82,9 +61,10 @@ function isOrgPath(path: string): boolean {
 export function isServerPath(path: string): boolean {
   return (
     isApiPath(path) ||
-    isMcpPath(path) ||
-    isOAuthProxyPath(path) ||
-    isOrgPath(path) ||
+    path === "/mcp" ||
+    path.startsWith(PATH_PREFIXES.MCP) ||
+    path.startsWith(PATH_PREFIXES.OAUTH_PROXY) ||
+    path.startsWith(PATH_PREFIXES.ORG) ||
     isSystemPath(path)
   );
 }
@@ -102,6 +82,6 @@ export function shouldSkipStudioContext(path: string): boolean {
     isSystemPath(path) ||
     // Static file extension check only applies to non-API paths (e.g. Vite assets).
     // API paths like /api/:org/files/image.jpeg still need StudioContext for auth.
-    (!isApiPath(path) && isStaticFilePath(path))
+    (!isApiPath(path) && STATIC_FILE_PATTERN.test(path))
   );
 }

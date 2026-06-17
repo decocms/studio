@@ -104,8 +104,8 @@ const SORTED_TIER_RULES = TIER_PATTERNS.flatMap(({ tier, prefixes }) =>
   prefixes.map((prefix) => ({ tier, prefix })),
 ).sort((a, b) => b.prefix.length - a.prefix.length);
 
-// Only exact matches (no named sub-variants); date suffixes (digits) are fine
-const EXACT_ONLY_PREFIXES = new Set(["google/gemini-2.5-pro"]);
+// Matches the base prefix but not named sub-variants; date suffixes (digits) are fine
+const EXACT_ONLY_PREFIX = "google/gemini-2.5-pro";
 
 const tierCache = new Map<string, TierId | null>();
 
@@ -117,13 +117,13 @@ function classifyModel(modelId: string): TierId | null {
   if (modelId.endsWith(":free")) {
     result = "cheaper";
   } else {
-    outer: for (const { tier, prefix } of SORTED_TIER_RULES) {
+    for (const { tier, prefix } of SORTED_TIER_RULES) {
       if (modelId.startsWith(prefix)) {
-        if (EXACT_ONLY_PREFIXES.has(prefix) && modelId.length > prefix.length) {
+        if (prefix === EXACT_ONLY_PREFIX && modelId.length > prefix.length) {
           const nextChar = modelId[prefix.length];
           if (nextChar === "-") {
             const charAfterHyphen = modelId[prefix.length + 1];
-            if (!charAfterHyphen || !/\d/.test(charAfterHyphen)) continue outer;
+            if (!charAfterHyphen || !/\d/.test(charAfterHyphen)) continue;
           }
         }
         result = tier;

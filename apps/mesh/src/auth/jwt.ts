@@ -9,7 +9,7 @@
  * If not set, a random secret is generated (not persistent across restarts).
  */
 
-import { decodeJwt, type JWTPayload, jwtVerify, SignJWT } from "jose";
+import { type JWTPayload, jwtVerify, SignJWT } from "jose";
 import { randomBytes } from "crypto";
 import { getSettings } from "../settings";
 
@@ -109,19 +109,6 @@ export async function verifyMeshToken(
   } catch {
     return undefined;
   }
-}
-
-/**
- * Decode a mesh token without verification
- *
- * Use this when you just need to read the payload.
- * WARNING: Does not verify signature - do not trust for authorization!
- *
- * @param token - JWT string to decode
- * @returns Decoded payload
- */
-export function decodeMeshToken(token: string): MeshJwtPayload {
-  return decodeJwt<MeshTokenPayload>(token);
 }
 
 /**

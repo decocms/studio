@@ -83,7 +83,6 @@ export function createAutomationContextFactory(
       userId,
     });
     ctx.access = new AccessControl(
-      ctx.authInstance,
       userId,
       undefined, // toolName set later by defineTool
       ctx.boundAuth,

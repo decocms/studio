@@ -4,19 +4,9 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "./access-control";
-import type { BetterAuthInstance, BoundAuthClient } from "./studio-context";
+import type { BoundAuthClient } from "./studio-context";
 import type { Permission } from "../storage/types";
 import { BASIC_USAGE_TOOLS } from "../tools/registry-metadata";
-
-const createMockAuth = (): BetterAuthInstance => {
-  const mockUserHasPermission = vi.fn();
-  return {
-    api: {
-      userHasPermission: mockUserHasPermission,
-    },
-    handler: vi.fn().mockResolvedValue(new Response()),
-  } as unknown as BetterAuthInstance;
-};
 
 /**
  * Create a mock BoundAuthClient that checks permissions against a given Permission object
@@ -55,13 +45,13 @@ const createMockBoundAuth = (permissions: Permission): BoundAuthClient => {
 describe("AccessControl", () => {
   describe("grant", () => {
     it("should grant access unconditionally", () => {
-      const ac = new AccessControl(createMockAuth());
+      const ac = new AccessControl();
       ac.grant();
       expect(ac.granted()).toBe(true);
     });
 
     it("should allow multiple grant calls", () => {
-      const ac = new AccessControl(createMockAuth());
+      const ac = new AccessControl();
       ac.grant();
       ac.grant();
       expect(ac.granted()).toBe(true);
@@ -71,7 +61,6 @@ describe("AccessControl", () => {
   describe("check", () => {
     it("should grant access when permission exists", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "TEST_TOOL",
         createMockBoundAuth({ self: ["TEST_TOOL"] }), // Has permission on self connection
@@ -84,7 +73,6 @@ describe("AccessControl", () => {
 
     it("should deny access when permission missing", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "TEST_TOOL",
         createMockBoundAuth({ self: ["OTHER_TOOL"] }), // Has OTHER_TOOL but not TEST_TOOL
@@ -97,7 +85,6 @@ describe("AccessControl", () => {
 
     it("should check current tool name by default", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "MY_TOOL",
         createMockBoundAuth({ self: ["MY_TOOL"] }), // Permission on self connection
@@ -110,7 +97,6 @@ describe("AccessControl", () => {
 
     it("should check specific resources when provided", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         undefined,
         createMockBoundAuth({ conn_123: ["SEND_MESSAGE"] }),
@@ -124,7 +110,6 @@ describe("AccessControl", () => {
 
     it("should use OR logic for multiple resources", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         undefined,
         createMockBoundAuth({ self: ["TOOL2"] }), // Has TOOL2 on self connection
@@ -137,14 +122,8 @@ describe("AccessControl", () => {
     });
 
     it("should skip check if already granted", async () => {
-      const mockAuth = createMockAuth();
       const mockBoundAuth = createMockBoundAuth({});
-      const ac = new AccessControl(
-        mockAuth,
-        "user_1",
-        undefined,
-        mockBoundAuth,
-      );
+      const ac = new AccessControl("user_1", undefined, mockBoundAuth);
 
       ac.grant(); // Grant first
 
@@ -154,7 +133,6 @@ describe("AccessControl", () => {
 
     it("should bypass checks for admin role", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "TEST_TOOL",
         createMockBoundAuth({}), // No permissions
@@ -167,7 +145,6 @@ describe("AccessControl", () => {
 
     it("should check connection-specific permissions", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "SEND_MESSAGE",
         createMockBoundAuth({ conn_123: ["SEND_MESSAGE"] }),
@@ -181,7 +158,6 @@ describe("AccessControl", () => {
 
     it("should throw when no resources specified", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         undefined, // No tool name
         createMockBoundAuth({}),
@@ -195,7 +171,6 @@ describe("AccessControl", () => {
 
     it("should deny access when no userId or permissions", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         undefined, // No user
         "TEST_TOOL",
         undefined, // No boundAuth
@@ -218,7 +193,6 @@ describe("AccessControl", () => {
 
     it("grants a basic-usage tool to an authenticated member, regardless of role", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1", // authenticated principal
         tool,
         createMockBoundAuth({}), // role grants nothing explicitly
@@ -234,7 +208,6 @@ describe("AccessControl", () => {
       // as authentication. With no userId the grant must not fire. (Before the
       // userId guard, a role-but-no-principal state would have leaked here.)
       const ac = new AccessControl(
-        createMockAuth(),
         undefined, // no authenticated principal
         tool,
         createMockBoundAuth({}), // boundAuth present, as it always is
@@ -247,7 +220,6 @@ describe("AccessControl", () => {
 
     it("does NOT grant basic-usage to an authenticated non-member (no role)", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         tool,
         createMockBoundAuth({}),
@@ -261,19 +233,18 @@ describe("AccessControl", () => {
 
   describe("granted", () => {
     it("should return false initially", () => {
-      const ac = new AccessControl(createMockAuth());
+      const ac = new AccessControl();
       expect(ac.granted()).toBe(false);
     });
 
     it("should return true after grant", () => {
-      const ac = new AccessControl(createMockAuth());
+      const ac = new AccessControl();
       ac.grant();
       expect(ac.granted()).toBe(true);
     });
 
     it("should return true after successful check", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "TEST_TOOL",
         createMockBoundAuth({ self: ["TEST_TOOL"] }), // Permission on self connection
@@ -286,7 +257,6 @@ describe("AccessControl", () => {
 
     it("should return false after failed check", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "TEST_TOOL",
         createMockBoundAuth({}), // No permissions
@@ -308,7 +278,6 @@ describe("AccessControl", () => {
       const mockBoundAuth = createMockBoundAuth({ self: ["TEST_TOOL"] });
 
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "TEST_TOOL",
         mockBoundAuth,
@@ -344,7 +313,6 @@ describe("AccessControl", () => {
       } as unknown as BoundAuthClient;
 
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "TEST_TOOL",
         mockBoundAuth,
@@ -357,7 +325,6 @@ describe("AccessControl", () => {
 
     it("should deny access when no BoundAuthClient provided", async () => {
       const ac = new AccessControl(
-        createMockAuth(),
         "user_1",
         "TEST_TOOL",
         undefined, // No bound auth

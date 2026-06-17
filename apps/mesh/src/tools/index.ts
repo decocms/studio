@@ -211,7 +211,6 @@ export interface CombinedTool {
   annotations?: ToolAnnotations;
   _meta?: Record<string, unknown>;
   modelSummary?: (result: unknown) => string;
-  handler: (input: unknown, ctx: StudioContext) => Promise<unknown>;
   execute: (input: unknown, ctx: StudioContext) => Promise<unknown>;
 }
 

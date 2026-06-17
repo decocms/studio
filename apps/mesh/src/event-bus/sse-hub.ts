@@ -18,11 +18,20 @@
  */
 
 import type { Event } from "../storage/types";
-import type { SSEBroadcastStrategy } from "./sse-broadcast-strategy";
 
 // ============================================================================
 // Types
 // ============================================================================
+
+/** Callback that delivers an event to local SSE listeners on this process. */
+export type LocalEmitFn = (organizationId: string, event: SSEEvent) => void;
+
+/** Abstraction for how SSE events are broadcast across processes (via NATS). */
+export interface SSEBroadcastStrategy {
+  start(localEmit?: LocalEmitFn): Promise<void>;
+  broadcast(organizationId: string, event: SSEEvent): void;
+  stop(): Promise<void>;
+}
 
 export interface SSEListener {
   /** Unique listener ID for removal */

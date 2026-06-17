@@ -167,7 +167,6 @@ export class AuthTransport extends WrapperTransport {
     // org in the URL — e.g. owner of /api/foo with no/different active org
     // would otherwise lose the admin/owner bypass and 403 on every tool call.
     const connectionAccessControl = new AccessControl(
-      ctx.authInstance,
       ctx.auth.user?.id ?? ctx.auth.apiKey?.userId,
       toolName, // Tool being called
       ctx.boundAuth, // Bound auth client (encapsulates headers)

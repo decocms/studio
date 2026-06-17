@@ -35,8 +35,8 @@ import { sseHub } from "./sse-hub";
 
 // Re-export types and interfaces
 export {
+  type EventBus,
   type EventBusConfig,
-  type IEventBus,
   type NotifySubscriberFn,
   type PublishEventInput,
   type SubscribeInput,
@@ -47,9 +47,6 @@ export type {
   SyncSubscriptionsInput,
   SyncSubscriptionsResult,
 } from "../storage/event-bus";
-
-// Export EventBus type alias (for typing in tests/consumers)
-export type { EventBus } from "./interface";
 
 export type { NotifyStrategy } from "./notify-strategy";
 

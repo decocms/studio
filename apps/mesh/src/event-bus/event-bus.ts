@@ -21,8 +21,8 @@ import type {
 } from "../storage/event-bus";
 import type { Event, EventSubscription } from "../storage/types";
 import type {
+  EventBus as EventBusInterface,
   EventBusConfig,
-  IEventBus,
   PublishEventInput,
   SubscribeInput,
 } from "./interface";
@@ -48,7 +48,7 @@ export interface EventBusOptions {
  * Works with PostgreSQL via EventBusStorage.
  * Uses NATS + polling NotifyStrategy for immediate wake-up.
  */
-export class EventBus implements IEventBus {
+export class EventBus implements EventBusInterface {
   private storage: EventBusStorage;
   private worker: EventBusWorker;
   private notifyStrategy?: NotifyStrategy;

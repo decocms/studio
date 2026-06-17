@@ -3,9 +3,7 @@ import type { HarnessStreamInput } from "@decocms/harness/types";
 
 /**
  * SandboxClient — owns "merge the HarnessDeps bag + run the harness" (spec
- * §5.2/§5.3). Impls: InProcessSandboxClient (mesh, direct call) and
- * RemoteSandboxClient (@decocms/sandbox, step 4). Lives in-place for now (step
- * 1a); the interface moves to @decocms/sandbox in step 4.
+ * §5.2/§5.3). Impl: InProcessSandboxClient (mesh, direct call).
  */
 export interface SandboxClient {
   /** Yields raw UIMessageChunk — byte-identical to today's localDispatch

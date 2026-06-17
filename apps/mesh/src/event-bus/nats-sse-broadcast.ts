@@ -10,11 +10,7 @@
  */
 
 import type { NatsConnection, Subscription } from "nats";
-import type { SSEEvent } from "./sse-hub";
-import type {
-  LocalEmitFn,
-  SSEBroadcastStrategy,
-} from "./sse-broadcast-strategy";
+import type { LocalEmitFn, SSEBroadcastStrategy, SSEEvent } from "./sse-hub";
 
 const SUBJECT = "mesh.sse.broadcast";
 

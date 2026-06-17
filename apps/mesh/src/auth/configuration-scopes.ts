@@ -33,11 +33,11 @@ export function parseScope(scope: string): [string, string] {
  * @returns Tuple of [key, scopeName] or null if invalid
  */
 function tryParseScope(scope: string): [string, string] | null {
-  const parts = scope.split("::");
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+  try {
+    return parseScope(scope);
+  } catch {
     return null;
   }
-  return parts as [string, string];
 }
 
 /**

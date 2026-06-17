@@ -10,12 +10,16 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "bun:test";
+import { decodeJwt } from "jose";
 import {
   issueMeshToken,
   verifyMeshToken,
-  decodeMeshToken,
+  type MeshJwtPayload,
   type MeshTokenPayload,
 } from "./jwt";
+
+const decodeMeshToken = (token: string): MeshJwtPayload =>
+  decodeJwt<MeshTokenPayload>(token);
 
 // ============================================================================
 // JWT Utility Tests
@@ -176,46 +180,6 @@ describe("JWT Utility Functions", () => {
 
       const verified = await verifyMeshToken(fakeToken);
       expect(verified).toBeUndefined();
-    });
-  });
-
-  describe("decodeMeshToken", () => {
-    it("should decode token without verification", async () => {
-      const payload: MeshTokenPayload = {
-        sub: "user_decode_test",
-        permissions: { self: ["*"] },
-        metadata: {
-          meshUrl: "https://decode.test.com",
-          connectionId: "conn_decode",
-        },
-      };
-
-      const token = await issueMeshToken(payload);
-      const decoded = decodeMeshToken(token);
-
-      expect(decoded.sub).toBe("user_decode_test");
-      expect(decoded.permissions).toEqual({ self: ["*"] });
-      expect(decoded.metadata?.meshUrl).toBe("https://decode.test.com");
-      expect(decoded.metadata?.connectionId).toBe("conn_decode");
-    });
-
-    it("should decode token even with invalid signature", () => {
-      // Create a token with wrong signature - decode should still work
-      // Payload: {"sub":"user_123","permissions":{"conn_456":["*"]},"metadata":{"meshUrl":"https://mesh.example.com","connectionId":"conn_456"}}
-      const fakeToken =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMyIsInBlcm1pc3Npb25zIjp7ImNvbm5fNDU2IjpbIioiXX0sIm1ldGFkYXRhIjp7Im1lc2hVcmwiOiJodHRwczovL21lc2guZXhhbXBsZS5jb20iLCJjb25uZWN0aW9uSWQiOiJjb25uXzQ1NiJ9fQ.wrong_signature";
-
-      const decoded = decodeMeshToken(fakeToken);
-
-      expect(decoded.sub).toBe("user_123");
-      expect(decoded.permissions).toEqual({ conn_456: ["*"] });
-      expect(decoded.metadata?.meshUrl).toBe("https://mesh.example.com");
-      expect(decoded.metadata?.connectionId).toBe("conn_456");
-    });
-
-    it("should throw for malformed token", () => {
-      expect(() => decodeMeshToken("not_a_jwt")).toThrow();
-      expect(() => decodeMeshToken("")).toThrow();
     });
   });
 });
