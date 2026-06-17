@@ -1,31 +1,4 @@
-/**
- * Control-frame codec for the pull-transport control channel (Phase C).
- *
- * Control frames are published cluster-side to `links.control.<userSub>` (core
- * NATS) and consumed by the daemon via the long-poll GET /api/links/control
- * endpoint.
- *
- * Frame types:
- *   - `cancel`     (Phase C)     — abort an in-flight RUN by runId (work-poll
- *                                  dispatch path → run-abort-registry).
- *   - `cancel_req` (Phase C-bis) — abort an in-flight pull reverse-proxy REQUEST
- *                                  by reqId (proxy-poll path → proxy-abort-
- *                                  registry). Routed through the control channel
- *                                  because the outbound-only daemon cannot
- *                                  subscribe to `links.proxy.cancel.<reqId>`
- *                                  directly; the held control-poll is the only
- *                                  inbound signal it has.
- *   - `keep_alive` (Phase C)     — server heartbeat; ignored by the daemon.
- *   - `shutdown`                 — disconnect requested from the Studio UI
- *                                  (LINK_DISCONNECT tool); the daemon stops
- *                                  polling and exits. Daemons predating this
- *                                  frame fail schema validation and skip it
- *                                  (logged, no crash) — for those the tool's
- *                                  claim delete only flips the UI until their
- *                                  next poll re-registers, which is accepted.
- *
- * Additional frame types (ensure_sandbox, delete_sandbox, approval) are deferred.
- */
+/** Control-frame codec for cluster-to-daemon link commands. */
 import { z } from "zod";
 
 export const controlFrameSchema = z.discriminatedUnion("type", [
@@ -37,7 +10,7 @@ export const controlFrameSchema = z.discriminatedUnion("type", [
 
 export type ControlFrame = z.infer<typeof controlFrameSchema>;
 
-/** Serialize a control frame to a JSON string for NATS publish. */
+/** Serialize a control frame to a JSON string for tunnel delivery. */
 export function encodeControlFrame(frame: ControlFrame): string {
   return JSON.stringify(frame);
 }

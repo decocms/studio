@@ -46,13 +46,11 @@ import { resolveHarnessId } from "./dispatch-run";
 import { stringifyError } from "@decocms/harness/decopilot/stream-error";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
-import type { LinkClaimRegistry } from "../../../links/link-claim-registry";
 import { resolveDispatchTarget } from "../../../links/resolve-dispatch-target";
 import {
   resolveSandboxProviderKindFromEnv,
   type SandboxProviderKind,
 } from "@decocms/sandbox/provider";
-import { resolveDefaultSandboxProviderKind } from "@/sandbox/resolve-default-provider-kind";
 import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 
@@ -299,6 +297,21 @@ export function applyThreadLock(args: {
     return {
       harnessId: requestedHarnessId,
       sandboxProviderKind: requestedSandboxProviderKind,
+      // Prefer the thread's own branch even while the thread is still
+      // unlocked (harness_id null = this is the first message). The branch is
+      // assigned at COLLECTION_THREADS_CREATE time, so it exists before the
+      // harness/sandbox lock is written. Falling back to `requestedBranch`
+      // here — as we used to — meant the first turn resolved to a null branch
+      // and dispatched against the synthetic "ephemeral" sandbox, while
+      // continuations (by then locked) used the thread's real branch. The
+      // claude-code session created on turn 1 then lived in a different
+      // sandbox than the one `claude --resume` ran in on turn 2, producing
+      // "No conversation found with session ID". Matches the pin-write
+      // resolution in the POST handler (`existingThread?.branch ?? …`).
+      //
+      // Only consult the thread row when there is a real `taskIdInput`;
+      // legacy callers with no thread id must ignore the row entirely (the
+      // `!taskIdInput` half of the guard above), same as harness/sandbox.
       branch: taskIdInput
         ? (thread?.branch ?? requestedBranch)
         : requestedBranch,
@@ -457,17 +470,16 @@ export interface DecopilotDeps {
   streamBuffer: StreamBuffer;
   runRegistry: RunRegistry;
   /**
-   * Used to resolve the user's link daemon. POST /messages calls
-   * `resolveDispatchTarget` against this registry before enqueuing onto
-   * the thread gate so the cluster can reject early with 409 instead of
-   * silently queueing a run that would have nowhere to go.
+   * Live desktop-link status probe. Threaded onto the StudioContext so the
+   * decopilot dispatch path can consult the daemon directly. POST /messages
+   * uses it to reject early when no link answers instead of silently queueing
+   * a run that would have nowhere to go.
    */
-  linkClaimRegistry: LinkClaimRegistry;
+  linkStatusProbe?: import("@/links/tunnel-status-probe").LinkStatusProbe;
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
-  const { cancelBroadcast, streamBuffer, runRegistry, linkClaimRegistry } =
-    deps;
+  const { cancelBroadcast, streamBuffer, runRegistry } = deps;
   const app = new Hono<{ Variables: { meshContext: StudioContext } }>();
 
   // ============================================================================
@@ -583,18 +595,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         pinnedKind =
           pinnedKind ??
           input.sandboxProviderKind ??
-          (await resolveDefaultSandboxProviderKind(input.userId, {
-            linkClaimRegistry,
-            resolveEnvKind: resolveSandboxProviderKindFromEnv,
-          }));
+          resolveSandboxProviderKindFromEnv();
         pinnedHarness = pinnedHarness ?? input.harnessId ?? credentialHarness;
 
         if (existingThread) {
-          // Stream-of-record v2 is the only write path for new runs. Pin every
-          // new thread (no prior messages, not already v2) to v2 so the
-          // ingest -> JetStream -> durable-projector pipeline persists parts.
-          // Existing v1 threads with history remain readable through the legacy
-          // read path; no backfill.
+          // Stream-of-record v2 is the ONLY write path (Phase C cutover). Pin
+          // every NEW thread (no prior messages, not already v2) to v2 so the
+          // ingest → JetStream → durable-projector pipeline persists its parts.
+          // Pre-existing v1 threads WITH history stay v1: deprecated read-only
+          // legacy — their `thread_messages` rows still render via the v1 read
+          // path; no backfill. The message-count probe only runs for not-yet-v2
+          // threads, so already-v2 threads add no DB read.
           let pinV2 = false;
           if (existingThread.message_storage_version !== 2) {
             try {
@@ -642,28 +653,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // link daemon for the user even when the run never touches the
       // sandbox (e.g. CI multi-pod tests that drive only the mock AI
       // provider).
-      const result = await resolveDispatchTarget(
-        {
-          harnessId: pinnedHarness,
-          sandboxProviderKind: pinnedKind,
-          userId: input.userId,
-        },
-        { linkClaimRegistry },
-      );
-      if (!result.ok) {
-        return c.json(
-          {
-            error: "link_unavailable",
-            code: result.error.kind,
-            activeCapabilities:
-              result.error.kind === "user_desktop_link_capability_missing"
-                ? result.error.activeCapabilities
-                : undefined,
-          },
-          409,
-        );
-      }
-      const target = result.target;
+      const target = resolveDispatchTarget({ sandboxProviderKind: pinnedKind });
 
       const { abortSignal: _ignored, ...rest } = input;
       const serializableRequest = {

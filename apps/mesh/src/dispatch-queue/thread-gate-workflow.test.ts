@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
-  decidePullDispatch,
+  decideLinkDispatch,
   pollUntilTerminal,
   setThreadGateRuntime,
   TERMINAL_STATUSES,
@@ -31,42 +31,41 @@ describe("threadGateWorkflow plumbing", () => {
   });
 });
 
-describe("decidePullDispatch (Transport Convergence)", () => {
-  // EVERY user-desktop run goes pull — all harnesses, both storage generations.
-  it("routes a user-desktop claude-code target to pull", () => {
+describe("decideLinkDispatch (Transport Convergence)", () => {
+  // EVERY user-desktop run goes through the link — all harnesses, both storage generations.
+  it("routes a user-desktop claude-code target to the link", () => {
     expect(
-      decidePullDispatch({
-        isPullCapable: true,
+      decideLinkDispatch({
+        isLinkCapable: true,
         sandboxProviderKind: "user-desktop",
       }),
     ).toBe(true);
   });
 
-  it("routes a user-desktop codex target to pull", () => {
+  it("routes a user-desktop codex target to the link", () => {
     expect(
-      decidePullDispatch({
-        isPullCapable: true,
+      decideLinkDispatch({
+        isLinkCapable: true,
         sandboxProviderKind: "user-desktop",
       }),
     ).toBe(true);
   });
 
-  it("routes a user-desktop decopilot target to pull (push remoteDispatch deleted)", () => {
-    // Decopilot desktop now ALSO runs in a sandbox, and the pull work item
-    // carries its sandbox config. Push is gone — pull is the sole local
-    // transport.
+  it("routes a user-desktop decopilot target to the link", () => {
+    // Decopilot desktop also runs in a sandbox, and the downstream work item
+    // carries its sandbox config.
     expect(
-      decidePullDispatch({
-        isPullCapable: true,
+      decideLinkDispatch({
+        isLinkCapable: true,
         sandboxProviderKind: "user-desktop",
       }),
     ).toBe(true);
   });
 
-  it("routes an agent-sandbox target to the hosted local-dispatch path (NOT pull)", () => {
+  it("routes an agent-sandbox target to the hosted local-dispatch path", () => {
     expect(
-      decidePullDispatch({
-        isPullCapable: true,
+      decideLinkDispatch({
+        isLinkCapable: true,
         sandboxProviderKind: "agent-sandbox",
       }),
     ).toBe(false);
@@ -74,17 +73,17 @@ describe("decidePullDispatch (Transport Convergence)", () => {
 
   it("routes an undefined target (legacy path) to the hosted local-dispatch path", () => {
     expect(
-      decidePullDispatch({
-        isPullCapable: true,
+      decideLinkDispatch({
+        isLinkCapable: true,
         sandboxProviderKind: undefined,
       }),
     ).toBe(false);
   });
 
-  it("never pulls when the runtime is not pull-capable (no NATS work queue)", () => {
+  it("does not use the link when the runtime is not link-capable", () => {
     expect(
-      decidePullDispatch({
-        isPullCapable: false,
+      decideLinkDispatch({
+        isLinkCapable: false,
         sandboxProviderKind: "user-desktop",
       }),
     ).toBe(false);
@@ -138,6 +137,36 @@ describe("pollUntilTerminal", () => {
       pollUntilTerminal(fetch, {
         intervalMs: 0,
         maxAttempts: 100,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("never times out when uncapped (Infinity) and returns once terminal", async () => {
+    let i = 0;
+    // Stays in_progress for many polls, then goes terminal — must NOT throw.
+    const fetch = async (): Promise<string> =>
+      i++ < 50 ? "in_progress" : "completed";
+    const result = await pollUntilTerminal(fetch, {
+      intervalMs: 0,
+      maxAttempts: Number.POSITIVE_INFINITY,
+    });
+    expect(result).toBe("completed");
+    expect(i).toBe(51);
+  });
+
+  it("uncapped still honors the abort signal", async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    const fetch = async () => {
+      calls++;
+      if (calls === 3) controller.abort();
+      return "in_progress" as const;
+    };
+    await expect(
+      pollUntilTerminal(fetch, {
+        intervalMs: 0,
+        maxAttempts: Number.POSITIVE_INFINITY,
         signal: controller.signal,
       }),
     ).rejects.toThrow();

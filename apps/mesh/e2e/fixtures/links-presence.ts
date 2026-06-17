@@ -1,48 +1,54 @@
 /**
- * Establish pull-transport link presence for the authed user from a spec.
+ * E2E helpers for bringing a desktop link online through the tunnel contract.
  *
- * A real desktop daemon holds an open long-poll on `GET /api/links/work`;
- * the route synthetically mints a presence claim in the NATS KV bucket at the
- * start of the handler so `resolveDispatchTarget` sees the link as online (and
- * advertising the requested capabilities). Specs that previously brought a
- * WS link online via `connectToCluster` only to register presence (they never
- * await a dispatch) use this instead — it exercises the same code path a pull
- * daemon takes (Phase C-bis S6: the chat dispatch gate keys on a live
- * `user-desktop` target, which this claim produces).
- *
- * Usage:
- *   const presence = claimPullPresence(api, ["claude-code"]);
- *   try { ...assertions... } finally { await presence; }
- *
- * The returned promise resolves when the long-poll request settles (a 204 on
- * server timeout is fine — we only need the synchronous claim refresh). Await
- * it in a `finally` so the request doesn't outlive the test.
+ * The production CLI serves commands with `@decocms/tunnel` under the user's
+ * hostname and answers `GET /api/links/status` so the cluster can probe its
+ * liveness + capabilities live. These helpers do the same directly from
+ * Playwright so route tests can exercise the optimistic cluster side: presence
+ * is whatever the live status probe returns, with no `studio_links` claim and
+ * no heartbeat bucket.
  */
 
+import { sleep } from "@decocms/std";
+import { serve, type TunnelServer } from "@decocms/tunnel";
 import { expect, type APIRequestContext } from "@playwright/test";
-import { LINK_PROTOCOL_VERSION } from "../../src/links/protocol";
+import { connect, type NatsConnection } from "nats";
+import { buildUserTunnelHostname } from "../../src/links/tunnel-host";
+import type { WorkItem } from "../../src/links/link-work-item";
+import { workItemSchema } from "../../src/links/link-work-item";
+import type { Capability } from "../../src/links/protocol";
 
-export function claimPullPresence(
-  api: APIRequestContext,
-  capabilities: string[],
-): Promise<unknown> {
-  // Fire the long-poll with a short client timeout: just long enough for the
-  // handler's synchronous claim refresh to land. 204/timeout is fine.
-  const presencePromise = api
-    .get(`/api/links/work`, {
-      timeout: 1_500,
-      headers: {
-        "x-link-protocol": String(LINK_PROTOCOL_VERSION),
-        "x-link-capabilities": capabilities.join(","),
-        "x-link-machine-id": "e2e-test-machine",
-        "x-link-cli-version": "test",
-      },
-    })
-    .catch(() => null);
+const DEFAULT_NATS_URL = "nats://localhost:4222";
+const DEFAULT_WORK_ITEM_TIMEOUT_MS = 35_000;
 
-  // Poll until the claim is visible via /api/links/me before returning, so
-  // callers can immediately POST /messages against an online link.
-  return expect
+type WorkItemMatcher = (item: WorkItem) => boolean;
+
+interface WorkItemWaiter {
+  matcher: WorkItemMatcher;
+  resolve: (item: WorkItem) => void;
+}
+
+export interface TunnelLinkDaemon {
+  readonly tunnelHostname: string;
+  nextWorkItem(
+    runIdOrMatcher?: string | WorkItemMatcher,
+    opts?: { timeoutMs?: number },
+  ): Promise<WorkItem>;
+  close(): Promise<void>;
+}
+
+async function openNats(): Promise<NatsConnection> {
+  return await connect({ servers: process.env.NATS_URL ?? DEFAULT_NATS_URL });
+}
+
+/**
+ * Poll the cluster's live presence read until it reports online. Under the
+ * optimistic model `/api/links/me` calls `linkStatusProbe`, which fetches
+ * `GET /api/links/status` over the tunnel — so this only flips non-null once
+ * the daemon's tunnel server (below) is answering that route.
+ */
+async function waitForPresence(api: APIRequestContext): Promise<void> {
+  await expect
     .poll(
       async () => {
         const res = await api.get("/api/links/me");
@@ -51,6 +57,128 @@ export function claimPullPresence(
       },
       { timeout: 10_000, intervals: [200, 500, 1_000] },
     )
-    .not.toBeNull()
-    .then(() => presencePromise);
+    .not.toBeNull();
+}
+
+function normalizeMatcher(
+  runIdOrMatcher: string | WorkItemMatcher | undefined,
+): WorkItemMatcher {
+  if (typeof runIdOrMatcher === "function") return runIdOrMatcher;
+  if (typeof runIdOrMatcher === "string") {
+    return (item) => item.runId === runIdOrMatcher;
+  }
+  return () => true;
+}
+
+function takeQueued(
+  queue: WorkItem[],
+  matcher: WorkItemMatcher,
+): WorkItem | null {
+  const index = queue.findIndex(matcher);
+  if (index === -1) return null;
+  const [item] = queue.splice(index, 1);
+  return item ?? null;
+}
+
+export async function createTunnelLinkDaemon(
+  api: APIRequestContext,
+  userId: string,
+  capabilities: Capability[],
+): Promise<TunnelLinkDaemon> {
+  const connection = await openNats();
+  const tunnelHostname = buildUserTunnelHostname(userId);
+  const queue: WorkItem[] = [];
+  const waiters = new Set<WorkItemWaiter>();
+
+  const pushWorkItem = (item: WorkItem): void => {
+    for (const waiter of waiters) {
+      if (!waiter.matcher(item)) continue;
+      waiters.delete(waiter);
+      waiter.resolve(item);
+      return;
+    }
+    queue.push(item);
+  };
+
+  const server = await serve({
+    connection,
+    hostname: tunnelHostname,
+    fetch: async (request) => {
+      const url = new URL(request.url);
+
+      // Live presence: the cluster's status probe fetches this over the tunnel.
+      // Answering it 200 is what makes the link "online" — there is no claim.
+      if (url.pathname === "/api/links/status" && request.method === "GET") {
+        return Response.json({
+          hostname: tunnelHostname,
+          capabilities,
+          cliVersion: "test",
+        });
+      }
+
+      if (url.pathname !== "/api/links/work" || request.method !== "POST") {
+        return new Response("not found", { status: 404 });
+      }
+
+      let body: unknown;
+      try {
+        body = JSON.parse(await request.text());
+      } catch {
+        return Response.json({ error: "invalid_json" }, { status: 400 });
+      }
+
+      const parsed = workItemSchema.safeParse(body);
+      if (!parsed.success) {
+        return Response.json({ error: "invalid_work_item" }, { status: 400 });
+      }
+
+      pushWorkItem(parsed.data);
+      return new Response(null, { status: 202 });
+    },
+  });
+  await connection.flush();
+  await waitForPresence(api);
+
+  async function closeServer(server: TunnelServer): Promise<void> {
+    await server.close().catch(() => {});
+    await server.closed.catch(() => {});
+  }
+
+  return {
+    tunnelHostname,
+    async nextWorkItem(runIdOrMatcher, opts) {
+      const matcher = normalizeMatcher(runIdOrMatcher);
+      const queued = takeQueued(queue, matcher);
+      if (queued) return queued;
+
+      const timeoutMs = opts?.timeoutMs ?? DEFAULT_WORK_ITEM_TIMEOUT_MS;
+      const timeout = new AbortController();
+      let resolveWorkItem!: (item: WorkItem) => void;
+      const workItemPromise = new Promise<WorkItem>((resolve) => {
+        resolveWorkItem = resolve;
+      });
+      const waiter: WorkItemWaiter = { matcher, resolve: resolveWorkItem };
+      waiters.add(waiter);
+
+      try {
+        return await Promise.race([
+          workItemPromise,
+          sleep(timeoutMs, { signal: timeout.signal }).then(() => {
+            throw new Error(
+              `Timed out waiting for tunnel work item after ${timeoutMs}ms`,
+            );
+          }),
+        ]);
+      } finally {
+        timeout.abort();
+        waiters.delete(waiter);
+      }
+    },
+    async close() {
+      waiters.clear();
+      queue.length = 0;
+      await closeServer(server);
+      await connection.close();
+    },
+  };
 }

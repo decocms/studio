@@ -11,7 +11,7 @@
 
 import type { NatsConnection, Subscription } from "nats";
 import type { CancelBroadcast } from "./cancel-broadcast";
-import { encodeControlFrame, type ControlFrame } from "./control-frames";
+import type { ControlFrame } from "./control-frames";
 
 const CANCEL_SUBJECT = "mesh.decopilot.cancel";
 
@@ -80,27 +80,9 @@ export class NatsCancelBroadcast implements CancelBroadcast {
     }
   }
 
-  publishControlFrame(userSub: string, frame: ControlFrame): void {
-    if (/[.*>\s]/.test(userSub)) {
-      console.warn(
-        "[NatsCancelBroadcast] Invalid userSub for control frame, skipping",
-      );
-      return;
-    }
-
-    try {
-      const nc = this.options.getConnection();
-      if (!nc) return; // NATS not ready — the durable flag is the correctness path
-      nc.publish(
-        `links.control.${userSub}`,
-        this.encoder.encode(encodeControlFrame(frame)),
-      );
-    } catch (err) {
-      console.warn(
-        "[NatsCancelBroadcast] publishControlFrame failed (non-critical):",
-        err,
-      );
-    }
+  publishControlFrame(_userSub: string, _frame: ControlFrame): void {
+    // Control frames are delivered through the tunnel publisher installed by
+    // app wiring. The NATS broadcaster only handles cross-pod cancel fan-out.
   }
 
   async stop(): Promise<void> {

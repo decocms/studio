@@ -16,11 +16,11 @@
  *
  * ## Drivers
  *
- * - **relay driver (RUNNABLE):** the link-dispatch-pull pattern. Seed a v2
+ * - **relay driver (RUNNABLE):** the tunnel link pattern. Seed a v2
  *   thread pinned to a user-desktop/claude-code target, claim link presence,
- *   POST /messages (→ 202 + the gate publishes a work item), poll
- *   /api/links/work as the fake daemon, then POST a CANNED NDJSON chunk relay
- *   to /chunks with the run fence token. The cluster kernel consumes the
+ *   POST /messages (→ 202 + the gate publishes a work item over NATS), receive
+ *   that work item through `@decocms/tunnel`, then POST a CANNED NDJSON chunk
+ *   relay to /chunks with the run fence token. The cluster kernel consumes the
  *   relayed chunks and commits all durable effects. Assertions read the DB +
  *   the v2 read-path tool (`COLLECTION_THREAD_MESSAGES_LIST`).
  *
@@ -49,12 +49,14 @@
 import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
-import { claimPullPresence } from "../fixtures/links-presence";
+import {
+  createTunnelLinkDaemon,
+  type TunnelLinkDaemon,
+} from "../fixtures/links-presence";
 import {
   buildErrorRelayBody,
   buildTurnRelayBody,
 } from "../fixtures/relay-chunks";
-import { LINK_PROTOCOL_VERSION } from "../../src/links/protocol";
 // The auto-titler gates on the thread title being this exact default; import
 // the source constant so the gating cases stay in lockstep if it ever changes.
 import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";
@@ -193,16 +195,17 @@ interface WorkItem {
 }
 
 /**
- * Trigger a dispatch by POSTing a user message, then poll /api/links/work as
- * the fake daemon until the matching work item arrives. Returns the runId +
- * the work item (whose runFenceToken the relay POST presents). `messageText`
- * may be large (offload case).
+ * Trigger a dispatch by POSTing a user message, then wait for the tunnel daemon
+ * to receive the matching work item. Returns the runId + the work item (whose
+ * runFenceToken the relay POST presents). `messageText` may be large (offload
+ * case).
  */
 async function dispatchAndClaimWorkItem(
   api: APIRequestContext,
   orgSlug: string,
   agentId: string,
   threadId: string,
+  daemon: TunnelLinkDaemon,
   messageText: string,
 ): Promise<{ runId: string; workItem: WorkItem }> {
   const dispatchRes = await api.post(
@@ -225,42 +228,13 @@ async function dispatchAndClaimWorkItem(
   const { taskId: runId } = (await dispatchRes.json()) as { taskId: string };
   expect(runId).toBeTruthy();
 
-  // The gate publishes the work item asynchronously after the 202. Long-poll
-  // /links/work with a client timeout > the server hold (~30 s); retry up to
-  // 3× (~105 s). A 204 means "nothing yet" — re-poll.
-  let workItem: WorkItem | null = null;
-  const MAX = 3;
-  for (let attempt = 1; attempt <= MAX && !workItem; attempt++) {
-    const res = await api.get(`/api/links/work`, {
-      timeout: 35_000,
-      headers: {
-        "x-link-protocol": String(LINK_PROTOCOL_VERSION),
-        "x-link-capabilities": "claude-code",
-        "x-link-machine-id": "e2e-conformance-machine",
-        "x-link-cli-version": "test",
-      },
-    });
-    if (res.status() === 204) continue;
-    if (res.status() === 200) {
-      const body = (await res.json()) as WorkItem | null;
-      if (body && body.runId === runId) workItem = body;
-      continue;
-    }
-    throw new Error(
-      `GET /links/work unexpected status ${res.status()} (attempt ${attempt})`,
-    );
-  }
+  const workItem = await daemon.nextWorkItem(runId);
+  expect(workItem.runId).toBe(runId);
+  expect(workItem.threadId).toBe(threadId);
+  expect(typeof workItem.runFenceToken).toBe("string");
+  expect(workItem.runFenceToken.length).toBeGreaterThan(0);
 
-  expect(
-    workItem,
-    `Gate did not publish a work item for runId=${runId} after ${MAX} long-poll retries — pullDispatch failed to enqueue.`,
-  ).not.toBeNull();
-  expect(workItem!.runId).toBe(runId);
-  expect(workItem!.threadId).toBe(threadId);
-  expect(typeof workItem!.runFenceToken).toBe("string");
-  expect(workItem!.runFenceToken.length).toBeGreaterThan(0);
-
-  return { runId, workItem: workItem! };
+  return { runId, workItem };
 }
 
 /** POST a canned NDJSON chunk-relay body as the fake daemon. */
@@ -317,10 +291,12 @@ test.describe("harness conformance — relay driver", () => {
     authedPage,
   }) => {
     test.setTimeout(CASE_TIMEOUT_MS);
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
       const { agentId, threadId } = await createPullThread(
         api,
@@ -328,12 +304,12 @@ test.describe("harness conformance — relay driver", () => {
         orgSlug,
         orgId,
       );
-      await claimPullPresence(api, ["claude-code"]);
       const { runId, workItem } = await dispatchAndClaimWorkItem(
         api,
         orgSlug,
         agentId,
         threadId,
+        daemon,
         "say hello",
       );
 
@@ -350,18 +326,23 @@ test.describe("harness conformance — relay driver", () => {
       expect(res.status()).toBe(200);
       expect(await res.json()).toMatchObject({ ok: true, lastSeq: lineCount });
 
-      // DB: a text part + a finish anchor landed for the run.
-      const parts = await fetchParts(db, runId);
-      const kinds = parts.map((p) => p.kind);
-      expect(kinds).toContain("text");
-      expect(kinds).toContain("finish");
+      // Persistence is async (durable DBOS projector). Poll the DB + read path
+      // until the projection lands.
+      await expect(async () => {
+        // DB: a text part + a finish anchor landed for the run.
+        const parts = await fetchParts(db, runId);
+        const kinds = parts.map((p) => p.kind);
+        expect(kinds).toContain("text");
+        expect(kinds).toContain("finish");
 
-      // Read path: the folded assistant message carries the relayed text.
-      const items = await listMessages(api, orgSlug, threadId);
-      const assistant = items.find((m) => m.role === "assistant");
-      expect(assistant, "assistant message folded back").toBeTruthy();
-      expect(JSON.stringify(assistant!.parts)).toContain(text);
+        // Read path: the folded assistant message carries the relayed text.
+        const items = await listMessages(api, orgSlug, threadId);
+        const assistant = items.find((m) => m.role === "assistant");
+        expect(assistant, "assistant message folded back").toBeTruthy();
+        expect(JSON.stringify(assistant!.parts)).toContain(text);
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });
@@ -370,10 +351,12 @@ test.describe("harness conformance — relay driver", () => {
     authedPage,
   }) => {
     test.setTimeout(CASE_TIMEOUT_MS);
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
 
       // Case A: default-title thread → the relayed title is persisted.
@@ -386,12 +369,12 @@ test.describe("harness conformance — relay driver", () => {
           // default title (forced to DEFAULT_THREAD_TITLE in createPullThread)
         );
         expect(await fetchThreadTitle(db, threadId)).toBe(DEFAULT_THREAD_TITLE);
-        await claimPullPresence(api, ["claude-code"]);
         const { runId, workItem } = await dispatchAndClaimWorkItem(
           api,
           orgSlug,
           agentId,
           threadId,
+          daemon,
           "what is the weather",
         );
         const newTitle = `Conformance Auto Title ${Date.now()}`;
@@ -408,7 +391,12 @@ test.describe("harness conformance — relay driver", () => {
           body,
         );
         expect(res.status()).toBe(200);
-        expect(await fetchThreadTitle(db, threadId)).toBe(newTitle);
+        // Auto-title persistence is async (durable projector). The projector is
+        // idempotent (writes the title exactly once), so the value becomes
+        // stable once projected — poll until it lands.
+        await expect(async () => {
+          expect(await fetchThreadTitle(db, threadId)).toBe(newTitle);
+        }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
       }
 
       // Case B: a RENAMED thread → the relayed title is NOT applied.
@@ -422,12 +410,12 @@ test.describe("harness conformance — relay driver", () => {
           { title: userTitle },
         );
         expect(await fetchThreadTitle(db, threadId)).toBe(userTitle);
-        await claimPullPresence(api, ["claude-code"]);
         const { runId, workItem } = await dispatchAndClaimWorkItem(
           api,
           orgSlug,
           agentId,
           threadId,
+          daemon,
           "another question",
         );
         const { body } = buildTurnRelayBody({
@@ -446,10 +434,20 @@ test.describe("harness conformance — relay driver", () => {
         // Title interceptor gates on the thread's CURRENT DB title (read at
         // relay time) != default, so the user's title survives. (Here that
         // equals the title set at thread creation — nothing renames between
-        // dispatch and relay.)
-        expect(await fetchThreadTitle(db, threadId)).toBe(userTitle);
+        // dispatch and relay.) Persistence is async (durable projector); poll
+        // until the run has projected (assistant message present) and confirm
+        // the user's title was NOT overwritten.
+        await expect(async () => {
+          const items = await listMessages(api, orgSlug, threadId);
+          expect(
+            items.find((m) => m.role === "assistant"),
+            "assistant message projected",
+          ).toBeTruthy();
+          expect(await fetchThreadTitle(db, threadId)).toBe(userTitle);
+        }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
       }
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });
@@ -463,10 +461,12 @@ test.describe("harness conformance — relay driver", () => {
     // metadata (finish-anchor row). The PostHog `chat_message_completed` fire
     // is unit-covered (consume-harness-stream.test.ts / link-ingest tests).
     test.setTimeout(CASE_TIMEOUT_MS);
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
       const { agentId, threadId } = await createPullThread(
         api,
@@ -474,12 +474,12 @@ test.describe("harness conformance — relay driver", () => {
         orgSlug,
         orgId,
       );
-      await claimPullPresence(api, ["claude-code"]);
       const { runId, workItem } = await dispatchAndClaimWorkItem(
         api,
         orgSlug,
         agentId,
         threadId,
+        daemon,
         "count my tokens",
       );
 
@@ -498,26 +498,31 @@ test.describe("harness conformance — relay driver", () => {
       );
       expect(res.status()).toBe(200);
 
-      // The finish anchor row's metadata carries the usage block. NB: a v2
-      // pull thread persists TWO finish anchors — the user message's (at
-      // dispatch, null metadata) and the assistant's (at relay, usage) — so we
-      // must select the ASSISTANT's by role, not the first finish by seq.
-      const parts = await fetchParts(db, runId);
-      const finish = parts.find(
-        (p) => p.kind === "finish" && p.role === "assistant",
-      );
-      expect(finish, "assistant finish anchor present").toBeTruthy();
-      expect(
-        (finish!.metadata as { usage?: typeof usage }).usage,
-      ).toMatchObject(usage);
+      // Persistence is async (durable projector). Poll the DB + read path until
+      // the usage-bearing finish anchor projects.
+      await expect(async () => {
+        // The finish anchor row's metadata carries the usage block. NB: a v2
+        // pull thread persists TWO finish anchors — the user message's (at
+        // dispatch, null metadata) and the assistant's (at relay, usage) — so
+        // we must select the ASSISTANT's by role, not the first finish by seq.
+        const parts = await fetchParts(db, runId);
+        const finish = parts.find(
+          (p) => p.kind === "finish" && p.role === "assistant",
+        );
+        expect(finish, "assistant finish anchor present").toBeTruthy();
+        expect(
+          (finish!.metadata as { usage?: typeof usage }).usage,
+        ).toMatchObject(usage);
 
-      // And the v2 read path surfaces it on the assistant message metadata.
-      const items = await listMessages(api, orgSlug, threadId);
-      const assistant = items.find((m) => m.role === "assistant");
-      expect(
-        (assistant!.metadata as { usage?: typeof usage }).usage,
-      ).toMatchObject(usage);
+        // And the v2 read path surfaces it on the assistant message metadata.
+        const items = await listMessages(api, orgSlug, threadId);
+        const assistant = items.find((m) => m.role === "assistant");
+        expect(
+          (assistant!.metadata as { usage?: typeof usage }).usage,
+        ).toMatchObject(usage);
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });
@@ -526,10 +531,12 @@ test.describe("harness conformance — relay driver", () => {
     authedPage,
   }) => {
     test.setTimeout(CASE_TIMEOUT_MS);
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
       const { agentId, threadId } = await createPullThread(
         api,
@@ -537,12 +544,12 @@ test.describe("harness conformance — relay driver", () => {
         orgSlug,
         orgId,
       );
-      await claimPullPresence(api, ["claude-code"]);
       const { runId, workItem } = await dispatchAndClaimWorkItem(
         api,
         orgSlug,
         agentId,
         threadId,
+        daemon,
         "finish cleanly",
       );
       const { body } = buildTurnRelayBody({
@@ -557,10 +564,13 @@ test.describe("harness conformance — relay driver", () => {
         body,
       );
       expect(res.status()).toBe(200);
-      // The chunks handler transitions the run terminal before acking the
-      // terminal POST, which is what releases the gate's poll.
-      expect(await fetchThreadStatus(db, runId)).toBe("completed");
+      // The terminal status is written by the async durable projector, so poll
+      // until the run transitions to completed.
+      await expect(async () => {
+        expect(await fetchThreadStatus(db, runId)).toBe("completed");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });
@@ -569,10 +579,12 @@ test.describe("harness conformance — relay driver", () => {
     authedPage,
   }) => {
     test.setTimeout(CASE_TIMEOUT_MS);
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
       const { agentId, threadId } = await createPullThread(
         api,
@@ -580,12 +592,12 @@ test.describe("harness conformance — relay driver", () => {
         orgSlug,
         orgId,
       );
-      await claimPullPresence(api, ["claude-code"]);
       const { runId, workItem } = await dispatchAndClaimWorkItem(
         api,
         orgSlug,
         agentId,
         threadId,
+        daemon,
         "this run fails",
       );
       const { body } = buildErrorRelayBody({
@@ -605,13 +617,18 @@ test.describe("harness conformance — relay driver", () => {
       // failure (retrying can't fix it). The run is transitioned to failed by
       // the kernel's onError path.
       expect(res.status()).toBe(200);
-      expect(await fetchThreadStatus(db, runId)).toBe("failed");
-      // An error part + finish anchor are persisted so the thread renders the
-      // failure rather than a dangling in-progress message.
-      const kinds = (await fetchParts(db, runId)).map((p) => p.kind);
-      expect(kinds).toContain("error");
-      expect(kinds).toContain("finish");
+      // The failed transition + error/finish parts are written by the async
+      // durable projector, so poll until the run reaches the terminal state.
+      await expect(async () => {
+        expect(await fetchThreadStatus(db, runId)).toBe("failed");
+        // An error part + finish anchor are persisted so the thread renders the
+        // failure rather than a dangling in-progress message.
+        const kinds = (await fetchParts(db, runId)).map((p) => p.kind);
+        expect(kinds).toContain("error");
+        expect(kinds).toContain("finish");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });
@@ -625,10 +642,12 @@ test.describe("harness conformance — relay driver", () => {
     // the second work item's harnessInput.resumeSessionRef === the first turn's
     // relayed session id.
     test.setTimeout(CASE_TIMEOUT_MS * 2);
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
       const { agentId, threadId } = await createPullThread(
         api,
@@ -638,12 +657,12 @@ test.describe("harness conformance — relay driver", () => {
       );
 
       // ── Turn 1: relay a finish carrying a coding-agent session id ──────────
-      await claimPullPresence(api, ["claude-code"]);
       const t1 = await dispatchAndClaimWorkItem(
         api,
         orgSlug,
         agentId,
         threadId,
+        daemon,
         "first turn",
       );
       const sessionId = `cc-session-${Date.now()}`;
@@ -660,29 +679,33 @@ test.describe("harness conformance — relay driver", () => {
         body,
       );
       expect(res1.status()).toBe(200);
-      // Turn 1 must be terminal before turn 2 dispatches (the gate guards a new
-      // run only when the prior one completed).
-      expect(await fetchThreadStatus(db, t1.runId)).toBe("completed");
-      // The session id must be folded onto the assistant message metadata so
-      // the next turn's history reader can find it.
-      const afterT1 = await listMessages(api, orgSlug, threadId);
-      const assistantT1 = afterT1.find((m) => m.role === "assistant");
-      expect(
-        (assistantT1!.metadata as { codingAgentSessionId?: string })
-          .codingAgentSessionId,
-      ).toBe(sessionId);
+      // Turn 1's terminal status + the folded session id are written by the
+      // async durable projector. Turn 1 must be terminal AND its session id must
+      // be folded onto the assistant message metadata (so the next turn's
+      // history reader can find it) before turn 2 dispatches — poll until both
+      // have projected.
+      await expect(async () => {
+        expect(await fetchThreadStatus(db, t1.runId)).toBe("completed");
+        const afterT1 = await listMessages(api, orgSlug, threadId);
+        const assistantT1 = afterT1.find((m) => m.role === "assistant");
+        expect(
+          (assistantT1!.metadata as { codingAgentSessionId?: string })
+            .codingAgentSessionId,
+        ).toBe(sessionId);
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
 
       // ── Turn 2: dispatch again → the work item resumes the prior session ───
-      await claimPullPresence(api, ["claude-code"]);
       const t2 = await dispatchAndClaimWorkItem(
         api,
         orgSlug,
         agentId,
         threadId,
+        daemon,
         "second turn",
       );
       expect(t2.workItem.harnessInput.resumeSessionRef).toBe(sessionId);
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });
@@ -694,10 +717,12 @@ test.describe("harness conformance — relay driver", () => {
     // dedupes by seq and parts are id-deduped (ON CONFLICT id DO NOTHING). POST
     // the same body twice and assert the part-row count is identical.
     test.setTimeout(CASE_TIMEOUT_MS);
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
       const { agentId, threadId } = await createPullThread(
         api,
@@ -705,12 +730,12 @@ test.describe("harness conformance — relay driver", () => {
         orgSlug,
         orgId,
       );
-      await claimPullPresence(api, ["claude-code"]);
       const { runId, workItem } = await dispatchAndClaimWorkItem(
         api,
         orgSlug,
         agentId,
         threadId,
+        daemon,
         "replay me",
       );
       const { body, lineCount } = buildTurnRelayBody({
@@ -747,6 +772,7 @@ test.describe("harness conformance — relay driver", () => {
       const countAfterSecond = await fetchPartRowIdCount(db, runId);
       expect(countAfterSecond).toBe(countAfterFirst);
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });
@@ -871,7 +897,11 @@ test.describe("harness conformance — relay endpoint rejections", () => {
       const res = await postRelay(api, orgSlug, runId, fenceToken, body, 5);
       expect(res.status()).toBe(200);
       expect(await res.json()).toMatchObject({ ok: true });
-      expect((await fetchParts(db, runId)).length).toBeGreaterThan(0);
+      // Parts are written by the async durable projector, so poll until the
+      // resumed relay's lines land.
+      await expect(async () => {
+        expect((await fetchParts(db, runId)).length).toBeGreaterThan(0);
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
       await db.end();
     }
@@ -899,10 +929,12 @@ test.describe("harness conformance — pull-seam body offload", () => {
     authedPage,
   }) => {
     test.setTimeout(CASE_TIMEOUT_MS);
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
       const { agentId, threadId } = await createPullThread(
         api,
@@ -910,7 +942,6 @@ test.describe("harness conformance — pull-seam body offload", () => {
         orgSlug,
         orgId,
       );
-      await claimPullPresence(api, ["claude-code"]);
 
       // > 768 KiB so the encoded harnessInput trips shouldOffload(). 1 MiB of
       // text is comfortably over the budget even after the rest of the wire
@@ -921,6 +952,7 @@ test.describe("harness conformance — pull-seam body offload", () => {
         orgSlug,
         agentId,
         threadId,
+        daemon,
         bigText,
       );
 
@@ -959,11 +991,16 @@ test.describe("harness conformance — pull-seam body offload", () => {
         body,
       );
       expect(res.status()).toBe(200);
-      const kinds = (await fetchParts(db, runId)).map((p) => p.kind);
-      expect(kinds).toContain("text");
-      expect(kinds).toContain("finish");
-      expect(await fetchThreadStatus(db, runId)).toBe("completed");
+      // Parts + terminal status are written by the async durable projector, so
+      // poll until the run projects and completes.
+      await expect(async () => {
+        const kinds = (await fetchParts(db, runId)).map((p) => p.kind);
+        expect(kinds).toContain("text");
+        expect(kinds).toContain("finish");
+        expect(await fetchThreadStatus(db, runId)).toBe("completed");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });

@@ -10,8 +10,8 @@
  * symbolic `workspace.cwd`, removal of the singular `modelSource` and the
  * `primary`/`title`/`coding` slots.
  *
- * The daemon advertises this version on every work poll via the
- * `x-link-protocol` header (see `link-daemon/work-poller.ts`).
+ * The daemon advertises this version on tunnel session registration via the
+ * `x-link-protocol` header.
  */
 export const LINK_PROTOCOL_VERSION = 2;
 
@@ -22,13 +22,8 @@ export const LINK_PROTOCOL_VERSION = 2;
  * to them). Any rejection surfaced to a stale daemon MUST include the
  * remediation: re-run `bunx decocms@latest link`.
  *
- * Enforced by the version gate in
- * `api/routes/decopilot/link-work-routes.ts` — the work poll is the pull
- * transport's registration/claim path, so gating it keeps stale daemons
- * from ever minting a presence claim (and thus from receiving v2 work
- * items they cannot parse). The daemon's work poller stops polling on a
- * 426 and surfaces the server's remediation message in the `deco link`
- * terminal (see `link-daemon/work-poller.ts`).
+ * Enforced by the link session route before a daemon can mint a presence claim
+ * and receive work items it may not be able to parse.
  */
 export const MIN_SUPPORTED_LINK_PROTOCOL = 2;
 

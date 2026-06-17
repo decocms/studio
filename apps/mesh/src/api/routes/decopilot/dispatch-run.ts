@@ -50,7 +50,7 @@ import {
 import { resolveRuntimeConfig } from "@/tools/sandbox/helpers";
 import { deriveOffloadAllowlist } from "@/object-storage/offload-allowlist";
 import { getSettings } from "@/settings";
-import type { WorkItemSandbox } from "./link-work-queue";
+import type { WorkItemSandbox } from "@/links/link-work-item";
 import type { DispatchTarget } from "../../../links/resolve-dispatch-target";
 import type { VirtualMCPEntity } from "@decocms/mesh-sdk";
 import type {
@@ -169,7 +169,7 @@ function tapProgress(
  * Defer stream construction until the first consumer pull.
  *
  * `prepareRun` must NOT start any harness work unless its `uiStream` is
- * actually consumed: `pullDispatch` calls `prepareRun` solely for the run
+ * actually consumed: `prepareLinkWorkDispatch` calls `prepareRun` solely for the run
  * claim + eager wire input and never consumes the stream — the daemon runs
  * the harness remotely from the published work item, so an eager start here
  * would double-dispatch the run. The AI SDK's `createUIMessageStream` runs
@@ -599,7 +599,7 @@ export async function dispatchRunAndWait(
  * The fully-assembled, JSON-serializable wire shape of a run's harness
  * input — everything `HarnessStreamInput` carries EXCEPT the non-serializable
  * `signal` field. This is exactly what the desktop daemon validates against
- * `harnessStreamInputSchema` and what the pull work item carries.
+ * `harnessStreamInputSchema` and what the link work item carries.
  *
  * Built eagerly in `prepareRun`'s main body (mcp mint + message
  * materialization + field assembly) so it's available without consuming
@@ -615,18 +615,18 @@ interface PreparedRun {
   taskId: string;
   /**
    * LAZY: no harness work happens until the first consumer pull (see
-   * `lazyStream`). Callers that never consume it (`pullDispatch`) never
+   * `lazyStream`). Callers that never consume it (`prepareLinkWorkDispatch`) never
    * start a cluster-side harness run.
    */
   uiStream: ReadableStream<unknown>;
   registrySignal: AbortSignal;
-  /** Minted by prepareRun for pull-dispatched threads. */
+  /** Minted by prepareRun for link-dispatched threads. */
   runFenceToken: string;
   /**
    * Fully-assembled wire harness input (mcp minted, messages materialized,
    * fence token attached). `dispatchRunAndWait` ignores this (it consumes
-   * `uiStream`); `pullDispatch` returns it so the gate can publish
-   * it as the pull work item's `harnessInput`.
+   * `uiStream`); `prepareLinkWorkDispatch` returns it so the gate can publish
+   * it as the link work item's `harnessInput`.
    */
   wireHarnessInput: WireHarnessInput;
 }
@@ -725,7 +725,7 @@ export async function resolveEffectiveVirtualMcpForHarness({
  * and consumes the chunks via the harness kernel (`consumeHarnessStream`).
  * Returns the stream to whoever called it; the caller decides how to
  * consume it (pump for fan-out, drain for direct await) — or, for
- * `pullDispatch`, not at all (no cluster-side harness runs then).
+ * `prepareLinkWorkDispatch`, not at all (no cluster-side harness runs then).
  *
  * Setup-phase errors propagate out of here with the run already
  * force-FINISHED to "failed" in the registry. Consumption-phase errors
@@ -781,12 +781,10 @@ async function prepareRun(
     // without re-querying the registry.
     if (target.sandboxProviderKind === "agent-sandbox") {
       ctx.sandboxPreference = "agent-sandbox";
-      ctx.linkForCurrentRun = undefined;
     } else {
       // user-desktop: downstream sandbox tools should use the desktop
-      // provider, and remote dispatch needs the POST-resolved link.
+      // provider.
       ctx.sandboxPreference = "user-desktop";
-      ctx.linkForCurrentRun = target.link;
     }
     rootSpan.setAttribute(
       "decopilot.dispatchTarget.sandboxProviderKind",
@@ -1136,8 +1134,8 @@ async function prepareRun(
     //   - hosted dispatch (`dispatchHarnessChunks` below) layers the
     //     non-serializable `signal` on top:
     //     `{ ...wireHarnessInput, signal: registrySignal }`.
-    //   - `pullDispatch` returns it verbatim so the thread gate can
-    //     publish it as the pull work item's `harnessInput`.
+    //   - `prepareLinkWorkDispatch` returns it verbatim so the thread gate can
+    //     publish it as the link work item's `harnessInput`.
 
     // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
     // Also handles legacy data: URLs from threads predating this pipeline.
@@ -1178,7 +1176,7 @@ async function prepareRun(
     // ⚠️ SECURITY: Decopilot receives resolved model secret sources, never
     // activated provider objects. For hosted cluster execution these stay
     // in-process; for user-desktop execution they transit to the daemon over
-    // the pull transport so the same harness contract works in both places.
+    // the link transport so the same harness contract works in both places.
     // Never log `modelSources` (any slot) or `mcp.headers` values.
 
     const mcp: HarnessStreamInput["mcp"] = mcpBase;
@@ -1262,8 +1260,8 @@ async function prepareRun(
     // ── LAZY harness dispatch ───────────────────────────────────────────────
     // This generator's body — local harness dispatch — runs only when the
     // kernel pulls the first chunk, which (via `lazyStream` below) happens only
-    // once a consumer pulls `uiStream`. `pullDispatch` never consumes the
-    // stream, so pull-transport runs never start a cluster-side harness.
+    // once a consumer pulls `uiStream`. `prepareLinkWorkDispatch` never consumes the
+    // stream, so link-transport runs never start a cluster-side harness.
     //
     // claude-code cwd resolution: with the `host` runner gone, hosted execution
     // never has a local on-disk workdir to point the CLI at, so the harness
@@ -1276,27 +1274,27 @@ async function prepareRun(
     //
     // Transport Convergence: this generator only ever runs HOSTED
     // (agent-sandbox / legacy) harnesses via `localDispatch`. EVERY user-desktop
-    // run goes through the pull transport (`pullDispatch` + work queue), which
-    // never consumes this stream — so a user-desktop target reaching here is a
+    // run goes through the link transport (`prepareLinkWorkDispatch` + tunnel
+    // work publisher), which never consumes this stream — so a user-desktop target reaching here is a
     // hard bug (the guard below throws). The push `remoteDispatch` path is
     // deleted.
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
         // Layer the non-serializable `signal` onto the eagerly-built wire
         // input. Everything else (mcp, materialized messages, fence token, …)
-        // was assembled above and is shared verbatim with the pull work item.
+        // was assembled above and is shared verbatim with the desktop work item.
         const harnessInput: HarnessStreamInput = {
           ...wireHarnessInput,
           signal: registrySignal,
         };
 
-        // User-desktop runs are routed by the gate to the work queue,
+        // User-desktop runs are routed by the gate to the link work publisher,
         // which never consumes this lazy stream. Reaching this generator for a
         // user-desktop target means the gate routing diverged from the dispatch
         // path — a hard bug.
         if (target.sandboxProviderKind === "user-desktop") {
           throw new Error(
-            "user-desktop runs use the pull transport — dispatchRunAndWait must not run a local harness for them",
+            "user-desktop runs use the link transport — dispatchRunAndWait must not run a local harness for them",
           );
         }
         // hosted / agent-sandbox only. Step 1a: the in-process SandboxClient
@@ -1326,7 +1324,7 @@ async function prepareRun(
     // The progress tap (the run's liveness heartbeat) lives INSIDE the lazy
     // factory: `pipeThrough` at the return site would eagerly pull one chunk
     // through the lazy stream even with no consumer (transform writable
-    // high-water mark), starting the harness for never-consumed pull runs.
+    // high-water mark), starting the harness for never-consumed link runs.
     const uiStream = lazyStream(() =>
       tapProgress(
         buildAgentSandboxUiStream({
@@ -1546,10 +1544,10 @@ async function prepareRun(
 }
 
 /**
- * Resolve the sandbox provisioning config for a pull-transport work item.
+ * Resolve the sandbox provisioning config for a link-transport work item.
  *
  * Mirrors the logic in `provisionSandbox` but returns the resolved config
- * instead of calling `runner.ensure`. Called from `pullDispatch` for EVERY
+ * instead of calling `runner.ensure`. Called from `prepareLinkWorkDispatch` for EVERY
  * harness (decopilot, claude-code, codex) targeting user-desktop so the daemon
  * can spawn the sandbox cold without a prior WS-path ensure call. Decopilot
  * desktop ALSO runs in a sandbox (Transport Convergence), so the repo/workload
@@ -1558,7 +1556,7 @@ async function prepareRun(
  * Returns `null` when no sandbox config can be derived (non-user-desktop
  * target, or unresolvable metadata).
  */
-async function resolvePullSandboxConfig(
+async function resolveLinkSandboxConfig(
   input: DispatchRunInput,
   ctx: StudioContext,
   sandboxHandle: string,
@@ -1596,7 +1594,7 @@ async function resolvePullSandboxConfig(
               forceRefresh: true,
               onLegacyMintError: (error) => {
                 console.warn(
-                  "[pullDispatch] repo-scoped legacy token mint failed",
+                  "[prepareLinkWorkDispatch] repo-scoped legacy token mint failed",
                   {
                     connectionId,
                     error:
@@ -1623,7 +1621,7 @@ async function resolvePullSandboxConfig(
     } catch (err) {
       // Log but don't fail the dispatch — the daemon may have a running sandbox.
       console.warn(
-        `[pullDispatch] failed to resolve clone info for agent=${input.agent.id}:`,
+        `[prepareLinkWorkDispatch] failed to resolve clone info for agent=${input.agent.id}:`,
         err instanceof Error ? err.message : String(err),
       );
     }
@@ -1663,7 +1661,7 @@ async function resolvePullSandboxConfig(
     }
   } catch (err) {
     console.warn(
-      `[pullDispatch] failed to derive offload allowlist for agent=${input.agent.id}:`,
+      `[prepareLinkWorkDispatch] failed to derive offload allowlist for agent=${input.agent.id}:`,
       err instanceof Error ? err.message : String(err),
     );
   }
@@ -1702,11 +1700,11 @@ async function resolvePullSandboxConfig(
  *
  * Claims the run and mints the fence (via prepareRun), then returns the fence
  * token, task id, and fully assembled wire `HarnessStreamInput` for the gate
- * step to publish as a pull work item.
+ * step to publish as a tunnel work item.
  *
  * IMPORTANT: `uiStream` from prepareRun is never consumed here. Since
  * prepareRun's stream is lazy (harness dispatch happens on first pull), the
- * local harness does NOT run for pull-dispatched threads. The daemon runs it
+ * local harness does NOT run for link-dispatched threads. The daemon runs it
  * remotely and the run transitions to terminal when the ingest finish handler
  * fires FINISH.
  *
@@ -1721,7 +1719,7 @@ async function resolvePullSandboxConfig(
  * spawn the sandbox cold. Carries `orgSlug` so the daemon ingest path can
  * construct the URL without a DB lookup.
  */
-export async function pullDispatch(
+export async function prepareLinkWorkDispatch(
   input: DispatchRunInput,
   ctx: StudioContext,
   deps: DispatchRunDeps,
@@ -1734,7 +1732,7 @@ export async function pullDispatch(
   orgSlug: string;
 }> {
   return traced(
-    "decopilot.pullDispatch",
+    "decopilot.prepareLinkWorkDispatch",
     async (_rootSpan) => {
       const { taskId, runFenceToken, wireHarnessInput } = await prepareRun(
         input,
@@ -1744,7 +1742,7 @@ export async function pullDispatch(
       );
 
       // ── Message offload ─────────────────────────────────────────────────
-      // The work item is published to the JetStream WorkQueue as a NATS message; NATS
+      // The work item is published through the tunnel as a NATS request; NATS
       // rejects payloads exceeding MAX_PUBLISH_BYTES. The conversation
       // `messages` array is the dominant large part — when the encoded
       // harnessInput exceeds the budget, offload it to object storage (via the
@@ -1785,7 +1783,7 @@ export async function pullDispatch(
             // Replace messages inline with [] — the real messages live at the ref.
             effectiveHarnessInput = { ...wireHarnessInput, messages: [] };
             console.log(
-              `[pullDispatch] offloaded messages to object storage key=${key} bytes=${messagesBytes.byteLength} runId=${taskId}`,
+              `[prepareLinkWorkDispatch] offloaded messages to object storage key=${key} bytes=${messagesBytes.byteLength} runId=${taskId}`,
             );
           } catch (err) {
             // Offload failed — fall through with the full payload and let
@@ -1793,7 +1791,7 @@ export async function pullDispatch(
             // dropping the ref. The publish will throw and the gate will
             // surface the error.
             console.error(
-              `[pullDispatch] message offload failed, work item may exceed NATS limit runId=${taskId}:`,
+              `[prepareLinkWorkDispatch] message offload failed, work item may exceed NATS limit runId=${taskId}:`,
               err instanceof Error ? err.message : String(err),
             );
           }
@@ -1802,21 +1800,21 @@ export async function pullDispatch(
           // "fail loudly at publish time" approach: better a clear NATS
           // MAX_PAYLOAD_EXCEEDED than a silent truncation.
           console.warn(
-            `[pullDispatch] harnessInput exceeds NATS limit but no object storage configured — work item may be rejected runId=${taskId}`,
+            `[prepareLinkWorkDispatch] harnessInput exceeds NATS limit but no object storage configured — work item may be rejected runId=${taskId}`,
           );
         }
       }
 
-      // Resolve the sandbox handle for the pull work item.
+      // Resolve the sandbox handle for the desktop work item.
       // Pure derivation — no ensure round-trip. The daemon self-ensures
       // the sandbox from `WorkItem.sandbox` when it dequeues the item
-      // (cluster-connection-pull.ts: `input.provider.ensureSandbox(ensureInput)`),
+      // (`dispatchLinkWorkItem`: `input.provider.ensureSandbox(ensureInput)`),
       // so no cluster-side warm-ensure is needed (the push ensure helper was
       // deleted with the push path). The handle formula is identical to what
       // `ensureSandbox`/`provisionSandbox` would compute. See `computeDesktopSandboxHandle`.
       // Compute the sandbox config for EVERY user-desktop run (all harnesses,
       // incl. decopilot — Transport Convergence). Decopilot desktop runs in a
-      // sandbox too; `resolvePullSandboxConfig` derives the same repo/workload
+      // sandbox too; `resolveLinkSandboxConfig` derives the same repo/workload
       // config for it as for the CLI harnesses.
       let sandboxConfig: WorkItemSandbox | null = null;
       if (input.target?.sandboxProviderKind === "user-desktop") {
@@ -1827,17 +1825,17 @@ export async function pullDispatch(
             organizationId: input.organizationId,
             branch: input.branch ?? "ephemeral",
           });
-          sandboxConfig = await resolvePullSandboxConfig(
+          sandboxConfig = await resolveLinkSandboxConfig(
             input,
             ctx,
             sandboxHandle,
           );
         } catch (err) {
-          // Log but don't fail pullDispatch — the daemon falls back to
+          // Log but don't fail prepareLinkWorkDispatch — the daemon falls back to
           // ensureSandbox({ handle }) for a running sandbox, and cold spawn
           // will fail loudly on the daemon side if the config is missing.
           console.warn(
-            `[pullDispatch] failed to resolve sandbox config agent=${input.agent.id}:`,
+            `[prepareLinkWorkDispatch] failed to resolve sandbox config agent=${input.agent.id}:`,
             err instanceof Error ? err.message : String(err),
           );
         }
@@ -1861,7 +1859,7 @@ export async function pullDispatch(
       }
       if (!orgSlug) {
         throw new Error(
-          `pullDispatch: could not resolve org slug for organization ${input.organizationId}`,
+          `prepareLinkWorkDispatch: could not resolve org slug for organization ${input.organizationId}`,
         );
       }
 
@@ -1886,11 +1884,11 @@ export async function pullDispatch(
  *   handle     = computeClaimHandle({ userId, projectRef }, branch)
  *
  * This is the SAME handle the daemon receives in `WorkItem.sandbox.handle`
- * (set by `resolvePullSandboxConfig`) and that the daemon derives via
+ * (set by `resolveLinkSandboxConfig`) and that the daemon derives via
  * `deriveHandle(item)`. Both sides agree by construction.
  *
  * Safe to call at dispatch-run sites where the daemon will self-ensure the
- * sandbox from the work item (cluster-connection-pull.ts calls
+ * sandbox from the work item (`dispatchLinkWorkItem` calls
  * `input.provider.ensureSandbox(ensureInput)`). The warm-ensure round-trip at
  * those sites is therefore redundant and is replaced by this pure call.
  *

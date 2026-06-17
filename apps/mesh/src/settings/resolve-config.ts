@@ -23,6 +23,25 @@ function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
 
+function toBoolOrUndefined(value: string | undefined): boolean | undefined {
+  if (value === undefined || value === "") return undefined;
+  return toBool(value);
+}
+
+function toPositiveIntegerOrDefault(
+  name: string,
+  value: string | undefined,
+  defaultValue: number,
+): number {
+  if (value === undefined || value === "") return defaultValue;
+
+  const numberValue = Number(value);
+  if (!Number.isSafeInteger(numberValue) || numberValue <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return numberValue;
+}
+
 /** Tri-state flag: unset/empty → `fallback`, otherwise parse as boolean. */
 function toBoolWithDefault(
   value: string | undefined,
@@ -93,6 +112,9 @@ export function resolveConfig(
     flags.nodeEnv || (envVars.NODE_ENV as Settings["nodeEnv"]) || "development";
 
   const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
+  const natsTunnelPublicEnabled =
+    toBoolOrUndefined(envVars.NATS_TUNNEL_PUBLIC_ENABLED) ??
+    !!envVars.NATS_PUBLIC_URL;
 
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
@@ -119,6 +141,19 @@ export function resolveConfig(
       Number(envVars.CLICKHOUSE_MAX_MEMORY_USAGE) || undefined,
     monitoringOtlpEndpoint: envVars.MONITORING_OTLP_ENDPOINT,
     otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
+
+    // Event Bus & Networking
+    natsPublicUrl: envVars.NATS_PUBLIC_URL,
+    natsTunnelPublicEnabled,
+    natsTunnelSessionTtlSeconds: toPositiveIntegerOrDefault(
+      "NATS_TUNNEL_SESSION_TTL_SECONDS",
+      envVars.NATS_TUNNEL_SESSION_TTL_SECONDS,
+      900,
+    ),
+    natsOperatorJwt: envVars.NATS_OPERATOR_JWT,
+    natsAccountJwt: envVars.NATS_ACCOUNT_JWT,
+    natsAccountSigningKey: envVars.NATS_ACCOUNT_SIGNING_KEY,
+    natsCredsPath: envVars.NATS_CREDS,
 
     // Config files
     configPath: envVars.CONFIG_PATH || "./config.json",

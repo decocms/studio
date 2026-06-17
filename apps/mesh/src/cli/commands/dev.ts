@@ -183,6 +183,24 @@ export async function startDevServer(
             S3_FORCE_PATH_STYLE: String(settings.s3ForcePathStyle),
           }
         : {}),
+      // Dev NATS operator/JWT config (managed operator-mode NATS). Pass from
+      // frozen settings so the child server (which re-derives Settings from
+      // env) mints real link-session creds and the cluster authenticates with
+      // its creds file — the SAME auth path as production.
+      ...(settings.natsPublicUrl &&
+      settings.natsAccountJwt &&
+      settings.natsAccountSigningKey
+        ? {
+            NATS_PUBLIC_URL: settings.natsPublicUrl,
+            NATS_ACCOUNT_JWT: settings.natsAccountJwt,
+            NATS_ACCOUNT_SIGNING_KEY: settings.natsAccountSigningKey,
+            NATS_OPERATOR_JWT: settings.natsOperatorJwt ?? "",
+            NATS_TUNNEL_PUBLIC_ENABLED: "true",
+            ...(settings.natsCredsPath
+              ? { NATS_CREDS: settings.natsCredsPath }
+              : {}),
+          }
+        : {}),
       // Local mode only: tell the cluster to mint an API-key session for the
       // auto-spawned link. Non-local mode uses the developer's OAuth session
       // from DECOCMS_HOME instead (see ensureDevLinkSession).

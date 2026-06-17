@@ -2,16 +2,15 @@
  * Resilience scenario: sandbox↔studio transport partition.
  *
  * Drives a REAL link daemon + REAL spawned sandbox. Severs the daemon↔studio
- * link with Toxiproxy (clean TCP close on the `studio_ws` proxy — which now
- * carries the pull-transport HTTP long-polls: control/work/proxy, NOT a
- * WebSocket) and asserts:
+ * link with Toxiproxy (clean TCP close on the `studio_ws` proxy that carries
+ * the NATS tunnel transport) and asserts:
  *   1. The sandbox responds to a write/read round-trip while connected.
- *   2. Once the link is severed the daemon can no longer re-arm its presence
- *      claim, so the claim expires from the `studio_links` KV after its 60s TTL
- *      and the link goes offline (/api/links/me → null); a tunneled read fails
- *      FAST (no hang, no queue/replay).
- *   3. After the link is restored, the daemon reconnects (connectedAt advances)
- *      and the same read returns the same content (state preserved).
+ *   2. Once the link is severed, presence is determined optimistically by the
+ *      live /api/links/status probe — which can no longer reach the daemon, so
+ *      /api/links/me returns null and a tunneled read fails FAST (no hang, no
+ *      queue/replay, and no presence-claim TTL to wait out).
+ *   3. After the link is restored, the daemon reconnects and the same read
+ *      returns the same content (state preserved).
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { registerTestHooks, testState } from "../lib/setup";
@@ -116,12 +115,10 @@ describe("sandbox↔studio WS partition", () => {
 
     await disableProxy(PROXY_NAMES.STUDIO_WS);
 
-    // Under the pull transport the claim is presence-based: the daemon re-arms it
-    // on every work/control/proxy poll, and it lingers in the `studio_links` KV
-    // until its 60s TTL lapses once those polls can no longer reach the cluster.
-    // There is NO synchronous socket-close signal like the old reverse-WS
-    // transport had, so wait for the full TTL (plus margin) before asserting
-    // offline.
+    // Presence is optimistic: /api/links/me runs a live /api/links/status probe
+    // over the tunnel. With the tunnel severed the probe can no longer reach the
+    // daemon and returns offline — there is no presence-claim TTL to wait out.
+    // The generous timeout is only margin for the probe to start failing.
     await pollUntil(
       async () => (await getLinkClaim(testState.cookie)) === null,
       { timeoutMs: 80_000, intervalMs: 1_000, label: "link-offline" },

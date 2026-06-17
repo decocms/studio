@@ -1,20 +1,19 @@
 /**
- * E2E: full pull-transport round-trip (cluster-side PULL cycle).
+ * E2E: full tunnel-link round-trip.
  *
- * Validates the cluster-side PULL cycle introduced in Phase B:
+ * Validates the cluster-side desktop link cycle:
  *
  *   1. A thread pinned to a user-desktop runtime (harness_id='claude-code',
  *      sandbox_provider_kind='user-desktop') + message_storage_version=2 is
  *      created and wired to a real agent (virtual MCP). The S6 gate routes it
  *      to pull because the resolved dispatch target is
  *      `sandboxProviderKind:'user-desktop'`.
- *   2. The "desktop daemon" establishes link presence by calling
- *      GET /api/links/work — the route synthetically mints a claim in
- *      the NATS KV bucket so resolveDispatchTarget sees the link as online.
+ *   2. The "desktop daemon" establishes link presence by writing the NATS KV
+ *      claim and serving the user's tunnel hostname.
  *   3. POST /messages on the pull thread → 202 { taskId }. The thread-gate
  *      workflow fires pullDispatch (prepareRun → fence mint → work-item
  *      publish) and then polls threads.status until terminal.
- *   4. The "daemon" calls GET /api/links/work and receives the work
+ *   4. The "daemon" receives the tunneled POST /api/links/work
  *      item; the test asserts its shape (runId, runFenceToken, harnessInput).
  *   5. The "daemon" POSTs a seq-numbered NDJSON chunk relay (protocol v2) to
  *      POST /api/:org/links/runs/:runId/chunks with x-fence-token and
@@ -26,9 +25,9 @@
  *
  * Coverage vs. full round-trip:
  *   COVERED (all 6 steps above):
- *     - Link presence via GET /links/work (sentinel claim refresh)
+ *     - Link presence via the tunnel claim
  *     - POST /messages dispatch path for a pull thread (202 + taskId)
- *     - Work item delivery via GET /links/work (runId, runFenceToken, harnessInput)
+ *     - Work item delivery over `@decocms/tunnel` (runId, runFenceToken, harnessInput)
  *     - Chunk relay POST with fence token (200 {ok,lastSeq}, parts land,
  *       status terminal)
  *     - Gate poll releases (threads.status = 'completed' before assertion)
@@ -44,10 +43,8 @@
  *     - Reconnect/backfill (full-prefix resend) and body-offload (covered by
  *       link-ingest.spec.ts and the chunk-relay unit tests).
  *
- * Presence strategy: the spec uses GET /api/links/work to establish the
- * claim (same as a real pull daemon holding the long-poll). The request carries
- * x-link-capabilities: claude-code so the minted claim advertises the required
- * capability and resolveDispatchTarget routes the thread correctly.
+ * Presence strategy: the spec writes the same NATS KV claim produced by the
+ * production CLI and starts a tunnel server for the user's hostname.
  *
  * harness_id='claude-code' + sandboxProviderKind='user-desktop' are seeded
  * directly on the thread row so POST /messages hits applyThreadLock (the row
@@ -58,8 +55,10 @@
 import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
-import { claimPullPresence } from "../fixtures/links-presence";
-import { LINK_PROTOCOL_VERSION } from "../../src/links/protocol";
+import {
+  createTunnelLinkDaemon,
+  type TunnelLinkDaemon,
+} from "../fixtures/links-presence";
 
 // ---------------------------------------------------------------------------
 // Helpers (scoped to this file; mirrors the patterns in link-ingest.spec.ts)
@@ -209,7 +208,7 @@ async function createPullThread(
 // ---------------------------------------------------------------------------
 
 test.describe("pull-transport round-trip", () => {
-  test("work item is served by GET /links/work and ingest commits parts + releases gate", async ({
+  test("work item is served over tunnel and ingest commits parts + releases gate", async ({
     authedPage,
   }) => {
     // Budget: up to 3 × 35 s long-poll retries (~105 s) + setup/ingest/assertions.
@@ -217,11 +216,13 @@ test.describe("pull-transport round-trip", () => {
     // overall needs at least 120 s.
     test.setTimeout(120_000);
 
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
 
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
 
       // ── Step 1: create agent + pull thread ────────────────────────────────
@@ -231,20 +232,6 @@ test.describe("pull-transport round-trip", () => {
         orgSlug,
         orgId,
       );
-
-      // ── Step 2: establish link presence ───────────────────────────────────
-      //
-      // GET /api/links/work hits the linkClaimRegistry and mints a
-      // presence claim for this user.  We send x-link-capabilities so the
-      // claim advertises "claude-code" — resolveDispatchTarget requires this
-      // capability when harnessId='claude-code'; without it the route returns
-      // 409 user_desktop_link_capability_missing.
-      //
-      // The helper fires the long-poll with a short client timeout (the claim
-      // refresh is synchronous at the start of the handler; a 204/timeout on
-      // the poll itself is fine) and resolves once the claim is visible in
-      // /api/links/me — so presence is established BEFORE POST /messages runs.
-      await claimPullPresence(api, ["claude-code"]);
 
       // ── Step 3: trigger the dispatch (POST /messages) ─────────────────────
       //
@@ -281,89 +268,23 @@ test.describe("pull-transport round-trip", () => {
       expect(dispatchBody.taskId).toBeTruthy();
       const runId = dispatchBody.taskId;
 
-      // ── Step 4: daemon polls GET /links/work → receives work item ──────────
-      //
-      // GET /links/work is a server-side long-poll that holds the connection
-      // open for ~30 s waiting for a JetStream work item.  The DBOS gate
-      // publishes the item *asynchronously* after the 202 response, so the
-      // work item may not yet exist when the first poll starts.
-      //
-      // Strategy: use a client timeout of 35 s (> the server hold) so we
-      // always outlast one server cycle.  A 204 means the server gave up
-      // (nothing yet) — re-poll.  Retry up to 3 times (~105 s budget total).
-      // A real "gate didn't publish" bug surfaces as "no work item after 3
-      // retries" (the assertion below), distinct from a client timeout error.
-      type WorkItem = {
-        runId: string;
-        threadId: string;
-        orgId: string;
-        userId: string;
-        runFenceToken: string;
-        harnessInput: Record<string, unknown>;
-      };
-
-      let workItem: WorkItem | null = null;
-
-      const MAX_WORK_POLL_RETRIES = 3;
-      for (let attempt = 1; attempt <= MAX_WORK_POLL_RETRIES; attempt++) {
-        const res = await api.get(`/api/links/work`, {
-          // Must exceed the server long-poll hold (~30 s) so we don't time out
-          // before the server either delivers a work item or returns 204.
-          timeout: 35_000,
-          headers: {
-            "x-link-protocol": String(LINK_PROTOCOL_VERSION),
-            "x-link-capabilities": "claude-code",
-            "x-link-machine-id": "e2e-test-machine",
-            "x-link-cli-version": "test",
-          },
-        });
-
-        if (res.status() === 204) {
-          // Server held for ~30 s but found nothing yet — the gate may still
-          // be publishing.  Re-poll unless this was the last attempt.
-          continue;
-        }
-
-        if (res.status() === 200) {
-          const body = (await res.json()) as WorkItem | null;
-          if (body && body.runId === runId) {
-            workItem = body;
-            break;
-          }
-          // Got a 200 but for a different runId (shouldn't happen in CI, but
-          // be safe and re-poll to drain and retry).
-          continue;
-        }
-
-        // Any other status is unexpected — fail fast with a clear message.
-        throw new Error(
-          `GET /links/work returned unexpected status ${res.status()} on attempt ${attempt}`,
-        );
-      }
-
-      // If workItem is still null after all retries the gate never published —
-      // this is a real gate-publish bug, clearly distinguishable from a
-      // timeout (which would have thrown above rather than exhausting retries).
-      expect(
-        workItem,
-        `Gate did not publish a work item for runId=${runId} after ${MAX_WORK_POLL_RETRIES} long-poll retries (~${MAX_WORK_POLL_RETRIES * 35}s). This indicates pullDispatch failed to enqueue the work item.`,
-      ).not.toBeNull();
+      // ── Step 4: tunnel daemon receives the work item ──────────────────────
+      const workItem = await daemon.nextWorkItem(runId);
 
       // Assert work item shape (spec §3.2).
-      expect(workItem).not.toBeNull();
-      expect(workItem!.runId).toBe(runId);
-      expect(workItem!.threadId).toBe(threadId);
-      expect(typeof workItem!.runFenceToken).toBe("string");
-      expect(workItem!.runFenceToken.length).toBeGreaterThan(0);
-      expect(typeof workItem!.harnessInput).toBe("object");
+      expect(workItem.runId).toBe(runId);
+      expect(workItem.threadId).toBe(threadId);
+      expect(typeof workItem.runFenceToken).toBe("string");
+      expect(workItem.runFenceToken.length).toBeGreaterThan(0);
+      expect(typeof workItem.harnessInput).toBe("object");
       // harnessInput must carry at least the fields the daemon validates.
-      expect(workItem!.harnessInput).toMatchObject({
+      expect(workItem.harnessInput).toMatchObject({
         threadId,
         runId,
-        runFenceToken: workItem!.runFenceToken,
+        runFenceToken: workItem.runFenceToken,
       });
 
-      const runFenceToken = workItem!.runFenceToken;
+      const runFenceToken = workItem.runFenceToken;
 
       // ── Step 5: daemon relays the harness output as NDJSON chunk lines ────
       //
@@ -397,16 +318,20 @@ test.describe("pull-transport round-trip", () => {
       // transitions threads.status to 'completed' before acking the terminal
       // POST. This is what releases the gate's pollUntilTerminal loop.
 
-      // 6a. Parts must be present: at minimum a text part + a finish anchor.
-      const parts = await fetchParts(db, runId);
-      expect(parts.length).toBeGreaterThanOrEqual(2);
-      const kinds = parts.map((p) => p.kind);
-      expect(kinds).toContain("text");
-      expect(kinds).toContain("finish");
-
-      // 6b. Thread status must be terminal ('completed').
-      expect(await fetchThreadStatus(db, threadId)).toBe("completed");
+      // 6a/6b. Parts + terminal status are written by the async durable
+      // projector (it reconstructs the run from JetStream after the relay
+      // POST returns), so poll until they land: a text part + finish anchor,
+      // and status 'completed' — which is what releases the gate.
+      await expect(async () => {
+        const parts = await fetchParts(db, runId);
+        expect(parts.length).toBeGreaterThanOrEqual(2);
+        const kinds = parts.map((p) => p.kind);
+        expect(kinds).toContain("text");
+        expect(kinds).toContain("finish");
+        expect(await fetchThreadStatus(db, threadId)).toBe("completed");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });

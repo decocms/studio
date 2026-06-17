@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UIMessageChunk } from "ai";
-import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
+import type { WorkItem } from "../links/link-work-item";
 import { type RelayLine, relayLineSchema } from "../links/protocol/relay";
 import {
   handleLocalDispatch,
@@ -30,7 +30,7 @@ const CLUSTER_TOKEN = "cluster-tok-xyz";
 const FENCE_TOKEN = "fence-tok-123";
 const RUN_ID = "run_01";
 
-/** A minimal valid WorkItem fixture (mirrors work-poller.test.ts). */
+/** A minimal valid WorkItem fixture. */
 const validWorkItem: WorkItem = {
   runId: RUN_ID,
   threadId: "thrd_01",

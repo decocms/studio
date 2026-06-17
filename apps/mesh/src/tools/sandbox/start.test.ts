@@ -2,10 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/mesh-sdk";
 import type { StudioContext } from "../../core/studio-context";
 import type {
-  LinkClaimRegistry,
-  LinkClaim,
-} from "../../links/link-claim-registry";
-import type {
   EnsureOptions,
   Sandbox,
   SandboxId,
@@ -209,14 +205,12 @@ function makeCtx(overrides: {
   userId?: string;
   virtualMcp?: ReturnType<typeof makeVirtualMcp> | null;
   updateSpy?: ReturnType<typeof mock>;
-  linkClaimRegistry?: LinkClaimRegistry;
 }): StudioContext {
   const {
     orgId = ORG_ID,
     userId = USER_ID,
     virtualMcp,
     updateSpy = mock(async () => {}),
-    linkClaimRegistry,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -279,7 +273,6 @@ function makeCtx(overrides: {
     getOrCreateClient: null as never,
     pendingRevalidations: [],
     monitoring: null as never,
-    linkClaimRegistry,
   } as unknown as StudioContext;
 }
 
@@ -614,21 +607,7 @@ describe("SANDBOX_START", () => {
       },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-    // Claim registry with online link so resolveDefaultSandboxProviderKind picks desktop
-    const linkClaimRegistry: LinkClaimRegistry = {
-      get: async (_userId: string) => ({
-        podId: "pod_1",
-        machineId: "machine_1",
-        cliVersion: "1.0.0",
-        previewPort: 5174,
-        connectedAt: Date.now(),
-        capabilities: [],
-      }),
-      put: async () => {},
-      delete: async () => {},
-      watch: () => () => {},
-    };
-    const ctx = makeCtx({ virtualMcp, linkClaimRegistry });
+    const ctx = makeCtx({ virtualMcp });
 
     // Explicit user-desktop override wins over the recorded hosted entry.
     const result = await SANDBOX_START.handler(
@@ -647,7 +626,7 @@ describe("SANDBOX_START", () => {
     expect(result.isNewVm).toBe(true);
   });
 
-  it("SANDBOX_START with no sandboxProviderKind honors an existing recorded kind even when link is online", async () => {
+  it("SANDBOX_START with no sandboxProviderKind honors an existing recorded kind", async () => {
     const agentSandboxEntry: SandboxRecord = {
       sandboxHandle: "vm_agent-sandbox_existing",
       previewUrl: "https://agent-sandbox.preview/",
@@ -668,21 +647,8 @@ describe("SANDBOX_START", () => {
       },
     };
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
-    const linkClaimRegistry: LinkClaimRegistry = {
-      get: async (_userId: string) => ({
-        podId: "pod_1",
-        machineId: "machine_1",
-        cliVersion: "1.0.0",
-        previewPort: 5174,
-        connectedAt: Date.now(),
-        capabilities: [],
-      }),
-      put: async () => {},
-      delete: async () => {},
-      watch: () => () => {},
-    };
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
+    const ctx = makeCtx({ virtualMcp, updateSpy });
 
     const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
@@ -740,53 +706,13 @@ describe("SANDBOX_START", () => {
   // sandboxProviderKind default-resolution tests
   // -----------------------------------------------------------------------
 
-  const STUB_LINK: LinkClaim = {
-    podId: "pod_1",
-    machineId: "machine_1",
-    cliVersion: "1.0.0",
-    previewPort: 5174,
-    connectedAt: Date.now(),
-    capabilities: [],
-  };
-
-  it("SANDBOX_START with no sandboxProviderKind picks desktop when the link is online", async () => {
-    const linkClaimRegistry: LinkClaimRegistry = {
-      get: async (_userId: string) => STUB_LINK,
-      put: async () => {},
-      delete: async () => {},
-      watch: () => () => {},
-    };
+  it("SANDBOX_START with no sandboxProviderKind picks the env kind (default policy is env-only)", async () => {
+    // Optimistic presence: the default no longer consults link liveness.
+    // STUDIO_SANDBOX_PROVIDER is "agent-sandbox" at module load time (top of
+    // file), so a fresh (user, branch) with no recorded kind resolves to it.
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
-
-    const result = await SANDBOX_START.handler(
-      { virtualMcpId: VMCP_ID, branch: BRANCH },
-      ctx,
-    );
-
-    expect(result.sandboxProviderKind).toBe("user-desktop");
-    const updateCall = (updateSpy.mock.calls as unknown[][])[0]!;
-    const updated = (updateCall[2] as { metadata: { sandboxMap: SandboxMap } })
-      .metadata;
-    // 3-level key: sandboxMap[userId][branch][kind]
-    const stored = (
-      updated.sandboxMap[USER_ID]?.[BRANCH] as Record<string, unknown>
-    )?.["user-desktop"] as SandboxRecord | undefined;
-    expect(stored?.sandboxProviderKind).toBe("user-desktop");
-  });
-
-  it("SANDBOX_START with no sandboxProviderKind picks env kind when no link", async () => {
-    // STUDIO_SANDBOX_PROVIDER is "agent-sandbox" at module load time (top of file)
-    const linkClaimRegistry: LinkClaimRegistry = {
-      get: async (_userId: string) => null,
-      put: async () => {},
-      delete: async () => {},
-      watch: () => () => {},
-    };
-    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
-    const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
+    const ctx = makeCtx({ virtualMcp, updateSpy });
 
     const result = await SANDBOX_START.handler(
       { virtualMcpId: VMCP_ID, branch: BRANCH },
@@ -805,16 +731,9 @@ describe("SANDBOX_START", () => {
   });
 
   it("SANDBOX_START with explicit sandboxProviderKind ignores defaults", async () => {
-    // Link is online, env is "agent-sandbox" — but explicit "agent-sandbox" must win (and user-desktop would also be overrideable).
-    const linkClaimRegistry: LinkClaimRegistry = {
-      get: async (_userId: string) => STUB_LINK,
-      put: async () => {},
-      delete: async () => {},
-      watch: () => () => {},
-    };
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
+    const ctx = makeCtx({ virtualMcp, updateSpy });
 
     const result = await SANDBOX_START.handler(
       {
@@ -837,15 +756,9 @@ describe("SANDBOX_START", () => {
   });
 
   it("normalizes legacy cluster input to agent-sandbox", async () => {
-    const linkClaimRegistry: LinkClaimRegistry = {
-      get: async (_userId: string) => STUB_LINK,
-      put: async () => {},
-      delete: async () => {},
-      watch: () => () => {},
-    };
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
-    const ctx = makeCtx({ virtualMcp, updateSpy, linkClaimRegistry });
+    const ctx = makeCtx({ virtualMcp, updateSpy });
 
     const result = await SANDBOX_START.handler(
       {
