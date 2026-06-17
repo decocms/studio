@@ -309,6 +309,7 @@ async function provisionSandbox(
         ctx,
         connectionId: githubRepo.connectionId,
         organizationId: orgId,
+        forceRefresh: true,
         onLegacyMintError: (error) => {
           // Swallow + log: a failed mint intentionally falls through to
           // buildCloneInfo's own "No GitHub token found" throw below (sandbox

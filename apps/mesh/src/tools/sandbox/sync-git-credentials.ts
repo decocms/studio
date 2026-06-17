@@ -52,6 +52,7 @@ export async function refreshSandboxGitCredentials(
     ctx,
     connectionId: githubRepo.connectionId,
     organizationId,
+    forceRefresh: true,
     onLegacyMintError: (error) => {
       const message = error instanceof Error ? error.message : RECONNECT_ERROR;
       throw new GitPushAuthError(message);

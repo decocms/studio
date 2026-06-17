@@ -16,6 +16,7 @@ import type { DaemonStatus } from "../events/types";
 import type { BranchStatusMonitor } from "../git/branch-status";
 import { gitSync } from "../git/git-sync";
 import { spawnCheckoutBranch } from "../git/checkout-branch";
+import { syncOriginRemote } from "../git/sync-origin-remote";
 import type { InstallState } from "../install/install-state";
 import { InstallState as InstallStateClass } from "../install/install-state";
 import type { LifecycleManager } from "../lifecycle/manager";
@@ -96,15 +97,19 @@ export class SetupOrchestrator {
     });
   }
 
-  /** Config-store transition → step. Fire-and-forget. */
-  handle(transition: Transition): void {
-    const step = transitionToStep(transition);
-    if (!step) return;
+  /** Studio retry endpoint → resume from a named step. Fire-and-forget. */
+  resumeFrom(step: Step): void {
     this.enqueueStep(step);
   }
 
-  /** Studio retry endpoint → resume from a named step. Fire-and-forget. */
-  resumeFrom(step: Step): void {
+  /** Token rotation on an already-cloned repo — sync origin, no full clone. */
+  handle(transition: Transition): void {
+    if (transition.kind === "git-credential-refresh") {
+      this.syncGitRemoteCredentials(transition.cloneUrl);
+      return;
+    }
+    const step = transitionToStep(transition);
+    if (!step) return;
     this.enqueueStep(step);
   }
 
@@ -215,6 +220,10 @@ export class SetupOrchestrator {
     const config = this.currentConfig();
     if (!config) return false;
     const cloneUrl = config.git?.repository?.cloneUrl;
+
+    if (cloneUrl && hasGitRepo(config.repoDir)) {
+      this.syncGitRemoteCredentials(cloneUrl);
+    }
 
     if (cloneUrl && !hasGitRepo(config.repoDir)) {
       this.deps.lifecycle.transition({ phase: "cloning" });
@@ -563,6 +572,20 @@ export class SetupOrchestrator {
       log: (message) => this.chunk(message),
     });
   }
+
+  private syncGitRemoteCredentials(cloneUrl: string): void {
+    const repoDir = this.deps.bootConfig.repoDir;
+    if (!repoDir || !hasGitRepo(repoDir)) return;
+    try {
+      syncOriginRemote(repoDir, cloneUrl);
+      this.chunk("[orchestrator] synced origin credentials\r\n");
+    } catch (e) {
+      const msg = (e as Error).message;
+      this.chunk(
+        `\r\n[orchestrator] failed to sync origin credentials: ${msg}\r\n`,
+      );
+    }
+  }
 }
 
 function transitionToStep(t: Transition): Step | null {
@@ -576,6 +599,7 @@ function transitionToStep(t: Transition): Step | null {
     case "port-change":
       return "start";
     case "env-change":
+    case "git-credential-refresh":
     case "identity-conflict":
     case "no-op":
       return null;

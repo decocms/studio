@@ -8,7 +8,8 @@ import type { Transition } from "./types";
  *
  * Precedence (highest first):
  *   identity-conflict > bootstrap > branch-change >
- *   runtime-change > pm-change > port-change > no-op
+ *   runtime-change > pm-change > port-change > env-change >
+ *   git-credential-refresh > no-op
  */
 export function classify(
   before: TenantConfig | null,
@@ -81,6 +82,16 @@ export function classify(
   const envDiff = diffEnv(before.env, after.env);
   if (envDiff) {
     return { kind: "env-change", changed: envDiff };
+  }
+
+  // 7. Git credential refresh (same repo path, rotated embedded token).
+  if (
+    beforeUrl !== undefined &&
+    afterUrl !== undefined &&
+    beforeUrl !== afterUrl &&
+    stripCredentials(beforeUrl) === stripCredentials(afterUrl)
+  ) {
+    return { kind: "git-credential-refresh", cloneUrl: afterUrl };
   }
 
   return { kind: "no-op" };
