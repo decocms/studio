@@ -36,7 +36,6 @@ import { SqlThreadStorage } from "@/storage/threads";
 import type { Thread } from "@/storage/types";
 import { RunRegistry } from "./run-registry";
 import type { RunReactorDeps } from "./run-reactor";
-import { NoopRunningThreadsStore } from "./running-threads-store";
 import type { StreamBuffer } from "./stream-buffer";
 
 const ORG = "org_1";
@@ -86,7 +85,6 @@ function makeRegistry(opts: { clock?: () => Date } = {}) {
         purged.push(taskId);
       },
     } as unknown as StreamBuffer,
-    runningStore: new NoopRunningThreadsStore(),
   };
   const registry = opts.clock
     ? new RunRegistry(deps, opts.clock)

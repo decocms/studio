@@ -36,7 +36,6 @@ import type { SSEEvent } from "@/event-bus";
 import { SqlThreadStorage } from "@/storage/threads";
 import type { Thread } from "@/storage/types";
 import { reactAll, type RunReactorDeps } from "./run-reactor";
-import { NoopRunningThreadsStore } from "./running-threads-store";
 import type { RunEvent } from "./run-state";
 import type { StreamBuffer } from "./stream-buffer";
 
@@ -88,7 +87,6 @@ function makeReactor(): {
         purged.push(taskId);
       },
     } as unknown as StreamBuffer,
-    runningStore: new NoopRunningThreadsStore(),
   };
   return { deps, sseEvents, purged };
 }

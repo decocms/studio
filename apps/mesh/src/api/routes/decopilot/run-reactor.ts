@@ -14,13 +14,10 @@ import type { SSEEvent } from "@/event-bus";
 import type { ThreadStoragePort } from "@/storage/ports";
 import {
   createDecopilotFinishEvent,
-  createDecopilotRunningSummaryEvent,
   createDecopilotStepEvent,
   createDecopilotThreadStatusEvent,
-  type RunningThread,
 } from "@decocms/mesh-sdk";
 import type { StreamBuffer } from "./stream-buffer";
-import type { RunningThreadsStore } from "./running-threads-store";
 import type { RunEvent, RunTransition } from "./run-state";
 
 // ============================================================================
@@ -35,50 +32,6 @@ export interface RunReactorDeps {
   storage: ThreadStoragePort;
   streamBuffer: StreamBuffer;
   sseHub: { emit(orgId: string, event: SSEEvent): void };
-  /** Cross-pod running-thread set powering the home "agents working" badge. */
-  runningStore: RunningThreadsStore;
-}
-
-/**
- * Per-step `touch` throttle. STEP_COMPLETED can fire many times a second; the
- * KV backend turns each touch into a CAS write on a single shared per-org key,
- * so unthrottled they amplify writes and contend across an org's concurrent
- * runs. A run only needs one touch per idle window to avoid being pruned, so we
- * touch at most once per interval per run (well under RUNNING_THREAD_IDLE_MS).
- * ponytail: bounded by terminal cleanup below; a leaked entry is one timestamp.
- */
-const TOUCH_THROTTLE_MS = 60_000;
-const lastTouchAt = new Map<string, number>();
-
-function shouldTouch(orgId: string, taskId: string): boolean {
-  const key = `${orgId}:${taskId}`;
-  const now = Date.now();
-  const prev = lastTouchAt.get(key);
-  if (prev !== undefined && now - prev < TOUCH_THROTTLE_MS) return false;
-  lastTouchAt.set(key, now);
-  return true;
-}
-
-function clearTouch(orgId: string, taskId: string): void {
-  lastTouchAt.delete(`${orgId}:${taskId}`);
-}
-
-/**
- * Apply a running-set mutation and broadcast the resulting summary through the
- * SSE hub. Best-effort: the badge must never block or fail a run transition, so
- * store/emit errors are swallowed.
- */
-async function syncRunningSummary(
-  deps: RunReactorDeps,
-  orgId: string,
-  action: (store: RunningThreadsStore) => Promise<RunningThread[]>,
-): Promise<void> {
-  try {
-    const threads = await action(deps.runningStore);
-    deps.sseHub.emit(orgId, createDecopilotRunningSummaryEvent(threads));
-  } catch (err) {
-    console.error("[run-reactor] running summary sync failed", err);
-  }
 }
 
 // ============================================================================
@@ -118,10 +71,6 @@ async function handleTerminalStatus(
     }),
   );
   sseHub.emit(orgId, createDecopilotFinishEvent(taskId, status));
-  clearTouch(orgId, taskId);
-  await syncRunningSummary(deps, orgId, (store) =>
-    store.markStopped(orgId, taskId),
-  );
 }
 
 // ============================================================================
@@ -155,13 +104,6 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           updatedAt: startedThread?.updated_at,
         }),
       );
-      await syncRunningSummary(deps, event.orgId, (store) =>
-        store.markRunning(event.orgId, {
-          id: event.taskId,
-          virtual_mcp_id: startedThread?.virtual_mcp_id ?? "",
-          title: startedThread?.title ?? null,
-        }),
-      );
       return;
     }
 
@@ -182,13 +124,6 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
           updatedAt: resumedThread?.updated_at,
         }),
       );
-      await syncRunningSummary(deps, event.orgId, (store) =>
-        store.markRunning(event.orgId, {
-          id: event.taskId,
-          virtual_mcp_id: resumedThread?.virtual_mcp_id ?? "",
-          title: resumedThread?.title ?? null,
-        }),
-      );
       return;
     }
 
@@ -197,12 +132,6 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         event.orgId,
         createDecopilotStepEvent(event.taskId, event.stepCount),
       );
-      // Refresh liveness so a long, actively-streaming run isn't pruned from
-      // the running count. Throttled (see shouldTouch); no summary emit (count
-      // is unchanged). Best-effort.
-      if (shouldTouch(event.orgId, event.taskId)) {
-        deps.runningStore.touch(event.orgId, event.taskId).catch(() => {});
-      }
       return;
 
     case "RUN_COMPLETED":
@@ -255,10 +184,6 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
       sseHub.emit(
         event.orgId,
         createDecopilotFinishEvent(event.taskId, "failed"),
-      );
-      clearTouch(event.orgId, event.taskId);
-      await syncRunningSummary(deps, event.orgId, (store) =>
-        store.markStopped(event.orgId, event.taskId),
       );
       return;
     }

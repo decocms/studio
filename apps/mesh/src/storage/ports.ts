@@ -9,7 +9,6 @@ import type {
   OrderByExpression,
   WhereExpression,
 } from "@decocms/bindings/collections";
-import type { RunningThread } from "@decocms/mesh-sdk";
 import type { ConnectionEntity } from "../tools/connection/schema";
 import type {
   VirtualMCPEntity,
@@ -116,14 +115,6 @@ export interface ThreadStoragePort {
     organizationId: string,
     virtualMcpIds: string[],
   ): Promise<Map<string, { last_used_at: string; last_used_by: string }>>;
-
-  /**
-   * Threads currently `in_progress` for an org, each tagged with its agent
-   * (virtual MCP) title. Backs the home "X agents working on N tasks" snapshot
-   * emitted on `/watch` connect. Org-wide and authoritative (cross-pod), unlike
-   * the per-pod in-memory run registry.
-   */
-  summarizeRunning(organizationId: string): Promise<RunningThread[]>;
 
   // Message operations - upserts by id (updates existing rows)
   saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;

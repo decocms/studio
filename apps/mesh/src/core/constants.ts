@@ -62,22 +62,6 @@ export const CONNECTION_DISABLE_MIN_WINDOW_MS = 60_000; // 60 seconds
 export const CONNECTION_CIRCUIT_TTL_MS = 5 * 60_000; // 5 minutes
 
 /**
- * A running-thread entry is pruned from the home "X agents working on N tasks"
- * count if its last progress is older than this. Matches the decopilot reaper's
- * `RUN_IDLE_TIMEOUT_MS` so the badge drops a crashed/orphaned run on the same
- * timeline the reaper force-fails it — without depending on the reaper, which
- * only sweeps runs in the owning pod's memory.
- */
-export const RUNNING_THREAD_IDLE_MS = 10 * 60_000; // 10 minutes
-
-/**
- * Bucket TTL for the running-threads KV key. Refreshed on every write, so an
- * org with active runs keeps its key alive; an org that goes fully quiet lets
- * the whole key expire. Set comfortably above RUNNING_THREAD_IDLE_MS.
- */
-export const RUNNING_THREADS_KV_TTL_MS = 30 * 60_000; // 30 minutes
-
-/**
  * Cooldown before an auto-disabled (status="error") connection is re-probed.
  * After this window a single request triggers a half-open handshake; success
  * re-activates the connection, failure restarts the window. Manual "inactive"
