@@ -4,10 +4,11 @@
  * remote so subsequent fetch/pull/push from inside the sandbox keep
  * working with no further plumbing.
  *
- * The token is set once per sandbox. If it expires or is revoked, the
- * sandbox must be destroyed and recreated — studio does not push token
- * updates to running daemons. Falls back to generic identity defaults on
- * /user failure so callers never block on a flaky upstream.
+ * The token is baked into the clone URL on each SANDBOX_START (always
+ * re-minted for legacy repo-scoped connections). The daemon syncs `origin`
+ * when credentials rotate on a resumed sandbox. Falls back to generic
+ * identity defaults on /user failure so callers never block on a flaky
+ * upstream.
  */
 
 import type { Kysely } from "kysely";
@@ -48,6 +49,8 @@ export async function ensureGithubCloneToken(params: {
   ctx: StudioContext;
   connectionId: string;
   organizationId: string;
+  /** Always re-mint legacy repo-scoped ghs_ tokens (e.g. before git clone). */
+  forceRefresh?: boolean;
   onLegacyMintError?: (error: unknown) => void;
 }): Promise<void> {
   const connection = await params.ctx.storage.connections.findById(
@@ -58,7 +61,9 @@ export async function ensureGithubCloneToken(params: {
   if (!connection || !repoScope?.sourceConnectionId) return;
 
   try {
-    await ensureRepoScopedToken(params.ctx, connection);
+    await ensureRepoScopedToken(params.ctx, connection, {
+      forceRefresh: params.forceRefresh,
+    });
   } catch (error) {
     params.onLegacyMintError?.(error);
   }

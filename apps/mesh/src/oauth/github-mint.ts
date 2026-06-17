@@ -148,6 +148,7 @@ async function mintAndStore(
 export async function ensureRepoScopedToken(
   ctx: StudioContext,
   connection: ConnectionEntity,
+  opts?: { forceRefresh?: boolean },
 ): Promise<string> {
   const recipe = getRepoScope(connection);
   if (!recipe) {
@@ -159,7 +160,11 @@ export async function ensureRepoScopedToken(
 
   const tokenStorage = new DownstreamTokenStorage(ctx.db, ctx.vault);
   const cached = await tokenStorage.get(connection.id);
-  if (cached && !tokenStorage.isExpired(cached, PROACTIVE_REFRESH_BUFFER_MS)) {
+  if (
+    !opts?.forceRefresh &&
+    cached &&
+    !tokenStorage.isExpired(cached, PROACTIVE_REFRESH_BUFFER_MS)
+  ) {
     return cached.accessToken;
   }
 

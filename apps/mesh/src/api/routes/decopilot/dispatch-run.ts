@@ -1597,6 +1597,7 @@ async function resolvePullSandboxConfig(
               ctx,
               connectionId,
               organizationId: input.organizationId,
+              forceRefresh: true,
               onLegacyMintError: (error) => {
                 console.warn(
                   "[pullDispatch] repo-scoped legacy token mint failed",

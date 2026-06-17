@@ -52,6 +52,28 @@ describe("classify", () => {
     expect(classify(before, after).kind).not.toBe("identity-conflict");
   });
 
+  it("cloneUrl credential-only change = git-credential-refresh", () => {
+    const before: TenantConfig = {
+      git: {
+        repository: {
+          cloneUrl: "https://x-access-token:OLD_TOKEN@github.com/org/repo.git",
+        },
+      },
+    };
+    const after: TenantConfig = {
+      git: {
+        repository: {
+          cloneUrl: "https://x-access-token:NEW_TOKEN@github.com/org/repo.git",
+        },
+      },
+    };
+    const result = classify(before, after);
+    expect(result.kind).toBe("git-credential-refresh");
+    if (result.kind === "git-credential-refresh") {
+      expect(result.cloneUrl).toBe(after.git?.repository?.cloneUrl);
+    }
+  });
+
   it("branch change = branch-change", () => {
     const before: TenantConfig = {
       git: { repository: { cloneUrl: "x", branch: "main" } },

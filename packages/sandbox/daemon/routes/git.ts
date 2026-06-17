@@ -6,6 +6,10 @@ import { computeBranchDivergence } from "../git/branch-divergence";
 import { parsePorcelainFiles } from "../git/porcelain";
 import { rebaseOntoBase } from "../git/rebase-onto-base";
 import {
+  cloneUrlHasCredentials,
+  syncOriginRemote,
+} from "../git/sync-origin-remote";
+import {
   assertValidRemoteBranchName,
   InvalidRemoteBranchNameError,
 } from "../git/ref-name";
@@ -336,20 +340,6 @@ function resolveRepoRelativePath(deps: GitDeps, userPath: string): string {
     throw new Error(`Invalid path: ${userPath}`);
   }
   return rel;
-}
-
-function cloneUrlHasCredentials(url: string): boolean {
-  try {
-    const u = new URL(url);
-    return u.username.length > 0 || u.password.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-function syncOriginRemote(repoDir: string, cloneUrl: string): void {
-  if (!cloneUrlHasCredentials(cloneUrl)) return;
-  runGit(repoDir, ["remote", "set-url", "origin", cloneUrl]);
 }
 
 function pushBranch(repoDir: string, branch: string): void {

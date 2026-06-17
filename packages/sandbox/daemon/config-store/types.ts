@@ -26,6 +26,7 @@ export type Transition =
       kind: "env-change";
       changed: { set: string[]; deleted: string[] };
     }
+  | { kind: "git-credential-refresh"; cloneUrl: string }
   | { kind: "identity-conflict"; field: "cloneUrl" }
   | { kind: "no-op" };
 
