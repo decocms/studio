@@ -17,7 +17,7 @@ import type { UIMessage } from "ai";
 function makeFetchMock(
   opts: {
     stream?: (init?: RequestInit) => Response | Promise<Response>;
-    messages?: (init?: RequestInit) => Response;
+    messages?: (init?: RequestInit) => Response | Promise<Response>;
     fallback?: (init?: RequestInit) => Promise<Response>;
   } = {},
 ) {
@@ -277,6 +277,51 @@ describe("chunk handling", () => {
 
     await new Promise((r) => setTimeout(r, 10));
     expect(conn.runStatusStage.get()).toBe("preparing-tools");
+  });
+
+  test("POST success does not regress a later streamed run status", async () => {
+    const stream = controllableStream();
+    let resolvePost!: () => void;
+    const postGate = new Promise<void>((resolve) => {
+      resolvePost = resolve;
+    });
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: async () => {
+        await postGate;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-post-monotonic", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const submitPromise = conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "user-1",
+          role: "user",
+          parts: [{ type: "text", text: "hello" }],
+        },
+      },
+      baseOpts,
+    );
+    expect(conn.runStatusStage.get()).toBe("sending");
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "gathering-context" },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("gathering-context");
+
+    resolvePost();
+    await submitPromise;
+    expect(conn.runStatusStage.get()).toBe("gathering-context");
   });
 
   test("clears run status when visible assistant content starts and on finish", async () => {
