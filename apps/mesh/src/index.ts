@@ -300,10 +300,16 @@ async function gracefulShutdown(signal: string) {
   shuttingDown = true;
   console.log(`\n[shutdown] Received ${signal}, shutting down gracefully...`);
 
+  // Single source of truth: the chart's terminationGracePeriodSeconds is
+  // injected as SHUTDOWN_GRACE_SECONDS. Force-exit a few seconds before SIGKILL
+  // so the process always wins the race; drain fills most of the budget.
+  const graceMs = Number(process.env.SHUTDOWN_GRACE_SECONDS ?? 60) * 1_000;
+  const forceExitMs = Math.max(graceMs - 5_000, 10_000);
+
   const forceExitTimer = setTimeout(() => {
-    console.error("[shutdown] Timed out after 55s, forcing exit.");
+    console.error(`[shutdown] Timed out after ${forceExitMs}ms, forcing exit.`);
     process.exit(1);
-  }, 55_000);
+  }, forceExitMs);
   forceExitTimer.unref?.();
 
   let exitCode = 0;
@@ -318,9 +324,12 @@ async function gracefulShutdown(signal: string) {
     //    LB controller observing the pod enter Terminating (this SIGTERM), not
     //    by the K8s Endpoints path — and it takes far longer than the old 2s to
     //    propagate. Closing the listener early leaves the NLB forwarding new
-    //    connections to a dead socket -> CF 520 during rollout. Stay well under
-    //    terminationGracePeriodSeconds (60s) so the force-exit timer never trips.
-    const drainMs = Number(process.env.SHUTDOWN_DRAIN_MS ?? 25_000);
+    //    connections to a dead socket -> CF 520 during rollout. Stay under the
+    //    force-exit timer (derived from terminationGracePeriodSeconds above) so
+    //    it never trips before drain completes.
+    const drainMs = Number(
+      process.env.SHUTDOWN_DRAIN_MS ?? Math.floor(forceExitMs * 0.6),
+    );
     await sleep(drainMs);
 
     // 3. Force-close connections (SSE streams are long-lived and would block
