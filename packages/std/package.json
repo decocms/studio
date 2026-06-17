@@ -1,6 +1,6 @@
 {
   "name": "@decocms/std",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Isomorphic, zero-dependency async primitives (sleep, retry, backoff) ported from Deno std",
   "license": "MIT",
   "type": "module",
