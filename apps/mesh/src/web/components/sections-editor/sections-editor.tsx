@@ -1152,7 +1152,7 @@ export function SectionsEditor({
     if (!rawSection || !parsed?.isSavedBlock) return;
 
     const unwrapped = unwrapSection(rawSection, parsed, decofile);
-    if (!unwrapped) return;
+    if (!unwrapped?.data) return;
 
     // Remove the `name` field — it belongs to the saved block, not the inline copy
     const { name: _name, ...inlineData } = unwrapped.data;

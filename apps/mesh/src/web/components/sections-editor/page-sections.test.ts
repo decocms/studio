@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildPageDataWithSections,
+  canMakeSectionReusable,
   suggestBlockId,
   validateBlockId,
 } from "./page-sections";
@@ -78,6 +79,13 @@ describe("page-sections", () => {
       "Must start with a letter",
     );
     expect(validateBlockId("MyNewBlock", decofile)).toBeNull();
+  });
+
+  it("canMakeSectionReusable rejects saved, multivariate, and hidden sections", () => {
+    expect(canMakeSectionReusable({})).toBe(true);
+    expect(canMakeSectionReusable({ isSavedBlock: true })).toBe(false);
+    expect(canMakeSectionReusable({ isMultivariate: true })).toBe(false);
+    expect(canMakeSectionReusable({ isHidden: true })).toBe(false);
   });
 
   it("suggestBlockId sanitizes labels", () => {

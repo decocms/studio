@@ -41,4 +41,13 @@ describe("deco-block-key", () => {
       assertSafeDecoBlockKey("MelhoresMalas/MaisVendidos"),
     ).not.toThrow();
   });
+
+  it("rejects percent-encoded slashes in block keys", () => {
+    expect(() => assertSafeDecoBlockKey("foo%2fbar")).toThrow(
+      /Invalid block key/,
+    );
+    expect(() => assertSafeDecoBlockKey("foo%2Fbar")).toThrow(
+      /Invalid block key/,
+    );
+  });
 });
