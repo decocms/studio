@@ -368,7 +368,7 @@ async function backgroundToolWorkflowFn(
   await reactStep(ctx, heavy.models);
 }
 
-export const backgroundToolWorkflow = DBOS.registerWorkflow(
+const backgroundToolWorkflow = DBOS.registerWorkflow(
   backgroundToolWorkflowFn,
   { name: "backgroundToolWorkflow" },
 );
