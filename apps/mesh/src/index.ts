@@ -49,8 +49,9 @@ function withSslmode(url: string, ssl: boolean): string {
   return u.toString();
 }
 // ── Pod dispatch role (horizontal split) ────────────────────────────────────
-// `MESH_DISPATCH_ROLE` selects which DBOS queues this pod DEQUEUES (via the
-// SDK's `listenQueues` filter). It lets you run two Deployments off the SAME
+// `settings.dispatchRole` (from `MESH_DISPATCH_ROLE`, resolved in
+// resolve-config) selects which DBOS queues this pod DEQUEUES (via the SDK's
+// `listenQueues` filter). It lets you run two Deployments off the SAME
 // image/DB/auth and scale them independently:
 //   - "all"    (default) — dequeue every queue. Unchanged single-deployment
 //                          behavior; safe default, no opt-in required.
@@ -64,23 +65,13 @@ function withSslmode(url: string, ssl: boolean): string {
 // pod and stay exactly-once via DBOS's row-locked schedule, so an "api" pod can
 // still fire a cron that a "worker" pod then executes. REQUIREMENT: at least
 // one "worker" (or "all") pod must exist or runs never dispatch.
-const dispatchRole = (process.env.MESH_DISPATCH_ROLE ?? "all").trim();
 const RUN_QUEUES = [AUTOMATIONS_QUEUE, THREAD_GATE_QUEUE];
 const listenQueues: string[] | undefined =
-  dispatchRole === "worker"
+  settings.dispatchRole === "worker"
     ? RUN_QUEUES
-    : dispatchRole === "api"
+    : settings.dispatchRole === "api"
       ? []
       : undefined; // "all" → omit → DBOS listens to every queue
-if (
-  dispatchRole !== "all" &&
-  dispatchRole !== "worker" &&
-  dispatchRole !== "api"
-) {
-  console.warn(
-    `[dispatch-role] unknown MESH_DISPATCH_ROLE="${dispatchRole}" — falling back to "all" (dequeue every queue)`,
-  );
-}
 
 DBOS.setConfig({
   name: "decocms",
