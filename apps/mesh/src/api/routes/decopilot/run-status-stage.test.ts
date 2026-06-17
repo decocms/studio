@@ -22,6 +22,12 @@ describe("isRunStatusChunk", () => {
     expect(
       isRunStatusChunk({
         type: "data-run-status",
+        data: { stage: "starting-run" },
+      }),
+    ).toBe(false);
+    expect(
+      isRunStatusChunk({
+        type: "data-run-status",
         id: "run-status",
         data: { stage: "connecting-desktop" },
       }),

@@ -37,10 +37,12 @@ export function isRunStatusChunk(chunk: unknown): chunk is RunStatusChunk {
   if (!chunk || typeof chunk !== "object") return false;
   const record = chunk as {
     type?: unknown;
+    id?: unknown;
     data?: { stage?: unknown };
   };
   return (
     record.type === "data-run-status" &&
+    record.id === "run-status" &&
     typeof record.data?.stage === "string" &&
     STAGE_SET.has(record.data.stage)
   );
