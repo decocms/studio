@@ -990,13 +990,6 @@ async function prepareRun(
     if (!virtualMcp) {
       throw new PermanentRunError("agent_not_found", "Agent not found");
     }
-    if (shouldPublishRunStatus) {
-      await publishRunStatusStage(
-        streamBuffer,
-        input.taskId,
-        "starting-assistant",
-      );
-    }
     const effectiveVirtualMcp = await resolveEffectiveVirtualMcpForHarness({
       virtualMcp,
       agentId: input.agent.id,
@@ -1304,6 +1297,13 @@ async function prepareRun(
     // work publisher), which never consumes this stream — so a user-desktop target reaching here is a
     // hard bug (the guard below throws). The push `remoteDispatch` path is
     // deleted.
+    if (shouldPublishRunStatus) {
+      await publishRunStatusStage(
+        streamBuffer,
+        input.taskId,
+        "starting-assistant",
+      );
+    }
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
         // Layer the non-serializable `signal` onto the eagerly-built wire
