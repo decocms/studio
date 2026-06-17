@@ -53,6 +53,11 @@ import type { ChatMode } from "../types";
 import { toast } from "sonner";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
+import {
+  advanceRunStatusStage,
+  parseRunStatusStageChunk,
+  type RunStatusStage,
+} from "../run-status";
 
 export { Store };
 
@@ -239,6 +244,7 @@ export class ThreadConnection {
   readonly messages = new Store<UIMessage[]>([]);
   readonly status = new Store<ConnStatus>({ kind: "loading" });
   readonly finishReason = new Store<string | null>(null);
+  readonly runStatusStage = new Store<RunStatusStage | null>(null);
   readonly hasMoreOlder = new Store<boolean>(false);
   readonly isFetchingOlder = new Store<boolean>(false);
 
@@ -329,6 +335,7 @@ export class ThreadConnection {
 
     if (!shouldPost) return;
 
+    this.runStatusStage.set("sending");
     this.status.set({ kind: "submitted" });
 
     const last = next.at(-1);
@@ -344,6 +351,7 @@ export class ThreadConnection {
       await this.post(last, opts, abort.signal);
     } catch (err) {
       const e = err instanceof Error ? err : new Error(String(err));
+      this.clearRunStatusStage();
       this.failTo(e);
     } finally {
       if (this.inflightPost === abort) this.inflightPost = null;
@@ -356,6 +364,7 @@ export class ThreadConnection {
     if (s.kind === "submitted" || s.kind === "streaming") {
       this.status.set({ kind: "ready" });
     }
+    this.clearRunStatusStage();
     // Freeze the in-flight assistant message at its current state and gate
     // every subsequent chunk on a fresh `start` boundary. Without this, the
     // cancel's racing tail chunks (or a server-side replay across an SSE
@@ -620,6 +629,7 @@ export class ThreadConnection {
       const text = await resp.text().catch(() => "");
       throw new Error(text || `POST /messages failed (${resp.status})`);
     }
+    this.runStatusStage.set("received");
   }
 
   // ── Internal: SSE loop ──────────────────────────────────────────────────
@@ -779,6 +789,18 @@ export class ThreadConnection {
     for (const chunk of buffered) this.handleChunk(chunk);
   }
 
+  private setRunStatusStage(stage: RunStatusStage): void {
+    this.runStatusStage.update((current) =>
+      advanceRunStatusStage(current, stage),
+    );
+  }
+
+  private clearRunStatusStage(): void {
+    if (this.runStatusStage.get() !== null) {
+      this.runStatusStage.set(null);
+    }
+  }
+
   private handleChunk(chunk: UIMessageChunk): void {
     if (this.chunkBuffer !== null) {
       this.chunkBuffer.push(chunk);
@@ -787,6 +809,22 @@ export class ThreadConnection {
     if (this.waitingForNewRun) {
       if (chunk.type !== "start") return;
       this.waitingForNewRun = false;
+    }
+    const runStatusStage = parseRunStatusStageChunk(chunk);
+    if (runStatusStage) {
+      this.setRunStatusStage(runStatusStage);
+      this.observer?.onData?.(
+        chunk as Extract<UIMessageChunk, { type: `data-${string}` }>,
+      );
+      return;
+    }
+    if (
+      chunk.type !== "start" &&
+      chunk.type !== "finish" &&
+      !chunk.type.startsWith("data-") &&
+      chunk.type !== "step-start"
+    ) {
+      this.clearRunStatusStage();
     }
     if (chunk.type.startsWith("data-")) {
       this.observer?.onData?.(
@@ -816,6 +854,7 @@ export class ThreadConnection {
     if (chunk.type === "finish") {
       const f = chunk as { type: "finish"; finishReason?: string };
       this.pendingFinishReason = f.finishReason;
+      this.clearRunStatusStage();
       // Null subController BEFORE close() so a synchronous reconnect
       // (which fires before the async fold loop resumes) can't mark a
       // cleanly-completed run as discardable.
@@ -936,6 +975,7 @@ export class ThreadConnection {
 
   private failTo(err: Error): void {
     if (this.abort.signal.aborted) return;
+    this.clearRunStatusStage();
     this.status.set({ kind: "error", error: err });
     this.observer?.onError?.(err);
   }
