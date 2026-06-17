@@ -5,9 +5,19 @@
  */
 
 import { homedir } from "os";
-import type { CliFlags, Settings } from "./types";
+import type { CliFlags, DispatchRole, Settings } from "./types";
 
 type SandboxProviderKind = Settings["sandboxProviderKind"];
+
+const DISPATCH_ROLES = new Set<DispatchRole>(["all", "worker", "api"]);
+
+/** Normalize `MESH_DISPATCH_ROLE`; anything unknown coerces to the safe "all". */
+function resolveDispatchRole(raw: string | undefined): DispatchRole {
+  const role = (raw ?? "").trim();
+  return DISPATCH_ROLES.has(role as DispatchRole)
+    ? (role as DispatchRole)
+    : "all";
+}
 
 function toBool(value: string | undefined): boolean {
   return value === "true" || value === "1";
@@ -159,6 +169,7 @@ export function resolveConfig(
     isCli: true,
     noTui: flags.noTui === true,
     podName: envVars.POD_NAME ?? crypto.randomUUID(),
+    dispatchRole: resolveDispatchRole(envVars.MESH_DISPATCH_ROLE),
     sandboxProviderKind: resolveSandboxProviderKind(
       envVars.STUDIO_SANDBOX_PROVIDER,
     ),

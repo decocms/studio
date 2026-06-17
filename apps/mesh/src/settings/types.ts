@@ -5,6 +5,9 @@
  * via getSettings() for the lifetime of the process.
  */
 
+/** Pod dispatch role — selects which DBOS run queues a pod dequeues. */
+export type DispatchRole = "all" | "worker" | "api";
+
 export interface Settings {
   // Core
   nodeEnv: "production" | "development" | "test";
@@ -96,6 +99,8 @@ export interface Settings {
   isCli: boolean;
   noTui: boolean;
   podName: string;
+  /** Which DBOS run queues this pod dequeues (pod dispatch-role split). */
+  dispatchRole: DispatchRole;
   sandboxProviderKind: "agent-sandbox" | "user-desktop";
 
   // External service credentials (optional)

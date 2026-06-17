@@ -1,0 +1,36 @@
+{{- if and .Values.worker.enabled .Values.worker.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-worker
+  labels:
+    app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-worker
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "chart-deco-studio.chart" . }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "chart-deco-studio.fullname" . }}-worker
+  minReplicas: {{ .Values.worker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.worker.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.worker.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.worker.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.worker.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.worker.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

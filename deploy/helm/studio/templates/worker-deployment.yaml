@@ -1,28 +1,36 @@
+{{- if .Values.worker.enabled }}
+{{/*
+Agent-loop worker Deployment. Same image / DB / auth as the main Deployment,
+but MESH_DISPATCH_ROLE=worker so it dequeues ONLY the agent/automation run
+queues. It carries a distinct `app.kubernetes.io/name` ("<name>-worker") so the
+main Deployment selector and the Service selector do NOT match its pods —
+workers never get LB/HTTP traffic; they only pull work from the DBOS queue.
+
+NOTE: this intentionally mirrors deployment.yaml's pod spec (minus the s3-sync
+sidecar / PVC). A future cleanup could share a named pod-spec template; kept
+separate here so the main Deployment's rendered output is unchanged.
+*/}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "chart-deco-studio.fullname" . }}
+  name: {{ include "chart-deco-studio.fullname" . }}-worker
   labels:
-    {{- include "chart-deco-studio.labels" . | nindent 4 }}
-spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
-  {{- end }}
-  strategy:
-    type: {{ include "chart-deco-studio.deploymentStrategy" . }}
-    {{- $strategyType := include "chart-deco-studio.deploymentStrategy" . }}
-    {{- if eq $strategyType "RollingUpdate" }}
-    rollingUpdate:
-      {{- if and .Values.strategy .Values.strategy.rollingUpdate }}
-      {{- toYaml .Values.strategy.rollingUpdate | nindent 6 }}
-      {{- else }}
-      maxSurge: 1
-      maxUnavailable: 0
-      {{- end }}
+    app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-worker
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "chart-deco-studio.chart" . }}
+    {{- if .Chart.AppVersion }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
     {{- end }}
+spec:
+  {{- if not .Values.worker.autoscaling.enabled }}
+  replicas: {{ .Values.worker.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
-      {{- include "chart-deco-studio.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-worker
+      app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -30,7 +38,14 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "chart-deco-studio.labels" . | nindent 8 }}
+        app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-worker
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        helm.sh/chart: {{ include "chart-deco-studio.chart" . }}
+        {{- if .Chart.AppVersion }}
+        app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+        {{- end }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -46,7 +61,7 @@ spec:
       securityContext:
         {{- include "chart-deco-studio.podSecurityContext" . | nindent 8 }}
       containers:
-        - name: {{ .Chart.Name }}
+        - name: {{ .Chart.Name }}-worker
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -67,10 +82,9 @@ spec:
             - secretRef:
                 name: {{ include "chart-deco-studio.secretName" . }}
           env:
-            {{- if .Values.terminationGracePeriodSeconds }}
-            - name: SHUTDOWN_GRACE_SECONDS
-              value: {{ .Values.terminationGracePeriodSeconds | quote }}
-            {{- end }}
+            # Role: dequeue only the agent/automation run queues.
+            - name: MESH_DISPATCH_ROLE
+              value: worker
             {{- if .Values.otel.enabled }}
             {{- if .Values.otel.protocol }}
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
@@ -78,7 +92,7 @@ spec:
             {{- end }}
             {{- if .Values.otel.service }}
             - name: OTEL_SERVICE_NAME
-              value: {{ .Values.otel.service | quote }}
+              value: {{ printf "%s-worker" .Values.otel.service | quote }}
             {{- end }}
             {{- if .Values.otel.endpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -107,11 +121,7 @@ spec:
               value: {{ . | quote }}
             {{- end }}
             {{- end }}
-            {{- with .Values.dispatchRole }}
-            - name: MESH_DISPATCH_ROLE
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.env }}
+            {{- with .Values.worker.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.livenessProbe }}
@@ -126,7 +136,7 @@ spec:
           lifecycle:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.resources }}
+          {{- with .Values.worker.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -141,29 +151,6 @@ spec:
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- if .Values.s3Sync.enabled }}
-        - name: s3-sync
-          image: "{{ .Values.s3Sync.image.repository }}:{{ .Values.s3Sync.image.tag }}"
-          imagePullPolicy: {{ .Values.s3Sync.image.pullPolicy }}
-          command: ["/bin/sh", "/scripts/sync.sh"]
-          {{- with .Values.securityContext }}
-          securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.s3Sync.resources }}
-          resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          volumeMounts:
-            - name: data
-              mountPath: {{ .Values.configMap.meshConfig.DATA_DIR | default "/app/data" }}
-            - name: s3-sync-script
-              mountPath: /scripts
-              readOnly: true
-      {{- end }}
-      {{- with .Values.extraContainers }}
-      {{- toYaml . | nindent 8 }}
-      {{- end }}
       volumes:
         {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
         - name: ca-cert
@@ -173,29 +160,10 @@ spec:
               - key: ca-cert.pem
                 path: ca-cert.pem
         {{- end }}
-        {{- if .Values.persistence.enabled }}
-        - name: data
-          {{- if .Values.persistence.claimName }}
-          persistentVolumeClaim:
-            claimName: {{ .Values.persistence.claimName }}
-          {{- else }}
-          persistentVolumeClaim:
-            claimName: {{ include "chart-deco-studio.fullname" . }}-data
-          {{- end }}
-        {{- else }}
+        # Workers are stateless (no PVC / s3-sync): DATA_DIR is scratch.
         - name: data
           emptyDir:
             sizeLimit: {{ .Values.persistence.emptyDirSizeLimit | default "10Gi" }}
-        {{- end }}
-        {{- if .Values.s3Sync.enabled }}
-        - name: s3-sync-script
-          configMap:
-            name: {{ include "chart-deco-studio.fullname" . }}-s3-sync
-            defaultMode: 0755
-            items:
-              - key: sync.sh
-                path: sync.sh
-        {{- end }}
         {{- with .Values.volumes }}
           {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -211,17 +179,4 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if and .Values.topologySpreadConstraints (gt (len .Values.topologySpreadConstraints) 0) }}
-      topologySpreadConstraints:
-        {{- range .Values.topologySpreadConstraints }}
-        - {{- if not .labelSelector }}
-          {{- fail "labelSelector é obrigatório em topologySpreadConstraints. Especifique explicitamente os labels." }}
-          {{- else }}
-          labelSelector:
-            {{- toYaml .labelSelector | nindent 12 }}
-          {{- end }}
-          maxSkew: {{ .maxSkew }}
-          topologyKey: {{ .topologyKey }}
-          whenUnsatisfiable: {{ .whenUnsatisfiable }}
-        {{- end }}
-      {{- end }}
+{{- end }}

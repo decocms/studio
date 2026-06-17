@@ -122,6 +122,17 @@ Global validations to ensure scaling requirements are met.
 {{- end }}
 
 {{/*
+Guards the dispatch-role split: if the main deployment stops dequeuing runs
+(dispatchRole=api) there must be a worker deployment to pick them up, or runs
+never dispatch.
+*/}}
+{{- define "chart-deco-studio.validateDispatchRole" -}}
+{{- if and (eq .Values.dispatchRole "api") (not .Values.worker.enabled) }}
+{{- fail "chart-deco-studio: dispatchRole=api requires worker.enabled=true — otherwise no pod dequeues the run queues and runs never dispatch. Set worker.enabled=true first, confirm workers dequeue, then switch dispatchRole to api." -}}
+{{- end }}
+{{- end }}
+
+{{/*
 Returns podSecurityContext with fsGroupChangePolicy adjusted for volumes.
 */}}
 {{- define "chart-deco-studio.podSecurityContext" -}}
