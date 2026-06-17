@@ -33,8 +33,12 @@ describe("deco-block-key", () => {
     expect(() => assertSafeDecoBlockKey("../package.json")).toThrow(
       /Invalid block key/,
     );
-    expect(() => assertSafeDecoBlockKey("foo/bar")).toThrow(
-      /Invalid block key/,
-    );
+  });
+
+  it("allows slashes in block keys", () => {
+    expect(() => assertSafeDecoBlockKey("foo/bar")).not.toThrow();
+    expect(() =>
+      assertSafeDecoBlockKey("MelhoresMalas/MaisVendidos"),
+    ).not.toThrow();
   });
 });

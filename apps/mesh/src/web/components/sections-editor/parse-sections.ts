@@ -30,7 +30,7 @@ export function parseSections(
     const rt = s.__resolveType ?? "";
     const isLazy = isLazyResolveType(rt);
 
-    if (!isLazy && rt !== "" && !rt.includes("/") && rt in decofile) {
+    if (!isLazy && rt !== "" && !/\.\w+$/.test(rt) && rt in decofile) {
       const resolvedBlock = decofile[rt] as Record<string, unknown> | undefined;
       const label =
         (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
@@ -102,7 +102,7 @@ export function parseSections(
     if (
       isLazy &&
       effectiveRt !== "" &&
-      !effectiveRt.includes("/") &&
+      !/\.\w+$/.test(effectiveRt) &&
       effectiveRt in decofile
     ) {
       const resolvedBlock = decofile[effectiveRt] as

@@ -5,7 +5,6 @@
 function containsPathTraversal(segment: string): boolean {
   if (
     !segment ||
-    segment.includes("/") ||
     segment.includes("\\") ||
     segment.includes("..") ||
     segment.includes("\0")
@@ -15,10 +14,7 @@ function containsPathTraversal(segment: string): boolean {
   try {
     const decoded = decodeURIComponent(segment);
     return (
-      decoded.includes("/") ||
-      decoded.includes("\\") ||
-      decoded.includes("..") ||
-      decoded.includes("\0")
+      decoded.includes("\\") || decoded.includes("..") || decoded.includes("\0")
     );
   } catch {
     return true;
