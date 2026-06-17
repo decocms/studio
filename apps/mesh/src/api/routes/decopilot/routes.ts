@@ -837,6 +837,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       }
 
       let deliveredChunks = 0;
+      const openedAt = Date.now();
       const tailStream = createUIMessageStream({
         execute: async ({ writer }) => {
           const reader = tailChunkStream.getReader();
@@ -859,6 +860,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
                   deliverPolicy,
                   runStartedAgoMs,
                   deliveredChunks,
+                  // openMs = how long the tail stayed open; aborted = the client
+                  // (or proxy) closed the request vs. the JetStream subscription
+                  // ending server-side. Short openMs + aborted:true = client
+                  // reconnect churn; aborted:false = server-side close.
+                  openMs: Date.now() - openedAt,
+                  aborted: c.req.raw.signal.aborted,
                 }),
               );
             }
