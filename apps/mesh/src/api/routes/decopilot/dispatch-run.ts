@@ -85,6 +85,7 @@ export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
 import { buildOnTitleUpdated } from "./on-title-updated";
+import { publishRunStatusStage } from "./run-status-stage";
 import type {
   HarnessStreamConsumerHooks,
   HarnessStreamTitleOptions,
@@ -791,6 +792,10 @@ async function prepareRun(
       target.sandboxProviderKind,
     );
 
+    const shouldPublishRunStatus =
+      target.sandboxProviderKind === "agent-sandbox" &&
+      harnessId === "decopilot";
+
     // Normalize the client models payload into the v2 per-slot shape FIRST
     // (the HTTP layer still sends a root credentialId), so the permission
     // check and slot resolution below read the per-slot credential. See
@@ -829,6 +834,13 @@ async function prepareRun(
 
     if (!input.taskId) {
       throw new Error("dispatchRunAndWait: taskId is required");
+    }
+    if (shouldPublishRunStatus) {
+      await publishRunStatusStage(
+        streamBuffer,
+        input.taskId,
+        "gathering-context",
+      );
     }
 
     // 2. Load entities, create/load memory, and resolve Decopilot model
@@ -880,6 +892,13 @@ async function prepareRun(
           )
         : Promise.resolve(undefined),
     ]);
+    if (shouldPublishRunStatus) {
+      await publishRunStatusStage(
+        streamBuffer,
+        input.taskId,
+        "preparing-tools",
+      );
+    }
 
     const modelSources: DecopilotSecretModelSources | undefined = thinkingSource
       ? {
@@ -970,6 +989,13 @@ async function prepareRun(
 
     if (!virtualMcp) {
       throw new PermanentRunError("agent_not_found", "Agent not found");
+    }
+    if (shouldPublishRunStatus) {
+      await publishRunStatusStage(
+        streamBuffer,
+        input.taskId,
+        "starting-assistant",
+      );
     }
     const effectiveVirtualMcp = await resolveEffectiveVirtualMcpForHarness({
       virtualMcp,
@@ -1301,6 +1327,13 @@ async function prepareRun(
         // wraps the prior `localDispatch(harnessId, harnessInput, ctx)` path
         // UNCHANGED — same AsyncIterable<UIMessageChunk>, same throw on unknown
         // id, same ctx forwarding. consumeHarnessStream consumes it verbatim.
+        if (shouldPublishRunStatus) {
+          await publishRunStatusStage(
+            streamBuffer,
+            mem.thread.id,
+            "analyzing-scope",
+          );
+        }
         const sandboxClient = new InProcessSandboxClient({ ctx, harnessId });
         const rawHarnessChunks = sandboxClient.dispatch(harnessInput);
         yield* rawHarnessChunks;
