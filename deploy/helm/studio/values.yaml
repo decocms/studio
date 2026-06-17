@@ -136,7 +136,7 @@ readinessProbe:
   timeoutSeconds: 3
   failureThreshold: 4
 
-terminationGracePeriodSeconds: 60
+terminationGracePeriodSeconds: 120
 
 # Optional lifecycle hooks (preStop, postStart)
 # lifecycle: {}
