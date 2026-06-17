@@ -757,6 +757,20 @@ async function runWatch<T>(opts: RunWatchOpts<T>): Promise<void> {
         } catch {
           /* ignore */
         }
+        // 401/403 mean the loaded kubeconfig can't watch this resource and
+        // never will without new credentials — retrying every few seconds is
+        // pure log spam. The common trigger is local dev where
+        // `loadDefaultKubeConfig` picks up a personal `~/.kube/config` pointed
+        // at a real cluster the dev has no RBAC for. Log once and stop instead
+        // of looping forever.
+        if (resp.status === 401 || resp.status === 403) {
+          console.warn(
+            `[lifecycle-watcher] ${label} stopped: watch denied (${resp.status} ${resp.statusText}). ` +
+              "The kubeconfig in use cannot watch SandboxClaims — if you are running locally, " +
+              "this provider should not be active (check STUDIO_SANDBOX_PROVIDER / your sandbox preference).",
+          );
+          return;
+        }
         throw new Error(
           `watch handshake failed: ${resp.status} ${resp.statusText}`,
         );
