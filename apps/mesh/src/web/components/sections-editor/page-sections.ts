@@ -40,8 +40,9 @@ export function cloneSection(section: RawSection): RawSection {
 export function canMakeSectionReusable(section: {
   isSavedBlock?: boolean;
   isMultivariate?: boolean;
+  isHidden?: boolean;
 }): boolean {
-  return !section.isSavedBlock && !section.isMultivariate;
+  return !section.isSavedBlock && !section.isMultivariate && !section.isHidden;
 }
 
 export function suggestBlockId(label: string): string {

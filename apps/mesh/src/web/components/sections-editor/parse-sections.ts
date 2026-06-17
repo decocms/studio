@@ -1,3 +1,4 @@
+import { isSavedBlockResolveType } from "./block-type-utils";
 import { isLazyResolveType } from "./section-lazy";
 import {
   labelFromResolveType,
@@ -30,7 +31,7 @@ export function parseSections(
     const rt = s.__resolveType ?? "";
     const isLazy = isLazyResolveType(rt);
 
-    if (!isLazy && rt !== "" && !rt.includes("/") && rt in decofile) {
+    if (!isLazy && rt !== "" && isSavedBlockResolveType(rt) && rt in decofile) {
       const resolvedBlock = decofile[rt] as Record<string, unknown> | undefined;
       const label =
         (typeof resolvedBlock?.name === "string" && resolvedBlock.name) ||
@@ -102,7 +103,7 @@ export function parseSections(
     if (
       isLazy &&
       effectiveRt !== "" &&
-      !effectiveRt.includes("/") &&
+      isSavedBlockResolveType(effectiveRt) &&
       effectiveRt in decofile
     ) {
       const resolvedBlock = decofile[effectiveRt] as

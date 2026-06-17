@@ -1145,6 +1145,33 @@ export function SectionsEditor({
     savePageSections(updatedSections);
   };
 
+  const handleDetachSection = (index: number) => {
+    if (!activePageKey) return;
+    const rawSection = rawSections[index];
+    const parsed = parsedSections[index];
+    if (!rawSection || !parsed?.isSavedBlock) return;
+
+    const unwrapped = unwrapSection(rawSection, parsed, decofile);
+    if (!unwrapped?.data) return;
+
+    // Remove the `name` field — it belongs to the saved block, not the inline copy
+    const { name: _name, ...inlineData } = unwrapped.data;
+
+    const updatedSections = [...rawSections];
+    if (parsed.isLazy) {
+      // Preserve the lazy wrapper, replace the inner saved-block reference
+      updatedSections[index] = {
+        ...rawSection,
+        section: inlineData,
+      } as RawSection;
+    } else {
+      updatedSections[index] = inlineData as RawSection;
+    }
+
+    if (selectedSectionIndex === index) clearSectionEditing();
+    savePageSections(updatedSections);
+  };
+
   const handleAddSection = (entry: SectionCatalogEntry) => {
     if (!activePageKey) return;
 
@@ -2377,6 +2404,7 @@ export function SectionsEditor({
               onToggleHidden={handleToggleHidden}
               onToggleLazy={handleToggleLazy}
               onAddVariant={handleAddSectionVariant}
+              onDetach={handleDetachSection}
               onAddSection={() => setAddSectionOpen(true)}
               canAddSection={canAddSection}
             />

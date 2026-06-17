@@ -20,6 +20,11 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
+import {
   DndContext,
   DragOverlay,
   closestCenter,
@@ -167,6 +172,7 @@ function SortableSectionItem({
   onToggleHidden,
   onToggleLazy,
   onAddVariant,
+  onDetach,
 }: {
   section: ParsedSection;
   raw: RawSection | undefined;
@@ -180,6 +186,7 @@ function SortableSectionItem({
   onToggleHidden: () => void;
   onToggleLazy: () => void;
   onAddVariant: () => void;
+  onDetach: () => void;
 }) {
   const isAsyncRender = raw
     ? isLazyResolveType(raw.__resolveType ?? "")
@@ -224,53 +231,70 @@ function SortableSectionItem({
       <SectionRowContent section={section} raw={raw} meta={meta} />
 
       {!section.isMultivariate && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={
-            isAsyncRender ? "Disable async render" : "Enable async render"
-          }
-          className={cn(
-            "h-7 w-7 shrink-0",
-            isAsyncRender ? "" : "opacity-0 group-hover:opacity-100",
-          )}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleLazy();
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <Zap
-            className={cn("h-3.5 w-3.5", isAsyncRender && "text-yellow-500")}
-          />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={
+                isAsyncRender ? "Disable async render" : "Enable async render"
+              }
+              className={cn(
+                "h-7 w-7 shrink-0",
+                isAsyncRender ? "" : "opacity-0 group-hover:opacity-100",
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleLazy();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <Zap
+                className={cn(
+                  "h-3.5 w-3.5",
+                  isAsyncRender && "text-yellow-500",
+                )}
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {isAsyncRender ? "Disable async render" : "Enable async render"}
+          </TooltipContent>
+        </Tooltip>
       )}
 
       {!section.isMultivariate && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={section.isHidden ? "Show section" : "Hide section"}
-          className={cn(
-            "h-7 w-7 shrink-0",
-            section.isHidden
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100",
-          )}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleHidden();
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {section.isHidden ? (
-            <EyeOff className="h-3.5 w-3.5" />
-          ) : (
-            <Eye className="h-3.5 w-3.5" />
-          )}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={section.isHidden ? "Show section" : "Hide section"}
+              className={cn(
+                "h-7 w-7 shrink-0",
+                section.isHidden
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-100",
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleHidden();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              {section.isHidden ? (
+                <EyeOff className="h-3.5 w-3.5" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {section.isHidden ? "Show section" : "Hide section"}
+          </TooltipContent>
+        </Tooltip>
       )}
 
       <DropdownMenu>
@@ -321,6 +345,17 @@ function SortableSectionItem({
               Make reusable
             </DropdownMenuItem>
           )}
+          {section.isSavedBlock === true && !section.isMultivariate && (
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onDetach();
+              }}
+            >
+              <LayoutAlt01 className="h-4 w-4" />
+              Detach
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={(e) => {
@@ -353,6 +388,7 @@ export function SectionList({
   onToggleHidden,
   onToggleLazy,
   onAddVariant,
+  onDetach,
   onAddSection,
   canAddSection = true,
 }: {
@@ -369,6 +405,7 @@ export function SectionList({
   onToggleHidden: (index: number) => void;
   onToggleLazy: (index: number) => void;
   onAddVariant: (index: number) => void;
+  onDetach: (index: number) => void;
   onAddSection: () => void;
   canAddSection?: boolean;
 }) {
@@ -493,6 +530,7 @@ export function SectionList({
                   onToggleHidden={() => onToggleHidden(entry.index)}
                   onToggleLazy={() => onToggleLazy(entry.index)}
                   onAddVariant={() => onAddVariant(entry.index)}
+                  onDetach={() => onDetach(entry.index)}
                 />
               );
             })}

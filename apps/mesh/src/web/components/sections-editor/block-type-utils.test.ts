@@ -47,6 +47,7 @@ describe("block-type-utils", () => {
 
   it("isSavedBlockResolveType detects block id references", () => {
     expect(isSavedBlockResolveType("Header")).toBe(true);
+    expect(isSavedBlockResolveType("MelhoresMalas/MaisVendidos")).toBe(true);
     expect(isSavedBlockResolveType("site/sections/Header/Header.tsx")).toBe(
       false,
     );
