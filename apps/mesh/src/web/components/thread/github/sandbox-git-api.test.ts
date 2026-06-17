@@ -185,6 +185,26 @@ describe("isDecoOnlyDiff", () => {
     expect(isDecoOnlyDiff(diff)).toBe(false);
   });
 
+  test("true when diff includes auto-generated blocks.gen.json", () => {
+    const diff: GitDiffResult = {
+      diffs: {
+        ".deco/blocks/foo.json": { from: "{}", to: "{}" },
+        "src/server/cms/blocks.gen.json": { from: "{}", to: '{"foo":{}}' },
+      },
+    };
+    expect(isDecoOnlyDiff(diff)).toBe(true);
+  });
+
+  test("false when blocks.gen.json changes alongside code", () => {
+    const diff: GitDiffResult = {
+      diffs: {
+        "src/server/cms/blocks.gen.json": { from: "{}", to: '{"foo":{}}' },
+        "routes/index.tsx": { from: "a", to: "b" },
+      },
+    };
+    expect(isDecoOnlyDiff(diff)).toBe(false);
+  });
+
   test("false for empty diff", () => {
     expect(isDecoOnlyDiff({ diffs: {} })).toBe(false);
     expect(isDecoOnlyDiff(null)).toBe(false);
