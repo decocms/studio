@@ -317,8 +317,11 @@ async function reactStep(
       request: {
         messages: [
           {
-            id: crypto.randomUUID(),
+            // Deterministic id (a workflow replay must not mint a new one) and
+            // `internal` so the UI hides this nudge — the model still sees it.
+            id: `${ctx.jobId}:react-msg`,
             role: "user",
+            metadata: { internal: true },
             parts: [
               {
                 type: "text",

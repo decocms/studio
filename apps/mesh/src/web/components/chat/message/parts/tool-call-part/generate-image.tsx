@@ -123,17 +123,16 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
     );
   }
 
-  // Backgrounded: the call returned a handle immediately and the image will
-  // arrive later as its own message. Show a generating card (not the "no
-  // images" error path) using the prompt the model passed.
+  // Backgrounded: the call returned a handle immediately; the finished image
+  // arrives later as its own message below. This card is terminal (no spinner)
+  // — the live progress lives on that follow-up message, not here.
   if (result?.background) {
     return (
       <ToolCallShell
         icon={<Image01 size={14} />}
-        title="Generating image in the background"
+        title="Image queued — generating in the background"
         summary={input?.prompt ? `"${input.prompt.slice(0, 80)}…"` : undefined}
-        state="loading"
-        trailing={latencyLabel}
+        state="idle"
       />
     );
   }

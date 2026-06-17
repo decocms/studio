@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { RunRegistry } from "./run-registry";
 import type { StreamBuffer } from "./stream-buffer";
 import type { RunReactorDeps } from "./run-reactor";
+import { NoopRunningThreadsStore } from "./running-threads-store";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,6 +41,7 @@ function inertDeps(): RunReactorDeps {
     } as unknown as RunReactorDeps["storage"],
     streamBuffer: { purge() {} } as unknown as StreamBuffer,
     sseHub: { emit() {} },
+    runningStore: new NoopRunningThreadsStore(),
   };
 }
 

@@ -33,7 +33,7 @@ export interface PortableImageModelInfo {
   id: string;
 }
 
-const GenerateImageInputSchema = z.object({
+export const GenerateImageInputSchema = z.object({
   prompt: z
     .string()
     .max(10000)

@@ -20,7 +20,11 @@ export interface MessagePair {
 export function useMessagePairs(messages: ChatMessage[]): MessagePair[] {
   const pairs: MessagePair[] = [];
 
-  const filtered = messages.filter((m) => m.role !== "system");
+  // Drop system prompts and internal system-initiated turns (e.g. the
+  // background-tool reaction nudge) — the model sees them, the user shouldn't.
+  const filtered = messages.filter(
+    (m) => m.role !== "system" && !m.metadata?.internal,
+  );
 
   for (let i = 0; i < filtered.length; i++) {
     const message = filtered[i];

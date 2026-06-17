@@ -40,6 +40,30 @@ export interface RunReactorDeps {
 }
 
 /**
+ * Per-step `touch` throttle. STEP_COMPLETED can fire many times a second; the
+ * KV backend turns each touch into a CAS write on a single shared per-org key,
+ * so unthrottled they amplify writes and contend across an org's concurrent
+ * runs. A run only needs one touch per idle window to avoid being pruned, so we
+ * touch at most once per interval per run (well under RUNNING_THREAD_IDLE_MS).
+ * ponytail: bounded by terminal cleanup below; a leaked entry is one timestamp.
+ */
+const TOUCH_THROTTLE_MS = 60_000;
+const lastTouchAt = new Map<string, number>();
+
+function shouldTouch(orgId: string, taskId: string): boolean {
+  const key = `${orgId}:${taskId}`;
+  const now = Date.now();
+  const prev = lastTouchAt.get(key);
+  if (prev !== undefined && now - prev < TOUCH_THROTTLE_MS) return false;
+  lastTouchAt.set(key, now);
+  return true;
+}
+
+function clearTouch(orgId: string, taskId: string): void {
+  lastTouchAt.delete(`${orgId}:${taskId}`);
+}
+
+/**
  * Apply a running-set mutation and broadcast the resulting summary through the
  * SSE hub. Best-effort: the badge must never block or fail a run transition, so
  * store/emit errors are swallowed.
@@ -94,6 +118,7 @@ async function handleTerminalStatus(
     }),
   );
   sseHub.emit(orgId, createDecopilotFinishEvent(taskId, status));
+  clearTouch(orgId, taskId);
   await syncRunningSummary(deps, orgId, (store) =>
     store.markStopped(orgId, taskId),
   );
@@ -173,8 +198,11 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         createDecopilotStepEvent(event.taskId, event.stepCount),
       );
       // Refresh liveness so a long, actively-streaming run isn't pruned from
-      // the running count. Best-effort, no summary emit (count is unchanged).
-      deps.runningStore.touch(event.orgId, event.taskId).catch(() => {});
+      // the running count. Throttled (see shouldTouch); no summary emit (count
+      // is unchanged). Best-effort.
+      if (shouldTouch(event.orgId, event.taskId)) {
+        deps.runningStore.touch(event.orgId, event.taskId).catch(() => {});
+      }
       return;
 
     case "RUN_COMPLETED":
@@ -228,6 +256,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         event.orgId,
         createDecopilotFinishEvent(event.taskId, "failed"),
       );
+      clearTouch(event.orgId, event.taskId);
       await syncRunningSummary(deps, event.orgId, (store) =>
         store.markStopped(event.orgId, event.taskId),
       );

@@ -21,10 +21,14 @@ import type { Env } from "@/api/hono-env";
 import { fenceMatches } from "@/storage/run-fence";
 import { isCancelRequested } from "@/storage/cancel-flag";
 import { createBackgroundToolDispatcher } from "@/harnesses/decopilot/background-tool-workflow";
+import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
 
 const BodySchema = z.object({
   toolName: z.literal("generate_image"),
-  input: z.unknown(),
+  // Validate the tool payload here rather than casting it in the heavy step —
+  // the daemon is authenticated but a buggy/compromised one shouldn't push an
+  // unvalidated shape into image generation.
+  input: GenerateImageInputSchema,
   toolCallId: z.string(),
   agentId: z.string(),
   temperature: z.number(),
