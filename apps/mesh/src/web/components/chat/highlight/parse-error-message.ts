@@ -48,7 +48,7 @@ export function parseErrorMessage(message: string): {
     }
     return {
       summary:
-        "Your desktop is offline. Run `bunx decocms link` in a terminal on it, then try again.",
+        "Your desktop is offline. Run `bunx decocms@latest link` in a terminal on it, then try again.",
       rawDetails: message,
     };
   }

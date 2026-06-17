@@ -318,7 +318,7 @@ export async function startLinkDaemon(
   process.on("SIGTERM", () => void shutdown());
   onRemoteShutdown = () => {
     console.log(
-      "Disconnect requested from the Studio web UI — shutting down. Run `bunx decocms link` to reconnect.",
+      "Disconnect requested from the Studio web UI — shutting down. Run `bunx decocms@latest link` to reconnect.",
     );
     void shutdown();
   };

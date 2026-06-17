@@ -52,7 +52,7 @@ export function DesktopOfflineBanner() {
         }
       >
         <p className="mx-4 text-xs text-muted-foreground">
-          Run <code className="font-mono">bunx decocms link</code> in a terminal
+          Run <code className="font-mono">bunx decocms@latest link</code> in a terminal
           on that machine to bring it back. Messages you send while it's offline
           will fail.
         </p>

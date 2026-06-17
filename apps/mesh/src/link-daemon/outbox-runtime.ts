@@ -1,7 +1,7 @@
 /**
  * Runtime guard for the durable outbox (spec §5.1, N5).
  *
- * The link daemon ships via `bunx decocms link` and runs under the *user's*
+ * The link daemon ships via `bunx decocms@latest link` and runs under the *user's*
  * runtime — unlike the spawned sandbox daemon (`bun build --target=bun`). The
  * outbox uses `bun:sqlite`, which is built-in ONLY under Bun. We require Bun
  * and fail loudly otherwise rather than crashing later with an opaque import
