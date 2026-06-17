@@ -21,6 +21,13 @@ export function initPostHog(key: string, host: string) {
   if (initialized || typeof window === "undefined") return;
   posthog.init(key, {
     api_host: host,
+    // Persist the PostHog cookie on the `.decocms.com` root domain so a visitor
+    // is the SAME person across www.decocms.com (landing) and
+    // studio.decocms.com (this app). Required for the unified
+    // acquisition → signup funnel — both surfaces must share ONE project key
+    // for the cookie to match. posthog-js defaults this to true; pinned
+    // explicitly so it can't silently regress and break cross-domain identity.
+    cross_subdomain_cookie: true,
     capture_pageview: "history_change",
     capture_pageleave: true,
     autocapture: true,
