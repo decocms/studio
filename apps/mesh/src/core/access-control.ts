@@ -11,7 +11,7 @@
 
 import { MCP_MESH_KEY } from "@/core/constants";
 import { BASIC_USAGE_TOOLS } from "@/tools/registry-metadata";
-import type { BetterAuthInstance, BoundAuthClient } from "./studio-context";
+import type { BoundAuthClient } from "./studio-context";
 
 // ============================================================================
 // Types
@@ -57,11 +57,10 @@ export class ForbiddenError extends Error {
  * Delegates all permission checks to Better Auth's Organization plugin
  * via the BoundAuthClient (which encapsulates HTTP headers)
  */
-export class AccessControl implements Disposable {
+export class AccessControl {
   private _granted: boolean = false;
 
   constructor(
-    _auth: BetterAuthInstance, // Kept for backwards compatibility, not used
     private userId?: string,
     private toolName?: string,
     private boundAuth?: BoundAuthClient, // Bound auth client for permission checks
@@ -70,10 +69,6 @@ export class AccessControl implements Disposable {
     private getToolMeta?: GetToolMetaFn, // Optional callback for public tool check
     private organizationId?: string, // Path-resolved org (overrides session active org)
   ) {}
-
-  [Symbol.dispose](): void {
-    this._granted = false;
-  }
 
   setToolName(toolName: string): void {
     this.toolName = toolName;
@@ -112,13 +107,8 @@ export class AccessControl implements Disposable {
    * Grant access unconditionally
    * Use for manual overrides, admin actions, or custom validation
    */
-  grant(): Disposable {
+  grant(): void {
     this._granted = true;
-    return {
-      [Symbol.dispose]: () => {
-        this._granted = false;
-      },
-    };
   }
 
   /**

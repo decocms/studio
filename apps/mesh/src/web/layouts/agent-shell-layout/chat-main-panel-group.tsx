@@ -20,7 +20,7 @@ import {
 } from "@/web/components/resizable";
 import { useChatPanelWidth } from "@/web/hooks/use-chat-panel-width";
 import { computeChatMainSizes } from "@/web/hooks/use-layout-state";
-import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
+import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
 
 function PersistentChatPanel({
@@ -68,7 +68,7 @@ export interface ChatMainPanelGroupProps {
   chatOpen: boolean;
   mainOpen: boolean;
   /** Optional override for the chat panel content — lets the outer layout
-   * wrap ChatCenterPanel in its own Suspense/ErrorBoundary.
+   * wrap ChatPanel in its own Suspense/ErrorBoundary.
    * (Chat.ActiveTaskProvider is mounted by the outer layout, not here.) */
   chatContent?: React.ReactNode;
 }
@@ -111,7 +111,7 @@ export function ChatMainPanelGroup({
       >
         <div className="h-full p-0.5 pt-0.25">
           <div className="h-full bg-background rounded-[0.75rem] overflow-hidden card-shadow">
-            {chatContent ?? <ChatCenterPanel />}
+            {chatContent ?? <ChatPanel />}
           </div>
         </div>
       </PersistentChatPanel>

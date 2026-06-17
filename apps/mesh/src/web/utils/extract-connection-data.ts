@@ -9,7 +9,7 @@ import type {
   MCPRegistryServer,
 } from "@/web/components/store/types";
 import { MCP_MESH_DECOCMS_KEY } from "@/web/utils/constants";
-import { getGitHubAvatarUrl } from "@/web/utils/github";
+import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
 import { getConnectionTypeLabel } from "@/web/utils/registry-utils";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 

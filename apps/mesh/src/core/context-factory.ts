@@ -157,23 +157,6 @@ export interface StudioContextConfig {
 // Types
 // ============================================================================
 
-/**
- * OAuth Session from Better Auth MCP plugin
- * Returned by auth.api.getMcpSession()
- */
-interface OAuthSession {
-  id: string;
-  accessToken: string;
-  refreshToken: string;
-  accessTokenExpiresAt: Date;
-  refreshTokenExpiresAt: Date;
-  clientId: string;
-  userId: string;
-  scopes: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 // ============================================================================
 // Authentication Helpers
 // ============================================================================
@@ -592,6 +575,32 @@ async function isOrgArchivedCached(
   return archived;
 }
 
+// Read-through member-role cache; shared by the mesh-JWT and API-key auth paths.
+async function resolveAndCacheRole(
+  db: Kysely<Database>,
+  timings: NonNullable<FactoryOptions["timings"]>,
+  userId: string,
+  organizationId: string,
+  memberRoleCache?: MemberRoleCache,
+): Promise<string | undefined> {
+  const cachedRole = memberRoleCache?.get(userId, organizationId);
+  if (cachedRole) return cachedRole;
+
+  const membership = await timings.measure("auth_query_membership", () =>
+    db
+      .selectFrom("member")
+      .select(["member.role"])
+      .where("member.userId", "=", userId)
+      .where("member.organizationId", "=", organizationId)
+      .executeTakeFirst(),
+  );
+  const role = membership?.role;
+  if (role) {
+    memberRoleCache?.set(userId, organizationId, role);
+  }
+  return role;
+}
+
 async function authenticateRequest(
   req: Request,
   auth: BetterAuthInstance,
@@ -619,7 +628,7 @@ async function authenticateRequest(
       () =>
         auth.api.getMcpSession({
           headers: mcpHeaders,
-        }) as Promise<OAuthSession | null>,
+        }) as Promise<{ userId: string } | null>,
     );
 
     if (session) {
@@ -717,28 +726,13 @@ async function authenticateRequest(
         let role: string | undefined;
         const organizationId = meshJwtPayload.metadata?.organizationId;
         if (meshJwtPayload.sub && organizationId) {
-          const cachedRole = memberRoleCache?.get(
+          role = await resolveAndCacheRole(
+            db,
+            timings,
             meshJwtPayload.sub,
             organizationId,
+            memberRoleCache,
           );
-          if (cachedRole) {
-            role = cachedRole;
-          } else {
-            const membership = await timings.measure(
-              "auth_query_membership",
-              () =>
-                db
-                  .selectFrom("member")
-                  .select(["member.role"])
-                  .where("member.userId", "=", meshJwtPayload.sub)
-                  .where("member.organizationId", "=", organizationId)
-                  .executeTakeFirst(),
-            );
-            role = membership?.role;
-            if (role) {
-              memberRoleCache?.set(meshJwtPayload.sub, organizationId, role);
-            }
-          }
         }
 
         let organization: OrganizationContext | undefined;
@@ -835,25 +829,13 @@ async function authenticateRequest(
         let role: string | undefined;
         const userId = result.key.userId;
         if (userId && orgMetadata?.id) {
-          const cachedRole = memberRoleCache?.get(userId, orgMetadata.id);
-          if (cachedRole) {
-            role = cachedRole;
-          } else {
-            const membership = await timings.measure(
-              "auth_query_membership",
-              () =>
-                db
-                  .selectFrom("member")
-                  .select(["member.role"])
-                  .where("member.userId", "=", userId)
-                  .where("member.organizationId", "=", orgMetadata.id)
-                  .executeTakeFirst(),
-            );
-            role = membership?.role;
-            if (userId && role) {
-              memberRoleCache?.set(userId, orgMetadata.id, role);
-            }
-          }
+          role = await resolveAndCacheRole(
+            db,
+            timings,
+            userId,
+            orgMetadata.id,
+            memberRoleCache,
+          );
         }
 
         return {
@@ -1367,7 +1349,6 @@ export async function createStudioContextFactory(
 
     // Create AccessControl instance with bound auth client
     const access = new AccessControl(
-      config.auth,
       meshAuth.user?.id,
       undefined, // toolName set later by defineTool
       boundAuth, // Bound auth client for permission checks

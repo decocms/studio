@@ -32,12 +32,12 @@ export class PollingStrategy implements NotifyStrategy {
     if (this.timer) return; // Already started
 
     this.onNotify = onNotify;
-    this.scheduleNext();
+    this.timer = setInterval(() => this.onNotify?.(), this.intervalMs);
   }
 
   async stop(): Promise<void> {
     if (this.timer) {
-      clearTimeout(this.timer);
+      clearInterval(this.timer);
       this.timer = null;
     }
     this.onNotify = null;
@@ -46,20 +46,6 @@ export class PollingStrategy implements NotifyStrategy {
   async notify(_eventId: string): Promise<void> {
     // Optionally trigger immediate processing when an event is published.
     // This provides faster delivery while still having the timer as a backup.
-    if (this.onNotify) {
-      this.onNotify();
-    }
-  }
-
-  private scheduleNext(): void {
-    this.timer = setTimeout(() => {
-      if (this.onNotify) {
-        this.onNotify();
-      }
-      // Schedule next poll
-      if (this.timer) {
-        this.scheduleNext();
-      }
-    }, this.intervalMs);
+    this.onNotify?.();
   }
 }

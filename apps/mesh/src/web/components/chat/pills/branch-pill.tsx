@@ -71,12 +71,5 @@ export function BranchPill({ locked, placement, value, ...props }: Props) {
     );
   }
 
-  return (
-    <BranchPicker
-      {...props}
-      value={value}
-      disabled={locked}
-      placement={placement}
-    />
-  );
+  return <BranchPicker {...props} value={value} placement={placement} />;
 }

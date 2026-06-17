@@ -12,7 +12,7 @@ interface Preferences {
 
 const DEFAULT_PREFERENCES: Preferences = {
   toolApprovalLevel: "auto",
-  enableNotifications: typeof Notification !== "undefined" ? true : false,
+  enableNotifications: typeof Notification !== "undefined",
   enableSounds: false,
   theme: "system",
 };

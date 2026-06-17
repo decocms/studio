@@ -6,23 +6,16 @@
  * plaintext is only returned once at creation time.
  */
 
+import { createHash, randomBytes } from "node:crypto";
 import type { Kysely } from "kysely";
 import type { Database } from "./types";
 
-async function hashToken(token: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(token);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 function generateToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return randomBytes(32).toString("hex");
 }
 
 export interface TokenPair {

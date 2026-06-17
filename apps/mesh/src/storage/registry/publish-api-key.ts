@@ -1,28 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Kysely } from "kysely";
 import type { PrivateRegistryDatabase, PublishApiKeyEntity } from "./types";
 
-/**
- * Hash a plaintext API key using SHA-256.
- */
-async function hashApiKey(key: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(key);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+function hashApiKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
 }
 
-/**
- * Generate a random API key with the `prk_` prefix.
- */
 function generateApiKey(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `prk_${hex}`;
+  return `prk_${randomBytes(32).toString("hex")}`;
 }
 
 export class PublishApiKeyStorage {

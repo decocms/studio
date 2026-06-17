@@ -39,12 +39,6 @@ export interface AssetServerConfig {
   clientDir?: string;
 
   /**
-   * @deprecated Development assets are served by Vite in front of Bun.
-   * This option is kept for compatibility and is ignored.
-   */
-  devServerUrl?: string | URL;
-
-  /**
    * Function to check if a path should be handled by the API server.
    * Return true for API routes, false for static files.
    * If not provided, defaults to serving everything as static.

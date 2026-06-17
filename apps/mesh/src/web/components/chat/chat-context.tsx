@@ -101,7 +101,6 @@ import type { ChatMessage, ChatMode, Metadata } from "./types";
 import type { Task } from "./task/types";
 import type { SendMessageParams, SetAppContextParams } from "./store/types";
 import { useLocalStorage } from "../../hooks/use-local-storage";
-import { chatModeForTransportRef } from "../../lib/chat-mode-sync";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
@@ -372,8 +371,6 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   );
 
   const [chatMode, setChatMode] = useState<ChatMode>("default");
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
-  chatModeForTransportRef.current = chatMode;
 
   // Simple Model Mode
   const simpleMode = useSimpleMode();

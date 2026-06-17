@@ -25,7 +25,6 @@ import {
   useThreadActions,
   useThreads,
 } from "@/web/components/chat/store/hooks";
-import { filterThreads } from "@/web/components/chat/task";
 import { usePanelActions } from "@/web/layouts/shell-layout";
 import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dialog";
 import { track } from "@/web/lib/posthog-client";
@@ -117,7 +116,7 @@ export function TaskGroupsList() {
   const orgPinnedSet = new Set(orgPinnedIds);
 
   const { threads: allThreads } = useThreads();
-  const visibleThreads = filterThreads(allThreads, { hidden: false });
+  const visibleThreads = allThreads.filter((thread) => !thread.hidden);
   const { hide } = useThreadActions();
 
   const navigate = useNavigate();

@@ -20,8 +20,6 @@ export * from "./channels.ts";
 // Export binding utilities
 export * from "./utils.ts";
 
-export { streamToResponse } from "./language-model/utils.ts";
-
 export const WellKnownBindings = {
   Channel: CHANNEL_BINDING,
   LanguageModel: LANGUAGE_MODEL_BINDING,

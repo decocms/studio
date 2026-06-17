@@ -4,6 +4,7 @@
  * Contains shared types and the ExpandedLogContent component used by LogRow.
  */
 
+import { formatBytes } from "@/web/lib/format-bytes";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -327,12 +328,6 @@ function truncateJsonForDisplay(
     isTruncated: true,
     originalSize,
   };
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ============================================================================

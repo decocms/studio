@@ -37,7 +37,7 @@ import {
   type ReactNode,
 } from "react";
 import { Chat, useChatTask } from "@/web/components/chat/index";
-import { ChatCenterPanel } from "@/web/layouts/chat-center-panel";
+import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import { StudioSidebarMobile } from "@/web/components/sidebar";
@@ -111,7 +111,7 @@ function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
       }
     >
       <Suspense fallback={<Chat.Skeleton />}>
-        {children ?? <ChatCenterPanel />}
+        {children ?? <ChatPanel />}
       </Suspense>
     </ErrorBoundary>
   );

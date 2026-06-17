@@ -89,12 +89,9 @@ export const DEFAULT_EVENT_BUS_CONFIG: Required<EventBusConfig> = {
 // ============================================================================
 
 /**
- * EventBus interface for publishing and subscribing to events
- *
- * Note: The interface is named IEventBus internally, but exported as EventBus
- * for backwards compatibility. Use `import type { EventBus }` for typing.
+ * EventBus interface for publishing and subscribing to events.
  */
-export interface IEventBus {
+export interface EventBus {
   /**
    * Publish an event
    *
@@ -259,9 +256,3 @@ export type NotifySubscriberFn = (
   retryAfter?: number;
   results?: Record<string, EventResult>;
 }>;
-
-/**
- * EventBus type alias for the interface
- * Use this for typing (e.g., in tests or function parameters)
- */
-export type EventBus = IEventBus;

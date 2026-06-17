@@ -1,4 +1,4 @@
-import { memo, useRef, useId, Component, cloneElement } from "react";
+import { useRef, useId, Component, cloneElement } from "react";
 import Editor, {
   loader,
   OnMount,
@@ -157,7 +157,7 @@ const LoadingPlaceholder = (
   </div>
 );
 
-const InternalMonacoEditor = memo(function InternalMonacoEditor({
+function InternalMonacoEditor({
   code,
   onChange,
   onSave,
@@ -306,15 +306,13 @@ const InternalMonacoEditor = memo(function InternalMonacoEditor({
       />
     </div>
   );
-});
+}
 
 // Public component that wraps with error boundary for disposal recovery
-export const MonacoCodeEditor = memo(function MonacoCodeEditor(
-  props: MonacoCodeEditorProps,
-) {
+export function MonacoCodeEditor(props: MonacoCodeEditorProps) {
   return (
     <MonacoErrorBoundary>
       <InternalMonacoEditor {...props} />
     </MonacoErrorBoundary>
   );
-});
+}

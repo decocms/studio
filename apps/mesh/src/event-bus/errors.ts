@@ -5,8 +5,6 @@
  * credentials is guaranteed to fail (expired tokens, revoked keys, etc.).
  */
 
-const AUTH_STATUS_CODES = new Set([401]);
-
 const AUTH_MESSAGE_PATTERNS = [
   "unauthorized",
   "invalid_token",
@@ -31,7 +29,7 @@ export function isAuthError(error: unknown): boolean {
   if (typeof error === "object" && error !== null) {
     const obj = error as Record<string, unknown>;
     const status = obj.status ?? obj.code;
-    if (typeof status === "number" && AUTH_STATUS_CODES.has(status)) {
+    if (status === 401) {
       return true;
     }
   }

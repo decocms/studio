@@ -18,7 +18,7 @@ import {
   extractConnectionData,
   getRegistryItemAppName,
 } from "@/web/utils/extract-connection-data";
-import { getGitHubAvatarUrl } from "@/web/utils/github";
+import { getGitHubAvatarUrl } from "@deco/ui/lib/github.ts";
 import { useEnabledRegistries } from "@/web/hooks/use-enabled-registries";
 import { useMergedStoreDiscovery } from "@/web/hooks/use-merged-store-discovery";
 import { Badge } from "@deco/ui/components/badge.tsx";
