@@ -309,11 +309,21 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
         // Create client - pool manages lifecycle, best-effort call
         const client = await clientFromConnection(connection, ctx, false);
 
+        // firstRun fires the MCP's onInstall hook exactly once: true when the
+        // connection had no prior configuration_state (its first config save).
+        const priorState = existing.configuration_state as Record<
+          string,
+          unknown
+        > | null;
+        const firstRun =
+          priorState == null || Object.keys(priorState).length === 0;
+
         await client.callTool({
           name: "ON_MCP_CONFIGURATION",
           arguments: {
             state: finalState,
             scopes: finalScopes,
+            firstRun,
           },
         });
       } catch (error) {

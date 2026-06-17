@@ -27,10 +27,20 @@ import {
   WORKFLOW_SCOPES,
   workflowToolId,
 } from "./workflows.ts";
+import { type InstallContext, makeCreateAgent } from "./agents.ts";
 
 // Re-export EventHandlers type and SELF constant for external use
 export { SELF } from "./events.ts";
 export type { EventHandlers } from "./events.ts";
+export { AGENT_SCOPES } from "./agents.ts";
+export type {
+  InstallContext,
+  CreateAgentInput,
+  CreateAgentResult,
+  CreatedAutomation,
+  TriggerResult,
+  AutomationTrigger,
+} from "./agents.ts";
 export type { WorkflowDefinition } from "./workflows.ts";
 
 export const createRuntimeContext = (prev?: AppContext) => {
@@ -489,6 +499,12 @@ export interface CreateMCPServerOptions<
   };
   configuration?: {
     onChange?: (env: TEnv, cb: OnChangeCallback<State>) => Promise<void>;
+    /**
+     * Fired once per connection, on the first ON_MCP_CONFIGURATION call (the
+     * user's first config save). Use it to provision agents/automations via
+     * the injected `createAgent` helper. Requires AGENT_SCOPES in `scopes`.
+     */
+    onInstall?: (env: TEnv, ctx: InstallContext) => Promise<void>;
     state?: TSchema;
     scopes?: string[];
   };
@@ -575,14 +591,14 @@ const getMeshCtx = (input: { runtimeContext: AppContext }) => {
 const toolsFor = <TSchema extends ZodTypeAny = never>({
   events,
   workflows,
-  configuration: { state: schema, scopes, onChange } = {},
+  configuration: { state: schema, scopes, onChange, onInstall } = {},
 }: ResolvedMCPServerOptions<TSchema> = {}): CreatedTool[] => {
   const jsonSchema = schema
     ? injectBindingSchemas(z.toJSONSchema(schema) as Record<string, unknown>)
     : { type: "object", properties: {} };
   const busProp = String(events?.bus ?? "EVENT_BUS");
   return [
-    ...(onChange || events || workflows?.length
+    ...(onChange || onInstall || events || workflows?.length
       ? [
           createTool({
             id: "ON_MCP_CONFIGURATION",
@@ -594,6 +610,12 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 .describe(
                   "Array of scopes in format 'KEY::SCOPE' (e.g., 'GMAIL::GetCurrentUser')",
                 ),
+              firstRun: z
+                .boolean()
+                .optional()
+                .describe(
+                  "True on the first configuration save for this connection — fires onInstall.",
+                ),
             }),
             outputSchema: z.object({}),
             execute: async (input) => {
@@ -603,6 +625,16 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 state,
                 scopes: (input.context as { scopes: string[] }).scopes,
               });
+
+              if (
+                onInstall &&
+                (input.context as { firstRun?: boolean }).firstRun
+              ) {
+                const { meshUrl, token, connectionId } = getMeshCtx(input);
+                await onInstall(input.runtimeContext.env, {
+                  createAgent: makeCreateAgent(meshUrl, token, connectionId),
+                });
+              }
               const bus = getEventBus(busProp, input.runtimeContext.env);
               if (events && state && bus) {
                 const { connectionId } = getMeshCtx(input);
