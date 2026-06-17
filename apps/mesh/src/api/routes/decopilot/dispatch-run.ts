@@ -1343,13 +1343,9 @@ async function prepareRun(
                 }),
               );
               if (!partEmitter) {
-                // v1 (unchanged): coarse whole-message checkpoints — every step
-                // on resume, every 5th step otherwise.
+                // v1: whole-message checkpoints on every step.
                 const stepEvent = transitions[0]?.event;
-                const shouldSave = input.isResume
-                  ? stepEvent?.type === "STEP_COMPLETED"
-                  : stepEvent?.type === "STEP_COMPLETED" &&
-                    stepEvent.stepCount % 5 === 0;
+                const shouldSave = stepEvent?.type === "STEP_COMPLETED";
                 if (shouldSave) {
                   pendingOps.push(
                     saveMessagesToThread(responseMessage as ChatMessage).catch(
