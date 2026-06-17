@@ -3,6 +3,7 @@ import {
   consumeHarnessStream,
   type HarnessStreamPersistence,
 } from "./consume-harness-stream";
+import { isRunStatusChunk } from "./run-status-stage";
 
 /**
  * Title persistence for the projector. When supplied, the projector becomes the
@@ -116,7 +117,10 @@ export async function projectChunks(
   // An in-band {type:"error"} chunk does NOT cause the generator to throw.
   const wrappedChunks: AsyncIterable<UIMessageChunk> = (async function* () {
     try {
-      yield* options.chunks;
+      for await (const chunk of options.chunks) {
+        if (isRunStatusChunk(chunk)) continue;
+        yield chunk;
+      }
     } catch (e) {
       sourceThrew = e;
       throw e;

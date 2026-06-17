@@ -325,4 +325,48 @@ describe("projectChunks", () => {
       projectChunks({ chunks: boom, persistence: noopPersistence }),
     ).rejects.toThrow("provider exploded");
   });
+
+  test("ignores data-run-status chunks when projecting assistant parts", async () => {
+    const emitted: Array<{ id: string; parts?: unknown[] }> = [];
+
+    await projectChunks({
+      chunks: (async function* () {
+        yield {
+          type: "data-run-status",
+          id: "run-status",
+          data: { stage: "gathering-context" },
+        } as UIMessageChunk;
+        yield { type: "start", messageId: "m-1" } as UIMessageChunk;
+        yield { type: "text-start", id: "txt" } as UIMessageChunk;
+        yield {
+          type: "text-delta",
+          id: "txt",
+          delta: "hello",
+        } as UIMessageChunk;
+        yield { type: "text-end", id: "txt" } as UIMessageChunk;
+        yield { type: "finish", finishReason: "stop" } as UIMessageChunk;
+      })(),
+      persistence: {
+        emitStepParts: async (message) => {
+          emitted.push({ id: message.id, parts: message.parts });
+        },
+        emitFinal: async (message) => {
+          emitted.push({ id: message.id, parts: message.parts });
+        },
+        emitError: async () => {},
+      },
+    });
+
+    expect(
+      emitted
+        .flatMap((message) => message.parts ?? [])
+        .some((part) => {
+          return (
+            typeof part === "object" &&
+            part !== null &&
+            (part as { type?: unknown }).type === "data-run-status"
+          );
+        }),
+    ).toBe(false);
+  });
 });
