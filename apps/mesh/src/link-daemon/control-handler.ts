@@ -280,9 +280,9 @@ export function createControlHandler(deps: ControlHandlerDeps): ControlHandler {
               const { value, done } = await reader.read();
               if (done) break;
               if (value && value.length) {
-                // Yield the RAW bytes — no TextDecoder (landmine #9). The
-                // transport (WS / pull proxy) chooses its own encoding so a
-                // binary vm-tools file read survives byte-exact.
+                // Yield the RAW bytes — no TextDecoder. The transport chooses
+                // its own encoding so a binary vm-tools file read survives
+                // byte-exact.
                 yield { type: "raw-chunk" as const, data: value };
               }
             }

@@ -159,16 +159,18 @@ test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", 
       const json = await res.json();
       expect(json).toMatchObject({ ok: true, lastSeq: lineCount });
 
-      // Parts must be committed: at least a text part and a finish anchor.
-      const parts = await fetchParts(db, runId);
-      expect(parts.length).toBeGreaterThanOrEqual(2);
-      const kinds = parts.map((p) => p.kind);
-      expect(kinds).toContain("text");
-      expect(kinds).toContain("finish");
-
-      // The terminal POST is acked only after the run transitioned terminal
-      // (durably), which is what releases the pull gate's threads.status poll.
-      expect(await fetchThreadStatus(db, runId)).toBe("completed");
+      // Parts + terminal status are written by the async durable projector
+      // (it reconstructs the run from JetStream after the relay POST returns),
+      // so poll until they land: a text part + finish anchor, and status
+      // 'completed' (which releases the pull gate's threads.status poll).
+      await expect(async () => {
+        const parts = await fetchParts(db, runId);
+        expect(parts.length).toBeGreaterThanOrEqual(2);
+        const kinds = parts.map((p) => p.kind);
+        expect(kinds).toContain("text");
+        expect(kinds).toContain("finish");
+        expect(await fetchThreadStatus(db, runId)).toBe("completed");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
       await db.end();
     }
@@ -280,9 +282,12 @@ test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", 
       expect(res.status()).toBe(200);
       expect(await res.json()).toMatchObject({ ok: true });
 
-      // The fresh session processed the relayed turn → parts persist.
-      const parts = await fetchParts(db, runId);
-      expect(parts.length).toBeGreaterThan(0);
+      // The fresh session processed the relayed turn → parts persist (written
+      // by the async durable projector, so poll until they land).
+      await expect(async () => {
+        const parts = await fetchParts(db, runId);
+        expect(parts.length).toBeGreaterThan(0);
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
       await db.end();
     }

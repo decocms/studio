@@ -867,6 +867,35 @@ configMap:
       emailProviderId: "resend-primary"
 ```
 
+### Public NATS Tunnel
+
+Studio pods keep using the internal `NATS_URL` for service-to-service traffic. External CLI links use `NATS_PUBLIC_URL`, configured with `tunnel.nats.publicUrl`, after a client creates a link session with `POST /api/links/session`.
+
+`tunnel.nats.*` only configures Studio's environment. Helm cannot derive native NATS subchart websocket or ingress values from it, so expose websockets explicitly in the `nats` subchart values when a public tunnel is needed:
+
+```yaml
+tunnel:
+  nats:
+    publicUrl: "wss://nats.example.com"
+    publicEnabled: true
+    sessionTtlSeconds: 900
+
+nats:
+  enabled: true
+  config:
+    jetstream:
+      enabled: true
+    websocket:
+      enabled: true
+      port: 8080
+      ingress:
+        enabled: true
+        hosts:
+          - nats.example.com
+```
+
+NATS operator/account credential env vars such as `NATS_OPERATOR_JWT`, `NATS_ACCOUNT_JWT`, and `NATS_ACCOUNT_SIGNING_KEY` are sensitive. Provide them through Kubernetes Secret, ExternalSecret, or another secret-backed env path, not through ConfigMap values.
+
 ### Secret
 
 The chart supports three secret management scenarios:

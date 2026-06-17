@@ -13,17 +13,17 @@
  * real all the way to `resolveDispatchTarget` — the link-gating logic under
  * test — and the pin persistence is asserted against the real thread row.
  *
- * Link presence is real: the user is made a live `user-desktop` link via
- * `claimPullPresence` (a `GET /links/work` long-poll that synthetically mints
- * the presence claim, the same path a pull daemon takes). These tests never
- * await a dispatch — they only need the link to be *present* in the claim
- * registry so `resolveDispatchTarget` routes correctly (Phase C-bis S6).
+ * Link presence is real: the user is made a live `user-desktop` link by
+ * writing the same NATS KV claim the CLI publishes and serving the work path
+ * through `@decocms/tunnel`. These tests mostly assert route gating/pinning;
+ * the daemon is kept alive so any async desktop publish after the 202 can
+ * complete its downstream handoff.
  */
 
 import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
-import { claimPullPresence } from "../fixtures/links-presence";
+import { createTunnelLinkDaemon } from "../fixtures/links-presence";
 import type { APIRequestContext } from "@playwright/test";
 
 interface MessageBodyOverrides {
@@ -84,13 +84,16 @@ async function createAgentAndThread(
   return { agentId: agent.item.id, threadId: thread.item.id };
 }
 
-test.describe("POST /messages — dispatch target gating", () => {
-  test("user-desktop kind + no online link → 409 user_desktop_link_offline", async ({
+test.describe("POST /messages — optimistic dispatch (no pre-flight gate)", () => {
+  test("user-desktop kind + no online link → 202 (optimistic; run fails later over the tunnel)", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
 
+    // The cluster no longer pre-checks link liveness at POST time. It accepts
+    // the run and the dispatch fails optimistically if no daemon answers — the
+    // frontend gates the compose box on the live /api/links/status probe.
     const res = await postMessage(
       api,
       orgSlug,
@@ -101,21 +104,23 @@ test.describe("POST /messages — dispatch target gating", () => {
       }),
     );
 
-    expect(res.status()).toBe(409);
-    const body = (await res.json()) as { error: string; code: string };
-    expect(body.error).toBe("link_unavailable");
-    expect(body.code).toBe("user_desktop_link_offline");
+    expect(res.status()).toBe(202);
+    const body = (await res.json()) as { taskId: string };
+    expect(typeof body.taskId).toBe("string");
   });
 
-  test("user-desktop kind + link missing capability → 409 user_desktop_link_capability_missing", async ({
+  test("user-desktop kind + link missing capability → 202 (no server capability gate)", async ({
     authedPage,
   }) => {
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
 
-    // Link advertises only decopilot-sandbox; a claude-code harness needs the
-    // "claude-code" capability.
-    const presence = claimPullPresence(api, ["decopilot-sandbox"]);
+    // Capability gating moved to the client (it reads capabilities from the
+    // live /api/links/status probe). The server accepts the run regardless of
+    // which CLIs the daemon advertises.
+    const daemon = await createTunnelLinkDaemon(api, user.userId, [
+      "decopilot-sandbox",
+    ]);
     try {
       const res = await postMessage(
         api,
@@ -127,15 +132,11 @@ test.describe("POST /messages — dispatch target gating", () => {
         }),
       );
 
-      expect(res.status()).toBe(409);
-      const body = (await res.json()) as {
-        code: string;
-        activeCapabilities: string[];
-      };
-      expect(body.code).toBe("user_desktop_link_capability_missing");
-      expect(body.activeCapabilities).toEqual(["decopilot-sandbox"]);
+      expect(res.status()).toBe(202);
+      const body = (await res.json()) as { taskId: string };
+      expect(typeof body.taskId).toBe("string");
     } finally {
-      await presence;
+      await daemon.close();
     }
   });
 
@@ -165,11 +166,13 @@ test.describe("POST /messages — first-message pinning", () => {
   test("first message persists sandbox/harness pins on the thread row", async ({
     authedPage,
   }) => {
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
 
     // user-desktop + claude-code resolves OK only when the link advertises it.
-    const presence = claimPullPresence(api, ["claude-code"]);
+    const daemon = await createTunnelLinkDaemon(api, user.userId, [
+      "claude-code",
+    ]);
     const db = await connectDevDb();
     try {
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
@@ -194,17 +197,19 @@ test.describe("POST /messages — first-message pinning", () => {
       expect(rows[0]?.harness_id).toBe("claude-code");
     } finally {
       await db.end();
-      await presence;
+      await daemon.close();
     }
   });
 
   test("subsequent message keeps the pinned sandbox kind and ignores a conflicting body", async ({
     authedPage,
   }) => {
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
 
-    const presence = claimPullPresence(api, ["claude-code"]);
+    const daemon = await createTunnelLinkDaemon(api, user.userId, [
+      "claude-code",
+    ]);
     const db = await connectDevDb();
     try {
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
@@ -252,7 +257,7 @@ test.describe("POST /messages — first-message pinning", () => {
       expect(rows[0]?.harness_id).toBe("claude-code");
     } finally {
       await db.end();
-      await presence;
+      await daemon.close();
     }
   });
 });

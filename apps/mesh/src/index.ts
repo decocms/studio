@@ -203,9 +203,8 @@ const server = Bun.serve({
     if (assetRes) return withSecurityHeaders(assetRes);
     return app.fetch(request, { server });
   },
-  // WebSocket handler — only sandbox preview connections remain (the link
-  // daemon reverse-WS gateway was deleted in Phase C-bis S8; daemons now use
-  // the pull transport). `ws.data.kind` discriminates preview connections.
+  // WebSocket handler — sandbox preview and uplink connections only.
+  // `ws.data.kind` discriminates connection types.
   websocket: {
     open(ws) {
       if (isPreviewWsData(ws.data)) {

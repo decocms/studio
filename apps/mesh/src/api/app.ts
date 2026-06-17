@@ -8,6 +8,7 @@
  * - CORS support
  */
 
+import { readFileSync } from "node:fs";
 import { getSettings } from "../settings";
 import {
   kickPublicSetsBootSync,
@@ -68,9 +69,7 @@ import { registerUplinkResolve } from "../links/uplink-ws";
 import { registerUplinkConnectionFactory } from "../links/uplink-ws-handler";
 import { fenceMatches } from "../storage/run-fence";
 import { isCancelRequested } from "../storage/cancel-flag";
-import { createLinkWorkRoutes } from "./routes/decopilot/link-work-routes";
-import { createLinkControlRoutes } from "./routes/decopilot/link-control-routes";
-import { createLinkProxyRoutes } from "./routes/decopilot/link-proxy-routes";
+import { createLinkSessionRoutes } from "./routes/links/session";
 import { createVmEventsRoutes } from "./routes/vm-events";
 import {
   createDecoSitesOrgRoutes,
@@ -137,14 +136,15 @@ import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
 import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import {
-  createInMemoryLinkClaimRegistry,
-  NatsLinkClaimRegistry,
-  type LinkClaimRegistry,
-} from "../links/link-claim-registry";
+  createTunnelStatusProbe,
+  type LinkStatus,
+} from "../links/tunnel-status-probe";
+import { createTunnelDispatch } from "../links/tunnel-dispatch";
 import {
-  createProxyDispatch,
-  type ProxyNatsAdapter,
-} from "./routes/decopilot/link-proxy-routes";
+  createTunnelControlPublisher,
+  createTunnelWorkPublisher,
+  type LinkWorkPublisher,
+} from "../links/tunnel-work-dispatch";
 import type { DispatchFn } from "../links/link-dispatch-types";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
@@ -184,13 +184,12 @@ import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workfl
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
   dispatchRunAndWait,
-  pullDispatch,
+  prepareLinkWorkDispatch,
 } from "./routes/decopilot/dispatch-run";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
-import { LinkWorkQueue } from "./routes/decopilot/link-work-queue";
 import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
 
 import type { Pool, PoolClient } from "pg";
@@ -234,16 +233,13 @@ function rejectAfter(ms: number): Promise<never> {
   );
 }
 
-// Module-level singleton for the pull reverse-proxy `DispatchFn` (Phase C-bis).
-// Populated inside `createApp` once `natsProvider` is wired; the daemon
-// long-polls `/links/proxy` instead of holding a WS open. `buildDesktopProvider`
-// injects this as the only desktop transport (the reverse-WS was deleted in S8).
+// Module-level singleton for the tunnel reverse-proxy `DispatchFn`.
+// Populated inside `createApp` once `natsProvider` is wired.
 let sharedProxyDispatch: DispatchFn | null = null;
 
 /**
- * Return the shared pull reverse-proxy `DispatchFn` (Phase C-bis). Throws if
- * `createApp` hasn't been called yet (the proxy transport requires a live NATS
- * connection — it is `null` when NATS is unavailable, e.g. some test setups).
+ * Return the shared tunnel reverse-proxy `DispatchFn`. Throws if `createApp`
+ * hasn't been called yet or no NATS connection is configured.
  */
 export function getProxyDispatch(): DispatchFn {
   if (!sharedProxyDispatch) {
@@ -892,10 +888,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   let providerKeyCache: ProviderKeyCache;
   let cancelBroadcast: CancelBroadcast;
   let streamBuffer: StreamBuffer;
-  let linkClaimRegistry: LinkClaimRegistry;
-  let linkWorkQueue: LinkWorkQueue | null = null;
+  let linkStatusProbe: ReturnType<typeof createTunnelStatusProbe> | undefined;
+  let linkWorkPublisher: LinkWorkPublisher | undefined;
   let natsProvider: NatsConnectionProvider | null = null;
-  let podHeartbeat: NatsPodHeartbeat | null = null;
 
   if (options.eventBus) {
     // Test mode: use provided event bus and no-op stubs (no NATS required)
@@ -915,9 +910,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       publishControlFrame: () => {},
       stop: async () => {},
     };
-    // Test/no-NATS branch: an in-memory claim registry keeps the link routes
-    // testable without a live NATS cluster.
-    linkClaimRegistry = createInMemoryLinkClaimRegistry();
+    linkWorkPublisher = undefined;
     streamBuffer = {
       init: async () => {},
       // Test/no-NATS stub: drain the stream so `createUIMessageStream`'s
@@ -954,7 +947,22 @@ export async function createApp(options: CreateAppOptions = {}) {
   } else {
     // Production/dev mode: connect to NATS (required)
     natsProvider = createNatsConnectionProvider();
-    natsProvider.init(getSettings().natsUrls);
+    // Optional cluster creds: local dev runs NATS in operator mode (anonymous
+    // connect is impossible there), so ensure-services persists a cluster creds
+    // file and points NATS_CREDS at it. Absent (production) → anonymous connect.
+    const credsPath = getSettings().natsCredsPath;
+    let creds: string | undefined;
+    if (credsPath) {
+      try {
+        creds = readFileSync(credsPath, "utf8");
+      } catch (err) {
+        console.error(
+          `[app] failed to read NATS_CREDS at ${credsPath}; connecting anonymously`,
+          err,
+        );
+      }
+    }
+    natsProvider.init(getSettings().natsUrls, creds ? { creds } : undefined);
 
     // Cross-pod MCP list cache is gated by the same flag as the read cache.
     // When disabled, leave mcpListCache null so getMcpListCache() callers fetch live.
@@ -985,33 +993,32 @@ export async function createApp(options: CreateAppOptions = {}) {
       getJetStream: () => natsProvider!.getJetStream(),
     });
 
-    const natsClaimRegistry = new NatsLinkClaimRegistry({
-      getJetStream: () => natsProvider!.getJetStream(),
-    });
-    natsClaimRegistry.init().catch(() => {});
-    linkClaimRegistry = natsClaimRegistry;
-
-    linkWorkQueue = new LinkWorkQueue({
-      getJetStreamManager: async () => {
-        const nc = natsProvider!.getConnection();
-        return nc ? nc.jetstreamManager() : null;
-      },
-      getJetStream: () => natsProvider!.getJetStream(),
-    });
-
-    // Per-pod heartbeat via NATS KV. The durable projector uses it for
-    // single-active scheduler leadership; DBOS workflow IDs provide the
-    // correctness dedup if leadership ever overlaps.
-    podHeartbeat = new NatsPodHeartbeat({
+    linkStatusProbe = createTunnelStatusProbe({
       getConnection: () => natsProvider!.getConnection(),
-      getJetStream: () => natsProvider!.getJetStream(),
     });
-    podHeartbeat
-      .init()
-      .then(() => {
-        podHeartbeat!.start(getPodId());
-      })
-      .catch(() => {});
+
+    linkWorkPublisher = createTunnelWorkPublisher({
+      getConnection: () => natsProvider!.getConnection(),
+    });
+    const tunnelControlPublisher = createTunnelControlPublisher({
+      getConnection: () => natsProvider!.getConnection(),
+    });
+    const natsCancelBroadcast = cancelBroadcast;
+    cancelBroadcast = {
+      start: (onCancel) => natsCancelBroadcast.start(onCancel),
+      broadcast: (taskId) => natsCancelBroadcast.broadcast(taskId),
+      publishControlFrame: (userSub, frame) => {
+        void tunnelControlPublisher
+          .publishControlFrame(userSub, frame)
+          .catch((err) => {
+            console.warn(
+              "[TunnelControl] publishControlFrame failed (non-critical):",
+              err,
+            );
+          });
+      },
+      stop: () => natsCancelBroadcast.stop(),
+    };
 
     eventBus = createEventBus(database, natsProvider);
 
@@ -1033,30 +1040,11 @@ export async function createApp(options: CreateAppOptions = {}) {
           err,
         );
       });
-      natsClaimRegistry.init().catch((err: unknown) => {
-        console.warn(
-          "[LinkClaimRegistry] Deferred init failed, link dispatch disabled:",
-          err,
-        );
-      });
-      linkWorkQueue!.init().catch((err: unknown) => {
-        console.warn(
-          "[LinkWorkQueue] Deferred init failed, pull-transport work queue disabled:",
-          err,
-        );
-      });
-      podHeartbeat!
-        .init()
-        .then(() => {
-          podHeartbeat!.start(getPodId());
-        })
-        .catch((err: unknown) => {
-          console.error("[PodHeartbeat] Deferred init failed:", err);
-        });
-      // Durable explicit-ack projector consumer (spec §5.4) — the scheduler for
-      // the DBOS projector workflow. The workflow is the sole v2 DB writer
-      // (parts + title + terminal status); the consumer just enqueues completed
-      // fenced runs and acks after enqueue succeeds.
+      // Durable explicit-ack projector consumer (spec §5.4) — the SOLE DB
+      // writer post-cutover (parts + title + terminal status). Leader-elected
+      // via the shared pod heartbeat so exactly ONE pod runs the consumer; on
+      // leadership loss the handle's stop() aborts consume() and a standby
+      // acquires + replays from JetStream.
       if (podHeartbeat) {
         const heartbeat = podHeartbeat;
         void (async () => {
@@ -1082,6 +1070,10 @@ export async function createApp(options: CreateAppOptions = {}) {
               return row?.organization_id ?? null;
             },
           };
+          // Leadership is now only a scheduler throttle. Correctness comes from
+          // the DBOS workflow ID keyed by (runId, fenceToken), so duplicate
+          // scheduler starts collapse instead of double-projecting.
+          // Single-active: start on the elected leader, stop on leadership loss.
           let handle: Awaited<ReturnType<typeof startDurableProjector>> | null =
             null;
           const leadership = new ProjectorLeadership({
@@ -1169,7 +1161,7 @@ export async function createApp(options: CreateAppOptions = {}) {
               if (!member) return null;
 
               const dbFence = await threadStorage.getRunFence(runId);
-              // No minted fence ⇒ no active pull run ⇒ reject (NDJSON 409 parity;
+              // No minted fence ⇒ no active link run ⇒ reject (NDJSON 409 parity;
               // fenceMatches(null, …) returns true, so the gate MUST short here).
               if (dbFence === null) return null;
 
@@ -1239,7 +1231,39 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   });
 
+  // Per-pod heartbeat via NATS KV (only when NATS is available). Used by the
+  // durable-projector leader election (single-active projector consumer); see
+  // the projector block in the natsProvider.onReady handler above.
+  let podHeartbeat: NatsPodHeartbeat | null = null;
+  if (natsProvider) {
+    podHeartbeat = new NatsPodHeartbeat({
+      getConnection: () => natsProvider!.getConnection(),
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+
+    // Attempt immediate init (may no-op if NATS not ready)
+    podHeartbeat
+      .init()
+      .then(() => {
+        podHeartbeat!.start(getPodId());
+      })
+      .catch(() => {});
+
+    // Re-init when NATS connects
+    natsProvider.onReady(() => {
+      podHeartbeat!
+        .init()
+        .then(() => {
+          podHeartbeat!.start(getPodId());
+        })
+        .catch((err: unknown) => {
+          console.error("[PodHeartbeat] Deferred init failed:", err);
+        });
+    });
+  }
+
   currentDecopilotCleanup = async () => {
+    // Delete KV key first → watcher fires on other pods → immediate handoff
     await podHeartbeat?.stop();
     await runRegistry.stopAll();
     runRegistry.dispose();
@@ -1518,7 +1542,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     modelListCache,
     providerKeyCache,
     memberRoleCache,
-    linkClaimRegistry,
+    linkStatusProbe,
     publishLinkControlFrame: (userSub, frame) =>
       cancelBroadcast.publishControlFrame(userSub, frame),
   });
@@ -1584,24 +1608,37 @@ export async function createApp(options: CreateAppOptions = {}) {
   setThreadGateRuntime({
     dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
-    deps: { runRegistry, cancelBroadcast, streamBuffer, sseHub },
-    // Phase B: wire pull-transport dependencies. `linkWorkQueue` is null when
-    // NATS is not configured (test / no-NATS branch); the gate's
-    // `rt.pullDispatchFn != null && rt.workQueue != null` guard keeps the ws
-    // path active in that case, so no behavior changes for existing runs.
-    // Phase C-bis S6: the pull branch is now ACTIVE — the gate routes a run to
-    // pull when its resolved dispatch target has
-    // `sandboxProviderKind === "user-desktop"` (a live desktop link) AND the
-    // thread is message_storage_version 2. Hosted agent-sandbox threads always
-    // take the hosted ws path.
-    pullDispatchFn: pullDispatch,
-    workQueue: linkWorkQueue ?? undefined,
+    deps: {
+      runRegistry,
+      cancelBroadcast,
+      streamBuffer,
+      sseHub,
+    },
+    // Desktop downstream dispatch is tunnel-only. Test/no-NATS setups leave
+    // `workPublisher` undefined, so user-desktop targets fall back to the
+    // hosted path instead of trying to publish desktop work.
+    prepareLinkWorkFn: prepareLinkWorkDispatch,
+    workPublisher: linkWorkPublisher,
+    // Phase 2: remove the ~1 h wall-clock poll cap so a healthy long run holds
+    // its per-thread slot for as long as it genuinely runs. Dead runs are bounded
+    // by the cross-pod reaper (LINK_DURABLE_REAPER) — so the uncapped wait only
+    // engages when the reaper is ALSO enabled. This makes the dependency
+    // safe-by-construction: enabling LINK_GATE_UNCAPPED_WAIT alone is a no-op (the
+    // 1 200-attempt default still applies), so a run can never hold a slot forever
+    // without the reaper present to release a dead one. When either flag is off,
+    // leave undefined so the default cap applies.
+    gatePollMaxAttempts:
+      process.env.LINK_GATE_UNCAPPED_WAIT === "1" &&
+      process.env.LINK_DURABLE_REAPER === "1"
+        ? Number.POSITIVE_INFINITY
+        : undefined,
   });
 
-  // Durable projector workflow runtime — the sole v2 DB writer for assistant
-  // parts, auto-title persistence, and terminal status. The scheduler consumes
-  // fenced done markers from JetStream and enqueues DBOS workflows keyed by
-  // runId + fenceToken.
+  // Durable projector workflow runtime — the SOLE v2 DB writer (parts + title +
+  // terminal status). The DBOS `projectRunWorkflow` (keyed by runId+fenceToken)
+  // reconstructs the run from file-backed JetStream and writes durably; the
+  // consumer is now just a scheduler. Wired before `DBOS.launch()` for the same
+  // reason as automations/thread-gate: it only sets a module-level pointer.
   const projectorThreadStorage = new SqlThreadStorage(database.db);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
@@ -1638,6 +1675,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       projectorThreadStorage.markRunFailed(runId, orgId, reason, kind),
     persistTitle: (runId, orgId, title) =>
       projectorThreadStorage.update(runId, orgId, { title }),
+    // Cleanup is owned by the workflow's success path now (after the run is
+    // projected + completed). The fence token is part of the runtime contract
+    // but unused here — the stream subject is keyed by runId only.
     purgeRun: async (runId) => {
       streamBuffer.purge(runId);
     },
@@ -1935,7 +1975,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     cancelBroadcast,
     streamBuffer,
     runRegistry,
-    linkClaimRegistry,
+    linkStatusProbe,
   });
   app.route("/api", decopilotRoutes);
 
@@ -1946,130 +1986,62 @@ export async function createApp(options: CreateAppOptions = {}) {
     app.route("/__test/decopilot/projector", createProjectorE2ETestRoutes());
   }
 
-  // Pull reverse-proxy DispatchFn (Phase C-bis). `buildDesktopProvider` injects
-  // it as the only desktop transport (the reverse-WS gateway was deleted in S8).
-  // The adapter derives the reply subject purely from the reqId (no inbox), so
-  // it only needs publish + subscribe. `null` when NATS is unavailable — the
-  // desktop provider then has no transport, which is the expected no-NATS state.
+  // Tunnel reverse-proxy DispatchFn. `buildDesktopProvider` injects it as the
+  // desktop transport for sandbox lifecycle, vm-events, and vm-tools traffic.
   if (natsProvider != null) {
-    const proxyNatsAdapter: ProxyNatsAdapter = {
-      publish(subject, data) {
-        const nc = natsProvider?.getConnection();
-        if (!nc) {
-          console.warn("[link-proxy.nats] publish skipped: nats unavailable", {
-            subject,
-            bytes: data.byteLength,
-          });
-          return;
-        }
-        nc.publish(subject, data);
-      },
-      subscribe(subject, onMessage) {
-        const nc = natsProvider?.getConnection();
-        if (!nc) {
-          console.warn(
-            "[link-proxy.nats] subscribe skipped: nats unavailable",
-            { subject },
-          );
-          return () => {};
-        }
-        const sub = nc.subscribe(subject);
-        void (async () => {
-          for await (const m of sub) {
-            try {
-              onMessage(m.data);
-            } catch {
-              /* swallow — a bad subscriber must not kill the loop */
-            }
-          }
-        })();
-        return () => {
-          try {
-            sub.unsubscribe();
-          } catch {
-            /* */
-          }
-        };
-      },
-    };
-    sharedProxyDispatch = createProxyDispatch({
-      nats: proxyNatsAdapter,
-      // Daemon-vanished fail-fast (Phase C-bis S5, landmine #8): the adapter
-      // watches the user's link-claim presence and aborts an in-flight request
-      // the moment the claim expires (the daemon's polls stopped re-arming the
-      // 60 s TTL) — the pull-transport equivalent of a socket-close liveness signal.
-      presence: {
-        watch: (userSub, listener) =>
-          linkClaimRegistry.watch(userSub, (claim) => listener(claim)),
-      },
+    sharedProxyDispatch = createTunnelDispatch({
+      getConnection: () => natsProvider?.getConnection() ?? null,
     });
   }
 
+  app.route("/api", createLinkSessionRoutes());
+
   // GET /api/links/me — presence-read for the current user's link claim.
-  // Re-homed here after the reverse-WS gateway (which previously hosted this
-  // route) was deleted in C-bis S8. Still used by the `deco link` CLI preflight
-  // and by presence checks; the claim itself is minted by `GET /links/work`.
+  // Used by the `deco link` CLI preflight and by presence checks.
   // Dual-auth: Bearer token (CLI — OAuth MCP session or a Better Auth API key)
   // or the session cookie (browser/e2e via meshContext).
   app.get("/api/links/me", async (c) => {
-    const authHeader = c.req.header("authorization") ?? "";
-    const match = /^Bearer\s+(.+)$/i.exec(authHeader);
-    let userSub: string | null = null;
-    if (match) {
-      const token = (match[1] ?? "").trim();
-      // Shared dual-auth resolver (MCP OAuth session → Better Auth API key
-      // fallback). The same function authenticates the WS uplink upgrade in
-      // index.ts, which runs outside Hono's auth middleware.
-      userSub = await resolveLinkBearer(
-        token,
-        auth.api as unknown as LinkBearerAuthApi,
+    try {
+      const authHeader = c.req.header("authorization") ?? "";
+      const match = /^Bearer\s+(.+)$/i.exec(authHeader);
+      let userSub: string | null = null;
+      if (match) {
+        const token = (match[1] ?? "").trim();
+        // Shared dual-auth resolver (MCP OAuth session → Better Auth API key
+        // fallback). The same function authenticates the WS uplink upgrade in
+        // index.ts, which runs outside Hono's auth middleware.
+        userSub = await resolveLinkBearer(
+          token,
+          auth.api as unknown as LinkBearerAuthApi,
+        );
+      } else {
+        const ctx = (c.get as (key: string) => unknown)("meshContext") as
+          | { auth?: { user?: { id?: string } } }
+          | undefined;
+        userSub = ctx?.auth?.user?.id ?? null;
+      }
+      if (!userSub) return c.json({ error: "unauthorized" }, 401);
+      const status: LinkStatus = linkStatusProbe
+        ? await linkStatusProbe(userSub)
+        : { online: false, capabilities: [] };
+      if (!status.online) return c.json(null);
+      return c.json({
+        hostname: status.hostname,
+        cliVersion: status.cliVersion,
+      });
+    } catch (err) {
+      // Presence is best-effort: a failing probe / bearer-resolver / transport
+      // must read as "no link" (200 null), never a 500. The bearer path
+      // already degrades to null when offline; this keeps the cookie path
+      // (whose org-scoped meshContext can surface transient failures) in lock-
+      // step instead of bubbling an empty-body 500 to the UI poller.
+      console.error(
+        "[links/me] presence probe failed; reporting offline:",
+        err instanceof Error ? err.message : String(err),
       );
-    } else {
-      const ctx = (c.get as (key: string) => unknown)("meshContext") as
-        | { auth?: { user?: { id?: string } } }
-        | undefined;
-      userSub = ctx?.auth?.user?.id ?? null;
+      return c.json(null);
     }
-    if (!userSub) return c.json({ error: "unauthorized" }, 401);
-    const claim = await linkClaimRegistry.get(userSub);
-    if (!claim) return c.json(null);
-    return c.json({
-      machineId: claim.machineId,
-      hostname: claim.hostname,
-      cliVersion: claim.cliVersion,
-      previewPort: claim.previewPort,
-      connectedAt: claim.connectedAt,
-    });
   });
-
-  // User-scoped link daemon long-poll routes. The link is the USER, not an org:
-  // each handler reads ctx.auth.user.id (populated by the global
-  // ContextFactory.create middleware, which resolves the MCP OAuth bearer via
-  // getMcpSession) and ignores org entirely. Mounted at /api/links/* next to
-  // /api/links/me; the org for each run travels on the work item (orgSlug).
-  if (linkWorkQueue != null) {
-    app.route(
-      "/api",
-      createLinkWorkRoutes({ linkClaimRegistry, workQueue: linkWorkQueue }),
-    );
-  }
-  if (natsProvider != null) {
-    app.route(
-      "/api",
-      createLinkControlRoutes({
-        getConnection: () => natsProvider!.getConnection(),
-      }),
-    );
-    app.route(
-      "/api",
-      createLinkProxyRoutes({
-        getConnection: () => natsProvider!.getConnection(),
-        // Only consumed by the non-production test-trigger route to wire the S5
-        // fail-fast watcher; production createProxyDispatch is wired separately.
-        claimRegistry: linkClaimRegistry,
-      }),
-    );
-  }
 
   // Stable file redirect endpoint (resolves mesh-storage: URIs to presigned URLs).
   // Resolve the org from the URL before serving so the stable URL cannot drift
@@ -2328,6 +2300,10 @@ export async function createApp(options: CreateAppOptions = {}) {
       partitionQueue: true,
       concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
     });
+    // Durable projector runs on ONE partitioned queue, partitioned by orgId
+    // (same rationale as AUTOMATIONS_QUEUE/THREAD_GATE_QUEUE above: per-org
+    // fairness without a dequeue loop per org). Left at the default 1s poll
+    // interval because it projects live agent runs (interactive latency).
     await DBOS.registerQueue(PROJECTOR_QUEUE, {
       partitionQueue: true,
       concurrency: PROJECTOR_PARTITION_CONCURRENCY,

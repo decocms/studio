@@ -42,7 +42,7 @@
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
-import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
+import type { WorkItem } from "../links/link-work-item";
 import {
   type RelayPostResult,
   relayDispatchSSEAsChunkStream,
@@ -132,8 +132,7 @@ export interface LocalDispatchDeps {
   clusterBaseUrl: string;
   /**
    * Returns the bearer token for the cluster chunks endpoint. Called once
-   * per dispatch so that a refreshed token is used (mirrors work-poller's
-   * per-poll `getAccessToken` pattern).
+   * per dispatch so that a refreshed token is used.
    */
   getClusterToken: () => Promise<string> | string;
   /**

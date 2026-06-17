@@ -30,8 +30,8 @@ export function useCurrentLink(): CurrentLink {
       const link = await studio.call("LINK_CURRENT_GET", {});
       return link ? { ...link, ready: true } : { ...OFFLINE, ready: true };
     },
-    staleTime: 10_000,
-    refetchInterval: 15_000,
+    staleTime: 4_000,
+    refetchInterval: 5_000,
     refetchOnWindowFocus: true,
   });
 

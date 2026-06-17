@@ -2,10 +2,8 @@
  * Shared link-daemon types.
  *
  * `ClusterConnectionHandle` is the transport-neutral lifecycle handle returned
- * by the daemon's cluster connection. It originally lived in the now-deleted WS
- * `cluster-connection.ts`; it was moved here (Phase C-bis S8) so the surviving
- * pull entry point (`cluster-connection-pull.ts`) and `index.ts` can depend on
- * the shape without the deleted WS module.
+ * by the daemon's cluster connection. The tunnel connection and `index.ts`
+ * depend on this shape without depending on each other's implementation.
  */
 export interface ClusterConnectionHandle {
   /** Trigger an orderly shutdown (no reconnect). */

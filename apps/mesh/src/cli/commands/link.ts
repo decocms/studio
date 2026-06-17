@@ -1,10 +1,9 @@
 /**
  * `deco link` — start the desktop-side link daemon.
  *
- * Uses a pure-pull transport: long-polls `/api/links/work` for
- * dispatched sandbox requests, `/api/links/control` for cluster control frames,
- * and `/api/links/proxy` for reverse-proxy traffic. Presence is maintained via a
- * 60 s NATS-KV TTL re-armed on every poll. Also runs a local ingress on
+ * Uses the NATS tunnel transport for cluster-to-desktop sandbox and daemon
+ * commands. Presence is maintained via a 60 s NATS-KV TTL re-armed by the
+ * tunnel session. Also runs a local ingress on
  * `--port` for `<handle>.localhost` sandbox previews.
  *
  * Auth: calls `ensureSession` first (with normal console output so the OAuth

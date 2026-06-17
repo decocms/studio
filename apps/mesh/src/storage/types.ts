@@ -912,11 +912,11 @@ export interface ThreadTable {
   run_fence_token: ColumnType<string | null, string | null, string | null>;
   /**
    * @deprecated Per-thread transport selector. No longer read for routing —
-   * the thread gate takes the pull path whenever NATS (workQueue +
-   * pullDispatchFn) is available (see thread-gate-workflow.ts). The writer
-   * (`setLinkTransport`) was removed with the cluster reverse-WS cleanup
-   * (Phase F). Column retained (nullable) for backward compatibility; no drop
-   * migration. New code MUST NOT read or write it.
+   * the thread gate uses the active link publisher whenever NATS and the link
+   * dispatch runtime are available (see thread-gate-workflow.ts). The writer
+   * (`setLinkTransport`) was removed with the cluster reverse-WS cleanup.
+   * Column retained (nullable) for backward compatibility; no drop migration.
+   * New code MUST NOT read or write it.
    */
   link_transport: ColumnType<string | null, string | null, string | null>;
   /**

@@ -13,7 +13,9 @@
 
 import {
   Events,
+  type Authenticator,
   connect,
+  credsAuthenticator,
   type JetStreamClient,
   type NatsConnection,
 } from "nats";
@@ -23,9 +25,21 @@ const BASE_DELAY_MS = 100;
 const MAX_DELAY_MS = 3_000;
 const CONNECT_TIMEOUT_MS = 3_000;
 
+export interface NatsInitOptions {
+  /**
+   * NATS creds file body (JWT + seed) for the cluster's own connection. When
+   * present the provider authenticates with it; when absent it connects
+   * anonymously (production: the cluster connects anonymously to the internal
+   * listener). Local dev runs NATS in operator mode where anonymous connect is
+   * impossible (`no_auth_user` is incompatible with Trusted Operator mode), so
+   * dev passes the persisted cluster creds here.
+   */
+  creds?: string;
+}
+
 export interface NatsConnectionProvider {
   /** Fire-and-forget — starts background connection with retry. */
-  init(url: string | string[]): void;
+  init(url: string | string[], options?: NatsInitOptions): void;
   /** Returns true if connected and not closed/draining. */
   isConnected(): boolean;
   /** Returns the shared connection, or null if not connected. */
@@ -38,13 +52,16 @@ export interface NatsConnectionProvider {
   drain(): Promise<void>;
 }
 
+export interface NatsConnectOptions {
+  servers: string | string[];
+  timeout: number;
+  reconnect: boolean;
+  maxReconnectAttempts: number;
+  authenticator?: Authenticator;
+}
+
 export interface NatsConnectionProviderOptions {
-  connectFn?: (opts: {
-    servers: string | string[];
-    timeout: number;
-    reconnect: boolean;
-    maxReconnectAttempts: number;
-  }) => Promise<NatsConnection>;
+  connectFn?: (opts: NatsConnectOptions) => Promise<NatsConnection>;
 }
 
 /**
@@ -94,7 +111,10 @@ export function createNatsConnectionProvider(
     })().catch(() => {});
   }
 
-  async function connectWithRetry(url: string | string[]): Promise<void> {
+  async function connectWithRetry(
+    url: string | string[],
+    authenticator?: Authenticator,
+  ): Promise<void> {
     let attempt = 0;
     while (!stopped) {
       try {
@@ -103,6 +123,7 @@ export function createNatsConnectionProvider(
           timeout: CONNECT_TIMEOUT_MS,
           reconnect: true,
           maxReconnectAttempts: -1,
+          ...(authenticator ? { authenticator } : {}),
         });
         console.log(
           `[NatsProvider] Connected to ${nc.getServer()} after ${attempt} attempt(s)`,
@@ -127,11 +148,14 @@ export function createNatsConnectionProvider(
   }
 
   return {
-    init(url: string | string[]): void {
+    init(url: string | string[], options?: NatsInitOptions): void {
       if (initialized) return;
       initialized = true;
       stopped = false;
-      connectWithRetry(url).catch(() => {});
+      const authenticator = options?.creds
+        ? credsAuthenticator(new TextEncoder().encode(options.creds))
+        : undefined;
+      connectWithRetry(url, authenticator).catch(() => {});
     },
 
     isConnected(): boolean {
@@ -175,11 +199,6 @@ export function createNatsConnectionProvider(
   };
 }
 
-function defaultConnect(opts: {
-  servers: string | string[];
-  timeout: number;
-  reconnect: boolean;
-  maxReconnectAttempts: number;
-}): Promise<NatsConnection> {
+function defaultConnect(opts: NatsConnectOptions): Promise<NatsConnection> {
   return connect(opts);
 }

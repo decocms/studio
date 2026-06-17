@@ -13,8 +13,6 @@
 
 import type { Meter, Tracer } from "@opentelemetry/api";
 import type { Kysely } from "kysely";
-import type { LinkClaim } from "../links/link-claim-registry";
-import type { LinkClaimRegistry } from "@/links/link-claim-registry";
 import type { ControlFrame } from "@/api/routes/decopilot/control-frames";
 import type { CredentialVault } from "../encryption/credential-vault";
 import type { Database, Permission } from "../storage/types";
@@ -431,31 +429,18 @@ export interface StudioContext extends HarnessContext {
   sandboxPreference?: "agent-sandbox" | "cluster-default" | "user-desktop";
 
   /**
-   * Link claim for the user this run is dispatched on behalf of, if any.
-   * Set by `prepareRun` when the resolved `DispatchTarget` references a
-   * link (either `local/desktop` or `remote-cli`). The desktop sandbox
-   * provider reads this to know which daemon is connected without re-querying
-   * the registry. Unset for hosted/default runs.
+   * Live desktop-link status probe (cluster → daemon over the tunnel).
+   * Replaces the claim-registry read for presence. Returns `{ online: false }`
+   * when no link/connection answers within the probe timeout.
    */
-  linkForCurrentRun?: LinkClaim;
+  linkStatusProbe?: import("@/links/tunnel-status-probe").LinkStatusProbe;
 
   /**
-   * Cluster-wide LinkClaimRegistry, injected by the context factory. Tools
-   * that touch the sandbox provider outside the decopilot dispatch path (e.g.
-   * `SANDBOX_START`, the always-on sandbox auto-provisioner) read this to
-   * resolve the acting user's link on demand — there is no `prepareRun` to
-   * pre-populate `linkForCurrentRun` for them. Undefined in test contexts
-   * that don't supply a registry.
-   */
-  linkClaimRegistry?: LinkClaimRegistry;
-
-  /**
-   * Publish a control frame onto a user's link control channel
-   * (`links.control.<userSub>`), where the desktop daemon's long-poll picks
-   * it up. Fire-and-forget: a no-op when NATS is unavailable. Deliberately
-   * narrower than the CancelBroadcast it delegates to — tools only ever
-   * publish (LINK_DISCONNECT sends `shutdown`); start/stop/broadcast stay
-   * with the app wiring. Undefined in test contexts without a broadcast.
+   * Publish a control frame onto a user's active link. Fire-and-forget: a no-op
+   * when no live tunnel claim exists. Deliberately narrower than the
+   * CancelBroadcast it delegates to — tools only ever publish (LINK_DISCONNECT
+   * sends `shutdown`); start/stop/broadcast stay with the app wiring. Undefined
+   * in test contexts without a broadcast.
    */
   publishLinkControlFrame?: (userSub: string, frame: ControlFrame) => void;
 }

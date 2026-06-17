@@ -1,27 +1,22 @@
 /**
- * Module-scoped registry mapping pull-proxy request IDs (`reqId`) to per-request
- * AbortControllers (Phase C-bis S2).
+ * Module-scoped registry mapping tunnel request IDs (`reqId`) to per-request
+ * AbortControllers.
  *
- * The pull reverse-proxy channel opens ONE reqId per cluster→daemon request:
- * the long-lived `/events` SSE, the `/idle` poll, and each decopilot vm-tool
- * call are all distinct reqIds (one run fans out to many). So this registry is
- * keyed by **reqId**, NOT runId — `run-abort-registry.ts` (keyed by runId) is
- * the sibling for the work-poll dispatch path; the two are intentionally
- * separate (a single run holds one runId but many proxy reqIds).
+ * The cluster-to-daemon transport opens ONE reqId per request: the long-lived
+ * `/events` SSE, the `/idle` poll, and each decopilot vm-tool call are all
+ * distinct reqIds (one run fans out to many). So this registry is keyed by
+ * **reqId**, NOT runId — `run-abort-registry.ts` (keyed by runId) is the
+ * sibling for work-item dispatch; the two are intentionally separate (a single
+ * run holds one runId but many proxy reqIds).
  *
  * Lifecycle:
- *   - `runProxyPollLoop` registers an AbortController per dequeued RequestFrame
- *     and unregisters it in the handler's `finally` (so the Map can't grow
- *     unboundedly — one entry per in-flight proxy request at most).
- *   - The daemon is outbound-only and cannot subscribe to
- *     `links.proxy.cancel.<reqId>` directly, so cancel is routed through the
- *     EXISTING control-poll: the cluster publishes a `{type:"cancel_req",reqId}`
- *     control frame to `links.control.<userSub>`; the control-poll loop calls
- *     `abort(reqId)` here. Aborting releases `handleStream`'s reader, which runs
- *     `acquireDispatch`'s release — the ONLY thing that frees an `/events` SSE
- *     slot (`MAX_SSE_CLIENTS=100`), since `/events` never ends on its own.
- *
- * ⚠️ SHIPPED DAEMON — needs human review before merge.
+ *   - The daemon registers an AbortController per incoming RequestFrame and
+ *     unregisters it in the handler's `finally` (so the Map can't grow
+ *     unboundedly — one entry per in-flight request at most).
+ *   - A `{type:"cancel_req",reqId}` control frame calls `abort(reqId)` here.
+ *     Aborting releases `handleStream`'s reader, which runs `acquireDispatch`'s
+ *     release — the ONLY thing that frees an `/events` SSE slot
+ *     (`MAX_SSE_CLIENTS=100`), since `/events` never ends on its own.
  */
 
 const registry = new Map<string, AbortController>();

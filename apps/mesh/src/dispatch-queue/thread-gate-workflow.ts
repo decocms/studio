@@ -31,11 +31,11 @@ import type { DispatchTarget } from "@/links/resolve-dispatch-target";
 import { posthog } from "@/posthog";
 import { sleep } from "@decocms/std";
 import type {
-  LinkWorkQueue,
   MessagesRef,
   WorkItem,
   WorkItemSandbox,
-} from "@/api/routes/decopilot/link-work-queue";
+} from "@/links/link-work-item";
+import type { LinkWorkPublisher } from "@/links/tunnel-work-dispatch";
 
 export const THREAD_GATE_QUEUE = "thread-gate";
 
@@ -89,34 +89,29 @@ export async function pollUntilTerminal(
 export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
 
 /**
- * Pure decision for the thread-gate's pull-vs-local routing (Transport
- * Convergence).
+ * Pure decision for the thread-gate's desktop-vs-hosted routing.
  *
- * Pull fires when BOTH of:
- *   1. the runtime is pull-capable (NATS work queue + pullDispatchFn wired);
+ * Desktop dispatch fires when BOTH of:
+ *   1. the runtime has a desktop work publisher + prepareLinkWorkFn wired;
  *   2. the dispatch target's `sandboxProviderKind === 'user-desktop'` — i.e.
  *      POST-time `resolveDispatchTarget` found a LIVE desktop link (the gate
- *      trusts the pre-resolved target and never re-probes `linkClaimRegistry`,
- *      which would drift on replay if the link went offline).
+ *      trusts the pre-resolved target and never re-probes the link, which
+ *      would drift on replay if the link went offline).
  *
- * EVERY user-desktop run goes pull — ALL harnesses (decopilot, claude-code,
- * codex) and BOTH storage generations (v1 and v2). The push `remoteDispatch`
- * transport is deleted; pull (the work queue) is the sole local transport.
- * Decopilot desktop now ALSO runs in a sandbox, and the pull work item carries
- * its sandbox config (see `resolvePullSandboxConfig`). The v1 generation is
- * handled by `consumeRelayedRun`'s v1 whole-message branch (built in Task 10),
- * so a v1 user-desktop thread routed to pull persists correctly.
+ * EVERY user-desktop run goes through the desktop downstream command publisher
+ * over tunnel. Decopilot desktop also runs in a sandbox, and the work item
+ * carries its sandbox config (see `resolveLinkSandboxConfig`). The v1
+ * generation is handled by `consumeRelayedRun`'s v1 whole-message branch
+ * (built in Task 10), so a v1 user-desktop thread persists correctly.
  *
  * Hosted agent-sandbox threads and undefined targets (legacy paths) all yield
- * `false` → hosted local dispatch. This is the fix for the reverted NATS-gated
- * cutover (40562b383), which keyed only on pull-capability and routed EVERY
- * chat to a pull work-queue nobody drains.
+ * `false` → hosted local dispatch.
  */
-export function decidePullDispatch(input: {
-  isPullCapable: boolean;
+export function decideLinkDispatch(input: {
+  isLinkCapable: boolean;
   sandboxProviderKind?: DispatchTarget["sandboxProviderKind"];
 }): boolean {
-  return input.isPullCapable && input.sandboxProviderKind === "user-desktop";
+  return input.isLinkCapable && input.sandboxProviderKind === "user-desktop";
 }
 
 /**
@@ -177,12 +172,12 @@ export interface ThreadGateRuntime {
    */
   runTimeoutMs?: number;
   /**
-   * Pull-transport dependencies (Transport Convergence). When present and the
-   * dispatch target's `sandboxProviderKind === 'user-desktop'`, the gate uses
-   * these instead of dispatchRunFn — for every user-desktop run (all harnesses,
-   * both storage generations). Pull is the sole local transport.
+   * Desktop downstream dependencies. When present and the dispatch target's
+   * `sandboxProviderKind === 'user-desktop'`, the gate uses these instead of
+   * dispatchRunFn — for every user-desktop run (all harnesses, both storage
+   * generations). In production this is the tunnel work publisher.
    */
-  pullDispatchFn?: (
+  prepareLinkWorkFn?: (
     input: DispatchRunInput,
     ctx: StudioContext,
     deps: DispatchRunDeps,
@@ -194,7 +189,7 @@ export interface ThreadGateRuntime {
     sandboxConfig: WorkItemSandbox | null;
     orgSlug: string;
   }>;
-  workQueue?: LinkWorkQueue;
+  workPublisher?: LinkWorkPublisher;
   /**
    * Poll interval for the gate's status-polling loop (ms). Defaults to
    * 3 000 ms in production; tests pass 0.
@@ -237,27 +232,26 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     throw new Error("user membership lost mid-dispatch");
   }
 
-  // Resolve whether this thread should use the pull transport.
+  // Resolve whether this thread should use a desktop downstream transport.
   //
-  // TRANSPORT CONVERGENCE: EVERY user-desktop run goes pull — all harnesses
-  // (decopilot, claude-code, codex) and both storage generations (v1, v2). The
-  // push `remoteDispatch` transport is deleted; pull is the sole local
-  // transport. The target was resolved once at POST time (routes.ts
+  // TRANSPORT CONVERGENCE: EVERY user-desktop run goes through the desktop
+  // command publisher — all harnesses (decopilot, claude-code, codex) and both
+  // storage generations (v1, v2). The target was resolved once at POST time
+  // (routes.ts
   // `resolveDispatchTarget`) and forwarded on `request.target`; we key off it
-  // here instead of re-probing `linkClaimRegistry` — re-resolving at replay
+  // here instead of re-probing the resolved target — re-resolving at replay
   // time would drift if the link went offline between enqueue and dispatch.
   // Hosted agent-sandbox threads (no desktop daemon) yield
   // `sandboxProviderKind === "agent-sandbox"` → hosted local dispatch; an
-  // undefined target (legacy paths) also falls back. This is the fix for the
-  // reverted NATS-gated cutover (40562b383), which routed EVERY chat to a pull
-  // work-queue nobody drains.
-  const isPullCapable = rt.pullDispatchFn != null && rt.workQueue != null;
-  const isPull = decidePullDispatch({
-    isPullCapable,
+  // undefined target (legacy paths) also falls back.
+  const workPublisher = rt.workPublisher;
+  const isLinkCapable = rt.prepareLinkWorkFn != null && workPublisher != null;
+  const useLink = decideLinkDispatch({
+    isLinkCapable,
     sandboxProviderKind: request.target?.sandboxProviderKind,
   });
 
-  if (!isPull) {
+  if (!useLink) {
     // ── Hosted local-dispatch path (agent-sandbox / legacy) — unchanged ──
     // Abort timer is opt-in. Automations supply a 5-min cap so a runaway
     // cron can't pin a thread slot forever; user messages leave it unset
@@ -287,7 +281,7 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     return;
   }
 
-  // ── Pull path (Phase B) ──────────────────────────────────────────────
+  // ── Link path ─────────────────────────────────────────────────────────
   // 1. Claim the run and mint the fence token.
   const timeoutMs = ctx.timeoutMs ?? rt.runTimeoutMs;
   const abortController = new AbortController();
@@ -304,7 +298,7 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       messagesRef,
       sandboxConfig,
       orgSlug,
-    } = await rt.pullDispatchFn!(
+    } = await rt.prepareLinkWorkFn!(
       { ...request, abortSignal: abortController.signal },
       meshCtx,
       rt.deps,
@@ -314,19 +308,20 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     //    runFenceToken, NOT runId — runId aliases the threadId, so sequential
     //    turns would collide in NATS dedup; see `workItemDedupKey`).
     // `harnessInput` is the complete wire `HarnessStreamInput` that
-    // `pullDispatch` built eagerly (mcp endpoint minted, messages
+    // `prepareLinkWorkDispatch` built eagerly (mcp endpoint minted, messages
     // materialized, virtualMcp + fence token already on it) — exactly the
     // shape the daemon validates against `harnessStreamInputSchema`. The
     // prior gap (publishing the raw DispatchRunInput) is now closed.
-    // This work item is consumed by the Phase D daemon pull loop, which
-    // drains the per-user WorkQueue subject and runs the harness remotely.
+    // This work item is consumed by the daemon link work handler over the
+    // active tunnel and runs the harness remotely.
     //
     // `sandbox` carries the full provisioning config (handle, repo clone URL,
     // workload runtime) so the daemon can spawn the sandbox cold. `orgSlug`
     // lets the daemon construct the ingest URL without a DB lookup.
-    // `messagesRef` is present when `pullDispatch` offloaded messages to
-    // object storage because the harnessInput exceeded MAX_PUBLISH_BYTES;
-    // the daemon forwards it verbatim to /_sandbox/dispatch for re-inflation.
+    // `messagesRef` is present when `prepareLinkWorkDispatch` offloaded
+    // messages to object storage because the harnessInput exceeded the inline
+    // payload budget; the daemon forwards it verbatim to /_sandbox/dispatch
+    // for re-inflation.
     const workItem: WorkItem = {
       runId: taskId,
       threadId: request.taskId ?? ctx.threadId,
@@ -338,7 +333,26 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
       orgSlug,
       ...(messagesRef ? { messagesRef } : {}),
     };
-    await rt.workQueue!.publish(request.userId, workItem);
+    try {
+      await workPublisher!.publish(request.userId, workItem, {
+        signal: abortController.signal,
+      });
+    } catch (err) {
+      // Optimistic dispatch: the desktop link is unreachable (e.g.
+      // `tunnel_no_first_frame` — no daemon answering the tunnel). Self-fail the
+      // run so it settles into a terminal `failed` state instead of hanging
+      // `in_progress` forever: nothing will arrive over the tunnel to release
+      // the poll below, and re-throwing would only make DBOS retry the publish
+      // against a daemon that isn't there. The frontend already gates the
+      // compose box on the live `/api/links/status` probe, so this is the rare
+      // race where the link dropped between the probe and the send.
+      console.error(
+        `[thread-gate] link work publish failed for run=${taskId}; marking failed`,
+        err,
+      );
+      await meshCtx.storage.threads.forceFailIfInProgress(taskId);
+      return;
+    }
 
     // 3. Poll threads.status until terminal (L6, L7).
     // The ingest finish handler transitions the run to a terminal status,
@@ -485,6 +499,12 @@ async function threadGateWorkflowFn(
 
 const threadGateWorkflow = DBOS.registerWorkflow(threadGateWorkflowFn, {
   name: "threadGateWorkflow",
+  // A gate now spans the whole run (no 1 h cap), so a multi-hour run can
+  // survive many rolling deploys; each pod recycle the gate lives through costs
+  // one recovery attempt. The default (100) could dead-letter a legitimately
+  // long run mid-flight, which would free the slot while the daemon still runs
+  // (a second-dispatch hazard). 1000 gives generous headroom.
+  maxRecoveryAttempts: 1000,
 });
 
 /**

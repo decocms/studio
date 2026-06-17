@@ -50,6 +50,7 @@ import {
 } from "./pills/agent-options";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
+import { useCurrentLink } from "@/web/hooks/use-current-link";
 import {
   pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
@@ -542,6 +543,14 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     availability,
   );
 
+  // Live desktop-link presence (polled every ~5s via the `/api/links/status`
+  // probe). When the user hasn't explicitly pinned a sandbox kind, the client
+  // chooses the default optimistically from this signal: route to the desktop
+  // when its link is online, otherwise fall back to the hosted agent sandbox.
+  // Read inline (no useEffect/useMemo) so the send path always sees the latest
+  // presence at render time.
+  const currentLink = useCurrentLink();
+
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's
   // availability-resolved global picker.
@@ -559,7 +568,10 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     ? AGENT_OPTION_PINS[effectiveAgentOption]
     : null;
   const pendingHarnessId = effectivePins?.harness ?? null;
-  const pendingSandboxProviderKind = effectivePins?.sandbox ?? null;
+  // Prefer the user's explicit pin; otherwise default from live link presence.
+  const pendingSandboxProviderKind: SandboxProviderKind | null =
+    effectivePins?.sandbox ??
+    (currentLink.online ? "user-desktop" : "agent-sandbox");
 
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
