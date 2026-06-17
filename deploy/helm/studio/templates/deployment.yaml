@@ -67,6 +67,10 @@ spec:
             - secretRef:
                 name: {{ include "chart-deco-studio.secretName" . }}
           env:
+            {{- if .Values.terminationGracePeriodSeconds }}
+            - name: SHUTDOWN_GRACE_SECONDS
+              value: {{ .Values.terminationGracePeriodSeconds | quote }}
+            {{- end }}
             {{- if .Values.otel.enabled }}
             {{- if .Values.otel.protocol }}
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
