@@ -220,7 +220,7 @@ describe("reactAll (real Postgres)", () => {
   });
 
   describe("RUN_COMPLETED", () => {
-    it("sets status=completed, clears run_* columns, purges, emits 2 events", async () => {
+    it("sets status=completed, clears run_* columns, does NOT purge, emits 2 events", async () => {
       const { deps, sseEvents, purged } = makeReactor();
       const thread = await createThread();
       await setInProgress(thread.id);
@@ -235,13 +235,16 @@ describe("reactAll (real Postgres)", () => {
       expect(row?.run_owner_pod).toBeNull();
       expect(row?.run_config).toBeNull();
       expect(row?.run_started_at).toBeNull();
-      expect(purged).toEqual([thread.id]);
+      // Purge ownership moved to the durable projector workflow's success path
+      // (projector-workflow.ts cleanupRunStep). The reactor MUST NOT purge on
+      // the live finish event — it would race the workflow's JetStream read.
+      expect(purged).toHaveLength(0);
       expect(sseEvents).toHaveLength(2);
     });
   });
 
   describe("RUN_REQUIRES_ACTION", () => {
-    it("sets status=requires_action, clears run_* columns, purges, emits 2 events", async () => {
+    it("sets status=requires_action, clears run_* columns, does NOT purge, emits 2 events", async () => {
       const { deps, sseEvents, purged } = makeReactor();
       const thread = await createThread();
       await setInProgress(thread.id);
@@ -261,7 +264,8 @@ describe("reactAll (real Postgres)", () => {
       expect(row?.run_owner_pod).toBeNull();
       expect(row?.run_config).toBeNull();
       expect(row?.run_started_at).toBeNull();
-      expect(purged).toEqual([thread.id]);
+      // See RUN_COMPLETED above: purge is the projector workflow's job now.
+      expect(purged).toHaveLength(0);
       expect(sseEvents).toHaveLength(2);
     });
   });

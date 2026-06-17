@@ -1,5 +1,6 @@
-import { describe, it, expect, mock } from "bun:test";
-import { NatsStreamBuffer } from "./nats-stream-buffer";
+import { describe, it, expect, mock, test } from "bun:test";
+import { StorageType } from "nats";
+import { decopilotStreamConfig, NatsStreamBuffer } from "./nats-stream-buffer";
 
 type DeferredMsg = {
   data: Uint8Array;
@@ -79,6 +80,13 @@ async function readAll(stream: ReadableStream): Promise<unknown[]> {
   return out;
 }
 
+test("decopilot stream is file-backed with a dedup window and SLA retention", () => {
+  const c = decopilotStreamConfig();
+  expect(c.storage).toBe(StorageType.File);
+  expect(c.duplicate_window).toBeGreaterThanOrEqual(2 * 60 * 1_000_000_000); // >= 2min (ns)
+  expect(c.max_age).toBeGreaterThanOrEqual(30 * 60 * 1_000_000_000); // >= 30min SLA
+});
+
 describe("NatsStreamBuffer", () => {
   it("purge is a no-op when jsm is not initialized (no throw)", () => {
     const buffer = new NatsStreamBuffer({
@@ -153,6 +161,44 @@ describe("NatsStreamBuffer", () => {
 
     await buffer.init();
 
+    expect(streamAddMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("init recreates the stream (delete+add) on a storage mismatch", async () => {
+    // JetStream cannot change `storage` in place, so flipping the legacy
+    // Memory stream to File makes `update` reject. The ephemeral run-scratch
+    // stream is dropped and recreated file-backed.
+    const streamInfoMock = mock(() => Promise.resolve({}));
+    const streamUpdateMock = mock(() =>
+      Promise.reject(
+        new Error("stream configuration update can not change storage type"),
+      ),
+    );
+    const streamDeleteMock = mock(() => Promise.resolve(true));
+    const streamAddMock = mock(() => Promise.resolve({}));
+
+    const mockJsm = {
+      streams: {
+        info: streamInfoMock,
+        update: streamUpdateMock,
+        delete: streamDeleteMock,
+        add: streamAddMock,
+      },
+    };
+
+    const mockNc = {
+      jetstreamManager: mock(() => Promise.resolve(mockJsm)),
+    };
+
+    const buffer = new NatsStreamBuffer({
+      getConnection: () => mockNc as never,
+      getJetStream: () => ({}) as never,
+    });
+
+    await buffer.init();
+
+    expect(streamUpdateMock).toHaveBeenCalledTimes(1);
+    expect(streamDeleteMock).toHaveBeenCalledWith("DECOPILOT_STREAMS");
     expect(streamAddMock).toHaveBeenCalledTimes(1);
   });
 
@@ -444,6 +490,53 @@ describe("NatsStreamBuffer", () => {
       expect(await buffer.publishRawChunk("run_1", { type: "start" })).toBe(
         true,
       );
+    });
+
+    it("forwards an explicit msgId for JetStream dedup", async () => {
+      const published: Array<{ subj: string; opts?: unknown }> = [];
+      const mockJs = {
+        publish: mockOf((subj: string, _data: Uint8Array, opts?: unknown) => {
+          published.push({ subj, opts });
+          return Promise.resolve({ seq: published.length });
+        }),
+      };
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => mockJs as never,
+      });
+      (buffer as unknown as { js: unknown }).js = mockJs;
+      await buffer.publishRawChunk(
+        "run1",
+        { type: "text-delta", delta: "x" },
+        { msgId: "run1:fenceA:3" },
+      );
+      expect(published[0]?.opts).toMatchObject({ msgID: "run1:fenceA:3" });
+    });
+  });
+
+  describe("publishDone", () => {
+    it("publishDone writes an awaited done sentinel with a fence-scoped msg id", async () => {
+      const publishMock = mock(
+        (_subj: string, _data: Uint8Array, _opts?: unknown) =>
+          Promise.resolve({ seq: 9 }),
+      );
+      const buffer = new NatsStreamBuffer({
+        getConnection: () => ({}) as never,
+        getJetStream: () => ({ publish: publishMock }) as never,
+      });
+      (buffer as unknown as { js: unknown }).js = { publish: publishMock };
+
+      const ok = await buffer.publishDone("run_1", "fence_a", 7);
+
+      expect(ok).toBe(true);
+      expect(publishMock).toHaveBeenCalledTimes(1);
+      const [subject, data, opts] = publishMock.mock.calls[0]!;
+      expect(subject).toBe("decopilot.stream.run_1");
+      expect(JSON.parse(new TextDecoder().decode(data as Uint8Array))).toEqual({
+        done: true,
+        finalSeq: 7,
+      });
+      expect(opts).toMatchObject({ msgID: "run_1:fence_a:done:7" });
     });
   });
 });

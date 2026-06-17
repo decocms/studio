@@ -4,11 +4,36 @@ import {
   type HarnessStreamPersistence,
 } from "./consume-harness-stream";
 
+/**
+ * Title persistence for the projector. When supplied, the projector becomes the
+ * sole writer of `threads.title`: the title-result chunk in the stream is
+ * persisted via `persistTitle(runId, title)`. Omitted in non-projector callers
+ * (and in the legacy inline path, which keeps its own title interceptor).
+ *
+ * `currentThreadTitle` is the thread's REAL current title (read from the DB by
+ * the projector runtime when the run is resolved). It feeds
+ * `interceptTitleChunks`'s gate: the harness title is persisted ONLY when the
+ * thread still has the default title ("New chat"). On a thread the user
+ * renamed, the gate is closed and the auto-title is NOT applied — so the
+ * projector never overwrites a user-set title.
+ */
+export interface ProjectTitleOptions {
+  threadId: string;
+  /** The thread's current title at projection time (gates auto-title persist). */
+  currentThreadTitle: string | null | undefined;
+  persistTitle: (threadId: string, title: string) => Promise<void>;
+}
+
 export interface ProjectChunksOptions {
   chunks: AsyncIterable<UIMessageChunk>;
   persistence: HarnessStreamPersistence;
   /** Mirrors consumeHarnessStream: shapes the synthesized error part text. */
   sanitizeErrorText?: (error: unknown) => string;
+  /**
+   * When set, the projector persists the harness title chunk via this writer
+   * (it is the sole title writer). Omitted → the title is a no-op (legacy).
+   */
+  title?: ProjectTitleOptions;
 }
 
 async function drain(stream: ReadableStream): Promise<void> {
@@ -65,11 +90,22 @@ export async function projectChunks(
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: options.chunks,
     originalMessages: [],
-    title: {
-      currentThreadTitle: undefined,
-      threadId: "projector",
-      persistTitle: async () => {},
-    },
+    // When a title writer is wired, the projector is the sole `threads.title`
+    // writer. Pass the thread's REAL current title through to the interceptor's
+    // gate: the harness title is persisted only while the thread title is still
+    // the default, so a user-renamed thread is never overwritten by the
+    // projector. Without a writer, fall back to the inert no-op (legacy).
+    title: options.title
+      ? {
+          currentThreadTitle: options.title.currentThreadTitle,
+          threadId: options.title.threadId,
+          persistTitle: options.title.persistTitle,
+        }
+      : {
+          currentThreadTitle: undefined,
+          threadId: "projector",
+          persistTitle: async () => {},
+        },
     persistence,
     sanitizeErrorText: options.sanitizeErrorText,
     hooks: {

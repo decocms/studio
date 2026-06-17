@@ -27,6 +27,14 @@ import {
   type NatsConnection,
 } from "nats";
 import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
+import {
+  buildChunkMsgId,
+  buildDoneMsgId,
+  DECOPILOT_STREAM_NAME,
+  DECOPILOT_STREAM_SUBJECT_PREFIX,
+  parseRunStreamMsgId,
+  streamSubject,
+} from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 import { meter } from "@/observability";
 
@@ -42,11 +50,35 @@ const publishErrorsCounter = meter.createCounter(
   },
 );
 
-const STREAM_NAME = "DECOPILOT_STREAMS";
-const SUBJECT_PREFIX = "decopilot.stream";
-const MAX_AGE_NS = 5 * 60 * 1_000_000_000; // 5 min
+// 30 min — projector-lag SLA: the stream is the sole path to the DB (Phase C),
+// so retention must outlast a projector outage long enough to catch up. Tune later.
+const MAX_AGE_NS = 30 * 60 * 1_000_000_000; // 30 min
+// Time-based Nats-Msg-Id dedup window (spec §10.2): a republished chunk within
+// this window is dropped by JetStream, so an at-least-once producer (outbox
+// retry) can't double-write the same UI part.
+const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
 const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
 const MAX_MSGS_PER_SUBJECT = 20_000; // ~20K chunks per thread
+
+/**
+ * Pure stream config for `DECOPILOT_STREAMS`. File-backed so the run-scratch
+ * stream survives a NATS restart, with a retention SLA and a time-based dedup
+ * window. Extracted from `init()` so it can be unit-tested without a connection.
+ */
+export function decopilotStreamConfig() {
+  return {
+    name: DECOPILOT_STREAM_NAME,
+    subjects: [`${DECOPILOT_STREAM_SUBJECT_PREFIX}.>`],
+    storage: StorageType.File, // was Memory — survive NATS restart
+    max_age: MAX_AGE_NS,
+    max_bytes: MAX_BYTES,
+    max_msgs_per_subject: MAX_MSGS_PER_SUBJECT,
+    discard: DiscardPolicy.Old,
+    retention: RetentionPolicy.Limits,
+    duplicate_window: DUPLICATE_WINDOW_NS, // time-based Nats-Msg-Id dedup (spec §10.2)
+    num_replicas: 1,
+  };
+}
 
 // Above this a single chunk is pathological (not a normal UI stream part).
 // Splitting it would hold tens of MB in memory on reassembly, so we drop it
@@ -115,13 +147,15 @@ const streamEncodeProfiler = STREAM_ENCODE_TRACE
   ? new StreamEncodeProfiler()
   : null;
 
-function assertSafeSubjectToken(id: string): void {
-  if (/[.*>\s]/.test(id)) throw new Error("Invalid NATS subject token");
-}
-
-function streamSubject(taskId: string): string {
-  assertSafeSubjectToken(taskId);
-  return `${SUBJECT_PREFIX}.${taskId}`;
+function fragmentMsgId(
+  msgID: string | undefined,
+  index: number,
+): string | undefined {
+  if (!msgID) return undefined;
+  const parsed = parseRunStreamMsgId(msgID);
+  return parsed?.kind === "chunk"
+    ? buildChunkMsgId({ ...parsed, fragmentIndex: index })
+    : undefined;
 }
 
 function createPublishTracker(taskId: string, orgId?: string) {
@@ -181,28 +215,31 @@ export class NatsStreamBuffer implements StreamBuffer {
     }
     const jsm = await nc.jetstreamManager();
 
-    const config = {
-      name: STREAM_NAME,
-      subjects: [`${SUBJECT_PREFIX}.>`],
-      storage: StorageType.Memory,
-      max_age: MAX_AGE_NS,
-      max_bytes: MAX_BYTES,
-      max_msgs_per_subject: MAX_MSGS_PER_SUBJECT,
-      discard: DiscardPolicy.Old,
-      retention: RetentionPolicy.Limits,
-      num_replicas: 1,
-    };
+    const config = decopilotStreamConfig();
 
     try {
-      await jsm.streams.info(STREAM_NAME);
-      await jsm.streams.update(STREAM_NAME, config);
+      await jsm.streams.info(DECOPILOT_STREAM_NAME);
+      await jsm.streams.update(DECOPILOT_STREAM_NAME, config);
     } catch (err: unknown) {
       const isNotFound =
         err instanceof Error && err.message.includes("stream not found");
       if (isNotFound) {
         await jsm.streams.add(config);
       } else {
-        throw err;
+        // JetStream cannot change a stream's `storage` in place, so flipping the
+        // legacy Memory stream to File makes `update` reject. The stream is
+        // ephemeral run-scratch (it only holds in-flight chunks), so a one-time
+        // delete + add at deploy is safe: drop the old stream and recreate it
+        // file-backed. Any other error is real — rethrow.
+        const isStorageMismatch =
+          err instanceof Error &&
+          /can ?not change.*storage|storage type/i.test(err.message);
+        if (isStorageMismatch) {
+          await jsm.streams.delete(DECOPILOT_STREAM_NAME);
+          await jsm.streams.add(config);
+        } else {
+          throw err;
+        }
       }
     }
 
@@ -236,6 +273,14 @@ export class NatsStreamBuffer implements StreamBuffer {
     const tracker = createPublishTracker(taskId, orgId);
     const encoder = this.encoder;
 
+    // This legacy sentinel is UNFENCED (`{done:true}`, no msgId/finalSeq) and
+    // exists only so JetStream tails close. The projector handoff uses the
+    // awaited public publishDone(runId, fenceToken, finalSeq) so the durable
+    // consumer gets a fence-scoped marker. The DeliverPolicy.All consumer also
+    // sees THIS unfenced sentinel, but consumeProjectorMessages ignores any
+    // `{done}` that isn't a proper DoneEnvelope (finalSeq present) — otherwise
+    // its bare-runId accumulator key would be empty and it would poison the
+    // just-completed run (status=failed). See projector-consumer.ts.
     let terminated = false;
     const publishDone = () => {
       if (terminated) return;
@@ -342,10 +387,17 @@ export class NatsStreamBuffer implements StreamBuffer {
    * caller knows the publish is confirmed. Returns `false` when JetStream is
    * unavailable so the caller does NOT advance its cursor.
    */
-  async publishRawChunk(taskId: string, chunk: unknown): Promise<boolean> {
+  async publishRawChunk(
+    taskId: string,
+    chunk: unknown,
+    opts?: { msgId?: string },
+  ): Promise<boolean> {
     const js = this.js;
     if (!js) return false;
     const subj = streamSubject(taskId);
+    // `msgID` is the NATS dedup header field (Nats-Msg-Id): a seq-keyed id lets
+    // an at-least-once producer re-publish without double-writing.
+    const msgID = opts?.msgId;
     const bytes = this.encoder.encode(JSON.stringify({ p: chunk }));
     if (bytes.length > MAX_CHUNKED_BYTES) {
       console.warn(
@@ -359,7 +411,7 @@ export class NatsStreamBuffer implements StreamBuffer {
       return true;
     }
     if (bytes.length <= MAX_PUBLISH_BYTES) {
-      await js.publish(subj, bytes);
+      await js.publish(subj, bytes, msgID ? { msgID } : undefined);
       return true;
     }
     const total = Math.ceil(bytes.length / MAX_PUBLISH_BYTES);
@@ -371,8 +423,29 @@ export class NatsStreamBuffer implements StreamBuffer {
       const hdrs = natsHeaders();
       hdrs.set(FRAG_INDEX_HEADER, String(i));
       hdrs.set(FRAG_TOTAL_HEADER, String(total));
-      await js.publish(subj, slice, { headers: hdrs });
+      // Per-fragment dedup id keeps re-publishes of a fragmented chunk from
+      // doubling up; the fragment index disambiguates the set.
+      const fragmentId = fragmentMsgId(msgID, i);
+      await js.publish(subj, slice, {
+        headers: hdrs,
+        ...(fragmentId ? { msgID: fragmentId } : {}),
+      });
     }
+    return true;
+  }
+
+  async publishDone(
+    taskId: string,
+    fenceToken: string,
+    finalSeq: number,
+  ): Promise<boolean> {
+    const js = this.js;
+    if (!js) return false;
+    await js.publish(
+      streamSubject(taskId),
+      this.encoder.encode(JSON.stringify({ done: true, finalSeq })),
+      { msgID: buildDoneMsgId({ runId: taskId, fenceToken, finalSeq }) },
+    );
     return true;
   }
 
@@ -518,7 +591,7 @@ export class NatsStreamBuffer implements StreamBuffer {
   purge(taskId: string): void {
     if (!this.jsm) return;
     this.jsm.streams
-      .purge(STREAM_NAME, { filter: streamSubject(taskId) })
+      .purge(DECOPILOT_STREAM_NAME, { filter: streamSubject(taskId) })
       .catch(() => {});
   }
 

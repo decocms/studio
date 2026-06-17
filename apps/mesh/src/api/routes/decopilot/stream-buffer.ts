@@ -44,8 +44,28 @@ export interface StreamBuffer {
    * commit point for the publish-then-consume ingest (spec §5.3): the caller
    * advances its ack cursor only after this resolves `true`. Returns `false`
    * when JetStream is unavailable (caller must not advance the cursor).
+   *
+   * `opts.msgId` sets the JetStream `Nats-Msg-Id` for time-based dedup: a
+   * seq-keyed id (`${runId}:${fenceToken}:${seq}`) lets an at-least-once
+   * producer (outbox retry) re-publish the same chunk without double-writing.
    */
-  publishRawChunk(taskId: string, chunk: unknown): Promise<boolean>;
+  publishRawChunk(
+    taskId: string,
+    chunk: unknown,
+    opts?: { msgId?: string },
+  ): Promise<boolean>;
+
+  /**
+   * Publish the authoritative terminal sentinel for one run and await the
+   * JetStream ack. The projector scheduler starts DBOS projection from this
+   * marker, so callers must not treat a run as handed off until this resolves
+   * true.
+   */
+  publishDone(
+    taskId: string,
+    fenceToken: string,
+    finalSeq: number,
+  ): Promise<boolean>;
 
   /**
    * Subscribe to the per-task subject and stream chunks as a ReadableStream.

@@ -53,7 +53,6 @@ import {
   type SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 import { resolveDefaultSandboxProviderKind } from "@/sandbox/resolve-default-provider-kind";
-import { shouldPinV2FromEnv } from "./v2-canary";
 import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 
@@ -300,7 +299,9 @@ export function applyThreadLock(args: {
     return {
       harnessId: requestedHarnessId,
       sandboxProviderKind: requestedSandboxProviderKind,
-      branch: requestedBranch,
+      branch: taskIdInput
+        ? (thread?.branch ?? requestedBranch)
+        : requestedBranch,
       locked: false,
     };
   }
@@ -589,19 +590,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         pinnedHarness = pinnedHarness ?? input.harnessId ?? credentialHarness;
 
         if (existingThread) {
-          // Stream-of-record v2 canary (DEFAULTS OFF via
-          // STREAM_OF_RECORD_V2_PERCENT). Pin v2 ONLY when (a) the thread has
-          // no prior messages and is not already v2, AND (b) the deterministic
-          // canary predicate selects this thread id. Off by default → every
-          // thread stays message_storage_version=1 and the v1 path is
-          // byte-for-byte unchanged. The message-count probe runs only when
-          // the canary would otherwise fire, so the default path adds no DB
-          // read.
+          // Stream-of-record v2 is the only write path for new runs. Pin every
+          // new thread (no prior messages, not already v2) to v2 so the
+          // ingest -> JetStream -> durable-projector pipeline persists parts.
+          // Existing v1 threads with history remain readable through the legacy
+          // read path; no backfill.
           let pinV2 = false;
-          if (
-            existingThread.message_storage_version !== 2 &&
-            shouldPinV2FromEnv(taskId)
-          ) {
+          if (existingThread.message_storage_version !== 2) {
             try {
               const { total } = await ctx.storage.threads.listMessages(taskId, {
                 limit: 1,
@@ -796,8 +791,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // to a non-owner pod (any multi-pod deployment, including mid-deploy
       // and after a DBOS replay rehome) needs `"all"` to catch chunks the
       // owning pod has already pumped to the shared JetStream subject.
-      // The buffer is purged on terminal events (run-reactor), so `"all"`
-      // only ever replays the current in-flight run.
+      // The buffer is purged when a run reaches a durable terminal state (the
+      // projector workflow's success path for completed runs; the run-reactor
+      // for failed runs), so `"all"` only ever replays the current in-flight
+      // run.
       const deliverPolicy = thread.status === "in_progress" ? "all" : "new";
       const runStartedAgoMs = thread.run_started_at
         ? Date.now() - new Date(thread.run_started_at).getTime()

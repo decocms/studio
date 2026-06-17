@@ -21,6 +21,19 @@ function helloChunks(): UIMessageChunk[] {
   ];
 }
 
+/** A run whose stream carries partial text then an AI-SDK `error` chunk —
+ *  the shape consumeRelayedRun synthesizes from a harness error EVENT. */
+function errorChunks(): UIMessageChunk[] {
+  return [
+    { type: "start", messageId: "m1" } as UIMessageChunk,
+    { type: "start-step" } as UIMessageChunk,
+    { type: "text-start", id: "t" } as UIMessageChunk,
+    { type: "text-delta", id: "t", delta: "partial" } as UIMessageChunk,
+    { type: "text-end", id: "t" } as UIMessageChunk,
+    { type: "error", errorText: "harness_error: boom" } as UIMessageChunk,
+  ];
+}
+
 describe("projectRun", () => {
   test("a healthy run projects once and is not sent to the DLQ", async () => {
     const dlq: Array<{ runId: string; error: unknown }> = [];
@@ -62,6 +75,39 @@ describe("projectRun", () => {
     expect(dlq).toHaveLength(1);
     expect(dlq[0]!.runId).toBe("run_1");
     expect((dlq[0]!.error as Error).message).toBe("unprojectable");
+  });
+
+  test("an error-chunk run persists an error part + finish anchor, then DLQs (→ status failed)", async () => {
+    // The error chunk drives consumeHarnessStream.onError → emitError (which
+    // persists BOTH an `error` part and a `finish` anchor) and sets the source
+    // error → projectChunks re-throws → projectRun exhausts retries and DLQs.
+    // The workflow's failRunStep then marks the run `failed`. The persistence is
+    // idempotent across retries (PartEmitter ON CONFLICT), so the error+finish
+    // parts land even though projectRun returns ok:false.
+    const emittedErrors: Array<[string, string]> = [];
+    const persistence: HarnessStreamPersistence = {
+      emitStepParts: async () => {},
+      emitFinal: async () => {},
+      emitError: async (id, text) => {
+        emittedErrors.push([id, text]);
+      },
+    };
+    const dlq: Array<{ runId: string; error: unknown }> = [];
+    const result = await projectRun({
+      runId: "run_1",
+      chunks: errorChunks(),
+      persistence,
+      onDlq: async (runId, error) => {
+        dlq.push({ runId, error });
+      },
+      backoffMs: () => 0,
+    });
+    // The run is NOT completed — it is sent to the DLQ so the workflow fails it.
+    expect(result.ok).toBe(false);
+    expect(dlq).toHaveLength(1);
+    // emitError ran (it persists the error part + finish anchor in PartEmitter).
+    expect(emittedErrors.length).toBeGreaterThanOrEqual(1);
+    expect(emittedErrors[0]![1]).toBe("harness_error: boom");
   });
 
   test("a transient failure that recovers before exhaustion succeeds without DLQ", async () => {

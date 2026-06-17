@@ -1,7 +1,7 @@
 import type { UIMessageChunk } from "ai";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import type { HarnessStreamPersistence } from "./consume-harness-stream";
-import { projectChunks } from "./project-chunks";
+import { projectChunks, type ProjectTitleOptions } from "./project-chunks";
 
 /** Attempts before a run's projection is declared poison and DLQ'd (spec §5.4
  *  poison-event policy). Bounded so one bad run never stalls the consumer. */
@@ -20,6 +20,8 @@ export interface ProjectRunOptions {
   sanitizeErrorText?: (error: unknown) => string;
   /** Delay calculator override (tests pass `() => 0`). */
   backoffMs?: (attempt: number) => number;
+  /** When set, the projector persists the run's title chunk (sole writer). */
+  title?: ProjectTitleOptions;
 }
 
 export interface ProjectRunResult {
@@ -55,6 +57,7 @@ export async function projectRun(
         })(),
         persistence: options.persistence,
         sanitizeErrorText: options.sanitizeErrorText,
+        title: options.title,
       });
       return { ok: true, attempts: attempt + 1 };
     } catch (error) {
