@@ -629,7 +629,9 @@ export class ThreadConnection {
       const text = await resp.text().catch(() => "");
       throw new Error(text || `POST /messages failed (${resp.status})`);
     }
-    this.setRunStatusStage("received");
+    if (this.runStatusStage.get() !== null) {
+      this.setRunStatusStage("received");
+    }
   }
 
   // ── Internal: SSE loop ──────────────────────────────────────────────────
@@ -822,7 +824,7 @@ export class ThreadConnection {
       chunk.type !== "start" &&
       chunk.type !== "finish" &&
       !chunk.type.startsWith("data-") &&
-      chunk.type !== "step-start"
+      chunk.type !== "start-step"
     ) {
       this.clearRunStatusStage();
     }
