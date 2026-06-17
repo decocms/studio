@@ -90,6 +90,40 @@ worker:
   # Extra env for worker pods only (merged after the shared envFrom).
   env: []
 
+# Static-SPA + reverse-proxy split (the "web" role). When enabled, renders an
+# nginx Deployment + Service (`<fullname>-web`) that serves the prebuilt client
+# bundle and reverse-proxies API/system paths to the main Service (same origin).
+# Cut over by pointing the external gateway/ingress hostname at the web Service.
+# Default false → chart output is unchanged. See deploy/nginx/README.md.
+web:
+  enabled: false
+  replicaCount: 2
+  image:
+    repository: ghcr.io/decocms/studio/web
+    tag: ""              # empty → chart appVersion
+    pullPolicy: IfNotPresent
+  # host:port of the API (main) Service. Empty → in-namespace main Service.
+  # Set to an FQDN (<svc>.<ns>.svc.cluster.local:80) for cross-namespace.
+  apiUpstream: ""
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      memory: "128Mi"
+  # No runAsUser → the nginx-unprivileged image's uid 101 stands (it owns the
+  # cache/pid dirs). readOnlyRootFilesystem stays off so nginx can write them.
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+
 configMap:
   meshConfig:
     NODE_ENV: "production"

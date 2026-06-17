@@ -1,0 +1,97 @@
+{{- if .Values.web.enabled }}
+{{/*
+Static-SPA + reverse-proxy Deployment (the "web" role). Serves the prebuilt
+client bundle via nginx and reverse-proxies API/system paths to the main
+Deployment's Service (same origin → auth cookies stay first-party). Carries a
+distinct `app.kubernetes.io/name` ("<name>-web") and its OWN Service, so the
+main Deployment/Service selectors never match it.
+
+Decoupling: this image is built + versioned independently (release-web.yaml), so
+an API rollout doesn't churn asset hashes (no forced UI refresh) and a UI rollout
+doesn't restart the API. Cut over by pointing the external gateway/ingress
+hostname at the `<fullname>-web` Service.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-web
+  labels:
+    app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-web
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: web
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "chart-deco-studio.chart" . }}
+    {{- if .Chart.AppVersion }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-web
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-web
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: web
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        helm.sh/chart: {{ include "chart-deco-studio.chart" . }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}-web
+          {{- with .Values.web.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.web.image.repository }}:{{ .Values.web.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.web.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # host:port of the API (main) Service; same origin via nginx proxy.
+            - name: API_UPSTREAM
+              value: {{ .Values.web.apiUpstream | default (printf "%s:%v" (include "chart-deco-studio.fullname" .) .Values.service.port) | quote }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          {{- with .Values.web.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
