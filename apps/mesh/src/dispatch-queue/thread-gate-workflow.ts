@@ -36,7 +36,10 @@ import type {
   WorkItemSandbox,
 } from "@/links/link-work-item";
 import type { LinkWorkPublisher } from "@/links/tunnel-work-dispatch";
-import { publishRunStatusStage } from "@/api/routes/decopilot/run-status-stage";
+import {
+  publishRunStatusStage,
+  shouldPublishThreadGateRunStatus,
+} from "@/api/routes/decopilot/run-status-stage";
 
 export { THREAD_GATE_QUEUE } from "./queue-names";
 import { THREAD_GATE_QUEUE } from "./queue-names";
@@ -114,16 +117,6 @@ export function decideLinkDispatch(input: {
   sandboxProviderKind?: DispatchTarget["sandboxProviderKind"];
 }): boolean {
   return input.isLinkCapable && input.sandboxProviderKind === "user-desktop";
-}
-
-export function shouldPublishThreadGateRunStatus(input: {
-  harnessId?: DispatchRunInput["harnessId"];
-  sandboxProviderKind?: DispatchTarget["sandboxProviderKind"];
-}): boolean {
-  return (
-    input.sandboxProviderKind !== "user-desktop" &&
-    input.harnessId === "decopilot"
-  );
 }
 
 /**

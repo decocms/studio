@@ -85,7 +85,10 @@ export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
 import { buildOnTitleUpdated } from "./on-title-updated";
-import { publishRunStatusStage } from "./run-status-stage";
+import {
+  publishRunStatusStage,
+  shouldPublishClusterRunStatus,
+} from "./run-status-stage";
 import type {
   HarnessStreamConsumerHooks,
   HarnessStreamTitleOptions,
@@ -792,9 +795,10 @@ async function prepareRun(
       target.sandboxProviderKind,
     );
 
-    const shouldPublishRunStatus =
-      target.sandboxProviderKind === "agent-sandbox" &&
-      harnessId === "decopilot";
+    const shouldPublishRunStatus = shouldPublishClusterRunStatus({
+      harnessId,
+      sandboxProviderKind: target.sandboxProviderKind,
+    });
 
     // Normalize the client models payload into the v2 per-slot shape FIRST
     // (the HTTP layer still sends a root credentialId), so the permission

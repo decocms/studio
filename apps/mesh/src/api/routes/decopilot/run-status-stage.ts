@@ -12,7 +12,36 @@ export const RUN_STATUS_STAGES = [
 
 export type BackendRunStatusStage = (typeof RUN_STATUS_STAGES)[number];
 
+export const PREPARE_RUN_STATUS_STAGES = [
+  "gathering-context",
+  "preparing-tools",
+  "starting-assistant",
+  "analyzing-scope",
+] as const satisfies readonly BackendRunStatusStage[];
+
 const STAGE_SET = new Set<string>(RUN_STATUS_STAGES);
+
+export function shouldPublishClusterRunStatus(input: {
+  harnessId?: string | null;
+  sandboxProviderKind?: string | null;
+}): boolean {
+  return (
+    input.sandboxProviderKind === "agent-sandbox" &&
+    input.harnessId === "decopilot"
+  );
+}
+
+export function shouldPublishThreadGateRunStatus(input: {
+  harnessId?: string | null;
+  sandboxProviderKind?: string | null;
+}): boolean {
+  // Legacy requests may have no target; those replay through hosted dispatch
+  // unless the target is explicitly user-desktop.
+  return (
+    input.sandboxProviderKind !== "user-desktop" &&
+    input.harnessId === "decopilot"
+  );
+}
 
 export type RunStatusChunk = Extract<
   UIMessageChunk,

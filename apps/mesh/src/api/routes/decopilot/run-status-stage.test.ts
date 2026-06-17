@@ -1,8 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  PREPARE_RUN_STATUS_STAGES,
   buildRunStatusChunk,
   isRunStatusChunk,
   publishRunStatusStage,
+  shouldPublishClusterRunStatus,
+  shouldPublishThreadGateRunStatus,
 } from "./run-status-stage";
 
 describe("buildRunStatusChunk", () => {
@@ -63,5 +66,108 @@ describe("publishRunStatusStage", () => {
     await expect(
       publishRunStatusStage(undefined, "thread-1", "starting-run"),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("PREPARE_RUN_STATUS_STAGES", () => {
+  test("lists the prepare run statuses in emission order", () => {
+    expect(PREPARE_RUN_STATUS_STAGES).toEqual([
+      "gathering-context",
+      "preparing-tools",
+      "starting-assistant",
+      "analyzing-scope",
+    ]);
+  });
+});
+
+describe("shouldPublishClusterRunStatus", () => {
+  test("only publishes for decopilot runs in the agent sandbox", () => {
+    expect(
+      shouldPublishClusterRunStatus({
+        sandboxProviderKind: "agent-sandbox",
+        harnessId: "decopilot",
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldPublishClusterRunStatus({
+        sandboxProviderKind: "user-desktop",
+        harnessId: "decopilot",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishClusterRunStatus({
+        sandboxProviderKind: "agent-sandbox",
+        harnessId: "claude-code",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishClusterRunStatus({
+        sandboxProviderKind: "agent-sandbox",
+        harnessId: "codex",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishClusterRunStatus({
+        sandboxProviderKind: "agent-sandbox",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishClusterRunStatus({
+        harnessId: "decopilot",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldPublishThreadGateRunStatus", () => {
+  test("publishes for decopilot hosted and legacy runs only", () => {
+    expect(
+      shouldPublishThreadGateRunStatus({
+        sandboxProviderKind: "agent-sandbox",
+        harnessId: "decopilot",
+      }),
+    ).toBe(true);
+    expect(
+      shouldPublishThreadGateRunStatus({
+        harnessId: "decopilot",
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldPublishThreadGateRunStatus({
+        sandboxProviderKind: "user-desktop",
+        harnessId: "decopilot",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishThreadGateRunStatus({
+        sandboxProviderKind: "agent-sandbox",
+        harnessId: "claude-code",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishThreadGateRunStatus({
+        sandboxProviderKind: "user-desktop",
+        harnessId: "claude-code",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishThreadGateRunStatus({
+        sandboxProviderKind: "agent-sandbox",
+        harnessId: "codex",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishThreadGateRunStatus({
+        sandboxProviderKind: "user-desktop",
+        harnessId: "codex",
+      }),
+    ).toBe(false);
+    expect(
+      shouldPublishThreadGateRunStatus({
+        sandboxProviderKind: "agent-sandbox",
+      }),
+    ).toBe(false);
   });
 });

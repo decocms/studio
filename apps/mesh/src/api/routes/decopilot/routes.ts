@@ -45,7 +45,10 @@ import type { DispatchRunInput } from "./dispatch-run";
 import { resolveHarnessId } from "./dispatch-run";
 import { stringifyError } from "@decocms/harness/decopilot/stream-error";
 import { enqueueThreadRun } from "@/dispatch-queue";
-import { publishRunStatusStage } from "./run-status-stage";
+import {
+  publishRunStatusStage,
+  shouldPublishClusterRunStatus,
+} from "./run-status-stage";
 import { wrapWithSseKeepalive } from "./sse-keepalive";
 import { resolveDispatchTarget } from "../../../links/resolve-dispatch-target";
 import {
@@ -680,8 +683,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         { workflowID },
       );
       if (
-        target.sandboxProviderKind === "agent-sandbox" &&
-        pinnedHarness === "decopilot"
+        shouldPublishClusterRunStatus({
+          harnessId: pinnedHarness,
+          sandboxProviderKind: target.sandboxProviderKind,
+        })
       ) {
         await publishRunStatusStage(streamBuffer, taskId, "waiting-runner");
       }
