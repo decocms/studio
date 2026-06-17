@@ -336,6 +336,16 @@ describe("projectChunks", () => {
           id: "run-status",
           data: { stage: "gathering-context" },
         } as UIMessageChunk;
+        yield {
+          type: "data-run-status",
+          id: "run-status",
+          data: { stage: "future-stage" },
+        } as unknown as UIMessageChunk;
+        yield {
+          type: "data-run-status",
+          id: "run-status",
+          data: {},
+        } as unknown as UIMessageChunk;
         yield { type: "start", messageId: "m-1" } as UIMessageChunk;
         yield { type: "text-start", id: "txt" } as UIMessageChunk;
         yield {
@@ -368,5 +378,17 @@ describe("projectChunks", () => {
           );
         }),
     ).toBe(false);
+    expect(
+      emitted
+        .flatMap((message) => message.parts ?? [])
+        .some((part) => {
+          return (
+            typeof part === "object" &&
+            part !== null &&
+            (part as { type?: unknown; text?: unknown }).type === "text" &&
+            (part as { text?: unknown }).text === "hello"
+          );
+        }),
+    ).toBe(true);
   });
 });

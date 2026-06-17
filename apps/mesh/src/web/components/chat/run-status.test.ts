@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   RUN_STATUS_COPY,
   advanceRunStatusStage,
+  isRunStatusControlChunk,
   parseRunStatusStageChunk,
   RUN_STATUS_STAGE_ORDER,
 } from "./run-status";
@@ -53,6 +54,26 @@ describe("parseRunStatusStageChunk", () => {
         data: {},
       }),
     ).toBeNull();
+  });
+});
+
+describe("isRunStatusControlChunk", () => {
+  test("matches any run-status control chunk, even unknown or malformed", () => {
+    expect(
+      isRunStatusControlChunk({
+        type: "data-run-status",
+        id: "run-status",
+        data: { stage: "gathering-context" },
+      }),
+    ).toBe(true);
+    expect(
+      isRunStatusControlChunk({
+        type: "data-run-status",
+        data: { stage: "future-stage" },
+      }),
+    ).toBe(true);
+    expect(isRunStatusControlChunk({ type: "data-run-status" })).toBe(true);
+    expect(isRunStatusControlChunk({ type: "data-other" })).toBe(false);
   });
 });
 

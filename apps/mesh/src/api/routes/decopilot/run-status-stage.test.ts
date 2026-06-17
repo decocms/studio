@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import {
   PREPARE_RUN_STATUS_STAGES,
   buildRunStatusChunk,
+  isRunStatusControlChunk,
   isRunStatusChunk,
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
@@ -35,6 +36,23 @@ describe("isRunStatusChunk", () => {
         data: { stage: "connecting-desktop" },
       }),
     ).toBe(false);
+  });
+});
+
+describe("isRunStatusControlChunk", () => {
+  test("matches any run-status control chunk, even unknown or malformed", () => {
+    expect(
+      isRunStatusControlChunk(buildRunStatusChunk("preparing-tools")),
+    ).toBe(true);
+    expect(
+      isRunStatusControlChunk({
+        type: "data-run-status",
+        id: "run-status",
+        data: { stage: "future-stage" },
+      }),
+    ).toBe(true);
+    expect(isRunStatusControlChunk({ type: "data-run-status" })).toBe(true);
+    expect(isRunStatusControlChunk({ type: "data-other" })).toBe(false);
   });
 });
 

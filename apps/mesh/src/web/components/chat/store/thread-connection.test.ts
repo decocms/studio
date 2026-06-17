@@ -8,7 +8,7 @@ import {
   type ThreadObserver,
   upsertById,
 } from "./thread-connection";
-import type { UIMessage } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 
 // ─── Fetch mock builders ─────────────────────────────────────────────────────
 
@@ -248,6 +248,35 @@ describe("chunk handling", () => {
 
     await new Promise((r) => setTimeout(r, 10));
     expect(conn.runStatusStage.get()).toBe("gathering-context");
+    expect(conn.messages.get().filter((m) => m.role === "assistant")).toEqual(
+      [],
+    );
+  });
+
+  test("consumes unknown and malformed data-run-status without creating assistant content", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-malformed", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "future-stage" },
+    } as unknown as UIMessageChunk);
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: {},
+    } as unknown as UIMessageChunk);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBeNull();
     expect(conn.messages.get().filter((m) => m.role === "assistant")).toEqual(
       [],
     );
@@ -507,6 +536,65 @@ describe("stop", () => {
     expect(textOf("m-1")).toBe("partial");
     // m-2 contains only run 2's content — no contamination from run 1.
     expect(textOf("m-2")).toBe("fresh");
+  });
+
+  test("accepts pre-start run status for a submitted run after stop", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-stop-status", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    stream.enqueue({ type: "start", messageId: "m-1" });
+    stream.enqueue({ type: "text-start", id: "p-1" });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: "partial" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    conn.stop();
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "gathering-context" },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBeNull();
+
+    await conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "u-2",
+          role: "user",
+          parts: [{ type: "text", text: "second" }],
+        },
+      },
+      baseOpts,
+    );
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "waiting-runner" },
+    });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: " leftover" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(conn.runStatusStage.get()).toBe("waiting-runner");
+
+    stream.enqueue({ type: "start", messageId: "m-2" });
+    stream.enqueue({ type: "text-start", id: "p-2" });
+    stream.enqueue({ type: "text-delta", id: "p-2", delta: "fresh" });
+    stream.enqueue({ type: "text-end", id: "p-2" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const ids = conn.messages.get().map((m) => m.id);
+    expect(ids).toEqual(["m-1", "u-2", "m-2"]);
   });
 });
 

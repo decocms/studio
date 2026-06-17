@@ -55,6 +55,7 @@ import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
 import {
   advanceRunStatusStage,
+  isRunStatusControlChunk,
   parseRunStatusStageChunk,
   type RunStatusStage,
 } from "../run-status";
@@ -266,6 +267,7 @@ export class ThreadConnection {
    * user has queued in the meantime.
    */
   private waitingForNewRun = false;
+  private acceptPreStartRunStatus = true;
   /** `start` chunk opened a new assistant turn — don't seed the prior one. */
   private freshRunSubstream = false;
   private client: MCPClient | null;
@@ -323,6 +325,7 @@ export class ThreadConnection {
     // it, an in-flight SSE assistant row can sit above the user we just
     // appended because foldSubStream only upserts by id.
     this.messages.set(mergeAndSort(next, []));
+    this.acceptPreStartRunStatus = true;
 
     // A new user turn always POSTs. For approval / toolOutput actions, only
     // POST once the assistant turn has no remaining client-side resolutions
@@ -365,6 +368,7 @@ export class ThreadConnection {
       this.status.set({ kind: "ready" });
     }
     this.clearRunStatusStage();
+    this.acceptPreStartRunStatus = false;
     // Freeze the in-flight assistant message at its current state and gate
     // every subsequent chunk on a fresh `start` boundary. Without this, the
     // cancel's racing tail chunks (or a server-side replay across an SSE
@@ -808,16 +812,29 @@ export class ThreadConnection {
       this.chunkBuffer.push(chunk);
       return;
     }
+    const isRunStatusControl = isRunStatusControlChunk(chunk);
+    const runStatusStage = parseRunStatusStageChunk(chunk);
     if (this.waitingForNewRun) {
+      if (isRunStatusControl) {
+        if (this.acceptPreStartRunStatus && runStatusStage) {
+          this.setRunStatusStage(runStatusStage);
+          this.observer?.onData?.(
+            chunk as Extract<UIMessageChunk, { type: `data-${string}` }>,
+          );
+        }
+        return;
+      }
       if (chunk.type !== "start") return;
       this.waitingForNewRun = false;
+      this.acceptPreStartRunStatus = true;
     }
-    const runStatusStage = parseRunStatusStageChunk(chunk);
-    if (runStatusStage) {
-      this.setRunStatusStage(runStatusStage);
-      this.observer?.onData?.(
-        chunk as Extract<UIMessageChunk, { type: `data-${string}` }>,
-      );
+    if (isRunStatusControl) {
+      if (runStatusStage) {
+        this.setRunStatusStage(runStatusStage);
+        this.observer?.onData?.(
+          chunk as Extract<UIMessageChunk, { type: `data-${string}` }>,
+        );
+      }
       return;
     }
     if (

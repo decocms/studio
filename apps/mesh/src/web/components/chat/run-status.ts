@@ -80,6 +80,11 @@ export function parseRunStatusStageChunk(
   return isRunStatusStage(stage) ? stage : null;
 }
 
+export function isRunStatusControlChunk(chunk: unknown): boolean {
+  if (!chunk || typeof chunk !== "object") return false;
+  return (chunk as { type?: unknown }).type === "data-run-status";
+}
+
 export function advanceRunStatusStage(
   current: RunStatusStage | null,
   incoming: RunStatusStage,

@@ -78,6 +78,11 @@ export function isRunStatusChunk(chunk: unknown): chunk is RunStatusChunk {
   );
 }
 
+export function isRunStatusControlChunk(chunk: unknown): boolean {
+  if (!chunk || typeof chunk !== "object") return false;
+  return (chunk as { type?: unknown }).type === "data-run-status";
+}
+
 export async function publishRunStatusStage(
   streamBuffer: Pick<StreamBuffer, "publishRawChunk"> | undefined,
   taskId: string,

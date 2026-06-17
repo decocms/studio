@@ -3,7 +3,7 @@ import {
   consumeHarnessStream,
   type HarnessStreamPersistence,
 } from "./consume-harness-stream";
-import { isRunStatusChunk } from "./run-status-stage";
+import { isRunStatusControlChunk } from "./run-status-stage";
 
 /**
  * Title persistence for the projector. When supplied, the projector becomes the
@@ -118,7 +118,7 @@ export async function projectChunks(
   const wrappedChunks: AsyncIterable<UIMessageChunk> = (async function* () {
     try {
       for await (const chunk of options.chunks) {
-        if (isRunStatusChunk(chunk)) continue;
+        if (isRunStatusControlChunk(chunk)) continue;
         yield chunk;
       }
     } catch (e) {
