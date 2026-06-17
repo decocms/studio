@@ -13,9 +13,23 @@ function containsPathTraversal(segment: string): boolean {
   }
   try {
     const decoded = decodeURIComponent(segment);
-    return (
-      decoded.includes("\\") || decoded.includes("..") || decoded.includes("\0")
-    );
+    if (
+      decoded.includes("\\") ||
+      decoded.includes("..") ||
+      decoded.includes("\0")
+    ) {
+      return true;
+    }
+    // A percent-encoded slash (%2f/%2F) decodes to "/" — reject it.
+    // Literal slashes in the original key are safe (encodeURIComponent
+    // escapes them in the filename), but encoded ones indicate smuggling.
+    if (decoded !== segment && decoded.includes("/")) {
+      // Only flag if decoding actually introduced new slashes
+      const originalSlashes = (segment.match(/\//g) ?? []).length;
+      const decodedSlashes = (decoded.match(/\//g) ?? []).length;
+      if (decodedSlashes > originalSlashes) return true;
+    }
+    return false;
   } catch {
     return true;
   }
