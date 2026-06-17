@@ -929,6 +929,24 @@ export interface ThreadTable {
     Date | string | null,
     Date | string | null
   >;
+  /**
+   * Human-readable reason the run was marked failed (e.g. the error message
+   * from the harness or the projector). Null for runs that completed normally
+   * or were failed without a reason (pre-migration rows).
+   */
+  failure_reason: string | null;
+  /**
+   * Coarse failure category. One of "harness" | "projection" | "transport".
+   * Null for pre-migration rows or runs failed without kind information.
+   */
+  failure_kind: string | null;
+  /**
+   * Highest contiguous publish-confirmed seq for the active run. Written via a
+   * monotonic CAS (only advances, never regresses). Null for pre-existing rows
+   * and runs that haven't published a chunk yet. Cleared implicitly when a new
+   * run resets the floor at the call site (fence epoch change).
+   */
+  run_acked_seq: number | null;
 }
 
 export interface ThreadExpandedTool {

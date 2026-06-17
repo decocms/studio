@@ -30,6 +30,7 @@ import {
   createStudioContextFactory,
 } from "../core/context-factory";
 import type { StudioContext } from "../core/studio-context";
+import { getPodId } from "../core/pod-identity";
 import { closeDatabase, getDb, type StudioDatabase } from "../database";
 import { createEventBus, type EventBus } from "../event-bus";
 import {
@@ -151,6 +152,10 @@ import { SqlThreadStorage } from "../storage/threads";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
+import {
+  registerThreadGateReaperWorkflow,
+  setThreadGateReaperRuntime,
+} from "../dispatch-queue/thread-gate-reaper";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
@@ -170,6 +175,11 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
+import {
+  PROJECTOR_PARTITION_CONCURRENCY,
+  PROJECTOR_QUEUE,
+  setProjectorWorkflowRuntime,
+} from "./routes/decopilot/projector-workflow";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
@@ -181,6 +191,7 @@ import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
 import { LinkWorkQueue } from "./routes/decopilot/link-work-queue";
+import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -884,6 +895,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   let linkClaimRegistry: LinkClaimRegistry;
   let linkWorkQueue: LinkWorkQueue | null = null;
   let natsProvider: NatsConnectionProvider | null = null;
+  let podHeartbeat: NatsPodHeartbeat | null = null;
 
   if (options.eventBus) {
     // Test mode: use provided event bus and no-op stubs (no NATS required)
@@ -931,6 +943,10 @@ export async function createApp(options: CreateAppOptions = {}) {
       // "unavailable" (false) — the publish-then-consume ingest must not
       // advance its ack cursor when the chunk wasn't actually persisted.
       publishRawChunk: async () => false,
+      // No-NATS stub: no durable done marker to publish, so signal
+      // "unavailable" (false) — the caller must not treat the run as handed
+      // off to the projector.
+      publishDone: async () => false,
       createTailStream: async () => null,
       purge: () => {},
       teardown: () => {},
@@ -983,6 +999,20 @@ export async function createApp(options: CreateAppOptions = {}) {
       getJetStream: () => natsProvider!.getJetStream(),
     });
 
+    // Per-pod heartbeat via NATS KV. The durable projector uses it for
+    // single-active scheduler leadership; DBOS workflow IDs provide the
+    // correctness dedup if leadership ever overlaps.
+    podHeartbeat = new NatsPodHeartbeat({
+      getConnection: () => natsProvider!.getConnection(),
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    podHeartbeat
+      .init()
+      .then(() => {
+        podHeartbeat!.start(getPodId());
+      })
+      .catch(() => {});
+
     eventBus = createEventBus(database, natsProvider);
 
     // When NATS connects, (re-)initialize all deferred consumers
@@ -1015,11 +1045,20 @@ export async function createApp(options: CreateAppOptions = {}) {
           err,
         );
       });
-      // Durable explicit-ack projector consumer (spec §5.4), default-off. Only
-      // the §5.4 cutover (inline projector stops persisting) makes this the
-      // sole DB-writer, so it stays gated behind LINK_DURABLE_PROJECTOR until
-      // multi-pod e2e validates no double-write.
-      if (process.env.LINK_DURABLE_PROJECTOR === "true") {
+      podHeartbeat!
+        .init()
+        .then(() => {
+          podHeartbeat!.start(getPodId());
+        })
+        .catch((err: unknown) => {
+          console.error("[PodHeartbeat] Deferred init failed:", err);
+        });
+      // Durable explicit-ack projector consumer (spec §5.4) — the scheduler for
+      // the DBOS projector workflow. The workflow is the sole v2 DB writer
+      // (parts + title + terminal status); the consumer just enqueues completed
+      // fenced runs and acks after enqueue succeeds.
+      if (podHeartbeat) {
+        const heartbeat = podHeartbeat;
         void (async () => {
           const nc = natsProvider!.getConnection();
           const js = natsProvider!.getJetStream();
@@ -1028,24 +1067,52 @@ export async function createApp(options: CreateAppOptions = {}) {
           const { startDurableProjector } = await import(
             "./routes/decopilot/start-durable-projector"
           );
-          await startDurableProjector({
+          const { ProjectorLeadership } = await import(
+            "./routes/decopilot/projector-leader"
+          );
+          const projectorWiring = {
             jsm,
             js,
-            messageParts: new SqlThreadStorage(database.db).messageParts(),
-            resolveRunOrg: async (runId) => {
+            resolveOrgId: async (runId: string) => {
               const row = await database.db
                 .selectFrom("threads")
-                .select(["organization_id", "message_storage_version"])
+                .select(["organization_id"])
                 .where("id", "=", runId)
                 .executeTakeFirst();
-              return row
-                ? {
-                    orgId: row.organization_id,
-                    version: row.message_storage_version ?? 1,
-                  }
-                : null;
+              return row?.organization_id ?? null;
+            },
+          };
+          let handle: Awaited<ReturnType<typeof startDurableProjector>> | null =
+            null;
+          const leadership = new ProjectorLeadership({
+            heartbeat,
+            podId: getPodId(),
+            onAcquire: () => {
+              console.log("[DurableProjector] leader acquired");
+              void startDurableProjector(projectorWiring)
+                .then((h) => {
+                  handle = h;
+                })
+                .catch((err: unknown) => {
+                  console.warn(
+                    "[DurableProjector] start on leader-acquire failed:",
+                    err,
+                  );
+                });
+            },
+            onRelease: () => {
+              console.log("[DurableProjector] leader released");
+              const h = handle;
+              handle = null;
+              void h?.stop().catch((err: unknown) => {
+                console.warn(
+                  "[DurableProjector] stop on leader-release failed:",
+                  err,
+                );
+              });
             },
           });
+          await leadership.start();
         })().catch((err: unknown) => {
           console.warn("[DurableProjector] Deferred init failed:", err);
         });
@@ -1173,6 +1240,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   currentDecopilotCleanup = async () => {
+    await podHeartbeat?.stop();
     await runRegistry.stopAll();
     runRegistry.dispose();
     asyncResearchJobSweeper.dispose();
@@ -1530,9 +1598,67 @@ export async function createApp(options: CreateAppOptions = {}) {
     workQueue: linkWorkQueue ?? undefined,
   });
 
+  // Durable projector workflow runtime — the sole v2 DB writer for assistant
+  // parts, auto-title persistence, and terminal status. The scheduler consumes
+  // fenced done markers from JetStream and enqueues DBOS workflows keyed by
+  // runId + fenceToken.
+  const projectorThreadStorage = new SqlThreadStorage(database.db);
+  setProjectorWorkflowRuntime({
+    getJetStream: () => natsProvider?.getJetStream() ?? null,
+    getJetStreamManager: async () => {
+      const nc = natsProvider?.getConnection();
+      return nc ? await nc.jetstreamManager() : null;
+    },
+    messageParts: projectorThreadStorage.messageParts(),
+    resolveRun: async (runId: string) => {
+      const row = await database.db
+        .selectFrom("threads")
+        .select([
+          "organization_id",
+          "message_storage_version",
+          "status",
+          "run_fence_token",
+          "title",
+        ])
+        .where("id", "=", runId)
+        .executeTakeFirst();
+      return row
+        ? {
+            orgId: row.organization_id,
+            version: row.message_storage_version ?? 1,
+            status: row.status,
+            runFenceToken: row.run_fence_token,
+            title: row.title ?? null,
+          }
+        : null;
+    },
+    completeRunIfNotCompleted: (runId, orgId) =>
+      projectorThreadStorage.completeRunIfNotCompleted(runId, orgId),
+    markRunFailed: (runId, orgId, reason, kind) =>
+      projectorThreadStorage.markRunFailed(runId, orgId, reason, kind),
+    persistTitle: (runId, orgId, title) =>
+      projectorThreadStorage.update(runId, orgId, { title }),
+    purgeRun: async (runId) => {
+      streamBuffer.purge(runId);
+    },
+  });
+
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
+
+  // Cross-pod liveness reaper — the safety net for Phase 2's uncapped gate wait.
+  // Behind a flag so it can be enabled/observed before the cap is removed.
+  // Uses a non-org-scoped SqlThreadStorage because it sweeps every org.
+  if (process.env.LINK_DURABLE_REAPER === "1") {
+    const reaperStorage = new SqlThreadStorage(database.db);
+    setThreadGateReaperRuntime({
+      listStuckRuns: (cutoffIso) => reaperStorage.listStuckRuns(cutoffIso),
+      forceFailIfInProgress: (id, orgId) =>
+        reaperStorage.forceFailIfInProgress(id, orgId),
+    });
+    registerThreadGateReaperWorkflow();
+  }
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
@@ -1812,6 +1938,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     linkClaimRegistry,
   });
   app.route("/api", decopilotRoutes);
+
+  if (process.env.DECOPILOT_PROJECTOR_DBOS_E2E === "1") {
+    const { createProjectorE2ETestRoutes } = await import(
+      "./routes/decopilot/projector-e2e-test-routes"
+    );
+    app.route("/__test/decopilot/projector", createProjectorE2ETestRoutes());
+  }
 
   // Pull reverse-proxy DispatchFn (Phase C-bis). `buildDesktopProvider` injects
   // it as the only desktop transport (the reverse-WS gateway was deleted in S8).
@@ -2194,6 +2327,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     await DBOS.registerQueue(THREAD_GATE_QUEUE, {
       partitionQueue: true,
       concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
+    });
+    await DBOS.registerQueue(PROJECTOR_QUEUE, {
+      partitionQueue: true,
+      concurrency: PROJECTOR_PARTITION_CONCURRENCY,
     });
     await reconcileAutomationSchedules(automationsStorage);
 
