@@ -1,0 +1,153 @@
+{{- if .Values.web.enabled }}
+{{/*
+Static-SPA + reverse-proxy Deployment (the "web" role). An initContainer using
+the mesh image copies the prebuilt client bundle into an emptyDir; the stock
+nginx container serves it and reverse-proxies API/system paths to the main
+Deployment's Service (same origin → auth cookies stay first-party). Carries a
+distinct `app.kubernetes.io/name` ("<name>-web") and its OWN Service, so the
+main Deployment/Service selectors never match it.
+
+No separate web image: the bundle is reused from the mesh image (already on the
+studio nodes), and the nginx config is mounted from a ConfigMap. Decoupling: pin
+web.bundleImage.tag separately from image.tag, so an API rollout doesn't churn
+asset hashes (no forced UI refresh) and a UI rollout doesn't restart the API.
+Cut over by pointing the external gateway/NLB at the `<fullname>-web` Service.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart-deco-studio.fullname" . }}-web
+  labels:
+    app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-web
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: web
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ include "chart-deco-studio.chart" . }}
+    {{- if .Chart.AppVersion }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-web
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-web
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: web
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        helm.sh/chart: {{ include "chart-deco-studio.chart" . }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.web.frontDoorLabels }}
+        # External LB retargets here once web.enabled flips (see deployment.yaml).
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # Copy the SPA bundle out of the mesh image into a shared emptyDir.
+        - name: bundle
+          image: "{{ .Values.web.bundleImage.repository | default .Values.image.repository }}:{{ .Values.web.bundleImage.tag | default .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.web.bundleImage.pullPolicy | default "IfNotPresent" }}
+          {{- with .Values.web.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command: ["sh", "-c"]
+          args:
+            - cp -a {{ .Values.web.bundlePath }}/. /bundle/
+          volumeMounts:
+            - name: bundle
+              mountPath: /bundle
+      containers:
+        - name: {{ .Chart.Name }}-web
+          {{- with .Values.web.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: {{ .Values.web.nginxImage | quote }}
+          imagePullPolicy: {{ .Values.web.nginxImagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # host:port of the API (main) Service; same origin via nginx proxy.
+            - name: API_UPSTREAM
+              value: {{ .Values.web.apiUpstream | default (printf "%s:%v" (include "chart-deco-studio.fullname" .) .Values.service.port) | quote }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          volumeMounts:
+            - name: bundle
+              mountPath: /usr/share/nginx/html
+              readOnly: true
+            - name: nginx-config
+              mountPath: /etc/nginx/templates/default.conf.template
+              subPath: default.conf.template
+              readOnly: true
+          {{- with .Values.web.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: bundle
+          emptyDir: {}
+        - name: nginx-config
+          configMap:
+            name: {{ include "chart-deco-studio.fullname" . }}-web-nginx
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.web.affinity }}
+      affinity:
+        {{- toYaml .Values.web.affinity | nindent 8 }}
+      {{- else if .Values.affinity }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- else }}
+      # Default: prefer nodes already running API pods, so the mesh image (pulled
+      # by the bundle initContainer) is cache-warm. Soft (preferred) → never
+      # blocks scheduling. Override via web.affinity.
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}
+                    app.kubernetes.io/instance: {{ .Release.Name }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

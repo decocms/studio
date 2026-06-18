@@ -90,6 +90,71 @@ worker:
   # Extra env for worker pods only (merged after the shared envFrom).
   env: []
 
+# Static-SPA + reverse-proxy split (the "web" role). When enabled, renders an
+# nginx Deployment + Service (`<fullname>-web`) that serves the prebuilt client
+# bundle and reverse-proxies API/system paths to the main Service (same origin).
+# Cut over by pointing the external gateway/NLB at the web Service. Default
+# false → chart output is unchanged. See deploy/nginx/README.md.
+#
+# No separate web image: an initContainer copies the bundle out of the mesh
+# image (already on the studio nodes), and nginx is the stock image with its
+# config mounted from a ConfigMap.
+web:
+  enabled: false
+  replicaCount: 2
+  # Mesh image to extract the SPA bundle from. Empty repository/tag → inherit the
+  # API image (image.repository / image.tag). Pin tag separately to roll the UI
+  # independently of the API.
+  bundleImage:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  # Path of the built bundle inside the mesh image (where `bun add decocms`
+  # installs it).
+  bundlePath: /app/apps/mesh/node_modules/decocms/dist/client
+  # Stock nginx that serves the bundle + reverse-proxies. The unprivileged
+  # variant listens on 8080 and runs as uid 101 (non-root) out of the box.
+  nginxImage: nginxinc/nginx-unprivileged:1.27-alpine
+  nginxImagePullPolicy: IfNotPresent
+  # host:port of the API (main) Service. Empty → in-namespace main Service.
+  # Set to an FQDN (<svc>.<ns>.svc.cluster.local:80) for cross-namespace.
+  apiUpstream: ""
+  # Front-door pod labels for blue-green LB retargeting. When non-empty, these
+  # labels sit on the API pods while web.enabled=false and move to the nginx
+  # pods when web.enabled=true. Point your external LB/NLB selector at them
+  # ONCE; then cutover/rollback is just flipping web.enabled. Flipping rolls the
+  # pods that gain/lose the label once. Default {} → no labels, output unchanged.
+  frontDoorLabels: {}
+  #   decocms.com/frontdoor: "true"
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      memory: "128Mi"
+  # fsGroup so the initContainer (mesh image, uid 1001) can write the shared
+  # emptyDir; nginx (uid 101) reads the world-readable bundle files.
+  podSecurityContext:
+    fsGroup: 1001
+  # No runAsUser → the nginx image's uid 101 / mesh image's uid 1001 stand.
+  # readOnlyRootFilesystem stays off so nginx can write its cache/pid + the
+  # envsubst'd config.
+  securityContext:
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+  # Empty → the template defaults to a SOFT podAffinity preferring nodes that
+  # already run API pods, so the (large) mesh image pulled by the bundle
+  # initContainer is cache-warm. Set to override (or to {} via --set to keep the
+  # default; set a non-empty affinity to replace it entirely).
+  affinity: {}
+
 configMap:
   meshConfig:
     NODE_ENV: "production"
