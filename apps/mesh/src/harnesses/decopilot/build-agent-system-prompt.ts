@@ -7,9 +7,9 @@
  *   - whether the agents block is included
  *   - whether the plan-mode prompt is included (subagent never gets it)
  *
- * Everything else (base platform, repo env, prompts block, connections
- * block, todo_write guidance, agent instructions) is included for BOTH
- * kinds — though in Stage 2.1 listPromptsBlock and listConnectionsBlock
+ * Everything else (base platform, coding workspace, prompts block,
+ * connections block, todo_write guidance, agent instructions) is included for
+ * BOTH kinds — though in Stage 2.1 listPromptsBlock and listConnectionsBlock
  * are stubs returning null (wired up fully in Stage 2.3).
  */
 
@@ -18,8 +18,11 @@ import {
   buildBasePlatformPrompt,
   buildDecopilotAgentPrompt,
   buildTodoWritePrompt,
-  buildRepoEnvironmentPrompt,
 } from "@decocms/harness/decopilot/prompt-constants";
+import {
+  buildCodingWorkspacePrompt,
+  type CodingWorkspacePromptInput,
+} from "@decocms/harness/coding-workspace-prompt";
 import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
 import { getPublicSets } from "@/file-storage/public-sets";
 import type { GithubRepo } from "@decocms/mesh-sdk";
@@ -84,6 +87,7 @@ export interface BuildAgentSystemPromptOptions {
    */
   isDecopilot?: boolean;
   agentInstructions?: string;
+  codingWorkspace?: CodingWorkspacePromptInput;
   date?: Date;
   /** Current thread id, excluded from the "history together" recall so the
    *  agent doesn't "remember" the conversation it's currently in. */
@@ -129,9 +133,7 @@ export async function buildAgentSystemPrompt(
     add("planMode", modeConfig.planPrompt);
   }
 
-  if (opts.virtualMcp.repo) {
-    add("repoEnv", buildRepoEnvironmentPrompt(opts.virtualMcp.repo));
-  }
+  add("codingWorkspace", buildCodingWorkspacePrompt(opts.codingWorkspace));
 
   // Org filesystem layout + the deployment's public skill sets. org-fs is
   // mounted into every sandbox now (desktop + cluster), so this is

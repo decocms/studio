@@ -74,11 +74,13 @@ async function runClusterEngine(
     currentThreadId: args.currentThreadId,
     user: args.user,
     userContext: args.userContext,
+    codingWorkspace: args.codingWorkspace,
     writer: args.writer,
     subtaskParams: {
       provider: args.provider,
       organization,
       models: args.models,
+      codingWorkspace: args.codingWorkspace,
     },
     prepareStep: args.prepareStep,
     onStepFinish: args.onStepFinish,

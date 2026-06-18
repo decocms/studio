@@ -163,6 +163,7 @@ function runDesktopEngine(
     connectionTitleMap: args.connectionsData.connectionTitleMap,
     agentInstructions: args.systemAgentInstructions,
     planPrompt: modeConfig.planPrompt,
+    codingWorkspace: input.codingWorkspace,
     webSearchPrompt: modeConfig.webSearchInstructionPrompt,
   });
   // Append the per-request inline <system> blocks + enabled-tools tail the

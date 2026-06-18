@@ -23,6 +23,10 @@ import {
   buildDecopilotAgentPrompt,
   buildTodoWritePrompt,
 } from "./prompt-constants";
+import {
+  buildCodingWorkspacePrompt,
+  type CodingWorkspacePromptInput,
+} from "../coding-workspace-prompt";
 
 export interface DesktopPromptInput {
   /** Active agent (virtual MCP) id — used to decide whether the decopilot
@@ -38,6 +42,8 @@ export interface DesktopPromptInput {
   agentInstructions?: string;
   /** Plan-mode prompt fragment, when mode === "plan". */
   planPrompt?: string | null;
+  /** Shared coding workspace context for repo-aware runs. */
+  codingWorkspace?: CodingWorkspacePromptInput;
   /** Web-search behaviour hint, when mode === "web-search". */
   webSearchPrompt?: string | null;
 }
@@ -62,6 +68,7 @@ export function buildDesktopPrompt(input: DesktopPromptInput): {
   const parts = [
     basePrompt,
     input.planPrompt,
+    buildCodingWorkspacePrompt(input.codingWorkspace),
     connectionsBlock,
     buildTodoWritePrompt(),
     input.webSearchPrompt,

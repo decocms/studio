@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   createSubtaskTool,
+  resolveSubtaskCodingWorkspace,
   SubtaskInputSchema,
   type SubtaskParams,
 } from "./subtask";
@@ -147,6 +148,56 @@ describe("createSubtaskTool", () => {
     expect(tool.description).toBeDefined();
     expect(tool.description).toContain("subagent");
     expect(tool.inputSchema).toBeDefined();
+  });
+});
+
+describe("resolveSubtaskCodingWorkspace", () => {
+  test("uses target repo facts while inheriting branch and cwd from parent workspace", () => {
+    const result = resolveSubtaskCodingWorkspace(
+      {
+        repo: {
+          owner: "deco",
+          name: "site",
+        } as never,
+      },
+      {
+        repo: {
+          owner: "deco",
+          name: "other",
+          connectedGithub: true,
+        },
+        branch: "main",
+        cwd: "/repo",
+        workspaceKind: "github",
+      },
+    );
+
+    expect(result).toEqual({
+      repo: {
+        owner: "deco",
+        name: "site",
+        connectedGithub: true,
+      },
+      branch: "main",
+      cwd: "/repo",
+      workspaceKind: "github",
+    });
+  });
+
+  test("passes parent workspace through when target has no repo", () => {
+    const parentWorkspace = {
+      cwd: "/repo",
+      workspaceKind: "local" as const,
+    };
+
+    const result = resolveSubtaskCodingWorkspace(
+      {
+        repo: undefined,
+      },
+      parentWorkspace,
+    );
+
+    expect(result).toBe(parentWorkspace);
   });
 });
 

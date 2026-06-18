@@ -45,6 +45,7 @@ import {
   runNativeAgentLoopCore,
   type NativeAgentLoopCoreHandle,
 } from "@decocms/harness/decopilot/native-agent-loop-core";
+import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
 
 export interface RunAgentLoopOptions {
   ctx: StudioContext;
@@ -66,6 +67,7 @@ export interface RunAgentLoopOptions {
   user?: { id: string; name?: string | null; email?: string | null };
   /** Pre-resolved prompt data (threads/interests/agents) for the system prompt. */
   userContext?: import("@decocms/harness/types").HarnessUserContext;
+  codingWorkspace?: CodingWorkspacePromptInput;
   stepLimit?: number;
   toolApprovalLevel?: ToolApprovalLevel;
   planMode?: boolean;
@@ -156,6 +158,7 @@ export async function runAgentLoop(
     currentThreadId: opts.currentThreadId,
     user: opts.user,
     userContext: opts.userContext,
+    codingWorkspace: opts.codingWorkspace,
     passthroughClient: opts.passthroughClient,
     connectionsData: opts.connectionsData,
   });
