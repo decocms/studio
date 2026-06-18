@@ -1,6 +1,12 @@
 # GSD workflow state
 .planning/
 
+# Local-only architecture diagram tooling (generates the standalone html
+# from architecture-model.ts; the committed docs use ArchitectureDiagram.astro).
+/architecture.html
+apps/docs/scripts/gen-architecture-html.ts
+apps/docs/scripts/architecture-runtime.js
+
 # Logs
 logs
 *.log
