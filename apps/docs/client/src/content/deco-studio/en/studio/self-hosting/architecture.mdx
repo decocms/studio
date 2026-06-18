@@ -100,10 +100,10 @@ This distinction matters for reasoning about the system:
 | Routes | API / external | Worker |
 | --- | --- | --- |
 | MCP proxy (`/mcp/*`, `/oauth-proxy/*`, `.well-known`) | ✅ external clients via the API | ❌ (in-process instead) |
-| File & object-storage (`/api/:org/files/*`, presigned GET/PUT, uploads) | ✅ serving clients | ✅ agent tools read/write files & mint presigned URLs |
+| File & object-storage (`/api/:org/files/*`, presigned GET/PUT, uploads, `/api/:org/fs/*`) | ✅ serving clients | ✅ agent tools read/write files & mint presigned URLs |
 | Worker-only over HTTP | — | none — tool calls are in-process |
 
-File and object-storage routes are the genuine "called by both" surface, and they are backed by an S3-compatible **Object Store**.
+File and object-storage routes are the genuine "called by both" surface, and they are backed by an S3-compatible **Object Store**. The `/api/:org/fs/*` routes also back the [org-filesystem mount](#org-filesystem-org-fs) inside sandboxes.
 
 ## Sandboxes
 
@@ -121,6 +121,18 @@ A sandbox clones the repo, runs the dev server, and exposes an in-pod **daemon**
 | Where | agent-sandbox operator + a `SandboxClaim` pod per (user, projectRef) | Same daemon, spawned locally on the laptop |
 | Reached over | k8s port-forward / in-cluster Service (control); ingress or port-forward (preview) | loopback (control); `<handle>.localhost:<port>` (preview) |
 | Selected when | the default for hosted runs | a `deco link` is live — `user-desktop` is the default provider then |
+
+### Org filesystem (org-fs)
+
+Each sandbox can mount the **org filesystem** at `<appRoot>/org/<volume>`, so the agent and dev server read and write org files as ordinary paths. The mount stack is `rclone (NFS/FUSE) → the daemon's loopback WebDAV → /api/:org/fs/* → S3` — the same object store as the file routes, surfaced as a mounted volume.
+
+It is wired on **both** providers, with different mount mechanics:
+
+| | Cloud sandbox | Desktop sandbox |
+| --- | --- | --- |
+| Who mounts | a **privileged sidecar** container (the unprivileged daemon can't mount) | the **daemon directly** (it has full permissions) |
+| Config delivery | post-bind: mesh `POST /_sandbox/orgfs-config`; the daemon relays it to a shared control volume the sidecar watches (warm-pool claims reject `spec.env`) | boot env: `ORGFS_CONFIG`, mounted at daemon startup |
+| Propagation | `rclone` with `allowOther` so the mount propagates to the main container | single client — no propagation needed |
 
 ## Desktop
 

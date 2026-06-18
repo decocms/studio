@@ -13,7 +13,7 @@ const ZONES = [
   { x: 182, y: 150, w: 992, h: 790, label: "Cloud Cluster", sub: "kubernetes", stroke: "rgba(56,189,248,.24)", fill: "rgba(56,189,248,.03)" },
   { x: 1192, y: 150, w: 384, h: 790, label: "Desktop", sub: "deco link · laptop", stroke: "rgba(168,130,255,.28)", fill: "rgba(168,130,255,.045)" },
 ];
-const SUBZONES = [{ x: 772, y: 782, w: 404, h: 150, label: "Cloud Sandbox · pod" }];
+const SUBZONES = [{ x: 620, y: 782, w: 556, h: 150, label: "Cloud Sandbox · pod" }];
 
 type Node = {
   x: number; y: number; w: number; h: number; tier: string;
@@ -32,15 +32,17 @@ const N: Record<string, Node> = {
   api: { x: 485, y: 360, w: 148, h: 64, tier: "api", label: "API", tag: "hono · role=api", replicas: true },
   worker: { x: 485, y: 645, w: 148, h: 64, tier: "worker", label: "Worker", tag: "role=worker · dbos", replicas: true },
   mcpproxy: { x: 705, y: 300, w: 150, h: 60, tier: "mcp", label: "MCP Proxy", tag: "api routes" },
-  files: { x: 705, y: 470, w: 150, h: 60, tier: "file", label: "Files / Storage", tag: "api routes" },
+  files: { x: 705, y: 470, w: 150, h: 60, tier: "file", label: "Files / Storage", tag: "api · /files /fs" },
   nats: { x: 930, y: 300, w: 124, h: 82, tier: "nats", shape: "hex", label: "NATS", tag: "messaging" },
   db: { x: 930, y: 505, w: 122, h: 88, tier: "db", shape: "cyl", label: "DB", tag: "postgres" },
-  daemonctl: { x: 862, y: 852, w: 158, h: 60, tier: "sbx", label: "Daemon API", tag: "protected /_sandbox/*" },
-  daemonprev: { x: 1068, y: 852, w: 152, h: 60, tier: "pub", label: "Preview", tag: "public" },
+  daemonctl: { x: 710, y: 852, w: 158, h: 60, tier: "sbx", label: "Daemon API", tag: "protected /_sandbox/*" },
+  orgfsc: { x: 900, y: 852, w: 132, h: 56, tier: "file", label: "Org FS", tag: "mount · sidecar" },
+  daemonprev: { x: 1085, y: 852, w: 152, h: 60, tier: "pub", label: "Preview", tag: "public" },
 
   linkd: { x: 1300, y: 340, w: 158, h: 62, tier: "desk", label: "Link Daemon", tag: "deco link" },
   dloop: { x: 1300, y: 560, w: 158, h: 62, tier: "desk", label: "Desktop Loop", tag: "native loop" },
-  dsbx: { x: 1430, y: 800, w: 152, h: 62, tier: "sbx", label: "Desktop Sandbox", tag: "local daemon" },
+  dsbx: { x: 1290, y: 800, w: 152, h: 62, tier: "sbx", label: "Desktop Sandbox", tag: "local daemon" },
+  orgfsd: { x: 1460, y: 800, w: 140, h: 56, tier: "file", label: "Org FS", tag: "mount · daemon" },
 };
 
 // from, to, kind
@@ -52,6 +54,8 @@ const E: [string, string, string][] = [
   ["api", "nats", "ctrl"], ["worker", "nats", "ctrl"], ["nats", "linkd", "bridge"],
   ["worker", "llm", "model"], ["worker", "daemonctl", "ctrl"], ["api", "daemonctl", "ctrl"],
   ["client", "daemonprev", "public"],
+  ["daemonctl", "orgfsc", "ctrl"], ["orgfsc", "files", "ctrl"],
+  ["dsbx", "orgfsd", "ctrl"], ["orgfsd", "files", "ctrl"],
   ["linkd", "dloop", "ctrl"], ["dloop", "llm", "model"], ["dloop", "api", "mcp"], ["dloop", "dsbx", "ctrl"],
 ];
 
@@ -67,8 +71,9 @@ const EDGE_STYLE: Record<string, { stroke: string; dash?: string; w: number; op:
 
 // manual margin routes for long cross-diagram edges
 const ROUTES: Record<string, { x: number; y: number }[]> = {
-  "client>daemonprev": [{ x: 35, y: 330 }, { x: 12, y: 330 }, { x: 12, y: 986 }, { x: 1068, y: 986 }, { x: 1068, y: 882 }],
+  "client>daemonprev": [{ x: 35, y: 330 }, { x: 12, y: 330 }, { x: 12, y: 986 }, { x: 1085, y: 986 }, { x: 1085, y: 882 }],
   "dloop>api": [{ x: 1300, y: 529 }, { x: 1300, y: 128 }, { x: 485, y: 128 }, { x: 485, y: 328 }],
+  "orgfsd>files": [{ x: 1460, y: 828 }, { x: 1460, y: 1002 }, { x: 600, y: 1002 }, { x: 600, y: 470 }, { x: 630, y: 470 }],
 };
 function roundedPath(pts: { x: number; y: number }[], r = 16) {
   let d = `M${pts[0].x},${pts[0].y}`;
