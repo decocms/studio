@@ -156,35 +156,33 @@ export function AnyOfField({
         !isEmbeddedUnionResolveType(r.resolveType),
     );
 
+  // In module-loader mode the breadcrumb path passes through this component.
+  // We strip our own key from the front before passing to the nested SchemaForm
+  // so the loader's internal schema can resolve the path correctly (e.g.
+  // breadcrumbPath ["page", "productClusterIds"] → nested receives
+  // ["productClusterIds"] → loader SchemaForm finds "selectedFacets" array
+  // because an item label matches). nestedOnBreadcrumbChange prepends the key
+  // back so the outer section editor sees the full path.
+  const outerKey = path.includes(".") ? path.split(".")[0]! : path;
+  const safeBreadcrumbPath = breadcrumbPath ?? [];
+  const nestedBreadcrumbPath =
+    isModuleLoaderUnion && safeBreadcrumbPath[0] === outerKey
+      ? safeBreadcrumbPath.slice(1)
+      : isModuleLoaderUnion
+        ? []
+        : safeBreadcrumbPath;
+  const nestedOnBreadcrumbChange: ((p: string[]) => void) | undefined =
+    isModuleLoaderUnion
+      ? (newPath) => {
+          onBreadcrumbChange?.([outerKey, ...newPath]);
+        }
+      : onBreadcrumbChange;
+
   const [selectedRt, setSelectedRt] = useState(inferredRt);
   const [prevInferredRt, setPrevInferredRt] = useState(inferredRt);
-  // Module loaders use an internal breadcrumb so nested array/object navigation
-  // doesn't leak to the outer section-editor breadcrumb. The outer breadcrumb
-  // can't resolve loader-internal keys (e.g. "selectedFacets" from the loader's
-  // schema) at the section level (e.g. SearchResult), causing the whole form
-  // to show all fields instead of the focused item.
-  const [loaderBreadcrumbs, setLoaderBreadcrumbs] = useState<string[]>([]);
-  // When the user drills into a loader item (loaderBreadcrumbs becomes non-empty),
-  // collapse the outer section form by focusing it on this loader field's key.
-  // When the user goes back (loaderBreadcrumbs becomes empty), restore the full form.
-  const [prevLoaderBcrLen, setPrevLoaderBcrLen] = useState(0);
-  if (prevLoaderBcrLen !== loaderBreadcrumbs.length) {
-    setPrevLoaderBcrLen(loaderBreadcrumbs.length);
-    if (isModuleLoaderUnion && onBreadcrumbChange) {
-      if (loaderBreadcrumbs.length > 0) {
-        // Focus the outer form on just this field (e.g. "page") so surrounding
-        // section fields (sections, layout, etc.) collapse out of view.
-        const outerKey = path.includes(".") ? path.split(".")[0]! : path;
-        onBreadcrumbChange([outerKey]);
-      } else {
-        onBreadcrumbChange([]);
-      }
-    }
-  }
   if (prevInferredRt !== inferredRt) {
     setPrevInferredRt(inferredRt);
     setSelectedRt(inferredRt);
-    setLoaderBreadcrumbs([]);
   }
   const [loaderConfigOpen, setLoaderConfigOpen] = useState(() =>
     blockRefLoaderConfigHasData(editorValue, savedRef?.blockKey),
@@ -275,12 +273,8 @@ export function AnyOfField({
           persistUnionValue(next);
         }}
         basePath={path}
-        breadcrumbPath={
-          isModuleLoaderUnion ? loaderBreadcrumbs : breadcrumbPath
-        }
-        onBreadcrumbChange={
-          isModuleLoaderUnion ? setLoaderBreadcrumbs : onBreadcrumbChange
-        }
+        breadcrumbPath={nestedBreadcrumbPath}
+        onBreadcrumbChange={nestedOnBreadcrumbChange}
         meta={meta}
         decofile={decofile}
         onSaveReferencedBlock={onSaveReferencedBlock}

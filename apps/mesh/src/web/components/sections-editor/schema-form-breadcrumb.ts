@@ -156,6 +156,18 @@ function resolveActiveFieldKeyInScope(
     }
   }
 
+  // Block-ref fields (loader/section selectors) can also be "drilled into"
+  // via the breadcrumb path when the head matches the field's key or label.
+  // This lets loader props like `page: ProductListingPage` participate in
+  // breadcrumb navigation (e.g. path ["page", "selectedFacets", "productClusterIds"]
+  // resolves to "page" at the SearchResult level).
+  for (const key of keys) {
+    const schema = properties[key];
+    if (schema?.type !== "block-ref") continue;
+    const label = fieldDisplayLabel(key, schema);
+    if (head === label || head === key) return key;
+  }
+
   return null;
 }
 
