@@ -85,7 +85,10 @@ export function DrawerToolbar(props: DrawerToolbarProps) {
           <TabButton
             key={t}
             active={props.active === t}
-            onClick={() => props.onSelectTab(t)}
+            onClick={() => {
+              if (props.active === t) props.onToggle();
+              else props.onSelectTab(t);
+            }}
             onClose={() => props.onCloseScript(t)}
           >
             {t}
