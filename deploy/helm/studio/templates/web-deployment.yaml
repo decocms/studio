@@ -65,10 +65,14 @@ spec:
         - name: bundle
           image: "{{ .Values.web.bundleImage.repository | default .Values.image.repository }}:{{ .Values.web.bundleImage.tag | default .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.web.bundleImage.pullPolicy | default "IfNotPresent" }}
-          {{- with .Values.web.securityContext }}
           securityContext:
+            # Explicit numeric uid: the mesh image declares USER as a NAME
+            # (bunuser), which kubelet can't verify against runAsNonRoot. Pin the
+            # mesh image's uid so the init container is admitted.
+            runAsUser: {{ .Values.web.bundleRunAsUser | default 1001 }}
+            {{- with .Values.web.securityContext }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           command: ["sh", "-c"]
           args:
             - cp -a {{ .Values.web.bundlePath }}/. /bundle/
