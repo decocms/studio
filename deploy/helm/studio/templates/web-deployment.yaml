@@ -74,8 +74,12 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           command: ["sh", "-c"]
+          # cp -r, not -a: -a preserves times/ownership and fails on the
+          # fsGroup-owned emptyDir mount root ("preserving times ... Operation
+          # not permitted"). chmod a+rX guarantees the nginx container (uid 101,
+          # not in the fsGroup) can read the assets regardless of the copy umask.
           args:
-            - cp -a {{ .Values.web.bundlePath }}/. /bundle/
+            - cp -r {{ .Values.web.bundlePath }}/. /bundle/ && chmod -R a+rX /bundle
           volumeMounts:
             - name: bundle
               mountPath: /bundle
