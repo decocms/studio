@@ -194,7 +194,8 @@ export interface HarnessStreamInput {
   projectSlug?: string;
 
   /** Loaded VirtualMcp entity (the agent definition). Decopilot reads metadata,
-   *  connection list, and github-repo info from this; CLI harnesses use only `id`.
+   *  connection list, and github-repo info from this; CLI harnesses use `id`
+   *  and may append `metadata.instructions` to their CLI-safe prompt context.
    *  Typed as a permissive bag in the package — the cluster passes its richer
    *  `VirtualMCPEntity` shape and TS accepts the widening. */
   virtualMcp: { id: string; metadata?: unknown; [k: string]: unknown };

@@ -5,7 +5,9 @@
  * Unlike Decopilot, this harness:
  *  - Does NOT register built-in tools (the CLI manages its own tools and
  *    reaches mesh's MCP endpoint directly).
- *  - Does NOT build a system prompt (the CLI has its own).
+ *  - Does NOT build a Decopilot-style system prompt or tool catalog; it only
+ *    appends CLI-safe workspace/instruction context through the SDK's
+ *    `systemPrompt` preset.
  *  - Supports resume via `input.resumeSessionRef`, derived by the shared
  *    layer (Task 12) from prior
  *    `finish-step.providerMetadata["claude-code"].sessionId`. The harness
@@ -21,7 +23,8 @@
  *
  * Behavior parity with stream-core: the inline call at lines 888–906
  * passes `mcpServers` (single `cms` entry), `toolApprovalLevel`,
- * `isPlanMode`, `resume`, and `cwd` — all five are forwarded here.
+ * `isPlanMode`, `resume`, `cwd`, and the CLI preset append prompt — all are
+ * forwarded here.
  *
  * The harness yields raw `UIMessageChunk` — including the
  * `finish-step.providerMetadata["claude-code"]` block. The shared stream
@@ -100,8 +103,8 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         // 3. Build the Claude Code language model. The MCP URL + headers
         //    are already minted by the shared layer (it owns the
         //    temp-API-key lifecycle); the harness just forwards them.
-        //    Mirrors stream-core lines 888–906 — all five options are
-        //    threaded through.
+        //    Mirrors stream-core lines 888–906 — the CLI options and
+        //    preset append prompt are threaded through.
         const systemPrompt = buildClaudeCodeSystemPrompt({
           codingWorkspace: input.codingWorkspace,
           agentInstructions:
@@ -164,18 +167,19 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
             })
           : null;
 
-        // 5. Run streamText. Claude Code's CLI manages its own tools
-        //    and system prompt, so we explicitly DO NOT pass `tools` or
-        //    `system`. The CLI handles `experimental_repairToolCall`
-        //    internally too.
+        // 5. Run streamText. Claude Code's CLI manages its own tools and base
+        //    system prompt, so we explicitly DO NOT pass `tools` or `system`.
+        //    Context additions are supplied through the SDK model's
+        //    `systemPrompt` preset append option. The CLI handles
+        //    `experimental_repairToolCall` internally too.
         //
         //    `allowSystemInMessages: true` acknowledges that the
         //    converted ModelMessage[] may contain system-role messages
         //    inherited from prior turns of the UI history (decopilot
         //    threads occasionally carry server-built system blocks).
         //    Those are harmless here because the Claude Code CLI
-        //    ignores them — it always uses its own system prompt — but
-        //    without this flag the AI SDK 6.0.182+ emits a noisy
+        //    ignores them in favor of its base prompt plus preset append
+        //    context, but without this flag the AI SDK 6.0.182+ emits a noisy
         //    prompt-injection security warning on every turn.
         const result = streamText({
           model: languageModel,

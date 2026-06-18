@@ -1,11 +1,13 @@
 /**
  * local-prompt — minimal system-prompt assembly for the desktop harness.
  *
- * Shared prompt builders live in `harnesses/decopilot/prompt-constants.ts`.
- * This module only assembles the desktop-specific prompt shape.
+ * Shared prompt builders live in `prompt-constants.ts` and
+ * `../coding-workspace-prompt.ts`. This module assembles the
+ * desktop-specific prompt shape.
  *
  * `buildDesktopPrompt` assembles the minimal prompt:
- *   base platform + connections block + todo-write guidance + agent identity.
+ *   base platform + coding workspace block + connections block +
+ *   todo-write guidance + agent identity.
  * It deliberately SKIPS the cluster-only blocks that need `ctx.storage`
  * (agents block via `virtualMcps.list`) or studio-pack resolution. Cache
  * markers + the per-request current-context tail come from the portable
