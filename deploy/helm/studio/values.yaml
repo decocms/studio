@@ -117,6 +117,9 @@ web:
   # Path of the built bundle inside the mesh image (where `bun add decocms`
   # installs it).
   bundlePath: /app/apps/mesh/node_modules/decocms/dist/client
+  # Numeric uid of the mesh image (its USER is the non-numeric "bunuser", which
+  # kubelet can't verify against runAsNonRoot). Pins the bundle initContainer.
+  bundleRunAsUser: 1001
   # Stock nginx that serves the bundle + reverse-proxies. The unprivileged
   # variant listens on 8080 and runs as uid 101 (non-root) out of the box.
   nginxImage: nginxinc/nginx-unprivileged:1.27-alpine
