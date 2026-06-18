@@ -125,9 +125,26 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.web.affinity | default .Values.affinity }}
+      {{- if .Values.web.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- toYaml .Values.web.affinity | nindent 8 }}
+      {{- else if .Values.affinity }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- else }}
+      # Default: prefer nodes already running API pods, so the mesh image (pulled
+      # by the bundle initContainer) is cache-warm. Soft (preferred) → never
+      # blocks scheduling. Override via web.affinity.
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}
+                    app.kubernetes.io/instance: {{ .Release.Name }}
       {{- end }}
       {{- with .Values.tolerations }}
       tolerations:

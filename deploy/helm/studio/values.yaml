@@ -149,18 +149,11 @@ web:
       drop:
         - ALL
     readOnlyRootFilesystem: false
-  # Optional: prefer scheduling web pods onto nodes already running API pods, so
-  # the (large) mesh image is cache-warm and the initContainer pull is free.
-  # Empty → falls back to the global `affinity`.
+  # Empty → the template defaults to a SOFT podAffinity preferring nodes that
+  # already run API pods, so the (large) mesh image pulled by the bundle
+  # initContainer is cache-warm. Set to override (or to {} via --set to keep the
+  # default; set a non-empty affinity to replace it entirely).
   affinity: {}
-  #   podAffinity:
-  #     preferredDuringSchedulingIgnoredDuringExecution:
-  #       - weight: 100
-  #         podAffinityTerm:
-  #           topologyKey: kubernetes.io/hostname
-  #           labelSelector:
-  #             matchLabels:
-  #               app.kubernetes.io/name: chart-deco-studio
 
 configMap:
   meshConfig:
