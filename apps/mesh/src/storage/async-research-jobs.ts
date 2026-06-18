@@ -16,7 +16,6 @@
  * same tool call.
  */
 
-import { createHash } from "node:crypto";
 import { sql, type Kysely } from "kysely";
 import type { AsyncResearchJobStoragePort } from "./ports";
 import type {
@@ -32,33 +31,18 @@ function toIso(v: Date | string | null): string | null {
 }
 
 /**
- * Postgres caps a btree index entry at ~2704 bytes (1/3 of an 8 KB page), and
- * `tool_call_id` feeds two btree keys: the (organization_id, tool_call_id)
- * unique index and the thread_messages PK via `stubMessageId`. Gateways
- * (notably LiteLLM in front of Gemini-thinking models) pack the model's thought
- * signature into the tool-call id — `call_<hex>__thought__<base64>` — pushing it
- * to multiple KB. The full id must survive in the conversation (Gemini requires
- * the signature echoed back), but the DB only needs a stable, bounded key.
- * Keep short ids verbatim (readable, back-compat); hash the rest. Idempotent:
- * `storageKey(storageKey(x)) === storageKey(x)`, so callers may pass either a
- * raw id or an already-stored key (the sweeper passes the latter).
- */
-export const MAX_TOOL_CALL_KEY_BYTES = 2400;
-
-export function storageKey(toolCallId: string): string {
-  if (Buffer.byteLength(toolCallId) <= MAX_TOOL_CALL_KEY_BYTES) {
-    return toolCallId;
-  }
-  return `sha256:${createHash("sha256").update(toolCallId).digest("hex")}`;
-}
-
-/**
  * Deterministic id for the seed assistant message we write next to a
- * polling row. Keyed by `storageKey` so an oversized tool-call id can't blow
- * the thread_messages PK; the stub's *part* still carries the real id.
+ * polling row. Derived from the tool call id so we can find the row to
+ * delete on terminal transitions without an extra lookup.
+ *
+ * `tool_call_id` feeds two btree keys (the (organization_id, tool_call_id)
+ * unique index and this PK), so it must stay under Postgres's ~2704-byte
+ * index-row cap. Gemini-thinking gateways used to blow that by packing the
+ * thought signature into the id; that's now stripped upstream by the
+ * thought-signature middleware (packages/harness), so ids reach storage small.
  */
 function stubMessageId(toolCallId: string): string {
-  return `msg_async_stub_${storageKey(toolCallId)}`;
+  return `msg_async_stub_${toolCallId}`;
 }
 
 /**
@@ -234,7 +218,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
       .values({
         organization_id: input.organizationId,
         thread_id: input.threadId,
-        tool_call_id: storageKey(input.toolCallId),
+        tool_call_id: input.toolCallId,
         message_id: input.messageId ?? null,
         provider: input.provider,
         model_id: input.modelId,
@@ -255,7 +239,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
       .selectFrom("async_research_jobs")
       .selectAll()
       .where("organization_id", "=", input.organizationId)
-      .where("tool_call_id", "=", storageKey(input.toolCallId))
+      .where("tool_call_id", "=", input.toolCallId)
       .executeTakeFirstOrThrow();
 
     return rowToEntity(existing);
@@ -269,7 +253,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
       .selectFrom("async_research_jobs")
       .selectAll()
       .where("organization_id", "=", organizationId)
-      .where("tool_call_id", "=", storageKey(toolCallId))
+      .where("tool_call_id", "=", toolCallId)
       .executeTakeFirst();
 
     return row ? rowToEntity(row) : null;
@@ -296,7 +280,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
           updated_at: now,
         })
         .where("organization_id", "=", organizationId)
-        .where("tool_call_id", "=", storageKey(toolCallId))
+        .where("tool_call_id", "=", toolCallId)
         .execute();
 
       // Stub assistant message — gives the AI SDK reader something to
@@ -342,7 +326,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
         updated_at: now,
       })
       .where("organization_id", "=", organizationId)
-      .where("tool_call_id", "=", storageKey(toolCallId))
+      .where("tool_call_id", "=", toolCallId)
       .execute();
   }
 
@@ -374,7 +358,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
           updated_at: now,
         })
         .where("organization_id", "=", organizationId)
-        .where("tool_call_id", "=", storageKey(toolCallId))
+        .where("tool_call_id", "=", toolCallId)
         .execute();
       await deleteStubMessage(trx, toolCallId);
     });
@@ -396,7 +380,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
           updated_at: now,
         })
         .where("organization_id", "=", organizationId)
-        .where("tool_call_id", "=", storageKey(toolCallId))
+        .where("tool_call_id", "=", toolCallId)
         .execute();
       await deleteStubMessage(trx, toolCallId);
     });
@@ -418,7 +402,7 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
           updated_at: now,
         })
         .where("organization_id", "=", organizationId)
-        .where("tool_call_id", "=", storageKey(toolCallId))
+        .where("tool_call_id", "=", toolCallId)
         .execute();
       await deleteStubMessage(trx, toolCallId);
     });

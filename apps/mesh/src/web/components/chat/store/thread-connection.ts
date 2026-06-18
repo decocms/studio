@@ -1080,9 +1080,29 @@ export function dropRedundantStubs(messages: UIMessage[]): UIMessage[] {
 
   return messages.filter((m) => {
     if (!m.id.startsWith(ASYNC_STUB_ID_PREFIX)) return true;
-    const toolCallId = m.id.slice(ASYNC_STUB_ID_PREFIX.length);
+    // Match by the stub's own tool-web_search part id — robust to any id shape.
+    // (The id suffix is only a fallback for a malformed stub with no part.)
+    const toolCallId =
+      webSearchToolCallId(m) ?? m.id.slice(ASYNC_STUB_ID_PREFIX.length);
     return !covered.has(toolCallId);
   });
+}
+
+/** First `tool-web_search` part's `toolCallId` on a message, if any. */
+function webSearchToolCallId(m: UIMessage): string | undefined {
+  for (const p of m.parts) {
+    if (
+      p &&
+      typeof p === "object" &&
+      "type" in p &&
+      (p as { type: string }).type === "tool-web_search" &&
+      "toolCallId" in p &&
+      typeof (p as { toolCallId?: unknown }).toolCallId === "string"
+    ) {
+      return (p as { toolCallId: string }).toolCallId;
+    }
+  }
+  return undefined;
 }
 
 /**
