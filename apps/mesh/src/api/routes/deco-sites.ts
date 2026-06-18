@@ -321,45 +321,42 @@ const requireAuth = async (
 const ADMIN_MCP = "https://sites-admin-mcp.deco.site/api/mcp";
 const ADMIN_API = "https://admin.deco.cx";
 
-/**
- * Bucket layout that deco-sites/admin's provisionTenantS3Credentials
- * sets up: a single `deco-assets` bucket on GCS (path-style S3 interop),
- * one managed folder per site under `<siteName>/`, served through the
- * `decoims.com` image CDN. Mirrors what the legacy admin's media widget
- * already reads from — see `clients/gcsTenantCredentials.ts` in admin.
- */
-const DECO_ASSETS_BUCKET = "deco-assets";
-const DECO_ASSETS_ENDPOINT = "https://storage.googleapis.com";
-const DECOIMS_CDN = "https://decoims.com";
 const FILE_CONFIG_NAME_PREFIX = "deco-assets-";
 
-interface TenantS3Credentials {
-  accessKeyId: string;
-  secretAccessKey: string;
+/** Full storage descriptor returned by admin's s3-credentials endpoint. */
+interface AdminS3Descriptor {
+  bucket: string;
+  region: string;
+  endpoint: string;
+  prefix: string;
+  forcePathStyle: boolean;
+  publicUrlBase: string;
+}
+
+/** Builds the per-site refresh endpoint URL on admin. */
+function refreshUrlFor(siteName: string): string {
+  return `${ADMIN_API}/api/${encodeURIComponent(siteName)}/s3-credentials`;
 }
 
 /**
- * Calls `POST admin.deco.cx/api/<site>/s3-credentials` as the team's
- * service account. The endpoint provisions (idempotently) a GCP service
- * account, IAM-binds it to the site's managed folder, and mints a fresh
- * HMAC key — see deco-sites/admin#3223 / #3235 for the auth contract.
- * Returns null on any failure so callers can fall back to best-effort
- * behaviour (the deco-sites import itself shouldn't fail just because
- * storage couldn't be provisioned).
+ * Calls `POST admin.deco.cx/api/<site>/s3-credentials` as the team's service
+ * account once, to (a) validate the service-account key can mint credentials
+ * and (b) read the storage descriptor (bucket/region/endpoint/prefix/CDN).
+ * The temporary credentials in the response are intentionally discarded — the
+ * file config stores only a refresh reference, and the S3 client fetches fresh
+ * creds on demand. Returns null on any failure so the deco-sites import stays
+ * best-effort (it shouldn't fail just because storage couldn't be set up).
  */
-async function provisionDecoAssetsCredentials(
+async function fetchDecoAssetsDescriptor(
   siteName: string,
   serviceAccountApiKey: string,
-): Promise<TenantS3Credentials | null> {
+): Promise<AdminS3Descriptor | null> {
   try {
-    const res = await fetch(
-      `${ADMIN_API}/api/${encodeURIComponent(siteName)}/s3-credentials`,
-      {
-        method: "POST",
-        headers: { "x-api-key": serviceAccountApiKey },
-        signal: AbortSignal.timeout(20_000),
-      },
-    );
+    const res = await fetch(refreshUrlFor(siteName), {
+      method: "POST",
+      headers: { "x-api-key": serviceAccountApiKey },
+      signal: AbortSignal.timeout(20_000),
+    });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       console.error(
@@ -367,19 +364,20 @@ async function provisionDecoAssetsCredentials(
       );
       return null;
     }
-    const data = (await res.json()) as {
-      accessKeyId?: string;
-      secretAccessKey?: string;
-    };
-    if (!data.accessKeyId || !data.secretAccessKey) {
+    const data = (await res.json()) as Partial<AdminS3Descriptor>;
+    if (!data.bucket || !data.region || !data.endpoint || !data.publicUrlBase) {
       console.error(
-        `[deco-sites] s3-credentials returned malformed response for site=${siteName}`,
+        `[deco-sites] s3-credentials returned malformed descriptor for site=${siteName}`,
       );
       return null;
     }
     return {
-      accessKeyId: data.accessKeyId,
-      secretAccessKey: data.secretAccessKey,
+      bucket: data.bucket,
+      region: data.region,
+      endpoint: data.endpoint,
+      prefix: data.prefix ?? `${siteName}/`,
+      forcePathStyle: data.forcePathStyle ?? false,
+      publicUrlBase: data.publicUrlBase,
     };
   } catch (err) {
     console.error(
@@ -391,11 +389,12 @@ async function provisionDecoAssetsCredentials(
 }
 
 /**
- * Create a FILE_CONFIG row pointing at the per-site managed folder
- * inside `gs://deco-assets`, served through `https://decoims.com`. If a
- * config with the same name already exists in this org (re-import of
- * the same site), no-op — credentials there may have been rotated by
- * the user. Caller treats this as best-effort.
+ * Create an `sts-session` FILE_CONFIG row for the site's prefix on the
+ * deco-managed assets bucket, served through the CDN reported by admin. The
+ * config stores only a refresh reference (the admin endpoint URL + the team's
+ * service-account API key); the S3 client fetches short-lived credentials on
+ * demand and refreshes them automatically. If a config with the same name
+ * already exists in this org (re-import of the same site), no-op. Best-effort.
  */
 async function provisionDecoAssetsFileConfig(params: {
   ctx: StudioContext;
@@ -415,23 +414,24 @@ async function provisionDecoAssetsFileConfig(params: {
     return;
   }
 
-  const creds = await provisionDecoAssetsCredentials(
+  const descriptor = await fetchDecoAssetsDescriptor(
     siteName,
     serviceAccountApiKey,
   );
-  if (!creds) return;
+  if (!descriptor) return;
 
   await ctx.storage.orgFileConfigs.create({
     organizationId: orgId,
     name: configName,
     description: `deco-assets storage for site "${siteName}". Provisioned during deco.cx import.`,
-    bucket: DECO_ASSETS_BUCKET,
-    region: "auto",
-    endpoint: DECO_ASSETS_ENDPOINT,
-    forcePathStyle: true,
-    prefix: `${siteName}/`,
-    publicUrlBase: DECOIMS_CDN,
-    credentials: creds,
+    bucket: descriptor.bucket,
+    region: descriptor.region,
+    endpoint: descriptor.endpoint,
+    forcePathStyle: descriptor.forcePathStyle,
+    prefix: descriptor.prefix,
+    publicUrlBase: descriptor.publicUrlBase,
+    refreshUrl: refreshUrlFor(siteName),
+    credentials: { type: "sts-session", apiKey: serviceAccountApiKey },
     createdBy: userId,
   });
   console.log(

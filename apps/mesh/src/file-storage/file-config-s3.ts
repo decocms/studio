@@ -2,8 +2,9 @@
  * S3 client built from a resolved org file config. Unlike the shared
  * `object-storage/S3Service`, this client does NOT inject any per-org key
  * prefix — the prefix configured on the file config itself is the only
- * namespace. Each call site owns its own client because credentials are
- * different per config and the SDK client caches the signer.
+ * namespace. Clients are cached per config (see `buildS3Client`) so the SDK's
+ * signer and — for `sts-session` configs — its credential memoization persist
+ * across requests.
  */
 
 import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
@@ -18,21 +19,103 @@ export interface FileConfigContext {
   credentials: FileConfigCredentials;
 }
 
-function buildS3Client(ctx: FileConfigContext): S3Client {
-  return new S3Client({
+/** Shape the AWS SDK accepts as a resolved credential identity. */
+interface ResolvedCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+  expiration?: Date;
+}
+
+/**
+ * For an `sts-session` config, returns an async credential provider instead of
+ * a static key pair. The AWS SDK memoizes the provider's result and re-invokes
+ * it once the returned `expiration` is near, so temporary credentials refresh
+ * automatically — as long as the owning `S3Client` instance is reused (see the
+ * client cache below). Each call fetches fresh creds from the config's
+ * `refreshUrl`, authenticating with the stored API key.
+ */
+export function stsCredentialProvider(
+  info: FileConfigInfo,
+  apiKey: string,
+): () => Promise<ResolvedCredentials> {
+  const url = info.refreshUrl;
+  if (!url) {
+    throw new Error(
+      `sts-session file config ${info.id} is missing a refreshUrl`,
+    );
+  }
+  return async () => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "x-api-key": apiKey },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `sts refresh failed (${res.status}) for file config ${info.id}: ${body.slice(0, 200)}`,
+      );
+    }
+    const data = (await res.json()) as {
+      accessKeyId?: string;
+      secretAccessKey?: string;
+      sessionToken?: string;
+      expiration?: string;
+    };
+    if (!data.accessKeyId || !data.secretAccessKey || !data.sessionToken) {
+      throw new Error(
+        `sts refresh returned incomplete credentials for file config ${info.id}`,
+      );
+    }
+    return {
+      accessKeyId: data.accessKeyId,
+      secretAccessKey: data.secretAccessKey,
+      sessionToken: data.sessionToken,
+      expiration: data.expiration ? new Date(data.expiration) : undefined,
+    };
+  };
+}
+
+// S3Client instances are cached so the SDK's credential memoization survives
+// across requests — critical for `sts-session` configs, where a fresh client
+// per request would re-fetch temporary creds every single time instead of
+// refreshing only near expiry. Keyed by config id + updatedAt so any change
+// to the config (incl. credential rotation) transparently busts the entry.
+const CLIENT_CACHE_MAX = 256;
+const clientCache = new Map<string, S3Client>();
+
+export function buildS3Client(ctx: FileConfigContext): S3Client {
+  const cacheKey = `${ctx.info.id}:${ctx.info.updatedAt}`;
+  const cached = clientCache.get(cacheKey);
+  if (cached) return cached;
+
+  const credentials =
+    ctx.credentials.type === "sts-session"
+      ? stsCredentialProvider(ctx.info, ctx.credentials.apiKey)
+      : {
+          accessKeyId: ctx.credentials.accessKeyId,
+          secretAccessKey: ctx.credentials.secretAccessKey,
+        };
+
+  const client = new S3Client({
     region: ctx.info.region,
     endpoint: ctx.info.endpoint ?? undefined,
     forcePathStyle: ctx.info.forcePathStyle,
-    credentials: {
-      accessKeyId: ctx.credentials.accessKeyId,
-      secretAccessKey: ctx.credentials.secretAccessKey,
-    },
+    credentials,
     // GCS, R2, and MinIO don't all honor the `x-amz-checksum-*` headers
     // AWS SDK v3 auto-injects. Disable unless an operation explicitly
     // requires them.
     requestChecksumCalculation: "WHEN_REQUIRED",
     responseChecksumValidation: "WHEN_REQUIRED",
   });
+
+  if (clientCache.size >= CLIENT_CACHE_MAX) {
+    const oldest = clientCache.keys().next().value;
+    if (oldest !== undefined) clientCache.delete(oldest);
+  }
+  clientCache.set(cacheKey, client);
+  return client;
 }
 
 /**
