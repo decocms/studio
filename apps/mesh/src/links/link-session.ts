@@ -1,4 +1,5 @@
 import { encodeSubjectToken } from "@decocms/tunnel/subject";
+import { z } from "zod";
 import { buildUserTunnelHostname } from "./tunnel-host";
 
 export { buildUserTunnelHostname };
@@ -20,15 +21,17 @@ export interface BuildLinkSessionResponseInput {
   token?: string;
 }
 
-export interface LinkSessionResponse {
-  connection: {
-    urls: string[];
-    credentials?: string;
-    token?: string;
-  };
-  expiresAt: string;
-  tunnelHostname: string;
-}
+export const linkSessionResponseSchema = z.object({
+  connection: z.object({
+    urls: z.array(z.string().min(1)).min(1),
+    credentials: z.string().optional(),
+    token: z.string().optional(),
+  }),
+  expiresAt: z.string().min(1),
+  tunnelHostname: z.string().min(1),
+});
+
+export type LinkSessionResponse = z.infer<typeof linkSessionResponseSchema>;
 
 export function buildDaemonCredentialPermissions(
   tunnelHostname: string,

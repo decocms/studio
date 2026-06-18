@@ -8,7 +8,10 @@ import {
   type ConnectionOptions,
   type NatsConnection,
 } from "nats";
-import type { LinkSessionResponse } from "../links/link-session";
+import {
+  linkSessionResponseSchema,
+  type LinkSessionResponse,
+} from "../links/link-session";
 import { workItemSchema } from "../links/link-work-item";
 import { createControlHandlerFetch } from "./control-handler-fetch";
 import type { ControlHandler } from "./control-handler";
@@ -148,7 +151,14 @@ export async function fetchLinkSession(
     throw new LinkSessionRequestError(res.status, detail);
   }
 
-  return (await res.json()) as LinkSessionResponse;
+  const parsed = linkSessionResponseSchema.safeParse(await res.json());
+  if (!parsed.success) {
+    throw new Error(
+      `[cluster-connection-tunnel] invalid link session response: ${parsed.error.message}`,
+    );
+  }
+
+  return parsed.data;
 }
 
 export function createTunnelCommandFetch(input: {

@@ -127,6 +127,28 @@ describe("fetchLinkSession", () => {
       previewPort: 4000,
     });
   });
+
+  it("rejects a session response without a NATS endpoint", async () => {
+    const fetchImpl = (async (_url, _init) =>
+      new Response(
+        JSON.stringify({
+          connection: {
+            urls: [],
+          },
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          tunnelHostname: "user-test.link",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+
+    await expect(
+      fetchLinkSession({
+        clusterBaseUrl: "https://cluster.example",
+        getAccessToken: async () => "access-token",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("invalid link session response");
+  });
 });
 
 describe("isRetriableSessionError", () => {
@@ -162,6 +184,35 @@ describe("buildNatsConnectOptions", () => {
     expect(buildNatsConnectOptions(sessionWithoutAuth)).toEqual({
       servers: ["nats://127.0.0.1:4222"],
     });
+  });
+
+  it("uses session URLs even when NATS environment URLs are set", () => {
+    const originalNatsUrl = process.env.NATS_URL;
+    const originalNatsPublicUrl = process.env.NATS_PUBLIC_URL;
+    process.env.NATS_URL = "nats://internal-env.example:4222";
+    process.env.NATS_PUBLIC_URL = "wss://public-env.example";
+
+    try {
+      expect(
+        buildNatsConnectOptions({
+          ...sessionWithoutAuth,
+          connection: {
+            urls: ["wss://session.example"],
+          },
+        }).servers,
+      ).toEqual(["wss://session.example"]);
+    } finally {
+      if (originalNatsUrl === undefined) {
+        delete process.env.NATS_URL;
+      } else {
+        process.env.NATS_URL = originalNatsUrl;
+      }
+      if (originalNatsPublicUrl === undefined) {
+        delete process.env.NATS_PUBLIC_URL;
+      } else {
+        process.env.NATS_PUBLIC_URL = originalNatsPublicUrl;
+      }
+    }
   });
 
   it("includes an authenticator when credentials are present", () => {
