@@ -5,7 +5,7 @@ import { requireAuth } from "../../core/studio-context";
 export const LINK_DISCONNECT = defineTool({
   name: "LINK_DISCONNECT",
   description:
-    "Disconnect the calling user's desktop link from the Studio side: tells the linked daemon to shut down (via a `shutdown` control frame). The user re-links by running `bunx decocms link` on the desktop.",
+    "Disconnect the calling user's desktop link from the Studio side: tells the linked daemon to shut down (via a `shutdown` control frame) and removes the presence claim. The user re-links by running `bunx decocms@latest link` on the desktop.",
   inputSchema: z.object({}),
   outputSchema: z.object({
     /**

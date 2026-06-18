@@ -14,7 +14,7 @@ import type { Capability } from "@/links/protocol";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 
-const INSTALL_SNIPPET = "bunx decocms link";
+const INSTALL_SNIPPET = "bunx decocms@latest link";
 
 interface LocalAgent {
   capability: Capability;
