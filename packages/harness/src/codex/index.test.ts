@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
 import type { HarnessContext } from "../types";
-import { codexHarnessFactory } from "./index";
+import { buildCodexDeveloperInstructions, codexHarnessFactory } from "./index";
 
 /**
  * Contract tests for the Codex harness factory.
@@ -28,6 +28,32 @@ describe("codexHarnessFactory", () => {
     expect(harness.id).toBe("codex");
     expect(typeof harness.stream).toBe("function");
   });
+});
+
+test("buildCodexDeveloperInstructions includes coding workspace and agent instructions only", () => {
+  const instructions = buildCodexDeveloperInstructions({
+    codingWorkspace: {
+      repo: {
+        owner: "deco",
+        name: "site",
+        connectedGithub: false,
+      },
+      branch: "main",
+      cwd: "/repo",
+      workspaceKind: "template",
+    },
+    agentInstructions: "Prefer tests before implementation.",
+    now: new Date("2026-06-18T12:34:00.000Z"),
+  });
+
+  expect(instructions).toContain("<coding-workspace>");
+  expect(instructions).toContain("Repository: deco/site");
+  expect(instructions).toContain("GitHub linked: no");
+  expect(instructions).toContain("Prefer tests before implementation.");
+  expect(instructions).toContain("Current date: 2026-06-18");
+  expect(instructions).not.toContain("<available-prompts>");
+  expect(instructions).not.toContain("read_prompt");
+  expect(instructions).not.toContain("todo_write");
 });
 
 describe("createCliMessageMetadata for Codex", () => {

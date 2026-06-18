@@ -32,6 +32,7 @@ export function createCodexModel(
      *  codex CLI runs in the daemon's own cwd (typically the app root)
      *  instead of the cloned repo, so file edits land in the wrong tree. */
     cwd?: string;
+    developerInstructions?: string;
   },
 ): { model: LanguageModelV3; provider: CodexAppServerProvider } {
   const mcpServers = options?.mcpServers
@@ -64,6 +65,9 @@ export function createCodexModel(
       connectionTimeoutMs: 30_000,
       requestTimeoutMs: 300_000,
       idleTimeoutMs: 60_000,
+      ...(options?.developerInstructions
+        ? { developerInstructions: options.developerInstructions }
+        : {}),
     },
   });
 
