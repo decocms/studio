@@ -3,9 +3,9 @@ import type { CurrentLink } from "@/web/hooks/use-current-link";
 import {
   agentHasClonableSource,
   agentHasConnectedGithub,
+  agentShowsGithubHeaderActions,
   hasLocalCliHarness,
 } from "./agent-capabilities";
-import * as agentCapabilities from "./agent-capabilities";
 
 describe("agentHasClonableSource", () => {
   it("returns false for null/undefined metadata", () => {
@@ -108,35 +108,34 @@ describe("agentHasConnectedGithub", () => {
 
 describe("agentShowsGithubHeaderActions", () => {
   it("returns false for a Start Website agent cloned from a public template", () => {
-    const agentShowsGithubHeaderActions =
-      agentCapabilities.agentShowsGithubHeaderActions as
-        | ((virtualMcp: unknown) => boolean)
-        | undefined;
-    expect(typeof agentShowsGithubHeaderActions).toBe("function");
     expect(
       agentShowsGithubHeaderActions({
         connections: [],
         metadata: {
+          instructions: null,
           githubRepo: {
             url: "https://github.com/decocms/webapp-template",
             owner: "decocms",
             name: "webapp-template",
           },
         },
-      }),
+      } as any),
     ).toBe(false);
   });
 
   it("returns true for an imported repo with an attached GitHub connection", () => {
-    const agentShowsGithubHeaderActions =
-      agentCapabilities.agentShowsGithubHeaderActions as
-        | ((virtualMcp: unknown) => boolean)
-        | undefined;
-    expect(typeof agentShowsGithubHeaderActions).toBe("function");
     expect(
       agentShowsGithubHeaderActions({
-        connections: [{ connection_id: "conn_github" }],
+        connections: [
+          {
+            connection_id: "conn_github",
+            selected_tools: null,
+            selected_resources: null,
+            selected_prompts: null,
+          },
+        ],
         metadata: {
+          instructions: null,
           githubRepo: {
             url: "https://github.com/acme/app",
             owner: "acme",
@@ -144,7 +143,7 @@ describe("agentShowsGithubHeaderActions", () => {
             connectionId: "conn_github",
           },
         },
-      }),
+      } as any),
     ).toBe(true);
   });
 });
