@@ -9,7 +9,6 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { useLayoutEffect, type ReactNode } from "react";
 import type { PublicConfig } from "@/api/routes/public-config";
 import { KEYS } from "@/web/lib/query-keys";
-import { setOAuthRedirectOrigin } from "@decocms/mesh-sdk";
 import { usePreferences } from "@/web/hooks/use-preferences";
 
 async function fetchPublicConfig(): Promise<PublicConfig> {
@@ -82,11 +81,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
 
   const [preferences] = usePreferences();
-
-  // Set OAuth redirect origin for proxy environments (e.g. tokyo.localhost → localhost:3000)
-  if (publicConfig.internalUrl) {
-    setOAuthRedirectOrigin(publicConfig.internalUrl);
-  }
 
   // Inject theme variables synchronously before paint to avoid FOUC
   // useLayoutEffect is correct here (not useEffect) for DOM mutations that affect visual appearance
