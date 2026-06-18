@@ -76,10 +76,12 @@ spec:
           command: ["sh", "-c"]
           # cp -r, not -a: -a preserves times/ownership and fails on the
           # fsGroup-owned emptyDir mount root ("preserving times ... Operation
-          # not permitted"). chmod a+rX guarantees the nginx container (uid 101,
-          # not in the fsGroup) can read the assets regardless of the copy umask.
+          # not permitted"). No chmod: the mesh image's umask is 022 → copies are
+          # 0644, which the nginx container (uid 101) reads fine. (A chmod on
+          # /bundle itself fails — the mount root is owned by root, not uid 1001.)
+          # Validated end-to-end in a kind cluster (real fsGroup/uid enforcement).
           args:
-            - cp -r {{ .Values.web.bundlePath }}/. /bundle/ && chmod -R a+rX /bundle
+            - cp -r {{ .Values.web.bundlePath }}/. /bundle/
           volumeMounts:
             - name: bundle
               mountPath: /bundle
