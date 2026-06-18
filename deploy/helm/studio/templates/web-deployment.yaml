@@ -100,6 +100,9 @@ spec:
             # host:port of the API (main) Service; same origin via nginx proxy.
             - name: API_UPSTREAM
               value: {{ .Values.web.apiUpstream | default (printf "%s:%v" (include "chart-deco-studio.fullname" .) .Values.service.port) | quote }}
+            # access_log target: /dev/stdout, or "off" when web.accessLog: false.
+            - name: WEB_ACCESS_LOG
+              value: {{ if .Values.web.accessLog }}"/dev/stdout"{{ else }}"off"{{ end }}
           livenessProbe:
             httpGet:
               path: /healthz

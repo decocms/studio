@@ -24,6 +24,11 @@ server {
   root /usr/share/nginx/html;
   index index.html;
 
+  # ${WEB_ACCESS_LOG} is "/dev/stdout" (default) or "off" (web.accessLog: false,
+  # e.g. when an edge/CDN + app OTel already capture requests). /healthz stays
+  # off regardless (below).
+  access_log ${WEB_ACCESS_LOG};
+
   # Match the app's MAX_UPLOAD_BYTES (file-storage/upload-policy.ts = 100MB).
   # nginx defaults to 1m and would 413 large uploads before they reach the API.
   client_max_body_size 100m;
