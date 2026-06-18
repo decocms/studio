@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   DndContext,
+  DragOverlay,
   type DragEndEvent,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
@@ -31,8 +33,64 @@ import { resolveArrayItemSelection } from "../schema-form-breadcrumb";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
 
-function sortableIdFor(path: string, index: number): string {
-  return `${path}::${index}`;
+/** Stable DnD id per row; item data always comes from the `items` prop. */
+interface ArrayEntry {
+  id: string;
+  index: number;
+}
+
+function createArrayEntries(count: number): ArrayEntry[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: crypto.randomUUID(),
+    index,
+  }));
+}
+
+function remapEntryIndices(entries: ArrayEntry[]): ArrayEntry[] {
+  return entries.map((entry, index) => ({ ...entry, index }));
+}
+
+function resizeArrayEntries(
+  current: ArrayEntry[],
+  nextCount: number,
+): ArrayEntry[] {
+  if (nextCount === current.length) return current;
+  if (nextCount < current.length) {
+    return remapEntryIndices(current.slice(0, nextCount));
+  }
+  const extra = Array.from(
+    { length: nextCount - current.length },
+    (_, offset) => ({
+      id: crypto.randomUUID(),
+      index: current.length + offset,
+    }),
+  );
+  return [...current, ...extra];
+}
+
+function ArrayRowContent({
+  labelText,
+  imageSrc,
+}: {
+  labelText: string;
+  imageSrc?: string;
+}) {
+  return (
+    <>
+      <DotsGrid className="size-3.5 shrink-0 text-muted-foreground/40" />
+      <div className="flex min-w-0 flex-1 items-center gap-2.5 text-sm">
+        {imageSrc && (
+          <img
+            src={imageSrc}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+          />
+        )}
+        <span className="min-w-0 truncate">{labelText}</span>
+      </div>
+    </>
+  );
 }
 
 function SortableArrayRow({
@@ -58,17 +116,14 @@ function SortableArrayRow({
     transform: CSS.Transform.toString(
       transform ? { ...transform, x: 0 } : null,
     ),
-    opacity: isDragging ? 0.4 : undefined,
+    opacity: isDragging ? 0 : undefined,
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={cn(
-        "group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground",
-        isDragging && "bg-accent/50",
-      )}
+      className="group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground"
     >
       <button
         type="button"
@@ -143,13 +198,29 @@ export function ArrayField({
     itemSchema,
   );
   const selectedIndex = selection?.index ?? null;
-  const [isDragging, setIsDragging] = useState(false);
+
+  const [entries, setEntries] = useState<ArrayEntry[]>(() =>
+    createArrayEntries(items.length),
+  );
+  const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+  const [prevListKey, setPrevListKey] = useState(path);
+  const [prevItemCount, setPrevItemCount] = useState(items.length);
+  const suppressClickRef = useRef(false);
+
+  if (prevListKey !== path) {
+    setPrevListKey(path);
+    setPrevItemCount(items.length);
+    setEntries(createArrayEntries(items.length));
+  } else if (prevItemCount !== items.length) {
+    setPrevItemCount(items.length);
+    setEntries((current) => resizeArrayEntries(current, items.length));
+  }
 
   const itemLabel = (item: unknown, index: number) =>
     getArrayItemLabel(item, index, itemSchema);
 
   const openItem = (index: number) => {
-    if (isDragging) return;
+    if (suppressClickRef.current) return;
     const labelText = itemLabel(items[index], index);
     onBreadcrumbChange?.([...breadcrumbPath, labelText]);
   };
@@ -213,23 +284,54 @@ export function ArrayField({
   };
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
 
-  const sortableIds = items.map((_, i) => sortableIdFor(path, i));
+  const entryIds = entries.map((entry) => entry.id);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveEntryId(String(event.active.id));
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    setIsDragging(false);
+    setActiveEntryId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = sortableIds.indexOf(String(active.id));
-    const newIndex = sortableIds.indexOf(String(over.id));
+
+    const oldIndex = entryIds.indexOf(String(active.id));
+    const newIndex = entryIds.indexOf(String(over.id));
     if (oldIndex === -1 || newIndex === -1) return;
+
+    setEntries((current) =>
+      remapEntryIndices(arrayMove([...current], oldIndex, newIndex)),
+    );
     onChange(arrayMove([...items], oldIndex, newIndex));
+    suppressClickRef.current = true;
+    requestAnimationFrame(() => {
+      suppressClickRef.current = false;
+    });
   };
+
+  const handleDragCancel = () => {
+    setActiveEntryId(null);
+  };
+
+  const activeEntry = activeEntryId
+    ? entries.find((entry) => entry.id === activeEntryId)
+    : null;
+  const activeItem =
+    activeEntry != null ? items[activeEntry.index] : undefined;
+  const activeLabel =
+    activeEntry != null && activeItem !== undefined
+      ? itemLabel(activeItem, activeEntry.index)
+      : null;
+  const activeImage =
+    activeEntry != null && activeItem !== undefined
+      ? getArrayItemImageSrc(activeItem, itemSchema)
+      : undefined;
 
   if (selectedIndex !== null && selectedIndex < items.length) {
     const item = items[selectedIndex];
@@ -297,35 +399,52 @@ export function ArrayField({
       </div>
 
       {items.length > 0 && (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={() => setIsDragging(true)}
-          onDragEnd={handleDragEnd}
-          onDragCancel={() => setIsDragging(false)}
-        >
-          <SortableContext
-            items={sortableIds}
-            strategy={verticalListSortingStrategy}
+        <div className={cn(activeEntryId && "cursor-grabbing")}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
           >
-            <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
-              {items.map((item, i) => {
-                const labelText = itemLabel(item, i);
-                const imageSrc = getArrayItemImageSrc(item, itemSchema);
-                return (
-                  <SortableArrayRow
-                    key={sortableIdFor(path, i)}
-                    sortableId={sortableIdFor(path, i)}
-                    labelText={labelText}
-                    imageSrc={imageSrc}
-                    onOpen={() => openItem(i)}
-                    onRemove={() => removeItem(i)}
+            <SortableContext
+              items={entryIds}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
+                {entries.map((entry) => {
+                  const item = items[entry.index];
+                  if (item === undefined) return null;
+                  const labelText = itemLabel(item, entry.index);
+                  const imageSrc = getArrayItemImageSrc(item, itemSchema);
+                  return (
+                    <SortableArrayRow
+                      key={entry.id}
+                      sortableId={entry.id}
+                      labelText={labelText}
+                      imageSrc={imageSrc}
+                      onOpen={() => openItem(entry.index)}
+                      onRemove={() => removeItem(entry.index)}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+
+            <DragOverlay dropAnimation={null}>
+              {activeLabel ? (
+                <div
+                  className="flex min-w-0 items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-2.5 shadow-lg ring-1 ring-border/60"
+                >
+                  <ArrayRowContent
+                    labelText={activeLabel}
+                    imageSrc={activeImage}
                   />
-                );
-              })}
-            </div>
-          </SortableContext>
-        </DndContext>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        </div>
       )}
 
       <button
