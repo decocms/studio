@@ -22,7 +22,7 @@ function helloChunks(): UIMessageChunk[] {
 }
 
 /** A run whose stream carries partial text then an AI-SDK `error` chunk —
- *  the shape consumeRelayedRun synthesizes from a harness error EVENT. */
+ *  the shape link ingest synthesizes from a harness error EVENT. */
 function errorChunks(): UIMessageChunk[] {
   return [
     { type: "start", messageId: "m1" } as UIMessageChunk,

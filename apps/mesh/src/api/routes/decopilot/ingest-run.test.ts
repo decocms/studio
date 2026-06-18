@@ -135,10 +135,10 @@ describe("ingestRun onPublished contiguous floor", () => {
 
 describe("ingestRun initialAckSeq resume floor", () => {
   test("with initialAckSeq=3, skips publishing seqs 1-3 and publishes only 4,5,6 with correct msgIds, fires onPublished for advancing floor, publishDone carries finalSeq=6", async () => {
-    // Scenario: prior session already published seqs 1-3 to JetStream. A pod
-    // restart opens a fresh relay session (lastSeq=0) which delivers the FULL
-    // prefix 1..6. ingestRun with initialAckSeq=3 must skip publishing 1-3
-    // (already in JetStream, same msgIds) and publish only 4,5,6.
+    // Scenario: a previous producer already published seqs 1-3 to JetStream.
+    // A retry delivers the FULL prefix 1..6. ingestRun with initialAckSeq=3
+    // must skip publishing 1-3 (already in JetStream, same msgIds) and publish
+    // only 4,5,6.
     const d = deps();
     const acked: number[] = [];
     await ingestRun(

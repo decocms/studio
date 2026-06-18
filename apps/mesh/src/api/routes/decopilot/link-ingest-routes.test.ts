@@ -44,6 +44,7 @@ interface AppContextOptions {
   /** When true, createTailStream returns an instantly-closed stream so the
    *  pump path runs; when false (default) the tail is null → direct drain. */
   withTail?: boolean;
+  ackedSeq?: number;
 }
 
 function appWithContext(opts: AppContextOptions = {}) {
@@ -61,6 +62,7 @@ function appWithContext(opts: AppContextOptions = {}) {
   let bumps = 0;
   let threadStatus =
     thread && typeof thread.status === "string" ? thread.status : "in_progress";
+  let ackedSeq = opts.ackedSeq ?? 0;
 
   const threadRow = () => ({ ...thread, status: threadStatus });
 
@@ -82,8 +84,14 @@ function appWithContext(opts: AppContextOptions = {}) {
           get: async () => (thread ? threadRow() : null),
           getCancelRequestedAt: async () => opts.cancelRequestedAt ?? null,
           getRunFence: async () => currentRunFence,
-          getAckedSeq: async () => 0,
-          bumpAckedSeq: async () => {},
+          getAckedSeq: async () => ackedSeq,
+          bumpAckedSeq: async (
+            _runId: string,
+            _fenceToken: string,
+            seq: number,
+          ) => {
+            ackedSeq = Math.max(ackedSeq, seq);
+          },
           bumpProgress: async () => {
             bumps++;
           },
@@ -199,6 +207,7 @@ function appWithContext(opts: AppContextOptions = {}) {
     setRunFence: (token: string | null) => {
       currentRunFence = token;
     },
+    ackedSeq: () => ackedSeq,
   };
 }
 
@@ -389,12 +398,11 @@ describe("link ingest chunks route", () => {
     expect(appended).toEqual([]);
   });
 
-  test("a resumed relay with no parked session opens fresh (no 410; full-prefix resend is idempotent)", async () => {
+  test("a resumed relay is accepted without pod-local session state", async () => {
     const { app } = appWithContext();
 
-    // x-relay-from > 1 with no parked session (pod loss) no longer 410s — the
-    // daemon's full-prefix resend is idempotent (§10), so the cluster opens a
-    // fresh session and accepts the lines.
+    // x-relay-from is informational for the NDJSON path. The daemon's
+    // full-prefix resend is idempotent (§10), so any pod can accept it.
     const res = await postChunks(app, relayBody([{ type: "done" }], 5), {
       "x-relay-from": "5",
     });
@@ -424,7 +432,20 @@ describe("link ingest chunks route", () => {
     expect(await res.json()).toEqual({ error: "bad line" });
   });
 
-  test("publishes seq-keyed RAW chunks via ingestRun, NO inline persistence (projector owns it)", async () => {
+  test("rejects a relay POST that ends without a terminal line instead of parking pod-local state", async () => {
+    const { app, publishedDone } = appWithContext();
+
+    const res = await postChunks(
+      app,
+      relayBody(chunkEvents(helloTurnChunks().slice(0, 2))),
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "missing terminal relay line" });
+    expect(publishedDone).toEqual([]);
+  });
+
+  test("publishes seq-keyed RAW chunks with NO inline persistence (projector owns it)", async () => {
     const { app, appended, savedMessages, updates, publishedRaw, pumped } =
       appWithContext();
 
@@ -458,16 +479,41 @@ describe("link ingest chunks route", () => {
       `${RUN_ID}:fence_1:6`,
       `${RUN_ID}:fence_1:7`,
     ]);
-    // The processed uiStream is NOT pumped to NATS in this mode (raw is the
-    // source); ingestRun only drains it for live hooks.
+    // The processed uiStream is NOT pumped to NATS in this mode; raw relay
+    // chunks are already the durable source.
     expect(pumped).toHaveLength(0);
 
-    // ingestRun does ZERO DB writes — the projector is the sole writer of
+    // Link ingest does ZERO DB writes — the projector is the sole writer of
     // parts + status + title. No inline PartEmitter / saveMessagesToThread.
     expect(appended).toEqual([]);
     expect(savedMessages).toEqual([]);
     // No terminal status write from the ingest path either (projector owns it).
     expect(updates.some((u) => u.data.status === "completed")).toBe(false);
+  });
+
+  test("uses durable ack floor to skip a replayed prefix when a retry lands on another pod", async () => {
+    const { app, publishedRaw, publishedDone, ackedSeq } = appWithContext({
+      ackedSeq: 3,
+    });
+
+    const events = [
+      ...chunkEvents(helloTurnChunks()),
+      { type: "done" } as const,
+    ];
+    const res = await postChunks(app, relayBody(events), {
+      "x-relay-from": "1",
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, lastSeq: 8 });
+    expect(publishedRaw.map((c) => c.msgId)).toEqual([
+      `${RUN_ID}:fence_1:4`,
+      `${RUN_ID}:fence_1:5`,
+      `${RUN_ID}:fence_1:6`,
+      `${RUN_ID}:fence_1:7`,
+    ]);
+    expect(publishedDone).toEqual([{ fenceToken: "fence_1", finalSeq: 7 }]);
+    expect(ackedSeq()).toBe(7);
   });
 
   test("an error relay line publishes an `error` chunk + the {done} marker so the projector can fail the run", async () => {
@@ -520,7 +566,7 @@ describe("link ingest chunks route", () => {
     // is what schedules the durable projector. A thrown source would skip it.
     expect(publishedDone).toEqual([{ fenceToken: "fence_1", finalSeq: 6 }]);
 
-    // ingestRun still does ZERO DB writes — the projector owns parts + status.
+    // Link ingest still does ZERO DB writes — the projector owns parts + status.
     expect(appended).toEqual([]);
     expect(updates).toEqual([]);
 

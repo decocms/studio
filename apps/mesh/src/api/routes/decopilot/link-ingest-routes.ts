@@ -4,39 +4,16 @@
  * The desktop daemon relays its sandbox's raw harness output as seq-numbered
  * NDJSON `RelayLine`s ({seq, event: DispatchSSEEvent}) to
  *   POST /api/:org/links/runs/:runId/chunks
- * (see `links/protocol/relay.ts` + `link-daemon/chunk-relay.ts`). The first
- * POST opens an in-memory `RelaySession` pinned to this pod; the session feeds
- * ONE `consumeHarnessStream` invocation for the whole run, so the harness
- * kernel is the single consumer for pull runs exactly as it is for hosted
- * runs — titles, usage (PostHog), parts/messages, error sanitization, run
- * status, and the JetStream live edge all flow through the same code path.
+ * (see `links/protocol/relay.ts` + `link-daemon/chunk-relay.ts`). Each POST is
+ * self-contained and stateless on the cluster: raw chunks are published to
+ * JetStream under their daemon-assigned seq, while a request-local live
+ * consumer drives usage/PostHog/SSE hooks for the chunks in this upload.
  *
  * Reconnect/backfill: the daemon resends the FULL prefix from seq 1 on every
- * attempt (`x-relay-from: 1` always, today); the session dedupes by seq, so
- * replays are safe. The cluster acks once per POST after the body ends with
- * `{ok, lastSeq}`; a terminal POST (after a `done`/`error` line) is acked only
- * after the kernel committed all durable effects.
- *
- * Registry loss (pod restart/crash) is RECOVERABLE, not terminal: a pod with no
- * session for the runId — at ANY `x-relay-from` — opens a FRESH session and
- * re-consumes the full prefix from seq 1 (a fresh session starts `lastSeq = 0`
- * and ignores `x-relay-from`). Parts are id-deduped and the completed
- * transition is guarded, so the redelivery is idempotent. (The old
- * `410 relay_session_lost` branch for `x-relay-from > 1` with no session is
- * gone; the WS uplink's fence-scoped resume uses `resumeFloorForRelay`.) A
- * reconnect landing on ANOTHER pod opens a concurrent fresh session there; the
- * same dedupe/guard make that safe (live-edge chunks may duplicate, the
- * completed event may double-fire — acceptable, documented). An abandoned
- * session (daemon death without an error line) is reaped by the relay
- * registry's per-session idle timer, which fails the run.
- *
- * Fence epochs: a parked session is keyed by runId (== threadId today). The
- * NEXT run on the same thread mints a fresh fence and relays from seq 1, so
- * attaching by runId alone would splice fresh lines into the stale kernel. The
- * route attaches an existing session only when its fence matches the presented
- * (DB-validated) fence; a mismatch evicts the stale session (`relay_superseded`
- * — no durable status write, since the same runId row is re-driven by the
- * fresh session) and opens a new one.
+ * attempt (`x-relay-from: 1` always, today). The durable ack floor stored on the
+ * thread and JetStream `Nats-Msg-Id` dedup make replays safe across any pod. A
+ * successful POST must contain a terminal `done` or `error` line; the cluster no
+ * longer parks pod-local relay sessions waiting for a later request.
  *
  * AUTHZ: requires an authenticated principal; the run's thread must exist in
  * the path org (404 otherwise — closes the old cross-org fence-lookup TODO);
@@ -59,24 +36,18 @@ import {
   createDecopilotFinishEvent,
   createDecopilotThreadStatusEvent,
 } from "@decocms/mesh-sdk";
-import type { HarnessStreamConsumerHooks } from "./consume-harness-stream";
-import { ingestRun } from "./ingest-run";
+import {
+  consumeHarnessStream,
+  type HarnessStreamConsumerHooks,
+  type HarnessStreamPersistence,
+} from "./consume-harness-stream";
 import { makeAckedSeqThrottle } from "./acked-seq-throttle";
 import { buildOnTitleUpdated } from "./on-title-updated";
 import { ProgressBumpThrottle } from "./progress-bump";
-import { createRelaySessionRegistry } from "./relay-session";
+import { buildChunkMsgId } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 import type { Env } from "../../hono-env";
 import type { SSEEvent } from "@/event-bus";
-
-/**
- * Eviction code stamped on the iterable failure when a stale parked session is
- * superseded by a fresh run on the same runId (see relay-session.ts). The
- * relayed-run consumer treats this as a NON-failure: it tears down without
- * writing a durable `failed` status, because the same run row is about to be
- * re-driven by the fresh session.
- */
-const RELAY_SUPERSEDED_CODE = "relay_superseded";
 
 /**
  * Hard per-line cap for the relay NDJSON body. A single relay line carries one
@@ -93,6 +64,10 @@ export class NdjsonLineTooLargeError extends Error {
     super(`relay NDJSON line exceeded ${maxBytes} bytes`);
     this.name = "NdjsonLineTooLargeError";
   }
+}
+
+function relayProtocolError(message: string): Error & { code: string } {
+  return Object.assign(new Error(message), { code: "relay_protocol_error" });
 }
 
 export interface LinkIngestDeps {
@@ -152,12 +127,10 @@ export async function* ndjsonLines(
 }
 
 /**
- * Resume floor for a relay reconnect (replaces the old `x-relay-from > 1` 410
- * stub). The fence-scoped cursor (spec §5.3/N6): resume from `lastSeq + 1` when
- * the presented fence matches the parked session's epoch; a new epoch (or no
- * parked session) resends the full prefix from seq 1. Drives the WS uplink's
- * `accept` cursor; the NDJSON path stays full-prefix because its parked session
- * is gone after pod loss.
+ * Resume floor for the WS relay reconnect path. The fence-scoped cursor (spec
+ * §5.3/N6) resumes from `lastSeq + 1` when the presented fence matches the
+ * current epoch; a new epoch resends the full prefix from seq 1. The NDJSON
+ * route ignores `x-relay-from` and relies on durable ack-floor dedup.
  */
 export function resumeFloorForRelay(
   session: { lastSeq: number; fenceToken: string | null },
@@ -169,38 +142,74 @@ export function resumeFloorForRelay(
   return session.lastSeq + 1;
 }
 
-interface ConsumeRelayedRunArgs {
+interface ConsumeRelayedLiveRunArgs {
   ctx: StudioContext;
   deps: LinkIngestDeps;
   runId: string;
   thread: Thread;
   chunks: AsyncIterable<UIMessageChunk>;
-  /**
-   * The DB-validated relay fence this session relays for — the epoch identity
-   * the projector keys its accumulator + the JetStream `Nats-Msg-Id` by
-   * (`${runId}:${fenceToken}:${seq}`). Falls back to `runId` when null (a null
-   * fence never reaches here in practice: `validateRunAccess` rejects a missing
-   * fence with 409). Used only on the projector (publish-then-consume) path.
-   */
-  fenceToken: string | null;
-  /**
-   * Durable resume floor passed through to `ingestRun` as `initialAckSeq`.
-   * The relay session always delivers the FULL prefix (lastSeq=0) so the
-   * re-numbered seq space is consistent; ingestRun skips RE-PUBLISHING
-   * `1..seededFloor` (already in JetStream) and publishes `floor+1..N`.
-   * Defaults to 0 (fresh run).
-   */
-  seededFloor?: number;
 }
 
-/** True when an error is the supersede eviction signal (relay-session.ts) —
- *  NOT a run failure, so it must not write a durable failed status. */
-function isSupersededError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { code?: unknown }).code === RELAY_SUPERSEDED_CODE
-  );
+const NOOP_PERSISTENCE: HarnessStreamPersistence = {
+  emitStepParts: async () => {},
+  emitFinal: async () => {},
+  emitError: async () => {},
+};
+
+function createChunkQueue<T>() {
+  const queue: T[] = [];
+  let closed = false;
+  let failure: unknown;
+  let change = Promise.withResolvers<void>();
+
+  const signalChange = () => {
+    const prev = change;
+    change = Promise.withResolvers<void>();
+    prev.resolve();
+  };
+
+  return {
+    push(value: T) {
+      if (closed || failure !== undefined) return;
+      queue.push(value);
+      signalChange();
+    },
+    close() {
+      if (closed || failure !== undefined) return;
+      closed = true;
+      signalChange();
+    },
+    fail(error: unknown) {
+      if (closed || failure !== undefined) return;
+      failure = error;
+      queue.length = 0;
+      signalChange();
+    },
+    async *iterate(): AsyncGenerator<T, void, undefined> {
+      while (true) {
+        const waiter = change.promise;
+        if (failure !== undefined) throw failure;
+        if (queue.length > 0) {
+          yield queue.shift()!;
+          continue;
+        }
+        if (closed) return;
+        await waiter;
+      }
+    },
+  };
+}
+
+async function drain(stream: ReadableStream): Promise<void> {
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done } = await reader.read();
+      if (done) return;
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 /**
@@ -230,51 +239,13 @@ function isSupersededError(error: unknown): boolean {
  * The kernel's `originalMessages` is `[]`: the daemon stream carries complete
  * messages, nothing is being resumed into an existing wire message list.
  */
-async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
-  const { ctx, deps, runId, thread, chunks, seededFloor } = args;
+async function consumeRelayedLiveRun(
+  args: ConsumeRelayedLiveRunArgs,
+): Promise<void> {
+  const { ctx, deps, runId, thread, chunks } = args;
   const orgId = ctx.organization!.id;
   const distinctId = ctx.auth.user!.id;
   const streamStartAt = Date.now();
-
-  // Set when this session was superseded by a fresh run on the same runId. The
-  // fresh session owns the run row AND its `${runId}:${messageId}:${seq}` part-id namespace
-  // now, so this stale consume must perform ZERO persistence and ZERO terminal
-  // status writes — otherwise a stale error/partial part would collide (ON
-  // CONFLICT id DO NOTHING) with the fresh run's first part and silently drop
-  // it. We intercept the supersede signal at the chunk boundary (below) and
-  // end the stream cleanly so the kernel never runs its error/emitError path;
-  // every persistence callback + the finish hook + the terminal completion are
-  // additionally guarded on this flag.
-  let superseded = false;
-
-  // Wrap the relay chunk iterable so a terminal failure ends the stream IN-BAND
-  // (a yielded AI-SDK `error` chunk) instead of throwing:
-  //  - `relay_superseded`: a fresh run owns this runId now → clean end, NO error
-  //    chunk and NO persistence (set `superseded` so ingestRun publishes
-  //    nothing). The fresh session re-drives the run.
-  //  - any other failure (a daemon `error` EVENT — an in-band run failure — or a
-  //    `relay_idle_timeout` abandonment): emit an `error` chunk and end cleanly.
-  //    A thrown source would skip ingestRun's `publishDone`, so the durable
-  //    projector (the SOLE writer of parts + status) would never be scheduled —
-  //    the run would dangle `in_progress` with no error/finish parts. Routing
-  //    the failure through the stream as an `error` chunk makes it a normal
-  //    published chunk: the projector reconstructs it, the kernel's onError
-  //    persists an `error` + `finish` part, and projectRun's DLQ marks the run
-  //    `failed`. The kernel still fires onError here too (the live posthog
-  //    `chat_message_failed` + failure SSE), so live behavior is unchanged.
-  const guardedChunks = (async function* () {
-    try {
-      yield* chunks;
-    } catch (error) {
-      if (isSupersededError(error)) {
-        superseded = true;
-        return; // clean end — kernel runs onFinish, not onError
-      }
-      const errorText =
-        error instanceof Error ? error.message : stringifyError(error);
-      yield { type: "error", errorText } as UIMessageChunk;
-    }
-  })();
 
   // Captured usage for the unconditional completed event (Fix 4): the kernel's
   // onUsage fires only when the final message carries usage metadata, so a
@@ -309,9 +280,9 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
 
   // The live hooks (usage capture, posthog completion/failure, failure SSE).
   // ZERO DB writes: terminal status is owned by the durable projector
-  // (`ingestRun` is a zero-DB-write unit). The failed-status row write that the
-  // legacy inline path performed here is gone — the projector's onRunErrored
-  // writes `status:'failed'`.
+  // (link ingest only publishes raw chunks + done markers). The failed-status
+  // row write that the legacy inline path performed here is gone — the
+  // projector's onRunErrored writes `status:'failed'`.
   const hooks: HarnessStreamConsumerHooks = {
     // Fires at most once, before onFinish, with the run's usage totals
     // extracted from final message metadata. Capture into a local; the
@@ -327,10 +298,8 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
       };
     },
     onFinish: () => {
-      // A failed run already emitted `chat_message_failed` in onError — don't
-      // also emit `completed` for it. A superseded run emits nothing — the
-      // fresh session owns completion.
-      if (runErrored || superseded) return;
+      // A failed run already emitted `chat_message_failed` in onError.
+      if (runErrored) return;
       posthog.capture({
         distinctId,
         event: "chat_message_completed",
@@ -346,9 +315,13 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
       });
     },
     onError: async (error) => {
-      // A supersede eviction never reaches here — `guardedChunks` converts it
-      // to a clean stream end (onFinish, not onError). Any error in onError is
-      // therefore a genuine run failure.
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        (error as { code?: unknown }).code === "relay_protocol_error"
+      ) {
+        return;
+      }
       runErrored = true;
       console.error("[link-ingest] relayed stream error:", error);
       posthog.capture({
@@ -381,90 +354,25 @@ async function consumeRelayedRun(args: ConsumeRelayedRunArgs): Promise<void> {
       })
     : undefined;
 
-  // The relay's RAW chunks are routed through the shared `ingestRun` unit: each
-  // is published to DECOPILOT_STREAMS with a seq-keyed `Nats-Msg-Id`
-  // (`${runId}:${fenceToken}:${seq}`) and the live hooks (usage/posthog/SSE
-  // finish) + title-chunk injection fire once. ZERO DB writes happen here — the
-  // durable projector is the sole writer of parts + status + title, and owns the
-  // terminal transition + JetStream subject lifecycle (purge).
-  //
-  // The relay session already deduped by wireSeq (replays seq <= lastSeq are
-  // dropped before delivery), so a monotonic counter over the delivered chunks
-  // IS the gap-free, contiguous seq `ingestRun` keys its `Nats-Msg-Id` by within
-  // this session. (Cross-session resends re-publish with the same seq →
-  // JetStream's `Nats-Msg-Id` + the projector's `ON CONFLICT` dedup.)
-  let seq = 0;
-  async function* seqChunks(): AsyncGenerator<{
-    seq: number;
-    chunk: UIMessageChunk;
-  }> {
-    for await (const chunk of guardedChunks) {
-      yield { seq: ++seq, chunk };
-    }
-  }
-
-  // Throttled durable floor: collapse per-chunk `bumpAckedSeq` writes to at
-  // most one per ~3s, then force a final write after the run completes so the
-  // floor always reflects the terminal seq before the fence is cleared.
-  const ackedSeqThrottle = makeAckedSeqThrottle(() => Date.now());
-  let lastAckedSeq = 0;
-  const effectiveFenceToken = args.fenceToken ?? runId;
-
-  await ingestRun(
-    {
-      runId,
-      // A null fence never reaches here (validateRunAccess rejects a missing
-      // fence with 409); fall back to runId to keep the msgId well-formed.
-      fenceToken: effectiveFenceToken,
-      // Resume floor: the relay session delivers the FULL prefix (lastSeq=0 —
-      // see relay-session.ts) so seq is re-numbered 1..N consistently. ingestRun
-      // skips RE-PUBLISHING the already-durable prefix 1..floor and publishes
-      // floor+1..N with their real msgIds — no collision, no JetStream dedup drop.
-      initialAckSeq: seededFloor,
-      chunks: seqChunks(),
-      // Single-writer guard: a superseded session must publish NOTHING (the
-      // fresh session owns this runId's epoch). `guardedChunks` already ends
-      // cleanly on the supersede signal; this is belt-and-suspenders.
-      fenceOk: () => !superseded,
-      // Persist the contiguous ack floor at most once per ~3s. `onPublished`
-      // receives the new contiguous floor (not just the raw seq), so writing
-      // it directly is safe as the monotonic CAS in `bumpAckedSeq` prevents
-      // regressions from concurrent calls.
-      onPublished: (s) => {
-        lastAckedSeq = s;
-        if (!superseded && ackedSeqThrottle.shouldWrite(s)) {
-          void ctx.storage.threads
-            .bumpAckedSeq(runId, effectiveFenceToken, s)
-            .catch(() => {});
-        }
-      },
+  const { uiStream, whenComplete } = consumeHarnessStream({
+    chunks,
+    persistence: NOOP_PERSISTENCE,
+    hooks,
+    title: {
+      currentThreadTitle: thread.title,
+      threadId: runId,
+      // Projector owns the title write — neutralize the inline one.
+      persistTitle: async () => {},
+      onTitleUpdated,
     },
-    {
-      streamBuffer: deps.streamBuffer,
-      hooks,
-      title: {
-        currentThreadTitle: thread.title,
-        threadId: runId,
-        // Projector owns the title write — neutralize the inline one.
-        persistTitle: async () => {},
-        onTitleUpdated,
-      },
-    },
-  );
+  });
 
-  // Force a final bump so the durable floor always reflects the terminal seq
-  // even when the throttle suppressed the last periodic write. Skip for
-  // superseded sessions — they own ZERO persistence.
-  if (!superseded && lastAckedSeq > 0) {
-    await ctx.storage.threads
-      .bumpAckedSeq(runId, effectiveFenceToken, lastAckedSeq)
-      .catch(() => {});
-  }
+  await drain(uiStream);
+  await whenComplete;
 }
 
 export function createLinkIngestRoutes(deps: LinkIngestDeps) {
   const app = new Hono<Env>();
-  const relayRegistry = createRelaySessionRegistry();
   // Per-chunk liveness heartbeat, collapsed to ≤1 `last_progress_at` write
   // per ~3s per run (same throttle dispatch-run's tapProgress uses).
   const progressThrottle = new ProgressBumpThrottle();
@@ -513,7 +421,7 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     }
 
     // `presented` is now validated against the DB-current fence — it's the
-    // canonical epoch the relay session is keyed by.
+    // canonical epoch used in JetStream msg ids and ack-floor writes.
     return { ctx, runId, thread, presentedFence: presented };
   }
 
@@ -525,61 +433,90 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
     const body = c.req.raw.body;
     if (!body) return c.json({ error: "missing body" }, 400);
 
-    // Fence-epoch session resolution. A parked session keyed by runId may
-    // belong to a STALE run (runId == threadId; a dead daemon left it parked).
-    // Attach only when the existing session's fence matches the presented (and
-    // DB-validated) fence; otherwise evict the stale one — failing its iterable
-    // so its consume() tears down without a durable status write
-    // (relay_superseded) — and open a fresh session for this epoch.
-    const current = relayRegistry.get(runId);
-    let session;
-    if (current && current.fenceToken === presentedFence) {
-      session = current;
-    } else {
-      if (current) {
-        relayRegistry.evict(runId, "relay_superseded");
+    const effectiveFenceToken = presentedFence ?? runId;
+    let ackSeq = await ctx.storage.threads.getAckedSeq(runId).catch(() => 0);
+    const pending = new Set<number>();
+    const ackedSeqThrottle = makeAckedSeqThrottle(() => Date.now());
+    const liveChunks = createChunkQueue<UIMessageChunk>();
+    const liveConsume = consumeRelayedLiveRun({
+      ctx,
+      deps,
+      runId,
+      thread,
+      chunks: liveChunks.iterate(),
+    });
+
+    let lastSeq = 0;
+    let finalSeq = 0;
+    let sawTerminal = false;
+
+    const recordPublished = (seq: number) => {
+      pending.add(seq);
+      const previous = ackSeq;
+      while (pending.has(ackSeq + 1)) {
+        pending.delete(ackSeq + 1);
+        ackSeq += 1;
       }
-      // No parked session (pod loss) OR superseded epoch: open a fresh session.
-      // A resumed relay (`x-relay-from > 1`) no longer 410s — a full-prefix
-      // resend is idempotent (§10, the cluster dedupes by seq), so the daemon
-      // resends from seq 1 and we splice cleanly. The WS path uses the
-      // fence-scoped `resumeFloorForRelay` cursor instead of full-prefix.
-      //
-      // Read the durable ackSeq high-water mark to pass as the ingest resume
-      // floor. The relay session is opened with lastSeq=0 (full-prefix delivery)
-      // so the re-numbered seq space is consistent across sessions; ingestRun
-      // uses this floor to skip RE-PUBLISHING the already-durable prefix
-      // 1..floor (avoiding JetStream msgId collision that would silently drop the
-      // run's tail via dedup). Returns 0 for a fresh run or pre-migration row.
-      const seededFloor = await ctx.storage.threads
-        .getAckedSeq(runId)
-        .catch(() => 0);
-      session = relayRegistry.open(runId, presentedFence, {
-        consume: (chunks) =>
-          consumeRelayedRun({
-            ctx,
-            deps,
-            runId,
-            thread,
-            chunks,
-            fenceToken: presentedFence,
-            seededFloor,
-          }),
+      if (ackSeq > previous && ackedSeqThrottle.shouldWrite(ackSeq)) {
+        void ctx.storage.threads
+          .bumpAckedSeq(runId, effectiveFenceToken, ackSeq)
+          .catch(() => {});
+      }
+    };
+
+    const publishChunk = async (seq: number, chunk: UIMessageChunk) => {
+      finalSeq = Math.max(finalSeq, seq);
+      if (seq <= ackSeq || pending.has(seq)) return;
+      const ok = await deps.streamBuffer.publishRawChunk(runId, chunk, {
+        msgId: buildChunkMsgId({
+          runId,
+          fenceToken: effectiveFenceToken,
+          seq,
+        }),
       });
-    }
+      if (!ok) {
+        throw new Error("[link-ingest] stream buffer publish failed");
+      }
+      recordPublished(seq);
+    };
 
     try {
       for await (const value of ndjsonLines(body)) {
         const line = relayLineSchema.safeParse(value);
         if (!line.success) {
+          liveChunks.fail(relayProtocolError("bad relay line"));
+          await liveConsume.catch(() => {});
           return c.json({ error: "bad line" }, 400);
         }
-        session.push(line.data);
+        const relayLine = line.data;
+        lastSeq = Math.max(lastSeq, relayLine.seq);
+        if (!sawTerminal) {
+          const event = relayLine.event;
+          if (event.type === "ui-message-chunk") {
+            const chunk = event.chunk as UIMessageChunk;
+            await publishChunk(relayLine.seq, chunk);
+            liveChunks.push(chunk);
+          } else if (event.type === "error") {
+            sawTerminal = true;
+            const chunk = {
+              type: "error",
+              errorText: `${event.code}: ${event.message}`,
+            } as UIMessageChunk;
+            await publishChunk(relayLine.seq, chunk);
+            liveChunks.push(chunk);
+            liveChunks.close();
+          } else {
+            sawTerminal = true;
+            liveChunks.close();
+          }
+        }
         if (progressThrottle.shouldBump(runId)) {
           ctx.storage.threads.bumpProgress(runId).catch(() => {});
         }
       }
     } catch (error) {
+      liveChunks.fail(relayProtocolError("bad relay body"));
+      await liveConsume.catch(() => {});
       // An over-cap line is a protocol violation (fatal for the daemon) — map
       // it to 400 so the daemon stops resending rather than retrying forever.
       if (error instanceof NdjsonLineTooLargeError) {
@@ -595,16 +532,26 @@ export function createLinkIngestRoutes(deps: LinkIngestDeps) {
       throw error;
     }
 
-    if (session.ended) {
-      // Terminal POST: ack only after the kernel committed all durable
-      // effects — the daemon treats a post-terminal ack as run completion.
-      // A consume failure is still acked (ok + lastSeq): the relay delivered
-      // every line; retrying the upload cannot fix a cluster-side failure,
-      // and the run was already transitioned to failed by the error hooks.
-      await session.whenComplete.catch(() => {});
-      progressThrottle.clear(runId);
+    if (!sawTerminal) {
+      liveChunks.fail(relayProtocolError("missing terminal relay line"));
+      await liveConsume.catch(() => {});
+      return c.json({ error: "missing terminal relay line" }, 400);
     }
-    return c.json({ ok: true, lastSeq: session.lastSeq });
+
+    await liveConsume.catch(() => {});
+
+    if (finalSeq > 0 && ackSeq < finalSeq) {
+      return c.json({ error: "relay seq gap" }, 400);
+    }
+
+    if (finalSeq > 0) {
+      await ctx.storage.threads
+        .bumpAckedSeq(runId, effectiveFenceToken, finalSeq)
+        .catch(() => {});
+      await deps.streamBuffer.publishDone(runId, effectiveFenceToken, finalSeq);
+    }
+    progressThrottle.clear(runId);
+    return c.json({ ok: true, lastSeq });
   });
 
   return app;
