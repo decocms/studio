@@ -1,5 +1,6 @@
 import { extractUrl } from "./fields/extract-url";
 import type { SchemaProperty } from "./resolve-schema";
+import { isLazyResolveType } from "./section-lazy";
 import { labelFromResolveType } from "./section-types";
 import { safeEditorImageUrl } from "./safe-editor-image-url";
 
@@ -107,7 +108,18 @@ export function getArrayItemLabel(
     return String(item);
   }
   if (item && typeof item === "object" && !Array.isArray(item)) {
-    const obj = item as Record<string, unknown>;
+    let obj = item as Record<string, unknown>;
+    // Lazy-wrapped section items (`{ __resolveType: ".../Lazy.tsx", section: {...} }`)
+    // should be labelled by the inner section, not "Lazy".
+    if (
+      typeof obj.__resolveType === "string" &&
+      isLazyResolveType(obj.__resolveType) &&
+      obj.section &&
+      typeof obj.section === "object" &&
+      !Array.isArray(obj.section)
+    ) {
+      obj = obj.section as Record<string, unknown>;
+    }
     if (itemSchema?.titleBy) {
       const fromTitleBy = readTitleByValue(obj, itemSchema.titleBy);
       if (fromTitleBy) return fromTitleBy;
