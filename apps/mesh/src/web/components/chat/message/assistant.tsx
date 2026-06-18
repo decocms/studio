@@ -50,6 +50,7 @@ type ThinkingStage = "planning" | "thinking";
 interface ThinkingStageConfig {
   icon: ReactNode;
   label: string;
+  detail: string;
 }
 
 const THINKING_STAGES: Record<ThinkingStage, ThinkingStageConfig> = {
@@ -61,6 +62,7 @@ const THINKING_STAGES: Record<ThinkingStage, ThinkingStageConfig> = {
       />
     ),
     label: "Planning next moves",
+    detail: "Deciding how to approach the request",
   },
   thinking: {
     icon: (
@@ -70,12 +72,46 @@ const THINKING_STAGES: Record<ThinkingStage, ThinkingStageConfig> = {
       />
     ),
     label: "Thinking",
+    detail: "Working through the next response",
   },
 };
 
 const PLANNING_DURATION = 1200;
 
-function RunStatusIndicator() {
+function ThoughtSummaryShell({
+  icon,
+  title,
+  summary,
+  detail,
+  state,
+  detailVariant = "prose",
+  latency,
+  trailing,
+}: {
+  icon: ReactNode;
+  title: ReactNode;
+  summary?: ReactNode;
+  detail?: string | null;
+  state: "loading" | "error" | "idle";
+  detailVariant?: "code" | "prose";
+  latency?: number;
+  trailing?: ReactNode;
+}) {
+  return (
+    <ToolCallShell
+      icon={icon}
+      title={title}
+      summary={summary}
+      detail={detail}
+      state={state}
+      detailVariant={detailVariant}
+      latency={latency}
+      trailing={trailing}
+    />
+  );
+}
+
+function RunStatusIndicator({ startedAt }: { startedAt: number | null }) {
   const stage = useOptionalChatStream()?.runStatusStage ?? null;
   const [fallbackStage, setFallbackStage] = useState<ThinkingStage>("planning");
 
@@ -94,34 +130,26 @@ function RunStatusIndicator() {
   if (stage !== null) {
     const copy = RUN_STATUS_COPY[stage];
     return (
-      <div className="flex items-start gap-1.5 py-2 opacity-70">
-        <Stars01
-          className="text-muted-foreground shrink-0 animate-pulse mt-0.5"
-          size={14}
-        />
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-[14px] text-muted-foreground shimmer">
-            {copy.label}...
-          </span>
-          <span className="text-[12px] leading-4 text-muted-foreground/60">
-            {copy.detail}
-          </span>
-        </span>
-      </div>
+      <ThoughtSummaryShell
+        icon={<Stars01 className="size-4" />}
+        title={`${copy.label}...`}
+        summary={copy.detail}
+        state="loading"
+        trailing={startedAt !== null && <LiveTimer since={startedAt} />}
+      />
     );
   }
 
   const config = THINKING_STAGES[fallbackStage];
 
   return (
-    <div className="flex items-center gap-1.5 py-2 opacity-60">
-      <span className="flex items-center gap-1.5">
-        {config.icon}
-        <span className="text-[14px] text-muted-foreground shimmer">
-          {config.label}...
-        </span>
-      </span>
-    </div>
+    <ThoughtSummaryShell
+      icon={config.icon}
+      title={`${config.label}...`}
+      summary={config.detail}
+      state="loading"
+      trailing={startedAt !== null && <LiveTimer since={startedAt} />}
+    />
   );
 }
 
@@ -155,14 +183,7 @@ function ThinkingState({ startedAt }: { startedAt: number | null }) {
 
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-2">
-        <RunStatusIndicator />
-        {startedAt !== null && (
-          <span className="opacity-60">
-            <LiveTimer since={startedAt} />
-          </span>
-        )}
-      </div>
+      <RunStatusIndicator startedAt={startedAt} />
       {isSlow && stream?.stop && (
         <div className="flex items-center gap-2 pb-1 text-[13px] text-muted-foreground/60">
           <span>This is taking longer than usual.</span>
@@ -224,7 +245,7 @@ function ThoughtSummary({
     !isStreaming && duration != null ? duration / 1000 : undefined;
 
   return (
-    <ToolCallShell
+    <ThoughtSummaryShell
       icon={
         isStreaming ? (
           <Stars01 className="size-4" />
