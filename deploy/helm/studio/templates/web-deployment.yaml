@@ -34,10 +34,14 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        # Roll the nginx pods whenever the mounted config changes. Without this
+        # a ConfigMap-only edit (e.g. a CSP/header fix) updates the ConfigMap but
+        # never restarts nginx, so it keeps serving the old config indefinitely.
+        checksum/web-nginx-config: {{ include (print $.Template.BasePath "/web-configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-web
         app.kubernetes.io/instance: {{ .Release.Name }}
