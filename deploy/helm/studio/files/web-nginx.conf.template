@@ -33,11 +33,12 @@ server {
   # nginx defaults to 1m and would 413 large uploads before they reach the API.
   client_max_body_size 100m;
 
-  # Default policy: revalidate HTML + clickjacking guards (mirrors the app's
-  # withSecurityHeaders). Per-location add_header blocks below override this.
-  add_header Cache-Control "no-cache" always;
-  add_header X-Frame-Options "DENY" always;
-  add_header Content-Security-Policy "frame-ancestors 'none'" always;
+  # Clickjacking + cache guards live on the SPA `location /` below, NOT at server
+  # level. nginx's add_header inheritance would otherwise push them onto the
+  # proxied /api location, re-stamping frame-ancestors 'none' over the API's own
+  # per-path CSP — which breaks the file/fs previews the app deliberately iframes
+  # (it exempts /files and /fs/.../read). Scoping to the SPA protects the app
+  # shell while proxied API responses keep the headers the app set.
 
   location = /healthz {
     access_log off;
@@ -74,8 +75,13 @@ server {
     try_files $uri =404;
   }
 
-  # SPA fallback.
+  # SPA fallback. Clickjacking + no-cache guards live here (not server-level) so
+  # they apply to the app shell only — never inherited onto the proxied /api
+  # location, whose responses carry the API's own per-path CSP.
   location / {
+    add_header Cache-Control "no-cache" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Content-Security-Policy "frame-ancestors 'none'" always;
     try_files $uri /index.html;
   }
 }
