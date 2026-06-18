@@ -123,33 +123,33 @@ function SortableArrayRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground"
+      {...attributes}
+      {...listeners}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className={cn(
+        "group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
+        isDragging ? "cursor-grabbing" : "cursor-grab",
+      )}
+      title={labelText}
     >
-      <button
-        type="button"
-        className="shrink-0 cursor-grab touch-none text-muted-foreground/40 active:cursor-grabbing"
-        aria-label={`Reorder ${labelText}`}
-        {...attributes}
-        {...listeners}
-      >
-        <DotsGrid className="size-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-2.5 text-left text-sm"
-        title={labelText}
-      >
-        {imageSrc && (
-          <img
-            src={imageSrc}
-            alt=""
-            referrerPolicy="no-referrer"
-            className="h-12 max-w-[100px] shrink-0 rounded object-cover"
-          />
-        )}
-        <span className="min-w-0 truncate">{labelText}</span>
-      </button>
+      <DotsGrid className="size-3.5 shrink-0 text-muted-foreground/40" />
+      {imageSrc && (
+        <img
+          src={imageSrc}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+        />
+      )}
+      <span className="min-w-0 flex-1 truncate text-sm">{labelText}</span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -157,8 +157,9 @@ function SortableArrayRow({
             variant="ghost"
             size="icon"
             aria-label={`Open actions for ${labelText}`}
-            className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
+            className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
           >
             <DotsHorizontal size={14} />
           </Button>
@@ -322,8 +323,7 @@ export function ArrayField({
   const activeEntry = activeEntryId
     ? entries.find((entry) => entry.id === activeEntryId)
     : null;
-  const activeItem =
-    activeEntry != null ? items[activeEntry.index] : undefined;
+  const activeItem = activeEntry != null ? items[activeEntry.index] : undefined;
   const activeLabel =
     activeEntry != null && activeItem !== undefined
       ? itemLabel(activeItem, activeEntry.index)
@@ -433,9 +433,7 @@ export function ArrayField({
 
             <DragOverlay dropAnimation={null}>
               {activeLabel ? (
-                <div
-                  className="flex min-w-0 items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-2.5 shadow-lg ring-1 ring-border/60"
-                >
+                <div className="flex min-w-0 items-center gap-2.5 rounded-lg border border-border/60 bg-background px-2 py-2.5 shadow-lg ring-1 ring-border/60">
                   <ArrayRowContent
                     labelText={activeLabel}
                     imageSrc={activeImage}
