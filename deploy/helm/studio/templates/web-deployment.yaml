@@ -51,6 +51,11 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      # Front door behind an NLB (target-type: ip). On rollout the LB controller
+      # deregisters the pod IP asynchronously; without a drain delay nginx exits
+      # before the NLB stops sending new flows → RST/5xx. Grace must exceed the
+      # preStop sleep + nginx drain.
+      terminationGracePeriodSeconds: {{ .Values.web.terminationGracePeriodSeconds | default 45 }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -115,6 +120,17 @@ spec:
               port: http
             initialDelaySeconds: 3
             periodSeconds: 5
+          # Keep serving while the NLB deregisters this pod IP, then nginx's
+          # SIGQUIT drains in-flight. Override via web.lifecycle to replace.
+          {{- if .Values.web.lifecycle }}
+          lifecycle:
+            {{- toYaml .Values.web.lifecycle | nindent 12 }}
+          {{- else }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "{{ .Values.web.preStopSleepSeconds | default 15 }}"]
+          {{- end }}
           volumeMounts:
             - name: bundle
               mountPath: /usr/share/nginx/html
