@@ -1,3 +1,21 @@
+import { useState } from "react";
+import {
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { DotsGrid, DotsHorizontal, Plus, Trash01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -6,11 +24,103 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import { resolveArrayItemSelection } from "../schema-form-breadcrumb";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
+
+function sortableIdFor(path: string, index: number): string {
+  return `${path}::${index}`;
+}
+
+function SortableArrayRow({
+  sortableId,
+  labelText,
+  imageSrc,
+  onOpen,
+  onRemove,
+}: {
+  sortableId: string;
+  labelText: string;
+  imageSrc?: string;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useSortable({
+      id: sortableId,
+      animateLayoutChanges: () => false,
+    });
+
+  const style = {
+    transform: CSS.Transform.toString(
+      transform ? { ...transform, x: 0 } : null,
+    ),
+    opacity: isDragging ? 0.4 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground",
+        isDragging && "bg-accent/50",
+      )}
+    >
+      <button
+        type="button"
+        className="shrink-0 cursor-grab touch-none text-muted-foreground/40 active:cursor-grabbing"
+        aria-label={`Reorder ${labelText}`}
+        {...attributes}
+        {...listeners}
+      >
+        <DotsGrid className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-2.5 text-left text-sm"
+        title={labelText}
+      >
+        {imageSrc && (
+          <img
+            src={imageSrc}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+          />
+        )}
+        <span className="min-w-0 truncate">{labelText}</span>
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Open actions for ${labelText}`}
+            className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DotsHorizontal size={14} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={onRemove}
+          >
+            <Trash01 size={14} />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
 
 export function ArrayField({
   schema,
@@ -33,11 +143,13 @@ export function ArrayField({
     itemSchema,
   );
   const selectedIndex = selection?.index ?? null;
+  const [isDragging, setIsDragging] = useState(false);
 
   const itemLabel = (item: unknown, index: number) =>
     getArrayItemLabel(item, index, itemSchema);
 
   const openItem = (index: number) => {
+    if (isDragging) return;
     const labelText = itemLabel(items[index], index);
     onBreadcrumbChange?.([...breadcrumbPath, labelText]);
   };
@@ -98,6 +210,25 @@ export function ArrayField({
       }
       onBreadcrumbChange?.([...breadcrumbPath, labelText]);
     }
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const sortableIds = items.map((_, i) => sortableIdFor(path, i));
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setIsDragging(false);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = sortableIds.indexOf(String(active.id));
+    const newIndex = sortableIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    onChange(arrayMove([...items], oldIndex, newIndex));
   };
 
   if (selectedIndex !== null && selectedIndex < items.length) {
@@ -166,59 +297,35 @@ export function ArrayField({
       </div>
 
       {items.length > 0 && (
-        <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
-          {items.map((item, i) => {
-            const labelText = itemLabel(item, i);
-            const imageSrc = getArrayItemImageSrc(item, itemSchema);
-            return (
-              <div
-                key={`${path}.${i}`}
-                className="group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground"
-              >
-                <DotsGrid className="size-3.5 shrink-0 cursor-grab text-muted-foreground/40" />
-                <button
-                  type="button"
-                  onClick={() => openItem(i)}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left text-sm"
-                  title={labelText}
-                >
-                  {imageSrc && (
-                    <img
-                      src={imageSrc}
-                      alt=""
-                      referrerPolicy="no-referrer"
-                      className="h-12 max-w-[100px] shrink-0 rounded object-cover"
-                    />
-                  )}
-                  <span className="min-w-0 truncate">{labelText}</span>
-                </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Open actions for ${labelText}`}
-                      className="size-6 opacity-0 transition-opacity group-hover:opacity-100"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <DotsHorizontal size={14} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => removeItem(i)}
-                    >
-                      <Trash01 size={14} />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            );
-          })}
-        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={() => setIsDragging(true)}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setIsDragging(false)}
+        >
+          <SortableContext
+            items={sortableIds}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
+              {items.map((item, i) => {
+                const labelText = itemLabel(item, i);
+                const imageSrc = getArrayItemImageSrc(item, itemSchema);
+                return (
+                  <SortableArrayRow
+                    key={sortableIdFor(path, i)}
+                    sortableId={sortableIdFor(path, i)}
+                    labelText={labelText}
+                    imageSrc={imageSrc}
+                    onOpen={() => openItem(i)}
+                    onRemove={() => removeItem(i)}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       <button

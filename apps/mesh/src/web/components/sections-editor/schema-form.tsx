@@ -9,6 +9,7 @@ import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
+import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
   isMultivariateArrayWrapper,
   isPageMultivariateSectionArrayField,
@@ -166,13 +167,31 @@ export function renderField(props: FieldProps) {
     return <AnyOfField key={props.path} {...props} />;
   }
 
+  // Deco API secrets are stored as loader blocks, not plain strings.
+  if (
+    isSecretBlock(value) ||
+    schema.format === "password" ||
+    (value == null && schema.format === "password")
+  ) {
+    return <SecretField key={props.path} {...props} />;
+  }
+
   // If value is null/undefined, try to produce a typed default from schema
   const effectiveValue =
     value === null || value === undefined
       ? defaultForType(schema.type, schema.default)
       : value;
 
-  if (effectiveValue === null || effectiveValue === undefined) return null;
+  if (effectiveValue === null || effectiveValue === undefined) {
+    if (isSecretBlock(value)) {
+      return <SecretField key={props.path} {...props} />;
+    }
+    return null;
+  }
+
+  if (isSecretBlock(effectiveValue)) {
+    return <SecretField key={props.path} {...props} value={effectiveValue} />;
+  }
 
   const effectiveProps = { ...props, value: effectiveValue };
 
