@@ -1,0 +1,6 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+archive = "rm -rf node_modules"
+run = "bun run dev:conductor"
+setup = "bun install"
