@@ -405,6 +405,19 @@ jobs:
       - name: Skip notice (dispatch token not configured)
         if: env.DISPATCH_TOKEN == ''
         run: echo "::notice::DEPLOY_REPO_TOKEN not set — skipping the deco-apps-cd bump."
+      - uses: actions/checkout@v4
+        if: env.DISPATCH_TOKEN != ''
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Read deploy scope from release commit
+        id: scope
+        if: env.DISPATCH_TOKEN != ''
+        # release-tagging stamps a `Deploy-Scope:` trailer on the [release]
+        # commit (web / server / both). deco-apps-cd's bump-studio-image rolls
+        # only the matching tier. Absent/old commits default to both.
+        run: |
+          S=$(git log -1 --format=%B | sed -n 's/^Deploy-Scope:[[:space:]]*//p' | head -1)
+          echo "scope=${S:-both}" >> "$GITHUB_OUTPUT"
       - name: Dispatch studio-image-bump to deco-apps-cd
         if: env.DISPATCH_TOKEN != ''
         uses: peter-evans/repository-dispatch@v3
@@ -412,7 +425,7 @@ jobs:
           token: ${{ secrets.DEPLOY_REPO_TOKEN }}
           repository: decocms/deco-apps-cd
           event-type: studio-image-bump
-          client-payload: '{"version": "${{ needs.prepare.outputs.version }}"}'
+          client-payload: '{"version": "${{ needs.prepare.outputs.version }}", "scope": "${{ steps.scope.outputs.scope }}"}'
       - name: Summary
         if: env.DISPATCH_TOKEN != ''
-        run: echo "Dispatched \`studio-image-bump\` (version ${{ needs.prepare.outputs.version }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Dispatched \`studio-image-bump\` (version ${{ needs.prepare.outputs.version }}, scope ${{ steps.scope.outputs.scope }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"
