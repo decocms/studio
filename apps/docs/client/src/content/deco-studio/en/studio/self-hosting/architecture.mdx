@@ -5,6 +5,7 @@ icon: Network
 ---
 
 import Callout from "../../../../../components/ui/Callout.astro";
+import ArchitectureDiagram from "../../../../../components/ArchitectureDiagram.astro";
 
 This page describes how a running Studio deployment is wired together: the tiers, what each one does, and how a request becomes an agent run, a tool call, or a sandbox preview. It is the conceptual companion to the [Kubernetes](/studio/self-hosting/deploy/kubernetes) and [Docker Compose](/studio/self-hosting/deploy/docker-compose) deploy guides.
 
@@ -15,6 +16,10 @@ Studio spans three trust/locality boundaries:
 - **Edge** — the public internet path: a CDN and an L4 load balancer.
 - **Cloud cluster** — the Kubernetes deployment: web, API, workers, Postgres, NATS, and cloud sandboxes.
 - **Desktop** — the user's laptop, connected by `deco link`, where the desktop loop and desktop sandbox can run.
+
+<ArchitectureDiagram />
+
+The same flow as text:
 
 ```
 EDGE                CLOUD CLUSTER                                     DESKTOP
