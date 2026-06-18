@@ -23,6 +23,11 @@ service:
   type: ClusterIP
   port: 80
   targetPort: 3000
+  # Same-zone endpoint preference (kube-proxy topology hints) to cut cross-zone
+  # traffic. Empty → field omitted (REQUIRED on k8s < 1.31, where it's rejected).
+  # Set "PreferClose" on k8s >= 1.31. Best-effort: needs pods spread across zones
+  # to take effect; falls back to all endpoints otherwise.
+  trafficDistribution: ""
 
 resources:
   requests:
@@ -154,6 +159,10 @@ web:
   # initContainer is cache-warm. Set to override (or to {} via --set to keep the
   # default; set a non-empty affinity to replace it entirely).
   affinity: {}
+  # Empty → the template defaults to a SOFT zone spread (maxSkew 1,
+  # ScheduleAnyway) so same-zone routing has a web endpoint per zone. Override
+  # with your own constraints.
+  topologySpreadConstraints: []
 
 configMap:
   meshConfig:
