@@ -17,7 +17,7 @@ import { useCurrentLink } from "@/web/hooks/use-current-link";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 
-const INSTALL_SNIPPET = "bunx decocms link";
+const INSTALL_SNIPPET = "bunx decocms@latest link";
 
 const CAPABILITY_LABELS: Partial<Record<Capability, string>> = {
   "claude-code": "Claude Code",

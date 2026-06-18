@@ -91,8 +91,8 @@ export function NoAiProviderEmptyState({
   const subtitle =
     description ??
     (localMode
-      ? "Connect a provider, or run `bunx decocms link` on your desktop for Claude Code, Codex, and local files."
-      : "Connect a provider — or run `bunx decocms link` on your desktop to use Claude Code, Codex, or your local files.");
+      ? "Connect a provider, or run `bunx decocms@latest link` on your desktop for Claude Code, Codex, and local files."
+      : "Connect a provider — or run `bunx decocms@latest link` on your desktop to use Claude Code, Codex, or your local files.");
 
   // Badge styles: use brand color if available, otherwise a neutral muted background
   const hasBrandStyle = !!(brandIcon || primaryColor);

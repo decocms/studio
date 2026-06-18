@@ -8,7 +8,7 @@
  *
  * ── PREREQUISITES (the bodies stay `test.skip` until these land) ─────────────
  * 1. tests/multi-pod/docker-compose.yml services:
- *      - `link-daemon`: runs the `bunx decocms link` daemon against a mesh pod,
+ *      - `link-daemon`: runs the `bunx decocms@latest link` daemon against a mesh pod,
  *        env LINK_WS_UPLINK=true (dial GET /api/links/uplink). restart:"no" so
  *        pod.ts kill/start drives the outbox-replay-across-restart scenario.
  *      - `toxiproxy`: TCP proxy interposed on the uplink WS path (admin :8474)
