@@ -1,4 +1,5 @@
 import {
+  isDecoAppResolveType,
   isResolvableManifestApp,
   resolveBlockSchemaMetadata,
   type LiveMeta,
@@ -159,7 +160,8 @@ export function findSiteAppEntry(
     const resolveType = obj.__resolveType;
     if (
       typeof resolveType === "string" &&
-      isResolvableManifestApp(meta, resolveType)
+      (isSiteAppBlock(SITE_APP_BLOCK_KEY, obj) ||
+        isResolvableManifestApp(meta, resolveType))
     ) {
       return {
         key: SITE_APP_BLOCK_KEY,
@@ -174,13 +176,17 @@ export function findSiteAppEntry(
     if (!val || typeof val !== "object" || Array.isArray(val)) continue;
 
     const obj = val as Record<string, unknown>;
-    if (obj.__resolveType !== SITE_APP_RESOLVE_TYPE) continue;
-    if (!isResolvableManifestApp(meta, SITE_APP_RESOLVE_TYPE)) continue;
+    if (!isSiteAppBlock(key, obj)) continue;
+
+    const resolveType =
+      typeof obj.__resolveType === "string"
+        ? obj.__resolveType
+        : SITE_APP_RESOLVE_TYPE;
 
     return {
       key,
       name: appLabel(key, obj, meta),
-      resolveType: SITE_APP_RESOLVE_TYPE,
+      resolveType,
     };
   }
 
@@ -204,7 +210,12 @@ export function extractApps(
     if (PAGE_RESOLVE_TYPES.has(resolveType)) continue;
     if (typeof obj.path === "string") continue;
     if (isSiteAppBlock(key, obj)) continue;
-    if (!isResolvableManifestApp(meta, resolveType)) continue;
+    if (
+      !isResolvableManifestApp(meta, resolveType) &&
+      !isDecoAppResolveType(resolveType)
+    ) {
+      continue;
+    }
 
     apps.push({
       key,

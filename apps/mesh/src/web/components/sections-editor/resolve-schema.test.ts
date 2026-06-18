@@ -163,6 +163,42 @@ describe("resolveSchema – app resolveType aliases", () => {
     expect(resolved?.properties?.seo?.title).toBe("SEO");
   });
 
+  test("resolves tanstack app schemas from base64 definition keys", () => {
+    const resolveType = "site/apps/local/app-tags.ts";
+    const encoded = Buffer.from(resolveType).toString("base64");
+    const meta: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: {
+        definitions: {
+          [encoded]: {
+            title: resolveType,
+            type: "object",
+            allOf: [
+              {
+                $ref: "#/definitions/AppTagsProps",
+              },
+            ],
+            properties: {
+              __resolveType: {
+                type: "string",
+                enum: [resolveType],
+              },
+            },
+          },
+          AppTagsProps: {
+            type: "object",
+            properties: {
+              account: { type: "string", title: "Account Name" },
+            },
+          },
+        },
+      },
+    };
+
+    const resolved = resolveSchema(resolveType, meta);
+    expect(resolved?.properties?.account?.title).toBe("Account Name");
+  });
+
   test("prefers section array over page multivariate flag for site global", () => {
     const meta: LiveMeta = {
       manifest: {
