@@ -3,7 +3,7 @@
 // scripts/gen-architecture-html.ts (standalone interactive architecture.html).
 // Update the diagram HERE — both outputs derive from this file.
 
-export const TIER: Record<string, string> = {
+const TIER: Record<string, string> = {
   edge: "#94a3b8",
   web: "#22d3ee",
   api: "#38bdf8",
@@ -18,7 +18,7 @@ export const TIER: Record<string, string> = {
   desk: "#c4b5fd",
 };
 
-export const ZONES = [
+const ZONES = [
   {
     x: 24,
     y: 150,
@@ -51,7 +51,7 @@ export const ZONES = [
   },
 ];
 
-export const SUBZONES = [
+const SUBZONES = [
   { x: 620, y: 782, w: 556, h: 150, label: "Cloud Sandbox · pod" },
 ];
 
@@ -71,7 +71,7 @@ export type Node = {
   facts?: [string, string][];
 };
 
-export const NODES: Record<string, Node> = {
+const NODES: Record<string, Node> = {
   s3: {
     x: 470,
     y: 96,
@@ -422,7 +422,7 @@ export const NODES: Record<string, Node> = {
 };
 
 // from, to, kind
-export const EDGES: [string, string, string][] = [
+const EDGES: [string, string, string][] = [
   ["client", "cf", "req"],
   ["cf", "nlb", "req"],
   ["nlb", "web", "req"],
@@ -453,7 +453,7 @@ export const EDGES: [string, string, string][] = [
   ["dloop", "dsbx", "ctrl"],
 ];
 
-export const EDGE_STYLE: Record<
+const EDGE_STYLE: Record<
   string,
   { stroke: string; dash?: string; w: number; op: number }
 > = {
@@ -467,7 +467,7 @@ export const EDGE_STYLE: Record<
 };
 
 // manual margin routes for long cross-diagram edges
-export const ROUTES: Record<string, { x: number; y: number }[]> = {
+const ROUTES: Record<string, { x: number; y: number }[]> = {
   "gateway>daemonprev": [
     { x: 300, y: 885 },
     { x: 300, y: 1002 },
@@ -483,7 +483,7 @@ export const ROUTES: Record<string, { x: number; y: number }[]> = {
 };
 
 // ordered traces for the interactive html (ignored by the static SVG)
-export const SCENARIOS = [
+const SCENARIOS = [
   {
     id: "req",
     label: "Request path",
@@ -565,7 +565,7 @@ export const SCENARIOS = [
   },
 ];
 
-export const LEGEND: [string, string][] = [
+const LEGEND: [string, string][] = [
   ["edge", "Edge"],
   ["web", "Web"],
   ["api", "API"],
