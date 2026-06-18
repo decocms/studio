@@ -3,9 +3,19 @@
 # ${API_UPSTREAM} is the only env var substituted; nginx's own $vars are left
 # intact because the stock entrypoint only envsubst's defined env names.
 
+# For WS upgrades, Connection: upgrade. For normal requests, EMPTY (not "close")
+# so the upstream keepalive pool below is reused instead of a new TCP per request.
 map $http_upgrade $connection_upgrade {
   default upgrade;
-  ''      close;
+  ''      "";
+}
+
+# Keepalive pool to the API so /api requests reuse connections (no TCP + handshake
+# per request). server holds ${API_UPSTREAM}; resolved at config-load (pins the
+# ClusterIP — see the location comment).
+upstream studio_api {
+  server ${API_UPSTREAM};
+  keepalive 32;
 }
 
 server {
@@ -33,12 +43,10 @@ server {
   # API + system paths → Bun server. Same origin keeps auth cookies first-party.
   # Path set mirrors apps/mesh vite.config.ts proxy + isServerPath.
   location ~ ^/(api|mcp|oauth-proxy|\.well-known|org|health|metrics)(/|$) {
-    # ponytail: literal proxy_pass → nginx resolves the upstream at config-load
-    # and pins the ClusterIP. Fine here (the API Service exists in the same Helm
-    # release; a not-ready-at-boot DNS just crashloops until it converges). If the
-    # Service is ever recreated with a new ClusterIP, `kubectl rollout restart` the
-    # web Deployment — or switch to a `resolver` + variable proxy_pass if that churns.
-    proxy_pass http://${API_UPSTREAM};
+    # ponytail: upstream resolves at config-load and pins the ClusterIP. Fine
+    # here (the API Service exists in the same Helm release). If the Service is
+    # recreated with a new ClusterIP, `kubectl rollout restart` the web Deployment.
+    proxy_pass http://studio_api;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
