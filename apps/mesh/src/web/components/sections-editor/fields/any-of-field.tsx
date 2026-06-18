@@ -147,14 +147,40 @@ export function AnyOfField({
     refs.length > 0
       ? detectBlockRefType(editorValue, refs, savedRef?.blockKey)
       : (refs[0]?.resolveType ?? "");
+  const isBlockRef = schema.type === "block-ref";
+  const isModuleLoaderUnion =
+    isBlockRef &&
+    refs.some(
+      (r) =>
+        r.resolveType.includes("/") &&
+        !isEmbeddedUnionResolveType(r.resolveType),
+    );
+
   const [selectedRt, setSelectedRt] = useState(inferredRt);
   const [prevInferredRt, setPrevInferredRt] = useState(inferredRt);
   // Module loaders use an internal breadcrumb so nested array/object navigation
   // doesn't leak to the outer section-editor breadcrumb. The outer breadcrumb
   // can't resolve loader-internal keys (e.g. "selectedFacets" from the loader's
   // schema) at the section level (e.g. SearchResult), causing the whole form
-  // to render instead of just the focused item.
+  // to show all fields instead of the focused item.
   const [loaderBreadcrumbs, setLoaderBreadcrumbs] = useState<string[]>([]);
+  // When the user drills into a loader item (loaderBreadcrumbs becomes non-empty),
+  // collapse the outer section form by focusing it on this loader field's key.
+  // When the user goes back (loaderBreadcrumbs becomes empty), restore the full form.
+  const [prevLoaderBcrLen, setPrevLoaderBcrLen] = useState(0);
+  if (prevLoaderBcrLen !== loaderBreadcrumbs.length) {
+    setPrevLoaderBcrLen(loaderBreadcrumbs.length);
+    if (isModuleLoaderUnion && onBreadcrumbChange) {
+      if (loaderBreadcrumbs.length > 0) {
+        // Focus the outer form on just this field (e.g. "page") so surrounding
+        // section fields (sections, layout, etc.) collapse out of view.
+        const outerKey = path.includes(".") ? path.split(".")[0]! : path;
+        onBreadcrumbChange([outerKey]);
+      } else {
+        onBreadcrumbChange([]);
+      }
+    }
+  }
   if (prevInferredRt !== inferredRt) {
     setPrevInferredRt(inferredRt);
     setSelectedRt(inferredRt);
@@ -178,16 +204,6 @@ export function AnyOfField({
       schema.discriminatorKey,
     );
     const discriminatorKey = schema.discriminatorKey;
-
-    // Module loaders: loader-internal fields include "/" in resolveType.
-    const isBlockRef = schema.type === "block-ref";
-    const isModuleLoaderUnion =
-      isBlockRef &&
-      refs.some(
-        (r) =>
-          r.resolveType.includes("/") &&
-          !isEmbeddedUnionResolveType(r.resolveType),
-      );
 
     const handleRefChange = (rt: string) => {
       setSelectedRt(rt);

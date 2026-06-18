@@ -112,7 +112,16 @@ export function getArrayItemLabel(
       const fromTitleBy = readTitleByValue(obj, itemSchema.titleBy);
       if (fromTitleBy) return fromTitleBy;
     }
-    for (const key of ["name", "label", "title", "alt", "text", "href", "id"]) {
+    for (const key of [
+      "name",
+      "label",
+      "title",
+      "alt",
+      "text",
+      "href",
+      "id",
+      "key",
+    ]) {
       const value = obj[key];
       if (typeof value === "string" && value) return value;
       if (Array.isArray(value)) {
