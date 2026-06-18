@@ -8,13 +8,8 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { Coins04 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useMCPToolCallQuery,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
-import { useAiProviderKeys } from "@/web/hooks/collections/use-ai-providers";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useDecoCredits } from "@/web/hooks/use-deco-credits";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Tooltip,
@@ -50,33 +45,17 @@ function creditColor(balanceDollars: number): string {
 function CreditChip() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-  const { data, isPending, isError } = useMCPToolCallQuery<
-    { balanceCents: number } | undefined
-  >({
-    client,
-    toolName: "AI_PROVIDER_CREDITS",
-    toolArguments: { providerId: "deco" },
-    staleTime: 60_000,
-    select: (result) =>
-      (result as { structuredContent?: { balanceCents: number } })
-        .structuredContent,
-  });
-  const balanceDollars =
-    data?.balanceCents != null ? data.balanceCents / 100 : null;
-  const tooltipLabel =
-    isPending || isError || balanceDollars == null
-      ? "Credits"
-      : `Credits: $${balanceDollars.toFixed(2)}`;
+  const { hasDecoKey, balanceDollars } = useDecoCredits();
+  if (!hasDecoKey) return null;
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
-          tooltip={tooltipLabel}
+          tooltip={
+            balanceDollars != null
+              ? `Credits: $${balanceDollars.toFixed(2)}`
+              : "Credits"
+          }
           className={cn(balanceDollars != null && creditColor(balanceDollars))}
           onClick={() =>
             navigate({
@@ -97,18 +76,11 @@ function CreditChip() {
   );
 }
 
-function CreditChipConditional() {
-  const keys = useAiProviderKeys();
-  const hasDecoKey = keys.some((k) => k.providerId === "deco");
-  if (!hasDecoKey) return null;
-  return <CreditChip />;
-}
-
 export function SidebarTopActions() {
   return (
     <SilentErrorBoundary>
       <Suspense fallback={null}>
-        <CreditChipConditional />
+        <CreditChip />
       </Suspense>
     </SilentErrorBoundary>
   );
@@ -117,28 +89,12 @@ export function SidebarTopActions() {
 function CreditChipInline() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-  const { data, isPending, isError } = useMCPToolCallQuery<
-    { balanceCents: number } | undefined
-  >({
-    client,
-    toolName: "AI_PROVIDER_CREDITS",
-    toolArguments: { providerId: "deco" },
-    staleTime: 60_000,
-    select: (result) =>
-      (result as { structuredContent?: { balanceCents: number } })
-        .structuredContent,
-  });
-  const balanceDollars =
-    data?.balanceCents != null ? data.balanceCents / 100 : null;
+  const { hasDecoKey, balanceDollars } = useDecoCredits();
+  if (!hasDecoKey) return null;
   const tooltipLabel =
-    isPending || isError || balanceDollars == null
-      ? "Credits"
-      : `Credits: $${balanceDollars.toFixed(2)}`;
+    balanceDollars != null
+      ? `Credits: $${balanceDollars.toFixed(2)}`
+      : "Credits";
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
@@ -160,18 +116,11 @@ function CreditChipInline() {
   );
 }
 
-function CreditChipInlineConditional() {
-  const keys = useAiProviderKeys();
-  const hasDecoKey = keys.some((k) => k.providerId === "deco");
-  if (!hasDecoKey) return null;
-  return <CreditChipInline />;
-}
-
 export function SidebarTopActionsInline() {
   return (
     <SilentErrorBoundary>
       <Suspense fallback={null}>
-        <CreditChipInlineConditional />
+        <CreditChipInline />
       </Suspense>
     </SilentErrorBoundary>
   );
