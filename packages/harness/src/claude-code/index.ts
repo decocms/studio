@@ -35,6 +35,8 @@ import { createClaudeCodeModel, resolveClaudeCodeModelId } from "./model";
 import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
+import { buildCodingWorkspacePrompt } from "../coding-workspace-prompt";
+import { buildCurrentContextPrompt } from "../decopilot/system-prompt";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
 import { genTitle } from "../decopilot/title-generator";
 import { stringifyError } from "../decopilot/stream-error";
@@ -44,6 +46,27 @@ import type {
   HarnessFactory,
   HarnessStreamInput,
 } from "../types";
+
+export function buildClaudeCodeSystemPrompt(input: {
+  codingWorkspace?: HarnessStreamInput["codingWorkspace"];
+  agentInstructions?: string;
+  now?: Date;
+}) {
+  const parts = [
+    buildCodingWorkspacePrompt(input.codingWorkspace),
+    input.agentInstructions?.trim()
+      ? `<agent-instructions>\n${input.agentInstructions.trim()}\n</agent-instructions>`
+      : null,
+    buildCurrentContextPrompt(input.now ?? new Date()),
+  ].filter((part): part is string => Boolean(part?.trim()));
+
+  if (parts.length === 0) return undefined;
+  return {
+    type: "preset" as const,
+    preset: "claude_code" as const,
+    append: parts.join("\n\n"),
+  };
+}
 
 export const claudeCodeHarnessFactory: HarnessFactory = {
   id: "claude-code",
@@ -79,6 +102,17 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    temp-API-key lifecycle); the harness just forwards them.
         //    Mirrors stream-core lines 888–906 — all five options are
         //    threaded through.
+        const systemPrompt = buildClaudeCodeSystemPrompt({
+          codingWorkspace: input.codingWorkspace,
+          agentInstructions:
+            typeof input.virtualMcp.metadata === "object" &&
+            input.virtualMcp.metadata !== null &&
+            typeof (input.virtualMcp.metadata as { instructions?: unknown })
+              .instructions === "string"
+              ? (input.virtualMcp.metadata as { instructions: string })
+                  .instructions
+              : undefined,
+        });
         const languageModel = createClaudeCodeModel(sdkModelId, {
           mcpServers: {
             // Server name kept as `cms` for parity with the inline call
@@ -94,6 +128,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
           isPlanMode: input.mode === "plan",
           resume: input.resumeSessionRef,
           cwd,
+          systemPrompt,
         });
 
         // 4. Convert UIMessages to ModelMessages. The AI SDK's
