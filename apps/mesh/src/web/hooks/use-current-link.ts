@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Capability } from "@/links/protocol";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import {
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
-import { useStudioTools } from "@/web/lib/studio-tools";
 
 export interface CurrentLink {
   online: boolean;
@@ -22,12 +25,20 @@ const OFFLINE: CurrentLink = { online: false, capabilities: [], ready: false };
 
 export function useCurrentLink(): CurrentLink {
   const { org } = useProjectContext();
-  const studio = useStudioTools();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
 
   const { data } = useQuery<CurrentLink>({
     queryKey: KEYS.currentLink(org.id),
     queryFn: async () => {
-      const link = await studio.call("LINK_CURRENT_GET", {});
+      const result = (await client.callTool({
+        name: "LINK_CURRENT_GET",
+        arguments: {},
+      })) as { structuredContent?: Omit<CurrentLink, "ready"> };
+      const link = result.structuredContent;
       return link ? { ...link, ready: true } : { ...OFFLINE, ready: true };
     },
     staleTime: 4_000,
