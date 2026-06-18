@@ -33,6 +33,16 @@ const durationHistogram = (): Histogram =>
     {
       description: "Duration of inbound HTTP requests handled by the API.",
       unit: "s",
+      // We record seconds, so the boundaries must be seconds too. Without this
+      // advice the SDK applies its default millisecond boundaries (5, 10, …,
+      // 10000), into which every sub-5s request collapses — making the quantiles
+      // meaningless. These are the OTel HTTP semconv buckets for the metric.
+      advice: {
+        explicitBucketBoundaries: [
+          0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5,
+          10,
+        ],
+      },
     },
   ));
 
