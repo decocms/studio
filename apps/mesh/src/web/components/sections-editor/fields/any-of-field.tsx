@@ -27,6 +27,7 @@ import {
 } from "../block-type-utils";
 import type { SchemaProperty } from "../resolve-schema";
 import type { FieldProps } from "./field-props";
+
 import { SchemaForm } from "../schema-form";
 import { unwrapBlockReference } from "../unwrap-section";
 
@@ -148,9 +149,16 @@ export function AnyOfField({
       : (refs[0]?.resolveType ?? "");
   const [selectedRt, setSelectedRt] = useState(inferredRt);
   const [prevInferredRt, setPrevInferredRt] = useState(inferredRt);
+  // Module loaders use an internal breadcrumb so nested array/object navigation
+  // doesn't leak to the outer section-editor breadcrumb. The outer breadcrumb
+  // can't resolve loader-internal keys (e.g. "selectedFacets" from the loader's
+  // schema) at the section level (e.g. SearchResult), causing the whole form
+  // to render instead of just the focused item.
+  const [loaderBreadcrumbs, setLoaderBreadcrumbs] = useState<string[]>([]);
   if (prevInferredRt !== inferredRt) {
     setPrevInferredRt(inferredRt);
     setSelectedRt(inferredRt);
+    setLoaderBreadcrumbs([]);
   }
   const [loaderConfigOpen, setLoaderConfigOpen] = useState(() =>
     blockRefLoaderConfigHasData(editorValue, savedRef?.blockKey),
@@ -170,6 +178,16 @@ export function AnyOfField({
       schema.discriminatorKey,
     );
     const discriminatorKey = schema.discriminatorKey;
+
+    // Module loaders: loader-internal fields include "/" in resolveType.
+    const isBlockRef = schema.type === "block-ref";
+    const isModuleLoaderUnion =
+      isBlockRef &&
+      refs.some(
+        (r) =>
+          r.resolveType.includes("/") &&
+          !isEmbeddedUnionResolveType(r.resolveType),
+      );
 
     const handleRefChange = (rt: string) => {
       setSelectedRt(rt);
@@ -241,23 +259,18 @@ export function AnyOfField({
           persistUnionValue(next);
         }}
         basePath={path}
-        breadcrumbPath={breadcrumbPath}
-        onBreadcrumbChange={onBreadcrumbChange}
+        breadcrumbPath={
+          isModuleLoaderUnion ? loaderBreadcrumbs : breadcrumbPath
+        }
+        onBreadcrumbChange={
+          isModuleLoaderUnion ? setLoaderBreadcrumbs : onBreadcrumbChange
+        }
         meta={meta}
         decofile={decofile}
         onSaveReferencedBlock={onSaveReferencedBlock}
       />
     ) : null;
 
-    // Module loaders (jsonLD, slug, …): nest props in a collapsible card.
-    const isBlockRef = schema.type === "block-ref";
-    const isModuleLoaderUnion =
-      isBlockRef &&
-      refs.some(
-        (r) =>
-          r.resolveType.includes("/") &&
-          !isEmbeddedUnionResolveType(r.resolveType),
-      );
     const isNestedBlockRef = path.includes(".");
 
     return (

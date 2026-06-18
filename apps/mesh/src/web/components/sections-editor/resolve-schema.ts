@@ -604,6 +604,16 @@ export function resolveSchema(
                 }
               }
             }
+            // @decocms/start ≥6.10 emits flat loader defs (no allOf) with
+            // __resolveType.enum directly in properties — check that too.
+            if (!rt) {
+              const rtProp = (def.properties as RawSchema | undefined)
+                ?.__resolveType as RawSchema | undefined;
+              const e = rtProp?.enum;
+              if (Array.isArray(e) && typeof e[0] === "string") {
+                rt = e[0];
+              }
+            }
             if (!rt) {
               rt = (branch.$ref as string).split("/").pop() ?? "";
             }
