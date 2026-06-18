@@ -124,6 +124,9 @@ web:
   # variant listens on 8080 and runs as uid 101 (non-root) out of the box.
   nginxImage: nginxinc/nginx-unprivileged:1.27-alpine
   nginxImagePullPolicy: IfNotPresent
+  # nginx access log → stdout. Set false to disable (e.g. when an edge/CDN +
+  # app OTel already capture requests). /healthz is never logged either way.
+  accessLog: true
   # host:port of the API (main) Service. Empty → in-namespace main Service.
   # Set to an FQDN (<svc>.<ns>.svc.cluster.local:80) for cross-namespace.
   apiUpstream: ""
