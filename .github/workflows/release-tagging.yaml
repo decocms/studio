@@ -134,6 +134,22 @@ jobs:
           echo "Workspace manifests to bump: $PACKAGE_MANIFESTS"
           echo "package_manifests=$PACKAGE_MANIFESTS" >> "$GITHUB_OUTPUT"
 
+          # Deploy scope drives which CD tier rolls (see deco-apps-cd
+          # bump-studio-image): web-only changes (apps/mesh/src/web/** and
+          # nothing else under apps/mesh/) roll only the web pods; server-only
+          # roll api+worker; mixed or no-mesh-files roll both (safe default).
+          MESH=$(echo "$FILES" | grep '^apps/mesh/' || true)
+          SCOPE=both
+          if [ -n "$MESH" ]; then
+            if echo "$MESH" | grep -qv '^apps/mesh/src/web/'; then
+              if echo "$MESH" | grep -q '^apps/mesh/src/web/'; then SCOPE=both; else SCOPE=server; fi
+            else
+              SCOPE=web
+            fi
+          fi
+          echo "Deploy scope: $SCOPE"
+          echo "deploy_scope=$SCOPE" >> "$GITHUB_OUTPUT"
+
       - name: Update package.json versions
         id: update_versions
         if: >-
@@ -145,6 +161,7 @@ jobs:
           PACKAGE_MANIFESTS: ${{ steps.changed_workspaces.outputs.package_manifests }}
           PR_NUMBER: ${{ steps.find_pr.outputs.pr_number }}
           PR_TITLE: ${{ steps.find_pr.outputs.pr_title }}
+          DEPLOY_SCOPE: ${{ steps.changed_workspaces.outputs.deploy_scope }}
         run: |
           set -euo pipefail
 
@@ -203,6 +220,10 @@ jobs:
             `Bump type: ${bumpType}`,
             "",
             summary,
+            "",
+            // Read by release-mesh's deco-apps-cd dispatch to roll only the
+            // affected CD tier (web / server / both).
+            `Deploy-Scope: ${process.env.DEPLOY_SCOPE || "both"}`,
           ].join("\n");
 
           fs.writeFileSync(".release-commit-message", `${commitMessage}\n`);
