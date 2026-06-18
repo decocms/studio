@@ -126,6 +126,10 @@ web:
   # pods that gain/lose the label once. Default {} → no labels, output unchanged.
   frontDoorLabels: {}
   #   decocms.com/frontdoor: "true"
+  # nginx tuning, substituted into the config. maxBodySize tracks the app's
+  # MAX_UPLOAD_BYTES; proxyTimeout caps long-lived streams (SSE/WS/long-poll).
+  maxBodySize: "100m"
+  proxyTimeout: "3600s"
   service:
     type: ClusterIP
     port: 80

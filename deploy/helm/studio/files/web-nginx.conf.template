@@ -14,9 +14,10 @@ server {
   root /usr/share/nginx/html;
   index index.html;
 
-  # Match the app's MAX_UPLOAD_BYTES (file-storage/upload-policy.ts = 100MB).
+  # Tracks the app's MAX_UPLOAD_BYTES (file-storage/upload-policy.ts = 100MB).
   # nginx defaults to 1m and would 413 large uploads before they reach the API.
-  client_max_body_size 100m;
+  # Set from CLIENT_MAX_BODY_SIZE env (web.maxBodySize in the chart).
+  client_max_body_size ${CLIENT_MAX_BODY_SIZE};
 
   # Default policy: revalidate HTML + clickjacking guards (mirrors the app's
   # withSecurityHeaders). Per-location add_header blocks below override this.
@@ -51,8 +52,10 @@ server {
     # Stream large uploads (up to 100MB) straight to the API instead of
     # buffering the whole body to nginx disk first.
     proxy_request_buffering off;
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
+    # Caps long-lived streams (SSE/WS/long-poll). Set from PROXY_TIMEOUT env
+    # (web.proxyTimeout in the chart).
+    proxy_read_timeout ${PROXY_TIMEOUT};
+    proxy_send_timeout ${PROXY_TIMEOUT};
   }
 
   # Hashed assets are content-addressed → cache forever.

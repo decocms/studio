@@ -91,6 +91,12 @@ spec:
             # host:port of the API (main) Service; same origin via nginx proxy.
             - name: API_UPSTREAM
               value: {{ .Values.web.apiUpstream | default (printf "%s:%v" (include "chart-deco-studio.fullname" .) .Values.service.port) | quote }}
+            # Substituted into the nginx config (defaults guard against empty →
+            # broken directive). Tune via web.maxBodySize / web.proxyTimeout.
+            - name: CLIENT_MAX_BODY_SIZE
+              value: {{ .Values.web.maxBodySize | default "100m" | quote }}
+            - name: PROXY_TIMEOUT
+              value: {{ .Values.web.proxyTimeout | default "3600s" | quote }}
           livenessProbe:
             httpGet:
               path: /healthz
