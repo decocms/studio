@@ -10,7 +10,10 @@
 FROM --platform=$BUILDPLATFORM oven/bun:1 AS build
 WORKDIR /repo
 COPY . .
-RUN bun install --frozen-lockfile
+# --ignore-scripts: the client build (vite) is pure JS/TS — it doesn't need the
+# native postinstall builds (e.g. node-pty's node-gyp), which would otherwise
+# fail here for lack of a C toolchain in the bun base image.
+RUN bun install --frozen-lockfile --ignore-scripts
 RUN bun run --cwd=apps/mesh build:client
 
 # ── Stage 2: nginx serving the bundle ─────────────────────────────────────
