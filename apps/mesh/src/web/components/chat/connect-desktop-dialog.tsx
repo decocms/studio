@@ -61,6 +61,7 @@ export function ConnectDesktopDialog({
 }: ConnectDesktopDialogProps) {
   const link = useCurrentLink();
   const [copied, setCopied] = useState(false);
+  const desktopName = link.hostname ?? link.machineId ?? "Your desktop";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,7 +72,7 @@ export function ConnectDesktopDialog({
           </DialogTitle>
           <DialogDescription>
             {link.online
-              ? "Your desktop is online. Here's the available local agents."
+              ? `${desktopName} is online. Here's the available local agents.`
               : "Run this command in your desktop terminal. The dialog will close once your desktop is online."}
           </DialogDescription>
         </DialogHeader>
@@ -101,8 +102,8 @@ export function ConnectDesktopDialog({
           </div>
         ) : (
           <div className="flex flex-col gap-3 text-sm">
-            <p className="text-foreground">
-              {link.hostname ?? link.machineId ?? "Your desktop"} is linked.
+            <p className="text-xs font-medium uppercase text-muted-foreground">
+              Local agents
             </p>
             <div className="flex flex-col gap-2">
               {LOCAL_AGENTS.map((agent) => {
