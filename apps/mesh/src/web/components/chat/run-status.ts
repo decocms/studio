@@ -60,7 +60,7 @@ const RUN_STATUS_STAGE_RANK = new Map<RunStatusStage, number>(
   RUN_STATUS_STAGE_ORDER.map((stage, index) => [stage, index]),
 );
 
-export function isRunStatusStage(value: unknown): value is RunStatusStage {
+function isRunStatusStage(value: unknown): value is RunStatusStage {
   return (
     typeof value === "string" &&
     RUN_STATUS_STAGE_RANK.has(value as RunStatusStage)

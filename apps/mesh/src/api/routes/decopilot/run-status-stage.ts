@@ -1,7 +1,7 @@
 import type { UIMessageChunk } from "ai";
 import type { StreamBuffer } from "./stream-buffer";
 
-export const RUN_STATUS_STAGES = [
+const RUN_STATUS_STAGES = [
   "waiting-runner",
   "starting-run",
   "gathering-context",
