@@ -103,8 +103,9 @@ export interface SubtaskParams {
 export function resolveSubtaskCodingWorkspace(
   targetRef: { repo?: { owner: string; name: string; connectionId?: string } },
   parentWorkspace?: CodingWorkspacePromptInput,
+  isSelf = false,
 ): CodingWorkspacePromptInput | undefined {
-  if (!targetRef.repo) return parentWorkspace;
+  if (!targetRef.repo) return isSelf ? parentWorkspace : undefined;
 
   return {
     repo: {
@@ -249,6 +250,7 @@ export function createSubtaskTool(
         const subtaskCodingWorkspace = resolveSubtaskCodingWorkspace(
           targetRef,
           codingWorkspace,
+          isSelf,
         );
 
         // 3. Call runAgentLoop with subagent kind.

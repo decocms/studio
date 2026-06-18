@@ -212,7 +212,7 @@ describe("resolveSubtaskCodingWorkspace", () => {
     });
   });
 
-  test("passes parent workspace through when target has no repo", () => {
+  test("passes parent workspace through for self-clone targets with no repo", () => {
     const parentWorkspace = {
       cwd: "/repo",
       workspaceKind: "local" as const,
@@ -223,9 +223,27 @@ describe("resolveSubtaskCodingWorkspace", () => {
         repo: undefined,
       },
       parentWorkspace,
+      true,
     );
 
     expect(result).toBe(parentWorkspace);
+  });
+
+  test("clears parent workspace for cross-agent targets with no repo", () => {
+    const parentWorkspace = {
+      cwd: "/repo",
+      workspaceKind: "local" as const,
+    };
+
+    const result = resolveSubtaskCodingWorkspace(
+      {
+        repo: undefined,
+      },
+      parentWorkspace,
+      false,
+    );
+
+    expect(result).toBeUndefined();
   });
 });
 
