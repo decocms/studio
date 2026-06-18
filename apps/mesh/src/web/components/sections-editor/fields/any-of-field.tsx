@@ -18,6 +18,7 @@ import {
   blockRefLoaderConfigHasData,
   detectBlockRefType,
   enrichBlockRefOptions,
+  lazyWrappedInner,
   resolveNestedBlockRefSchema,
   schemaWithoutDiscriminator,
 } from "../block-ref-field-utils";
@@ -140,6 +141,13 @@ export function AnyOfField({
   const savedRef =
     decofile && value ? unwrapBlockReference(value, decofile) : null;
   const editorValue = savedRef?.data ?? value;
+  // Nested section array items are Lazy-wrapped (`{ __resolveType: ".../Lazy.tsx",
+  // section: { <real section> } }`). The schema resolves to the inner section
+  // (via moduleResolveTypeFromBlockData) but the value must be unwrapped too,
+  // otherwise the form binds against the wrapper and every field renders empty.
+  // We bind the inner `section` and re-wrap on change.
+  const lazyInner = savedRef ? null : lazyWrappedInner(editorValue);
+  const boundValue = lazyInner ?? editorValue;
   const refs = enrichBlockRefOptions(baseRefs, {
     savedBlockKey: savedRef?.blockKey,
     editorValue,
@@ -265,13 +273,21 @@ export function AnyOfField({
     const nestedProps = nestedSchema?.properties ? (
       <SchemaForm
         schema={nestedSchema}
-        value={editorValue}
+        value={boundValue}
         onChange={(next) => {
           if (savedRef && onSaveReferencedBlock) {
             onSaveReferencedBlock(
               savedRef.blockKey,
               next as Record<string, unknown>,
             );
+            return;
+          }
+          // Re-wrap into the Lazy section wrapper so the decofile shape is preserved.
+          if (lazyInner) {
+            onChange({
+              ...(editorValue as Record<string, unknown>),
+              section: next,
+            });
             return;
           }
           persistUnionValue(next);

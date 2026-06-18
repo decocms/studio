@@ -4,6 +4,7 @@ import {
   blockRefLoaderConfigHasData,
   detectBlockRefType,
   enrichBlockRefOptions,
+  lazyWrappedInner,
   moduleResolveTypeFromBlockData,
   resolveNestedBlockRefSchema,
   schemaWithoutDiscriminator,
@@ -274,5 +275,39 @@ describe("blockRefLoaderConfigHasData", () => {
         variants: [{ value: [] }],
       }),
     ).toBe(true);
+  });
+});
+
+describe("lazyWrappedInner", () => {
+  const LAZY = "website/sections/Rendering/Lazy.tsx";
+
+  test("returns the inner section for a Lazy-wrapped value (so the form binds real props)", () => {
+    const wrapper = {
+      __resolveType: LAZY,
+      section: {
+        __resolveType: "site/sections/Content/BannerCarrouselDepartment.tsx",
+        carrousels: [{ matcher: "/x" }],
+        title: "T",
+      },
+    };
+    const inner = lazyWrappedInner(wrapper);
+    expect(inner?.["title"]).toBe("T");
+    expect(Array.isArray(inner?.["carrousels"])).toBe(true);
+  });
+
+  test("returns null for non-Lazy block-ref values", () => {
+    expect(
+      lazyWrappedInner({
+        __resolveType: "site/sections/Content/BannerCarrouselDepartment.tsx",
+        carrousels: [],
+      }),
+    ).toBeNull();
+  });
+
+  test("returns null when there is no inner section object", () => {
+    expect(lazyWrappedInner({ __resolveType: LAZY })).toBeNull();
+    expect(lazyWrappedInner({ __resolveType: LAZY, section: "x" })).toBeNull();
+    expect(lazyWrappedInner(null)).toBeNull();
+    expect(lazyWrappedInner([])).toBeNull();
   });
 });
