@@ -40,6 +40,7 @@ import {
   type SubmitAction,
   type ThreadObserver,
 } from "./store/thread-connection";
+import { deriveTerminalThreadStatus } from "./store/thread-status";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
 import {
@@ -915,8 +916,22 @@ export function ActiveTaskProvider({
           return;
         }
       },
-      onFinish: (message) => {
+      onFinish: (message, _messages, finishReason) => {
         const cb = cbRef.current;
+        if (cb.taskId) {
+          cb.manager.patchThread({
+            id: cb.taskId,
+            status: deriveTerminalThreadStatus(
+              finishReason,
+              message.parts as {
+                type?: string;
+                text?: string;
+                state?: string;
+              }[],
+            ),
+            updated_at: new Date().toISOString(),
+          });
+        }
         // Refresh download chips only when this turn could have produced a
         // file: an explicit share, or sandbox file work (bash/write can drop
         // results into `org/output/`). AI SDK v5 surfaces tool invocations as

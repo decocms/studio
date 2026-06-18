@@ -53,6 +53,14 @@ function applyPatch(list: Task[], patch: RowPatch): Task[] {
     return [synthetic, ...list];
   }
   const next = [...list];
+  const current = next[idx]!;
+  const currentUpdatedAt = current.updated_at
+    ? new Date(current.updated_at).getTime()
+    : Number.NEGATIVE_INFINITY;
+  const patchUpdatedAt = patch.updated_at
+    ? new Date(patch.updated_at).getTime()
+    : Number.POSITIVE_INFINITY;
+  if (patchUpdatedAt < currentUpdatedAt) return list;
   next[idx] = { ...next[idx]!, ...patch };
   return next;
 }

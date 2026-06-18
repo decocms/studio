@@ -338,15 +338,15 @@ export class ThreadConnection {
 
     if (!shouldPost) return;
 
-    this.runStatusStage.set("sending");
-    this.status.set({ kind: "submitted" });
-
     const last = next.at(-1);
     if (!last) {
       // Can't happen — applyLocally returned non-null so the list has ≥1 item.
       this.status.set({ kind: "ready" });
       return;
     }
+
+    this.runStatusStage.set("sending");
+    this.status.set({ kind: "submitted" });
 
     const abort = new AbortController();
     this.inflightPost = abort;
