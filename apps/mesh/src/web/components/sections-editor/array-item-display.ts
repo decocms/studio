@@ -103,7 +103,7 @@ export function getArrayItemLabel(
   index: number,
   itemSchema?: SchemaProperty,
 ): string {
-  if (typeof item === "string") return item || `Item ${index + 1}`;
+  if (typeof item === "string") return item.trim() ? item : `Item ${index + 1}`;
   if (typeof item === "number" || typeof item === "boolean") {
     return String(item);
   }
@@ -135,7 +135,10 @@ export function getArrayItemLabel(
       "key",
     ]) {
       const value = obj[key];
-      if (typeof value === "string" && value) return value;
+      // Skip whitespace-only strings (e.g. title: " ") so the item still gets a
+      // meaningful label (falls through to the section name) and a stable,
+      // non-blank breadcrumb crumb you can click into.
+      if (typeof value === "string" && value.trim()) return value;
       if (Array.isArray(value)) {
         const joined = value
           .map((entry) => (entry == null ? "" : String(entry)))

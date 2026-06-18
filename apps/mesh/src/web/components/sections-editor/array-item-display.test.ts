@@ -39,6 +39,30 @@ describe("getArrayItemLabel", () => {
     const schema: SchemaProperty = { type: "object", title: "Routes" };
     expect(getArrayItemLabel(item, 0, schema)).toBe("Audience");
   });
+
+  test("falls through whitespace-only title to the section name", () => {
+    // Real bagaggio data: nested section with title " " (a single space).
+    const item = {
+      __resolveType: "site/sections/Content/BannerCarrouselDepartment.tsx",
+      layout: { numberOfSliders: { mobile: 3, desktop: 6 } },
+      title: " ",
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe(
+      "BannerCarrouselDepartment",
+    );
+  });
+
+  test("labels Lazy-wrapped item by its inner section name", () => {
+    const item = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: {
+        __resolveType: "site/sections/Content/BannerCarrouselDepartment.tsx",
+      },
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe(
+      "BannerCarrouselDepartment",
+    );
+  });
 });
 
 describe("getArrayItemImageSrc", () => {
