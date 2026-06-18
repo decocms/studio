@@ -1,15 +1,17 @@
 {{- if .Values.web.enabled }}
 {{/*
-Static-SPA + reverse-proxy Deployment (the "web" role). Serves the prebuilt
-client bundle via nginx and reverse-proxies API/system paths to the main
+Static-SPA + reverse-proxy Deployment (the "web" role). An initContainer using
+the mesh image copies the prebuilt client bundle into an emptyDir; the stock
+nginx container serves it and reverse-proxies API/system paths to the main
 Deployment's Service (same origin → auth cookies stay first-party). Carries a
 distinct `app.kubernetes.io/name` ("<name>-web") and its OWN Service, so the
 main Deployment/Service selectors never match it.
 
-Decoupling: this image is built + versioned independently (release-web.yaml), so
-an API rollout doesn't churn asset hashes (no forced UI refresh) and a UI rollout
-doesn't restart the API. Cut over by pointing the external gateway/ingress
-hostname at the `<fullname>-web` Service.
+No separate web image: the bundle is reused from the mesh image (already on the
+studio nodes), and the nginx config is mounted from a ConfigMap. Decoupling: pin
+web.bundleImage.tag separately from image.tag, so an API rollout doesn't churn
+asset hashes (no forced UI refresh) and a UI rollout doesn't restart the API.
+Cut over by pointing the external gateway/NLB at the `<fullname>-web` Service.
 */}}
 apiVersion: apps/v1
 kind: Deployment
@@ -54,14 +56,33 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.web.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # Copy the SPA bundle out of the mesh image into a shared emptyDir.
+        - name: bundle
+          image: "{{ .Values.web.bundleImage.repository | default .Values.image.repository }}:{{ .Values.web.bundleImage.tag | default .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.web.bundleImage.pullPolicy | default "IfNotPresent" }}
+          {{- with .Values.web.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command: ["sh", "-c"]
+          args:
+            - cp -a {{ .Values.web.bundlePath }}/. /bundle/
+          volumeMounts:
+            - name: bundle
+              mountPath: /bundle
       containers:
         - name: {{ .Chart.Name }}-web
           {{- with .Values.web.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.web.image.repository }}:{{ .Values.web.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.web.image.pullPolicy }}
+          image: {{ .Values.web.nginxImage | quote }}
+          imagePullPolicy: {{ .Values.web.nginxImagePullPolicy | default "IfNotPresent" }}
           ports:
             - name: http
               containerPort: 8080
@@ -82,15 +103,29 @@ spec:
               port: http
             initialDelaySeconds: 3
             periodSeconds: 5
+          volumeMounts:
+            - name: bundle
+              mountPath: /usr/share/nginx/html
+              readOnly: true
+            - name: nginx-config
+              mountPath: /etc/nginx/templates/default.conf.template
+              subPath: default.conf.template
+              readOnly: true
           {{- with .Values.web.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      volumes:
+        - name: bundle
+          emptyDir: {}
+        - name: nginx-config
+          configMap:
+            name: {{ include "chart-deco-studio.fullname" . }}-web-nginx
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with .Values.web.affinity | default .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}

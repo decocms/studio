@@ -1,4 +1,4 @@
-# Web image (nginx) — UI/API deploy split
+# Web role (nginx) — UI/API deploy split
 
 Serves the prebuilt SPA bundle and reverse-proxies API/system paths to the Bun
 server, on the **same origin**. Lets the UI and API deploy on independent
@@ -12,21 +12,42 @@ deliberate: it keeps Better Auth cookies first-party. A separate `api.` domain
 would need `crossSubDomainCookies` + `SameSite=None` + a CORS allowlist — out of
 scope here.
 
-## Pieces
+## No separate image
 
-- `Dockerfile` — multi-stage: builds `apps/mesh` client bundle, copies into
-  `nginxinc/nginx-unprivileged`. Built/pushed by `.github/workflows/release-web.yaml`
-  as `ghcr.io/decocms/studio/web:<version>`.
-- `default.conf.template` — static + SPA fallback + reverse-proxy. `${API_UPSTREAM}`
-  (host:port of the API Service) is substituted at container start.
-- Helm: `web-deployment.yaml` + `web-service.yaml`, gated by `web.enabled`
-  (default **false** → chart output unchanged).
+The web pod reuses what already exists instead of building a new image:
 
-## Local build / smoke test
+- **bundle** — an initContainer using the **mesh image** (already on the studio
+  nodes) copies `dist/client` into an emptyDir. No duplicate bundle, no
+  `release-web` workflow, cache-warm pull when co-located with API pods.
+- **nginx** — the **stock** `nginxinc/nginx-unprivileged` image, with the config
+  mounted from a ConfigMap (`files/web-nginx.conf.template` → envsubst at start).
+
+Pieces (all in the chart):
+
+- `deploy/helm/studio/files/web-nginx.conf.template` — static + SPA fallback +
+  reverse-proxy. `${API_UPSTREAM}` (host:port of the API Service) is substituted
+  at container start.
+- `deploy/helm/studio/templates/web-configmap.yaml` — mounts that config.
+- `deploy/helm/studio/templates/web-deployment.yaml` + `web-service.yaml`, gated
+  by `web.enabled` (default **false** → chart output unchanged).
+
+Decoupling: pin `web.bundleImage.tag` separately from `image.tag`. Both come from
+the same monorepo release; the split is about **rollout timing**, not versioning.
+
+## Local smoke test
 
 ```bash
-docker build -f deploy/nginx/Dockerfile -t studio-web .
-docker run --rm -p 8080:8080 -e API_UPSTREAM=host.docker.internal:3000 studio-web
+# 1. extract the bundle from the mesh image
+mkdir -p /tmp/bundle
+docker run --rm -v /tmp/bundle:/bundle --entrypoint sh \
+  ghcr.io/decocms/studio/mesh:<tag> \
+  -c 'cp -a /app/apps/mesh/node_modules/decocms/dist/client/. /bundle/'
+
+# 2. serve it with stock nginx + the chart config
+docker run --rm -p 8080:8080 -e API_UPSTREAM=host.docker.internal:3000 \
+  -v /tmp/bundle:/usr/share/nginx/html:ro \
+  -v "$PWD/deploy/helm/studio/files/web-nginx.conf.template:/etc/nginx/templates/default.conf.template:ro" \
+  nginxinc/nginx-unprivileged:1.27-alpine
 # → http://localhost:8080 serves the SPA; /api/* proxies to the Bun server on :3000
 ```
 
@@ -51,6 +72,10 @@ the cutover is moving the front-door label from the API pods to the nginx pods.
   bundle + proxies `/api/*` to the API ClusterIP. (Flipping rolls the pods that
   gain/lose the label once.)
 - `studio.web.enabled: false` → label moves back to the API pods. Instant rollback.
+
+With step 2, also switch `nlb.healthCheckPath` `/health` → `/healthz`: `/health`
+proxies through nginx to the API, so the NLB would drop nginx from rotation
+whenever the API is down; `/healthz` is nginx-local (200, no proxy).
 
 For a plain Ingress/Gateway setup (self-host), skip `frontDoorLabels` and just
 point the route at the `<fullname>-web` Service when you enable web.

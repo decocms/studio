@@ -1,6 +1,7 @@
-# Static SPA + reverse-proxy for the Studio web bundle.
-# ${API_UPSTREAM} is the only env var substituted at start; nginx's own $vars
-# are left intact because the stock entrypoint only envsubst's defined env names.
+# Static SPA + reverse-proxy for the Studio web bundle. Mounted from a ConfigMap
+# into the stock nginx image; the entrypoint runs envsubst over it at start.
+# ${API_UPSTREAM} is the only env var substituted; nginx's own $vars are left
+# intact because the stock entrypoint only envsubst's defined env names.
 
 map $http_upgrade $connection_upgrade {
   default upgrade;
