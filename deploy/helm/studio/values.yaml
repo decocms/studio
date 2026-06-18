@@ -29,6 +29,14 @@ service:
   # to take effect; falls back to all endpoints otherwise.
   trafficDistribution: ""
 
+# Prometheus scraping of the app's /metrics endpoint (HTTP request-duration
+# histogram, event-loop delay, runtime metrics). Adds prometheus.io/* pod
+# annotations for vmagent's kubernetes-pods job. Disable if your cluster uses
+# ServiceMonitor CRDs or doesn't scrape pods by annotation.
+metrics:
+  scrape: true
+  path: /metrics
+
 resources:
   requests:
     memory: "2Gi"

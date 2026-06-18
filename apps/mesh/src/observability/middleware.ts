@@ -6,8 +6,14 @@
  */
 
 import type { MiddlewareHandler } from "hono";
-import { SpanStatusCode, type Exception, type Span } from "@opentelemetry/api";
 import {
+  SpanStatusCode,
+  type Exception,
+  type Histogram,
+  type Span,
+} from "@opentelemetry/api";
+import {
+  meter,
   tracer,
   withRequest,
   reqCorrelationId,
@@ -15,6 +21,20 @@ import {
 } from "./index";
 import type { Env } from "../api/hono-env";
 import { isHealthPath } from "../api/utils/paths";
+
+// Lazily created on first request: `meter` is a no-op until initObservability()
+// runs sdk.start(), so creating the instrument at module load would bind it to
+// the NoopMeter. The ESM live binding means reading `meter` here picks up the
+// real meter once it's reassigned.
+let _durationHistogram: Histogram | undefined;
+const durationHistogram = (): Histogram =>
+  (_durationHistogram ??= meter.createHistogram(
+    "http.server.request.duration",
+    {
+      description: "Duration of inbound HTTP requests handled by the API.",
+      unit: "s",
+    },
+  ));
 
 /**
  * Tracing middleware that creates a span for each request
@@ -27,6 +47,7 @@ export const tracingMiddleware: MiddlewareHandler<Env> = async (c, next) => {
 
   const req = c.req.raw;
   const url = new URL(req.url);
+  const start = performance.now();
 
   // Create context with request for sampling decisions
   const parentContext = withRequest(req);
@@ -97,6 +118,15 @@ export const tracingMiddleware: MiddlewareHandler<Env> = async (c, next) => {
         if (correlationId) {
           setCorrelationIdHeader(c.res.headers, correlationId);
         }
+
+        // Latency histogram for Prometheus (the span carries the trace; this is
+        // the only HTTP-duration signal scraped at /metrics). Labelled by the
+        // matched route pattern — not the raw path — to keep cardinality bounded.
+        durationHistogram().record((performance.now() - start) / 1000, {
+          "http.request.method": req.method,
+          "http.route": c.req.routePath,
+          "http.response.status_code": status,
+        });
 
         span.end();
       }

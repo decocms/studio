@@ -25,9 +25,19 @@ spec:
       {{- include "chart-deco-studio.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.metrics.scrape .Values.podAnnotations }}
       annotations:
+        {{- if .Values.metrics.scrape }}
+        # Annotation-based discovery: vmagent's kubernetes-pods job scrapes the
+        # app's Prometheus endpoint (/metrics is auth-exempt). Port mirrors the
+        # http containerPort so it tracks service.targetPort overrides.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.service.targetPort | default 3000 | quote }}
+        prometheus.io/path: {{ .Values.metrics.path | quote }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       labels:
         {{- include "chart-deco-studio.podLabels" . | nindent 8 }}
