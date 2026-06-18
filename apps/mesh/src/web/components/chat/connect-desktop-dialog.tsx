@@ -68,11 +68,13 @@ export function ConnectDesktopDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {link.online ? "Desktop connected" : "Connect your desktop"}
+            {link.online
+              ? `Connected to ${desktopName}`
+              : "Connect your desktop"}
           </DialogTitle>
           <DialogDescription>
             {link.online
-              ? `Connected to ${desktopName}.`
+              ? "This machine provides the following local agents."
               : "Run this command in your desktop terminal. The dialog will close once your desktop is online."}
           </DialogDescription>
         </DialogHeader>
@@ -102,9 +104,6 @@ export function ConnectDesktopDialog({
           </div>
         ) : (
           <div className="flex flex-col gap-3 text-sm">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Local agents
-            </p>
             <div className="flex flex-col gap-2">
               {LOCAL_AGENTS.map((agent) => {
                 const available = link.capabilities.includes(agent.capability);
@@ -120,10 +119,8 @@ export function ConnectDesktopDialog({
                   >
                     <div
                       className={cn(
-                        "flex size-8 items-center justify-center rounded-md border",
-                        available
-                          ? "border-border bg-muted text-foreground"
-                          : "border-border/60 bg-background/50 text-muted-foreground",
+                        "flex size-6 items-center justify-center",
+                        available ? "text-foreground" : "text-muted-foreground",
                       )}
                     >
                       {agent.icon}
