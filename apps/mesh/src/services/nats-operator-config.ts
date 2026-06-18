@@ -25,7 +25,7 @@
  *    101-upgrade probe confirms it works) and `allowed_connection_types`
  *    includes WEBSOCKET too.
  *  - Per-user subject scoping is enforced by the server: a daemon subscribing
- *    to another user's `_tunnel.v1.host.<other>.*` subjects gets a
+ *    to another user's `tunnel.v1.host.<other>.*` subjects gets a
  *    "Permissions Violation".
  *
  * All functions here are pure (no IO, no process.env) so they can be unit

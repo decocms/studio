@@ -80,7 +80,7 @@ test.describe("link tunnel session", () => {
     expect(serializedBody).not.toContain("NATS");
     expect(serializedBody).not.toContain("/nats-session");
     expect(serializedBody).not.toContain("links.");
-    expect(serializedBody).not.toContain("_tunnel.");
+    expect(serializedBody).not.toContain("tunnel.v1.");
   });
 
   test("POST /api/links/session rejects unauthenticated callers", async ({

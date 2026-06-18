@@ -805,7 +805,7 @@ const queueGroupForHostname = (hostname: string): string => {
 
 const abortWildcardSubject = (hostname: string): string => {
   const subjects = buildTunnelSubjects(hostname, "server");
-  return `_tunnel.v1.host.${subjects.hostToken}.req.*.abort`;
+  return `tunnel.v1.host.${subjects.hostToken}.req.*.abort`;
 };
 
 const REQUEST_TRACKING_TTL_MS = 60_000;
@@ -817,7 +817,7 @@ const requestIdFromAbortSubject = (
   subject: string,
 ): string | undefined => {
   const subjects = buildTunnelSubjects(hostname, "server");
-  const prefix = `_tunnel.v1.host.${subjects.hostToken}.req.`;
+  const prefix = `tunnel.v1.host.${subjects.hostToken}.req.`;
   const suffix = ".abort";
 
   if (!subject.startsWith(prefix) || !subject.endsWith(suffix)) {

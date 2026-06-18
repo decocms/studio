@@ -37,7 +37,7 @@ export function buildDaemonCredentialPermissions(
   tunnelHostname: string,
 ): LinkSessionPermissions {
   const hostToken = encodeSubjectToken(tunnelHostname);
-  const hostPrefix = `_tunnel.v1.host.${hostToken}`;
+  const hostPrefix = `tunnel.v1.host.${hostToken}`;
 
   return {
     subscribe: {

@@ -23,13 +23,13 @@ describe("link session helpers", () => {
     expect(buildDaemonCredentialPermissions(tunnelHostname)).toEqual({
       subscribe: {
         allow: [
-          `_tunnel.v1.host.${hostToken}.request`,
-          `_tunnel.v1.host.${hostToken}.req.*.body`,
-          `_tunnel.v1.host.${hostToken}.req.*.abort`,
+          `tunnel.v1.host.${hostToken}.request`,
+          `tunnel.v1.host.${hostToken}.req.*.body`,
+          `tunnel.v1.host.${hostToken}.req.*.abort`,
         ],
       },
       publish: {
-        allow: [`_tunnel.v1.host.${hostToken}.req.*.reply`],
+        allow: [`tunnel.v1.host.${hostToken}.req.*.reply`],
       },
     });
   });

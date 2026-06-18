@@ -29,7 +29,7 @@ test("decodeSubjectToken rejects malformed subject tokens clearly", () => {
 
 test("buildTunnelSubjects scopes request subjects under encoded host", () => {
   const subjects = buildTunnelSubjects("user-abc.link", "req-1");
-  const prefix = `_tunnel.v1.host.${subjects.hostToken}`;
+  const prefix = `tunnel.v1.host.${subjects.hostToken}`;
 
   expect(subjects.request).toBe(`${prefix}.request`);
   expect(subjects.body).toBe(`${prefix}.req.req-1.body`);

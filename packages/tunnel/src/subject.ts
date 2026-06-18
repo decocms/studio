@@ -90,7 +90,7 @@ export const buildTunnelSubjects = (
   }
 
   const hostToken = encodeSubjectToken(hostname);
-  const hostPrefix = `_tunnel.v1.host.${hostToken}`;
+  const hostPrefix = `tunnel.v1.host.${hostToken}`;
   const requestPrefix = `${hostPrefix}.req.${requestId}`;
 
   return {
