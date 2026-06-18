@@ -158,16 +158,19 @@ export function AnyOfField({
     );
 
   // In module-loader mode the breadcrumb path passes through this component.
-  // We strip our own key from the front before passing to the nested SchemaForm
-  // so the loader's internal schema can resolve the path correctly (e.g.
-  // breadcrumbPath ["page", "productClusterIds"] → nested receives
-  // ["productClusterIds"] → loader SchemaForm finds "selectedFacets" array
-  // because an item label matches). nestedOnBreadcrumbChange prepends the key
-  // back so the outer section editor sees the full path.
-  const outerKey = path.includes(".") ? path.split(".")[0]! : path;
+  // We strip our own crumb from the front before passing to the nested
+  // SchemaForm so the loader's internal schema can resolve the path correctly
+  // (e.g. ["Página de Listagem", "productClusterIds"] → nested receives
+  // ["productClusterIds"] → loader SchemaForm finds "selectedFacets" because an
+  // item label matches). nestedOnBreadcrumbChange prepends the crumb back so the
+  // outer section editor sees the full path.
+  // The crumb uses this field's display LABEL (not the raw key) so the breadcrumb
+  // reads "Página de Listagem" instead of "page". resolveActiveFieldKey matches
+  // both label and key, so resolution still works.
+  const outerCrumb = label ?? (path.includes(".") ? path.split(".")[0]! : path);
   const safeBreadcrumbPath = breadcrumbPath ?? [];
   const nestedBreadcrumbPath =
-    isModuleLoaderUnion && safeBreadcrumbPath[0] === outerKey
+    isModuleLoaderUnion && safeBreadcrumbPath[0] === outerCrumb
       ? safeBreadcrumbPath.slice(1)
       : isModuleLoaderUnion
         ? []
@@ -175,7 +178,7 @@ export function AnyOfField({
   const nestedOnBreadcrumbChange: ((p: string[]) => void) | undefined =
     isModuleLoaderUnion
       ? (newPath) => {
-          onBreadcrumbChange?.([outerKey, ...newPath]);
+          onBreadcrumbChange?.([outerCrumb, ...newPath]);
         }
       : onBreadcrumbChange;
 

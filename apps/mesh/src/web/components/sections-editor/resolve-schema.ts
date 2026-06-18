@@ -528,6 +528,8 @@ export function resolveSchema(
                 ? resolved.description
                 : undefined,
             anyOfRefs,
+            hidden:
+              isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
           };
         }
 
@@ -573,6 +575,8 @@ export function resolveSchema(
                   : undefined,
             discriminatorKey: "type",
             anyOfRefs,
+            hidden:
+              isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
           };
         }
 
@@ -645,6 +649,8 @@ export function resolveSchema(
                 ? resolved.description
                 : undefined,
             anyOfRefs,
+            hidden:
+              isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
           };
         }
 

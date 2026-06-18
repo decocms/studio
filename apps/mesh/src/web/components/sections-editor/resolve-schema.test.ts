@@ -585,3 +585,50 @@ describe("resolveSchema – type-discriminated unions", () => {
     expect(options?.anyOfRefs).toHaveLength(2);
   });
 });
+
+describe("resolveSchema – @hide on block-ref fields", () => {
+  // Mirrors @decocms/start ≥6.10: a hidden loader/block-ref prop is emitted as
+  // `{ anyOf: [Resolvable, loaderRef], hide: "true" }`. The block-ref return in
+  // buildProperty must propagate `hidden: true` so the form filters it out
+  // (e.g. SearchResult's `tags` / `locationUser` / `stores`).
+  test("hidden block-ref prop carries hidden:true", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        tags: {
+          title: "Tags",
+          hide: "true",
+          anyOf: [
+            { $ref: "#/definitions/Resolvable" },
+            { $ref: "#/definitions/SomeLoader" },
+          ],
+        },
+        visibleField: { type: "string", title: "Visible" },
+      },
+    });
+    (meta.schema as { definitions: Record<string, unknown> }).definitions = {
+      Resolvable: {
+        type: "object",
+        properties: { __resolveType: { type: "string" } },
+      },
+      SomeLoader: {
+        title: "site/loaders/some.ts",
+        type: "object",
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: ["site/loaders/some.ts"],
+            default: "site/loaders/some.ts",
+          },
+          q: { type: "string", title: "Q" },
+        },
+      },
+    };
+
+    const props = resolveSchema("site/sections/Test.tsx", meta)?.properties;
+    expect(props?.tags?.type).toBe("block-ref");
+    expect(props?.tags?.hidden).toBe(true);
+    // sanity: non-hidden field stays visible
+    expect(props?.visibleField?.hidden).toBeUndefined();
+  });
+});
