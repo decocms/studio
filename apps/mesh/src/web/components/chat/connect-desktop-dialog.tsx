@@ -72,7 +72,7 @@ export function ConnectDesktopDialog({
           </DialogTitle>
           <DialogDescription>
             {link.online
-              ? `${desktopName} is online. Here's the available local agents.`
+              ? `Connected to ${desktopName}.`
               : "Run this command in your desktop terminal. The dialog will close once your desktop is online."}
           </DialogDescription>
         </DialogHeader>
