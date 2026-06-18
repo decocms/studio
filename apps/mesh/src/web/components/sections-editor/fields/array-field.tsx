@@ -136,7 +136,7 @@ function SortableArrayRow({
       }}
       className={cn(
         "group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
-        isDragging ? "cursor-grabbing" : "cursor-grab",
+        isDragging ? "cursor-grabbing" : "cursor-pointer",
       )}
       title={labelText}
     >
