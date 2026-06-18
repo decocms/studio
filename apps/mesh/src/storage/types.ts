@@ -323,6 +323,17 @@ export interface OrgFileConfigTable {
   prefix: string | null;
   // Public URL host (e.g. R2 dev domain, CDN). Null = compute from bucket+region.
   public_url_base: string | null;
+  // "static" (long-lived key pair in encrypted_credentials) or "sts-session"
+  // (temporary creds fetched on demand from refresh_url; the encrypted blob
+  // holds only the API key for the refresh call). Has a DB default of 'static'.
+  credential_type: ColumnType<
+    "static" | "sts-session",
+    "static" | "sts-session" | undefined,
+    "static" | "sts-session"
+  >;
+  // Endpoint that vends temporary credentials for `sts-session` configs. Null
+  // for `static`.
+  refresh_url: string | null;
   encrypted_credentials: string;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
@@ -376,6 +387,8 @@ export interface FileConfigInfo {
   forcePathStyle: boolean;
   prefix: string | null;
   publicUrlBase: string | null;
+  credentialType: "static" | "sts-session";
+  refreshUrl: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;

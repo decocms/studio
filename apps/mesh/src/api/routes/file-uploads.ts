@@ -17,12 +17,11 @@
  * single-shot PutObject offers when the SDK can't replay a stream.
  */
 
-import { S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { StudioContext } from "@/core/studio-context";
-import { buildPublicUrl } from "@/file-storage/file-config-s3";
+import { buildPublicUrl, buildS3Client } from "@/file-storage/file-config-s3";
 import {
   MAX_UPLOAD_BYTES,
   UploadRejected,
@@ -129,17 +128,7 @@ export const createFileUploadRoutes = () => {
       filename,
     });
 
-    const client = new S3Client({
-      region: fileCfg.info.region,
-      endpoint: fileCfg.info.endpoint ?? undefined,
-      forcePathStyle: fileCfg.info.forcePathStyle,
-      credentials: {
-        accessKeyId: fileCfg.credentials.accessKeyId,
-        secretAccessKey: fileCfg.credentials.secretAccessKey,
-      },
-      requestChecksumCalculation: "WHEN_REQUIRED",
-      responseChecksumValidation: "WHEN_REQUIRED",
-    });
+    const client = buildS3Client(fileCfg);
 
     try {
       const upload = new Upload({

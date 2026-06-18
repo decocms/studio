@@ -18,6 +18,8 @@ export interface FileConfigInfo {
   forcePathStyle: boolean;
   prefix: string | null;
   publicUrlBase: string | null;
+  credentialType: "static" | "sts-session";
+  refreshUrl: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -64,8 +66,16 @@ export interface CreateFileConfigInput {
   forcePathStyle?: boolean;
   prefix?: string;
   publicUrlBase?: string;
-  accessKeyId: string;
-  secretAccessKey: string;
+  // Defaults to "static" (long-lived key pair). "sts-session" instead stores a
+  // refreshUrl + apiKey reference whose temporary credentials are fetched on
+  // demand and auto-refreshed.
+  credentialType?: "static" | "sts-session";
+  // static
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  // sts-session
+  refreshUrl?: string;
+  apiKey?: string;
 }
 
 export function useCreateFileConfig() {

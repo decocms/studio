@@ -15,6 +15,8 @@ type FileConfigRow = {
   force_path_style: boolean;
   prefix: string | null;
   public_url_base: string | null;
+  credential_type: "static" | "sts-session";
+  refresh_url: string | null;
   created_by: string;
   created_at: Date | string;
   updated_by: string;
@@ -32,16 +34,25 @@ const PUBLIC_COLUMNS = [
   "force_path_style",
   "prefix",
   "public_url_base",
+  "credential_type",
+  "refresh_url",
   "created_by",
   "created_at",
   "updated_by",
   "updated_at",
 ] as const satisfies readonly (keyof OrgFileConfigTable)[];
 
-export interface FileConfigCredentials {
-  accessKeyId: string;
-  secretAccessKey: string;
-}
+/**
+ * Credentials persisted (encrypted) for a file config.
+ *
+ * - `static`: a long-lived S3 key pair, used verbatim.
+ * - `sts-session`: only the API key needed to authenticate the refresh call —
+ *   no S3 secret is stored. The actual temporary credentials are fetched on
+ *   demand from the config's `refreshUrl` and refreshed automatically.
+ */
+export type FileConfigCredentials =
+  | { type: "static"; accessKeyId: string; secretAccessKey: string }
+  | { type: "sts-session"; apiKey: string };
 
 function toIsoString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : String(value);
@@ -72,6 +83,8 @@ export class OrgFileConfigStorage {
       forcePathStyle: row.force_path_style,
       prefix: row.prefix,
       publicUrlBase: row.public_url_base,
+      credentialType: row.credential_type ?? "static",
+      refreshUrl: row.refresh_url,
       createdBy: row.created_by,
       createdAt: toIsoString(row.created_at),
       updatedBy: row.updated_by,
@@ -89,6 +102,7 @@ export class OrgFileConfigStorage {
     forcePathStyle?: boolean;
     prefix?: string | null;
     publicUrlBase?: string | null;
+    refreshUrl?: string | null;
     credentials: FileConfigCredentials;
     createdBy: string;
   }): Promise<FileConfigInfo> {
@@ -111,6 +125,8 @@ export class OrgFileConfigStorage {
         force_path_style: params.forcePathStyle ?? false,
         prefix: params.prefix ?? null,
         public_url_base: params.publicUrlBase ?? null,
+        credential_type: params.credentials.type,
+        refresh_url: params.refreshUrl ?? null,
         encrypted_credentials: encryptedCredentials,
         created_by: params.createdBy,
         created_at: now,
@@ -134,6 +150,7 @@ export class OrgFileConfigStorage {
     forcePathStyle?: boolean;
     prefix?: string | null;
     publicUrlBase?: string | null;
+    refreshUrl?: string | null;
     credentials?: FileConfigCredentials;
     updatedBy: string;
   }): Promise<FileConfigInfo> {
@@ -155,6 +172,8 @@ export class OrgFileConfigStorage {
       force_path_style: boolean;
       prefix: string | null;
       public_url_base: string | null;
+      credential_type: "static" | "sts-session";
+      refresh_url: string | null;
       encrypted_credentials: string;
       updated_by: string;
       updated_at: Date;
@@ -174,7 +193,9 @@ export class OrgFileConfigStorage {
     if (params.prefix !== undefined) patch.prefix = params.prefix;
     if (params.publicUrlBase !== undefined)
       patch.public_url_base = params.publicUrlBase;
+    if (params.refreshUrl !== undefined) patch.refresh_url = params.refreshUrl;
     if (params.credentials !== undefined) {
+      patch.credential_type = params.credentials.type;
       patch.encrypted_credentials = await this.vault.encrypt(
         JSON.stringify(params.credentials),
       );
@@ -244,9 +265,10 @@ export class OrgFileConfigStorage {
 
     if (!row) throw new OrgFileConfigNotFoundError(id);
 
-    const decrypted = await this.vault.decrypt(row.encrypted_credentials);
-    const credentials = JSON.parse(decrypted) as FileConfigCredentials;
-    return { info: this.rowToInfo(row), credentials };
+    return {
+      info: this.rowToInfo(row),
+      credentials: await this.decodeCredentials(row),
+    };
   }
 
   async resolveByName(params: {
@@ -262,8 +284,31 @@ export class OrgFileConfigStorage {
 
     if (!row) throw new OrgFileConfigNotFoundError(params.name);
 
+    return {
+      info: this.rowToInfo(row),
+      credentials: await this.decodeCredentials(row),
+    };
+  }
+
+  /**
+   * Decrypt and shape the stored credentials according to the row's
+   * `credential_type` column (the source of truth). Legacy rows predate the
+   * column — they default to `static` and their blob holds the key pair
+   * directly, with no `type` field — so we never rely on the blob's shape.
+   */
+  private async decodeCredentials(row: {
+    credential_type: "static" | "sts-session";
+    encrypted_credentials: string;
+  }): Promise<FileConfigCredentials> {
     const decrypted = await this.vault.decrypt(row.encrypted_credentials);
-    const credentials = JSON.parse(decrypted) as FileConfigCredentials;
-    return { info: this.rowToInfo(row), credentials };
+    const parsed = JSON.parse(decrypted) as Record<string, unknown>;
+    if ((row.credential_type ?? "static") === "sts-session") {
+      return { type: "sts-session", apiKey: String(parsed.apiKey) };
+    }
+    return {
+      type: "static",
+      accessKeyId: String(parsed.accessKeyId),
+      secretAccessKey: String(parsed.secretAccessKey),
+    };
   }
 }

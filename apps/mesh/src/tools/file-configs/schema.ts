@@ -16,6 +16,8 @@ export const fileConfigInfoSchema = z.object({
   forcePathStyle: z.boolean(),
   prefix: z.string().nullable(),
   publicUrlBase: z.string().nullable(),
+  credentialType: z.enum(["static", "sts-session"]),
+  refreshUrl: z.string().nullable(),
   createdBy: z.string(),
   createdAt: z.string(),
   updatedBy: z.string(),

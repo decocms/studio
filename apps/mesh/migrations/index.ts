@@ -110,6 +110,7 @@ import * as migration108automationmaxagentsteps from "./108-automation-max-agent
 import * as migration109threadmessagepartspermessageseq from "./109-thread-message-parts-per-message-seq.ts";
 import * as migration110backfillghstokenexpiry from "./110-backfill-ghs-token-expiry.ts";
 import * as migration111orgfsthreadid from "./111-org-fs-thread-id.ts";
+import * as migration112orgfileconfigscredentialtype from "./112-org-file-configs-credential-type.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -243,6 +244,8 @@ const migrations: Record<string, Migration> = {
     migration109threadmessagepartspermessageseq,
   "110-backfill-ghs-token-expiry": migration110backfillghstokenexpiry,
   "111-org-fs-thread-id": migration111orgfsthreadid,
+  "112-org-file-configs-credential-type":
+    migration112orgfileconfigscredentialtype,
 };
 
 export default migrations;
