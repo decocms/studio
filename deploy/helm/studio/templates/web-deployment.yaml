@@ -150,4 +150,19 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.web.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml .Values.web.topologySpreadConstraints | nindent 8 }}
+      {{- else }}
+      # Spread web pods across zones (soft) so same-zone routing has an endpoint
+      # in each zone. ScheduleAnyway → never blocks scheduling.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-web
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      {{- end }}
 {{- end }}

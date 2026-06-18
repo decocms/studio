@@ -13,6 +13,12 @@ spec:
       name: http
   selector:
     {{- include "chart-deco-studio.selectorLabels" . | nindent 4 }}
+  {{- with .Values.service.trafficDistribution }}
+  # Prefer same-zone endpoints (kube-proxy topology hints) → less cross-zone
+  # traffic. Best-effort: falls back to all endpoints when a zone has none.
+  # Requires k8s >= 1.31; leave empty on older clusters.
+  trafficDistribution: {{ . }}
+  {{- end }}
   {{- if .Values.service.sessionAffinity }}
   sessionAffinity: {{ .Values.service.sessionAffinity }}
   {{- end }}
