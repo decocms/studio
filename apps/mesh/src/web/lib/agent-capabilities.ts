@@ -35,6 +35,17 @@ export function agentHasConnectedGithub(
 }
 
 /**
+ * The top-right GitHub header actions operate on GitHub PR/check/review state,
+ * so they require an authenticated, attached GitHub connection. Public template
+ * clones are clonable sources, but they are not GitHub-linked projects.
+ */
+export function agentShowsGithubHeaderActions(
+  virtualMcp: VirtualMCPEntity | null | undefined,
+): boolean {
+  return agentHasConnectedGithub(virtualMcp);
+}
+
+/**
  * True when the user's link daemon is online AND exposes at least one
  * CLI harness (Claude Code or Codex) that a clonable agent's chat can
  * route through. Lets the chat skip the no-provider empty state when
