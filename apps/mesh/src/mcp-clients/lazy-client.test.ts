@@ -14,7 +14,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createBridgeTransportPair } from "@decocms/mesh-sdk";
 import { CircuitOpenError, resetAll } from "./circuit-breaker";
-import { createLazyClient } from "./lazy-client";
+import { createLazyClient, resolveReadCacheScope } from "./lazy-client";
 import type { ConnectionEntity } from "../tools/connection/schema";
 import type { StudioContext } from "../core/studio-context";
 
@@ -209,5 +209,25 @@ describe("lazy-client with circuit breaker", () => {
     // NOW it's open (3rd failure)
     const lazy4 = createLazyClient(fakeConnection, fakeCtx, false);
     expect(lazy4.listTools()).rejects.toThrow(CircuitOpenError);
+  });
+});
+
+describe("resolveReadCacheScope", () => {
+  // The read cache must key by principal so a per-user result (anything that
+  // reads the forwarded x-mesh-token) is never served to a different user. Org
+  // scope is only safe when there is no principal to leak.
+  it("keys by principal so distinct users get distinct cache keys", () => {
+    expect(resolveReadCacheScope("user_a")).toEqual({
+      kind: "user",
+      userId: "user_a",
+    });
+    expect(resolveReadCacheScope("user_b")).toEqual({
+      kind: "user",
+      userId: "user_b",
+    });
+  });
+
+  it("falls back to org only when there is no principal", () => {
+    expect(resolveReadCacheScope(undefined)).toEqual({ kind: "org" });
   });
 });

@@ -66,12 +66,25 @@ async function isReadOnlyTool(
 }
 
 /**
- * Cache scope for a connection's read-only results. Defaults to "org" (shared
- * across all members). The per-connection "user" opt-out (key by principal) is
- * a follow-up; the cache already keys by scope, so it's a resolver change only.
+ * Cache scope for a connection's read-only results.
+ *
+ * Keyed by the calling principal whenever there is one, so a result that
+ * depends on the caller's identity — anything that reads the forwarded
+ * `x-mesh-token`, e.g. a per-user auth/access check — is never served to a
+ * different user. Studio can't tell which upstream reads vary by caller, so
+ * per-user is the only safe default: org-shared caching would leak the first
+ * caller's result to the whole org for up to `maxStaleMs`. A single user's
+ * repeated reads still hit the cache (the dominant dashboard-polling case);
+ * only cross-user sharing of identity-independent reads is given up.
+ *
+ * Falls back to "org" only when there is no principal at all (e.g. a
+ * super-user background worker with no app user), where there is no per-user
+ * identity to leak.
  */
-function resolveReadCacheScope(): ReadCacheScope {
-  return { kind: "org" };
+export function resolveReadCacheScope(
+  principalId: string | undefined,
+): ReadCacheScope {
+  return principalId ? { kind: "user", userId: principalId } : { kind: "org" };
 }
 
 /**
@@ -195,13 +208,18 @@ export function createLazyClient(
 
   // Read-only results (tools/call for read-only tools, resources/read,
   // prompts/get) are served stale-while-revalidate from the per-pod read cache,
-  // org-scoped by default and shared across org members. Writes, tools we can't
-  // confirm read-only, VIRTUAL connections (they compose other conns), and calls
-  // with a custom result schema bypass entirely. `options` (e.g. the timeout) is
-  // forwarded to the live fetch but excluded from the cache key.
+  // scoped per calling principal by default (see resolveReadCacheScope). Writes,
+  // tools we can't confirm read-only, VIRTUAL connections (they compose other
+  // conns), and calls with a custom result schema bypass entirely. `options`
+  // (e.g. the timeout) is forwarded to the live fetch but excluded from the key.
   // null when MCP caching is disabled (settings-gated).
   const readCache = getMcpReadCache();
   const cacheReads = connection.connection_type !== "VIRTUAL";
+  // Resolved once from the per-request ctx: the lazy client is created per
+  // request, so this is the actual caller, not a stale connection-time identity.
+  const readCacheScope = resolveReadCacheScope(
+    ctx.auth?.user?.id ?? ctx.auth?.apiKey?.userId,
+  );
 
   placeholder.callTool = async (params, resultSchema, options) => {
     const toolName = (params as { name?: unknown })?.name;
@@ -217,7 +235,7 @@ export function createLazyClient(
       const result = await readCache.fetch({
         type: "tools/call",
         connectionId: connection.id,
-        scope: resolveReadCacheScope(),
+        scope: readCacheScope,
         params: {
           name: toolName,
           arguments: (params as { arguments?: unknown })?.arguments,
@@ -261,7 +279,7 @@ export function createLazyClient(
     const result = await readCache.fetch({
       type: "prompts/get",
       connectionId: connection.id,
-      scope: resolveReadCacheScope(),
+      scope: readCacheScope,
       params,
       fetchLive: async () => {
         const real = await getRealClient();
@@ -287,7 +305,7 @@ export function createLazyClient(
     const result = await readCache.fetch({
       type: "resources/read",
       connectionId: connection.id,
-      scope: resolveReadCacheScope(),
+      scope: readCacheScope,
       params,
       fetchLive: async () => {
         const real = await getRealClient();
