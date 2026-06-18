@@ -49,6 +49,7 @@
   ],
   "overrides": {
     "@openai/codex": "0.130.0",
-    "fast-xml-parser": "5.4.2"
+    "fast-xml-parser": "5.4.2",
+    "@anthropic-ai/claude-agent-sdk": "0.2.141"
   }
 }
