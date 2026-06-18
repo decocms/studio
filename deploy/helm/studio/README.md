@@ -124,7 +124,7 @@ kubectl apply -f examples/secrets-example.yaml -n deco-studio
 ```
 
 The Secrets file contains:
-- **Main Secret** (`deco-studio-secrets`): Contains `BETTER_AUTH_SECRET` and `DATABASE_URL`
+- **Main Secret** (`deco-studio-secrets`): Contains `BETTER_AUTH_SECRET`, `DATABASE_URL`, and optional NATS tunnel credentials
 - **Auth Config Secret** (`deco-studio-auth-secrets`): Contains OAuth client IDs/secrets and API keys
 
 #### Step 2: Configure values.yaml to Use Secrets
@@ -880,6 +880,13 @@ tunnel:
     publicEnabled: true
     sessionTtlSeconds: 900
 
+secret:
+  # Prefer secret.secretName or externalSecret in production so these values do
+  # not live in plain values files.
+  NATS_ACCOUNT_JWT: "your-tunnel-account-jwt"
+  NATS_ACCOUNT_SIGNING_KEY: "your-tunnel-account-signing-seed"
+  NATS_OPERATOR_JWT: "your-operator-jwt"
+
 nats:
   enabled: true
   config:
@@ -894,7 +901,9 @@ nats:
           - nats.example.com
 ```
 
-NATS operator/account credential env vars such as `NATS_OPERATOR_JWT`, `NATS_ACCOUNT_JWT`, and `NATS_ACCOUNT_SIGNING_KEY` are sensitive. Provide them through Kubernetes Secret, ExternalSecret, or another secret-backed env path, not through ConfigMap values.
+NATS operator/account credential env vars such as `NATS_OPERATOR_JWT`, `NATS_ACCOUNT_JWT`, and `NATS_ACCOUNT_SIGNING_KEY` are sensitive. The chart-managed Secret supports these keys under `secret.*`, and both API and worker pods consume that Secret via `envFrom`. For production GitOps, prefer `secret.secretName` or `externalSecret` so the same env vars come from a Kubernetes Secret or ExternalSecret instead of a plain values file.
+
+The public link session endpoint requires `NATS_PUBLIC_URL`, `NATS_TUNNEL_PUBLIC_ENABLED=true`, `NATS_ACCOUNT_JWT`, and `NATS_ACCOUNT_SIGNING_KEY`. It returns `503` until those values are present. The NATS server also needs to run with matching operator/account configuration; enabling the websocket ingress only exposes the listener.
 
 ### Secret
 
@@ -920,6 +929,8 @@ The chart supports three secret management scenarios:
    - The existing Secret must contain the necessary keys:
      - `BETTER_AUTH_SECRET` (required)
      - `DATABASE_URL` (required only if `database.engine=postgresql`)
+     - `NATS_ACCOUNT_JWT` and `NATS_ACCOUNT_SIGNING_KEY` (required for the public NATS link tunnel)
+     - `NATS_OPERATOR_JWT` (optional, useful for keeping the operator material alongside account material)
    - Useful for using secrets managed by External Secrets Operator, Sealed Secrets, or other systems
 
 3. **No Secret** (not supported):

@@ -199,6 +199,12 @@ secret:
   # If omitted, the server auto-generates a random key on each boot (breaks across restarts).
   # Generate with: openssl rand -base64 32
   ENCRYPTION_KEY: ""
+  # Optional: required for the public NATS link tunnel when using the
+  # chart-managed Secret. Prefer secret.secretName or externalSecret for
+  # production GitOps so these values are not stored in plain values files.
+  # NATS_ACCOUNT_JWT: ""
+  # NATS_ACCOUNT_SIGNING_KEY: ""
+  # NATS_OPERATOR_JWT: ""
 
 # ExternalSecret — pull all values from AWS Secrets Manager via external-secrets operator.
 # When enabled, creates a namespace-scoped SecretStore and an ExternalSecret using dataFrom
