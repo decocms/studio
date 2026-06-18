@@ -71,6 +71,12 @@ function isArraySchemaBranch(schema: RawSchema): boolean {
 // `format` field natively this guard becomes a no-op.
 const VIDEO_WIDGET_REF_KEY = "VideoWidget";
 
+/** Base64 encode resolveType keys — browser-safe (btoa), Node fallback in tests. */
+function toBase64(str: string): string {
+  if (typeof btoa === "function") return btoa(str);
+  return Buffer.from(str).toString("base64");
+}
+
 function parseSiteAppResolveType(
   resolveType: string,
 ): { vendor: string; app: string } | null {
@@ -112,17 +118,35 @@ function lookupManifestBlockSchema(
   const parsed =
     parseSiteAppResolveType(resolveType) ??
     parseLegacyAppResolveType(resolveType);
-  if (!parsed) return {};
-
-  for (const alias of appManifestResolveTypeAliases(
-    parsed.vendor,
-    parsed.app,
-  )) {
-    for (const blockTypeMap of Object.values(allBlockTypes)) {
-      if (blockTypeMap[alias]) {
-        return blockTypeMap[alias] as RawSchema;
+  if (parsed) {
+    for (const alias of appManifestResolveTypeAliases(
+      parsed.vendor,
+      parsed.app,
+    )) {
+      for (const blockTypeMap of Object.values(allBlockTypes)) {
+        if (blockTypeMap[alias]) {
+          return blockTypeMap[alias] as RawSchema;
+        }
       }
     }
+  }
+
+  // Tanstack sites generate app schemas with base64-encoded resolveType keys
+  // (same convention as sections). Fall back when manifest.blocks.apps is empty.
+  const encodedResolveType = toBase64(resolveType);
+  for (const blockTypeMap of Object.values(allBlockTypes)) {
+    if (blockTypeMap[encodedResolveType]) {
+      return blockTypeMap[encodedResolveType] as RawSchema;
+    }
+  }
+
+  const globalSchema = meta.schema ?? {};
+  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
+    string,
+    unknown
+  >;
+  if (defs[encodedResolveType]) {
+    return { $ref: `#/definitions/${encodedResolveType}` };
   }
 
   return {};
@@ -139,8 +163,31 @@ export function isResolvableManifestApp(
     parseLegacyAppResolveType(resolveType);
   if (!parsed) return false;
   const apps = meta.manifest?.blocks?.apps ?? {};
-  return appManifestResolveTypeAliases(parsed.vendor, parsed.app).some(
-    (alias) => alias in apps,
+  if (
+    appManifestResolveTypeAliases(parsed.vendor, parsed.app).some(
+      (alias) => alias in apps,
+    )
+  ) {
+    return true;
+  }
+  const encodedResolveType = toBase64(resolveType);
+  const defs = (meta.schema?.$defs ?? meta.schema?.definitions ?? {}) as Record<
+    string,
+    unknown
+  >;
+  return encodedResolveType in defs;
+}
+
+/**
+ * Whether resolveType is a deco app module path (site/apps or legacy vendor/apps),
+ * excluding the site app itself. Used to detect installed custom/local apps even
+ * when they are missing from manifest.blocks.apps.
+ */
+export function isDecoAppResolveType(resolveType: string): boolean {
+  if (resolveType === "site/apps/site.ts") return false;
+  return (
+    parseSiteAppResolveType(resolveType) !== null ||
+    parseLegacyAppResolveType(resolveType) !== null
   );
 }
 

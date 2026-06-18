@@ -138,4 +138,33 @@ describe("app-catalog", () => {
       app: "vtex",
     });
   });
+
+  it("lists installed custom/local apps without manifest or store entries", () => {
+    const emptyMeta: LiveMeta = {
+      manifest: { blocks: { apps: { anyOf: [] } } },
+      schema: {},
+    };
+    const decofile = {
+      "app-tags": {
+        __resolveType: "site/apps/local/app-tags.ts",
+        account: "lojabagaggio",
+      },
+    };
+
+    const catalog = buildAppCatalog([], emptyMeta, decofile);
+
+    expect(catalog).toEqual([
+      {
+        id: "local-app-tags",
+        app: "app-tags",
+        vendor: "local",
+        title: "App Tags",
+        description: "",
+        category: "Custom",
+        resolveType: "site/apps/local/app-tags.ts",
+        blockKey: "app-tags",
+        installed: true,
+      },
+    ]);
+  });
 });
