@@ -10,6 +10,7 @@ import type {
   DecopilotModelSources,
   DecopilotObjectStorageSource,
 } from "./sources";
+import type { CodingWorkspacePromptInput } from "./coding-workspace-prompt";
 
 export { createSecretModelSource } from "./sources";
 export type {
@@ -134,6 +135,8 @@ export interface HarnessStreamInput {
   /** Symbolic, logically-resolved working directory (see workspace-cwd.ts).
    *  Required. The daemon rebases non-"default" values onto its sandbox root. */
   workspace: { cwd: string };
+  /** Pre-renderable coding workspace facts shared by Decopilot and CLI harness prompts. */
+  codingWorkspace?: CodingWorkspacePromptInput;
 
   // ===== Models (already resolved: credential → key/headers, permissions checked) =====
   models: ModelsConfig;

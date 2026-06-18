@@ -67,6 +67,7 @@ import {
   WORKSPACE_CWD_DEFAULT,
   WORKSPACE_CWD_REPO,
 } from "@decocms/harness/workspace-cwd";
+import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
 import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
 import {
   classifyStreamError,
@@ -311,6 +312,33 @@ function resolveWorkspaceCwd(
     return { cwd: WORKSPACE_CWD_REPO };
   }
   return { cwd: WORKSPACE_CWD_DEFAULT };
+}
+
+export function buildCodingWorkspaceInput(input: {
+  virtualMcp: { metadata?: unknown } | null;
+  branch?: string | null;
+  workspace: { cwd: string };
+}): CodingWorkspacePromptInput {
+  const githubRepo = (
+    input.virtualMcp?.metadata as { githubRepo?: unknown } | undefined
+  )?.githubRepo;
+  const repo =
+    githubRepo &&
+    typeof (githubRepo as { owner?: unknown }).owner === "string" &&
+    typeof (githubRepo as { name?: unknown }).name === "string"
+      ? {
+          owner: (githubRepo as { owner: string }).owner,
+          name: (githubRepo as { name: string }).name,
+          connectedGithub: true,
+        }
+      : undefined;
+
+  return {
+    ...(repo ? { repo } : {}),
+    branch: input.branch ?? null,
+    cwd: input.workspace.cwd,
+    workspaceKind: repo ? "github" : "unknown",
+  };
 }
 
 /**
@@ -1222,6 +1250,15 @@ async function prepareRun(
             expiresAt: mcp.expiresAt,
           }
         : undefined;
+    const workspace = resolveWorkspaceCwd(
+      effectiveVirtualMcp,
+      target.sandboxProviderKind,
+    );
+    const codingWorkspace = buildCodingWorkspaceInput({
+      virtualMcp: effectiveVirtualMcp,
+      branch: input.branch,
+      workspace,
+    });
 
     const wireHarnessInput: WireHarnessInput = {
       harnessId,
@@ -1229,10 +1266,8 @@ async function prepareRun(
       runId: mem.thread.id, // RunRegistry keys runs by taskId today
       resumeSessionRef,
       messages: materializedMessages,
-      workspace: resolveWorkspaceCwd(
-        effectiveVirtualMcp,
-        target.sandboxProviderKind,
-      ),
+      workspace,
+      codingWorkspace,
       models,
       modelSources,
       mcpSource,
