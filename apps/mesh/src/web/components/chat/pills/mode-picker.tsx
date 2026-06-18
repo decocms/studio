@@ -171,6 +171,10 @@ function editablePillLabel(mode: AgentMode): {
   return { icon, text };
 }
 
+function runtimeLabel(mode: AgentMode): "cloud" | "desktop" {
+  return mode === "cloud-decopilot" ? "cloud" : "desktop";
+}
+
 const baseClasses =
   "text-muted-foreground hover:text-foreground text-xs transition-[gap] duration-200";
 const localPreviewClasses = "text-success hover:text-success";
@@ -193,6 +197,7 @@ export function ModePickerPure({
   const { icon, text } = locked
     ? harnessPillLabel(mode)
     : editablePillLabel(mode);
+  const labelWithRuntime = `${text} on ${runtimeLabel(mode)}`;
   const isLocal = mode !== "cloud-decopilot";
   const showHarnessLabel = lockedHarness != null;
   const harnessLabel = lockedHarness ? HARNESS_LABEL[lockedHarness] : null;
@@ -228,8 +233,8 @@ export function ModePickerPure({
                 size="default"
                 aria-label={
                   showHarnessLabel && harnessLabel
-                    ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
-                    : text
+                    ? `This chat is using ${harnessLabel} on ${runtimeLabel(mode)}. Start a new chat to use a different runtime.`
+                    : labelWithRuntime
                 }
                 disabled={locked}
                 data-testid={locked ? "mode-picker-locked" : "mode-picker"}
@@ -262,8 +267,8 @@ export function ModePickerPure({
         </TooltipTrigger>
         <TooltipContent>
           {showHarnessLabel && harnessLabel
-            ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
-            : text}
+            ? `This chat is using ${harnessLabel} on ${runtimeLabel(mode)}. Start a new chat to use a different runtime.`
+            : labelWithRuntime}
         </TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="p-1 w-64">

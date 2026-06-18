@@ -20,7 +20,9 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    expect(getByRole("button", { name: /Decopilot/i })).toBeInTheDocument();
+    expect(
+      getByRole("button", { name: "Decopilot on cloud" }),
+    ).toBeInTheDocument();
   });
 
   it("renders Claude Code label when active", () => {
@@ -37,7 +39,9 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    expect(getByRole("button", { name: /Claude Code/i })).toBeInTheDocument();
+    expect(
+      getByRole("button", { name: "Claude Code on desktop" }),
+    ).toBeInTheDocument();
   });
 
   it("marks the selected local preview as green without marking the popover row", () => {
@@ -186,7 +190,7 @@ describe("ModePickerPure", () => {
       />,
     );
     const button = getByTestId("mode-picker-locked");
-    expect(button).toHaveAttribute("aria-label", "Decopilot");
+    expect(button).toHaveAttribute("aria-label", "Decopilot on cloud");
   });
 
   it("opens the popover and shows stitched rows in order", () => {
