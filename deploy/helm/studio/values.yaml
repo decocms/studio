@@ -205,6 +205,7 @@ secret:
   # NATS_ACCOUNT_JWT: ""
   # NATS_ACCOUNT_SIGNING_KEY: ""
   # NATS_OPERATOR_JWT: ""
+  # NATS_CLUSTER_CREDS: ""
 
 # ExternalSecret — pull all values from AWS Secrets Manager via external-secrets operator.
 # When enabled, creates a namespace-scoped SecretStore and an ExternalSecret using dataFrom
@@ -367,6 +368,16 @@ tunnel:
     publicUrl: "" # e.g. wss://nats.example.com
     publicEnabled: false
     sessionTtlSeconds: 900
+    clusterCreds:
+      # Enable when NATS runs in operator/JWT mode and Studio's internal
+      # NATS_URL connection must authenticate with a creds file.
+      enabled: false
+      # Empty defaults to the same Secret consumed by Studio envFrom
+      # (secret.secretName, externalSecret target, or the chart-managed Secret).
+      secretName: ""
+      secretKey: "NATS_CLUSTER_CREDS"
+      mountDir: "/etc/nats-creds"
+      fileName: "cluster.creds"
 
 nats:
   enabled: true
