@@ -90,6 +90,7 @@ describe("buildCodingWorkspaceInput", () => {
           githubRepo: {
             owner: "deco",
             name: "site",
+            connectionId: "conn-1",
           },
         },
       },
@@ -104,6 +105,32 @@ describe("buildCodingWorkspaceInput", () => {
         connectedGithub: true,
       },
       branch: "feature-branch",
+      cwd: "/repo",
+      workspaceKind: "github",
+    });
+  });
+
+  it("marks public clone repo workspaces as not connected to GitHub", () => {
+    const result = buildCodingWorkspaceInput({
+      virtualMcp: {
+        metadata: {
+          githubRepo: {
+            owner: "deco",
+            name: "public-site",
+          },
+        },
+      },
+      branch: "main",
+      workspace: { cwd: "/repo" },
+    });
+
+    expect(result).toEqual({
+      repo: {
+        owner: "deco",
+        name: "public-site",
+        connectedGithub: false,
+      },
+      branch: "main",
       cwd: "/repo",
       workspaceKind: "github",
     });

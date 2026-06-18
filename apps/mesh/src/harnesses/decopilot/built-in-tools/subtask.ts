@@ -101,7 +101,7 @@ export interface SubtaskParams {
 }
 
 export function resolveSubtaskCodingWorkspace(
-  targetRef: { repo?: { owner: string; name: string } },
+  targetRef: { repo?: { owner: string; name: string; connectionId?: string } },
   parentWorkspace?: CodingWorkspacePromptInput,
 ): CodingWorkspacePromptInput | undefined {
   if (!targetRef.repo) return parentWorkspace;
@@ -110,7 +110,7 @@ export function resolveSubtaskCodingWorkspace(
     repo: {
       owner: targetRef.repo.owner,
       name: targetRef.repo.name,
-      connectedGithub: true,
+      connectedGithub: Boolean(targetRef.repo.connectionId),
     },
     branch: parentWorkspace?.branch,
     cwd: parentWorkspace?.cwd,

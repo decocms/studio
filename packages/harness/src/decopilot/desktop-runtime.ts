@@ -121,6 +121,13 @@ export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
   return { modelSource, mcpSource };
 }
 
+export function resolveDesktopSubtaskCodingWorkspace(
+  input: Pick<HarnessStreamInput, "codingWorkspace">,
+  targetAgentId: string | undefined,
+): HarnessStreamInput["codingWorkspace"] {
+  return targetAgentId ? undefined : input.codingWorkspace;
+}
+
 /**
  * Desktop engine adapter: assembles the DESKTOP system prompt
  * (`buildDesktopPrompt` — the cluster-storage-free prompt) + the desktop tool
@@ -481,6 +488,10 @@ export function buildDesktopEnvironmentTools(args: {
           ...input,
           agent: { id: targetAgentId },
           virtualMcp: { ...input.virtualMcp, id: targetAgentId },
+          codingWorkspace: resolveDesktopSubtaskCodingWorkspace(
+            input,
+            targetAgentId,
+          ),
         }
       : input;
     const targetToolRuntime = createDesktopToolRuntime({

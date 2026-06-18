@@ -158,6 +158,7 @@ describe("resolveSubtaskCodingWorkspace", () => {
         repo: {
           owner: "deco",
           name: "site",
+          connectionId: "conn-1",
         } as never,
       },
       {
@@ -177,6 +178,33 @@ describe("resolveSubtaskCodingWorkspace", () => {
         owner: "deco",
         name: "site",
         connectedGithub: true,
+      },
+      branch: "main",
+      cwd: "/repo",
+      workspaceKind: "github",
+    });
+  });
+
+  test("marks target public clone repo as not connected to GitHub", () => {
+    const result = resolveSubtaskCodingWorkspace(
+      {
+        repo: {
+          owner: "deco",
+          name: "public-site",
+        },
+      },
+      {
+        branch: "main",
+        cwd: "/repo",
+        workspaceKind: "github",
+      },
+    );
+
+    expect(result).toEqual({
+      repo: {
+        owner: "deco",
+        name: "public-site",
+        connectedGithub: false,
       },
       branch: "main",
       cwd: "/repo",

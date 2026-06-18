@@ -329,7 +329,9 @@ export function buildCodingWorkspaceInput(input: {
       ? {
           owner: (githubRepo as { owner: string }).owner,
           name: (githubRepo as { name: string }).name,
-          connectedGithub: true,
+          connectedGithub: Boolean(
+            (githubRepo as { connectionId?: unknown }).connectionId,
+          ),
         }
       : undefined;
 
