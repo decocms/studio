@@ -70,8 +70,12 @@ server {
   }
 
   # Hashed assets are content-addressed → cache forever.
+  # No `always`: the immutable header must apply only to 2xx/3xx, never to the
+  # =404 below. With `always`, a chunk that's briefly missing during a rollout
+  # returns `404 + immutable, max-age=1y`, which Cloudflare/browsers then cache
+  # for a year — poisoning that asset URL permanently (stale-chunk loop).
   location /assets/ {
-    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    add_header Cache-Control "public, max-age=31536000, immutable";
     try_files $uri =404;
   }
 
