@@ -25,6 +25,7 @@ import {
   embeddedUnionBlockId,
   isEmbeddedUnionResolveType,
 } from "../block-type-utils";
+import { labelFromResolveType } from "../section-types";
 import type { SchemaProperty } from "../resolve-schema";
 import type { FieldProps } from "./field-props";
 
@@ -292,13 +293,20 @@ export function AnyOfField({
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
             <SelectContent>
-              {refs.map((ref) => (
-                <SelectItem key={ref.resolveType} value={ref.resolveType}>
-                  {ref.title ??
-                    embeddedUnionBlockId(ref.resolveType) ??
-                    ref.resolveType}
-                </SelectItem>
-              ))}
+              {refs.map((ref) => {
+                // If title is a file path (contains "/"), derive a human label
+                // from the resolveType instead (e.g. "DeliveryPromiseProductListingPage").
+                const displayTitle =
+                  ref.title && !ref.title.includes("/")
+                    ? ref.title
+                    : (embeddedUnionBlockId(ref.resolveType) ??
+                      labelFromResolveType(ref.resolveType));
+                return (
+                  <SelectItem key={ref.resolveType} value={ref.resolveType}>
+                    {displayTitle}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
           {schema.description && (
