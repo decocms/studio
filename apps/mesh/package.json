@@ -39,14 +39,14 @@
     "prepublishOnly": "bun run build:client && bun run build:server"
   },
   "optionalDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.141",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.181",
     "@duckdb/node-api": "^1.5.0-r.1"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.80",
-    "@ai-sdk/google": "^3.0.80",
-    "@ai-sdk/openai": "^3.0.65",
-    "@anthropic-ai/sdk": "^0.96.0",
+    "@ai-sdk/anthropic": "^3.0.85",
+    "@ai-sdk/google": "^3.0.83",
+    "@ai-sdk/openai": "^3.0.73",
+    "@anthropic-ai/sdk": "^0.105.0",
     "@aws-sdk/client-s3": "^3.1013.0",
     "@aws-sdk/lib-storage": "^3.1013.0",
     "@aws-sdk/s3-request-presigner": "^3.1013.0",
@@ -57,7 +57,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@inkjs/ui": "^2.0.0",
     "@modelcontextprotocol/ext-apps": "^1.7.1",
-    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "@openrouter/ai-sdk-provider": "^2.9.1",
     "@opentelemetry/core": "^2.6.0",
     "@tanstack/react-virtual": "3.13.24",
     "@xterm/addon-fit": "^0.11.0",
@@ -74,7 +74,7 @@
   },
   "devDependencies": {
     "@ai-sdk/provider": "^3.0.10",
-    "@ai-sdk/react": "^3.0.193",
+    "@ai-sdk/react": "^3.0.210",
     "@better-auth/sso": "1.4.1",
     "@daveyplate/better-auth-ui": "^3.2.7",
     "@deco/ui": "workspace:*",
@@ -138,7 +138,7 @@
     "@untitledui/icons": "^0.0.19",
     "@vercel/nft": "^1.1.1",
     "@vitejs/plugin-react": "^5.1.0",
-    "ai": "^6.0.191",
+    "ai": "^6.0.208",
     "babel-plugin-react-compiler": "^1.0.0",
     "better-auth": "1.4.22",
     "class-variance-authority": "^0.7.1",
