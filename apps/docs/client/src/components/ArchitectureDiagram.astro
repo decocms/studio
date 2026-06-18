@@ -35,6 +35,7 @@ const N: Record<string, Node> = {
   files: { x: 705, y: 470, w: 150, h: 60, tier: "file", label: "Files / Storage", tag: "api · /files /fs" },
   nats: { x: 930, y: 300, w: 124, h: 82, tier: "nats", shape: "hex", label: "NATS", tag: "messaging" },
   db: { x: 930, y: 505, w: 122, h: 88, tier: "db", shape: "cyl", label: "DB", tag: "postgres" },
+  gateway: { x: 300, y: 858, w: 132, h: 54, tier: "edge", label: "Gateway", tag: "k8s gateway api" },
   daemonctl: { x: 710, y: 852, w: 158, h: 60, tier: "sbx", label: "Daemon API", tag: "protected /_sandbox/*" },
   orgfsc: { x: 900, y: 852, w: 132, h: 56, tier: "file", label: "Org FS", tag: "mount · sidecar" },
   daemonprev: { x: 1085, y: 852, w: 152, h: 60, tier: "pub", label: "Preview", tag: "public" },
@@ -53,9 +54,9 @@ const E: [string, string, string][] = [
   ["api", "worker", "ctrl"], ["api", "db", "ctrl"], ["worker", "db", "ctrl"],
   ["api", "nats", "ctrl"], ["worker", "nats", "ctrl"], ["nats", "linkd", "bridge"],
   ["worker", "llm", "model"], ["worker", "daemonctl", "ctrl"], ["api", "daemonctl", "ctrl"],
-  ["client", "daemonprev", "public"],
+  ["cf", "gateway", "public"], ["gateway", "daemonprev", "public"],
   ["daemonctl", "orgfsc", "ctrl"], ["orgfsc", "files", "ctrl"],
-  ["dsbx", "orgfsd", "ctrl"], ["orgfsd", "files", "ctrl"],
+  ["dsbx", "orgfsd", "ctrl"],
   ["linkd", "dloop", "ctrl"], ["dloop", "llm", "model"], ["dloop", "api", "mcp"], ["dloop", "dsbx", "ctrl"],
 ];
 
@@ -71,9 +72,8 @@ const EDGE_STYLE: Record<string, { stroke: string; dash?: string; w: number; op:
 
 // manual margin routes for long cross-diagram edges
 const ROUTES: Record<string, { x: number; y: number }[]> = {
-  "client>daemonprev": [{ x: 35, y: 330 }, { x: 12, y: 330 }, { x: 12, y: 986 }, { x: 1085, y: 986 }, { x: 1085, y: 882 }],
+  "gateway>daemonprev": [{ x: 300, y: 885 }, { x: 300, y: 1002 }, { x: 1085, y: 1002 }, { x: 1085, y: 882 }],
   "dloop>api": [{ x: 1300, y: 529 }, { x: 1300, y: 128 }, { x: 485, y: 128 }, { x: 485, y: 328 }],
-  "orgfsd>files": [{ x: 1460, y: 828 }, { x: 1460, y: 1002 }, { x: 600, y: 1002 }, { x: 600, y: 470 }, { x: 630, y: 470 }],
 };
 function roundedPath(pts: { x: number; y: number }[], r = 16) {
   let d = `M${pts[0].x},${pts[0].y}`;
