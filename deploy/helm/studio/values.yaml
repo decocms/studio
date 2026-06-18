@@ -148,6 +148,13 @@ web:
   service:
     type: ClusterIP
     port: 80
+  # Graceful-drain knobs for NLB-fronted rollouts (target-type: ip). The preStop
+  # sleep keeps the pod serving while the LB controller deregisters its IP, so
+  # in-flight requests aren't reset. Grace must exceed the sleep + nginx drain.
+  preStopSleepSeconds: 15
+  terminationGracePeriodSeconds: 45
+  # Set to fully replace the default preStop hook (e.g. a custom drain command).
+  lifecycle: {}
   resources:
     requests:
       cpu: "50m"
