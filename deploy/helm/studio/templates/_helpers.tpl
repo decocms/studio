@@ -38,6 +38,21 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
+Pod-template labels — same as .labels but WITHOUT helm.sh/chart. The chart label
+carries the chart version, so putting it on a pod template makes every chart
+version bump change the template hash and roll ALL deployments. Keep it on
+Deployment metadata (.labels), not the pod template, so a version bump only
+rolls a Deployment whose actual pod spec changed.
+*/}}
+{{- define "chart-deco-studio.podLabels" -}}
+{{ include "chart-deco-studio.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{/*
 Selector labels
 */}}
 {{- define "chart-deco-studio.selectorLabels" -}}
