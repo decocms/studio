@@ -179,8 +179,14 @@ export function TaskGroupsList() {
     const wasActive = task.id === activeTaskId;
     hide(task.id);
     if (!wasActive) return;
+    // Land only on the caller's own threads. The panel lists org-wide threads
+    // under the "All members" filter, so an unscoped fallback would teleport
+    // the user into another member's chat.
     const next = sortedThreads.find(
-      (t) => t.id !== task.id && t.virtual_mcp_id === task.virtual_mcp_id,
+      (t) =>
+        t.id !== task.id &&
+        t.virtual_mcp_id === task.virtual_mcp_id &&
+        t.created_by === currentUserId,
     );
     if (next) {
       setTaskId(next.id, next.virtual_mcp_id);
