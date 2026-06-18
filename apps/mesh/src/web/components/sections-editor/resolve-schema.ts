@@ -614,6 +614,12 @@ export function resolveSchema(
           rawItems = resolveRef(rawItems.$ref);
         }
         itemsSchema = buildProperty(rawItems, depth + 1);
+        if (
+          typeof rawItems.title === "string" &&
+          rawItems.title.includes("{{")
+        ) {
+          itemsSchema.titleBy = rawItems.title;
+        }
       }
     }
 
