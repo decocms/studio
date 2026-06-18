@@ -77,6 +77,7 @@ export async function getNavigationLinks(
 
     // 10. Self-Hosting
     "studio/self-hosting/quickstart",
+    "studio/self-hosting/architecture",
     "studio/self-hosting/authentication",
     "studio/self-hosting/monitoring",
     "studio/self-hosting/deploy/docker-compose",

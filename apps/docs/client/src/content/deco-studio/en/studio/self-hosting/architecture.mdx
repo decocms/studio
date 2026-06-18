@@ -1,0 +1,131 @@
+---
+title: "Architecture"
+description: How Studio is wired end to end — edge, cloud cluster, and desktop — and how requests, runs, and sandboxes flow between the tiers.
+icon: Network
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+This page describes how a running Studio deployment is wired together: the tiers, what each one does, and how a request becomes an agent run, a tool call, or a sandbox preview. It is the conceptual companion to the [Kubernetes](/studio/self-hosting/deploy/kubernetes) and [Docker Compose](/studio/self-hosting/deploy/docker-compose) deploy guides.
+
+## The three tiers
+
+Studio spans three trust/locality boundaries:
+
+- **Edge** — the public internet path: a CDN and an L4 load balancer.
+- **Cloud cluster** — the Kubernetes deployment: web, API, workers, Postgres, NATS, and cloud sandboxes.
+- **Desktop** — the user's laptop, connected by `deco link`, where the desktop loop and desktop sandbox can run.
+
+```
+EDGE                CLOUD CLUSTER                                     DESKTOP
+────                ─────────────                                     ───────
+
+Client ─▶ CF ─▶ NLB ─▶ Web(nginx) ─▶ API ──┬─▶ MCP Proxy ─▶ Downstream MCP (ext)
+                                            ├─▶ Files/Storage ─▶ Object Store (ext)
+                                            ├─▶ DB (Postgres)
+                                            ├─▶ NATS ───────────────▶ Link Daemon
+                                            └─▶ Worker                    │
+                                                  │  model               ▼
+                                                  ├──────────▶ LLM   Desktop Loop ─▶ Desktop Sandbox
+                                                  ├─▶ DB                  │
+                                                  ├─▶ Files/Storage       └─(MCP via presigned URL)─▶ API
+                                                  ├─▶ Downstream MCP (in-process bridge)
+                                                  └─▶ Cloud Sandbox ─┬─ Daemon API (protected /_sandbox/*)
+                                                                     └─ Preview (public)
+```
+
+## Edge
+
+| Component | Role |
+| --- | --- |
+| **CF** (Cloudflare) | TLS termination, static SPA caching, DDoS/bot mitigation. First hop for all traffic. |
+| **NLB** | L4 load balancer fronting the cluster. Routes to the web (front-door) pods; the `frontDoorLabels` selector decides which pods receive ingress. |
+
+## Cloud cluster
+
+### Web, API, and Worker scale independently
+
+These three deployments are separate and scale on their own. The web tier was split out from the API (the "front-door split") so the static front door can deploy and scale on a different cadence than the application server.
+
+| Tier | Deployment | Responsibility |
+| --- | --- | --- |
+| **Web** | nginx | Serves the React SPA and reverse-proxies `/api`, `/mcp`, `/oauth-proxy`, `/.well-known` to the API Service. Port 8080. |
+| **API** | Hono, `MESH_DISPATCH_ROLE=api` | HTTP routes, Better Auth, the MCP proxy, access control. **Enqueues** decopilot runs onto DBOS queues and tails NATS to stream output back to the UI. Stateless. **Does not run the agent loop.** |
+| **Worker** | Hono, `MESH_DISPATCH_ROLE=worker` | **Dequeues** DBOS queues and **runs the agent loop** (`streamText`: model → tool → repeat). CPU-bound. These are the run executors. |
+
+<Callout type="note">
+  The split is by role, not by image — both run the same build. `MESH_DISPATCH_ROLE` decides whether a pod listens on the DBOS queues (`worker`) or only serves HTTP and enqueues (`api`). A single-deployment setup can use `all`.
+</Callout>
+
+### Datastores
+
+| Component | Role |
+| --- | --- |
+| **DB** (PostgreSQL, via Kysely) | System of record: orgs, connections, credential vault, audit, threads + messages, and `sandbox_runner_state`. It also holds the **DBOS queues and `workflow_status` journal** that make runs durable and recoverable. |
+| **NATS** | Live messaging infrastructure with three jobs: (1) JetStream `/stream` fan-out (`decopilot.stream.<thread>`) → UI live tail; (2) the pull work-queue (`link.work.<user>`) → desktop; (3) the link-claim KV (`studio_links`) tracking which pod owns each user's link. |
+
+<Callout type="warning">
+  **The event bus is dormant.** The CloudEvents pub/sub *feature* (`EVENT_PUBLISH`/`EVENT_SUBSCRIBE`, the durable event queue, `ON_EVENTS` subscribers) is only consumed by the workflow plugin, which is not in use. NATS itself is **not** dormant — it serves the live jobs listed above. Don't conflate the two.
+</Callout>
+
+## The decopilot run lifecycle
+
+1. A message (`POST /messages`) or an automation fire creates a **run** on a thread.
+2. The **API** enqueues it onto a DBOS queue in Postgres:
+   - `THREAD_GATE_QUEUE` — serialized per thread (concurrency 1 per `threadId`).
+   - `AUTOMATIONS_QUEUE` — per-org parallelism.
+3. A **Worker** dequeues it and runs the agent loop: call the model, execute any tool calls, repeat (up to a step limit).
+4. Output chunks are published to NATS and tailed back to the UI over `/stream`.
+5. If the pod crashes, **DBOS journal replay** resumes retriable steps on another pod — recovery is the framework's job, not hand-rolled.
+
+There are two transports for step 3:
+
+- **Hosted** (default) — the run executes in-process on the worker and uses a **cloud sandbox**.
+- **Pull** — the run is published to NATS `link.work.<user>`; the user's **desktop** picks it up and runs the loop locally against a **desktop sandbox**.
+
+## MCP: in-process vs. the proxy routes
+
+This distinction matters for reasoning about the system:
+
+- **The worker calls MCP tools in-process.** The agent loop builds a `PassthroughClient` over an in-memory bridge and calls tools directly — **no HTTP hop inside the cluster**. It still connects outward to downstream MCP servers.
+- **The MCP proxy routes are for external clients.** `/mcp/virtual-mcp/:id`, `/mcp/:connectionId`, `/oauth-proxy/*`, and `/.well-known` are served by the **API** to external IDEs (Cursor, Claude, VS Code). The worker does not use these.
+
+### Which routes are called by whom
+
+| Routes | API / external | Worker |
+| --- | --- | --- |
+| MCP proxy (`/mcp/*`, `/oauth-proxy/*`, `.well-known`) | ✅ external clients via the API | ❌ (in-process instead) |
+| File & object-storage (`/api/:org/files/*`, presigned GET/PUT, uploads) | ✅ serving clients | ✅ agent tools read/write files & mint presigned URLs |
+| Worker-only over HTTP | — | none — tool calls are in-process |
+
+File and object-storage routes are the genuine "called by both" surface, and they are backed by an S3-compatible **Object Store**.
+
+## Sandboxes
+
+A sandbox clones the repo, runs the dev server, and exposes an in-pod **daemon**. Its HTTP surface splits in two:
+
+| Surface | Auth | Purpose | Caller |
+| --- | --- | --- | --- |
+| **Preview** (catch-all `*`) | None — the handle (subdomain) is the secret | Reverse-proxies the running dev server (the live app preview); injects HMR. `/_sandbox/*` is actively rejected here. | The end user's browser, at `<handle>.preview.<domain>` |
+| **Daemon API** (`/_sandbox/*`) | Bearer `DAEMON_TOKEN` | Control surface: fs ops (read/write/edit/bash/grep), git (status/diff/publish), exec scripts, setup (clone → install → start), tasks, SSE events, harness dispatch. | The cluster (worker for agent fs/git/bash tools; API for UI setup + events) |
+
+### Cloud vs. desktop sandboxes
+
+| | Cloud sandbox | Desktop sandbox |
+| --- | --- | --- |
+| Where | agent-sandbox operator + a `SandboxClaim` pod per (user, projectRef) | Same daemon, spawned locally on the laptop |
+| Reached over | k8s port-forward / in-cluster Service (control); ingress or port-forward (preview) | loopback (control); `<handle>.localhost:<port>` (preview) |
+| Selected when | the default for hosted runs | a `deco link` is live — `user-desktop` is the default provider then |
+
+## Desktop
+
+When a user runs `deco link`, a **Link Daemon** on their laptop long-polls the cluster (`/api/links/work` for chat, `/api/links/proxy` for sandbox control) and heartbeats presence into the NATS link-claim KV. Pulled runs execute in the **Desktop Loop** (`runNativeAgentLoopCore`) — a portable copy of the agent loop. The thinking model is injected by the cluster, and MCP is reached over HTTP via a presigned URL back to the cluster.
+
+## At a glance
+
+- **Web / API / Worker** are independent deployments; workers are DBOS run executors.
+- **Runs are durable** via DBOS queues + journal in Postgres; recovery is automatic.
+- **MCP tool calls are in-process** on the worker; the `/mcp/*` proxy routes are for external clients only.
+- **File/object-storage routes** are the shared API+worker surface.
+- **NATS is live**; the CloudEvents event-bus feature is dormant.
+- **Sandboxes** expose a public preview and a token-protected control API, in the cloud (k8s) or on the desktop (`deco link`).

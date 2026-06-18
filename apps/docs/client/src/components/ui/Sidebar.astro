@@ -172,7 +172,7 @@ function buildTree(docs: any[]): TreeNode[] {
 
         // Custom order for self-hosting section
         if (parentPath === "self-hosting") {
-          const selfHostingOrder = ["quickstart", "authentication"];
+          const selfHostingOrder = ["quickstart", "architecture", "authentication"];
           const aIndex = selfHostingOrder.indexOf(a.name);
           const bIndex = selfHostingOrder.indexOf(b.name);
           if (aIndex !== -1 && bIndex !== -1) {
