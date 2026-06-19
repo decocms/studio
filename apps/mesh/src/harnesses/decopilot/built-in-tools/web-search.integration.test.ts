@@ -36,6 +36,7 @@ import {
   OrgScopedAsyncResearchJobStorage,
   SqlAsyncResearchJobStorage,
 } from "@/storage/async-research-jobs";
+import { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
 import type { StudioContext } from "@/core/studio-context";
 import { googleAdapter } from "@/ai-providers/adapters/google";
 import { AsyncResearchTerminalError } from "@/ai-providers/types";
@@ -249,6 +250,7 @@ describe("web_search async-research e2e", () => {
         title: "e2e",
         description: null,
         status: "in_progress",
+        message_storage_version: 2,
         virtual_mcp_id: "",
         created_at: now,
         updated_at: now,
@@ -333,15 +335,14 @@ describe("web_search async-research e2e", () => {
     expect(progressEvents.length).toBeGreaterThanOrEqual(1);
     expect(events.some((e) => e.type === "data-tool-metadata")).toBe(true);
 
-    // The stub assistant message was written at polling-start and
-    // deleted on terminal — see the matching "mid-poll" test for the
-    // intermediate state assertion.
-    const stub = await database.db
-      .selectFrom("thread_messages")
-      .selectAll()
-      .where("id", "=", `msg_async_stub_${toolCallId}`)
-      .executeTakeFirst();
-    expect(stub).toBeUndefined();
+    // The v2 seed was written at polling-start and deleted on terminal —
+    // see the matching "mid-poll" test for the intermediate state assertion.
+    const stubParts = await database.db
+      .selectFrom("thread_message_parts")
+      .select("id")
+      .where("message_id", "=", `msg_async_stub_${toolCallId}`)
+      .execute();
+    expect(stubParts).toEqual([]);
   });
 
   it("writes the seed stub message mid-poll and deletes it on completion", async () => {
@@ -427,15 +428,16 @@ describe("web_search async-research e2e", () => {
         tick();
       });
 
-      const stubMid = await database.db
-        .selectFrom("thread_messages")
-        .selectAll()
-        .where("id", "=", `msg_async_stub_${toolCallId}`)
-        .executeTakeFirst();
+      const partStorage = new SqlThreadMessagePartStorage(database.db);
+      const { messages } = await partStorage.loadWindow(THREAD_ID, {
+        limit: 10,
+      });
+      const stubMid = messages.find(
+        (message) => message.id === `msg_async_stub_${toolCallId}`,
+      );
       expect(stubMid).toBeDefined();
       expect(stubMid!.role).toBe("assistant");
-      expect(stubMid!.thread_id).toBe(THREAD_ID);
-      const parts = JSON.parse(stubMid!.parts as unknown as string) as Array<{
+      const parts = stubMid!.parts as Array<{
         type: string;
         toolCallId: string;
         state: string;
@@ -454,11 +456,11 @@ describe("web_search async-research e2e", () => {
 
       // Stub gone after terminal — same-transaction guarantee.
       const stubAfter = await database.db
-        .selectFrom("thread_messages")
-        .selectAll()
-        .where("id", "=", `msg_async_stub_${toolCallId}`)
-        .executeTakeFirst();
-      expect(stubAfter).toBeUndefined();
+        .selectFrom("thread_message_parts")
+        .select("id")
+        .where("message_id", "=", `msg_async_stub_${toolCallId}`)
+        .execute();
+      expect(stubAfter).toEqual([]);
     } finally {
       server.stop();
       process.env.GEMINI_INTERACTIONS_URL = mock.url;

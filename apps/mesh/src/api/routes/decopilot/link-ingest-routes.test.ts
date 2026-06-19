@@ -50,7 +50,6 @@ interface AppContextOptions {
 function appWithContext(opts: AppContextOptions = {}) {
   const thread = opts.thread === undefined ? makeThread() : opts.thread;
   const appended: ThreadMessagePart[][] = [];
-  const savedMessages: unknown[][] = [];
   const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
   const purged: string[] = [];
   const pumped: UIMessageChunk[][] = [];
@@ -113,9 +112,6 @@ function appWithContext(opts: AppContextOptions = {}) {
               },
             });
             return threadRow();
-          },
-          saveMessages: async (messages: unknown[]) => {
-            savedMessages.push(messages);
           },
           messageParts: () => ({
             appendParts: async (rows: ThreadMessagePart[]) => {
@@ -195,7 +191,6 @@ function appWithContext(opts: AppContextOptions = {}) {
   return {
     app,
     appended,
-    savedMessages,
     updates,
     purged,
     pumped,
@@ -446,8 +441,7 @@ describe("link ingest chunks route", () => {
   });
 
   test("publishes seq-keyed RAW chunks with NO inline persistence (projector owns it)", async () => {
-    const { app, appended, savedMessages, updates, publishedRaw, pumped } =
-      appWithContext();
+    const { app, appended, updates, publishedRaw, pumped } = appWithContext();
 
     const events = [
       ...chunkEvents(helloTurnChunks()),
@@ -484,9 +478,8 @@ describe("link ingest chunks route", () => {
     expect(pumped).toHaveLength(0);
 
     // Link ingest does ZERO DB writes — the projector is the sole writer of
-    // parts + status + title. No inline PartEmitter / saveMessagesToThread.
+    // parts + status + title. No inline PartEmitter writes.
     expect(appended).toEqual([]);
-    expect(savedMessages).toEqual([]);
     // No terminal status write from the ingest path either (projector owns it).
     expect(updates.some((u) => u.data.status === "completed")).toBe(false);
   });

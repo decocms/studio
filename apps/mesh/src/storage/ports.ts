@@ -115,8 +115,6 @@ export interface ThreadStoragePort {
     virtualMcpIds: string[],
   ): Promise<Map<string, { last_used_at: string; last_used_by: string }>>;
 
-  // Message operations - upserts by id (updates existing rows)
-  saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;
   listMessages(
     taskId: string,
     organizationId: string,
@@ -171,12 +169,12 @@ export interface AsyncResearchJobStoragePort {
    * Studio operators have for cross-referencing logs with the upstream
    * provider's console.
    *
-   * Atomically writes a stub `thread_messages` row that carries the
-   * `tool-input-available` part. Without that stub, a browser refresh
-   * during the long polling window leaves `loadInitialPage` with no
-   * assistant message to seed the AI SDK reader, and the eventual
-   * `tool-output-available` chunk on reconnect throws "No tool
-   * invocation found for tool call ID …" (ai/dist/index.mjs:5398).
+   * Atomically writes a stub assistant message that carries the
+   * `tool-input-available` part into `thread_message_parts`. Without that
+   * stub, a browser refresh during the long polling window leaves
+   * `loadInitialPage` with no assistant message to seed the AI SDK reader,
+   * and the eventual `tool-output-available` chunk on reconnect throws
+   * "No tool invocation found for tool call ID …" (ai/dist/index.mjs:5398).
    *
    * The stub uses the deterministic id `msg_async_stub_<toolCallId>`
    * and is deleted by `markCompleted` / `markFailed` / `markCancelled`

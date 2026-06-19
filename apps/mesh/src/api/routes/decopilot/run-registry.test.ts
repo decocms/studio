@@ -30,7 +30,6 @@ function inertDeps(): RunReactorDeps {
       get: async () => null,
       delete: noop,
       list: async () => ({ threads: [], total: 0 }),
-      saveMessages: noop,
       listMessages: async () => ({ messages: [], total: 0 }),
       listByTriggerIds: async () => ({ threads: [], total: 0 }),
       forceFailIfInProgress: async () => false,

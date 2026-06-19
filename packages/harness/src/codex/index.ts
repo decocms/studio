@@ -202,9 +202,8 @@ export const codexHarnessFactory: HarnessFactory = {
 
           // 5. Pipe UIMessageChunk through. We surface
           //    `codingAgentSessionId` / `codingAgentProvider` at the top
-          //    of the message metadata so the shared layer's stream-core
-          //    persistence (`saveMessagesToThread(responseMessage)`)
-          //    writes them to ThreadMessage.metadata. Codex doesn't use
+          //    of the message metadata so the shared layer persists them
+          //    onto the response message's metadata. Codex doesn't use
           //    these for resume (per the comment at the top of this
           //    file), but the inline original at stream-core.ts:1411–
           //    1417 + 1549–1550 wrote them anyway for parity with

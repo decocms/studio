@@ -129,10 +129,6 @@ export class OrgScopedThreadStorage {
     );
   }
 
-  saveMessages(data: ThreadMessage[]): Promise<void> {
-    return this.inner.saveMessages(data, this.requireOrg());
-  }
-
   /** Stamp `last_progress_at = now()` (progress-liveness heartbeat). */
   bumpProgress(taskId: string): Promise<void> {
     return this.inner.bumpProgress(taskId, this.requireOrg());
@@ -674,77 +670,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       });
     }
     return result;
-  }
-
-  /**
-   * Upserts thread messages by id.
-   * Inserts new messages; updates existing rows (by id) with parts, metadata, role, updated_at.
-   * PostgreSQL only.
-   */
-  async saveMessages(
-    data: ThreadMessage[],
-    organizationId: string,
-  ): Promise<void> {
-    const now = new Date().toISOString();
-    const taskId = data[0]?.thread_id;
-    if (!taskId) {
-      throw new Error("thread_id is required when creating multiple messages");
-    }
-    const thread = await this.get(taskId, organizationId);
-    if (!thread) {
-      throw new Error("Thread not found or access denied");
-    }
-    // Deduplicate by id - PostgreSQL ON CONFLICT cannot affect same row twice in one INSERT.
-    // Also detect duplicate ids with conflicting thread_ids to reject corrupt batches early.
-    const byId = new Map<string, ThreadMessage>();
-    for (const m of data) {
-      const existing = byId.get(m.id);
-      if (existing && existing.thread_id !== m.thread_id) {
-        throw new Error(
-          `Duplicate message id "${m.id}" with conflicting thread_ids: "${existing.thread_id}" vs "${m.thread_id}"`,
-        );
-      }
-      byId.set(m.id, m);
-    }
-    const unique = [...byId.values()];
-    // Validate all messages target the same thread to prevent data corruption.
-    const mismatchedMessage = unique.find((m) => m.thread_id !== taskId);
-    if (mismatchedMessage) {
-      throw new Error(
-        `All messages must target the same thread. Expected thread_id "${taskId}", but message "${mismatchedMessage.id}" has thread_id "${mismatchedMessage.thread_id}"`,
-      );
-    }
-    const rows = unique.map((message) => ({
-      id: message.id,
-      thread_id: taskId,
-      metadata: message.metadata ? JSON.stringify(message.metadata) : null,
-      parts: JSON.stringify(message.parts),
-      role: message.role,
-      created_at: message.created_at ?? now,
-      updated_at: now,
-    }));
-
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("thread_messages")
-        .values(rows)
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet((eb) => ({
-            metadata: eb.ref("excluded.metadata"),
-            parts: eb.ref("excluded.parts"),
-            role: eb.ref("excluded.role"),
-            updated_at: eb.ref("excluded.updated_at"),
-          })),
-        )
-        .execute();
-
-      await trx
-        .updateTable("threads")
-        .set({ updated_at: now })
-        .where("id", "=", taskId)
-        .where("organization_id", "=", organizationId)
-        .execute();
-    });
   }
 
   /**
