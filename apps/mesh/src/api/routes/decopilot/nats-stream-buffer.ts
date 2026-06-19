@@ -15,17 +15,19 @@
  */
 
 import {
-  AckPolicy,
   DeliverPolicy,
   DiscardPolicy,
-  headers as natsHeaders,
+  jetstreamManager,
   RetentionPolicy,
   StorageType,
   type JetStreamClient,
   type JetStreamManager,
+} from "@nats-io/jetstream";
+import {
+  headers as natsHeaders,
   type MsgHdrs,
   type NatsConnection,
-} from "nats";
+} from "@nats-io/nats-core";
 import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
 import {
   buildChunkMsgId,
@@ -193,6 +195,13 @@ function createPublishTracker(taskId: string, orgId?: string) {
 export interface NatsStreamBufferOptions {
   getConnection: () => NatsConnection | null;
   getJetStream: () => JetStreamClient | null;
+  /**
+   * Obtain a JetStream manager. Optional — defaults to `jetstreamManager(nc)`
+   * (v3's free function, replacing v2's `nc.jetstreamManager()`). Injectable so
+   * tests can supply a mock manager without faking the whole connection (the v3
+   * free function introspects the real connection and can't run on a stub).
+   */
+  getJetStreamManager?: () => Promise<JetStreamManager>;
 }
 
 export class NatsStreamBuffer implements StreamBuffer {
@@ -213,7 +222,9 @@ export class NatsStreamBuffer implements StreamBuffer {
       );
       return;
     }
-    const jsm = await nc.jetstreamManager();
+    const jsm = this.options.getJetStreamManager
+      ? await this.options.getJetStreamManager()
+      : await jetstreamManager(nc);
 
     const config = decopilotStreamConfig();
 
@@ -475,14 +486,14 @@ export class NatsStreamBuffer implements StreamBuffer {
 
     let sub;
     try {
-      sub = await js.subscribe(subj, {
-        ordered: true,
-        config: {
-          filter_subject: subj,
-          ack_policy: AckPolicy.None,
-          deliver_policy: deliverPolicy,
-        },
+      // v3 ordered (ephemeral, no-ack) consumer over this run's subject. The
+      // replacement for v2's removed `js.subscribe(..., {ordered:true})` push
+      // consumer: same delivery semantics, but driven via the consumer API.
+      const consumer = await js.consumers.get(DECOPILOT_STREAM_NAME, {
+        filter_subjects: subj,
+        deliver_policy: deliverPolicy,
       });
+      sub = await consumer.consume();
     } catch (err) {
       console.warn(
         "[Decopilot] JetStream tail unavailable (non-critical):",
@@ -538,7 +549,7 @@ export class NatsStreamBuffer implements StreamBuffer {
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
-      sub.unsubscribe();
+      sub.stop();
       iter.return(undefined).catch(() => {});
     };
 

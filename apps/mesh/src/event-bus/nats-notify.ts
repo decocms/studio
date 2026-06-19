@@ -10,7 +10,7 @@
  * - Connection is provided by NatsConnectionProvider (does not own/drain)
  */
 
-import type { NatsConnection, Subscription } from "nats";
+import type { NatsConnection, Subscription } from "@nats-io/nats-core";
 import type { NotifyStrategy } from "./notify-strategy";
 
 const SUBJECT = "mesh.events.notify";

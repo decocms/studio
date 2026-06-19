@@ -13,11 +13,11 @@ services:
 
   nats:
     # Alpine variant so the healthcheck can shell out to wget; the scratch-
-    # based `nats:2.10.22` ships only the nats-server binary, which is why
+    # based `nats:2.14.2` ships only the nats-server binary, which is why
     # the resilience suite settled for `nats-server --help` (which passes
     # even when the server isn't serving). The monitoring port `-m 8222`
     # exposes `/healthz` for a real readiness check.
-    image: nats:2.10.22-alpine
+    image: nats:2.14.2-alpine
     command: -js -m 8222
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://localhost:8222/healthz || exit 1"]

@@ -41,7 +41,7 @@ const PG_USER = "postgres";
 const PG_PASSWORD = "postgres";
 const PG_DATABASE = "postgres";
 
-const NATS_VERSION = "v2.10.24";
+const NATS_VERSION = "v2.14.2";
 
 // MinIO dev defaults. The root credentials mirror the e2e setup
 // (.github/actions/start-minio) so local dev and CI use the same contract.
@@ -542,7 +542,10 @@ function natsArtifactName(): string {
     throw new Error(`Unsupported platform: ${p}/${a}`);
   }
 
-  return `nats-server-${NATS_VERSION}-${osName}-${archName}.zip`;
+  // NATS dropped the `.zip` artifacts for darwin/linux after the 2.10 line;
+  // unix releases ship only `.tar.gz` (zip remains Windows-only).
+  const ext = osName === "windows" ? "zip" : "tar.gz";
+  return `nats-server-${NATS_VERSION}-${osName}-${archName}.${ext}`;
 }
 
 function natsBinaryPath(home: string): string {
@@ -565,43 +568,39 @@ async function downloadNats(home: string): Promise<string> {
     );
   }
 
-  const zipPath = join(binDir, artifact);
+  const archivePath = join(binDir, artifact);
   const arrayBuffer = await response.arrayBuffer();
-  writeFileSync(zipPath, Buffer.from(arrayBuffer));
+  writeFileSync(archivePath, Buffer.from(arrayBuffer));
+
+  // Both the Windows `.zip` and the unix `.tar.gz` contain a single versioned
+  // top-level directory (e.g. nats-server-v2.14.2-linux-amd64/nats-server).
+  // Extract the whole archive, then move the binary up to binDir and drop the
+  // versioned directory so binPath resolves regardless of platform packaging.
+  const extractedDir = join(binDir, artifact.replace(/\.(zip|tar\.gz)$/, ""));
 
   if (IS_WINDOWS) {
     const proc = Bun.spawn([
       "powershell",
       "-Command",
-      `Expand-Archive -Path '${zipPath}' -DestinationPath '${binDir}' -Force`,
+      `Expand-Archive -Path '${archivePath}' -DestinationPath '${binDir}' -Force`,
     ]);
     await proc.exited;
-    // Expand-Archive preserves the zip's top-level directory (e.g.
-    // nats-server-v2.10.24-windows-amd64/nats-server.exe) instead of
-    // flattening like `unzip -j`. Move the binary up to binDir and remove
-    // the versioned subdirectory so binPath resolves correctly.
-    if (!existsSync(binPath)) {
-      const extractedDir = join(binDir, artifact.replace(/\.zip$/, ""));
-      const extractedBin = join(extractedDir, `nats-server${EXE_EXT}`);
-      if (existsSync(extractedBin)) {
-        renameSync(extractedBin, binPath);
-        rmSync(extractedDir, { recursive: true, force: true });
-      }
-    }
   } else {
-    const proc = Bun.spawn([
-      "unzip",
-      "-o",
-      "-j",
-      zipPath,
-      "*/nats-server",
-      "-d",
-      binDir,
-    ]);
+    // `tar` (with gzip via -z) is universally present on macOS/Linux, unlike
+    // `unzip`. Unix releases ship only `.tar.gz` since the 2.11 line.
+    const proc = Bun.spawn(["tar", "-xzf", archivePath, "-C", binDir]);
     await proc.exited;
   }
 
-  await unlink(zipPath);
+  if (!existsSync(binPath)) {
+    const extractedBin = join(extractedDir, `nats-server${EXE_EXT}`);
+    if (existsSync(extractedBin)) {
+      renameSync(extractedBin, binPath);
+    }
+  }
+  rmSync(extractedDir, { recursive: true, force: true });
+
+  await unlink(archivePath).catch(() => {});
 
   if (!IS_WINDOWS) {
     await chmod(binPath, 0o755);

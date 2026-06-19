@@ -1,5 +1,5 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import type { JetStreamClient, JetStreamManager } from "nats";
+import type { JetStreamClient, JetStreamManager } from "@nats-io/jetstream";
 import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
 import type { HarnessStreamPersistence } from "./consume-harness-stream";
 import type { ProjectChunksResult } from "./project-chunks";

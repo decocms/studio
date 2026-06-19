@@ -8,8 +8,9 @@
  * O(1) writes per pod regardless of thread count.
  */
 
-import type { JetStreamClient, NatsConnection, KV } from "nats";
-import { StorageType } from "nats";
+import { type JetStreamClient, StorageType } from "@nats-io/jetstream";
+import { Kvm, type KV } from "@nats-io/kv";
+import type { NatsConnection } from "@nats-io/nats-core";
 
 const BUCKET_NAME = "POD_HEARTBEATS";
 const BUCKET_TTL_MS = 45_000; // Key expires 45s after last refresh
@@ -55,8 +56,8 @@ export class NatsPodHeartbeat implements PodHeartbeat {
 
     const js = this.deps.getJetStream();
     if (!js) return; // NATS not ready — heartbeat disabled until re-init
-    this.initPromise = js.views
-      .kv(BUCKET_NAME, {
+    this.initPromise = new Kvm(js)
+      .create(BUCKET_NAME, {
         ttl: BUCKET_TTL_MS,
         storage: StorageType.Memory,
       })
@@ -130,12 +131,10 @@ export class NatsPodHeartbeat implements PodHeartbeat {
     const startWatcher = async () => {
       while (!signal.aborted) {
         try {
-          const watcher = await kv.watch({
-            // Watch all keys
-            initializedFn: () => {
-              // Initial values loaded, now watching for changes
-            },
-          });
+          // Watch all keys. (v2's no-op `initializedFn` callback was removed
+          // in v3 KvWatchOptions; the watcher still replays initial values
+          // before streaming live changes, so behavior is unchanged.)
+          const watcher = await kv.watch();
 
           for await (const entry of watcher) {
             if (signal.aborted) break;

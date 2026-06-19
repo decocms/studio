@@ -2,16 +2,13 @@ import { hostname as osHostname } from "node:os";
 import { retry, sleep, type RetryOptions } from "@decocms/std";
 import * as tunnel from "@decocms/tunnel";
 import {
-  connect as connectTcp,
   credsAuthenticator,
   tokenAuthenticator,
+  wsconnect,
   type ConnectionOptions,
   type NatsConnection,
-} from "nats";
-import {
-  connect as connectWebSocket,
-  type ConnectionOptions as WebSocketConnectionOptions,
-} from "nats.ws";
+} from "@nats-io/nats-core";
+import { connect as connectTcp } from "@nats-io/transport-node";
 import {
   linkSessionResponseSchema,
   type LinkSessionResponse,
@@ -290,10 +287,7 @@ function isWebSocketSession(session: LinkSessionResponse): boolean {
   });
 }
 
-const defaultWebSocketConnect: NatsConnector = async (options) =>
-  (await connectWebSocket(
-    options as WebSocketConnectionOptions,
-  )) as unknown as NatsConnection;
+const defaultWebSocketConnect: NatsConnector = (options) => wsconnect(options);
 
 export async function connectNats(
   session: LinkSessionResponse,

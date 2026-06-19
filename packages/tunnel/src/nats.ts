@@ -1,4 +1,4 @@
-import type { Msg, NatsConnection, Subscription } from "nats";
+import type { Msg, NatsConnection, Subscription } from "@nats-io/nats-core";
 
 import {
   decodeTunnelFrame,

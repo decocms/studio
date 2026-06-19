@@ -13,13 +13,10 @@
  * self-reset; a single success clears the counter immediately.
  */
 
-import {
-  JSONCodec,
-  nanos,
-  StorageType,
-  type JetStreamClient,
-  type KV,
-} from "nats";
+import { type JetStreamClient, StorageType } from "@nats-io/jetstream";
+import { Kvm, type KV } from "@nats-io/kv";
+import { nanos } from "@nats-io/nats-core";
+import { jsonCodec } from "../nats/json-codec";
 import {
   CONNECTION_CIRCUIT_TTL_MS,
   CONNECTION_DISABLE_FAILURE_THRESHOLD,
@@ -69,7 +66,7 @@ export class JetStreamKVConnectionCircuitStore
   implements ConnectionCircuitStore
 {
   private kv: KV | null = null;
-  private readonly codec = JSONCodec<CircuitRecord>();
+  private readonly codec = jsonCodec<CircuitRecord>();
 
   constructor(
     private readonly options: { getJetStream: () => JetStreamClient | null },
@@ -78,7 +75,7 @@ export class JetStreamKVConnectionCircuitStore
   async init(): Promise<void> {
     const js = this.options.getJetStream();
     if (!js) return; // NATS not ready — disable accounting paused until re-init
-    this.kv = await js.views.kv(KV_BUCKET, {
+    this.kv = await new Kvm(js).create(KV_BUCKET, {
       storage: StorageType.Memory,
       ttl: nanos(CONNECTION_CIRCUIT_TTL_MS),
     });

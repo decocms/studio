@@ -14,7 +14,7 @@
  * replica still re-reads from the DB within `ttlMs`. Keep it short.
  */
 
-import type { NatsConnection, Subscription } from "nats";
+import type { NatsConnection, Subscription } from "@nats-io/nats-core";
 import { createTtlLruCache, type TtlLruCache } from "../lib/ttl-lru-cache";
 import type { ProviderKeyInfo } from "./types";
 

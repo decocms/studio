@@ -9,6 +9,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { jetstreamManager } from "@nats-io/jetstream";
 import { getSettings } from "../settings";
 import {
   kickPublicSetsBootSync,
@@ -1043,7 +1044,7 @@ export async function createApp(options: CreateAppOptions = {}) {
           const nc = natsProvider!.getConnection();
           const js = natsProvider!.getJetStream();
           if (!nc || !js) return;
-          const jsm = await nc.jetstreamManager();
+          const jsm = await jetstreamManager(nc);
           const { startDurableProjector } = await import(
             "./routes/decopilot/start-durable-projector"
           );
@@ -1574,7 +1575,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     getJetStream: () => natsProvider?.getJetStream() ?? null,
     getJetStreamManager: async () => {
       const nc = natsProvider?.getConnection();
-      return nc ? await nc.jetstreamManager() : null;
+      return nc ? await jetstreamManager(nc) : null;
     },
     messageParts: projectorThreadStorage.messageParts(),
     resolveRun: async (runId: string) => {

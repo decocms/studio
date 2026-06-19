@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { NatsConnection } from "nats";
+import type { NatsConnection } from "@nats-io/nats-core";
 import type { WorkItem } from "../links/link-work-item";
 import { buildUserTunnelHostname } from "./tunnel-host";
 import {

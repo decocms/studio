@@ -30,7 +30,7 @@ import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import type { NatsConnection } from "nats";
+import type { NatsConnection } from "@nats-io/nats-core";
 import { ForbiddenError, UnauthorizedError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
 import type { OrgFs } from "@/file-storage/org-fs";

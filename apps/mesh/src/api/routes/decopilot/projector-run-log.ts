@@ -1,6 +1,7 @@
 import type { UIMessageChunk } from "ai";
-import { AckPolicy, DeliverPolicy, type JetStreamClient } from "nats";
+import { DeliverPolicy, type JetStreamClient } from "@nats-io/jetstream";
 import {
+  DECOPILOT_STREAM_NAME,
   isDoneEnvelope,
   parseRunStreamMsgId,
   runIdFromSubject,
@@ -109,14 +110,13 @@ export async function readProjectorRunLog(input: {
   finalSeq: number;
   idleTimeoutMs?: number;
 }): Promise<ReconstructResult> {
-  const sub = await input.js.subscribe(streamSubject(input.runId), {
-    ordered: true,
-    config: {
-      filter_subject: streamSubject(input.runId),
-      ack_policy: AckPolicy.None,
-      deliver_policy: DeliverPolicy.All,
-    },
+  // v3 ordered (ephemeral, no-ack) consumer over the run's subject — the
+  // replacement for v2's removed `js.subscribe(..., {ordered:true})`.
+  const consumer = await input.js.consumers.get(DECOPILOT_STREAM_NAME, {
+    filter_subjects: streamSubject(input.runId),
+    deliver_policy: DeliverPolicy.All,
   });
+  const sub = await consumer.consume();
   const messages: ProjectorRetainedMessage[] = [];
   const idleTimeoutMs = input.idleTimeoutMs ?? 1000;
   let idle: ReturnType<typeof setTimeout> | null = null;
@@ -125,7 +125,7 @@ export async function readProjectorRunLog(input: {
     if (idle) clearTimeout(idle);
     idle = setTimeout(() => {
       timedOut = true;
-      sub.unsubscribe();
+      sub.stop();
     }, idleTimeoutMs);
     idle.unref?.();
   };
@@ -147,7 +147,7 @@ export async function readProjectorRunLog(input: {
         messages,
       });
       if (current.ok) {
-        sub.unsubscribe();
+        sub.stop();
         return current;
       }
     }
