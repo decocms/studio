@@ -1,0 +1,118 @@
+---
+title: Buckets
+description: Connect your own S3-compatible bucket for CMS assets — and the IAM permissions it needs
+icon: HardDrive
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## What are buckets?
+
+A **bucket** is an S3-compatible object store you connect to Studio to hold **CMS assets** — the files you upload and reference from the content you build (images, slides, decks). You configure buckets at the organization level under **Settings → Buckets**, and credentials are encrypted at rest and never returned over the API.
+
+<Callout type="note">
+This is the bucket **you** bring and configure in the UI, used only for CMS assets. It is **not** the object store that backs a self-hosted deployment's org filesystem (org-fs) — that one is configured via environment variables on the deployment, not here. This page is about the user-configured bucket.
+</Callout>
+
+Studio works with any S3-compatible provider:
+
+| Provider | Endpoint | Force path-style |
+|---|---|---|
+| **AWS S3** | leave blank (default) | off |
+| **Cloudflare R2** | `https://<account>.r2.cloudflarestorage.com` | off |
+| **Google Cloud Storage** | `https://storage.googleapis.com` | **on** |
+| **MinIO** | your MinIO URL | usually **on** |
+
+## Adding a bucket
+
+Click **Add bucket** and fill in:
+
+| Field | Required | Notes |
+|---|---|---|
+| **Name** | ✅ | Letters, digits, underscore, dot, hyphen. Unique within the org. |
+| **Bucket** | ✅ | The bucket name. |
+| **Region** | ✅ | e.g. `us-east-1`. |
+| **Endpoint** | — | Required for non-AWS providers (R2, GCS, MinIO). Leave blank for AWS. |
+| **Force path-style URLs** | — | Required for GCS and most MinIO setups. |
+| **Key prefix** | — | All object keys are written under this prefix — useful for multi-tenant buckets or credentials scoped to a sub-path. A trailing slash is added automatically. |
+| **Public URL base** | — | Host used to build the public URLs returned for each asset (R2 dev domain, CDN, custom host). Leave blank to use the bucket's S3 host. |
+| **Credentials** | ✅ | A static key pair, or a temporary STS session (see below). |
+
+### Credential types
+
+- **Static key pair (long-lived)** — an `Access key ID` and `Secret access key`, used as-is. The most common choice.
+- **Temporary session (STS, auto-refreshed)** — stores only a refresh endpoint URL and an API key. Short-lived credentials are fetched on demand and refreshed automatically; no S3 secret is stored.
+
+## AWS IAM permissions
+
+Studio touches the bucket in only two ways: it **uploads** assets to it, and it **lists** objects to power the asset picker. It never reads objects back through the server, never deletes them, and never touches bucket configuration. So for an AWS S3 bucket connected via a **static key pair**, the IAM user (or role) behind the access key needs very little:
+
+| What Studio does | S3 operation | IAM action |
+|---|---|---|
+| Upload an asset (streamed via multipart for large files) | `Upload` (multipart `PutObject`) | `s3:PutObject` |
+| Clean up a failed multipart upload | `AbortMultipartUpload` | `s3:AbortMultipartUpload` |
+| List objects for the asset picker | `ListObjectsV2` | `s3:ListBucket` |
+
+<Callout type="note">
+Studio **does not** read uploaded assets back. The picker and your CMS link to each object's **public URL** (the `Public URL base` you set, or the bucket's canonical S3 URL), which the browser fetches directly. So the Studio credential does **not** need `s3:GetObject` — instead the objects must be publicly readable (or fronted by a CDN) for those URLs to resolve. That's a separate concern from this IAM policy: a bucket policy / object ACL / Block-Public-Access setting, or a CDN in front.
+</Callout>
+
+### Minimal policy
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StudioUploads",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:AbortMultipartUpload"
+      ],
+      "Resource": "arn:aws:s3:::YOUR_BUCKET/*"
+    },
+    {
+      "Sid": "StudioListBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET"
+    }
+  ]
+}
+```
+
+<Callout type="warning">
+**`s3:ListBucket` is a bucket-level action** — its `Resource` is the bucket ARN (`arn:aws:s3:::YOUR_BUCKET`), **without** the `/*` suffix. The object action (`s3:PutObject`, `s3:AbortMultipartUpload`) operates on objects, so its `Resource` **does** end in `/*`. Pointing `ListBucket` at the `/*` ARN is the most common cause of `AccessDenied` when listing.
+</Callout>
+
+### Scoping to a prefix (optional)
+
+If you set a **Key prefix** on the bucket, you can lock the credential to just that path:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StudioUploads",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:AbortMultipartUpload"],
+      "Resource": "arn:aws:s3:::YOUR_BUCKET/YOUR_PREFIX/*"
+    },
+    {
+      "Sid": "StudioListBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET",
+      "Condition": { "StringLike": { "s3:prefix": ["YOUR_PREFIX/*"] } }
+    }
+  ]
+}
+```
+
+---
+
+<Callout type="info">
+Credentials are stored encrypted in Studio's credential vault and are never returned over the API. Removing a bucket configuration deletes the stored credentials — the bucket itself and its contents are untouched.
+</Callout>
