@@ -442,6 +442,39 @@ describe("connectToClusterTunnel", () => {
     await handle.close();
   });
 
+  it("notifies when the first tunnel connection is serving", async () => {
+    const natsClosed = deferred<void | Error>();
+    const serverClosed = deferred<void>();
+    let connected = 0;
+
+    const handle = await connectToClusterTunnel(
+      makeBaseTunnelInput({
+        onConnected: () => {
+          connected++;
+        },
+      }),
+      {
+        fetchSession: async () => sessionWithoutAuth,
+        connectNats: async () =>
+          ({
+            publish: () => {},
+            flush: async () => {},
+            close: async () => natsClosed.resolve(undefined),
+            closed: async () => natsClosed.promise,
+          }) as never,
+        serveTunnel: async (options) => ({
+          hostname: options.hostname,
+          closed: serverClosed.promise,
+          close: async () => serverClosed.resolve(),
+        }),
+        sleep: waitForAbortSleep,
+      },
+    );
+
+    expect(connected).toBe(1);
+    await handle.close();
+  });
+
   it("serves the tunnel without publishing presence frames", async () => {
     const natsClosed = deferred<void | Error>();
     const serverClosed = deferred<void>();
