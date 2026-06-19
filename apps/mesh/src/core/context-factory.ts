@@ -659,7 +659,16 @@ async function authenticateRequest(
             .where("organization.slug", "=", orgSlugHint)
             .executeTakeFirst();
         }
-        return base.executeTakeFirst();
+        // No org hint — only resolve when the user has exactly one membership.
+        // For multi-org users without a hint, return undefined so callers get
+        // no org context instead of a non-deterministic pick (the previous
+        // .executeTakeFirst() without ORDER BY could return any membership row
+        // depending on PostgreSQL's physical row ordering).
+        return base
+          .orderBy("member.createdAt", "asc")
+          .limit(2)
+          .execute()
+          .then((rows) => (rows.length === 1 ? rows[0] : undefined));
       });
 
       if (isOrgArchived({ metadata: membership?.orgMetadata })) {
