@@ -59,6 +59,25 @@ export function fieldDisplayLabel(key: string, schema: SchemaProperty): string {
   return schema.title ?? humanize(key);
 }
 
+/** Map a header crumb index to the breadcrumb trail (`headerCrumbs = [title, ...breadcrumbs]`). */
+export function breadcrumbsForHeaderClick(
+  breadcrumbs: string[],
+  headerIndex: number,
+): string[] {
+  if (headerIndex <= 0) return [];
+  return breadcrumbs.slice(0, headerIndex);
+}
+
+export function findBreadcrumbLabelIndex(
+  path: string[],
+  targetLabel: string,
+): number {
+  const normalized = normalizeBreadcrumbLabel(targetLabel);
+  return path.findIndex(
+    (crumb) => normalizeBreadcrumbLabel(crumb) === normalized,
+  );
+}
+
 /** Breadcrumb drill-down applies to array fields only (not nested objects). */
 export function isArrayDrillDownField(
   schema: SchemaProperty,

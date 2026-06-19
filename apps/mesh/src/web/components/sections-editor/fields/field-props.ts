@@ -17,6 +17,7 @@ export interface FieldProps {
     entry: SectionCatalogEntry,
     append: (item: unknown) => void,
   ) => void | Promise<void>;
+  onRequestAddSection?: (context: { append: (item: unknown) => void }) => void;
   onSaveReferencedBlock?: (
     blockKey: string,
     data: Record<string, unknown>,

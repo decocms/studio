@@ -2,14 +2,47 @@ import { describe, expect, test } from "bun:test";
 import type { SchemaProperty } from "./resolve-schema";
 import {
   breadcrumbPathForActiveField,
+  breadcrumbsForHeaderClick,
   buildArrayDrillDownBreadcrumb,
   fieldDisplayLabel,
+  findBreadcrumbLabelIndex,
   isArrayDrillDownField,
+  normalizeBreadcrumbLabel,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
   isBreadcrumbInsideObject,
 } from "./schema-form-breadcrumb";
 import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
+
+describe("normalizeBreadcrumbLabel", () => {
+  test("normalizes composed characters to NFC", () => {
+    const nfd = "cafe\u0301";
+    const nfc = "caf\u00e9";
+    expect(normalizeBreadcrumbLabel(nfd)).toBe(normalizeBreadcrumbLabel(nfc));
+  });
+});
+
+describe("breadcrumbsForHeaderClick", () => {
+  test("maps header index to breadcrumb trail", () => {
+    const breadcrumbs = ["Global Sections", "Analytics"];
+    expect(breadcrumbsForHeaderClick(breadcrumbs, 0)).toEqual([]);
+    expect(breadcrumbsForHeaderClick(breadcrumbs, 1)).toEqual([
+      "Global Sections",
+    ]);
+    expect(breadcrumbsForHeaderClick(breadcrumbs, 2)).toEqual([
+      "Global Sections",
+      "Analytics",
+    ]);
+  });
+});
+
+describe("findBreadcrumbLabelIndex", () => {
+  test("matches labels with NFC normalization", () => {
+    const nfd = "cafe\u0301";
+    const nfc = "caf\u00e9";
+    expect(findBreadcrumbLabelIndex(["Flag", nfd], nfc)).toBe(1);
+  });
+});
 
 describe("fieldDisplayLabel", () => {
   test("prefers schema title", () => {

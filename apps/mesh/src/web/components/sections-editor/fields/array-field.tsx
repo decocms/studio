@@ -28,16 +28,14 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { AddSectionModal } from "../add-section-modal";
 import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
 import {
   buildArrayDrillDownBreadcrumb,
-  normalizeBreadcrumbLabel,
+  findBreadcrumbLabelIndex,
   resolveArrayItemSelection,
 } from "../schema-form-breadcrumb";
 import { isSectionArrayField } from "../section-array-field";
-import type { SectionCatalogEntry } from "../section-catalog";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
 import {
@@ -101,6 +99,11 @@ function itemEditorSchema(
   return itemSchema;
 }
 
+function arrayFieldKeyFromPath(path: string): string {
+  const segments = path.split(".").filter((segment) => !/^\d+$/.test(segment));
+  return segments[segments.length - 1] ?? path;
+}
+
 function remapEntryIndices(entries: ArrayEntry[]): ArrayEntry[] {
   return entries.map((entry, index) => ({ ...entry, index }));
 }
@@ -121,13 +124,6 @@ function resizeArrayEntries(
     }),
   );
   return [...current, ...extra];
-}
-
-function findBreadcrumbLabelIndex(path: string[], targetLabel: string): number {
-  const normalized = normalizeBreadcrumbLabel(targetLabel);
-  return path.findIndex(
-    (crumb) => normalizeBreadcrumbLabel(crumb) === normalized,
-  );
 }
 
 function ArrayRowContent({
@@ -254,13 +250,12 @@ export function ArrayField({
   containerResolveType,
   previewBaseUrl,
   onAddSectionItem,
+  onRequestAddSection,
 }: FieldProps) {
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
-  const usesSectionPicker = isSectionArrayField(schema);
-  const arrayFieldKey = path.includes(".")
-    ? path.slice(0, path.indexOf("."))
-    : path;
+  const arrayFieldKey = arrayFieldKeyFromPath(path);
+  const usesSectionPicker = isSectionArrayField(schema, arrayFieldKey);
   const selection = resolveArrayItemSelection(
     label,
     breadcrumbPath,
@@ -273,7 +268,6 @@ export function ArrayField({
     createArrayEntries(items.length),
   );
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
-  const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [prevListKey, setPrevListKey] = useState(path);
   const [prevItemCount, setPrevItemCount] = useState(items.length);
   const suppressClickRef = useRef(false);
@@ -345,27 +339,14 @@ export function ArrayField({
         toast.error("Start the preview dev server to add sections.");
         return;
       }
-      setAddSectionOpen(true);
+      if (onRequestAddSection) {
+        onRequestAddSection({ append: appendItem });
+        return;
+      }
+      toast.error("Section picker is not available in this editor.");
       return;
     }
     addItem();
-  };
-
-  const handleSelectSection = async (entry: SectionCatalogEntry) => {
-    const append = (item: unknown) => {
-      appendItem(item);
-      setAddSectionOpen(false);
-    };
-
-    try {
-      if (onAddSectionItem) {
-        await onAddSectionItem(entry, append);
-        return;
-      }
-      append({ __resolveType: entry.resolveType });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not add section");
-    }
   };
 
   const removeItem = (index: number) => {
@@ -383,20 +364,6 @@ export function ArrayField({
     const next = [...items];
     next[index] = val;
     onChange(next);
-    if (selectedIndex === index) {
-      const previousName = itemLabel(items[index], index);
-      const labelText = itemLabel(val, index);
-      const itemIndex = findBreadcrumbLabelIndex(breadcrumbPath, previousName);
-      if (itemIndex >= 0) {
-        const nextPath = [...breadcrumbPath];
-        nextPath[itemIndex] = labelText;
-        onBreadcrumbChange?.(nextPath);
-        return;
-      }
-      onBreadcrumbChange?.(
-        buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
-      );
-    }
   };
 
   const sensors = useSensors(
@@ -488,6 +455,7 @@ export function ArrayField({
             onSaveReferencedBlock={onSaveReferencedBlock}
             previewBaseUrl={previewBaseUrl}
             onAddSectionItem={onAddSectionItem}
+            onRequestAddSection={onRequestAddSection}
           />
         ) : editorSchema ? (
           renderField({
@@ -505,6 +473,7 @@ export function ArrayField({
             onSaveReferencedBlock,
             previewBaseUrl,
             onAddSectionItem,
+            onRequestAddSection,
           })
         ) : null}
       </div>
@@ -584,19 +553,6 @@ export function ArrayField({
         <Plus size={14} />
         {usesSectionPicker ? "Add section" : "Add item"}
       </button>
-
-      {usesSectionPicker && previewBaseUrl && (
-        <AddSectionModal
-          open={addSectionOpen}
-          onOpenChange={setAddSectionOpen}
-          meta={meta}
-          decofile={decofile}
-          previewBaseUrl={previewBaseUrl}
-          onSelect={(entry) => {
-            void handleSelectSection(entry);
-          }}
-        />
-      )}
     </div>
   );
 }

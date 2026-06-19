@@ -15,6 +15,9 @@ export function ObjectField({
   meta,
   decofile,
   onSaveReferencedBlock,
+  previewBaseUrl,
+  onAddSectionItem,
+  onRequestAddSection,
 }: FieldProps) {
   const [open, setOpen] = useState(false);
   const objValue =
@@ -71,6 +74,9 @@ export function ObjectField({
             meta={meta}
             decofile={decofile}
             onSaveReferencedBlock={onSaveReferencedBlock}
+            previewBaseUrl={previewBaseUrl}
+            onAddSectionItem={onAddSectionItem}
+            onRequestAddSection={onRequestAddSection}
           />
         </div>
       )}

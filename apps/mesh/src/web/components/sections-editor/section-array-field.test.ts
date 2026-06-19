@@ -60,4 +60,28 @@ describe("isSectionArrayField", () => {
       } as SchemaProperty),
     ).toBe(false);
   });
+
+  test("detects global field by key even when items are plain objects", () => {
+    expect(
+      isSectionArrayField(
+        {
+          type: "array",
+          items: { type: "object", properties: {} },
+        } as SchemaProperty,
+        "global",
+      ),
+    ).toBe(true);
+  });
+
+  test("detects sections field by key", () => {
+    expect(
+      isSectionArrayField(
+        {
+          type: "array",
+          items: { type: "object" },
+        } as SchemaProperty,
+        "sections",
+      ),
+    ).toBe(true);
+  });
 });

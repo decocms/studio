@@ -96,6 +96,7 @@ import {
   nextUniqueName,
   nextUniquePagePath,
 } from "./content-mutations";
+import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
 import {
@@ -534,18 +535,10 @@ function ContentBrowserReady({
 
   // ------------------ Section CRUD ------------------
   const handleCreateSection = async (entry: SectionCatalogEntry) => {
-    const baseLabel = (entry.title || entry.resolveType.split("/").pop() || "")
-      .replace(/\.(tsx?|jsx?)$/, "")
-      .replace(/[^A-Za-z0-9_-]/g, "");
-    const safeBase =
-      /^[A-Za-z]/.test(baseLabel) && baseLabel.length > 0
-        ? baseLabel
-        : "Section";
-    const newKey = nextUniqueBlockKey(decofile, safeBase);
-    const data: Record<string, unknown> = {
-      __resolveType: entry.resolveType,
-      name: newKey,
-    };
+    const { blockKey: newKey, data } = buildSectionBlockFromCatalogEntry(
+      entry,
+      decofile,
+    );
     try {
       await saveBlock.mutateAsync({ blockKey: newKey, data });
       toast.success(`Created section "${newKey}"`);

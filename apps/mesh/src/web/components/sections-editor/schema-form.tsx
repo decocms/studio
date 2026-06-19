@@ -251,6 +251,7 @@ export function SchemaForm({
   onSaveReferencedBlock,
   previewBaseUrl,
   onAddSectionItem,
+  onRequestAddSection,
 }: {
   schema: SchemaProperty;
   value: unknown;
@@ -266,6 +267,7 @@ export function SchemaForm({
   ) => void;
   previewBaseUrl?: string | null;
   onAddSectionItem?: FieldProps["onAddSectionItem"];
+  onRequestAddSection?: FieldProps["onRequestAddSection"];
 }) {
   const properties = schema.properties;
   if (!properties) return null;
@@ -328,6 +330,7 @@ export function SchemaForm({
           containerResolveType,
           previewBaseUrl,
           onAddSectionItem,
+          onRequestAddSection,
         });
       })}
     </div>
