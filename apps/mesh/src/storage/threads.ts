@@ -276,6 +276,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       trigger_id: data.trigger_id ?? null,
       virtual_mcp_id: data.virtual_mcp_id ?? "",
       branch: data.branch ?? null,
+      message_storage_version: data.message_storage_version ?? 2,
       sandbox_provider_kind: null,
       harness_id: null,
       created_at: now,

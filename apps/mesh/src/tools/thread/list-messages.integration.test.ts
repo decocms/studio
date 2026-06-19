@@ -13,6 +13,7 @@ describe("COLLECTION_THREAD_MESSAGES_LIST orderBy → sort translation", () => {
       id: threadId,
       title: "orderby test",
       created_by: env.userId,
+      message_storage_version: 1,
     });
 
     // Three messages with strictly ordered created_at so asc/desc differ.

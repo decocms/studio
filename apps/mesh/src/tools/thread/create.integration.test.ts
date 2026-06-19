@@ -57,6 +57,22 @@ describe("COLLECTION_THREADS_CREATE", () => {
     expect(result.item.branch).toBeNull();
   });
 
+  it("creates new tasks on message storage v2", async () => {
+    const vmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      { title: "v2-task", connections: [], status: "active", pinned: false },
+    );
+
+    const result = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: vmcp.id, title: "t" } },
+      env.ctx,
+    );
+
+    const row = await env.ctx.storage.threads.get(result.item.id);
+    expect(row?.message_storage_version).toBe(2);
+  });
+
   it("uses the input branch when the vMCP has a github repo", async () => {
     const vmcp = await env.ctx.storage.virtualMcps.create(
       env.orgId,

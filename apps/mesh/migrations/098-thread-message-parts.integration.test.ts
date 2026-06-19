@@ -3,7 +3,7 @@
  * columns on threads.
  *
  * Verifies the table is created with the expected columns and that the
- * `message_storage_version` column (with default 1) and `last_progress_at`
+ * `message_storage_version` column and `last_progress_at`
  * are added to `threads`.
  */
 
@@ -50,12 +50,12 @@ describe("migration 098 thread_message_parts", () => {
     expect(names).toContain("created_at");
   });
 
-  it("adds message_storage_version defaulting to 1 on threads", async () => {
+  it("keeps new thread rows on the v2 message storage default", async () => {
     const cols = await sql<{ column_default: string | null }>`
       SELECT column_default FROM information_schema.columns
       WHERE table_name = 'threads' AND column_name = 'message_storage_version'
     `.execute(database.db);
-    expect(cols.rows[0]?.column_default).toContain("1");
+    expect(cols.rows[0]?.column_default).toContain("2");
   });
 
   it("adds last_progress_at column to threads", async () => {
