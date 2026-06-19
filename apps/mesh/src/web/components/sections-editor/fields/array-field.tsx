@@ -37,7 +37,7 @@ import {
 } from "../schema-form-breadcrumb";
 import { isSectionArrayField } from "../section-array-field";
 import type { FieldProps } from "./field-props";
-import { SchemaForm, renderField } from "../schema-form";
+import { SchemaForm, renderField, inferSchemaFromValue } from "../schema-form";
 import {
   resolveSchema,
   type LiveMeta,
@@ -96,6 +96,18 @@ function itemEditorSchema(
       };
     }
   }
+  // Last resort: infer schema from the item's runtime value so that
+  // data-inferred arrays (e.g. menuItems [{target,href,label}]) can be edited.
+  if (item != null && typeof item === "object" && !Array.isArray(item)) {
+    const obj = item as Record<string, unknown>;
+    if (typeof obj.__resolveType !== "string") {
+      const inferred = inferSchemaFromValue(item);
+      if (inferred?.properties && Object.keys(inferred.properties).length > 0) {
+        return inferred;
+      }
+    }
+  }
+
   return itemSchema;
 }
 

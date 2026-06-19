@@ -180,9 +180,7 @@ export function AnyOfField({
   const nestedBreadcrumbPath =
     isModuleLoaderUnion && safeBreadcrumbPath[0] === outerCrumb
       ? safeBreadcrumbPath.slice(1)
-      : isModuleLoaderUnion
-        ? []
-        : safeBreadcrumbPath;
+      : safeBreadcrumbPath;
   const nestedOnBreadcrumbChange: ((p: string[]) => void) | undefined =
     isModuleLoaderUnion
       ? (newPath) => {
