@@ -61,14 +61,6 @@ import {
   type LinkBearerAuthApi,
   resolveLinkBearer,
 } from "./routes/decopilot/link-bearer-auth";
-import {
-  createUplinkIngestSession,
-  type UplinkIngestSession,
-} from "../links/uplink-ingest";
-import { registerUplinkResolve } from "../links/uplink-ws";
-import { registerUplinkConnectionFactory } from "../links/uplink-ws-handler";
-import { fenceMatches } from "../storage/run-fence";
-import { isCancelRequested } from "../storage/cancel-flag";
 import { createLinkSessionRoutes } from "./routes/links/session";
 import { createVmEventsRoutes } from "./routes/vm-events";
 import {
@@ -1124,68 +1116,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   const threadStorage = new SqlThreadStorage(database.db);
 
-  // WS uplink (return-leg), default-off. Register the bearer resolver + the
-  // per-connection session factory the Bun.serve handler (index.ts) dispatches
-  // to. The fence/cancel gate uses the global (threadId-only) thread storage;
-  // publishing reuses the same DECOPILOT_STREAMS path as the NDJSON ingest. Off
-  // by default so /api/links/uplink stays unmounted until multi-pod e2e
-  // validates the transport.
-  if (process.env.LINK_WS_UPLINK === "true") {
-    registerUplinkResolve((token) =>
-      resolveLinkBearer(token, auth.api as unknown as LinkBearerAuthApi),
-    );
-    registerUplinkConnectionFactory(({ userSub, send }) => {
-      const cache = new Map<string, Promise<UplinkIngestSession | null>>();
-      return {
-        sessionFor: (runId) => {
-          let pending = cache.get(runId);
-          if (!pending) {
-            pending = (async () => {
-              // ORG OWNERSHIP (parity with the NDJSON validateRunAccess gate):
-              // the authenticated daemon user MUST be a member of the run's org
-              // — the fence is a secret, not an org-bound token, so it can't be
-              // the sole authz. The getRunFence/getCancelRequestedAt lookups are
-              // unscoped (threadId-only); this check is the required caller guard.
-              const threadRow = await database.db
-                .selectFrom("threads")
-                .select(["organization_id"])
-                .where("id", "=", runId)
-                .executeTakeFirst();
-              if (!threadRow) return null;
-              const member = await database.db
-                .selectFrom("member")
-                .select(["role"])
-                .where("userId", "=", userSub)
-                .where("organizationId", "=", threadRow.organization_id)
-                .executeTakeFirst();
-              if (!member) return null;
-
-              const dbFence = await threadStorage.getRunFence(runId);
-              // No minted fence ⇒ no active link run ⇒ reject (NDJSON 409 parity;
-              // fenceMatches(null, …) returns true, so the gate MUST short here).
-              if (dbFence === null) return null;
-
-              return createUplinkIngestSession({
-                fenceOk: (token) => fenceMatches(dbFence, token),
-                // Read FRESH per frame so a mid-stream cancel stops publishing.
-                cancelRequested: async () =>
-                  isCancelRequested(
-                    await threadStorage.getCancelRequestedAt(runId),
-                  ),
-                publish: async (chunk) => {
-                  await streamBuffer.publishRawChunk(runId, chunk);
-                },
-                send: (frame) => send(JSON.stringify(frame)),
-              });
-            })();
-            cache.set(runId, pending);
-          }
-          return pending;
-        },
-      };
-    });
-  }
-
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,
     streamBuffer,
@@ -2008,8 +1938,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       if (match) {
         const token = (match[1] ?? "").trim();
         // Shared dual-auth resolver (MCP OAuth session → Better Auth API key
-        // fallback). The same function authenticates the WS uplink upgrade in
-        // index.ts, which runs outside Hono's auth middleware.
+        // fallback).
         userSub = await resolveLinkBearer(
           token,
           auth.api as unknown as LinkBearerAuthApi,

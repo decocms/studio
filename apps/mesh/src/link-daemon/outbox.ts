@@ -1,16 +1,15 @@
 /**
  * Durable local outbox for the desktop→cluster uplink (spec §5.1, §13 step 2).
  *
- * A `bun:sqlite` (WAL) DB that every uplink event is appended to BEFORE the WS
- * send, keyed `(runId, fenceToken, wireSeq)` with `payload`, `lane`,
+ * A `bun:sqlite` (WAL) DB that every uplink event is appended to BEFORE the
+ * relay POST, keyed `(runId, fenceToken, wireSeq)` with `payload`, `lane`,
  * `createdAt`. This is the on-disk replacement for the in-memory `lines[]` +
  * 64 MiB cap in `chunk-relay.ts`: it survives daemon restart so a reconnect can
  * resend the unacked prefix.
  *
- * Step-2 scope (this file): schema + append-before-send + wireSeq-ordered
- * replay. Bounding (MAX_OUTBOX_BYTES) and terminal-only truncation live in
- * sibling tasks; the rolling ackSeq truncation arrives with the WS step (§13
- * step 4).
+ * Scope: schema + append-before-send + wireSeq-ordered replay, with bounding
+ * (MAX_OUTBOX_BYTES) and terminal-only truncation. The relay resends the whole
+ * unacked prefix from seq 1 on reconnect (the cluster dedupes by seq).
  *
  * No protocol change: `wireSeq` is today's relay `seq` and the stored `line` is
  * the exact `{ seq, event }` RelayLine that goes on the NDJSON wire. `lane` is
