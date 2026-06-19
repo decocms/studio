@@ -21,6 +21,7 @@ import {
   fieldDisplayLabel,
   resolveActiveFieldKey,
 } from "./schema-form-breadcrumb";
+import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
@@ -111,6 +112,30 @@ export function renderField(props: FieldProps) {
   ) {
     const arraySchema = arraySchemaForValue(schema);
     if (arraySchema) {
+      return (
+        <ArrayField
+          key={props.path}
+          {...props}
+          schema={arraySchema}
+          value={value}
+          onChange={props.onChange}
+        />
+      );
+    }
+  }
+
+  // Block-ref schema but the actual value is already a resolved plain array
+  // (not a multivariate wrapper).  The loader has been evaluated and the page
+  // data holds the concrete items — render as ArrayField so users can edit
+  // them directly (e.g. menuItems [{target,href,label}]).
+  if (
+    Array.isArray(value) &&
+    !isMultivariateArrayWrapper(value) &&
+    schema.type === "block-ref"
+  ) {
+    const items = inferBlockRefArrayItemSchema(value);
+    if (items) {
+      const arraySchema: SchemaProperty = { ...schema, type: "array", items };
       return (
         <ArrayField
           key={props.path}

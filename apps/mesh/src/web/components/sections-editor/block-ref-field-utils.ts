@@ -191,6 +191,32 @@ export function schemaWithoutDiscriminator(
   return { ...schema, properties };
 }
 
+/**
+ * When a block-ref value is a Lazy section wrapper
+ * (`{ __resolveType: ".../Lazy.tsx", section: { <real section> } }`), return the
+ * inner section so the form can bind against the real props. The schema is
+ * already resolved from the inner (via moduleResolveTypeFromBlockData), so
+ * without unwrapping the value too every field would render empty. Returns null
+ * when `value` is not a Lazy wrapper.
+ */
+export function lazyWrappedInner(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const obj = value as Record<string, unknown>;
+  if (
+    typeof obj.__resolveType !== "string" ||
+    !isLazyResolveType(obj.__resolveType)
+  ) {
+    return null;
+  }
+  const section = obj.section;
+  if (!section || typeof section !== "object" || Array.isArray(section)) {
+    return null;
+  }
+  return section as Record<string, unknown>;
+}
+
 export function blockRefLoaderConfigHasData(
   editorValue: unknown,
   savedBlockKey?: string,

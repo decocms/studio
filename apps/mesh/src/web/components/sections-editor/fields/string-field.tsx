@@ -11,6 +11,7 @@ import {
 } from "@deco/ui/components/popover.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import type { FieldProps } from "./field-props";
+import { RichTextField } from "./rich-text-field";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -169,11 +170,22 @@ export function StringField({
   const format = schema.format;
 
   if (
-    format === "textarea" ||
     format === "rich-text" ||
     format === "rich-text-inline" ||
-    format === "markdown"
+    format === "html"
   ) {
+    return (
+      <RichTextField
+        schema={schema}
+        value={value}
+        onChange={onChange}
+        path={path}
+        label={label}
+      />
+    );
+  }
+
+  if (format === "textarea" || format === "markdown") {
     return (
       <div className="space-y-2">
         <FieldLabel

@@ -18,6 +18,14 @@ function labelsMatch(a: string, b: string): boolean {
   return normalizeBreadcrumbLabel(a) === normalizeBreadcrumbLabel(b);
 }
 
+/** Looser comparison that ignores spaces and casing — handles humanize("textSeo") = "Text Seo" vs schema title "TextSeo". */
+function labelsMatchLoose(a: string, b: string): boolean {
+  return (
+    normalizeBreadcrumbLabel(a).replace(/\s+/g, "").toLowerCase() ===
+    normalizeBreadcrumbLabel(b).replace(/\s+/g, "").toLowerCase()
+  );
+}
+
 /** Breadcrumb trail when opening an array item (includes the array field label). */
 export function buildArrayDrillDownBreadcrumb(
   breadcrumbPath: string[],
@@ -155,6 +163,42 @@ function resolveActiveFieldKeyInScope(
       if (viaLabel) return key;
     }
   }
+
+  // Block-ref fields (loader/section selectors) can also be "drilled into"
+  // via the breadcrumb path when the head matches the field's key or label.
+  // This lets loader props like `page: ProductListingPage` participate in
+  // breadcrumb navigation (e.g. path ["page", "selectedFacets", "productClusterIds"]
+  // resolves to "page" at the SearchResult level).
+  //
+  // When multiple block-refs share the same label (e.g. both "asideMenu"
+  // and "content" have schema title "Section"), disambiguate by checking
+  // whether the block-ref's VALUE contains a key that matches the next
+  // breadcrumb crumb.  The one whose data actually owns the nested field
+  // wins; the rest are kept as a fallback.
+  let blockRefFallback: string | null = null;
+  for (const key of keys) {
+    const schema = properties[key];
+    if (schema?.type !== "block-ref") continue;
+    const fieldLabel = fieldDisplayLabel(key, schema);
+    if (head !== fieldLabel && head !== key) continue;
+
+    if (breadcrumbPath.length > 1) {
+      const val = objValue[key];
+      if (val && typeof val === "object" && !Array.isArray(val)) {
+        const nextCrumb = breadcrumbPath[1]!;
+        const hasInnerMatch = Object.keys(val as Record<string, unknown>).some(
+          (k) =>
+            !k.startsWith("__") &&
+            (labelsMatchLoose(humanize(k), nextCrumb) ||
+              labelsMatchLoose(k, nextCrumb)),
+        );
+        if (hasInnerMatch) return key;
+      }
+    }
+
+    if (!blockRefFallback) blockRefFallback = key;
+  }
+  if (blockRefFallback) return blockRefFallback;
 
   return null;
 }
