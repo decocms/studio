@@ -14,6 +14,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
+import { getSettings } from "../../settings";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { fetchToolsFromMCP } from "./fetch-tools";
 import {
@@ -95,6 +96,18 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
 
       // Ensure the URL is properly formatted
       connectionData.connection_url = buildVirtualUrl(virtualMcpId);
+    }
+
+    // STDIO connections spawn arbitrary local commands — only allow in local mode.
+    // Without this check, the fetchToolsFromMCP call below would spawn
+    // user-supplied commands as child processes on the server.
+    if (
+      connectionData.connection_type === "STDIO" &&
+      !getSettings().localMode
+    ) {
+      throw new Error(
+        "STDIO connections are only available in local mode (--local-mode).",
+      );
     }
 
     // Fetch tools and configuration scopes from the MCP server before creating the connection
