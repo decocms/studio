@@ -19,18 +19,17 @@ export const LINK_CURRENT_GET = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
 
-    const registry = ctx.linkClaimRegistry;
-    if (!registry) return { online: false, capabilities: [] };
+    const probe = ctx.linkStatusProbe;
+    if (!probe) return { online: false, capabilities: [] };
 
-    const claim = await registry.get(ctx.auth.user!.id);
-    if (!claim) return { online: false, capabilities: [] };
+    const status = await probe(ctx.auth.user!.id);
+    if (!status.online) return { online: false, capabilities: [] };
 
     return {
       online: true,
-      machineId: claim.machineId,
-      hostname: claim.hostname,
-      cliVersion: claim.cliVersion,
-      capabilities: claim.capabilities,
+      hostname: status.hostname,
+      cliVersion: status.cliVersion,
+      capabilities: status.capabilities,
     };
   },
 });

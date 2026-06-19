@@ -115,11 +115,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     createLinkIngestRoutes({
       streamBuffer: deps.streamBuffer,
       sseHub: deps.sseHub,
-      // OFF by default. Flip via env to validate publish-then-consume (raw →
-      // NATS) under multi-pod e2e before retiring the legacy pump path. Reading
-      // the env here (route assembly, not a tool) keeps the inversion gated
-      // without a code change for the rollout.
-      publishThenConsume: process.env.LINK_PUBLISH_THEN_CONSUME === "true",
     }),
   ); // /api/:org/links/runs/:runId/chunks
 

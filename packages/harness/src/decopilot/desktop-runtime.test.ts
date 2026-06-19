@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { HarnessStreamInput } from "../types";
-import { resolveDesktopRuntimeSources } from "./desktop-runtime";
+import {
+  resolveDesktopRuntimeSources,
+  resolveDesktopSubtaskCodingWorkspace,
+} from "./desktop-runtime";
 
 const baseInput = {
   threadId: "thread-1",
@@ -67,5 +70,30 @@ describe("resolveDesktopRuntimeSources", () => {
       headers: baseInput.mcp.headers,
       expiresAt: baseInput.mcp.expiresAt,
     });
+  });
+});
+
+describe("resolveDesktopSubtaskCodingWorkspace", () => {
+  const codingWorkspace = {
+    repo: {
+      owner: "deco",
+      name: "site",
+      connectedGithub: true,
+    },
+    branch: "main",
+    cwd: "/repo",
+    workspaceKind: "github",
+  } as const;
+
+  it("preserves the parent coding workspace for self-clone subtasks", () => {
+    expect(
+      resolveDesktopSubtaskCodingWorkspace({ codingWorkspace }, undefined),
+    ).toBe(codingWorkspace);
+  });
+
+  it("clears the parent coding workspace for cross-agent subtasks", () => {
+    expect(
+      resolveDesktopSubtaskCodingWorkspace({ codingWorkspace }, "agent-2"),
+    ).toBeUndefined();
   });
 });

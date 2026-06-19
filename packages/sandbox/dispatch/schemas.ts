@@ -100,6 +100,24 @@ const objectStorageSourceSchema = z.object({
   expiresAt: z.number().int().positive(),
 });
 
+const codingWorkspaceSchema = z
+  .object({
+    repo: z
+      .object({
+        owner: z.string(),
+        name: z.string(),
+        connectedGithub: z.boolean(),
+      })
+      .strict()
+      .optional(),
+    branch: z.string().nullable().optional(),
+    cwd: z.string().nullable().optional(),
+    workspaceKind: z
+      .enum(["github", "template", "local", "unknown"])
+      .optional(),
+  })
+  .strict();
+
 export const harnessStreamInputSchema = z
   .object({
     /** First-class harness id on the wire (v2). */
@@ -112,6 +130,7 @@ export const harnessStreamInputSchema = z
     /** Symbolic, logically-resolved cwd (see harnesses/workspace-cwd.ts).
      *  Required — its absence rejects pre-v2 inputs. */
     workspace: z.object({ cwd: z.string().min(1) }).strict(),
+    codingWorkspace: codingWorkspaceSchema.optional(),
     models: modelsConfigSchema,
     modelSources: modelSourcesSchema.optional(),
     mcpSource: httpMcpSourceSchema.optional(),

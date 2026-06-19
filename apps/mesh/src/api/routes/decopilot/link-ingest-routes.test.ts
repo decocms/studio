@@ -44,9 +44,7 @@ interface AppContextOptions {
   /** When true, createTailStream returns an instantly-closed stream so the
    *  pump path runs; when false (default) the tail is null → direct drain. */
   withTail?: boolean;
-  /** Flip the ingest to publish-then-consume (raw chunks → NATS) instead of
-   *  pumping the processed uiStream. Default false (legacy pump path). */
-  publishThenConsume?: boolean;
+  ackedSeq?: number;
 }
 
 function appWithContext(opts: AppContextOptions = {}) {
@@ -56,13 +54,15 @@ function appWithContext(opts: AppContextOptions = {}) {
   const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
   const purged: string[] = [];
   const pumped: UIMessageChunk[][] = [];
-  const publishedRaw: unknown[] = [];
+  const publishedRaw: Array<{ chunk: unknown; msgId?: string }> = [];
+  const publishedDone: Array<{ fenceToken: string; finalSeq: number }> = [];
   const pumpPromises: Promise<void>[] = [];
   const sseEvents: Array<{ orgId: string; event: SSEEvent }> = [];
   const insertedIds = new Set<string>();
   let bumps = 0;
   let threadStatus =
     thread && typeof thread.status === "string" ? thread.status : "in_progress";
+  let ackedSeq = opts.ackedSeq ?? 0;
 
   const threadRow = () => ({ ...thread, status: threadStatus });
 
@@ -84,6 +84,14 @@ function appWithContext(opts: AppContextOptions = {}) {
           get: async () => (thread ? threadRow() : null),
           getCancelRequestedAt: async () => opts.cancelRequestedAt ?? null,
           getRunFence: async () => currentRunFence,
+          getAckedSeq: async () => ackedSeq,
+          bumpAckedSeq: async (
+            _runId: string,
+            _fenceToken: string,
+            seq: number,
+          ) => {
+            ackedSeq = Math.max(ackedSeq, seq);
+          },
           bumpProgress: async () => {
             bumps++;
           },
@@ -126,11 +134,22 @@ function appWithContext(opts: AppContextOptions = {}) {
   app.route(
     "/api/:org",
     createLinkIngestRoutes({
-      publishThenConsume: opts.publishThenConsume,
       streamBuffer: {
         init: async () => undefined,
-        publishRawChunk: async (_taskId: string, chunk: unknown) => {
-          publishedRaw.push(chunk);
+        publishRawChunk: async (
+          _taskId: string,
+          chunk: unknown,
+          opts?: { msgId?: string },
+        ) => {
+          publishedRaw.push({ chunk, msgId: opts?.msgId });
+          return true;
+        },
+        publishDone: async (
+          _taskId: string,
+          fenceToken: string,
+          finalSeq: number,
+        ) => {
+          publishedDone.push({ fenceToken, finalSeq });
           return true;
         },
         pump: (stream: ReadableStream) => {
@@ -181,12 +200,14 @@ function appWithContext(opts: AppContextOptions = {}) {
     purged,
     pumped,
     publishedRaw,
+    publishedDone,
     pumpPromises,
     sseEvents,
     bumps: () => bumps,
     setRunFence: (token: string | null) => {
       currentRunFence = token;
     },
+    ackedSeq: () => ackedSeq,
   };
 }
 
@@ -377,12 +398,11 @@ describe("link ingest chunks route", () => {
     expect(appended).toEqual([]);
   });
 
-  test("a resumed relay with no parked session opens fresh (no 410; full-prefix resend is idempotent)", async () => {
+  test("a resumed relay is accepted without pod-local session state", async () => {
     const { app } = appWithContext();
 
-    // x-relay-from > 1 with no parked session (pod loss) no longer 410s — the
-    // daemon's full-prefix resend is idempotent (§10), so the cluster opens a
-    // fresh session and accepts the lines.
+    // x-relay-from is informational for the NDJSON path. The daemon's
+    // full-prefix resend is idempotent (§10), so any pod can accept it.
     const res = await postChunks(app, relayBody([{ type: "done" }], 5), {
       "x-relay-from": "5",
     });
@@ -412,46 +432,22 @@ describe("link ingest chunks route", () => {
     expect(await res.json()).toEqual({ error: "bad line" });
   });
 
-  test("happy path: full relay → 200 {ok,lastSeq}, parts committed, run completed, SSE emitted", async () => {
-    const { app, appended, updates, purged, sseEvents, bumps } =
-      appWithContext();
+  test("rejects a relay POST that ends without a terminal line instead of parking pod-local state", async () => {
+    const { app, publishedDone } = appWithContext();
 
-    const events = [
-      ...chunkEvents(helloTurnChunks()),
-      { type: "done" } as const,
-    ];
-    const res = await postChunks(app, relayBody(events));
+    const res = await postChunks(
+      app,
+      relayBody(chunkEvents(helloTurnChunks().slice(0, 2))),
+    );
 
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, lastSeq: events.length });
-
-    // v2 persistence: a text part + a finish anchor landed via PartEmitter.
-    const rows = appended.flat();
-    const kinds = rows.map((r) => r.kind);
-    expect(kinds).toContain("text");
-    expect(kinds).toContain("finish");
-    const textRow = rows.find((r) => r.kind === "text")!;
-    expect((textRow.payload as { text?: string }).text).toBe("hello");
-
-    // Terminal status transition (guarded completed update) + purge + SSE.
-    expect(updates.map((u) => u.data)).toContainEqual({
-      status: "completed",
-      run_owner_pod: null,
-      run_config: null,
-      run_started_at: null,
-    });
-    expect(purged).toEqual([RUN_ID]);
-    expect(sseEvents.map(({ event }) => event.type)).toEqual([
-      "decopilot.thread.status",
-      "decopilot.finish",
-    ]);
-    expect(bumps()).toBeGreaterThanOrEqual(1);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "missing terminal relay line" });
+    expect(publishedDone).toEqual([]);
   });
 
-  test("publishThenConsume: publishes RAW chunks in wire order AND keeps persistence parity", async () => {
-    const { app, appended, updates, publishedRaw, pumped } = appWithContext({
-      publishThenConsume: true,
-    });
+  test("publishes seq-keyed RAW chunks with NO inline persistence (projector owns it)", async () => {
+    const { app, appended, savedMessages, updates, publishedRaw, pumped } =
+      appWithContext();
 
     const events = [
       ...chunkEvents(helloTurnChunks()),
@@ -462,7 +458,7 @@ describe("link ingest chunks route", () => {
 
     // Every relayed ui-message-chunk was published RAW, in wire order, with no
     // fold/interception (the daemon's raw harness output IS the NATS source).
-    const types = publishedRaw.map((c) => (c as { type: string }).type);
+    const types = publishedRaw.map((c) => (c.chunk as { type: string }).type);
     expect(types).toEqual([
       "start",
       "start-step",
@@ -472,303 +468,115 @@ describe("link ingest chunks route", () => {
       "finish-step",
       "finish",
     ]);
-    // The processed uiStream is NOT pumped to NATS in this mode (raw is the
-    // source); it is only drained for persistence.
+    // Each chunk carries a seq-keyed `Nats-Msg-Id` (`runId:fence:seq`) so the
+    // projector + JetStream dedup a resend. Seqs are contiguous from 1.
+    expect(publishedRaw.map((c) => c.msgId)).toEqual([
+      `${RUN_ID}:fence_1:1`,
+      `${RUN_ID}:fence_1:2`,
+      `${RUN_ID}:fence_1:3`,
+      `${RUN_ID}:fence_1:4`,
+      `${RUN_ID}:fence_1:5`,
+      `${RUN_ID}:fence_1:6`,
+      `${RUN_ID}:fence_1:7`,
+    ]);
+    // The processed uiStream is NOT pumped to NATS in this mode; raw relay
+    // chunks are already the durable source.
     expect(pumped).toHaveLength(0);
 
-    // Persistence parity: identical part rows + terminal completion as legacy.
-    const rows = appended.flat();
-    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
-    expect(rows.filter((r) => r.kind === "finish")).toHaveLength(1);
-    expect(
-      (rows.find((r) => r.kind === "text")!.payload as { text?: string }).text,
-    ).toBe("hello");
-    expect(updates.map((u) => u.data)).toContainEqual({
-      status: "completed",
-      run_owner_pod: null,
-      run_config: null,
-      run_started_at: null,
-    });
+    // Link ingest does ZERO DB writes — the projector is the sole writer of
+    // parts + status + title. No inline PartEmitter / saveMessagesToThread.
+    expect(appended).toEqual([]);
+    expect(savedMessages).toEqual([]);
+    // No terminal status write from the ingest path either (projector owns it).
+    expect(updates.some((u) => u.data.status === "completed")).toBe(false);
   });
 
-  test("pumps kernel output into the live edge when JetStream is up", async () => {
-    const { app, pumped, pumpPromises } = appWithContext({ withTail: true });
+  test("uses durable ack floor to skip a replayed prefix when a retry lands on another pod", async () => {
+    const { app, publishedRaw, publishedDone, ackedSeq } = appWithContext({
+      ackedSeq: 3,
+    });
 
     const events = [
       ...chunkEvents(helloTurnChunks()),
       { type: "done" } as const,
     ];
-    const res = await postChunks(app, relayBody(events));
-    await Promise.all(pumpPromises);
+    const res = await postChunks(app, relayBody(events), {
+      "x-relay-from": "1",
+    });
 
     expect(res.status).toBe(200);
-    expect(pumped).toHaveLength(1);
-    const types = pumped[0]!.map((c) => (c as { type: string }).type);
-    expect(types).toContain("text-delta");
-    expect(types).toContain("finish");
-  });
-
-  test("reconnect replays the full prefix without duplicating parts", async () => {
-    const { app, appended, updates, sseEvents } = appWithContext();
-
-    const turn = helloTurnChunks();
-    // First POST: a partial upload (drops mid-message, no terminal line).
-    const first = await postChunks(
-      app,
-      relayBody(chunkEvents(turn.slice(0, 4))),
-    );
-    expect(first.status).toBe(200);
-    expect(await first.json()).toEqual({ ok: true, lastSeq: 4 });
-
-    // Reconnect: the daemon resends the WHOLE prefix from seq 1 + the rest.
-    const events = [...chunkEvents(turn), { type: "done" } as const];
-    const second = await postChunks(app, relayBody(events));
-    expect(second.status).toBe(200);
-    expect(await second.json()).toEqual({ ok: true, lastSeq: events.length });
-
-    const rows = appended.flat();
-    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
-    expect(rows.filter((r) => r.kind === "finish")).toHaveLength(1);
-    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
-      1,
-    );
-    expect(sseEvents.map(({ event }) => event.type)).toEqual([
-      "decopilot.thread.status",
-      "decopilot.finish",
+    expect(await res.json()).toEqual({ ok: true, lastSeq: 8 });
+    expect(publishedRaw.map((c) => c.msgId)).toEqual([
+      `${RUN_ID}:fence_1:4`,
+      `${RUN_ID}:fence_1:5`,
+      `${RUN_ID}:fence_1:6`,
+      `${RUN_ID}:fence_1:7`,
     ]);
+    expect(publishedDone).toEqual([{ fenceToken: "fence_1", finalSeq: 7 }]);
+    expect(ackedSeq()).toBe(7);
   });
 
-  test("a full re-POST after completion is idempotent (no double terminal effects)", async () => {
-    // The terminal ack can be lost on the wire; the daemon then retries the
-    // whole upload. The session is gone (consume settled → registry entry
-    // removed), so a fresh one re-consumes — deterministic part ids and the
-    // guarded completed-transition make that redelivery a no-op.
-    const { app, appended, updates, sseEvents } = appWithContext();
-    const events = [
-      ...chunkEvents(helloTurnChunks()),
-      { type: "done" } as const,
-    ];
-
-    const first = await postChunks(app, relayBody(events));
-    expect(first.status).toBe(200);
-    const second = await postChunks(app, relayBody(events));
-    expect(second.status).toBe(200);
-    expect(await second.json()).toEqual({ ok: true, lastSeq: events.length });
-
-    const rows = appended.flat();
-    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
-    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
-      1,
-    );
-    expect(sseEvents).toHaveLength(2);
-  });
-
-  test("error event fails the run durably and never emits completed SSE", async () => {
-    const { app, appended, updates, purged, sseEvents } = appWithContext();
-
-    const turn = helloTurnChunks();
-    const events: RelayEvent[] = [
-      ...chunkEvents(turn.slice(0, 5)), // start..text-end, no finish
-      { type: "error", code: "sandbox_dead", message: "sandbox went away" },
-      { type: "done" },
-    ];
-    const res = await postChunks(app, relayBody(events));
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, lastSeq: events.length });
-
-    // The kernel persisted an error part (v2 path) and the run is failed.
-    const kinds = appended.flat().map((r) => r.kind);
-    expect(kinds).toContain("error");
-    expect(updates.map((u) => u.data)).toContainEqual({
-      status: "failed",
-      run_owner_pod: null,
-      run_config: null,
-      run_started_at: null,
-    });
-    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
-      0,
-    );
-    // Failure SSE parity with the hosted run-reactor: a failed run emits a
-    // failed thread-status + finish event (never a completed one).
-    const failureEventTypes = sseEvents.map(({ event }) => event.type);
-    expect(failureEventTypes).toEqual([
-      "decopilot.thread.status",
-      "decopilot.finish",
-    ]);
-    const statusEvent = sseEvents.find(
-      ({ event }) => event.type === "decopilot.thread.status",
-    )!;
-    expect(
-      (statusEvent.event as { data?: { status?: string } }).data?.status,
-    ).toBe("failed");
-    const finishEvent = sseEvents.find(
-      ({ event }) => event.type === "decopilot.finish",
-    )!;
-    expect(
-      (finishEvent.event as { data?: { status?: string } }).data?.status,
-    ).toBe("failed");
-    // The live edge is still purged — the run is over either way.
-    expect(purged).toEqual([RUN_ID]);
-  });
-
-  test("v1 thread persists the whole final message via saveMessages", async () => {
-    const { app, appended, savedMessages, updates } = appWithContext({
-      thread: makeThread({ message_storage_version: 1 }),
-    });
-
-    const events = [
-      ...chunkEvents(helloTurnChunks()),
-      { type: "done" } as const,
-    ];
-    const res = await postChunks(app, relayBody(events));
-
-    expect(res.status).toBe(200);
-    expect(appended).toEqual([]); // no part rows on v1
-    expect(savedMessages).toHaveLength(1);
-    const saved = savedMessages[0]![0] as {
-      thread_id: string;
-      role: string;
-      parts: Array<{ type: string; text?: string }>;
-    };
-    expect(saved.thread_id).toBe(RUN_ID);
-    expect(saved.role).toBe("assistant");
-    expect(
-      saved.parts.some((p) => p.type === "text" && p.text === "hello"),
-    ).toBe(true);
-    expect(updates.map((u) => u.data)).toContainEqual({
-      status: "completed",
-      run_owner_pod: null,
-      run_config: null,
-      run_started_at: null,
-    });
-  });
-
-  test("persists a relayed title for a default-titled thread and emits the SSE title event", async () => {
-    const { app, updates, sseEvents } = appWithContext({
-      thread: makeThread({ title: "New chat" }),
-    });
-
-    const events: RelayEvent[] = [
-      ...chunkEvents([
-        ...helloTurnChunks().slice(0, 6), // start..finish-step
-        {
-          type: "data-title-result",
-          data: { title: "Greeting the daemon" },
-          transient: true,
-        },
-        { type: "finish" },
-      ]),
-      { type: "done" },
-    ];
-    const res = await postChunks(app, relayBody(events));
-
-    expect(res.status).toBe(200);
-    expect(updates.map((u) => u.data)).toContainEqual({
-      title: "Greeting the daemon",
-    });
-    // buildOnTitleUpdated emits a thread-status event carrying the title,
-    // then the completed path emits status + finish.
-    const titleEvent = sseEvents.find(
-      ({ event }) =>
-        event.type === "decopilot.thread.status" &&
-        (event as { data?: { title?: string } }).data?.title ===
-          "Greeting the daemon",
-    );
-    expect(titleEvent).toBeDefined();
-  });
-
-  test("does not overwrite a user-set title", async () => {
-    const { app, updates } = appWithContext(); // title: "Test thread"
-
-    const events: RelayEvent[] = [
-      ...chunkEvents([
-        ...helloTurnChunks().slice(0, 6),
-        {
-          type: "data-title-result",
-          data: { title: "Auto title" },
-          transient: true,
-        },
-        { type: "finish" },
-      ]),
-      { type: "done" },
-    ];
-    const res = await postChunks(app, relayBody(events));
-
-    expect(res.status).toBe(200);
-    expect(updates.some((u) => "title" in u.data)).toBe(false);
-  });
-
-  test("same-fence reconnect attaches to the existing session (dedupe still works)", async () => {
-    // Two POSTs with the SAME fence — the second must attach to the live
-    // session and NOT splice into a fresh kernel, so parts aren't duplicated.
-    const { app, appended, updates } = appWithContext();
-    const turn = helloTurnChunks();
-
-    const first = await postChunks(
-      app,
-      relayBody(chunkEvents(turn.slice(0, 4))),
-    );
-    expect(first.status).toBe(200);
-
-    const events = [...chunkEvents(turn), { type: "done" } as const];
-    const second = await postChunks(app, relayBody(events));
-    expect(second.status).toBe(200);
-
-    const rows = appended.flat();
-    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
-    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
-      1,
-    );
-  });
-
-  test("a fresh fence supersedes a parked session: new lines consumed from seq 1, run completes once", async () => {
-    // First run's daemon dies mid-stream (partial upload, no terminal line) —
-    // its session parks keyed by runId. A NEW run mints a fresh fence and
-    // relays from seq 1. The route must evict the stale session and consume the
-    // fresh lines into a fresh kernel rather than dropping them as replays.
-    const { app, appended, updates, purged, sseEvents, setRunFence } =
+  test("an error relay line publishes an `error` chunk + the {done} marker so the projector can fail the run", async () => {
+    const { app, appended, updates, publishedRaw, publishedDone, sseEvents } =
       appWithContext();
-    const turn = helloTurnChunks();
 
-    // Parked first run (fence_1), partial.
-    const first = await postChunks(
-      app,
-      relayBody(chunkEvents(turn.slice(0, 4))),
-      { "x-fence-token": "fence_1" },
-    );
-    expect(first.status).toBe(200);
-    expect(await first.json()).toEqual({ ok: true, lastSeq: 4 });
+    // A turn that streams partial text and then fails with an error EVENT
+    // (no `done` line — the error is the terminator), exactly like
+    // buildErrorRelayBody in the e2e fixtures.
+    const events: RelayEvent[] = [
+      { type: "ui-message-chunk", chunk: { type: "start", messageId: "m1" } },
+      { type: "ui-message-chunk", chunk: { type: "start-step" } },
+      {
+        type: "ui-message-chunk",
+        chunk: { type: "text-start", id: "m1-text-0" },
+      },
+      {
+        type: "ui-message-chunk",
+        chunk: { type: "text-delta", id: "m1-text-0", delta: "partial" },
+      },
+      {
+        type: "ui-message-chunk",
+        chunk: { type: "text-end", id: "m1-text-0" },
+      },
+      { type: "error", code: "harness_error", message: "simulated failure" },
+    ];
+    const res = await postChunks(app, relayBody(events));
+    expect(res.status).toBe(200);
 
-    // New run: DB fence rotates, daemon presents the new fence + relays from 1.
-    setRunFence("fence_2");
-    const events = [...chunkEvents(turn), { type: "done" } as const];
-    const second = await postChunks(app, relayBody(events), {
-      "x-fence-token": "fence_2",
-    });
-    expect(second.status).toBe(200);
-    // Fresh session counts from seq 1 — not deduped against the stale session.
-    expect(await second.json()).toEqual({ ok: true, lastSeq: events.length });
-
-    const rows = appended.flat();
-    // Exactly one finished message persisted by the FRESH session (the stale
-    // session's eviction wrote no terminal status / parts).
-    expect(rows.filter((r) => r.kind === "text")).toHaveLength(1);
-    expect(rows.filter((r) => r.kind === "finish")).toHaveLength(1);
-    const textRow = rows.find((r) => r.kind === "text")!;
-    expect((textRow.payload as { text?: string }).text).toBe("hello");
-
-    // The run completes exactly once — the superseded (stale) consume never
-    // wrote a terminal status, so there's no completed/failed race.
-    expect(updates.filter((u) => u.data.status === "completed")).toHaveLength(
-      1,
-    );
-    expect(updates.filter((u) => u.data.status === "failed")).toHaveLength(0);
-    expect(purged).toContain(RUN_ID);
-    expect(sseEvents.map(({ event }) => event.type)).toEqual([
-      "decopilot.thread.status",
-      "decopilot.finish",
+    // The harness error EVENT is routed in-band as a published AI-SDK `error`
+    // chunk so the durable projector reconstructs it (and the kernel's onError
+    // persists an error + finish part on re-projection).
+    const types = publishedRaw.map((c) => (c.chunk as { type: string }).type);
+    expect(types).toEqual([
+      "start",
+      "start-step",
+      "text-start",
+      "text-delta",
+      "text-end",
+      "error",
     ]);
+    const errorChunk = publishedRaw.find(
+      (c) => (c.chunk as { type: string }).type === "error",
+    );
+    expect((errorChunk!.chunk as { errorText?: string }).errorText).toContain(
+      "simulated failure",
+    );
+
+    // The {done} marker IS published (fence-scoped, finalSeq = last seq) — this
+    // is what schedules the durable projector. A thrown source would skip it.
+    expect(publishedDone).toEqual([{ fenceToken: "fence_1", finalSeq: 6 }]);
+
+    // Link ingest still does ZERO DB writes — the projector owns parts + status.
+    expect(appended).toEqual([]);
+    expect(updates).toEqual([]);
+
+    // Live failure SSE still fires (kernel onError ran on the error chunk).
+    const finishFailed = sseEvents.some(
+      (e) =>
+        (e.event as { type?: string; data?: { status?: string } }).data
+          ?.status === "failed",
+    );
+    expect(finishFailed).toBe(true);
   });
 
   test("400 line too large when a relay NDJSON line exceeds the cap", async () => {

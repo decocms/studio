@@ -23,8 +23,11 @@ mock.module("@/tools/sandbox/start", () => ({
   SANDBOX_START: { name: "SANDBOX_START" },
 }));
 
-const { computeDesktopSandboxHandle, resolveEffectiveVirtualMcpForHarness } =
-  await import("./dispatch-run");
+const {
+  buildCodingWorkspaceInput,
+  computeDesktopSandboxHandle,
+  resolveEffectiveVirtualMcpForHarness,
+} = await import("./dispatch-run");
 
 describe("computeDesktopSandboxHandle", () => {
   const BASE = {
@@ -76,6 +79,75 @@ describe("computeDesktopSandboxHandle", () => {
     // "deco/sleek-flint" → last segment "sleek-flint" → slug prefix in handle.
     const handle = computeDesktopSandboxHandle(BASE);
     expect(handle).toMatch(/sleek-flint/);
+  });
+});
+
+describe("buildCodingWorkspaceInput", () => {
+  it("returns repo, branch, cwd, and connected GitHub state for repo-backed workspaces", () => {
+    const result = buildCodingWorkspaceInput({
+      virtualMcp: {
+        metadata: {
+          githubRepo: {
+            owner: "deco",
+            name: "site",
+            connectionId: "conn-1",
+          },
+        },
+      },
+      branch: "feature-branch",
+      workspace: { cwd: "/repo" },
+    });
+
+    expect(result).toEqual({
+      repo: {
+        owner: "deco",
+        name: "site",
+        connectedGithub: true,
+      },
+      branch: "feature-branch",
+      cwd: "/repo",
+      workspaceKind: "github",
+    });
+  });
+
+  it("marks public clone repo workspaces as not connected to GitHub", () => {
+    const result = buildCodingWorkspaceInput({
+      virtualMcp: {
+        metadata: {
+          githubRepo: {
+            owner: "deco",
+            name: "public-site",
+          },
+        },
+      },
+      branch: "main",
+      workspace: { cwd: "/repo" },
+    });
+
+    expect(result).toEqual({
+      repo: {
+        owner: "deco",
+        name: "public-site",
+        connectedGithub: false,
+      },
+      branch: "main",
+      cwd: "/repo",
+      workspaceKind: "github",
+    });
+  });
+
+  it("marks default non-repo workspaces as unknown without inventing GitHub metadata", () => {
+    const result = buildCodingWorkspaceInput({
+      virtualMcp: { metadata: {} },
+      branch: null,
+      workspace: { cwd: "default" },
+    });
+
+    expect(result).toEqual({
+      branch: null,
+      cwd: "default",
+      workspaceKind: "unknown",
+    });
   });
 });
 

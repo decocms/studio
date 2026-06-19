@@ -86,6 +86,13 @@ export interface SelectHeaderButtonInput {
   loading?: boolean;
 }
 
+export function isPrStateActivelyLoading(query: {
+  isPending: boolean;
+  fetchStatus: string;
+}): boolean {
+  return query.isPending && query.fetchStatus !== "idle";
+}
+
 export function selectHeaderButton(
   input: SelectHeaderButtonInput,
 ): HeaderButton {

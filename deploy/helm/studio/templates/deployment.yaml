@@ -88,6 +88,10 @@ spec:
             - name: SHUTDOWN_GRACE_SECONDS
               value: {{ .Values.terminationGracePeriodSeconds | quote }}
             {{- end }}
+            {{- if .Values.tunnel.nats.clusterCreds.enabled }}
+            - name: NATS_CREDS
+              value: {{ include "chart-deco-studio.natsClusterCredsPath" . | quote }}
+            {{- end }}
             {{- if .Values.otel.enabled }}
             {{- if .Values.otel.protocol }}
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
@@ -155,6 +159,11 @@ spec:
               mountPath: /etc/ssl/certs
               readOnly: true
             {{- end }}
+            {{- if .Values.tunnel.nats.clusterCreds.enabled }}
+            - name: nats-cluster-creds
+              mountPath: {{ .Values.tunnel.nats.clusterCreds.mountDir | quote }}
+              readOnly: true
+            {{- end }}
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -212,6 +221,14 @@ spec:
             items:
               - key: sync.sh
                 path: sync.sh
+        {{- end }}
+        {{- if .Values.tunnel.nats.clusterCreds.enabled }}
+        - name: nats-cluster-creds
+          secret:
+            secretName: {{ include "chart-deco-studio.natsClusterCredsSecretName" . | quote }}
+            items:
+              - key: {{ .Values.tunnel.nats.clusterCreds.secretKey | quote }}
+                path: {{ .Values.tunnel.nats.clusterCreds.fileName | quote }}
         {{- end }}
         {{- with .Values.volumes }}
           {{- toYaml . | nindent 8 }}

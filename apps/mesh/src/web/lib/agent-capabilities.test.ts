@@ -3,6 +3,7 @@ import type { CurrentLink } from "@/web/hooks/use-current-link";
 import {
   agentHasClonableSource,
   agentHasConnectedGithub,
+  agentShowsGithubHeaderActions,
   hasLocalCliHarness,
 } from "./agent-capabilities";
 
@@ -102,6 +103,48 @@ describe("agentHasConnectedGithub", () => {
       },
     } as any;
     expect(agentHasConnectedGithub(vm)).toBe(true);
+  });
+});
+
+describe("agentShowsGithubHeaderActions", () => {
+  it("returns false for a Start Website agent cloned from a public template", () => {
+    expect(
+      agentShowsGithubHeaderActions({
+        connections: [],
+        metadata: {
+          instructions: null,
+          githubRepo: {
+            url: "https://github.com/decocms/webapp-template",
+            owner: "decocms",
+            name: "webapp-template",
+          },
+        },
+      } as any),
+    ).toBe(false);
+  });
+
+  it("returns true for an imported repo with an attached GitHub connection", () => {
+    expect(
+      agentShowsGithubHeaderActions({
+        connections: [
+          {
+            connection_id: "conn_github",
+            selected_tools: null,
+            selected_resources: null,
+            selected_prompts: null,
+          },
+        ],
+        metadata: {
+          instructions: null,
+          githubRepo: {
+            url: "https://github.com/acme/app",
+            owner: "acme",
+            name: "app",
+            connectionId: "conn_github",
+          },
+        },
+      } as any),
+    ).toBe(true);
   });
 });
 

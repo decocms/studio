@@ -55,6 +55,7 @@ import { readCachedTaskBranch } from "@/web/lib/read-cached-task-branch";
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePublicConfig } from "@/web/hooks/use-public-config";
+import { getServerPinnedIds } from "@/web/hooks/use-navigate-to-agent";
 import {
   useSidebarAgentGroupsEmpty,
   useBumpSidebarOrderRevision,
@@ -166,10 +167,11 @@ function PinAgentPopoverContent({
 }) {
   const [search, setSearch] = useState("");
   const allAgents = useVirtualMCPs();
+  const agents = allAgents ?? [];
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const sidebarUserId = session?.user?.id ?? "anon";
-  const serverPinnedIds = allAgents.filter((a) => a.pinned).map((a) => a.id);
+  const serverPinnedIds = getServerPinnedIds(allAgents);
   const bumpOrderRevision = useBumpSidebarOrderRevision();
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
@@ -181,7 +183,7 @@ function PinAgentPopoverContent({
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
 
   const lowerSearch = search.toLowerCase();
-  const userAgents = allAgents
+  const userAgents = agents
     .filter((s) => !isDecopilot(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 

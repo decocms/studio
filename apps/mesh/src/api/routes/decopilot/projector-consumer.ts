@@ -1,48 +1,69 @@
 /**
- * Durable explicit-ack JetStream projector consumer (spec §5.4) — the standalone
- * DB-writer. It reads raw `{p: chunk}` / `{done: true}` envelopes from
- * DECOPILOT_STREAMS (subject `decopilot.stream.<runId>`), accumulates per run,
- * and on the terminal sentinel hands the run's chunks to projectRun for
- * persistence (bounded retry + DLQ).
+ * Durable explicit-ack JetStream projector SCHEDULER (spec §5.4). It reads raw
+ * `{p: chunk}` / `{done: true, finalSeq}` envelopes from DECOPILOT_STREAMS
+ * (subject `decopilot.stream.<runId>`) and, on an AUTHORITATIVE fenced done
+ * marker, enqueues a DBOS projection workflow (`enqueueProjectRun`) keyed by
+ * (runId, fenceToken). It NO LONGER accumulates chunks or projects inline — the
+ * durable `projectRunWorkflow` reconstructs the run from file-backed JetStream
+ * and writes parts/title/terminal status. The consumer is now a thin scheduler:
  *
- * The pure accumulation/ack/poison policy (`consumeProjectorMessages`) is
- * unit-testable via an injected message iterable. The NATS binding
+ *  - `{p}` chunks and non-authoritative messages are acked-and-skipped (the
+ *    workflow re-reads them from JetStream, so the consumer keeps none).
+ *  - A fenced `{done, finalSeq}` (msgId `<runId>:<fence>:done:<N>`) schedules the
+ *    projection workflow and is acked ONLY after `enqueueProjectRun` succeeds. If
+ *    enqueue throws, the message is left unacked so JetStream redelivers it after
+ *    the ack wait — the workflow ID dedups duplicate scheduler starts.
+ *  - The pump's legacy unfenced `{done:true}` (no msgId, no finalSeq) is purely a
+ *    tail-close signal and is ignored (acked-and-skipped).
+ *
+ * The pure scheduling/ack policy (`consumeProjectorMessages`) is unit-testable
+ * via an injected message iterable. The NATS binding
  * (`createDurableProjectorConsumer`) is thin + integration-only (multi-pod e2e).
  *
- * DOUBLE-WRITER GATE: this is the §5.4 "independent consumer" topology. It must
- * only run when the inline projector (consumeRelayedRun) is NOT also persisting.
- * app.ts wires it behind a default-off LINK_DURABLE_PROJECTOR flag; the cutover
- * (inline path stops persisting + flag on) is validated by multi-pod e2e before
- * it becomes the sole DB-writer.
+ * SINGLE WRITER: leadership is only a scheduler throttle now — correctness comes
+ * from the DBOS workflow ID keyed by (runId, fenceToken), so duplicate scheduler
+ * starts collapse instead of double-projecting. app.ts runs one consumer via
+ * leader election; multi-pod e2e validates failover/replay.
  */
-import type { UIMessageChunk } from "ai";
 import {
   AckPolicy,
   DeliverPolicy,
   type JetStreamClient,
   type JetStreamManager,
 } from "nats";
-import type { HarnessStreamPersistence } from "./consume-harness-stream";
-import { projectRun } from "./project-run";
+import { computeLagMs, recordLag } from "./projector-metrics";
+import {
+  DECOPILOT_STREAM_NAME,
+  isDoneEnvelope,
+  parseRunStreamMsgId,
+  runIdFromSubject,
+} from "./projector-stream-messages";
+import type { ProjectorWorkflowInput } from "./projector-workflow";
 
-const STREAM_NAME = "DECOPILOT_STREAMS";
+// Re-exported so existing importers can keep resolving `runIdFromSubject` from
+// this module; the implementation lives in the shared identity helper.
+export { runIdFromSubject } from "./projector-stream-messages";
+
 const CONSUMER_NAME = "decopilot-projector";
 const FILTER_SUBJECT = "decopilot.stream.>";
-
-/** Extract the run id token from `decopilot.stream.<runId>`; null if malformed. */
-export function runIdFromSubject(subject: string): string | null {
-  const parts = subject.split(".");
-  if (parts.length < 3 || parts[0] !== "decopilot" || parts[1] !== "stream") {
-    return null;
-  }
-  const runId = parts.slice(2).join(".");
-  return runId.length > 0 ? runId : null;
-}
 
 export interface ProjectorMessage {
   /** NATS subject (`decopilot.stream.<runId>`). */
   subject: string;
   data: Uint8Array;
+  /**
+   * The publisher-supplied `Nats-Msg-Id` (`<runId>:<fenceToken>:<seq>` for
+   * chunks, `<runId>:<fenceToken>:done:<N>` for the authoritative done marker).
+   * Used to extract the fence token + finalSeq for the projection workflow.
+   * Optional for back-compat: a message without it is acked-and-skipped.
+   */
+  msgId?: string;
+  /**
+   * JetStream publish time in ms (`msg.info.timestampNanos / 1e6`). Optional:
+   * the fake iterable used in unit tests may omit it, in which case lag is not
+   * recorded for that message.
+   */
+  publishedAtMs?: number;
   ack(): Promise<void>;
   term(): Promise<void>;
 }
@@ -50,86 +71,98 @@ export interface ProjectorMessage {
 export interface ProjectorConsumerOptions {
   /** Source of decoded messages (injected — a NATS consumer in prod, a fake in tests). */
   messages: AsyncIterable<ProjectorMessage>;
-  /** Per-run persistence callbacks (the PartEmitter triplet) for projectRun. */
-  persistenceFor: (runId: string) => HarnessStreamPersistence;
-  /** Fired when a run is poisoned (projectRun exhausts retries). Must not throw. */
-  onRunErrored: (runId: string, error: unknown) => Promise<void>;
-}
-
-interface RunAccumulator {
-  chunks: UIMessageChunk[];
+  /** Resolve a run's org id (a global threads lookup). Null → unknown run. */
+  resolveOrgId: (runId: string) => Promise<string | null>;
+  /** Schedule the durable projection workflow for a completed run. */
+  enqueueProjectRun: (
+    input: ProjectorWorkflowInput & { orgId: string },
+  ) => Promise<unknown>;
 }
 
 /**
- * Pure accumulation + ack/poison policy. Accumulate `{p}` chunks per runId; on
- * `{done}` project the run via projectRun. Every message is acked (poison runs
- * too — projectRun's onDlq marks them failed; redelivery would just wedge the
- * consumer on a bad run). Malformed messages are skipped + acked.
+ * Pure scheduling + ack policy. Ack-and-skip everything that is not an
+ * AUTHORITATIVE fenced done marker; on a valid done marker, schedule the
+ * projection workflow and ack only after `enqueueProjectRun` succeeds. If
+ * scheduling throws the message is left UNACKED so JetStream redelivers it.
  */
 export async function consumeProjectorMessages(
   options: ProjectorConsumerOptions,
 ): Promise<void> {
-  const runs = new Map<string, RunAccumulator>();
   const decoder = new TextDecoder();
 
   for await (const msg of options.messages) {
     try {
+      if (msg.publishedAtMs !== undefined) {
+        recordLag(computeLagMs(msg.publishedAtMs, Date.now()));
+      }
       const runId = runIdFromSubject(msg.subject);
       if (!runId) {
         await msg.ack();
         continue;
       }
-      const payload = JSON.parse(decoder.decode(msg.data)) as {
-        p?: unknown;
-        done?: boolean;
-      };
-
-      if (payload.done) {
-        const run = runs.get(runId);
-        runs.delete(runId);
-        const result = await projectRun({
-          runId,
-          chunks: run?.chunks ?? [],
-          persistence: options.persistenceFor(runId),
-          onDlq: async (id, error) => {
-            await options.onRunErrored(id, error);
-          },
-        });
-        void result; // ok|poison both ack; poison is surfaced via onDlq above
+      const payload = JSON.parse(decoder.decode(msg.data)) as unknown;
+      if (!isDoneEnvelope(payload)) {
         await msg.ack();
-      } else if (payload.p !== undefined) {
-        let run = runs.get(runId);
-        if (!run) {
-          run = { chunks: [] };
-          runs.set(runId, run);
-        }
-        run.chunks.push(payload.p as UIMessageChunk);
-        await msg.ack();
-      } else {
-        await msg.ack();
+        continue;
       }
-    } catch (error) {
-      // Malformed/undecodable message — ack to avoid wedging the consumer.
-      console.error("[projector-consumer] skipping bad message:", error);
+      const parsed = parseRunStreamMsgId(msg.msgId);
+      if (
+        !parsed ||
+        parsed.kind !== "done" ||
+        parsed.runId !== runId ||
+        parsed.finalSeq !== payload.finalSeq
+      ) {
+        console.error("[projector-consumer] invalid done marker", {
+          subject: msg.subject,
+          msgId: msg.msgId,
+        });
+        await msg.ack();
+        continue;
+      }
+      const orgId = await options.resolveOrgId(runId);
+      if (!orgId) {
+        console.warn("[projector-consumer] done for unknown run", { runId });
+        await msg.ack();
+        continue;
+      }
+      await options.enqueueProjectRun({
+        runId,
+        fenceToken: parsed.fenceToken,
+        finalSeq: parsed.finalSeq,
+        orgId,
+      });
       await msg.ack();
+    } catch (error) {
+      console.error("[projector-consumer] scheduling failed:", error);
+      // Do not ack. JetStream redelivers the done marker after ack wait.
     }
   }
 }
 
 /**
+ * Handle for a running durable projector consumer. `stop()` aborts the underlying
+ * `consumer.consume()` iterator so leadership loss can hand off cleanly (the
+ * consumption loop returns once the iterator is stopped).
+ */
+export interface DurableProjectorConsumerHandle {
+  stop(): Promise<void>;
+}
+
+/**
  * Thin NATS binding: ensure the durable explicit-ack consumer exists on
- * DECOPILOT_STREAMS (same pattern as link-work-queue.ts) and return a handle
- * that drives `consumeProjectorMessages`. Integration-only (multi-pod e2e); the
- * pure policy above is the unit boundary.
+ * DECOPILOT_STREAMS and return a handle that drives `consumeProjectorMessages`.
+ * Integration-only (multi-pod e2e); the pure policy above is the unit boundary.
  */
 export async function createDurableProjectorConsumer(
   jsm: JetStreamManager,
   js: JetStreamClient,
 ): Promise<{
-  start(opts: Omit<ProjectorConsumerOptions, "messages">): Promise<void>;
+  start(
+    opts: Omit<ProjectorConsumerOptions, "messages">,
+  ): Promise<DurableProjectorConsumerHandle>;
 }> {
   try {
-    await jsm.consumers.add(STREAM_NAME, {
+    await jsm.consumers.add(DECOPILOT_STREAM_NAME, {
       name: CONSUMER_NAME,
       durable_name: CONSUMER_NAME,
       filter_subject: FILTER_SUBJECT,
@@ -146,19 +179,37 @@ export async function createDurableProjectorConsumer(
 
   return {
     async start(opts) {
-      const consumer = await js.consumers.get(STREAM_NAME, CONSUMER_NAME);
+      const consumer = await js.consumers.get(
+        DECOPILOT_STREAM_NAME,
+        CONSUMER_NAME,
+      );
       const sub = await consumer.consume();
       const messages = (async function* () {
         for await (const m of sub) {
           yield {
             subject: m.subject,
             data: m.data,
+            msgId: m.headers?.get("Nats-Msg-Id") || undefined,
+            publishedAtMs: m.info.timestampNanos / 1e6,
             ack: async () => m.ack(),
             term: async () => m.term(),
           } satisfies ProjectorMessage;
         }
       })();
-      await consumeProjectorMessages({ ...opts, messages });
+      // Run the consumption loop in the background so the caller gets a handle
+      // it can stop on leadership loss. `sub.stop()` ends the iterator, which
+      // lets `consumeProjectorMessages` return and the promise settle.
+      const done = consumeProjectorMessages({ ...opts, messages }).catch(
+        (err: unknown) => {
+          console.error("[projector-consumer] consumption loop failed", err);
+        },
+      );
+      return {
+        async stop() {
+          sub.stop();
+          await done;
+        },
+      };
     },
   };
 }

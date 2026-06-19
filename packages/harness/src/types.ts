@@ -10,6 +10,7 @@ import type {
   DecopilotModelSources,
   DecopilotObjectStorageSource,
 } from "./sources";
+import type { CodingWorkspacePromptInput } from "./coding-workspace-prompt";
 
 export { createSecretModelSource } from "./sources";
 export type {
@@ -134,6 +135,8 @@ export interface HarnessStreamInput {
   /** Symbolic, logically-resolved working directory (see workspace-cwd.ts).
    *  Required. The daemon rebases non-"default" values onto its sandbox root. */
   workspace: { cwd: string };
+  /** Pre-renderable coding workspace facts shared by Decopilot and CLI harness prompts. */
+  codingWorkspace?: CodingWorkspacePromptInput;
 
   // ===== Models (already resolved: credential → key/headers, permissions checked) =====
   models: ModelsConfig;
@@ -191,7 +194,8 @@ export interface HarnessStreamInput {
   projectSlug?: string;
 
   /** Loaded VirtualMcp entity (the agent definition). Decopilot reads metadata,
-   *  connection list, and github-repo info from this; CLI harnesses use only `id`.
+   *  connection list, and github-repo info from this; CLI harnesses use `id`
+   *  and may append `metadata.instructions` to their CLI-safe prompt context.
    *  Typed as a permissive bag in the package — the cluster passes its richer
    *  `VirtualMCPEntity` shape and TS accepts the widening. */
   virtualMcp: { id: string; metadata?: unknown; [k: string]: unknown };

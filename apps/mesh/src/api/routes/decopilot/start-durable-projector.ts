@@ -1,79 +1,42 @@
 /**
- * Cluster-startup wiring for the durable projector consumer (spec §5.4).
+ * Cluster-startup wiring for the durable projector SCHEDULER (spec §5.4).
  *
- * Builds the per-run persistence the standalone DB-writer needs and starts the
- * durable JetStream consumer. The NATS subject carries only the runId, so we
- * resolve the run's org + storage version lazily (on first emit) via an injected
- * resolver — the durable projector only persists v2 (PartEmitter) runs; v1 stays
- * the inline path's domain. Gated default-off in app.ts behind
- * LINK_DURABLE_PROJECTOR so it never double-writes with the inline projector
- * until the cutover is validated by multi-pod e2e.
+ * Starts the durable JetStream consumer and hands it the (runId → orgId)
+ * resolver plus the DBOS `enqueueProjectRun` scheduler. The consumer no longer
+ * builds per-run persistence callbacks: on an authoritative fenced done marker
+ * it enqueues the durable `projectRunWorkflow`, which reconstructs the run from
+ * file-backed JetStream and writes parts/title/terminal status (it is the SOLE
+ * v2 DB writer). Pre-existing v1 threads are deprecated read-only legacy.
+ * Started on the elected leader in app.ts (leadership is only a scheduler
+ * throttle — correctness comes from the workflow ID keyed by (runId, fence)).
  *
- * Integration-only (real NATS + storage); the pure accumulation/ack policy is
+ * Integration-only (real NATS + DBOS); the pure scheduling/ack policy is
  * unit-tested in projector-consumer.test.ts.
  */
 import type { JetStreamClient, JetStreamManager } from "nats";
-import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
-import type { HarnessStreamPersistence } from "./consume-harness-stream";
-import { PartEmitter } from "./part-emitter";
-import { createDurableProjectorConsumer } from "./projector-consumer";
+import {
+  createDurableProjectorConsumer,
+  type DurableProjectorConsumerHandle,
+} from "./projector-consumer";
+import { enqueueProjectRun } from "./projector-workflow";
 
 export interface DurableProjectorWiring {
   jsm: JetStreamManager;
   js: JetStreamClient;
-  /** Per-run thread-message-parts storage (the PartEmitter sink). */
-  messageParts: SqlThreadMessagePartStorage;
-  /** Resolve a run's org + storage version (a global threads lookup). */
-  resolveRunOrg: (
-    runId: string,
-  ) => Promise<{ orgId: string; version: number } | null>;
+  resolveOrgId: (runId: string) => Promise<string | null>;
 }
 
-function lazyV2Persistence(
-  runId: string,
-  w: DurableProjectorWiring,
-): HarnessStreamPersistence {
-  let emitter: Promise<PartEmitter | null> | null = null;
-  const get = () => {
-    if (!emitter) {
-      emitter = w.resolveRunOrg(runId).then((org) => {
-        // v1 / unknown runs are persisted by the inline path; the durable
-        // projector only owns v2 (PartEmitter) runs.
-        if (!org || org.version !== 2) return null;
-        return new PartEmitter({
-          storage: w.messageParts,
-          orgId: org.orgId,
-          threadId: runId,
-          runId,
-        });
-      });
-    }
-    return emitter;
-  };
-  return {
-    emitStepParts: async (message) => {
-      const e = await get();
-      if (e) await e.emitStepParts(message);
-    },
-    emitFinal: async (message) => {
-      const e = await get();
-      if (e) await e.emitFinal(message);
-    },
-    emitError: async (messageId, errorText) => {
-      const e = await get();
-      if (e) await e.emitError(messageId, errorText);
-    },
-  };
-}
-
+/**
+ * Start the durable projector consumer and return a handle whose `stop()` aborts
+ * `consumer.consume()`, so the leader-election controller can hand off the
+ * single-active consumer on leadership loss.
+ */
 export async function startDurableProjector(
   w: DurableProjectorWiring,
-): Promise<void> {
+): Promise<DurableProjectorConsumerHandle> {
   const consumer = await createDurableProjectorConsumer(w.jsm, w.js);
-  await consumer.start({
-    persistenceFor: (runId) => lazyV2Persistence(runId, w),
-    onRunErrored: async (runId, error) => {
-      console.error("[durable-projector] run poisoned:", { runId, error });
-    },
+  return consumer.start({
+    resolveOrgId: w.resolveOrgId,
+    enqueueProjectRun,
   });
 }

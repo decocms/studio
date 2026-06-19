@@ -11,7 +11,7 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Check, ChevronDown, Monitor01 } from "@untitledui/icons";
+import { Check, ChevronDown, Cloud01, Monitor01 } from "@untitledui/icons";
 import {
   getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
@@ -144,14 +144,35 @@ function fallbackMode(
   return ROWS.find((row) => row.isAvailable(availability))?.mode ?? mode;
 }
 
-function pillLabel(mode: AgentMode): { icon: React.ReactNode; text: string } {
+function harnessPillLabel(mode: AgentMode): {
+  icon: React.ReactNode;
+  text: string;
+} {
   if (mode === "local-decopilot")
     return { icon: <DecopilotIcon compact />, text: "Decopilot" };
   if (mode === "local-claude-code")
     return { icon: <ClaudeCodeIcon size={14} />, text: "Claude Code" };
   if (mode === "local-codex")
     return { icon: <CodexIcon size={14} />, text: "Codex" };
-  return { icon: <DecopilotIcon compact />, text: "Cloud" };
+  return { icon: <DecopilotIcon compact />, text: "Decopilot" };
+}
+
+function editablePillLabel(mode: AgentMode): {
+  icon: React.ReactNode;
+  text: string;
+} {
+  const { text } = harnessPillLabel(mode);
+  const icon =
+    mode === "cloud-decopilot" ? (
+      <Cloud01 size={14} />
+    ) : (
+      <Monitor01 size={14} />
+    );
+  return { icon, text };
+}
+
+function runtimeLabel(mode: AgentMode): "cloud" | "desktop" {
+  return mode === "cloud-decopilot" ? "cloud" : "desktop";
 }
 
 const baseClasses =
@@ -173,7 +194,10 @@ export function ModePickerPure({
   onConnectDesktop,
 }: PureProps) {
   const [open, setOpen] = useState(false);
-  const { icon, text } = pillLabel(mode);
+  const { icon, text } = locked
+    ? harnessPillLabel(mode)
+    : editablePillLabel(mode);
+  const labelWithRuntime = `${text} on ${runtimeLabel(mode)}`;
   const isLocal = mode !== "cloud-decopilot";
   const showHarnessLabel = lockedHarness != null;
   const harnessLabel = lockedHarness ? HARNESS_LABEL[lockedHarness] : null;
@@ -209,8 +233,8 @@ export function ModePickerPure({
                 size="default"
                 aria-label={
                   showHarnessLabel && harnessLabel
-                    ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
-                    : text
+                    ? `This chat is using ${harnessLabel} on ${runtimeLabel(mode)}. Start a new chat to use a different runtime.`
+                    : labelWithRuntime
                 }
                 disabled={locked}
                 data-testid={locked ? "mode-picker-locked" : "mode-picker"}
@@ -243,8 +267,8 @@ export function ModePickerPure({
         </TooltipTrigger>
         <TooltipContent>
           {showHarnessLabel && harnessLabel
-            ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
-            : text}
+            ? `This chat is using ${harnessLabel} on ${runtimeLabel(mode)}. Start a new chat to use a different runtime.`
+            : labelWithRuntime}
         </TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="p-1 w-64">

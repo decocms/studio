@@ -3,9 +3,9 @@
  * registration. It lives at `<dataDir>/machine-id` and is
  * generated once per desktop.
  *
- * The cluster keys its `LinkClaimRegistry` by the OAuth userSub, NOT by this
- * machineId — but it stores the value so it can detect "another machine
- * is already claiming this account" (409) and surface a hint to the user.
+ * The cluster identifies a desktop link by the acting OAuth userSub, NOT by
+ * this machineId — but the daemon reports the value over the live status probe
+ * so the cluster can tell which machine is currently serving the account.
  *
  * 16 random bytes (32 hex chars). Generated lazily on first call.
  */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { claudeCodeHarnessFactory } from "./index";
+import { buildClaudeCodeSystemPrompt, claudeCodeHarnessFactory } from "./index";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
 import type { HarnessContext, HarnessStreamInput } from "../types";
 
@@ -39,6 +39,36 @@ describe("claudeCodeHarnessFactory", () => {
     expect(harness.id).toBe("claude-code");
     expect(typeof harness.stream).toBe("function");
   });
+});
+
+test("buildClaudeCodeSystemPrompt appends coding workspace and agent instructions to Claude Code preset", () => {
+  const prompt = buildClaudeCodeSystemPrompt({
+    codingWorkspace: {
+      repo: {
+        owner: "deco",
+        name: "site",
+        connectedGithub: true,
+      },
+      branch: "main",
+      cwd: "/repo",
+      workspaceKind: "github",
+    },
+    agentInstructions: "Prefer small focused patches.",
+    now: new Date("2026-06-18T12:34:00.000Z"),
+  });
+
+  expect(prompt).toEqual({
+    type: "preset",
+    preset: "claude_code",
+    append: expect.stringContaining("<coding-workspace>"),
+  });
+  if (!prompt) throw new Error("Expected Claude Code system prompt");
+  expect(prompt.append).toContain("Repository: deco/site");
+  expect(prompt.append).toContain("Prefer small focused patches.");
+  expect(prompt.append).toContain("Current date: 2026-06-18");
+  expect(prompt.append).not.toContain("<available-agents>");
+  expect(prompt.append).not.toContain("enable_tool");
+  expect(prompt.append).not.toContain("todo_write");
 });
 
 describe("createCliMessageMetadata for Claude Code", () => {

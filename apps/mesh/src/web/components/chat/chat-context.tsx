@@ -40,6 +40,7 @@ import {
   type SubmitAction,
   type ThreadObserver,
 } from "./store/thread-connection";
+import { deriveTerminalThreadStatus } from "./store/thread-status";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
 import {
@@ -50,6 +51,7 @@ import {
 } from "./pills/agent-options";
 import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
+import { useCurrentLink } from "@/web/hooks/use-current-link";
 import {
   pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
@@ -100,6 +102,7 @@ import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
 import type { Task } from "./task/types";
 import type { SendMessageParams, SetAppContextParams } from "./store/types";
+import type { RunStatusStage } from "./run-status";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
@@ -124,6 +127,7 @@ export interface ChatStreamContextValue {
   error: Error | null;
   clearError: () => void;
   finishReason: string | null;
+  runStatusStage: RunStatusStage | null;
   clearFinishReason: () => void;
   isStreaming: boolean;
   isChatEmpty: boolean;
@@ -539,6 +543,14 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     availability,
   );
 
+  // Live desktop-link presence (polled every ~5s via the `/api/links/status`
+  // probe). When the user hasn't explicitly pinned a sandbox kind, the client
+  // chooses the default optimistically from this signal: route to the desktop
+  // when its link is online, otherwise fall back to the hosted agent sandbox.
+  // Read inline (no useEffect/useMemo) so the send path always sees the latest
+  // presence at render time.
+  const currentLink = useCurrentLink();
+
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's
   // availability-resolved global picker.
@@ -556,7 +568,10 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     ? AGENT_OPTION_PINS[effectiveAgentOption]
     : null;
   const pendingHarnessId = effectivePins?.harness ?? null;
-  const pendingSandboxProviderKind = effectivePins?.sandbox ?? null;
+  // Prefer the user's explicit pin; otherwise default from live link presence.
+  const pendingSandboxProviderKind: SandboxProviderKind | null =
+    effectivePins?.sandbox ??
+    (currentLink.online ? "user-desktop" : "agent-sandbox");
 
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
@@ -828,6 +843,7 @@ export function ActiveTaskProvider({
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
   const finishReason = useStore(conn.finishReason);
+  const runStatusStage = useStore(conn.runStatusStage);
   const hasMoreOlder = useStore(conn.hasMoreOlder);
   const isFetchingOlder = useStore(conn.isFetchingOlder);
 
@@ -900,8 +916,22 @@ export function ActiveTaskProvider({
           return;
         }
       },
-      onFinish: (message) => {
+      onFinish: (message, _messages, finishReason) => {
         const cb = cbRef.current;
+        if (cb.taskId) {
+          cb.manager.patchThread({
+            id: cb.taskId,
+            status: deriveTerminalThreadStatus(
+              finishReason,
+              message.parts as {
+                type?: string;
+                text?: string;
+                state?: string;
+              }[],
+            ),
+            updated_at: new Date().toISOString(),
+          });
+        }
         // Refresh download chips only when this turn could have produced a
         // file: an explicit share, or sandbox file work (bash/write can drop
         // results into `org/output/`). AI SDK v5 surfaces tool invocations as
@@ -1119,6 +1149,7 @@ export function ActiveTaskProvider({
     error: chatError,
     clearError: () => setChatError(null),
     finishReason,
+    runStatusStage,
     clearFinishReason: () => conn.finishReason.set(null),
     isStreaming,
     isChatEmpty,

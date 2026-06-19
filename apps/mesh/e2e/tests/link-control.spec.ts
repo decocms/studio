@@ -1,30 +1,12 @@
 /**
- * E2E: Phase C cancel home — durable cancel flag + control-poll route.
+ * E2E: durable cancel flag.
  *
- * Three assertions (Phase C correctness invariants):
- *
- *   (1) GET /api/links/control with no auth → 401.
- *
- *   (2) Cancel → durable flag → ingest 409 (hard invariant):
- *       - Seed a pull thread with a fence token.
- *       - POST /:org/decopilot/cancel/:threadId → expect 200/202.
- *       - POST /api/:org/links/runs/:threadId/chunks with the valid fence
- *         token → expect 409 { error: "cancelled" }.
- *       This is the correctness path: cancel must win over a valid fence.
- *
- *   (3) Control poll serves the cancel frame (tolerant — race-sensitive):
- *       - Open GET /links/control with a short client timeout FIRST.
- *       - Fire POST cancel.
- *       - If the poll returns 200 {type:"cancel", runId}, assert the shape.
- *       - If it returns 204/times out before the cancel arrives, skip — do
- *         NOT fail the suite (the durable path in assertion (2) is the guard).
- *
- * Thread seeding follows the pattern from link-dispatch-pull.spec.ts:
- *   - Create agent + thread via MCP tools so FKs are correct.
- *   - Patch extra columns (link_transport, run_fence_token) via SQL.
+ * The old control long-poll route was removed with the pull transport. The
+ * correctness invariant that remains at the HTTP layer is: cancel wins over a
+ * valid run fence, and chunk ingest rejects with 409.
  */
 
-import { expect, getE2EAppOrigin, test } from "../fixtures/test";
+import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 
@@ -129,28 +111,6 @@ async function createFencedPullThread(
 // ---------------------------------------------------------------------------
 
 test.describe("link-control Phase C", () => {
-  // (1) No auth → 401
-  test("GET /links/control without auth returns 401", async ({
-    authedPage,
-  }) => {
-    const { page } = authedPage;
-    // Use a fresh context with no cookies to simulate an unauthenticated caller.
-    const unauthCtx = await page.context().browser()!.newContext({
-      baseURL: getE2EAppOrigin(),
-    });
-    const unauthApi = unauthCtx.request;
-
-    try {
-      const res = await unauthApi.get(`/api/links/control`, {
-        timeout: 5_000,
-      });
-      expect(res.status()).toBe(401);
-    } finally {
-      await unauthCtx.close();
-    }
-  });
-
-  // (2) Cancel → durable flag → ingest 409  (hard correctness invariant)
   test("cancel sets durable flag and ingest rejects with 409", async ({
     authedPage,
   }) => {
@@ -202,77 +162,6 @@ test.describe("link-control Phase C", () => {
       expect(ingestRes.status()).toBe(409);
       const ingestJson = await ingestRes.json();
       expect(ingestJson).toMatchObject({ error: "cancelled" });
-    } finally {
-      await db.end();
-    }
-  });
-
-  // (3) Control poll serves cancel frame (tolerant — NATS timing dependent)
-  test("control poll returns cancel frame when NATS is available", async ({
-    authedPage,
-  }) => {
-    test.setTimeout(60_000);
-
-    const { page, orgSlug } = authedPage;
-    const api = page.context().request;
-    const db = await connectDevDb();
-
-    try {
-      const orgId = await orgIdForSlug(db, orgSlug);
-      const fenceToken = `tok-ctrl-poll-${Date.now()}`;
-
-      const { threadId } = await createFencedPullThread(
-        api,
-        db,
-        orgSlug,
-        orgId,
-        fenceToken,
-      );
-
-      // Open the control poll FIRST with a short window; fire cancel concurrently.
-      // The poll needs to beat the cancel frame by subscribing before it arrives.
-      const pollPromise = api
-        .get(`/api/links/control`, {
-          // Long enough to outlast the server's POLL_TIMEOUT_MS (28 s) if needed,
-          // but we fire cancel almost immediately so it should resolve much sooner.
-          timeout: 35_000,
-        })
-        .catch(() => null);
-
-      // Brief delay to let the NATS subscription land before we publish.
-      await new Promise((r) => setTimeout(r, 200));
-
-      const cancelRes = await api.post(
-        `/api/${orgSlug}/decopilot/cancel/${threadId}`,
-      );
-      expect([200, 202]).toContain(cancelRes.status());
-
-      const pollRes = await pollPromise;
-      if (pollRes === null) {
-        // Timed out or network error — tolerate, (2) is the correctness guard.
-        return;
-      }
-
-      const status = pollRes.status();
-      if (status === 204) {
-        // Server timed out before the frame arrived — race lost, tolerate.
-        return;
-      }
-      if (status === 503) {
-        // NATS unavailable in this environment — tolerate.
-        return;
-      }
-
-      // If we got a 200 it MUST be a valid cancel frame.
-      if (status === 200) {
-        const body = (await pollRes.json()) as unknown;
-        expect(body).toMatchObject({ type: "cancel", runId: threadId });
-      }
-
-      // Any other status is unexpected.
-      if (![200, 204, 503].includes(status)) {
-        throw new Error(`Unexpected control poll status: ${status}`);
-      }
     } finally {
       await db.end();
     }

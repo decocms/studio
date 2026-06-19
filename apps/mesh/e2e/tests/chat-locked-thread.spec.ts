@@ -25,16 +25,15 @@
  * the composer's keystroke flow.
  *
  * harnessId = "claude-code" + sandboxProviderKind = "user-desktop" exercises
- * the dispatch path that requires an online link. Presence is established via
- * `claimPullPresence` (a `GET /links/work` long-poll that synthetically mints
- * the presence claim — the same path a pull daemon takes); the lock-state
- * assertions never await a dispatch, they only need the link to be *present*.
+ * the dispatch path that requires an online link. The e2e daemon publishes the
+ * NATS KV presence claim and serves the work endpoint over `@decocms/tunnel`,
+ * matching the production downstream transport.
  */
 
 import type { APIRequestContext } from "@playwright/test";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
-import { claimPullPresence } from "../fixtures/links-presence";
+import { createTunnelLinkDaemon } from "../fixtures/links-presence";
 import { expect, test } from "../fixtures/test";
 
 interface MessageBodyOverrides {
@@ -157,10 +156,12 @@ test.describe("Thread runtime is locked after first message", () => {
   test("server enforces the lock and rejects mid-thread runtime changes", async ({
     authedPage,
   }) => {
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
 
-    const presence = claimPullPresence(api, ["claude-code"]);
+    const daemon = await createTunnelLinkDaemon(api, user.userId, [
+      "claude-code",
+    ]);
     const db = await connectDevDb();
     try {
       const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
@@ -237,17 +238,19 @@ test.describe("Thread runtime is locked after first message", () => {
       expect(afterConflicting.rows[0]?.branch).toBe("main");
     } finally {
       await db.end();
-      await presence;
+      await daemon.close();
     }
   });
 
   test("locked-state chips render on the thread page after first message", async ({
     authedPage,
   }) => {
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
 
-    const presence = claimPullPresence(api, ["claude-code"]);
+    const daemon = await createTunnelLinkDaemon(api, user.userId, [
+      "claude-code",
+    ]);
     try {
       // Seed an AI provider key so the thread route renders the
       // composer instead of `NoAiProviderEmptyState`. Without this,
@@ -307,7 +310,7 @@ test.describe("Thread runtime is locked after first message", () => {
         timeout: 60_000,
       });
     } finally {
-      await presence;
+      await daemon.close();
     }
   });
 });

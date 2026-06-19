@@ -1,27 +1,13 @@
 import { describe, it, expect } from "bun:test";
 import type { ControlFrame } from "../../api/routes/decopilot/control-frames";
 import type { StudioContext } from "../../core/studio-context";
-import { createInMemoryLinkClaimRegistry } from "../../links/link-claim-registry";
-import type { LinkClaim } from "../../links/link-claim-registry";
 import { LINK_DISCONNECT } from "./disconnect";
-
-const STUB_CLAIM: LinkClaim = {
-  podId: "pod_1",
-  machineId: "machine_abc",
-  cliVersion: "1.2.3",
-  previewPort: 5174,
-  connectedAt: Date.now(),
-  capabilities: ["claude-code"],
-};
 
 const USER_ID = "user_1";
 
 function makeCtx(
   overrides: Partial<
-    Pick<
-      StudioContext,
-      "linkClaimRegistry" | "publishLinkControlFrame" | "auth" | "access"
-    >
+    Pick<StudioContext, "publishLinkControlFrame" | "auth" | "access">
   > = {},
 ): StudioContext {
   return {
@@ -78,32 +64,15 @@ function makeCtx(
 }
 
 describe("LINK_DISCONNECT", () => {
-  it("returns disconnected: false when no registry is wired", async () => {
-    const ctx = makeCtx({ linkClaimRegistry: undefined });
+  it("returns disconnected: false when no frame publisher is wired", async () => {
+    const ctx = makeCtx({ publishLinkControlFrame: undefined });
     const result = await LINK_DISCONNECT.handler({}, ctx);
     expect(result).toEqual({ disconnected: false });
   });
 
-  it("returns disconnected: false and publishes nothing when no link is registered", async () => {
-    const published: ControlFrame[] = [];
-    const registry = createInMemoryLinkClaimRegistry();
-    const ctx = makeCtx({
-      linkClaimRegistry: registry,
-      publishLinkControlFrame: (_userSub, frame) => published.push(frame),
-    });
-
-    const result = await LINK_DISCONNECT.handler({}, ctx);
-
-    expect(result).toEqual({ disconnected: false });
-    expect(published).toEqual([]);
-  });
-
-  it("publishes a shutdown frame to the caller's channel and deletes the claim", async () => {
+  it("publishes a shutdown frame to the caller's channel and returns disconnected: true", async () => {
     const published: Array<{ userSub: string; frame: ControlFrame }> = [];
-    const registry = createInMemoryLinkClaimRegistry();
-    await registry.put(USER_ID, STUB_CLAIM);
     const ctx = makeCtx({
-      linkClaimRegistry: registry,
       publishLinkControlFrame: (userSub, frame) =>
         published.push({ userSub, frame }),
     });
@@ -114,21 +83,6 @@ describe("LINK_DISCONNECT", () => {
     expect(published).toEqual([
       { userSub: USER_ID, frame: { type: "shutdown" } },
     ]);
-    expect(await registry.get(USER_ID)).toBeNull();
-  });
-
-  it("still deletes the claim when no frame publisher is wired (test/no-NATS contexts)", async () => {
-    const registry = createInMemoryLinkClaimRegistry();
-    await registry.put(USER_ID, STUB_CLAIM);
-    const ctx = makeCtx({
-      linkClaimRegistry: registry,
-      publishLinkControlFrame: undefined,
-    });
-
-    const result = await LINK_DISCONNECT.handler({}, ctx);
-
-    expect(result).toEqual({ disconnected: true });
-    expect(await registry.get(USER_ID)).toBeNull();
   });
 
   it("throws when called without auth", async () => {

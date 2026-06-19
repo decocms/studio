@@ -46,6 +46,20 @@ export interface Settings {
 
   // Event Bus & Networking
   natsUrls: string[];
+  natsPublicUrl: string | undefined;
+  natsTunnelPublicEnabled: boolean;
+  natsTunnelSessionTtlSeconds: number;
+  natsOperatorJwt: string | undefined;
+  natsAccountJwt: string | undefined;
+  natsAccountSigningKey: string | undefined;
+  /**
+   * Path to a NATS creds file the CLUSTER authenticates with on its own
+   * connection. Optional and backward-compatible: when unset the cluster
+   * connects anonymously (production: anonymous to the internal listener). Set
+   * by dev ensure-services because local NATS runs in operator mode, where
+   * anonymous connect is impossible.
+   */
+  natsCredsPath: string | undefined;
 
   // Config files
   configPath: string;
@@ -134,6 +148,25 @@ export interface ServiceInputs {
 export interface ServiceOutputs {
   databaseUrl: string;
   natsUrls: string[];
+  /**
+   * Dev NATS operator/JWT config for the link tunnel, when a managed
+   * operator-mode NATS was provisioned. Null when NATS is external (production)
+   * or not provisioned. Threaded into the frozen Settings so the in-process
+   * serve path mints real session creds; also mirrored into process.env so a
+   * spawned `dev:servers` child re-derives the same config.
+   */
+  natsTunnel: {
+    /** Public URL handed to the daemon (dev: the TCP `nats://` URL). */
+    publicUrl: string;
+    /** Tunnel account JWT (NATS_ACCOUNT_JWT). */
+    accountJwt: string;
+    /** Tunnel account signing-key seed (NATS_ACCOUNT_SIGNING_KEY). */
+    accountSigningKey: string;
+    /** Operator JWT (NATS_OPERATOR_JWT). */
+    operatorJwt: string;
+    /** Absolute path to the cluster creds file (NATS_CREDS). */
+    credsPath: string;
+  } | null;
   /**
    * S3 object-storage config for the managed/external store, if any. Null when
    * object storage is not configured (no managed MinIO, no external S3 env).

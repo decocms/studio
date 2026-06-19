@@ -3,9 +3,8 @@
  *
  * - Receives an authenticated session from its caller (the CLI's `link`
  *   command obtains one via `ensureSession`).
- * - Runs the pull transport (`connectToClusterPull`): long-polls
- *   `<MESH_CLUSTER_URL>/api/links/work` for chat work and `/links/proxy`
- *   for sandbox control/events/vm-tools, re-resolving the bearer per poll.
+ * - Runs the tunnel transport (`connectToClusterTunnel`) for cluster→desktop
+ *   commands and sandbox proxying, re-resolving the bearer per session.
  * - Spawns the local ingress on `--port` so browsers can reach
  *   `<handle>.localhost:<port>` for sandbox previews.
  * - Dispatches incoming control-plane requests (sandbox lifecycle + the
@@ -21,8 +20,8 @@ import { normalizeCoAuthorIdentity } from "@decocms/sandbox/shared";
 import { createDefaultDaemonSpawn } from "@decocms/sandbox/daemon-spawn";
 import { ensureRclone } from "./ensure-rclone";
 import { createControlHandler } from "./control-handler";
-import { connectToClusterPull } from "./cluster-connection-pull";
 import { openOutbox } from "./outbox";
+import { connectToClusterTunnel } from "./cluster-connection-tunnel";
 import { startLocalIngress } from "./local-ingress";
 import { detectCapabilities, startCapabilityReprobe } from "./capabilities";
 import { loadOrCreateMachineId } from "./machine-id";
@@ -33,6 +32,7 @@ import {
   type SandboxEvent,
   type SpawnResult,
 } from "./user-desktop-provider";
+import type { ClusterConnectionHandle } from "./types";
 
 /**
  * Optional observability hooks for the `deco link` TUI. All no-ops when the
@@ -204,10 +204,8 @@ export async function startLinkDaemon(
   // and `acquireDispatch` to map handle → port and track in-flight calls.
   const controlHandler = createControlHandler({ provider });
 
-  // Shared token resolver used by both the WS and pull paths.
-  // Re-resolves (and refreshes) the bearer before each (re)connect / poll so
-  // a stale startup token doesn't spin forever on a 401. Mirrors the existing
-  // WS `getAccessToken` pattern.
+  // Shared token resolver. Re-resolves (and refreshes) the bearer before each
+  // tunnel session so a stale startup token doesn't spin forever on a 401.
   const getAccessToken = async (): Promise<string> => {
     const fresh = await getValidSession({
       dataDir: opts.dataDir,
@@ -224,25 +222,16 @@ export async function startLinkDaemon(
     return fresh.accessToken;
   };
 
-  // Phase C-bis S8: the reverse-WS transport was deleted; the pull transport is
-  // the only path. The daemon long-polls `/api/links/work` (chat) and
-  // `/links/proxy` (sandbox control/events/vm-tools), sharing the same
-  // `controlHandler`, `provider`, and `getAccessToken` resolver.
-  console.log(`[link-daemon] transport=pull cluster=${opts.clusterBaseUrl}`);
-  // Advertise the daemon's identity + capabilities on every poll (the
-  // x-link-* headers). The cluster mints the presence claim from these, and
-  // `resolveDispatchTarget` checks the capabilities — without them the claim is
-  // empty and dispatch fails with `user_desktop_link_capability_missing` even
-  // though presence shows "linked". (The WS `hello` frame carried these before
-  // it was deleted in S8; the pull path must supply them too.)
+  // The daemon's identity + capabilities are served live over the tunnel via
+  // `GET /api/links/status`, which the cluster probes when resolving a dispatch
+  // target and checking capabilities.
   const machineId = await loadOrCreateMachineId(opts.dataDir);
   const cliVersion = process.env.npm_package_version ?? "0.0.0";
   const capabilities = await detectCapabilities();
   // While a CLI capability (claude-code / codex) is missing, re-probe every
   // minute so installing or signing into the CLI after `decocms link` started
-  // is picked up without a daemon restart. The poll loops read the (shared,
-  // grow-only) array on every poll, so the next poll advertises the change
-  // and the cluster's presence claim follows.
+  // is picked up without a daemon restart. The status handler reads the shared,
+  // grow-only array, so the next probe advertises the change.
   const stopReprobe = startCapabilityReprobe(capabilities, {
     onChange: (added) => {
       console.log(
@@ -262,14 +251,17 @@ export async function startLinkDaemon(
   // directly (TDZ).
   let onRemoteShutdown: () => void = () => {};
 
-  const cluster = await connectToClusterPull({
+  // Daemon-lifetime signal: bounds in-flight runs. Aborted only on shutdown —
+  // NOT on tunnel-session renewal (renewal must not kill a running build).
+  const runLifetime = new AbortController();
+
+  const clusterInput = {
     clusterBaseUrl: opts.clusterBaseUrl,
     getAccessToken,
     provider,
     outbox,
-    // The in-process control handler also serves the pull reverse-proxy loop's
-    // `/_sandbox/*` (vm-events SSE, control RPC, vm-tools) locally and streams
-    // the reply back.
+    // The in-process control handler also serves tunnel `/_sandbox/*`
+    // requests (vm-events SSE, control RPC, vm-tools) locally.
     controlHandler,
     capabilities,
     machineId,
@@ -277,10 +269,16 @@ export async function startLinkDaemon(
     previewPort: ingress.port,
     onConnected: () => {
       opts.monitor?.onCluster?.("linked");
-      console.log(`Linked to ${opts.clusterBaseUrl} (pull transport)`);
+      console.log(`Linked to ${opts.clusterBaseUrl}`);
     },
     onShutdown: () => onRemoteShutdown(),
-  });
+    runLifetimeSignal: runLifetime.signal,
+  };
+
+  console.log(`[link-daemon] transport=tunnel cluster=${opts.clusterBaseUrl}`);
+  const cluster: ClusterConnectionHandle =
+    await connectToClusterTunnel(clusterInput);
+  console.log("[link-daemon] active transport=tunnel");
 
   let resolveStopped!: (code: number) => void;
   const stopped = new Promise<number>((r) => {
@@ -290,6 +288,7 @@ export async function startLinkDaemon(
   const shutdown = async (): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
+    runLifetime.abort();
     console.log("\nShutting down…");
     stopReprobe();
     try {

@@ -7,11 +7,11 @@
  *      `input.sandboxProviderKind` here; `ensureSandbox` callers pass the kind
  *      they already resolved. Binds the user's link for `user-desktop`.
  *
- *   2. **Per-run dispatch hint** (`ctx.sandboxPreference` /
- *      `ctx.linkForCurrentRun`). Set by `dispatch-run` from the resolved
- *      `DispatchTarget`. Honoring it without a sandboxMap read is the whole
- *      point: decopilot runs decided which sandbox kind to use upstream,
- *      and any DB lookup here would just confirm what they already know.
+ *   2. **Per-run dispatch hint** (`ctx.sandboxPreference`). Set by
+ *      `dispatch-run` from the resolved `DispatchTarget`. Honoring it without a
+ *      sandboxMap read is the whole point: decopilot runs decided which sandbox
+ *      kind to use upstream, and any DB lookup here would just confirm what they
+ *      already know.
  *
  *   3. **Recorded sandboxMap kind.** The post-provision source of truth: a
  *      sandbox provisioned via `user-desktop` stays addressable through
@@ -19,12 +19,12 @@
  *      `agent-sandbox`. This is what the events/proxy route uses — no ctx
  *      hint, just the recorded entry.
  *
- *   4. **Default policy** (`resolveDefaultSandboxProviderKind`). Pre-
- *      provision fall-through: live link → `user-desktop`, else env kind.
+ *   4. **Default policy** (`resolveDefaultKind`). Pre-provision
+ *      fall-through: live link → `user-desktop`, else env kind.
  *
  * Returns a fully-bound `SandboxProvider` plus the resolved kind. Callers
- * never need to set `ctx.sandboxPreference` / `ctx.linkForCurrentRun`
- * themselves — the resolver reads them as input.
+ * never need to set `ctx.sandboxPreference` themselves — the resolver reads it
+ * as input.
  */
 
 import { parseBranchMap } from "@decocms/mesh-sdk";
@@ -37,7 +37,6 @@ import {
 import type { StudioContext } from "../core/studio-context";
 import { readSandboxMap } from "../tools/sandbox/sandbox-map";
 import { buildDesktopProvider, getSandboxProviderByKind } from "./lifecycle";
-import { resolveDefaultSandboxProviderKind } from "./resolve-default-provider-kind";
 
 export interface ResolveSandboxProviderArgs {
   /** User whose sandboxMap cell to read and (for `desktop`) whose link to bind. */
@@ -74,14 +73,14 @@ export async function resolveSandboxProvider(
 
   // 2. Per-run dispatch hint. `dispatch-run` already chose; honor it
   //    without touching sandboxMap. `agent-sandbox` is explicit hosted
-  //    execution; `user-desktop` carries its link inline; `cluster-default`
-  //    means "use the provider the env/default policy points to" (legacy
-  //    automation/default behavior).
+  //    execution; `user-desktop` builds the desktop provider unconditionally;
+  //    `cluster-default` means "use the provider the env/default policy points
+  //    to" (legacy automation/default behavior).
   if (ctx.sandboxPreference === "agent-sandbox") {
     const provider = await bindProviderForKind(ctx, userId, "agent-sandbox");
     return { provider, kind: "agent-sandbox" };
   }
-  if (ctx.sandboxPreference === "user-desktop" && ctx.linkForCurrentRun) {
+  if (ctx.sandboxPreference === "user-desktop") {
     const provider = await buildDesktopProvider(ctx, userId);
     return { provider, kind: "user-desktop" };
   }
@@ -112,13 +111,13 @@ export async function resolveSandboxProvider(
     const preferred =
       restRecorded.length === 0
         ? firstRecorded
-        : await pickRecordedKind(ctx, userId, firstRecorded, restRecorded);
+        : pickRecordedKind(firstRecorded, restRecorded);
     const provider = await bindProviderForKind(ctx, userId, preferred);
     return { provider, kind: preferred };
   }
 
   // 4. Default policy.
-  const kind = await resolveDefaultKind(ctx, userId);
+  const kind = resolveDefaultKind();
   const provider = await bindProviderForKind(ctx, userId, kind);
   return { provider, kind };
 }
@@ -147,26 +146,17 @@ function readRecordedKinds(
  * events/proxy path deterministic across pods and matches what a fresh
  * SANDBOX_START with no explicit kind would have used.
  */
-async function pickRecordedKind(
-  ctx: StudioContext,
-  userId: string,
+function pickRecordedKind(
   first: SandboxProviderKind,
   rest: SandboxProviderKind[],
-): Promise<SandboxProviderKind> {
-  const preferred = await resolveDefaultKind(ctx, userId);
+): SandboxProviderKind {
+  const preferred = resolveDefaultKind();
   if (preferred === first || rest.includes(preferred)) return preferred;
   return first;
 }
 
-async function resolveDefaultKind(
-  ctx: StudioContext,
-  userId: string,
-): Promise<SandboxProviderKind> {
-  if (!ctx.linkClaimRegistry) return resolveSandboxProviderKindFromEnv();
-  return resolveDefaultSandboxProviderKind(userId, {
-    linkClaimRegistry: ctx.linkClaimRegistry,
-    resolveEnvKind: resolveSandboxProviderKindFromEnv,
-  });
+function resolveDefaultKind(): SandboxProviderKind {
+  return resolveSandboxProviderKindFromEnv();
 }
 
 async function bindProviderForKind(
@@ -175,17 +165,8 @@ async function bindProviderForKind(
   kind: SandboxProviderKind,
 ): Promise<SandboxProvider> {
   if (kind !== "user-desktop") return getSandboxProviderByKind(ctx, kind);
-
-  if (!ctx.linkClaimRegistry) {
-    throw new Error(
-      "user-desktop sandbox provider requires ctx.linkClaimRegistry to be wired (set on StudioContextConfig).",
-    );
-  }
-  const link = await ctx.linkClaimRegistry.get(userId);
-  if (!link) {
-    throw new Error(
-      `No link daemon registered for user "${userId}". Start one with \`deco link\` (or run \`bun run dev --local-sandbox-provider\` for dev).`,
-    );
-  }
+  // Optimistic: build the desktop provider unconditionally. Operations through
+  // it fail-fast over the tunnel if the daemon is gone (the VM-tool layer
+  // reaps + respawns on proxy failure). No pre-flight liveness check.
   return buildDesktopProvider(ctx, userId);
 }

@@ -22,6 +22,13 @@ export function createClaudeCodeModel(
     /** Chat mode plan — same tool restrictions as readonly for headless CLI */
     isPlanMode?: boolean;
     resume?: string;
+    systemPrompt?:
+      | string
+      | {
+          type: "preset";
+          preset: "claude_code";
+          append?: string;
+        };
     /** Working directory for Claude Code's subprocess. Defaults to mesh's cwd. */
     cwd?: string;
   },
@@ -61,6 +68,10 @@ export function createClaudeCodeModel(
 
   if (options?.resume) {
     settings.resume = options.resume;
+  }
+
+  if (options?.systemPrompt) {
+    settings.systemPrompt = options.systemPrompt;
   }
 
   const provider = createClaudeCode({

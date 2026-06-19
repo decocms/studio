@@ -156,8 +156,7 @@ describe("PartRowBuilder", () => {
 
   it("two builders sharing a runId but distinct message ids produce disjoint row ids (pull turn: user vs assistant)", () => {
     // Regression for the v2 part-id collision: in the PULL path the user
-    // message is persisted by one PartRowBuilder (at dispatch) and the
-    // assistant message by a SEPARATE PartRowBuilder (in consumeRelayedRun),
+    // message and assistant message are projected by separate PartRowBuilders,
     // both with runId == threadId and seq restarting at 0. With per-RUN ids
     // (`${runId}:${seq}`) the assistant's `${threadId}:0`/`:1` collided with
     // the user's and were dropped by ON CONFLICT DO NOTHING. Per-MESSAGE ids

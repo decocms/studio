@@ -7,7 +7,7 @@ import { ModePickerPure } from "./mode-picker";
 
 describe("ModePickerPure", () => {
   it("renders the closed pill with the current mode label", () => {
-    const { getByRole, getByAltText } = render(
+    const { getByRole } = render(
       <ModePickerPure
         mode="cloud-decopilot"
         availability={{
@@ -20,8 +20,9 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    expect(getByRole("button", { name: /Cloud/i })).toBeInTheDocument();
-    expect(getByAltText("Decopilot")).toBeInTheDocument();
+    expect(
+      getByRole("button", { name: "Decopilot on cloud" }),
+    ).toBeInTheDocument();
   });
 
   it("renders Claude Code label when active", () => {
@@ -38,7 +39,9 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    expect(getByRole("button", { name: /Claude Code/i })).toBeInTheDocument();
+    expect(
+      getByRole("button", { name: "Claude Code on desktop" }),
+    ).toBeInTheDocument();
   });
 
   it("marks the selected local preview as green without marking the popover row", () => {
@@ -78,7 +81,7 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Cloud/i }));
+    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
 
     const localHeader = getByTestId("local-section-header");
     expect(localHeader).toHaveClass("text-success");
@@ -109,7 +112,7 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    const button = getByRole("button", { name: /Cloud/i });
+    const button = getByRole("button", { name: /Decopilot/i });
     expect(button).toBeDisabled();
   });
 
@@ -187,7 +190,7 @@ describe("ModePickerPure", () => {
       />,
     );
     const button = getByTestId("mode-picker-locked");
-    expect(button).toHaveAttribute("aria-label", "Cloud");
+    expect(button).toHaveAttribute("aria-label", "Decopilot on cloud");
   });
 
   it("opens the popover and shows stitched rows in order", () => {
@@ -204,7 +207,7 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Cloud/i }));
+    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
     const items = getAllByRole("menuitem");
     expect(items.map((i) => i.textContent)).toEqual([
       expect.stringMatching(/Decopilot/),
@@ -231,7 +234,7 @@ describe("ModePickerPure", () => {
         onConnectDesktop={onConnectDesktop}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Cloud/i }));
+    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
     // Local rows are teasers, not omitted — discoverability is the point.
     const items = getAllByRole("menuitem");
     expect(items).toHaveLength(4);
@@ -286,7 +289,7 @@ describe("ModePickerPure", () => {
         onSelect={() => {}}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Cloud/i }));
+    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
     for (const name of [/Claude Code/, /Codex/]) {
       const row = getByRole("menuitem", { name });
       expect(row).toHaveAttribute("aria-disabled", "true");
@@ -312,7 +315,7 @@ describe("ModePickerPure", () => {
         onSelect={onSelect}
       />,
     );
-    fireEvent.click(getByRole("button", { name: /Cloud/i }));
+    fireEvent.click(getByRole("button", { name: /Decopilot/i }));
     fireEvent.click(getByRole("menuitem", { name: /Claude Code/ }));
     expect(onSelect).toHaveBeenCalledWith("local-claude-code");
     expect(queryAllByRole("menuitem")).toHaveLength(0);

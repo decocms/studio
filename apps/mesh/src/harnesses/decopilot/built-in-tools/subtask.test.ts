@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   createSubtaskTool,
+  resolveSubtaskCodingWorkspace,
   SubtaskInputSchema,
   type SubtaskParams,
 } from "./subtask";
@@ -147,6 +148,102 @@ describe("createSubtaskTool", () => {
     expect(tool.description).toBeDefined();
     expect(tool.description).toContain("subagent");
     expect(tool.inputSchema).toBeDefined();
+  });
+});
+
+describe("resolveSubtaskCodingWorkspace", () => {
+  test("uses target repo facts while inheriting branch and cwd from parent workspace", () => {
+    const result = resolveSubtaskCodingWorkspace(
+      {
+        repo: {
+          owner: "deco",
+          name: "site",
+          connectionId: "conn-1",
+        } as never,
+      },
+      {
+        repo: {
+          owner: "deco",
+          name: "other",
+          connectedGithub: true,
+        },
+        branch: "main",
+        cwd: "/repo",
+        workspaceKind: "github",
+      },
+    );
+
+    expect(result).toEqual({
+      repo: {
+        owner: "deco",
+        name: "site",
+        connectedGithub: true,
+      },
+      branch: "main",
+      cwd: "/repo",
+      workspaceKind: "github",
+    });
+  });
+
+  test("marks target public clone repo as not connected to GitHub", () => {
+    const result = resolveSubtaskCodingWorkspace(
+      {
+        repo: {
+          owner: "deco",
+          name: "public-site",
+        },
+      },
+      {
+        branch: "main",
+        cwd: "/repo",
+        workspaceKind: "github",
+      },
+    );
+
+    expect(result).toEqual({
+      repo: {
+        owner: "deco",
+        name: "public-site",
+        connectedGithub: false,
+      },
+      branch: "main",
+      cwd: "/repo",
+      workspaceKind: "github",
+    });
+  });
+
+  test("passes parent workspace through for self-clone targets with no repo", () => {
+    const parentWorkspace = {
+      cwd: "/repo",
+      workspaceKind: "local" as const,
+    };
+
+    const result = resolveSubtaskCodingWorkspace(
+      {
+        repo: undefined,
+      },
+      parentWorkspace,
+      true,
+    );
+
+    expect(result).toBe(parentWorkspace);
+  });
+
+  test("clears parent workspace for cross-agent targets with no repo", () => {
+    const parentWorkspace = {
+      cwd: "/repo",
+      workspaceKind: "local" as const,
+    };
+
+    const result = resolveSubtaskCodingWorkspace(
+      {
+        repo: undefined,
+      },
+      parentWorkspace,
+      false,
+    );
+
+    expect(result).toBeUndefined();
   });
 });
 

@@ -73,7 +73,6 @@ import type {
 
 import type { EventBus } from "../event-bus/interface";
 import type { MemberRoleCache } from "../auth/member-role-cache";
-import type { LinkClaimRegistry } from "../links/link-claim-registry";
 
 // ============================================================================
 // Helper Functions
@@ -127,8 +126,7 @@ export interface StudioContextConfig {
   modelListCache?: ModelListCache;
   providerKeyCache?: ProviderKeyCache;
   memberRoleCache?: MemberRoleCache;
-  /** Required for desktop sandbox auto-resolution; tests may omit. */
-  linkClaimRegistry?: LinkClaimRegistry;
+  linkStatusProbe?: import("@/links/tunnel-status-probe").LinkStatusProbe;
   /**
    * Publishes a control frame to a user's link control channel (delegates to
    * the app's CancelBroadcast). Required for LINK_DISCONNECT; tests may omit.
@@ -1438,7 +1436,7 @@ export async function createStudioContextFactory(
         ),
       },
       eventBus: config.eventBus,
-      linkClaimRegistry: config.linkClaimRegistry,
+      linkStatusProbe: config.linkStatusProbe,
       publishLinkControlFrame: config.publishLinkControlFrame,
       aiProviders: aiProviderFactory,
       createMCPProxy: async (conn: string | ConnectionEntity) => {

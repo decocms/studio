@@ -9,8 +9,8 @@ export const LINK_DISCONNECT = defineTool({
   inputSchema: z.object({}),
   outputSchema: z.object({
     /**
-     * True when a registered link existed and was disconnected; false when
-     * there was nothing to disconnect (already offline / TTL expired).
+     * True when a shutdown frame was published to the caller's channel; false
+     * when no frame publisher is wired (test / no-NATS contexts).
      */
     disconnected: z.boolean(),
   }),
@@ -19,19 +19,8 @@ export const LINK_DISCONNECT = defineTool({
     await ctx.access.check();
 
     const userSub = ctx.auth.user!.id;
-    const registry = ctx.linkClaimRegistry;
-    const claim = registry ? await registry.get(userSub) : null;
-    if (!claim) return { disconnected: false };
-
-    // Order matters: tell the daemon to stop BEFORE deleting the claim. The
-    // frame is fire-and-forget (held control long-poll delivers it within
-    // the poll window); deleting first would still work, but a daemon that
-    // never receives the frame (pre-`shutdown` CLI, NATS hiccup) re-mints
-    // the claim on its next poll — the daemon stopping is what makes the
-    // disconnect stick, the delete just flips the UI immediately.
-    ctx.publishLinkControlFrame?.(userSub, { type: "shutdown" });
-    await registry!.delete(userSub);
-
+    if (!ctx.publishLinkControlFrame) return { disconnected: false };
+    ctx.publishLinkControlFrame(userSub, { type: "shutdown" });
     return { disconnected: true };
   },
 });
