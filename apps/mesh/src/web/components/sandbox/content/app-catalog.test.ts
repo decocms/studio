@@ -141,7 +141,7 @@ describe("app-catalog", () => {
 
   it("lists installed custom/local apps without manifest or store entries", () => {
     const emptyMeta: LiveMeta = {
-      manifest: { blocks: { apps: { anyOf: [] } } },
+      manifest: { blocks: { apps: {} } },
       schema: {},
     };
     const decofile = {
