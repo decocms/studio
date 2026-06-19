@@ -2,12 +2,16 @@ import { hostname as osHostname } from "node:os";
 import { retry, sleep, type RetryOptions } from "@decocms/std";
 import * as tunnel from "@decocms/tunnel";
 import {
-  connect,
+  connect as connectTcp,
   credsAuthenticator,
   tokenAuthenticator,
   type ConnectionOptions,
   type NatsConnection,
 } from "nats";
+import {
+  connect as connectWebSocket,
+  type ConnectionOptions as WebSocketConnectionOptions,
+} from "nats.ws";
 import {
   linkSessionResponseSchema,
   type LinkSessionResponse,
@@ -105,6 +109,13 @@ interface ClusterConnectionTunnelDeps {
    * seconds between simulated 503s.
    */
   sessionFetchRetryOptions?: RetryOptions;
+}
+
+type NatsConnector = (options: ConnectionOptions) => Promise<NatsConnection>;
+
+interface ConnectNatsDeps {
+  connectTcp?: NatsConnector;
+  connectWebSocket?: NatsConnector;
 }
 
 type LinkSessionRequestInput = Pick<
@@ -270,10 +281,33 @@ export function buildNatsConnectOptions(
   };
 }
 
-async function connectNats(
+function isWebSocketSession(session: LinkSessionResponse): boolean {
+  return session.connection.urls.some((url) => {
+    const protocol = url.match(/^([a-z][a-z0-9+.-]*):\/\//i)?.[1];
+    return (
+      protocol?.toLowerCase() === "ws" || protocol?.toLowerCase() === "wss"
+    );
+  });
+}
+
+const defaultWebSocketConnect: NatsConnector = async (options) =>
+  (await connectWebSocket(
+    options as WebSocketConnectionOptions,
+  )) as unknown as NatsConnection;
+
+export async function connectNats(
   session: LinkSessionResponse,
+  deps: ConnectNatsDeps = {},
 ): Promise<NatsConnection> {
-  return await connect(buildNatsConnectOptions(session));
+  const useWebSocket = isWebSocketSession(session);
+  const options = buildNatsConnectOptions(session);
+  if (useWebSocket) {
+    options.ignoreClusterUpdates = true;
+  }
+  const connector = useWebSocket
+    ? (deps.connectWebSocket ?? defaultWebSocketConnect)
+    : (deps.connectTcp ?? connectTcp);
+  return await connector(options);
 }
 
 export function sessionRenewDelayMs(
