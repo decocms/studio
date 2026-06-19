@@ -8,6 +8,7 @@ import { z } from "zod";
 import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
 import { getUserId, requireAuth } from "../../core/studio-context";
+import { canAssignRole } from "../../auth/roles";
 
 export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
   name: "ORGANIZATION_MEMBER_UPDATE_ROLE",
@@ -56,6 +57,13 @@ export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
       throw new Error(
         "Organization ID required (no active organization in context)",
       );
+    }
+
+    // Validate the caller is allowed to assign the target role.
+    // Admins cannot assign "owner" — only owners can.
+    const targetRole = Array.isArray(input.role) ? input.role[0] : input.role;
+    if (targetRole && !canAssignRole(ctx.auth.user?.role, targetRole)) {
+      throw new Error(`Insufficient privileges to assign role "${targetRole}"`);
     }
 
     // Update member role via bound auth client
