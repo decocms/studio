@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "bun:test";
 import {
   buildNatsConnectOptions,
+  connectNats,
   connectToClusterTunnel,
   createTunnelCommandFetch,
   fetchLinkSession,
@@ -9,6 +10,7 @@ import {
   sessionRenewDelayMs,
   type ClusterConnectionTunnelInput,
 } from "./cluster-connection-tunnel";
+import type { ConnectionOptions, NatsConnection } from "nats";
 import type { ControlHandler } from "./control-handler";
 import { openInMemoryOutbox } from "./outbox";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
@@ -239,6 +241,58 @@ describe("buildNatsConnectOptions", () => {
 
     expect(options.servers).toEqual(["nats://127.0.0.1:4222"]);
     expect(typeof options.authenticator).toBe("function");
+  });
+});
+
+describe("connectNats", () => {
+  const fakeConnection = {} as NatsConnection;
+
+  it("uses the websocket connector for ws and wss session URLs", async () => {
+    const calls: string[] = [];
+
+    await connectNats(
+      {
+        ...sessionWithoutAuth,
+        connection: {
+          urls: ["wss://nats.example.com"],
+          credentials: "creds",
+        },
+      },
+      {
+        connectTcp: async () => {
+          calls.push("tcp");
+          return fakeConnection;
+        },
+        connectWebSocket: async (options: ConnectionOptions) => {
+          calls.push("websocket");
+          expect(options.servers).toEqual(["wss://nats.example.com"]);
+          expect(options.ignoreClusterUpdates).toBe(true);
+          expect(typeof options.authenticator).toBe("function");
+          return fakeConnection;
+        },
+      },
+    );
+
+    expect(calls).toEqual(["websocket"]);
+  });
+
+  it("keeps the TCP connector for nats session URLs", async () => {
+    const calls: string[] = [];
+
+    await connectNats(sessionWithoutAuth, {
+      connectTcp: async (options: ConnectionOptions) => {
+        calls.push("tcp");
+        expect(options.servers).toEqual(["nats://127.0.0.1:4222"]);
+        expect(options.ignoreClusterUpdates).toBeUndefined();
+        return fakeConnection;
+      },
+      connectWebSocket: async () => {
+        calls.push("websocket");
+        return fakeConnection;
+      },
+    });
+
+    expect(calls).toEqual(["tcp"]);
   });
 });
 
