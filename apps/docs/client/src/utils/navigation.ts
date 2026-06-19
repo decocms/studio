@@ -45,6 +45,7 @@ export async function getNavigationLinks(
     "studio/automations",
     "studio/monitoring",
     "studio/ai-providers",
+    "studio/buckets",
 
     // 4. Decopilot
     "studio/decopilot/overview",
