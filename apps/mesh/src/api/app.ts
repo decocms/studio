@@ -693,6 +693,15 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
  */
 const eventsHandler: MiddlewareHandler<Env> = async (c) => {
   const ctx = c.var.meshContext;
+
+  // Require authentication — without this check, resolveOrgFromPath lets
+  // unauthenticated callers through (by design, for MCP OAuth discovery)
+  // and anyone with a valid org slug could publish arbitrary events.
+  const userId = ctx.auth?.user?.id ?? ctx.auth?.apiKey?.userId;
+  if (!userId) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
   const orgId = ctx.organization?.id ?? c.req.param("organizationId");
   if (!orgId) {
     return c.json({ error: "organization id missing" }, 400);
