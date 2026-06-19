@@ -971,6 +971,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     hidden: boolean | number | null;
     message_storage_version?: number | null;
     link_transport?: string | null;
+    projected_seq?: number | null;
   }): Thread {
     let metadata: ThreadMetadata = {};
     if (row.metadata != null) {
@@ -1016,6 +1017,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
       // threads keep reading from `thread_messages`.
       message_storage_version: row.message_storage_version ?? 1,
       link_transport: row.link_transport ?? null,
+      // Defaults to 0 for pre-migration rows (column absent/null).
+      projected_seq: row.projected_seq ?? 0,
     };
   }
 
