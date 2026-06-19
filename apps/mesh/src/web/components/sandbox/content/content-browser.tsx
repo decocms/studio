@@ -756,6 +756,7 @@ function ContentBrowserReady({
                 title="Site"
                 excludeFields={["seo"]}
                 schemaPending={isAppSchemaLoading(siteApp.resolveType, ["seo"])}
+                previewBaseUrl={previewUrl}
               />
             ) : (
               <EmptyMessage
@@ -784,6 +785,7 @@ function ContentBrowserReady({
                 block={decofile[selection.key] as Record<string, unknown>}
                 decofile={decofile}
                 meta={meta}
+                previewBaseUrl={previewUrl}
                 schemaPending={isAppSchemaLoading(
                   typeof (decofile[selection.key] as Record<string, unknown>)
                     ?.__resolveType === "string"
@@ -1445,16 +1447,18 @@ function ItemRow({
 }) {
   const rowIcon =
     variantCount && variantCount > 1 ? (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Icon
-            size={16}
-            className="shrink-0"
-            style={{ color: VARIANT_GREEN }}
-          />
-        </TooltipTrigger>
-        <TooltipContent side="right">{variantCount} variants</TooltipContent>
-      </Tooltip>
+      <span className="flex size-8 shrink-0 items-center justify-center">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Icon
+              size={16}
+              className="shrink-0"
+              style={{ color: VARIANT_GREEN }}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="right">{variantCount} variants</TooltipContent>
+        </Tooltip>
+      </span>
     ) : logoUrl ? (
       <img
         src={logoUrl}
@@ -1462,13 +1466,15 @@ function ItemRow({
         className="size-8 shrink-0 rounded-lg object-cover bg-muted"
       />
     ) : (
-      <Icon
-        size={16}
-        className={cn(
-          "shrink-0",
-          active ? "text-accent-foreground" : "text-muted-foreground",
-        )}
-      />
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+        <Icon
+          size={16}
+          className={cn(
+            "shrink-0",
+            active ? "text-accent-foreground" : "text-muted-foreground",
+          )}
+        />
+      </span>
     );
 
   return (

@@ -17,6 +17,7 @@ import {
   wrapMultivariateArrayValue,
 } from "./page-variants";
 import {
+  breadcrumbPathForActiveField,
   fieldDisplayLabel,
   resolveActiveFieldKey,
 } from "./schema-form-breadcrumb";
@@ -248,6 +249,8 @@ export function SchemaForm({
   meta,
   decofile,
   onSaveReferencedBlock,
+  previewBaseUrl,
+  onAddSectionItem,
 }: {
   schema: SchemaProperty;
   value: unknown;
@@ -261,6 +264,8 @@ export function SchemaForm({
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
+  previewBaseUrl?: string | null;
+  onAddSectionItem?: FieldProps["onAddSectionItem"];
 }) {
   const properties = schema.properties;
   if (!properties) return null;
@@ -286,12 +291,21 @@ export function SchemaForm({
     onChange({ ...objValue, [key]: fieldValue });
   };
 
+  const containerResolveType =
+    typeof objValue.__resolveType === "string"
+      ? objValue.__resolveType
+      : undefined;
+
   const activeKey =
     breadcrumbPath.length > 0
       ? resolveActiveFieldKey(keys, properties, objValue, breadcrumbPath)
       : null;
   const activeSchema = activeKey ? properties[activeKey] : null;
   const visibleKeys = activeKey && activeSchema ? [activeKey] : keys;
+  const fieldBreadcrumbPath =
+    activeKey && activeSchema
+      ? breadcrumbPathForActiveField(activeKey, activeSchema, breadcrumbPath)
+      : breadcrumbPath;
   return (
     <div className="min-w-0 space-y-6">
       {visibleKeys.map((key) => {
@@ -306,11 +320,14 @@ export function SchemaForm({
           onChange: (val) => updateField(key, val),
           path: fieldPath,
           label,
-          breadcrumbPath,
+          breadcrumbPath: fieldBreadcrumbPath,
           onBreadcrumbChange,
           meta,
           decofile,
           onSaveReferencedBlock,
+          containerResolveType,
+          previewBaseUrl,
+          onAddSectionItem,
         });
       })}
     </div>

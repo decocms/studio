@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { SchemaProperty } from "./resolve-schema";
 import {
+  breadcrumbPathForActiveField,
+  buildArrayDrillDownBreadcrumb,
   fieldDisplayLabel,
   isArrayDrillDownField,
   resolveActiveFieldKey,
@@ -60,6 +62,16 @@ describe("resolveActiveFieldKey", () => {
     expect(resolveActiveFieldKey(["layout"], properties, {}, [])).toBeNull();
   });
 
+  test("matches array field label anywhere in breadcrumb trail", () => {
+    expect(
+      resolveActiveFieldKey(["layout", "cards"], properties, {}, [
+        "Options",
+        "Cards",
+        "Men's",
+      ]),
+    ).toBe("cards");
+  });
+
   test("finds nested array field inside object ancestor", () => {
     const globalHeader = {
       logos: { title: "Logos", type: "object", properties: {} },
@@ -95,6 +107,27 @@ describe("resolveActiveFieldKey", () => {
         ["A Utah Proud Brand Since 1921"],
       ),
     ).toBe("alert");
+  });
+
+  test("matches array field when runtime value is an array", () => {
+    const properties = {
+      appKey: { type: "string", title: "App Key" } as SchemaProperty,
+      flags: {
+        title: "Flags Personalizada",
+        type: "object",
+      } as SchemaProperty,
+    };
+
+    expect(
+      resolveActiveFieldKey(
+        ["appKey", "flags"],
+        properties,
+        {
+          flags: [{ name: "Sale" }, { name: "Holiday" }],
+        },
+        ["Flags Personalizada", "Sale"],
+      ),
+    ).toBe("flags");
   });
 });
 
@@ -134,6 +167,47 @@ describe("isArrayDrillDownField", () => {
         ],
       } as SchemaProperty),
     ).toBe(true);
+  });
+});
+
+describe("buildArrayDrillDownBreadcrumb", () => {
+  test("includes array label before item label", () => {
+    expect(
+      buildArrayDrillDownBreadcrumb([], "Flag Desconto", "Partiu ferias"),
+    ).toEqual(["Flag Desconto", "Partiu ferias"]);
+  });
+
+  test("does not duplicate crumbs already in trail", () => {
+    expect(
+      buildArrayDrillDownBreadcrumb(
+        ["Flag Desconto", "Partiu ferias"],
+        "Flag Desconto",
+        "Partiu ferias",
+      ),
+    ).toEqual(["Flag Desconto", "Partiu ferias"]);
+  });
+});
+
+describe("breadcrumbPathForActiveField", () => {
+  const schema = {
+    title: "Flag Desconto",
+    type: "array",
+    items: { type: "object" },
+  } as SchemaProperty;
+
+  test("strips array field label from head", () => {
+    expect(
+      breadcrumbPathForActiveField("flags", schema, [
+        "Flag Desconto",
+        "Partiu ferias",
+      ]),
+    ).toEqual(["Partiu ferias"]);
+  });
+
+  test("keeps trail when head is item label", () => {
+    expect(
+      breadcrumbPathForActiveField("flags", schema, ["Partiu ferias"]),
+    ).toEqual(["Partiu ferias"]);
   });
 });
 

@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DotsGrid, DotsHorizontal, Plus, Trash01 } from "@untitledui/icons";
+import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   DropdownMenu,
@@ -27,11 +28,23 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { AddSectionModal } from "../add-section-modal";
 import { getArrayItemImageSrc, getArrayItemLabel } from "../array-item-display";
 import { isEmbeddedUnionResolveType } from "../block-type-utils";
-import { resolveArrayItemSelection } from "../schema-form-breadcrumb";
+import {
+  buildArrayDrillDownBreadcrumb,
+  normalizeBreadcrumbLabel,
+  resolveArrayItemSelection,
+} from "../schema-form-breadcrumb";
+import { isSectionArrayField } from "../section-array-field";
+import type { SectionCatalogEntry } from "../section-catalog";
 import type { FieldProps } from "./field-props";
 import { SchemaForm, renderField } from "../schema-form";
+import {
+  resolveSchema,
+  type LiveMeta,
+  type SchemaProperty,
+} from "../resolve-schema";
 
 /** Stable DnD id per row; item data always comes from the `items` prop. */
 interface ArrayEntry {
@@ -44,6 +57,48 @@ function createArrayEntries(count: number): ArrayEntry[] {
     id: crypto.randomUUID(),
     index,
   }));
+}
+
+function itemEditorSchema(
+  item: unknown,
+  itemSchema: SchemaProperty | undefined,
+  meta?: LiveMeta,
+  containerResolveType?: string,
+  arrayFieldKey?: string,
+): SchemaProperty | undefined {
+  if (
+    itemSchema?.type === "object" &&
+    itemSchema.properties &&
+    Object.keys(itemSchema.properties).length > 0
+  ) {
+    return itemSchema;
+  }
+  if (itemSchema?.type === "block-ref" && itemSchema.anyOfRefs?.length) {
+    return itemSchema;
+  }
+  if (item != null && typeof item === "object" && !Array.isArray(item)) {
+    const resolveType = (item as Record<string, unknown>).__resolveType;
+    if (typeof resolveType === "string" && meta) {
+      const resolved = resolveSchema(resolveType, meta);
+      if (resolved?.properties && Object.keys(resolved.properties).length > 0) {
+        return resolved;
+      }
+    }
+  }
+  if (meta && containerResolveType && arrayFieldKey) {
+    const container = resolveSchema(containerResolveType, meta);
+    const itemsSchema = container?.properties?.[arrayFieldKey]?.items;
+    if (
+      itemsSchema?.properties &&
+      Object.keys(itemsSchema.properties).length > 0
+    ) {
+      return {
+        ...itemsSchema,
+        titleBy: itemsSchema.titleBy ?? itemSchema?.titleBy,
+      };
+    }
+  }
+  return itemSchema;
 }
 
 function remapEntryIndices(entries: ArrayEntry[]): ArrayEntry[] {
@@ -66,6 +121,13 @@ function resizeArrayEntries(
     }),
   );
   return [...current, ...extra];
+}
+
+function findBreadcrumbLabelIndex(path: string[], targetLabel: string): number {
+  const normalized = normalizeBreadcrumbLabel(targetLabel);
+  return path.findIndex(
+    (crumb) => normalizeBreadcrumbLabel(crumb) === normalized,
+  );
 }
 
 function ArrayRowContent({
@@ -189,9 +251,16 @@ export function ArrayField({
   meta,
   decofile,
   onSaveReferencedBlock,
+  containerResolveType,
+  previewBaseUrl,
+  onAddSectionItem,
 }: FieldProps) {
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
+  const usesSectionPicker = isSectionArrayField(schema);
+  const arrayFieldKey = path.includes(".")
+    ? path.slice(0, path.indexOf("."))
+    : path;
   const selection = resolveArrayItemSelection(
     label,
     breadcrumbPath,
@@ -204,6 +273,7 @@ export function ArrayField({
     createArrayEntries(items.length),
   );
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+  const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [prevListKey, setPrevListKey] = useState(path);
   const [prevItemCount, setPrevItemCount] = useState(items.length);
   const suppressClickRef = useRef(false);
@@ -223,7 +293,19 @@ export function ArrayField({
   const openItem = (index: number) => {
     if (suppressClickRef.current) return;
     const labelText = itemLabel(items[index], index);
-    onBreadcrumbChange?.([...breadcrumbPath, labelText]);
+    onBreadcrumbChange?.(
+      buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
+    );
+  };
+
+  const appendItem = (item: unknown) => {
+    const next = [...items, item];
+    onChange(next);
+    const nextIndex = next.length - 1;
+    const labelText = getArrayItemLabel(item, nextIndex, itemSchema);
+    onBreadcrumbChange?.(
+      buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
+    );
   };
 
   const addItem = () => {
@@ -252,14 +334,45 @@ export function ArrayField({
     onChange(next);
     const nextIndex = next.length - 1;
     const labelText = getArrayItemLabel(defaultVal, nextIndex, itemSchema);
-    onBreadcrumbChange?.([...breadcrumbPath, labelText]);
+    onBreadcrumbChange?.(
+      buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
+    );
+  };
+
+  const handleAddClick = () => {
+    if (usesSectionPicker) {
+      if (!previewBaseUrl) {
+        toast.error("Start the preview dev server to add sections.");
+        return;
+      }
+      setAddSectionOpen(true);
+      return;
+    }
+    addItem();
+  };
+
+  const handleSelectSection = async (entry: SectionCatalogEntry) => {
+    const append = (item: unknown) => {
+      appendItem(item);
+      setAddSectionOpen(false);
+    };
+
+    try {
+      if (onAddSectionItem) {
+        await onAddSectionItem(entry, append);
+        return;
+      }
+      append({ __resolveType: entry.resolveType });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not add section");
+    }
   };
 
   const removeItem = (index: number) => {
     onChange(items.filter((_, i) => i !== index));
     if (selectedIndex === index) {
       const itemName = itemLabel(items[index], index);
-      const itemIndex = breadcrumbPath.indexOf(itemName);
+      const itemIndex = findBreadcrumbLabelIndex(breadcrumbPath, itemName);
       onBreadcrumbChange?.(
         itemIndex >= 0 ? breadcrumbPath.slice(0, itemIndex) : [],
       );
@@ -273,14 +386,16 @@ export function ArrayField({
     if (selectedIndex === index) {
       const previousName = itemLabel(items[index], index);
       const labelText = itemLabel(val, index);
-      const itemIndex = breadcrumbPath.indexOf(previousName);
+      const itemIndex = findBreadcrumbLabelIndex(breadcrumbPath, previousName);
       if (itemIndex >= 0) {
         const nextPath = [...breadcrumbPath];
         nextPath[itemIndex] = labelText;
         onBreadcrumbChange?.(nextPath);
         return;
       }
-      onBreadcrumbChange?.([...breadcrumbPath, labelText]);
+      onBreadcrumbChange?.(
+        buildArrayDrillDownBreadcrumb(breadcrumbPath, label, labelText),
+      );
     }
   };
 
@@ -335,20 +450,32 @@ export function ArrayField({
 
   if (selectedIndex !== null && selectedIndex < items.length) {
     const item = items[selectedIndex];
+    const editorSchema = itemEditorSchema(
+      item,
+      itemSchema,
+      meta,
+      containerResolveType,
+      arrayFieldKey,
+    );
     const arrayItemPrefix = () => {
       const itemName = itemLabel(item, selectedIndex);
-      const itemIndex = breadcrumbPath.indexOf(itemName);
+      const trail = buildArrayDrillDownBreadcrumb(
+        breadcrumbPath,
+        label,
+        itemName,
+      );
+      const itemIndex = findBreadcrumbLabelIndex(trail, itemName);
       if (itemIndex >= 0) {
-        return breadcrumbPath.slice(0, itemIndex + 1);
+        return trail.slice(0, itemIndex + 1);
       }
-      return [...breadcrumbPath, itemName];
+      return trail;
     };
 
     return (
       <div className="min-w-0">
-        {itemSchema?.type === "object" && itemSchema.properties ? (
+        {editorSchema?.type === "object" && editorSchema.properties ? (
           <SchemaForm
-            schema={itemSchema}
+            schema={editorSchema}
             value={item}
             onChange={(val) => updateItem(selectedIndex, val)}
             basePath={`${path}.${selectedIndex}`}
@@ -359,14 +486,16 @@ export function ArrayField({
             meta={meta}
             decofile={decofile}
             onSaveReferencedBlock={onSaveReferencedBlock}
+            previewBaseUrl={previewBaseUrl}
+            onAddSectionItem={onAddSectionItem}
           />
-        ) : itemSchema ? (
+        ) : editorSchema ? (
           renderField({
-            schema: itemSchema,
+            schema: editorSchema,
             value: item,
             onChange: (val) => updateItem(selectedIndex, val),
             path: `${path}.${selectedIndex}`,
-            label: itemSchema.title ?? `Item ${selectedIndex + 1}`,
+            label: editorSchema.title ?? `Item ${selectedIndex + 1}`,
             breadcrumbPath: selection?.innerPath ?? [],
             onBreadcrumbChange: (nextPath) => {
               onBreadcrumbChange?.([...arrayItemPrefix(), ...nextPath]);
@@ -374,6 +503,8 @@ export function ArrayField({
             meta,
             decofile,
             onSaveReferencedBlock,
+            previewBaseUrl,
+            onAddSectionItem,
           })
         ) : null}
       </div>
@@ -447,12 +578,25 @@ export function ArrayField({
 
       <button
         type="button"
-        onClick={addItem}
+        onClick={handleAddClick}
         className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30"
       >
         <Plus size={14} />
-        Add item
+        {usesSectionPicker ? "Add section" : "Add item"}
       </button>
+
+      {usesSectionPicker && previewBaseUrl && (
+        <AddSectionModal
+          open={addSectionOpen}
+          onOpenChange={setAddSectionOpen}
+          meta={meta}
+          decofile={decofile}
+          previewBaseUrl={previewBaseUrl}
+          onSelect={(entry) => {
+            void handleSelectSection(entry);
+          }}
+        />
+      )}
     </div>
   );
 }

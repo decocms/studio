@@ -60,9 +60,34 @@ export interface LiveMeta {
 
 type RawSchema = Record<string, unknown>;
 
+/** Max `$ref` / `allOf` hops while flattening top-level properties. */
+const MAX_COLLECT_PROPS_DEPTH = 12;
+
+/** Max recursion while building nested field schemas. */
+const MAX_BUILD_PROPERTY_DEPTH = 8;
+
 function isArraySchemaBranch(schema: RawSchema): boolean {
   const t = schema.type;
   return t === "array" || (Array.isArray(t) && t.includes("array"));
+}
+
+/**
+ * Section/loader arrays (items carry `__resolveType` or `anyOf`) vs config
+ * arrays (plain object items, e.g. app flag lists).
+ */
+function isSectionLoaderArrayBranch(
+  branch: RawSchema,
+  resolveRef: (ref: string) => RawSchema,
+): boolean {
+  let items = branch.items as RawSchema | undefined;
+  if (!items) return false;
+  if (typeof items.$ref === "string") {
+    items = resolveRef(items.$ref);
+  }
+  if (Array.isArray(items.anyOf) || Array.isArray(items.oneOf)) return true;
+  const props = items.properties as RawSchema | undefined;
+  const rtEnum = (props?.__resolveType as RawSchema | undefined)?.enum;
+  return Array.isArray(rtEnum) && typeof rtEnum[0] === "string";
 }
 
 // deco.cx convention: VideoWidget schemas don't carry `format` in their
@@ -281,7 +306,7 @@ export function resolveSchema(
     seenRefs: Set<string> = new Set(),
     depth = 0,
   ): RawSchema => {
-    if (depth > 5) return {};
+    if (depth > MAX_COLLECT_PROPS_DEPTH) return {};
 
     if (typeof s.$ref === "string") {
       const key = s.$ref.split("/").pop() ?? "";
@@ -421,6 +446,8 @@ export function resolveSchema(
 
         // Site `global` / page `sections`: plain section arrays with an optional
         // page multivariate flag branch. Prefer the array (admin hides the flag UI).
+        // App config arrays (e.g. flag lists) share anyOf with product-list loaders;
+        // prefer the array branch when items are plain objects, not section refs.
         const arrayBranch = nonNull.find(isArraySchemaBranch);
         const hasPageMultivariateLoader = loaderBranches.some((branch) => {
           const rtEnum = (
@@ -433,18 +460,41 @@ export function resolveSchema(
             rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
           );
         });
-        if (arrayBranch && hasPageMultivariateLoader) {
-          const built = buildProperty(arrayBranch, depth + 1);
-          return {
-            ...built,
-            type: "array",
-            title:
-              typeof resolved.title === "string" ? resolved.title : built.title,
-            description:
-              typeof resolved.description === "string"
-                ? resolved.description
-                : built.description,
-          };
+        if (arrayBranch) {
+          const isConfigArray = !isSectionLoaderArrayBranch(
+            arrayBranch,
+            resolveRef,
+          );
+          if (isConfigArray && nonNull.length > 1) {
+            const built = buildProperty(arrayBranch, depth + 1);
+            return {
+              ...built,
+              type: "array",
+              title:
+                typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title,
+              description:
+                typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description,
+            };
+          }
+          if (hasPageMultivariateLoader) {
+            const built = buildProperty(arrayBranch, depth + 1);
+            return {
+              ...built,
+              type: "array",
+              title:
+                typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title,
+              description:
+                typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description,
+            };
+          }
         }
 
         if (loaderBranches.length > 0) {
@@ -464,7 +514,9 @@ export function resolveSchema(
                   ? branch.description
                   : undefined,
               schema:
-                depth + 1 < 6 ? buildProperty(branch, depth + 1) : undefined,
+                depth + 1 < MAX_BUILD_PROPERTY_DEPTH
+                  ? buildProperty(branch, depth + 1)
+                  : undefined,
             };
           });
           return {
@@ -499,7 +551,10 @@ export function resolveSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
-              schema: depth + 1 < 6 ? buildProperty(def, depth + 1) : undefined,
+              schema:
+                depth + 1 < MAX_BUILD_PROPERTY_DEPTH
+                  ? buildProperty(def, depth + 1)
+                  : undefined,
             };
           });
           return {
@@ -565,7 +620,10 @@ export function resolveSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
-              schema: depth + 1 < 6 ? buildProperty(def, depth + 1) : undefined,
+              schema:
+                depth + 1 < MAX_BUILD_PROPERTY_DEPTH
+                  ? buildProperty(def, depth + 1)
+                  : undefined,
             });
           }
           return {
@@ -592,7 +650,7 @@ export function resolveSchema(
     // deco sections nest images at depth 4+ (`images[].desktop.src`); the
     // old cap left those leaves un-resolved and stripped their `format`.
     let nestedProperties: Record<string, SchemaProperty> | undefined;
-    if (depth < 6) {
+    if (depth < MAX_BUILD_PROPERTY_DEPTH) {
       const nestedRaw = collectProps(resolved);
       const nestedEntries = Object.entries(nestedRaw).filter(
         ([k]) => !k.startsWith("__") && k !== "@type",
@@ -607,7 +665,10 @@ export function resolveSchema(
 
     // Array items
     let itemsSchema: SchemaProperty | undefined;
-    if ((type === "array" || resolved.type === "array") && depth < 6) {
+    if (
+      (type === "array" || resolved.type === "array") &&
+      depth < MAX_BUILD_PROPERTY_DEPTH
+    ) {
       let rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
         if (typeof rawItems.$ref === "string") {
