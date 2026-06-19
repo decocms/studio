@@ -40,7 +40,14 @@
   },
   "optionalDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.181",
-    "@duckdb/node-api": "^1.5.0-r.1"
+    "@duckdb/node-api": "^1.5.0-r.1",
+    "@openai/codex": "0.141.0",
+    "@openai/codex-darwin-arm64": "npm:@openai/codex@0.141.0-darwin-arm64",
+    "@openai/codex-darwin-x64": "npm:@openai/codex@0.141.0-darwin-x64",
+    "@openai/codex-linux-arm64": "npm:@openai/codex@0.141.0-linux-arm64",
+    "@openai/codex-linux-x64": "npm:@openai/codex@0.141.0-linux-x64",
+    "@openai/codex-win32-arm64": "npm:@openai/codex@0.141.0-win32-arm64",
+    "@openai/codex-win32-x64": "npm:@openai/codex@0.141.0-win32-x64"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.85",
