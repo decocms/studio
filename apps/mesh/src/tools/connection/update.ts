@@ -19,6 +19,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
+import { getSettings } from "../../settings";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
 import { fetchToolsFromMCP } from "./fetch-tools";
@@ -227,6 +228,13 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
           ctx,
         );
       }
+    }
+
+    // STDIO connections spawn arbitrary local commands — only allow in local mode.
+    if (finalConnectionType === "STDIO" && !getSettings().localMode) {
+      throw new Error(
+        "STDIO connections are only available in local mode (--local-mode).",
+      );
     }
 
     // Fetch tools from the MCP server.
