@@ -71,6 +71,15 @@ import { shouldRenderInlineModeRow } from "./input-mode-row";
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
 // ============================================================================
 
+export function ChatInputDisabledState({ message }: { message: string }) {
+  return (
+    <div className="flex w-full items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground">
+      <Lock01 size={14} className="shrink-0" />
+      <span className="text-sm">{message}</span>
+    </div>
+  );
+}
+
 /**
  * Attaches window-level dragenter/dragleave/dragover/drop listeners and
  * processes dropped files into the current Tiptap editor.
@@ -402,7 +411,6 @@ export function ChatInput({
     messageCount: messages.length,
     showConnectionsBanner,
   });
-
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
     if (isStreaming) {
@@ -432,12 +440,7 @@ export function ChatInput({
 
   if (userId && task?.created_by && task.created_by !== userId) {
     return (
-      <div className="flex w-full items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground">
-        <Lock01 size={14} className="shrink-0" />
-        <span className="text-sm">
-          Read only — you&apos;re viewing someone else&apos;s thread
-        </span>
-      </div>
+      <ChatInputDisabledState message="Read only - you're viewing someone else's thread" />
     );
   }
 
