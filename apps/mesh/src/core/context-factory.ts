@@ -1389,10 +1389,9 @@ export async function createStudioContextFactory(
         : null;
 
     // Hoist inline data: media to object storage on connection/virtual-MCP
-    // writes (and out of thread message parts) so base64 blobs never land on a
-    // row or get re-inlined into COLLECTION_*_LIST results. Decorate here — not
-    // in the storage classes — because those are singletons without
-    // objectStorage/org slug.
+    // writes so base64 blobs never land on a row or get re-inlined into
+    // COLLECTION_*_LIST results. Decorate here — not in the storage classes —
+    // because those are singletons without objectStorage/org slug.
     decorateStorageWithAssetHoisting(storage, {
       objectStorage,
       baseUrl,

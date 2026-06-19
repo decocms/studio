@@ -31,7 +31,6 @@ export interface MemoryConfig {
  * Provides:
  * - Thread management (get or create)
  * - Message history loading
- * - Message saving
  * - Pruning for context window management
  */
 export class Memory {
@@ -145,11 +144,6 @@ export class Memory {
       chronological,
       isWindowed: total > messages.length,
     };
-  }
-
-  async save(messages: ThreadMessage[]): Promise<void> {
-    if (messages.length === 0) return;
-    await this.storage.saveMessages(messages);
   }
 }
 

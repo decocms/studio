@@ -61,9 +61,9 @@ export function buildStreamRequest(
 ): DispatchRunInput {
   const rawMessages = JSON.parse(automation.messages);
   // Generate fresh ids for each run so concurrent automation runs don't
-  // collide on the same message id (ON CONFLICT in saveMessages would
-  // silently keep the message in the first thread, making it invisible
-  // in subsequent threads).
+  // collide on the same message id (a shared id would let the message be
+  // attributed to the first thread only, making it invisible in subsequent
+  // threads).
   const messages = rawMessages.map((m: { id?: string; role: string }) => ({
     ...m,
     id: crypto.randomUUID(),
