@@ -11,6 +11,7 @@ import { sleep } from "@decocms/std";
 // the workflow modules, which register workflows at import time).
 import {
   AUTOMATIONS_QUEUE,
+  PROJECTOR_QUEUE,
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
 import { getSettings } from "./settings";
@@ -65,7 +66,7 @@ function withSslmode(url: string, ssl: boolean): string {
 // pod and stay exactly-once via DBOS's row-locked schedule, so an "api" pod can
 // still fire a cron that a "worker" pod then executes. REQUIREMENT: at least
 // one "worker" (or "all") pod must exist or runs never dispatch.
-const RUN_QUEUES = [AUTOMATIONS_QUEUE, THREAD_GATE_QUEUE];
+const RUN_QUEUES = [AUTOMATIONS_QUEUE, THREAD_GATE_QUEUE, PROJECTOR_QUEUE];
 const listenQueues: string[] | undefined =
   settings.dispatchRole === "worker"
     ? RUN_QUEUES

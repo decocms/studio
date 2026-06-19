@@ -7,6 +7,8 @@ import { PartEmitter } from "./part-emitter";
 import { projectRun } from "./project-run";
 import { recordPoison } from "./projector-metrics";
 import { readProjectorRunLog } from "./projector-run-log";
+export { PROJECTOR_QUEUE } from "@/dispatch-queue/queue-names";
+import { PROJECTOR_QUEUE } from "@/dispatch-queue/queue-names";
 
 /**
  * Single partitioned queue for projector runs, partitioned by orgId — mirrors
@@ -17,7 +19,6 @@ import { readProjectorRunLog } from "./projector-run-log";
  * partitions with ENQUEUED work, so idle poll cost is flat regardless of org
  * count. Registered once at boot in `initDbos`; do NOT register per-org queues.
  */
-export const PROJECTOR_QUEUE = "decopilot-projector";
 export const PROJECTOR_PARTITION_CONCURRENCY = 10;
 
 export function projectorWorkflowId(runId: string, fenceToken: string): string {
