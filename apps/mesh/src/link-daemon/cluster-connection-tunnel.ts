@@ -459,8 +459,11 @@ export async function connectToClusterTunnel(
     try {
       while (!stopRequested) {
         active = await startActive();
-        firstReady?.resolve();
-        firstReady = undefined;
+        if (firstReady) {
+          firstReady.resolve();
+          firstReady = undefined;
+          input.onConnected?.();
+        }
         if (stopRequested) {
           await active.close();
           break;
