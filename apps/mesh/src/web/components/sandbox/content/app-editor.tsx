@@ -1,13 +1,21 @@
 import { ChevronRight, Loading01 } from "@untitledui/icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { cn } from "@deco/ui/lib/utils.js";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { AddSectionModal } from "@/web/components/sections-editor/add-section-modal";
 import { appLabel } from "@/web/components/sections-editor/page-list";
 import type { LiveMeta } from "@/web/components/sections-editor/resolve-schema";
+import type { SectionCatalogEntry } from "@/web/components/sections-editor/section-catalog";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
+import {
+  useDebouncedSaveBlock,
+  useSaveBlock,
+} from "@/web/components/sections-editor/use-save-block";
 import { resolveAppEditorSchema } from "./app-editor-schema";
+import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { SchemaForm } from "@/web/components/sections-editor/schema-form";
-import { useDebouncedSaveBlock } from "@/web/components/sections-editor/use-save-block";
+import { breadcrumbsForHeaderClick } from "@/web/components/sections-editor/schema-form-breadcrumb";
 import { SaveStatus } from "./blog/save-status";
 
 export function AppEditor({
@@ -21,6 +29,7 @@ export function AppEditor({
   title: titleOverride,
   excludeFields,
   schemaPending = false,
+  previewBaseUrl = null,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -33,6 +42,7 @@ export function AppEditor({
   /** Top-level schema fields to omit (e.g. site `seo` is edited in the SEO tab). */
   excludeFields?: readonly string[];
   schemaPending?: boolean;
+  previewBaseUrl?: string | null;
 }) {
   const resolveType =
     typeof block?.__resolveType === "string" ? block.__resolveType : "";
@@ -42,11 +52,12 @@ export function AppEditor({
   const title =
     titleOverride ?? (block ? appLabel(blockKey, block, meta) : blockKey);
 
-  const { save, isPending } = useDebouncedSaveBlock({
+  const { save, flush, isPending } = useDebouncedSaveBlock({
     orgSlug,
     virtualMcpId,
     branch,
   });
+  const saveBlock = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const saveReferencedBlock = createReferencedBlockSaver((refKey, data) =>
     save(refKey, data),
   );
@@ -57,6 +68,8 @@ export function AppEditor({
   );
   const [formResetKey, setFormResetKey] = useState(0);
   const [breadcrumbs, setBreadcrumbs] = useState<string[]>([]);
+  const [addSectionOpen, setAddSectionOpen] = useState(false);
+  const pendingAppendRef = useRef<((item: unknown) => void) | null>(null);
 
   if (prevBlockKey !== blockKey) {
     setPrevBlockKey(blockKey);
@@ -65,8 +78,11 @@ export function AppEditor({
     setBreadcrumbs([]);
   }
 
-  const savedValue = block ?? {};
-  const effectiveValue = (formValue ?? savedValue) as Record<string, unknown>;
+  const savedValue = (block ?? {}) as Record<string, unknown>;
+  const effectiveValue = {
+    ...savedValue,
+    ...(formValue ?? {}),
+  } as Record<string, unknown>;
 
   const handleChange = (next: unknown) => {
     const nextRecord = next as Record<string, unknown>;
@@ -75,6 +91,52 @@ export function AppEditor({
       ...nextRecord,
       __resolveType: resolveType,
     });
+  };
+
+  const handleBreadcrumbChange = (next: string[]) => {
+    setBreadcrumbs(next);
+  };
+
+  const handleAddSectionItem = async (
+    entry: SectionCatalogEntry,
+    append: (item: unknown) => void,
+  ) => {
+    try {
+      const { blockKey: newKey, data } = buildSectionBlockFromCatalogEntry(
+        entry,
+        decofile,
+      );
+      await saveBlock.mutateAsync({ blockKey: newKey, data });
+      toast.success(`Created section "${newKey}"`);
+      append({ __resolveType: newKey });
+      flush();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not add section";
+      toast.error(message);
+      throw err;
+    }
+  };
+
+  const handleRequestAddSection = (context: {
+    append: (item: unknown) => void;
+  }) => {
+    pendingAppendRef.current = context.append;
+    setAddSectionOpen(true);
+  };
+
+  const handleSelectSection = async (entry: SectionCatalogEntry) => {
+    const append = pendingAppendRef.current;
+    if (!append) return;
+    try {
+      await handleAddSectionItem(entry, (item) => {
+        append(item);
+        setAddSectionOpen(false);
+        pendingAppendRef.current = null;
+      });
+    } catch {
+      // Toast shown in handleAddSectionItem.
+    }
   };
 
   const headerCrumbs = breadcrumbs.length > 0 ? [title, ...breadcrumbs] : [];
@@ -99,11 +161,16 @@ export function AppEditor({
                   )}
                   <button
                     type="button"
-                    onClick={() =>
-                      setBreadcrumbs(
-                        index === 0 ? [] : breadcrumbs.slice(0, index),
-                      )
-                    }
+                    onClick={() => {
+                      if (index === 0) {
+                        handleBreadcrumbChange([]);
+                      } else {
+                        handleBreadcrumbChange(
+                          breadcrumbsForHeaderClick(breadcrumbs, index),
+                        );
+                      }
+                      setFormResetKey((key) => key + 1);
+                    }}
                     title={crumb}
                     className={cn(
                       "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors",
@@ -134,10 +201,13 @@ export function AppEditor({
                 onChange={handleChange}
                 basePath=""
                 breadcrumbPath={breadcrumbs}
-                onBreadcrumbChange={setBreadcrumbs}
+                onBreadcrumbChange={handleBreadcrumbChange}
                 decofile={decofile}
                 meta={meta}
                 onSaveReferencedBlock={saveReferencedBlock}
+                previewBaseUrl={previewBaseUrl}
+                onAddSectionItem={handleAddSectionItem}
+                onRequestAddSection={handleRequestAddSection}
               />
             ) : schemaPending ? (
               <div className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted-foreground">
@@ -152,6 +222,22 @@ export function AppEditor({
           </div>
         </div>
       </ScrollArea>
+
+      {previewBaseUrl && (
+        <AddSectionModal
+          open={addSectionOpen}
+          onOpenChange={(open) => {
+            setAddSectionOpen(open);
+            if (!open) pendingAppendRef.current = null;
+          }}
+          meta={meta}
+          decofile={decofile}
+          previewBaseUrl={previewBaseUrl}
+          onSelect={(entry) => {
+            void handleSelectSection(entry);
+          }}
+        />
+      )}
     </div>
   );
 }

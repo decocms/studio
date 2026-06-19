@@ -1,4 +1,5 @@
 import type { LiveMeta, SchemaProperty } from "../resolve-schema";
+import type { SectionCatalogEntry } from "../section-catalog";
 
 export interface FieldProps {
   schema: SchemaProperty;
@@ -10,6 +11,13 @@ export interface FieldProps {
   onBreadcrumbChange?: (path: string[]) => void;
   meta?: LiveMeta;
   decofile?: Record<string, unknown>;
+  containerResolveType?: string;
+  previewBaseUrl?: string | null;
+  onAddSectionItem?: (
+    entry: SectionCatalogEntry,
+    append: (item: unknown) => void,
+  ) => void | Promise<void>;
+  onRequestAddSection?: (context: { append: (item: unknown) => void }) => void;
   onSaveReferencedBlock?: (
     blockKey: string,
     data: Record<string, unknown>,

@@ -163,6 +163,102 @@ describe("resolveSchema – app resolveType aliases", () => {
     expect(resolved?.properties?.seo?.title).toBe("SEO");
   });
 
+  test("resolves tanstack app schemas from base64 definition keys", () => {
+    const resolveType = "site/apps/local/app-tags.ts";
+    const encoded = Buffer.from(resolveType).toString("base64");
+    const meta: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: {
+        definitions: {
+          [encoded]: {
+            title: resolveType,
+            type: "object",
+            allOf: [
+              {
+                $ref: "#/definitions/AppTagsProps",
+              },
+            ],
+            properties: {
+              __resolveType: {
+                type: "string",
+                enum: [resolveType],
+              },
+            },
+          },
+          AppTagsProps: {
+            type: "object",
+            properties: {
+              account: { type: "string", title: "Account Name" },
+            },
+          },
+        },
+      },
+    };
+
+    const resolved = resolveSchema(resolveType, meta);
+    expect(resolved?.properties?.account?.title).toBe("Account Name");
+  });
+
+  test("merges properties from deeply nested allOf chains", () => {
+    const resolveType = "site/apps/site.ts";
+    const encoded = Buffer.from(resolveType).toString("base64");
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          apps: {
+            [resolveType]: { $ref: `#/definitions/${encoded}` },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          BaseSite: {
+            type: "object",
+            properties: {
+              global: {
+                title: "Global Sections",
+                type: "array",
+                items: { type: "object" },
+              },
+              caching: { type: "object", title: "Caching configuration" },
+            },
+          },
+          ExtensionSite: {
+            type: "object",
+            properties: {
+              badIPS: {
+                type: "array",
+                title: "Bad IPS",
+                items: { type: "string" },
+              },
+            },
+          },
+          Layer4: { $ref: "#/definitions/Layer3" },
+          Layer3: { $ref: "#/definitions/Layer2" },
+          Layer2: { $ref: "#/definitions/Layer1" },
+          Layer1: { $ref: "#/definitions/Layer0" },
+          Layer0: {
+            allOf: [
+              { $ref: "#/definitions/ExtensionSite" },
+              { $ref: "#/definitions/BaseSite" },
+            ],
+          },
+          [encoded]: {
+            allOf: [{ $ref: "#/definitions/Layer4" }],
+            properties: {
+              __resolveType: { type: "string", enum: [resolveType] },
+            },
+          },
+        },
+      },
+    };
+
+    const resolved = resolveSchema(resolveType, meta);
+    expect(resolved?.properties?.global?.title).toBe("Global Sections");
+    expect(resolved?.properties?.caching?.title).toBe("Caching configuration");
+    expect(resolved?.properties?.badIPS?.title).toBe("Bad IPS");
+  });
+
   test("prefers section array over page multivariate flag for site global", () => {
     const meta: LiveMeta = {
       manifest: {
@@ -229,6 +325,59 @@ describe("resolveSchema – app resolveType aliases", () => {
     expect(global?.title).toBe("Global");
     expect(global?.anyOfRefs).toBeUndefined();
     expect(global?.items).toBeDefined();
+  });
+
+  test("prefers config array over product-list loaders in app flag anyOf", () => {
+    const loaderRef = "#/definitions/ProductList";
+    const meta: LiveMeta = {
+      manifest: { blocks: {} },
+      schema: {
+        definitions: {
+          ProductList: {
+            type: "object",
+            properties: {
+              __resolveType: {
+                enum: ["vtex/loaders/ProductList.ts"],
+              },
+              query: { type: "string", title: "Query" },
+            },
+          },
+          AppProps: {
+            type: "object",
+            properties: {
+              flags: {
+                title: "Flags Personalizada",
+                anyOf: [
+                  { $ref: "#/definitions/Resolvable" },
+                  {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      title: "{{{name}}}",
+                      properties: {
+                        name: { type: "string", title: "Name" },
+                        text: { type: "string", title: "Text" },
+                      },
+                    },
+                  },
+                  { $ref: loaderRef },
+                ],
+              },
+            },
+          },
+          [Buffer.from("site/apps/local/app-tags.ts").toString("base64")]: {
+            allOf: [{ $ref: "#/definitions/AppProps" }],
+          },
+        },
+      },
+    };
+
+    const flags = resolveSchema("site/apps/local/app-tags.ts", meta)?.properties
+      ?.flags;
+    expect(flags?.type).toBe("array");
+    expect(flags?.items?.properties?.name?.title).toBe("Name");
+    expect(flags?.items?.titleBy).toBe("{{{name}}}");
+    expect(flags?.anyOfRefs).toBeUndefined();
   });
 });
 

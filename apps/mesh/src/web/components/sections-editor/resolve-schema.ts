@@ -60,9 +60,34 @@ export interface LiveMeta {
 
 type RawSchema = Record<string, unknown>;
 
+/** Max `$ref` / `allOf` hops while flattening top-level properties. */
+const MAX_COLLECT_PROPS_DEPTH = 12;
+
+/** Max recursion while building nested field schemas. */
+const MAX_BUILD_PROPERTY_DEPTH = 8;
+
 function isArraySchemaBranch(schema: RawSchema): boolean {
   const t = schema.type;
   return t === "array" || (Array.isArray(t) && t.includes("array"));
+}
+
+/**
+ * Section/loader arrays (items carry `__resolveType` or `anyOf`) vs config
+ * arrays (plain object items, e.g. app flag lists).
+ */
+function isSectionLoaderArrayBranch(
+  branch: RawSchema,
+  resolveRef: (ref: string) => RawSchema,
+): boolean {
+  let items = branch.items as RawSchema | undefined;
+  if (!items) return false;
+  if (typeof items.$ref === "string") {
+    items = resolveRef(items.$ref);
+  }
+  if (Array.isArray(items.anyOf) || Array.isArray(items.oneOf)) return true;
+  const props = items.properties as RawSchema | undefined;
+  const rtEnum = (props?.__resolveType as RawSchema | undefined)?.enum;
+  return Array.isArray(rtEnum) && typeof rtEnum[0] === "string";
 }
 
 // deco.cx convention: VideoWidget schemas don't carry `format` in their
@@ -70,6 +95,12 @@ function isArraySchemaBranch(schema: RawSchema): boolean {
 // VideoField instead of a generic FileField. If the schema ever gains the
 // `format` field natively this guard becomes a no-op.
 const VIDEO_WIDGET_REF_KEY = "VideoWidget";
+
+/** Base64 encode resolveType keys — browser-safe (btoa), Node fallback in tests. */
+function toBase64(str: string): string {
+  if (typeof btoa === "function") return btoa(str);
+  return Buffer.from(str).toString("base64");
+}
 
 function parseSiteAppResolveType(
   resolveType: string,
@@ -112,17 +143,35 @@ function lookupManifestBlockSchema(
   const parsed =
     parseSiteAppResolveType(resolveType) ??
     parseLegacyAppResolveType(resolveType);
-  if (!parsed) return {};
-
-  for (const alias of appManifestResolveTypeAliases(
-    parsed.vendor,
-    parsed.app,
-  )) {
-    for (const blockTypeMap of Object.values(allBlockTypes)) {
-      if (blockTypeMap[alias]) {
-        return blockTypeMap[alias] as RawSchema;
+  if (parsed) {
+    for (const alias of appManifestResolveTypeAliases(
+      parsed.vendor,
+      parsed.app,
+    )) {
+      for (const blockTypeMap of Object.values(allBlockTypes)) {
+        if (blockTypeMap[alias]) {
+          return blockTypeMap[alias] as RawSchema;
+        }
       }
     }
+  }
+
+  // Tanstack sites generate app schemas with base64-encoded resolveType keys
+  // (same convention as sections). Fall back when manifest.blocks.apps is empty.
+  const encodedResolveType = toBase64(resolveType);
+  for (const blockTypeMap of Object.values(allBlockTypes)) {
+    if (blockTypeMap[encodedResolveType]) {
+      return blockTypeMap[encodedResolveType] as RawSchema;
+    }
+  }
+
+  const globalSchema = meta.schema ?? {};
+  const defs = (globalSchema.$defs ?? globalSchema.definitions ?? {}) as Record<
+    string,
+    unknown
+  >;
+  if (defs[encodedResolveType]) {
+    return { $ref: `#/definitions/${encodedResolveType}` };
   }
 
   return {};
@@ -139,8 +188,31 @@ export function isResolvableManifestApp(
     parseLegacyAppResolveType(resolveType);
   if (!parsed) return false;
   const apps = meta.manifest?.blocks?.apps ?? {};
-  return appManifestResolveTypeAliases(parsed.vendor, parsed.app).some(
-    (alias) => alias in apps,
+  if (
+    appManifestResolveTypeAliases(parsed.vendor, parsed.app).some(
+      (alias) => alias in apps,
+    )
+  ) {
+    return true;
+  }
+  const encodedResolveType = toBase64(resolveType);
+  const defs = (meta.schema?.$defs ?? meta.schema?.definitions ?? {}) as Record<
+    string,
+    unknown
+  >;
+  return encodedResolveType in defs;
+}
+
+/**
+ * Whether resolveType is a deco app module path (site/apps or legacy vendor/apps),
+ * excluding the site app itself. Used to detect installed custom/local apps even
+ * when they are missing from manifest.blocks.apps.
+ */
+export function isDecoAppResolveType(resolveType: string): boolean {
+  if (resolveType === "site/apps/site.ts") return false;
+  return (
+    parseSiteAppResolveType(resolveType) !== null ||
+    parseLegacyAppResolveType(resolveType) !== null
   );
 }
 
@@ -234,7 +306,7 @@ export function resolveSchema(
     seenRefs: Set<string> = new Set(),
     depth = 0,
   ): RawSchema => {
-    if (depth > 5) return {};
+    if (depth > MAX_COLLECT_PROPS_DEPTH) return {};
 
     if (typeof s.$ref === "string") {
       const key = s.$ref.split("/").pop() ?? "";
@@ -374,6 +446,8 @@ export function resolveSchema(
 
         // Site `global` / page `sections`: plain section arrays with an optional
         // page multivariate flag branch. Prefer the array (admin hides the flag UI).
+        // App config arrays (e.g. flag lists) share anyOf with product-list loaders;
+        // prefer the array branch when items are plain objects, not section refs.
         const arrayBranch = nonNull.find(isArraySchemaBranch);
         const hasPageMultivariateLoader = loaderBranches.some((branch) => {
           const rtEnum = (
@@ -386,18 +460,41 @@ export function resolveSchema(
             rtEnum[0] === PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE
           );
         });
-        if (arrayBranch && hasPageMultivariateLoader) {
-          const built = buildProperty(arrayBranch, depth + 1);
-          return {
-            ...built,
-            type: "array",
-            title:
-              typeof resolved.title === "string" ? resolved.title : built.title,
-            description:
-              typeof resolved.description === "string"
-                ? resolved.description
-                : built.description,
-          };
+        if (arrayBranch) {
+          const isConfigArray = !isSectionLoaderArrayBranch(
+            arrayBranch,
+            resolveRef,
+          );
+          if (isConfigArray && nonNull.length > 1) {
+            const built = buildProperty(arrayBranch, depth + 1);
+            return {
+              ...built,
+              type: "array",
+              title:
+                typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title,
+              description:
+                typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description,
+            };
+          }
+          if (hasPageMultivariateLoader) {
+            const built = buildProperty(arrayBranch, depth + 1);
+            return {
+              ...built,
+              type: "array",
+              title:
+                typeof resolved.title === "string"
+                  ? resolved.title
+                  : built.title,
+              description:
+                typeof resolved.description === "string"
+                  ? resolved.description
+                  : built.description,
+            };
+          }
         }
 
         if (loaderBranches.length > 0) {
@@ -417,7 +514,9 @@ export function resolveSchema(
                   ? branch.description
                   : undefined,
               schema:
-                depth + 1 < 6 ? buildProperty(branch, depth + 1) : undefined,
+                depth + 1 < MAX_BUILD_PROPERTY_DEPTH
+                  ? buildProperty(branch, depth + 1)
+                  : undefined,
             };
           });
           return {
@@ -452,7 +551,10 @@ export function resolveSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
-              schema: depth + 1 < 6 ? buildProperty(def, depth + 1) : undefined,
+              schema:
+                depth + 1 < MAX_BUILD_PROPERTY_DEPTH
+                  ? buildProperty(def, depth + 1)
+                  : undefined,
             };
           });
           return {
@@ -518,7 +620,10 @@ export function resolveSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
-              schema: depth + 1 < 6 ? buildProperty(def, depth + 1) : undefined,
+              schema:
+                depth + 1 < MAX_BUILD_PROPERTY_DEPTH
+                  ? buildProperty(def, depth + 1)
+                  : undefined,
             });
           }
           return {
@@ -545,7 +650,7 @@ export function resolveSchema(
     // deco sections nest images at depth 4+ (`images[].desktop.src`); the
     // old cap left those leaves un-resolved and stripped their `format`.
     let nestedProperties: Record<string, SchemaProperty> | undefined;
-    if (depth < 6) {
+    if (depth < MAX_BUILD_PROPERTY_DEPTH) {
       const nestedRaw = collectProps(resolved);
       const nestedEntries = Object.entries(nestedRaw).filter(
         ([k]) => !k.startsWith("__") && k !== "@type",
@@ -560,13 +665,22 @@ export function resolveSchema(
 
     // Array items
     let itemsSchema: SchemaProperty | undefined;
-    if ((type === "array" || resolved.type === "array") && depth < 6) {
+    if (
+      (type === "array" || resolved.type === "array") &&
+      depth < MAX_BUILD_PROPERTY_DEPTH
+    ) {
       let rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {
         if (typeof rawItems.$ref === "string") {
           rawItems = resolveRef(rawItems.$ref);
         }
         itemsSchema = buildProperty(rawItems, depth + 1);
+        if (
+          typeof rawItems.title === "string" &&
+          rawItems.title.includes("{{")
+        ) {
+          itemsSchema.titleBy = rawItems.title;
+        }
       }
     }
 
