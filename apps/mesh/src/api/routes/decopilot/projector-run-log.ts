@@ -22,6 +22,10 @@ export type ReconstructResult =
   | { ok: true; chunks: UIMessageChunk[]; chunkCount: number }
   | { ok: false; error: string };
 
+export type ReconstructRangeResult =
+  | { ok: true; chunks: UIMessageChunk[]; lastContiguousSeq: number }
+  | { ok: false; error: string };
+
 function concat(parts: Uint8Array[]): Uint8Array {
   const size = parts.reduce((sum, p) => sum + p.length, 0);
   const out = new Uint8Array(size);
@@ -37,36 +41,40 @@ function decodePayload(data: Uint8Array): unknown {
   return JSON.parse(new TextDecoder().decode(data));
 }
 
-export function reconstructProjectorRun(input: {
-  runId: string;
-  fenceToken: string;
-  finalSeq: number;
-  messages: ProjectorRetainedMessage[];
-}): ReconstructResult {
+/**
+ * Shared helper: decodes messages and reassembles fragments, returning a map
+ * of seq → UIMessageChunk for all seqs up to `upTo`. Also returns the
+ * finalSeq from the `done` envelope if one was seen (null otherwise).
+ */
+function collectChunks(
+  messages: ProjectorRetainedMessage[],
+  runId: string,
+  fenceToken: string,
+  upTo: number,
+): {
+  chunks: Map<number, UIMessageChunk>;
+  doneFinalSeq: number | null;
+} {
   const chunks = new Map<number, UIMessageChunk>();
   const fragments = new Map<number, { total: number; parts: Uint8Array[] }>();
-  let sawDone = false;
+  let doneFinalSeq: number | null = null;
 
-  for (const message of input.messages) {
-    if (runIdFromSubject(message.subject) !== input.runId) continue;
+  for (const message of messages) {
+    if (runIdFromSubject(message.subject) !== runId) continue;
     const parsed = parseRunStreamMsgId(message.msgId);
-    if (
-      !parsed ||
-      parsed.runId !== input.runId ||
-      parsed.fenceToken !== input.fenceToken
-    ) {
+    if (!parsed || parsed.runId !== runId || parsed.fenceToken !== fenceToken) {
       continue;
     }
 
     if (parsed.kind === "done") {
       const payload = decodePayload(message.data);
-      if (parsed.finalSeq === input.finalSeq && isDoneEnvelope(payload)) {
-        sawDone = true;
+      if (isDoneEnvelope(payload)) {
+        doneFinalSeq = parsed.finalSeq;
       }
       continue;
     }
 
-    if (parsed.seq > input.finalSeq) continue;
+    if (parsed.seq > upTo) continue;
     const total = Number(message.headers?.get(FRAG_TOTAL_HEADER) ?? "0");
     if (parsed.fragmentIndex !== null || total > 0) {
       const index =
@@ -93,7 +101,25 @@ export function reconstructProjectorRun(input: {
     }
   }
 
-  if (!sawDone) return { ok: false, error: "missing done" };
+  return { chunks, doneFinalSeq };
+}
+
+export function reconstructProjectorRun(input: {
+  runId: string;
+  fenceToken: string;
+  finalSeq: number;
+  messages: ProjectorRetainedMessage[];
+}): ReconstructResult {
+  const { chunks, doneFinalSeq } = collectChunks(
+    input.messages,
+    input.runId,
+    input.fenceToken,
+    input.finalSeq,
+  );
+
+  // Only accept the `done` marker if its finalSeq matches exactly.
+  if (doneFinalSeq !== input.finalSeq)
+    return { ok: false, error: "missing done" };
   const out: UIMessageChunk[] = [];
   for (let seq = 1; seq <= input.finalSeq; seq++) {
     const chunk = chunks.get(seq);
@@ -101,6 +127,63 @@ export function reconstructProjectorRun(input: {
     out.push(chunk);
   }
   return { ok: true, chunks: out, chunkCount: out.length };
+}
+
+export function reconstructProjectorRunRange(input: {
+  runId: string;
+  fenceToken: string;
+  fromSeq: number;
+  toSeq: number;
+  messages: ProjectorRetainedMessage[];
+}): ReconstructRangeResult {
+  const { chunks } = collectChunks(
+    input.messages,
+    input.runId,
+    input.fenceToken,
+    input.toSeq,
+  );
+  const out: UIMessageChunk[] = [];
+  let seq = input.fromSeq;
+  for (let s = input.fromSeq + 1; s <= input.toSeq; s++) {
+    const c = chunks.get(s);
+    if (!c) break; // gap: stop at contiguous prefix (no error, no done needed)
+    out.push(c);
+    seq = s;
+  }
+  return { ok: true, chunks: out, lastContiguousSeq: seq };
+}
+
+export async function readProjectorRunRange(input: {
+  js: JetStreamClient;
+  runId: string;
+  fenceToken: string;
+  fromSeq: number;
+  toSeq: number;
+  idleTimeoutMs?: number;
+}): Promise<ReconstructRangeResult> {
+  const consumer = await input.js.consumers.get(DECOPILOT_STREAM_NAME, {
+    filter_subjects: streamSubject(input.runId),
+    deliver_policy: DeliverPolicy.All,
+  });
+  const sub = await consumer.consume();
+  const messages: ProjectorRetainedMessage[] = [];
+  for await (const m of sub) {
+    messages.push({
+      subject: m.subject,
+      data: m.data,
+      msgId: m.headers?.get("Nats-Msg-Id") || undefined,
+      headers: m.headers,
+    });
+    const parsed = parseRunStreamMsgId(
+      m.headers?.get("Nats-Msg-Id") || undefined,
+    );
+    // Stop once we've reached or passed toSeq, or no more messages pending
+    if (parsed && "seq" in parsed && parsed.seq >= input.toSeq) {
+      sub.stop();
+      break;
+    }
+  }
+  return reconstructProjectorRunRange({ ...input, messages });
 }
 
 export async function readProjectorRunLog(input: {
