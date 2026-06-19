@@ -21,6 +21,7 @@ import {
   fieldDisplayLabel,
   resolveActiveFieldKey,
 } from "./schema-form-breadcrumb";
+import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
@@ -132,20 +133,7 @@ export function renderField(props: FieldProps) {
     !isMultivariateArrayWrapper(value) &&
     schema.type === "block-ref"
   ) {
-    const first = value.length > 0 ? value[0] : undefined;
-    let items: SchemaProperty | undefined;
-    if (first != null && typeof first === "object" && !Array.isArray(first)) {
-      const properties: Record<string, SchemaProperty> = {};
-      for (const [k, v] of Object.entries(first as Record<string, unknown>)) {
-        if (k.startsWith("__")) continue;
-        if (typeof v === "string") properties[k] = { type: "string" };
-        else if (typeof v === "number") properties[k] = { type: "number" };
-        else if (typeof v === "boolean") properties[k] = { type: "boolean" };
-      }
-      if (Object.keys(properties).length > 0) {
-        items = { type: "object", properties };
-      }
-    }
+    const items = inferBlockRefArrayItemSchema(value);
     if (items) {
       const arraySchema: SchemaProperty = { ...schema, type: "array", items };
       return (

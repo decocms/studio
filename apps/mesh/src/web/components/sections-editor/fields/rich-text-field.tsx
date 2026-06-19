@@ -14,6 +14,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { Label } from "@deco/ui/components/label.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import type { FieldProps } from "./field-props";
+import { isSafeLinkUrl } from "../rich-text-link-validation";
 
 function ToolbarButton({
   active,
@@ -173,7 +174,7 @@ export function RichTextField({
               if (url === null) return;
               if (url === "") {
                 editor.chain().focus().unsetLink().run();
-              } else {
+              } else if (isSafeLinkUrl(url)) {
                 editor.chain().focus().setLink({ href: url }).run();
               }
             }}
