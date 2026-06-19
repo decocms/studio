@@ -57,7 +57,7 @@ async function seedRun(opts: {
 }
 
 describe("SqlThreadStorage.listStuckRuns (real Postgres)", () => {
-  it("returns only in_progress runs stale past the cutoff (COALESCE last_progress_at, run_started_at)", async () => {
+  it("returns only in_progress runs stale past the cutoff (newest of last_progress_at, run_started_at)", async () => {
     const now = Date.now();
     const iso = (ms: number) => new Date(now - ms).toISOString();
     const cutoff = new Date(now - 45 * 60 * 1000).toISOString();
@@ -76,7 +76,11 @@ describe("SqlThreadStorage.listStuckRuns (real Postgres)", () => {
     });
     const freshColdStart = await seedRun({
       lastProgressAt: null,
-      runStartedAt: iso(1 * 60 * 1000), // started 1 min ago → fresh via COALESCE
+      runStartedAt: iso(1 * 60 * 1000), // started 1 min ago → fresh
+    });
+    const freshNewTurnWithStaleProgress = await seedRun({
+      lastProgressAt: iso(60 * 60 * 1000),
+      runStartedAt: iso(1 * 60 * 1000),
     });
 
     const stuck = await storage.listStuckRuns(cutoff);
@@ -86,6 +90,7 @@ describe("SqlThreadStorage.listStuckRuns (real Postgres)", () => {
     expect(stuck.every((r) => r.organizationId === ORG)).toBe(true);
     expect(ids).not.toContain(healthy);
     expect(ids).not.toContain(freshColdStart);
+    expect(ids).not.toContain(freshNewTurnWithStaleProgress);
   });
 
   it("ignores non-in_progress threads", async () => {
