@@ -48,6 +48,13 @@ export function createClaudeCodeModel(
   > = {
     mcpServers: options?.mcpServers,
     cwd: options?.cwd ?? process.cwd(),
+    // ai-sdk-provider-claude-code@3.5.0 changed: when settingSources is
+    // undefined, it now passes [] to the binary (no settings loaded at all).
+    // In 3.4.4 it was omitted, letting the binary use its defaults (user
+    // plugins/skills). Restore that by explicitly requesting all three sources
+    // so user skills (e.g. superpower), project .claude/ config, and
+    // machine-local overrides all load in headless mode.
+    settingSources: ["user", "project", "local"],
   };
 
   // Pin the native binary that matches this host's libc. Without this the SDK
