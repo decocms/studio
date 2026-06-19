@@ -94,8 +94,21 @@ export function startCapabilityReprobe(
 
 async function detectClaudeCode(): Promise<boolean> {
   try {
-    const { query } = await import("@anthropic-ai/claude-agent-sdk");
-    const q = query({ prompt: "", options: { maxTurns: 1 } });
+    const [{ query }, { resolveClaudeCodeExecutable }] = await Promise.all([
+      import("@anthropic-ai/claude-agent-sdk"),
+      import("@decocms/harness/claude-code/resolve-executable"),
+    ]);
+    // Pin the host-matching native binary so detection doesn't trip over the
+    // SDK's libc misdetection (which can pick the unrunnable `-musl` binary on
+    // glibc). Omitted when undefined so the SDK resolves as before.
+    const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable();
+    const q = query({
+      prompt: "",
+      options: {
+        maxTurns: 1,
+        ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
+      },
+    });
     const info = await q.accountInfo();
     q.return(undefined);
     return Boolean(info.email);
