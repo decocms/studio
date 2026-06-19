@@ -22,6 +22,7 @@ export function TaskRow({
   showAutomationBadge,
   showAgentIcon,
   hideStatusIdle,
+  indented,
 }: {
   task: Task;
   isActive: boolean;
@@ -34,6 +35,10 @@ export function TaskRow({
    *  status); the archive button still appears on hover. When false/omitted,
    *  the status icon shows at rest and swaps to archive on hover. */
   hideStatusIdle?: boolean;
+  /** When true (inside a sidebar group), the button area stretches out to the
+   *  group's left edge while the content keeps its indented position, so the
+   *  clickable/hover surface spans the full sidebar width. */
+  indented?: boolean;
 }) {
   const config = getStatusConfig(task.status);
   const StatusIcon = config.icon;
@@ -62,7 +67,11 @@ export function TaskRow({
         }
       }}
       className={cn(
-        "group/row flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
+        "group/row flex items-center gap-2 py-1.5 pr-2 rounded-md cursor-pointer transition-colors",
+        // Indented rows stretch their background out to the group's left edge
+        // (-ml-4 cancels the wrapper's pl-4) while pl-6 keeps the content where
+        // it sat before, so the button surface spans the full sidebar width.
+        indented ? "-ml-4 pl-6" : "pl-2",
         "focus-visible:outline-none focus-visible:inset-ring-2 focus-visible:inset-ring-ring/50",
         isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
       )}

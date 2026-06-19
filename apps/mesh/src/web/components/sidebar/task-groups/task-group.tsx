@@ -158,6 +158,7 @@ export function TaskGroup({
                 onClick={() => onSelectTask(task)}
                 onArchive={() => onArchiveTask(task)}
                 showAutomationBadge={Boolean(task.trigger_id)}
+                indented
               />
             ))
           ) : (
@@ -278,6 +279,7 @@ function AgentExpandedBody({
               onClick={() => onSelectTask(task)}
               onArchive={() => onArchiveTask(task)}
               showAutomationBadge={Boolean(task.trigger_id)}
+              indented
             />
           ))}
           {(hasMore || isFetching) && (
@@ -336,6 +338,7 @@ function StatusExpandedBody({
           showAutomationBadge={Boolean(task.trigger_id)}
           showAgentIcon
           hideStatusIdle
+          indented
         />
       ))}
       {(hasMore || isFetching) && (
