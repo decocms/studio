@@ -1,5 +1,6 @@
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { createClaudeCode } from "ai-sdk-provider-claude-code";
+import { resolveClaudeCodeExecutable } from "../resolve-executable";
 import type { ToolApprovalLevel } from "../../types";
 
 /**
@@ -48,6 +49,16 @@ export function createClaudeCodeModel(
     mcpServers: options?.mcpServers,
     cwd: options?.cwd ?? process.cwd(),
   };
+
+  // Pin the native binary that matches this host's libc. Without this the SDK
+  // self-resolves it, and on some glibc hosts its detection wrongly picks the
+  // `-musl` binary (which can't launch) — see resolveClaudeCodeExecutable. When
+  // it returns undefined (non-linux, or it can't resolve) we omit the option
+  // and let the SDK resolve as before.
+  const executablePath = resolveClaudeCodeExecutable();
+  if (executablePath) {
+    settings.pathToClaudeCodeExecutable = executablePath;
+  }
 
   const restrictWrites =
     options?.isPlanMode || options?.toolApprovalLevel === "readonly";
