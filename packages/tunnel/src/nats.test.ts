@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Msg, NatsConnection, Subscription } from "nats";
+import type { Msg, NatsConnection, Subscription } from "@nats-io/nats-core";
 
 import {
   base64UrlEncode,

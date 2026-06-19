@@ -30,7 +30,7 @@ import {
   DeliverPolicy,
   type JetStreamClient,
   type JetStreamManager,
-} from "nats";
+} from "@nats-io/jetstream";
 import { computeLagMs, recordLag } from "./projector-metrics";
 import {
   DECOPILOT_STREAM_NAME,
@@ -190,7 +190,9 @@ export async function createDurableProjectorConsumer(
             subject: m.subject,
             data: m.data,
             msgId: m.headers?.get("Nats-Msg-Id") || undefined,
-            publishedAtMs: m.info.timestampNanos / 1e6,
+            // v3: JsMsg.info.timestampNanos is a bigint — convert before
+            // dividing (bigint / number throws "Cannot mix BigInt").
+            publishedAtMs: Number(m.info.timestampNanos) / 1e6,
             ack: async () => m.ack(),
             term: async () => m.term(),
           } satisfies ProjectorMessage;

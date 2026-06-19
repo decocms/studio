@@ -9,7 +9,7 @@
  * JetStream persistence would be wrong here (replaying stale cancels).
  */
 
-import type { NatsConnection, Subscription } from "nats";
+import type { NatsConnection, Subscription } from "@nats-io/nats-core";
 import type { CancelBroadcast } from "./cancel-broadcast";
 import type { ControlFrame } from "./control-frames";
 

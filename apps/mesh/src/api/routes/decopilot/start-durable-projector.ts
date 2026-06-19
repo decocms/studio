@@ -13,7 +13,7 @@
  * Integration-only (real NATS + DBOS); the pure scheduling/ack policy is
  * unit-tested in projector-consumer.test.ts.
  */
-import type { JetStreamClient, JetStreamManager } from "nats";
+import type { JetStreamClient, JetStreamManager } from "@nats-io/jetstream";
 import {
   createDurableProjectorConsumer,
   type DurableProjectorConsumerHandle,

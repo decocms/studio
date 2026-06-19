@@ -7,7 +7,9 @@
  */
 
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { JSONCodec, StorageType, type JetStreamClient, type KV } from "nats";
+import { type JetStreamClient, StorageType } from "@nats-io/jetstream";
+import { Kvm, type KV } from "@nats-io/kv";
+import { jsonCodec } from "../nats/json-codec";
 import { meter } from "../observability";
 
 const cacheCounter = meter.createCounter("mcp_list_cache.fetches", {
@@ -32,14 +34,14 @@ export interface JetStreamKVMcpListCacheOptions {
 
 export class JetStreamKVMcpListCache implements McpListCache {
   private kv: KV | null = null;
-  private readonly codec = JSONCodec<unknown[]>();
+  private readonly codec = jsonCodec<unknown[]>();
 
   constructor(private readonly options: JetStreamKVMcpListCacheOptions) {}
 
   async init(): Promise<void> {
     const js = this.options.getJetStream();
     if (!js) return; // NATS not ready — cache disabled until re-init
-    this.kv = await js.views.kv(KV_BUCKET, {
+    this.kv = await new Kvm(js).create(KV_BUCKET, {
       storage: StorageType.Memory,
     });
   }

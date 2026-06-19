@@ -11,7 +11,7 @@
  * wake, so a nudge only needs to signal "something changed for this volume".
  */
 
-import type { NatsConnection } from "nats";
+import type { NatsConnection } from "@nats-io/nats-core";
 
 const SUBJECT_PREFIX = "mesh.org-fs.changes";
 

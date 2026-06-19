@@ -10,7 +10,7 @@ import {
   sessionRenewDelayMs,
   type ClusterConnectionTunnelInput,
 } from "./cluster-connection-tunnel";
-import type { ConnectionOptions, NatsConnection } from "nats";
+import type { ConnectionOptions, NatsConnection } from "@nats-io/nats-core";
 import type { ControlHandler } from "./control-handler";
 import { openInMemoryOutbox } from "./outbox";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";

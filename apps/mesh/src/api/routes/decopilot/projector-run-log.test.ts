@@ -1,6 +1,6 @@
 import type { UIMessageChunk } from "ai";
 import { describe, expect, test } from "bun:test";
-import type { JetStreamClient } from "nats";
+import type { JetStreamClient } from "@nats-io/jetstream";
 import {
   readProjectorRunLog,
   reconstructProjectorRun,
@@ -112,7 +112,8 @@ describe("reconstructProjectorRun", () => {
 // Following the convention already used by projector-consumer.test.ts and
 // nats-stream-buffer.test.ts: instead of mocking our own code, we feed the
 // reader a controlled async-iterable subscription (the only JetStream surface
-// it touches is `js.subscribe(...)` → an async iterable with `.unsubscribe()`).
+// it touches is `js.consumers.get(...).consume()` → an async iterable with
+// `.stop()`).
 // That is a controlled *input source*, the same shape NATS hands us, so we can
 // assert the reader's real ordering / early-exit / idle-timeout behaviour
 // without a live NATS server.
@@ -144,7 +145,7 @@ function fakeJetStream(emit: (push: (m: ReaderMsg) => void) => void): {
   };
 
   const sub = {
-    unsubscribe() {
+    stop() {
       unsub = true;
       done = true;
       if (resolveNext) {
@@ -174,7 +175,7 @@ function fakeJetStream(emit: (push: (m: ReaderMsg) => void) => void): {
   };
 
   const js = {
-    subscribe: async () => sub,
+    consumers: { get: async () => ({ consume: async () => sub }) },
   } as unknown as JetStreamClient;
 
   emit(push);

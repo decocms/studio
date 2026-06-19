@@ -12,7 +12,8 @@
 import { sleep } from "@decocms/std";
 import { serve, type TunnelServer } from "@decocms/tunnel";
 import { expect, type APIRequestContext } from "@playwright/test";
-import { connect, type NatsConnection } from "nats";
+import { connect } from "@nats-io/transport-node";
+import type { NatsConnection } from "@nats-io/nats-core";
 import { buildUserTunnelHostname } from "../../src/links/tunnel-host";
 import type { WorkItem } from "../../src/links/link-work-item";
 import { workItemSchema } from "../../src/links/link-work-item";

@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, test } from "bun:test";
-import { StorageType } from "nats";
+import { StorageType } from "@nats-io/jetstream";
 import { decopilotStreamConfig, NatsStreamBuffer } from "./nats-stream-buffer";
 
 type DeferredMsg = {
@@ -28,7 +28,7 @@ function createControlledSubscription() {
   };
 
   const sub = {
-    unsubscribe: mock(() => {}),
+    stop: mock(() => {}),
     [Symbol.asyncIterator]() {
       return {
         next(): Promise<
@@ -54,8 +54,12 @@ function createControlledSubscription() {
   return { sub, push, end };
 }
 
-function bufferWith(subscribeFn: () => Promise<unknown>) {
-  const mockJs = { subscribe: mockOf(subscribeFn) };
+function bufferWith(consumeFn: () => Promise<unknown>) {
+  // v3 ordered-consumer fake: createTailStream calls
+  // `js.consumers.get(stream, opts)` then `.consume()`.
+  const mockJs = {
+    consumers: { get: async () => ({ consume: mockOf(consumeFn) }) },
+  };
   const buffer = new NatsStreamBuffer({
     getConnection: () => ({}) as never,
     getJetStream: () => mockJs as never,
@@ -117,20 +121,19 @@ describe("NatsStreamBuffer", () => {
       },
     };
 
-    const mockNc = {
-      jetstreamManager: mock(() => Promise.resolve(mockJsm)),
-    };
+    const getJetStreamManager = mock(() => Promise.resolve(mockJsm));
 
     const mockJs = {} as never;
 
     const buffer = new NatsStreamBuffer({
-      getConnection: () => mockNc as never,
+      getConnection: () => ({}) as never,
       getJetStream: () => mockJs,
+      getJetStreamManager: getJetStreamManager as never,
     });
 
     await buffer.init();
 
-    expect(mockNc.jetstreamManager).toHaveBeenCalledTimes(1);
+    expect(getJetStreamManager).toHaveBeenCalledTimes(1);
     expect(streamInfoMock).toHaveBeenCalledWith("DECOPILOT_STREAMS");
     expect(streamUpdateMock).toHaveBeenCalledTimes(1);
   });
@@ -150,13 +153,10 @@ describe("NatsStreamBuffer", () => {
       },
     };
 
-    const mockNc = {
-      jetstreamManager: mock(() => Promise.resolve(mockJsm)),
-    };
-
     const buffer = new NatsStreamBuffer({
-      getConnection: () => mockNc as never,
+      getConnection: () => ({}) as never,
       getJetStream: () => ({}) as never,
+      getJetStreamManager: (() => Promise.resolve(mockJsm)) as never,
     });
 
     await buffer.init();
@@ -186,13 +186,10 @@ describe("NatsStreamBuffer", () => {
       },
     };
 
-    const mockNc = {
-      jetstreamManager: mock(() => Promise.resolve(mockJsm)),
-    };
-
     const buffer = new NatsStreamBuffer({
-      getConnection: () => mockNc as never,
+      getConnection: () => ({}) as never,
       getJetStream: () => ({}) as never,
+      getJetStreamManager: (() => Promise.resolve(mockJsm)) as never,
     });
 
     await buffer.init();
@@ -311,7 +308,7 @@ describe("NatsStreamBuffer", () => {
 
       const chunks = await readAll(stream!);
       expect(chunks).toEqual(["chunk-1", "chunk-2"]);
-      expect(sub.unsubscribe).toHaveBeenCalled();
+      expect(sub.stop).toHaveBeenCalled();
     });
 
     it("stays open across long silent gaps between chunks", async () => {
@@ -380,7 +377,7 @@ describe("NatsStreamBuffer", () => {
       await reader.read();
 
       await reader.cancel();
-      expect(sub.unsubscribe).toHaveBeenCalled();
+      expect(sub.stop).toHaveBeenCalled();
     });
 
     it("returns null when subscribe throws", async () => {
@@ -410,7 +407,7 @@ describe("NatsStreamBuffer", () => {
 
       const chunks = await readAll(stream!);
       expect(chunks).toEqual(["chunk-1", "chunk-2"]);
-      expect(sub.unsubscribe).toHaveBeenCalled();
+      expect(sub.stop).toHaveBeenCalled();
     });
 
     it("swallows the {done} sentinel and keeps tailing across runs", async () => {

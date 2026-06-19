@@ -2,7 +2,7 @@ import {
   createFetch as createTunnelFetch,
   type TunnelFetch,
 } from "@decocms/tunnel";
-import type { NatsConnection } from "nats";
+import type { NatsConnection } from "@nats-io/nats-core";
 import type { DispatchChunk, DispatchFn } from "./link-dispatch-types";
 import { buildUserTunnelHostname } from "./tunnel-host";
 

@@ -12,13 +12,12 @@
  */
 
 import {
-  Events,
   type Authenticator,
-  connect,
   credsAuthenticator,
-  type JetStreamClient,
   type NatsConnection,
-} from "nats";
+} from "@nats-io/nats-core";
+import { connect } from "@nats-io/transport-node";
+import { jetstream, type JetStreamClient } from "@nats-io/jetstream";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 
 const BASE_DELAY_MS = 100;
@@ -98,10 +97,10 @@ export function createNatsConnectionProvider(
   function monitorStatus(conn: NatsConnection): void {
     (async () => {
       for await (const s of conn.status()) {
-        if (s.type === Events.Disconnect) {
+        if (s.type === "disconnect") {
           console.log("[NatsProvider] Disconnected");
           disconnected = true;
-        } else if (s.type === Events.Reconnect) {
+        } else if (s.type === "reconnect") {
           console.log("[NatsProvider] Reconnected, re-firing ready callbacks");
           disconnected = false;
           js = null;
@@ -169,7 +168,7 @@ export function createNatsConnectionProvider(
     getJetStream(): JetStreamClient | null {
       if (!checkConnected()) return null;
       if (!js) {
-        js = nc!.jetstream();
+        js = jetstream(nc!);
       }
       return js;
     },
