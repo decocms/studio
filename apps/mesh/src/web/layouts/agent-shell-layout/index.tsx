@@ -37,6 +37,7 @@ import {
   type ReactNode,
 } from "react";
 import { Chat, useChatTask } from "@/web/components/chat/index";
+import { useChatPrefs } from "@/web/components/chat/context";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
@@ -216,6 +217,7 @@ function VmEventsBridge({
   children: ReactNode;
 }) {
   const { currentBranch } = useChatTask();
+  const { pendingSandboxProviderKind } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
@@ -236,7 +238,14 @@ function VmEventsBridge({
           BranchMapEntryLike
         >)
       : {};
-  const vmEntry = selectVmEntry(branchMap);
+  // Use the resolved provider kind to pick the matching entry — same logic as
+  // SandboxLifecycleProvider so the SSE previewUrl and the lifecycle vmEntry
+  // always agree on which sandbox is active.
+  const vmEntry = pendingSandboxProviderKind
+    ? ((branchMap[pendingSandboxProviderKind] as
+        | BranchMapEntryLike
+        | undefined) ?? null)
+    : selectVmEntry(branchMap);
   const previewUrl = vmEntry?.previewUrl ?? null;
   const shouldConnect = Object.keys(branchMap).length > 0 || isStartPending;
 
@@ -253,6 +262,7 @@ function VmEventsBridge({
         userId={userId ?? null}
         hasActiveGithubRepo={hasActiveGithubRepo}
         sandboxMap={sandboxMap}
+        sandboxProviderKind={pendingSandboxProviderKind}
       >
         {children}
       </SandboxLifecycleProvider>

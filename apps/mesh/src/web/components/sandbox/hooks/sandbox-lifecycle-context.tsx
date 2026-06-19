@@ -13,6 +13,7 @@
 
 import type { PreviewState } from "@/web/components/sandbox/preview/preview-state";
 import type { DrawerStatus } from "@/web/components/sandbox/preview/drawer/status-pill";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-testable)
@@ -47,7 +48,6 @@ export function shouldAutoStart(args: ShouldAutoStartArgs): boolean {
   return (
     args.hasActiveGithubRepo &&
     !!args.userId &&
-    !!args.branch &&
     !args.vmEntry &&
     !args.userStopped &&
     !args.isPending &&
@@ -148,6 +148,7 @@ export function SandboxLifecycleProvider({
   userId,
   hasActiveGithubRepo,
   sandboxMap,
+  sandboxProviderKind,
   children,
 }: {
   virtualMcpId: string | null;
@@ -155,6 +156,10 @@ export function SandboxLifecycleProvider({
   userId: string | null;
   hasActiveGithubRepo: boolean;
   sandboxMap: SandboxMap | undefined;
+  /** Resolved provider kind from the active thread (locked) or live mode pick
+   *  (unlocked). When non-null, entry selection and SANDBOX_START are scoped to
+   *  this kind so the preview never silently shows a different-provider sibling. */
+  sandboxProviderKind: SandboxProviderKind | null;
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
@@ -188,7 +193,13 @@ export function SandboxLifecycleProvider({
           BranchMapEntryLike
         >)
       : {};
-  const vmEntry = selectVmEntry(branchMap);
+  // When a provider kind is known (locked thread or live mode pick), select the
+  // matching entry directly. Fall back to the heuristic only for legacy threads
+  // with no recorded kind (sandboxProviderKind == null).
+  const vmEntry = sandboxProviderKind
+    ? ((branchMap[sandboxProviderKind] as BranchMapEntryLike | undefined) ??
+      null)
+    : selectVmEntry(branchMap);
   const previewUrl = vmEntry?.previewUrl ?? null;
   const userStopped =
     !!virtualMcpId &&
@@ -206,10 +217,12 @@ export function SandboxLifecycleProvider({
   // not already started → fire SANDBOX_START once for this branch."
   // Branch-keyed, not taskId-keyed: that matches useSandboxStart's own
   // dedup and avoids resurrecting a user-killed VM across task switches.
+  // Dedup key: use branch string, or "" for the no-branch (pre-lock) case so a
+  // single auto-start fires even before the server assigns a branch.
+  const autoStartDedupKey = branch ?? "";
   const attempted =
-    branch !== null &&
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; mutation happens inside effect after add()
-    autoStartAttemptedForBranchRef.current.has(branch);
+    autoStartAttemptedForBranchRef.current.has(autoStartDedupKey);
   const autoStartEligible = shouldAutoStart({
     hasActiveGithubRepo,
     userId,
@@ -221,18 +234,28 @@ export function SandboxLifecycleProvider({
   });
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- bridges external state into a one-shot mutation; no render-time equivalent
   useEffect(() => {
-    if (!autoStartEligible || !branch || !virtualMcpId) return;
-    autoStartAttemptedForBranchRef.current.add(branch);
-    // Auto-start is gated on `!!branch` via shouldAutoStart, so the
-    // server-picks-a-branch flow (the onSuccess in self-heal + user start)
-    // is structurally unreachable here. No onSuccess needed.
-    const args: SandboxStartArgs = { virtualMcpId, branch };
+    if (!autoStartEligible || !virtualMcpId) return;
+    autoStartAttemptedForBranchRef.current.add(autoStartDedupKey);
+    const args: SandboxStartArgs = { virtualMcpId };
+    if (branch) args.branch = branch;
+    if (sandboxProviderKind) args.sandboxProviderKind = sandboxProviderKind;
     startVmMutate(args, {
+      onSuccess: (data) => {
+        if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
+      },
       onError: (err) => {
         console.error("[sandbox-lifecycle] auto-start failed:", err);
       },
     });
-  }, [autoStartEligible, branch, virtualMcpId, startVmMutate]);
+  }, [
+    autoStartEligible,
+    autoStartDedupKey,
+    branch,
+    virtualMcpId,
+    sandboxProviderKind,
+    startVmMutate,
+    setCurrentTaskBranch,
+  ]);
 
   // Self-heal: SSE emits `gone` → reprovision via SANDBOX_START. Dedup by
   // dead handle so we don't loop on repeat 404s; a new dead handle is fine.
@@ -252,6 +275,7 @@ export function SandboxLifecycleProvider({
     reprovisionedForVmIdRef.current = deadVmId;
     const args: SandboxStartArgs = { virtualMcpId };
     if (branch) args.branch = branch;
+    if (sandboxProviderKind) args.sandboxProviderKind = sandboxProviderKind;
     startVmMutate(args, {
       onSuccess: (data) => {
         if (data?.branch && !branch) setCurrentTaskBranch(data.branch);
@@ -265,6 +289,7 @@ export function SandboxLifecycleProvider({
     deadVmId,
     virtualMcpId,
     branch,
+    sandboxProviderKind,
     startVmMutate,
     setCurrentTaskBranch,
   ]);
