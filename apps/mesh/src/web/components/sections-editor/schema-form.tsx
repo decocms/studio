@@ -25,49 +25,6 @@ import {
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
 
-/**
- * Build a SchemaProperty from a runtime value so data-only fields
- * (present in page data but absent from the _meta schema) can be edited.
- *
- * When `hints` is provided (a map of known property schemas), matching keys
- * in an inferred object will use the hint's full definition (preserving
- * format, title, description, etc.) instead of a bare type-only schema.
- * This lets data-only arrays like `textSeo` inherit the parent schema's
- * rich-text format, descriptions, and labels for their items.
- */
-export function inferSchemaFromValue(
-  val: unknown,
-  hints?: Record<string, SchemaProperty>,
-): SchemaProperty | undefined {
-  if (val === null || val === undefined) return undefined;
-  if (typeof val === "string") return { type: "string" };
-  if (typeof val === "number") return { type: "number" };
-  if (typeof val === "boolean") return { type: "boolean" };
-  if (Array.isArray(val)) {
-    const items =
-      val.length > 0 ? inferSchemaFromValue(val[0], hints) : undefined;
-    return { type: "array", items };
-  }
-  if (typeof val === "object") {
-    const properties: Record<string, SchemaProperty> = {};
-    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
-      if (k.startsWith("__")) continue;
-      // Use the hint schema when available — it carries format, title,
-      // description, and other metadata that inference alone can't produce.
-      const hint = hints?.[k];
-      if (hint) {
-        properties[k] = hint;
-      } else {
-        const prop = inferSchemaFromValue(v);
-        if (prop) properties[k] = prop;
-      }
-    }
-    if (Object.keys(properties).length === 0) return undefined;
-    return { type: "object", properties };
-  }
-  return undefined;
-}
-
 function multivariateMediaKind(
   schema: SchemaProperty,
 ): "image" | "file" | null {
@@ -166,16 +123,29 @@ export function renderField(props: FieldProps) {
     }
   }
 
-  // Block-ref schema but the actual value is a plain array (not a
-  // multivariate wrapper). Infer item schema from the first element and
-  // render as ArrayField so items like menuItems [{target,href,label}]
-  // become an editable draggable list.
+  // Block-ref schema but the actual value is already a resolved plain array
+  // (not a multivariate wrapper).  The loader has been evaluated and the page
+  // data holds the concrete items — render as ArrayField so users can edit
+  // them directly (e.g. menuItems [{target,href,label}]).
   if (
     Array.isArray(value) &&
     !isMultivariateArrayWrapper(value) &&
     schema.type === "block-ref"
   ) {
-    const items = value.length > 0 ? inferSchemaFromValue(value[0]) : undefined;
+    const first = value.length > 0 ? value[0] : undefined;
+    let items: SchemaProperty | undefined;
+    if (first != null && typeof first === "object" && !Array.isArray(first)) {
+      const properties: Record<string, SchemaProperty> = {};
+      for (const [k, v] of Object.entries(first as Record<string, unknown>)) {
+        if (k.startsWith("__")) continue;
+        if (typeof v === "string") properties[k] = { type: "string" };
+        else if (typeof v === "number") properties[k] = { type: "number" };
+        else if (typeof v === "boolean") properties[k] = { type: "boolean" };
+      }
+      if (Object.keys(properties).length > 0) {
+        items = { type: "object", properties };
+      }
+    }
     if (items) {
       const arraySchema: SchemaProperty = { ...schema, type: "array", items };
       return (
@@ -348,50 +318,7 @@ export function SchemaForm({
     (k) => !HIDDEN_PROPS.has(k) && properties[k]?.hidden !== true,
   );
 
-  // Gather data-only keys: present in the value but not declared in
-  // the schema. This makes fields like `textSeo` (present in page data
-  // but absent from the _meta schema) visible and editable.
-  const dataOnlyKeys = Object.keys(objValue).filter(
-    (k) =>
-      !HIDDEN_PROPS.has(k) &&
-      !k.startsWith("__") &&
-      !properties[k] &&
-      objValue[k] !== undefined,
-  );
-  const dataOnlySchemas: Record<string, SchemaProperty> = {};
-  for (const k of dataOnlyKeys) {
-    // Pass the schema's own properties as hints so that data-only arrays
-    // whose items share property names with the schema (e.g. `textSeo`
-    // items have `matcher`, `title`, `description` matching the schema's
-    // flat properties) inherit format, title, description, and other
-    // metadata — e.g. `format: "rich-text"` on the `title` field.
-    const inferred = inferSchemaFromValue(objValue[k], properties);
-    if (!inferred) continue;
-    // When the inferred field is an array whose items matched schema hints,
-    // also propagate `titleBy` from the parent schema so that the array
-    // item label uses the right key (e.g. `matcher` instead of `title`
-    // which may contain raw HTML).
-    if (inferred.type === "array" && inferred.items && schema.titleBy) {
-      inferred.items = { ...inferred.items, titleBy: schema.titleBy };
-    }
-    dataOnlySchemas[k] = inferred;
-  }
-  const allDataOnlyKeys = dataOnlyKeys.filter((k) => dataOnlySchemas[k]);
-
-  // When ALL schema-defined field values are empty but data-only keys
-  // contain the actual data (e.g. CategoryTextHero defines flat
-  // `matcher, title, description, max` but the data wraps them in
-  // `textSeo: [{matcher, title, description}]`), hide the empty schema
-  // fields so the user only sees the populated data-only fields.
-  const schemaFieldsAllEmpty =
-    allDataOnlyKeys.length > 0 &&
-    keys.every((k) => {
-      const v = objValue[k];
-      return v === undefined || v === null || v === "";
-    });
-  const effectiveSchemaKeys = schemaFieldsAllEmpty ? [] : keys;
-
-  if (effectiveSchemaKeys.length === 0 && allDataOnlyKeys.length === 0) {
+  if (keys.length === 0) {
     return (
       <div className="px-3 py-6 text-center text-xs text-muted-foreground">
         No editable fields on this section.
@@ -408,18 +335,12 @@ export function SchemaForm({
       ? objValue.__resolveType
       : undefined;
 
-  const allKeys = [...effectiveSchemaKeys, ...allDataOnlyKeys];
-  const allProperties: Record<string, SchemaProperty> = {
-    ...properties,
-    ...dataOnlySchemas,
-  };
-
   const activeKey =
     breadcrumbPath.length > 0
-      ? resolveActiveFieldKey(allKeys, allProperties, objValue, breadcrumbPath)
+      ? resolveActiveFieldKey(keys, properties, objValue, breadcrumbPath)
       : null;
-  const activeSchema = activeKey ? allProperties[activeKey] : null;
-  const visibleKeys = activeKey && activeSchema ? [activeKey] : allKeys;
+  const activeSchema = activeKey ? properties[activeKey] : null;
+  const visibleKeys = activeKey && activeSchema ? [activeKey] : keys;
   const fieldBreadcrumbPath =
     activeKey && activeSchema
       ? breadcrumbPathForActiveField(activeKey, activeSchema, breadcrumbPath)
@@ -427,7 +348,7 @@ export function SchemaForm({
   return (
     <div className="min-w-0 space-y-6">
       {visibleKeys.map((key) => {
-        const propSchema = allProperties[key];
+        const propSchema = properties[key];
         if (!propSchema) return null;
         const fieldPath = basePath ? `${basePath}.${key}` : key;
         const label = fieldDisplayLabel(key, propSchema);

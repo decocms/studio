@@ -142,6 +142,73 @@ describe("resolveActiveFieldKey", () => {
     ).toBe("alert");
   });
 
+  test("disambiguates block-refs with same label by inner value keys", () => {
+    const properties = {
+      asideMenu: {
+        title: "Section",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "AsideMenu.tsx", title: "Aside" }],
+      } as SchemaProperty,
+      content: {
+        title: "Section",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "CategoryTextHero.tsx", title: "Hero" }],
+      } as SchemaProperty,
+    };
+    const objValue = {
+      asideMenu: {
+        __resolveType: "AsideMenu.tsx",
+        menuItems: [{ label: "Garantia Vitalícia" }],
+      },
+      content: {
+        __resolveType: "CategoryTextHero.tsx",
+        textSeo: [{ matcher: "/garantia-vitalicia" }],
+      },
+    };
+    // "Text Seo" matches humanize("textSeo") in content, not asideMenu
+    expect(
+      resolveActiveFieldKey(["asideMenu", "content"], properties, objValue, [
+        "Section",
+        "Text Seo",
+        "Garantia Vitalícia",
+      ]),
+    ).toBe("content");
+  });
+
+  test("disambiguates block-refs when breadcrumb uses schema title casing", () => {
+    // Schema title "TextSeo" vs humanize("textSeo") = "Text Seo"
+    const properties = {
+      asideMenu: {
+        title: "Section",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "AsideMenu.tsx", title: "Aside" }],
+      } as SchemaProperty,
+      content: {
+        title: "Section",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "CategoryTextHero.tsx", title: "Hero" }],
+      } as SchemaProperty,
+    };
+    const objValue = {
+      asideMenu: {
+        __resolveType: "AsideMenu.tsx",
+        menuItems: [{ label: "Garantia Vitalícia" }],
+      },
+      content: {
+        __resolveType: "CategoryTextHero.tsx",
+        textSeo: [{ matcher: "/garantia-vitalicia" }],
+      },
+    };
+    // "TextSeo" (schema title) should match value key "textSeo" via loose comparison
+    expect(
+      resolveActiveFieldKey(["asideMenu", "content"], properties, objValue, [
+        "Section",
+        "TextSeo",
+        "/garantia-vitalicia",
+      ]),
+    ).toBe("content");
+  });
+
   test("matches array field when runtime value is an array", () => {
     const properties = {
       appKey: { type: "string", title: "App Key" } as SchemaProperty,

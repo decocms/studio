@@ -79,6 +79,11 @@ export function renderMustacheTemplate(
   return result.trim() || undefined;
 }
 
+/** Strip HTML tags to extract the text content (e.g. `<h1>Title</h1>` → `Title`). */
+function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]*>/g, "").trim();
+}
+
 function readTitleByValue(
   obj: Record<string, unknown>,
   titleBy: string,
@@ -138,7 +143,18 @@ export function getArrayItemLabel(
       // Skip whitespace-only strings (e.g. title: " ") so the item still gets a
       // meaningful label (falls through to the section name) and a stable,
       // non-blank breadcrumb crumb you can click into.
-      if (typeof value === "string" && value.trim()) return value;
+      if (typeof value === "string" && value.trim()) {
+        // Rich-text / HTML fields store raw markup.  Use the plain-text
+        // content as the label so array items show readable names and the
+        // breadcrumb crumb stays stable for navigation.
+        const fmt = itemSchema?.properties?.[key]?.format;
+        if (fmt === "rich-text" || fmt === "html") {
+          const text = stripHtmlTags(value);
+          if (text) return text;
+          continue; // empty after stripping → try next key
+        }
+        return value;
+      }
       if (Array.isArray(value)) {
         const joined = value
           .map((entry) => (entry == null ? "" : String(entry)))
