@@ -125,6 +125,12 @@ describe("reactAll (real Postgres)", () => {
     it("flips the row to in_progress and emits 1 status event", async () => {
       const { deps, sseEvents, purged } = makeReactor();
       const thread = await createThread(); // default status "completed"
+      await database.db
+        .updateTable("threads")
+        .set({ last_progress_at: new Date(0).toISOString() })
+        .where("id", "=", thread.id)
+        .where("organization_id", "=", ORG)
+        .execute();
 
       await react(
         {
@@ -138,8 +144,15 @@ describe("reactAll (real Postgres)", () => {
       );
 
       const row = await storage.get(thread.id, ORG);
+      const rawRow = await database.db
+        .selectFrom("threads")
+        .select("last_progress_at")
+        .where("id", "=", thread.id)
+        .where("organization_id", "=", ORG)
+        .executeTakeFirstOrThrow();
       expect(row?.status).toBe("in_progress");
       expect(row?.run_started_at).not.toBeNull();
+      expect(rawRow.last_progress_at).toBeNull();
       expect(sseEvents).toHaveLength(1);
       expect(purged).toHaveLength(0);
     });

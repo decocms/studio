@@ -8,7 +8,7 @@
 import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
-import type { ThreadStoragePort } from "./ports";
+import type { ThreadStoragePort, ThreadUpdateData } from "./ports";
 import { SqlThreadMessagePartStorage } from "./thread-message-parts";
 import type {
   Database,
@@ -79,7 +79,7 @@ export class OrgScopedThreadStorage {
     return this.inner.get(id, this.requireOrg());
   }
 
-  update(id: string, data: Partial<Thread>): Promise<Thread> {
+  update(id: string, data: ThreadUpdateData): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
   }
 
@@ -323,7 +323,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
   async update(
     id: string,
     organizationId: string,
-    data: Partial<Thread>,
+    data: ThreadUpdateData,
   ): Promise<Thread> {
     const now = new Date().toISOString();
 
@@ -359,6 +359,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
     if (data.run_started_at !== undefined) {
       updateData.run_started_at = data.run_started_at;
+    }
+    if (data.last_progress_at !== undefined) {
+      updateData.last_progress_at = data.last_progress_at;
     }
     if (data.metadata !== undefined) {
       updateData.metadata = JSON.stringify(data.metadata);
@@ -454,9 +457,11 @@ export class SqlThreadStorage implements ThreadStoragePort {
 
   /**
    * Cross-org scan for runs stuck `in_progress` past `cutoffIso`. Liveness is
-   * `COALESCE(last_progress_at, run_started_at)`: last_progress_at is NULL until
-   * the first streamed chunk, so run_started_at is the floor that keeps a
-   * brand-new cold-starting run from being reaped before it produces output.
+   * `GREATEST(last_progress_at, run_started_at)`: last_progress_at is NULL until
+   * the first streamed chunk, and can also belong to a previous turn if a row was
+   * written before the RUN_STARTED reset. The newest timestamp is the liveness
+   * floor that keeps a brand-new cold-starting run from being reaped before it
+   * produces output.
    * Used ONLY by the cross-pod thread-gate reaper (see thread-gate-reaper.ts),
    * which is why it is not org-scoped — it must sweep every org.
    */
@@ -468,7 +473,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .select(["id", "organization_id"])
       .where("status", "=", "in_progress")
       .where(
-        sql<boolean>`coalesce(last_progress_at, run_started_at) < ${cutoffIso}::timestamptz`,
+        sql<boolean>`greatest(coalesce(last_progress_at, '-infinity'::timestamptz), coalesce(run_started_at, '-infinity'::timestamptz)) < ${cutoffIso}::timestamptz`,
       )
       .execute();
     return rows.map((r) => ({ id: r.id, organizationId: r.organization_id }));

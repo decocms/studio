@@ -27,13 +27,22 @@ import type {
   ThreadMessage,
 } from "./types";
 
+export type ThreadUpdateData = Partial<Thread> & {
+  /**
+   * Internal liveness heartbeat. Exposed only on updates so RUN_STARTED can
+   * clear progress from an older turn in the same write that marks the new run
+   * active.
+   */
+  last_progress_at?: string | null;
+};
+
 export interface ThreadStoragePort {
   create(data: Partial<Thread>): Promise<Thread>;
   get(id: string, organizationId: string): Promise<Thread | null>;
   update(
     id: string,
     organizationId: string,
-    data: Partial<Thread>,
+    data: ThreadUpdateData,
   ): Promise<Thread>;
   /**
    * Atomically transition an in-progress thread to completed.
