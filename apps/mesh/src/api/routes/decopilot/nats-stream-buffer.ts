@@ -30,6 +30,7 @@ import {
 } from "@nats-io/nats-core";
 import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
 import {
+  buildCheckpointMsgId,
   buildChunkMsgId,
   buildDoneMsgId,
   DECOPILOT_STREAM_NAME,
@@ -61,6 +62,8 @@ const MAX_AGE_NS = 30 * 60 * 1_000_000_000; // 30 min
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
 const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
 const MAX_MSGS_PER_SUBJECT = 20_000; // ~20K chunks per thread
+/** Minimum ms between consecutive checkpoint publishes for the same run. */
+export const CHECKPOINT_DEBOUNCE_MS = 2000;
 
 /**
  * Pure stream config for `DECOPILOT_STREAMS`. File-backed so the run-scratch
@@ -457,6 +460,23 @@ export class NatsStreamBuffer implements StreamBuffer {
       this.encoder.encode(JSON.stringify({ done: true, finalSeq })),
       { msgID: buildDoneMsgId({ runId: taskId, fenceToken, finalSeq }) },
     );
+    return true;
+  }
+
+  async publishCheckpoint(
+    taskId: string,
+    fenceToken: string,
+    headSeq: number,
+  ): Promise<boolean> {
+    const js = this.js;
+    if (!js) return false;
+    js.publish(
+      streamSubject(taskId),
+      this.encoder.encode(JSON.stringify({ checkpoint: true, headSeq })),
+      {
+        msgID: buildCheckpointMsgId({ runId: taskId, fenceToken, headSeq }),
+      },
+    ).catch(() => {});
     return true;
   }
 

@@ -47,30 +47,43 @@ export function createLinkSessionRoutes() {
     // subject-scoped per-user JWT signed with the tunnel account's signing key.
     // In dev these settings come from the operator config ensure-services
     // provisions; in prod they come from the deployment env.
+    //
+    // When JWT credentials are NOT configured (e.g. a plain NATS server without
+    // operator mode, used in resilience-test environments), the session is issued
+    // without credentials so the daemon connects anonymously.
     if (!settings.natsTunnelPublicEnabled) {
       return c.json(unavailable(), 503);
     }
     if (!settings.natsPublicUrl) {
       return c.json(unavailable(), 503);
     }
+
+    // Production guard: in non-local mode, missing JWT credentials mean the
+    // operator-mode NATS has not been configured → 503. In local/test mode
+    // (plain NATS without operator auth), allow anonymous connections.
     if (!settings.natsAccountJwt || !settings.natsAccountSigningKey) {
-      return c.json(unavailable(), 503);
+      if (!settings.localMode) {
+        return c.json(unavailable(), 503);
+      }
     }
 
-    const expiresAt = new Date(
-      Date.now() + settings.natsTunnelSessionTtlSeconds * 1000,
-    );
     const tunnelHostname = buildUserTunnelHostname(userId);
-    const credentials = await issueNatsCredentials({
-      accountJwt: settings.natsAccountJwt,
-      accountSigningKey: settings.natsAccountSigningKey,
-      expiresAt,
-      permissions: buildDaemonCredentialPermissions(tunnelHostname),
-      userId,
-      allowedConnectionTypes: allowedConnectionTypesForUrl(
-        settings.natsPublicUrl,
-      ),
-    });
+    let credentials: string | undefined;
+    if (settings.natsAccountJwt && settings.natsAccountSigningKey) {
+      const expiresAt = new Date(
+        Date.now() + settings.natsTunnelSessionTtlSeconds * 1000,
+      );
+      credentials = await issueNatsCredentials({
+        accountJwt: settings.natsAccountJwt,
+        accountSigningKey: settings.natsAccountSigningKey,
+        expiresAt,
+        permissions: buildDaemonCredentialPermissions(tunnelHostname),
+        userId,
+        allowedConnectionTypes: allowedConnectionTypesForUrl(
+          settings.natsPublicUrl,
+        ),
+      });
+    }
 
     return c.json(
       buildLinkSessionResponse({

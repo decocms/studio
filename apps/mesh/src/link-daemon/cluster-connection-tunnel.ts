@@ -452,7 +452,31 @@ export async function connectToClusterTunnel(
   const managerClosed = (async () => {
     try {
       while (!stopRequested) {
-        active = await startActive();
+        try {
+          active = await startActive();
+        } catch (err) {
+          if (firstReady) {
+            // First-ever connection failed — surface the error to the caller.
+            firstReady.reject(err);
+            firstReady = undefined;
+            throw err;
+          }
+          if (stopRequested) break;
+          // Auth rejections (401/403) are non-retriable: propagate so the
+          // daemon surfaces the invalid-credential error to the caller.
+          if (err instanceof LinkSessionRequestError && err.status < 500) {
+            throw err;
+          }
+          // Reconnection attempt failed (transient NATS error after a
+          // successful session fetch, or a temporary 5xx/network blip).
+          // Back off briefly and retry.
+          console.error(
+            "[cluster-connection-tunnel] reconnect failed, retrying in 2s",
+            err,
+          );
+          await sleepImpl(2_000);
+          continue;
+        }
         if (firstReady) {
           firstReady.resolve();
           firstReady = undefined;
@@ -462,12 +486,12 @@ export async function connectToClusterTunnel(
           await active.close();
           break;
         }
-        const reason = await active.closedReason;
+        await active.closedReason;
         await active.closed;
         active = undefined;
-        if (reason !== "renew") {
-          break;
-        }
+        // Loop on both "renew" (timer-based renewal) and "closed" (NATS
+        // dropped). The while condition (!stopRequested) handles explicit
+        // shutdown; the inner try-catch above handles NATS reconnect errors.
       }
     } catch (err) {
       firstReady?.reject(err);
