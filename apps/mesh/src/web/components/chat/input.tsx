@@ -71,7 +71,7 @@ import { shouldRenderInlineModeRow } from "./input-mode-row";
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
 // ============================================================================
 
-export function ChatInputDisabledState({ message }: { message: string }) {
+function ChatInputDisabledState({ message }: { message: string }) {
   return (
     <div className="flex w-full items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/40 text-muted-foreground">
       <Lock01 size={14} className="shrink-0" />
