@@ -41,8 +41,6 @@ export async function startDurableProjector(
   return consumer.start({
     resolveOrgId: w.resolveOrgId,
     enqueueProjectRun,
-    ...(process.env.DECOPILOT_INCREMENTAL_PROJECTION === "1"
-      ? { enqueueProjectCheckpoint }
-      : {}),
+    enqueueProjectCheckpoint,
   });
 }
