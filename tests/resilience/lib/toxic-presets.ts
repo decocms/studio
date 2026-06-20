@@ -2,6 +2,7 @@ export const PROXY_NAMES = {
   POSTGRES: "postgres",
   NATS: "nats",
   EVERYTHING: "everything",
+  STUDIO_HTTP: "studio_http",
   STUDIO_WS: "studio_ws",
 } as const;
 
