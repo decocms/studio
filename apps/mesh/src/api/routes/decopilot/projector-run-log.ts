@@ -74,6 +74,8 @@ function collectChunks(
       continue;
     }
 
+    if (parsed.kind !== "chunk") continue;
+
     if (parsed.seq > upTo) continue;
     const total = Number(message.headers?.get(FRAG_TOTAL_HEADER) ?? "0");
     if (parsed.fragmentIndex !== null || total > 0) {
