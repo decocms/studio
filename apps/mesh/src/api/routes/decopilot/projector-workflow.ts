@@ -6,7 +6,10 @@ import type { ProjectChunksResult } from "./project-chunks";
 import { PartEmitter } from "./part-emitter";
 import { projectRun } from "./project-run";
 import { recordPoison } from "./projector-metrics";
-import { readProjectorRunLog } from "./projector-run-log";
+import {
+  readProjectorRunLog,
+  readProjectorRunRange,
+} from "./projector-run-log";
 export { PROJECTOR_QUEUE } from "@/dispatch-queue/queue-names";
 import { PROJECTOR_QUEUE } from "@/dispatch-queue/queue-names";
 
@@ -25,6 +28,14 @@ export function projectorWorkflowId(runId: string, fenceToken: string): string {
   return `decopilot-project:${runId}:${fenceToken}`;
 }
 
+export function checkpointWorkflowId(
+  runId: string,
+  fenceToken: string,
+  headSeq: number,
+): string {
+  return `decopilot-checkpoint:${runId}:${fenceToken}:${headSeq}`;
+}
+
 export function shouldSkipProjection(input: {
   status: string;
   runFenceToken: string | null;
@@ -40,6 +51,14 @@ export interface ProjectorWorkflowInput {
   runId: string;
   fenceToken: string;
   finalSeq: number;
+}
+
+/** Input to a non-terminal incremental checkpoint projection pass. */
+export interface ProjectorCheckpointInput {
+  runId: string;
+  fenceToken: string;
+  headSeq: number;
+  orgId: string;
 }
 
 export interface ProjectorRunRow {
@@ -66,6 +85,12 @@ export interface ProjectorWorkflowRuntime {
   ): Promise<unknown>;
   persistTitle(runId: string, orgId: string, title: string): Promise<unknown>;
   purgeRun(runId: string, fenceToken: string): Promise<void>;
+  advanceProjectedSeq(
+    runId: string,
+    orgId: string,
+    fenceToken: string,
+    newSeq: number,
+  ): Promise<number>;
 }
 
 let runtime: ProjectorWorkflowRuntime | null = null;
@@ -109,6 +134,29 @@ async function persistenceFor(
     emitFinal: (message) => emitter.emitFinal(message),
     emitError: (messageId, errorText) =>
       emitter.emitError(messageId, errorText),
+  };
+}
+
+/**
+ * Non-terminal persistence for checkpoint passes: writes step parts but
+ * intentionally skips the finish anchor and error anchor. The terminal done
+ * pass writes the finish anchor, so checkpoint writes are strictly additive.
+ */
+function checkpointPersistenceFor(
+  runId: string,
+  orgId: string,
+  messageParts: SqlThreadMessagePartStorage,
+): HarnessStreamPersistence {
+  const emitter = new PartEmitter({
+    storage: messageParts,
+    orgId,
+    threadId: runId,
+    runId,
+  });
+  return {
+    emitStepParts: (message) => emitter.emitStepParts(message),
+    emitFinal: async (_message) => {},
+    emitError: async (_messageId, _errorText) => {},
   };
 }
 
@@ -326,5 +374,104 @@ export async function enqueueProjectRun(
     fenceToken: input.fenceToken,
     finalSeq: input.finalSeq,
   });
+  return { workflowID: handle.workflowID };
+}
+
+async function projectCheckpointFromJetStreamStep(
+  input: ProjectorCheckpointInput,
+  currentThreadTitle: string | null,
+): Promise<{ projected: boolean }> {
+  const rt = requireRuntime();
+  const js = rt.getJetStream();
+  if (!js) throw new Error("JetStream unavailable");
+  // Full fold from seq 1 to headSeq. fromSeq:0 so reconstructProjectorRunRange
+  // starts its loop at s=1 (it iterates fromSeq+1..toSeq).
+  const range = await readProjectorRunRange({
+    js,
+    runId: input.runId,
+    fenceToken: input.fenceToken,
+    fromSeq: 0,
+    toSeq: input.headSeq,
+    idleTimeoutMs: 5000,
+  });
+  if (!range.ok || range.chunks.length === 0) return { projected: false };
+  const result = await projectRun({
+    runId: input.runId,
+    chunks: range.chunks,
+    // Non-terminal persistence: writes step parts but skips the finish anchor.
+    persistence: checkpointPersistenceFor(
+      input.runId,
+      input.orgId,
+      rt.messageParts,
+    ),
+    onDlq: async (_runId, error) => {
+      throw error instanceof Error ? error : new Error(String(error));
+    },
+    title: {
+      threadId: input.runId,
+      currentThreadTitle,
+      persistTitle: async (_threadId, title) => {
+        await rt.persistTitle(input.runId, input.orgId, title);
+      },
+    },
+  });
+  if (!result.ok) return { projected: false };
+  await rt.advanceProjectedSeq(
+    input.runId,
+    input.orgId,
+    input.fenceToken,
+    range.lastContiguousSeq,
+  );
+  return { projected: true };
+}
+
+async function projectCheckpointWorkflowFn(
+  input: ProjectorCheckpointInput,
+): Promise<void> {
+  const resolved = await DBOS.runStep(
+    async () => {
+      const rt = requireRuntime();
+      const row = await rt.resolveRun(input.runId);
+      if (!row) return { skip: "missing" as const };
+      if (
+        shouldSkipProjection({
+          status: row.status,
+          runFenceToken: row.runFenceToken,
+          fenceToken: input.fenceToken,
+        })
+      ) {
+        return { skip: "stale-or-terminal" as const };
+      }
+      if (row.version !== 2) return { skip: "legacy-v1" as const };
+      return { row };
+    },
+    { name: "resolveProjectorRun" },
+  );
+  if ("skip" in resolved) return;
+
+  const currentThreadTitle = resolved.row.title;
+  await DBOS.runStep(
+    () => projectCheckpointFromJetStreamStep(input, currentThreadTitle),
+    { name: "projectCheckpointFromJetStream" },
+  );
+}
+
+const projectCheckpointWorkflow = DBOS.registerWorkflow(
+  projectCheckpointWorkflowFn,
+  { name: "projectCheckpointWorkflow" },
+);
+
+export async function enqueueProjectCheckpoint(
+  input: ProjectorCheckpointInput,
+): Promise<{ workflowID: string }> {
+  const handle = await DBOS.startWorkflow(projectCheckpointWorkflow, {
+    workflowID: checkpointWorkflowId(
+      input.runId,
+      input.fenceToken,
+      input.headSeq,
+    ),
+    queueName: PROJECTOR_QUEUE,
+    enqueueOptions: { queuePartitionKey: input.orgId },
+  })(input);
   return { workflowID: handle.workflowID };
 }

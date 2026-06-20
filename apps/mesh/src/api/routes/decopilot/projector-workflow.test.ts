@@ -82,6 +82,7 @@ function makeRuntime(): { rt: ProjectorWorkflowRuntime; calls: FakeCall[] } {
     purgeRun: async (runId, fenceToken) => {
       calls.push({ kind: "purge", runId, fenceToken });
     },
+    advanceProjectedSeq: async () => 0,
   };
 
   return { rt, calls };

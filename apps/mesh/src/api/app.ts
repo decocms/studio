@@ -1612,6 +1612,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     purgeRun: async (runId) => {
       streamBuffer.purge(runId);
     },
+    advanceProjectedSeq: (runId, orgId, fenceToken, newSeq) =>
+      projectorThreadStorage.advanceProjectedSeq(
+        runId,
+        orgId,
+        fenceToken,
+        newSeq,
+      ),
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).

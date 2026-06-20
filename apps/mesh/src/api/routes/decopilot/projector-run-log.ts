@@ -169,21 +169,33 @@ export async function readProjectorRunRange(input: {
   });
   const sub = await consumer.consume();
   const messages: ProjectorRetainedMessage[] = [];
-  for await (const m of sub) {
-    messages.push({
-      subject: m.subject,
-      data: m.data,
-      msgId: m.headers?.get("Nats-Msg-Id") || undefined,
-      headers: m.headers,
-    });
-    const parsed = parseRunStreamMsgId(
-      m.headers?.get("Nats-Msg-Id") || undefined,
-    );
-    // Stop once we've reached or passed toSeq, or no more messages pending
-    if (parsed && "seq" in parsed && parsed.seq >= input.toSeq) {
-      sub.stop();
-      break;
+  const idleTimeoutMs = input.idleTimeoutMs ?? 5000;
+  let idle: ReturnType<typeof setTimeout> | null = null;
+  const resetIdle = () => {
+    if (idle) clearTimeout(idle);
+    idle = setTimeout(() => sub.stop(), idleTimeoutMs);
+    idle.unref?.();
+  };
+  try {
+    resetIdle();
+    for await (const m of sub) {
+      resetIdle();
+      messages.push({
+        subject: m.subject,
+        data: m.data,
+        msgId: m.headers?.get("Nats-Msg-Id") || undefined,
+        headers: m.headers,
+      });
+      const parsed = parseRunStreamMsgId(
+        m.headers?.get("Nats-Msg-Id") || undefined,
+      );
+      if (parsed && "seq" in parsed && parsed.seq >= input.toSeq) {
+        sub.stop();
+        break;
+      }
     }
+  } finally {
+    if (idle) clearTimeout(idle);
   }
   return reconstructProjectorRunRange({ ...input, messages });
 }

@@ -39,7 +39,10 @@ import {
   parseRunStreamMsgId,
   runIdFromSubject,
 } from "./projector-stream-messages";
-import type { ProjectorWorkflowInput } from "./projector-workflow";
+import type {
+  ProjectorCheckpointInput,
+  ProjectorWorkflowInput,
+} from "./projector-workflow";
 
 // Re-exported so existing importers can keep resolving `runIdFromSubject` from
 // this module; the implementation lives in the shared identity helper.
@@ -67,14 +70,6 @@ export interface ProjectorMessage {
   publishedAtMs?: number;
   ack(): Promise<void>;
   term(): Promise<void>;
-}
-
-/** Input to schedule a non-terminal checkpoint projection pass (Task 9). */
-export interface ProjectorCheckpointInput {
-  runId: string;
-  fenceToken: string;
-  headSeq: number;
-  orgId: string;
 }
 
 export interface ProjectorConsumerOptions {
