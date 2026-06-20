@@ -1,9 +1,12 @@
 // Personal home — the USER's space, above any org (the "chatgpt.com" layer),
-// inside the same shell chrome as an Agent (sidebar + toolbar). Mirrors the org
-// home (Figma 8243-11524): a brief + New task, important highlights, then
-// "Agent updates" (per-Agent groups — the Figma's "Projects updates", renamed),
-// and suggestions. Entering an Agent drops into the org experience (/$org).
-// Standalone mock at /me (no org / ProjectContext needed).
+// inside the same shell chrome as an Agent (sidebar + toolbar). The home is
+// CONVERSATIONAL: you talk to deco here, before entering any project. The hero
+// is a chat composer (the org-less "talk to deco" surface), followed by a brief,
+// important highlights, then "Agent updates" (per-Agent groups). Entering an
+// Agent drops into the org experience (/$org).
+// Standalone mock at /me (no org / ProjectContext needed). The composer's
+// backend (a personal, org-less Decopilot thread that can route across your
+// orgs) is the work tracked in the proposal; submit is stubbed for now.
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -18,6 +21,7 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Button } from "@deco/ui/components/button.tsx";
+import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Activity,
@@ -278,6 +282,8 @@ function PersonalHomeContent({
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-10 px-10 py-10">
       <Greeting reviewTotal={reviewTotal} />
 
+      <HomeChat />
+
       <Highlights reviewTotal={reviewTotal} />
 
       <section>
@@ -298,23 +304,6 @@ function PersonalHomeContent({
         <div className="grid gap-3 sm:grid-cols-2">
           {USER_CONNECTIONS.map((c) => (
             <ConnectionRow key={c.id} connection={c} />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <SectionLabel>Suggestions</SectionLabel>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s.label}
-              type="button"
-              onClick={() => toast.message(s.label)}
-              className="flex h-40 flex-col justify-between rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-ring/40 hover:bg-accent/30"
-            >
-              <s.icon size={18} className="text-muted-foreground" />
-              <span className="text-sm text-foreground">{s.label}</span>
-            </button>
           ))}
         </div>
       </section>
@@ -341,15 +330,66 @@ function Greeting({ reviewTotal }: { reviewTotal: number }) {
           ? `You have ${reviewTotal} updates in need of review across your teammates. Farm Rio needs the most attention.`
           : "Your teammates are all caught up. Nothing needs your review right now."}
       </p>
-      <Button
-        size="sm"
-        className="mt-5"
-        onClick={() => toast.message("New task")}
-      >
-        <Plus size={16} />
-        New task
-      </Button>
     </div>
+  );
+}
+
+// The home is conversational — you talk to deco *before* entering any project.
+// This composer is the org-less "talk to deco" surface. The backend (a personal
+// Decopilot thread that can route across your orgs and spin up new projects) is
+// the work tracked in the proposal; submit is stubbed to a toast for now.
+function HomeChat() {
+  const [value, setValue] = useState("");
+
+  const submit = () => {
+    const text = value.trim();
+    if (!text) return;
+    // TODO(personal-thread): open an org-less Decopilot thread and stream here.
+    toast.message("Talk to deco", { description: text });
+    setValue("");
+  };
+
+  return (
+    <section>
+      <div className="card-shadow rounded-2xl border border-border bg-card p-2">
+        <Textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="Ask deco anything across your projects…"
+          className="min-h-[88px] resize-none border-0 bg-transparent text-base shadow-none focus-visible:ring-0"
+        />
+        <div className="flex items-center gap-2 px-1.5 pb-1.5">
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() => setValue(s.label)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-ring/40 hover:text-foreground"
+              >
+                <s.icon size={12} />
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <Button
+            size="sm"
+            className="shrink-0"
+            onClick={submit}
+            disabled={!value.trim()}
+          >
+            <Stars02 size={16} />
+            Ask deco
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
 
