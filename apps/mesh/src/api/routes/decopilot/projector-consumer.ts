@@ -34,6 +34,7 @@ import {
 import { computeLagMs, recordLag } from "./projector-metrics";
 import {
   DECOPILOT_STREAM_NAME,
+  isCheckpointEnvelope,
   isDoneEnvelope,
   parseRunStreamMsgId,
   runIdFromSubject,
@@ -68,6 +69,14 @@ export interface ProjectorMessage {
   term(): Promise<void>;
 }
 
+/** Input to schedule a non-terminal checkpoint projection pass (Task 9). */
+export interface ProjectorCheckpointInput {
+  runId: string;
+  fenceToken: string;
+  headSeq: number;
+  orgId: string;
+}
+
 export interface ProjectorConsumerOptions {
   /** Source of decoded messages (injected — a NATS consumer in prod, a fake in tests). */
   messages: AsyncIterable<ProjectorMessage>;
@@ -76,6 +85,15 @@ export interface ProjectorConsumerOptions {
   /** Schedule the durable projection workflow for a completed run. */
   enqueueProjectRun: (
     input: ProjectorWorkflowInput & { orgId: string },
+  ) => Promise<unknown>;
+  /**
+   * Schedule a non-terminal checkpoint projection pass. Optional: only wired
+   * when incremental projection is enabled (Task 10). When absent, checkpoint
+   * markers are acked-and-skipped (the terminal `done` pass still projects the
+   * whole run, so correctness is preserved when the feature is off).
+   */
+  enqueueProjectCheckpoint?: (
+    input: ProjectorCheckpointInput,
   ) => Promise<unknown>;
 }
 
@@ -101,6 +119,29 @@ export async function consumeProjectorMessages(
         continue;
       }
       const payload = JSON.parse(decoder.decode(msg.data)) as unknown;
+      if (isCheckpointEnvelope(payload)) {
+        if (options.enqueueProjectCheckpoint) {
+          const parsed = parseRunStreamMsgId(msg.msgId);
+          if (
+            parsed &&
+            parsed.kind === "checkpoint" &&
+            parsed.runId === runId &&
+            parsed.headSeq === payload.headSeq
+          ) {
+            const orgId = await options.resolveOrgId(runId);
+            if (orgId) {
+              await options.enqueueProjectCheckpoint({
+                runId,
+                fenceToken: parsed.fenceToken,
+                headSeq: payload.headSeq,
+                orgId,
+              });
+            }
+          }
+        }
+        await msg.ack();
+        continue;
+      }
       if (!isDoneEnvelope(payload)) {
         await msg.ack();
         continue;
