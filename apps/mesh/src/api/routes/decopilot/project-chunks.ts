@@ -1,4 +1,4 @@
-import type { UIMessageChunk } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 import {
   consumeHarnessStream,
   type HarnessStreamPersistence,
@@ -38,6 +38,12 @@ export interface ProjectChunksOptions {
    * (it is the sole title writer). Omitted → the title is a no-op (legacy).
    */
   title?: ProjectTitleOptions;
+  /**
+   * Prior completed messages to seed createUIMessageStream. Supplied by the
+   * checkpoint workflow (Task 9) to resume a fold from the projection cursor.
+   * Omitted / empty array → fresh fold from seq 1 (existing terminal behaviour).
+   */
+  originalMessages?: UIMessage[];
 }
 
 async function drain(stream: ReadableStream): Promise<void> {
@@ -142,7 +148,7 @@ export async function projectChunks(
   };
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: wrappedChunks,
-    originalMessages: [],
+    originalMessages: options.originalMessages ?? [],
     // When a title writer is wired, the projector is the sole `threads.title`
     // writer. Pass the thread's REAL current title through to the interceptor's
     // gate: the harness title is persisted only while the thread title is still

@@ -1,4 +1,4 @@
-import type { UIMessageChunk } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import type { HarnessStreamPersistence } from "./consume-harness-stream";
 import {
@@ -26,6 +26,11 @@ export interface ProjectRunOptions {
   backoffMs?: (attempt: number) => number;
   /** When set, the projector persists the run's title chunk (sole writer). */
   title?: ProjectTitleOptions;
+  /**
+   * Prior completed messages to seed createUIMessageStream. Forwarded to
+   * projectChunks → consumeHarnessStream. Omitted → fresh fold (default).
+   */
+  originalMessages?: UIMessage[];
 }
 
 export interface ProjectRunResult {
@@ -73,6 +78,7 @@ export async function projectRun(
         // attempts, DBOS step retries, and the live-path write (same id).
         errorMessageId: `error-${options.runId}`,
         title: options.title,
+        originalMessages: options.originalMessages,
       });
       return { ok: true, attempts: attempt + 1, outcome };
     } catch (error) {
