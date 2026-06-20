@@ -932,6 +932,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       // "unavailable" (false) — the caller must not treat the run as handed
       // off to the projector.
       publishDone: async () => false,
+      publishCheckpoint: async () => false,
       createTailStream: async () => null,
       purge: () => {},
       teardown: () => {},

@@ -160,6 +160,7 @@ function appWithContext(opts: AppContextOptions = {}) {
           publishedDone.push({ fenceToken, finalSeq });
           return true;
         },
+        publishCheckpoint: async () => true,
         pump: (stream: ReadableStream) => {
           const index = pumped.length;
           pumped.push([]);
