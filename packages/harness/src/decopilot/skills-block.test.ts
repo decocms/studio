@@ -52,4 +52,25 @@ describe("buildSkillsBlock", () => {
     expect(row).toContain("…");
     expect(row?.length).toBeLessThan(220);
   });
+
+  test("calls out user-configured skills by id (also listed as rows)", () => {
+    const result = buildSkillsBlock(
+      [entry("core/slides", "decks"), entry("home/onb", "onboarding", "home")],
+      ["home/onb"],
+    );
+    expect(result).toContain(
+      "The user explicitly configured these skills for this agent",
+    );
+    expect(result).toContain("home/onb");
+    // still a normal catalog row, not a separate listing.
+    expect(result).toContain("home/onb,onboarding,home");
+  });
+
+  test("ignores configured ids not present in the catalog; no callout when none", () => {
+    const result = buildSkillsBlock(
+      [entry("core/slides", "decks")],
+      ["ghost/x"],
+    );
+    expect(result).not.toContain("explicitly configured");
+  });
 });

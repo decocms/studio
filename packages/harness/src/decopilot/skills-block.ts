@@ -40,7 +40,14 @@ loaded. Only call skill for a skill whose SKILL.md is NOT yet in the
 conversation.
 </skills-usage>`;
 
-export function buildSkillsBlock(skills: SkillsBlockEntry[]): string | null {
+/**
+ * @param configuredIds ids the user explicitly attached to this agent — called
+ *   out so the model prefers them. They also appear as normal catalog rows.
+ */
+export function buildSkillsBlock(
+  skills: SkillsBlockEntry[],
+  configuredIds: string[] = [],
+): string | null {
   if (skills.length === 0) return null;
 
   const rows = skills.map(
@@ -48,8 +55,17 @@ export function buildSkillsBlock(skills: SkillsBlockEntry[]): string | null {
       `${csvField(s.id)},${csvField(truncate(s.description))},${csvField(s.source)}`,
   );
 
+  const present = new Set(skills.map((s) => s.id));
+  const configured = configuredIds.filter((id) => present.has(id));
+  const callout =
+    configured.length > 0
+      ? `\n\nThe user explicitly configured these skills for this agent — ` +
+        `prefer them when the task is relevant: ${configured.join(", ")}.`
+      : "";
+
   return (
     `\n\n<available-skills>\nid,description,source\n${rows.join("\n")}\n</available-skills>` +
+    callout +
     `\n\n${USAGE}`
   );
 }
