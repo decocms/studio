@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectChunksResult } from "./project-chunks";
 import {
+  checkpointWorkflowId,
   PROJECTOR_PARTITION_CONCURRENCY,
   PROJECTOR_QUEUE,
   projectorWorkflowId,
@@ -13,6 +14,11 @@ describe("projector workflow helpers", () => {
   test("builds deterministic workflow ids on a single partitioned queue", () => {
     expect(projectorWorkflowId("run_1", "fence_a")).toBe(
       "decopilot-project:run_1:fence_a",
+    );
+    // Checkpoint passes get a per-headSeq id so each incremental pass is a
+    // distinct durable workflow (idempotent on replay of the same headSeq).
+    expect(checkpointWorkflowId("run_1", "fence_a", 7)).toBe(
+      "decopilot-checkpoint:run_1:fence_a:7",
     );
     // Single partitioned queue (partitioned by orgId at enqueue time), NOT a
     // per-org queue — mirrors AUTOMATIONS_QUEUE/THREAD_GATE_QUEUE.
