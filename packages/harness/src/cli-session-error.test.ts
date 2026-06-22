@@ -48,9 +48,7 @@ describe("isStaleSessionError", () => {
   // Stale message carried in err.cause
   it("matches when stale message is in err.cause.message", () => {
     const cause = new Error("No conversation found with session ID abc123");
-    const err = new Error("process exited with code 1");
-    // @ts-ignore - setting cause manually for test
-    err.cause = cause;
+    const err = new Error("process exited with code 1", { cause });
     expect(isStaleSessionError(err)).toBe(true);
   });
 
@@ -59,9 +57,7 @@ describe("isStaleSessionError", () => {
     const cause = Object.assign(new Error("exit code 1"), {
       stderr: "No conversation found with session ID abc123",
     });
-    const err = new Error("process exited with code 1");
-    // @ts-ignore - setting cause manually for test
-    err.cause = cause;
+    const err = new Error("process exited with code 1", { cause });
     expect(isStaleSessionError(err)).toBe(true);
   });
 

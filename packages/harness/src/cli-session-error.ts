@@ -35,11 +35,7 @@ function collectHaystrings(value: unknown): string[] {
   if (typeof obj["message"] === "string") parts.push(obj["message"]);
   if (typeof obj["stderr"] === "string") parts.push(obj["stderr"]);
   if (obj["data"] != null) {
-    try {
-      parts.push(JSON.stringify(obj["data"]));
-    } catch {
-      // not serialisable — skip
-    }
+    parts.push(...collectHaystrings(obj["data"]));
   }
   return parts;
 }
