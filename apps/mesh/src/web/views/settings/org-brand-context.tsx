@@ -1,11 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Controller, useForm, type UseFormReturn } from "react-hook-form";
-import {
-  useProjectContext,
-  useMCPClient,
-  SELF_MCP_ALIAS_ID,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import {
   ChevronDown,
   ChevronRight,
@@ -33,7 +29,8 @@ import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { toast } from "sonner";
 import { Page } from "@/web/components/page";
 import { KEYS } from "@/web/lib/query-keys";
-import { unwrapToolResult } from "@/web/lib/unwrap-tool-result";
+import { useStudioTools } from "@/web/lib/studio-tools";
+import type { ToolOutput } from "@/tools/io-types";
 import { usePublicConfig } from "@/web/hooks/use-public-config";
 import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 import { track } from "@/web/lib/posthog-client";
@@ -54,21 +51,9 @@ type BrandFonts = {
   code?: string;
 };
 
-type BrandContext = {
-  id: string;
-  organizationId: string;
-  name: string;
-  domain: string;
-  overview: string;
-  logo?: string | null;
-  favicon?: string | null;
-  ogImage?: string | null;
-  fonts?: BrandFonts | null;
-  colors?: BrandColors | null;
-  images?: string[];
-  archivedAt?: string | null;
-  isDefault?: boolean;
-};
+// Derived from the tool's output so the page stays in sync with the server
+// schema (notably images/metadata types) without a hand-maintained copy.
+type BrandContext = ToolOutput<"BRAND_CONTEXT_LIST">["items"][number];
 
 // --- Section card wrapper (visual container only — autosave handles saves) ---
 
@@ -521,13 +506,12 @@ function ColorsSection({
 
 function ExpandableBrandEntry({
   brand,
-  client,
   onChanged,
 }: {
   brand: BrandContext;
-  client: ReturnType<typeof useMCPClient>;
   onChanged: () => void;
 }) {
+  const studio = useStudioTools();
   const [expanded, setExpanded] = useState(brand.isDefault ?? false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
@@ -548,7 +532,10 @@ function ExpandableBrandEntry({
     mutationFn: async (values: BrandFormData) => {
       const fontsHasAny = Object.values(values.fonts).some((v) => v?.trim());
       const colorsHasAny = Object.values(values.colors).some((v) => v?.trim());
-      const merged = {
+      // Typed REST call throws on non-2xx (validation/auth/scoping), so a
+      // rejected write surfaces as an error instead of a false "saved" toast.
+      // `images` isn't edited here; omitting it leaves the stored value intact.
+      await studio.call("BRAND_CONTEXT_UPDATE", {
         id: brand.id,
         name: values.name,
         domain: values.domain,
@@ -558,11 +545,6 @@ function ExpandableBrandEntry({
         ogImage: values.ogImage || null,
         fonts: fontsHasAny ? values.fonts : null,
         colors: colorsHasAny ? values.colors : null,
-        images: brand.images,
-      };
-      await client.callTool({
-        name: "BRAND_CONTEXT_UPDATE",
-        arguments: merged,
       });
     },
     onError: () => toast.error("Failed to save brand context"),
@@ -608,10 +590,7 @@ function ExpandableBrandEntry({
 
   const { mutate: deleteBrand, isPending: isDeleting } = useMutation({
     mutationFn: async () => {
-      await client.callTool({
-        name: "BRAND_CONTEXT_DELETE",
-        arguments: { id: brand.id },
-      });
+      await studio.call("BRAND_CONTEXT_DELETE", { id: brand.id });
     },
     onSuccess: () => {
       track("brand_deleted", { brand_id: brand.id });
@@ -624,9 +603,9 @@ function ExpandableBrandEntry({
 
   const { mutate: toggleDefault } = useMutation({
     mutationFn: async () => {
-      await client.callTool({
-        name: "BRAND_CONTEXT_UPDATE",
-        arguments: { id: brand.id, isDefault: !brand.isDefault },
+      await studio.call("BRAND_CONTEXT_UPDATE", {
+        id: brand.id,
+        isDefault: !brand.isDefault,
       });
     },
     onSuccess: () => {
@@ -861,22 +840,16 @@ function ExpandableBrandEntry({
 export function OrgBrandContextPage() {
   const { brandExtractEnabled } = usePublicConfig();
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
 
   const { data: allBrands = [] } = useQuery<BrandContext[]>({
     queryKey: KEYS.brandContext(org.id),
     queryFn: async () => {
-      const result = await client.callTool({
-        name: "BRAND_CONTEXT_LIST",
-        arguments: { includeArchived: false },
+      const { items } = await studio.call("BRAND_CONTEXT_LIST", {
+        includeArchived: false,
       });
-      const data = unwrapToolResult<{ items?: BrandContext[] }>(result);
-      return Array.isArray(data?.items) ? data.items : [];
+      return items;
     },
   });
 
@@ -890,13 +863,10 @@ export function OrgBrandContextPage() {
 
   const { mutate: createBrand, isPending: isCreating } = useMutation({
     mutationFn: async () => {
-      await client.callTool({
-        name: "BRAND_CONTEXT_CREATE",
-        arguments: {
-          name: "New Brand",
-          domain: "example.com",
-          overview: "",
-        },
+      await studio.call("BRAND_CONTEXT_CREATE", {
+        name: "New Brand",
+        domain: "example.com",
+        overview: "",
       });
     },
     onSuccess: () => {
@@ -910,12 +880,7 @@ export function OrgBrandContextPage() {
   const { mutate: extractBrand, isPending: isExtracting } = useMutation({
     mutationFn: async (domain: string) => {
       track("brand_extract_started", { domain });
-      const result = await client.callTool({
-        name: "BRAND_CONTEXT_EXTRACT",
-        arguments: { domain },
-      });
-      // callTool doesn't throw on tool errors — check isError
-      unwrapToolResult(result);
+      await studio.call("BRAND_CONTEXT_EXTRACT", { domain });
     },
     onSuccess: () => {
       track("brand_extract_succeeded");
@@ -985,7 +950,6 @@ export function OrgBrandContextPage() {
                 <ExpandableBrandEntry
                   key={brand.id}
                   brand={brand}
-                  client={client}
                   onChanged={invalidate}
                 />
               ))}
