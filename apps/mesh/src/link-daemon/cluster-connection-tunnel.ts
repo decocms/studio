@@ -28,6 +28,7 @@ import type { Capability } from "../links/protocol";
 
 const SESSION_RENEW_MAX_SKEW_MS = 60_000;
 const SESSION_RENEW_MIN_SKEW_MS = 1_000;
+const LINK_TUNNEL_VERBOSE = process.env.DECO_LINK_TUNNEL_VERBOSE === "1";
 
 // Retry policy for the link-session fetch. A transient cluster-not-ready-yet
 // (503 at boot) or a network blip should back off and retry rather than crash
@@ -115,6 +116,125 @@ interface ConnectNatsDeps {
   connectWebSocket?: NatsConnector;
 }
 
+type NatsStatusLike = {
+  type?: unknown;
+  data?: unknown;
+  error?: unknown;
+};
+
+type NatsConnectionWithStatus = NatsConnection & {
+  status?: () => AsyncIterable<NatsStatusLike>;
+  getServer?: () => string;
+};
+
+function formatLogValue(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (value instanceof Error) {
+    return `${value.name}:${value.message}`;
+  }
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value).slice(0, 300);
+  } catch {
+    return String(value).slice(0, 300);
+  }
+}
+
+function logTunnelDiagnostic(
+  hostname: string,
+  event: tunnel.TunnelDiagnosticEvent,
+): void {
+  const fields = [
+    `hostname=${hostname}`,
+    `event=${event.event}`,
+    event.requestId ? `requestId=${event.requestId}` : undefined,
+    event.subject ? `subject=${event.subject}` : undefined,
+    event.elapsedMs !== undefined ? `elapsedMs=${event.elapsedMs}` : undefined,
+    event.error ? `error=${event.error}` : undefined,
+  ].filter((field): field is string => Boolean(field));
+  console.log(
+    `[cluster-connection-tunnel] tunnel diagnostic ${fields.join(" ")}`,
+  );
+}
+
+function monitorNatsStatus(
+  nc: NatsConnection,
+  hostname: string,
+  now: () => Date,
+): void {
+  const statusSource = (nc as NatsConnectionWithStatus).status;
+  if (typeof statusSource !== "function") return;
+
+  void (async () => {
+    let disconnectedAtMs: number | undefined;
+    for await (const status of statusSource.call(nc)) {
+      const type = formatLogValue(status.type) ?? "unknown";
+      const server =
+        formatLogValue(status.data) ??
+        formatLogValue((nc as NatsConnectionWithStatus).getServer?.());
+      const error = formatLogValue(status.error);
+      const currentMs = now().getTime();
+      if (type === "disconnect") {
+        disconnectedAtMs = currentMs;
+      }
+
+      const fields = [
+        `hostname=${hostname}`,
+        `type=${type}`,
+        server ? `server=${server}` : undefined,
+        error ? `error=${error}` : undefined,
+        type === "reconnect" && disconnectedAtMs !== undefined
+          ? `offlineMs=${Math.max(0, currentMs - disconnectedAtMs)}`
+          : undefined,
+      ].filter((field): field is string => Boolean(field));
+
+      console.log(
+        `[cluster-connection-tunnel] nats status ${fields.join(" ")}`,
+      );
+
+      if (type === "reconnect") {
+        disconnectedAtMs = undefined;
+      }
+    }
+  })().catch((err) => {
+    console.error(
+      `[cluster-connection-tunnel] nats status monitor failed hostname=${hostname}`,
+      err,
+    );
+  });
+}
+
+function workLogFields(item: {
+  runId: string;
+  threadId: string;
+  orgSlug: string;
+  sandbox?: { handle?: string };
+}): string {
+  return [
+    `runId=${item.runId}`,
+    `threadId=${item.threadId}`,
+    `orgSlug=${item.orgSlug}`,
+    item.sandbox?.handle ? `handle=${item.sandbox.handle}` : undefined,
+  ]
+    .filter((field): field is string => Boolean(field))
+    .join(" ");
+}
+
+function controlFrameLogFields(
+  frame: ReturnType<typeof decodeControlFrame>,
+): string {
+  if (frame.type === "cancel") {
+    return `type=${frame.type} runId=${frame.runId}`;
+  }
+  if (frame.type === "cancel_req") {
+    return `type=${frame.type} reqId=${frame.reqId}`;
+  }
+  return `type=${frame.type}`;
+}
+
 type LinkSessionRequestInput = Pick<
   ClusterConnectionTunnelInput,
   "capabilities" | "machineId" | "cliVersion" | "previewPort"
@@ -196,6 +316,9 @@ export function createTunnelCommandFetch(input: {
       try {
         item = JSON.parse(await request.text());
       } catch {
+        console.warn(
+          "[cluster-connection-tunnel] work rejected reason=invalid_json",
+        );
         return new Response(JSON.stringify({ error: "invalid_json" }), {
           status: 400,
           headers: { "content-type": "application/json" },
@@ -203,21 +326,37 @@ export function createTunnelCommandFetch(input: {
       }
       const parsed = workItemSchema.safeParse(item);
       if (!parsed.success) {
+        console.warn(
+          `[cluster-connection-tunnel] work rejected reason=invalid_work_item issues=${parsed.error.issues.length}`,
+        );
         return new Response(JSON.stringify({ error: "invalid_work_item" }), {
           status: 400,
           headers: { "content-type": "application/json" },
         });
       }
 
+      const fields = workLogFields(parsed.data);
+      const startedAt = Date.now();
+      console.log(`[cluster-connection-tunnel] work accepted ${fields}`);
       const work = dispatchLinkWorkItem(
         input.connectionInput,
         input.connectionInput.runLifetimeSignal ?? input.signal,
         parsed.data,
-      ).catch((err) => {
-        if (!input.signal.aborted) {
-          console.error("[cluster-connection-tunnel] work command failed", err);
-        }
-      });
+      ).then(
+        () => {
+          console.log(
+            `[cluster-connection-tunnel] work settled ${fields} elapsedMs=${Date.now() - startedAt}`,
+          );
+        },
+        (err) => {
+          if (!input.signal.aborted) {
+            console.error(
+              `[cluster-connection-tunnel] work failed ${fields} elapsedMs=${Date.now() - startedAt}`,
+              err,
+            );
+          }
+        },
+      );
       input.activeWork.add(work);
       work.finally(() => input.activeWork.delete(work));
       return new Response(null, { status: 202 });
@@ -228,12 +367,21 @@ export function createTunnelCommandFetch(input: {
       try {
         frame = decodeControlFrame(await request.text());
       } catch {
+        console.warn(
+          "[cluster-connection-tunnel] control rejected reason=invalid_control_frame",
+        );
         return new Response(
           JSON.stringify({ error: "invalid_control_frame" }),
           {
             status: 400,
             headers: { "content-type": "application/json" },
           },
+        );
+      }
+
+      if (LINK_TUNNEL_VERBOSE || frame.type !== "keep_alive") {
+        console.log(
+          `[cluster-connection-tunnel] control frame ${controlFrameLogFields(frame)}`,
         );
       }
 
@@ -361,6 +509,7 @@ export async function connectToClusterTunnel(
   const startActive = async (): Promise<ActiveTunnelConnection> => {
     const session = await fetchSessionWithRetry();
     const nc = await (deps.connectNats ?? connectNats)(session);
+    monitorNatsStatus(nc, session.tunnelHostname, now);
     const ac = new AbortController();
     let tunnelServer: tunnel.TunnelServer | undefined;
     const activeWork = new Set<Promise<void>>();
@@ -376,6 +525,8 @@ export async function connectToClusterTunnel(
           activeWork,
         }),
         signal: ac.signal,
+        diagnostics: (event) =>
+          logTunnelDiagnostic(session.tunnelHostname, event),
       });
     } catch (err) {
       ac.abort();
