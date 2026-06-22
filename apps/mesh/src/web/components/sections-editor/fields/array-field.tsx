@@ -251,6 +251,7 @@ export function ArrayField({
   previewBaseUrl,
   onAddSectionItem,
   onRequestAddSection,
+  sandbox,
 }: FieldProps) {
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
@@ -456,6 +457,7 @@ export function ArrayField({
             previewBaseUrl={previewBaseUrl}
             onAddSectionItem={onAddSectionItem}
             onRequestAddSection={onRequestAddSection}
+            sandbox={sandbox}
           />
         ) : editorSchema ? (
           renderField({
@@ -474,6 +476,7 @@ export function ArrayField({
             previewBaseUrl,
             onAddSectionItem,
             onRequestAddSection,
+            sandbox,
           })
         ) : null}
       </div>

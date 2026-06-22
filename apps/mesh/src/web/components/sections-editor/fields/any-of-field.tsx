@@ -136,6 +136,7 @@ export function AnyOfField({
   meta,
   decofile,
   onSaveReferencedBlock,
+  sandbox,
 }: FieldProps) {
   const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
   const savedRef =
@@ -296,6 +297,7 @@ export function AnyOfField({
         meta={meta}
         decofile={decofile}
         onSaveReferencedBlock={onSaveReferencedBlock}
+        sandbox={sandbox}
       />
     ) : null;
 

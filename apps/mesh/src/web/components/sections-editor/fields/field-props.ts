@@ -22,4 +22,10 @@ export interface FieldProps {
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
+  sandbox?: {
+    orgSlug: string;
+    virtualMcpId: string;
+    branch: string;
+    previewUrl?: string;
+  } | null;
 }
