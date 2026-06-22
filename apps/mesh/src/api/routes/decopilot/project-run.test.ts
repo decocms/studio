@@ -21,6 +21,19 @@ function helloChunks(): UIMessageChunk[] {
   ];
 }
 
+/** A run whose stream carries partial text then an AI-SDK `error` chunk —
+ *  the shape link ingest synthesizes from a harness error EVENT. */
+function errorChunks(): UIMessageChunk[] {
+  return [
+    { type: "start", messageId: "m1" } as UIMessageChunk,
+    { type: "start-step" } as UIMessageChunk,
+    { type: "text-start", id: "t" } as UIMessageChunk,
+    { type: "text-delta", id: "t", delta: "partial" } as UIMessageChunk,
+    { type: "text-end", id: "t" } as UIMessageChunk,
+    { type: "error", errorText: "harness_error: boom" } as UIMessageChunk,
+  ];
+}
+
 describe("projectRun", () => {
   test("a healthy run projects once and is not sent to the DLQ", async () => {
     const dlq: Array<{ runId: string; error: unknown }> = [];
@@ -62,6 +75,52 @@ describe("projectRun", () => {
     expect(dlq).toHaveLength(1);
     expect(dlq[0]!.runId).toBe("run_1");
     expect((dlq[0]!.error as Error).message).toBe("unprojectable");
+  });
+
+  test("an error-chunk run returns ok:true with outcome.failed=true (→ workflow marks it failed)", async () => {
+    // The error chunk drives consumeHarnessStream.onError → emitError (which
+    // persists BOTH an `error` part and a `finish` anchor). projectChunks now
+    // returns {failed:true} instead of throwing, so projectRun returns ok:true
+    // and carries outcome.failed=true. The workflow's markRunFailed step uses
+    // this verdict to mark the run `failed` (Task 6). The run is NOT DLQ'd.
+    const emittedErrors: Array<[string, string]> = [];
+    const persistence: HarnessStreamPersistence = {
+      emitStepParts: async () => {},
+      emitFinal: async () => {},
+      emitError: async (id, text) => {
+        emittedErrors.push([id, text]);
+      },
+    };
+    const dlq: Array<{ runId: string; error: unknown }> = [];
+    const result = await projectRun({
+      runId: "run_1",
+      chunks: errorChunks(),
+      persistence,
+      onDlq: async (runId, error) => {
+        dlq.push({ runId, error });
+      },
+      backoffMs: () => 0,
+    });
+    // The run IS completed — outcome.failed carries the harness verdict.
+    expect(result.ok).toBe(true);
+    expect(result.outcome?.failed).toBe(true);
+    expect(dlq).toHaveLength(0);
+    // emitError ran (it persists the error part + finish anchor in PartEmitter).
+    expect(emittedErrors.length).toBeGreaterThanOrEqual(1);
+    expect(emittedErrors[0]![1]).toBe("harness_error: boom");
+  });
+
+  test("ProjectRunResult carries the harness outcome on success (Task 5)", async () => {
+    // A healthy run: outcome.failed=false.
+    const result = await projectRun({
+      runId: "r1",
+      chunks: helloChunks(),
+      persistence: okPersistence(),
+      onDlq: async () => {},
+      backoffMs: () => 0,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.outcome?.failed).toBe(false);
   });
 
   test("a transient failure that recovers before exhaustion succeeds without DLQ", async () => {

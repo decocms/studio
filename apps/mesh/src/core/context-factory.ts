@@ -73,7 +73,6 @@ import type {
 
 import type { EventBus } from "../event-bus/interface";
 import type { MemberRoleCache } from "../auth/member-role-cache";
-import type { LinkClaimRegistry } from "../links/link-claim-registry";
 
 // ============================================================================
 // Helper Functions
@@ -127,8 +126,7 @@ export interface StudioContextConfig {
   modelListCache?: ModelListCache;
   providerKeyCache?: ProviderKeyCache;
   memberRoleCache?: MemberRoleCache;
-  /** Required for desktop sandbox auto-resolution; tests may omit. */
-  linkClaimRegistry?: LinkClaimRegistry;
+  linkStatusProbe?: import("@/links/tunnel-status-probe").LinkStatusProbe;
   /**
    * Publishes a control frame to a user's link control channel (delegates to
    * the app's CancelBroadcast). Required for LINK_DISCONNECT; tests may omit.
@@ -668,7 +666,16 @@ async function authenticateRequest(
             .where("organization.slug", "=", orgSlugHint)
             .executeTakeFirst();
         }
-        return base.executeTakeFirst();
+        // No org hint — only resolve when the user has exactly one membership.
+        // For multi-org users without a hint, return undefined so callers get
+        // no org context instead of a non-deterministic pick (the previous
+        // .executeTakeFirst() without ORDER BY could return any membership row
+        // depending on PostgreSQL's physical row ordering).
+        return base
+          .orderBy("member.createdAt", "asc")
+          .limit(2)
+          .execute()
+          .then((rows) => (rows.length === 1 ? rows[0] : undefined));
       });
 
       if (isOrgArchived({ metadata: membership?.orgMetadata })) {
@@ -1391,10 +1398,9 @@ export async function createStudioContextFactory(
         : null;
 
     // Hoist inline data: media to object storage on connection/virtual-MCP
-    // writes (and out of thread message parts) so base64 blobs never land on a
-    // row or get re-inlined into COLLECTION_*_LIST results. Decorate here — not
-    // in the storage classes — because those are singletons without
-    // objectStorage/org slug.
+    // writes so base64 blobs never land on a row or get re-inlined into
+    // COLLECTION_*_LIST results. Decorate here — not in the storage classes —
+    // because those are singletons without objectStorage/org slug.
     decorateStorageWithAssetHoisting(storage, {
       objectStorage,
       baseUrl,
@@ -1438,7 +1444,7 @@ export async function createStudioContextFactory(
         ),
       },
       eventBus: config.eventBus,
-      linkClaimRegistry: config.linkClaimRegistry,
+      linkStatusProbe: config.linkStatusProbe,
       publishLinkControlFrame: config.publishLinkControlFrame,
       aiProviders: aiProviderFactory,
       createMCPProxy: async (conn: string | ConnectionEntity) => {

@@ -188,6 +188,26 @@ Otherwise, uses the generated name.
 {{- end }}
 
 {{/*
+Returns the Secret name that contains Studio's internal NATS cluster creds file.
+Defaults to the same Secret used by envFrom, but can point at a dedicated
+Secret owned by SRE.
+*/}}
+{{- define "chart-deco-studio.natsClusterCredsSecretName" -}}
+{{- if .Values.tunnel.nats.clusterCreds.secretName -}}
+{{- .Values.tunnel.nats.clusterCreds.secretName | trim -}}
+{{- else -}}
+{{- include "chart-deco-studio.secretName" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Absolute path exposed through NATS_CREDS when cluster creds mounting is enabled.
+*/}}
+{{- define "chart-deco-studio.natsClusterCredsPath" -}}
+{{- printf "%s/%s" (trimSuffix "/" .Values.tunnel.nats.clusterCreds.mountDir) .Values.tunnel.nats.clusterCreds.fileName -}}
+{{- end }}
+
+{{/*
 Validate OTel collector/S3 configuration.
 */}}
 {{- define "chart-deco-studio.validateOtel" -}}
@@ -221,6 +241,28 @@ Validates ExternalSecret configuration.
 {{- end }}
 {{- if and .Values.externalSecret.enabled (not .Values.externalSecret.secretPath) }}
 {{- fail "chart-deco-studio: externalSecret.secretPath is required when externalSecret.enabled=true" -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Validates public NATS tunnel cluster-creds mount configuration.
+*/}}
+{{- define "chart-deco-studio.validateNatsTunnel" -}}
+{{- with .Values.tunnel.nats.clusterCreds }}
+{{- if .enabled }}
+{{- if not .secretKey }}
+{{- fail "chart-deco-studio: tunnel.nats.clusterCreds.secretKey is required when clusterCreds.enabled=true" -}}
+{{- end }}
+{{- if not .mountDir }}
+{{- fail "chart-deco-studio: tunnel.nats.clusterCreds.mountDir is required when clusterCreds.enabled=true" -}}
+{{- end }}
+{{- if not .fileName }}
+{{- fail "chart-deco-studio: tunnel.nats.clusterCreds.fileName is required when clusterCreds.enabled=true" -}}
+{{- end }}
+{{- if and (not .secretName) (not $.Values.secret.secretName) (not $.Values.externalSecret.enabled) (not $.Values.secret.NATS_CLUSTER_CREDS) }}
+{{- fail "chart-deco-studio: secret.NATS_CLUSTER_CREDS is required when clusterCreds.enabled=true and no existing Secret/ExternalSecret/dedicated clusterCreds.secretName is configured" -}}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 

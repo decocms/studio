@@ -11,23 +11,24 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { Check, ChevronDown, Monitor01 } from "@untitledui/icons";
+import { Check, ChevronDown, Cloud01, Monitor01 } from "@untitledui/icons";
 import {
   getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
+  type SandboxProviderKind,
 } from "@decocms/mesh-sdk";
 import type { HarnessId } from "@/harnesses";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { useSandboxStart } from "@/web/components/sandbox/hooks/use-sandbox-start";
 import { track } from "@/web/lib/posthog-client";
 import { useOptionalChatTask } from "../chat-context";
-import { ConnectDesktopDialog } from "../connect-desktop-dialog";
 import { useAgentOptionAvailability } from "../use-agent-availability";
-import type { AgentOptionAvailability } from "./agent-options";
+import { agentOptionFor, type AgentOptionAvailability } from "./agent-options";
 import { ClaudeCodeIcon, CodexIcon } from "../agent-icons";
 import {
+  agentModeFromOption,
   type AgentMode,
   useAgentMode,
   useSetAgentMode,
@@ -73,13 +74,6 @@ interface PureProps {
    */
   lockedHarness?: HarnessId | null;
   onSelect: (mode: AgentMode) => void;
-  /**
-   * Invoked when the user clicks an unavailable LOCAL row (desktop not
-   * linked, or linked without the CLI). The smart wrapper opens the
-   * connect-desktop dialog. Local rows are rendered as disabled teasers —
-   * not omitted — precisely so this path is discoverable.
-   */
-  onConnectDesktop?: () => void;
 }
 
 interface ModeRow {
@@ -129,29 +123,65 @@ const ROW_CODEX: ModeRow = {
 
 const ROWS = [ROW_DECOPILOT, ROW_LOCAL_DECOPILOT, ROW_CLAUDE_CODE, ROW_CODEX];
 
-function modeIsAvailable(
-  mode: AgentMode,
-  availability: ModePickerAvailability,
-): boolean {
-  return ROWS.some((row) => row.mode === mode && row.isAvailable(availability));
-}
-
-function fallbackMode(
-  mode: AgentMode,
-  availability: ModePickerAvailability,
+function bestEffortLockedMode(
+  lockedHarness: HarnessId,
+  lockedSandbox: SandboxProviderKind | null,
 ): AgentMode {
-  if (modeIsAvailable(mode, availability)) return mode;
-  return ROWS.find((row) => row.isAvailable(availability))?.mode ?? mode;
+  if (lockedHarness === "claude-code") return "local-claude-code";
+  if (lockedHarness === "codex") return "local-codex";
+  return lockedSandbox === "user-desktop"
+    ? "local-decopilot"
+    : "cloud-decopilot";
 }
 
-function pillLabel(mode: AgentMode): { icon: React.ReactNode; text: string } {
+export function resolveDisplayedAgentMode({
+  selectedMode,
+  lockedHarness,
+  lockedSandbox,
+  isThreadLocked,
+}: {
+  selectedMode: AgentMode;
+  lockedHarness: HarnessId | null;
+  lockedSandbox: SandboxProviderKind | null;
+  isThreadLocked: boolean;
+}): AgentMode {
+  if (isThreadLocked && lockedHarness != null) {
+    const lockedOption = agentOptionFor(lockedHarness, lockedSandbox);
+    if (lockedOption) return agentModeFromOption(lockedOption);
+    return bestEffortLockedMode(lockedHarness, lockedSandbox);
+  }
+  return selectedMode;
+}
+
+function harnessPillLabel(mode: AgentMode): {
+  icon: React.ReactNode;
+  text: string;
+} {
   if (mode === "local-decopilot")
     return { icon: <DecopilotIcon compact />, text: "Decopilot" };
   if (mode === "local-claude-code")
     return { icon: <ClaudeCodeIcon size={14} />, text: "Claude Code" };
   if (mode === "local-codex")
     return { icon: <CodexIcon size={14} />, text: "Codex" };
-  return { icon: <DecopilotIcon compact />, text: "Cloud" };
+  return { icon: <DecopilotIcon compact />, text: "Decopilot" };
+}
+
+function editablePillLabel(mode: AgentMode): {
+  icon: React.ReactNode;
+  text: string;
+} {
+  const { text } = harnessPillLabel(mode);
+  const icon =
+    mode === "cloud-decopilot" ? (
+      <Cloud01 size={14} />
+    ) : (
+      <Monitor01 size={14} />
+    );
+  return { icon, text };
+}
+
+function runtimeLabel(mode: AgentMode): "cloud" | "desktop" {
+  return mode === "cloud-decopilot" ? "cloud" : "desktop";
 }
 
 const baseClasses =
@@ -170,31 +200,21 @@ export function ModePickerPure({
   locked,
   lockedHarness,
   onSelect,
-  onConnectDesktop,
 }: PureProps) {
   const [open, setOpen] = useState(false);
-  const { icon, text } = pillLabel(mode);
+  const { icon, text } = locked
+    ? harnessPillLabel(mode)
+    : editablePillLabel(mode);
+  const labelWithRuntime = `${text} on ${runtimeLabel(mode)}`;
   const isLocal = mode !== "cloud-decopilot";
   const showHarnessLabel = lockedHarness != null;
   const harnessLabel = lockedHarness ? HARNESS_LABEL[lockedHarness] : null;
-  // Cloud rows hide when unavailable (a deployment without an agent sandbox
-  // is an operator decision, nothing the user can act on). Local rows always
-  // render: an unavailable one is a disabled teaser pointing at the
-  // connect-desktop flow — otherwise users never learn local Claude
-  // Code/Codex exists.
-  const cloudRows = ROWS.filter(
-    (row) => row.group === "cloud" && row.isAvailable(availability),
-  );
+  const cloudRows = ROWS.filter((row) => row.group === "cloud");
   const localRows = ROWS.filter((row) => row.group === "local");
 
   const handleSelect = (m: AgentMode) => {
     onSelect(m);
     setOpen(false);
-  };
-
-  const handleConnectDesktop = () => {
-    setOpen(false);
-    onConnectDesktop?.();
   };
 
   return (
@@ -209,8 +229,8 @@ export function ModePickerPure({
                 size="default"
                 aria-label={
                   showHarnessLabel && harnessLabel
-                    ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
-                    : text
+                    ? `This chat is using ${harnessLabel} on ${runtimeLabel(mode)}. Start a new chat to use a different runtime.`
+                    : labelWithRuntime
                 }
                 disabled={locked}
                 data-testid={locked ? "mode-picker-locked" : "mode-picker"}
@@ -243,8 +263,8 @@ export function ModePickerPure({
         </TooltipTrigger>
         <TooltipContent>
           {showHarnessLabel && harnessLabel
-            ? `This chat is using ${harnessLabel}. Start a new chat to use a different runtime.`
-            : text}
+            ? `This chat is using ${harnessLabel} on ${runtimeLabel(mode)}. Start a new chat to use a different runtime.`
+            : labelWithRuntime}
         </TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="p-1 w-64">
@@ -274,16 +294,15 @@ export function ModePickerPure({
               <Row
                 key={row.mode}
                 row={row}
-                active={available && mode === row.mode}
+                active={mode === row.mode}
                 onSelect={handleSelect}
                 unavailableHint={
                   available
                     ? undefined
                     : availability.userDesktop
                       ? "Not detected on your desktop"
-                      : "Connect your desktop to enable"
+                      : "Desktop not detected"
                 }
-                onUnavailableClick={handleConnectDesktop}
               />
             );
           })}
@@ -325,34 +344,20 @@ function Row({
   active,
   onSelect,
   unavailableHint,
-  onUnavailableClick,
 }: {
   row: ModeRow;
   active: boolean;
   onSelect: (mode: AgentMode) => void;
-  /**
-   * When set, the row is an unavailable teaser: dimmed, `aria-disabled`,
-   * and the hint replaces the description. It stays clickable — the click
-   * routes to `onUnavailableClick` (connect-desktop flow) instead of
-   * selecting the mode. A truly `disabled` button would swallow the one
-   * affordance that tells the user how to enable the feature.
-   */
   unavailableHint?: string;
-  onUnavailableClick?: () => void;
 }) {
-  const unavailable = unavailableHint != null;
   return (
     <button
       type="button"
       role="menuitem"
-      aria-disabled={unavailable || undefined}
-      onClick={() =>
-        unavailable ? onUnavailableClick?.() : onSelect(row.mode)
-      }
+      onClick={() => onSelect(row.mode)}
       className={cn(
         "flex items-start gap-2 px-2 py-1.5 rounded-md text-left",
         "hover:bg-muted",
-        unavailable && "opacity-60",
       )}
     >
       <span className="shrink-0 text-muted-foreground mt-0.5">{row.icon}</span>
@@ -399,13 +404,18 @@ export function ModePicker({
   // existing tooltip.
   const taskCtx = useOptionalChatTask();
   const lockedHarness = taskCtx?.lockedHarness ?? null;
+  const lockedSandbox = taskCtx?.lockedSandbox ?? null;
+  const isThreadLocked = taskCtx?.isThreadLocked ?? false;
 
-  // Same availability source `chat-context` resolves the submit pins from, so
-  // the displayed mode and the dispatched runtime stay in lockstep.
+  // Availability only annotates rows with advisory hints. It must not rewrite
+  // the selected/displayed runtime.
   const availability = useAgentOptionAvailability();
-  const mode = fallbackMode(selectedMode, availability);
-
-  const [connectOpen, setConnectOpen] = useState(false);
+  const mode = resolveDisplayedAgentMode({
+    selectedMode,
+    lockedHarness,
+    lockedSandbox,
+    isThreadLocked,
+  });
 
   const handleSelect = (next: AgentMode) => {
     setAgentMode(next);
@@ -430,12 +440,7 @@ export function ModePicker({
         locked={locked}
         lockedHarness={lockedHarness}
         onSelect={handleSelect}
-        onConnectDesktop={() => {
-          track("agent_mode_connect_desktop_opened");
-          setConnectOpen(true);
-        }}
       />
-      <ConnectDesktopDialog open={connectOpen} onOpenChange={setConnectOpen} />
     </>
   );
 }

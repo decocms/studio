@@ -37,7 +37,7 @@ describe("parseErrorMessage", () => {
       '{"error":"link_unavailable","code":"user_desktop_link_offline"}';
     const result = parseErrorMessage(raw);
     expect(result.summary).toContain("desktop is offline");
-    expect(result.summary).toContain("bunx decocms link");
+    expect(result.summary).toContain("bunx decocms@latest link");
     expect(result.rawDetails).toBe(raw);
   });
 

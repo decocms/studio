@@ -222,6 +222,36 @@ describe("harnessStreamInputSchema (v2)", () => {
     ).toBe(false);
   });
 
+  it("round-trips coding workspace facts for desktop harnesses", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...minimalV2,
+      codingWorkspace: {
+        repo: {
+          owner: "deco",
+          name: "site",
+          connectedGithub: false,
+        },
+        branch: "main",
+        cwd: "/repo",
+        workspaceKind: "github",
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.codingWorkspace).toEqual({
+        repo: {
+          owner: "deco",
+          name: "site",
+          connectedGithub: false,
+        },
+        branch: "main",
+        cwd: "/repo",
+        workspaceKind: "github",
+      });
+    }
+  });
+
   it("rejects unknown harness ids", () => {
     const result = harnessStreamInputSchema.safeParse({
       ...minimalV2,

@@ -127,44 +127,30 @@ export function useFilterParts(message: ChatMessage | null) {
     }
   }
 
-  // Build render order: within each step, reasoning groups come first.
-  // A "step" is delimited by step-start parts.
+  // Build render order in pure arrival order: each reasoning group renders at
+  // the position of its first part, interleaved with the surrounding tool calls
+  // and text exactly as the model produced them. Adjacent reasoning parts are
+  // still coalesced into one group above; we deliberately do NOT hoist groups
+  // to the top of their step. With interleaved thinking a single step can emit
+  // reasoning → tool → reasoning → tool …, and hoisting collapsed all those
+  // thoughts into one disconnected stack above the tools.
   const renderOrder: RenderItem[] = [];
 
   if (message) {
-    // Collect items per step, then flush with reasoning-groups first
-    let stepReasoningGroups: ReasoningGroup[] = [];
-    let stepParts: { index: number }[] = [];
-    const groupsEmitted = new Set<ReasoningGroup>();
-
-    const flushStep = () => {
-      for (const group of stepReasoningGroups) {
-        if (!groupsEmitted.has(group)) {
-          groupsEmitted.add(group);
-          renderOrder.push({ kind: "reasoning-group", group });
-        }
-      }
-      for (const item of stepParts) {
-        renderOrder.push({ kind: "part", index: item.index });
-      }
-      stepReasoningGroups = [];
-      stepParts = [];
-    };
-
     for (let i = 0; i < message.parts.length; i++) {
       const p = message.parts[i]!;
 
+      // step-start parts are structural only — they never render.
       if (p.type === "step-start") {
-        flushStep();
         continue;
       }
 
-      // Skip individual reasoning parts (handled as groups)
+      // Reasoning parts render as groups. Emit the group once, at the index of
+      // its first part; later parts of the same group emit nothing.
       if (reasoningIndices.has(i)) {
-        // If this is the first index of a group, queue it
         const group = reasoningGroups.find((g) => g.startIndex === i);
         if (group) {
-          stepReasoningGroups.push(group);
+          renderOrder.push({ kind: "reasoning-group", group });
         }
         continue;
       }
@@ -178,11 +164,8 @@ export function useFilterParts(message: ChatMessage | null) {
         continue;
       }
 
-      stepParts.push({ index: i });
+      renderOrder.push({ kind: "part", index: i });
     }
-
-    // Flush the last step
-    flushStep();
   }
 
   return {

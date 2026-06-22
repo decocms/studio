@@ -170,13 +170,13 @@ async function* runAsyncResearch({
       log("error", "submit-failed", { ...logFields, job: job.id, err: msg });
       throw err;
     }
-    // Atomically flips the row to 'polling' AND writes a stub
-    // assistant message carrying the tool-input-available part. The
-    // stub is what lets a browser refresh during the long poll window
-    // recover gracefully — without it, the eventual
-    // `tool-output-available` chunk on reconnect has no matching
-    // tool-input in `state.message.parts` and the AI SDK reader
-    // throws "No tool invocation found for tool call ID …".
+    // Atomically flips the row to 'polling' AND seeds a stub assistant
+    // message carrying the tool-input-available part into
+    // `thread_message_parts`. The stub is what lets a browser refresh during
+    // the long poll window recover gracefully — without it, the eventual
+    // `tool-output-available` chunk on reconnect has no matching tool-input in
+    // `state.message.parts` and the AI SDK reader throws "No tool invocation
+    // found for tool call ID …".
     await ctx.storage.asyncResearchJobs.markPolling(toolCallId, interactionId, {
       threadId: taskId,
       toolName: "web_search",

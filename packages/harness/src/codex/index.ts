@@ -38,10 +38,12 @@
 
 import { streamText, type UIMessageChunk } from "ai";
 import { createCodexModel, resolveCodexModelId } from "./model";
+import { buildCodingWorkspacePrompt } from "../coding-workspace-prompt";
 import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
+import { buildCurrentContextPrompt } from "../decopilot/system-prompt";
 import { genTitle } from "../decopilot/title-generator";
 import type {
   Harness,
@@ -49,6 +51,22 @@ import type {
   HarnessFactory,
   HarnessStreamInput,
 } from "../types";
+
+export function buildCodexDeveloperInstructions(input: {
+  codingWorkspace?: HarnessStreamInput["codingWorkspace"];
+  agentInstructions?: string;
+  now?: Date;
+}): string | undefined {
+  const parts = [
+    buildCodingWorkspacePrompt(input.codingWorkspace),
+    input.agentInstructions?.trim()
+      ? `<agent-instructions>\n${input.agentInstructions.trim()}\n</agent-instructions>`
+      : null,
+    buildCurrentContextPrompt(input.now ?? new Date()),
+  ].filter((part): part is string => Boolean(part?.trim()));
+
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
 
 export const codexHarnessFactory: HarnessFactory = {
   id: "codex",
@@ -67,6 +85,18 @@ export const codexHarnessFactory: HarnessFactory = {
         //    (SDK default = process.cwd()); any other value passes through
         //    as the codex app-server subprocess working directory.
         const cwd = effectiveCwd(input.workspace.cwd);
+        const agentInstructions =
+          typeof input.virtualMcp.metadata === "object" &&
+          input.virtualMcp.metadata !== null &&
+          typeof (input.virtualMcp.metadata as { instructions?: unknown })
+            .instructions === "string"
+            ? (input.virtualMcp.metadata as { instructions: string })
+                .instructions
+            : undefined;
+        const developerInstructions = buildCodexDeveloperInstructions({
+          codingWorkspace: input.codingWorkspace,
+          agentInstructions,
+        });
 
         // Diagnostics: on the user-desktop path this runs inside the spawned
         // sandbox daemon (stdout inherited by `deco link`), so these lines
@@ -104,6 +134,7 @@ export const codexHarnessFactory: HarnessFactory = {
           toolApprovalLevel: input.toolApprovalLevel,
           isPlanMode: input.mode === "plan",
           cwd,
+          developerInstructions,
         });
 
         try {
@@ -171,9 +202,8 @@ export const codexHarnessFactory: HarnessFactory = {
 
           // 5. Pipe UIMessageChunk through. We surface
           //    `codingAgentSessionId` / `codingAgentProvider` at the top
-          //    of the message metadata so the shared layer's stream-core
-          //    persistence (`saveMessagesToThread(responseMessage)`)
-          //    writes them to ThreadMessage.metadata. Codex doesn't use
+          //    of the message metadata so the shared layer persists them
+          //    onto the response message's metadata. Codex doesn't use
           //    these for resume (per the comment at the top of this
           //    file), but the inline original at stream-core.ts:1411–
           //    1417 + 1549–1550 wrote them anyway for parity with

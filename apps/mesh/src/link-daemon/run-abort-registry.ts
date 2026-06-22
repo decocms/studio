@@ -1,15 +1,14 @@
 /**
  * Module-scoped registry mapping run IDs to per-run AbortControllers.
  *
- * Used by the pull-transport dispatch path so the control-poll loop can abort
- * a specific in-flight `handleLocalDispatch` call when the cluster sends a
- * `{type:"cancel", runId}` control frame — without touching the loop-wide
- * AbortController that would tear down the entire pull connection.
+ * Used by the link work dispatch path so control frames can abort a specific
+ * in-flight `handleLocalDispatch` call when the cluster sends a
+ * `{type:"cancel", runId}` control frame without touching the connection-wide
+ * AbortController.
  *
  * Memory note: entries are unregistered in the `onWork` finally block so the
  * Map does not grow unboundedly (one entry per in-flight dispatch at most).
  *
- * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
 
 const registry = new Map<string, AbortController>();

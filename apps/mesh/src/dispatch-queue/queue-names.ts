@@ -8,3 +8,4 @@
  */
 export const THREAD_GATE_QUEUE = "thread-gate";
 export const AUTOMATIONS_QUEUE = "automations";
+export const PROJECTOR_QUEUE = "decopilot-projector";

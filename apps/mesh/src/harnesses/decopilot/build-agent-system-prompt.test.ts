@@ -5,6 +5,7 @@ const baseOpts = {
   ctx: {} as never,
   organization: { id: "org_test" } as never,
   virtualMcp: { id: "vir_test", instructions: undefined } as never,
+  planMode: false,
   agentInstructions: undefined,
   date: new Date("2026-05-26T00:00:00Z"),
   userContext: {
@@ -77,6 +78,32 @@ describe("buildAgentSystemPrompt", () => {
     });
     const joined = JSON.stringify(out);
     expect(joined).toContain("Decopilot");
+  });
+
+  test("includes shared coding workspace prompt while preserving Decopilot-only blocks", async () => {
+    const systemMessages = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      isDecopilot: true,
+      codingWorkspace: {
+        repo: {
+          owner: "deco",
+          name: "site",
+          connectedGithub: true,
+        },
+        branch: "main",
+        cwd: "/repo",
+        workspaceKind: "github",
+      },
+    });
+
+    const joined = systemMessages.map((m) => m.content).join("\n\n");
+    expect(joined).toContain("<coding-workspace>");
+    expect(joined).toContain("Repository: deco/site");
+    expect(joined).toContain("Branch: main");
+    expect(joined).toContain("Working directory: /repo");
+    expect(joined).toContain("<platform>");
+    expect(joined).toContain("<todo-write>");
   });
 
   test("kind: 'agent' with isDecopilot: false omits decopilot identity prompt", async () => {

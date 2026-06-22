@@ -1,9 +1,10 @@
 import {
   isSiteAppBlock,
   SITE_APP_RESOLVE_TYPE,
-  type AppEntry,
+  appLabel,
 } from "@/web/components/sections-editor/page-list";
 import {
+  isDecoAppResolveType,
   resolveBlockSchemaMetadata,
   type LiveMeta,
 } from "@/web/components/sections-editor/resolve-schema";
@@ -53,6 +54,18 @@ export function parseAppResolveType(
     return { vendor: legacyMatch[1]!, app: legacyMatch[2]! };
   }
   return null;
+}
+
+function parseAppIdentityFromBlockKey(
+  blockKey: string,
+): { vendor: string; app: string } | null {
+  const blockIdMatch = blockKey.match(/^([^-]+)-(.+)$/);
+  if (!blockIdMatch) return null;
+  return { vendor: blockIdMatch[1]!, app: blockIdMatch[2]! };
+}
+
+function installedAppCategory(vendor: string): string {
+  return vendor === "local" ? "Custom" : "Installed";
 }
 
 function findInstalledBlockKey(
@@ -126,6 +139,37 @@ function catalogEntryFromManifestApp(
   };
 }
 
+function catalogEntryFromInstalledBlock(
+  blockKey: string,
+  block: Record<string, unknown>,
+  meta: LiveMeta,
+): AppCatalogEntry | null {
+  const resolveType = block.__resolveType;
+  if (typeof resolveType !== "string") return null;
+  if (isSiteAppBlock(blockKey, block)) return null;
+  if (!isDecoAppResolveType(resolveType)) return null;
+
+  const parsed =
+    parseAppResolveType(resolveType) ?? parseAppIdentityFromBlockKey(blockKey);
+  if (!parsed) return null;
+
+  const metadata = resolveBlockSchemaMetadata(resolveType, meta);
+  const { vendor, app } = parsed;
+
+  return {
+    id: appBlockId(vendor, app),
+    app,
+    vendor,
+    title: metadata.title ?? appLabel(blockKey, block, meta),
+    description: metadata.description ?? "",
+    category: installedAppCategory(vendor),
+    logo: metadata.logo ?? metadata.icon,
+    resolveType,
+    blockKey,
+    installed: true,
+  };
+}
+
 /**
  * Merges the deco app store, manifest schema apps, and installed decofile
  * blocks — mirrors admin's Apps view data sources.
@@ -149,23 +193,18 @@ export function buildAppCatalog(
     byId.set(entry.id, entry);
   }
 
-  // Installed apps missing from store/schema (legacy block ids, local apps).
-  for (const installed of listInstalledAppEntries(decofile, meta)) {
-    const parsed = parseAppResolveType(installed.resolveType);
-    if (!parsed) continue;
-    const id = appBlockId(parsed.vendor, parsed.app);
-    if (byId.has(id)) continue;
-    byId.set(id, {
-      id,
-      app: parsed.app,
-      vendor: parsed.vendor,
-      title: installed.name,
-      description: "",
-      category: "Installed",
-      resolveType: installed.resolveType,
-      blockKey: installed.key,
-      installed: true,
-    });
+  // Installed custom/local apps and legacy block ids missing from store + manifest.
+  for (const [blockKey, val] of Object.entries(decofile)) {
+    if (blockKey.includes("/")) continue;
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+
+    const entry = catalogEntryFromInstalledBlock(
+      blockKey,
+      val as Record<string, unknown>,
+      meta,
+    );
+    if (!entry || byId.has(entry.id)) continue;
+    byId.set(entry.id, entry);
   }
 
   return [...byId.values()].sort(compareAppCatalogEntries);
@@ -179,53 +218,4 @@ function compareAppCatalogEntries(
     return a.installed ? -1 : 1;
   }
   return a.title.localeCompare(b.title);
-}
-
-function manifestHasApp(meta: LiveMeta, vendor: string, app: string): boolean {
-  const apps = meta.manifest?.blocks?.apps ?? {};
-  for (const alias of [
-    appResolveType(vendor, app),
-    `site/apps/${vendor}/${app}.tsx`,
-    `${vendor}/apps/${app}.ts`,
-    `${vendor}/apps/${app}.tsx`,
-  ]) {
-    if (alias in apps) return true;
-  }
-  return false;
-}
-
-function listInstalledAppEntries(
-  decofile: Record<string, unknown>,
-  meta: LiveMeta,
-): AppEntry[] {
-  const entries: AppEntry[] = [];
-
-  for (const [key, val] of Object.entries(decofile)) {
-    if (key.includes("/")) continue;
-    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
-
-    const obj = val as Record<string, unknown>;
-    const resolveType = obj.__resolveType;
-    if (typeof resolveType !== "string") continue;
-    if (isSiteAppBlock(key, obj)) continue;
-
-    const parsed =
-      parseAppResolveType(resolveType) ??
-      (() => {
-        const blockIdMatch = key.match(/^([^-]+)-(.+)$/);
-        return blockIdMatch
-          ? { vendor: blockIdMatch[1]!, app: blockIdMatch[2]! }
-          : null;
-      })();
-
-    if (!parsed || !manifestHasApp(meta, parsed.vendor, parsed.app)) continue;
-
-    entries.push({
-      key,
-      name: key.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      resolveType,
-    });
-  }
-
-  return entries;
 }

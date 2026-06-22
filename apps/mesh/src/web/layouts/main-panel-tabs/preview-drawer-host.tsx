@@ -12,10 +12,20 @@ import { useRef, useState } from "react";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
-import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
+import {
+  useSandboxChunkHandler,
+  useSandboxEvents,
+} from "@/web/components/sandbox/hooks/use-sandbox-events";
 import { PreviewDrawer } from "@/web/components/sandbox/preview/drawer/drawer";
 
 const STORAGE_KEY = (id: string) => `preview-drawer:${id}`;
+
+// Clone aborts (exit 128) when the GitHub token mesh handed the orchestrator is
+// stale/invalid. A restart re-mints a fresh installation token, so auto
+// stop+start once per VM to recover. Match the auth-specific lines, not the
+// bare exit code (which covers unrelated git failures).
+const GIT_AUTH_FAILURE_RE =
+  /Authentication failed for|Invalid username or token|Password authentication is not supported/i;
 
 function readPersisted(virtualMcpId: string): boolean {
   try {
@@ -41,6 +51,20 @@ export function PreviewDrawerHost() {
   const virtualMcpId = inset?.virtualMcpId ?? null;
   const lifecycle = useSandboxLifecycle();
   const events = useSandboxEvents();
+
+  // Detect the git-auth clone failure in the live "setup" log stream and
+  // auto-recover with one stop+start. Test the accumulated buffer (not the raw
+  // chunk) so a message split across SSE frames still matches. Guard by
+  // virtualMcpId so we recover at most once per VM — never loop on a token
+  // that's permanently revoked.
+  const autoRestartedVmcpRef = useRef<string | null>(null);
+  useSandboxChunkHandler((source) => {
+    if (source !== "setup" || !virtualMcpId) return;
+    if (autoRestartedVmcpRef.current === virtualMcpId) return;
+    if (!GIT_AUTH_FAILURE_RE.test(events.getBuffer("setup"))) return;
+    autoRestartedVmcpRef.current = virtualMcpId;
+    void lifecycle.restart();
+  });
 
   // `null` = not yet hydrated for this VM. Render-time setState gated by a ref
   // re-hydrates when virtualMcpId changes (idiomatic in this codebase;

@@ -35,5 +35,5 @@ export function useRegistryConnections() {
   // Fetch all connections (no binding filter = no tool enumeration)
   const allConnections = useConnections();
 
-  return allConnections.filter((c) => registryIds.has(c.id));
+  return (allConnections ?? []).filter((c) => registryIds.has(c.id));
 }

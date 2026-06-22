@@ -29,7 +29,10 @@ import { usePanelActions } from "@/web/layouts/shell-layout";
 import { GlobalSearchDialog } from "@/web/layouts/tasks-panel/global-search-dialog";
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
-import { useNavigateToAgent } from "@/web/hooks/use-navigate-to-agent";
+import {
+  getServerPinnedIds,
+  useNavigateToAgent,
+} from "@/web/hooks/use-navigate-to-agent";
 import { useCanPinAgentsForOrg } from "@/web/hooks/use-can-pin-agents-for-org";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { BrowseAgentsButton } from "../browse-agents-button";
@@ -77,7 +80,7 @@ export function TaskGroupsList() {
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const agents = useVirtualMCPs();
-  const serverOrgPinnedIds = agents.filter((a) => a.pinned).map((a) => a.id);
+  const serverOrgPinnedIds = getServerPinnedIds(agents);
   const canManageOrgPin = useCanPinAgentsForOrg();
   const virtualMcpActions = useVirtualMCPActions();
 
@@ -179,8 +182,14 @@ export function TaskGroupsList() {
     const wasActive = task.id === activeTaskId;
     hide(task.id);
     if (!wasActive) return;
+    // Land only on the caller's own threads. The panel lists org-wide threads
+    // under the "All members" filter, so an unscoped fallback would teleport
+    // the user into another member's chat.
     const next = sortedThreads.find(
-      (t) => t.id !== task.id && t.virtual_mcp_id === task.virtual_mcp_id,
+      (t) =>
+        t.id !== task.id &&
+        t.virtual_mcp_id === task.virtual_mcp_id &&
+        t.created_by === currentUserId,
     );
     if (next) {
       setTaskId(next.id, next.virtual_mcp_id);

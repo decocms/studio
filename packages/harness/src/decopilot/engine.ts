@@ -33,6 +33,7 @@ import type { ConnectionsBlockTool } from "./connections-block";
 import type { PendingImage } from "./built-in-tools/vm-tools/types";
 import type { ModelsConfig } from "../types";
 import type { MeshProvider } from "./mesh-provider";
+import type { CodingWorkspacePromptInput } from "../coding-workspace-prompt";
 
 /**
  * The assembled tool-set bundle the orchestration reads. The cluster
@@ -98,6 +99,7 @@ export interface RunEngineArgs {
   temperature: number;
   planMode: boolean;
   isDecopilot: boolean;
+  codingWorkspace?: CodingWorkspacePromptInput;
   systemAgentInstructions?: string;
   currentThreadId: string;
   /** Authenticated user identity for the user-context prompt block. */

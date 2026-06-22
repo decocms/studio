@@ -1,11 +1,13 @@
 /**
  * local-prompt — minimal system-prompt assembly for the desktop harness.
  *
- * Shared prompt builders live in `harnesses/decopilot/prompt-constants.ts`.
- * This module only assembles the desktop-specific prompt shape.
+ * Shared prompt builders live in `prompt-constants.ts` and
+ * `../coding-workspace-prompt.ts`. This module assembles the
+ * desktop-specific prompt shape.
  *
  * `buildDesktopPrompt` assembles the minimal prompt:
- *   base platform + connections block + todo-write guidance + agent identity.
+ *   base platform + coding workspace block + connections block +
+ *   todo-write guidance + agent identity.
  * It deliberately SKIPS the cluster-only blocks that need `ctx.storage`
  * (agents block via `virtualMcps.list`) or studio-pack resolution. Cache
  * markers + the per-request current-context tail come from the portable
@@ -23,6 +25,10 @@ import {
   buildDecopilotAgentPrompt,
   buildTodoWritePrompt,
 } from "./prompt-constants";
+import {
+  buildCodingWorkspacePrompt,
+  type CodingWorkspacePromptInput,
+} from "../coding-workspace-prompt";
 
 export interface DesktopPromptInput {
   /** Active agent (virtual MCP) id — used to decide whether the decopilot
@@ -38,6 +44,8 @@ export interface DesktopPromptInput {
   agentInstructions?: string;
   /** Plan-mode prompt fragment, when mode === "plan". */
   planPrompt?: string | null;
+  /** Shared coding workspace context for repo-aware runs. */
+  codingWorkspace?: CodingWorkspacePromptInput;
   /** Web-search behaviour hint, when mode === "web-search". */
   webSearchPrompt?: string | null;
 }
@@ -62,6 +70,7 @@ export function buildDesktopPrompt(input: DesktopPromptInput): {
   const parts = [
     basePrompt,
     input.planPrompt,
+    buildCodingWorkspacePrompt(input.codingWorkspace),
     connectionsBlock,
     buildTodoWritePrompt(),
     input.webSearchPrompt,

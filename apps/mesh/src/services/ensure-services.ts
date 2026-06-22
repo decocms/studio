@@ -24,6 +24,14 @@ import { createConnection, createServer } from "net";
 import { arch, platform } from "os";
 import { dirname, join } from "path";
 import type { ServiceInputs, ServiceOutputs } from "../settings/types";
+import {
+  buildNatsOperatorArtifacts,
+  buildNatsServerConf,
+  generateNatsOperatorKeys,
+  isNatsOperatorKeys,
+  type NatsOperatorArtifacts,
+  type NatsOperatorKeys,
+} from "./nats-operator-config";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -33,7 +41,7 @@ const PG_USER = "postgres";
 const PG_PASSWORD = "postgres";
 const PG_DATABASE = "postgres";
 
-const NATS_VERSION = "v2.10.24";
+const NATS_VERSION = "v2.14.2";
 
 // MinIO dev defaults. The root credentials mirror the e2e setup
 // (.github/actions/start-minio) so local dev and CI use the same contract.
@@ -63,6 +71,8 @@ interface StateFile {
   pid: number;
   port: number;
   startedAt: string;
+  /** NATS only: the WebSocket listener port (operator-mode dev NATS). */
+  wsPort?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +542,10 @@ function natsArtifactName(): string {
     throw new Error(`Unsupported platform: ${p}/${a}`);
   }
 
-  return `nats-server-${NATS_VERSION}-${osName}-${archName}.zip`;
+  // NATS dropped the `.zip` artifacts for darwin/linux after the 2.10 line;
+  // unix releases ship only `.tar.gz` (zip remains Windows-only).
+  const ext = osName === "windows" ? "zip" : "tar.gz";
+  return `nats-server-${NATS_VERSION}-${osName}-${archName}.${ext}`;
 }
 
 function natsBinaryPath(home: string): string {
@@ -555,43 +568,39 @@ async function downloadNats(home: string): Promise<string> {
     );
   }
 
-  const zipPath = join(binDir, artifact);
+  const archivePath = join(binDir, artifact);
   const arrayBuffer = await response.arrayBuffer();
-  writeFileSync(zipPath, Buffer.from(arrayBuffer));
+  writeFileSync(archivePath, Buffer.from(arrayBuffer));
+
+  // Both the Windows `.zip` and the unix `.tar.gz` contain a single versioned
+  // top-level directory (e.g. nats-server-v2.14.2-linux-amd64/nats-server).
+  // Extract the whole archive, then move the binary up to binDir and drop the
+  // versioned directory so binPath resolves regardless of platform packaging.
+  const extractedDir = join(binDir, artifact.replace(/\.(zip|tar\.gz)$/, ""));
 
   if (IS_WINDOWS) {
     const proc = Bun.spawn([
       "powershell",
       "-Command",
-      `Expand-Archive -Path '${zipPath}' -DestinationPath '${binDir}' -Force`,
+      `Expand-Archive -Path '${archivePath}' -DestinationPath '${binDir}' -Force`,
     ]);
     await proc.exited;
-    // Expand-Archive preserves the zip's top-level directory (e.g.
-    // nats-server-v2.10.24-windows-amd64/nats-server.exe) instead of
-    // flattening like `unzip -j`. Move the binary up to binDir and remove
-    // the versioned subdirectory so binPath resolves correctly.
-    if (!existsSync(binPath)) {
-      const extractedDir = join(binDir, artifact.replace(/\.zip$/, ""));
-      const extractedBin = join(extractedDir, `nats-server${EXE_EXT}`);
-      if (existsSync(extractedBin)) {
-        renameSync(extractedBin, binPath);
-        rmSync(extractedDir, { recursive: true, force: true });
-      }
-    }
   } else {
-    const proc = Bun.spawn([
-      "unzip",
-      "-o",
-      "-j",
-      zipPath,
-      "*/nats-server",
-      "-d",
-      binDir,
-    ]);
+    // `tar` (with gzip via -z) is universally present on macOS/Linux, unlike
+    // `unzip`. Unix releases ship only `.tar.gz` since the 2.11 line.
+    const proc = Bun.spawn(["tar", "-xzf", archivePath, "-C", binDir]);
     await proc.exited;
   }
 
-  await unlink(zipPath);
+  if (!existsSync(binPath)) {
+    const extractedBin = join(extractedDir, `nats-server${EXE_EXT}`);
+    if (existsSync(extractedBin)) {
+      renameSync(extractedBin, binPath);
+    }
+  }
+  rmSync(extractedDir, { recursive: true, force: true });
+
+  await unlink(archivePath).catch(() => {});
 
   if (!IS_WINDOWS) {
     await chmod(binPath, 0o755);
@@ -604,7 +613,78 @@ async function downloadNats(home: string): Promise<string> {
   return binPath;
 }
 
-async function ensureNats(home: string): Promise<ServiceInfo> {
+// ---------------------------------------------------------------------------
+// NATS operator-mode key persistence (dev only)
+//
+// Local dev runs NATS in decentralized-JWT ("operator") mode so the link tunnel
+// exercises the SAME auth path as production: the cluster authenticates with a
+// creds file, the daemon links with a short-lived per-user JWT minted from the
+// tunnel account's signing key. The operator/account/user SEEDS are secrets,
+// persisted under the dev home services dir (outside the repo) and reused on
+// subsequent boots so restarts don't churn identities.
+// ---------------------------------------------------------------------------
+
+function natsJwtDir(home: string): string {
+  return join(servicesDir(home), "nats", "jwt");
+}
+
+function natsKeysPath(home: string): string {
+  return join(natsJwtDir(home), "keys.json");
+}
+
+function natsConfPath(home: string): string {
+  return join(natsJwtDir(home), "nats-server.conf");
+}
+
+function natsClusterCredsPath(home: string): string {
+  return join(natsJwtDir(home), "cluster.creds");
+}
+
+/** Load persisted operator keys, or generate + persist a fresh set. */
+function loadOrCreateNatsOperatorKeys(home: string): NatsOperatorKeys {
+  const keysPath = natsKeysPath(home);
+  if (existsSync(keysPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(keysPath, "utf8"));
+      if (isNatsOperatorKeys(parsed)) return parsed;
+    } catch {
+      // Corrupt file — regenerate below.
+    }
+  }
+  const keys = generateNatsOperatorKeys();
+  ensureDir(natsJwtDir(home));
+  // Secrets — owner-only perms, never committed (lives in the dev home).
+  writeFileSync(keysPath, JSON.stringify(keys, null, 2), { mode: 0o600 });
+  return keys;
+}
+
+interface NatsTunnelConfig {
+  publicUrl: string;
+  accountJwt: string;
+  accountSigningKey: string;
+  operatorJwt: string;
+  credsPath: string;
+}
+
+function natsTunnelConfigFrom(
+  artifacts: NatsOperatorArtifacts,
+  tcpPort: number,
+  credsPath: string,
+): NatsTunnelConfig {
+  return {
+    // Dev: the daemon uses the Node `nats` transport (raw TCP), so hand it the
+    // TCP URL. The WebSocket listener is still configured for fidelity.
+    publicUrl: `nats://127.0.0.1:${tcpPort}`,
+    accountJwt: artifacts.tunnelAccountJwt,
+    accountSigningKey: artifacts.tunnelSigningSeed,
+    operatorJwt: artifacts.operatorJwt,
+    credsPath,
+  };
+}
+
+async function ensureNats(
+  home: string,
+): Promise<{ info: ServiceInfo; tunnel: NatsTunnelConfig }> {
   const info: ServiceInfo = {
     name: "NATS",
     state: "stopped",
@@ -612,6 +692,12 @@ async function ensureNats(home: string): Promise<ServiceInfo> {
     port: 0,
     owner: "none",
   };
+
+  // Operator keys + artifacts are needed on EVERY boot (reuse or fresh) so the
+  // cluster can authenticate and the session route can mint daemon creds.
+  const keys = loadOrCreateNatsOperatorKeys(home);
+  const artifacts = await buildNatsOperatorArtifacts(keys);
+  const credsPath = natsClusterCredsPath(home);
 
   // Check state.json for an existing managed instance
   const existing = readState(home, "nats");
@@ -621,42 +707,59 @@ async function ensureNats(home: string): Promise<ServiceInfo> {
       info.pid = existing.pid;
       info.port = existing.port;
       info.owner = "managed";
-      return info;
+      return {
+        info,
+        tunnel: natsTunnelConfigFrom(artifacts, existing.port, credsPath),
+      };
     }
     // Dead process — clean up stale state
     await removeState(home, "nats");
   }
 
-  // Allocate a dynamic port
+  // Allocate dynamic ports (TCP for cluster/daemon, WS for fidelity with prod).
   const port = await findAvailablePort();
+  const wsPort = await findAvailablePort();
   info.port = port;
 
   const binPath = await downloadNats(home);
   const dataDir = join(servicesDir(home), "nats", "data");
   const logDir = join(servicesDir(home), "nats");
   ensureDir(dataDir);
+  ensureDir(natsJwtDir(home));
+
+  // Write the cluster creds file (secret) + the operator-mode server conf.
+  writeFileSync(credsPath, artifacts.clusterCreds, { mode: 0o600 });
+  const conf = buildNatsServerConf({
+    tcpPort: port,
+    wsPort,
+    storeDir: dataDir,
+    artifacts,
+  });
+  writeFileSync(natsConfPath(home), conf);
 
   const logFile = Bun.file(join(logDir, "nats.log"));
-  const proc = Bun.spawn(
-    [binPath, "-p", String(port), "-store_dir", dataDir, "--jetstream"],
-    {
-      stdout: logFile,
-      stderr: logFile,
-    },
-  );
+  const proc = Bun.spawn([binPath, "-c", natsConfPath(home)], {
+    stdout: logFile,
+    stderr: logFile,
+  });
 
   writeState(home, "nats", {
     pid: proc.pid,
     port,
+    wsPort,
     startedAt: new Date().toISOString(),
   });
 
   await waitForPort(port);
+  await waitForPort(wsPort);
 
   info.state = "running";
   info.pid = proc.pid;
   info.owner = "managed";
-  return info;
+  return {
+    info,
+    tunnel: natsTunnelConfigFrom(artifacts, port, credsPath),
+  };
 }
 
 async function stopNats(home: string): Promise<void> {
@@ -834,10 +937,9 @@ async function waitForMinioReady(
  * @aws-sdk/client-s3 so there's no `mc` version to keep in sync.
  *
  * Object-storage hygiene notes for dispatch offload objects:
- * - `link-dispatch/` offload objects are written by `pullDispatch` when a work
- *   item's `harnessInput.messages` exceeds the NATS publish budget. They are
- *   reclaimed by the bucket's lifecycle TTL (there is no eager per-run delete
- *   on the pull transport).
+ * - `link-dispatch/` offload objects are written when a desktop work item's
+ *   `harnessInput.messages` exceeds the inline payload budget. They are
+ *   reclaimed by the bucket's lifecycle TTL (there is no eager per-run delete).
  * - An S3 lifecycle `Prefix` rule is left-anchored and literal. Real offload
  *   object keys are `<orgId>/link-dispatch/<reqId>` (BoundObjectStorage
  *   prepends `<orgId>/`), so a `Prefix: "link-dispatch/"` rule would never
@@ -1263,9 +1365,9 @@ export interface SuperviseLinkInputs extends EnsureLinkInputs {
  * Keep the link daemon alive for the lifetime of a dev session.
  *
  * `ensureLink` spawns the daemon once and returns; nothing notices if it later
- * dies. The daemon's pull transport self-heals (cluster-connection-pull.ts
- * long-polls with backoff), so the one unrecoverable failure is the process
- * itself exiting — after which its NATS link claim expires via the 60 s TTL
+ * dies. The daemon's tunnel transport self-heals with reconnect backoff, so
+ * the one unrecoverable failure is the process itself exiting — after which
+ * its NATS link claim expires via the 60 s TTL
  * and every user-desktop dispatch returns `user_desktop_link_offline` while
  * the dev UI still shows the sandbox as ready. This loop closes that gap:
  * respawn on unexpected exit with capped exponential backoff, and surface real
@@ -1381,15 +1483,21 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       }
     : await ensurePostgres(inputs.home);
 
-  const natsInfo: ServiceInfo = skipNats
-    ? {
-        name: "NATS",
-        state: "external",
-        pid: null,
-        port: portFromUrl(inputs.externalNatsUrl!, 4222),
-        owner: "external",
-      }
-    : await ensureNats(inputs.home);
+  let natsTunnel: ServiceOutputs["natsTunnel"] = null;
+  let natsInfo: ServiceInfo;
+  if (skipNats) {
+    natsInfo = {
+      name: "NATS",
+      state: "external",
+      pid: null,
+      port: portFromUrl(inputs.externalNatsUrl!, 4222),
+      owner: "external",
+    };
+  } else {
+    const ensured = await ensureNats(inputs.home);
+    natsInfo = ensured.info;
+    natsTunnel = ensured.tunnel;
+  }
 
   const services: ServiceInfo[] = [pgInfo, natsInfo];
 
@@ -1448,6 +1556,20 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
     }
   }
 
+  // Mirror the dev NATS operator/JWT config into process.env BEFORE the app
+  // resolves Settings. The in-process serve path reads the frozen Settings
+  // (threaded via `outputs.natsTunnel` in pipeline.ts); the dev path spawns
+  // `dev:servers` as a child that re-derives Settings from inherited
+  // process.env. The env names must match resolve-config.ts exactly.
+  if (natsTunnel) {
+    process.env.NATS_PUBLIC_URL = natsTunnel.publicUrl;
+    process.env.NATS_ACCOUNT_JWT = natsTunnel.accountJwt;
+    process.env.NATS_ACCOUNT_SIGNING_KEY = natsTunnel.accountSigningKey;
+    process.env.NATS_OPERATOR_JWT = natsTunnel.operatorJwt;
+    process.env.NATS_TUNNEL_PUBLIC_ENABLED = "true";
+    process.env.NATS_CREDS = natsTunnel.credsPath;
+  }
+
   const databaseUrl = skipPostgres
     ? inputs.externalDatabaseUrl!
     : pgConnectionString(pgInfo.port);
@@ -1462,6 +1584,7 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       databaseUrl,
       natsUrls: [natsUrl],
       s3,
+      natsTunnel,
     },
   };
 }

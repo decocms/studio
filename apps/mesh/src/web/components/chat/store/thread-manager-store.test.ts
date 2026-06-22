@@ -120,6 +120,41 @@ describe("ThreadManagerStore thread.* event patching", () => {
     store.dispose();
   });
 
+  it("does not let an older in_progress event overwrite a locally terminal row", async () => {
+    const sse = makeFakePool();
+    const client = makeMcpClient([
+      {
+        id: "t-1",
+        title: "A",
+        status: "in_progress",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-02T00:00:00Z",
+      } as Task,
+    ]);
+    const store = new ThreadManagerStore("acme", "loc-1", { client, sse });
+    await new Promise((r) => setTimeout(r, 10));
+
+    store.patchThread({
+      id: "t-1",
+      status: "completed",
+      updated_at: "2026-01-03T00:00:00Z",
+    });
+
+    sse.emit(
+      "acme",
+      "decopilot.thread.status",
+      threadStatusEvent(
+        "t-1",
+        { status: "in_progress" },
+        "2026-01-02T00:00:01Z",
+      ),
+    );
+
+    expect(store.threads.get()[0]?.status).toBe("completed");
+    expect(store.threads.get()[0]?.updated_at).toBe("2026-01-03T00:00:00Z");
+    store.dispose();
+  });
+
   it("inserts an unknown row at the top from a thread.* event", async () => {
     const sse = makeFakePool();
     const client = makeMcpClient([]);

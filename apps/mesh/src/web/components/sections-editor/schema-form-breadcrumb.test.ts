@@ -1,13 +1,48 @@
 import { describe, expect, test } from "bun:test";
 import type { SchemaProperty } from "./resolve-schema";
 import {
+  breadcrumbPathForActiveField,
+  breadcrumbsForHeaderClick,
+  buildArrayDrillDownBreadcrumb,
   fieldDisplayLabel,
+  findBreadcrumbLabelIndex,
   isArrayDrillDownField,
+  normalizeBreadcrumbLabel,
   resolveActiveFieldKey,
   resolveArrayItemSelection,
   isBreadcrumbInsideObject,
 } from "./schema-form-breadcrumb";
 import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
+
+describe("normalizeBreadcrumbLabel", () => {
+  test("normalizes composed characters to NFC", () => {
+    const nfd = "cafe\u0301";
+    const nfc = "caf\u00e9";
+    expect(normalizeBreadcrumbLabel(nfd)).toBe(normalizeBreadcrumbLabel(nfc));
+  });
+});
+
+describe("breadcrumbsForHeaderClick", () => {
+  test("maps header index to breadcrumb trail", () => {
+    const breadcrumbs = ["Global Sections", "Analytics"];
+    expect(breadcrumbsForHeaderClick(breadcrumbs, 0)).toEqual([]);
+    expect(breadcrumbsForHeaderClick(breadcrumbs, 1)).toEqual([
+      "Global Sections",
+    ]);
+    expect(breadcrumbsForHeaderClick(breadcrumbs, 2)).toEqual([
+      "Global Sections",
+      "Analytics",
+    ]);
+  });
+});
+
+describe("findBreadcrumbLabelIndex", () => {
+  test("matches labels with NFC normalization", () => {
+    const nfd = "cafe\u0301";
+    const nfc = "caf\u00e9";
+    expect(findBreadcrumbLabelIndex(["Flag", nfd], nfc)).toBe(1);
+  });
+});
 
 describe("fieldDisplayLabel", () => {
   test("prefers schema title", () => {
@@ -60,6 +95,16 @@ describe("resolveActiveFieldKey", () => {
     expect(resolveActiveFieldKey(["layout"], properties, {}, [])).toBeNull();
   });
 
+  test("matches array field label anywhere in breadcrumb trail", () => {
+    expect(
+      resolveActiveFieldKey(["layout", "cards"], properties, {}, [
+        "Options",
+        "Cards",
+        "Men's",
+      ]),
+    ).toBe("cards");
+  });
+
   test("finds nested array field inside object ancestor", () => {
     const globalHeader = {
       logos: { title: "Logos", type: "object", properties: {} },
@@ -95,6 +140,94 @@ describe("resolveActiveFieldKey", () => {
         ["A Utah Proud Brand Since 1921"],
       ),
     ).toBe("alert");
+  });
+
+  test("disambiguates block-refs with same label by inner value keys", () => {
+    const properties = {
+      asideMenu: {
+        title: "Section",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "AsideMenu.tsx", title: "Aside" }],
+      } as SchemaProperty,
+      content: {
+        title: "Section",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "CategoryTextHero.tsx", title: "Hero" }],
+      } as SchemaProperty,
+    };
+    const objValue = {
+      asideMenu: {
+        __resolveType: "AsideMenu.tsx",
+        menuItems: [{ label: "Garantia Vitalícia" }],
+      },
+      content: {
+        __resolveType: "CategoryTextHero.tsx",
+        textSeo: [{ matcher: "/garantia-vitalicia" }],
+      },
+    };
+    // "Text Seo" matches humanize("textSeo") in content, not asideMenu
+    expect(
+      resolveActiveFieldKey(["asideMenu", "content"], properties, objValue, [
+        "Section",
+        "Text Seo",
+        "Garantia Vitalícia",
+      ]),
+    ).toBe("content");
+  });
+
+  test("disambiguates block-refs when breadcrumb uses schema title casing", () => {
+    // Schema title "TextSeo" vs humanize("textSeo") = "Text Seo"
+    const properties = {
+      asideMenu: {
+        title: "Section",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "AsideMenu.tsx", title: "Aside" }],
+      } as SchemaProperty,
+      content: {
+        title: "Section",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "CategoryTextHero.tsx", title: "Hero" }],
+      } as SchemaProperty,
+    };
+    const objValue = {
+      asideMenu: {
+        __resolveType: "AsideMenu.tsx",
+        menuItems: [{ label: "Garantia Vitalícia" }],
+      },
+      content: {
+        __resolveType: "CategoryTextHero.tsx",
+        textSeo: [{ matcher: "/garantia-vitalicia" }],
+      },
+    };
+    // "TextSeo" (schema title) should match value key "textSeo" via loose comparison
+    expect(
+      resolveActiveFieldKey(["asideMenu", "content"], properties, objValue, [
+        "Section",
+        "TextSeo",
+        "/garantia-vitalicia",
+      ]),
+    ).toBe("content");
+  });
+
+  test("matches array field when runtime value is an array", () => {
+    const properties = {
+      appKey: { type: "string", title: "App Key" } as SchemaProperty,
+      flags: {
+        title: "Flags Personalizada",
+        type: "object",
+      } as SchemaProperty,
+    };
+
+    expect(
+      resolveActiveFieldKey(
+        ["appKey", "flags"],
+        properties,
+        {
+          flags: [{ name: "Sale" }, { name: "Holiday" }],
+        },
+        ["Flags Personalizada", "Sale"],
+      ),
+    ).toBe("flags");
   });
 });
 
@@ -134,6 +267,47 @@ describe("isArrayDrillDownField", () => {
         ],
       } as SchemaProperty),
     ).toBe(true);
+  });
+});
+
+describe("buildArrayDrillDownBreadcrumb", () => {
+  test("includes array label before item label", () => {
+    expect(
+      buildArrayDrillDownBreadcrumb([], "Flag Desconto", "Partiu ferias"),
+    ).toEqual(["Flag Desconto", "Partiu ferias"]);
+  });
+
+  test("does not duplicate crumbs already in trail", () => {
+    expect(
+      buildArrayDrillDownBreadcrumb(
+        ["Flag Desconto", "Partiu ferias"],
+        "Flag Desconto",
+        "Partiu ferias",
+      ),
+    ).toEqual(["Flag Desconto", "Partiu ferias"]);
+  });
+});
+
+describe("breadcrumbPathForActiveField", () => {
+  const schema = {
+    title: "Flag Desconto",
+    type: "array",
+    items: { type: "object" },
+  } as SchemaProperty;
+
+  test("strips array field label from head", () => {
+    expect(
+      breadcrumbPathForActiveField("flags", schema, [
+        "Flag Desconto",
+        "Partiu ferias",
+      ]),
+    ).toEqual(["Partiu ferias"]);
+  });
+
+  test("keeps trail when head is item label", () => {
+    expect(
+      breadcrumbPathForActiveField("flags", schema, ["Partiu ferias"]),
+    ).toEqual(["Partiu ferias"]);
   });
 });
 

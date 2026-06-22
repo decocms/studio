@@ -270,6 +270,33 @@ describe("applyThreadLock", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  test("unlocked thread with a pinned branch (first message on a COLLECTION_THREADS_CREATE'd thread): the thread's branch wins over an absent request branch", () => {
+    // The thread row already carries a branch assigned at creation, but
+    // harness_id is still null because THIS is the first message (the pin
+    // write happens alongside dispatch). The first POST commonly omits an
+    // explicit branch.
+    const result = applyThreadLock({
+      taskIdInput: "thread-abc",
+      thread: {
+        harness_id: null,
+        sandbox_provider_kind: null,
+        branch: "rho-leonis",
+      },
+      requestedHarnessId: "claude-code",
+      requestedSandboxProviderKind: "user-desktop",
+      requestedBranch: undefined,
+    });
+
+    expect(result.locked).toBe(false);
+    // Regression guard for the claude-code resume session-split: without
+    // preferring the thread's branch here, the first turn resolved to a null
+    // branch and dispatched against the synthetic "ephemeral" sandbox, while
+    // continuations (now locked) used the thread's branch — so the claude
+    // session created on turn 1 lived in a different sandbox than the one
+    // `claude --resume` ran in on turn 2 ("No conversation found").
+    expect(result.branch).toBe("rho-leonis");
+  });
+
   test("no thread row (first message ever): client values flow through", () => {
     const result = applyThreadLock({
       taskIdInput: "thread-new",

@@ -6,6 +6,7 @@
  */
 
 import { useProjectContext, useVirtualMCPs } from "@decocms/mesh-sdk";
+import type { VirtualMCPEntity } from "@decocms/mesh-sdk/types";
 import { useNavigate } from "@tanstack/react-router";
 import { authClient } from "@/web/lib/auth-client";
 import { appendAgentToPersonalOrder } from "@/web/components/sidebar/task-groups/stable-order";
@@ -15,13 +16,19 @@ interface NavigateToAgentOptions {
   search?: Record<string, unknown>;
 }
 
+export function getServerPinnedIds(
+  agents: VirtualMCPEntity[] | undefined | null,
+): string[] {
+  return (agents ?? []).filter((a) => !!a.pinned).map((a) => a.id);
+}
+
 export function useNavigateToAgent() {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const allAgents = useVirtualMCPs();
   const { data: session } = authClient.useSession();
   const sidebarUserId = session?.user?.id ?? "anon";
-  const serverPinnedIds = allAgents.filter((a) => !!a.pinned).map((a) => a.id);
+  const serverPinnedIds = getServerPinnedIds(allAgents);
   const bumpOrderRevision = useBumpSidebarOrderRevision();
 
   return (virtualMcpId: string, options?: NavigateToAgentOptions) => {

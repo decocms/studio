@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
-import type { NatsConnection } from "nats";
+import type { NatsConnection } from "@nats-io/nats-core";
 import type { AutomationEventDispatcher } from "@/automations/automation-event-dispatcher";
 import type { CancelBroadcast } from "@/api/routes/decopilot/cancel-broadcast";
 import type { RunRegistry } from "@/api/routes/decopilot/run-registry";
@@ -115,11 +115,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     createLinkIngestRoutes({
       streamBuffer: deps.streamBuffer,
       sseHub: deps.sseHub,
-      // OFF by default. Flip via env to validate publish-then-consume (raw →
-      // NATS) under multi-pod e2e before retiring the legacy pump path. Reading
-      // the env here (route assembly, not a tool) keeps the inversion gated
-      // without a code change for the rollout.
-      publishThenConsume: process.env.LINK_PUBLISH_THEN_CONSUME === "true",
     }),
   ); // /api/:org/links/runs/:runId/chunks
 

@@ -423,6 +423,7 @@ export async function* runDecopilotStream(
     temperature: input.temperature,
     planMode: modeConfig.isPlanMode,
     isDecopilot: isDecopilot(input.agent.id) !== null,
+    codingWorkspace: input.codingWorkspace,
     systemAgentInstructions: tools.serverInstructions,
     currentThreadId: threadId,
     user: { id: input.user.id, email: input.user.email },

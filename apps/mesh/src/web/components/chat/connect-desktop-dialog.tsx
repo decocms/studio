@@ -7,22 +7,36 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { Check, Copy01 } from "@untitledui/icons";
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useState, type ReactNode } from "react";
 import type { Capability } from "@/links/protocol";
 import { useCurrentLink } from "@/web/hooks/use-current-link";
-import { KEYS } from "@/web/lib/query-keys";
-import { useStudioTools } from "@/web/lib/studio-tools";
+import { ClaudeCodeIcon, CodexIcon } from "./agent-icons";
 
-const INSTALL_SNIPPET = "bunx decocms link";
+const INSTALL_SNIPPET = "bunx decocms@latest link";
 
-const CAPABILITY_LABELS: Partial<Record<Capability, string>> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-};
+interface LocalAgent {
+  capability: Capability;
+  label: string;
+  description: string;
+  icon: ReactNode;
+}
+
+const LOCAL_AGENTS: LocalAgent[] = [
+  {
+    capability: "claude-code",
+    label: "Claude Code",
+    description: "Runs through the Claude Code CLI",
+    icon: <ClaudeCodeIcon size={18} />,
+  },
+  {
+    capability: "codex",
+    label: "Codex",
+    description: "Runs through the Codex CLI",
+    icon: <CodexIcon size={18} />,
+  },
+];
 
 /**
  * Format the link's capability list for UI display. Drops
@@ -31,21 +45,9 @@ const CAPABILITY_LABELS: Partial<Record<Capability, string>> = {
  * nothing user-facing is available.
  */
 export function visibleCapabilities(caps: readonly Capability[]): string[] {
-  return caps
-    .map((c) => CAPABILITY_LABELS[c])
-    .filter((label): label is string => Boolean(label));
-}
-
-/**
- * CLI agents the linked desktop does NOT advertise, as friendly labels.
- * Drives the remediation copy: the daemon re-probes every minute, so a
- * CLI installed (and signed into) after linking shows up here on its own.
- */
-function missingCliLabels(caps: readonly Capability[]): string[] {
-  return (Object.keys(CAPABILITY_LABELS) as Capability[])
-    .filter((c) => !caps.includes(c))
-    .map((c) => CAPABILITY_LABELS[c])
-    .filter((label): label is string => Boolean(label));
+  return LOCAL_AGENTS.filter((agent) => caps.includes(agent.capability)).map(
+    (agent) => agent.label,
+  );
 }
 
 interface ConnectDesktopDialogProps {
@@ -59,37 +61,20 @@ export function ConnectDesktopDialog({
 }: ConnectDesktopDialogProps) {
   const link = useCurrentLink();
   const [copied, setCopied] = useState(false);
-  const { org } = useProjectContext();
-  const queryClient = useQueryClient();
-  const studio = useStudioTools();
-
-  // Tells the linked daemon to shut down (a `shutdown` control frame rides
-  // its held control long-poll) and removes the presence claim, so the link
-  // flips offline immediately. The dialog then shows the reconnect snippet.
-  const disconnect = useMutation({
-    mutationFn: async () => {
-      await studio.call("LINK_DISCONNECT", {});
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: KEYS.currentLink(org.id),
-      });
-    },
-    onError: (err) => {
-      toast.error(`Disconnect failed: ${err.message}`);
-    },
-  });
+  const desktopName = link.hostname ?? link.machineId ?? "Your desktop";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {link.online ? "Desktop connected" : "Connect your desktop"}
+            {link.online
+              ? `Connected to ${desktopName}`
+              : "Connect your desktop"}
           </DialogTitle>
           <DialogDescription>
             {link.online
-              ? "Your desktop is online. Pick a desktop agent in the chat to use it."
+              ? "This machine provides the following local agents."
               : "Run this command in your desktop terminal. The dialog will close once your desktop is online."}
           </DialogDescription>
         </DialogHeader>
@@ -118,36 +103,43 @@ export function ConnectDesktopDialog({
             Waiting for desktop…
           </div>
         ) : (
-          <div className="flex flex-col gap-1 text-sm">
-            <p className="text-foreground">
-              {link.hostname ?? link.machineId ?? "Your desktop"} is linked.
-            </p>
-            {visibleCapabilities(link.capabilities).length > 0 && (
-              <p className="text-muted-foreground">
-                Available: {visibleCapabilities(link.capabilities).join(", ")}
-              </p>
-            )}
-            {missingCliLabels(link.capabilities).length > 0 && (
-              <p className="text-muted-foreground">
-                {missingCliLabels(link.capabilities).join(" and ")}{" "}
-                {missingCliLabels(link.capabilities).length > 1
-                  ? "were"
-                  : "was"}{" "}
-                not detected on this desktop. Install the CLI and sign in there
-                — it appears here automatically within a minute.
-              </p>
-            )}
-            <div className="flex justify-end pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={disconnect.isPending}
-                onClick={() => disconnect.mutate()}
-                className="text-destructive hover:text-destructive"
-              >
-                {disconnect.isPending ? "Disconnecting…" : "Disconnect desktop"}
-              </Button>
+          <div className="flex flex-col gap-3 text-sm">
+            <div className="flex flex-col gap-2">
+              {LOCAL_AGENTS.map((agent) => {
+                const available = link.capabilities.includes(agent.capability);
+                return (
+                  <div
+                    key={agent.capability}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md border px-3 py-2",
+                      available
+                        ? "border-border bg-background text-foreground"
+                        : "border-border/60 bg-muted/40 text-muted-foreground",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex size-6 items-center justify-center",
+                        available ? "text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      {agent.icon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{agent.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {available ? agent.description : "Not detected"}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "size-2 rounded-full",
+                        available ? "bg-success" : "bg-muted-foreground/30",
+                      )}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

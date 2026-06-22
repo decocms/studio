@@ -1,6 +1,7 @@
 import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
+import type { FileConfigCredentials } from "../../storage/org-file-configs";
 import {
   fileConfigInfoSchema,
   fileConfigNameSchema,
@@ -23,30 +24,59 @@ export const FILE_CONFIG_UPDATE = defineTool({
       forcePathStyle: z.boolean().optional(),
       prefix: z.string().max(512).nullable().optional(),
       publicUrlBase: z.string().url().nullable().optional(),
+      // Rotate credentials by providing one complete set. Omit all to leave
+      // credentials untouched. `static`: accessKeyId + secretAccessKey.
+      // `sts-session`: refreshUrl + apiKey.
       accessKeyId: z.string().min(1).optional(),
       secretAccessKey: z.string().min(1).optional(),
+      refreshUrl: z.string().url().optional(),
+      apiKey: z.string().min(1).optional(),
     })
-    .refine(
-      (v) =>
-        (v.accessKeyId === undefined) === (v.secretAccessKey === undefined),
-      {
-        message:
-          "accessKeyId and secretAccessKey must be provided together when rotating credentials.",
-      },
-    ),
+    .superRefine((v, c) => {
+      const hasStatic =
+        v.accessKeyId !== undefined || v.secretAccessKey !== undefined;
+      const hasSts = v.refreshUrl !== undefined || v.apiKey !== undefined;
+      if (hasStatic && hasSts) {
+        c.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "Provide either static (accessKeyId + secretAccessKey) or sts-session (refreshUrl + apiKey) credentials, not both.",
+        });
+      }
+      if (hasStatic && !(v.accessKeyId && v.secretAccessKey)) {
+        c.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "accessKeyId and secretAccessKey must be provided together when rotating static credentials.",
+        });
+      }
+      if (hasSts && !(v.refreshUrl && v.apiKey)) {
+        c.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "refreshUrl and apiKey must be provided together when rotating sts-session credentials.",
+        });
+      }
+    }),
   outputSchema: fileConfigInfoSchema,
   handler: async (input, ctx) => {
     requireAuth(ctx);
     const org = requireOrganization(ctx);
     await ctx.access.check();
 
-    const credentials =
-      input.accessKeyId && input.secretAccessKey
-        ? {
-            accessKeyId: input.accessKeyId,
-            secretAccessKey: input.secretAccessKey,
-          }
-        : undefined;
+    let credentials: FileConfigCredentials | undefined;
+    let refreshUrl: string | null | undefined;
+    if (input.accessKeyId && input.secretAccessKey) {
+      credentials = {
+        type: "static",
+        accessKeyId: input.accessKeyId,
+        secretAccessKey: input.secretAccessKey,
+      };
+      refreshUrl = null;
+    } else if (input.refreshUrl && input.apiKey) {
+      credentials = { type: "sts-session", apiKey: input.apiKey };
+      refreshUrl = input.refreshUrl;
+    }
 
     return ctx.storage.orgFileConfigs.update({
       id: input.id,
@@ -63,6 +93,7 @@ export const FILE_CONFIG_UPDATE = defineTool({
         input.publicUrlBase === undefined
           ? undefined
           : normalizePublicUrlBase(input.publicUrlBase),
+      refreshUrl,
       credentials,
       updatedBy: ctx.auth.user!.id,
     });

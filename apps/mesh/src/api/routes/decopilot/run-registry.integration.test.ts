@@ -203,5 +203,32 @@ describe("RunRegistry storage orchestration (real Postgres)", () => {
       expect(row?.run_started_at).toBeNull();
       expect(purged).toContain(thread.id);
     });
+
+    it("does not reap a fresh run when last_progress_at belongs to a previous turn", async () => {
+      let now = new Date("2024-01-01T00:00:00Z");
+      const { registry } = makeRegistry({ clock: () => now });
+      const thread = await seedRunningThread();
+
+      await database.db
+        .updateTable("threads")
+        .set({
+          last_progress_at: new Date(
+            now.getTime() - RUN_IDLE_TIMEOUT_MS - 1,
+          ).toISOString(),
+        })
+        .where("id", "=", thread.id)
+        .execute();
+
+      startThread(registry, thread.id); // fresh run starts after stale progress
+      now = new Date(now.getTime() + RUN_IDLE_TIMEOUT_MS - 1);
+
+      await (
+        registry as unknown as { reapStaleRuns(): Promise<void> }
+      ).reapStaleRuns();
+
+      expect(registry.isRunning(thread.id)).toBe(true);
+      const row = await storage.get(thread.id, ORG);
+      expect(row?.status).toBe("in_progress");
+    });
   });
 });

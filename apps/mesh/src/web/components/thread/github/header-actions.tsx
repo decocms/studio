@@ -24,7 +24,11 @@ import { useSandboxGitStatus } from "@/web/components/sandbox/hooks/use-sandbox-
 import { squashMergePullRequest } from "./github-pr-api.ts";
 import { MergeSplitButton } from "./merge-split-button.tsx";
 import { PublishDialog } from "./publish-dialog.tsx";
-import { selectHeaderButton, type HeaderButton } from "./panel-state.ts";
+import {
+  isPrStateActivelyLoading,
+  selectHeaderButton,
+  type HeaderButton,
+} from "./panel-state.ts";
 import * as tpl from "./message-templates.ts";
 import { saveChangesDebug } from "./save-changes-debug.ts";
 import { resolveSandboxBranchFromMap } from "./resolve-sandbox-branch.ts";
@@ -166,7 +170,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         pr,
         checks: checksQuery.data ?? [],
         reviews: reviewsQuery.data ?? null,
-        loading: prQuery.isPending,
+        loading: isPrStateActivelyLoading(prQuery),
       })
     : LOADING_BRANCH_BUTTON;
 

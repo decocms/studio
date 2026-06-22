@@ -9,6 +9,7 @@ import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
+import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
   isMultivariateArrayWrapper,
   isPageMultivariateSectionArrayField,
@@ -16,9 +17,11 @@ import {
   wrapMultivariateArrayValue,
 } from "./page-variants";
 import {
+  breadcrumbPathForActiveField,
   fieldDisplayLabel,
   resolveActiveFieldKey,
 } from "./schema-form-breadcrumb";
+import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
@@ -121,6 +124,30 @@ export function renderField(props: FieldProps) {
     }
   }
 
+  // Block-ref schema but the actual value is already a resolved plain array
+  // (not a multivariate wrapper).  The loader has been evaluated and the page
+  // data holds the concrete items — render as ArrayField so users can edit
+  // them directly (e.g. menuItems [{target,href,label}]).
+  if (
+    Array.isArray(value) &&
+    !isMultivariateArrayWrapper(value) &&
+    schema.type === "block-ref"
+  ) {
+    const items = inferBlockRefArrayItemSchema(value);
+    if (items) {
+      const arraySchema: SchemaProperty = { ...schema, type: "array", items };
+      return (
+        <ArrayField
+          key={props.path}
+          {...props}
+          schema={arraySchema}
+          value={value}
+          onChange={props.onChange}
+        />
+      );
+    }
+  }
+
   // Block-ref field (loader/section selector with anyOfRefs)
   if (
     schema.type === "block-ref" ||
@@ -166,13 +193,31 @@ export function renderField(props: FieldProps) {
     return <AnyOfField key={props.path} {...props} />;
   }
 
+  // Deco API secrets are stored as loader blocks, not plain strings.
+  if (
+    isSecretBlock(value) ||
+    schema.format === "password" ||
+    (value == null && schema.format === "password")
+  ) {
+    return <SecretField key={props.path} {...props} />;
+  }
+
   // If value is null/undefined, try to produce a typed default from schema
   const effectiveValue =
     value === null || value === undefined
       ? defaultForType(schema.type, schema.default)
       : value;
 
-  if (effectiveValue === null || effectiveValue === undefined) return null;
+  if (effectiveValue === null || effectiveValue === undefined) {
+    if (isSecretBlock(value)) {
+      return <SecretField key={props.path} {...props} />;
+    }
+    return null;
+  }
+
+  if (isSecretBlock(effectiveValue)) {
+    return <SecretField key={props.path} {...props} value={effectiveValue} />;
+  }
 
   const effectiveProps = { ...props, value: effectiveValue };
 
@@ -229,6 +274,9 @@ export function SchemaForm({
   meta,
   decofile,
   onSaveReferencedBlock,
+  previewBaseUrl,
+  onAddSectionItem,
+  onRequestAddSection,
 }: {
   schema: SchemaProperty;
   value: unknown;
@@ -242,6 +290,9 @@ export function SchemaForm({
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
+  previewBaseUrl?: string | null;
+  onAddSectionItem?: FieldProps["onAddSectionItem"];
+  onRequestAddSection?: FieldProps["onRequestAddSection"];
 }) {
   const properties = schema.properties;
   if (!properties) return null;
@@ -267,12 +318,21 @@ export function SchemaForm({
     onChange({ ...objValue, [key]: fieldValue });
   };
 
+  const containerResolveType =
+    typeof objValue.__resolveType === "string"
+      ? objValue.__resolveType
+      : undefined;
+
   const activeKey =
     breadcrumbPath.length > 0
       ? resolveActiveFieldKey(keys, properties, objValue, breadcrumbPath)
       : null;
   const activeSchema = activeKey ? properties[activeKey] : null;
   const visibleKeys = activeKey && activeSchema ? [activeKey] : keys;
+  const fieldBreadcrumbPath =
+    activeKey && activeSchema
+      ? breadcrumbPathForActiveField(activeKey, activeSchema, breadcrumbPath)
+      : breadcrumbPath;
   return (
     <div className="min-w-0 space-y-6">
       {visibleKeys.map((key) => {
@@ -287,11 +347,15 @@ export function SchemaForm({
           onChange: (val) => updateField(key, val),
           path: fieldPath,
           label,
-          breadcrumbPath,
+          breadcrumbPath: fieldBreadcrumbPath,
           onBreadcrumbChange,
           meta,
           decofile,
           onSaveReferencedBlock,
+          containerResolveType,
+          previewBaseUrl,
+          onAddSectionItem,
+          onRequestAddSection,
         });
       })}
     </div>

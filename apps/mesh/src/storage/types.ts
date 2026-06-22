@@ -323,6 +323,17 @@ export interface OrgFileConfigTable {
   prefix: string | null;
   // Public URL host (e.g. R2 dev domain, CDN). Null = compute from bucket+region.
   public_url_base: string | null;
+  // "static" (long-lived key pair in encrypted_credentials) or "sts-session"
+  // (temporary creds fetched on demand from refresh_url; the encrypted blob
+  // holds only the API key for the refresh call). Has a DB default of 'static'.
+  credential_type: ColumnType<
+    "static" | "sts-session",
+    "static" | "sts-session" | undefined,
+    "static" | "sts-session"
+  >;
+  // Endpoint that vends temporary credentials for `sts-session` configs. Null
+  // for `static`.
+  refresh_url: string | null;
   encrypted_credentials: string;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
@@ -376,6 +387,8 @@ export interface FileConfigInfo {
   forcePathStyle: boolean;
   prefix: string | null;
   publicUrlBase: string | null;
+  credentialType: "static" | "sts-session";
+  refreshUrl: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -912,11 +925,11 @@ export interface ThreadTable {
   run_fence_token: ColumnType<string | null, string | null, string | null>;
   /**
    * @deprecated Per-thread transport selector. No longer read for routing —
-   * the thread gate takes the pull path whenever NATS (workQueue +
-   * pullDispatchFn) is available (see thread-gate-workflow.ts). The writer
-   * (`setLinkTransport`) was removed with the cluster reverse-WS cleanup
-   * (Phase F). Column retained (nullable) for backward compatibility; no drop
-   * migration. New code MUST NOT read or write it.
+   * the thread gate uses the active link publisher whenever NATS and the link
+   * dispatch runtime are available (see thread-gate-workflow.ts). The writer
+   * (`setLinkTransport`) was removed with the cluster reverse-WS cleanup.
+   * Column retained (nullable) for backward compatibility; no drop migration.
+   * New code MUST NOT read or write it.
    */
   link_transport: ColumnType<string | null, string | null, string | null>;
   /**
@@ -929,6 +942,24 @@ export interface ThreadTable {
     Date | string | null,
     Date | string | null
   >;
+  /**
+   * Human-readable reason the run was marked failed (e.g. the error message
+   * from the harness or the projector). Null for runs that completed normally
+   * or were failed without a reason (pre-migration rows).
+   */
+  failure_reason: string | null;
+  /**
+   * Coarse failure category. One of "harness" | "projection" | "transport".
+   * Null for pre-migration rows or runs failed without kind information.
+   */
+  failure_kind: string | null;
+  /**
+   * Highest contiguous publish-confirmed seq for the active run. Written via a
+   * monotonic CAS (only advances, never regresses). Null for pre-existing rows
+   * and runs that haven't published a chunk yet. Cleared implicitly when a new
+   * run resets the floor at the call site (fence epoch change).
+   */
+  run_acked_seq: number | null;
 }
 
 export interface ThreadExpandedTool {

@@ -14,7 +14,7 @@
  * cross-pod — so it is invalidated directly by its callers, not here.)
  */
 
-import type { NatsConnection, Subscription } from "nats";
+import type { NatsConnection, Subscription } from "@nats-io/nats-core";
 import { getMcpReadCache } from "./mcp-read-cache";
 
 const INVALIDATE_SUBJECT = "studio.mcp-cache.invalidate";

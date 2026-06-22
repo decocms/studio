@@ -11,6 +11,7 @@ import { sleep } from "@decocms/std";
 // the workflow modules, which register workflows at import time).
 import {
   AUTOMATIONS_QUEUE,
+  PROJECTOR_QUEUE,
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
 import { getSettings } from "./settings";
@@ -65,7 +66,7 @@ function withSslmode(url: string, ssl: boolean): string {
 // pod and stay exactly-once via DBOS's row-locked schedule, so an "api" pod can
 // still fire a cron that a "worker" pod then executes. REQUIREMENT: at least
 // one "worker" (or "all") pod must exist or runs never dispatch.
-const RUN_QUEUES = [AUTOMATIONS_QUEUE, THREAD_GATE_QUEUE];
+const RUN_QUEUES = [AUTOMATIONS_QUEUE, THREAD_GATE_QUEUE, PROJECTOR_QUEUE];
 const listenQueues: string[] | undefined =
   settings.dispatchRole === "worker"
     ? RUN_QUEUES
@@ -154,18 +155,6 @@ const previewProxyDeps = {
   getRunner: getOrInitRunnerForPreview,
 };
 
-// WS uplink (return-leg) — default-off (LINK_WS_UPLINK). The cluster registers
-// the bearer resolver + per-connection factory inside createApp() (where `auth`
-// + streamBuffer + storage live); this layer only dispatches. When the flag is
-// off the registries are empty → the upgrade falls through (404) and the
-// websocket handler ignores uplink data, so prod is unchanged until multi-pod
-// e2e validates the transport.
-const { tryUpgradeUplinkWs, getUplinkResolve } = await import(
-  "./links/uplink-ws"
-);
-const { uplinkWebSocketHandler } = await import("./links/uplink-ws-handler");
-const { isUplinkWsData } = await import("./links/uplink-ws");
-
 // Create the Hono app (any DBOS.registerWorkflow calls happen during this
 // import chain). Launch DBOS afterwards so the registry is sealed before
 // the executor starts dequeueing workflows.
@@ -217,49 +206,27 @@ const server = Bun.serve({
       if (httpRes) return httpRes;
     }
 
-    // WS uplink upgrade (return-leg). Registered only when LINK_WS_UPLINK is on
-    // (app.ts registers the resolver); otherwise getUplinkResolve() is null and
-    // this is skipped so /api/links/uplink falls through to the Hono 404.
-    const uplinkResolve = getUplinkResolve();
-    if (uplinkResolve) {
-      const uplinkRes = await tryUpgradeUplinkWs(
-        request,
-        server as unknown as Parameters<typeof tryUpgradeUplinkWs>[1],
-        { resolve: uplinkResolve },
-      );
-      if (uplinkRes === undefined) return; // upgraded
-      if (uplinkRes) return uplinkRes; // 401 / 426
-    }
-
     // Try assets first (static files or dev proxy), then API
     // Pass server as env so Hono's getConnInfo can access requestIP
     const assetRes = await handleAssets(request);
     if (assetRes) return withSecurityHeaders(assetRes);
     return app.fetch(request, { server });
   },
-  // WebSocket handler — only sandbox preview connections remain (the link
-  // daemon reverse-WS gateway was deleted in Phase C-bis S8; daemons now use
-  // the pull transport). `ws.data.kind` discriminates preview connections.
+  // WebSocket handler — sandbox preview connections only.
   websocket: {
     open(ws) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.open(ws);
-      } else if (isUplinkWsData(ws.data)) {
-        uplinkWebSocketHandler.open(ws);
       }
     },
     message(ws, message) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.message(ws, message);
-      } else if (isUplinkWsData(ws.data)) {
-        uplinkWebSocketHandler.message(ws, message);
       }
     },
     close(ws) {
       if (isPreviewWsData(ws.data)) {
         previewWebSocketHandler.close(ws);
-      } else if (isUplinkWsData(ws.data)) {
-        uplinkWebSocketHandler.close(ws);
       }
     },
   },

@@ -42,7 +42,7 @@
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
-import type { WorkItem } from "../api/routes/decopilot/link-work-queue";
+import type { WorkItem } from "../links/link-work-item";
 import {
   type RelayPostResult,
   relayDispatchSSEAsChunkStream,
@@ -132,8 +132,7 @@ export interface LocalDispatchDeps {
   clusterBaseUrl: string;
   /**
    * Returns the bearer token for the cluster chunks endpoint. Called once
-   * per dispatch so that a refreshed token is used (mirrors work-poller's
-   * per-poll `getAccessToken` pattern).
+   * per dispatch so that a refreshed token is used.
    */
   getClusterToken: () => Promise<string> | string;
   /**
@@ -383,8 +382,18 @@ export async function handleLocalDispatch(
         throw err;
       }
       if (!res.ok) {
+        // The cluster explains the rejection in the response body (4xx
+        // fence/cancel reason, 5xx message). Read it — capped — so a relay
+        // reset is diagnosable beyond the bare status. Reading is safe here:
+        // the body is otherwise discarded when we throw.
+        let body = "";
+        try {
+          body = (await res.text()).slice(0, 500);
+        } catch {
+          body = "<unreadable>";
+        }
         console.error(
-          `[relay-diag] CLUSTER-RELAY POST non-ok runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} status=${res.status}`,
+          `[relay-diag] CLUSTER-RELAY POST non-ok runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} status=${res.status} body=${JSON.stringify(body)}`,
         );
         const err = new Error(
           `[handleLocalDispatch] relay failed (${res.status})`,

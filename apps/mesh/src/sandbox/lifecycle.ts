@@ -199,10 +199,8 @@ export async function buildDesktopProvider(
   if (!userSub) {
     throw new Error("buildDesktopProvider: userSub must be a non-empty string");
   }
-  // Phase C-bis S8: the pull reverse-proxy `DispatchFn` (the daemon long-polls
-  // `/links/proxy`) is the only desktop transport — the reverse-WS dispatcher
-  // was deleted. The provider (runner.ts) is transport-agnostic; it decodes the
-  // base64 `DispatchChunk.data` the proxy dispatch yields.
+  // The provider (runner.ts) is transport-agnostic; it decodes the base64
+  // `DispatchChunk.data` the tunnel dispatch yields.
   const dispatch = getProxyDispatch();
   return new DesktopSandboxProvider({
     userSub,

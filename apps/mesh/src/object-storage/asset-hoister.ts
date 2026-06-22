@@ -1,12 +1,11 @@
 /**
  * Asset hoisting
  *
- * Inline `data:` base64 media (images, audio, video) can arrive on several
- * write paths: connection/virtual-MCP icons (app favicons from the registry,
- * AI-generated brand icons), and tool results that land in thread message
- * `parts`. Persisted verbatim, they get re-inlined into every `COLLECTION_*_LIST`
- * result, which the agent serializes into `thread_messages.parts` — bloating
- * threads by hundreds of KB–MB per call and overflowing NATS/LLM limits.
+ * Inline `data:` base64 media (images, audio, video) can arrive on connection
+ * and virtual-MCP icon write paths (app favicons from the registry,
+ * AI-generated brand icons). Persisted verbatim, they get re-inlined into every
+ * `COLLECTION_*_LIST` result — bloating payloads by hundreds of KB–MB per call
+ * and overflowing NATS/LLM limits.
  *
  * The hoister uploads the bytes to object storage once and stores a directly
  * loadable files URL instead — `${baseUrl}/api/${orgSlug}/files/${key}`, NOT a
@@ -14,19 +13,11 @@
  * UI loads the value as a raw `<img src>` / media src (same-origin, session
  * cookie) and does not resolve the mesh-storage scheme.
  *
- * Scope of the thread sink: by the time message parts reach here, real
- * user-attached vision media has already been turned into `mesh-storage://`
- * refs upstream by `uploadFileParts` (file-materializer), which the model
- * fetches via fresh per-turn presigned URLs. So this sink only catches `data:`
- * media that bypassed that pipeline — chiefly icons re-inlined from tool
- * results — which are rendered in the UI, not fetched server-side by a vision
- * model. The auth-gated `/files/` URL is therefore the right target for them.
- *
  * Applied as a per-request decorator on `storage.connections`/`storage.virtualMcps`
- * /`storage.threads` in the context factory, where `ctx.objectStorage` and the
- * org slug exist (the base storage classes are singletons and have neither).
- * Only `data:(image|audio|video)/*` values with a known-safe extension are
- * touched; other strings (and active/unknown media types like SVG) pass through.
+ * in the context factory, where `ctx.objectStorage` and the org slug exist (the
+ * base storage classes are singletons and have neither). Only
+ * `data:(image|audio|video)/*` values with a known-safe extension are touched;
+ * other strings (and active/unknown media types like SVG) pass through.
  */
 
 import { createHash } from "node:crypto";
@@ -36,7 +27,6 @@ import type {
   ConnectionStoragePort,
   VirtualMCPStoragePort,
 } from "../storage/ports";
-import type { ThreadMessage } from "../storage/types";
 
 // Captures the media type (group 1, params stripped) and the base64 payload
 // (group 2). Tolerates media-type parameters (e.g. `;charset=utf-8`) before
@@ -294,83 +284,15 @@ function withVirtualMcpAssetHoisting<T extends VirtualMCPStoragePort>(
 }
 
 /**
- * Hoist inline `data:` media out of a single message's `parts` and `metadata`.
- * Returns the SAME message reference when nothing changed.
- */
-async function hoistMessage<M extends ThreadMessage>(
-  m: M,
-  hoist: AssetHoister,
-): Promise<M> {
-  const parts = (await hoistDeep(m.parts, hoist)) as ThreadMessage["parts"];
-  const metadata = (await hoistDeep(
-    m.metadata,
-    hoist,
-  )) as ThreadMessage["metadata"];
-  if (parts === m.parts && metadata === m.metadata) return m;
-  return { ...m, parts, metadata };
-}
-
-/** Minimal thread-storage surface the message hoister decorates. */
-type ThreadMessageStore = {
-  saveMessages: (data: ThreadMessage[]) => Promise<void>;
-};
-
-/**
- * Decorate a thread storage so inline `data:` media is hoisted out of message
- * `parts` (and `metadata`) on `saveMessages`. Reads stay pure — `listMessages`
- * is not decorated — so the hot read path never uploads or writes. The write
- * sink stops new base64 from landing; rows written before this sink keep their
- * inline media until they are next saved through `saveMessages`.
- */
-function withThreadMessageHoisting<T extends ThreadMessageStore>(
-  base: T,
-  hoist: AssetHoister,
-): T {
-  return new Proxy(base, {
-    get(target, prop, receiver) {
-      if (prop === ASSET_HOISTING_TARGET) return target;
-      if (prop === "saveMessages") {
-        return async (data: ThreadMessage[]) => {
-          const hoisted = await Promise.all(
-            data.map((m) => hoistMessage(m, hoist)),
-          );
-          return target.saveMessages(hoisted);
-        };
-      }
-      const value = Reflect.get(target, prop, receiver);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-}
-
-/**
- * Wrap thread storage so inline `data:` media in message parts is hoisted to
- * object storage (prefix `thread-assets`). Used by both the request context
- * factory and the automation context factory so the two paths hoist
- * identically.
- */
-function decorateThreadsWithAssetHoisting<T extends ThreadMessageStore>(
-  threads: T,
-  deps: AssetHoistingDeps,
-): T {
-  return withThreadMessageHoisting(
-    unwrapAssetHoisting(threads),
-    createAssetHoister({ ...deps, prefix: "thread-assets" }),
-  );
-}
-
-/**
- * Decorate connection, virtual-MCP, and thread storage in place so all inline
- * `data:` media is hoisted to object storage on write. Single wiring point
- * shared by the context factory; connection and
- * virtual-MCP icons share one hoister (default `connection-icons` prefix),
- * thread parts use `thread-assets`.
+ * Decorate connection and virtual-MCP storage in place so all inline `data:`
+ * media is hoisted to object storage on write. Single wiring point shared by
+ * the context factory; connection and virtual-MCP icons share one hoister
+ * (default `connection-icons` prefix).
  */
 export function decorateStorageWithAssetHoisting<
   S extends {
     connections: ConnectionStoragePort;
     virtualMcps: VirtualMCPStoragePort;
-    threads: ThreadMessageStore;
   },
 >(storage: S, deps: AssetHoistingDeps): void {
   const iconHoister = createAssetHoister(deps);
@@ -388,12 +310,6 @@ export function decorateStorageWithAssetHoisting<
       unwrapAssetHoisting(storage.virtualMcps),
       iconHoister,
     ) as S["virtualMcps"];
-  }
-  if (isObject(storage.threads)) {
-    storage.threads = decorateThreadsWithAssetHoisting(
-      unwrapAssetHoisting(storage.threads),
-      deps,
-    ) as S["threads"];
   }
 }
 

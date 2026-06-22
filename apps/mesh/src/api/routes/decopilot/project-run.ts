@@ -1,7 +1,11 @@
 import type { UIMessageChunk } from "ai";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import type { HarnessStreamPersistence } from "./consume-harness-stream";
-import { projectChunks } from "./project-chunks";
+import {
+  projectChunks,
+  type ProjectChunksResult,
+  type ProjectTitleOptions,
+} from "./project-chunks";
 
 /** Attempts before a run's projection is declared poison and DLQ'd (spec §5.4
  *  poison-event policy). Bounded so one bad run never stalls the consumer. */
@@ -20,11 +24,21 @@ export interface ProjectRunOptions {
   sanitizeErrorText?: (error: unknown) => string;
   /** Delay calculator override (tests pass `() => 0`). */
   backoffMs?: (attempt: number) => number;
+  /** When set, the projector persists the run's title chunk (sole writer). */
+  title?: ProjectTitleOptions;
 }
 
 export interface ProjectRunResult {
   ok: boolean;
   attempts: number;
+  /**
+   * Populated on the `ok:true` branch with the harness verdict from
+   * `projectChunks`. `outcome.failed=true` means the run ended with an in-band
+   * error chunk (not a persistence/infra error — those cause `ok:false`).
+   * The workflow's markRunFailed step reads this to mark the run `failed`
+   * in the DB (Task 6).
+   */
+  outcome?: ProjectChunksResult;
 }
 
 /**
@@ -49,14 +63,18 @@ export async function projectRun(
   let lastError: unknown = null;
   for (let attempt = 0; attempt < PROJECT_RUN_MAX_ATTEMPTS; attempt++) {
     try {
-      await projectChunks({
+      const outcome = await projectChunks({
         chunks: (async function* () {
           yield* options.chunks;
         })(),
         persistence: options.persistence,
         sanitizeErrorText: options.sanitizeErrorText,
+        // Deterministic per run so an error message dedupes across this loop's
+        // attempts, DBOS step retries, and the live-path write (same id).
+        errorMessageId: `error-${options.runId}`,
+        title: options.title,
       });
-      return { ok: true, attempts: attempt + 1 };
+      return { ok: true, attempts: attempt + 1, outcome };
     } catch (error) {
       lastError = error;
       if (attempt < PROJECT_RUN_MAX_ATTEMPTS - 1) {

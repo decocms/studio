@@ -33,13 +33,15 @@ function toIso(v: Date | string | null): string | null {
 /**
  * Deterministic id for the seed assistant message we write next to a
  * polling row. Derived from the tool call id so we can find the row to
- * delete on terminal transitions without an extra lookup.
+ * delete on terminal transitions without an extra lookup. v2 threads use it
+ * as the `thread_message_parts.message_id`; legacy v1 rows used it as the
+ * `thread_messages` PK.
  *
- * `tool_call_id` feeds two btree keys (the (organization_id, tool_call_id)
- * unique index and this PK), so it must stay under Postgres's ~2704-byte
- * index-row cap. Gemini-thinking gateways used to blow that by packing the
- * thought signature into the id; that's now stripped upstream by the
- * thought-signature middleware (packages/harness), so ids reach storage small.
+ * `tool_call_id` also feeds the (organization_id, tool_call_id) unique index,
+ * so it must stay under Postgres's ~2704-byte index-row cap. Gemini-thinking
+ * gateways used to blow that by packing the thought signature into the id;
+ * that's now stripped upstream by the thought-signature middleware
+ * (packages/harness), so ids reach storage small.
  */
 function stubMessageId(toolCallId: string): string {
   return `msg_async_stub_${toolCallId}`;
@@ -54,9 +56,16 @@ async function deleteStubMessage(
   trx: Kysely<Database>,
   toolCallId: string,
 ): Promise<void> {
+  // New polling stubs are v2-only. Keep the legacy `thread_messages` delete
+  // as cleanup compatibility for old in-flight rows created before this
+  // migration; it is a no-op for new rows.
   await trx
     .deleteFrom("thread_messages")
     .where("id", "=", stubMessageId(toolCallId))
+    .execute();
+  await trx
+    .deleteFrom("thread_message_parts")
+    .where("message_id", "=", stubMessageId(toolCallId))
     .execute();
 }
 
@@ -283,27 +292,58 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
         .where("tool_call_id", "=", toolCallId)
         .execute();
 
-      // Stub assistant message — gives the AI SDK reader something to
-      // seed from on browser refresh during the long polling window.
-      // See port doc for the failure mode this prevents.
+      const threadRow = await trx
+        .selectFrom("threads")
+        .select("message_storage_version")
+        .where("id", "=", stub.threadId)
+        .where("organization_id", "=", organizationId)
+        .executeTakeFirst();
+
+      if (threadRow?.message_storage_version !== 2) {
+        return;
+      }
+
+      // v2 readers reconstruct from `thread_message_parts`, so the polling
+      // stub seeds only that path. Legacy v1 threads still transition to
+      // polling, but no new v1 message writes are created.
+      const messageId = stubMessageId(toolCallId);
       await trx
-        .insertInto("thread_messages")
-        .values({
-          id: stubMessageId(toolCallId),
-          thread_id: stub.threadId,
-          role: "assistant",
-          parts: JSON.stringify([
-            {
+        .insertInto("thread_message_parts")
+        .values([
+          {
+            id: `${stub.threadId}:${messageId}:0`,
+            seq: 0,
+            org_id: organizationId,
+            thread_id: stub.threadId,
+            run_id: stub.threadId,
+            message_id: messageId,
+            role: "assistant",
+            kind: "tool_call",
+            payload: JSON.stringify({
               type: `tool-${stub.toolName}`,
               toolCallId,
               state: "input-available",
               input: { query: stub.query },
-            },
-          ]),
-          metadata: null,
-          created_at: now,
-          updated_at: now,
-        })
+            }),
+            payload_ref: null,
+            metadata: null,
+            created_at: now,
+          },
+          {
+            id: `${stub.threadId}:${messageId}:finish`,
+            seq: 1,
+            org_id: organizationId,
+            thread_id: stub.threadId,
+            run_id: stub.threadId,
+            message_id: messageId,
+            role: "assistant",
+            kind: "finish",
+            payload: JSON.stringify({}),
+            payload_ref: null,
+            metadata: null,
+            created_at: now,
+          },
+        ])
         .onConflict((oc) => oc.column("id").doNothing())
         .execute();
     });
@@ -462,6 +502,10 @@ export class SqlAsyncResearchJobStorage implements AsyncResearchJobStoragePort {
       await trx
         .deleteFrom("thread_messages")
         .where("id", "in", stubIds)
+        .execute();
+      await trx
+        .deleteFrom("thread_message_parts")
+        .where("message_id", "in", stubIds)
         .execute();
 
       return abandoned.length;

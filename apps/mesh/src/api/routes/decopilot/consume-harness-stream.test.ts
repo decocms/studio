@@ -359,4 +359,37 @@ describe("consumeHarnessStream", () => {
     expect(errorChunk?.errorText).toBe("[SANITIZED] raw provider failure");
     expect(emitted).toEqual(["raw provider failure"]);
   });
+
+  test("uses the provided errorMessageId so the error message is stable across retries", async () => {
+    const seenIds: string[] = [];
+    // Two independent consumptions of the same erroring run (e.g. a projector
+    // retry or a daemon resend). With a run-derived id the synthesized error
+    // message lands at the SAME id both times → ON CONFLICT dedupes it.
+    for (let i = 0; i < 2; i++) {
+      const { uiStream, whenComplete } = consumeHarnessStream({
+        chunks: (async function* () {
+          yield { type: "start" } as UIMessageChunk;
+          throw new Error("boom");
+        })(),
+        originalMessages: [],
+        title: {
+          currentThreadTitle: "t",
+          threadId: "run-1",
+          persistTitle: async () => {},
+        },
+        errorMessageId: "error-run-1",
+        persistence: {
+          emitFinal: async () => {},
+          emitStepParts: async () => {},
+          emitError: async (messageId) => {
+            seenIds.push(messageId);
+          },
+        },
+      });
+      await drain(uiStream);
+      await whenComplete;
+    }
+
+    expect(seenIds).toEqual(["error-run-1", "error-run-1"]);
+  });
 });

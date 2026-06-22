@@ -18,7 +18,7 @@ import { decide } from "./run-decider";
 import { project } from "./run-projector";
 import type { RunReactorDeps } from "./run-reactor";
 import { reactAll } from "./run-reactor";
-import { isRunStuck } from "./liveness";
+import { effectiveLastProgressAt, isRunStuck } from "./liveness";
 import { meter } from "@/observability";
 
 export type { RunReactorDeps };
@@ -213,8 +213,10 @@ export class RunRegistry {
         // `run_started_at` (a wall-clock string written by whichever pod
         // claimed the run) so the idle window is measured consistently and a
         // brand-new run is never instakilled.
-        lastProgressAt =
-          progress?.lastProgressAt ?? state.status.startedAt.getTime();
+        lastProgressAt = effectiveLastProgressAt({
+          persistedLastProgressAt: progress?.lastProgressAt ?? null,
+          currentRunStartedAt: state.status.startedAt.getTime(),
+        });
       } catch (err) {
         // Storage blip — assume progress, skip this sweep for this run.
         console.warn(

@@ -1,3 +1,4 @@
+import { lazyWrappedInner } from "./block-ref-field-utils";
 import { extractUrl } from "./fields/extract-url";
 import type { SchemaProperty } from "./resolve-schema";
 import { labelFromResolveType } from "./section-types";
@@ -78,6 +79,11 @@ export function renderMustacheTemplate(
   return result.trim() || undefined;
 }
 
+/** Strip HTML tags to extract the text content (e.g. `<h1>Title</h1>` → `Title`). */
+function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]*>/g, "").trim();
+}
+
 function readTitleByValue(
   obj: Record<string, unknown>,
   titleBy: string,
@@ -102,19 +108,48 @@ export function getArrayItemLabel(
   index: number,
   itemSchema?: SchemaProperty,
 ): string {
-  if (typeof item === "string") return item || `Item ${index + 1}`;
+  if (typeof item === "string") return item.trim() ? item : `Item ${index + 1}`;
   if (typeof item === "number" || typeof item === "boolean") {
     return String(item);
   }
   if (item && typeof item === "object" && !Array.isArray(item)) {
-    const obj = item as Record<string, unknown>;
+    let obj = item as Record<string, unknown>;
+    // Lazy-wrapped section items (`{ __resolveType: ".../Lazy.tsx", section: {...} }`)
+    // should be labelled by the inner section, not "Lazy".
+    const inner = lazyWrappedInner(obj);
+    if (inner) {
+      obj = inner;
+    }
     if (itemSchema?.titleBy) {
       const fromTitleBy = readTitleByValue(obj, itemSchema.titleBy);
       if (fromTitleBy) return fromTitleBy;
     }
-    for (const key of ["name", "label", "title", "alt", "text", "href", "id"]) {
+    for (const key of [
+      "name",
+      "label",
+      "title",
+      "alt",
+      "text",
+      "href",
+      "id",
+      "key",
+    ]) {
       const value = obj[key];
-      if (typeof value === "string" && value) return value;
+      // Skip whitespace-only strings (e.g. title: " ") so the item still gets a
+      // meaningful label (falls through to the section name) and a stable,
+      // non-blank breadcrumb crumb you can click into.
+      if (typeof value === "string" && value.trim()) {
+        // Rich-text / HTML fields store raw markup.  Use the plain-text
+        // content as the label so array items show readable names and the
+        // breadcrumb crumb stays stable for navigation.
+        const fmt = itemSchema?.properties?.[key]?.format;
+        if (fmt === "rich-text" || fmt === "html") {
+          const text = stripHtmlTags(value);
+          if (text) return text;
+          continue; // empty after stripping → try next key
+        }
+        return value;
+      }
       if (Array.isArray(value)) {
         const joined = value
           .map((entry) => (entry == null ? "" : String(entry)))

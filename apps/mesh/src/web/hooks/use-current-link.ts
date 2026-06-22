@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Capability } from "@/links/protocol";
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
+import { KEYS } from "@/web/lib/query-keys";
 
 export interface CurrentLink {
   online: boolean;
@@ -27,11 +27,14 @@ export function useCurrentLink(): CurrentLink {
   const { data } = useQuery<CurrentLink>({
     queryKey: KEYS.currentLink(org.id),
     queryFn: async () => {
-      const link = await studio.call("LINK_CURRENT_GET", {});
+      const link = (await studio.call("LINK_CURRENT_GET", {})) as Omit<
+        CurrentLink,
+        "ready"
+      > | null;
       return link ? { ...link, ready: true } : { ...OFFLINE, ready: true };
     },
-    staleTime: 10_000,
-    refetchInterval: 15_000,
+    staleTime: 4_000,
+    refetchInterval: 5_000,
     refetchOnWindowFocus: true,
   });
 

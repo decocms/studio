@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { isRunStuck } from "./liveness";
+import { effectiveLastProgressAt, isRunStuck } from "./liveness";
 
 const MIN = 60_000;
 
@@ -35,5 +35,34 @@ describe("isRunStuck (progress-based liveness)", () => {
         idleTimeoutMs: 5 * MIN,
       }),
     ).toBe(true);
+  });
+});
+
+describe("effectiveLastProgressAt", () => {
+  it("uses the current run start when persisted progress belongs to an older run", () => {
+    expect(
+      effectiveLastProgressAt({
+        persistedLastProgressAt: 10 * MIN,
+        currentRunStartedAt: 20 * MIN,
+      }),
+    ).toBe(20 * MIN);
+  });
+
+  it("uses persisted progress when it is newer than the current run start", () => {
+    expect(
+      effectiveLastProgressAt({
+        persistedLastProgressAt: 25 * MIN,
+        currentRunStartedAt: 20 * MIN,
+      }),
+    ).toBe(25 * MIN);
+  });
+
+  it("falls back to the current run start when no progress has been recorded", () => {
+    expect(
+      effectiveLastProgressAt({
+        persistedLastProgressAt: null,
+        currentRunStartedAt: 20 * MIN,
+      }),
+    ).toBe(20 * MIN);
   });
 });

@@ -12,13 +12,19 @@ services:
       retries: 10
 
   nats:
-    image: nats:2.10.22
-    command: -js -m 8222
+    image: nats:2.14.2
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - ./nats-config/nats.conf:/etc/nats/nats.conf:ro
     healthcheck:
-      test: ["CMD", "nats-server", "--help"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O- http://localhost:8222/healthz 2>/dev/null || exit 1",
+        ]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
       start_period: 5s
 
   toxiproxy:
@@ -86,18 +92,27 @@ services:
       STUDIO_SANDBOX_PROVIDER: user-desktop
       ENCRYPTION_KEY: test-encryption-key-32chars-long!
       DATA_DIR: /app/data
+      NATS_PUBLIC_URL: ws://toxiproxy:3010
+      NATS_ACCOUNT_JWT: eyJ0eXAiOiJKV1QiLCJhbGciOiJlZDI1NTE5LW5rZXkifQ.eyJhdWQiOiJOQVRTIiwibmFtZSI6InR1bm5lbCIsInN1YiI6IkFDQ1JKT0dDS1BGSkpNUDNMSE9HMkk1NU5WMkpRVkZNSUlaUVRDVDNQTjZaQlhWR1M1SVFCSU1CIiwibmF0cyI6eyJzaWduaW5nX2tleXMiOlsiQUFYVVRQUUpMS05ZRVZMVlVUSEFURVVRMlA3T1hIN0FWS09UVUUyU0IyS0o2VTNJN0UySkFPVDIiXSwibGltaXRzIjp7InN1YnMiOi0xLCJjb25uIjotMSwiZGF0YSI6LTEsInBheWxvYWQiOi0xLCJpbXBvcnRzIjotMSwiZXhwb3J0cyI6LTEsIndpbGRjYXJkcyI6dHJ1ZSwibWVtX3N0b3JhZ2UiOi0xLCJkaXNrX3N0b3JhZ2UiOi0xLCJzdHJlYW1zIjotMSwiY29uc3VtZXIiOi0xfSwidHlwZSI6ImFjY291bnQiLCJ2ZXJzaW9uIjoyfSwiaXNzIjoiT0JVSDNLRzJQT1FNQVJSWEYyTVZNTkdMN1NCRDVBUE9UVkU1REJKNTZOR1A1NElaVUFMUE1QNUYiLCJpYXQiOjE3ODE5Njc5NzAsImp0aSI6ImpFMzhWWk45ZVRQVStLMlB6d2NtbWdESVgyQWE1UzVTZ2FCb1Y5RWtqM0tQVHhCOUErVTZuS2daNmp0VFpLc3EwdEx5V0F1VmpzdnNsZHpVUjZ4N1hnPT0ifQ.KXYXjyj7WzyxCOyz90dIYV_Rq8fGaIUxTP1RhGsV9mpyPZk0Pj30HvRLGilGxz6E75M0IBZkQ7vmFTKFsgeWBA
+      NATS_ACCOUNT_SIGNING_KEY: SAAD4LKQUA2MPS5AOHTWV2ELQILVCQXRMMLMWQSJFFRF2MIT3S7ANO4SRM
+      NATS_CREDS: /nats-creds/cluster.creds
     ports:
       - "127.0.0.1:13000:3000"
     depends_on:
       toxiproxy:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:3000/health/live'); if(!r.ok) process.exit(1)\""]
+      test:
+        [
+          "CMD-SHELL",
+          "bun -e \"const r = await fetch('http://localhost:3000/health/live'); if(!r.ok) process.exit(1)\"",
+        ]
       interval: 5s
       timeout: 5s
       start_period: 60s
       retries: 20
-    volumes: []
+    volumes:
+      - ./nats-config/cluster.creds:/nats-creds/cluster.creds:ro
 
   link-daemon:
     # Reuse the studio image (built once by the `studio` service); only override
@@ -110,7 +125,7 @@ services:
     command: ["bun", "run", "/app/tests/resilience/link-daemon-entrypoint.ts"]
     environment:
       NODE_ENV: production
-      MESH_CLUSTER_URL: http://toxiproxy:3010
+      MESH_CLUSTER_URL: http://toxiproxy:3011
       DAEMON_API_KEY: "${DAEMON_API_KEY:-}"
       DATA_DIR: /app/data/link-daemon
       LINK_DAEMON_PORT: "4500"

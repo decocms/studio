@@ -24,8 +24,8 @@ import type { SandboxFsHooks } from "@decocms/harness/decopilot/built-in-tools/v
  * Build the cluster flat fs hooks for a (virtualMcp, branch, user) tuple.
  *
  * Behavior-identical to the block formerly inline in `buildAllTools`: the
- * provider is resolved eagerly (it short-circuits on `ctx.sandboxPreference` /
- * `ctx.linkForCurrentRun` populated by dispatch-run, so no DB hit), while the
+ * provider is resolved eagerly (it short-circuits on `ctx.sandboxPreference`
+ * populated by dispatch-run, so no DB hit), while the
  * sandbox PROVISIONING stays lazy behind the memoized `ensureHandle` closure —
  * `ensureSandbox` only runs on the first VM-tool invocation. The
  * handle-resolution + auto-restart retry layer lives inside
@@ -35,11 +35,11 @@ export async function buildClusterSandboxFs(
   ctx: StudioContext,
   vm: { virtualMcpId: string; branch: string; userId: string },
 ): Promise<SandboxFsHooks> {
-  // `dispatch-run` already populated `ctx.sandboxPreference` /
-  // `ctx.linkForCurrentRun` from the resolved `DispatchTarget`, so the resolver
-  // short-circuits on those ctx hints without reading sandboxMap — no DB hit on
-  // the decopilot hot path. The same `kind` flows into `ensureSandbox` below so
-  // `runner` and the provisioned handle come from the same provider.
+  // `dispatch-run` already populated `ctx.sandboxPreference` from the resolved
+  // `DispatchTarget`, so the resolver short-circuits on that ctx hint without
+  // reading sandboxMap — no DB hit on the decopilot hot path. The same `kind`
+  // flows into `ensureSandbox` below so `runner` and the provisioned handle come
+  // from the same provider.
   const { provider: runner, kind: providerKind } = await resolveSandboxProvider(
     ctx,
     {

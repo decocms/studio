@@ -40,15 +40,14 @@ import {
   type SubmitAction,
   type ThreadObserver,
 } from "./store/thread-connection";
+import { deriveTerminalThreadStatus } from "./store/thread-status";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
 import {
   AGENT_OPTION_PINS,
   agentOptionFor,
-  resolveAvailableAgentOption,
   type AgentOption,
 } from "./pills/agent-options";
-import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
   pickSimpleModeDefaults,
@@ -100,6 +99,7 @@ import type { VirtualMCPInfo } from "./select-virtual-mcp";
 import type { ChatMessage, ChatMode, Metadata } from "./types";
 import type { Task } from "./task/types";
 import type { SendMessageParams, SetAppContextParams } from "./store/types";
+import type { RunStatusStage } from "./run-status";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
@@ -124,6 +124,7 @@ export interface ChatStreamContextValue {
   error: Error | null;
   clearError: () => void;
   finishReason: string | null;
+  runStatusStage: RunStatusStage | null;
   clearFinishReason: () => void;
   isStreaming: boolean;
   isChatEmpty: boolean;
@@ -524,24 +525,14 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
         )
       : null;
 
-  // Resolve the persisted pick against what's actually runnable right now,
-  // applying the same availability fallback the mode picker uses for display.
-  // A pick that points to an offline runtime — e.g. "Claude Code desktop"
-  // carried over from another org while this org's desktop link is offline —
-  // falls back to cloud Decopilot instead of dispatching to the dead desktop
-  // link (which 409s with `user_desktop_link_offline`). Because the picker's
-  // displayed mode is derived from `effectiveAgentOption` (exposed as
-  // `pendingAgentOption` below), this keeps the runtime the user sees selected
-  // and the runtime the message dispatches to in lockstep.
-  const availability = useAgentOptionAvailability();
-  const availableAgentOption = resolveAvailableAgentOption(
-    pendingAgentOption,
-    availability,
-  );
+  // Preserve the user's selected runtime exactly. Presence/capability probes are
+  // advisory only; dispatch should surface the real backend error if the choice
+  // cannot run.
+  const selectedAgentOption = pendingAgentOption;
 
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's
-  // availability-resolved global picker.
+  // selected global picker.
   //
   // When the thread is locked but the (harness, sandbox) tuple doesn't map
   // to a known AgentOption (legacy/trigger-created rows), we intentionally
@@ -550,13 +541,14 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // should consult isThreadLocked for the "locked" affordance and avoid
   // showing the global selection on a locked thread.
   const effectiveAgentOption: AgentOption | null =
-    taskCtxForLock?.isThreadLocked ? lockedAgentOption : availableAgentOption;
+    taskCtxForLock?.isThreadLocked ? lockedAgentOption : selectedAgentOption;
 
   const effectivePins = effectiveAgentOption
     ? AGENT_OPTION_PINS[effectiveAgentOption]
     : null;
   const pendingHarnessId = effectivePins?.harness ?? null;
-  const pendingSandboxProviderKind = effectivePins?.sandbox ?? null;
+  const pendingSandboxProviderKind: SandboxProviderKind | null =
+    effectivePins?.sandbox ?? "agent-sandbox";
 
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
@@ -828,6 +820,7 @@ export function ActiveTaskProvider({
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
   const finishReason = useStore(conn.finishReason);
+  const runStatusStage = useStore(conn.runStatusStage);
   const hasMoreOlder = useStore(conn.hasMoreOlder);
   const isFetchingOlder = useStore(conn.isFetchingOlder);
 
@@ -900,8 +893,22 @@ export function ActiveTaskProvider({
           return;
         }
       },
-      onFinish: (message) => {
+      onFinish: (message, _messages, finishReason) => {
         const cb = cbRef.current;
+        if (cb.taskId) {
+          cb.manager.patchThread({
+            id: cb.taskId,
+            status: deriveTerminalThreadStatus(
+              finishReason,
+              message.parts as {
+                type?: string;
+                text?: string;
+                state?: string;
+              }[],
+            ),
+            updated_at: new Date().toISOString(),
+          });
+        }
         // Refresh download chips only when this turn could have produced a
         // file: an explicit share, or sandbox file work (bash/write can drop
         // results into `org/output/`). AI SDK v5 surfaces tool invocations as
@@ -1119,6 +1126,7 @@ export function ActiveTaskProvider({
     error: chatError,
     clearError: () => setChatError(null),
     finishReason,
+    runStatusStage,
     clearFinishReason: () => conn.finishReason.set(null),
     isStreaming,
     isChatEmpty,

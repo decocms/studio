@@ -8,7 +8,7 @@ import {
   type ThreadObserver,
   upsertById,
 } from "./thread-connection";
-import type { UIMessage } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 
 // ─── Fetch mock builders ─────────────────────────────────────────────────────
 
@@ -17,7 +17,7 @@ import type { UIMessage } from "ai";
 function makeFetchMock(
   opts: {
     stream?: (init?: RequestInit) => Response | Promise<Response>;
-    messages?: (init?: RequestInit) => Response;
+    messages?: (init?: RequestInit) => Response | Promise<Response>;
     fallback?: (init?: RequestInit) => Promise<Response>;
   } = {},
 ) {
@@ -203,6 +203,269 @@ describe("chunk handling", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(finishSpy).toHaveBeenCalledTimes(1);
   });
+
+  test("tracks local sending and received states around POST /messages", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-post", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const submitPromise = conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "user-1",
+          role: "user",
+          parts: [{ type: "text", text: "hello" }],
+        },
+      },
+      baseOpts,
+    );
+
+    expect(conn.runStatusStage.get()).toBe("sending");
+    await submitPromise;
+    expect(conn.runStatusStage.get()).toBe("received");
+  });
+
+  test("consumes data-run-status without creating assistant content", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-chunk", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "gathering-context" },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("gathering-context");
+    expect(conn.messages.get().filter((m) => m.role === "assistant")).toEqual(
+      [],
+    );
+  });
+
+  test("consumes unknown and malformed data-run-status without creating assistant content", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-malformed", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "future-stage" },
+    } as unknown as UIMessageChunk);
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: {},
+    } as unknown as UIMessageChunk);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBeNull();
+    expect(conn.messages.get().filter((m) => m.role === "assistant")).toEqual(
+      [],
+    );
+  });
+
+  test("run status stage is monotonic across replayed chunks", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-monotonic", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "preparing-tools" },
+    });
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "starting-run" },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("preparing-tools");
+  });
+
+  test("POST success does not regress a later streamed run status", async () => {
+    const stream = controllableStream();
+    let resolvePost!: () => void;
+    const postGate = new Promise<void>((resolve) => {
+      resolvePost = resolve;
+    });
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: async () => {
+        await postGate;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-post-monotonic", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const submitPromise = conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "user-1",
+          role: "user",
+          parts: [{ type: "text", text: "hello" }],
+        },
+      },
+      baseOpts,
+    );
+    expect(conn.runStatusStage.get()).toBe("sending");
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "gathering-context" },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("gathering-context");
+
+    resolvePost();
+    await submitPromise;
+    expect(conn.runStatusStage.get()).toBe("gathering-context");
+  });
+
+  test("POST success does not resurrect run status after visible output cleared it", async () => {
+    const stream = controllableStream();
+    let resolvePost!: () => void;
+    const postGate = new Promise<void>((resolve) => {
+      resolvePost = resolve;
+    });
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: async () => {
+        await postGate;
+        return new Response("ok", { status: 200 });
+      },
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-post-cleared", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const submitPromise = conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "user-1",
+          role: "user",
+          parts: [{ type: "text", text: "hello" }],
+        },
+      },
+      baseOpts,
+    );
+    expect(conn.runStatusStage.get()).toBe("sending");
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "gathering-context" },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("gathering-context");
+
+    stream.enqueue({ type: "start", messageId: "m-1" });
+    stream.enqueue({ type: "text-start", id: "p-1" });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: "hello" });
+    stream.enqueue({ type: "text-end", id: "p-1" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBeNull();
+
+    resolvePost();
+    await submitPromise;
+    expect(conn.runStatusStage.get()).toBeNull();
+  });
+
+  test("start-step does not clear run status before visible output", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-start-step", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "gathering-context" },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("gathering-context");
+
+    stream.enqueue({ type: "start", messageId: "m-1" });
+    stream.enqueue({ type: "start-step" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("gathering-context");
+
+    stream.enqueue({ type: "text-start", id: "p-1" });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: "hello" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBeNull();
+  });
+
+  test("clears run status when visible assistant content starts and on finish", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-status-clear", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "analyzing-scope" },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBe("analyzing-scope");
+
+    stream.enqueue({ type: "start", messageId: "m-1" });
+    stream.enqueue({ type: "text-start", id: "p-1" });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: "hello" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBeNull();
+
+    stream.enqueue({ type: "text-end", id: "p-1" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBeNull();
+  });
 });
 
 // ─── stop() — late chunks from the cancelled run are dropped ────────────────
@@ -273,6 +536,65 @@ describe("stop", () => {
     expect(textOf("m-1")).toBe("partial");
     // m-2 contains only run 2's content — no contamination from run 1.
     expect(textOf("m-2")).toBe("fresh");
+  });
+
+  test("accepts pre-start run status for a submitted run after stop", async () => {
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+    }) as unknown as typeof globalThis.fetch;
+
+    const conn = getOrOpenStream("acme", "thread-stop-status", {
+      client: null,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    stream.enqueue({ type: "start", messageId: "m-1" });
+    stream.enqueue({ type: "text-start", id: "p-1" });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: "partial" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    conn.stop();
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "gathering-context" },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(conn.runStatusStage.get()).toBeNull();
+
+    await conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "u-2",
+          role: "user",
+          parts: [{ type: "text", text: "second" }],
+        },
+      },
+      baseOpts,
+    );
+
+    stream.enqueue({
+      type: "data-run-status",
+      id: "run-status",
+      data: { stage: "waiting-runner" },
+    });
+    stream.enqueue({ type: "text-delta", id: "p-1", delta: " leftover" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(conn.runStatusStage.get()).toBe("waiting-runner");
+
+    stream.enqueue({ type: "start", messageId: "m-2" });
+    stream.enqueue({ type: "text-start", id: "p-2" });
+    stream.enqueue({ type: "text-delta", id: "p-2", delta: "fresh" });
+    stream.enqueue({ type: "text-end", id: "p-2" });
+    stream.enqueue({ type: "finish", finishReason: "stop" });
+    await new Promise((r) => setTimeout(r, 50));
+
+    const ids = conn.messages.get().map((m) => m.id);
+    expect(ids).toEqual(["m-1", "u-2", "m-2"]);
   });
 });
 

@@ -1,5 +1,6 @@
 import type { LanguageModelV3 } from "@ai-sdk/provider";
 import { createClaudeCode } from "ai-sdk-provider-claude-code";
+import { resolveClaudeCodeExecutable } from "../resolve-executable";
 import type { ToolApprovalLevel } from "../../types";
 
 /**
@@ -22,6 +23,13 @@ export function createClaudeCodeModel(
     /** Chat mode plan — same tool restrictions as readonly for headless CLI */
     isPlanMode?: boolean;
     resume?: string;
+    systemPrompt?:
+      | string
+      | {
+          type: "preset";
+          preset: "claude_code";
+          append?: string;
+        };
     /** Working directory for Claude Code's subprocess. Defaults to mesh's cwd. */
     cwd?: string;
   },
@@ -40,7 +48,24 @@ export function createClaudeCodeModel(
   > = {
     mcpServers: options?.mcpServers,
     cwd: options?.cwd ?? process.cwd(),
+    // ai-sdk-provider-claude-code@3.5.0 changed: when settingSources is
+    // undefined, it now passes [] to the binary (no settings loaded at all).
+    // In 3.4.4 it was omitted, letting the binary use its defaults (user
+    // plugins/skills). Restore that by explicitly requesting all three sources
+    // so user skills (e.g. superpower), project .claude/ config, and
+    // machine-local overrides all load in headless mode.
+    settingSources: ["user", "project", "local"],
   };
+
+  // Pin the native binary that matches this host's libc. Without this the SDK
+  // self-resolves it, and on some glibc hosts its detection wrongly picks the
+  // `-musl` binary (which can't launch) — see resolveClaudeCodeExecutable. When
+  // it returns undefined (non-linux, or it can't resolve) we omit the option
+  // and let the SDK resolve as before.
+  const executablePath = resolveClaudeCodeExecutable();
+  if (executablePath) {
+    settings.pathToClaudeCodeExecutable = executablePath;
+  }
 
   const restrictWrites =
     options?.isPlanMode || options?.toolApprovalLevel === "readonly";
@@ -61,6 +86,10 @@ export function createClaudeCodeModel(
 
   if (options?.resume) {
     settings.resume = options.resume;
+  }
+
+  if (options?.systemPrompt) {
+    settings.systemPrompt = options.systemPrompt;
   }
 
   const provider = createClaudeCode({

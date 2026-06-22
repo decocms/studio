@@ -22,6 +22,13 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
 import { Switch } from "@deco/ui/components/switch.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
@@ -90,6 +97,11 @@ function FileConfigRow({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">{config.name}</span>
+            {config.credentialType === "sts-session" ? (
+              <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                STS
+              </span>
+            ) : null}
             <span className="text-xs text-muted-foreground truncate">
               {config.bucket} · {config.region}
             </span>
@@ -173,8 +185,13 @@ function CreateFileConfigDialog({
   const [forcePathStyle, setForcePathStyle] = useState(false);
   const [prefix, setPrefix] = useState("");
   const [publicUrlBase, setPublicUrlBase] = useState("");
+  const [credentialType, setCredentialType] = useState<
+    "static" | "sts-session"
+  >("static");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [refreshUrl, setRefreshUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const createConfig = useCreateFileConfig();
 
   function reset() {
@@ -186,14 +203,35 @@ function CreateFileConfigDialog({
     setForcePathStyle(false);
     setPrefix("");
     setPublicUrlBase("");
+    setCredentialType("static");
     setAccessKeyId("");
     setSecretAccessKey("");
+    setRefreshUrl("");
+    setApiKey("");
   }
+
+  const credentialsValid =
+    credentialType === "sts-session"
+      ? Boolean(refreshUrl.trim() && apiKey.trim())
+      : Boolean(accessKeyId && secretAccessKey);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!name.trim() || !bucket.trim() || !region.trim()) return;
-    if (!accessKeyId || !secretAccessKey) return;
+    if (!credentialsValid) return;
+
+    const credentialFields =
+      credentialType === "sts-session"
+        ? {
+            credentialType: "sts-session" as const,
+            refreshUrl: refreshUrl.trim(),
+            apiKey: apiKey.trim(),
+          }
+        : {
+            credentialType: "static" as const,
+            accessKeyId,
+            secretAccessKey,
+          };
 
     try {
       await createConfig.mutateAsync({
@@ -205,8 +243,7 @@ function CreateFileConfigDialog({
         forcePathStyle,
         prefix: prefix.trim() || undefined,
         publicUrlBase: publicUrlBase.trim() || undefined,
-        accessKeyId,
-        secretAccessKey,
+        ...credentialFields,
       });
       toast.success(`Bucket "${name.trim()}" added`);
       reset();
@@ -221,8 +258,7 @@ function CreateFileConfigDialog({
     !name.trim() ||
     !bucket.trim() ||
     !region.trim() ||
-    !accessKeyId ||
-    !secretAccessKey;
+    !credentialsValid;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -344,27 +380,99 @@ function CreateFileConfigDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="file-config-access-key">Access key ID</Label>
-            <Input
-              id="file-config-access-key"
-              value={accessKeyId}
-              onChange={(e) => setAccessKeyId(e.target.value)}
-              autoComplete="off"
-              required
-            />
+            <Label htmlFor="file-config-credential-type">Credentials</Label>
+            <Select
+              value={credentialType}
+              onValueChange={(v) =>
+                setCredentialType(v as "static" | "sts-session")
+              }
+            >
+              <SelectTrigger
+                id="file-config-credential-type"
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="static">
+                  Static key pair (long-lived)
+                </SelectItem>
+                <SelectItem value="sts-session">
+                  Temporary session (STS, auto-refreshed)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {credentialType === "sts-session"
+                ? "Stores only a refresh endpoint + API key; short-lived credentials are fetched on demand and refreshed automatically."
+                : "A long-lived access key ID and secret, used as-is."}
+            </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="file-config-secret-key">Secret access key</Label>
-            <Input
-              id="file-config-secret-key"
-              type="password"
-              value={secretAccessKey}
-              onChange={(e) => setSecretAccessKey(e.target.value)}
-              autoComplete="new-password"
-              required
-            />
-          </div>
+          {credentialType === "static" ? (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="file-config-access-key">Access key ID</Label>
+                <Input
+                  id="file-config-access-key"
+                  value={accessKeyId}
+                  onChange={(e) => setAccessKeyId(e.target.value)}
+                  autoComplete="off"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="file-config-secret-key">
+                  Secret access key
+                </Label>
+                <Input
+                  id="file-config-secret-key"
+                  type="password"
+                  value={secretAccessKey}
+                  onChange={(e) => setSecretAccessKey(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="file-config-refresh-url">Refresh URL</Label>
+                <Input
+                  id="file-config-refresh-url"
+                  type="url"
+                  value={refreshUrl}
+                  onChange={(e) => setRefreshUrl(e.target.value)}
+                  placeholder="https://admin.example.com/api/acme/s3-credentials"
+                  autoComplete="off"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Endpoint POSTed (with the API key below) to vend temporary
+                  credentials. Must return accessKeyId, secretAccessKey,
+                  sessionToken, and expiration.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="file-config-api-key">API key</Label>
+                <Input
+                  id="file-config-api-key"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Sent as the <code>x-api-key</code> header on each refresh
+                  call.
+                </p>
+              </div>
+            </>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="file-config-description">

@@ -29,6 +29,14 @@ const MAX_PENDING_FRAMES = 256;
  */
 const CONNECTING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting…</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fafafa;color:#555}div{text-align:center;max-width:420px;padding:24px}h3{margin:0 0 8px}p{margin:0;font-size:14px;color:#999;line-height:1.5}</style></head><body><div><h3>Connecting to sandbox…</h3><p>Waiting for the local sandbox to come online. This page refreshes automatically.</p></div><script>setTimeout(function(){window.location.reload()},1500)</script></body></html>`;
 
+function applyCors(headers: Headers): Headers {
+  headers.set("access-control-allow-origin", "*");
+  headers.set("access-control-allow-methods", "GET, HEAD, POST, OPTIONS");
+  headers.set("access-control-allow-headers", "*");
+  headers.set("access-control-allow-private-network", "true");
+  return headers;
+}
+
 export interface StartLocalIngressInput {
   port: number;
   lookupSandboxPort: (handle: string) => number | null;
@@ -74,11 +82,20 @@ export async function startLocalIngress(
         }
         return new Response(CONNECTING_HTML, {
           status: 503,
-          headers: {
-            "Content-Type": "text/html; charset=utf-8",
-            "Cache-Control": "no-store",
-            "Retry-After": "1",
-          },
+          headers: applyCors(
+            new Headers({
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "no-store",
+              "Retry-After": "1",
+            }),
+          ),
+        });
+      }
+
+      if (req.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: applyCors(new Headers()),
         });
       }
 
@@ -99,11 +116,17 @@ export async function startLocalIngress(
       const target = `http://127.0.0.1:${sandboxPort}${url.pathname}${url.search}`;
       const headers = new Headers(req.headers);
       headers.set("host", `127.0.0.1:${sandboxPort}`);
-      return fetch(target, {
+      const upstream = await fetch(target, {
         method: req.method,
         headers,
         body: req.body,
         redirect: "manual",
+      });
+      const responseHeaders = new Headers(upstream.headers);
+      return new Response(upstream.body, {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: applyCors(responseHeaders),
       });
     },
     websocket: {

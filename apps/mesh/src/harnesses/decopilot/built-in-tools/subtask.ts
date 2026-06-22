@@ -19,6 +19,7 @@ import type { ModelsConfig } from "@decocms/harness/types";
 import { runAgentLoop } from "../run-agent-loop";
 import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
 import { acquireSubagentSlot } from "./subagent-concurrency";
+import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -61,6 +62,7 @@ export interface SubtaskParams {
   provider: MeshProvider;
   organization: OrganizationScope;
   models: ModelsConfig;
+  codingWorkspace?: CodingWorkspacePromptInput;
   needsApproval?: boolean;
   /**
    * The calling agent's own Virtual MCP id. When present, omitting `agent_id`
@@ -96,6 +98,25 @@ export interface SubtaskParams {
    * vmContext, e.g. Claude Code).
    */
   vmTools?: ToolSet;
+}
+
+export function resolveSubtaskCodingWorkspace(
+  targetRef: { repo?: { owner: string; name: string; connectionId?: string } },
+  parentWorkspace?: CodingWorkspacePromptInput,
+  isSelf = false,
+): CodingWorkspacePromptInput | undefined {
+  if (!targetRef.repo) return isSelf ? parentWorkspace : undefined;
+
+  return {
+    repo: {
+      owner: targetRef.repo.owner,
+      name: targetRef.repo.name,
+      connectedGithub: Boolean(targetRef.repo.connectionId),
+    },
+    branch: parentWorkspace?.branch,
+    cwd: parentWorkspace?.cwd,
+    workspaceKind: "github",
+  };
 }
 
 /** Max chars of a tool call's args shown in the live subtask stream. */
@@ -136,6 +157,7 @@ export function createSubtaskTool(
     self,
     onChildUsage,
     vmTools,
+    codingWorkspace,
   } = params;
 
   return tool({
@@ -225,6 +247,12 @@ export function createSubtaskTool(
 
       const releaseSlot = await acquireSubagentSlot();
       try {
+        const subtaskCodingWorkspace = resolveSubtaskCodingWorkspace(
+          targetRef,
+          codingWorkspace,
+          isSelf,
+        );
+
         // 3. Call runAgentLoop with subagent kind.
         const handle = await runAgentLoop({
           kind: "subagent",
@@ -239,8 +267,15 @@ export function createSubtaskTool(
           stepLimit: SUBAGENT_STEP_LIMIT,
           toolApprovalLevel: "auto",
           planMode: false,
+          codingWorkspace: subtaskCodingWorkspace,
           writer,
-          subtaskParams: { provider, organization, models, needsApproval },
+          subtaskParams: {
+            provider,
+            organization,
+            models,
+            needsApproval,
+            codingWorkspace: subtaskCodingWorkspace,
+          },
           // Subagent inherits the parent's writer for nested chunk routing.
           // Subagent gets prompts/connections blocks via the MCP client
           // (which is both the tool source AND the prompts source for the

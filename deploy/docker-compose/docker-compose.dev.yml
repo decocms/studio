@@ -39,7 +39,7 @@ services:
   # NATS JetStream cluster (3 nodes — mirrors production)
   # ============================================================================
   nats-1:
-    image: nats:latest
+    image: nats:2.14.2
     container_name: decocms-dev-nats-1
     restart: unless-stopped
     ports:
@@ -55,7 +55,7 @@ services:
       -m 8222
 
   nats-2:
-    image: nats:latest
+    image: nats:2.14.2
     container_name: decocms-dev-nats-2
     restart: unless-stopped
     ports:
@@ -69,7 +69,7 @@ services:
       -routes nats://nats-1:6222,nats://nats-3:6222
 
   nats-3:
-    image: nats:latest
+    image: nats:2.14.2
     container_name: decocms-dev-nats-3
     restart: unless-stopped
     ports:

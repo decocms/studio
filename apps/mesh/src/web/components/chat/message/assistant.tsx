@@ -37,6 +37,7 @@ import {
   type RenderItem,
   useFilterParts,
 } from "./use-filter-parts.ts";
+import { RUN_STATUS_COPY } from "../run-status.ts";
 import { addUsage, emptyUsageStats } from "@decocms/mesh-sdk";
 import { useOptionalChatStream, useOptionalChatTask } from "../context.tsx";
 import { LiveTimer } from "../../live-timer.tsx";
@@ -49,6 +50,7 @@ type ThinkingStage = "planning" | "thinking";
 interface ThinkingStageConfig {
   icon: ReactNode;
   label: string;
+  detail: string;
 }
 
 const THINKING_STAGES: Record<ThinkingStage, ThinkingStageConfig> = {
@@ -60,6 +62,7 @@ const THINKING_STAGES: Record<ThinkingStage, ThinkingStageConfig> = {
       />
     ),
     label: "Planning next moves",
+    detail: "Deciding how to approach the request",
   },
   thinking: {
     icon: (
@@ -69,36 +72,84 @@ const THINKING_STAGES: Record<ThinkingStage, ThinkingStageConfig> = {
       />
     ),
     label: "Thinking",
+    detail: "Working through the next response",
   },
 };
 
 const PLANNING_DURATION = 1200;
 
-function TypingIndicator() {
-  const [stage, setStage] = useState<ThinkingStage>("planning");
+function ThoughtSummaryShell({
+  icon,
+  title,
+  summary,
+  detail,
+  state,
+  detailVariant = "prose",
+  latency,
+  trailing,
+}: {
+  icon: ReactNode;
+  title: ReactNode;
+  summary?: ReactNode;
+  detail?: string | null;
+  state: "loading" | "error" | "idle";
+  detailVariant?: "code" | "prose";
+  latency?: number;
+  trailing?: ReactNode;
+}) {
+  return (
+    <ToolCallShell
+      icon={icon}
+      title={title}
+      summary={summary}
+      detail={detail}
+      state={state}
+      detailVariant={detailVariant}
+      latency={latency}
+      trailing={trailing}
+    />
+  );
+}
+
+function RunStatusIndicator({ startedAt }: { startedAt: number | null }) {
+  const stage = useOptionalChatStream()?.runStatusStage ?? null;
+  const [fallbackStage, setFallbackStage] = useState<ThinkingStage>("planning");
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
+    if (stage !== null) return;
     const planningTimer = setTimeout(() => {
-      setStage("thinking");
+      setFallbackStage("thinking");
     }, PLANNING_DURATION);
 
     return () => {
       clearTimeout(planningTimer);
     };
-  }, []);
+  }, [stage]);
 
-  const config = THINKING_STAGES[stage];
+  if (stage !== null) {
+    const copy = RUN_STATUS_COPY[stage];
+    return (
+      <ThoughtSummaryShell
+        icon={<Stars01 className="size-4" />}
+        title={`${copy.label}...`}
+        summary={copy.detail}
+        state="loading"
+        trailing={startedAt !== null && <LiveTimer since={startedAt} />}
+      />
+    );
+  }
+
+  const config = THINKING_STAGES[fallbackStage];
 
   return (
-    <div className="flex items-center gap-1.5 py-2 opacity-60">
-      <span className="flex items-center gap-1.5">
-        {config.icon}
-        <span className="text-[14px] text-muted-foreground shimmer">
-          {config.label}...
-        </span>
-      </span>
-    </div>
+    <ThoughtSummaryShell
+      icon={config.icon}
+      title={`${config.label}...`}
+      summary={config.detail}
+      state="loading"
+      trailing={startedAt !== null && <LiveTimer since={startedAt} />}
+    />
   );
 }
 
@@ -119,7 +170,7 @@ const SLOW_AFTER_MS = 20_000;
 
 /**
  * Waiting state for a turn that has produced no parts yet. Pairs the
- * `TypingIndicator` with a live elapsed clock and, once the wait crosses
+ * `RunStatusIndicator` with a live elapsed clock and, once the wait crosses
  * `SLOW_AFTER_MS`, a "taking longer than usual" hint + Cancel. `useClockTick`
  * (singleton interval via useSyncExternalStore — no useEffect) re-renders this
  * once per second so the threshold flips without a per-component timer.
@@ -132,14 +183,7 @@ function ThinkingState({ startedAt }: { startedAt: number | null }) {
 
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-2">
-        <TypingIndicator />
-        {startedAt !== null && (
-          <span className="opacity-60">
-            <LiveTimer since={startedAt} />
-          </span>
-        )}
-      </div>
+      <RunStatusIndicator startedAt={startedAt} />
       {isSlow && stream?.stop && (
         <div className="flex items-center gap-2 pb-1 text-[13px] text-muted-foreground/60">
           <span>This is taking longer than usual.</span>
@@ -201,7 +245,7 @@ function ThoughtSummary({
     !isStreaming && duration != null ? duration / 1000 : undefined;
 
   return (
-    <ToolCallShell
+    <ThoughtSummaryShell
       icon={
         isStreaming ? (
           <Stars01 className="size-4" />
@@ -720,11 +764,9 @@ export function MessageAssistant({
   }
   const startedAt = turnEpochMs ?? clientFallbackStartedAt;
 
-  // Handle null message or empty parts
-  const hasContent = message !== null && message.parts.length > 0;
-
   // Use hook to extract reasoning groups, build render order, and data parts
   const { reasoningGroups, renderOrder, dataParts } = useFilterParts(message);
+  const hasVisibleContent = message !== null && renderOrder.length > 0;
 
   // Reasoning is actively streaming only when the last part in the array
   // is a reasoning part (the model is currently inside a thinking block).
@@ -769,7 +811,7 @@ export function MessageAssistant({
     });
   const shouldCollapse =
     !isLoading &&
-    hasContent &&
+    hasVisibleContent &&
     isTerminallyDone &&
     (() => {
       let toolCallCount = 0;
@@ -790,7 +832,7 @@ export function MessageAssistant({
 
   return (
     <Container className={className}>
-      {hasContent ? (
+      {hasVisibleContent ? (
         <div className="flex flex-col gap-3 sm:gap-2">
           {collapsed.length > 0 && (
             <CollapsedSection

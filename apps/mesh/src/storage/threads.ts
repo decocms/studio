@@ -8,7 +8,7 @@
 import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
-import type { ThreadStoragePort } from "./ports";
+import type { ThreadStoragePort, ThreadUpdateData } from "./ports";
 import { SqlThreadMessagePartStorage } from "./thread-message-parts";
 import type {
   Database,
@@ -79,12 +79,16 @@ export class OrgScopedThreadStorage {
     return this.inner.get(id, this.requireOrg());
   }
 
-  update(id: string, data: Partial<Thread>): Promise<Thread> {
+  update(id: string, data: ThreadUpdateData): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
   }
 
   completeRunIfNotCompleted(id: string): Promise<Thread | null> {
     return this.inner.completeRunIfNotCompleted(id, this.requireOrg());
+  }
+
+  markRunFailed(id: string, reason: string, kind: string): Promise<void> {
+    return this.inner.markRunFailed(id, this.requireOrg(), reason, kind);
   }
 
   forceFailIfInProgress(id: string): Promise<boolean> {
@@ -127,10 +131,6 @@ export class OrgScopedThreadStorage {
       this.requireOrg(),
       virtualMcpIds,
     );
-  }
-
-  saveMessages(data: ThreadMessage[]): Promise<void> {
-    return this.inner.saveMessages(data, this.requireOrg());
   }
 
   /** Stamp `last_progress_at = now()` (progress-liveness heartbeat). */
@@ -211,6 +211,24 @@ export class OrgScopedThreadStorage {
   /** Clear `cancel_requested_at` (set to NULL) for a thread by id. */
   clearCancelRequested(threadId: string): Promise<void> {
     return this.inner.clearCancelRequested(threadId);
+  }
+
+  /**
+   * Monotonically advance `run_acked_seq` for a run.
+   * Only writes when the new value is strictly greater than the stored floor.
+   * `fenceToken` is accepted for interface parity; the floor is fence-agnostic
+   * at the storage level — a new fence epoch resets the floor at the call site.
+   */
+  bumpAckedSeq(id: string, fenceToken: string, ackSeq: number): Promise<void> {
+    return this.inner.bumpAckedSeq(id, this.requireOrg(), fenceToken, ackSeq);
+  }
+
+  /**
+   * Read the current `run_acked_seq` floor for a run.
+   * Returns 0 when the column is null (no chunks published yet).
+   */
+  getAckedSeq(id: string): Promise<number> {
+    return this.inner.getAckedSeq(id, this.requireOrg());
   }
 }
 
@@ -305,7 +323,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
   async update(
     id: string,
     organizationId: string,
-    data: Partial<Thread>,
+    data: ThreadUpdateData,
   ): Promise<Thread> {
     const now = new Date().toISOString();
 
@@ -341,6 +359,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
     if (data.run_started_at !== undefined) {
       updateData.run_started_at = data.run_started_at;
+    }
+    if (data.last_progress_at !== undefined) {
+      updateData.last_progress_at = data.last_progress_at;
     }
     if (data.metadata !== undefined) {
       updateData.metadata = JSON.stringify(data.metadata);
@@ -395,6 +416,29 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return row ? this.threadFromDbRow(row) : null;
   }
 
+  async markRunFailed(
+    id: string,
+    organizationId: string,
+    reason: string,
+    kind: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({
+        status: "failed",
+        failure_reason: reason,
+        failure_kind: kind,
+        run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .execute();
+  }
+
   async forceFailIfInProgress(
     id: string,
     organizationId: string,
@@ -409,6 +453,30 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .executeTakeFirst();
 
     return (result.numUpdatedRows ?? BigInt(0)) > BigInt(0);
+  }
+
+  /**
+   * Cross-org scan for runs stuck `in_progress` past `cutoffIso`. Liveness is
+   * `GREATEST(last_progress_at, run_started_at)`: last_progress_at is NULL until
+   * the first streamed chunk, and can also belong to a previous turn if a row was
+   * written before the RUN_STARTED reset. The newest timestamp is the liveness
+   * floor that keeps a brand-new cold-starting run from being reaped before it
+   * produces output.
+   * Used ONLY by the cross-pod thread-gate reaper (see thread-gate-reaper.ts),
+   * which is why it is not org-scoped — it must sweep every org.
+   */
+  async listStuckRuns(
+    cutoffIso: string,
+  ): Promise<Array<{ id: string; organizationId: string }>> {
+    const rows = await this.db
+      .selectFrom("threads")
+      .select(["id", "organization_id"])
+      .where("status", "=", "in_progress")
+      .where(
+        sql<boolean>`greatest(coalesce(last_progress_at, '-infinity'::timestamptz), coalesce(run_started_at, '-infinity'::timestamptz)) < ${cutoffIso}::timestamptz`,
+      )
+      .execute();
+    return rows.map((r) => ({ id: r.id, organizationId: r.organization_id }));
   }
 
   async delete(id: string, organizationId: string): Promise<void> {
@@ -609,77 +677,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   /**
-   * Upserts thread messages by id.
-   * Inserts new messages; updates existing rows (by id) with parts, metadata, role, updated_at.
-   * PostgreSQL only.
-   */
-  async saveMessages(
-    data: ThreadMessage[],
-    organizationId: string,
-  ): Promise<void> {
-    const now = new Date().toISOString();
-    const taskId = data[0]?.thread_id;
-    if (!taskId) {
-      throw new Error("thread_id is required when creating multiple messages");
-    }
-    const thread = await this.get(taskId, organizationId);
-    if (!thread) {
-      throw new Error("Thread not found or access denied");
-    }
-    // Deduplicate by id - PostgreSQL ON CONFLICT cannot affect same row twice in one INSERT.
-    // Also detect duplicate ids with conflicting thread_ids to reject corrupt batches early.
-    const byId = new Map<string, ThreadMessage>();
-    for (const m of data) {
-      const existing = byId.get(m.id);
-      if (existing && existing.thread_id !== m.thread_id) {
-        throw new Error(
-          `Duplicate message id "${m.id}" with conflicting thread_ids: "${existing.thread_id}" vs "${m.thread_id}"`,
-        );
-      }
-      byId.set(m.id, m);
-    }
-    const unique = [...byId.values()];
-    // Validate all messages target the same thread to prevent data corruption.
-    const mismatchedMessage = unique.find((m) => m.thread_id !== taskId);
-    if (mismatchedMessage) {
-      throw new Error(
-        `All messages must target the same thread. Expected thread_id "${taskId}", but message "${mismatchedMessage.id}" has thread_id "${mismatchedMessage.thread_id}"`,
-      );
-    }
-    const rows = unique.map((message) => ({
-      id: message.id,
-      thread_id: taskId,
-      metadata: message.metadata ? JSON.stringify(message.metadata) : null,
-      parts: JSON.stringify(message.parts),
-      role: message.role,
-      created_at: message.created_at ?? now,
-      updated_at: now,
-    }));
-
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("thread_messages")
-        .values(rows)
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet((eb) => ({
-            metadata: eb.ref("excluded.metadata"),
-            parts: eb.ref("excluded.parts"),
-            role: eb.ref("excluded.role"),
-            updated_at: eb.ref("excluded.updated_at"),
-          })),
-        )
-        .execute();
-
-      await trx
-        .updateTable("threads")
-        .set({ updated_at: now })
-        .where("id", "=", taskId)
-        .where("organization_id", "=", organizationId)
-        .execute();
-    });
-  }
-
-  /**
    * Last N threads whose most recent `thread_messages` row has the given
    * `lastMessageRole`. Backs the "Suggested actions" cards on the Tasks
    * panel — `assistant` for the primary set (AI is waiting on the user),
@@ -848,11 +845,17 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return row?.run_fence_token ?? null;
   }
 
-  /** Set (or clear) the fence token. Minted in a later phase. */
+  /**
+   * Set (or clear) the fence token. Called exactly once per turn-start, before
+   * any chunks are ingested. Atomically resets `run_acked_seq` to NULL so the
+   * new fence epoch always starts with a clean floor — preventing a prior
+   * turn's ack high-water mark from causing `RelaySessionImpl.push()` to drop
+   * the new turn's early chunks (cross-turn chunk loss bug).
+   */
   async setRunFence(threadId: string, token: string | null): Promise<void> {
     await this.db
       .updateTable("threads")
-      .set({ run_fence_token: token })
+      .set({ run_fence_token: token, run_acked_seq: null })
       .where("id", "=", threadId)
       .execute();
   }
@@ -895,6 +898,50 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .set({ cancel_requested_at: null })
       .where("id", "=", threadId)
       .execute();
+  }
+
+  /**
+   * Monotonically advance `run_acked_seq` for a run.
+   *
+   * Uses a conditional UPDATE so the value only ever increases — concurrent
+   * calls from multiple replays are safe. `fenceToken` is accepted for
+   * interface parity; the fence-epoch reset is performed atomically by
+   * `setRunFence` at turn-start (which also nulls `run_acked_seq`), so any
+   * subsequent `bumpAckedSeq` call within the same fence epoch is always
+   * advancing from the correct (zero) baseline.
+   */
+  async bumpAckedSeq(
+    id: string,
+    organizationId: string,
+    _fenceToken: string,
+    ackSeq: number,
+  ): Promise<void> {
+    await this.db
+      .updateTable("threads")
+      .set({ run_acked_seq: ackSeq })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where((eb) =>
+        eb.or([
+          eb("run_acked_seq", "is", null),
+          eb("run_acked_seq", "<", ackSeq),
+        ]),
+      )
+      .execute();
+  }
+
+  /**
+   * Read the current `run_acked_seq` floor for a run.
+   * Returns 0 when the column is null (no chunks published yet).
+   */
+  async getAckedSeq(id: string, organizationId: string): Promise<number> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select("run_acked_seq")
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return row?.run_acked_seq ?? 0;
   }
 
   // ==========================================================================

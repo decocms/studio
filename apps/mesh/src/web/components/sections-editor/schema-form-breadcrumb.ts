@@ -9,14 +9,91 @@ function humanize(key: string): string {
     .replace(/^\w/, (c) => c.toUpperCase());
 }
 
+/** Normalize labels so breadcrumb matching survives NFC/NFD differences (e.g. `ª`). */
+export function normalizeBreadcrumbLabel(label: string): string {
+  return label.normalize("NFC").trim();
+}
+
+function labelsMatch(a: string, b: string): boolean {
+  return normalizeBreadcrumbLabel(a) === normalizeBreadcrumbLabel(b);
+}
+
+/** Looser comparison that ignores spaces and casing — handles humanize("textSeo") = "Text Seo" vs schema title "TextSeo". */
+function labelsMatchLoose(a: string, b: string): boolean {
+  return (
+    normalizeBreadcrumbLabel(a).replace(/\s+/g, "").toLowerCase() ===
+    normalizeBreadcrumbLabel(b).replace(/\s+/g, "").toLowerCase()
+  );
+}
+
+/** Breadcrumb trail when opening an array item (includes the array field label). */
+export function buildArrayDrillDownBreadcrumb(
+  breadcrumbPath: string[],
+  arrayLabel: string,
+  itemLabel: string,
+): string[] {
+  const normalizedItem = normalizeBreadcrumbLabel(itemLabel);
+  if (
+    breadcrumbPath.some(
+      (crumb) =>
+        labelsMatch(crumb, normalizedItem) || labelsMatch(crumb, itemLabel),
+    )
+  ) {
+    return breadcrumbPath;
+  }
+  const trail = [...breadcrumbPath];
+  const hasArrayLabel = trail.some((crumb) => labelsMatch(crumb, arrayLabel));
+  if (!hasArrayLabel) trail.push(arrayLabel);
+  trail.push(itemLabel);
+  return trail;
+}
+
+/** Drop crumbs consumed by the active field so children see a relative trail. */
+export function breadcrumbPathForActiveField(
+  activeKey: string,
+  schema: SchemaProperty,
+  breadcrumbPath: string[],
+): string[] {
+  if (breadcrumbPath.length === 0) return breadcrumbPath;
+  const label = fieldDisplayLabel(activeKey, schema);
+  const head = breadcrumbPath[0]!;
+  if (labelsMatch(head, label) || labelsMatch(head, activeKey)) {
+    return breadcrumbPath.slice(1);
+  }
+  return breadcrumbPath;
+}
+
 export function fieldDisplayLabel(key: string, schema: SchemaProperty): string {
   return schema.title ?? humanize(key);
 }
 
+/** Map a header crumb index to the breadcrumb trail (`headerCrumbs = [title, ...breadcrumbs]`). */
+export function breadcrumbsForHeaderClick(
+  breadcrumbs: string[],
+  headerIndex: number,
+): string[] {
+  if (headerIndex <= 0) return [];
+  return breadcrumbs.slice(0, headerIndex);
+}
+
+export function findBreadcrumbLabelIndex(
+  path: string[],
+  targetLabel: string,
+): number {
+  const normalized = normalizeBreadcrumbLabel(targetLabel);
+  return path.findIndex(
+    (crumb) => normalizeBreadcrumbLabel(crumb) === normalized,
+  );
+}
+
 /** Breadcrumb drill-down applies to array fields only (not nested objects). */
-export function isArrayDrillDownField(schema: SchemaProperty): boolean {
+export function isArrayDrillDownField(
+  schema: SchemaProperty,
+  value?: unknown,
+): boolean {
   if (schema.type === "array" && schema.items) return true;
-  return isPageMultivariateSectionArrayField(schema);
+  if (isPageMultivariateSectionArrayField(schema)) return true;
+  return Array.isArray(value);
 }
 
 function asObjectRecord(value: unknown): Record<string, unknown> {
@@ -37,19 +114,27 @@ function resolveActiveFieldKeyInScope(
 
   for (const key of keys) {
     const schema = properties[key];
-    if (!schema || !isArrayDrillDownField(schema)) continue;
+    if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
     const label = fieldDisplayLabel(key, schema);
-    if (head === label || head === key) return key;
+    if (labelsMatch(head, label) || labelsMatch(head, key)) return key;
+    if (
+      breadcrumbPath.some(
+        (crumb) => labelsMatch(crumb, label) || labelsMatch(crumb, key),
+      )
+    ) {
+      return key;
+    }
   }
 
   for (const key of keys) {
     const schema = properties[key];
-    if (!schema || !isArrayDrillDownField(schema)) continue;
+    if (!schema || !isArrayDrillDownField(schema, objValue[key])) continue;
     const val = objValue[key];
     if (!Array.isArray(val)) continue;
     const itemSchema = schema.items;
     for (let i = 0; i < val.length; i++) {
-      if (getArrayItemLabel(val[i], i, itemSchema) === head) return key;
+      const itemLabel = getArrayItemLabel(val[i], i, itemSchema);
+      if (labelsMatch(itemLabel, head)) return key;
     }
   }
 
@@ -68,7 +153,7 @@ function resolveActiveFieldKeyInScope(
     );
     if (direct) return key;
 
-    if (head === label || head === key) {
+    if (labelsMatch(head, label) || labelsMatch(head, key)) {
       const viaLabel = resolveActiveFieldKeyInScope(
         childKeys,
         schema.properties,
@@ -78,6 +163,42 @@ function resolveActiveFieldKeyInScope(
       if (viaLabel) return key;
     }
   }
+
+  // Block-ref fields (loader/section selectors) can also be "drilled into"
+  // via the breadcrumb path when the head matches the field's key or label.
+  // This lets loader props like `page: ProductListingPage` participate in
+  // breadcrumb navigation (e.g. path ["page", "selectedFacets", "productClusterIds"]
+  // resolves to "page" at the SearchResult level).
+  //
+  // When multiple block-refs share the same label (e.g. both "asideMenu"
+  // and "content" have schema title "Section"), disambiguate by checking
+  // whether the block-ref's VALUE contains a key that matches the next
+  // breadcrumb crumb.  The one whose data actually owns the nested field
+  // wins; the rest are kept as a fallback.
+  let blockRefFallback: string | null = null;
+  for (const key of keys) {
+    const schema = properties[key];
+    if (schema?.type !== "block-ref") continue;
+    const fieldLabel = fieldDisplayLabel(key, schema);
+    if (head !== fieldLabel && head !== key) continue;
+
+    if (breadcrumbPath.length > 1) {
+      const val = objValue[key];
+      if (val && typeof val === "object" && !Array.isArray(val)) {
+        const nextCrumb = breadcrumbPath[1]!;
+        const hasInnerMatch = Object.keys(val as Record<string, unknown>).some(
+          (k) =>
+            !k.startsWith("__") &&
+            (labelsMatchLoose(humanize(k), nextCrumb) ||
+              labelsMatchLoose(k, nextCrumb)),
+        );
+        if (hasInnerMatch) return key;
+      }
+    }
+
+    if (!blockRefFallback) blockRefFallback = key;
+  }
+  if (blockRefFallback) return blockRefFallback;
 
   return null;
 }
@@ -120,7 +241,7 @@ export function isBreadcrumbInsideObject(
   }
 
   const head = breadcrumbPath[0]!;
-  if (head !== label && head !== fieldKey) return false;
+  if (!labelsMatch(head, label) && !labelsMatch(head, fieldKey)) return false;
 
   return (
     breadcrumbPath.length > 1 ||
@@ -143,19 +264,21 @@ export function resolveArrayItemSelection(
 
   for (let pi = 0; pi < breadcrumbPath.length; pi++) {
     const crumb = breadcrumbPath[pi]!;
-    const index = items.findIndex(
-      (item, i) => getArrayItemLabel(item, i, itemSchema) === crumb,
+    const index = items.findIndex((item, i) =>
+      labelsMatch(getArrayItemLabel(item, i, itemSchema), crumb),
     );
     if (index >= 0) {
       return { index, innerPath: breadcrumbPath.slice(pi + 1) };
     }
   }
 
-  const labelIndex = breadcrumbPath.indexOf(label);
+  const labelIndex = breadcrumbPath.findIndex((crumb) =>
+    labelsMatch(crumb, label),
+  );
   if (labelIndex >= 0 && breadcrumbPath.length > labelIndex + 1) {
     const itemCrumb = breadcrumbPath[labelIndex + 1]!;
-    const index = items.findIndex(
-      (item, i) => getArrayItemLabel(item, i, itemSchema) === itemCrumb,
+    const index = items.findIndex((item, i) =>
+      labelsMatch(getArrayItemLabel(item, i, itemSchema), itemCrumb),
     );
     if (index >= 0) {
       return { index, innerPath: breadcrumbPath.slice(labelIndex + 2) };

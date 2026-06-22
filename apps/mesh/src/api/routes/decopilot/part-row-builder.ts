@@ -89,6 +89,15 @@ export class PartRowBuilder {
     this.base = ctx.baseTimeMs ?? Date.now();
   }
 
+  /** True once any content/error part of `messageId` has been handed off. */
+  private hasEmittedContentFor(messageId: string): boolean {
+    const prefix = `${messageId}#`;
+    for (const key of this.emitted) {
+      if (key.startsWith(prefix)) return true;
+    }
+    return false;
+  }
+
   /** Allocate (or reuse) the stable seq for a logical part. */
   private seqFor(key: string): number {
     const existing = this.seqByPart.get(key);
@@ -214,8 +223,16 @@ export class PartRowBuilder {
    * v2 fold path can surface it on `FoldedMessage.metadata`.
    */
   emitFinal(message: AnyMessage): ThreadMessagePart[] {
+    const contentRows = this.emitMessageParts(message);
+    // A finish anchor with no content part folds to an empty message
+    // (`parts: []`, status "complete") — a blank assistant bubble. Skip the
+    // anchor entirely when the message produced no renderable part (now or in
+    // an earlier step), so the empty message is never persisted at all.
+    if (contentRows.length === 0 && !this.hasEmittedContentFor(message.id)) {
+      return contentRows;
+    }
     return [
-      ...this.emitMessageParts(message),
+      ...contentRows,
       ...this.markFinished(
         message.id,
         message.role,

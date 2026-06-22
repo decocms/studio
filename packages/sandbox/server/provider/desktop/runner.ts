@@ -255,11 +255,10 @@ export class DesktopSandboxProvider implements SandboxProvider {
     );
     const iterator = iter[Symbol.asyncIterator]();
 
-    // `DispatchChunk.data` is base64 on BOTH transports (WS + pull reverse-proxy
-    // channel) — the uniform binary-safe shape (landmine #9). Decode incrementally
-    // via a 4-char carry buffer so a single upstream chunk whose base64 was split
-    // across NATS messages (ws-gateway's payload-chunking) still reassembles into
-    // the exact original bytes.
+    // `DispatchChunk.data` is base64, the uniform binary-safe shape. Decode
+    // incrementally via a 4-char carry buffer so a single upstream chunk whose
+    // base64 was split across transport messages still reassembles into the
+    // exact original bytes.
     const b64 = createBase64StreamDecoder();
 
     let status = 200;
@@ -354,16 +353,9 @@ export class DesktopSandboxProvider implements SandboxProvider {
    * window, and vm-events translates 404 into `event: gone` + state-store
    * cleanup, which would tear down the sandbox the user is mid-start.
    *
-   * Cap (landmine #4): with the pull reverse-proxy transport the round-trip is
-   * publish → daemon dequeue (near-zero-gap: the daemon holds ≥2 overlapping
-   * GETs open, so the request lands on a waiting queue-group subscriber
-   * immediately) → `handle()` (a synchronous in-memory `hasHandle` check, NO
-   * upstream fetch) → reply-POST → NATS republish. The only added latency over
-   * the old persistent-socket path is establishing ONE reply POST per probe, so
-   * we keep `probeHealth` on the dispatch fast path (no presence-claim
-   * round-trip needed) but raise the cap 1500→3000 ms to absorb that
-   * connection-establishment cost without flapping a healthy-but-slow link into
-   * a needless respawn. The WS transport stays well within it too.
+   * Cap: keep `probeHealth` on the dispatch fast path (no presence-claim
+   * round-trip needed) but leave enough room for the request/reply hop without
+   * flapping a healthy-but-slow link into a needless respawn.
    */
   private async probeHealth(handle: string): Promise<boolean> {
     const ac = new AbortController();

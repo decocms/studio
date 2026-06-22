@@ -7,7 +7,6 @@ import {
   type AgentPins,
   agentOptionFor,
   agentOptionIsAvailable,
-  resolveAvailableAgentOption,
 } from "./agent-options";
 
 const ALL_AVAILABLE: AgentOptionAvailability = {
@@ -116,58 +115,5 @@ describe("agentOptionIsAvailable", () => {
         codex: false,
       }),
     ).toBe(false);
-  });
-});
-
-describe("resolveAvailableAgentOption", () => {
-  test("keeps an available pick unchanged", () => {
-    expect(
-      resolveAvailableAgentOption("claude-code-desktop", ALL_AVAILABLE),
-    ).toBe("claude-code-desktop");
-    expect(resolveAvailableAgentOption("decopilot", ALL_AVAILABLE)).toBe(
-      "decopilot",
-    );
-  });
-
-  test("null pick stays null (server picks the default)", () => {
-    expect(resolveAvailableAgentOption(null, ALL_AVAILABLE)).toBeNull();
-    expect(resolveAvailableAgentOption(null, DESKTOP_OFFLINE)).toBeNull();
-  });
-
-  // The reported bug: a "Claude Code desktop" pick carried over from another
-  // org while this org's desktop link is offline must fall back to cloud
-  // Decopilot rather than dispatch to the dead link (user_desktop_link_offline).
-  test("falls back to cloud Decopilot when the desktop pick is offline", () => {
-    expect(
-      resolveAvailableAgentOption("claude-code-desktop", DESKTOP_OFFLINE),
-    ).toBe("decopilot");
-    expect(
-      resolveAvailableAgentOption("decopilot-desktop", DESKTOP_OFFLINE),
-    ).toBe("decopilot");
-    expect(resolveAvailableAgentOption("codex-desktop", DESKTOP_OFFLINE)).toBe(
-      "decopilot",
-    );
-  });
-
-  test("returns null when nothing is available", () => {
-    expect(
-      resolveAvailableAgentOption("claude-code-desktop", {
-        agentSandbox: false,
-        userDesktop: false,
-        claudeCode: false,
-        codex: false,
-      }),
-    ).toBeNull();
-  });
-
-  test("prefers a desktop fallback when cloud is unavailable but a CLI is online", () => {
-    expect(
-      resolveAvailableAgentOption("codex-desktop", {
-        agentSandbox: false,
-        userDesktop: true,
-        claudeCode: true,
-        codex: false,
-      }),
-    ).toBe("decopilot-desktop");
   });
 });
