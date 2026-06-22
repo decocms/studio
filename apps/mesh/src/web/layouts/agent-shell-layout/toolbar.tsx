@@ -14,10 +14,18 @@
  * <Toolbar.Toggles> / <Toolbar.Right> (createPortal). Never suspends itself.
  */
 
-import { createContext, Suspense, use, useState, type ReactNode } from "react";
+import {
+  createContext,
+  Suspense,
+  use,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 
@@ -77,9 +85,19 @@ export function Toolbar({ children }: { children?: ReactNode }) {
  * mode; in a regular browser tab the fallbacks (0 left/right, 3rem height)
  * give the standard h-12 toolbar.
  */
-function ToolbarHeader({ children }: { children?: ReactNode }) {
+function ToolbarHeader({
+  children,
+  className,
+  ...props
+}: ComponentProps<"div">) {
   return (
-    <div className="app-titlebar wco-drag shrink-0 grid grid-cols-3 items-center pl-1 pr-2 pt-0.25 h-12 bg-sidebar">
+    <div
+      className={cn(
+        "app-titlebar wco-drag shrink-0 grid grid-cols-3 items-center pl-1 pr-2 pt-0.25 h-12 bg-sidebar",
+        className,
+      )}
+      {...props}
+    >
       {children}
     </div>
   );
@@ -186,9 +204,14 @@ function ToolbarCenter({ children }: { children: ReactNode }) {
   return createPortal(children, centerEl);
 }
 
-function ToolbarTabsSlot() {
+function ToolbarTabsSlot({ className }: { className?: string }) {
   const { setTabsEl } = useToolbarCtx();
-  return <div ref={setTabsEl} className="shrink-0 flex items-center" />;
+  return (
+    <div
+      ref={setTabsEl}
+      className={cn("shrink-0 flex items-center", className)}
+    />
+  );
 }
 
 function ToolbarTabs({ children }: { children: ReactNode }) {
@@ -197,12 +220,12 @@ function ToolbarTabs({ children }: { children: ReactNode }) {
   return createPortal(children, tabsEl);
 }
 
-function ToolbarTogglesSlot() {
+function ToolbarTogglesSlot({ className }: { className?: string }) {
   const { setTogglesEl } = useToolbarCtx();
   // `display: contents` keeps the div as a portal target (we need the
   // ref) but produces no layout box, so the toggle buttons become direct
   // flex children of Toolbar.LeftColumn and inherit its gap.
-  return <div ref={setTogglesEl} className="contents" />;
+  return <div ref={setTogglesEl} className={cn("contents", className)} />;
 }
 
 function ToolbarToggles({ children }: { children: ReactNode }) {

@@ -73,7 +73,11 @@ const GROUP_BY_LABELS: Record<GroupBy, string> = {
   status: "Status",
 };
 
-export function TaskGroupsList() {
+export function TaskGroupsList({
+  onNavigate,
+}: {
+  onNavigate?: () => void;
+} = {}) {
   const { data: session } = authClient.useSession();
   const currentUserId = session?.user?.id;
   const sidebarUserId = currentUserId ?? "anon";
@@ -128,6 +132,9 @@ export function TaskGroupsList() {
     taskId?: string;
   };
   const activeTaskId = params.taskId ?? null;
+  const closeAfterNavigation = () => {
+    onNavigate?.();
+  };
 
   const sortedThreads = [...visibleThreads].sort((a, b) =>
     (b.updated_at ?? "").localeCompare(a.updated_at ?? ""),
@@ -191,6 +198,7 @@ export function TaskGroupsList() {
         t.virtual_mcp_id === task.virtual_mcp_id &&
         t.created_by === currentUserId,
     );
+    closeAfterNavigation();
     if (next) {
       setTaskId(next.id, next.virtual_mcp_id);
     } else {
@@ -200,12 +208,14 @@ export function TaskGroupsList() {
 
   const handleNewInGroup = (virtualMcpId: string) => {
     track("sidebar_group_new_clicked", { virtual_mcp_id: virtualMcpId });
+    closeAfterNavigation();
     createNewTask(virtualMcpId);
   };
 
   const navigateToAgent = useNavigateToAgent();
   const handleShowSettings = (virtualMcpId: string) => {
     track("sidebar_group_settings_clicked", { virtual_mcp_id: virtualMcpId });
+    closeAfterNavigation();
     navigateToAgent(virtualMcpId, { search: { main: "instructions" } });
   };
 
@@ -263,7 +273,10 @@ export function TaskGroupsList() {
       activeTaskId,
       filters,
       groupVisibleCount: agentThreadCounts.get(group.virtualMcpId) ?? 0,
-      onSelectTask: (t: Task) => setTaskId(t.id, t.virtual_mcp_id),
+      onSelectTask: (t: Task) => {
+        closeAfterNavigation();
+        setTaskId(t.id, t.virtual_mcp_id);
+      },
       onArchiveTask: handleArchive,
       onNewTaskInGroup: handleNewInGroup,
       onShowSettings: handleShowSettings,
@@ -419,7 +432,10 @@ export function TaskGroupsList() {
                 status={group.status}
                 threads={group.threads}
                 activeTaskId={activeTaskId}
-                onSelectTask={(t) => setTaskId(t.id, t.virtual_mcp_id)}
+                onSelectTask={(t) => {
+                  closeAfterNavigation();
+                  setTaskId(t.id, t.virtual_mcp_id);
+                }}
                 onArchiveTask={handleArchive}
                 filters={filters}
               />

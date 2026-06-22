@@ -30,7 +30,7 @@ export function MobileSidebarSheet({ renderSidebar }: MobileSidebarSheetProps) {
       <SheetContent
         side="left"
         hideCloseButton
-        className="w-[calc(100vw-3rem)] sm:max-w-md! p-0"
+        className="w-screen max-w-none! p-0"
       >
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         {renderSidebar({ onClose: () => setOpenMobile(false) })}

@@ -152,7 +152,7 @@ export function PluginLayout({
   // Show loading state while fetching config
   if (isLoadingConfig) {
     return (
-      <div className="flex flex-col items-center justify-center h-full">
+      <div className="flex flex-col items-center justify-center h-full w-full">
         <Loading01
           size={32}
           className="animate-spin text-muted-foreground mb-4"
