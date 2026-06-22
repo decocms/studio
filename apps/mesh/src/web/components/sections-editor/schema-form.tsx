@@ -7,6 +7,7 @@ import { EnumField } from "./fields/enum-field";
 import { ArrayField } from "./fields/array-field";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
+import { DynamicOptionsField } from "./fields/dynamic-options-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
 import { isSecretBlock, SecretField } from "./fields/secret-field";
@@ -183,6 +184,11 @@ export function renderField(props: FieldProps) {
     return <FileField key={props.path} {...props} />;
   }
 
+  // dynamic-options → DynamicOptionsField (select with options from a loader)
+  if (schema.format === "dynamic-options" && schema.options) {
+    return <DynamicOptionsField key={props.path} {...props} />;
+  }
+
   // Enum (including extracted const enums)
   if (schema.enum && schema.enum.length > 0) {
     return <EnumField key={props.path} {...props} />;
@@ -277,6 +283,7 @@ export function SchemaForm({
   previewBaseUrl,
   onAddSectionItem,
   onRequestAddSection,
+  sandbox,
 }: {
   schema: SchemaProperty;
   value: unknown;
@@ -293,6 +300,7 @@ export function SchemaForm({
   previewBaseUrl?: string | null;
   onAddSectionItem?: FieldProps["onAddSectionItem"];
   onRequestAddSection?: FieldProps["onRequestAddSection"];
+  sandbox?: FieldProps["sandbox"];
 }) {
   const properties = schema.properties;
   if (!properties) return null;
@@ -356,6 +364,7 @@ export function SchemaForm({
           previewBaseUrl,
           onAddSectionItem,
           onRequestAddSection,
+          sandbox,
         });
       })}
     </div>

@@ -41,6 +41,7 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
+import type { SandboxConfig } from "./fields/field-props";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -115,6 +116,7 @@ function SchemaFormPanel({
   meta,
   decofile,
   onSaveReferencedBlock,
+  sandbox,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -132,6 +134,7 @@ function SchemaFormPanel({
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
+  sandbox?: SandboxConfig | null;
 }) {
   const formBody =
     activeSchema && formValue ? (
@@ -157,6 +160,7 @@ function SchemaFormPanel({
           meta={meta}
           decofile={decofile}
           onSaveReferencedBlock={onSaveReferencedBlock}
+          sandbox={sandbox}
         />
       )
     ) : null;
@@ -823,6 +827,13 @@ export function SectionsEditor({
       }
     }
   }
+
+  const sandbox = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    previewUrl: previewUrl ?? undefined,
+  };
 
   const activeSchema =
     activeResolveType && meta ? resolveSchema(activeResolveType, meta) : null;
@@ -2315,6 +2326,7 @@ export function SectionsEditor({
             meta={meta}
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
+            sandbox={sandbox}
           />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
@@ -2330,6 +2342,7 @@ export function SectionsEditor({
             meta={meta}
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
+            sandbox={sandbox}
           />
         </ScrollArea>
       ) : (

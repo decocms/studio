@@ -27,6 +27,8 @@ export interface SchemaProperty {
   titleBy?: string;
   /** Mustache template for array-item thumbnails (from schema `@image`) */
   image?: string;
+  /** Loader path for dynamic-options fields (from schema `@options`) */
+  options?: string;
   /**
    * Present on "block-ref" fields — a union of compatible block types
    * (loaders, sections, etc.). The UI renders a selector instead of
@@ -749,6 +751,10 @@ export function resolveSchema(
         typeof resolved.image === "string"
           ? resolved.image
           : fromLeaf<string>("image"),
+      options:
+        typeof resolved.options === "string"
+          ? resolved.options
+          : fromLeaf<string>("options"),
     };
   };
 
