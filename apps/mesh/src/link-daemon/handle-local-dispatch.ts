@@ -382,8 +382,18 @@ export async function handleLocalDispatch(
         throw err;
       }
       if (!res.ok) {
+        // The cluster explains the rejection in the response body (4xx
+        // fence/cancel reason, 5xx message). Read it — capped — so a relay
+        // reset is diagnosable beyond the bare status. Reading is safe here:
+        // the body is otherwise discarded when we throw.
+        let body = "";
+        try {
+          body = (await res.text()).slice(0, 500);
+        } catch {
+          body = "<unreadable>";
+        }
         console.error(
-          `[relay-diag] CLUSTER-RELAY POST non-ok runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} status=${res.status}`,
+          `[relay-diag] CLUSTER-RELAY POST non-ok runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} status=${res.status} body=${JSON.stringify(body)}`,
         );
         const err = new Error(
           `[handleLocalDispatch] relay failed (${res.status})`,
