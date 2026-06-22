@@ -1,4 +1,4 @@
-import { describe, expect, it, test } from "bun:test";
+import { describe, expect, it, spyOn, test } from "bun:test";
 import {
   buildNatsConnectOptions,
   connectNats,
@@ -440,6 +440,102 @@ describe("connectToClusterTunnel", () => {
     expect(servedHostname).toBe(sessionWithoutAuth.tunnelHostname);
     expect(typeof servedFetch).toBe("function");
     await handle.close();
+  });
+
+  it("logs transient NATS tunnel disconnect and reconnect status events", async () => {
+    const natsClosed = deferred<void | Error>();
+    const serverClosed = deferred<void>();
+    const statusConsumed = deferred<void>();
+    const logs: string[] = [];
+    const logSpy = spyOn(console, "log").mockImplementation((...args) => {
+      logs.push(args.map(String).join(" "));
+    });
+
+    try {
+      const handle = await connectToClusterTunnel(makeBaseTunnelInput(), {
+        fetchSession: async () => sessionWithoutAuth,
+        connectNats: async () =>
+          ({
+            publish: () => {},
+            flush: async () => {},
+            close: async () => natsClosed.resolve(undefined),
+            closed: async () => natsClosed.promise,
+            getServer: () => "nats-a",
+            status: async function* () {
+              yield { type: "disconnect", data: "nats-a" };
+              yield { type: "reconnect", data: "nats-a" };
+              statusConsumed.resolve();
+            },
+          }) as never,
+        serveTunnel: async (options) => ({
+          hostname: options.hostname,
+          closed: serverClosed.promise,
+          close: async () => serverClosed.resolve(),
+        }),
+        sleep: waitForAbortSleep,
+      });
+
+      await Promise.race([
+        statusConsumed.promise,
+        new Promise<void>((resolve) => setTimeout(resolve, 20)),
+      ]);
+      await handle.close();
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    const joined = logs.join("\n");
+    expect(joined).toContain(
+      "[cluster-connection-tunnel] nats status hostname=user-test.link type=disconnect server=nats-a",
+    );
+    expect(joined).toContain(
+      "[cluster-connection-tunnel] nats status hostname=user-test.link type=reconnect server=nats-a offlineMs=",
+    );
+  });
+
+  it("logs tunnel diagnostic events emitted by the tunnel server", async () => {
+    const natsClosed = deferred<void | Error>();
+    const serverClosed = deferred<void>();
+    const logs: string[] = [];
+    const logSpy = spyOn(console, "log").mockImplementation((...args) => {
+      logs.push(args.map(String).join(" "));
+    });
+
+    try {
+      const handle = await connectToClusterTunnel(makeBaseTunnelInput(), {
+        fetchSession: async () => sessionWithoutAuth,
+        connectNats: async () =>
+          ({
+            publish: () => {},
+            flush: async () => {},
+            close: async () => natsClosed.resolve(undefined),
+            closed: async () => natsClosed.promise,
+          }) as never,
+        serveTunnel: async (options) => {
+          options.diagnostics?.({
+            event: "request_decode_error",
+            requestId: "req-1",
+            subject: "tunnel.v1.host.user.req",
+            elapsedMs: 42,
+            error: "malformed JSON in tunnel frame",
+          });
+          return {
+            hostname: options.hostname,
+            closed: serverClosed.promise,
+            close: async () => serverClosed.resolve(),
+          };
+        },
+        sleep: waitForAbortSleep,
+      });
+
+      await handle.close();
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    expect(logs.join("\n")).toContain(
+      "[cluster-connection-tunnel] tunnel diagnostic hostname=user-test.link event=request_decode_error requestId=req-1 subject=tunnel.v1.host.user.req elapsedMs=42 error=malformed JSON in tunnel frame",
+    );
   });
 
   it("notifies when the first tunnel connection is serving", async () => {
