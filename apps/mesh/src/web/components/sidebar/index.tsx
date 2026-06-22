@@ -2,10 +2,8 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import { useProjectSidebarItems } from "@/web/hooks/use-project-sidebar-items";
 import { Suspense } from "react";
 import { Separator } from "@deco/ui/components/separator.tsx";
-import { useSidebar } from "@deco/ui/components/sidebar.tsx";
 import { NavigationSidebar } from "./navigation";
 import { MobileNavigationSidebar } from "./navigation-mobile";
-import { SidebarLogoHeader } from "./sidebar-logo-header";
 import { SidebarInboxFooter } from "./footer/inbox";
 import { SidebarInboxFooterMobile } from "./footer/inbox-mobile";
 import { TaskGroupsList } from "./task-groups/task-groups-list";
@@ -21,13 +19,11 @@ export type {
 
 export function StudioSidebar() {
   const sections = useProjectSidebarItems();
-  const { toggleSidebar } = useSidebar();
 
   return (
     <SidebarAgentGroupsProvider>
       <NavigationSidebar
         sections={sections}
-        header={<SidebarLogoHeader onToggle={toggleSidebar} />}
         footer={<SidebarInboxFooter />}
         additionalContent={
           <ErrorBoundary>
