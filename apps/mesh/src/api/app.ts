@@ -79,7 +79,6 @@ import {
 } from "./routes/oauth-proxy";
 import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
-import { createKVRoutes } from "./routes/kv";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import publicConfigRoutes from "./routes/public-config";
 import filesRoutes from "./routes/files";
@@ -2014,16 +2013,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   );
   app.route("/api", legacyTriggerCallback);
 
-  // KV store (org-scoped, for external MCPs to persist state)
-  // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
-  // is wired in a later task.
+  // KV store — org-scoped only. The legacy unscoped mount at /api/kv/:key was
+  // removed because it lacked resolveOrgFromPath middleware, allowing multi-org
+  // users to read/write KV data from an unintended org (non-deterministic org
+  // resolution via .executeTakeFirst() without ORDER BY). All callers must use
+  // the org-scoped route: /api/:org/kv/:key.
   const kvStorage = new KyselyKVStorage(database.db);
-  const legacyKVRoutes = new Hono<{
-    Variables: { meshContext: StudioContext };
-  }>();
-  legacyKVRoutes.use("*", createLogDeprecatedRoute({ mountPath: "/api" }));
-  legacyKVRoutes.route("/", createKVRoutes({ kvStorage }));
-  app.route("/api", legacyKVRoutes);
 
   // Public Events endpoint — legacy mount with deprecation log. New mount
   // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
