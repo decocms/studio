@@ -353,6 +353,7 @@ function AgentInsetProvider() {
                     chatOpen={!layout.mainOpen}
                     toggleChat={layout.toggleMain}
                     onNewTask={layout.createNewTask}
+                    newTaskFirst
                   />
                 </Toolbar.Toggles>
                 <Toolbar.Tabs>

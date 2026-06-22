@@ -10,6 +10,7 @@ import {
   resolveAutomationsPillClickTarget,
 } from "./tab-id";
 import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
+import { TabIconGlyph } from "./tab-icon-glyph";
 import { track } from "@/web/lib/posthog-client";
 
 const MOBILE_SELECT_SENTINEL = "__mobile-main-panel-tab-select__";
@@ -45,6 +46,8 @@ export function MobileMainPanelTabSelect({
     activeTab,
     mainOpen,
   });
+  const selectedTab =
+    tabs.find((tab) => tab.id === activeTab) ?? (!mainOpen ? tabs[0] : null);
   const automationsActive = isAutomationsPillActive({ activeTab, mainOpen });
 
   const handleSelect = (id: string) => {
@@ -72,11 +75,24 @@ export function MobileMainPanelTabSelect({
 
   return (
     <Select value={MOBILE_SELECT_SENTINEL} onValueChange={handleSelect}>
+      {/*
+        Clean, borderless trigger: the SelectTrigger's default box-shadow
+        "border" is the `card-shadow` utility, which reads var(--card-shadow).
+        We null that variable on this element (`[--card-shadow:none]`) instead
+        of `card-shadow-none`, which is not a real utility.
+      */}
       <SelectTrigger
         aria-label="Main panel tab"
-        className="h-10 w-full min-w-0 max-w-[9rem] rounded-md bg-transparent px-2 text-xs shadow-none card-shadow-none"
+        className="h-10! w-full min-w-0 max-w-[7.5rem] rounded-md border-0 bg-transparent px-1.5 text-xs shadow-none [--card-shadow:none]"
       >
-        <span className="min-w-0 truncate">{label}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          {selectedTab && (
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              <TabIconGlyph icon={selectedTab.icon} />
+            </span>
+          )}
+          <span className="min-w-0 truncate">{label}</span>
+        </span>
       </SelectTrigger>
       <SelectContent align="end" className="w-56">
         <SelectItem
@@ -89,7 +105,12 @@ export function MobileMainPanelTabSelect({
         </SelectItem>
         {tabs.map((tab: Tab) => (
           <SelectItem key={tab.id} value={tab.id}>
-            {tab.title}
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="flex size-5 shrink-0 items-center justify-center">
+                <TabIconGlyph icon={tab.icon} />
+              </span>
+              <span className="min-w-0 truncate">{tab.title}</span>
+            </span>
           </SelectItem>
         ))}
       </SelectContent>

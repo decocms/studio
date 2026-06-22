@@ -8,13 +8,14 @@
  */
 
 import { useState } from "react";
-import { DotsHorizontal, Package } from "@untitledui/icons";
+import { DotsHorizontal } from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import type { TabIcon } from "./resolve-tab-icon";
+import { TabIconGlyph } from "./tab-icon-glyph";
 
 type OverflowTab = {
   id: string;
@@ -58,7 +59,7 @@ export function TabOverflowMenu({
                 className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent text-sm text-foreground"
               >
                 <span className="flex size-5 items-center justify-center shrink-0">
-                  <OverflowIcon icon={tab.icon} />
+                  <TabIconGlyph icon={tab.icon} />
                 </span>
                 <span className="truncate">{tab.title}</span>
               </button>
@@ -68,17 +69,4 @@ export function TabOverflowMenu({
       </PopoverContent>
     </Popover>
   );
-}
-
-function OverflowIcon({ icon }: { icon: TabIcon }) {
-  if (icon.kind === "component") {
-    const { Component } = icon;
-    return <Component className="size-4" />;
-  }
-  if (icon.kind === "url") {
-    return (
-      <img src={icon.src} alt="" className="size-4 rounded-sm object-cover" />
-    );
-  }
-  return <Package className="size-4" />;
 }
