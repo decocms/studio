@@ -337,9 +337,8 @@ async function provisionManagedAssetsConfig(params: {
   orgId: string;
   userId: string;
   siteName: string;
-  decoTeamId: number;
 }): Promise<void> {
-  const { ctx, orgId, userId, siteName, decoTeamId } = params;
+  const { ctx, orgId, userId, siteName } = params;
   const slug = siteName.toLowerCase();
   if (!isValidSiteSlug(slug)) {
     console.error(
@@ -356,7 +355,6 @@ async function provisionManagedAssetsConfig(params: {
       slug,
       organizationId: orgId,
       source: "deco-import",
-      decoTeamId,
       by: userId,
     });
   } catch (err) {
@@ -647,7 +645,6 @@ export const createDecoSitesOrgRoutes = () => {
         orgId,
         userId,
         siteName,
-        decoTeamId: teamId,
       }).catch((err) => {
         console.error(
           `[deco-sites] managed assets config provisioning failed for site=${siteName}:`,

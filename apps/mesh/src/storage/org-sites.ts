@@ -28,8 +28,6 @@ type OrgSiteRow = {
   slug: string;
   organization_id: string;
   source: string;
-  deco_team_id: number | null;
-  deco_site_id: number | null;
   created_by: string;
   created_at: Date | string;
   updated_by: string;
@@ -41,8 +39,6 @@ function toEntity(row: OrgSiteRow): OrgSite {
     slug: row.slug,
     organizationId: row.organization_id,
     source: row.source,
-    decoTeamId: row.deco_team_id,
-    decoSiteId: row.deco_site_id,
     createdBy: row.created_by,
     createdAt: toIso(row.created_at),
     updatedBy: row.updated_by,
@@ -57,8 +53,6 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
     slug: string;
     organizationId: string;
     source?: string;
-    decoTeamId?: number | null;
-    decoSiteId?: number | null;
     by: string;
   }): Promise<OrgSite> {
     if (!isValidSiteSlug(params.slug)) {
@@ -75,8 +69,6 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
         slug: params.slug,
         organization_id: params.organizationId,
         source: params.source ?? "deco-import",
-        deco_team_id: params.decoTeamId ?? null,
-        deco_site_id: params.decoSiteId ?? null,
         created_by: params.by,
         created_at: now,
         updated_by: params.by,
@@ -102,8 +94,6 @@ export class OrgSiteStorage implements OrgSiteStoragePort {
       .updateTable("org_sites")
       .set({
         source: params.source ?? existing.source,
-        deco_team_id: params.decoTeamId ?? existing.decoTeamId,
-        deco_site_id: params.decoSiteId ?? existing.decoSiteId,
         updated_by: params.by,
         updated_at: now,
       })

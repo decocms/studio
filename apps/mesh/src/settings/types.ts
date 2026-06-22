@@ -130,7 +130,10 @@ export interface Settings {
   // role). `awsS3TenantRoleArn` is required for the `managed` strategy to work.
   s3TenantBucket: string;
   s3TenantRegion: string;
-  s3TenantEndpoint: string;
+  // Custom S3 endpoint — leave unset for real AWS (the SDK derives it from
+  // region, keeping endpoint and region in sync); set only for an S3-compatible
+  // tenant store (R2, MinIO, GCS).
+  s3TenantEndpoint: string | undefined;
   s3TenantPublicUrlBase: string;
   awsS3TenantRoleArn: string | undefined;
   awsS3TenantProvisionerAccessKeyId: string | undefined;

@@ -57,7 +57,7 @@ export interface TenantS3Credentials {
 export interface TenantStorageDescriptor {
   bucket: string;
   region: string;
-  endpoint: string;
+  endpoint: string | null;
   prefix: string;
   forcePathStyle: boolean;
   publicUrlBase: string;
@@ -101,7 +101,7 @@ export function tenantStorageDescriptor(slug: string): TenantStorageDescriptor {
   return {
     bucket: s.s3TenantBucket,
     region: s.s3TenantRegion,
-    endpoint: s.s3TenantEndpoint,
+    endpoint: s.s3TenantEndpoint ?? null,
     prefix: `${slug}/`,
     forcePathStyle: false,
     publicUrlBase: s.s3TenantPublicUrlBase,

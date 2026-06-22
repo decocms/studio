@@ -218,8 +218,9 @@ export function resolveConfig(
     // legacy admin platform so an existing deployment works without new env.
     s3TenantBucket: envVars.S3_TENANT_BUCKET || "new-deco-sites-assets",
     s3TenantRegion: envVars.S3_TENANT_REGION || "us-west-2",
-    s3TenantEndpoint:
-      envVars.S3_TENANT_ENDPOINT || "https://s3.us-west-2.amazonaws.com",
+    // No default: for real AWS the SDK derives the endpoint from region (so the
+    // two can't drift). Set S3_TENANT_ENDPOINT only for a non-AWS S3 store.
+    s3TenantEndpoint: envVars.S3_TENANT_ENDPOINT,
     s3TenantPublicUrlBase:
       envVars.S3_TENANT_PUBLIC_URL_BASE || "https://decoims.com",
     awsS3TenantRoleArn: envVars.AWS_S3_TENANT_ROLE_ARN,

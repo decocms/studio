@@ -1377,8 +1377,6 @@ export interface OrgSiteTable {
   organization_id: string;
   // Provenance of the claim: 'deco-import' (migrated) or 'manual'.
   source: ColumnType<string, string | undefined, string>;
-  deco_team_id: number | null;
-  deco_site_id: number | null;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
@@ -1389,8 +1387,6 @@ export interface OrgSite {
   slug: string;
   organizationId: string;
   source: string;
-  decoTeamId: number | null;
-  decoSiteId: number | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;

@@ -661,15 +661,12 @@ export interface OrganizationDomainStoragePort {
 export interface OrgSiteStoragePort {
   /**
    * Claim a globally-unique site slug for an organization. Idempotent for the
-   * same org (refreshes provenance); throws OrgSiteConflictError if a different
-   * org already owns the slug.
+   * same org; throws OrgSiteConflictError if a different org already owns it.
    */
   claimSite(params: {
     slug: string;
     organizationId: string;
     source?: string;
-    decoTeamId?: number | null;
-    decoSiteId?: number | null;
     by: string;
   }): Promise<OrgSite>;
   getBySlug(slug: string): Promise<OrgSite | null>;

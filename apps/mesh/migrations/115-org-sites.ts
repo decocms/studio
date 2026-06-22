@@ -22,8 +22,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("source", "text", (col) =>
       col.notNull().defaultTo("deco-import"),
     )
-    .addColumn("deco_team_id", "integer")
-    .addColumn("deco_site_id", "integer")
     .addColumn("created_by", "text", (col) => col.notNull())
     .addColumn("created_at", "timestamptz", (col) =>
       col.notNull().defaultTo(sql`now()`),

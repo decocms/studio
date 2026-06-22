@@ -48,7 +48,6 @@ const ACTOR = "system:backfill-org-sites";
 const FILE_CONFIG_NAME_PREFIX = "deco-assets-";
 
 interface AdminSite {
-  id: number;
   name: string;
 }
 
@@ -58,7 +57,7 @@ async function fetchTeamSites(
   teamId: number,
 ): Promise<AdminSite[]> {
   const res = await fetch(
-    `${supabaseUrl}/rest/v1/sites?team=eq.${teamId}&select=id,name&order=id`,
+    `${supabaseUrl}/rest/v1/sites?team=eq.${teamId}&select=name&order=name`,
     {
       headers: {
         apikey: serviceKey,
@@ -157,8 +156,6 @@ async function main() {
             slug,
             organizationId,
             source: "deco-import",
-            decoTeamId,
-            decoSiteId: site.id,
             by: ACTOR,
           });
           stats.claimed++;
