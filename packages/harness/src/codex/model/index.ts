@@ -33,6 +33,8 @@ export function createCodexModel(
      *  instead of the cloned repo, so file edits land in the wrong tree. */
     cwd?: string;
     developerInstructions?: string;
+    /** On-disk thread id to resume. Omit on the first turn. */
+    resume?: string;
   },
 ): { model: LanguageModelV3; provider: CodexAppServerProvider } {
   const mcpServers = options?.mcpServers
@@ -62,6 +64,10 @@ export function createCodexModel(
       cwd: options?.cwd ?? process.cwd(),
       rmcpClient: true,
       sandboxPolicy: "workspace-write",
+      // Persistent so the FIRST turn creates a non-ephemeral, resumable
+      // on-disk thread (stateless mode would create an ephemeral one).
+      threadMode: "persistent",
+      ...(options?.resume ? { resume: options.resume } : {}),
       connectionTimeoutMs: 30_000,
       requestTimeoutMs: 300_000,
       idleTimeoutMs: 60_000,
