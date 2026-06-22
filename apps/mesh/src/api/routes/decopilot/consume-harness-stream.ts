@@ -183,13 +183,15 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
           console.error("[consume-harness-stream] onUsage hook failed", e),
         );
       }
-      await Promise.resolve(
-        options.hooks?.onFinish?.(responseMessage, finishReason, {
-          persistenceOk,
-        }),
-      ).catch((e) =>
-        console.error("[consume-harness-stream] onFinish hook failed", e),
-      );
+      if (!errored) {
+        await Promise.resolve(
+          options.hooks?.onFinish?.(responseMessage, finishReason, {
+            persistenceOk,
+          }),
+        ).catch((e) =>
+          console.error("[consume-harness-stream] onFinish hook failed", e),
+        );
+      }
       resolveComplete();
     },
     onError: (error) => {

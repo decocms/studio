@@ -118,9 +118,13 @@ export async function ingestRun(
         if (!(await fenceOk())) continue;
         // Replayed prefix already contiguous-acked, or a duplicate still pending.
         if (seq <= ackSeq || pending.has(seq)) continue;
-        await deps.streamBuffer.publishRawChunk(runId, chunk, {
-          msgId: buildChunkMsgId({ runId, fenceToken, seq }),
-        });
+        if (
+          !(await deps.streamBuffer.publishRawChunk(runId, chunk, {
+            msgId: buildChunkMsgId({ runId, fenceToken, seq }),
+          }))
+        ) {
+          throw new Error("publishRawChunk failed");
+        }
         pending.add(seq);
         // Advance the contiguous floor as far as the pending set allows.
         const prevAckSeq = ackSeq;
