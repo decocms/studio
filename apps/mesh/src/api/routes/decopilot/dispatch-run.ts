@@ -73,6 +73,7 @@ import {
   classifyStreamError,
   stringifyError,
 } from "@decocms/harness/decopilot/stream-error";
+import { isCliHarness } from "@decocms/harness/cli-harness";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { loadAndMergeMessages } from "./conversation";
@@ -108,6 +109,7 @@ import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
+import { computeCliDelta, resolveCliSessionRef } from "./cli-session-messages";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
 import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
@@ -350,35 +352,6 @@ export function buildCodingWorkspaceInput(input: {
     cwd: input.workspace.cwd,
     workspaceKind: repo ? "github" : "unknown",
   };
-}
-
-/**
- * Find the last coding-agent session id stored on a prior assistant
- * message. Today only claude-code uses this — codex spawns a new process
- * per request, so its threadId can't be resumed. The provider filter
- * guards against picking up a codex threadId when the user switches
- * provider mid-thread.
- */
-function lookupResumeSessionRef(
-  messages: ChatMessage[],
-  harnessId: HarnessId,
-): string | undefined {
-  if (harnessId !== "claude-code") return undefined;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    const meta = msg?.metadata as {
-      codingAgentSessionId?: string;
-      codingAgentProvider?: string;
-    };
-    if (
-      msg?.role === "assistant" &&
-      meta?.codingAgentSessionId &&
-      meta?.codingAgentProvider === "claude-code"
-    ) {
-      return meta.codingAgentSessionId;
-    }
-  }
-  return undefined;
 }
 
 async function resolveSecretModelSource(
@@ -1202,7 +1175,7 @@ async function prepareRun(
       windowSize,
     );
 
-    const resumeSessionRef = lookupResumeSessionRef(allMessages, harnessId);
+    const resumeSessionRef = resolveCliSessionRef(allMessages, harnessId);
 
     const organization = ctx.organization!;
     const streamStartAt = Date.now();
@@ -1228,7 +1201,15 @@ async function prepareRun(
     // `toModelOutput` handlers) runs inside the decopilot harness itself; we
     // forward materialized UIMessages so each harness decides how to convert
     // them.
-    const materializedMessages = await resolveStorageRefs(allMessages, ctx);
+    // CLI harnesses (codex, claude-code) resume an on-disk session and only
+    // need the new user message(s); decopilot still gets the full transcript.
+    const messagesForHarness = isCliHarness(harnessId)
+      ? computeCliDelta(allMessages, harnessId)
+      : allMessages;
+    const materializedMessages = await resolveStorageRefs(
+      messagesForHarness,
+      ctx,
+    );
 
     ensureModelCompatibility(input.models, materializedMessages);
 
