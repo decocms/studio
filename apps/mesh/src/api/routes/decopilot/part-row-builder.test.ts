@@ -263,4 +263,47 @@ describe("PartRowBuilder", () => {
     const finish = rows.find((r) => r.kind === "finish");
     expect(finish?.metadata).toMatchObject({ codingAgentSessionId: "sess-1" });
   });
+
+  it("a FRESH assistant emitter yields the SAME row ids as the projector (dedupes); a SHARED one diverges (the duplicate bug)", () => {
+    // The live path and the durable projector both persist the SAME assistant
+    // message. Dedup depends on identical row ids (`runId:messageId:seq`). The
+    // projector always uses a fresh emitter (assistant-only → seq 0,1,2). If the
+    // live path reuses the emitter that already wrote the user message (seq
+    // 0,1), the assistant seqs shift to 2,3,4 → ids diverge → ON CONFLICT can't
+    // dedupe → the message persists twice. The live path MUST use a fresh
+    // emitter too.
+    const shared = { orgId: "org_1", threadId: "thread_1", runId: "thread_1" };
+    const assistant = {
+      id: "assistant_1",
+      role: "assistant" as const,
+      parts: [
+        { type: "reasoning", state: "done", text: "think" },
+        { type: "text", state: "done", text: "answer" },
+      ],
+    };
+
+    // Projector: fresh emitter, assistant only.
+    const projector = new PartRowBuilder({ ...shared, baseTimeMs: 1000 });
+    const projectorIds = projector.emitFinal(assistant).map((r) => r.id);
+
+    // Live FRESH (the fix): identical row ids → dedupe.
+    const liveFresh = new PartRowBuilder({ ...shared, baseTimeMs: 5000 });
+    expect(liveFresh.emitFinal(assistant).map((r) => r.id)).toEqual(
+      projectorIds,
+    );
+
+    // Live SHARED with the user message (the bug): assistant seqs shift → ids
+    // diverge from the projector → both copies survive ON CONFLICT.
+    const liveShared = new PartRowBuilder({ ...shared, baseTimeMs: 5000 });
+    liveShared.acknowledge(
+      liveShared.emitUserMessage({
+        id: "user_1",
+        role: "user",
+        parts: [{ type: "text", text: "q" }],
+      }),
+    );
+    expect(liveShared.emitFinal(assistant).map((r) => r.id)).not.toEqual(
+      projectorIds,
+    );
+  });
 });
