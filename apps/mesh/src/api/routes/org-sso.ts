@@ -269,17 +269,21 @@ function registerSsoRoutes(app: SsoApp) {
       return c.redirect("/?sso_error=token_verification_failed");
     }
 
-    // Create SSO session
-    await ctx.storage.orgSsoSessions.upsert(ctx.auth.user.id, stateData.orgId);
-
-    // Look up org slug via membership to redirect to the org
+    // Re-verify membership before creating the session. The user may have been
+    // removed from the org between /authorize and this callback (TOCTOU).
     const membership = await getOrgMembership(
       ctx,
       ctx.auth.user.id,
       stateData.orgId,
     );
+    if (!membership) {
+      return c.redirect("/?sso_error=not_a_member");
+    }
 
-    const redirectPath = membership?.orgSlug ? `/${membership.orgSlug}` : "/";
+    // Create SSO session
+    await ctx.storage.orgSsoSessions.upsert(ctx.auth.user.id, stateData.orgId);
+
+    const redirectPath = membership.orgSlug ? `/${membership.orgSlug}` : "/";
     return c.redirect(redirectPath);
   });
 
