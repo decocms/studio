@@ -20,3 +20,17 @@ export type BuiltinRole = (typeof BUILTIN_ROLES)[number];
  * Roles with full org access — they bypass all permission checks at runtime.
  */
 export const ADMIN_ROLES: BuiltinRole[] = ["owner", "admin"];
+
+/**
+ * Validate that the caller's role is allowed to assign the target role.
+ * Owners can assign any role. Admins can assign "user" or "admin" but NOT
+ * "owner" — preventing vertical privilege escalation.
+ */
+export function canAssignRole(
+  callerRole: string | undefined,
+  targetRole: string,
+): boolean {
+  if (callerRole === "owner") return true;
+  if (callerRole === "admin") return targetRole !== "owner";
+  return false;
+}
