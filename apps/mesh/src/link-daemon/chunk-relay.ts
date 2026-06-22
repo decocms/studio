@@ -30,7 +30,7 @@
  *   cancelled, in-flight/queued POST attempts stop, and the relay rejects
  *   with the abort reason.
  */
-import { retry, RetryError } from "@decocms/std";
+import { retry, RetryError, sleep } from "@decocms/std";
 import { parseDispatchSSEEvents } from "../harnesses/parse-dispatch-sse";
 import type { DispatchSSEEvent } from "../links/protocol";
 import type { RelayLine } from "../links/protocol/relay";
@@ -94,9 +94,30 @@ export interface RelayDispatchSSEAsChunkStreamInput {
     maxTimeout?: number;
     jitter?: number;
   };
+  /**
+   * Idle-gap keepalive interval for the streaming POST body, in ms. When the
+   * relay has no new line to send for this long (a model think-gap / between
+   * steps), it writes a blank NDJSON line (`"\n"`) into the request body so the
+   * upload keeps emitting bytes. A long-lived streaming POST that writes nothing
+   * during an idle gap is reset by an intermediary idle timeout — in the field a
+   * Cloudflare edge ~15s idle timeout fires a fast `ECONNRESET` ("socket
+   * connection closed unexpectedly"), and because each retry resends from seq 1
+   * and goes idle again, a single >15s think-gap can make a run never finish.
+   * The blank line is a no-op on the wire: the cluster's `ndjsonLines` parser
+   * trims and skips empty lines, so it never becomes a relay line and seq
+   * numbering / prefix-replay are untouched. Default 10s (margin under 15s);
+   * tests override with a tiny value.
+   */
+  heartbeatMs?: number;
 }
 
 const encoder = new TextEncoder();
+
+/** Default keepalive cadence — comfortably under the ~15s CDN idle timeout. */
+const DEFAULT_HEARTBEAT_MS = 10_000;
+
+/** Blank NDJSON line: keeps bytes flowing; the cluster parser skips it. */
+const HEARTBEAT_BYTES = encoder.encode("\n");
 
 /**
  * Relay a sandbox dispatch SSE body to the cluster as seq-numbered NDJSON
@@ -194,6 +215,8 @@ export async function relayDispatchSSEAsChunkStream(
     throw pumpError;
   });
 
+  const heartbeatMs = input.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
+
   // ── Attempt bodies: replay the durable prefix, then follow live ──────────
   const createAttemptBody = (): ReadableStream<Uint8Array> => {
     let cursor = 0; // highest wireSeq already enqueued; replay from cursor+1
@@ -231,7 +254,30 @@ export async function relayDispatchSSEAsChunkStream(
             controller.close();
             return;
           }
-          await waiter;
+          // Idle: no buffered line and the pump is still running. Wait for the
+          // next line, but if the gap exceeds `heartbeatMs` emit a blank-line
+          // keepalive so the streaming upload keeps writing bytes and a CDN
+          // idle timeout (Cloudflare ~15s) can't reset it. `sleep`'s timer is
+          // cancelled (via its signal) the moment a line arrives, so an active
+          // run never accumulates timers.
+          const hbAbort = new AbortController();
+          const winner = await Promise.race([
+            waiter.then(() => "line" as const),
+            sleep(heartbeatMs, { signal: hbAbort.signal })
+              .then(() => "heartbeat" as const)
+              // Aborted (a line won the race) → fall through and re-check state.
+              .catch(() => "line" as const),
+          ]);
+          hbAbort.abort();
+          if (winner === "heartbeat") {
+            try {
+              controller.enqueue(HEARTBEAT_BYTES);
+            } catch {
+              // Consumer cancelled this attempt's upload — durable rows remain.
+              return;
+            }
+            return;
+          }
         }
       },
     });
