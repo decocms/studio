@@ -115,6 +115,97 @@ interface ConnectNatsDeps {
   connectWebSocket?: NatsConnector;
 }
 
+type NatsStatusLike = {
+  type?: unknown;
+  data?: unknown;
+  error?: unknown;
+};
+
+type NatsConnectionWithStatus = NatsConnection & {
+  status?: () => AsyncIterable<NatsStatusLike>;
+  getServer?: () => string;
+};
+
+function formatLogValue(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (value instanceof Error) {
+    return `${value.name}:${value.message}`;
+  }
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value).slice(0, 300);
+  } catch {
+    return String(value).slice(0, 300);
+  }
+}
+
+function logTunnelDiagnostic(
+  hostname: string,
+  event: tunnel.TunnelDiagnosticEvent,
+): void {
+  const fields = [
+    `hostname=${hostname}`,
+    `event=${event.event}`,
+    event.requestId ? `requestId=${event.requestId}` : undefined,
+    event.subject ? `subject=${event.subject}` : undefined,
+    event.elapsedMs !== undefined ? `elapsedMs=${event.elapsedMs}` : undefined,
+    event.error ? `error=${event.error}` : undefined,
+  ].filter((field): field is string => Boolean(field));
+  console.log(
+    `[cluster-connection-tunnel] tunnel diagnostic ${fields.join(" ")}`,
+  );
+}
+
+function monitorNatsStatus(
+  nc: NatsConnection,
+  hostname: string,
+  now: () => Date,
+): void {
+  const statusSource = (nc as NatsConnectionWithStatus).status;
+  if (typeof statusSource !== "function") return;
+
+  void (async () => {
+    let disconnectedAtMs: number | undefined;
+    for await (const status of statusSource.call(nc)) {
+      const type = formatLogValue(status.type) ?? "unknown";
+      const server =
+        formatLogValue(status.data) ??
+        formatLogValue((nc as NatsConnectionWithStatus).getServer?.());
+      const error = formatLogValue(status.error);
+      const currentMs = now().getTime();
+      if (type === "disconnect") {
+        disconnectedAtMs = currentMs;
+      }
+
+      const fields = [
+        `hostname=${hostname}`,
+        `type=${type}`,
+        server ? `server=${server}` : undefined,
+        error ? `error=${error}` : undefined,
+        type === "reconnect" && disconnectedAtMs !== undefined
+          ? `offlineMs=${Math.max(0, currentMs - disconnectedAtMs)}`
+          : undefined,
+      ].filter((field): field is string => Boolean(field));
+
+      console.log(
+        `[cluster-connection-tunnel] nats status ${fields.join(" ")}`,
+      );
+
+      if (type === "reconnect") {
+        disconnectedAtMs = undefined;
+      }
+    }
+  })().catch((err) => {
+    console.error(
+      `[cluster-connection-tunnel] nats status monitor failed hostname=${hostname}`,
+      err,
+    );
+  });
+}
+
 type LinkSessionRequestInput = Pick<
   ClusterConnectionTunnelInput,
   "capabilities" | "machineId" | "cliVersion" | "previewPort"
@@ -361,6 +452,7 @@ export async function connectToClusterTunnel(
   const startActive = async (): Promise<ActiveTunnelConnection> => {
     const session = await fetchSessionWithRetry();
     const nc = await (deps.connectNats ?? connectNats)(session);
+    monitorNatsStatus(nc, session.tunnelHostname, now);
     const ac = new AbortController();
     let tunnelServer: tunnel.TunnelServer | undefined;
     const activeWork = new Set<Promise<void>>();
@@ -376,6 +468,8 @@ export async function connectToClusterTunnel(
           activeWork,
         }),
         signal: ac.signal,
+        diagnostics: (event) =>
+          logTunnelDiagnostic(session.tunnelHostname, event),
       });
     } catch (err) {
       ac.abort();
