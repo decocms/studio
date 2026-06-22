@@ -397,6 +397,12 @@ const BUILTIN_GROUPS: BuiltinGroup[] = [
         description: "Read an MCP prompt definition",
         icon: BookOpen01,
       },
+      {
+        name: "skill",
+        title: "Load Skill",
+        description: "Load a skill's full instructions (SKILL.md) by id",
+        icon: BookOpen01,
+      },
     ],
   },
   {

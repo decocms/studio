@@ -149,6 +149,10 @@ export async function handleVirtualMcpRequest(
             virtualMcp,
             ctx,
             "passthrough",
+            false,
+            // Serves the agent's MCP (incl. the desktop daemon); surface the
+            // skill catalog in the instructions it reads.
+            { includeSkillsCatalog: true },
           );
           span.setStatus({ code: SpanStatusCode.OK });
           return result;

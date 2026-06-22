@@ -24,7 +24,6 @@ import {
   type CodingWorkspacePromptInput,
 } from "@decocms/harness/coding-workspace-prompt";
 import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
-import { getPublicSets } from "@/file-storage/public-sets";
 import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
@@ -135,18 +134,12 @@ export async function buildAgentSystemPrompt(
 
   add("codingWorkspace", buildCodingWorkspacePrompt(opts.codingWorkspace));
 
-  // Org filesystem layout + the deployment's public skill sets. org-fs is
-  // mounted into every sandbox now (desktop + cluster), so this is
-  // unconditional. Passing the slug lets the prompt name `org/<slug>/`
-  // directly instead of telling the agent to `ls org/` to discover it.
-  // Stable per org, so still cache-safe.
-  add(
-    "orgFs",
-    buildOrgFilesystemPrompt(
-      getPublicSets().map((s) => s.set),
-      opts.organization.slug,
-    ),
-  );
+  // Org filesystem layout. org-fs is mounted into every sandbox now (desktop +
+  // cluster), so this is unconditional. Passing the slug lets the prompt name
+  // `org/<slug>/` directly instead of telling the agent to `ls org/` to
+  // discover it. Skills are surfaced separately via the <available-skills>
+  // catalog (served instructions). Stable per org, so still cache-safe.
+  add("orgFs", buildOrgFilesystemPrompt(opts.organization.slug));
 
   if (opts.kind === "agent") {
     if (opts.isDecopilot) {

@@ -1,3 +1,8 @@
+---
+name: templating
+description: Render any text file (HTML, markdown, config, SQL, email) from a mustache template plus JSON data. Use when an output's shape is fixed ahead of time and only the values change.
+---
+
 # templating — fill data into text-file templates
 
 Render any text file (HTML, markdown, config, SQL, email, …) from a

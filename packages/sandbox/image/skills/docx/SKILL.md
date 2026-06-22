@@ -1,3 +1,8 @@
+---
+name: docx
+description: Read and extract text, tables, and structure from .docx Word documents. Use when the user uploads or references a Word file to read or summarize.
+---
+
 # docx — Word documents
 
 Use this skill to read or summarize `.docx` files.
