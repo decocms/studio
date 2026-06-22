@@ -30,10 +30,6 @@ import { retry } from "@decocms/std";
 import { getSettings } from "@/settings";
 import { SITE_SLUG_RE } from "@/shared/site-slug";
 
-// AssumeRole caps duration at the role's MaxSessionDuration; the role must be
-// configured with MaxSessionDuration >= this (12h) or AssumeRole rejects.
-const SESSION_SECONDS = 12 * 60 * 60;
-
 const SLUG_RE = SITE_SLUG_RE;
 
 export class TenantCredentialsError extends Error {
@@ -165,7 +161,9 @@ export async function provisionTenantS3Credentials(
             RoleArn: arn,
             RoleSessionName: `s3-${slug}`,
             Policy: policy,
-            DurationSeconds: SESSION_SECONDS,
+            // No DurationSeconds — use the AWS default session length (1h), so
+            // the tenant role needs no elevated MaxSessionDuration. The SDK
+            // refreshes the cached client's creds near expiry automatically.
           }),
         ),
       { maxAttempts: 3 },
