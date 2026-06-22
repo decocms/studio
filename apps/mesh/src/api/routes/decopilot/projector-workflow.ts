@@ -3,8 +3,8 @@ import type { JetStreamClient, JetStreamManager } from "@nats-io/jetstream";
 import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
 import type { HarnessStreamPersistence } from "./consume-harness-stream";
 import type { ProjectChunksResult } from "./project-chunks";
-import { PartEmitter } from "./part-emitter";
 import { projectRun } from "./project-run";
+import { createRunPersistence } from "./run-persistence";
 import { recordPoison } from "./projector-metrics";
 import {
   readProjectorRunLog,
@@ -110,54 +110,30 @@ function requireRuntime(): ProjectorWorkflowRuntime {
   return runtime;
 }
 
-async function persistenceFor(
+function persistenceFor(
   runId: string,
   orgId: string,
   messageParts: SqlThreadMessagePartStorage,
 ): Promise<HarnessStreamPersistence> {
-  // Base the projected message's `created_at` on what is already persisted so
-  // it sorts after its own user message (and prior turns) regardless of how far
-  // behind wall-clock this durable projection runs. `+1` keeps the assistant's
-  // first part strictly after the newest existing part. In the common case the
-  // live path already wrote these rows (ON CONFLICT keeps their earlier
-  // created_at); this base only governs the projector-only fallback.
-  const maxExistingMs = await messageParts.maxCreatedAtMsForRun(runId);
-  const emitter = new PartEmitter({
-    storage: messageParts,
-    orgId,
-    threadId: runId,
-    runId,
-    baseTimeMs: maxExistingMs !== null ? maxExistingMs + 1 : undefined,
-  });
-  return {
-    emitStepParts: (message) => emitter.emitStepParts(message),
-    emitFinal: (message) => emitter.emitFinal(message),
-    emitError: (messageId, errorText) =>
-      emitter.emitError(messageId, errorText),
-  };
+  // Terminal projection: writes step parts + the finish/error anchor, seeded on
+  // the canonical `max(existing created_at) + 1` base (see run-persistence.ts).
+  return createRunPersistence({ messageParts, orgId, runId });
 }
 
 /**
  * Non-terminal persistence for checkpoint passes: writes step parts but
  * intentionally skips the finish anchor and error anchor. The terminal done
  * pass writes the finish anchor, so checkpoint writes are strictly additive.
+ * Uses the SAME canonical base as the terminal pass — a checkpoint that inserts
+ * a row first must not stamp a wall-clock `created_at` that diverges from the
+ * terminal pass and re-orders the message.
  */
 function checkpointPersistenceFor(
   runId: string,
   orgId: string,
   messageParts: SqlThreadMessagePartStorage,
-): HarnessStreamPersistence {
-  const emitter = new PartEmitter({
-    storage: messageParts,
-    orgId,
-    threadId: runId,
-    runId,
-  });
-  return {
-    emitStepParts: (message) => emitter.emitStepParts(message),
-    emitFinal: async (_message) => {},
-    emitError: async (_messageId, _errorText) => {},
-  };
+): Promise<HarnessStreamPersistence> {
+  return createRunPersistence({ messageParts, orgId, runId, terminal: false });
 }
 
 async function resolveRunStep(input: ProjectorWorkflowInput) {
@@ -399,7 +375,7 @@ async function projectCheckpointFromJetStreamStep(
     runId: input.runId,
     chunks: range.chunks,
     // Non-terminal persistence: writes step parts but skips the finish anchor.
-    persistence: checkpointPersistenceFor(
+    persistence: await checkpointPersistenceFor(
       input.runId,
       input.orgId,
       rt.messageParts,

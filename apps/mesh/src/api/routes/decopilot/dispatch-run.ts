@@ -77,6 +77,7 @@ import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { loadAndMergeMessages } from "./conversation";
 import { PartEmitter } from "./part-emitter";
+import { createAssistantEmitter } from "./run-persistence";
 import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import type { ToolApprovalLevel } from "./helpers";
@@ -1179,14 +1180,10 @@ async function prepareRun(
     // message and matches the projector's base, so live wins via first-write.
     let assistantEmitter: PartEmitter | null = null;
     if (isV2) {
-      const parts = ctx.storage.threads.messageParts();
-      const maxMs = await parts.maxCreatedAtMsForRun(mem.thread.id);
-      assistantEmitter = new PartEmitter({
-        storage: parts,
+      assistantEmitter = await createAssistantEmitter({
+        messageParts: ctx.storage.threads.messageParts(),
         orgId: input.organizationId,
-        threadId: mem.thread.id,
         runId: mem.thread.id,
-        baseTimeMs: (maxMs ?? Date.now()) + 1,
       });
     }
 
