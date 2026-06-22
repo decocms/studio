@@ -67,6 +67,48 @@ describe("ingestRun", () => {
     expect(finishCount).toBe(1);
   });
 
+  test("publishes chunks and done without a live persistence sink", async () => {
+    const published: Array<{ runId: string; chunk: unknown; msgId?: string }> =
+      [];
+    const done: Array<{ runId: string; fenceToken: string; finalSeq: number }> =
+      [];
+
+    await ingestRun(
+      {
+        runId: "run_1",
+        fenceToken: "fence_1",
+        chunks: chunks({
+          seq: 1,
+          chunk: { type: "text-start", id: "1" } as UIMessageChunk,
+        }),
+        errorMessageId: "error-run_1",
+      },
+      {
+        streamBuffer: {
+          publishRawChunk: async (runId, chunk, opts) => {
+            published.push({ runId, chunk, msgId: opts?.msgId });
+            return true;
+          },
+          publishDone: async (runId, fenceToken, finalSeq) => {
+            done.push({ runId, fenceToken, finalSeq });
+            return true;
+          },
+        },
+        hooks: {},
+        title: {
+          currentThreadTitle: "New chat",
+          threadId: "run_1",
+          persistTitle: async () => {},
+        },
+      },
+    );
+
+    expect(published.map((p) => p.msgId)).toEqual(["run_1:fence_1:1"]);
+    expect(done).toEqual([
+      { runId: "run_1", fenceToken: "fence_1", finalSeq: 1 },
+    ]);
+  });
+
   test("does not call injected title persistence when consuming title chunks", async () => {
     const d = deps();
     let persistCalls = 0;
