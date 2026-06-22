@@ -18,6 +18,7 @@ import {
   blockRefLoaderConfigHasData,
   detectBlockRefType,
   enrichBlockRefOptions,
+  lazyWrappedInner,
   resolveNestedBlockRefSchema,
   schemaWithoutDiscriminator,
 } from "../block-ref-field-utils";
@@ -25,8 +26,10 @@ import {
   embeddedUnionBlockId,
   isEmbeddedUnionResolveType,
 } from "../block-type-utils";
+import { labelFromResolveType } from "../section-types";
 import type { SchemaProperty } from "../resolve-schema";
 import type { FieldProps } from "./field-props";
+
 import { SchemaForm } from "../schema-form";
 import { unwrapBlockReference } from "../unwrap-section";
 
@@ -138,6 +141,13 @@ export function AnyOfField({
   const savedRef =
     decofile && value ? unwrapBlockReference(value, decofile) : null;
   const editorValue = savedRef?.data ?? value;
+  // Nested section array items are Lazy-wrapped (`{ __resolveType: ".../Lazy.tsx",
+  // section: { <real section> } }`). The schema resolves to the inner section
+  // (via moduleResolveTypeFromBlockData) but the value must be unwrapped too,
+  // otherwise the form binds against the wrapper and every field renders empty.
+  // We bind the inner `section` and re-wrap on change.
+  const lazyInner = savedRef ? null : lazyWrappedInner(editorValue);
+  const boundValue = lazyInner ?? editorValue;
   const refs = enrichBlockRefOptions(baseRefs, {
     savedBlockKey: savedRef?.blockKey,
     editorValue,
@@ -146,6 +156,38 @@ export function AnyOfField({
     refs.length > 0
       ? detectBlockRefType(editorValue, refs, savedRef?.blockKey)
       : (refs[0]?.resolveType ?? "");
+  const isBlockRef = schema.type === "block-ref";
+  const isModuleLoaderUnion =
+    isBlockRef &&
+    refs.some(
+      (r) =>
+        r.resolveType.includes("/") &&
+        !isEmbeddedUnionResolveType(r.resolveType),
+    );
+
+  // In module-loader mode the breadcrumb path passes through this component.
+  // We strip our own crumb from the front before passing to the nested
+  // SchemaForm so the loader's internal schema can resolve the path correctly
+  // (e.g. ["Página de Listagem", "productClusterIds"] → nested receives
+  // ["productClusterIds"] → loader SchemaForm finds "selectedFacets" because an
+  // item label matches). nestedOnBreadcrumbChange prepends the crumb back so the
+  // outer section editor sees the full path.
+  // The crumb uses this field's display LABEL (not the raw key) so the breadcrumb
+  // reads "Página de Listagem" instead of "page". resolveActiveFieldKey matches
+  // both label and key, so resolution still works.
+  const outerCrumb = label ?? (path.includes(".") ? path.split(".")[0]! : path);
+  const safeBreadcrumbPath = breadcrumbPath ?? [];
+  const nestedBreadcrumbPath =
+    isModuleLoaderUnion && safeBreadcrumbPath[0] === outerCrumb
+      ? safeBreadcrumbPath.slice(1)
+      : safeBreadcrumbPath;
+  const nestedOnBreadcrumbChange: ((p: string[]) => void) | undefined =
+    isModuleLoaderUnion
+      ? (newPath) => {
+          onBreadcrumbChange?.([outerCrumb, ...newPath]);
+        }
+      : onBreadcrumbChange;
+
   const [selectedRt, setSelectedRt] = useState(inferredRt);
   const [prevInferredRt, setPrevInferredRt] = useState(inferredRt);
   if (prevInferredRt !== inferredRt) {
@@ -229,7 +271,7 @@ export function AnyOfField({
     const nestedProps = nestedSchema?.properties ? (
       <SchemaForm
         schema={nestedSchema}
-        value={editorValue}
+        value={boundValue}
         onChange={(next) => {
           if (savedRef && onSaveReferencedBlock) {
             onSaveReferencedBlock(
@@ -238,26 +280,25 @@ export function AnyOfField({
             );
             return;
           }
+          // Re-wrap into the Lazy section wrapper so the decofile shape is preserved.
+          if (lazyInner) {
+            onChange({
+              ...(editorValue as Record<string, unknown>),
+              section: next,
+            });
+            return;
+          }
           persistUnionValue(next);
         }}
         basePath={path}
-        breadcrumbPath={breadcrumbPath}
-        onBreadcrumbChange={onBreadcrumbChange}
+        breadcrumbPath={nestedBreadcrumbPath}
+        onBreadcrumbChange={nestedOnBreadcrumbChange}
         meta={meta}
         decofile={decofile}
         onSaveReferencedBlock={onSaveReferencedBlock}
       />
     ) : null;
 
-    // Module loaders (jsonLD, slug, …): nest props in a collapsible card.
-    const isBlockRef = schema.type === "block-ref";
-    const isModuleLoaderUnion =
-      isBlockRef &&
-      refs.some(
-        (r) =>
-          r.resolveType.includes("/") &&
-          !isEmbeddedUnionResolveType(r.resolveType),
-      );
     const isNestedBlockRef = path.includes(".");
 
     return (
@@ -269,13 +310,20 @@ export function AnyOfField({
               <SelectValue placeholder="Select..." />
             </SelectTrigger>
             <SelectContent>
-              {refs.map((ref) => (
-                <SelectItem key={ref.resolveType} value={ref.resolveType}>
-                  {ref.title ??
-                    embeddedUnionBlockId(ref.resolveType) ??
-                    ref.resolveType}
-                </SelectItem>
-              ))}
+              {refs.map((ref) => {
+                // If title is a file path (contains "/"), derive a human label
+                // from the resolveType instead (e.g. "DeliveryPromiseProductListingPage").
+                const displayTitle =
+                  ref.title && !ref.title.includes("/")
+                    ? ref.title
+                    : (embeddedUnionBlockId(ref.resolveType) ??
+                      labelFromResolveType(ref.resolveType));
+                return (
+                  <SelectItem key={ref.resolveType} value={ref.resolveType}>
+                    {displayTitle}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
           {schema.description && (

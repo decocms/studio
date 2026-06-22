@@ -136,11 +136,16 @@ export class PassthroughClient extends GatewayClient {
     // they reach the model on every run path (cluster engine AND sandbox
     // daemon both read instructions; only the cluster runs the richer
     // buildAgentSystemPrompt).
-    return withKnowledge(
+    const base = withKnowledge(
       this.options.virtualMcp.metadata?.instructions ?? undefined,
       this.options.virtualMcp.metadata?.knowledge,
       this.ctx.organization?.slug ?? "",
     );
+    // Append the pre-rendered <available-skills> catalog (built async in the
+    // factory). Same seam, same both-paths guarantee as the knowledge block.
+    const skills = this.options.skillsBlock;
+    if (!skills) return base;
+    return base ? `${base}${skills}` : skills.replace(/^\n+/, "");
   }
 
   getConnectionTitleMap(): Map<string, string> {

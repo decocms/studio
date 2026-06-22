@@ -3,7 +3,42 @@ setupComponentTest();
 import { describe, expect, it, mock } from "bun:test";
 import { fireEvent, render } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { ModePickerPure } from "./mode-picker";
+import { ModePickerPure, resolveDisplayedAgentMode } from "./mode-picker";
+
+describe("resolveDisplayedAgentMode", () => {
+  it("keeps a locked desktop harness visible even when it is unavailable", () => {
+    expect(
+      resolveDisplayedAgentMode({
+        selectedMode: "cloud-decopilot",
+        lockedHarness: "claude-code",
+        lockedSandbox: "user-desktop",
+        isThreadLocked: true,
+      }),
+    ).toBe("local-claude-code");
+  });
+
+  it("keeps the user's selected runtime even when unavailable for unlocked threads", () => {
+    expect(
+      resolveDisplayedAgentMode({
+        selectedMode: "local-codex",
+        lockedHarness: null,
+        lockedSandbox: null,
+        isThreadLocked: false,
+      }),
+    ).toBe("local-codex");
+  });
+
+  it("uses the saved harness as a locked display fallback for unmapped tuples", () => {
+    expect(
+      resolveDisplayedAgentMode({
+        selectedMode: "cloud-decopilot",
+        lockedHarness: "codex",
+        lockedSandbox: null,
+        isThreadLocked: true,
+      }),
+    ).toBe("local-codex");
+  });
+});
 
 describe("ModePickerPure", () => {
   it("renders the closed pill with the current mode label", () => {
@@ -217,9 +252,8 @@ describe("ModePickerPure", () => {
     ]);
   });
 
-  it("shows local rows as disabled connect-desktop teasers when user desktop is not linked", () => {
+  it("selects unavailable local rows immediately when user desktop is not linked", () => {
     const onSelect = mock(() => {});
-    const onConnectDesktop = mock(() => {});
     const { getByRole, getAllByRole } = render(
       <ModePickerPure
         mode="cloud-decopilot"
@@ -231,7 +265,6 @@ describe("ModePickerPure", () => {
         }}
         locked={false}
         onSelect={onSelect}
-        onConnectDesktop={onConnectDesktop}
       />,
     );
     fireEvent.click(getByRole("button", { name: /Decopilot/i }));
@@ -240,17 +273,17 @@ describe("ModePickerPure", () => {
     expect(items).toHaveLength(4);
 
     const claudeCode = getByRole("menuitem", { name: /Claude Code/ });
-    expect(claudeCode).toHaveAttribute("aria-disabled", "true");
-    expect(claudeCode).toHaveTextContent("Connect your desktop to enable");
+    expect(claudeCode).not.toHaveAttribute("aria-disabled");
+    expect(claudeCode).toHaveTextContent("Desktop not detected");
 
-    // Clicking a teaser routes to the connect flow, never selects the mode.
+    // Clicking selects exactly what the user chose; the run path will surface
+    // any real connectivity/capability error.
     fireEvent.click(claudeCode);
-    expect(onSelect).not.toHaveBeenCalled();
-    expect(onConnectDesktop).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith("local-claude-code");
   });
 
-  it("omits cloud decopilot when agent-sandbox is not configured", () => {
-    const { getByRole, getAllByRole, queryByRole } = render(
+  it("renders cloud decopilot even when agent-sandbox is not configured", () => {
+    const { getByRole, getAllByRole } = render(
       <ModePickerPure
         mode="local-decopilot"
         availability={{
@@ -264,18 +297,18 @@ describe("ModePickerPure", () => {
       />,
     );
     fireEvent.click(getByRole("button", { name: /Decopilot/i }));
-    // Cloud row is gone (operator decision, not user-actionable); local rows
-    // all render — available Decopilot plus the two CLI teasers.
-    expect(queryByRole("menuitem", { name: /agent sandbox/i })).toBeNull();
+    // Every runtime remains visible/selectable; errors are surfaced after the
+    // user tries to run.
     const items = getAllByRole("menuitem");
     expect(items.map((i) => i.textContent)).toEqual([
+      expect.stringMatching(/Decopilot/),
       expect.stringMatching(/Decopilot/),
       expect.stringMatching(/Claude Code/),
       expect.stringMatching(/Codex/),
     ]);
   });
 
-  it("shows unavailable CLIs as disabled rows with a not-detected hint", () => {
+  it("shows unavailable CLIs as selectable rows with a not-detected hint", () => {
     const { getByRole } = render(
       <ModePickerPure
         mode="cloud-decopilot"
@@ -292,12 +325,34 @@ describe("ModePickerPure", () => {
     fireEvent.click(getByRole("button", { name: /Decopilot/i }));
     for (const name of [/Claude Code/, /Codex/]) {
       const row = getByRole("menuitem", { name });
-      expect(row).toHaveAttribute("aria-disabled", "true");
+      expect(row).not.toHaveAttribute("aria-disabled");
       expect(row).toHaveTextContent("Not detected on your desktop");
     }
     expect(
       getByRole("menuitem", { name: /Runs on your desktop/ }),
     ).toHaveTextContent("Decopilot");
+  });
+
+  it("keeps the selected checkmark on an unavailable current row", () => {
+    const { getByRole } = render(
+      <ModePickerPure
+        mode="local-codex"
+        availability={{
+          agentSandbox: true,
+          userDesktop: true,
+          claudeCode: true,
+          codex: false,
+        }}
+        locked={false}
+        onSelect={() => {}}
+      />,
+    );
+
+    fireEvent.click(getByRole("button", { name: /Codex/i }));
+
+    const row = getByRole("menuitem", { name: /Codex/ });
+    expect(row).toHaveTextContent("Not detected on your desktop");
+    expect(row.querySelector("svg.text-foreground")).toBeInTheDocument();
   });
 
   it("calls onSelect with the right mode and closes on click", () => {

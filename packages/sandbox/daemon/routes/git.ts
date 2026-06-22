@@ -28,7 +28,17 @@ export interface GitDeps {
 }
 
 function gitEnv(repoDir: string): Record<string, string> {
-  return { ...process.env, GIT_CEILING_DIRECTORIES: repoDir };
+  return {
+    ...process.env,
+    GIT_CEILING_DIRECTORIES: repoDir,
+    // Status/diff/rev-parse calls in this file are read-only probes that don't
+    // need to refresh the index cache. Skipping the optional lock acquisition
+    // prevents racing with publish()'s git-add/commit for index.lock, which
+    // caused "Unable to create index.lock" and the agent falling back to the
+    // GitHub API. git-add and git-commit ignore this env var for their own
+    // non-optional index writes, so the write path is unaffected.
+    GIT_OPTIONAL_LOCKS: "0",
+  };
 }
 
 function runGit(

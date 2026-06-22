@@ -46,12 +46,9 @@ import type { HarnessId } from "@/harnesses";
 import {
   AGENT_OPTION_PINS,
   agentOptionFor,
-  resolveAvailableAgentOption,
   type AgentOption,
 } from "./pills/agent-options";
-import { useAgentOptionAvailability } from "./use-agent-availability";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
-import { useCurrentLink } from "@/web/hooks/use-current-link";
 import {
   pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
@@ -528,32 +525,14 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
         )
       : null;
 
-  // Resolve the persisted pick against what's actually runnable right now,
-  // applying the same availability fallback the mode picker uses for display.
-  // A pick that points to an offline runtime — e.g. "Claude Code desktop"
-  // carried over from another org while this org's desktop link is offline —
-  // falls back to cloud Decopilot instead of dispatching to the dead desktop
-  // link (which 409s with `user_desktop_link_offline`). Because the picker's
-  // displayed mode is derived from `effectiveAgentOption` (exposed as
-  // `pendingAgentOption` below), this keeps the runtime the user sees selected
-  // and the runtime the message dispatches to in lockstep.
-  const availability = useAgentOptionAvailability();
-  const availableAgentOption = resolveAvailableAgentOption(
-    pendingAgentOption,
-    availability,
-  );
-
-  // Live desktop-link presence (polled every ~5s via the `/api/links/status`
-  // probe). When the user hasn't explicitly pinned a sandbox kind, the client
-  // chooses the default optimistically from this signal: route to the desktop
-  // when its link is online, otherwise fall back to the hosted agent sandbox.
-  // Read inline (no useEffect/useMemo) so the send path always sees the latest
-  // presence at render time.
-  const currentLink = useCurrentLink();
+  // Preserve the user's selected runtime exactly. Presence/capability probes are
+  // advisory only; dispatch should surface the real backend error if the choice
+  // cannot run.
+  const selectedAgentOption = pendingAgentOption;
 
   // When the thread is locked, the agent option is dictated by the persisted
   // (harness, sandbox) pair — period. Otherwise, fall through to the user's
-  // availability-resolved global picker.
+  // selected global picker.
   //
   // When the thread is locked but the (harness, sandbox) tuple doesn't map
   // to a known AgentOption (legacy/trigger-created rows), we intentionally
@@ -562,16 +541,14 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   // should consult isThreadLocked for the "locked" affordance and avoid
   // showing the global selection on a locked thread.
   const effectiveAgentOption: AgentOption | null =
-    taskCtxForLock?.isThreadLocked ? lockedAgentOption : availableAgentOption;
+    taskCtxForLock?.isThreadLocked ? lockedAgentOption : selectedAgentOption;
 
   const effectivePins = effectiveAgentOption
     ? AGENT_OPTION_PINS[effectiveAgentOption]
     : null;
   const pendingHarnessId = effectivePins?.harness ?? null;
-  // Prefer the user's explicit pin; otherwise default from live link presence.
   const pendingSandboxProviderKind: SandboxProviderKind | null =
-    effectivePins?.sandbox ??
-    (currentLink.online ? "user-desktop" : "agent-sandbox");
+    effectivePins?.sandbox ?? "agent-sandbox";
 
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);

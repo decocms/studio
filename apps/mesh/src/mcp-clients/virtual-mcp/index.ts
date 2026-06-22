@@ -13,6 +13,7 @@ import type { StudioContext } from "../../core/studio-context";
 import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { VirtualMCPEntity } from "../../tools/virtual/schema";
 import { PassthroughClient } from "./passthrough-client";
+import { renderSkillsCatalogBlock } from "./skills-instructions";
 import type { VirtualClientOptions } from "./types";
 
 /**
@@ -69,7 +70,7 @@ export async function createVirtualClientFrom(
   ctx: StudioContext,
   _strategy: "passthrough",
   superUser = false,
-  options?: { listTimeoutMs?: number },
+  options?: { listTimeoutMs?: number; includeSkillsCatalog?: boolean },
 ): Promise<PassthroughClient> {
   // Inclusion mode: use only the connections specified in virtual MCP
   const connectionIds = virtualMcp.connections.map((c) => c.connection_id);
@@ -113,6 +114,15 @@ export async function createVirtualClientFrom(
       !isSelfReferencingVirtual(conn, virtualMcp.id),
   );
 
+  // Agent runtimes opt into the skill catalog: enumerate the org's skills now
+  // (async — the sync getInstructions() can't) and stash the rendered block so
+  // it reaches both the cluster engine and the desktop daemon. Cheap: the
+  // public portion is cached process-wide. Skipped for non-agent consumers
+  // (e.g. the home-next-actions prompt poll).
+  const skillsBlock = options?.includeSkillsCatalog
+    ? ((await renderSkillsCatalogBlock(ctx, virtualMcp)) ?? undefined)
+    : undefined;
+
   // Build aggregator options
   const clientOptions: VirtualClientOptions = {
     connections: loadedConnections,
@@ -120,6 +130,7 @@ export async function createVirtualClientFrom(
     superUser,
     mcpListCache: getMcpListCache() ?? undefined,
     listTimeoutMs: options?.listTimeoutMs,
+    skillsBlock,
   };
 
   return new PassthroughClient(clientOptions, ctx);

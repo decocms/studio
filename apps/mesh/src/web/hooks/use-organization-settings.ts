@@ -1,10 +1,4 @@
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-  WellKnownOrgMCPId,
-} from "@decocms/mesh-sdk";
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { useProjectContext, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import {
   useMutation,
   useQuery,
@@ -15,6 +9,8 @@ import {
 } from "@tanstack/react-query";
 import { useRef } from "react";
 import { KEYS } from "@/web/lib/query-keys";
+import { callStudioTool, useStudioTools } from "@/web/lib/studio-tools";
+import type { ToolInput } from "@/tools/io-types";
 
 export type { SimpleModeTier } from "@/tools/organization/schema";
 import type { SimpleModeTier } from "@/tools/organization/schema";
@@ -74,22 +70,23 @@ const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
  * build the same query key + queryFn and read one cache entry.
  */
 export function organizationSettingsQueryOptions(
-  client: Client,
+  orgSlug: string,
   orgId: string,
 ) {
   return {
     queryKey: KEYS.organizationSettings(orgId),
     queryFn: async (): Promise<OrganizationSettings> => {
-      const result = (await client.callTool({
-        name: "ORGANIZATION_SETTINGS_GET",
-        arguments: {},
-      })) as { structuredContent?: OrganizationSettings; isError?: boolean };
-      if (result?.isError) {
+      // GET is best-effort: a failed read falls back to empty settings rather
+      // than erroring the shell/home (the REST client throws on non-2xx).
+      try {
+        return (await callStudioTool(
+          orgSlug,
+          "ORGANIZATION_SETTINGS_GET",
+          {},
+        )) as OrganizationSettings;
+      } catch {
         return { ...EMPTY_SETTINGS, organizationId: orgId };
       }
-      return (
-        result.structuredContent ?? { ...EMPTY_SETTINGS, organizationId: orgId }
-      );
     },
     staleTime: 60_000,
   };
@@ -104,14 +101,9 @@ function useOrganizationSettings<T = OrganizationSettings>(
   select?: (settings: OrganizationSettings) => T,
 ): UseQueryResult<T> {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
 
   return useQuery({
-    ...organizationSettingsQueryOptions(client, org.id),
+    ...organizationSettingsQueryOptions(org.slug, org.id),
     select: select as (data: OrganizationSettings) => T,
   });
 }
@@ -131,13 +123,7 @@ export function useOrganizationSettingsNonBlocking(
   orgId: string,
   orgSlug: string,
 ): OrganizationSettings | null {
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId,
-    orgSlug,
-  });
-
-  const { data } = useQuery(organizationSettingsQueryOptions(client, orgId));
+  const { data } = useQuery(organizationSettingsQueryOptions(orgSlug, orgId));
 
   return data ?? null;
 }
@@ -153,11 +139,6 @@ type OrgSettingsUpdateInput = Partial<
   >
 >;
 
-type ToolErrorEnvelope = {
-  isError?: boolean;
-  content?: Array<{ type?: string; text?: string }>;
-};
-
 /**
  * Core mutation hook. Accepts any subset of updatable org-settings fields.
  * On success, writes the full returned row into the shared cache entry so
@@ -169,30 +150,16 @@ export function useUpdateOrganizationSettings(): UseMutationResult<
   OrgSettingsUpdateInput
 > {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (input: OrgSettingsUpdateInput) => {
-      const result = (await client.callTool({
-        name: "ORGANIZATION_SETTINGS_UPDATE",
-        arguments: {
-          organizationId: org.id,
-          ...input,
-        },
-      })) as {
-        structuredContent?: OrganizationSettings;
-      } & ToolErrorEnvelope;
-      if (result?.isError) {
-        throw new Error(
-          result.content?.[0]?.text ?? "Failed to update organization settings",
-        );
-      }
-      const payload = result.structuredContent;
+      // Throws on non-2xx (validation/auth/etc.) — no silent false success.
+      const payload = (await studio.call("ORGANIZATION_SETTINGS_UPDATE", {
+        organizationId: org.id,
+        ...input,
+      } as ToolInput<"ORGANIZATION_SETTINGS_UPDATE">)) as OrganizationSettings;
       if (!payload) {
         throw new Error("ORGANIZATION_SETTINGS_UPDATE returned no payload");
       }

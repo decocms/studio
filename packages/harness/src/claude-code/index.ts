@@ -43,6 +43,10 @@ import { buildCurrentContextPrompt } from "../decopilot/system-prompt";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
 import { genTitle } from "../decopilot/title-generator";
 import { stringifyError } from "../decopilot/stream-error";
+import {
+  CliSessionExpiredError,
+  isStaleSessionError,
+} from "../cli-session-error";
 import type {
   Harness,
   HarnessContext,
@@ -190,9 +194,8 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
 
         // 6. Pipe UIMessageChunk through. We surface
         //    `codingAgentSessionId` / `codingAgentProvider` at the top of
-        //    the message metadata so the shared layer's stream-core
-        //    persistence (`saveMessagesToThread(responseMessage)`) writes
-        //    them to ThreadMessage.metadata. Subsequent turns read those
+        //    the message metadata so the shared layer persists them onto
+        //    the response message's metadata. Subsequent turns read those
         //    fields back to recover `input.resumeSessionRef`. Matches the
         //    inline original (stream-core.ts:1404–1417 + 1549–1550)
         //    byte-for-byte.
@@ -234,6 +237,9 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
             `[claude-code] stream error model=${sdkModelId} cwd=${cwd ?? "(default)"}:`,
             stringifyError(err),
           );
+          if (input.resumeSessionRef && isStaleSessionError(err)) {
+            throw new CliSessionExpiredError(err);
+          }
           throw err;
         }
       },

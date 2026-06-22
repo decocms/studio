@@ -50,7 +50,6 @@ interface AppContextOptions {
 function appWithContext(opts: AppContextOptions = {}) {
   const thread = opts.thread === undefined ? makeThread() : opts.thread;
   const appended: ThreadMessagePart[][] = [];
-  const savedMessages: unknown[][] = [];
   const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
   const purged: string[] = [];
   const pumped: UIMessageChunk[][] = [];
@@ -114,8 +113,17 @@ function appWithContext(opts: AppContextOptions = {}) {
             });
             return threadRow();
           },
-          saveMessages: async (messages: unknown[]) => {
-            savedMessages.push(messages);
+          markRunFailed: async (_id: string, reason: string, kind: string) => {
+            if (threadStatus !== "in_progress") return;
+            threadStatus = "failed";
+            updates.push({
+              id: RUN_ID,
+              data: {
+                status: "failed",
+                failure_reason: reason,
+                failure_kind: kind,
+              },
+            });
           },
           messageParts: () => ({
             appendParts: async (rows: ThreadMessagePart[]) => {
@@ -124,6 +132,10 @@ function appWithContext(opts: AppContextOptions = {}) {
               if (inserted.length > 0) appended.push(inserted);
               return inserted;
             },
+            // The relay path now builds its assistant emitter via
+            // createAssistantEmitter, which seeds the created_at base from the
+            // run's existing parts. Nothing pre-exists in this stub → null.
+            maxCreatedAtMsForRun: async () => null,
           }),
         },
       },
@@ -152,6 +164,7 @@ function appWithContext(opts: AppContextOptions = {}) {
           publishedDone.push({ fenceToken, finalSeq });
           return true;
         },
+        publishCheckpoint: async () => true,
         pump: (stream: ReadableStream) => {
           const index = pumped.length;
           pumped.push([]);
@@ -195,7 +208,6 @@ function appWithContext(opts: AppContextOptions = {}) {
   return {
     app,
     appended,
-    savedMessages,
     updates,
     purged,
     pumped,
@@ -445,9 +457,8 @@ describe("link ingest chunks route", () => {
     expect(publishedDone).toEqual([]);
   });
 
-  test("publishes seq-keyed RAW chunks with NO inline persistence (projector owns it)", async () => {
-    const { app, appended, savedMessages, updates, publishedRaw, pumped } =
-      appWithContext();
+  test("publishes seq-keyed RAW chunks AND persists the assistant message + completed status inline", async () => {
+    const { app, appended, updates, publishedRaw, pumped } = appWithContext();
 
     const events = [
       ...chunkEvents(helloTurnChunks()),
@@ -483,12 +494,15 @@ describe("link ingest chunks route", () => {
     // chunks are already the durable source.
     expect(pumped).toHaveLength(0);
 
-    // Link ingest does ZERO DB writes — the projector is the sole writer of
-    // parts + status + title. No inline PartEmitter / saveMessagesToThread.
-    expect(appended).toEqual([]);
-    expect(savedMessages).toEqual([]);
-    // No terminal status write from the ingest path either (projector owns it).
-    expect(updates.some((u) => u.data.status === "completed")).toBe(false);
+    // The assistant message is persisted INLINE (v2) so a reload right after
+    // the relay POST sees it — no waiting on the async projector. At least one
+    // content part plus a finish anchor landed.
+    const flatRows = appended.flat();
+    expect(flatRows.some((r) => r.kind === "text")).toBe(true);
+    expect(flatRows.some((r) => r.kind === "finish")).toBe(true);
+    // And the durable status flips to completed at stream end (no RunRegistry
+    // on this pod — written directly, idempotent).
+    expect(updates.some((u) => u.data.status === "completed")).toBe(true);
   });
 
   test("uses durable ack floor to skip a replayed prefix when a retry lands on another pod", async () => {
@@ -566,9 +580,18 @@ describe("link ingest chunks route", () => {
     // is what schedules the durable projector. A thrown source would skip it.
     expect(publishedDone).toEqual([{ fenceToken: "fence_1", finalSeq: 6 }]);
 
-    // Link ingest still does ZERO DB writes — the projector owns parts + status.
-    expect(appended).toEqual([]);
-    expect(updates).toEqual([]);
+    // The error is persisted INLINE (kernel onError → emitError) so a reload
+    // sees the failed message: an `error` part + a finish anchor.
+    const flatRows = appended.flat();
+    expect(flatRows.some((r) => r.kind === "error")).toBe(true);
+    expect(flatRows.some((r) => r.kind === "finish")).toBe(true);
+    // And the durable status flips to failed inline (with reason/kind), not
+    // only via the projector backstop.
+    expect(
+      updates.some(
+        (u) => u.data.status === "failed" && u.data.failure_kind === "harness",
+      ),
+    ).toBe(true);
 
     // Live failure SSE still fires (kernel onError ran on the error chunk).
     const finishFailed = sseEvents.some(

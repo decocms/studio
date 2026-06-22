@@ -97,6 +97,90 @@ describe("projector scheduler consumer", () => {
 
     expect(s.acked).toHaveLength(0);
   });
+
+  test("schedules a checkpoint and acks it", async () => {
+    const s = source();
+    const checkpoints: unknown[] = [];
+    s.push(
+      "decopilot.stream.run_1",
+      { checkpoint: true, headSeq: 5 },
+      "run_1:fence_a:ckpt:5",
+    );
+
+    await consumeProjectorMessages({
+      messages: s.iterable,
+      resolveOrgId: async () => "org_1",
+      enqueueProjectRun: async () => {},
+      enqueueProjectCheckpoint: async (input) => {
+        checkpoints.push(input);
+      },
+    });
+
+    expect(checkpoints).toEqual([
+      { runId: "run_1", fenceToken: "fence_a", headSeq: 5, orgId: "org_1" },
+    ]);
+    expect(s.acked).toHaveLength(1);
+  });
+
+  test("acks checkpoint without scheduling when handler is absent", async () => {
+    const s = source();
+    s.push(
+      "decopilot.stream.run_1",
+      { checkpoint: true, headSeq: 5 },
+      "run_1:fence_a:ckpt:5",
+    );
+
+    await consumeProjectorMessages({
+      messages: s.iterable,
+      resolveOrgId: async () => "org_1",
+      enqueueProjectRun: async () => {},
+      // no enqueueProjectCheckpoint
+    });
+
+    expect(s.acked).toHaveLength(1);
+  });
+
+  test("does not ack checkpoint when enqueue throws", async () => {
+    const s = source();
+    s.push(
+      "decopilot.stream.run_1",
+      { checkpoint: true, headSeq: 5 },
+      "run_1:fence_a:ckpt:5",
+    );
+
+    await consumeProjectorMessages({
+      messages: s.iterable,
+      resolveOrgId: async () => "org_1",
+      enqueueProjectRun: async () => {},
+      enqueueProjectCheckpoint: async () => {
+        throw new Error("dbos down");
+      },
+    });
+
+    expect(s.acked).toHaveLength(0);
+  });
+
+  test("ignores checkpoint with mismatched msgId headSeq", async () => {
+    const s = source();
+    const checkpoints: unknown[] = [];
+    s.push(
+      "decopilot.stream.run_1",
+      { checkpoint: true, headSeq: 5 },
+      "run_1:fence_a:ckpt:9", // msgId headSeq 9 != payload headSeq 5
+    );
+
+    await consumeProjectorMessages({
+      messages: s.iterable,
+      resolveOrgId: async () => "org_1",
+      enqueueProjectRun: async () => {},
+      enqueueProjectCheckpoint: async (input) => {
+        checkpoints.push(input);
+      },
+    });
+
+    expect(checkpoints).toEqual([]); // validation failed → not scheduled
+    expect(s.acked).toHaveLength(1); // but still acked (best-effort)
+  });
 });
 
 describe("runIdFromSubject", () => {

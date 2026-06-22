@@ -34,11 +34,15 @@ import {
 import { computeLagMs, recordLag } from "./projector-metrics";
 import {
   DECOPILOT_STREAM_NAME,
+  isCheckpointEnvelope,
   isDoneEnvelope,
   parseRunStreamMsgId,
   runIdFromSubject,
 } from "./projector-stream-messages";
-import type { ProjectorWorkflowInput } from "./projector-workflow";
+import type {
+  ProjectorCheckpointInput,
+  ProjectorWorkflowInput,
+} from "./projector-workflow";
 
 // Re-exported so existing importers can keep resolving `runIdFromSubject` from
 // this module; the implementation lives in the shared identity helper.
@@ -77,6 +81,15 @@ export interface ProjectorConsumerOptions {
   enqueueProjectRun: (
     input: ProjectorWorkflowInput & { orgId: string },
   ) => Promise<unknown>;
+  /**
+   * Schedule a non-terminal checkpoint projection pass. Optional: only wired
+   * when incremental projection is enabled (Task 10). When absent, checkpoint
+   * markers are acked-and-skipped (the terminal `done` pass still projects the
+   * whole run, so correctness is preserved when the feature is off).
+   */
+  enqueueProjectCheckpoint?: (
+    input: ProjectorCheckpointInput,
+  ) => Promise<unknown>;
 }
 
 /**
@@ -101,6 +114,29 @@ export async function consumeProjectorMessages(
         continue;
       }
       const payload = JSON.parse(decoder.decode(msg.data)) as unknown;
+      if (isCheckpointEnvelope(payload)) {
+        if (options.enqueueProjectCheckpoint) {
+          const parsed = parseRunStreamMsgId(msg.msgId);
+          if (
+            parsed &&
+            parsed.kind === "checkpoint" &&
+            parsed.runId === runId &&
+            parsed.headSeq === payload.headSeq
+          ) {
+            const orgId = await options.resolveOrgId(runId);
+            if (orgId) {
+              await options.enqueueProjectCheckpoint({
+                runId,
+                fenceToken: parsed.fenceToken,
+                headSeq: payload.headSeq,
+                orgId,
+              });
+            }
+          }
+        }
+        await msg.ack();
+        continue;
+      }
       if (!isDoneEnvelope(payload)) {
         await msg.ack();
         continue;

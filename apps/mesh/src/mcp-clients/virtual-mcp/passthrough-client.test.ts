@@ -290,6 +290,42 @@ describe("PassthroughClient", () => {
 
       expect(pt.getInstructions()).toBeUndefined();
     });
+
+    it("appends the skills catalog block after the base instructions", () => {
+      const conn = makeConnection("conn_sk", "Sk");
+      mockCreateLazyClient.mockReturnValue(makeMockClient() as any);
+
+      const pt = new PassthroughClient(
+        {
+          connections: [conn],
+          virtualMcp: makeVirtualMcp([makeVmcpConn("conn_sk")], {
+            instructions: "Be helpful",
+          }),
+          skillsBlock: "\n\n<available-skills>\nid\n</available-skills>",
+        },
+        mockCtx,
+      );
+
+      const out = pt.getInstructions();
+      expect(out?.startsWith("Be helpful")).toBe(true);
+      expect(out).toContain("<available-skills>");
+    });
+
+    it("serves the skills block alone (leading newlines trimmed) when there are no base instructions", () => {
+      const conn = makeConnection("conn_sk2", "Sk2");
+      mockCreateLazyClient.mockReturnValue(makeMockClient() as any);
+
+      const pt = new PassthroughClient(
+        {
+          connections: [conn],
+          virtualMcp: makeVirtualMcp([makeVmcpConn("conn_sk2")]),
+          skillsBlock: "\n\n<available-skills>\nid\n</available-skills>",
+        },
+        mockCtx,
+      );
+
+      expect(pt.getInstructions()?.startsWith("<available-skills>")).toBe(true);
+    });
   });
 
   describe("close", () => {

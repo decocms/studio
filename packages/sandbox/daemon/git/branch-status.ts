@@ -188,7 +188,15 @@ export class BranchStatusMonitor {
         // Pin discovery to repoDir so a parent .git (e.g. the host's
         // workspace tree containing sandboxes/<handle>/repo) can't
         // hijack the lookup and report the wrong branch.
-        env: { ...process.env, GIT_CEILING_DIRECTORIES: this.config.repoDir },
+        // GIT_OPTIONAL_LOCKS=0: status/rev-parse don't need to refresh the
+        // index cache, so skip the optional index.lock acquisition. Without
+        // this the monitor races publish()'s git-add/commit for the lock and
+        // causes "Unable to create index.lock" failures on every commit.
+        env: {
+          ...process.env,
+          GIT_CEILING_DIRECTORIES: this.config.repoDir,
+          GIT_OPTIONAL_LOCKS: "0",
+        },
       });
     } catch {
       return "";

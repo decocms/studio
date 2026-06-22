@@ -29,6 +29,7 @@ const BASE_THREAD: Thread = {
   metadata: {},
   message_storage_version: 1,
   link_transport: null,
+  projected_seq: 0,
 };
 
 const NOW = new Date("2025-01-01T01:00:00.000Z").getTime(); // 1hr after base

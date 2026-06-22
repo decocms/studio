@@ -8,9 +8,9 @@
  * title is discoverable on hover in both states.
  */
 
-import { Package } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.ts";
 import type { TabIcon } from "./resolve-tab-icon";
+import { TabIconGlyph } from "./tab-icon-glyph";
 
 export function HeaderTabButton({
   title,
@@ -38,24 +38,11 @@ export function HeaderTabButton({
       )}
     >
       <span className="flex size-5 items-center justify-center shrink-0">
-        <Icon icon={icon} />
+        <TabIconGlyph icon={icon} />
       </span>
       <span className="whitespace-nowrap text-sm font-medium leading-none">
         {title}
       </span>
     </button>
   );
-}
-
-function Icon({ icon }: { icon: TabIcon }) {
-  if (icon.kind === "component") {
-    const { Component } = icon;
-    return <Component className="size-4" />;
-  }
-  if (icon.kind === "url") {
-    return (
-      <img src={icon.src} alt="" className="size-4 rounded-sm object-cover" />
-    );
-  }
-  return <Package className="size-4" />;
 }

@@ -59,6 +59,25 @@ export class SqlThreadMessagePartStorage {
   }
 
   /**
+   * Highest `created_at` (epoch ms) already persisted for a run, or null when
+   * the run has no parts yet. The projector uses this as its PartEmitter base
+   * so a freshly-projected message sorts AFTER everything already in the thread
+   * (its own user message + prior turns) even when the durable projection runs
+   * far behind wall-clock — `created_at` is `base + seq`, and ordering across
+   * messages keys on the first part's `created_at`.
+   */
+  async maxCreatedAtMsForRun(runId: string): Promise<number | null> {
+    const row = await this.db
+      .selectFrom("thread_message_parts")
+      .select((eb) => eb.fn.max("created_at").as("max"))
+      .where("run_id", "=", runId)
+      .executeTakeFirst();
+    if (!row?.max) return null;
+    const ms = new Date(row.max as unknown as string).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  /**
    * Windowed read: page over the one-per-message `finish` anchors (newest
    * first), then fetch+fold the parts of exactly those messages. `total` is the
    * count of completed messages. The whole-thread fold is never executed.

@@ -39,6 +39,60 @@ describe("getArrayItemLabel", () => {
     const schema: SchemaProperty = { type: "object", title: "Routes" };
     expect(getArrayItemLabel(item, 0, schema)).toBe("Audience");
   });
+
+  test("falls through whitespace-only title to the section name", () => {
+    // Real bagaggio data: nested section with title " " (a single space).
+    const item = {
+      __resolveType: "site/sections/Content/BannerCarrouselDepartment.tsx",
+      layout: { numberOfSliders: { mobile: 3, desktop: 6 } },
+      title: " ",
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe(
+      "BannerCarrouselDepartment",
+    );
+  });
+
+  test("strips HTML from rich-text title fields", () => {
+    const item = {
+      matcher: "/garantia-vitalicia",
+      title:
+        '<h1 style="text-align: start"><span style="font-size: 38pt">Garantia Vitalícia</span></h1>',
+      description: "<p>Obtenha tranquilidade...</p>",
+    };
+    const schema: SchemaProperty = {
+      type: "object",
+      properties: {
+        matcher: { type: "string" },
+        title: { type: "string", format: "rich-text" },
+        description: { type: "string", format: "rich-text" },
+      },
+    };
+    expect(getArrayItemLabel(item, 0, schema)).toBe("Garantia Vitalícia");
+  });
+
+  test("falls through empty rich-text to next key", () => {
+    const item = { title: "<p></p>", name: "Fallback" };
+    const schema: SchemaProperty = {
+      type: "object",
+      properties: {
+        title: { type: "string", format: "rich-text" },
+        name: { type: "string" },
+      },
+    };
+    expect(getArrayItemLabel(item, 0, schema)).toBe("Fallback");
+  });
+
+  test("labels Lazy-wrapped item by its inner section name", () => {
+    const item = {
+      __resolveType: "website/sections/Rendering/Lazy.tsx",
+      section: {
+        __resolveType: "site/sections/Content/BannerCarrouselDepartment.tsx",
+      },
+    };
+    expect(getArrayItemLabel(item, 0, undefined)).toBe(
+      "BannerCarrouselDepartment",
+    );
+  });
 });
 
 describe("getArrayItemImageSrc", () => {

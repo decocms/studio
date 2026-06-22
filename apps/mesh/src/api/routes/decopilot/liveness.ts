@@ -12,3 +12,13 @@ export function isRunStuck(input: {
 }): boolean {
   return input.now - input.lastProgressAt > input.idleTimeoutMs;
 }
+
+export function effectiveLastProgressAt(input: {
+  persistedLastProgressAt: number | null;
+  currentRunStartedAt: number;
+}): number {
+  return Math.max(
+    input.persistedLastProgressAt ?? Number.NEGATIVE_INFINITY,
+    input.currentRunStartedAt,
+  );
+}

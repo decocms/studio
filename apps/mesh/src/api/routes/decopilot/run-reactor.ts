@@ -89,6 +89,7 @@ async function react(event: RunEvent, deps: RunReactorDeps): Promise<void> {
         status: "in_progress",
         run_config: event.runConfig ?? null,
         run_started_at: new Date().toISOString(),
+        last_progress_at: null,
       });
       const startedThread = await storage.get(event.taskId, event.orgId);
       sseHub.emit(

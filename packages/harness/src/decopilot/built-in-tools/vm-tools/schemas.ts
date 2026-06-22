@@ -79,12 +79,22 @@ export const BashInputSchema = z.object({
     .describe("Timeout in milliseconds (default 30000, max 120000)"),
 });
 
+export const SkillInputSchema = z.object({
+  id: z
+    .string()
+    .describe(
+      "Skill id from the <available-skills> catalog (e.g. 'core/slides' or " +
+        "'home/<name>').",
+    ),
+});
+
 export type ReadInput = z.infer<typeof ReadInputSchema>;
 export type WriteInput = z.infer<typeof WriteInputSchema>;
 export type EditInput = z.infer<typeof EditInputSchema>;
 export type GrepInput = z.infer<typeof GrepInputSchema>;
 export type GlobInput = z.infer<typeof GlobInputSchema>;
 export type BashInput = z.infer<typeof BashInputSchema>;
+export type SkillInput = z.infer<typeof SkillInputSchema>;
 
 export const READ_DESCRIPTION =
   "Read a file. For text files, returns content with line numbers (use offset " +
@@ -103,12 +113,18 @@ export const WRITE_DESCRIPTION =
   "and persist in the org's shared folder when written under " +
   "`org/<your-org-slug>/` (lowercase-kebab names):\n" +
   "- Presentation decks / slides → `org/<your-org-slug>/decks/<name>.html` " +
-  "— read the slides skill (`org/public/core/slides/SKILL.md`) FIRST " +
+  "— load the slides skill (`skill({ id: 'core/slides' })`) FIRST " +
   "and create the deck with its CLI.\n" +
   "- Standalone pages (landing pages, brand kits, one-pagers) → " +
   "`org/<your-org-slug>/pages/<name>.html` — single self-contained " +
   "HTML file.\n" +
   "HTML written anywhere else will not render a preview.";
+
+export const SKILL_DESCRIPTION =
+  "Load a skill's full instructions (its SKILL.md) by id, for the skills " +
+  "listed in <available-skills>. Read-only. Call this BEFORE applying a skill, " +
+  "then follow its SKILL.md (run its scripts via bash). Do NOT call it for a " +
+  "skill whose SKILL.md is already in the conversation.";
 
 export const EDIT_DESCRIPTION =
   "Perform exact string replacement in a file in the VM. " +
@@ -130,21 +146,21 @@ export const BASH_DESCRIPTION =
   "shared across runs; `ls org/` shows the actual name). Organize it " +
   "freely; check it before non-trivial work and record durable facts, " +
   "decisions, and learnings as small markdown files.\n" +
-  "- `org/public/<set>/` — curated read-only skill sets (file-handling: " +
-  "pptx, docx, xlsx, pdf, file-reading; plus slides + templating). Run " +
-  "`ls org/public/` for the sets and read " +
-  "`org/public/<set>/<name>/SKILL.md` before using a skill.\n" +
+  "- `org/public/<set>/` — curated read-only skill sets, mounted here. Your " +
+  "skills are listed in the <available-skills> catalog; load one with the " +
+  "`skill` tool before applying it (don't `ls org/public/` to discover them).\n" +
   "- `org/upload/` — files the user attached to this conversation are " +
   "already here; read them directly.\n" +
   "- `org/output/` — write deliverables here; they are shared back to the " +
   "organization under this run's folder.\n\n" +
   "To make a presentation/slides/deck, ALWAYS use the `slides` skill " +
-  "(HTML decks with a live editable preview) — read its SKILL.md first. " +
+  "(HTML decks with a live editable preview) — load it with " +
+  "`skill({ id: 'core/slides' })` first. " +
   "`pptx` is NOT for this: it only reads/inspects existing `.pptx` files, " +
   "and is the right tool only when the user explicitly needs a PowerPoint " +
   "`.pptx` file as input or output.";
 
-// read/grep/glob are non-mutating; write/edit/bash mutate.
+// read/grep/glob/skill are non-mutating; write/edit/bash mutate.
 export const TOOL_APPROVAL = {
   read: false,
   write: true,
@@ -152,4 +168,5 @@ export const TOOL_APPROVAL = {
   grep: false,
   glob: false,
   bash: true,
+  skill: false,
 } as const;

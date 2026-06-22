@@ -26,8 +26,13 @@ class StudioToolError extends Error {
 /**
  * Call a builtin tool over REST. `orgSlug` scopes the org; `name` is the tool
  * identifier (also the permission identifier checked server-side).
+ *
+ * Exported for non-hook callers (e.g. shared React Query `queryOptions` used by
+ * parallel-prefetch batches and by the shell, which runs before
+ * `useProjectContext` is available and so can't call `useStudioTools`). In a
+ * component/hook prefer `useStudioTools().call`.
  */
-async function callStudioTool<N extends ToolName>(
+export async function callStudioTool<N extends ToolName>(
   orgSlug: string,
   name: N,
   input: ToolIO[N]["input"],

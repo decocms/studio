@@ -69,14 +69,22 @@ server {
     proxy_send_timeout 3600s;
   }
 
-  # Hashed assets are content-addressed → cache forever.
-  # No `always`: the immutable header must apply only to 2xx/3xx, never to the
-  # =404 below. With `always`, a chunk that's briefly missing during a rollout
-  # returns `404 + immutable, max-age=1y`, which Cloudflare/browsers then cache
-  # for a year — poisoning that asset URL permanently (stale-chunk loop).
+  # Hashed assets are content-addressed → cache forever WHEN PRESENT (no
+  # `always`: the immutable header applies to the 2xx only). A chunk that's
+  # briefly missing during a rollout (old/new pods both behind the LB, each
+  # holding only its own bundle) must return a NON-cacheable 404. Cloudflare
+  # negative-caches bare 404s for 3 minutes by default, so a single skewed
+  # request poisons that chunk URL for everyone behind the colo for minutes —
+  # trapping the SPA on the stale-chunk screen. The explicit `no-store` on the
+  # miss (below) makes Cloudflare BYPASS instead, so it self-heals immediately
+  # once the rollout settles.
   location /assets/ {
+    try_files $uri @asset_missing;
     add_header Cache-Control "public, max-age=31536000, immutable";
-    try_files $uri =404;
+  }
+  location @asset_missing {
+    add_header Cache-Control "no-store" always;
+    return 404;
   }
 
   # SPA fallback. Clickjacking + no-cache guards live here (not server-level) so

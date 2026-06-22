@@ -4,6 +4,7 @@ import type { JetStreamClient } from "@nats-io/jetstream";
 import {
   readProjectorRunLog,
   reconstructProjectorRun,
+  reconstructProjectorRunRange,
   type ProjectorRetainedMessage,
 } from "./projector-run-log";
 
@@ -194,6 +195,69 @@ function readerMsg(
     headers: { get: (name: string) => all[name] },
   };
 }
+
+// ---------------------------------------------------------------------------
+// reconstructProjectorRunRange — contiguous-range fold, no `done` required
+// ---------------------------------------------------------------------------
+
+describe("reconstructProjectorRunRange", () => {
+  const mk = (seq: number, p: unknown): ProjectorRetainedMessage => ({
+    subject: "decopilot.stream.r1",
+    msgId: `r1:f1:${seq}`,
+    data: new TextEncoder().encode(JSON.stringify({ p })),
+  });
+
+  test("folds a contiguous range and reports lastContiguousSeq", () => {
+    const r = reconstructProjectorRunRange({
+      runId: "r1",
+      fenceToken: "f1",
+      fromSeq: 0,
+      toSeq: 2,
+      messages: [
+        mk(1, { type: "text-start", id: "t" }),
+        mk(2, { type: "text-delta", id: "t", delta: "hi" }),
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.chunks.length).toBe(2);
+      expect(r.lastContiguousSeq).toBe(2);
+    }
+  });
+
+  test("stops at a gap, returns the contiguous prefix end (no done required)", () => {
+    const r = reconstructProjectorRunRange({
+      runId: "r1",
+      fenceToken: "f1",
+      fromSeq: 0,
+      toSeq: 3,
+      messages: [
+        mk(1, { type: "text-start", id: "t" }),
+        mk(3, { type: "text-delta", id: "t", delta: "x" }),
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.lastContiguousSeq).toBe(1);
+      expect(r.chunks.length).toBe(1);
+    }
+  });
+
+  test("empty when fromSeq == toSeq", () => {
+    const r = reconstructProjectorRunRange({
+      runId: "r1",
+      fenceToken: "f1",
+      fromSeq: 2,
+      toSeq: 2,
+      messages: [],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.lastContiguousSeq).toBe(2);
+      expect(r.chunks.length).toBe(0);
+    }
+  });
+});
 
 describe("readProjectorRunLog", () => {
   test("returns reconstructed chunks and unsubscribes once the run is complete", async () => {

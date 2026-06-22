@@ -347,6 +347,94 @@ test.describe("harness conformance — relay driver", () => {
     }
   });
 
+  test("relay persists the assistant message + flips status SYNCHRONOUSLY (no projector wait), ordered after the user message, never empty", async ({
+    authedPage,
+  }) => {
+    // The regression bundle: before the live-persistence fix the relay path
+    // wrote nothing — the assistant message + terminal status came only from
+    // the async projector, so a reload between stream-end and projection saw
+    // the message missing ("disappears"), the status stuck pending ("status
+    // too late"), and a content-less finish folded to an empty bubble. This
+    // case asserts ALL durable effects are present the instant the relay POST
+    // returns 200, with NO polling for the projector.
+    test.setTimeout(CASE_TIMEOUT_MS);
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
+    try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
+      const orgId = await orgIdForSlug(db, orgSlug);
+      const { agentId, threadId } = await createPullThread(
+        api,
+        db,
+        orgSlug,
+        orgId,
+      );
+      const { runId, workItem } = await dispatchAndClaimWorkItem(
+        api,
+        orgSlug,
+        agentId,
+        threadId,
+        daemon,
+        "say hello",
+      );
+
+      const messageId = `msg_sync_${Date.now()}`;
+      const text = `sync-persist-marker-${Date.now()}`;
+      const { body, lineCount } = buildTurnRelayBody({ messageId, text });
+      const res = await postRelay(
+        api,
+        orgSlug,
+        runId,
+        workItem.runFenceToken,
+        body,
+      );
+      expect(res.status()).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: true, lastSeq: lineCount });
+
+      // ── No poll: the /chunks handler awaits the live consume (persistence +
+      // status flip) before responding, so everything is durable RIGHT NOW. ──
+
+      // 1. The assistant message persisted: a text part + a finish anchor.
+      const parts = await fetchParts(db, runId);
+      const assistantKinds = parts
+        .filter((p) => p.role === "assistant")
+        .map((p) => p.kind);
+      expect(assistantKinds).toContain("text");
+      expect(assistantKinds).toContain("finish");
+
+      // 2. The run status already flipped to completed (not waiting on the
+      //    projector) — the "status too late" bug.
+      expect(await fetchThreadStatus(db, runId)).toBe("completed");
+
+      // 3. Ordering: the user message's parts sort strictly before the
+      //    assistant's — the "out of order" bug. Assert at the DB level
+      //    (created_at), independent of any read-path cache.
+      const ordered = await db.query<{ role: string; created_at: string }>(
+        `SELECT role, MIN(created_at) AS created_at FROM thread_message_parts
+           WHERE run_id = $1 GROUP BY role ORDER BY created_at`,
+        [runId],
+      );
+      const roleOrder = ordered.rows.map((r) => r.role);
+      expect(roleOrder).toEqual(["user", "assistant"]);
+
+      // 4. Never empty: the folded assistant message has a renderable part
+      //    carrying the relayed text (no blank bubble).
+      const items = await listMessages(api, orgSlug, threadId);
+      const userIdx = items.findIndex((m) => m.role === "user");
+      const assistantIdx = items.findIndex((m) => m.role === "assistant");
+      expect(userIdx).toBeGreaterThanOrEqual(0);
+      expect(assistantIdx).toBeGreaterThan(userIdx);
+      const assistant = items[assistantIdx]!;
+      expect(assistant.parts.length).toBeGreaterThan(0);
+      expect(JSON.stringify(assistant.parts)).toContain(text);
+    } finally {
+      await daemon?.close();
+      await db.end();
+    }
+  });
+
   test("auto-title persists exactly once AND only when the thread title is default", async ({
     authedPage,
   }) => {

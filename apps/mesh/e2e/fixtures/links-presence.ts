@@ -9,11 +9,12 @@
  * no heartbeat bucket.
  */
 
+import { readFileSync } from "node:fs";
 import { sleep } from "@decocms/std";
 import { serve, type TunnelServer } from "@decocms/tunnel";
 import { expect, type APIRequestContext } from "@playwright/test";
 import { connect } from "@nats-io/transport-node";
-import type { NatsConnection } from "@nats-io/nats-core";
+import { credsAuthenticator, type NatsConnection } from "@nats-io/nats-core";
 import { buildUserTunnelHostname } from "../../src/links/tunnel-host";
 import type { WorkItem } from "../../src/links/link-work-item";
 import { workItemSchema } from "../../src/links/link-work-item";
@@ -39,7 +40,17 @@ export interface TunnelLinkDaemon {
 }
 
 async function openNats(): Promise<NatsConnection> {
-  return await connect({ servers: process.env.NATS_URL ?? DEFAULT_NATS_URL });
+  // CI provisions an unauthenticated NATS (no NATS_CREDS). A local `deco
+  // services` / dev stack runs NATS in operator mode, where the same creds file
+  // the cluster uses (NATS_CREDS) is required — honor it so the relay suite is
+  // runnable against the local dev NATS too.
+  const credsPath = process.env.NATS_CREDS;
+  return await connect({
+    servers: process.env.NATS_URL ?? DEFAULT_NATS_URL,
+    ...(credsPath
+      ? { authenticator: credsAuthenticator(readFileSync(credsPath)) }
+      : {}),
+  });
 }
 
 /**

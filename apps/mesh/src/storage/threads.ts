@@ -8,7 +8,7 @@
 import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@/shared/utils/generate-id";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
-import type { ThreadStoragePort } from "./ports";
+import type { ThreadStoragePort, ThreadUpdateData } from "./ports";
 import { SqlThreadMessagePartStorage } from "./thread-message-parts";
 import type {
   Database,
@@ -79,12 +79,16 @@ export class OrgScopedThreadStorage {
     return this.inner.get(id, this.requireOrg());
   }
 
-  update(id: string, data: Partial<Thread>): Promise<Thread> {
+  update(id: string, data: ThreadUpdateData): Promise<Thread> {
     return this.inner.update(id, this.requireOrg(), data);
   }
 
   completeRunIfNotCompleted(id: string): Promise<Thread | null> {
     return this.inner.completeRunIfNotCompleted(id, this.requireOrg());
+  }
+
+  markRunFailed(id: string, reason: string, kind: string): Promise<void> {
+    return this.inner.markRunFailed(id, this.requireOrg(), reason, kind);
   }
 
   forceFailIfInProgress(id: string): Promise<boolean> {
@@ -127,10 +131,6 @@ export class OrgScopedThreadStorage {
       this.requireOrg(),
       virtualMcpIds,
     );
-  }
-
-  saveMessages(data: ThreadMessage[]): Promise<void> {
-    return this.inner.saveMessages(data, this.requireOrg());
   }
 
   /** Stamp `last_progress_at = now()` (progress-liveness heartbeat). */
@@ -230,6 +230,32 @@ export class OrgScopedThreadStorage {
   getAckedSeq(id: string): Promise<number> {
     return this.inner.getAckedSeq(id, this.requireOrg());
   }
+
+  /**
+   * Read the current incremental-projection cursor for a thread.
+   * Returns 0 when the column is null (nothing projected yet).
+   */
+  getProjectedSeq(id: string): Promise<number> {
+    return this.inner.getProjectedSeq(id, this.requireOrg());
+  }
+
+  /**
+   * Advance the incremental-projection cursor using a fence + monotonic CAS.
+   * Only writes when `run_fence_token` matches AND `newSeq > projected_seq`.
+   * Returns the resulting `projected_seq` (unchanged if the guard failed).
+   */
+  advanceProjectedSeq(
+    id: string,
+    fenceToken: string,
+    newSeq: number,
+  ): Promise<number> {
+    return this.inner.advanceProjectedSeq(
+      id,
+      this.requireOrg(),
+      fenceToken,
+      newSeq,
+    );
+  }
 }
 
 // ============================================================================
@@ -323,7 +349,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
   async update(
     id: string,
     organizationId: string,
-    data: Partial<Thread>,
+    data: ThreadUpdateData,
   ): Promise<Thread> {
     const now = new Date().toISOString();
 
@@ -359,6 +385,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     }
     if (data.run_started_at !== undefined) {
       updateData.run_started_at = data.run_started_at;
+    }
+    if (data.last_progress_at !== undefined) {
+      updateData.last_progress_at = data.last_progress_at;
     }
     if (data.metadata !== undefined) {
       updateData.metadata = JSON.stringify(data.metadata);
@@ -454,9 +483,11 @@ export class SqlThreadStorage implements ThreadStoragePort {
 
   /**
    * Cross-org scan for runs stuck `in_progress` past `cutoffIso`. Liveness is
-   * `COALESCE(last_progress_at, run_started_at)`: last_progress_at is NULL until
-   * the first streamed chunk, so run_started_at is the floor that keeps a
-   * brand-new cold-starting run from being reaped before it produces output.
+   * `GREATEST(last_progress_at, run_started_at)`: last_progress_at is NULL until
+   * the first streamed chunk, and can also belong to a previous turn if a row was
+   * written before the RUN_STARTED reset. The newest timestamp is the liveness
+   * floor that keeps a brand-new cold-starting run from being reaped before it
+   * produces output.
    * Used ONLY by the cross-pod thread-gate reaper (see thread-gate-reaper.ts),
    * which is why it is not org-scoped — it must sweep every org.
    */
@@ -468,7 +499,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .select(["id", "organization_id"])
       .where("status", "=", "in_progress")
       .where(
-        sql<boolean>`coalesce(last_progress_at, run_started_at) < ${cutoffIso}::timestamptz`,
+        sql<boolean>`greatest(coalesce(last_progress_at, '-infinity'::timestamptz), coalesce(run_started_at, '-infinity'::timestamptz)) < ${cutoffIso}::timestamptz`,
       )
       .execute();
     return rows.map((r) => ({ id: r.id, organizationId: r.organization_id }));
@@ -669,77 +700,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       });
     }
     return result;
-  }
-
-  /**
-   * Upserts thread messages by id.
-   * Inserts new messages; updates existing rows (by id) with parts, metadata, role, updated_at.
-   * PostgreSQL only.
-   */
-  async saveMessages(
-    data: ThreadMessage[],
-    organizationId: string,
-  ): Promise<void> {
-    const now = new Date().toISOString();
-    const taskId = data[0]?.thread_id;
-    if (!taskId) {
-      throw new Error("thread_id is required when creating multiple messages");
-    }
-    const thread = await this.get(taskId, organizationId);
-    if (!thread) {
-      throw new Error("Thread not found or access denied");
-    }
-    // Deduplicate by id - PostgreSQL ON CONFLICT cannot affect same row twice in one INSERT.
-    // Also detect duplicate ids with conflicting thread_ids to reject corrupt batches early.
-    const byId = new Map<string, ThreadMessage>();
-    for (const m of data) {
-      const existing = byId.get(m.id);
-      if (existing && existing.thread_id !== m.thread_id) {
-        throw new Error(
-          `Duplicate message id "${m.id}" with conflicting thread_ids: "${existing.thread_id}" vs "${m.thread_id}"`,
-        );
-      }
-      byId.set(m.id, m);
-    }
-    const unique = [...byId.values()];
-    // Validate all messages target the same thread to prevent data corruption.
-    const mismatchedMessage = unique.find((m) => m.thread_id !== taskId);
-    if (mismatchedMessage) {
-      throw new Error(
-        `All messages must target the same thread. Expected thread_id "${taskId}", but message "${mismatchedMessage.id}" has thread_id "${mismatchedMessage.thread_id}"`,
-      );
-    }
-    const rows = unique.map((message) => ({
-      id: message.id,
-      thread_id: taskId,
-      metadata: message.metadata ? JSON.stringify(message.metadata) : null,
-      parts: JSON.stringify(message.parts),
-      role: message.role,
-      created_at: message.created_at ?? now,
-      updated_at: now,
-    }));
-
-    await this.db.transaction().execute(async (trx) => {
-      await trx
-        .insertInto("thread_messages")
-        .values(rows)
-        .onConflict((oc) =>
-          oc.column("id").doUpdateSet((eb) => ({
-            metadata: eb.ref("excluded.metadata"),
-            parts: eb.ref("excluded.parts"),
-            role: eb.ref("excluded.role"),
-            updated_at: eb.ref("excluded.updated_at"),
-          })),
-        )
-        .execute();
-
-      await trx
-        .updateTable("threads")
-        .set({ updated_at: now })
-        .where("id", "=", taskId)
-        .where("organization_id", "=", organizationId)
-        .execute();
-    });
   }
 
   /**
@@ -1010,6 +970,48 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return row?.run_acked_seq ?? 0;
   }
 
+  /**
+   * Read the current incremental-projection cursor for a thread.
+   * Returns 0 when the column is null (nothing projected yet).
+   */
+  async getProjectedSeq(id: string, organizationId: string): Promise<number> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select("projected_seq")
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return row?.projected_seq ?? 0;
+  }
+
+  /**
+   * Advance the incremental-projection cursor using a fence + monotonic CAS.
+   *
+   * Sets `projected_seq = newSeq` only when:
+   *   - `id` + `organization_id` match the row
+   *   - `run_fence_token = fenceToken` (guards against stale runs)
+   *   - `projected_seq < newSeq` (monotonic — never regresses)
+   *
+   * Returns the resulting `projected_seq` after the attempt (re-read via
+   * `getProjectedSeq`), so the caller can detect when the guard fired.
+   */
+  async advanceProjectedSeq(
+    id: string,
+    organizationId: string,
+    fenceToken: string,
+    newSeq: number,
+  ): Promise<number> {
+    await this.db
+      .updateTable("threads")
+      .set({ projected_seq: newSeq, updated_at: new Date().toISOString() })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("run_fence_token", "=", fenceToken)
+      .where("projected_seq", "<", newSeq)
+      .execute();
+    return this.getProjectedSeq(id, organizationId);
+  }
+
   // ==========================================================================
   // Private Helper Methods
   // ==========================================================================
@@ -1037,6 +1039,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     hidden: boolean | number | null;
     message_storage_version?: number | null;
     link_transport?: string | null;
+    projected_seq?: number | null;
   }): Thread {
     let metadata: ThreadMetadata = {};
     if (row.metadata != null) {
@@ -1082,6 +1085,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
       // threads keep reading from `thread_messages`.
       message_storage_version: row.message_storage_version ?? 1,
       link_transport: row.link_transport ?? null,
+      // Defaults to 0 for pre-migration rows (column absent/null).
+      projected_seq: row.projected_seq ?? 0,
     };
   }
 

@@ -70,8 +70,8 @@ describe("shouldAutoStart", () => {
     expect(shouldAutoStart({ ...base, userId: null })).toBe(false);
   });
 
-  test("no branch → false", () => {
-    expect(shouldAutoStart({ ...base, branch: null })).toBe(false);
+  test("no branch → true (server generates branch on SANDBOX_START)", () => {
+    expect(shouldAutoStart({ ...base, branch: null })).toBe(true);
   });
 
   test("vmEntry already present → false", () => {

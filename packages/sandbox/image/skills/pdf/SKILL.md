@@ -1,3 +1,8 @@
+---
+name: pdf
+description: Read and extract text from .pdf files, page by page. Use when the user uploads or references a PDF to read or summarize.
+---
+
 # pdf — PDF documents
 
 Use this skill to read text from `.pdf` files.

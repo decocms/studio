@@ -37,21 +37,12 @@ import {
   type ReactNode,
 } from "react";
 import { Chat, useChatTask } from "@/web/components/chat/index";
+import { useChatPrefs } from "@/web/components/chat/context";
 import { ChatPanel } from "@/web/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
-import { StudioSidebarMobile } from "@/web/components/sidebar";
-import { useSidebar } from "@deco/ui/components/sidebar.tsx";
-import { Sheet, SheetContent, SheetTitle } from "@deco/ui/components/sheet.tsx";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
-import {
-  AlertCircle,
-  Edit05,
-  Loading01,
-  Menu01,
-  MessageCircle01,
-} from "@untitledui/icons";
-import { cn } from "@deco/ui/lib/utils.js";
+import { AlertCircle, Loading01 } from "@untitledui/icons";
 import {
   getWellKnownDecopilotVirtualMCP,
   useProjectContext,
@@ -71,6 +62,7 @@ import { Toolbar } from "./toolbar";
 import { ChatMainPanelGroup } from "./chat-main-panel-group";
 import { ToggleButtons } from "./toggle-buttons";
 import { MainPanelTabsBar } from "@/web/layouts/main-panel-tabs/main-panel-tabs-bar";
+import { MobileMainPanelTabSelect } from "@/web/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { MainPanelWithDrawer } from "@/web/layouts/main-panel-tabs/main-panel-with-drawer";
 import { VirtualMcpHeaderInfo } from "../../views/virtual-mcp/header-info.tsx";
 import { SandboxEventsProvider } from "@/web/components/sandbox/hooks/sandbox-events-context.tsx";
@@ -133,69 +125,6 @@ function NewTaskBridge({
   return null;
 }
 
-function MobileToolbar({
-  onOpenSidebar,
-  virtualMcpId,
-  taskId,
-  mainOpen,
-  onToggleMain,
-  onNewTask,
-  entity,
-  hasActiveGithubRepo,
-}: {
-  onOpenSidebar: () => void;
-  virtualMcpId: string;
-  taskId: string;
-  mainOpen: boolean;
-  onToggleMain: () => void;
-  onNewTask: () => void;
-  entity: VirtualMCPEntity | null;
-  hasActiveGithubRepo: boolean;
-}) {
-  return (
-    <div className="shrink-0 flex items-center gap-1 px-2 h-12 bg-background border-b border-border">
-      <button
-        type="button"
-        onClick={onOpenSidebar}
-        className="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/60 hover:bg-accent hover:text-foreground transition-colors"
-        aria-label="Open menu"
-      >
-        <Menu01 size={20} />
-      </button>
-      <div className="flex-1 min-w-0 overflow-x-auto [scrollbar-width:none]">
-        <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
-      </div>
-      <div className="flex items-center gap-0.5 shrink-0">
-        {entity && hasActiveGithubRepo ? (
-          <VirtualMcpHeaderInfo virtualMcp={entity} inline />
-        ) : null}
-        <button
-          type="button"
-          onClick={onToggleMain}
-          aria-pressed={!mainOpen}
-          className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-md transition-colors",
-            !mainOpen
-              ? "bg-accent text-foreground"
-              : "text-foreground/60 hover:bg-accent hover:text-foreground",
-          )}
-          title="Chat"
-        >
-          <MessageCircle01 size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={onNewTask}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground/60 hover:bg-accent hover:text-foreground transition-colors"
-          title="New task"
-        >
-          <Edit05 size={16} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // VmEventsBridge — thin branch resolver. Derives (branch, shouldConnect) and
 // mounts SandboxEventsProvider + SandboxLifecycleProvider. Lives inside
@@ -216,6 +145,7 @@ function VmEventsBridge({
   children: ReactNode;
 }) {
   const { currentBranch } = useChatTask();
+  const { pendingSandboxProviderKind } = useChatPrefs();
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
@@ -236,7 +166,14 @@ function VmEventsBridge({
           BranchMapEntryLike
         >)
       : {};
-  const vmEntry = selectVmEntry(branchMap);
+  // Use the resolved provider kind to pick the matching entry — same logic as
+  // SandboxLifecycleProvider so the SSE previewUrl and the lifecycle vmEntry
+  // always agree on which sandbox is active.
+  const vmEntry = pendingSandboxProviderKind
+    ? ((branchMap[pendingSandboxProviderKind] as
+        | BranchMapEntryLike
+        | undefined) ?? null)
+    : selectVmEntry(branchMap);
   const previewUrl = vmEntry?.previewUrl ?? null;
   const shouldConnect = Object.keys(branchMap).length > 0 || isStartPending;
 
@@ -253,6 +190,7 @@ function VmEventsBridge({
         userId={userId ?? null}
         hasActiveGithubRepo={hasActiveGithubRepo}
         sandboxMap={sandboxMap}
+        sandboxProviderKind={pendingSandboxProviderKind}
       >
         {children}
       </SandboxLifecycleProvider>
@@ -309,9 +247,6 @@ function AgentInsetProvider() {
     orgSlug,
     isAgentRoute: true,
   });
-
-  const { setOpenMobile, openMobile: mobileSidebarOpen } = useSidebar();
-  const setMobileSidebarOpen = setOpenMobile;
 
   const onNewTask = useRef<(() => void) | null>(null);
 
@@ -392,28 +327,6 @@ function AgentInsetProvider() {
 
   // Mobile layout — unchanged semantics, just inlined here for clarity.
   if (isMobile) {
-    const mobileSidebarSheet = (
-      <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
-        <SheetContent
-          side="left"
-          hideCloseButton
-          className="w-[calc(100vw-3rem)] sm:max-w-md! p-0"
-        >
-          <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <div className="flex h-full">
-            <div
-              className="w-full bg-sidebar flex flex-col overflow-y-auto group/sidebar"
-              data-state="expanded"
-            >
-              <StudioSidebarMobile
-                onClose={() => setMobileSidebarOpen(false)}
-              />
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-    );
-
     return (
       <InsetContext value={insetContextValue}>
         <div className="flex flex-col flex-1 min-w-0 bg-background min-h-0">
@@ -435,16 +348,20 @@ function AgentInsetProvider() {
                 key={layout.taskId}
                 taskId={layout.taskId}
               >
-                <MobileToolbar
-                  onOpenSidebar={() => setMobileSidebarOpen(true)}
-                  virtualMcpId={chatVirtualMcpId}
-                  taskId={layout.taskId}
-                  mainOpen={layout.mainOpen}
-                  onToggleMain={layout.toggleMain}
-                  onNewTask={layout.createNewTask}
-                  entity={entity}
-                  hasActiveGithubRepo={hasActiveGithubRepo}
-                />
+                <Toolbar.Toggles>
+                  <ToggleButtons
+                    chatOpen={!layout.mainOpen}
+                    toggleChat={layout.toggleMain}
+                    onNewTask={layout.createNewTask}
+                    newTaskFirst
+                  />
+                </Toolbar.Toggles>
+                <Toolbar.Tabs>
+                  <MobileMainPanelTabSelect
+                    virtualMcpId={chatVirtualMcpId}
+                    taskId={layout.taskId}
+                  />
+                </Toolbar.Tabs>
                 <Suspense fallback={<Chat.Skeleton />}>
                   <div className="flex-1 min-h-0 overflow-hidden">
                     {layout.mainOpen ? (
@@ -477,7 +394,6 @@ function AgentInsetProvider() {
                   </div>
                 </Suspense>
               </Chat.ActiveTaskProvider>
-              {mobileSidebarSheet}
             </VmEventsBridge>
           </Chat.Provider>
         </div>

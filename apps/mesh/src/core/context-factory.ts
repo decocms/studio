@@ -667,7 +667,16 @@ async function authenticateRequest(
             .where("organization.slug", "=", orgSlugHint)
             .executeTakeFirst();
         }
-        return base.executeTakeFirst();
+        // No org hint — only resolve when the user has exactly one membership.
+        // For multi-org users without a hint, return undefined so callers get
+        // no org context instead of a non-deterministic pick (the previous
+        // .executeTakeFirst() without ORDER BY could return any membership row
+        // depending on PostgreSQL's physical row ordering).
+        return base
+          .orderBy("member.createdAt", "asc")
+          .limit(2)
+          .execute()
+          .then((rows) => (rows.length === 1 ? rows[0] : undefined));
       });
 
       if (isOrgArchived({ metadata: membership?.orgMetadata })) {
@@ -1391,10 +1400,9 @@ export async function createStudioContextFactory(
         : null;
 
     // Hoist inline data: media to object storage on connection/virtual-MCP
-    // writes (and out of thread message parts) so base64 blobs never land on a
-    // row or get re-inlined into COLLECTION_*_LIST results. Decorate here — not
-    // in the storage classes — because those are singletons without
-    // objectStorage/org slug.
+    // writes so base64 blobs never land on a row or get re-inlined into
+    // COLLECTION_*_LIST results. Decorate here — not in the storage classes —
+    // because those are singletons without objectStorage/org slug.
     decorateStorageWithAssetHoisting(storage, {
       objectStorage,
       baseUrl,

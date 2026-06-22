@@ -73,10 +73,12 @@ import {
   classifyStreamError,
   stringifyError,
 } from "@decocms/harness/decopilot/stream-error";
+import { isCliHarness } from "@decocms/harness/cli-harness";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { loadAndMergeMessages } from "./conversation";
 import { PartEmitter } from "./part-emitter";
+import { createAssistantEmitter } from "./run-persistence";
 import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import type { ToolApprovalLevel } from "./helpers";
@@ -93,6 +95,7 @@ import {
 } from "./run-status-stage";
 import type {
   HarnessStreamConsumerHooks,
+  HarnessStreamPersistence,
   HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
 import { ingestRun } from "./ingest-run";
@@ -107,6 +110,7 @@ import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
+import { computeCliDelta, resolveCliSessionRef } from "./cli-session-messages";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
 import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
@@ -226,6 +230,12 @@ export interface AgentSandboxUiStreamInput {
    *  a NO-OP here — the durable projector is the sole title writer. */
   title: HarnessStreamTitleOptions;
   hooks: HarnessStreamConsumerHooks;
+  /** Persists assistant parts live (the run's PartEmitter for v2 threads).
+   *  Omitted → no-op (v1 legacy). See `IngestRunDeps.persistence`. */
+  persistence?: HarnessStreamPersistence;
+  /** Deterministic id for a synthesized error message (`error-${runId}`) so the
+   *  live write and the projector backstop dedupe it. */
+  errorMessageId?: string;
 }
 
 /**
@@ -262,10 +272,12 @@ export function buildAgentSandboxUiStream(
             runId: input.runId,
             fenceToken: input.fenceToken,
             chunks: seqChunks(),
+            errorMessageId: input.errorMessageId,
           },
           {
             streamBuffer: input.streamBuffer,
             hooks: input.hooks,
+            persistence: input.persistence,
             title: {
               ...input.title,
               // Projector owns the title write — neutralize the inline one.
@@ -341,35 +353,6 @@ export function buildCodingWorkspaceInput(input: {
     cwd: input.workspace.cwd,
     workspaceKind: repo ? "github" : "unknown",
   };
-}
-
-/**
- * Find the last coding-agent session id stored on a prior assistant
- * message. Today only claude-code uses this — codex spawns a new process
- * per request, so its threadId can't be resumed. The provider filter
- * guards against picking up a codex threadId when the user switches
- * provider mid-thread.
- */
-function lookupResumeSessionRef(
-  messages: ChatMessage[],
-  harnessId: HarnessId,
-): string | undefined {
-  if (harnessId !== "claude-code") return undefined;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    const meta = msg?.metadata as {
-      codingAgentSessionId?: string;
-      codingAgentProvider?: string;
-    };
-    if (
-      msg?.role === "assistant" &&
-      meta?.codingAgentSessionId &&
-      meta?.codingAgentProvider === "claude-code"
-    ) {
-      return meta.codingAgentSessionId;
-    }
-  }
-  return undefined;
 }
 
 async function resolveSecretModelSource(
@@ -1159,6 +1142,24 @@ async function prepareRun(
       }
     }
 
+    // The assistant message is persisted by a SEPARATE emitter from the user
+    // message's. Its part seqs MUST start at 0 — identical to the durable
+    // projector's fresh emitter — so the live rows (`run:msg:0,1,2`) and the
+    // projector's have the SAME ids and `ON CONFLICT` dedupes them. Reusing the
+    // user-message emitter made the assistant seqs continue after the user's
+    // (`run:msg:2,3,4`), which diverged from the projector's (`run:msg:0,1,2`)
+    // → the same message persisted twice (duplicate/"weird" render). base =
+    // max-existing-created_at + 1 keeps the assistant ordered after the user
+    // message and matches the projector's base, so live wins via first-write.
+    let assistantEmitter: PartEmitter | null = null;
+    if (isV2) {
+      assistantEmitter = await createAssistantEmitter({
+        messageParts: ctx.storage.threads.messageParts(),
+        orgId: input.organizationId,
+        runId: mem.thread.id,
+      });
+    }
+
     const pendingOps: Promise<void>[] = [];
 
     // Pre-load conversation (no system messages — those are built separately)
@@ -1171,7 +1172,17 @@ async function prepareRun(
       windowSize,
     );
 
-    const resumeSessionRef = lookupResumeSessionRef(allMessages, harnessId);
+    // CLI-harness delta + resume only holds on the long-lived desktop daemon:
+    // the on-disk session survives between turns *only* on user-desktop. On any
+    // other sandbox kind there is no persistent rollout to resume, so fall back
+    // to the full-transcript path (pre-resume behavior) rather than silently
+    // dropping history or pointing the CLI at a session that isn't there.
+    const cliResumable =
+      isCliHarness(harnessId) && target.sandboxProviderKind === "user-desktop";
+
+    const resumeSessionRef = cliResumable
+      ? resolveCliSessionRef(allMessages, harnessId)
+      : undefined;
 
     const organization = ctx.organization!;
     const streamStartAt = Date.now();
@@ -1197,7 +1208,30 @@ async function prepareRun(
     // `toModelOutput` handlers) runs inside the decopilot harness itself; we
     // forward materialized UIMessages so each harness decides how to convert
     // them.
-    const materializedMessages = await resolveStorageRefs(allMessages, ctx);
+    // CLI harnesses (codex, claude-code) resume an on-disk session and only
+    // need the new user message(s); decopilot — and any CLI harness not on
+    // user-desktop — still gets the full transcript (see `cliResumable`).
+    const messagesForHarness = cliResumable
+      ? computeCliDelta(allMessages, harnessId)
+      : allMessages;
+
+    // A resumable CLI turn must carry at least the new user message(s). An empty
+    // delta means a resumed turn whose history tail is already a completed
+    // assistant anchor — there is no new user input to forward. Sending zero
+    // messages would drive an empty CLI turn (or a downstream "empty prompt"
+    // crash the stale-session guard would not catch), so surface a defined
+    // permanent error instead of silently degrading.
+    if (cliResumable && messagesForHarness.length === 0) {
+      throw new PermanentRunError(
+        "empty_request",
+        "No new user message to send to the CLI harness (resumed turn with empty delta).",
+      );
+    }
+
+    const materializedMessages = await resolveStorageRefs(
+      messagesForHarness,
+      ctx,
+    );
 
     ensureModelCompatibility(input.models, materializedMessages);
 
@@ -1410,6 +1444,14 @@ async function prepareRun(
             publishDone: async () => false,
           },
           chunks: dispatchHarnessChunks(),
+          // v2: persist assistant parts live through a FRESH emitter (seqs from
+          // 0) so the row ids match the projector's and dedupe via ON CONFLICT.
+          // The message is in the DB before the stream closes; the projector is
+          // an idempotent backstop. v1 threads: null → no-op (legacy).
+          persistence: assistantEmitter ?? undefined,
+          // Deterministic per run so a synthesized error message dedupes across
+          // the live write and the projector backstop (same id).
+          errorMessageId: `error-${mem.thread.id}`,
           title: {
             currentThreadTitle: mem.thread.title,
             threadId: mem.thread.id,

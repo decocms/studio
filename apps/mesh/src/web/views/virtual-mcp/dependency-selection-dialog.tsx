@@ -173,6 +173,66 @@ function SelectionTab({
   );
 }
 
+// Active Tab — shows only selected tools
+function ActiveToolsTab({
+  connectionId,
+  toolSelections,
+  onToggleTool,
+}: {
+  connectionId: string;
+  toolSelections: SelectionValue;
+  onToggleTool: (toolName: string, allToolNames: string[]) => void;
+}) {
+  const { org } = useProjectContext();
+  const client = useMCPClient({
+    connectionId,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const { data } = useMCPToolsList({ client });
+
+  const allToolNames = data.tools.map((t) => t.name);
+
+  const activeTools = data.tools.filter(
+    (tool) => toolSelections === null || toolSelections.includes(tool.name),
+  );
+
+  const items: SelectableItem[] = activeTools.map((tool) => ({
+    id: tool.name,
+    name: tool.name,
+    description: tool.description,
+    tags: (
+      <ToolAnnotationBadges
+        annotations={tool.annotations}
+        _meta={tool._meta as Record<string, unknown> | undefined}
+      />
+    ),
+  }));
+
+  if (items.length === 0) {
+    return (
+      <div className="flex-1 overflow-auto px-4 py-3 space-y-1">
+        <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+          No active tools selected
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-auto px-4 py-3 space-y-1">
+      {items.map((item) => (
+        <SelectionItem
+          key={item.id}
+          item={item}
+          isSelected={true}
+          onToggle={() => onToggleTool(item.id, allToolNames)}
+        />
+      ))}
+    </div>
+  );
+}
+
 // Tools Tab Wrapper
 function ToolsTab({
   connectionId,
@@ -290,6 +350,8 @@ function PromptsTab({
   );
 }
 
+type TabId = "active" | "tools" | "resources" | "prompts";
+
 // Connection Details Content Component
 function ConnectionDetailsContent({
   currentConnection,
@@ -310,7 +372,7 @@ function ConnectionDetailsContent({
     description?: string | null;
     icon?: string | null;
   };
-  activeTab: "tools" | "resources" | "prompts";
+  activeTab: TabId;
   selectedId: string;
   formData: FormData;
   toggleTool: (
@@ -331,7 +393,7 @@ function ConnectionDetailsContent({
   toggleAllTools: (connId: string) => void;
   toggleAllResources: (connId: string) => void;
   toggleAllPrompts: (connId: string) => void;
-  onTabChange: (value: "tools" | "resources" | "prompts") => void;
+  onTabChange: (value: TabId) => void;
 }) {
   const sel = formData[selectedId];
   const isAllSelected =
@@ -339,12 +401,16 @@ function ConnectionDetailsContent({
       ? sel?.tools === null
       : activeTab === "resources"
         ? sel?.resources === null
-        : sel?.prompts === null;
+        : activeTab === "prompts"
+          ? sel?.prompts === null
+          : false;
+
+  const showSelectAll = activeTab !== "active";
 
   const handleSelectAll = () => {
     if (activeTab === "tools") toggleAllTools(selectedId);
     else if (activeTab === "resources") toggleAllResources(selectedId);
-    else toggleAllPrompts(selectedId);
+    else if (activeTab === "prompts") toggleAllPrompts(selectedId);
   };
 
   return (
@@ -376,25 +442,45 @@ function ConnectionDetailsContent({
         <CollectionTabs
           tabs={[
             { id: "tools", label: "Tools" },
+            { id: "active", label: "Active" },
             { id: "resources", label: "Resources" },
             { id: "prompts", label: "Prompts" },
           ]}
           activeTab={activeTab}
-          onTabChange={(id) =>
-            onTabChange(id as "tools" | "resources" | "prompts")
-          }
+          onTabChange={(id) => onTabChange(id as TabId)}
         />
-        <button
-          type="button"
-          onClick={handleSelectAll}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {isAllSelected ? "Deselect all" : "Select all"}
-        </button>
+        {showSelectAll && (
+          <button
+            type="button"
+            onClick={handleSelectAll}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {isAllSelected ? "Deselect all" : "Select all"}
+          </button>
+        )}
       </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden flex flex-col">
+        {activeTab === "active" && (
+          <ErrorBoundary
+            fallback={createMethodNotFoundFallback(
+              "Tools not supported by this server",
+            )}
+          >
+            <Suspense fallback={<LoadingSpinner />}>
+              <ActiveToolsTab
+                connectionId={selectedId}
+                toolSelections={
+                  formData[selectedId] ? formData[selectedId]!.tools : []
+                }
+                onToggleTool={(toolName, allToolNames) =>
+                  toggleTool(selectedId, toolName, allToolNames)
+                }
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
         {activeTab === "tools" && (
           <ErrorBoundary
             fallback={createMethodNotFoundFallback(
@@ -535,12 +621,12 @@ function recordToConnections(formData: FormData): VirtualMCPConnection[] {
 
 // Dialog state reducer
 interface DialogState {
-  activeTab: "tools" | "resources" | "prompts";
+  activeTab: TabId;
 }
 
 type DialogAction = {
   type: "SET_ACTIVE_TAB";
-  payload: "tools" | "resources" | "prompts";
+  payload: TabId;
 };
 
 function dialogReducer(state: DialogState, action: DialogAction): DialogState {

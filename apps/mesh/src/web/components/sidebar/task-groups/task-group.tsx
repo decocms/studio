@@ -264,7 +264,10 @@ function AgentExpandedBody({
         <button
           type="button"
           onClick={() => onNewTaskInGroup(virtualMcpId)}
-          className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
+          // -ml-4 cancels the group wrapper's pl-4 so the hover surface spans
+          // the full sidebar width, while pl-6 keeps the content indented —
+          // matching the indented TaskRow treatment.
+          className="flex items-center gap-2 -ml-4 pl-6 pr-2 py-1.5 rounded-md cursor-pointer text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
         >
           <Plus size={14} />
           <span>New thread</span>
@@ -286,6 +289,7 @@ function AgentExpandedBody({
             <ShowMoreButton
               onClick={() => void loadMore()}
               isFetching={isFetching}
+              indented
             />
           )}
         </>
@@ -345,6 +349,7 @@ function StatusExpandedBody({
         <ShowMoreButton
           onClick={() => void loadMore()}
           isFetching={isFetching}
+          indented
         />
       )}
     </>

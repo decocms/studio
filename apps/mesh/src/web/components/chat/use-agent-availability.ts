@@ -5,9 +5,8 @@ import type { AgentOptionAvailability } from "./pills/agent-options";
 /**
  * Runtime availability of each agent option for the current org/session.
  *
- * Single source consumed by both the mode picker (display) and the chat submit
- * path (dispatch pins) via `chat-context`, so the runtime the user sees
- * selected and the runtime the message dispatches to can never diverge.
+ * Advisory-only source consumed by the mode picker for status copy. It should
+ * never gate selection or rewrite the runtime the chat dispatches.
  */
 export function useAgentOptionAvailability(): AgentOptionAvailability {
   const link = useCurrentLink();
