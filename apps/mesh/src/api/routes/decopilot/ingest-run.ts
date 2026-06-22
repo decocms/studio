@@ -53,6 +53,9 @@ export interface IngestRunInput {
    * Defaults to 0 (fresh run: publish everything from seq 1).
    */
   initialAckSeq?: number;
+  /** Deterministic id for a synthesized error message (`error-${runId}`) so the
+   *  live write and the projector backstop dedupe it. See consumeHarnessStream. */
+  errorMessageId?: string;
 }
 
 export interface IngestRunDeps {
@@ -152,6 +155,7 @@ export async function ingestRun(
     title: deps.title,
     persistence: deps.persistence ?? NOOP_PERSISTENCE,
     hooks: deps.hooks,
+    errorMessageId: input.errorMessageId,
   });
 
   await drain(uiStream);
