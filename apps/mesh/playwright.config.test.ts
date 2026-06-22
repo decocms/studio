@@ -7,7 +7,7 @@ describe("resolvePlaywrightDevServerConfig", () => {
 
     expect(config.appOrigin).toBe("http://localhost:4000");
     expect(config.webServerCommand).toBe(
-      "BASE_URL=http://localhost:4000 PORT=3000 VITE_PORT=4000 bun run dev:servers",
+      "MCP_CACHE_ENABLED=true BASE_URL=http://localhost:4000 PORT=3000 VITE_PORT=4000 bun run dev:servers",
     );
   });
 
@@ -20,7 +20,7 @@ describe("resolvePlaywrightDevServerConfig", () => {
 
     expect(config.appOrigin).toBe("http://preview.localhost:4444");
     expect(config.webServerCommand).toBe(
-      "BASE_URL=http://preview.localhost:4444 PORT=3100 VITE_PORT=4444 bun run dev:servers",
+      "MCP_CACHE_ENABLED=true BASE_URL=http://preview.localhost:4444 PORT=3100 VITE_PORT=4444 bun run dev:servers",
     );
   });
 });
