@@ -85,16 +85,24 @@ function requireRuntime(): ProjectorWorkflowRuntime {
   return runtime;
 }
 
-function persistenceFor(
+async function persistenceFor(
   runId: string,
   orgId: string,
   messageParts: SqlThreadMessagePartStorage,
-): HarnessStreamPersistence {
+): Promise<HarnessStreamPersistence> {
+  // Base the projected message's `created_at` on what is already persisted so
+  // it sorts after its own user message (and prior turns) regardless of how far
+  // behind wall-clock this durable projection runs. `+1` keeps the assistant's
+  // first part strictly after the newest existing part. In the common case the
+  // live path already wrote these rows (ON CONFLICT keeps their earlier
+  // created_at); this base only governs the projector-only fallback.
+  const maxExistingMs = await messageParts.maxCreatedAtMsForRun(runId);
   const emitter = new PartEmitter({
     storage: messageParts,
     orgId,
     threadId: runId,
     runId,
+    baseTimeMs: maxExistingMs !== null ? maxExistingMs + 1 : undefined,
   });
   return {
     emitStepParts: (message) => emitter.emitStepParts(message),
@@ -141,7 +149,7 @@ async function projectFromJetStreamStep(
   const result = await projectRun({
     runId: input.runId,
     chunks: reconstructed.chunks,
-    persistence: persistenceFor(input.runId, orgId, rt.messageParts),
+    persistence: await persistenceFor(input.runId, orgId, rt.messageParts),
     onDlq: async (_runId, error) => {
       throw error instanceof Error ? error : new Error(String(error));
     },
