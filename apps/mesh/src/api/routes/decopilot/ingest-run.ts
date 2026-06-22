@@ -62,9 +62,19 @@ export interface IngestRunDeps {
   /** Injects the title chunk; `persistTitle` is a NO-OP here — the projector
    *  is the sole title writer. */
   title: HarnessStreamTitleOptions;
+  /**
+   * Persists the assistant message parts as the run streams. Defaults to the
+   * no-op (legacy: the durable projector was the sole writer). The hosted
+   * caller passes the run's PartEmitter so the message lands in the DB before
+   * the stream closes — closing the read-after-stream gap where a reload showed
+   * the just-streamed message missing until the async projector caught up. The
+   * projector still re-projects from JetStream as an idempotent backstop
+   * (deterministic row ids → ON CONFLICT DO NOTHING).
+   */
+  persistence?: HarnessStreamPersistence;
 }
 
-/** ingestRun writes NOTHING to the DB — the projector owns parts/status/title. */
+/** Default persistence: write nothing (legacy projector-only behavior). */
 const NOOP_PERSISTENCE: HarnessStreamPersistence = {
   emitStepParts: async () => {},
   emitFinal: async () => {},
@@ -140,7 +150,7 @@ export async function ingestRun(
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: dedupedChunks(),
     title: deps.title,
-    persistence: NOOP_PERSISTENCE,
+    persistence: deps.persistence ?? NOOP_PERSISTENCE,
     hooks: deps.hooks,
   });
 
