@@ -44,10 +44,14 @@ export interface BuildTurnOptions {
   usage?: HarnessTurnUsage;
   /**
    * When set, the final `finish` chunk carries `codingAgentSessionId` +
-   * `codingAgentProvider: "claude-code"` — the shape `lookupResumeSessionRef`
-   * reads back on the NEXT turn to populate `harnessInput.resumeSessionRef`.
+   * `codingAgentProvider` — the shape `resolveCliSessionRef` reads back on the
+   * NEXT turn to populate `harnessInput.resumeSessionRef`. Defaults to
+   * `"claude-code"` when unset (matches the original fixture behaviour).
+   * Pass `"codex"` when emulating a Codex harness relay.
    */
   codingAgentSessionId?: string;
+  /** Provider name stored alongside the session id. Defaults to `"claude-code"`. */
+  codingAgentProvider?: "claude-code" | "codex";
 }
 
 /** A single UIMessageChunk wrapped as the daemon's relay event. */
@@ -99,7 +103,8 @@ function buildTurnEvents(opts: BuildTurnOptions): unknown[] {
   if (opts.usage) messageMetadata.usage = opts.usage;
   if (opts.codingAgentSessionId) {
     messageMetadata.codingAgentSessionId = opts.codingAgentSessionId;
-    messageMetadata.codingAgentProvider = "claude-code";
+    messageMetadata.codingAgentProvider =
+      opts.codingAgentProvider ?? "claude-code";
   }
   const finishChunk: Record<string, unknown> = { type: "finish" };
   if (Object.keys(messageMetadata).length > 0) {

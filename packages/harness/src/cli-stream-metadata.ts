@@ -1,10 +1,11 @@
 import type { TextStreamPart, ToolSet } from "ai";
+import type { CliProvider } from "./cli-harness";
 import type { HarnessStreamInput } from "./types";
 import { createUsageAccumulator } from "./usage-accumulator";
 
 export interface CliMetadataOptions {
   input: HarnessStreamInput;
-  providerName: "claude-code" | "codex";
+  providerName: CliProvider;
   providerMetadataKey: "claude-code" | "codex-app-server";
   extractSessionId: (metadata: unknown) => string | undefined;
 }

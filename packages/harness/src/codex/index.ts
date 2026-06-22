@@ -6,12 +6,12 @@
  *  - Does NOT register built-in tools (the CLI manages its own tools and
  *    reaches mesh's MCP endpoint directly).
  *  - Does NOT build a system prompt (the CLI has its own).
- *  - Does NOT support resume. Per the inline source at
- *    `apps/mesh/src/api/routes/decopilot/stream-core.ts` lines 969–971:
- *    "Codex thread resume is not supported because each request spawns a
- *    new codexAppServer process. Thread IDs are local to a process and
- *    cannot be resumed by a different one." Any `input.resumeSessionRef`
- *    is therefore intentionally ignored.
+ *  - Supports resume: each turn spawns a fresh codex app-server process, but
+ *    `resume: input.resumeSessionRef` reloads the on-disk thread (the app
+ *    server persists rollouts under HOME, which survives the per-turn
+ *    subprocess on the long-lived desktop daemon). `threadMode: "persistent"`
+ *    (set in createCodexModel) makes the first turn's thread non-ephemeral so
+ *    it can be resumed next turn.
  *
  * CRITICAL: createCodexModel returns `{ model, provider }` where
  * `provider` is a spawned child process (codex app-server). It MUST be
@@ -42,6 +42,10 @@ import { buildCodingWorkspacePrompt } from "../coding-workspace-prompt";
 import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
+import {
+  CliSessionExpiredError,
+  isStaleSessionError,
+} from "../cli-session-error";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
 import { buildCurrentContextPrompt } from "../decopilot/system-prompt";
 import { genTitle } from "../decopilot/title-generator";
@@ -135,6 +139,7 @@ export const codexHarnessFactory: HarnessFactory = {
           isPlanMode: input.mode === "plan",
           cwd,
           developerInstructions,
+          resume: input.resumeSessionRef,
         });
 
         try {
@@ -237,6 +242,11 @@ export const codexHarnessFactory: HarnessFactory = {
             for await (const chunk of merged) {
               yield chunk;
             }
+          } catch (err) {
+            if (input.resumeSessionRef && isStaleSessionError(err)) {
+              throw new CliSessionExpiredError(err);
+            }
+            throw err;
           } finally {
             titleHandle?.finish();
             await titleSetup?.closed.catch(() => {});
