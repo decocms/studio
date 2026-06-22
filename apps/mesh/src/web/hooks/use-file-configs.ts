@@ -18,8 +18,9 @@ export interface FileConfigInfo {
   forcePathStyle: boolean;
   prefix: string | null;
   publicUrlBase: string | null;
-  credentialType: "static" | "sts-session";
+  credentialType: "static" | "sts-session" | "managed";
   refreshUrl: string | null;
+  siteSlug: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;

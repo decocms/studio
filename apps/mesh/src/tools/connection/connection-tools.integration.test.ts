@@ -87,6 +87,7 @@ describe("Connection Tools", () => {
         aiProviderKeys: null as never,
         secrets: null as never,
         orgFileConfigs: null as never,
+        orgSites: null as never,
         orgFsEntries: null as never,
         oauthPkceStates: null as never,
         automations: null as never,
