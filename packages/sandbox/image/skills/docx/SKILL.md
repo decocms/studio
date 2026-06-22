@@ -1,3 +1,8 @@
+---
+name: docx
+description: Read or summarize Microsoft Word .docx files (plain-text extraction).
+---
+
 # docx — Word documents
 
 Use this skill to read or summarize `.docx` files.

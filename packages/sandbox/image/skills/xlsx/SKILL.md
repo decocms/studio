@@ -1,3 +1,8 @@
+---
+name: xlsx
+description: Read or summarize Excel .xlsx spreadsheets.
+---
+
 # xlsx — Excel spreadsheets
 
 Use this skill to read or summarize `.xlsx` files.

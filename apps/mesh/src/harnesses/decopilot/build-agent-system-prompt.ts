@@ -31,7 +31,11 @@ import {
   buildSystemMessages,
   type SystemMessage,
 } from "@decocms/harness/decopilot/system-prompt";
-import { listPromptsBlock, listConnectionsBlock } from "./prompt";
+import {
+  listPromptsBlock,
+  listConnectionsBlock,
+  listSkillsBlock,
+} from "./prompt";
 import { buildAgentsBlock } from "@decocms/harness/decopilot/agents-block";
 import { renderUserContextBlock } from "@decocms/harness/decopilot/user-context-block";
 import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
@@ -147,6 +151,11 @@ export async function buildAgentSystemPrompt(
       opts.organization.slug,
     ),
   );
+
+  // Progressive-disclosure skill index (Claude Code style): names +
+  // descriptions of every installed skill so the agent knows when to reach
+  // for one; the SKILL.md body loads on demand via the read tool.
+  add("skills", await listSkillsBlock(opts.ctx));
 
   if (opts.kind === "agent") {
     if (opts.isDecopilot) {

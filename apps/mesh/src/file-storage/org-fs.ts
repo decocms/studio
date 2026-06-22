@@ -102,6 +102,12 @@ export class OrgFs {
     );
   }
 
+  /** Every live file in a volume (recursive, flat). */
+  async listFiles(volume: string): Promise<OrgFsEntry[]> {
+    assertValidVolume(volume);
+    return this.manifest.listVolumeFiles(this.organizationId, volume);
+  }
+
   /** Raw bytes of a file. Throws if the path is not a live file. */
   async read(volume: string, path: string): Promise<Uint8Array> {
     const entry = await this.requireFile(volume, path);

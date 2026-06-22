@@ -1,3 +1,8 @@
+---
+name: pdf
+description: Extract text from PDF files, page by page.
+---
+
 # pdf — PDF documents
 
 Use this skill to read text from `.pdf` files.

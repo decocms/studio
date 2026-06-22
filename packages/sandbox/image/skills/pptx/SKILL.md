@@ -1,3 +1,8 @@
+---
+name: pptx
+description: Read and inspect existing PowerPoint .pptx files. NOT for authoring slide decks — use the slides skill for that.
+---
+
 # pptx — PowerPoint presentations
 
 Reading and inspection of `.pptx` files. Editing and creation are not yet

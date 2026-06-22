@@ -21,7 +21,7 @@ for it — the content is already loaded. Follow its instructions directly.
 Only call read_prompt for prompts whose content is NOT yet in the conversation.
 </prompts-usage>`;
 
-function csvField(s: string | null | undefined): string {
+export function csvField(s: string | null | undefined): string {
   if (s == null || s === "") return "";
   if (
     s.includes(",") ||

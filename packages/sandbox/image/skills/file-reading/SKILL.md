@@ -1,3 +1,8 @@
+---
+name: file-reading
+description: Router that dispatches a file to the right reader skill by extension (.pdf, .docx, .xlsx, .pptx, and plain-text formats).
+---
+
 # file-reading — router by file type
 
 When asked to read or summarize a file, dispatch by extension to the

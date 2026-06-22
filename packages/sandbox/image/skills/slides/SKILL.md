@@ -1,3 +1,8 @@
+---
+name: slides
+description: Create and edit presentation decks as self-contained HTML with a live editable preview and PDF export. Use for any slides/deck/presentation request.
+---
+
 # slides — presentation decks
 
 Create and edit presentation decks as single self-contained HTML files,
