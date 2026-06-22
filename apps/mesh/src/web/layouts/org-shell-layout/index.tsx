@@ -58,24 +58,39 @@ export default function OrgShellLayout() {
         <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <ChatPrefsProvider>
             <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-              <Toolbar.Header>
-                <Toolbar.LeftColumn>
-                  <Toolbar.LogoLink />
-                  <SidebarTriggerButton />
-                  <span className="hidden md:contents">
-                    <Toolbar.Nav />
-                  </span>
-                  <Toolbar.TogglesSlot />
-                  <LinkedDesktopIndicator />
-                </Toolbar.LeftColumn>
-                <Toolbar.CenterSlot />
-                <Toolbar.RightColumn>
-                  <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end">
-                    <Toolbar.TabsSlot />
+              {isMobile ? (
+                <Toolbar.Header className="grid-cols-1 px-1 pr-1">
+                  <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto_minmax(6.5rem,9rem)] items-center gap-1">
+                    <Toolbar.LogoLink />
+                    <SidebarTriggerButton />
+                    <LinkedDesktopIndicator />
+                    <div aria-hidden className="min-w-0" />
+                    <Toolbar.TogglesSlot />
+                    <Toolbar.TabsSlot className="min-w-0 justify-self-end" />
                   </div>
+                  <Toolbar.CenterSlot />
                   <Toolbar.RightSlot />
-                </Toolbar.RightColumn>
-              </Toolbar.Header>
+                </Toolbar.Header>
+              ) : (
+                <Toolbar.Header>
+                  <Toolbar.LeftColumn>
+                    <Toolbar.LogoLink />
+                    <SidebarTriggerButton />
+                    <span className="hidden md:contents">
+                      <Toolbar.Nav />
+                    </span>
+                    <Toolbar.TogglesSlot />
+                    <LinkedDesktopIndicator />
+                  </Toolbar.LeftColumn>
+                  <Toolbar.CenterSlot />
+                  <Toolbar.RightColumn>
+                    <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] flex justify-end">
+                      <Toolbar.TabsSlot />
+                    </div>
+                    <Toolbar.RightSlot />
+                  </Toolbar.RightColumn>
+                </Toolbar.Header>
+              )}
               <SidebarLayout
                 ref={wrapperRef}
                 className="flex-1 bg-sidebar relative min-h-0"

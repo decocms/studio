@@ -36,7 +36,7 @@ export function StudioSidebar() {
               }
             >
               <Separator className="mb-2" />
-              <TaskGroupsList />
+              <TaskGroupsList onNavigate={onClose} />
             </Suspense>
           </ErrorBoundary>
         }
