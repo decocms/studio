@@ -42,6 +42,10 @@ import { buildCodingWorkspacePrompt } from "../coding-workspace-prompt";
 import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
+import {
+  CliSessionExpiredError,
+  isStaleSessionError,
+} from "../cli-session-error";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
 import { buildCurrentContextPrompt } from "../decopilot/system-prompt";
 import { genTitle } from "../decopilot/title-generator";
@@ -238,6 +242,11 @@ export const codexHarnessFactory: HarnessFactory = {
             for await (const chunk of merged) {
               yield chunk;
             }
+          } catch (err) {
+            if (isStaleSessionError(err)) {
+              throw new CliSessionExpiredError(err);
+            }
+            throw err;
           } finally {
             titleHandle?.finish();
             await titleSetup?.closed.catch(() => {});
