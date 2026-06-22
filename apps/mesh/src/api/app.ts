@@ -32,7 +32,6 @@ import {
   createStudioContextFactory,
 } from "../core/context-factory";
 import type { StudioContext } from "../core/studio-context";
-import { getPodId } from "../core/pod-identity";
 import { closeDatabase, getDb, type StudioDatabase } from "../database";
 import { createEventBus, type EventBus } from "../event-bus";
 import {
@@ -182,7 +181,7 @@ import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
-import { NatsPodHeartbeat } from "../nats/pod-heartbeat";
+import type { DurableProjectorConsumerHandle } from "./routes/decopilot/projector-consumer";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -871,6 +870,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   let eventBus: EventBus;
   let mcpListCache: McpListCache | null;
   let connectionCircuitStore: ConnectionCircuitStore;
+  // Durable projector consumer handle + once-per-pod start guard. Started in the
+  // natsProvider.onReady handler, stopped in currentDecopilotCleanup.
+  let projectorHandle: DurableProjectorConsumerHandle | null = null;
+  let projectorStarted = false;
   // Model lists are public, low-stakes metadata cached per-replica with a TTL —
   // no NATS needed, so this is shared across the test and production branches.
   const modelListCache: ModelListCache = new InMemoryModelListCache();
@@ -1034,24 +1037,26 @@ export async function createApp(options: CreateAppOptions = {}) {
         );
       });
       // Durable explicit-ack projector consumer (spec §5.4) — the SOLE DB
-      // writer post-cutover (parts + title + terminal status). Leader-elected
-      // via the shared pod heartbeat so exactly ONE pod runs the consumer; on
-      // leadership loss the handle's stop() aborts consume() and a standby
-      // acquires + replays from JetStream.
-      if (podHeartbeat) {
-        const heartbeat = podHeartbeat;
+      // writer post-cutover (parts + title + terminal status). Every pod runs
+      // it: JetStream's durable pull consumer distributes each done marker to
+      // exactly one pod (competing consumers), and the DBOS workflow ID keyed
+      // by (runId, fenceToken) dedups any redelivery overlap — so no leader
+      // election is needed for correctness. Guarded so a NATS reconnect's
+      // repeated onReady fires don't bind a second consume() loop on this pod.
+      if (!projectorStarted) {
+        projectorStarted = true;
         void (async () => {
           const nc = natsProvider!.getConnection();
           const js = natsProvider!.getJetStream();
-          if (!nc || !js) return;
+          if (!nc || !js) {
+            projectorStarted = false;
+            return;
+          }
           const jsm = await jetstreamManager(nc);
           const { startDurableProjector } = await import(
             "./routes/decopilot/start-durable-projector"
           );
-          const { ProjectorLeadership } = await import(
-            "./routes/decopilot/projector-leader"
-          );
-          const projectorWiring = {
+          projectorHandle = await startDurableProjector({
             jsm,
             js,
             resolveOrgId: async (runId: string) => {
@@ -1062,43 +1067,9 @@ export async function createApp(options: CreateAppOptions = {}) {
                 .executeTakeFirst();
               return row?.organization_id ?? null;
             },
-          };
-          // Leadership is now only a scheduler throttle. Correctness comes from
-          // the DBOS workflow ID keyed by (runId, fenceToken), so duplicate
-          // scheduler starts collapse instead of double-projecting.
-          // Single-active: start on the elected leader, stop on leadership loss.
-          let handle: Awaited<ReturnType<typeof startDurableProjector>> | null =
-            null;
-          const leadership = new ProjectorLeadership({
-            heartbeat,
-            podId: getPodId(),
-            onAcquire: () => {
-              console.log("[DurableProjector] leader acquired");
-              void startDurableProjector(projectorWiring)
-                .then((h) => {
-                  handle = h;
-                })
-                .catch((err: unknown) => {
-                  console.warn(
-                    "[DurableProjector] start on leader-acquire failed:",
-                    err,
-                  );
-                });
-            },
-            onRelease: () => {
-              console.log("[DurableProjector] leader released");
-              const h = handle;
-              handle = null;
-              void h?.stop().catch((err: unknown) => {
-                console.warn(
-                  "[DurableProjector] stop on leader-release failed:",
-                  err,
-                );
-              });
-            },
           });
-          await leadership.start();
         })().catch((err: unknown) => {
+          projectorStarted = false;
           console.warn("[DurableProjector] Deferred init failed:", err);
         });
       }
@@ -1162,40 +1133,10 @@ export async function createApp(options: CreateAppOptions = {}) {
     );
   });
 
-  // Per-pod heartbeat via NATS KV (only when NATS is available). Used by the
-  // durable-projector leader election (single-active projector consumer); see
-  // the projector block in the natsProvider.onReady handler above.
-  let podHeartbeat: NatsPodHeartbeat | null = null;
-  if (natsProvider) {
-    podHeartbeat = new NatsPodHeartbeat({
-      getConnection: () => natsProvider!.getConnection(),
-      getJetStream: () => natsProvider!.getJetStream(),
-    });
-
-    // Attempt immediate init (may no-op if NATS not ready)
-    podHeartbeat
-      .init()
-      .then(() => {
-        podHeartbeat!.start(getPodId());
-      })
-      .catch(() => {});
-
-    // Re-init when NATS connects
-    natsProvider.onReady(() => {
-      podHeartbeat!
-        .init()
-        .then(() => {
-          podHeartbeat!.start(getPodId());
-        })
-        .catch((err: unknown) => {
-          console.error("[PodHeartbeat] Deferred init failed:", err);
-        });
-    });
-  }
-
   currentDecopilotCleanup = async () => {
-    // Delete KV key first → watcher fires on other pods → immediate handoff
-    await podHeartbeat?.stop();
+    // Stop the durable projector consumer (aborts consume()); JetStream
+    // redelivers any unacked done marker to another pod's consumer.
+    await projectorHandle?.stop();
     await runRegistry.stopAll();
     runRegistry.dispose();
     asyncResearchJobSweeper.dispose();

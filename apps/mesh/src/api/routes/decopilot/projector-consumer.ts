@@ -20,10 +20,11 @@
  * via an injected message iterable. The NATS binding
  * (`createDurableProjectorConsumer`) is thin + integration-only (multi-pod e2e).
  *
- * SINGLE WRITER: leadership is only a scheduler throttle now — correctness comes
- * from the DBOS workflow ID keyed by (runId, fenceToken), so duplicate scheduler
- * starts collapse instead of double-projecting. app.ts runs one consumer via
- * leader election; multi-pod e2e validates failover/replay.
+ * SINGLE WRITER: every pod runs a consumer. The durable pull consumer
+ * distributes each done marker to exactly one pod (competing consumers), and the
+ * DBOS workflow ID keyed by (runId, fenceToken) dedups any redelivery overlap,
+ * so duplicate scheduler starts collapse instead of double-projecting. No leader
+ * election; multi-pod e2e validates redelivery/replay.
  */
 import {
   AckPolicy,
