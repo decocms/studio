@@ -125,7 +125,10 @@ describe("sandbox↔studio WS partition", () => {
     );
 
     // A tunneled read must fail FAST (not hang). Offline → 404; in-flight
-    // cut → 502 ws_closed. Either way: a non-2xx error, quickly.
+    // cut → 502 ws_closed. Either way: a non-2xx error, quickly. Quick file
+    // ops are bounded by QUICK_FILE_OP_TIMEOUT_MS (10s) in the sandbox proxy,
+    // so a partitioned read errors at ~10s instead of stalling the full 30s
+    // tunnel first-frame timeout. 15s asserts that ceiling holds with margin.
     const start = performance.now();
     const read = await sandboxPost(
       orgSlug,
@@ -145,7 +148,10 @@ describe("sandbox↔studio WS partition", () => {
     // test re-enabled the proxy), capture the baseline connectedAt, then sever
     // and restore WITHIN this test so the reconnect is observable regardless of
     // whatever proxy state the previous test left behind.
-    const before = await waitForLinkClaim(testState.cookie, 60_000);
+    // 90s window: after the prior test's partition the daemon's reconnect
+    // backoff can grow toward its 30s cap, so re-establishing the baseline can
+    // take longer than 60s under CI load.
+    const before = await waitForLinkClaim(testState.cookie, 90_000);
     const connectedAt0 = before.connectedAt;
 
     await disableProxy(PROXY_NAMES.STUDIO_WS);
@@ -168,7 +174,7 @@ describe("sandbox↔studio WS partition", () => {
         const claim = await getLinkClaim(testState.cookie);
         return claim != null && claim.connectedAt > connectedAt0;
       },
-      { timeoutMs: 60_000, intervalMs: 1_000, label: "link-reconnect" },
+      { timeoutMs: 90_000, intervalMs: 1_000, label: "link-reconnect" },
     );
 
     // The same read now succeeds with preserved content (daemon process and
