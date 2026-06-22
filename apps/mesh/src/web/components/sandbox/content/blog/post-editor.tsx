@@ -117,6 +117,20 @@ export function PostEditor({
     syncBlocks(blockItems.filter((_, i) => i !== index));
   };
 
+  // structuredClone deep-copies the block payload so the duplicate doesn't
+  // share nested references (e.g. arrays inside ProductShelf) with the
+  // original — editing one would otherwise mutate the other.
+  const duplicateAt = (index: number) => {
+    const source = blockItems[index];
+    if (!source) return;
+    const next = [...blockItems];
+    next.splice(index + 1, 0, {
+      id: uid(),
+      block: structuredClone(source.block),
+    });
+    syncBlocks(next);
+  };
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
@@ -191,6 +205,7 @@ export function PostEditor({
                         meta={meta}
                         onChange={(v) => updateAt(index, v)}
                         onDelete={() => removeAt(index)}
+                        onDuplicate={() => duplicateAt(index)}
                       />
                       <InsertBlockDivider
                         blockTypes={blockTypes}
