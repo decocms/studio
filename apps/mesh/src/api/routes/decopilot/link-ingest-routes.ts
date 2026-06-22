@@ -396,8 +396,16 @@ async function consumeRelayedLiveRun(
     title: {
       currentThreadTitle: thread.title,
       threadId: runId,
-      // Projector owns the title write — neutralize the inline one.
-      persistTitle: async () => {},
+      // Write the auto-title here too. Now that this path flips the run to a
+      // terminal status on completion, the durable projector SKIPS the run
+      // (shouldSkipProjection short-circuits on a terminal status), so the
+      // projector — the would-be title writer — never runs for a live-finished
+      // run. The interceptor still gates on the current (default) title, so a
+      // user-renamed thread is never overwritten. The projector remains the
+      // title writer for the fallback where this path didn't finish the run.
+      persistTitle: async (_threadId, title) => {
+        await ctx.storage.threads.update(runId, { title });
+      },
       onTitleUpdated,
     },
   });
