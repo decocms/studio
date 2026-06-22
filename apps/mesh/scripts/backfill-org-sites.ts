@@ -18,6 +18,10 @@
  *   bun run scripts/backfill-org-sites.ts [--dry-run] [--mapping=<path.json>]
  *
  * --dry-run         report what would change without writing.
+ * --sql             DON'T touch the DB — print idempotent SQL to stdout instead
+ *                   (for when you can't connect to Postgres directly). Only
+ *                   needs DECO_SUPABASE_URL/SERVICE_KEY; redirect to a .sql file
+ *                   and run it in your DB client. Progress goes to stderr.
  * --mapping=<path>  load the mapping from a JSON file [{decoTeamId, organizationId}]
  *                   instead of the inline MAPPING below.
  */
@@ -27,6 +31,7 @@ import { createDatabase } from "../src/database";
 import { CredentialVault } from "../src/encryption/credential-vault";
 import { tenantStorageDescriptor } from "../src/file-storage/tenant-credentials";
 import { getSettings } from "../src/settings";
+import { generatePrefixedId } from "../src/shared/utils/generate-id";
 import { OrgFileConfigStorage } from "../src/storage/org-file-configs";
 import { OrgSiteConflictError, OrgSiteStorage } from "../src/storage/org-sites";
 import { isValidSiteSlug } from "../src/shared/site-slug";
@@ -86,8 +91,110 @@ function loadMapping(): TeamOrgMapping[] {
   return parsed;
 }
 
+/** Single-quote a SQL string literal (escape embedded quotes). */
+function sql(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Emit idempotent SQL for one (org, slug) pair — safe to run repeatedly:
+ *   1. claim ownership (ON CONFLICT keeps an existing owner, never steals)
+ *   2. convert a legacy sts-session deco-assets config to managed
+ *   3. create a managed config only if none exists for the name
+ */
+function emitSqlForSite(organizationId: string, slug: string): string {
+  const configName = `${FILE_CONFIG_NAME_PREFIX}${slug}`;
+  const d = tenantStorageDescriptor(slug);
+  const fcfgId = generatePrefixedId("fcfg");
+  const endpoint = d.endpoint === null ? "NULL" : sql(d.endpoint);
+  const o = sql(organizationId);
+  const s = sql(slug);
+  const name = sql(configName);
+  const actor = sql(ACTOR);
+
+  return [
+    `-- org=${organizationId}  site="${slug}"`,
+    `INSERT INTO org_sites (slug, organization_id, source, created_by, updated_by)`,
+    `VALUES (${s}, ${o}, 'deco-import', ${actor}, ${actor})`,
+    `ON CONFLICT (slug) DO NOTHING;`,
+    ``,
+    `UPDATE org_file_configs`,
+    `   SET credential_type = 'managed', site_slug = ${s}, refresh_url = NULL,`,
+    `       updated_at = now(), updated_by = ${actor}`,
+    ` WHERE organization_id = ${o}`,
+    `   AND lower(name) = lower(${name})`,
+    `   AND credential_type <> 'managed';`,
+    ``,
+    `INSERT INTO org_file_configs`,
+    `  (id, organization_id, name, description, bucket, region, endpoint,`,
+    `   force_path_style, prefix, public_url_base, credential_type, refresh_url,`,
+    `   site_slug, encrypted_credentials, created_by, updated_by)`,
+    `SELECT ${sql(fcfgId)}, ${o}, ${name}, ${sql(`Managed deco-assets storage for site "${slug}".`)},`,
+    `       ${sql(d.bucket)}, ${sql(d.region)}, ${endpoint}, false, ${sql(d.prefix)},`,
+    `       ${sql(d.publicUrlBase)}, 'managed', NULL, ${s},`,
+    // `managed` rows are never decrypted (org-file-configs.decodeCredentials
+    // short-circuits), so this sentinel just satisfies the NOT NULL column.
+    `       '{"type":"managed"}', ${actor}, ${actor}`,
+    ` WHERE NOT EXISTS (`,
+    `   SELECT 1 FROM org_file_configs`,
+    `    WHERE organization_id = ${o} AND lower(name) = lower(${name})`,
+    ` );`,
+    ``,
+  ].join("\n");
+}
+
+/** --sql mode: print idempotent SQL to stdout; never touch the DB. */
+async function emitSql(
+  mapping: TeamOrgMapping[],
+  supabaseUrl: string,
+  serviceKey: string,
+): Promise<void> {
+  let emitted = 0;
+  let invalid = 0;
+  const blocks: string[] = [];
+
+  for (const { decoTeamId, organizationId } of mapping) {
+    let sites: AdminSite[];
+    try {
+      sites = await fetchTeamSites(supabaseUrl, serviceKey, decoTeamId);
+    } catch (err) {
+      console.error(`team=${decoTeamId}: ${(err as Error).message}`);
+      continue;
+    }
+    for (const site of sites) {
+      const slug = site.name.toLowerCase();
+      if (!isValidSiteSlug(slug)) {
+        console.error(`  site="${site.name}" invalid slug — skipping`);
+        invalid++;
+        continue;
+      }
+      blocks.push(emitSqlForSite(organizationId, slug));
+      emitted++;
+    }
+  }
+
+  // SQL → stdout; everything else → stderr, so `> backfill.sql` stays clean.
+  console.log(
+    [
+      "-- Backfill org_sites + managed file configs (generated).",
+      "-- Requires migrations 115 (org_sites) + 116 (org_file_configs.site_slug).",
+      "-- Idempotent: safe to run more than once. A slug already owned by a",
+      "-- different org is left untouched (ON CONFLICT DO NOTHING) — check for",
+      "-- collisions if a claim seems missing.",
+      "BEGIN;",
+      "",
+      ...blocks,
+      "COMMIT;",
+    ].join("\n"),
+  );
+  console.error(
+    `\nEmitted SQL for ${emitted} site(s); skipped ${invalid} invalid.`,
+  );
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
+  const sqlMode = process.argv.includes("--sql");
   const settings = getSettings();
 
   const supabaseUrl = settings.decoSupabaseUrl;
@@ -97,16 +204,23 @@ async function main() {
       "DECO_SUPABASE_URL and DECO_SUPABASE_SERVICE_KEY are required",
     );
   }
-  if (!settings.encryptionKey) {
-    throw new Error("ENCRYPTION_KEY is required to write managed file configs");
-  }
 
   const mapping = loadMapping();
   if (mapping.length === 0) {
-    console.log(
+    console.error(
       "No mappings configured. Edit MAPPING in this script or pass --mapping=<path.json>.",
     );
     return;
+  }
+
+  // --sql: no DB connection, no ENCRYPTION_KEY — just print SQL.
+  if (sqlMode) {
+    await emitSql(mapping, supabaseUrl, serviceKey);
+    return;
+  }
+
+  if (!settings.encryptionKey) {
+    throw new Error("ENCRYPTION_KEY is required to write managed file configs");
   }
 
   const db = createDatabase(settings.databaseUrl);
