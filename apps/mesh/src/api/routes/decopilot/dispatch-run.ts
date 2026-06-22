@@ -1168,6 +1168,28 @@ async function prepareRun(
       }
     }
 
+    // The assistant message is persisted by a SEPARATE emitter from the user
+    // message's. Its part seqs MUST start at 0 — identical to the durable
+    // projector's fresh emitter — so the live rows (`run:msg:0,1,2`) and the
+    // projector's have the SAME ids and `ON CONFLICT` dedupes them. Reusing the
+    // user-message emitter made the assistant seqs continue after the user's
+    // (`run:msg:2,3,4`), which diverged from the projector's (`run:msg:0,1,2`)
+    // → the same message persisted twice (duplicate/"weird" render). base =
+    // max-existing-created_at + 1 keeps the assistant ordered after the user
+    // message and matches the projector's base, so live wins via first-write.
+    let assistantEmitter: PartEmitter | null = null;
+    if (isV2) {
+      const parts = ctx.storage.threads.messageParts();
+      const maxMs = await parts.maxCreatedAtMsForRun(mem.thread.id);
+      assistantEmitter = new PartEmitter({
+        storage: parts,
+        orgId: input.organizationId,
+        threadId: mem.thread.id,
+        runId: mem.thread.id,
+        baseTimeMs: (maxMs ?? Date.now()) + 1,
+      });
+    }
+
     const pendingOps: Promise<void>[] = [];
 
     // Pre-load conversation (no system messages — those are built separately)
@@ -1419,12 +1441,11 @@ async function prepareRun(
             publishDone: async () => false,
           },
           chunks: dispatchHarnessChunks(),
-          // v2: persist assistant parts live through the SAME PartEmitter that
-          // wrote the user message, so seq stays monotonic (user 0..k, then
-          // assistant) — ordering is exact and the message is in the DB before
-          // the stream closes. The projector re-projects as an idempotent
-          // backstop. v1 threads: null → no-op (legacy read-only).
-          persistence: partEmitter ?? undefined,
+          // v2: persist assistant parts live through a FRESH emitter (seqs from
+          // 0) so the row ids match the projector's and dedupe via ON CONFLICT.
+          // The message is in the DB before the stream closes; the projector is
+          // an idempotent backstop. v1 threads: null → no-op (legacy).
+          persistence: assistantEmitter ?? undefined,
           // Deterministic per run so a synthesized error message dedupes across
           // the live write and the projector backstop (same id).
           errorMessageId: `error-${mem.thread.id}`,
