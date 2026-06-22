@@ -26,7 +26,7 @@ import {
   type AssumeRoleCommandOutput,
   STSClient,
 } from "@aws-sdk/client-sts";
-import { retry } from "@decocms/std";
+import { retry, RetryError } from "@decocms/std";
 import { getSettings } from "@/settings";
 import { SITE_SLUG_RE } from "@/shared/site-slug";
 
@@ -166,11 +166,34 @@ export async function provisionTenantS3Credentials(
             // refreshes the cached client's creds near expiry automatically.
           }),
         ),
-      { maxAttempts: 3 },
+      {
+        maxAttempts: 3,
+        // Don't burn retries on non-transient STS errors (e.g. AccessDenied);
+        // retry only network errors or 5xx/throttling.
+        isRetriable: (err) => {
+          const status = (err as { $metadata?: { httpStatusCode?: number } })
+            ?.$metadata?.httpStatusCode;
+          const name = (err as { name?: string })?.name ?? "";
+          return (
+            status === undefined ||
+            status >= 500 ||
+            /throttl|timeout/i.test(name)
+          );
+        },
+      },
     );
   } catch (e) {
     if (e instanceof TenantCredentialsError) throw e;
-    console.error("[tenant-credentials] AssumeRole failed:", e);
+    // Unwrap RetryError so the real STS error (AccessDenied, missing
+    // credentials, …) is logged instead of "maxAttempts exceeded". Logged
+    // server-side only — never returned to the client (it embeds the role ARN
+    // + account id).
+    const cause = e instanceof RetryError ? (e.cause ?? e) : e;
+    const detail =
+      cause instanceof Error
+        ? `${cause.name}: ${cause.message}`
+        : String(cause);
+    console.error(`[tenant-credentials] AssumeRole failed: ${detail}`);
     throw new TenantCredentialsError(500, "failed to mint tenant credentials");
   }
 
