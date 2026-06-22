@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 // outside the runner-handle scope, tracked for a follow-up. Keeping the
 // tests in-file (skipped) preserves the intent + instrumentation when the
 // underlying lifecycle is hardened.
-import { registerTestHooks, testState } from "../lib/setup";
+import { testState } from "../lib/setup";
 import { disableProxy, enableProxy } from "../lib/toxiproxy";
 import { PROXY_NAMES } from "../lib/toxic-presets";
 import { pollUntil } from "../lib/poll-until";
@@ -37,15 +37,15 @@ import {
   waitForLinkClaim,
 } from "../lib/link-daemon-control";
 
-registerTestHooks();
-
 const BRANCH = "main";
 const MARKER = `MARKER-${testState.orgId || "x"}-${process.pid}`;
 
 let orgSlug = "";
 let vmId = "";
 
-describe("sandbox log/event SSE replay", () => {
+// Bun still runs `beforeAll` for a `describe` whose only tests are skipped.
+// Keep the whole suite skipped so the heavy harness setup never starts in CI.
+describe.skip("sandbox log/event SSE replay", () => {
   beforeAll(async () => {
     orgSlug = await getOrgSlug(testState.orgId, testState.cookie);
     console.log(`[log-replay] orgSlug=${orgSlug} orgId=${testState.orgId}`);
