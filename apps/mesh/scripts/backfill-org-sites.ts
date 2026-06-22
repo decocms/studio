@@ -180,9 +180,9 @@ async function emitSql(
   console.log(
     [
       "-- Backfill org_sites + managed file configs (generated).",
-      "-- PREREQUISITE: migrations 115 (org_sites) + 116 (org_file_configs.site_slug)",
+      "-- PREREQUISITE: migrations 116 (org_sites) + 117 (org_file_configs.site_slug)",
       "-- must already be applied, or every statement fails. Verify with:",
-      "--   SELECT to_regclass('public.org_sites');  -- non-null = 115 applied",
+      "--   SELECT to_regclass('public.org_sites');  -- non-null = 116 applied",
       "-- Statements are independent and idempotent — safe to re-run. A slug",
       "-- already owned by a different org is left untouched (ON CONFLICT DO NOTHING).",
       "",
