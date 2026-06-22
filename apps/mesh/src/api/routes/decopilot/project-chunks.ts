@@ -30,6 +30,9 @@ export interface ProjectChunksOptions {
   persistence: HarnessStreamPersistence;
   /** Mirrors consumeHarnessStream: shapes the synthesized error part text. */
   sanitizeErrorText?: (error: unknown) => string;
+  /** Deterministic id for a synthesized error message (`error-${runId}`) so
+   *  re-projection attempts dedupe it. See consumeHarnessStream. */
+  errorMessageId?: string;
   /**
    * When set, the projector persists the harness title chunk via this writer
    * (it is the sole title writer). Omitted → the title is a no-op (legacy).
@@ -158,6 +161,7 @@ export async function projectChunks(
         },
     persistence,
     sanitizeErrorText: options.sanitizeErrorText,
+    errorMessageId: options.errorMessageId,
     hooks: {
       onError: () => {
         // Fires for BOTH in-band {type:"error"} chunks AND thrown source

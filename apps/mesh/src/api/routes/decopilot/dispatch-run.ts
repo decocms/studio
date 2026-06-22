@@ -230,6 +230,9 @@ export interface AgentSandboxUiStreamInput {
   /** Persists assistant parts live (the run's PartEmitter for v2 threads).
    *  Omitted → no-op (v1 legacy). See `IngestRunDeps.persistence`. */
   persistence?: HarnessStreamPersistence;
+  /** Deterministic id for a synthesized error message (`error-${runId}`) so the
+   *  live write and the projector backstop dedupe it. */
+  errorMessageId?: string;
 }
 
 /**
@@ -266,6 +269,7 @@ export function buildAgentSandboxUiStream(
             runId: input.runId,
             fenceToken: input.fenceToken,
             chunks: seqChunks(),
+            errorMessageId: input.errorMessageId,
           },
           {
             streamBuffer: input.streamBuffer,
@@ -1421,6 +1425,9 @@ async function prepareRun(
           // the stream closes. The projector re-projects as an idempotent
           // backstop. v1 threads: null → no-op (legacy read-only).
           persistence: partEmitter ?? undefined,
+          // Deterministic per run so a synthesized error message dedupes across
+          // the live write and the projector backstop (same id).
+          errorMessageId: `error-${mem.thread.id}`,
           title: {
             currentThreadTitle: mem.thread.title,
             threadId: mem.thread.id,

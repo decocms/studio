@@ -69,6 +69,9 @@ export async function projectRun(
         })(),
         persistence: options.persistence,
         sanitizeErrorText: options.sanitizeErrorText,
+        // Deterministic per run so an error message dedupes across this loop's
+        // attempts, DBOS step retries, and the live-path write (same id).
+        errorMessageId: `error-${options.runId}`,
         title: options.title,
       });
       return { ok: true, attempts: attempt + 1, outcome };

@@ -392,6 +392,9 @@ async function consumeRelayedLiveRun(
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks,
     persistence: partEmitter ?? NOOP_PERSISTENCE,
+    // Same deterministic id the projector uses, so a synthesized error message
+    // dedupes across daemon resends + the projector backstop.
+    errorMessageId: `error-${runId}`,
     hooks,
     title: {
       currentThreadTitle: thread.title,

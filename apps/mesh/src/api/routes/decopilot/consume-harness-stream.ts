@@ -65,6 +65,15 @@ export interface ConsumeHarnessStreamOptions {
    * chunk the kernel itself synthesizes from a thrown error.
    */
   sanitizeErrorText?: (error: unknown) => string;
+  /**
+   * Message id for the error part the kernel synthesizes on a stream error.
+   * MUST be deterministic per run (`error-${runId}`) so the SAME error message
+   * dedupes across re-projection attempts, DBOS step retries, daemon
+   * full-prefix resends, and the live/projector double-write — the
+   * deterministic-id idempotency `projectRun` relies on. Defaults to a random
+   * UUID only for callers with no run identity (none persist on retry).
+   */
+  errorMessageId?: string;
 }
 
 function asReadableStream<T>(source: AsyncIterable<T>): ReadableStream<T> {
@@ -109,7 +118,7 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
   // Flipped false when any persistence handoff throws. Surfaced to the onFinish
   // hook so a live caller does not mark the run completed over a failed write.
   let persistenceOk = true;
-  const errorMessageId = crypto.randomUUID();
+  const errorMessageId = options.errorMessageId ?? crypto.randomUUID();
   let resolveComplete!: () => void;
   const whenComplete = new Promise<void>((resolve) => {
     resolveComplete = resolve;
