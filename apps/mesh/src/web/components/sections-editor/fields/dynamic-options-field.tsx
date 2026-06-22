@@ -103,30 +103,12 @@ export function DynamicOptionsField({
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
-
-  // Track mounted state for debounce safety.
-  // We assign to the ref in the render body so it resets on each render,
-  // and use a cleanup ref pattern: the ref starts true and is set false
-  // via a finalizer callback stored in another ref.
-  // Since useEffect is banned, we rely on the ref being checked in the
-  // setTimeout callback — if the component re-mounts with new props,
-  // the old closure's mountedRef will have been replaced.
-  const cleanupRef = useRef<(() => void) | null>(null);
-  if (!cleanupRef.current) {
-    const mounted = mountedRef;
-    cleanupRef.current = () => {
-      mounted.current = false;
-    };
-  }
 
   const handleSearchChange = (next: string) => {
     setSearch(next);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      if (mountedRef.current) {
-        setDebouncedSearch(next);
-      }
+      setDebouncedSearch(next);
     }, 300);
   };
 
