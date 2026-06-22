@@ -28,6 +28,50 @@ describe("isStaleSessionError", () => {
   it("is false for non-errors", () => {
     expect(isStaleSessionError(undefined)).toBe(false);
   });
+
+  // Claude Code APICallError shape: generic message + stale info in data.stderr
+  it("matches claude-code APICallError with stale message in data.stderr", () => {
+    const err = Object.assign(new Error("process exited with code 1"), {
+      data: { stderr: "No conversation found with session ID abc123" },
+    });
+    expect(isStaleSessionError(err)).toBe(true);
+  });
+
+  // Claude Code shape with stale message in err.stderr directly
+  it("matches claude-code error with stale message in err.stderr", () => {
+    const err = Object.assign(new Error("process exited with code 1"), {
+      stderr: "No conversation found with session ID abc123",
+    });
+    expect(isStaleSessionError(err)).toBe(true);
+  });
+
+  // Stale message carried in err.cause
+  it("matches when stale message is in err.cause.message", () => {
+    const cause = new Error("No conversation found with session ID abc123");
+    const err = new Error("process exited with code 1");
+    // @ts-ignore - setting cause manually for test
+    err.cause = cause;
+    expect(isStaleSessionError(err)).toBe(true);
+  });
+
+  // Stale message in err.cause.stderr
+  it("matches when stale message is in err.cause.stderr", () => {
+    const cause = Object.assign(new Error("exit code 1"), {
+      stderr: "No conversation found with session ID abc123",
+    });
+    const err = new Error("process exited with code 1");
+    // @ts-ignore - setting cause manually for test
+    err.cause = cause;
+    expect(isStaleSessionError(err)).toBe(true);
+  });
+
+  // Negative: unrelated data/stderr should not match
+  it("is false when data.stderr contains only unrelated content", () => {
+    const err = Object.assign(new Error("process exited with code 1"), {
+      data: { stderr: "network timeout connecting to server" },
+    });
+    expect(isStaleSessionError(err)).toBe(false);
+  });
 });
 
 describe("CliSessionExpiredError", () => {
