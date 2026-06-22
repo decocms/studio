@@ -237,7 +237,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
             `[claude-code] stream error model=${sdkModelId} cwd=${cwd ?? "(default)"}:`,
             stringifyError(err),
           );
-          if (isStaleSessionError(err)) {
+          if (input.resumeSessionRef && isStaleSessionError(err)) {
             throw new CliSessionExpiredError(err);
           }
           throw err;

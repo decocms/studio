@@ -243,7 +243,7 @@ export const codexHarnessFactory: HarnessFactory = {
               yield chunk;
             }
           } catch (err) {
-            if (isStaleSessionError(err)) {
+            if (input.resumeSessionRef && isStaleSessionError(err)) {
               throw new CliSessionExpiredError(err);
             }
             throw err;
