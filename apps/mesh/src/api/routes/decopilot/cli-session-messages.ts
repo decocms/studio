@@ -1,18 +1,19 @@
 import type { HarnessId } from "@decocms/harness/types";
+import {
+  type CliProvider,
+  cliProviderName,
+} from "@decocms/harness/cli-harness";
 import type { ChatMessage } from "./types";
 
-type CliProvider = "claude-code" | "codex";
+// `cliProviderName` is the single source of truth for the `HarnessId → provider`
+// map (shared with the harness write side via `@decocms/harness/cli-harness`).
+// Re-exported so this module stays the one-stop place for CLI session-ref/delta
+// helpers.
+export { cliProviderName };
 
 interface CliSessionMeta {
   codingAgentSessionId?: string;
   codingAgentProvider?: string;
-}
-
-/** Provider name stored in assistant message metadata for a CLI harness. */
-export function cliProviderName(harnessId: HarnessId): CliProvider | undefined {
-  if (harnessId === "codex") return "codex";
-  if (harnessId === "claude-code") return "claude-code";
-  return undefined;
 }
 
 /** Index of the most recent assistant message carrying a session id for this

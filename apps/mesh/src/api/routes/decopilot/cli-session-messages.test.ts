@@ -76,6 +76,13 @@ describe("computeCliDelta", () => {
     ];
     expect(computeCliDelta(msgs, "codex").map((m) => m.id)).toEqual(["u2"]);
   });
+  it("resumed turn with no trailing user message: returns an empty delta", () => {
+    // History tail is a completed assistant anchor with no new user input.
+    // The dispatcher turns this empty delta into a defined PermanentRunError
+    // rather than sending zero messages to the CLI.
+    const msgs = [user("u1", "hi"), assistant("a1", "s1", "codex")];
+    expect(computeCliDelta(msgs, "codex")).toEqual([]);
+  });
   it("queued messages: returns all user messages after the anchor", () => {
     const msgs = [
       user("u1", "hi"),

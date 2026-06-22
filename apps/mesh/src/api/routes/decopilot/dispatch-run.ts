@@ -1175,7 +1175,17 @@ async function prepareRun(
       windowSize,
     );
 
-    const resumeSessionRef = resolveCliSessionRef(allMessages, harnessId);
+    // CLI-harness delta + resume only holds on the long-lived desktop daemon:
+    // the on-disk session survives between turns *only* on user-desktop. On any
+    // other sandbox kind there is no persistent rollout to resume, so fall back
+    // to the full-transcript path (pre-resume behavior) rather than silently
+    // dropping history or pointing the CLI at a session that isn't there.
+    const cliResumable =
+      isCliHarness(harnessId) && target.sandboxProviderKind === "user-desktop";
+
+    const resumeSessionRef = cliResumable
+      ? resolveCliSessionRef(allMessages, harnessId)
+      : undefined;
 
     const organization = ctx.organization!;
     const streamStartAt = Date.now();
@@ -1202,10 +1212,25 @@ async function prepareRun(
     // forward materialized UIMessages so each harness decides how to convert
     // them.
     // CLI harnesses (codex, claude-code) resume an on-disk session and only
-    // need the new user message(s); decopilot still gets the full transcript.
-    const messagesForHarness = isCliHarness(harnessId)
+    // need the new user message(s); decopilot — and any CLI harness not on
+    // user-desktop — still gets the full transcript (see `cliResumable`).
+    const messagesForHarness = cliResumable
       ? computeCliDelta(allMessages, harnessId)
       : allMessages;
+
+    // A resumable CLI turn must carry at least the new user message(s). An empty
+    // delta means a resumed turn whose history tail is already a completed
+    // assistant anchor — there is no new user input to forward. Sending zero
+    // messages would drive an empty CLI turn (or a downstream "empty prompt"
+    // crash the stale-session guard would not catch), so surface a defined
+    // permanent error instead of silently degrading.
+    if (cliResumable && messagesForHarness.length === 0) {
+      throw new PermanentRunError(
+        "empty_request",
+        "No new user message to send to the CLI harness (resumed turn with empty delta).",
+      );
+    }
+
     const materializedMessages = await resolveStorageRefs(
       messagesForHarness,
       ctx,
