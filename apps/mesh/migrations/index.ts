@@ -114,6 +114,8 @@ import * as migration112orgfileconfigscredentialtype from "./112-org-file-config
 import * as migration113threadfailurereason from "./113-thread-failure-reason.ts";
 import * as migration114runackedseq from "./114-run-acked-seq.ts";
 import * as migration115threadprojectedseq from "./115-thread-projected-seq.ts";
+import * as migration116orgsites from "./116-org-sites.ts";
+import * as migration117orgfileconfigssiteslug from "./117-org-file-configs-site-slug.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -252,6 +254,8 @@ const migrations: Record<string, Migration> = {
   "113-thread-failure-reason": migration113threadfailurereason,
   "114-run-acked-seq": migration114runackedseq,
   "115-thread-projected-seq": migration115threadprojectedseq,
+  "116-org-sites": migration116orgsites,
+  "117-org-file-configs-site-slug": migration117orgfileconfigssiteslug,
 };
 
 export default migrations;

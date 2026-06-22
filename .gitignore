@@ -28,6 +28,9 @@ dist-ssr
 
 # Environment files
 .env
+
+# Operator-local backfill mapping (org/team ids) for scripts/backfill-org-sites.ts
+mapping.json
 **/.env
 
 # Editor directories and files
