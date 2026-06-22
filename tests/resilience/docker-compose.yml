@@ -12,7 +12,10 @@ services:
       retries: 10
 
   nats:
-    image: nats:2.14.2
+    # Use the -alpine variant (busybox sh + wget): the default nats image is
+    # distroless, so the CMD-SHELL /healthz healthcheck below can never run on
+    # it and the container is reported permanently unhealthy, aborting `up --wait`.
+    image: nats:2.14.2-alpine
     command: ["-c", "/etc/nats/nats.conf"]
     volumes:
       - ./nats-config/nats.conf:/etc/nats/nats.conf:ro
