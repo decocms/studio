@@ -217,17 +217,13 @@ async function drain(stream: ReadableStream): Promise<void> {
  * Cluster-side consume of one relayed run — mirrors dispatch-run's kernel
  * wiring for a chunk source produced on the desktop instead of in-process.
  *
- * Lifecycle parity with hosted runs:
- * - title: interception + persistence via the kernel; SSE title updates via
- *   `buildOnTitleUpdated` when an sseHub is configured.
- * - persistence: same v1/v2 fork as dispatch-run, read off the thread row's
- *   pinned `message_storage_version`. Transport Convergence routes EVERY
- *   user-desktop run to pull (`decidePullDispatch`) regardless of generation,
- *   so both forks are live: v2 threads persist via the PartEmitter; v1 threads
- *   take the whole-message branch, which persists only the final message (no
- *   per-5-step checkpoints — the relay acks per chunk, so mid-run pod death
- *   loses at most the in-flight message, which the daemon's full-prefix resend
- *   replays).
+ * Legacy HTTP relay lifecycle:
+ * - title: interception + persistence still happen inline for this temporary
+ *   `/chunks` route; SSE title updates use `buildOnTitleUpdated` when an sseHub
+ *   is configured.
+ * - persistence: v2 threads persist via the PartEmitter while this legacy route
+ *   remains mounted. Hosted runs have moved to projector-only materialization,
+ *   and the direct-NATS desktop path will remove this route entirely.
  * - usage → PostHog `chat_message_completed`; failures → console.error +
  *   `chat_message_failed` + a durable `failed` status. Relay events carry
  *   `transport: "pull-relay"` and OMIT model/mode props — the wire harness
@@ -376,9 +372,9 @@ async function consumeRelayedLiveRun(
     },
   };
 
-  // Title interception + SSE. `persistTitle` is a NO-OP — the durable projector
-  // is the sole title writer; only the chunk interception + `onTitleUpdated`
-  // SSE fire here.
+  // Title interception + SSE. This legacy HTTP relay still uses inline
+  // `persistTitle`; direct-NATS relay will remove this temporary write path with
+  // the `/chunks` route.
   const onTitleUpdated = deps.sseHub
     ? buildOnTitleUpdated({
         ctx,
@@ -398,13 +394,11 @@ async function consumeRelayedLiveRun(
     title: {
       currentThreadTitle: thread.title,
       threadId: runId,
-      // Write the auto-title here too. Now that this path flips the run to a
-      // terminal status on completion, the durable projector SKIPS the run
-      // (shouldSkipProjection short-circuits on a terminal status), so the
-      // projector — the would-be title writer — never runs for a live-finished
-      // run. The interceptor still gates on the current (default) title, so a
-      // user-renamed thread is never overwritten. The projector remains the
-      // title writer for the fallback where this path didn't finish the run.
+      // Legacy HTTP relay still writes auto-title inline while this route
+      // exists. The interceptor gates on the current (default) title, so a
+      // user-renamed thread is never overwritten. Same-fence terminal projector
+      // runs are now allowed, making this inline write a temporary compatibility
+      // path until direct-NATS relay removes `/chunks`.
       persistTitle: async (_threadId, title) => {
         await ctx.storage.threads.update(runId, { title });
       },

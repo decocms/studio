@@ -1,9 +1,30 @@
 import type { UIMessageChunk } from "ai";
 import { describe, expect, test } from "bun:test";
+import { makeTitleResultChunk } from "@decocms/harness/title-chunk";
 import type { IngestRunDeps } from "./ingest-run";
 import { ingestRun } from "./ingest-run";
 
 describe("ingestRun", () => {
+  test("publishes chunks and done without a persistence dependency", async () => {
+    const d = deps();
+    await ingestRun(
+      {
+        runId: "run_1",
+        fenceToken: "fence_1",
+        chunks: chunks({
+          seq: 1,
+          chunk: { type: "finish", finishReason: "stop" } as UIMessageChunk,
+        }),
+      },
+      d.deps,
+    );
+
+    expect(d.published.map((p) => p.msgId)).toEqual(["run_1:fence_1:1"]);
+    expect(d.done).toEqual([
+      { runId: "run_1", fenceToken: "fence_1", finalSeq: 1 },
+    ]);
+  });
+
   test("dedups replayed seqs (hooks fire once) and publishes each new chunk with msgId", async () => {
     const published: Array<{ chunk: unknown; msgId?: string }> = [];
     const acked: number[] = [];
@@ -44,6 +65,43 @@ describe("ingestRun", () => {
     expect(published.map((p) => p.msgId)).toEqual(["r:f:1", "r:f:2", "r:f:3"]); // seq 1 replay skipped
     expect(acked).toEqual([1, 2, 3]);
     expect(finishCount).toBe(1);
+  });
+
+  test("does not call injected title persistence when consuming title chunks", async () => {
+    const d = deps();
+    let persistCalls = 0;
+
+    await ingestRun(
+      {
+        runId: "run_1",
+        fenceToken: "fence_1",
+        chunks: chunks(
+          {
+            seq: 1,
+            chunk: makeTitleResultChunk("Generated title") as UIMessageChunk,
+          },
+          { seq: 2, chunk: { type: "start" } as UIMessageChunk },
+          {
+            seq: 3,
+            chunk: { type: "finish", finishReason: "stop" } as UIMessageChunk,
+          },
+        ),
+      },
+      {
+        ...d.deps,
+        title: {
+          currentThreadTitle: "New chat",
+          threadId: "run_1",
+          onTitleUpdated: () => {},
+          persistTitle: async () => {
+            persistCalls++;
+            throw new Error("ingestRun must not persist live titles");
+          },
+        },
+      },
+    );
+
+    expect(persistCalls).toBe(0);
   });
 });
 
@@ -220,5 +278,50 @@ describe("ingestRun done marker", () => {
       ),
     ).rejects.toThrow("source failed");
     expect(d.done).toEqual([]);
+  });
+
+  test("does not advance or publish done when raw chunk publish is not durable", async () => {
+    const published: number[] = [];
+    const done: unknown[] = [];
+    let finishCount = 0;
+
+    await expect(
+      ingestRun(
+        {
+          runId: "run_1",
+          fenceToken: "fence_a",
+          chunks: chunks({
+            seq: 1,
+            chunk: { type: "finish", finishReason: "stop" } as UIMessageChunk,
+          }),
+        },
+        {
+          streamBuffer: {
+            publishRawChunk: async () => {
+              published.push(1);
+              return false;
+            },
+            publishDone: async () => {
+              done.push(1);
+              return true;
+            },
+          },
+          hooks: {
+            onFinish: () => {
+              finishCount++;
+            },
+          },
+          title: {
+            currentThreadTitle: null,
+            threadId: "run_1",
+            persistTitle: async () => {},
+          },
+        },
+      ),
+    ).rejects.toThrow("publishRawChunk failed");
+
+    expect(published).toEqual([1]);
+    expect(done).toEqual([]);
+    expect(finishCount).toBe(0);
   });
 });

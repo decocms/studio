@@ -42,6 +42,7 @@ import {
   tracer,
   tracingMiddleware,
 } from "../observability";
+import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
@@ -1583,6 +1584,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         .selectFrom("threads")
         .select([
           "organization_id",
+          "created_by",
           "message_storage_version",
           "status",
           "run_fence_token",
@@ -1593,6 +1595,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       return row
         ? {
             orgId: row.organization_id,
+            createdBy: row.created_by,
             version: row.message_storage_version ?? 1,
             status: row.status,
             runFenceToken: row.run_fence_token,
@@ -1606,6 +1609,35 @@ export async function createApp(options: CreateAppOptions = {}) {
       projectorThreadStorage.markRunFailed(runId, orgId, reason, kind),
     persistTitle: (runId, orgId, title) =>
       projectorThreadStorage.update(runId, orgId, { title }),
+    recordCompleted: async ({ runId, orgId, distinctId, usage }) => {
+      posthog.capture({
+        distinctId,
+        event: "chat_message_completed",
+        groups: { organization: orgId },
+        properties: {
+          organization_id: orgId,
+          thread_id: runId,
+          transport: "projector",
+          input_tokens: usage.inputTokens,
+          output_tokens: usage.outputTokens,
+          total_tokens: usage.totalTokens,
+        },
+      });
+    },
+    recordFailed: async ({ runId, orgId, distinctId, reason, kind }) => {
+      posthog.capture({
+        distinctId,
+        event: "chat_message_failed",
+        groups: { organization: orgId },
+        properties: {
+          organization_id: orgId,
+          thread_id: runId,
+          transport: "projector",
+          error_category: kind,
+          error_message: reason,
+        },
+      });
+    },
     // Cleanup is owned by the workflow's success path now (after the run is
     // projected + completed). The fence token is part of the runtime contract
     // but unused here — the stream subject is keyed by runId only.

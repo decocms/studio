@@ -75,7 +75,7 @@ function makeDeps() {
 }
 
 describe("buildAgentSandboxUiStream", () => {
-  it("publishes seq-keyed raw chunks via ingestRun, fires hooks once, never persists inline title", async () => {
+  it("publishes seq-keyed raw chunks via ingestRun and fires hooks once", async () => {
     const d = makeDeps();
     let finishCount = 0;
     const stream = buildAgentSandboxUiStream({
@@ -97,7 +97,6 @@ describe("buildAgentSandboxUiStream", () => {
       "r:f:2",
       "r:f:3",
     ]);
-    // Projector is the sole DB writer — the inline persistTitle is a NO-OP.
     expect(d.persistedTitles).toEqual([]);
     expect(finishCount).toBe(1);
     // Authoritative {done} marker fires once, fence-scoped to the last seq.

@@ -2,6 +2,7 @@ import type { UIMessage, UIMessageChunk } from "ai";
 import {
   consumeHarnessStream,
   type HarnessStreamPersistence,
+  type HarnessUsage,
 } from "./consume-harness-stream";
 import { isRunStatusControlChunk } from "./run-status-stage";
 
@@ -73,16 +74,18 @@ export interface ProjectChunksResult {
    * emitted after the in-band error chunk — Task 4 characterization).
    */
   finishReason?: string;
+  usage: Pick<HarnessUsage, "inputTokens" | "outputTokens" | "totalTokens">;
 }
 
 /**
  * Pure persistence projection of a raw chunk stream into thread_message_parts
  * (spec §5.4 DB-writer consumer). Reuses the kernel's AI-SDK reassembly +
  * PartEmitter handoff via `consumeHarnessStream`, but discards the live
- * `uiStream` (the UI-tail is a SEPARATE consumer of the NATS log) and ignores
- * title/usage hooks (those run at ingest/UI, not the projector).
+ * `uiStream` (the UI-tail is a SEPARATE consumer of the NATS log). Title and
+ * usage are captured here too so the projector is the sole durable writer and
+ * terminal analytics source for v2 runs.
  *
- * Returns `{ failed, finishReason }` after a CLEAN reconstruction:
+ * Returns `{ failed, finishReason, usage }` after a CLEAN reconstruction:
  *  - `failed: true`  — an in-band `{type:"error"}` chunk was the terminal
  *                       signal (harness error verdict; the run must be marked
  *                       failed by the workflow — Task 6).
@@ -117,6 +120,11 @@ export async function projectChunks(
   // disambiguates which one caused it.
   let inBandErrorSeen = false;
   let capturedFinishReason: string | undefined = undefined;
+  let capturedUsage: ProjectChunksResult["usage"] = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+  };
   let persistenceError: unknown = null;
   const recordPersistenceError = (error: unknown) => {
     if (persistenceError === null) persistenceError = error;
@@ -169,6 +177,13 @@ export async function projectChunks(
     sanitizeErrorText: options.sanitizeErrorText,
     errorMessageId: options.errorMessageId,
     hooks: {
+      onUsage: (totals) => {
+        capturedUsage = {
+          inputTokens: totals.inputTokens,
+          outputTokens: totals.outputTokens,
+          totalTokens: totals.totalTokens,
+        };
+      },
       onError: () => {
         // Fires for BOTH in-band {type:"error"} chunks AND thrown source
         // exceptions (both flow through consumeHarnessStream's onError).
@@ -189,5 +204,9 @@ export async function projectChunks(
   // seen AND the stream did NOT reach a natural finish. If capturedFinishReason
   // is set, the error was non-terminal (the run recovered) → not failed.
   const failed = inBandErrorSeen && capturedFinishReason === undefined;
-  return { failed, finishReason: capturedFinishReason };
+  return {
+    failed,
+    finishReason: capturedFinishReason,
+    usage: capturedUsage,
+  };
 }

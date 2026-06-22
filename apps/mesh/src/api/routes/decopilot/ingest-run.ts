@@ -27,7 +27,6 @@ import type { UIMessageChunk } from "ai";
 import {
   consumeHarnessStream,
   type HarnessStreamConsumerHooks,
-  type HarnessStreamPersistence,
   type HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
 import { buildChunkMsgId } from "./projector-stream-messages";
@@ -54,8 +53,8 @@ export interface IngestRunInput {
    * Defaults to 0 (fresh run: publish everything from seq 1).
    */
   initialAckSeq?: number;
-  /** Deterministic id for a synthesized error message (`error-${runId}`) so the
-   *  live write and the projector backstop dedupe it. See consumeHarnessStream. */
+  /** Deterministic id for a synthesized error message (`error-${runId}`) so
+   *  projector-only persistence dedupes retries. See consumeHarnessStream. */
   errorMessageId?: string;
 }
 
@@ -67,16 +66,6 @@ export interface IngestRunDeps {
    *  is the sole title writer. */
   title: HarnessStreamTitleOptions;
   /**
-   * Persists the assistant message parts as the run streams. Defaults to the
-   * no-op (legacy: the durable projector was the sole writer). The hosted
-   * caller passes the run's PartEmitter so the message lands in the DB before
-   * the stream closes — closing the read-after-stream gap where a reload showed
-   * the just-streamed message missing until the async projector caught up. The
-   * projector still re-projects from JetStream as an idempotent backstop
-   * (deterministic row ids → ON CONFLICT DO NOTHING).
-   */
-  persistence?: HarnessStreamPersistence;
-  /**
    * When set, the ingest side publishes debounced checkpoint markers after
    * each confirmed `ackSeq` advance. The projector consumer reacts to these
    * by enqueuing a partial projection pass (Tasks 8-9). Omitted in runs
@@ -87,13 +76,6 @@ export interface IngestRunDeps {
     headSeq: number,
   ) => Promise<boolean>;
 }
-
-/** Default persistence: write nothing (legacy projector-only behavior). */
-const NOOP_PERSISTENCE: HarnessStreamPersistence = {
-  emitStepParts: async () => {},
-  emitFinal: async () => {},
-  emitError: async () => {},
-};
 
 async function drain(stream: ReadableStream): Promise<void> {
   const reader = stream.getReader();
@@ -171,8 +153,15 @@ export async function ingestRun(
 
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: dedupedChunks(),
-    title: deps.title,
-    persistence: deps.persistence ?? NOOP_PERSISTENCE,
+    title: {
+      ...deps.title,
+      persistTitle: async () => {},
+    },
+    persistence: {
+      emitStepParts: async () => {},
+      emitFinal: async () => {},
+      emitError: async () => {},
+    },
     hooks: deps.hooks,
     errorMessageId: input.errorMessageId,
   });
