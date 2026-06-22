@@ -14,6 +14,7 @@ import type { ProviderV3 } from "@ai-sdk/provider";
 import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
 import type { ModelCapability, ProviderId } from "@decocms/mesh-sdk";
 import { isCreditError } from "./stream-error";
+import { withThoughtSignatureCodec } from "./thought-signature";
 
 export interface ProviderInfo {
   id: ProviderId;
@@ -103,6 +104,20 @@ interface LanguageModelSelection {
 const FREE_FALLBACK_MODEL = "openrouter/free";
 
 /**
+ * Provider ids whose wire format (OpenAI chat-completions) can't carry a
+ * Gemini thought signature in metadata, so gateways smuggle it into the
+ * tool-call id (`call_<base>__thought__<sig>`). These get the thought-signature
+ * codec; everyone else (native google, anthropic, …) already handles signatures
+ * natively. The codec is a no-op for ids without the separator, so listing a
+ * gateway that doesn't embed costs nothing.
+ */
+const THOUGHT_SIGNATURE_ID_PROVIDERS = new Set<string>([
+  "openai-compatible",
+  "openrouter",
+  "deco",
+]);
+
+/**
  * Re-issues the SAME call against `free` on an account-level credit rejection
  * (402) from `primary`, before any chunk is produced. This is the gap the
  * in-request `models` array can't cover: a 402 terminates the whole request
@@ -173,9 +188,17 @@ export function createLanguageModel(
       : provider.aiSdk.languageModel(id)) as LanguageModelV3;
 
   const primary = make(model.id, settings);
-  if (!useFreeFallback) return primary;
-
   // Free model is plain (no reasoning, no nested models array) so the retry is
   // a clean single-model call.
-  return withCreditFallback(primary, make(FREE_FALLBACK_MODEL));
+  const base = useFreeFallback
+    ? withCreditFallback(primary, make(FREE_FALLBACK_MODEL))
+    : primary;
+
+  // Decode Gemini thought signatures the gateway packs into tool-call ids.
+  // Outermost so its `transformParams` rewrites ids before the credit-fallback
+  // re-issues the call against the free model.
+  return provider.info?.id &&
+    THOUGHT_SIGNATURE_ID_PROVIDERS.has(provider.info.id)
+    ? withThoughtSignatureCodec(base)
+    : base;
 }

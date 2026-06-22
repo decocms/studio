@@ -1237,6 +1237,16 @@ describe("dropRedundantStubs", () => {
     );
   });
 
+  test("drops a stub whose message-id suffix differs from its part toolCallId", () => {
+    // Legacy stubs were keyed by a hashed id (`msg_async_stub_sha256:…`) while
+    // their part carried the full toolCallId. Match by the part, not the suffix.
+    const hashedStub = assistantMsg("msg_async_stub_sha256:deadbeef", [
+      { type: "tool-web_search", toolCallId: TC, state: "input-available" },
+    ]);
+    const out = dropRedundantStubs([userMsg, hashedStub, live]);
+    expect(out.map((m) => m.id)).toEqual(["u1", "msg_live"]);
+  });
+
   test("noop when there are no stubs (cheap fast path)", () => {
     const out = dropRedundantStubs([userMsg, live]);
     expect(out).toBe(out); // (sanity that it returns a list)
