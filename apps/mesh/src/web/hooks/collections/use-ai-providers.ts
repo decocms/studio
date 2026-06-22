@@ -7,8 +7,6 @@
 
 import type { ModelCollectionEntitySchema } from "@decocms/bindings/llm";
 import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
   useProjectContext,
   type AiProviderModel,
   type AiProviderKey,
@@ -18,27 +16,22 @@ import {
 
 export type { AiProviderKey, AiProviderModel, AiProviderInfo };
 import { z } from "zod";
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { KEYS } from "../../lib/query-keys";
+import { callStudioTool, useStudioTools } from "../../lib/studio-tools";
 
 /**
  * Query options for the org's AI provider keys. Shared with parallel-prefetch
  * batches so they warm the exact cache entry useAiProviderKeys reads.
  */
-export function aiProviderKeysQueryOptions(client: Client, orgId: string) {
+export function aiProviderKeysQueryOptions(orgSlug: string, orgId: string) {
   return {
     queryKey: KEYS.aiProviderKeys(orgId),
     staleTime: 60_000,
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_KEY_LIST",
-        arguments: {},
-      })) as {
-        structuredContent?: { keys: AiProviderKey[] };
-      };
-      return result.structuredContent ?? null;
-    },
+    queryFn: async () =>
+      (await callStudioTool(orgSlug, "AI_PROVIDER_KEY_LIST", {})) as {
+        keys: AiProviderKey[];
+      },
   };
 }
 
@@ -52,85 +45,54 @@ export type UseLLMsOptions = UseCollectionListOptions<LLM>;
 
 export function useAiProviders() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const { data } = useSuspenseQuery({
     queryKey: KEYS.aiProviders(org.id),
     staleTime: Infinity,
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDERS_LIST",
-        arguments: {},
-      })) as {
-        structuredContent?: { providers: AiProviderInfo[] };
-      };
-      return result.structuredContent;
-    },
+    queryFn: async () =>
+      (await studio.call("AI_PROVIDERS_LIST", {})) as {
+        providers: AiProviderInfo[];
+      },
   });
   return data;
 }
 
 export function useAiProviderKeys() {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-
-  const { data } = useSuspenseQuery(aiProviderKeysQueryOptions(client, org.id));
+  const { data } = useSuspenseQuery(
+    aiProviderKeysQueryOptions(org.slug, org.id),
+  );
   return data?.keys ?? [];
 }
 
 export function useAiProviderModels(keyId: string | undefined) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const { data, isLoading } = useQuery({
     queryKey: KEYS.aiProviderModels(org.id, keyId ?? ""),
     enabled: !!keyId,
     staleTime: 60_000,
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDERS_LIST_MODELS",
-        arguments: { keyId },
-      })) as {
-        structuredContent?: { models: AiProviderModel[] };
-      };
-      return result.structuredContent ?? null;
-    },
+    queryFn: async () =>
+      (await studio.call("AI_PROVIDERS_LIST_MODELS", {
+        keyId: keyId ?? "",
+      })) as { models: AiProviderModel[] },
   });
   return { models: data?.models ?? [], isLoading: !!keyId && isLoading };
 }
 
 export function useSuspenseAiProviderModels(keyId: string) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
 
   const { data } = useSuspenseQuery({
     queryKey: KEYS.aiProviderModels(org.id, keyId),
     staleTime: 60_000,
-    queryFn: async () => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDERS_LIST_MODELS",
-        arguments: { keyId },
-      })) as {
-        structuredContent?: { models: AiProviderModel[] };
-      };
-      return result.structuredContent ?? null;
-    },
+    queryFn: async () =>
+      (await studio.call("AI_PROVIDERS_LIST_MODELS", { keyId })) as {
+        models: AiProviderModel[];
+      },
   });
   return data?.models ?? [];
 }
