@@ -198,6 +198,51 @@ describe("PartRowBuilder", () => {
     expect(overlap).toEqual([]);
   });
 
+  it("emitFinal writes NOTHING for a message with no renderable parts (no empty bubble)", () => {
+    const builder = new PartRowBuilder({
+      orgId: "org_1",
+      threadId: "thread_1",
+      runId: "thread_1",
+      baseTimeMs: 1_700_000_000_000,
+    });
+
+    // A finish with zero content (e.g. the stream ended with only a
+    // still-`streaming` text part that never reached `done`) must not persist
+    // a lone finish anchor — that would fold to an empty assistant message.
+    const noParts = builder.emitFinal({ id: "assistant_1", role: "assistant" });
+    const streamingOnly = builder.emitFinal({
+      id: "assistant_2",
+      role: "assistant",
+      parts: [{ type: "text", state: "streaming", text: "par" }],
+    });
+
+    expect(noParts).toEqual([]);
+    expect(streamingOnly).toEqual([]);
+  });
+
+  it("emitFinal still closes a message whose content was emitted in an earlier step", () => {
+    const builder = new PartRowBuilder({
+      orgId: "org_1",
+      threadId: "thread_1",
+      runId: "thread_1",
+      baseTimeMs: 1_700_000_000_000,
+    });
+    const message = {
+      id: "assistant_1",
+      role: "assistant" as const,
+      parts: [{ type: "text", state: "done", text: "hello" }],
+    };
+
+    builder.acknowledge(builder.emitStepParts(message));
+    // emitFinal sees no NEW content rows, but the message already has content,
+    // so the finish anchor must still be written.
+    const finalRows = builder.emitFinal(message);
+
+    expect(finalRows.map((r) => [r.id, r.kind])).toEqual([
+      ["thread_1:assistant_1:1", "finish"],
+    ]);
+  });
+
   it("emitFinal carries the message metadata on the finish anchor row", () => {
     const builder = new PartRowBuilder({
       orgId: "org_1",
