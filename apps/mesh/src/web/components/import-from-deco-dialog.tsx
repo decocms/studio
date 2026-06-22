@@ -267,6 +267,9 @@ export function ImportFromDecoDialog({
               metadata: {
                 instructions: null,
                 enabled_plugins: [],
+                // Link the agent to its asset site so the CMS resolves uploads
+                // to the managed storage for this slug.
+                siteSlug: siteName,
                 githubRepo: {
                   owner: githubRepo.owner,
                   name: githubRepo.name,

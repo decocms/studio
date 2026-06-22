@@ -323,17 +323,22 @@ export interface OrgFileConfigTable {
   prefix: string | null;
   // Public URL host (e.g. R2 dev domain, CDN). Null = compute from bucket+region.
   public_url_base: string | null;
-  // "static" (long-lived key pair in encrypted_credentials) or "sts-session"
+  // "static" (long-lived key pair in encrypted_credentials), "sts-session"
   // (temporary creds fetched on demand from refresh_url; the encrypted blob
-  // holds only the API key for the refresh call). Has a DB default of 'static'.
+  // holds only the API key for the refresh call), or "managed" (no stored
+  // secret — studio mints prefix-scoped STS creds in-process for `site_slug`,
+  // authorized by org_sites ownership). Has a DB default of 'static'.
   credential_type: ColumnType<
-    "static" | "sts-session",
-    "static" | "sts-session" | undefined,
-    "static" | "sts-session"
+    "static" | "sts-session" | "managed",
+    "static" | "sts-session" | "managed" | undefined,
+    "static" | "sts-session" | "managed"
   >;
   // Endpoint that vends temporary credentials for `sts-session` configs. Null
-  // for `static`.
+  // for `static` / `managed`.
   refresh_url: string | null;
+  // Site slug a `managed` config mints credentials for (its `<slug>/` prefix on
+  // the shared tenant bucket). Null for `static` / `sts-session`.
+  site_slug: string | null;
   encrypted_credentials: string;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
@@ -387,8 +392,9 @@ export interface FileConfigInfo {
   forcePathStyle: boolean;
   prefix: string | null;
   publicUrlBase: string | null;
-  credentialType: "static" | "sts-session";
+  credentialType: "static" | "sts-session" | "managed";
   refreshUrl: string | null;
+  siteSlug: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -1361,6 +1367,37 @@ export interface OrganizationDomain {
 }
 
 // ============================================================================
+// Org Sites (asset tenancy: org owns globally-unique site slugs)
+// ============================================================================
+
+export interface OrgSiteTable {
+  // Globally-unique site slug = object-key prefix namespace in the shared
+  // tenant bucket. Primary key enforces global uniqueness across orgs.
+  slug: string;
+  organization_id: string;
+  // Provenance of the claim: 'deco-import' (migrated) or 'manual'.
+  source: ColumnType<string, string | undefined, string>;
+  deco_team_id: number | null;
+  deco_site_id: number | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface OrgSite {
+  slug: string;
+  organizationId: string;
+  source: string;
+  decoTeamId: number | null;
+  decoSiteId: number | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+// ============================================================================
 // Brand Context Table Definition
 // ============================================================================
 
@@ -1496,6 +1533,9 @@ export interface Database {
 
   // Organization domain claims (for auto-join)
   organization_domains: OrganizationDomainTable;
+
+  // Asset tenancy: org ownership of globally-unique site slugs
+  org_sites: OrgSiteTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

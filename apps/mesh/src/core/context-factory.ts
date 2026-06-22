@@ -490,6 +490,7 @@ import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
+import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
@@ -1241,6 +1242,7 @@ export async function createStudioContextFactory(
     ),
     secrets: new SecretStorage(config.db, vault),
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
+    orgSites: new OrgSiteStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     automations: createAutomationsStorage(config.db),

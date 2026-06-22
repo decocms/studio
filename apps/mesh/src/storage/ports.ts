@@ -21,6 +21,7 @@ import type {
   BrandContext,
   MonitoringLog,
   OrganizationDomain,
+  OrgSite,
   OrganizationSettings,
   OrganizationTag,
   Thread,
@@ -655,6 +656,25 @@ export interface OrganizationDomainStoragePort {
     autoJoinEnabled: boolean,
   ): Promise<OrganizationDomain>;
   clearDomain(organizationId: string): Promise<void>;
+}
+
+export interface OrgSiteStoragePort {
+  /**
+   * Claim a globally-unique site slug for an organization. Idempotent for the
+   * same org (refreshes provenance); throws OrgSiteConflictError if a different
+   * org already owns the slug.
+   */
+  claimSite(params: {
+    slug: string;
+    organizationId: string;
+    source?: string;
+    decoTeamId?: number | null;
+    decoSiteId?: number | null;
+    by: string;
+  }): Promise<OrgSite>;
+  getBySlug(slug: string): Promise<OrgSite | null>;
+  /** Authorization primitive: does this org own this slug? */
+  isOwnedBy(slug: string, organizationId: string): Promise<boolean>;
 }
 
 export interface BrandContextStoragePort {

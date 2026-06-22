@@ -37,6 +37,7 @@ export const FILE_OBJECTS_LIST = defineTool({
 
     const fileCfg = await resolveFileConfig(
       ctx.storage.orgFileConfigs,
+      ctx.storage.orgSites,
       input.configId,
       org.id,
     );

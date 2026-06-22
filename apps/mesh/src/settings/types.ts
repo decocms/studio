@@ -121,6 +121,20 @@ export interface Settings {
   decoSupabaseUrl: string | undefined;
   decoSupabaseServiceKey: string | undefined;
   firecrawlApiKey: string | undefined;
+
+  // Managed asset storage (the shared deco tenant bucket). Used by `managed`
+  // file configs: studio mints prefix-scoped STS credentials per site slug via
+  // AssumeRole on `awsS3TenantRoleArn`, served through the CDN at
+  // `s3TenantPublicUrlBase`. The provisioner key pair is OPTIONAL — when unset
+  // the STS client uses the AWS default provider chain (the cluster's ambient
+  // role). `awsS3TenantRoleArn` is required for the `managed` strategy to work.
+  s3TenantBucket: string;
+  s3TenantRegion: string;
+  s3TenantEndpoint: string;
+  s3TenantPublicUrlBase: string;
+  awsS3TenantRoleArn: string | undefined;
+  awsS3TenantProvisionerAccessKeyId: string | undefined;
+  awsS3TenantProvisionerSecretAccessKey: string | undefined;
 }
 
 export interface CliFlags {

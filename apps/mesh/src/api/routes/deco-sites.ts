@@ -15,6 +15,8 @@ import type { StudioContext } from "../../core/studio-context";
 import { getUserId, requireOrganization } from "../../core/studio-context";
 import { generatePrefixedId } from "../../shared/utils/generate-id";
 import { fetchToolsFromMCP } from "../../tools/connection/fetch-tools";
+import { tenantStorageDescriptor } from "../../file-storage/tenant-credentials";
+import { isValidSiteSlug } from "../../shared/site-slug";
 
 type Variables = { meshContext: StudioContext };
 
@@ -319,123 +321,76 @@ const requireAuth = async (
 };
 
 const ADMIN_MCP = "https://sites-admin-mcp.deco.site/api/mcp";
-const ADMIN_API = "https://admin.deco.cx";
 
 const FILE_CONFIG_NAME_PREFIX = "deco-assets-";
 
-/** Full storage descriptor returned by admin's s3-credentials endpoint. */
-interface AdminS3Descriptor {
-  bucket: string;
-  region: string;
-  endpoint: string;
-  prefix: string;
-  forcePathStyle: boolean;
-  publicUrlBase: string;
-}
-
-/** Builds the per-site refresh endpoint URL on admin. */
-function refreshUrlFor(siteName: string): string {
-  return `${ADMIN_API}/api/${encodeURIComponent(siteName)}/s3-credentials`;
-}
-
 /**
- * Calls `POST admin.deco.cx/api/<site>/s3-credentials` as the team's service
- * account once, to (a) validate the service-account key can mint credentials
- * and (b) read the storage descriptor (bucket/region/endpoint/prefix/CDN).
- * The temporary credentials in the response are intentionally discarded — the
- * file config stores only a refresh reference, and the S3 client fetches fresh
- * creds on demand. Returns null on any failure so the deco-sites import stays
- * best-effort (it shouldn't fail just because storage couldn't be set up).
+ * Claim the site slug for this org in studio's own tenancy table and create a
+ * `managed` FILE_CONFIG for it. Studio mints prefix-scoped STS credentials
+ * in-process at upload/list time (see file-storage/tenant-credentials.ts) — no
+ * service-account key, no live call to admin to vend credentials. Idempotent:
+ * re-importing the same site re-claims (same org) and skips an existing config.
+ * Best-effort: any failure is logged and swallowed by the caller.
  */
-async function fetchDecoAssetsDescriptor(
-  siteName: string,
-  serviceAccountApiKey: string,
-): Promise<AdminS3Descriptor | null> {
-  try {
-    const res = await fetch(refreshUrlFor(siteName), {
-      method: "POST",
-      headers: { "x-api-key": serviceAccountApiKey },
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error(
-        `[deco-sites] s3-credentials failed (${res.status}) for site=${siteName}: ${body.slice(0, 200)}`,
-      );
-      return null;
-    }
-    const data = (await res.json()) as Partial<AdminS3Descriptor>;
-    if (!data.bucket || !data.region || !data.endpoint || !data.publicUrlBase) {
-      console.error(
-        `[deco-sites] s3-credentials returned malformed descriptor for site=${siteName}`,
-      );
-      return null;
-    }
-    return {
-      bucket: data.bucket,
-      region: data.region,
-      endpoint: data.endpoint,
-      prefix: data.prefix ?? `${siteName}/`,
-      forcePathStyle: data.forcePathStyle ?? false,
-      publicUrlBase: data.publicUrlBase,
-    };
-  } catch (err) {
-    console.error(
-      `[deco-sites] s3-credentials request errored for site=${siteName}:`,
-      err,
-    );
-    return null;
-  }
-}
-
-/**
- * Create an `sts-session` FILE_CONFIG row for the site's prefix on the
- * deco-managed assets bucket, served through the CDN reported by admin. The
- * config stores only a refresh reference (the admin endpoint URL + the team's
- * service-account API key); the S3 client fetches short-lived credentials on
- * demand and refreshes them automatically. If a config with the same name
- * already exists in this org (re-import of the same site), no-op. Best-effort.
- */
-async function provisionDecoAssetsFileConfig(params: {
+async function provisionManagedAssetsConfig(params: {
   ctx: StudioContext;
   orgId: string;
   userId: string;
   siteName: string;
-  serviceAccountApiKey: string;
+  decoTeamId: number;
 }): Promise<void> {
-  const { ctx, orgId, userId, siteName, serviceAccountApiKey } = params;
-  const configName = `${FILE_CONFIG_NAME_PREFIX}${siteName}`;
-
-  const existing = await ctx.storage.orgFileConfigs.list(orgId);
-  if (existing.some((c) => c.name.toLowerCase() === configName.toLowerCase())) {
-    console.log(
-      `[deco-sites] file-config "${configName}" already exists for org=${orgId}, skipping`,
+  const { ctx, orgId, userId, siteName, decoTeamId } = params;
+  const slug = siteName.toLowerCase();
+  if (!isValidSiteSlug(slug)) {
+    console.error(
+      `[deco-sites] site "${siteName}" is not a valid asset slug; skipping managed config`,
     );
     return;
   }
 
-  const descriptor = await fetchDecoAssetsDescriptor(
-    siteName,
-    serviceAccountApiKey,
-  );
-  if (!descriptor) return;
+  // Claim ownership in studio's tenancy table (idempotent for this org).
+  // claimSite throws if a different org already owns the slug — skip rather
+  // than create a config that would fail the ownership gate at upload time.
+  try {
+    await ctx.storage.orgSites.claimSite({
+      slug,
+      organizationId: orgId,
+      source: "deco-import",
+      decoTeamId,
+      by: userId,
+    });
+  } catch (err) {
+    console.error(
+      `[deco-sites] could not claim site "${slug}" for org=${orgId}:`,
+      err,
+    );
+    return;
+  }
 
+  const configName = `${FILE_CONFIG_NAME_PREFIX}${siteName}`;
+  const existing = await ctx.storage.orgFileConfigs.list(orgId);
+  if (existing.some((c) => c.name.toLowerCase() === configName.toLowerCase())) {
+    return;
+  }
+
+  const descriptor = tenantStorageDescriptor(slug);
   await ctx.storage.orgFileConfigs.create({
     organizationId: orgId,
     name: configName,
-    description: `deco-assets storage for site "${siteName}". Provisioned during deco.cx import.`,
+    description: `Managed deco-assets storage for site "${siteName}".`,
     bucket: descriptor.bucket,
     region: descriptor.region,
     endpoint: descriptor.endpoint,
     forcePathStyle: descriptor.forcePathStyle,
     prefix: descriptor.prefix,
     publicUrlBase: descriptor.publicUrlBase,
-    refreshUrl: refreshUrlFor(siteName),
-    credentials: { type: "sts-session", apiKey: serviceAccountApiKey },
+    refreshUrl: null,
+    siteSlug: slug,
+    credentials: { type: "managed" },
     createdBy: userId,
   });
   console.log(
-    `[deco-sites] file-config "${configName}" provisioned for org=${orgId}`,
+    `[deco-sites] managed file-config "${configName}" provisioned for org=${orgId}`,
   );
 }
 
@@ -681,20 +636,21 @@ export const createDecoSitesOrgRoutes = () => {
         configuration_scopes,
       });
 
-      // Best-effort: provision a FILE_CONFIG pointing at the site's
-      // deco-assets folder so the sections-editor file picker can list
-      // and upload images right after import. Any failure here is
-      // logged and swallowed — the deco.cx connection itself is
-      // already created and useful on its own.
-      await provisionDecoAssetsFileConfig({
+      // Best-effort: claim the site in studio's tenancy table and provision a
+      // `managed` FILE_CONFIG so the sections-editor file picker can list and
+      // upload images right after import — studio mints prefix-scoped creds
+      // in-process, no dependency on admin to vend them. Any failure here is
+      // logged and swallowed — the deco.cx connection itself is already
+      // created and useful on its own.
+      await provisionManagedAssetsConfig({
         ctx,
         orgId,
         userId,
         siteName,
-        serviceAccountApiKey: apiKey,
+        decoTeamId: teamId,
       }).catch((err) => {
         console.error(
-          `[deco-sites] file-config provisioning failed for site=${siteName}:`,
+          `[deco-sites] managed assets config provisioning failed for site=${siteName}:`,
           err,
         );
       });

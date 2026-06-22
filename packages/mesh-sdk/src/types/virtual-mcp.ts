@@ -578,6 +578,11 @@ export const VirtualMCPEntitySchema = z.object({
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
       knowledge: knowledgeMetadataField,
+      siteSlug: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Linked asset site slug (managed storage tenancy)"),
     })
     .loose()
     .describe("Metadata"),
@@ -643,6 +648,11 @@ export const VirtualMCPCreateDataSchema = z.object({
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
       knowledge: knowledgeMetadataField,
+      siteSlug: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Linked asset site slug (managed storage tenancy)"),
     })
     .loose()
     .nullable()
@@ -704,6 +714,11 @@ export const VirtualMCPUpdateDataSchema = z.object({
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
       knowledge: knowledgeMetadataField,
+      siteSlug: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Linked asset site slug (managed storage tenancy)"),
     })
     .loose()
     .nullable()
