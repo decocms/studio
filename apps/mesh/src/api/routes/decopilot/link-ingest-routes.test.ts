@@ -132,6 +132,10 @@ function appWithContext(opts: AppContextOptions = {}) {
               if (inserted.length > 0) appended.push(inserted);
               return inserted;
             },
+            // The relay path now builds its assistant emitter via
+            // createAssistantEmitter, which seeds the created_at base from the
+            // run's existing parts. Nothing pre-exists in this stub → null.
+            maxCreatedAtMsForRun: async () => null,
           }),
         },
       },
@@ -160,6 +164,7 @@ function appWithContext(opts: AppContextOptions = {}) {
           publishedDone.push({ fenceToken, finalSeq });
           return true;
         },
+        publishCheckpoint: async () => true,
         pump: (stream: ReadableStream) => {
           const index = pumped.length;
           pumped.push([]);

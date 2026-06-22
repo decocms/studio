@@ -41,7 +41,7 @@ import {
   type HarnessStreamConsumerHooks,
   type HarnessStreamPersistence,
 } from "./consume-harness-stream";
-import { PartEmitter } from "./part-emitter";
+import { createAssistantEmitter } from "./run-persistence";
 import { makeAckedSeqThrottle } from "./acked-seq-throttle";
 import { buildOnTitleUpdated } from "./on-title-updated";
 import { ProgressBumpThrottle } from "./progress-bump";
@@ -287,10 +287,9 @@ async function consumeRelayedLiveRun(
   // → ON CONFLICT DO NOTHING). v1 threads: legacy read-only → no-op.
   const partEmitter =
     thread.message_storage_version === 2
-      ? new PartEmitter({
-          storage: ctx.storage.threads.messageParts(),
+      ? await createAssistantEmitter({
+          messageParts: ctx.storage.threads.messageParts(),
           orgId,
-          threadId: runId,
           runId,
         })
       : null;

@@ -230,6 +230,32 @@ export class OrgScopedThreadStorage {
   getAckedSeq(id: string): Promise<number> {
     return this.inner.getAckedSeq(id, this.requireOrg());
   }
+
+  /**
+   * Read the current incremental-projection cursor for a thread.
+   * Returns 0 when the column is null (nothing projected yet).
+   */
+  getProjectedSeq(id: string): Promise<number> {
+    return this.inner.getProjectedSeq(id, this.requireOrg());
+  }
+
+  /**
+   * Advance the incremental-projection cursor using a fence + monotonic CAS.
+   * Only writes when `run_fence_token` matches AND `newSeq > projected_seq`.
+   * Returns the resulting `projected_seq` (unchanged if the guard failed).
+   */
+  advanceProjectedSeq(
+    id: string,
+    fenceToken: string,
+    newSeq: number,
+  ): Promise<number> {
+    return this.inner.advanceProjectedSeq(
+      id,
+      this.requireOrg(),
+      fenceToken,
+      newSeq,
+    );
+  }
 }
 
 // ============================================================================
@@ -944,6 +970,48 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return row?.run_acked_seq ?? 0;
   }
 
+  /**
+   * Read the current incremental-projection cursor for a thread.
+   * Returns 0 when the column is null (nothing projected yet).
+   */
+  async getProjectedSeq(id: string, organizationId: string): Promise<number> {
+    const row = await this.db
+      .selectFrom("threads")
+      .select("projected_seq")
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return row?.projected_seq ?? 0;
+  }
+
+  /**
+   * Advance the incremental-projection cursor using a fence + monotonic CAS.
+   *
+   * Sets `projected_seq = newSeq` only when:
+   *   - `id` + `organization_id` match the row
+   *   - `run_fence_token = fenceToken` (guards against stale runs)
+   *   - `projected_seq < newSeq` (monotonic — never regresses)
+   *
+   * Returns the resulting `projected_seq` after the attempt (re-read via
+   * `getProjectedSeq`), so the caller can detect when the guard fired.
+   */
+  async advanceProjectedSeq(
+    id: string,
+    organizationId: string,
+    fenceToken: string,
+    newSeq: number,
+  ): Promise<number> {
+    await this.db
+      .updateTable("threads")
+      .set({ projected_seq: newSeq, updated_at: new Date().toISOString() })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("run_fence_token", "=", fenceToken)
+      .where("projected_seq", "<", newSeq)
+      .execute();
+    return this.getProjectedSeq(id, organizationId);
+  }
+
   // ==========================================================================
   // Private Helper Methods
   // ==========================================================================
@@ -971,6 +1039,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
     hidden: boolean | number | null;
     message_storage_version?: number | null;
     link_transport?: string | null;
+    projected_seq?: number | null;
   }): Thread {
     let metadata: ThreadMetadata = {};
     if (row.metadata != null) {
@@ -1016,6 +1085,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
       // threads keep reading from `thread_messages`.
       message_storage_version: row.message_storage_version ?? 1,
       link_transport: row.link_transport ?? null,
+      // Defaults to 0 for pre-migration rows (column absent/null).
+      projected_seq: row.projected_seq ?? 0,
     };
   }
 

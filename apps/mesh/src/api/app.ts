@@ -932,6 +932,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       // "unavailable" (false) — the caller must not treat the run as handed
       // off to the projector.
       publishDone: async () => false,
+      publishCheckpoint: async () => false,
       createTailStream: async () => null,
       purge: () => {},
       teardown: () => {},
@@ -1611,6 +1612,13 @@ export async function createApp(options: CreateAppOptions = {}) {
     purgeRun: async (runId) => {
       streamBuffer.purge(runId);
     },
+    advanceProjectedSeq: (runId, orgId, fenceToken, newSeq) =>
+      projectorThreadStorage.advanceProjectedSeq(
+        runId,
+        orgId,
+        fenceToken,
+        newSeq,
+      ),
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).

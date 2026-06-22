@@ -18,7 +18,10 @@ import {
   createDurableProjectorConsumer,
   type DurableProjectorConsumerHandle,
 } from "./projector-consumer";
-import { enqueueProjectRun } from "./projector-workflow";
+import {
+  enqueueProjectCheckpoint,
+  enqueueProjectRun,
+} from "./projector-workflow";
 
 export interface DurableProjectorWiring {
   jsm: JetStreamManager;
@@ -38,5 +41,6 @@ export async function startDurableProjector(
   return consumer.start({
     resolveOrgId: w.resolveOrgId,
     enqueueProjectRun,
+    enqueueProjectCheckpoint,
   });
 }
