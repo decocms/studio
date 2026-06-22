@@ -87,6 +87,10 @@ export class OrgScopedThreadStorage {
     return this.inner.completeRunIfNotCompleted(id, this.requireOrg());
   }
 
+  markRunFailed(id: string, reason: string, kind: string): Promise<void> {
+    return this.inner.markRunFailed(id, this.requireOrg(), reason, kind);
+  }
+
   forceFailIfInProgress(id: string): Promise<boolean> {
     return this.inner.forceFailIfInProgress(id, this.requireOrg());
   }

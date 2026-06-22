@@ -30,10 +30,14 @@ export interface HarnessStreamConsumerHooks {
   onStep?: (message: UIMessage) => void | Promise<void>;
   /** Fires once on stream completion. `finishReason` is the AI SDK finish
    *  reason derived from the stream's `finish` chunk (undefined when the
-   *  stream ended without one, e.g. on a source error). */
+   *  stream ended without one, e.g. on a source error). `meta.persistenceOk`
+   *  is false when any persistence handoff (emitStepParts/emitFinal) threw —
+   *  callers that flip a terminal run status MUST NOT mark the run completed
+   *  when it is false (let the durable projector be authoritative). */
   onFinish?: (
     message: UIMessage,
     finishReason?: string,
+    meta?: { persistenceOk: boolean },
   ) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
   onUsage?: (totals: HarnessUsage) => void | Promise<void>;
@@ -102,6 +106,9 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
   const pending: Promise<void>[] = [];
   let streamFinished = false;
   let errored = false;
+  // Flipped false when any persistence handoff throws. Surfaced to the onFinish
+  // hook so a live caller does not mark the run completed over a failed write.
+  let persistenceOk = true;
   const errorMessageId = crypto.randomUUID();
   let resolveComplete!: () => void;
   const whenComplete = new Promise<void>((resolve) => {
@@ -126,11 +133,10 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
     },
     onStepFinish: ({ responseMessage }) => {
       pending.push(
-        options.persistence
-          .emitStepParts(responseMessage)
-          .catch((e) =>
-            console.error("[consume-harness-stream] emitStepParts failed", e),
-          ),
+        options.persistence.emitStepParts(responseMessage).catch((e) => {
+          persistenceOk = false;
+          console.error("[consume-harness-stream] emitStepParts failed", e);
+        }),
       );
       pending.push(
         Promise.resolve(options.hooks?.onStep?.(responseMessage)).catch((e) =>
@@ -152,11 +158,10 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
               finishReason,
             };
         }
-        await options.persistence
-          .emitFinal(responseMessage)
-          .catch((e) =>
-            console.error("[consume-harness-stream] emitFinal failed", e),
-          );
+        await options.persistence.emitFinal(responseMessage).catch((e) => {
+          persistenceOk = false;
+          console.error("[consume-harness-stream] emitFinal failed", e);
+        });
       }
       // Usage BEFORE the finish hook: finish-hook consumers (dispatch-run's
       // posthog completion event) read the accumulated usage, so it must be
@@ -170,7 +175,9 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
         );
       }
       await Promise.resolve(
-        options.hooks?.onFinish?.(responseMessage, finishReason),
+        options.hooks?.onFinish?.(responseMessage, finishReason, {
+          persistenceOk,
+        }),
       ).catch((e) =>
         console.error("[consume-harness-stream] onFinish hook failed", e),
       );
@@ -182,11 +189,10 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
       if (!errored) {
         errored = true;
         pending.push(
-          options.persistence
-            .emitError(errorMessageId, text)
-            .catch((e) =>
-              console.error("[consume-harness-stream] emitError failed", e),
-            ),
+          options.persistence.emitError(errorMessageId, text).catch((e) => {
+            persistenceOk = false;
+            console.error("[consume-harness-stream] emitError failed", e);
+          }),
         );
         pending.push(
           Promise.resolve(options.hooks?.onError?.(error)).catch((e) =>

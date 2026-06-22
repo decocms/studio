@@ -93,6 +93,7 @@ import {
 } from "./run-status-stage";
 import type {
   HarnessStreamConsumerHooks,
+  HarnessStreamPersistence,
   HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
 import { ingestRun } from "./ingest-run";
@@ -226,6 +227,9 @@ export interface AgentSandboxUiStreamInput {
    *  a NO-OP here — the durable projector is the sole title writer. */
   title: HarnessStreamTitleOptions;
   hooks: HarnessStreamConsumerHooks;
+  /** Persists assistant parts live (the run's PartEmitter for v2 threads).
+   *  Omitted → no-op (v1 legacy). See `IngestRunDeps.persistence`. */
+  persistence?: HarnessStreamPersistence;
 }
 
 /**
@@ -266,6 +270,7 @@ export function buildAgentSandboxUiStream(
           {
             streamBuffer: input.streamBuffer,
             hooks: input.hooks,
+            persistence: input.persistence,
             title: {
               ...input.title,
               // Projector owns the title write — neutralize the inline one.
@@ -1410,6 +1415,12 @@ async function prepareRun(
             publishDone: async () => false,
           },
           chunks: dispatchHarnessChunks(),
+          // v2: persist assistant parts live through the SAME PartEmitter that
+          // wrote the user message, so seq stays monotonic (user 0..k, then
+          // assistant) — ordering is exact and the message is in the DB before
+          // the stream closes. The projector re-projects as an idempotent
+          // backstop. v1 threads: null → no-op (legacy read-only).
+          persistence: partEmitter ?? undefined,
           title: {
             currentThreadTitle: mem.thread.title,
             threadId: mem.thread.id,

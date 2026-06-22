@@ -41,6 +41,7 @@ import {
   type HarnessStreamConsumerHooks,
   type HarnessStreamPersistence,
 } from "./consume-harness-stream";
+import { PartEmitter } from "./part-emitter";
 import { makeAckedSeqThrottle } from "./acked-seq-throttle";
 import { buildOnTitleUpdated } from "./on-title-updated";
 import { ProgressBumpThrottle } from "./progress-bump";
@@ -278,11 +279,27 @@ async function consumeRelayedLiveRun(
     deps.sseHub.emit(orgId, createDecopilotFinishEvent(runId, "failed"));
   };
 
-  // The live hooks (usage capture, posthog completion/failure, failure SSE).
-  // ZERO DB writes: terminal status is owned by the durable projector
-  // (link ingest only publishes raw chunks + done markers). The failed-status
-  // row write that the legacy inline path performed here is gone — the
-  // projector's onRunErrored writes `status:'failed'`.
+  // v2 threads persist assistant parts live through this PartEmitter so the
+  // message lands in the DB before the relay POST responds — without it the
+  // message was only written by the async projector, so a reload in the gap
+  // between stream-end and projection showed it missing. The projector still
+  // re-projects from JetStream as an idempotent backstop (deterministic row ids
+  // → ON CONFLICT DO NOTHING). v1 threads: legacy read-only → no-op.
+  const partEmitter =
+    thread.message_storage_version === 2
+      ? new PartEmitter({
+          storage: ctx.storage.threads.messageParts(),
+          orgId,
+          threadId: runId,
+          runId,
+        })
+      : null;
+
+  // The live hooks (usage capture, posthog completion/failure, failure SSE) and
+  // the durable terminal-status flip. The relay path runs on a fungible pod
+  // with no in-memory RunRegistry, so the FINISH reactor never fires here —
+  // the status is written directly (idempotent: guarded on `in_progress`). The
+  // projector remains a backstop via its own completeRunIfNotCompleted.
   const hooks: HarnessStreamConsumerHooks = {
     // Fires at most once, before onFinish, with the run's usage totals
     // extracted from final message metadata. Capture into a local; the
@@ -297,9 +314,20 @@ async function consumeRelayedLiveRun(
         totalTokens: totals.totalTokens,
       };
     },
-    onFinish: () => {
+    onFinish: async (_message, _finishReason, meta) => {
       // A failed run already emitted `chat_message_failed` in onError.
       if (runErrored) return;
+      // Flip the durable status to completed as soon as the stream finishes.
+      // Skip when a live persistence handoff failed — the message is then
+      // incomplete in the DB, so leave the run for the durable projector
+      // (which re-projects from JetStream) to finalize authoritatively.
+      if (meta?.persistenceOk !== false) {
+        await ctx.storage.threads
+          .completeRunIfNotCompleted(runId)
+          .catch((e) =>
+            console.error("[link-ingest] completeRunIfNotCompleted failed", e),
+          );
+      }
       posthog.capture({
         distinctId,
         event: "chat_message_completed",
@@ -324,6 +352,8 @@ async function consumeRelayedLiveRun(
       }
       runErrored = true;
       console.error("[link-ingest] relayed stream error:", error);
+      const reason =
+        error instanceof Error ? error.message : stringifyError(error);
       posthog.capture({
         distinctId,
         event: "chat_message_failed",
@@ -334,10 +364,15 @@ async function consumeRelayedLiveRun(
           transport: "pull-relay",
           duration_ms: Date.now() - streamStartAt,
           error_category: classifyStreamError(error),
-          error_message:
-            error instanceof Error ? error.message : stringifyError(error),
+          error_message: reason,
         },
       });
+      // Write the durable failed status before the SSE so a reloading client
+      // and the live event agree. Idempotent (guarded on in_progress); the
+      // projector's markRunFailed backstops a missed write.
+      await ctx.storage.threads
+        .markRunFailed(runId, reason, "harness")
+        .catch((e) => console.error("[link-ingest] markRunFailed failed", e));
       await emitFailureSse();
     },
   };
@@ -356,7 +391,7 @@ async function consumeRelayedLiveRun(
 
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks,
-    persistence: NOOP_PERSISTENCE,
+    persistence: partEmitter ?? NOOP_PERSISTENCE,
     hooks,
     title: {
       currentThreadTitle: thread.title,
