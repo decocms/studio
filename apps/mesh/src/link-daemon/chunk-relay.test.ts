@@ -207,6 +207,61 @@ describe("relayDispatchSSEAsChunkStream", () => {
     await relayPromise;
   });
 
+  it("writes a newline heartbeat into the POST body during idle gaps (defeats a CDN idle timeout)", async () => {
+    const sse = pushableSSEBody();
+    const heartbeatSeen = Promise.withResolvers<void>();
+    const realLines: RelayLine[] = [];
+
+    const relayPromise = relayDispatchSSEAsChunkStream({
+      dispatchBody: sse.body,
+      runId: "run_hb",
+      // Tiny interval so the idle gap below trips a heartbeat deterministically.
+      heartbeatMs: 5,
+      post: async (body): Promise<RelayPostResult> => {
+        if (typeof body === "string") throw new Error("expected a stream");
+        const reader = body.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        let last = 0;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let nl = buf.indexOf("\n");
+          while (nl !== -1) {
+            const line = buf.slice(0, nl);
+            buf = buf.slice(nl + 1);
+            if (line.length === 0) {
+              // A bare "\n" = the keepalive heartbeat (a blank NDJSON line).
+              heartbeatSeen.resolve();
+            } else {
+              const parsed = relayLineSchema.parse(JSON.parse(line));
+              realLines.push(parsed);
+              last = parsed.seq;
+            }
+            nl = buf.indexOf("\n");
+          }
+        }
+        return { ok: true, lastSeq: last };
+      },
+    });
+
+    // First real line, then stay idle (source open, no events) so the relay
+    // body must emit heartbeat newlines to keep bytes flowing.
+    sse.push(CHUNK_A);
+    await heartbeatSeen.promise;
+    sse.push(DONE);
+    sse.close();
+    await relayPromise;
+
+    // Heartbeats are transient wire bytes: they never become relay lines, so
+    // seq numbering is untouched.
+    expect(realLines).toEqual([
+      { seq: 1, event: CHUNK_A },
+      { seq: 2, event: DONE },
+    ]);
+  }, 2000);
+
   it("reconnects after a dropped POST and resends the full buffered prefix", async () => {
     const sse = pushableSSEBody();
     const attempts: { fromSeq: number; lines: RelayLine[] }[] = [];
