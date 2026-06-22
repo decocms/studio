@@ -388,14 +388,15 @@ test.describe("CLI session resume (codex, desktop-link relay)", () => {
       // (b2) delta: only the new user message, not turn 1's text
       const wireMessages = t2.workItem.harnessInput.messages as Array<{
         role: string;
-        content: unknown;
       }>;
       const userMessages = wireMessages.filter((m) => m.role === "user");
       expect(
         userMessages.length,
         "delta must contain exactly one user message (turn 2 only)",
       ).toBe(1);
-      const contentStr = JSON.stringify(userMessages[0]!.content);
+      // Materialized UIMessages carry text in `parts`, not a `content` field —
+      // stringify the whole message so the assertion is shape-agnostic.
+      const contentStr = JSON.stringify(userMessages[0]);
       expect(contentStr).toContain(turn2UserText);
       expect(contentStr).not.toContain(turn1UserText);
     } finally {
@@ -465,8 +466,10 @@ test.describe("CLI session resume (codex, desktop-link relay)", () => {
         const parts = await fetchParts(db, runId);
         const errorPart = parts.find((p) => p.kind === "error");
         expect(errorPart, "error part persisted").toBeTruthy();
-        const payload = errorPart!.payload as { message?: string } | null;
-        expect(payload?.message ?? "").toMatch(/session expired/i);
+        // `emitError` stores the error payload as a text part:
+        // `{ type: "text", text: "Error: <code>: <message>" }`.
+        const payload = errorPart!.payload as { text?: string } | null;
+        expect(payload?.text ?? "").toMatch(/session expired/i);
       }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
       await daemon?.close();
