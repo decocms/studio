@@ -8,11 +8,9 @@ import { Eye, EyeOff } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
+import type { ToolInput } from "@/tools/io-types";
 import { KEYS } from "@/web/lib/query-keys";
 import type { OpenAICompatiblePreset } from "@/web/utils/openai-compatible-presets";
 
@@ -33,11 +31,7 @@ export function ConnectApiKeyForm({
   onSuccess: () => void;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [showKey, setShowKey] = useState(false);
 
@@ -56,13 +50,11 @@ export function ConnectApiKeyForm({
     error,
   } = useMutation({
     mutationFn: async (data: ApiKeyFormData) => {
-      await client.callTool({
-        name: "AI_PROVIDER_KEY_CREATE",
-        arguments: {
-          providerId,
-          label: data.label || "Personal key",
-          apiKey: data.apiKey,
-        },
+      await studio.call("AI_PROVIDER_KEY_CREATE", {
+        providerId:
+          providerId as ToolInput<"AI_PROVIDER_KEY_CREATE">["providerId"],
+        label: data.label || "Personal key",
+        apiKey: data.apiKey,
       });
     },
     onSuccess: () => {
@@ -153,11 +145,7 @@ export function ConnectOpenAICompatibleForm({
   onSuccess: () => void;
 }) {
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [showKey, setShowKey] = useState(false);
 
@@ -184,14 +172,11 @@ export function ConnectOpenAICompatibleForm({
         baseUrl: data.baseUrl,
         apiKey: data.apiKey || "",
       });
-      await client.callTool({
-        name: "AI_PROVIDER_KEY_CREATE",
-        arguments: {
-          providerId: "openai-compatible",
-          label: data.label || preset?.name || data.baseUrl,
-          apiKey: encodedKey,
-          ...(preset ? { presetId: preset.id } : {}),
-        },
+      await studio.call("AI_PROVIDER_KEY_CREATE", {
+        providerId: "openai-compatible",
+        label: data.label || preset?.name || data.baseUrl,
+        apiKey: encodedKey,
+        ...(preset ? { presetId: preset.id } : {}),
       });
     },
     onSuccess: () => {

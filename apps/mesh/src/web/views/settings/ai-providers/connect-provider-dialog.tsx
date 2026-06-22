@@ -11,11 +11,9 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Spinner } from "@deco/ui/components/spinner.tsx";
-import {
-  SELF_MCP_ALIAS_ID,
-  useMCPClient,
-  useProjectContext,
-} from "@decocms/mesh-sdk";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useStudioTools } from "@/web/lib/studio-tools";
+import type { ToolInput } from "@/tools/io-types";
 import { useAiProviders } from "@/web/hooks/collections/use-ai-providers";
 import { KEYS } from "@/web/lib/query-keys";
 import { track } from "@/web/lib/posthog-client";
@@ -58,11 +56,7 @@ export function ConnectProviderDialog({
   const aiProviders = useAiProviders();
   const providers = aiProviders?.providers ?? [];
   const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
+  const studio = useStudioTools();
   const queryClient = useQueryClient();
   const [state, dispatch] = useReducer(reducer, initialState);
   const triggeredRef = useRef(false);
@@ -100,13 +94,13 @@ export function ConnectProviderDialog({
       stateToken: string;
       label: string;
     }) => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_OAUTH_EXCHANGE",
-        arguments: { providerId, code, stateToken, label },
-      })) as { isError?: boolean; content?: { text?: string }[] };
-      if (result?.isError) {
-        throw new Error(result.content?.[0]?.text ?? "OAuth exchange failed");
-      }
+      await studio.call("AI_PROVIDER_OAUTH_EXCHANGE", {
+        providerId:
+          providerId as ToolInput<"AI_PROVIDER_OAUTH_EXCHANGE">["providerId"],
+        code,
+        stateToken,
+        label,
+      });
       return providerId;
     },
     onSuccess: (providerId) => {
@@ -128,13 +122,10 @@ export function ConnectProviderDialog({
 
   const { mutate: provisionKey } = useMutation({
     mutationFn: async (providerId: string) => {
-      const result = (await client.callTool({
-        name: "AI_PROVIDER_PROVISION_KEY",
-        arguments: { providerId },
-      })) as { isError?: boolean; content?: { text?: string }[] };
-      if (result?.isError) {
-        throw new Error(result.content?.[0]?.text ?? "Key provisioning failed");
-      }
+      await studio.call("AI_PROVIDER_PROVISION_KEY", {
+        providerId:
+          providerId as ToolInput<"AI_PROVIDER_PROVISION_KEY">["providerId"],
+      });
       return providerId;
     },
     onSuccess: (providerId) => {
@@ -179,26 +170,19 @@ export function ConnectProviderDialog({
         method: "oauth-pkce",
       });
       try {
-        const result = (await client.callTool({
-          name: "AI_PROVIDER_OAUTH_URL",
-          arguments: {
-            providerId: provider.id,
-            callbackUrl: `${window.location.origin}/oauth/callback/ai-provider`,
-          },
-        })) as { structuredContent?: { url: string; stateToken: string } };
-        if (!result.structuredContent) {
+        const result = await studio.call("AI_PROVIDER_OAUTH_URL", {
+          providerId: provider.id,
+          callbackUrl: `${window.location.origin}/oauth/callback/ai-provider`,
+        });
+        if (!result?.url) {
           throw new Error("Invalid response from AI_PROVIDER_OAUTH_URL");
         }
         dispatch({
           type: "select-oauth",
           providerId: provider.id,
-          stateToken: result.structuredContent.stateToken,
+          stateToken: result.stateToken,
         });
-        window.open(
-          result.structuredContent.url,
-          "AiProviderOAuth",
-          "width=600,height=700",
-        );
+        window.open(result.url, "AiProviderOAuth", "width=600,height=700");
       } catch (err) {
         toast.error(
           `Failed to start OAuth: ${err instanceof Error ? err.message : String(err)}`,

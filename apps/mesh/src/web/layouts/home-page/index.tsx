@@ -62,8 +62,8 @@ export function HomePage() {
   });
   useSuspenseQueries({
     queries: [
-      aiProviderKeysQueryOptions(selfClient, org.id),
-      organizationSettingsQueryOptions(selfClient, org.id),
+      aiProviderKeysQueryOptions(org.slug, org.id),
+      organizationSettingsQueryOptions(org.slug, org.id),
       virtualMcpItemQueryOptions(org.id, displayAgent.id, selfClient),
     ],
   });
