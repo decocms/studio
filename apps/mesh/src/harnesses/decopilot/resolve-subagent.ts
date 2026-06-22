@@ -53,6 +53,7 @@ export async function resolveSubagent(
     ctx,
     "passthrough",
     superUser,
+    { includeSkillsCatalog: true },
   );
 
   return {

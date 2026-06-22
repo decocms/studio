@@ -21,10 +21,13 @@ import {
   GrepInputSchema,
   READ_DESCRIPTION,
   ReadInputSchema,
+  SKILL_DESCRIPTION,
+  SkillInputSchema,
   TOOL_APPROVAL,
   WRITE_DESCRIPTION,
   WriteInputSchema,
 } from "./schemas";
+import { resolveSkillPath } from "./skill-resolve";
 import type { VmToolsParams } from "./types";
 
 export type { VmToolsParams } from "./types";
@@ -36,6 +39,7 @@ export function createVmTools(params: VmToolsParams) {
     toolOutputMap,
     needsApproval,
     pendingImages,
+    ctx,
   } = params;
   const approvalFor = (mutating: boolean) => (mutating ? needsApproval : false);
 
@@ -144,8 +148,33 @@ export function createVmTools(params: VmToolsParams) {
     },
   });
 
+  // Progressive skill discovery: <available-skills> lists each skill's id +
+  // description; this loads one skill's full SKILL.md on demand (read-only),
+  // resolving the catalog id to its mounted path.
+  const skill = tool({
+    needsApproval: approvalFor(TOOL_APPROVAL.skill),
+    description: SKILL_DESCRIPTION,
+    inputSchema: zodSchema(SkillInputSchema),
+    execute: async ({ id }) => {
+      const path = resolveSkillPath(id, ctx.organization?.slug);
+      if (!path) {
+        return {
+          error: `Invalid skill id "${id}". Use an id from <available-skills>.`,
+        };
+      }
+      try {
+        const result = await call("/_sandbox/read", { path });
+        return maybeTruncate(result, toolOutputMap);
+      } catch {
+        return {
+          error: `Skill "${id}" not found. Use an id from <available-skills>.`,
+        };
+      }
+    },
+  });
+
   // org-fs is now the universal substrate: chat attachments arrive in
   // `org/upload/` (no copy_to_sandbox) and deliverables go to `org/output/`
   // surfaced via the thread-outputs chips (no share_with_user).
-  return { read, write, edit, grep, glob, bash };
+  return { read, write, edit, grep, glob, bash, skill };
 }

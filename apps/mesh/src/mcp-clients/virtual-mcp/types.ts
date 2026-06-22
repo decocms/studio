@@ -18,4 +18,11 @@ export interface VirtualClientOptions {
   mcpListCache?: McpListCache;
   /** Per-connection timeout (ms) for list operations (listTools/listResources/listPrompts). Connections that exceed this are skipped. */
   listTimeoutMs?: number;
+  /**
+   * Pre-rendered `<available-skills>` catalog block, appended to the served
+   * instructions by `getInstructions()`. Built async in the factory (the sync
+   * `getInstructions()` can't read org-fs) so it reaches both the in-process
+   * cluster engine and the sandbox/desktop daemon. Only set for agent runtimes.
+   */
+  skillsBlock?: string;
 }

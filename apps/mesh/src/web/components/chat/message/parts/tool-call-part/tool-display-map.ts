@@ -43,6 +43,7 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplay> = {
   read_tool_output: { icon: File06, label: "Read Tool Output" },
   read_resource: { icon: Database01, label: "Read Resource" },
   read_prompt: { icon: BookOpen01, label: "Read Prompt" },
+  skill: { icon: BookOpen01, label: "Load Skill" },
 
   // System tools
   enable_tool: { icon: Tool01, label: "Enable Tool" },

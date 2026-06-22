@@ -152,7 +152,7 @@ export function buildClusterEnvironmentTools(args: {
             ctx,
             "passthrough",
             opts?.superUser ?? false,
-            { listTimeoutMs: opts?.listTimeoutMs },
+            { listTimeoutMs: opts?.listTimeoutMs, includeSkillsCatalog: true },
           ),
         provider: modelRuntime.thinking.provider,
         imageProvider:

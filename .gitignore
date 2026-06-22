@@ -67,6 +67,8 @@ deploy/test*
 
 # Data Test files
 apps/benchmark/data
+# Local DevObjectStorage scratch dir (org-fs / skill-catalog integration tests)
+data/
 
 # AI planning files (root-level only, not docs/plans/)
 /plans
