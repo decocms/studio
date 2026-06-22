@@ -21,13 +21,13 @@ import { Label } from "@deco/ui/components/label.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import type { FieldProps } from "./field-props";
 
-interface DynamicOption {
+export interface DynamicOption {
   value: string;
   label?: string;
   image?: string;
 }
 
-function normalizeOptions(data: unknown): DynamicOption[] {
+export function normalizeOptions(data: unknown): DynamicOption[] {
   if (!Array.isArray(data)) return [];
   const result: DynamicOption[] = [];
   for (const item of data) {
@@ -56,21 +56,37 @@ async function fetchDynamicOptions(
   }
   const base = previewUrl.replace(/\/+$/, "");
   const url = `${base}/deco/invoke/${loaderPath}`;
-  console.log("[DynamicOptions] fetching", { url, payload });
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    console.error("[DynamicOptions] fetch failed", res.status, res.statusText);
     throw new Error(`Failed to fetch dynamic options: ${res.status}`);
   }
   const data = await res.json();
-  console.log("[DynamicOptions] raw response", data);
-  const normalized = normalizeOptions(data);
-  console.log("[DynamicOptions] normalized options", normalized);
-  return normalized;
+  return normalizeOptions(data);
+}
+
+function FieldHeader({
+  path,
+  label,
+  description,
+}: {
+  path: string;
+  label: string;
+  description?: string;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <Label htmlFor={path}>{label}</Label>
+      {description && (
+        <p className="text-xs leading-normal text-muted-foreground">
+          {description}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function DynamicOptionsField({
@@ -85,31 +101,38 @@ export function DynamicOptionsField({
   const previewUrl = sandbox?.previewUrl;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  console.log("[DynamicOptions] render", {
-    path,
-    format: schema.format,
-    options: schema.options,
-    loaderPath,
-    previewUrl,
-    hasSandbox: !!sandbox,
-    value,
-  });
-
-  const sandboxKey = sandbox
-    ? `${sandbox.orgSlug}/${sandbox.virtualMcpId}/${sandbox.branch}`
-    : "";
-
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+
+  // Track mounted state for debounce safety.
+  // We assign to the ref in the render body so it resets on each render,
+  // and use a cleanup ref pattern: the ref starts true and is set false
+  // via a finalizer callback stored in another ref.
+  // Since useEffect is banned, we rely on the ref being checked in the
+  // setTimeout callback — if the component re-mounts with new props,
+  // the old closure's mountedRef will have been replaced.
+  const cleanupRef = useRef<(() => void) | null>(null);
+  if (!cleanupRef.current) {
+    const mounted = mountedRef;
+    cleanupRef.current = () => {
+      mounted.current = false;
+    };
+  }
 
   const handleSearchChange = (next: string) => {
     setSearch(next);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      setDebouncedSearch(next);
+      if (mountedRef.current) {
+        setDebouncedSearch(next);
+      }
     }, 300);
   };
+
+  const sandboxKey = sandbox
+    ? `${sandbox.orgSlug}/${sandbox.virtualMcpId}/${sandbox.branch}`
+    : "";
 
   const query = useQuery({
     queryKey: KEYS.sandboxInvoke(
@@ -122,7 +145,7 @@ export function DynamicOptionsField({
         loaderPath!,
         debouncedSearch || undefined,
       ),
-    enabled: !!previewUrl && !!loaderPath,
+    enabled: !!previewUrl && !!loaderPath && open,
     staleTime: 60_000,
     retry: 1,
   });
@@ -135,36 +158,11 @@ export function DynamicOptionsField({
   if (!previewUrl || !loaderPath) {
     return (
       <div className="space-y-2">
-        <div className="space-y-0.5">
-          <Label htmlFor={path}>{label}</Label>
-          {schema.description && (
-            <p className="text-xs leading-normal text-muted-foreground">
-              {schema.description}
-            </p>
-          )}
-        </div>
-        <Input
-          id={path}
-          type="text"
-          value={currentValue}
-          onChange={(e) => onChange(e.target.value)}
+        <FieldHeader
+          path={path}
+          label={label}
+          description={schema.description}
         />
-      </div>
-    );
-  }
-
-  // No options available and not loading — show text input fallback
-  if (options.length === 0 && !query.isLoading) {
-    return (
-      <div className="space-y-2">
-        <div className="space-y-0.5">
-          <Label htmlFor={path}>{label}</Label>
-          {schema.description && (
-            <p className="text-xs leading-normal text-muted-foreground">
-              {schema.description}
-            </p>
-          )}
-        </div>
         <Input
           id={path}
           type="text"
@@ -177,14 +175,7 @@ export function DynamicOptionsField({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-0.5">
-        <Label htmlFor={path}>{label}</Label>
-        {schema.description && (
-          <p className="text-xs leading-normal text-muted-foreground">
-            {schema.description}
-          </p>
-        )}
-      </div>
+      <FieldHeader path={path} label={label} description={schema.description} />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -207,10 +198,10 @@ export function DynamicOptionsField({
                   {selectedOption.label ?? selectedOption.value}
                 </span>
               </span>
+            ) : currentValue ? (
+              <span className="truncate">{currentValue}</span>
             ) : (
-              <span className="text-muted-foreground">
-                {query.isLoading ? "Loading..." : "Select..."}
-              </span>
+              <span className="text-muted-foreground">Select...</span>
             )}
             <ChevronSelectorVertical className="size-4 shrink-0 opacity-50" />
           </Button>

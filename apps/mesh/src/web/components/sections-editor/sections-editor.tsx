@@ -41,6 +41,7 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
+import type { SandboxConfig } from "./fields/field-props";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -133,12 +134,7 @@ function SchemaFormPanel({
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
-  sandbox?: {
-    orgSlug: string;
-    virtualMcpId: string;
-    branch: string;
-    previewUrl?: string;
-  } | null;
+  sandbox?: SandboxConfig | null;
 }) {
   const formBody =
     activeSchema && formValue ? (

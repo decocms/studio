@@ -185,16 +185,8 @@ export function renderField(props: FieldProps) {
   }
 
   // dynamic-options → DynamicOptionsField (select with options from a loader)
-  if (schema.format === "dynamic-options") {
-    console.log("[renderField] dynamic-options match", {
-      path: props.path,
-      format: schema.format,
-      options: schema.options,
-      hasSandbox: !!props.sandbox,
-    });
-    if (schema.options) {
-      return <DynamicOptionsField key={props.path} {...props} />;
-    }
+  if (schema.format === "dynamic-options" && schema.options) {
+    return <DynamicOptionsField key={props.path} {...props} />;
   }
 
   // Enum (including extracted const enums)

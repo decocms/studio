@@ -105,6 +105,47 @@ describe("resolveSchema – nullable unions inherit leaf metadata", () => {
       ?.image;
     expect(image?.default).toBeNull();
   });
+
+  test("preserves options on dynamic-options field", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        collection: {
+          type: "string",
+          format: "dynamic-options",
+          options: "vtex/loaders/collections/list.ts",
+        },
+      },
+    });
+
+    const collection = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.collection;
+    expect(collection?.format).toBe("dynamic-options");
+    expect(collection?.options).toBe("vtex/loaders/collections/list.ts");
+  });
+
+  test("preserves options through nullable union", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        collection: {
+          anyOf: [
+            {
+              type: "string",
+              format: "dynamic-options",
+              options: "vtex/loaders/collections/list.ts",
+            },
+            { type: "null" },
+          ],
+        },
+      },
+    });
+
+    const collection = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.collection;
+    expect(collection?.format).toBe("dynamic-options");
+    expect(collection?.options).toBe("vtex/loaders/collections/list.ts");
+  });
 });
 
 describe("resolveSchema – app resolveType aliases", () => {

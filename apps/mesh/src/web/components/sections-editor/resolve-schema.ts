@@ -751,25 +751,10 @@ export function resolveSchema(
         typeof resolved.image === "string"
           ? resolved.image
           : fromLeaf<string>("image"),
-      options: (() => {
-        const opt =
-          typeof resolved.options === "string"
-            ? resolved.options
-            : fromLeaf<string>("options");
-        if (
-          typeof resolved.format === "string" &&
-          resolved.format === "dynamic-options"
-        ) {
-          console.log("[buildProperty] dynamic-options field", {
-            format: resolved.format,
-            options: opt,
-            rawOptions: resolved.options,
-            leafOptions: fromLeaf<string>("options"),
-            vOptions: v.options,
-          });
-        }
-        return opt;
-      })(),
+      options:
+        typeof resolved.options === "string"
+          ? resolved.options
+          : fromLeaf<string>("options"),
     };
   };
 
