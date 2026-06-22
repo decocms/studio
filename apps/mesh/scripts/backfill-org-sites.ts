@@ -174,17 +174,19 @@ async function emitSql(
   }
 
   // SQL → stdout; everything else → stderr, so `> backfill.sql` stays clean.
+  // No wrapping transaction on purpose: statements are idempotent and must run
+  // INDEPENDENTLY so a single failure surfaces its real error (and skips only
+  // that statement) instead of aborting the whole block with a 25P02 cascade.
   console.log(
     [
       "-- Backfill org_sites + managed file configs (generated).",
-      "-- Requires migrations 115 (org_sites) + 116 (org_file_configs.site_slug).",
-      "-- Idempotent: safe to run more than once. A slug already owned by a",
-      "-- different org is left untouched (ON CONFLICT DO NOTHING) — check for",
-      "-- collisions if a claim seems missing.",
-      "BEGIN;",
+      "-- PREREQUISITE: migrations 115 (org_sites) + 116 (org_file_configs.site_slug)",
+      "-- must already be applied, or every statement fails. Verify with:",
+      "--   SELECT to_regclass('public.org_sites');  -- non-null = 115 applied",
+      "-- Statements are independent and idempotent — safe to re-run. A slug",
+      "-- already owned by a different org is left untouched (ON CONFLICT DO NOTHING).",
       "",
       ...blocks,
-      "COMMIT;",
     ].join("\n"),
   );
   console.error(
