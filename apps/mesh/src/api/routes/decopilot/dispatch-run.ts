@@ -76,6 +76,7 @@ import {
 import { isCliHarness } from "@decocms/harness/cli-harness";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
+import { synthesizedErrorMessageId } from "./message-ids";
 import { loadAndMergeMessages } from "./conversation";
 import { PartEmitter } from "./part-emitter";
 import { ProgressBumpThrottle } from "./progress-bump";
@@ -1414,9 +1415,13 @@ async function prepareRun(
                 )
             : undefined,
           chunks: dispatchHarnessChunks(),
-          // Deterministic per run so a synthesized error message dedupes
-          // across projector retries.
-          errorMessageId: `error-${mem.thread.id}`,
+          // Deterministic per turn (runId + fence) so a synthesized error
+          // message dedupes across the live write + projector retries while
+          // distinct turns of the same thread never collide. See message-ids.ts.
+          errorMessageId: synthesizedErrorMessageId(
+            mem.thread.id,
+            runFenceToken,
+          ),
           title: {
             currentThreadTitle: mem.thread.title,
             threadId: mem.thread.id,
