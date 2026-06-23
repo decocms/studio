@@ -651,22 +651,41 @@ function AgentToolList({
   }
   if (!data || data.length === 0) return null;
 
-  // Build a lookup from connectionId+resourceUri to the UITool definition
-  // so pinned tile rows can resolve their tool's inputSchema.
+  // Build a lookup from connectionId+toolName to the UITool definition
+  // so pinned tile rows can resolve their tool's inputSchema. Keyed by
+  // toolName (not resourceUri) because multiple tools can share the same
+  // resourceUri (e.g. two VTEX tools both point to ui://vtex/dashboard).
   const toolByKey = new Map<
     string,
     { conn: ConnectionUITools; tool: UITool }
   >();
   for (const conn of data) {
     for (const tool of conn.uiTools) {
-      toolByKey.set(`${conn.id}:${tool.resourceUri}`, { conn, tool });
+      toolByKey.set(`${conn.id}:${tool.name}`, { conn, tool });
     }
   }
 
-  const hasPinned = pinnedTiles.some((tile) => {
-    const key = `${tile.connectionId}:${tile.resourceUri}`;
-    return toolByKey.has(key);
-  });
+  // Resolve a pinned tile to its UITool definition. Prefers toolName
+  // (new tiles), falls back to resourceUri match (legacy tiles).
+  const resolveToolForTile = (
+    tile: VirtualMcpHomeTile,
+  ): { conn: ConnectionUITools; tool: UITool } | undefined => {
+    if (tile.toolName && tile.connectionId) {
+      return toolByKey.get(`${tile.connectionId}:${tile.toolName}`);
+    }
+    // Legacy tiles without toolName — find first tool matching resourceUri.
+    for (const [, entry] of toolByKey) {
+      if (
+        entry.conn.id === tile.connectionId &&
+        entry.tool.resourceUri === tile.resourceUri
+      ) {
+        return entry;
+      }
+    }
+    return undefined;
+  };
+
+  const hasPinned = pinnedTiles.some((tile) => !!resolveToolForTile(tile));
 
   return (
     <div className="flex flex-col gap-2">
@@ -676,12 +695,14 @@ function AgentToolList({
             Pinned tiles
           </span>
           {pinnedTiles.map((tile) => {
-            const key = `${tile.connectionId}:${tile.resourceUri}`;
-            const match = toolByKey.get(key);
+            const match = resolveToolForTile(tile);
             if (!match) return null;
             return (
               <PinnedTileRow
-                key={tile.tileId ?? key}
+                key={
+                  tile.tileId ??
+                  `${tile.connectionId}:${tile.resourceUri}:${tile.toolName}`
+                }
                 agent={agent}
                 home={home}
                 connection={match.conn}
