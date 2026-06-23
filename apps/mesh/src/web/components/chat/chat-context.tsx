@@ -548,7 +548,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     : null;
   const pendingHarnessId = effectivePins?.harness ?? null;
   const pendingSandboxProviderKind: SandboxProviderKind | null =
-    effectivePins?.sandbox ?? "agent-sandbox";
+    effectivePins?.sandbox ?? null;
 
   // Tiptap doc (transient UI state)
   const [tiptapDoc, setTiptapDoc] = useState<Metadata["tiptapDoc"]>(undefined);
