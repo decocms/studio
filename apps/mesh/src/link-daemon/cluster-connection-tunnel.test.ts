@@ -753,16 +753,24 @@ describe("connectToClusterTunnel", () => {
     await expect(handle.closed).resolves.toBeUndefined();
   });
 
-  it("tears down the transport when the tunnel server closes first", async () => {
-    const natsClosed = deferred<void | Error>();
-    const serverClosed = deferred<void>();
+  it("reconnects when the tunnel server closes unexpectedly", async () => {
+    // An unexpected tunnel/NATS drop must NOT tear down the daemon — the
+    // link->cluster leg has to survive instability by re-establishing a fresh
+    // generation. Only an explicit close() ends the transport.
+    const secondStarted = deferred<void>();
+    let fetchCount = 0;
     let natsCloseCount = 0;
-    let sleepAborted = false;
+    let tunnelCloseCount = 0;
+    let dropFirstGen: (() => void) | undefined;
 
     const handle = await connectToClusterTunnel(makeBaseTunnelInput(), {
-      fetchSession: async () => sessionWithoutAuth,
-      connectNats: async () =>
-        ({
+      fetchSession: async () => {
+        fetchCount++;
+        return sessionWithoutAuth;
+      },
+      connectNats: async () => {
+        const natsClosed = deferred<void | Error>();
+        return {
           publish: () => {},
           flush: async () => {},
           close: async () => {
@@ -770,37 +778,102 @@ describe("connectToClusterTunnel", () => {
             natsClosed.resolve(undefined);
           },
           closed: async () => natsClosed.promise,
-        }) as never,
-      serveTunnel: async (options) => ({
-        hostname: options.hostname,
-        closed: serverClosed.promise,
-        close: async () => serverClosed.resolve(),
-      }),
-      sleep: async (_ms, options) => {
+        } as never;
+      },
+      serveTunnel: async (options) => {
+        const serverClosed = deferred<void>();
+        const gen = fetchCount;
+        if (gen === 1) dropFirstGen = () => serverClosed.resolve();
+        if (gen === 2) secondStarted.resolve();
+        return {
+          hostname: options.hostname,
+          closed: serverClosed.promise,
+          close: async () => {
+            tunnelCloseCount++;
+            serverClosed.resolve();
+          },
+        };
+      },
+      // Reconnect backoff (~1s) returns immediately; the long renewal sleep
+      // hangs until aborted, so only the unexpected drop drives a new gen.
+      sleep: async (ms, options) => {
+        if (ms < 5_000) return;
         await new Promise<void>((resolve) => {
           const signal = options?.signal;
           if (signal?.aborted) {
-            sleepAborted = true;
             resolve();
             return;
           }
-          signal?.addEventListener(
-            "abort",
-            () => {
-              sleepAborted = true;
-              resolve();
-            },
-            { once: true },
-          );
+          signal?.addEventListener("abort", () => resolve(), { once: true });
         });
       },
     });
 
-    serverClosed.resolve();
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    // First generation drops unexpectedly (not a renewal).
+    dropFirstGen!();
 
-    expect(natsCloseCount).toBe(1);
-    expect(sleepAborted).toBe(true);
+    // Manager backs off and re-establishes a fresh generation instead of exiting.
+    await secondStarted.promise;
+    expect(fetchCount).toBe(2);
+    expect(natsCloseCount).toBe(1); // first gen's NATS was torn down on drop
+
+    // Explicit close still ends the transport cleanly.
+    await handle.close();
+    await expect(handle.closed).resolves.toBeUndefined();
+  });
+
+  it("re-establishes after a session fetch failure (survives an unstable link)", async () => {
+    // The session fetch keeps failing transiently (e.g. ECONNRESET through a
+    // flaky proxy). Previously the manager gave up after the bounded retry burst
+    // and the daemon exited; now it backs off and tries again until it connects.
+    const connected = deferred<void>();
+    let fetchCount = 0;
+
+    const handle = await connectToClusterTunnel(makeBaseTunnelInput(), {
+      fetchSession: async () => {
+        fetchCount++;
+        // Fail the first two establishment attempts, then succeed.
+        if (fetchCount <= 2) {
+          throw new Error("ECONNRESET");
+        }
+        return sessionWithoutAuth;
+      },
+      // A single establishment "burst" here is one attempt (so each failure
+      // exhausts the burst and exercises the manager-level reconnect backoff).
+      sessionFetchRetryOptions: { maxAttempts: 1 },
+      connectNats: async () => {
+        const natsClosed = deferred<void | Error>();
+        return {
+          publish: () => {},
+          flush: async () => {},
+          close: async () => natsClosed.resolve(undefined),
+          closed: async () => natsClosed.promise,
+        } as never;
+      },
+      serveTunnel: async (options) => {
+        const serverClosed = deferred<void>();
+        connected.resolve();
+        return {
+          hostname: options.hostname,
+          closed: serverClosed.promise,
+          close: async () => serverClosed.resolve(),
+        };
+      },
+      // Backoff between bursts returns immediately; renewal sleep hangs.
+      sleep: async (ms, options) => {
+        if (ms < 5_000) return;
+        await new Promise<void>((resolve) => {
+          options?.signal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        });
+      },
+    });
+
+    await connected.promise;
+    expect(fetchCount).toBe(3); // two failures, then success
+
+    await handle.close();
     await expect(handle.closed).resolves.toBeUndefined();
   });
 });
