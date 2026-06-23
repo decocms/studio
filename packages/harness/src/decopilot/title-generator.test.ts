@@ -31,7 +31,43 @@ function makeFailingModel(err: Error): LanguageModelV3 {
   } as unknown as LanguageModelV3;
 }
 
+/** A model whose doGenerate hangs until the call's abortSignal fires, then
+ *  rejects with AbortError — simulates a slow/hung title model (e.g. codex's
+ *  separate title app-server) that only resolves when the self-timeout aborts. */
+function makeHangingModel(): LanguageModelV3 {
+  return {
+    specificationVersion: "v3",
+    provider: "test",
+    modelId: "test",
+    doGenerate: async (opts: { abortSignal?: AbortSignal }) => {
+      await new Promise((_resolve, reject) => {
+        opts.abortSignal?.addEventListener(
+          "abort",
+          () =>
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          { once: true },
+        );
+      });
+      throw new Error("unreachable");
+    },
+    doStream: async () => {
+      throw new Error("no stream");
+    },
+  } as unknown as LanguageModelV3;
+}
+
 describe("genTitle fallback", () => {
+  test("self-timeout (slow/hung model) falls back to clamped user message, not null", async () => {
+    const handle = genTitle({
+      model: makeHangingModel(),
+      userMessage: "Build a complex dashboard app",
+      timeoutMs: 10, // tiny self-timeout; no parent abort, no finish()
+    });
+    const result = await handle.promise;
+    // First 10 chars of "Build a complex dashboard app" → "Build a co".
+    expect(result).toBe("Build a co");
+  });
+
   test("when the LLM throws, falls back to userMessage.slice(0, 10).trim()", async () => {
     const abortController = new AbortController();
     const handle = genTitle({

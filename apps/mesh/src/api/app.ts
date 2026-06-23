@@ -19,6 +19,7 @@ import {
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
+import { createDecopilotThreadStatusEvent } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
@@ -45,6 +46,7 @@ import {
   tracer,
   tracingMiddleware,
 } from "../observability";
+import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
 import { createSsoRoutes } from "./routes/org-sso";
 import { createDecopilotRoutes } from "./routes/decopilot";
@@ -1006,49 +1008,57 @@ export async function createApp(options: CreateAppOptions = {}) {
       providerKeyCache.start();
       // Subscribe to cross-replica MCP read/result cache invalidations.
       startMcpCacheInvalidation(() => natsProvider!.getConnection());
-      streamBuffer.init().catch((err: unknown) => {
-        console.warn(
-          "[StreamBuffer] Deferred init failed, late-join disabled:",
-          err,
-        );
-      });
-      // Durable explicit-ack projector consumer (spec §5.4) — the SOLE DB
-      // writer post-cutover (parts + title + terminal status). Every pod runs
-      // it: JetStream's durable pull consumer distributes each done marker to
-      // exactly one pod (competing consumers), and the DBOS workflow ID keyed
-      // by (runId, fenceToken) dedups any redelivery overlap — so no leader
-      // election is needed for correctness. Guarded so a NATS reconnect's
-      // repeated onReady fires don't bind a second consume() loop on this pod.
-      if (!projectorStarted) {
-        projectorStarted = true;
-        void (async () => {
-          const nc = natsProvider!.getConnection();
-          const js = natsProvider!.getJetStream();
-          if (!nc || !js) {
-            projectorStarted = false;
-            return;
-          }
-          const jsm = await jetstreamManager(nc);
-          const { startDurableProjector } = await import(
-            "./routes/decopilot/start-durable-projector"
-          );
-          projectorHandle = await startDurableProjector({
-            jsm,
-            js,
-            resolveOrgId: async (runId: string) => {
-              const row = await database.db
-                .selectFrom("threads")
-                .select(["organization_id"])
-                .where("id", "=", runId)
-                .executeTakeFirst();
-              return row?.organization_id ?? null;
-            },
-          });
-        })().catch((err: unknown) => {
+      // `streamBuffer.init()` CREATES the DECOPILOT_STREAMS JetStream stream.
+      // The durable projector consumer (below) binds to that stream, so it must
+      // start ONLY after init resolves — on a fresh NATS (e2e / first boot)
+      // binding the consumer in the same tick races stream creation and fails
+      // with StreamNotFoundError, leaving the projector dead and parts/status
+      // never materialized. Chaining serializes create-then-bind.
+      streamBuffer
+        .init()
+        .then(() => {
+          // Durable explicit-ack projector consumer (spec §5.4) — the SOLE DB
+          // writer post-cutover (parts + title + terminal status). Every pod
+          // runs it: JetStream's durable pull consumer distributes each done
+          // marker to exactly one pod (competing consumers), and the DBOS
+          // workflow ID keyed by (runId, fenceToken) dedups any redelivery
+          // overlap — so no leader election is needed. Guarded so a NATS
+          // reconnect's repeated onReady fires don't bind a second consume()
+          // loop on this pod.
+          if (projectorStarted) return;
+          projectorStarted = true;
+          return (async () => {
+            const nc = natsProvider!.getConnection();
+            const js = natsProvider!.getJetStream();
+            if (!nc || !js) {
+              projectorStarted = false;
+              return;
+            }
+            const jsm = await jetstreamManager(nc);
+            const { startDurableProjector } = await import(
+              "./routes/decopilot/start-durable-projector"
+            );
+            projectorHandle = await startDurableProjector({
+              jsm,
+              js,
+              resolveOrgId: async (runId: string) => {
+                const row = await database.db
+                  .selectFrom("threads")
+                  .select(["organization_id"])
+                  .where("id", "=", runId)
+                  .executeTakeFirst();
+                return row?.organization_id ?? null;
+              },
+            });
+          })();
+        })
+        .catch((err: unknown) => {
           projectorStarted = false;
-          console.warn("[DurableProjector] Deferred init failed:", err);
+          console.warn(
+            "[Decopilot] StreamBuffer/projector init failed (late-join + projection disabled):",
+            err,
+          );
         });
-      }
     });
   }
 
@@ -1495,6 +1505,7 @@ export async function createApp(options: CreateAppOptions = {}) {
         .selectFrom("threads")
         .select([
           "organization_id",
+          "created_by",
           "message_storage_version",
           "status",
           "run_fence_token",
@@ -1505,6 +1516,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       return row
         ? {
             orgId: row.organization_id,
+            createdBy: row.created_by,
             version: row.message_storage_version ?? 1,
             status: row.status,
             runFenceToken: row.run_fence_token,
@@ -1518,6 +1530,55 @@ export async function createApp(options: CreateAppOptions = {}) {
       projectorThreadStorage.markRunFailed(runId, orgId, reason, kind),
     persistTitle: (runId, orgId, title) =>
       projectorThreadStorage.update(runId, orgId, { title }),
+    onTitleUpdated: async ({ runId, orgId, title }) => {
+      const row = await projectorThreadStorage
+        .get(runId, orgId)
+        .catch(() => null);
+      sseHub.emit(
+        orgId,
+        createDecopilotThreadStatusEvent(runId, row?.status ?? "in_progress", {
+          title,
+          virtualMcpId: row?.virtual_mcp_id ?? undefined,
+          createdBy: row?.created_by,
+          triggerId: row?.trigger_id,
+          branch: row?.branch ?? null,
+          createdAt: row?.created_at,
+          updatedAt: row?.updated_at,
+        }),
+      );
+    },
+    bumpProgress: async ({ runId, orgId }) => {
+      await projectorThreadStorage.bumpProgress(runId, orgId);
+    },
+    recordCompleted: async ({ runId, orgId, distinctId, usage }) => {
+      posthog.capture({
+        distinctId,
+        event: "chat_message_completed",
+        groups: { organization: orgId },
+        properties: {
+          organization_id: orgId,
+          thread_id: runId,
+          transport: "projector",
+          input_tokens: usage.inputTokens,
+          output_tokens: usage.outputTokens,
+          total_tokens: usage.totalTokens,
+        },
+      });
+    },
+    recordFailed: async ({ runId, orgId, distinctId, reason, kind }) => {
+      posthog.capture({
+        distinctId,
+        event: "chat_message_failed",
+        groups: { organization: orgId },
+        properties: {
+          organization_id: orgId,
+          thread_id: runId,
+          transport: "projector",
+          error_category: kind,
+          error_message: reason,
+        },
+      });
+    },
     // Cleanup is owned by the workflow's success path now (after the run is
     // projected + completed). The fence token is part of the runtime contract
     // but unused here — the stream subject is keyed by runId only.

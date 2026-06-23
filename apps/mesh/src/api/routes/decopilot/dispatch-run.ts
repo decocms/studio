@@ -78,7 +78,6 @@ import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { loadAndMergeMessages } from "./conversation";
 import { PartEmitter } from "./part-emitter";
-import { createAssistantEmitter } from "./run-persistence";
 import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import type { ToolApprovalLevel } from "./helpers";
@@ -87,7 +86,6 @@ import { type ChatMode } from "./mode-config";
 export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
-import { buildOnTitleUpdated } from "./on-title-updated";
 import {
   PREPARE_RUN_STATUS_STAGES,
   publishRunStatusStage,
@@ -95,7 +93,6 @@ import {
 } from "./run-status-stage";
 import type {
   HarnessStreamConsumerHooks,
-  HarnessStreamPersistence,
   HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
 import { ingestRun } from "./ingest-run";
@@ -226,16 +223,19 @@ export interface AgentSandboxUiStreamInput {
   fenceToken: string;
   chunks: AsyncIterable<UIMessageChunk>;
   streamBuffer: Pick<StreamBuffer, "publishRawChunk" | "publishDone">;
-  /** Title interception + `onTitleUpdated` SSE. `persistTitle` is replaced with
-   *  a NO-OP here — the durable projector is the sole title writer. */
+  /** Title interception. `ingestRun` replaces `persistTitle` with a NO-OP so
+   *  the durable projector is the sole writer. */
   title: HarnessStreamTitleOptions;
   hooks: HarnessStreamConsumerHooks;
-  /** Persists assistant parts live (the run's PartEmitter for v2 threads).
-   *  Omitted → no-op (v1 legacy). See `IngestRunDeps.persistence`. */
-  persistence?: HarnessStreamPersistence;
-  /** Deterministic id for a synthesized error message (`error-${runId}`) so the
-   *  live write and the projector backstop dedupe it. */
+  /** Deterministic id for a synthesized error message (`error-${runId}`) so
+   *  projector-only persistence dedupes retries. */
   errorMessageId?: string;
+  /** Publishes debounced checkpoint markers so the projector materializes
+   *  parts + title incrementally. Omitted → no incremental projection. */
+  checkpointPublisher?: (
+    fenceToken: string,
+    headSeq: number,
+  ) => Promise<boolean>;
 }
 
 /**
@@ -244,11 +244,11 @@ export interface AgentSandboxUiStreamInput {
  * The raw harness chunks are wrapped as `(seq, chunk)` (monotonic counter) and
  * fed through the shared `ingestRun` unit, which publishes each chunk to
  * JetStream with a seq-keyed `Nats-Msg-Id` and drives the live hooks (usage /
- * posthog completion / SSE finish) + title-chunk injection — but with a NO-OP
- * `persistTitle`, because the durable projector is the sole writer of parts +
- * status + title. The returned stream yields NOTHING (raw chunks are the NATS
- * source); the pump that drains it still publishes the `{done}` sentinel so
- * tails close.
+ * posthog completion / SSE finish) + title-chunk injection. `ingestRun`
+ * neutralizes title/message persistence so the durable projector is the sole
+ * writer of parts + status + title. The returned stream yields NOTHING (raw
+ * chunks are the NATS source); the pump that drains it still publishes the
+ * `{done}` sentinel so tails close.
  */
 export function buildAgentSandboxUiStream(
   input: AgentSandboxUiStreamInput,
@@ -277,12 +277,8 @@ export function buildAgentSandboxUiStream(
           {
             streamBuffer: input.streamBuffer,
             hooks: input.hooks,
-            persistence: input.persistence,
-            title: {
-              ...input.title,
-              // Projector owns the title write — neutralize the inline one.
-              persistTitle: async () => {},
-            },
+            title: input.title,
+            checkpointPublisher: input.checkpointPublisher,
           },
         );
         controller.close();
@@ -504,12 +500,10 @@ export interface DispatchRunDeps {
   runRegistry: RunRegistry;
   streamBuffer?: StreamBuffer;
   cancelBroadcast: CancelBroadcast;
-  /** When provided, the auto-titler emits a `decopilot.thread.status` SSE
-   *  event after committing the new title to the DB so tabs not subscribed
-   *  to the per-thread `/stream` see the updated title in real-time.
-   *  Optional — callers without an sseHub (e.g. background/non-interactive
-   *  dispatch paths) may omit it; the omission is safe and the auto-title
-   *  still persists. */
+  /** When provided, hosted runs can emit live title SSE events for tabs that
+   *  are not subscribed to the per-thread `/stream`. Durable title persistence
+   *  is projector-owned. Optional — callers without an sseHub (e.g.
+   *  background/non-interactive dispatch paths) may omit it. */
   sseHub?: { emit(orgId: string, event: SSEEvent): void };
 }
 
@@ -593,12 +587,11 @@ export async function dispatchRunAndWait(
         }
       } else {
         // Fallback: no JetStream tail available — drain uiStream directly.
-        // Preserves the previous behavior for test environments and any
-        // deployment without NATS. No chunks are observable to tailers in
-        // this mode. In a NATS deployment this branch means the buffer is
-        // degraded on the producer pod: the run completes and persists, but
-        // NOTHING is published to the subject, so every `/stream` tailer sees
-        // total silence with no error. High-signal — always logged.
+        // This still executes the hosted producer path; when the streamBuffer
+        // itself is healthy, ingestRun publishes chunks/done to JetStream and
+        // the projector materializes the run. In a NATS deployment this branch
+        // means the producer could not create its local tail, so the blocking
+        // waiter is degraded even though publishing may still succeed.
         if (buffer) {
           console.warn(
             JSON.stringify({
@@ -606,7 +599,7 @@ export async function dispatchRunAndWait(
               event: "producer-fallback-no-pump",
               taskId,
               hasTail: !!tail,
-              note: "createTailStream returned null — chunks NOT published to NATS; message still persisted upstream",
+              note: "createTailStream returned null — draining producer stream directly; projector persistence depends on streamBuffer publish health",
             }),
           );
         }
@@ -770,7 +763,7 @@ async function prepareRun(
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
 ): Promise<PreparedRun> {
-  const { runRegistry, streamBuffer, sseHub } = deps;
+  const { runRegistry, streamBuffer } = deps;
 
   // Normalize: ensure every message has an id (runtime callers may omit it)
   input = {
@@ -1001,13 +994,12 @@ async function prepareRun(
     // `message_storage_version`. New threads are pinned v2 unconditionally at
     // the first-message site in routes.ts (Phase C cutover — v2 is the only
     // write path), so `partEmitter` is present for every new run. Pre-existing
-    // v1 threads
-    // (`message_storage_version === 1`) are DEPRECATED read-only legacy: the v1
-    // write path was deleted in the Phase C cutover, so `partEmitter` is null
-    // for them and the persistence hooks below no-op. The user message is
-    // persisted here (before dispatch); the assistant parts + terminal status
-    // + title are written by the durable projector — `buildAgentSandboxUiStream`
-    // only publishes raw chunks to JetStream (zero DB writes).
+    // v1 threads (`message_storage_version === 1`) are DEPRECATED read-only
+    // legacy: the v1 write path was deleted in the Phase C cutover, so only v2
+    // threads get a user-message part emitter. The user message is persisted
+    // here (before dispatch); the assistant parts + terminal status + title are
+    // written by the durable projector — `buildAgentSandboxUiStream` only
+    // publishes raw chunks to JetStream (zero DB writes).
     const isV2 = mem.thread.message_storage_version === 2;
     const partEmitter = isV2
       ? new PartEmitter({
@@ -1156,24 +1148,6 @@ async function prepareRun(
       }
     }
 
-    // The assistant message is persisted by a SEPARATE emitter from the user
-    // message's. Its part seqs MUST start at 0 — identical to the durable
-    // projector's fresh emitter — so the live rows (`run:msg:0,1,2`) and the
-    // projector's have the SAME ids and `ON CONFLICT` dedupes them. Reusing the
-    // user-message emitter made the assistant seqs continue after the user's
-    // (`run:msg:2,3,4`), which diverged from the projector's (`run:msg:0,1,2`)
-    // → the same message persisted twice (duplicate/"weird" render). base =
-    // max-existing-created_at + 1 keeps the assistant ordered after the user
-    // message and matches the projector's base, so live wins via first-write.
-    let assistantEmitter: PartEmitter | null = null;
-    if (isV2) {
-      assistantEmitter = await createAssistantEmitter({
-        messageParts: ctx.storage.threads.messageParts(),
-        orgId: input.organizationId,
-        runId: mem.thread.id,
-      });
-    }
-
     const pendingOps: Promise<void>[] = [];
 
     // Pre-load conversation (no system messages — those are built separately)
@@ -1201,11 +1175,6 @@ async function prepareRun(
 
     const organization = ctx.organization!;
     const streamStartAt = Date.now();
-    let aggregatedUsage: {
-      inputTokens: number;
-      outputTokens: number;
-      totalTokens: number;
-    } = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
     // ── Build the wire HarnessStreamInput EAGERLY ───────────────────────────
     // Everything the daemon's `harnessStreamInputSchema` needs (mcp endpoint,
@@ -1346,30 +1315,6 @@ async function prepareRun(
       userContext,
     };
 
-    // In-process accumulator for usage reporting — all harnesses deliver
-    // usage through stream metadata, consumed by consumeHarnessStream's
-    // onUsage hook. The kernel guarantees usage delivery BEFORE the finish
-    // hook fires, so the posthog completion event below reads final totals.
-    const onUsageAggregated = (totalUsage: {
-      inputTokens: number;
-      outputTokens: number;
-      totalTokens: number;
-    }) => {
-      aggregatedUsage = {
-        inputTokens: aggregatedUsage.inputTokens + totalUsage.inputTokens,
-        outputTokens: aggregatedUsage.outputTokens + totalUsage.outputTokens,
-        totalTokens: aggregatedUsage.totalTokens + totalUsage.totalTokens,
-      };
-    };
-    const onTitleUpdated = sseHub
-      ? buildOnTitleUpdated({
-          ctx,
-          sseHub,
-          threadId: mem.thread.id,
-          organizationId: input.organizationId,
-        })
-      : undefined;
-
     // ── LAZY harness dispatch ───────────────────────────────────────────────
     // This generator's body — local harness dispatch — runs only when the
     // kernel pulls the first chunk, which (via `lazyStream` below) happens only
@@ -1434,9 +1379,10 @@ async function prepareRun(
       };
 
     // The kernel (`consumeHarnessStream`) is the ONLY consume-side stream
-    // layer: it intercepts/persists title chunks, persists v1/v2 messages,
-    // extracts usage, and drives the run-lifecycle hooks below (formerly the
-    // callbacks of a second outer `createUIMessageStream` wrapper). Its
+    // layer: it intercepts title chunks, extracts usage, and drives the
+    // run-lifecycle hooks below (formerly the callbacks of a second outer
+    // `createUIMessageStream` wrapper). Ingest is persistence-free; the
+    // projector materializes assistant messages later from JetStream. Its
     // output IS the run's uiStream. Constructed lazily via `lazyStream`
     // because the kernel starts pulling — and therefore dispatching — the
     // harness chunk source immediately on construction.
@@ -1444,10 +1390,8 @@ async function prepareRun(
     // `consumed.whenComplete` deliberately does NOT land in `pendingOps`:
     // the finish hook below runs INSIDE the kernel's completion path, before
     // `whenComplete` resolves, so awaiting it from there would deadlock. The
-    // ordering it used to give the dissolved outer wrapper ("kernel
-    // persistence settled before FINISH") is now structural — the kernel
-    // awaits its own pending persistence (emitStepParts/emitFinal) before
-    // invoking the finish hook.
+    // ordering that matters now is that the same lazy kernel path publishes
+    // the JetStream chunks before invoking the finish hook.
     // The progress tap (the run's liveness heartbeat) lives INSIDE the lazy
     // factory: `pipeThrough` at the return site would eagerly pull one chunk
     // through the lazy stream even with no consumer (transform writable
@@ -1461,28 +1405,29 @@ async function prepareRun(
             publishRawChunk: async () => false,
             publishDone: async () => false,
           },
+          checkpointPublisher: streamBuffer
+            ? (fenceToken, headSeq) =>
+                streamBuffer.publishCheckpoint(
+                  mem.thread.id,
+                  fenceToken,
+                  headSeq,
+                )
+            : undefined,
           chunks: dispatchHarnessChunks(),
-          // v2: persist assistant parts live through a FRESH emitter (seqs from
-          // 0) so the row ids match the projector's and dedupe via ON CONFLICT.
-          // The message is in the DB before the stream closes; the projector is
-          // an idempotent backstop. v1 threads: null → no-op (legacy).
-          persistence: assistantEmitter ?? undefined,
-          // Deterministic per run so a synthesized error message dedupes across
-          // the live write and the projector backstop (same id).
+          // Deterministic per run so a synthesized error message dedupes
+          // across projector retries.
           errorMessageId: `error-${mem.thread.id}`,
           title: {
             currentThreadTitle: mem.thread.title,
             threadId: mem.thread.id,
-            // Projector owns the title write — neutralized inside
-            // `buildAgentSandboxUiStream`. The chunk interception +
-            // `onTitleUpdated` SSE still fire here.
+            // Projector owns the title write — `ingestRun` neutralizes this
+            // persistence callback. The projector is the sole sidebar-SSE
+            // source for both hosted and desktop now.
             persistTitle: async (threadId, title) => {
               await ctx.storage.threads.update(threadId, { title });
             },
-            onTitleUpdated,
           },
           hooks: {
-            onUsage: onUsageAggregated,
             onStep: () => {
               const transitions = runRegistry.dispatch({
                 type: "STEP_DONE",
@@ -1563,26 +1508,8 @@ async function prepareRun(
                 );
               }
 
-              posthog.capture({
-                distinctId: input.userId,
-                event: "chat_message_completed",
-                groups: { organization: input.organizationId },
-                properties: {
-                  organization_id: input.organizationId,
-                  thread_id: mem.thread.id,
-                  agent_id: input.agent.id,
-                  model_id: models.thinking.id,
-                  model_title: models.thinking.title,
-                  mode: input.mode,
-                  duration_ms: Date.now() - streamStartAt,
-                  finish_reason: finishReason,
-                  thread_status: threadStatus,
-                  input_tokens: aggregatedUsage.inputTokens,
-                  output_tokens: aggregatedUsage.outputTokens,
-                  total_tokens: aggregatedUsage.totalTokens,
-                  is_resume: input.isResume ?? false,
-                },
-              });
+              // Completion analytics are emitted by the projector after the
+              // same fenced JetStream log is durably materialized.
             },
             onError: (error) => {
               if (registrySignal.aborted) {

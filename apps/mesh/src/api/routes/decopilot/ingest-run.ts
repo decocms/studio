@@ -54,8 +54,8 @@ export interface IngestRunInput {
    * Defaults to 0 (fresh run: publish everything from seq 1).
    */
   initialAckSeq?: number;
-  /** Deterministic id for a synthesized error message (`error-${runId}`) so the
-   *  live write and the projector backstop dedupe it. See consumeHarnessStream. */
+  /** Deterministic id for a synthesized error message (`error-${runId}`) so
+   *  projector-only persistence dedupes retries. See consumeHarnessStream. */
   errorMessageId?: string;
 }
 
@@ -68,12 +68,11 @@ export interface IngestRunDeps {
   title: HarnessStreamTitleOptions;
   /**
    * Persists the assistant message parts as the run streams. Defaults to the
-   * no-op (legacy: the durable projector was the sole writer). The hosted
-   * caller passes the run's PartEmitter so the message lands in the DB before
-   * the stream closes — closing the read-after-stream gap where a reload showed
-   * the just-streamed message missing until the async projector caught up. The
-   * projector still re-projects from JetStream as an idempotent backstop
-   * (deterministic row ids → ON CONFLICT DO NOTHING).
+   * no-op (the durable projector is the sole writer for the desktop/relay
+   * path). The hosted background-job caller passes its PartEmitter so the
+   * message lands in the DB before the stream closes; the projector still
+   * re-projects from JetStream as an idempotent backstop (deterministic row
+   * ids → ON CONFLICT DO NOTHING).
    */
   persistence?: HarnessStreamPersistence;
   /**
@@ -88,7 +87,8 @@ export interface IngestRunDeps {
   ) => Promise<boolean>;
 }
 
-/** Default persistence: write nothing (legacy projector-only behavior). */
+/** Default persistence: write nothing — the durable projector is the sole
+ *  writer (desktop/relay path). Hosted background jobs override via deps. */
 const NOOP_PERSISTENCE: HarnessStreamPersistence = {
   emitStepParts: async () => {},
   emitFinal: async () => {},
@@ -136,9 +136,13 @@ export async function ingestRun(
         if (!(await fenceOk())) continue;
         // Replayed prefix already contiguous-acked, or a duplicate still pending.
         if (seq <= ackSeq || pending.has(seq)) continue;
-        await deps.streamBuffer.publishRawChunk(runId, chunk, {
-          msgId: buildChunkMsgId({ runId, fenceToken, seq }),
-        });
+        if (
+          !(await deps.streamBuffer.publishRawChunk(runId, chunk, {
+            msgId: buildChunkMsgId({ runId, fenceToken, seq }),
+          }))
+        ) {
+          throw new Error("publishRawChunk failed");
+        }
         pending.add(seq);
         // Advance the contiguous floor as far as the pending set allows.
         const prevAckSeq = ackSeq;
@@ -169,10 +173,23 @@ export async function ingestRun(
     }
   }
 
+  // Deterministic assistant-message ids, IDENTICAL to the durable projector's
+  // scheme (`${runId}:msg:${n}` in fold order — see project-run.ts). The live
+  // ingest persistence and the projector both fold the same chunk stream, so
+  // matching ids mean their part rows collide on `ON CONFLICT (id) DO NOTHING`
+  // instead of duplicating. Without this the live write used a random SDK id and
+  // the projector a deterministic one → the same run persisted twice.
+  let msgCounter = 0;
+  const generateMessageId = () => `${runId}:msg:${msgCounter++}`;
+
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: dedupedChunks(),
-    title: deps.title,
+    title: {
+      ...deps.title,
+      persistTitle: async () => {},
+    },
     persistence: deps.persistence ?? NOOP_PERSISTENCE,
+    generateMessageId,
     hooks: deps.hooks,
     errorMessageId: input.errorMessageId,
   });

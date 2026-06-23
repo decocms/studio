@@ -15,12 +15,12 @@
  *      publish) and then polls threads.status until terminal.
  *   4. The "daemon" receives the tunneled POST /api/links/work
  *      item; the test asserts its shape (runId, runFenceToken, harnessInput).
- *   5. The "daemon" POSTs a seq-numbered NDJSON chunk relay (protocol v2) to
- *      POST /api/:org/links/runs/:runId/chunks with x-fence-token and
- *      x-relay-from headers. The cluster-side harness kernel consumes the
- *      relayed chunks, commits parts, and transitions the thread to
- *      terminal, which releases the gate's polling loop.
- *   6. The test asserts thread_message_parts has a text + finish part and
+ *   5. The "daemon" publishes a seq-numbered NDJSON chunk relay (protocol v2)
+ *      straight to the run's JetStream stream `decopilot.stream.<runId>` with
+ *      the run fence token. The always-on durable projector consumes the
+ *      relayed chunks, commits parts, and transitions the thread to terminal,
+ *      which releases the gate's polling loop.
+ *   6. The test polls thread_message_parts for a text + finish part and
  *      that threads.status === 'completed'.
  *
  * Coverage vs. full round-trip:
@@ -28,7 +28,7 @@
  *     - Link presence via the tunnel claim
  *     - POST /messages dispatch path for a pull thread (202 + taskId)
  *     - Work item delivery over `@decocms/tunnel` (runId, runFenceToken, harnessInput)
- *     - Chunk relay POST with fence token (200 {ok,lastSeq}, parts land,
+ *     - Chunk relay published to JetStream with the fence token (parts land,
  *       status terminal)
  *     - Gate poll releases (threads.status = 'completed' before assertion)
  *
@@ -59,6 +59,7 @@ import {
   createTunnelLinkDaemon,
   type TunnelLinkDaemon,
 } from "../fixtures/links-presence";
+import { publishRelayBody } from "../fixtures/relay-nats";
 
 // ---------------------------------------------------------------------------
 // Helpers (scoped to this file; mirrors the patterns in link-ingest.spec.ts)
@@ -290,33 +291,28 @@ test.describe("pull-transport round-trip", () => {
       //
       // Reuse buildRelayBody: a minimal start/text/finish turn + a terminal
       // done line, exactly what the real daemon chunk relay streams. The
-      // cluster-side harness kernel consumes it and commits parts.
+      // daemon publishes those lines straight to the run's JetStream stream
+      // (`decopilot.stream.<runId>`); the always-on durable projector consumes
+      // them and commits parts.
       const messageId = `msg_pull_e2e_${Date.now()}`;
       const bodyText = `pull-daemon-sim-marker-${Date.now()}`;
       const relayBody = buildRelayBody(messageId, bodyText);
       const relayLineCount = relayBody.trim().split("\n").length;
 
-      const ingestRes = await api.post(
-        `/api/${orgSlug}/links/runs/${runId}/chunks`,
-        {
-          headers: {
-            "content-type": "application/x-ndjson",
-            "x-fence-token": runFenceToken,
-            "x-relay-from": "1",
-          },
-          data: relayBody,
-        },
-      );
-
-      expect(ingestRes.status()).toBe(200);
-      const ingestJson = await ingestRes.json();
-      expect(ingestJson).toMatchObject({ ok: true, lastSeq: relayLineCount });
+      const { lastSeq } = await publishRelayBody({
+        runId,
+        fenceToken: runFenceToken,
+        body: relayBody,
+      });
+      // The publisher echoes the highest wire seq (incl. the terminal `done`),
+      // matching what the old `/chunks` ack returned.
+      expect(lastSeq).toBe(relayLineCount);
 
       // ── Step 6: assert DB state ────────────────────────────────────────────
       //
-      // The chunks handler commits parts to thread_message_parts and
-      // transitions threads.status to 'completed' before acking the terminal
-      // POST. This is what releases the gate's pollUntilTerminal loop.
+      // The projector commits parts to thread_message_parts and transitions
+      // threads.status to 'completed' once it consumes the relayed stream. This
+      // is what releases the gate's pollUntilTerminal loop.
 
       // 6a/6b. Parts + terminal status are written by the async durable
       // projector (it reconstructs the run from JetStream after the relay

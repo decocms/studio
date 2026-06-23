@@ -41,7 +41,10 @@ export function shouldSkipProjection(input: {
   runFenceToken: string | null;
   fenceToken: string;
 }): boolean {
-  if (input.status === "completed" || input.status === "failed") return true;
+  // Terminal status alone is not stale: hosted onFinish can mark the run
+  // completed/failed before the projector consumes the same-fence `{done}`.
+  // A different live fence still means this projector event belongs to an
+  // older run attempt and must not materialize over the newer attempt.
   return (
     input.runFenceToken !== null && input.runFenceToken !== input.fenceToken
   );
@@ -63,6 +66,7 @@ export interface ProjectorCheckpointInput {
 
 export interface ProjectorRunRow {
   orgId: string;
+  createdBy: string | null;
   version: number;
   status: string;
   runFenceToken: string | null;
@@ -84,6 +88,25 @@ export interface ProjectorWorkflowRuntime {
     kind: "harness" | "transport" | "projection",
   ): Promise<unknown>;
   persistTitle(runId: string, orgId: string, title: string): Promise<unknown>;
+  onTitleUpdated(input: {
+    runId: string;
+    orgId: string;
+    title: string;
+  }): Promise<void>;
+  bumpProgress(input: { runId: string; orgId: string }): Promise<void>;
+  recordCompleted(input: {
+    runId: string;
+    orgId: string;
+    distinctId: string;
+    usage: ProjectChunksResult["usage"];
+  }): Promise<void>;
+  recordFailed(input: {
+    runId: string;
+    orgId: string;
+    distinctId: string;
+    reason: string;
+    kind: "harness" | "projection";
+  }): Promise<void>;
   purgeRun(runId: string, fenceToken: string): Promise<void>;
   advanceProjectedSeq(
     runId: string,
@@ -147,7 +170,7 @@ async function resolveRunStep(input: ProjectorWorkflowInput) {
       fenceToken: input.fenceToken,
     })
   ) {
-    return { skip: "stale-or-terminal" as const, row };
+    return { skip: "stale" as const, row };
   }
   if (row.version !== 2) return { skip: "legacy-v1" as const, row };
   return { row };
@@ -184,6 +207,7 @@ async function projectFromJetStreamStep(
       currentThreadTitle,
       persistTitle: async (_threadId, title) => {
         await rt.persistTitle(input.runId, orgId, title);
+        await rt.onTitleUpdated({ runId: input.runId, orgId, title });
       },
     },
   });
@@ -245,6 +269,7 @@ export async function runProjectorWorkflowBody(
   const resolved = await resolveRunStepWithRuntime(input, rt);
   if ("skip" in resolved) return;
   const orgId = resolved.row.orgId;
+  const distinctId = resolved.row.createdBy ?? input.runId;
   const currentThreadTitle = resolved.row.title;
   try {
     const { outcome } = await projectFn(input, orgId, currentThreadTitle);
@@ -257,8 +282,25 @@ export async function runProjectorWorkflowBody(
         : "harness reported an error";
       recordPoison(input.runId, orgId);
       await rt.markRunFailed(input.runId, orgId, reason, "harness");
+      await rt.recordFailed({
+        runId: input.runId,
+        orgId,
+        distinctId,
+        reason,
+        kind: "harness",
+      });
     } else {
       await rt.completeRunIfNotCompleted(input.runId, orgId);
+      await rt.recordCompleted({
+        runId: input.runId,
+        orgId,
+        distinctId,
+        usage: outcome?.usage ?? {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+        },
+      });
     }
     // Purge JetStream subject on BOTH terminal outcomes (completed + harness-failed).
     // The run is terminal — no re-projection is expected — so purging is safe.
@@ -267,6 +309,13 @@ export async function runProjectorWorkflowBody(
     const message = error instanceof Error ? error.message : String(error);
     recordPoison(input.runId, orgId);
     await rt.markRunFailed(input.runId, orgId, message, "projection");
+    await rt.recordFailed({
+      runId: input.runId,
+      orgId,
+      distinctId,
+      reason: message,
+      kind: "projection",
+    });
     // Re-throw so DBOS records the workflow failure (poison run — projection
     // itself threw after exhausting retries; NOT a harness-error run).
     // Do NOT purge here: the DBOS workflow has failed so a potential
@@ -289,7 +338,7 @@ async function resolveRunStepWithRuntime(
       fenceToken: input.fenceToken,
     })
   ) {
-    return { skip: "stale-or-terminal" as const, row };
+    return { skip: "stale" as const, row };
   }
   if (row.version !== 2) return { skip: "legacy-v1" as const, row };
   return { row };
@@ -303,6 +352,7 @@ async function projectRunWorkflowFn(
   });
   if ("skip" in resolved) return;
   const orgId = resolved.row.orgId;
+  const distinctId = resolved.row.createdBy ?? input.runId;
   const currentThreadTitle = resolved.row.title;
   try {
     const { outcome } = await DBOS.runStep(
@@ -317,10 +367,35 @@ async function projectRunWorkflowFn(
         () => failRunStep(input.runId, orgId, reason, "harness"),
         { name: "failProjectedRun" },
       );
+      await DBOS.runStep(
+        () =>
+          requireRuntime().recordFailed({
+            runId: input.runId,
+            orgId,
+            distinctId,
+            reason,
+            kind: "harness",
+          }),
+        { name: "recordProjectedRunFailed" },
+      );
     } else {
       await DBOS.runStep(() => completeRunStep(input.runId, orgId), {
         name: "completeProjectedRun",
       });
+      await DBOS.runStep(
+        () =>
+          requireRuntime().recordCompleted({
+            runId: input.runId,
+            orgId,
+            distinctId,
+            usage: outcome?.usage ?? {
+              inputTokens: 0,
+              outputTokens: 0,
+              totalTokens: 0,
+            },
+          }),
+        { name: "recordProjectedRunCompleted" },
+      );
     }
     await DBOS.runStep(() => cleanupRunStep(input.runId, input.fenceToken), {
       name: "cleanupProjectedRun",
@@ -330,6 +405,17 @@ async function projectRunWorkflowFn(
     await DBOS.runStep(() => failRunStep(input.runId, orgId, message), {
       name: "failProjectedRun",
     });
+    await DBOS.runStep(
+      () =>
+        requireRuntime().recordFailed({
+          runId: input.runId,
+          orgId,
+          distinctId,
+          reason: message,
+          kind: "projection",
+        }),
+      { name: "recordProjectedRunFailed" },
+    );
     throw error;
   }
 }
@@ -388,6 +474,11 @@ async function projectCheckpointFromJetStreamStep(
       currentThreadTitle,
       persistTitle: async (_threadId, title) => {
         await rt.persistTitle(input.runId, input.orgId, title);
+        await rt.onTitleUpdated({
+          runId: input.runId,
+          orgId: input.orgId,
+          title,
+        });
       },
     },
   });
@@ -416,7 +507,7 @@ async function projectCheckpointWorkflowFn(
           fenceToken: input.fenceToken,
         })
       ) {
-        return { skip: "stale-or-terminal" as const };
+        return { skip: "stale" as const };
       }
       if (row.version !== 2) return { skip: "legacy-v1" as const };
       return { row };
@@ -426,10 +517,20 @@ async function projectCheckpointWorkflowFn(
   if ("skip" in resolved) return;
 
   const currentThreadTitle = resolved.row.title;
-  await DBOS.runStep(
+  const { projected } = await DBOS.runStep(
     () => projectCheckpointFromJetStreamStep(input, currentThreadTitle),
     { name: "projectCheckpointFromJetStream" },
   );
+  if (projected) {
+    await DBOS.runStep(
+      () =>
+        requireRuntime().bumpProgress({
+          runId: input.runId,
+          orgId: input.orgId,
+        }),
+      { name: "bumpCheckpointProgress" },
+    );
+  }
 }
 
 const projectCheckpointWorkflow = DBOS.registerWorkflow(

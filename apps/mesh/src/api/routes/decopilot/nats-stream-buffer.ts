@@ -55,15 +55,14 @@ const publishErrorsCounter = meter.createCounter(
 
 // 30 min — projector-lag SLA: the stream is the sole path to the DB (Phase C),
 // so retention must outlast a projector outage long enough to catch up. Tune later.
-const MAX_AGE_NS = 30 * 60 * 1_000_000_000; // 30 min
+const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long desktop runs
 // Time-based Nats-Msg-Id dedup window (spec §10.2): a republished chunk within
 // this window is dropped by JetStream, so an at-least-once producer (outbox
 // retry) can't double-write the same UI part.
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
-const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
-const MAX_MSGS_PER_SUBJECT = 20_000; // ~20K chunks per thread
-/** Minimum ms between consecutive checkpoint publishes for the same run. */
-export const CHECKPOINT_DEBOUNCE_MS = 2000;
+const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
+const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop streams
+export { CHECKPOINT_DEBOUNCE_MS } from "./projector-stream-messages";
 
 /**
  * Pure stream config for `DECOPILOT_STREAMS`. File-backed so the run-scratch

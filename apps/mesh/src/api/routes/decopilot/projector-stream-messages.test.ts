@@ -3,12 +3,14 @@ import {
   buildCheckpointMsgId,
   buildChunkMsgId,
   buildDoneMsgId,
+  CHECKPOINT_DEBOUNCE_MS,
   isCheckpointEnvelope,
   isDoneEnvelope,
   parseRunStreamMsgId,
   runIdFromSubject,
   streamSubject,
 } from "./projector-stream-messages";
+import { CHECKPOINT_DEBOUNCE_MS as REEXPORTED } from "./nats-stream-buffer";
 
 describe("projector stream message helpers", () => {
   test("builds and parses chunk msg ids", () => {
@@ -142,5 +144,13 @@ test("parseRunStreamMsgId still handles done msgId", () => {
     runId: "r1",
     fenceToken: "f1",
     finalSeq: 10,
+  });
+});
+
+describe("CHECKPOINT_DEBOUNCE_MS", () => {
+  test("is 3000ms and shared (single source of truth)", () => {
+    expect(CHECKPOINT_DEBOUNCE_MS).toBe(3000);
+    expect(REEXPORTED).toBe(3000);
+    expect(REEXPORTED).toBe(CHECKPOINT_DEBOUNCE_MS);
   });
 });

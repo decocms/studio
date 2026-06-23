@@ -68,6 +68,14 @@ export async function projectRun(
   let lastError: unknown = null;
   for (let attempt = 0; attempt < PROJECT_RUN_MAX_ATTEMPTS; attempt++) {
     try {
+      // Deterministic assistant-message ids, reset per fold. Every projection of
+      // this run (terminal, checkpoint, and reconnect-replay redelivery) folds
+      // the same chunks in the same order, so the Nth message gets the SAME id
+      // each time → identical part row ids (`${runId}:${messageId}:${seq}`) →
+      // ON CONFLICT DO NOTHING dedupes instead of duplicating parts. The SDK's
+      // default random id would differ per fold and double the rows on replay.
+      let msgCounter = 0;
+      const generateMessageId = () => `${options.runId}:msg:${msgCounter++}`;
       const outcome = await projectChunks({
         chunks: (async function* () {
           yield* options.chunks;
@@ -77,6 +85,7 @@ export async function projectRun(
         // Deterministic per run so an error message dedupes across this loop's
         // attempts, DBOS step retries, and the live-path write (same id).
         errorMessageId: `error-${options.runId}`,
+        generateMessageId,
         title: options.title,
         originalMessages: options.originalMessages,
       });

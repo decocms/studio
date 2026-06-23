@@ -1,6 +1,12 @@
 import { hostname as osHostname } from "node:os";
-import { retry, sleep, type RetryOptions } from "@decocms/std";
+import {
+  exponentialBackoffWithJitter,
+  retry,
+  sleep,
+  type RetryOptions,
+} from "@decocms/std";
 import * as tunnel from "@decocms/tunnel";
+import { encodeSubjectToken } from "@decocms/tunnel/subject";
 import {
   credsAuthenticator,
   tokenAuthenticator,
@@ -42,6 +48,14 @@ const SESSION_FETCH_RETRY_OPTIONS: RetryOptions = {
   multiplier: 2,
   jitter: 0.5,
 };
+
+// Backoff between *re-establishment* attempts in the connection manager loop.
+// `SESSION_FETCH_RETRY_OPTIONS` bounds a single establishment burst (8 tries);
+// when that burst is exhausted on an unstable link, the manager waits this long
+// and tries the whole burst again — indefinitely — so a flaky link->cluster leg
+// recovers instead of the daemon giving up. Same shape for an unexpected close.
+const RECONNECT_BACKOFF_BASE_MS = 1_000;
+const RECONNECT_BACKOFF_CAP_MS = 30_000;
 
 /**
  * Error thrown by {@linkcode fetchLinkSession} when the cluster responds with a
@@ -423,6 +437,24 @@ export function buildNatsConnectOptions(
   return {
     servers: session.connection.urls,
     ...(authenticator ? { authenticator } : {}),
+    // Survive an unstable link -> cluster connection (e.g. a flaky network or a
+    // toxiproxy between the daemon and the cluster NATS). Reconnect FOREVER with
+    // a bounded backoff + jitter rather than giving up after the NATS.js default
+    // of 10 attempts. The session-renew timer still recycles the connection
+    // before its credentials expire, so infinite reconnect only ever operates
+    // within the valid-creds window; a sustained outage just keeps retrying
+    // while the daemon stays up and the relay outbox holds the unacked prefix.
+    reconnect: true,
+    maxReconnectAttempts: -1,
+    reconnectTimeWait: 1_000,
+    reconnectJitter: 1_000,
+    reconnectJitterTLS: 2_000,
+    // Scope the request/reply inbox to this daemon's host token so JetStream
+    // PubAcks (from the direct-NATS chunk relay's `js.publish`) land on a
+    // subject the minted credentials are allowed to subscribe to. Must match
+    // the `_INBOX.<hostToken>.>` subscribe grant in
+    // `buildDaemonCredentialPermissions`.
+    inboxPrefix: `_INBOX.${encodeSubjectToken(session.tunnelHostname)}`,
   };
 }
 
@@ -488,6 +520,11 @@ export async function connectToClusterTunnel(
   const now = deps.now ?? (() => new Date());
   let stopRequested = false;
   let active: ActiveTunnelConnection | undefined;
+  // The CURRENT live NATS connection, updated on every `startActive`. In-flight
+  // dispatches read this (via `getNatsConnection`) per publish attempt, so a run
+  // that started under a prior session re-sources the NEW connection after a
+  // tunnel-session renewal (which recycles the old connection).
+  let liveNc: NatsConnection | null = null;
   let firstReady:
     | { resolve: () => void; reject: (err: unknown) => void }
     | undefined;
@@ -509,17 +546,23 @@ export async function connectToClusterTunnel(
   const startActive = async (): Promise<ActiveTunnelConnection> => {
     const session = await fetchSessionWithRetry();
     const nc = await (deps.connectNats ?? connectNats)(session);
+    liveNc = nc;
     monitorNatsStatus(nc, session.tunnelHostname, now);
     const ac = new AbortController();
     let tunnelServer: tunnel.TunnelServer | undefined;
     const activeWork = new Set<Promise<void>>();
+
+    const connectionInput = {
+      ...input,
+      getNatsConnection: () => liveNc,
+    };
 
     try {
       tunnelServer = await (deps.serveTunnel ?? tunnel.serve)({
         connection: nc,
         hostname: session.tunnelHostname,
         fetch: createTunnelCommandFetch({
-          connectionInput: input,
+          connectionInput,
           controlHandler,
           signal: ac.signal,
           activeWork,
@@ -600,10 +643,45 @@ export async function connectToClusterTunnel(
     };
   };
 
+  // Interrupts an in-progress reconnect backoff sleep when close() is called, so
+  // shutdown doesn't wait out the backoff.
+  const managerAbort = new AbortController();
+  let reconnectAttempt = 0;
+  const backoffReconnect = async (): Promise<void> => {
+    const backoffMs = exponentialBackoffWithJitter(
+      RECONNECT_BACKOFF_CAP_MS,
+      RECONNECT_BACKOFF_BASE_MS,
+      reconnectAttempt++,
+      2,
+      0.5,
+    );
+    await sleepImpl(backoffMs, { signal: managerAbort.signal }).catch(() => {});
+  };
+
   const managerClosed = (async () => {
     try {
       while (!stopRequested) {
-        active = await startActive();
+        try {
+          active = await startActive();
+        } catch (err) {
+          if (stopRequested) break;
+          // Bad credentials (401/403) won't fix themselves — fail fast so the
+          // daemon surfaces the error instead of spinning forever.
+          if (!isRetriableSessionError(err)) {
+            throw err;
+          }
+          // Transient failure (network blip, ECONNRESET, cluster reset/booting).
+          // Survive an unstable link->cluster leg: back off and re-establish
+          // indefinitely rather than giving up. Applies even before the first
+          // successful connection (the cluster may be briefly unreachable).
+          console.warn(
+            "[cluster-connection-tunnel] connect failed; retrying",
+            err,
+          );
+          await backoffReconnect();
+          continue;
+        }
+        reconnectAttempt = 0;
         if (firstReady) {
           firstReady.resolve();
           firstReady = undefined;
@@ -616,8 +694,15 @@ export async function connectToClusterTunnel(
         const reason = await active.closedReason;
         await active.closed;
         active = undefined;
+        if (stopRequested) break;
+        // A planned renewal loops immediately. An *unexpected* close (NATS or
+        // tunnel dropped for good) previously exited the daemon — which is what
+        // made an unstable link fatal. Instead, back off briefly and reconnect.
         if (reason !== "renew") {
-          break;
+          console.warn(
+            "[cluster-connection-tunnel] connection dropped; reconnecting",
+          );
+          await backoffReconnect();
         }
       }
     } catch (err) {
@@ -628,6 +713,7 @@ export async function connectToClusterTunnel(
       }
     } finally {
       stopRequested = true;
+      managerAbort.abort();
       await active?.close();
     }
   })();
@@ -638,6 +724,7 @@ export async function connectToClusterTunnel(
     async close() {
       console.log("[cluster-connection-tunnel] closing");
       stopRequested = true;
+      managerAbort.abort();
       await active?.close();
       await managerClosed;
     },

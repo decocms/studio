@@ -3,22 +3,24 @@
  * spec "Transport Convergence").
  *
  * The local sandbox streams `DispatchSSEEvent`s over loopback SSE. The relay
- * forwards every event verbatim to the cluster as a seq-numbered NDJSON
- * `RelayLine`, so the cluster-side harness kernel is the only consumer of
+ * forwards every event as a seq-numbered NDJSON `RelayLine` to an injected
+ * `post` sink. Production wires that sink to direct JetStream publishing (see
+ * `handle-local-dispatch` + `direct-nats-publisher`), so each line lands on
+ * `decopilot.stream.<runId>` and the durable projector is the sole consumer of
  * harness output — titles, usage, and session metadata survive because the
  * daemon no longer folds chunks into part rows.
  *
- * Reconnect/backfill contract:
- * - STREAMING-FIRST: a POST attempt is opened immediately and each line is
- *   written as the SSE event arrives, so the cluster sees per-chunk progress
+ * Reconnect/backfill contract (sink-agnostic):
+ * - STREAMING-FIRST: a sink attempt is opened immediately and each line is
+ *   written as the SSE event arrives, so the consumer sees per-chunk progress
  *   (run liveness) instead of per-step batches.
- * - The cluster acks only once per POST, after the body ends
- *   (`RelayPostResult`). Every line therefore stays in an in-memory buffer
- *   until a POST attempt succeeds after the terminal line was sent.
- * - On a failed POST (connection drop, 5xx) the relay retries with backoff;
- *   each new attempt resends the WHOLE buffered prefix from seq 1
- *   (`fromSeq: 1`) and then continues streaming live lines. The cluster
- *   dedupes by seq, so resending is always safe.
+ * - The sink acks once per attempt, after the body ends (`RelayPostResult`).
+ *   Every line therefore stays in the durable outbox until an attempt succeeds
+ *   after the terminal line was sent.
+ * - On a failed attempt (publish/connection drop) the relay retries with
+ *   backoff; each new attempt resends the WHOLE buffered prefix from seq 1
+ *   (`fromSeq: 1`) and then continues streaming live lines. JetStream
+ *   `Nats-Msg-Id` dedup makes resending always safe.
  * - Pump progress is independent of POST health: while disconnected the
  *   sandbox keeps streaming and lines accumulate in the buffer, up to
  *   `RELAY_BUFFER_MAX_BYTES` — beyond that the run fails loudly (with the

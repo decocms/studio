@@ -11,6 +11,7 @@ import {
   type ClusterConnectionTunnelInput,
 } from "./cluster-connection-tunnel";
 import type { ConnectionOptions, NatsConnection } from "@nats-io/nats-core";
+import { encodeSubjectToken } from "@decocms/tunnel/subject";
 import type { ControlHandler } from "./control-handler";
 import { openInMemoryOutbox } from "./outbox";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
@@ -185,6 +186,12 @@ describe("buildNatsConnectOptions", () => {
   it("allows unauthenticated NATS connection options when session has no credentials or token", () => {
     expect(buildNatsConnectOptions(sessionWithoutAuth)).toEqual({
       servers: ["nats://127.0.0.1:4222"],
+      inboxPrefix: `_INBOX.${encodeSubjectToken(sessionWithoutAuth.tunnelHostname)}`,
+      reconnect: true,
+      maxReconnectAttempts: -1,
+      reconnectTimeWait: 1_000,
+      reconnectJitter: 1_000,
+      reconnectJitterTLS: 2_000,
     });
   });
 
@@ -746,16 +753,24 @@ describe("connectToClusterTunnel", () => {
     await expect(handle.closed).resolves.toBeUndefined();
   });
 
-  it("tears down the transport when the tunnel server closes first", async () => {
-    const natsClosed = deferred<void | Error>();
-    const serverClosed = deferred<void>();
+  it("reconnects when the tunnel server closes unexpectedly", async () => {
+    // An unexpected tunnel/NATS drop must NOT tear down the daemon — the
+    // link->cluster leg has to survive instability by re-establishing a fresh
+    // generation. Only an explicit close() ends the transport.
+    const secondStarted = deferred<void>();
+    let fetchCount = 0;
     let natsCloseCount = 0;
-    let sleepAborted = false;
+    let tunnelCloseCount = 0;
+    let dropFirstGen: (() => void) | undefined;
 
     const handle = await connectToClusterTunnel(makeBaseTunnelInput(), {
-      fetchSession: async () => sessionWithoutAuth,
-      connectNats: async () =>
-        ({
+      fetchSession: async () => {
+        fetchCount++;
+        return sessionWithoutAuth;
+      },
+      connectNats: async () => {
+        const natsClosed = deferred<void | Error>();
+        return {
           publish: () => {},
           flush: async () => {},
           close: async () => {
@@ -763,37 +778,102 @@ describe("connectToClusterTunnel", () => {
             natsClosed.resolve(undefined);
           },
           closed: async () => natsClosed.promise,
-        }) as never,
-      serveTunnel: async (options) => ({
-        hostname: options.hostname,
-        closed: serverClosed.promise,
-        close: async () => serverClosed.resolve(),
-      }),
-      sleep: async (_ms, options) => {
+        } as never;
+      },
+      serveTunnel: async (options) => {
+        const serverClosed = deferred<void>();
+        const gen = fetchCount;
+        if (gen === 1) dropFirstGen = () => serverClosed.resolve();
+        if (gen === 2) secondStarted.resolve();
+        return {
+          hostname: options.hostname,
+          closed: serverClosed.promise,
+          close: async () => {
+            tunnelCloseCount++;
+            serverClosed.resolve();
+          },
+        };
+      },
+      // Reconnect backoff (~1s) returns immediately; the long renewal sleep
+      // hangs until aborted, so only the unexpected drop drives a new gen.
+      sleep: async (ms, options) => {
+        if (ms < 5_000) return;
         await new Promise<void>((resolve) => {
           const signal = options?.signal;
           if (signal?.aborted) {
-            sleepAborted = true;
             resolve();
             return;
           }
-          signal?.addEventListener(
-            "abort",
-            () => {
-              sleepAborted = true;
-              resolve();
-            },
-            { once: true },
-          );
+          signal?.addEventListener("abort", () => resolve(), { once: true });
         });
       },
     });
 
-    serverClosed.resolve();
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    // First generation drops unexpectedly (not a renewal).
+    dropFirstGen!();
 
-    expect(natsCloseCount).toBe(1);
-    expect(sleepAborted).toBe(true);
+    // Manager backs off and re-establishes a fresh generation instead of exiting.
+    await secondStarted.promise;
+    expect(fetchCount).toBe(2);
+    expect(natsCloseCount).toBe(1); // first gen's NATS was torn down on drop
+
+    // Explicit close still ends the transport cleanly.
+    await handle.close();
+    await expect(handle.closed).resolves.toBeUndefined();
+  });
+
+  it("re-establishes after a session fetch failure (survives an unstable link)", async () => {
+    // The session fetch keeps failing transiently (e.g. ECONNRESET through a
+    // flaky proxy). Previously the manager gave up after the bounded retry burst
+    // and the daemon exited; now it backs off and tries again until it connects.
+    const connected = deferred<void>();
+    let fetchCount = 0;
+
+    const handle = await connectToClusterTunnel(makeBaseTunnelInput(), {
+      fetchSession: async () => {
+        fetchCount++;
+        // Fail the first two establishment attempts, then succeed.
+        if (fetchCount <= 2) {
+          throw new Error("ECONNRESET");
+        }
+        return sessionWithoutAuth;
+      },
+      // A single establishment "burst" here is one attempt (so each failure
+      // exhausts the burst and exercises the manager-level reconnect backoff).
+      sessionFetchRetryOptions: { maxAttempts: 1 },
+      connectNats: async () => {
+        const natsClosed = deferred<void | Error>();
+        return {
+          publish: () => {},
+          flush: async () => {},
+          close: async () => natsClosed.resolve(undefined),
+          closed: async () => natsClosed.promise,
+        } as never;
+      },
+      serveTunnel: async (options) => {
+        const serverClosed = deferred<void>();
+        connected.resolve();
+        return {
+          hostname: options.hostname,
+          closed: serverClosed.promise,
+          close: async () => serverClosed.resolve(),
+        };
+      },
+      // Backoff between bursts returns immediately; renewal sleep hangs.
+      sleep: async (ms, options) => {
+        if (ms < 5_000) return;
+        await new Promise<void>((resolve) => {
+          options?.signal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        });
+      },
+    });
+
+    await connected.promise;
+    expect(fetchCount).toBe(3); // two failures, then success
+
+    await handle.close();
     await expect(handle.closed).resolves.toBeUndefined();
   });
 });
@@ -803,14 +883,30 @@ test("work dispatch is bound to runLifetimeSignal, not the per-session signal", 
   const runLifetimeAc = new AbortController();
   let capturedSignal: AbortSignal | undefined;
 
-  // When ensureSandbox throws, dispatchLinkWorkItem calls relayClaimedWorkItemFailure
-  // with the `signal` argument it received, which flows through relayWorkItemFailure
-  // into fetchImpl as RequestInit.signal — giving us a clean seam to capture it.
-  const failProvider: DesktopSandboxProvider = {
+  // handleLocalDispatch sends the run's composite signal to the sandbox
+  // `/_sandbox/dispatch` fetch (RequestInit.signal) — a clean seam to capture
+  // it. The chunk relay now publishes to NATS (injected fake publisher), so it
+  // never hits fetchImpl. We hold the dispatch SSE open until both signal
+  // assertions are made, so the captured signal is the live run signal.
+  const releaseDispatch = deferred<void>();
+  const okProvider: DesktopSandboxProvider = {
     ...provider,
-    ensureSandbox: async () => {
-      throw new Error("sandbox-not-available");
+    getDaemonToken: () => "daemon-token",
+  };
+
+  const relayLines: Array<{ runId: string }> = [];
+  const fakeRelayPublisher = {
+    publishLine: async (i: {
+      runId: string;
+      line: { event: { type: string } };
+    }) => {
+      relayLines.push(i);
+      return (i.line.event.type === "done" ? "terminal" : "published") as
+        | "published"
+        | "terminal";
     },
+    publishDone: async () => {},
+    publishCheckpoint: async () => {},
   };
 
   const validWorkItem = {
@@ -820,16 +916,34 @@ test("work dispatch is bound to runLifetimeSignal, not the per-session signal", 
     userId: "user-1",
     runFenceToken: "fence-1",
     orgSlug: "my-org",
-    harnessInput: {},
+    harnessInput: {
+      agent: { id: "agent-1" },
+      mcp: { expiresAt: Date.now() + 60_000 },
+    },
   };
 
   const connectionInput = makeBaseTunnelInput({
-    provider: failProvider,
+    provider: okProvider,
     runLifetimeSignal: runLifetimeAc.signal,
-    fetchImpl: ((_url, init) => {
-      capturedSignal = init?.signal ?? undefined;
-      // Return a 200 so relayWorkItemFailure doesn't throw.
-      return Promise.resolve(new Response(null, { status: 200 }));
+    getNatsConnection: () => ({}) as unknown as NatsConnection,
+    relayPublisher: fakeRelayPublisher,
+    fetchImpl: (async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/_sandbox/dispatch")) {
+        capturedSignal = init?.signal ?? undefined;
+        // Keep the SSE body pending until the test releases it, so the run's
+        // signal stays live while we assert on it.
+        await releaseDispatch.promise;
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('data: {"type":"done"}\n\n'));
+              c.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      throw new Error(`unexpected fetch ${url}`);
     }) as typeof fetch,
   });
 
@@ -860,6 +974,125 @@ test("work dispatch is bound to runLifetimeSignal, not the per-session signal", 
   // Aborting the run-lifetime signal DOES abort the run's signal.
   runLifetimeAc.abort();
   expect(capturedSignal!.aborted).toBe(true);
+
+  // Let the now-aborted dispatch unwind so no work dangles past the test.
+  releaseDispatch.resolve();
+});
+
+test("work dispatch receives the active NATS connection via getNatsConnection", async () => {
+  const natsClosed = deferred<void | Error>();
+  const serverClosed = deferred<void>();
+  // When the fake nc is injected via connectNats, startActive() should build
+  // connectionInput = { ...input, getNatsConnection: () => nc } and pass it
+  // to createTunnelCommandFetch. Then dispatchLinkWorkItem should call
+  // getNatsConnection() to get nc — the null-guard passes, and handleLocalDispatch
+  // is reached. We verify this by confirming a /_sandbox/dispatch POST occurs
+  // (proving the nc null-guard didn't throw).
+  const fakeNatsConnection = {
+    publish: () => {},
+    flush: async () => {},
+    close: async () => natsClosed.resolve(undefined),
+    closed: async () => natsClosed.promise,
+  } as never as NatsConnection;
+
+  const workItemSent = deferred<void>();
+  const urlsSeen: string[] = [];
+  const fetchImpl: typeof fetch = (async (url: string) => {
+    urlsSeen.push(String(url));
+    if (String(url).includes("/_sandbox/dispatch")) {
+      workItemSent.resolve();
+      // Return a minimal SSE done to end the dispatch.
+      return new Response(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {"type":"done"}\n\n'));
+            c.close();
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        },
+      );
+    }
+    if (String(url).includes("/links/runs/")) {
+      return Response.json({ ok: true, lastSeq: 1 });
+    }
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+
+  let capturedTunnelFetch:
+    | ((req: Request) => Response | Promise<Response>)
+    | undefined;
+
+  const providerWithToken: DesktopSandboxProvider = {
+    ...provider,
+    getDaemonToken: () => "daemon-token",
+  };
+
+  // The chunk relay publishes to NATS — inject a fake publisher so a real
+  // JetStream client is never built from the bare fake connection. This test
+  // only asserts the nc null-guard passes (i.e. `/_sandbox/dispatch` is hit).
+  const fakeRelayPublisher = {
+    publishLine: async () => "published" as const,
+    publishDone: async () => {},
+    publishCheckpoint: async () => {},
+  };
+
+  const handle = await connectToClusterTunnel(
+    makeBaseTunnelInput({
+      fetchImpl,
+      provider: providerWithToken,
+      relayPublisher: fakeRelayPublisher,
+    }),
+    {
+      fetchSession: async () => sessionWithoutAuth,
+      connectNats: async () => fakeNatsConnection,
+      serveTunnel: async (options) => {
+        capturedTunnelFetch = options.fetch;
+        return {
+          hostname: options.hostname,
+          closed: serverClosed.promise,
+          close: async () => serverClosed.resolve(),
+        };
+      },
+      sleep: waitForAbortSleep,
+    },
+  );
+
+  // Dispatch a work item through the tunnel fetch handler.
+  const validWorkItemBody = JSON.stringify({
+    runId: "run-1",
+    threadId: "thread-1",
+    orgId: "org-1",
+    userId: "user-1",
+    runFenceToken: "fence-1",
+    orgSlug: "my-org",
+    harnessInput: {
+      agent: { id: "agent-1" },
+      mcp: { expiresAt: Date.now() + 60_000 },
+    },
+  });
+  const res = await capturedTunnelFetch!(
+    new Request("http://tunnel.local/api/links/work", {
+      method: "POST",
+      body: validWorkItemBody,
+    }),
+  );
+  expect(res.status).toBe(202);
+
+  // Wait for the async work to reach the sandbox dispatch fetch.
+  await Promise.race([
+    workItemSent.promise,
+    new Promise<void>((resolve) => setTimeout(resolve, 200)),
+  ]);
+
+  // If getNatsConnection was NOT wired, the null-guard in dispatchLinkWorkItem
+  // would throw before reaching handleLocalDispatch, and /_sandbox/dispatch
+  // would never be called. Its presence confirms the accessor is threaded.
+  expect(urlsSeen.some((u) => u.includes("/_sandbox/dispatch"))).toBe(true);
+
+  await handle.close();
 });
 
 test("GET /api/links/status returns hostname, capabilities, cliVersion", async () => {

@@ -1,9 +1,12 @@
 /**
  * E2E: durable cancel flag.
  *
- * The old control long-poll route was removed with the pull transport. The
- * correctness invariant that remains at the HTTP layer is: cancel wins over a
- * valid run fence, and chunk ingest rejects with 409.
+ * The old control long-poll route AND the HTTP chunk-ingest backstop (which
+ * 409'd a relay once `cancel_requested_at` was set) were both removed with the
+ * pull transport. Cancellation now propagates to the desktop daemon over the
+ * control channel, which stops the harness at the source. What remains as a
+ * cluster-side contract is that the cancel route durably records the request —
+ * this spec asserts that flag is persisted.
  */
 
 import { expect, test } from "../fixtures/test";
@@ -25,31 +28,6 @@ async function orgIdForSlug(
   const id = rows[0]?.id;
   if (!id) throw new Error(`no organization row for slug ${slug}`);
   return id;
-}
-
-/**
- * Build a minimal NDJSON chunk-relay body (reused from
- * link-dispatch-pull.spec.ts — seq-numbered RelayLines, protocol v2).
- */
-function buildRelayBody(messageId: string, text: string): string {
-  const textId = `${messageId}-text-0`;
-  const chunks: unknown[] = [
-    { type: "start" },
-    { type: "start-step" },
-    { type: "text-start", id: textId },
-    { type: "text-delta", id: textId, delta: text },
-    { type: "text-end", id: textId },
-    { type: "finish-step" },
-    { type: "finish" },
-  ];
-  const events: unknown[] = chunks.map((chunk) => ({
-    type: "ui-message-chunk",
-    chunk,
-  }));
-  events.push({ type: "done" });
-  return `${events
-    .map((event, i) => JSON.stringify({ seq: i + 1, event }))
-    .join("\n")}\n`;
 }
 
 /**
@@ -111,9 +89,7 @@ async function createFencedPullThread(
 // ---------------------------------------------------------------------------
 
 test.describe("link-control Phase C", () => {
-  test("cancel sets durable flag and ingest rejects with 409", async ({
-    authedPage,
-  }) => {
+  test("cancel sets the durable cancel flag", async ({ authedPage }) => {
     test.setTimeout(60_000);
 
     const { page, orgSlug } = authedPage;
@@ -138,30 +114,15 @@ test.describe("link-control Phase C", () => {
       );
       expect([200, 202]).toContain(cancelRes.status());
 
-      // Verify durable flag is set in the DB
+      // Verify the durable cancel flag is set in the DB. (The old cluster-side
+      // ingest backstop that 409'd a relay after this flag was set is gone —
+      // the projector does not consult cancel_requested_at; cancellation is
+      // enforced at the daemon via the control channel.)
       const { rows } = await db.query<{ cancel_requested_at: string | null }>(
         `SELECT cancel_requested_at FROM threads WHERE id = $1`,
         [threadId],
       );
       expect(rows[0]?.cancel_requested_at).not.toBeNull();
-
-      // Ingest MUST be rejected with 409 even though the fence token is valid
-      const ingestBody = buildRelayBody(`msg_ctrl_e2e_${Date.now()}`, "hello");
-      const ingestRes = await api.post(
-        `/api/${orgSlug}/links/runs/${threadId}/chunks`,
-        {
-          headers: {
-            "content-type": "application/x-ndjson",
-            "x-fence-token": fenceToken,
-            "x-relay-from": "1",
-          },
-          data: ingestBody,
-        },
-      );
-
-      expect(ingestRes.status()).toBe(409);
-      const ingestJson = await ingestRes.json();
-      expect(ingestJson).toMatchObject({ error: "cancelled" });
     } finally {
       await db.end();
     }

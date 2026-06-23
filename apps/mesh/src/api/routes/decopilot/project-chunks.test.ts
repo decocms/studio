@@ -11,6 +11,12 @@ import { projectChunks } from "./project-chunks";
 function helloChunks(): AsyncIterable<UIMessageChunk> {
   return (async function* () {
     yield { type: "start" } as UIMessageChunk;
+    yield {
+      type: "message-metadata",
+      messageMetadata: {
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+      },
+    } as UIMessageChunk;
     yield { type: "text-start", id: "txt" } as UIMessageChunk;
     yield { type: "text-delta", id: "txt", delta: "hello" } as UIMessageChunk;
     yield { type: "text-end", id: "txt" } as UIMessageChunk;
@@ -52,12 +58,17 @@ function recordingPersistence() {
 describe("projectChunks", () => {
   test("reassembles raw chunks and persists the final assistant message", async () => {
     const { finals, persistence } = recordingPersistence();
-    await projectChunks({ chunks: helloChunks(), persistence });
+    const result = await projectChunks({ chunks: helloChunks(), persistence });
     expect(finals).toHaveLength(1);
     const text = (finals[0]!.parts ?? []).find(
       (p) => (p as { type?: string }).type === "text",
     ) as { text?: string } | undefined;
     expect(text?.text).toBe("hello");
+    expect(result.usage).toEqual({
+      inputTokens: 1,
+      outputTokens: 2,
+      totalTokens: 3,
+    });
   });
 
   test("a thrown source surfaces via emitError and rethrows", async () => {
@@ -260,6 +271,44 @@ describe("projectChunks", () => {
     expect(res.failed).toBe(false);
     // finishReason propagated so downstream consumers (Task 6 workflow) can read it.
     expect(res.finishReason).toBe("stop");
+  });
+
+  test("captures usage totals from the finish chunk", async () => {
+    const noopPersistence: HarnessStreamPersistence = {
+      emitStepParts: async () => {},
+      emitFinal: async () => {},
+      emitError: async () => {},
+    };
+
+    const res = await projectChunks({
+      chunks: helloChunks(),
+      persistence: noopPersistence,
+    });
+
+    expect(res.usage).toEqual({
+      inputTokens: 1,
+      outputTokens: 2,
+      totalTokens: 3,
+    });
+  });
+
+  test("defaults usage totals to zero when no usage hook fires", async () => {
+    const noopPersistence: HarnessStreamPersistence = {
+      emitStepParts: async () => {},
+      emitFinal: async () => {},
+      emitError: async () => {},
+    };
+
+    const res = await projectChunks({
+      chunks: helloChunksWithTitle("Generated Title"),
+      persistence: noopPersistence,
+    });
+
+    expect(res.usage).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    });
   });
 
   // ── I1 regression guard: mid-run error then recovery ─────────────────────

@@ -1,6 +1,10 @@
 export const DECOPILOT_STREAM_NAME = "DECOPILOT_STREAMS";
 export const DECOPILOT_STREAM_SUBJECT_PREFIX = "decopilot.stream";
 
+/** Debounce between incremental checkpoint markers, shared by BOTH producers
+ *  (hosted ingest + desktop daemon relay). Single source of truth. */
+export const CHECKPOINT_DEBOUNCE_MS = 3000;
+
 export type ParsedRunStreamMsgId =
   | {
       kind: "chunk";
