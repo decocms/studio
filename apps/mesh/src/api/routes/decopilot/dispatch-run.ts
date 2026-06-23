@@ -453,6 +453,20 @@ export interface DispatchRunInput {
    * (or lower) ceiling than the platform default.
    */
   maxAgentSteps?: number;
+  /**
+   * Run is a backgrounded subtask dispatched as its own serialized run on the
+   * parent thread. Skips history-seeding (fresh subagent context) and runs
+   * `kind: "subagent"` (no nested subtask). The prompt rides the request message
+   * (typically `metadata.internal` so it's hidden); `maxAgentSteps` caps it.
+   */
+  isSubagent?: boolean;
+  /** Backgrounded-subtask correlation: the originating tool call's job id,
+   *  stamped onto the run's message metadata so the UI nests it in that card. */
+  subtaskJobId?: string;
+  /** This turn was auto-enqueued to resume the agent after a backgrounded tool
+   *  (image / subtask) completed. Stamped onto the message metadata so the UI
+   *  shows a "resumed" indicator. */
+  resumedFromBackground?: boolean;
   /** Chat mode — plan, forced web search / image, or default */
   mode: ChatMode;
   organizationId: string;
@@ -1170,6 +1184,7 @@ async function prepareRun(
       materializedRequestMessage,
       systemMessages,
       windowSize,
+      input.isSubagent === true,
     );
 
     // CLI-harness delta + resume only holds on the long-lived desktop daemon:
@@ -1314,6 +1329,9 @@ async function prepareRun(
       toolApprovalLevel: input.toolApprovalLevel,
       toolAllowlist: input.toolAllowlist ?? null,
       maxAgentSteps: input.maxAgentSteps,
+      isSubagent: input.isSubagent,
+      subtaskJobId: input.subtaskJobId,
+      resumedFromBackground: input.resumedFromBackground,
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
       organizationSlug: organization.slug,

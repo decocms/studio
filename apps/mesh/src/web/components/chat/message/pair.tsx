@@ -20,7 +20,14 @@ export interface MessagePair {
 export function useMessagePairs(messages: ChatMessage[]): MessagePair[] {
   const pairs: MessagePair[] = [];
 
-  const filtered = messages.filter((m) => m.role !== "system");
+  // Drop system prompts and internal system-initiated turns (e.g. the
+  // background-tool reaction nudge), plus backgrounded-subtask run messages —
+  // those render NESTED inside their subtask card (keyed by `subtaskJobId`),
+  // not at the top level.
+  const filtered = messages.filter(
+    (m) =>
+      m.role !== "system" && !m.metadata?.internal && !m.metadata?.subtaskJobId,
+  );
 
   for (let i = 0; i < filtered.length; i++) {
     const message = filtered[i];
@@ -74,6 +81,11 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
     pairRef.current = node;
     if (!isLastPair || !node || didInitialScroll.current) return;
     didInitialScroll.current = true;
+
+    // A turn auto-resumed after a backgrounded tool finished is not
+    // user-initiated — don't yank the viewport to it. The user may be reading
+    // earlier content; the delivered result + reaction land quietly below.
+    if (pair.assistant?.metadata?.resumedFromBackground) return;
 
     // Active run: pin the user message at the top so the streaming assistant
     // content reveals beneath it. Matches the historical behavior.

@@ -1040,6 +1040,19 @@ export class ThreadConnection {
         return next;
       });
       this.observer?.onFinish?.(last, this.messages.get(), finishReason);
+
+      // A turn auto-resumed after a backgrounded tool (image / subtask) delivers
+      // that tool's result as a SEPARATE assistant message, appended directly to
+      // the DB by the background workflow — it never rides this live stream. Pull
+      // the latest page now so the delivered result shows without a manual
+      // refresh. Runs after the reaction folded, so it can't clobber in-flight
+      // streaming; the merge is upsert-by-id.
+      const meta = last.metadata as
+        | { resumedFromBackground?: boolean }
+        | undefined;
+      if (meta?.resumedFromBackground) {
+        void this.refetchLatestPage();
+      }
     }
   }
 
@@ -1290,6 +1303,9 @@ export function getOrOpenStream(
   if (current?.key === key) return current;
   current?.dispose();
   current = new ThreadConnection(orgSlug, threadId, opts);
+  // DEBUG (temporary): expose the live store for inspecting in-memory order.
+  if (typeof window !== "undefined")
+    (window as unknown as { __conn?: ThreadConnection }).__conn = current;
   return current;
 }
 

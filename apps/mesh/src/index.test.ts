@@ -6,9 +6,17 @@ describe("DBOS worker queue selection", () => {
       new URL("./index.ts", import.meta.url),
     ).text();
 
-    expect(source).toContain("PROJECTOR_QUEUE");
-    expect(source).toContain(
-      "const RUN_QUEUES = [AUTOMATIONS_QUEUE, THREAD_GATE_QUEUE, PROJECTOR_QUEUE]",
-    );
+    // Match the RUN_QUEUES array literal and assert membership, rather than an
+    // exact one-line form — survives reformatting and added queues.
+    const runQueues = source.match(/const RUN_QUEUES = \[([\s\S]*?)\]/)?.[1];
+    expect(runQueues).toBeDefined();
+    for (const queue of [
+      "AUTOMATIONS_QUEUE",
+      "THREAD_GATE_QUEUE",
+      "PROJECTOR_QUEUE",
+      "BACKGROUND_TOOLS_QUEUE",
+    ]) {
+      expect(runQueues).toContain(queue);
+    }
   });
 });

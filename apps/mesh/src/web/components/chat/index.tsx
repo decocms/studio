@@ -13,6 +13,7 @@ import { HIGHLIGHT_COLLAPSED_HEIGHT_PX } from "./highlight/collapsible-highlight
 import { useHighlightCount } from "./highlight/use-highlight-count";
 import { ChatInput } from "./input";
 import { MessagePair, useMessagePairs } from "./message/pair.tsx";
+import { SubtaskRunsProvider } from "./subtask-runs-context.tsx";
 import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
 import { CreditsEmptyState } from "./credits-empty-state";
 import { CreditsExhaustedBanner } from "./credits-exhausted-banner";
@@ -146,39 +147,41 @@ function ChatMessages() {
   });
 
   return (
-    <div
-      ref={scrollRef}
-      data-chat-scroller
-      className="w-full min-w-0 max-w-full overflow-y-auto h-full overflow-x-hidden"
-      style={{ paddingBottom }}
-    >
-      <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
-        <div ref={sentinelRef} aria-hidden className="h-px" />
-        {isFetchingOlder && (
-          <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
-            Loading older messages…
+    <SubtaskRunsProvider messages={messages}>
+      <div
+        ref={scrollRef}
+        data-chat-scroller
+        className="w-full min-w-0 max-w-full overflow-y-auto h-full overflow-x-hidden"
+        style={{ paddingBottom }}
+      >
+        <div className="flex flex-col min-w-0 max-w-2xl mx-auto w-full">
+          <div ref={sentinelRef} aria-hidden className="h-px" />
+          {isFetchingOlder && (
+            <div className="flex items-center justify-center py-3 text-xs text-muted-foreground">
+              Loading older messages…
+            </div>
+          )}
+          {messagePairs.slice(0, -1).map((pair, index) => (
+            <MessagePair
+              key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
+              pair={pair}
+              isLastPair={false}
+              status={index === messagePairs.length - 1 ? status : undefined}
+            />
+          ))}
+        </div>
+        {lastMessagePair && (
+          <div className="min-h-full min-w-0 max-w-2xl mx-auto w-full">
+            <MessagePair
+              key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
+              pair={lastMessagePair}
+              isLastPair={true}
+              status={status}
+            />
           </div>
         )}
-        {messagePairs.slice(0, -1).map((pair, index) => (
-          <MessagePair
-            key={`pair-${pair.user?.id ?? pair.assistant?.id}`}
-            pair={pair}
-            isLastPair={false}
-            status={index === messagePairs.length - 1 ? status : undefined}
-          />
-        ))}
       </div>
-      {lastMessagePair && (
-        <div className="min-h-full min-w-0 max-w-2xl mx-auto w-full">
-          <MessagePair
-            key={`pair-${lastMessagePair.user?.id ?? lastMessagePair.assistant?.id}`}
-            pair={lastMessagePair}
-            isLastPair={true}
-            status={status}
-          />
-        </div>
-      )}
-    </div>
+    </SubtaskRunsProvider>
   );
 }
 

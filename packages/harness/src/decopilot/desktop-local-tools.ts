@@ -18,6 +18,7 @@ import type { PendingImage } from "./built-in-tools/vm-tools/types";
 import type { SandboxFsHooks } from "./built-in-tools/vm-tools/sandbox-fs-hooks-types";
 import type { ToolApprovalLevel } from "./mcp-tools";
 import type { DesktopToolCtx } from "./desktop-tool-ctx";
+import type { BackgroundDispatcher } from "./built-in-tools/backgroundable";
 
 export interface BuildLocalToolsParams {
   writer: UIMessageStreamWriter;
@@ -37,6 +38,10 @@ export interface BuildLocalToolsParams {
   fs: SandboxFsHooks;
   imageProvider?: PortableImageProvider;
   imageModelInfo?: PortableImageModelInfo;
+  /** When present, generate_image enqueues a durable cluster job instead of
+   *  running on the daemon (so the turn doesn't block). Built by the daemon
+   *  runtime from the run's cluster callback + auth. */
+  imageBackgroundDispatcher?: BackgroundDispatcher | null;
   /** The real desktop-local `subtask` tool (built by the harness factory from
    *  `createLocalSubtaskTool` + the daemon `runSubtask`). Injected here so it
    *  joins the desktop toolset alongside the VM + portable built-ins. Absent on
@@ -61,6 +66,7 @@ export function buildLocalTools(params: BuildLocalToolsParams): ToolSet {
             imageModelInfo: params.imageModelInfo,
           }
         : undefined,
+    imageBackgroundDispatcher: params.imageBackgroundDispatcher,
   });
 
   const vmNeedsApproval =

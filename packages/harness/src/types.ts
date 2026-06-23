@@ -185,6 +185,26 @@ export interface HarnessStreamInput {
    * automations that pin a custom ceiling.
    */
   maxAgentSteps?: number;
+  /**
+   * Run is a subagent (a backgrounded `subtask` dispatched as its own
+   * serialized run on the parent thread). Drives `runEngine({ kind: "subagent" })`
+   * — excludes the nested `subtask`/`user_ask`/`propose_plan` built-ins (depth-1)
+   * and uses the subagent prompt. The caller also skips history-seeding and caps
+   * steps via `maxAgentSteps`.
+   */
+  isSubagent?: boolean;
+  /**
+   * When this run is a backgrounded subtask, the originating `subtask` tool
+   * call's job id. Stamped onto the run's assistant-message metadata so the UI
+   * can nest the run inside that tool-call card.
+   */
+  subtaskJobId?: string;
+  /**
+   * This run was auto-enqueued to resume the agent after a backgrounded tool
+   * (image / subtask) finished. Stamped onto the assistant-message metadata so
+   * the UI can flag the turn as a background-completion resume.
+   */
+  resumedFromBackground?: boolean;
 
   // ===== Identity context (for prompts, audit) =====
   user: { id: string; email: string };

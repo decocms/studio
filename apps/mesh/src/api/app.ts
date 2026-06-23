@@ -31,8 +31,13 @@ import {
   createStudioContextFactory,
 } from "../core/context-factory";
 import type { StudioContext } from "../core/studio-context";
-import { closeDatabase, getDb, type StudioDatabase } from "../database";
 import { startSSEHub } from "../event-bus";
+import {
+  closeDatabase,
+  getDb,
+  type StudioDatabase,
+  withSslmode,
+} from "../database";
 import {
   flushMonitoringData,
   meter,
@@ -794,6 +799,12 @@ import { Env } from "./hono-env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
 import { type SSEEvent, sseHub } from "../event-bus";
+import {
+  BACKGROUND_TOOLS_PARTITION_CONCURRENCY,
+  BACKGROUND_TOOLS_QUEUE,
+  setBackgroundToolRuntime,
+} from "@/harnesses/decopilot/background-tool-workflow";
+import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
 const getHandleOAuthProtectedResourceMetadata = () =>
   oAuthProtectedResourceMetadata(auth);
 const getHandleOAuthDiscoveryMetadata = () => oAuthDiscoveryMetadata(auth);
@@ -1074,6 +1085,10 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   cancelBroadcast
     .start((taskId) => {
+      // Abort any in-flight background-tool work (e.g. generate_image) on this
+      // pod before cancelling the live turn — the work runs on whichever pod
+      // dequeued the DBOS job, which this NATS fan-out reaches.
+      abortBackgroundJobs(taskId);
       runRegistry.execute({ type: "CANCEL", taskId }).catch((err) => {
         console.error("[Decopilot] CancelBroadcast execute failed:", err);
       });
@@ -1516,6 +1531,20 @@ export async function createApp(options: CreateAppOptions = {}) {
         fenceToken,
         newSeq,
       ),
+  });
+
+  // Background-tool jobs reuse the same mesh-context factory to rebuild the
+  // org context + re-resolve models on whatever pod runs the job. Wired before
+  // DBOS.launch() like the others (module-level pointer, no DBOS API calls).
+  setBackgroundToolRuntime({
+    meshContextFactory: automationContextFactory,
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
+    // A backgrounded subtask publishes its live run to `decopilot.stream.<jobId>`
+    // through this buffer (off the thread's own stream).
+    streamBuffer,
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
@@ -2117,6 +2146,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     await DBOS.registerQueue(PROJECTOR_QUEUE, {
       partitionQueue: true,
       concurrency: PROJECTOR_PARTITION_CONCURRENCY,
+    });
+    // Slow backgroundable built-ins (generate_image) run here, partitioned by
+    // orgId for per-org fairness. The reaction turn hops to the thread-gate.
+    await DBOS.registerQueue(BACKGROUND_TOOLS_QUEUE, {
+      partitionQueue: true,
+      concurrency: BACKGROUND_TOOLS_PARTITION_CONCURRENCY,
     });
     await reconcileAutomationSchedules(automationsStorage);
 

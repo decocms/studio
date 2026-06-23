@@ -351,10 +351,18 @@ export async function* runDecopilotStream(
 
   const passthroughToolNames = new Set(Object.keys(tools.passthroughTools));
   const builtInToolNames = Object.keys(tools.builtInTools);
-  const enabledTools = reconstructEnabledTools(
-    originalMessages,
-    passthroughToolNames,
-  );
+  // `enable_tool` gating is a context-window optimization for the MAIN agent:
+  // it starts with connection tools inactive and enables them over the
+  // conversation. A SUBAGENT runs a single focused task with EMPTY history, so
+  // it would never enable anything — `reconstructEnabledTools` returns ∅ and it
+  // sees only the always-on built-ins (the "light toolset" bug). Give a subagent
+  // its full toolset up front instead: every passthrough tool active from step 1.
+  // `extras.kind === "subtask"` is the reliable signal on the desktop subagent
+  // path (it runs through this loop); `input.isSubagent` covers the cluster one.
+  const isDelegatedSubagent = extras.kind === "subtask" || input.isSubagent;
+  const enabledTools = isDelegatedSubagent
+    ? new Set(passthroughToolNames)
+    : reconstructEnabledTools(originalMessages, passthroughToolNames);
 
   // Anthropic prompt-cache invariant: the cache key for our system block
   // markers is hash(tools + system_prefix), so the serialized `tools` JSON must
@@ -410,7 +418,7 @@ export async function* runDecopilotStream(
     githubRepo?: import("@decocms/mesh-sdk").GithubRepo | null;
   };
   const handle: AssembledEngineHandle = await runEngine({
-    kind: "agent",
+    kind: input.isSubagent ? "subagent" : "agent",
     virtualMcp: {
       id: input.agent.id,
       repo: vmMetadata?.githubRepo ?? undefined,
@@ -700,6 +708,15 @@ export async function* runDecopilotStream(
               enabledTools.size,
           },
           thread_id: threadId,
+          // Set for a backgrounded subtask run: correlates this message to the
+          // originating `subtask` tool call (== its `jobId`) so the UI nests it
+          // inside that card instead of rendering it top-level.
+          ...(input.subtaskJobId ? { subtaskJobId: input.subtaskJobId } : {}),
+          // Set when this turn resumes the agent after a backgrounded tool
+          // completed — the UI shows a "resumed" indicator on the message.
+          ...(input.resumedFromBackground
+            ? { resumedFromBackground: true }
+            : {}),
         };
       }
       if (part.type === "reasoning-start") {
