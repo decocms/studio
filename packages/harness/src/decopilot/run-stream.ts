@@ -351,10 +351,18 @@ export async function* runDecopilotStream(
 
   const passthroughToolNames = new Set(Object.keys(tools.passthroughTools));
   const builtInToolNames = Object.keys(tools.builtInTools);
-  const enabledTools = reconstructEnabledTools(
-    originalMessages,
-    passthroughToolNames,
-  );
+  // `enable_tool` gating is a context-window optimization for the MAIN agent:
+  // it starts with connection tools inactive and enables them over the
+  // conversation. A SUBAGENT runs a single focused task with EMPTY history, so
+  // it would never enable anything — `reconstructEnabledTools` returns ∅ and it
+  // sees only the always-on built-ins (the "light toolset" bug). Give a subagent
+  // its full toolset up front instead: every passthrough tool active from step 1.
+  // `extras.kind === "subtask"` is the reliable signal on the desktop subagent
+  // path (it runs through this loop); `input.isSubagent` covers the cluster one.
+  const isDelegatedSubagent = extras.kind === "subtask" || input.isSubagent;
+  const enabledTools = isDelegatedSubagent
+    ? new Set(passthroughToolNames)
+    : reconstructEnabledTools(originalMessages, passthroughToolNames);
 
   // Anthropic prompt-cache invariant: the cache key for our system block
   // markers is hash(tools + system_prefix), so the serialized `tools` JSON must
