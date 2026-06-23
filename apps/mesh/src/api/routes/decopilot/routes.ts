@@ -57,6 +57,7 @@ import {
 } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
+import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -717,6 +718,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
     // Persist durable cancel flag so the ingest backstop rejects 409.
     await ctx.storage.threads.setCancelRequested(taskId, organization.id);
+
+    // Tear down any background-tool workflows this thread started (image gen /
+    // backgrounded subtasks). They run on their own DBOS queue, so the
+    // in-memory run cancel below doesn't reach them. Non-fatal: a DBOS hiccup
+    // must not block the user-facing cancel.
+    await cancelThreadBackgroundJobs(taskId).catch((err) => {
+      console.error("[decopilot:cancel] failed to cancel background jobs", {
+        taskId,
+        err,
+      });
+    });
 
     // Try to cancel locally first
     const cancelTransitions = await runRegistry.execute({

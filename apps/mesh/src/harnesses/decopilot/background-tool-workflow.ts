@@ -455,6 +455,24 @@ DBOS.registerWorkflow(backgroundToolWorkflowFn, {
   name: "backgroundToolWorkflow",
 });
 
+/** Cancel every queued/in-flight background-tool workflow a thread started
+ *  (image gen / backgrounded subtasks, plus their derived `:react`/`:subagent`
+ *  runs). Called from the thread-cancel handler — these run on their own DBOS
+ *  queue, so the in-memory run cancel never reaches them. The id prefix is the
+ *  only index needed; DBOS interrupts a running workflow at its next step. */
+export async function cancelThreadBackgroundJobs(
+  threadId: string,
+): Promise<void> {
+  const active = await DBOS.listWorkflows({
+    workflow_id_prefix: `bgtool:${threadId}:`,
+    status: ["PENDING", "ENQUEUED"],
+    loadInput: false,
+    loadOutput: false,
+  });
+  if (active.length === 0) return;
+  await DBOS.cancelWorkflows(active.map((w) => w.workflowID));
+}
+
 /** Cluster `BackgroundDispatcher` bound to the turn's snapshot. Each `start()`
  *  mints a jobId (== workflow id) and enqueues the workflow on the org partition. */
 export function createBackgroundToolDispatcher(
@@ -462,7 +480,11 @@ export function createBackgroundToolDispatcher(
 ): BackgroundDispatcher {
   return {
     start: async ({ toolName, input, toolCallId }) => {
-      const jobId = crypto.randomUUID();
+      // Encode the threadId in the id so `cancelThreadBackgroundJobs` can find
+      // this job (and its derived `:react`/`:subagent` runs) by prefix when the
+      // thread is cancelled. `:` can't appear in a threadId, so the prefix
+      // `bgtool:<threadId>:` won't match a different thread.
+      const jobId = `bgtool:${snapshot.threadId}:${crypto.randomUUID()}`;
       const client = await getDbosClient();
       await client.enqueue<typeof backgroundToolWorkflowFn>(
         {
