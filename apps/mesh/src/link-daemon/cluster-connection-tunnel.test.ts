@@ -187,6 +187,11 @@ describe("buildNatsConnectOptions", () => {
     expect(buildNatsConnectOptions(sessionWithoutAuth)).toEqual({
       servers: ["nats://127.0.0.1:4222"],
       inboxPrefix: `_INBOX.${encodeSubjectToken(sessionWithoutAuth.tunnelHostname)}`,
+      reconnect: true,
+      maxReconnectAttempts: -1,
+      reconnectTimeWait: 1_000,
+      reconnectJitter: 1_000,
+      reconnectJitterTLS: 2_000,
     });
   });
 

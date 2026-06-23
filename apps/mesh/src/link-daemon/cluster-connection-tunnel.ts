@@ -424,6 +424,18 @@ export function buildNatsConnectOptions(
   return {
     servers: session.connection.urls,
     ...(authenticator ? { authenticator } : {}),
+    // Survive an unstable link -> cluster connection (e.g. a flaky network or a
+    // toxiproxy between the daemon and the cluster NATS). Reconnect FOREVER with
+    // a bounded backoff + jitter rather than giving up after the NATS.js default
+    // of 10 attempts. The session-renew timer still recycles the connection
+    // before its credentials expire, so infinite reconnect only ever operates
+    // within the valid-creds window; a sustained outage just keeps retrying
+    // while the daemon stays up and the relay outbox holds the unacked prefix.
+    reconnect: true,
+    maxReconnectAttempts: -1,
+    reconnectTimeWait: 1_000,
+    reconnectJitter: 1_000,
+    reconnectJitterTLS: 2_000,
     // Scope the request/reply inbox to this daemon's host token so JetStream
     // PubAcks (from the direct-NATS chunk relay's `js.publish`) land on a
     // subject the minted credentials are allowed to subscribe to. Must match
