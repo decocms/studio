@@ -17,11 +17,13 @@ export function FilePickerDialog({
   onOpenChange,
   mode,
   onSelect,
+  lockedConfigId: _lockedConfigId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: "image" | "any" | string;
   onSelect: (url: string) => void;
+  lockedConfigId?: string | null;
 }): ReactNode {
   if (!open) return null;
   return (

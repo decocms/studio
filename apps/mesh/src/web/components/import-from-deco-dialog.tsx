@@ -67,6 +67,7 @@ type VirtualMCPCreateOutput = {
     metadata?: {
       ui?: { slug?: string } | null;
       migrated_project_slug?: string;
+      siteSlug?: string | null;
     } | null;
   };
 };
@@ -253,6 +254,7 @@ export function ImportFromDecoDialog({
 
         const projectIcon = connBody.icon ?? null;
         const slug = generateSlug(siteName);
+        const siteSlug = siteName.toLowerCase();
 
         // 2. Create a space (virtual MCP) wired to both admin-mcp and GitHub.
         const result = (await client.callTool({
@@ -269,7 +271,7 @@ export function ImportFromDecoDialog({
                 enabled_plugins: [],
                 // Link the agent to its asset site so the CMS resolves uploads
                 // to the managed storage for this slug.
-                siteSlug: siteName,
+                siteSlug,
                 githubRepo: {
                   owner: githubRepo.owner,
                   name: githubRepo.name,

@@ -9,6 +9,7 @@ import {
   FilePickerDialog,
   LAST_CONFIG_KEY,
 } from "@/web/components/file-picker/file-picker-dialog";
+import { matchSiteSlugConfig } from "@/web/components/file-picker/match-site-slug-config";
 import { useFileConfigsQuery } from "@/web/hooks/use-file-configs";
 import { useFilePickerUpload } from "@/web/hooks/use-file-picker";
 import { extractUrl } from "./extract-url";
@@ -44,6 +45,7 @@ export function FileField({
   onChange,
   path,
   label,
+  sandbox,
 }: FieldProps) {
   const isVideo = schema.format === "video-uri";
   const strValue = extractUrl(value);
@@ -54,8 +56,13 @@ export function FileField({
 
   const configsQuery = useFileConfigsQuery();
   const upload = useFilePickerUpload();
+  const lockedConfig = matchSiteSlugConfig(
+    configsQuery.data?.configs ?? [],
+    sandbox?.siteSlug,
+  );
 
   function resolveTargetConfigId(): string | null {
+    if (lockedConfig) return lockedConfig.id;
     const configs = configsQuery.data?.configs ?? [];
     if (configs.length === 1) return configs[0]!.id;
     if (configs.length === 0) return null;
@@ -238,6 +245,7 @@ export function FileField({
         onOpenChange={setPickerOpen}
         mode="any"
         onSelect={(url) => onChange(url)}
+        lockedConfigId={lockedConfig?.id ?? null}
       />
     </div>
   );

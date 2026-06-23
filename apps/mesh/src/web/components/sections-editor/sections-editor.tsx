@@ -1,6 +1,7 @@
 import { useState, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
+import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import {
   ChevronDown,
   ChevronRight,
@@ -476,6 +477,11 @@ export function SectionsEditor({
     useDecofile(previewFetchParams);
   const { data: meta, isLoading: metaLoading } =
     useLiveMeta(previewFetchParams);
+  const inset = useInsetContext();
+  const agentSiteSlug =
+    inset?.entity?.id === virtualMcpId
+      ? (inset.entity.metadata?.siteSlug ?? null)
+      : null;
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
@@ -833,6 +839,7 @@ export function SectionsEditor({
     virtualMcpId,
     branch,
     previewUrl: previewUrl ?? undefined,
+    siteSlug: agentSiteSlug,
   };
 
   const activeSchema =
