@@ -288,11 +288,11 @@ function BucketPanel({
           multiple
           className="hidden"
           onChange={(e) => {
-            // Snapshot the selection and reset the input synchronously
-            // so the user can re-select the same file later — a native
-            // <input type="file"> won't fire onChange if the value
-            // hasn't changed since the previous selection.
-            const files = e.target.files;
+            // Copy the File refs out BEFORE resetting: `e.target.files` is a
+            // live FileList and `e.target.value = ""` (which lets the user
+            // re-pick the same file) empties it, so a bare reference would be
+            // length 0 by the time handleFiles runs.
+            const files = Array.from(e.target.files ?? []);
             e.target.value = "";
             handleFiles(files);
           }}
