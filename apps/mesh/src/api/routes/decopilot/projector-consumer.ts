@@ -114,7 +114,20 @@ export async function consumeProjectorMessages(
         await msg.ack();
         continue;
       }
-      const payload = JSON.parse(decoder.decode(msg.data)) as unknown;
+      // A fragmented chunk arrives as a raw byte-slice of the encoded
+      // `{p: value}` JSON (see NatsStreamBuffer.publishChunk), so an individual
+      // fragment is NOT valid JSON. The done/checkpoint markers we care about
+      // are tiny and never fragmented, so a parse failure is always a chunk we
+      // ack-and-skip anyway — never a transient error to redeliver. Acking here
+      // (instead of falling to the outer catch, which leaves it UNACKED) stops
+      // JetStream from redelivering the poison fragment forever.
+      let payload: unknown;
+      try {
+        payload = JSON.parse(decoder.decode(msg.data)) as unknown;
+      } catch {
+        await msg.ack();
+        continue;
+      }
       if (isCheckpointEnvelope(payload)) {
         if (options.enqueueProjectCheckpoint) {
           const parsed = parseRunStreamMsgId(msg.msgId);
