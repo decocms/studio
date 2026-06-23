@@ -10,6 +10,7 @@
  *   - Ephemeral automation: "automation:<id>"
  *   - Ephemeral file preview: "file:<encoded output key>" (thread output viewer)
  *   - Ephemeral deck preview: "deck:<encoded home-volume path>" (slides skill)
+ *   - Ephemeral Library file preview: "library-file:<encoded browse path>"
  *   - "0" = closed sentinel (not an actual tab id)
  *
  * The "settings" tab bundles what used to be separate instructions,
@@ -119,6 +120,30 @@ export function parseFileTabId(
   }
 }
 
+export interface LibraryFileTabParsed {
+  /** Library browse path, e.g. `home/docs/a.md` or `public/core/a.ts`. */
+  path: string;
+}
+
+/** Browse paths carry `/`, so the tab id encodes them to keep the
+ *  `<kind>:<rest>` grammar unambiguous in the `?main=` URL param. */
+export function formatLibraryFileTabId(path: string): string {
+  return `library-file:${encodeURIComponent(path)}`;
+}
+
+export function parseLibraryFileTabId(
+  tabId: string | undefined,
+): LibraryFileTabParsed | null {
+  if (!tabId || !tabId.startsWith("library-file:")) return null;
+  const encoded = tabId.slice("library-file:".length);
+  if (!encoded) return null;
+  try {
+    return { path: decodeURIComponent(encoded) };
+  } catch {
+    return null;
+  }
+}
+
 export const FIXED_SYSTEM_TABS = [
   "settings",
   "automations",
@@ -136,13 +161,15 @@ const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
  *   - "automation:<id>"               (ephemeral automation detail)
  *   - "file:<encoded key>"            (ephemeral thread-output file preview)
  *   - "deck:<encoded path>"           (ephemeral HTML-artifact preview/editor)
+ *   - "library-file:<encoded path>"   (ephemeral org Library file preview)
  */
 export function isPerThreadTab(tabId: string): boolean {
   return (
     tabId.startsWith("app:") ||
     tabId.startsWith("automation:") ||
     tabId.startsWith("file:") ||
-    tabId.startsWith("deck:")
+    tabId.startsWith("deck:") ||
+    tabId.startsWith("library-file:")
   );
 }
 

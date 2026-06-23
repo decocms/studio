@@ -18,11 +18,13 @@ import { AutomationTab } from "./automation-tab";
 import { AutomationsListTab } from "./automations-list-tab";
 import { FileTab } from "./file-tab";
 import { DeckTab } from "./deck-tab";
+import { LibraryFileTab } from "./library-file-tab";
 import { MainPanelLoading } from "./main-panel-loading";
 import {
   isLegacySettingsTab,
   parseDeckTabId,
   parseFileTabId,
+  parseLibraryFileTabId,
   parsePinnedViewTabId,
 } from "./tab-id";
 import { ErrorBoundary } from "@/web/components/error-boundary";
@@ -90,6 +92,13 @@ function TabBody({
   const fileTab = parseFileTabId(activeTab);
   if (fileTab) {
     return <FileTab fileKey={fileTab.key} taskId={taskId} />;
+  }
+
+  const libraryFileTab = parseLibraryFileTabId(activeTab);
+  if (libraryFileTab) {
+    return (
+      <LibraryFileTab key={libraryFileTab.path} path={libraryFileTab.path} />
+    );
   }
 
   const pinnedView = parsePinnedViewTabId(activeTab);

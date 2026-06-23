@@ -8,10 +8,12 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { markdownComponents as sharedMarkdownComponents } from "@deco/ui/components/markdown.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import { ImageLightbox } from "./image-lightbox.tsx";
 import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
+import { formatLibraryFileTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -201,19 +203,24 @@ type MdProps = {
 const INLINE_CODE_CLASS =
   "px-1 py-0.5 bg-background border border-border rounded text-[14px] font-mono break-all";
 
-// Opens an org file in the Library preview overlay (`?preview=<browse path>`)
-// without leaving the conversation. `useNavigate`/`useParams` are router-level,
-// so this stays safe on every surface that renders MemoizedMarkdown.
+// Opens an org file referenced in chat without leaving the conversation,
+// mirroring the Library's panel/dialog split: desktop opens the file as a
+// main-panel side tab (`?main=library-file:<path>`), mobile opens the dialog
+// overlay (`?preview=<path>`, rendered by OrgFilePreviewMount).
 function useOpenOrgFile() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { org } = useParams({ strict: false }) as { org?: string };
   const open = (browsePath: string) =>
     navigate({
       to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        preview: browsePath,
-      }),
+      search: (prev: Record<string, unknown>) => {
+        if (isMobile) return { ...prev, preview: browsePath };
+        // Desktop: side tab. Drop any stale `?preview=` so the two models
+        // never both resolve to a file at once.
+        const { preview: _omit, ...rest } = prev;
+        return { ...rest, main: formatLibraryFileTabId(browsePath) };
+      },
     });
   return { orgSlug: org, open };
 }
