@@ -34,6 +34,10 @@ export interface ProjectChunksOptions {
   /** Deterministic id for a synthesized error message (`error-${runId}`) so
    *  re-projection attempts dedupe it. See consumeHarnessStream. */
   errorMessageId?: string;
+  /** Deterministic assistant-message id generator (`${runId}:msg:${n}`) so a
+   *  re-fold of the same run yields the same message + part ids → ON CONFLICT
+   *  dedupe. See consumeHarnessStream.generateMessageId. */
+  generateMessageId?: () => string;
   /**
    * When set, the projector persists the harness title chunk via this writer
    * (it is the sole title writer). Omitted → the title is a no-op (legacy).
@@ -176,6 +180,7 @@ export async function projectChunks(
     persistence,
     sanitizeErrorText: options.sanitizeErrorText,
     errorMessageId: options.errorMessageId,
+    generateMessageId: options.generateMessageId,
     hooks: {
       onUsage: (totals) => {
         capturedUsage = {

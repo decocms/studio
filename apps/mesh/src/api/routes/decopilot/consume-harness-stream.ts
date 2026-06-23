@@ -74,6 +74,16 @@ export interface ConsumeHarnessStreamOptions {
    * UUID only for callers with no run identity (none persist on retry).
    */
   errorMessageId?: string;
+  /**
+   * Id generator for the reassembled assistant message(s). The projector passes
+   * a DETERMINISTIC generator (`${runId}:msg:${n}`) so every re-fold of the same
+   * run — terminal projection, checkpoint passes, and reconnect-replay
+   * redelivery — reassembles the SAME message id and therefore the SAME part row
+   * ids (`${runId}:${messageId}:${seq}`), which `ON CONFLICT (id) DO NOTHING`
+   * dedupes. Omitted on the live path → the SDK's default random id (no
+   * persistence-idempotency requirement there).
+   */
+  generateMessageId?: () => string;
 }
 
 function asReadableStream<T>(source: AsyncIterable<T>): ReadableStream<T> {
@@ -138,6 +148,26 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
     }
   })();
 
+  // Map each SDK-assigned (random, per-fold) message id to a DETERMINISTIC id in
+  // fold order, so re-projections of the same run reassemble identical message +
+  // part ids → ON CONFLICT (id) DO NOTHING dedupes on reconnect-replay. The SDK
+  // doesn't expose a hook to set the reassembled id, so we remap it just before
+  // persistence. No-op on the live path (no generator).
+  const messageIdRemap = new Map<string, string>();
+  const stableMessageId = (sdkId: string): string => {
+    if (!options.generateMessageId) return sdkId;
+    let id = messageIdRemap.get(sdkId);
+    if (id === undefined) {
+      id = options.generateMessageId();
+      messageIdRemap.set(sdkId, id);
+    }
+    return id;
+  };
+  const withStableId = <M extends { id: string }>(message: M): M =>
+    options.generateMessageId
+      ? { ...message, id: stableMessageId(message.id) }
+      : message;
+
   const uiStream = createUIMessageStream({
     originalMessages: options.originalMessages,
     execute: ({ writer }) => {
@@ -154,7 +184,8 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
         asReadableStream(intercepted) as Parameters<typeof writer.merge>[0],
       );
     },
-    onStepFinish: ({ responseMessage }) => {
+    onStepFinish: ({ responseMessage: rawMessage }) => {
+      const responseMessage = withStableId(rawMessage);
       pending.push(
         options.persistence.emitStepParts(responseMessage).catch((e) => {
           persistenceOk = false;
@@ -167,9 +198,10 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
         ),
       );
     },
-    onFinish: async ({ responseMessage, finishReason }) => {
+    onFinish: async ({ responseMessage: rawMessage, finishReason }) => {
       streamFinished = true;
       await Promise.allSettled(pending);
+      const responseMessage = withStableId(rawMessage);
       if (!errored) {
         // Persist the finish reason on the message metadata so a returning
         // user sees the same banner the live stream showed (e.g. the
