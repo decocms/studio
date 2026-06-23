@@ -650,6 +650,20 @@ describe("org-scoped API coexistence", () => {
     }
   });
 
+  it("does not mount the link chunk ingest route", async () => {
+    const res = await app.fetch(
+      new Request("http://localhost/api/org_1/links/runs/run_1/chunks", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-key",
+          "content-type": "application/x-ndjson",
+        },
+        body: "{}\n",
+      }),
+    );
+    expect(res.status).toBe(404);
+  });
+
   it("DCR with non-JSON content type passes through byte-for-byte", async () => {
     // RFC 7591 mandates JSON, but a misbehaving client could POST /register
     // with a different content type. The metadata-injection branch is gated on
