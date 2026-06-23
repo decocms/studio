@@ -109,7 +109,7 @@ export function TileBoard({
         {tiles.map((tile) => (
           <div
             key={tile.id}
-            className="bg-card card-shadow rounded-2xl overflow-hidden"
+            className="group bg-card card-shadow rounded-2xl overflow-hidden"
             style={{ minHeight: ROW_HEIGHT_PX }}
           >
             <TileErrorBoundary>{renderTile(tile)}</TileErrorBoundary>
@@ -253,7 +253,7 @@ function BoardTile({
     >
       <div
         className={cn(
-          "relative h-full bg-card card-shadow rounded-2xl overflow-hidden",
+          "group relative h-full bg-card card-shadow rounded-2xl overflow-hidden",
           isEditMode &&
             "outline outline-1 outline-transparent hover:outline-primary/40",
         )}
