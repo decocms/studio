@@ -116,8 +116,6 @@ export interface ThreadStoragePort {
     virtualMcpIds: string[],
   ): Promise<Map<string, { last_used_at: string; last_used_by: string }>>;
 
-  // Message operations - upserts by id (updates existing rows)
-  saveMessages(data: ThreadMessage[], organizationId: string): Promise<void>;
   listMessages(
     taskId: string,
     organizationId: string,

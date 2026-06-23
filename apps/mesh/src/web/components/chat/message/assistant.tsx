@@ -2,6 +2,7 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import {
   Lightbulb01,
   MessageTextSquare01,
+  RefreshCw01,
   Stars01,
   Target04,
   Tool02,
@@ -834,6 +835,12 @@ export function MessageAssistant({
     <Container className={className}>
       {hasVisibleContent ? (
         <div className="flex flex-col gap-3 sm:gap-2">
+          {message!.metadata?.resumedFromBackground && (
+            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/60 select-none">
+              <RefreshCw01 className="size-3 shrink-0" />
+              <span>Resumed — background task completed</span>
+            </div>
+          )}
           {collapsed.length > 0 && (
             <CollapsedSection
               items={collapsed}

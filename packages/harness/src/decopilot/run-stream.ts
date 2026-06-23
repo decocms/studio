@@ -410,7 +410,7 @@ export async function* runDecopilotStream(
     githubRepo?: import("@decocms/mesh-sdk").GithubRepo | null;
   };
   const handle: AssembledEngineHandle = await runEngine({
-    kind: "agent",
+    kind: input.isSubagent ? "subagent" : "agent",
     virtualMcp: {
       id: input.agent.id,
       repo: vmMetadata?.githubRepo ?? undefined,
@@ -700,6 +700,15 @@ export async function* runDecopilotStream(
               enabledTools.size,
           },
           thread_id: threadId,
+          // Set for a backgrounded subtask run: correlates this message to the
+          // originating `subtask` tool call (== its `jobId`) so the UI nests it
+          // inside that card instead of rendering it top-level.
+          ...(input.subtaskJobId ? { subtaskJobId: input.subtaskJobId } : {}),
+          // Set when this turn resumes the agent after a backgrounded tool
+          // completed — the UI shows a "resumed" indicator on the message.
+          ...(input.resumedFromBackground
+            ? { resumedFromBackground: true }
+            : {}),
         };
       }
       if (part.type === "reasoning-start") {

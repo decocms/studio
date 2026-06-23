@@ -205,6 +205,16 @@ export function getDatabaseUrl(): string {
   return getSettings().databaseUrl;
 }
 
+/** Append `sslmode=verify-full` when SSL is required and not already set. */
+export function withSslmode(url: string, ssl: boolean): string {
+  if (!ssl) return url;
+  const u = new URL(url);
+  if (!u.searchParams.has("sslmode")) {
+    u.searchParams.set("sslmode", "verify-full");
+  }
+  return u.toString();
+}
+
 /**
  * Create a Kysely dialect for the given database URL.
  */

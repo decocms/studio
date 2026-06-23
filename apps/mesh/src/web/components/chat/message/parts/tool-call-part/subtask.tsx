@@ -3,8 +3,11 @@
 import type { ToolSubtaskMetadata } from "../../use-filter-parts.ts";
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useVirtualMCP, type ToolDefinition } from "@decocms/mesh-sdk";
-import { Users03 } from "@untitledui/icons";
+import { Tool02, Users03 } from "@untitledui/icons";
+import type { TextUIPart } from "ai";
 import type { SubtaskToolPart } from "../../../types.ts";
+import { useSubtaskRun } from "../../../subtask-runs-context.tsx";
+import { MessageTextPart } from "../text-part.tsx";
 import { extractTextFromOutput, getToolPartErrorText } from "../utils.ts";
 import { ToolCallShell } from "./common.tsx";
 import { getEffectiveState } from "./utils.tsx";
@@ -47,6 +50,20 @@ export function extractSubtaskResponse(output: unknown): string | null {
     }
   }
   return extractTextFromOutput(output);
+}
+
+/**
+ * A backgrounded subtask's tool call returns a `{ background: true }` START
+ * marker; the real run streams in later as separate messages tagged with this
+ * call's `jobId`. So this tool part renders as a `BackgroundSubtaskCard` that
+ * nests that run, rather than the standard (synchronous) subtask card.
+ */
+function isBackgroundStart(output: unknown): boolean {
+  return (
+    !!output &&
+    typeof output === "object" &&
+    (output as { background?: unknown }).background === true
+  );
 }
 
 interface SubtaskPartProps {
@@ -122,12 +139,119 @@ function useSubtaskShellConfig({
 }
 
 /**
- * Suspense fallback for SubtaskPart. Renders the exact same ToolCallShell shape
- * as the loaded view (so no CLS) — just with a default icon and a status-derived
- * title instead of the agent's icon and name.
+ * A backgrounded subtask runs as its own serialized subagent run whose messages
+ * are tagged with this tool call's `jobId` (`metadata.subtaskJobId`). They're
+ * filtered out of the top-level list and rendered NESTED here, inside the tool
+ * card — the subagent's streamed reply grows in the detail panel live (the card
+ * auto-opens while running), Claude-Code style. No `useVirtualMCP` so the
+ * Suspense fallback can render this without itself suspending.
  */
+/** A single nested tool call — shows the tool name + its INPUT only (the
+ *  subagent's tool outputs are intentionally hidden inside the parent card).
+ *  A compact custom row rather than the full `MessagePart` switch, which would
+ *  create an `assistant.tsx ↔ index` cycle (and render outputs). */
+function NestedToolCall({
+  part,
+}: {
+  part: { type?: string; toolName?: string; input?: unknown };
+}) {
+  const type = part.type ?? "";
+  const name =
+    type === "dynamic-tool" ? (part.toolName ?? "tool") : type.slice(5);
+  const inputStr = part.input != null ? JSON.stringify(part.input) : "";
+  const summary =
+    inputStr.length > 80 ? `${inputStr.slice(0, 80)}…` : inputStr || undefined;
+  const detail =
+    part.input != null ? JSON.stringify(part.input, null, 2) : null;
+  return (
+    <ToolCallShell
+      icon={<Tool02 />}
+      title={name}
+      summary={summary}
+      state="idle"
+      detail={detail}
+      detailVariant="code"
+    />
+  );
+}
+
+function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
+  const jobId = (part.output as { jobId?: string } | undefined)?.jobId;
+  const nested = useSubtaskRun(jobId);
+  const prompt = part.input?.prompt ?? "No prompt provided";
+
+  const items = nested.flatMap((m) => m.parts ?? []);
+  const streaming =
+    items.length === 0 ||
+    items.some((p) => (p as { state?: string }).state === "streaming");
+
+  const summary = prompt.length > 120 ? `${prompt.slice(0, 120)}…` : prompt;
+
+  return (
+    <ToolCallShell
+      icon={
+        <IntegrationIcon
+          icon={undefined}
+          name="Subtask"
+          size="2xs"
+          className="rounded-xs"
+          fallbackIcon={<Users03 />}
+        />
+      }
+      title="Subtask"
+      summary={summary}
+      state={streaming ? "loading" : "idle"}
+      defaultOpen
+      forceOpen={streaming}
+    >
+      <div className="ml-[20px] pl-3 border-l border-border/30 mt-0.5 pb-2 flex flex-col gap-3 sm:gap-2 max-h-96 overflow-y-auto">
+        {items.length === 0 ? (
+          <p className="text-[13px] text-muted-foreground/60 italic py-1">
+            Running in the background…
+          </p>
+        ) : (
+          items.map((raw, i) => {
+            const p = raw as {
+              type?: string;
+              text?: string;
+              state?: string;
+              toolName?: string;
+              input?: unknown;
+            };
+            const type = p.type ?? "";
+            if (type === "text") {
+              if (!p.text?.trim()) return null;
+              return (
+                <MessageTextPart
+                  key={`${jobId}-sub-${i}`}
+                  id={`${jobId}-sub-${i}`}
+                  part={raw as TextUIPart}
+                  animate={streaming}
+                />
+              );
+            }
+            // Hidden bookkeeping tools (same as the top-level renderer) + data
+            // parts carry no useful "tool call" signal here.
+            if (
+              type === "dynamic-tool" ||
+              (type.startsWith("tool-") &&
+                type !== "tool-todo_write" &&
+                type !== "tool-update_interests")
+            ) {
+              return <NestedToolCall key={`${jobId}-sub-${i}`} part={p} />;
+            }
+            return null;
+          })
+        )}
+      </div>
+    </ToolCallShell>
+  );
+}
+
 export function SubtaskPartFallback(props: SubtaskPartProps) {
   const { fallbackTitle, ...shell } = useSubtaskShellConfig(props);
+  if (isBackgroundStart(props.part.output))
+    return <BackgroundSubtaskCard {...props} />;
   return (
     <ToolCallShell
       icon={
@@ -152,6 +276,8 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
 export function SubtaskPart(props: SubtaskPartProps) {
   const { fallbackTitle, ...shell } = useSubtaskShellConfig(props);
   const agent = useVirtualMCP(props.part.input?.agent_id);
+  if (isBackgroundStart(props.part.output))
+    return <BackgroundSubtaskCard {...props} />;
 
   return (
     <ToolCallShell

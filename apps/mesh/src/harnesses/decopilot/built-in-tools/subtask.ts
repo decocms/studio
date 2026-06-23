@@ -20,6 +20,7 @@ import { runAgentLoop } from "../run-agent-loop";
 import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
 import { acquireSubagentSlot } from "./subagent-concurrency";
 import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
+import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -39,6 +40,16 @@ export const SubtaskInputSchema = z.object({
       "The ID of the agent (Virtual MCP) to delegate to. Must exist and be " +
         "active in the current organization. OMIT to clone yourself — a fresh " +
         "subagent with your exact tools and instructions but an empty context.",
+    ),
+  background: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run the subagent in the BACKGROUND and return immediately instead of " +
+        "blocking this turn. Set true for long, fire-and-forget discovery whose " +
+        "result you do NOT need in this same reply — the result is delivered to " +
+        "the conversation when it finishes and you'll be nudged to use it then. " +
+        "Leave false/omit when you need the answer now to act on it this turn.",
     ),
 });
 
@@ -98,6 +109,13 @@ export interface SubtaskParams {
    * vmContext, e.g. Claude Code).
    */
   vmTools?: ToolSet;
+  /**
+   * Cluster background dispatcher. When present AND the model sets
+   * `background: true`, a validated subtask is enqueued as a durable child run
+   * (returns a started handle immediately) instead of running inline. Absent on
+   * desktop/tests → `background` is ignored and the subtask runs inline.
+   */
+  backgroundDispatcher?: BackgroundDispatcher | null;
 }
 
 export function resolveSubtaskCodingWorkspace(
@@ -158,6 +176,7 @@ export function createSubtaskTool(
     onChildUsage,
     vmTools,
     codingWorkspace,
+    backgroundDispatcher,
   } = params;
 
   return tool({
@@ -165,7 +184,7 @@ export function createSubtaskTool(
     inputSchema: zodSchema(SubtaskInputSchema),
     needsApproval,
     execute: async function* (
-      { prompt, agent_id },
+      { prompt, agent_id, background },
       { abortSignal, toolCallId },
     ) {
       const startTime = performance.now();
@@ -224,6 +243,33 @@ export function createSubtaskTool(
           };
           return;
         }
+      }
+
+      // Background opt-in: the target is validated (allowlist), so enqueue it as
+      // a durable child run and return a started handle instead of blocking this
+      // turn. The cluster workflow runs the subagent, appends its conclusion to
+      // the thread, and nudges the model to use it. Inline path (below) is used
+      // when not backgrounding or when no dispatcher is wired (desktop/tests).
+      if (background && backgroundDispatcher) {
+        const { jobId } = await backgroundDispatcher.start({
+          toolName: "subtask",
+          input: { prompt, agent_id: targetId },
+          toolCallId,
+        });
+        // `background: true` marks this as the START placeholder (not a result).
+        // The UI renders it as a compact "running in background" line instead of
+        // a full card, so it doesn't duplicate the streamed result card the
+        // background job delivers. `jobId` correlates the two.
+        yield {
+          text:
+            `Subtask started in the background (jobId=${jobId}). Its result will ` +
+            `appear in the conversation shortly — keep helping the user and do ` +
+            `NOT call subtask again for this request.`,
+          finishReason: "stop",
+          background: true,
+          jobId,
+        };
+        return;
       }
 
       // 2. Validate the target and open its passthrough client. A self-clone

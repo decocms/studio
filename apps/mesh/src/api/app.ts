@@ -19,7 +19,6 @@ import {
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
@@ -32,8 +31,13 @@ import {
   createStudioContextFactory,
 } from "../core/context-factory";
 import type { StudioContext } from "../core/studio-context";
-import { closeDatabase, getDb, type StudioDatabase } from "../database";
 import { startSSEHub } from "../event-bus";
+import {
+  closeDatabase,
+  getDb,
+  type StudioDatabase,
+  withSslmode,
+} from "../database";
 import {
   flushMonitoringData,
   meter,
@@ -795,8 +799,11 @@ import { Env } from "./hono-env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
 import { type SSEEvent, sseHub } from "../event-bus";
-import { BACKGROUND_TOOLS_PARTITION_CONCURRENCY, BACKGROUND_TOOLS_QUEUE, setBackgroundToolRuntime } from "@/harnesses/decopilot/background-tool-workflow";
-import { isCancelRequested } from "@/storage/cancel-flag";
+import {
+  BACKGROUND_TOOLS_PARTITION_CONCURRENCY,
+  BACKGROUND_TOOLS_QUEUE,
+  setBackgroundToolRuntime,
+} from "@/harnesses/decopilot/background-tool-workflow";
 const getHandleOAuthProtectedResourceMetadata = () =>
   oAuthProtectedResourceMetadata(auth);
 const getHandleOAuthDiscoveryMetadata = () => oAuthDiscoveryMetadata(auth);
@@ -1052,68 +1059,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   setConnectionCircuitStore(connectionCircuitStore);
 
   const threadStorage = new SqlThreadStorage(database.db);
-
-  // WS uplink (return-leg), default-off. Register the bearer resolver + the
-  // per-connection session factory the Bun.serve handler (index.ts) dispatches
-  // to. The fence/cancel gate uses the global (threadId-only) thread storage;
-  // publishing reuses the same DECOPILOT_STREAMS path as the NDJSON ingest. Off
-  // by default so /api/links/uplink stays unmounted until multi-pod e2e
-  // validates the transport.
-  if (process.env.LINK_WS_UPLINK === "true") {
-    registerUplinkResolve((token) =>
-      resolveLinkBearer(token, auth.api as unknown as LinkBearerAuthApi),
-    );
-    registerUplinkConnectionFactory(({ userSub, send }) => {
-      const cache = new Map<string, Promise<UplinkIngestSession | null>>();
-      return {
-        sessionFor: (runId) => {
-          let pending = cache.get(runId);
-          if (!pending) {
-            pending = (async () => {
-              // ORG OWNERSHIP (parity with the NDJSON validateRunAccess gate):
-              // the authenticated daemon user MUST be a member of the run's org
-              // — the fence is a secret, not an org-bound token, so it can't be
-              // the sole authz. The getRunFence/getCancelRequestedAt lookups are
-              // unscoped (threadId-only); this check is the required caller guard.
-              const threadRow = await database.db
-                .selectFrom("threads")
-                .select(["organization_id"])
-                .where("id", "=", runId)
-                .executeTakeFirst();
-              if (!threadRow) return null;
-              const member = await database.db
-                .selectFrom("member")
-                .select(["role"])
-                .where("userId", "=", userSub)
-                .where("organizationId", "=", threadRow.organization_id)
-                .executeTakeFirst();
-              if (!member) return null;
-
-              const dbFence = await threadStorage.getRunFence(runId);
-              // No minted fence ⇒ no active pull run ⇒ reject (NDJSON 409 parity;
-              // fenceMatches(null, …) returns true, so the gate MUST short here).
-              if (dbFence === null) return null;
-
-              return createUplinkIngestSession({
-                fenceOk: (token) => fenceMatches(dbFence, token),
-                // Read FRESH per frame so a mid-stream cancel stops publishing.
-                cancelRequested: async () =>
-                  isCancelRequested(
-                    await threadStorage.getCancelRequestedAt(runId),
-                  ),
-                publish: async (chunk) => {
-                  await streamBuffer.publishRawChunk(runId, chunk);
-                },
-                send: (frame) => send(JSON.stringify(frame)),
-              });
-            })();
-            cache.set(runId, pending);
-          }
-          return pending;
-        },
-      };
-    });
-  }
 
   const cancelReactorDeps: RunReactorDeps = {
     storage: threadStorage,
@@ -1588,7 +1533,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // DBOS.launch() like the others (module-level pointer, no DBOS API calls).
   setBackgroundToolRuntime({
     meshContextFactory: automationContextFactory,
-    linkClaimRegistry,
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).

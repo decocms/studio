@@ -21,9 +21,12 @@ export function useMessagePairs(messages: ChatMessage[]): MessagePair[] {
   const pairs: MessagePair[] = [];
 
   // Drop system prompts and internal system-initiated turns (e.g. the
-  // background-tool reaction nudge) — the model sees them, the user shouldn't.
+  // background-tool reaction nudge), plus backgrounded-subtask run messages —
+  // those render NESTED inside their subtask card (keyed by `subtaskJobId`),
+  // not at the top level.
   const filtered = messages.filter(
-    (m) => m.role !== "system" && !m.metadata?.internal,
+    (m) =>
+      m.role !== "system" && !m.metadata?.internal && !m.metadata?.subtaskJobId,
   );
 
   for (let i = 0; i < filtered.length; i++) {

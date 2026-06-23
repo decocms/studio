@@ -247,6 +247,9 @@ async function buildAllTools(
         // Self-clones inherit the parent's sandbox tools so they can run
         // bash / file I/O against the SAME sandbox.
         vmTools,
+        // Cluster only: lets the model opt a subtask into a durable background
+        // run (`background: true`) instead of blocking the turn.
+        backgroundDispatcher,
       },
       ctx,
     );
