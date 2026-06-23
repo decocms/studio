@@ -62,8 +62,7 @@ const MAX_AGE_NS = 30 * 60 * 1_000_000_000; // 30 min
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
 const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
 const MAX_MSGS_PER_SUBJECT = 20_000; // ~20K chunks per thread
-/** Minimum ms between consecutive checkpoint publishes for the same run. */
-export const CHECKPOINT_DEBOUNCE_MS = 2000;
+export { CHECKPOINT_DEBOUNCE_MS } from "./projector-stream-messages";
 
 /**
  * Pure stream config for `DECOPILOT_STREAMS`. File-backed so the run-scratch
