@@ -38,7 +38,7 @@ import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sa
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
-import { createSubtaskTool } from "./subtask";
+import { createSubtaskTool, SubtaskInputSchema } from "./subtask";
 import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
 import { todoWriteTool } from "@decocms/harness/decopilot/built-in-tools/todo-write";
 import { createUpdateInterestsTool } from "@decocms/harness/decopilot/built-in-tools/update-interests";
@@ -46,6 +46,7 @@ import { proposePlanTool } from "@decocms/harness/decopilot/built-in-tools/propo
 import { createGenerateImageTool } from "./generate-image";
 import { makeBackgroundable } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
 import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
 import {
@@ -231,28 +232,33 @@ async function buildAllTools(
   }
   // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
   if (provider) {
-    tools.subtask = createSubtaskTool(
-      writer,
-      {
-        provider,
-        organization,
-        models,
-        // Pass the caller's own agent id so the model can clone itself by
-        // omitting agent_id (heavy discovery → fresh, isolated context).
-        self: { id: agentId },
-        needsApproval:
-          toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
-        // Roll the child run's usage into the parent's accumulator (Task 17).
-        onChildUsage,
-        // Self-clones inherit the parent's sandbox tools so they can run
-        // bash / file I/O against the SAME sandbox.
-        vmTools,
-        // Cluster only: lets the model opt a subtask into a durable background
-        // run (`background: true`) instead of blocking the turn.
-        backgroundDispatcher,
-      },
-      ctx,
-    );
+    // Made backgroundable: the model can opt a subtask into a durable cluster
+    // run (`background: true`) instead of blocking the turn. Without a
+    // dispatcher (none wired) it runs inline.
+    tools.subtask = makeBackgroundable(
+      "subtask",
+      SubtaskInputSchema,
+      createSubtaskTool(
+        writer,
+        {
+          provider,
+          organization,
+          models,
+          // Pass the caller's own agent id so the model can clone itself by
+          // omitting agent_id (heavy discovery → fresh, isolated context).
+          self: { id: agentId },
+          needsApproval:
+            toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
+          // Roll the child run's usage into the parent's accumulator (Task 17).
+          onChildUsage,
+          // Self-clones inherit the parent's sandbox tools so they can run
+          // bash / file I/O against the SAME sandbox.
+          vmTools,
+        },
+        ctx,
+      ),
+      backgroundDispatcher,
+    ) as ReturnType<typeof createSubtaskTool>;
   }
   // generate_image requires a provider and an image model selection.
   // The provider is picked from `imageProvider` so the org can pair the
@@ -270,6 +276,7 @@ async function buildAllTools(
     // behavior).
     tools.generate_image = makeBackgroundable(
       "generate_image",
+      GenerateImageInputSchema,
       createGenerateImageTool(writer, {
         provider: imageProvider,
         imageModelInfo: models.image,

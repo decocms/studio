@@ -20,7 +20,6 @@ import { runAgentLoop } from "../run-agent-loop";
 import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
 import { acquireSubagentSlot } from "./subagent-concurrency";
 import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
-import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -40,16 +39,6 @@ export const SubtaskInputSchema = z.object({
       "The ID of the agent (Virtual MCP) to delegate to. Must exist and be " +
         "active in the current organization. OMIT to clone yourself — a fresh " +
         "subagent with your exact tools and instructions but an empty context.",
-    ),
-  background: z
-    .boolean()
-    .optional()
-    .describe(
-      "Run the subagent in the BACKGROUND and return immediately instead of " +
-        "blocking this turn. Set true for long, fire-and-forget discovery whose " +
-        "result you do NOT need in this same reply — the result is delivered to " +
-        "the conversation when it finishes and you'll be nudged to use it then. " +
-        "Leave false/omit when you need the answer now to act on it this turn.",
     ),
 });
 
@@ -109,9 +98,6 @@ export interface SubtaskParams {
    * vmContext, e.g. Claude Code).
    */
   vmTools?: ToolSet;
-  /** Cluster only: with `background: true`, enqueue the subtask as a durable
-   *  child run instead of running inline. Absent → `background` ignored. */
-  backgroundDispatcher?: BackgroundDispatcher | null;
 }
 
 export function resolveSubtaskCodingWorkspace(
@@ -172,7 +158,6 @@ export function createSubtaskTool(
     onChildUsage,
     vmTools,
     codingWorkspace,
-    backgroundDispatcher,
   } = params;
 
   return tool({
@@ -180,7 +165,7 @@ export function createSubtaskTool(
     inputSchema: zodSchema(SubtaskInputSchema),
     needsApproval,
     execute: async function* (
-      { prompt, agent_id, background },
+      { prompt, agent_id },
       { abortSignal, toolCallId },
     ) {
       const startTime = performance.now();
@@ -239,28 +224,6 @@ export function createSubtaskTool(
           };
           return;
         }
-      }
-
-      // Background opt-in: target is validated, so enqueue a durable child run
-      // and return a started handle instead of blocking the turn.
-      if (background && backgroundDispatcher) {
-        const { jobId } = await backgroundDispatcher.start({
-          toolName: "subtask",
-          input: { prompt, agent_id: targetId },
-          toolCallId,
-        });
-        // `background: true` marks the START placeholder; the UI renders it as a
-        // compact line keyed by `jobId` (filled in by the delivered result).
-        yield {
-          text:
-            `Subtask started in the background (jobId=${jobId}). Its result will ` +
-            `appear in the conversation shortly — keep helping the user and do ` +
-            `NOT call subtask again for this request.`,
-          finishReason: "stop",
-          background: true,
-          jobId,
-        };
-        return;
       }
 
       // 2. Validate the target and open its passthrough client. A self-clone

@@ -82,6 +82,11 @@ export function MessagePair({ pair, isLastPair, status }: MessagePairProps) {
     if (!isLastPair || !node || didInitialScroll.current) return;
     didInitialScroll.current = true;
 
+    // A turn auto-resumed after a backgrounded tool finished is not
+    // user-initiated — don't yank the viewport to it. The user may be reading
+    // earlier content; the delivered result + reaction land quietly below.
+    if (pair.assistant?.metadata?.resumedFromBackground) return;
+
     // Active run: pin the user message at the top so the streaming assistant
     // content reveals beneath it. Matches the historical behavior.
     if (status === "submitted" || status === "streaming") {

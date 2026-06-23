@@ -16,6 +16,7 @@ import { toMeshStorageUri } from "../mesh-storage-uri";
 import {
   createPortableGenerateImageTool,
   createPortableTakeScreenshotTool,
+  GenerateImageInputSchema,
   type PortableImageModelInfo,
   type PortableImageProvider,
   type PortableMediaObjectStorage,
@@ -314,6 +315,7 @@ export function buildPortableBuiltInTools(
   if (imageTool) {
     tools.generate_image = makeBackgroundable(
       "generate_image",
+      GenerateImageInputSchema,
       createPortableGenerateImageTool(writer, {
         ...imageTool,
         objectStorage,

@@ -18,18 +18,6 @@ import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-to
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 
-// Fields common to every backgroundable tool. Identity is never read from the
-// body — org/user come from ctx; `fenceToken` must match the active run.
-const commonFields = {
-  threadId: z.string(),
-  fenceToken: z.string(),
-  toolCallId: z.string(),
-  agentId: z.string(),
-  temperature: z.number(),
-  toolApprovalLevel: z.enum(["auto", "readonly"]),
-  branch: z.string().nullable().optional(),
-};
-
 // Subtask payload the workflow's `subtask` producer reads (prompt + optional
 // target agent). Kept minimal — the producer re-resolves models/target itself.
 const SubtaskBgInputSchema = z.object({
@@ -37,20 +25,22 @@ const SubtaskBgInputSchema = z.object({
   agent_id: z.string().optional(),
 });
 
-// Discriminated on `toolName` so each tool's payload is validated against its
-// real schema (a compromised daemon can't push an unvalidated shape).
-const InputSchema = z.discriminatedUnion("toolName", [
-  z.object({
-    toolName: z.literal("generate_image"),
-    input: GenerateImageInputSchema,
-    ...commonFields,
-  }),
-  z.object({
-    toolName: z.literal("subtask"),
-    input: SubtaskBgInputSchema,
-    ...commonFields,
-  }),
-]);
+// NOTE: the management registration only accepts a top-level `ZodObject` (it
+// checks for `.shape`), so this MUST stay a flat object — a discriminatedUnion
+// silently registers as an empty schema. `input` is validated per `toolName`
+// in the handler below (not forwarded unvalidated).
+const InputSchema = z.object({
+  threadId: z.string(),
+  /** Run fence token — must match the thread's active run fence. */
+  fenceToken: z.string(),
+  toolName: z.enum(["generate_image", "subtask"]),
+  input: z.unknown(),
+  toolCallId: z.string(),
+  agentId: z.string(),
+  temperature: z.number(),
+  toolApprovalLevel: z.enum(["auto", "readonly"]),
+  branch: z.string().nullable().optional(),
+});
 
 const OutputSchema = z.object({ jobId: z.string() });
 
@@ -90,6 +80,13 @@ export const THREAD_BACKGROUND_TOOL_START = defineTool({
       throw new Error("Stale run fence");
     }
 
+    // Validate the payload against the real per-tool schema here (a compromised
+    // daemon can't push an unvalidated shape into the heavy work).
+    const toolInput =
+      input.toolName === "generate_image"
+        ? GenerateImageInputSchema.parse(input.input)
+        : SubtaskBgInputSchema.parse(input.input);
+
     const dispatcher = createBackgroundToolDispatcher({
       threadId: input.threadId,
       orgId: org.id,
@@ -101,7 +98,7 @@ export const THREAD_BACKGROUND_TOOL_START = defineTool({
     });
     const { jobId } = await dispatcher.start({
       toolName: input.toolName,
-      input: input.input,
+      input: toolInput,
       toolCallId: input.toolCallId,
     });
 

@@ -35,7 +35,7 @@
  * (cluster model-proxy, spec §3.9) is deferred.
  */
 
-import { stepCountIs, type ToolSet } from "ai";
+import { stepCountIs, type Tool, type ToolSet } from "ai";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { trace } from "@opentelemetry/api";
 import type {
@@ -74,7 +74,11 @@ import type {
 import type { ConnectionsBlockTool } from "./connections-block";
 import type { VirtualClient } from "./built-in-tools/sandbox";
 import type { PendingImage } from "./built-in-tools/vm-tools/types";
-import { createLocalSubtaskTool } from "./built-in-tools/local-subtask";
+import {
+  createLocalSubtaskTool,
+  SubtaskInputSchema,
+} from "./built-in-tools/local-subtask";
+import { makeBackgroundable } from "./built-in-tools/backgroundable";
 import type { DesktopToolCtx } from "./desktop-tool-ctx";
 import {
   createSideChannelWriter,
@@ -302,7 +306,7 @@ function createDesktopToolRuntime(args: {
   agentOverride?: { id: string };
   /** The real local `subtask` tool, injected only into the parent run's
    *  toolset (depth-1 — never into a delegated subtask runtime). */
-  subtask?: ReturnType<typeof createLocalSubtaskTool>;
+  subtask?: Tool;
   /** Test-only seam: override how the HTTP MCP source is opened so the parity
    *  test can inject a fake MCP `Client` without a real network connection.
    *  Production leaves this undefined and `openMcpSource` opens the real
@@ -574,18 +578,23 @@ export function buildDesktopEnvironmentTools(args: {
     | ((usage: SubtaskRunResult["usage"]) => void)
     | undefined;
 
-  const subtaskTool = createLocalSubtaskTool({
-    writer: sideChannel.writer,
-    selfAgentId: input.agent.id,
-    models: input.models,
-    needsApproval: input.mode === "plan" || input.toolApprovalLevel !== "auto",
-    runSubtask,
-    onChildUsage: (usage) => parentOnChildUsage?.(usage),
-    // Lets the model opt a subtask into a durable cluster background run
-    // (`background: true`) instead of blocking the daemon's turn — same path
-    // generate_image uses. Null when link material is absent → runs inline.
-    backgroundDispatcher: buildBackgroundDispatcher(input),
-  });
+  // Made backgroundable: the model can opt a subtask into a durable cluster
+  // run (`background: true`) instead of blocking the daemon's turn — same seam
+  // generate_image uses. Null dispatcher (no link material) → runs inline.
+  const subtaskTool = makeBackgroundable(
+    "subtask",
+    SubtaskInputSchema,
+    createLocalSubtaskTool({
+      writer: sideChannel.writer,
+      selfAgentId: input.agent.id,
+      models: input.models,
+      needsApproval:
+        input.mode === "plan" || input.toolApprovalLevel !== "auto",
+      runSubtask,
+      onChildUsage: (usage) => parentOnChildUsage?.(usage),
+    }),
+    buildBackgroundDispatcher(input),
+  );
 
   const parentToolRuntime = createDesktopToolRuntime({
     input,
