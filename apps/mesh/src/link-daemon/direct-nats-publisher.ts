@@ -3,8 +3,10 @@ import { relayLineSchema } from "../links/protocol/relay";
 import type { RelayLine } from "../links/protocol/relay";
 import {
   buildChunkMsgId,
+  buildCheckpointMsgId,
   buildDoneMsgId,
   streamSubject,
+  CHECKPOINT_DEBOUNCE_MS,
 } from "../api/routes/decopilot/projector-stream-messages";
 
 export interface DirectNatsPublisher {
@@ -17,6 +19,11 @@ export interface DirectNatsPublisher {
     runId: string;
     fenceToken: string;
     finalSeq: number;
+  }): Promise<void>;
+  publishCheckpoint(input: {
+    runId: string;
+    fenceToken: string;
+    headSeq: number;
   }): Promise<void>;
 }
 
@@ -50,6 +57,13 @@ export function createDirectNatsPublisher(input: {
         streamSubject(runId),
         encoder.encode(JSON.stringify({ done: true, finalSeq })),
         { msgID: buildDoneMsgId({ runId, fenceToken, finalSeq }) },
+      );
+    },
+    async publishCheckpoint({ runId, fenceToken, headSeq }) {
+      await input.js.publish(
+        streamSubject(runId),
+        encoder.encode(JSON.stringify({ checkpoint: true, headSeq })),
+        { msgID: buildCheckpointMsgId({ runId, fenceToken, headSeq }) },
       );
     },
   };
@@ -118,9 +132,14 @@ export async function publishRelayBodyToNats(input: {
   runId: string;
   fenceToken: string;
   publisher: DirectNatsPublisher;
+  now?: () => number;
+  checkpointDebounceMs?: number;
 }): Promise<PublishRelayBodyResult> {
+  const now = input.now ?? Date.now;
+  const debounceMs = input.checkpointDebounceMs ?? CHECKPOINT_DEBOUNCE_MS;
   let maxWireSeq = 0;
   let finalSeq = 0; // highest CONTENT seq (chunks + converted error), for done
+  let lastCheckpointAt = now(); // first checkpoint fires one debounce window in
   for await (const value of ndjsonValues(input.body)) {
     const parsed = relayLineSchema.safeParse(value);
     if (!parsed.success) continue; // skip blank/garbage lines (heartbeats already skipped)
@@ -131,7 +150,17 @@ export async function publishRelayBodyToNats(input: {
       fenceToken: input.fenceToken,
       line,
     });
-    if (result === "published") finalSeq = Math.max(finalSeq, line.seq);
+    if (result === "published") {
+      finalSeq = Math.max(finalSeq, line.seq);
+      if (now() - lastCheckpointAt >= debounceMs) {
+        lastCheckpointAt = now();
+        await input.publisher.publishCheckpoint({
+          runId: input.runId,
+          fenceToken: input.fenceToken,
+          headSeq: finalSeq,
+        });
+      }
+    }
   }
   if (finalSeq > 0) {
     await input.publisher.publishDone({

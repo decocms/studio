@@ -103,6 +103,124 @@ describe("createDirectNatsPublisher", () => {
   });
 });
 
+test("publishCheckpoint emits a checkpoint envelope with the ckpt msgId", async () => {
+  const published: Array<{
+    subject: string;
+    payload: unknown;
+    msgID?: string;
+  }> = [];
+  const js = {
+    publish: async (
+      subject: string,
+      data: Uint8Array,
+      opts?: { msgID?: string },
+    ) => {
+      published.push({
+        subject,
+        payload: JSON.parse(new TextDecoder().decode(data)),
+        msgID: opts?.msgID,
+      });
+      return {} as never;
+    },
+  };
+  const publisher = createDirectNatsPublisher({ js });
+  await publisher.publishCheckpoint({
+    runId: "run_1",
+    fenceToken: "fence_1",
+    headSeq: 4,
+  });
+  expect(published).toEqual([
+    {
+      subject: "decopilot.stream.run_1",
+      payload: { checkpoint: true, headSeq: 4 },
+      msgID: "run_1:fence_1:ckpt:4",
+    },
+  ]);
+});
+
+test("publishRelayBodyToNats emits debounced checkpoints at the contiguous headSeq", async () => {
+  const checkpoints: number[] = [];
+  const publisher = {
+    publishLine: async ({
+      line,
+    }: {
+      line: { seq: number; event: { type: string } };
+    }) =>
+      line.event.type === "ui-message-chunk"
+        ? ("published" as const)
+        : ("terminal" as const),
+    publishDone: async () => {},
+    publishCheckpoint: async ({ headSeq }: { headSeq: number }) => {
+      checkpoints.push(headSeq);
+    },
+  };
+  // Fake clock: advance 4s per call so each content line crosses the 3s debounce.
+  // The implementation calls now() once at init (lastCheckpointAt = now())
+  // then twice per content line: once to check (now() - lastCheckpointAt >= debounceMs)
+  // and once to update (lastCheckpointAt = now()).
+  // Call sequence: init=0, check_1=4000, update_1=8000, check_2=12000, update_2=16000
+  // check_1: 4000 - 0 = 4000 >= 3000 → emit; check_2: 12000 - 8000 = 4000 >= 3000 → emit
+  let callCount = 0;
+  const times = [0, 4000, 8000, 12000, 16000];
+  const now = () => times[callCount++] ?? 16000;
+  const chunk = (seq: number) =>
+    JSON.stringify({
+      seq,
+      event: {
+        type: "ui-message-chunk",
+        chunk: { type: "text-delta", id: "1", delta: "x" },
+      },
+    });
+  const body = `${chunk(1)}\n${chunk(2)}\n${JSON.stringify({ seq: 3, event: { type: "done" } })}\n`;
+  await publishRelayBodyToNats({
+    body,
+    runId: "run_1",
+    fenceToken: "fence_1",
+    publisher,
+    now,
+    checkpointDebounceMs: 3000,
+  });
+  // A checkpoint per content line that crossed the debounce window (headSeq = contiguous content seq).
+  expect(checkpoints).toEqual([1, 2]);
+});
+
+test("publishRelayBodyToNats emits no checkpoint when under the debounce", async () => {
+  const checkpoints: number[] = [];
+  const publisher = {
+    publishLine: async ({
+      line,
+    }: {
+      line: { seq: number; event: { type: string } };
+    }) =>
+      line.event.type === "ui-message-chunk"
+        ? ("published" as const)
+        : ("terminal" as const),
+    publishDone: async () => {},
+    publishCheckpoint: async ({ headSeq }: { headSeq: number }) => {
+      checkpoints.push(headSeq);
+    },
+  };
+  const now = () => 1000; // never advances → never crosses 3s
+  const chunk = (seq: number) =>
+    JSON.stringify({
+      seq,
+      event: {
+        type: "ui-message-chunk",
+        chunk: { type: "text-delta", id: "1", delta: "x" },
+      },
+    });
+  const body = `${chunk(1)}\n${chunk(2)}\n${JSON.stringify({ seq: 3, event: { type: "done" } })}\n`;
+  await publishRelayBodyToNats({
+    body,
+    runId: "run_1",
+    fenceToken: "fence_1",
+    publisher,
+    now,
+    checkpointDebounceMs: 3000,
+  });
+  expect(checkpoints).toEqual([]);
+});
+
 describe("publishRelayBodyToNats", () => {
   test("processes string NDJSON body with chunk, heartbeat, and done", async () => {
     const { js, published } = makeFakeJs();
