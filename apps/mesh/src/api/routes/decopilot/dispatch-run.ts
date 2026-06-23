@@ -86,7 +86,6 @@ import { type ChatMode } from "./mode-config";
 export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
 import { ensureModelCompatibility } from "./model-compat";
-import { buildOnTitleUpdated } from "./on-title-updated";
 import {
   PREPARE_RUN_STATUS_STAGES,
   publishRunStatusStage,
@@ -224,13 +223,19 @@ export interface AgentSandboxUiStreamInput {
   fenceToken: string;
   chunks: AsyncIterable<UIMessageChunk>;
   streamBuffer: Pick<StreamBuffer, "publishRawChunk" | "publishDone">;
-  /** Title interception + `onTitleUpdated` SSE. `ingestRun` replaces
-   *  `persistTitle` with a NO-OP so the durable projector is the sole writer. */
+  /** Title interception. `ingestRun` replaces `persistTitle` with a NO-OP so
+   *  the durable projector is the sole writer. */
   title: HarnessStreamTitleOptions;
   hooks: HarnessStreamConsumerHooks;
   /** Deterministic id for a synthesized error message (`error-${runId}`) so
    *  projector-only persistence dedupes retries. */
   errorMessageId?: string;
+  /** Publishes debounced checkpoint markers so the projector materializes
+   *  parts + title incrementally. Omitted → no incremental projection. */
+  checkpointPublisher?: (
+    fenceToken: string,
+    headSeq: number,
+  ) => Promise<boolean>;
 }
 
 /**
@@ -273,6 +278,7 @@ export function buildAgentSandboxUiStream(
             streamBuffer: input.streamBuffer,
             hooks: input.hooks,
             title: input.title,
+            checkpointPublisher: input.checkpointPublisher,
           },
         );
         controller.close();
@@ -1309,15 +1315,6 @@ async function prepareRun(
       userContext,
     };
 
-    const onTitleUpdated = sseHub
-      ? buildOnTitleUpdated({
-          ctx,
-          sseHub,
-          threadId: mem.thread.id,
-          organizationId: input.organizationId,
-        })
-      : undefined;
-
     // ── LAZY harness dispatch ───────────────────────────────────────────────
     // This generator's body — local harness dispatch — runs only when the
     // kernel pulls the first chunk, which (via `lazyStream` below) happens only
@@ -1408,6 +1405,14 @@ async function prepareRun(
             publishRawChunk: async () => false,
             publishDone: async () => false,
           },
+          checkpointPublisher: streamBuffer
+            ? (fenceToken, headSeq) =>
+                streamBuffer.publishCheckpoint(
+                  mem.thread.id,
+                  fenceToken,
+                  headSeq,
+                )
+            : undefined,
           chunks: dispatchHarnessChunks(),
           // Deterministic per run so a synthesized error message dedupes
           // across projector retries.
@@ -1416,12 +1421,11 @@ async function prepareRun(
             currentThreadTitle: mem.thread.title,
             threadId: mem.thread.id,
             // Projector owns the title write — `ingestRun` neutralizes this
-            // persistence callback. The chunk interception + `onTitleUpdated`
-            // SSE still fire here.
+            // persistence callback. The projector is the sole sidebar-SSE
+            // source for both hosted and desktop now.
             persistTitle: async (threadId, title) => {
               await ctx.storage.threads.update(threadId, { title });
             },
-            onTitleUpdated,
           },
           hooks: {
             onStep: () => {

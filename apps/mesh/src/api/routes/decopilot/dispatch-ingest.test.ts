@@ -102,4 +102,69 @@ describe("buildAgentSandboxUiStream", () => {
     // Authoritative {done} marker fires once, fence-scoped to the last seq.
     expect(d.publishedDone).toEqual([{ fenceToken: "f", finalSeq: 3 }]);
   });
+
+  it("forwards checkpointPublisher to ingestRun — it is called on ackSeq advance", async () => {
+    // Verify that a checkpointPublisher passed to buildAgentSandboxUiStream is
+    // forwarded into the ingestRun deps and invoked when the contiguous ackSeq
+    // floor advances. lastCheckpointAt starts at 0, so the FIRST advance always
+    // passes the CHECKPOINT_DEBOUNCE_MS gate.
+    const d = makeDeps();
+    const checkpoints: Array<{ fenceToken: string; headSeq: number }> = [];
+    const stream = buildAgentSandboxUiStream({
+      runId: "r",
+      fenceToken: "f",
+      chunks: harnessChunks(),
+      streamBuffer: d.streamBuffer,
+      title: d.title,
+      hooks: {},
+      checkpointPublisher: async (fenceToken, headSeq) => {
+        checkpoints.push({ fenceToken, headSeq });
+        return true;
+      },
+    });
+    await drain(stream);
+
+    // At least one checkpoint must have been published during the run.
+    expect(checkpoints.length).toBeGreaterThan(0);
+    // Every published checkpoint carries the correct fenceToken.
+    expect(checkpoints.every((c) => c.fenceToken === "f")).toBe(true);
+  });
+
+  it("title passed to buildAgentSandboxUiStream should not have onTitleUpdated (call-site contract)", async () => {
+    // The call site in prepareRun no longer wires onTitleUpdated. This test
+    // confirms that buildAgentSandboxUiStream works correctly when the title
+    // object has no onTitleUpdated — reflecting the projector-only sidebar-SSE
+    // design. The stream must complete cleanly with no errors.
+    const d = makeDeps();
+    // Explicitly construct title WITHOUT onTitleUpdated — same shape as the
+    // updated prepareRun call site.
+    const titleWithoutOnTitleUpdated = {
+      currentThreadTitle: null,
+      threadId: "r",
+      persistTitle: d.title.persistTitle,
+      // onTitleUpdated intentionally absent
+    };
+    expect(
+      (titleWithoutOnTitleUpdated as { onTitleUpdated?: unknown })
+        .onTitleUpdated,
+    ).toBeUndefined();
+
+    const stream = buildAgentSandboxUiStream({
+      runId: "r",
+      fenceToken: "f",
+      chunks: harnessChunks(),
+      streamBuffer: d.streamBuffer,
+      title: titleWithoutOnTitleUpdated,
+      hooks: {},
+    });
+    await drain(stream);
+
+    // All chunks published, done sentinel emitted — stream completed cleanly.
+    expect(d.publishedRaw.map((p) => p.msgId)).toEqual([
+      "r:f:1",
+      "r:f:2",
+      "r:f:3",
+    ]);
+    expect(d.publishedDone).toEqual([{ fenceToken: "f", finalSeq: 3 }]);
+  });
 });
