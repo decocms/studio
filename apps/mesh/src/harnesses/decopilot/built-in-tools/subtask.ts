@@ -122,18 +122,23 @@ export function resolveSubtaskCodingWorkspace(
 /** Max chars of a tool call's args shown in the live subtask stream. */
 const TOOL_CALL_ARG_CAP = 80;
 
+/** Cap a raw args string for display (drops empty `{}`). */
+function formatArgs(args: string): string {
+  if (args === "{}") return "";
+  return args.length > TOOL_CALL_ARG_CAP
+    ? args.slice(0, TOOL_CALL_ARG_CAP) + "…"
+    : args;
+}
+
 /** Render a subagent tool call as a short, capped one-liner for the stream. */
 function formatToolCall(toolName: string, input: unknown): string {
-  let args = "";
+  let raw = "";
   try {
-    args = typeof input === "string" ? input : JSON.stringify(input ?? {});
+    raw = typeof input === "string" ? input : JSON.stringify(input ?? {});
   } catch {
-    args = "";
+    raw = "";
   }
-  if (args === "{}") args = "";
-  if (args.length > TOOL_CALL_ARG_CAP) {
-    args = args.slice(0, TOOL_CALL_ARG_CAP) + "…";
-  }
+  const args = formatArgs(raw);
   return args ? `${toolName} ${args}` : toolName;
 }
 
@@ -287,29 +292,63 @@ export function createSubtaskTool(
           extraTools: isSelf ? vmTools : undefined,
         });
 
+        // Surface the subagent's tool calls in the live stream so the UI shows
+        // progress even while the subagent works silently (calling tools, not
+        // emitting text). The input STREAMS as it's generated (capped), so a
+        // long call (e.g. a file write) reveals progressively rather than
+        // popping in whole when the call completes.
         let streamedText = "";
+        // The tool call currently streaming its input (name + accumulated args).
+        let pending: { name: string; args: string } | null = null;
         let lastFlush = 0;
         const FLUSH_MS = 200;
+        // A committed `↳` line for a finished pending call (trailing newline).
+        const commitPending = (): void => {
+          if (!pending) return;
+          const args = formatArgs(pending.args);
+          const sep = streamedText && !streamedText.endsWith("\n") ? "\n" : "";
+          streamedText += `${sep}↳ ${args ? `${pending.name} ${args}` : pending.name}\n`;
+          pending = null;
+        };
+        // The live render = committed text + the in-progress `↳` line (no \n).
+        const render = (): string => {
+          if (!pending) return streamedText;
+          const args = formatArgs(pending.args);
+          const sep = streamedText && !streamedText.endsWith("\n") ? "\n" : "";
+          return `${streamedText}${sep}↳ ${args ? `${pending.name} ${args}` : pending.name}`;
+        };
         for await (const part of handle.result.fullStream) {
+          const now = performance.now();
           if (part.type === "text-delta") {
+            commitPending();
             streamedText += part.text;
-            const now = performance.now();
             if (now - lastFlush >= FLUSH_MS) {
               lastFlush = now;
               yield { text: streamedText };
             }
+          } else if (part.type === "tool-input-start") {
+            // A new call begins — commit any prior pending line, start streaming.
+            commitPending();
+            pending = { name: part.toolName, args: "" };
+            lastFlush = now;
+            yield { text: render() };
+          } else if (part.type === "tool-input-delta") {
+            if (pending) pending.args += part.delta;
+            if (now - lastFlush >= FLUSH_MS) {
+              lastFlush = now;
+              yield { text: render() };
+            }
           } else if (part.type === "tool-call") {
-            // Surface the subagent's tool executions in the live stream so the
-            // UI shows progress even while the subagent is working silently
-            // (calling tools, not emitting text). Args are capped to a few
-            // tokens — enough to identify the call, not a full dump.
+            // Authoritative complete input — finalize with the full (capped) args.
             const sep =
               streamedText && !streamedText.endsWith("\n") ? "\n" : "";
             streamedText += `${sep}↳ ${formatToolCall(part.toolName, part.input)}\n`;
-            lastFlush = performance.now();
+            pending = null;
+            lastFlush = now;
             yield { text: streamedText };
           }
         }
+        commitPending();
 
         // 5. Collect results from the resolved promises.
         const error = await handle.error;
