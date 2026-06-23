@@ -68,7 +68,7 @@ import {
   useOptionalChatPrefs,
 } from "@/web/components/chat/context.tsx";
 import { usePanelActions } from "@/web/layouts/shell-layout";
-import { MonacoCodeEditor } from "./workflow/components/monaco-editor";
+import { MonacoCodeEditor } from "../monaco-editor";
 
 export interface ToolDetailsViewProps {
   itemId: string;

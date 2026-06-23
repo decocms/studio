@@ -18,7 +18,6 @@ import {
   HoverCardTrigger,
 } from "@deco/ui/components/hover-card.tsx";
 import { createContext, useContext } from "react";
-import { useResolvedRefs } from "./details/workflow/components/tool-selector";
 
 // --- Types ---
 
@@ -374,8 +373,8 @@ export function MentionInput({
   placeholder,
   className,
   readOnly,
+  resolvedRefs,
 }: MentionInputProps) {
-  const resolvedRefs = useResolvedRefs();
   const parsedContent = parseValueToTiptapContent(value, mentions);
 
   // Use custom NodeView when we have resolvedRefs to enable hover tooltips

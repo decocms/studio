@@ -21,7 +21,7 @@ import { Tabs, TabsList, TabsTrigger } from "@deco/ui/components/tabs.tsx";
 import { Copy01 } from "@untitledui/icons";
 import { useId, useState } from "react";
 import { toast } from "sonner";
-import { MonacoCodeEditor } from "../details/workflow/components/monaco-editor";
+import { MonacoCodeEditor } from "../monaco-editor";
 
 type ExampleKind = "curl" | "fetch";
 type AuthPlacement = "header" | "url";

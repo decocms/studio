@@ -20,10 +20,6 @@ import {
 import { Loading01, Container } from "@untitledui/icons";
 import { Link, useParams, useRouter } from "@tanstack/react-router";
 import { Suspense, type ComponentType } from "react";
-import {
-  WorkflowExecutionDetailsView,
-  WorkflowDetails,
-} from "@/web/components/details/workflow/index.tsx";
 import { ViewLayout } from "@/web/components/details/layout";
 
 interface CollectionDetailsProps {
@@ -37,8 +33,6 @@ const WELL_KNOWN_VIEW_DETAILS: Record<
   string,
   ComponentType<CollectionDetailsProps>
 > = {
-  workflow: WorkflowDetails,
-  workflow_execution: WorkflowExecutionDetailsView,
   prompt: PromptDetailsView,
 };
 
