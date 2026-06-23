@@ -25,8 +25,20 @@ function source() {
       term: async () => {},
     });
   };
+  const pushRaw = (subject: string, raw: string, msgId?: string) => {
+    msgs.push({
+      subject,
+      data: new TextEncoder().encode(raw),
+      msgId,
+      ack: async () => {
+        acked.push(raw);
+      },
+      term: async () => {},
+    });
+  };
   return {
     push,
+    pushRaw,
     acked,
     iterable: (async function* () {
       for (const m of msgs) yield m;
@@ -54,6 +66,27 @@ describe("projector scheduler consumer", () => {
 
     expect(s.acked).toHaveLength(1);
     expect(scheduled).toEqual([]);
+  });
+
+  test("acks an unparseable fragment instead of looping on it", async () => {
+    const s = source();
+    // A fragmented chunk delivers a raw byte-slice of `{"p":...}` JSON, which
+    // is not valid JSON on its own. It must be acked-and-skipped, NOT left
+    // unacked (which would make JetStream redeliver the poison fragment forever
+    // — the prod stdout-spam bug).
+    s.pushRaw(
+      "decopilot.stream.run_1",
+      '{"p":{"text":"unter',
+      "run_1:fence_a:1",
+    );
+
+    await consumeProjectorMessages({
+      messages: s.iterable,
+      resolveOrgId: async () => "org_1",
+      enqueueProjectRun: async () => {},
+    });
+
+    expect(s.acked).toHaveLength(1);
   });
 
   test("schedules done and acks only after enqueue succeeds", async () => {
