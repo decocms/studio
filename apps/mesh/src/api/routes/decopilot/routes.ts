@@ -58,6 +58,7 @@ import {
 import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
+import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -730,7 +731,16 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       });
     });
 
-    // Try to cancel locally first
+    // Abort in-flight background work on this pod now, and fan the cancel out
+    // to every pod over NATS. Always broadcast: a background job runs on
+    // whichever pod DBOS dequeued it, so a locally-owned turn no longer implies
+    // no other pod is involved. Each pod's onCancel aborts its background
+    // controllers (`abortBackgroundJobs`) and cancels the live turn if it owns
+    // it; both are no-ops where they don't apply.
+    abortBackgroundJobs(taskId);
+    cancelBroadcast.broadcast(taskId);
+
+    // Try to cancel the live turn locally for an immediate response.
     const cancelTransitions = await runRegistry.execute({
       type: "CANCEL",
       taskId,
@@ -743,8 +753,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       return c.json({ cancelled: true });
     }
 
-    // Not on this pod — broadcast to all pods
-    cancelBroadcast.broadcast(taskId);
     cancelBroadcast.publishControlFrame(userId, {
       type: "cancel",
       runId: taskId,

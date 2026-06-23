@@ -804,6 +804,7 @@ import {
   BACKGROUND_TOOLS_QUEUE,
   setBackgroundToolRuntime,
 } from "@/harnesses/decopilot/background-tool-workflow";
+import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
 const getHandleOAuthProtectedResourceMetadata = () =>
   oAuthProtectedResourceMetadata(auth);
 const getHandleOAuthDiscoveryMetadata = () => oAuthDiscoveryMetadata(auth);
@@ -1084,6 +1085,10 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   cancelBroadcast
     .start((taskId) => {
+      // Abort any in-flight background-tool work (e.g. generate_image) on this
+      // pod before cancelling the live turn — the work runs on whichever pod
+      // dequeued the DBOS job, which this NATS fan-out reaches.
+      abortBackgroundJobs(taskId);
       runRegistry.execute({ type: "CANCEL", taskId }).catch((err) => {
         console.error("[Decopilot] CancelBroadcast execute failed:", err);
       });

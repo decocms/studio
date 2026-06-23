@@ -150,6 +150,7 @@ async function fetchImageBytes(
   params: {
     objectStorage?: PortableMediaObjectStorage | null;
     allowHttpExternalUrls?: boolean;
+    abortSignal?: AbortSignal;
   },
 ): Promise<Uint8Array> {
   const meshKey = parseMeshStorageKey(url);
@@ -171,7 +172,7 @@ async function fetchImageBytes(
   }
 
   validateExternalUrl(url, params.allowHttpExternalUrls === true);
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: params.abortSignal });
   if (!res.ok) {
     throw new Error(`Failed to fetch image from ${url}: ${res.status}`);
   }
@@ -185,6 +186,10 @@ export interface GenerateImageCoreParams {
   imageModelInfo: PortableImageModelInfo;
   objectStorage?: PortableMediaObjectStorage | null;
   allowHttpExternalUrls?: boolean;
+  /** Aborts the in-flight provider call (and reference-image fetches). Wired by
+   *  the cluster's background job to the NATS-broadcast thread-cancel path so a
+   *  cancelled turn stops generation mid-flight, not just at the next step. */
+  abortSignal?: AbortSignal;
 }
 
 export interface GenerateImageResult {
@@ -227,6 +232,7 @@ export async function generateImageCore(
     prompt,
     n: input.n ?? 1,
     ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+    ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
   });
 
   if (!objectStorage) {

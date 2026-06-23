@@ -23,6 +23,10 @@ import { getSettings } from "@/settings";
 import type { ToolApprovalLevel } from "@decocms/harness/decopilot/mcp-tools";
 import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 import {
+  registerBackgroundAbort,
+  unregisterBackgroundAbort,
+} from "./background-abort-registry";
+import {
   generateImageCore,
   type GenerateImageInput,
   type GenerateImageResult,
@@ -364,13 +368,25 @@ async function runGenerateImageStep(
     image.credentialId,
     job.ctx.orgId,
   );
-  const result = await generateImageCore(job.ctx.input as GenerateImageInput, {
-    provider,
-    imageModelInfo: { id: image.id },
-    objectStorage: meshCtx.objectStorage,
-    allowHttpExternalUrls: getSettings().localMode,
-  });
-  return { result, models };
+  // Register an abort controller so a thread cancel (fanned out to this pod
+  // over NATS → `abortBackgroundJobs`) stops the provider call in flight, not
+  // just at the next DBOS step boundary.
+  const ac = registerBackgroundAbort(job.ctx.threadId);
+  try {
+    const result = await generateImageCore(
+      job.ctx.input as GenerateImageInput,
+      {
+        provider,
+        imageModelInfo: { id: image.id },
+        objectStorage: meshCtx.objectStorage,
+        allowHttpExternalUrls: getSettings().localMode,
+        abortSignal: ac.signal,
+      },
+    );
+    return { result, models };
+  } finally {
+    unregisterBackgroundAbort(job.ctx.threadId, ac);
+  }
 }
 
 /** Append the job's terminal assistant message via `PartEmitter` (same shape as
