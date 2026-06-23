@@ -29,7 +29,10 @@ describe("link session helpers", () => {
         ],
       },
       publish: {
-        allow: [`tunnel.v1.host.${hostToken}.req.*.reply`],
+        allow: [
+          `tunnel.v1.host.${hostToken}.req.*.reply`,
+          "decopilot.stream.*",
+        ],
       },
     });
   });

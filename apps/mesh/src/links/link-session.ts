@@ -48,7 +48,7 @@ export function buildDaemonCredentialPermissions(
       ],
     },
     publish: {
-      allow: [`${hostPrefix}.req.*.reply`],
+      allow: [`${hostPrefix}.req.*.reply`, "decopilot.stream.*"],
     },
   };
 }
