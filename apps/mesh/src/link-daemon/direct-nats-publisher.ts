@@ -8,6 +8,10 @@ import {
   streamSubject,
   CHECKPOINT_DEBOUNCE_MS,
 } from "../api/routes/decopilot/projector-stream-messages";
+import {
+  encodeMsHistogram,
+  publishedChunksCounter,
+} from "../api/routes/decopilot/stream-metrics";
 
 export interface DirectNatsPublisher {
   publishLine(input: {
@@ -34,11 +38,17 @@ export function createDirectNatsPublisher(input: {
   return {
     async publishLine({ runId, fenceToken, line }) {
       if (line.event.type === "ui-message-chunk") {
-        await input.js.publish(
-          streamSubject(runId),
-          encoder.encode(JSON.stringify({ p: line.event.chunk })),
-          { msgID: buildChunkMsgId({ runId, fenceToken, seq: line.seq }) },
-        );
+        // The live producer for agent-sandbox runs: encode+publish each UI
+        // chunk here. Record encode time + count so the stream metrics fire on
+        // this path (NatsStreamBuffer.pump/publishRawChunk are not exercised
+        // for these runs).
+        const t0 = performance.now();
+        const bytes = encoder.encode(JSON.stringify({ p: line.event.chunk }));
+        encodeMsHistogram().record(performance.now() - t0);
+        publishedChunksCounter().add(1);
+        await input.js.publish(streamSubject(runId), bytes, {
+          msgID: buildChunkMsgId({ runId, fenceToken, seq: line.seq }),
+        });
         return "published";
       }
       if (line.event.type === "error") {
