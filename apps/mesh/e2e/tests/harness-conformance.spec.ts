@@ -777,12 +777,17 @@ test.describe("harness conformance — relay driver", () => {
         text: "idempotent answer",
       });
 
-      // First relay: full prefix. The projector persists asynchronously, so
-      // poll until the parts land, then snapshot the row count.
+      // First relay: full prefix. The user message persists at dispatch and the
+      // assistant parts project asynchronously, so snapshot the count only once
+      // the run has fully SETTLED (status `completed` → assistant + finish
+      // written). Polling a bare `>= 2` would race: it can capture just the user
+      // message (or just the assistant) before the other set lands, so a later
+      // count looks like growth even though the replay added nothing.
       const { lastSeq } = await relay(runId, workItem.runFenceToken, body);
       expect(lastSeq).toBe(lineCount);
       let countAfterFirst = 0;
       await expect(async () => {
+        expect(await fetchThreadStatus(db, runId)).toBe("completed");
         countAfterFirst = await fetchPartRowIdCount(db, runId);
         expect(countAfterFirst).toBeGreaterThanOrEqual(2);
       }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
