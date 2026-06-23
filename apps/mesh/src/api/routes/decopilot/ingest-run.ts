@@ -27,6 +27,7 @@ import type { UIMessageChunk } from "ai";
 import {
   consumeHarnessStream,
   type HarnessStreamConsumerHooks,
+  type HarnessStreamPersistence,
   type HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
 import { buildChunkMsgId } from "./projector-stream-messages";
@@ -66,6 +67,15 @@ export interface IngestRunDeps {
    *  is the sole title writer. */
   title: HarnessStreamTitleOptions;
   /**
+   * Persists the assistant message parts as the run streams. Defaults to the
+   * no-op (the durable projector is the sole writer for the desktop/relay
+   * path). The hosted background-job caller passes its PartEmitter so the
+   * message lands in the DB before the stream closes; the projector still
+   * re-projects from JetStream as an idempotent backstop (deterministic row
+   * ids → ON CONFLICT DO NOTHING).
+   */
+  persistence?: HarnessStreamPersistence;
+  /**
    * When set, the ingest side publishes debounced checkpoint markers after
    * each confirmed `ackSeq` advance. The projector consumer reacts to these
    * by enqueuing a partial projection pass (Tasks 8-9). Omitted in runs
@@ -76,6 +86,14 @@ export interface IngestRunDeps {
     headSeq: number,
   ) => Promise<boolean>;
 }
+
+/** Default persistence: write nothing — the durable projector is the sole
+ *  writer (desktop/relay path). Hosted background jobs override via deps. */
+const NOOP_PERSISTENCE: HarnessStreamPersistence = {
+  emitStepParts: async () => {},
+  emitFinal: async () => {},
+  emitError: async () => {},
+};
 
 async function drain(stream: ReadableStream): Promise<void> {
   const reader = stream.getReader();
@@ -161,11 +179,7 @@ export async function ingestRun(
       ...deps.title,
       persistTitle: async () => {},
     },
-    persistence: {
-      emitStepParts: async () => {},
-      emitFinal: async () => {},
-      emitError: async () => {},
-    },
+    persistence: deps.persistence ?? NOOP_PERSISTENCE,
     hooks: deps.hooks,
     errorMessageId: input.errorMessageId,
   });

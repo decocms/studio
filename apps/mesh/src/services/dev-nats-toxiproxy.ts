@@ -15,7 +15,7 @@
  */
 import { retry, RetryError } from "@decocms/std";
 
-export const DEV_NATS_TOXIPROXY_PROXY_NAME = "dev_nats";
+const DEV_NATS_TOXIPROXY_PROXY_NAME = "dev_nats";
 
 // Distinct from the HTTP dev-link-toxiproxy ports (18474/18480) so both harnesses
 // can coexist without colliding.
