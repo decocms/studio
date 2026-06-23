@@ -5,9 +5,7 @@ import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useVirtualMCP, type ToolDefinition } from "@decocms/mesh-sdk";
 import { Tool02, Users03 } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
-import { useState, type ReactNode } from "react";
 import type { SubtaskToolPart } from "../../../types.ts";
-import { useOptionalChatStream } from "../../../context.tsx";
 import { useSubtaskRun } from "../../../subtask-runs-context.tsx";
 import { MessageTextPart } from "../text-part.tsx";
 import { extractTextFromOutput, getToolPartErrorText } from "../utils.ts";
@@ -245,58 +243,12 @@ function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
   );
 }
 
-/** "Send to background" affordance under a running inline subtask — defers the
- *  in-flight run server-side. Best-effort (no-op if it already finished). */
-function DeferToBackgroundButton({ toolCallId }: { toolCallId: string }) {
-  const stream = useOptionalChatStream();
-  const [requested, setRequested] = useState(false);
-  if (!stream?.deferToolToBackground) return null;
-  return (
-    <button
-      type="button"
-      disabled={requested}
-      onClick={() => {
-        setRequested(true);
-        stream.deferToolToBackground(toolCallId);
-      }}
-      className="mt-0.5 ml-6 self-start text-[12px] text-muted-foreground/60 [@media(hover:hover)]:hover:text-foreground underline underline-offset-2 disabled:opacity-50 disabled:no-underline"
-    >
-      {requested ? "Moving to background…" : "Send to background"}
-    </button>
-  );
-}
-
-/** Inline subtask card + (while running) the send-to-background affordance. */
-function InlineSubtaskCard({
-  part,
-  shell,
-  title,
-  icon,
-}: {
-  part: SubtaskToolPart;
-  shell: Omit<ReturnType<typeof useSubtaskShellConfig>, "fallbackTitle">;
-  title: ReactNode;
-  icon: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col">
-      <ToolCallShell icon={icon} title={title} {...shell} />
-      {shell.state === "loading" && (
-        <DeferToBackgroundButton toolCallId={part.toolCallId} />
-      )}
-    </div>
-  );
-}
-
 export function SubtaskPartFallback(props: SubtaskPartProps) {
   const { fallbackTitle, ...shell } = useSubtaskShellConfig(props);
   if (isBackgroundStart(props.part.output))
     return <BackgroundSubtaskCard {...props} />;
   return (
-    <InlineSubtaskCard
-      part={props.part}
-      shell={shell}
-      title={fallbackTitle}
+    <ToolCallShell
       icon={
         <IntegrationIcon
           icon={undefined}
@@ -306,6 +258,8 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
           fallbackIcon={<Users03 />}
         />
       }
+      title={fallbackTitle}
+      {...shell}
     />
   );
 }
@@ -321,10 +275,7 @@ export function SubtaskPart(props: SubtaskPartProps) {
     return <BackgroundSubtaskCard {...props} />;
 
   return (
-    <InlineSubtaskCard
-      part={props.part}
-      shell={shell}
-      title={agent?.title ?? fallbackTitle}
+    <ToolCallShell
       icon={
         <IntegrationIcon
           icon={agent?.icon}
@@ -334,6 +285,8 @@ export function SubtaskPart(props: SubtaskPartProps) {
           fallbackIcon={<Users03 />}
         />
       }
+      title={agent?.title ?? fallbackTitle}
+      {...shell}
     />
   );
 }

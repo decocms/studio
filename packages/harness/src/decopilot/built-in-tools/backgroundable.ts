@@ -24,27 +24,6 @@ export interface BackgroundStartedOutput {
   note: string;
 }
 
-/**
- * Runtime "send to background" for an INLINE tool call (Claude Code's "background
- * a running command"). Unlike `BackgroundDispatcher` (restart as a durable job),
- * this hands an ALREADY-RUNNING call's work to a detached drain — no restart.
- * Cluster-only.
- */
-export interface DeferToBackgroundHook {
-  /** Register a running call as deferrable. `deferred` resolves on a "send to
-   *  background" request; `dispose` drops the registration. */
-  awaitDefer(toolCallId: string): { deferred: Promise<void>; dispose(): void };
-  /** Deliver a detached run's conclusion: persist it nested in the tool card
-   *  and resume the parent agent. */
-  deliver(args: {
-    jobId: string;
-    toolCallId: string;
-    text: string;
-    error?: string;
-    finishReason?: string;
-  }): Promise<void>;
-}
-
 const STARTED_NOTE =
   "Running in the background. The result will appear in the conversation as " +
   "soon as it's ready — keep helping the user in the meantime, and do not " +

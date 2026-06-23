@@ -6,11 +6,7 @@
  */
 
 import { DBOS, DBOSClient } from "@dbos-inc/dbos-sdk";
-import {
-  enqueueThreadRun,
-  THREAD_GATE_QUEUE,
-  type ThreadGateContext,
-} from "@/dispatch-queue";
+import { enqueueThreadRun, type ThreadGateContext } from "@/dispatch-queue";
 import type { StudioContextFactory } from "@/automations/fire";
 import type { ModelInfo, ModelsConfig } from "@/api/routes/decopilot/types";
 import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
@@ -345,7 +341,12 @@ async function resolveSubagentRunConfigStep(
   const targetAgentId = isSelf ? ctx.agentId : input.agent_id!;
   const parent = await meshCtx.storage.threads.get(ctx.threadId);
   const models = await resolveReactionModels(meshCtx);
-  return { prompt: input.prompt, models, targetAgentId, ...resolveThreadTarget(parent) };
+  return {
+    prompt: input.prompt,
+    models,
+    targetAgentId,
+    ...resolveThreadTarget(parent),
+  };
 }
 
 /** `generate_image` heavy body, memoized as the `runHeavyTool` step so a replay
@@ -433,50 +434,6 @@ async function reactStep(
       source: "background-tool",
     },
     { workflowID: `${ctx.jobId}:react` },
-  );
-}
-
-/**
- * Resume the parent agent after an inline tool deferred mid-run (the `subtask`
- * "send to background" path) finished. Enqueues via the decoupled `DBOSClient`
- * because the caller (a detached drain) runs outside any workflow and may carry
- * a step's async-local context that would make `DBOS.startWorkflow` throw.
- * Idempotent on `${jobId}:react`.
- */
-export async function resumeThreadAfterBackground(args: {
-  meshCtx: StudioContext;
-  threadId: string;
-  orgId: string;
-  userId: string;
-  agentId: string;
-  temperature: number;
-  toolApprovalLevel: ToolApprovalLevel;
-  branch: string | null;
-  target: DispatchTarget;
-  harnessId: HarnessId | null;
-  jobId: string;
-  nudge: string;
-}): Promise<void> {
-  const models = await resolveReactionModels(args.meshCtx);
-  const gateCtx: ThreadGateContext = {
-    threadId: args.threadId,
-    request: buildReactionRequest(args, {
-      models,
-      nudge: args.nudge,
-      target: args.target,
-      harnessId: args.harnessId,
-    }),
-    source: "background-tool",
-  };
-  const client = await getDbosClient();
-  await client.enqueue(
-    {
-      workflowName: "threadGateWorkflow",
-      queueName: THREAD_GATE_QUEUE,
-      queuePartitionKey: args.threadId,
-      workflowID: `${args.jobId}:react`,
-    },
-    gateCtx,
   );
 }
 
