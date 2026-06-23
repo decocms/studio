@@ -231,12 +231,21 @@ export async function readProjectorRunLog(input: {
     resetIdle();
     for await (const m of sub) {
       resetIdle();
+      const msgId = m.headers?.get("Nats-Msg-Id") || undefined;
       messages.push({
         subject: m.subject,
         data: m.data,
-        msgId: m.headers?.get("Nats-Msg-Id") || undefined,
+        msgId,
         headers: m.headers,
       });
+      // reconstructProjectorRun re-parses the WHOLE accumulated log; it can only
+      // succeed once the `done` envelope (final message) has arrived — every
+      // earlier call returns "missing done". Folding on every message is O(N²)
+      // JSON.parse on the event loop and stalls it for tens of seconds on long
+      // runs. Gate the fold on the cheap msgId parse → fold once, O(N).
+      const parsed = parseRunStreamMsgId(msgId);
+      if (parsed?.kind !== "done" || parsed.finalSeq !== input.finalSeq)
+        continue;
       const current = reconstructProjectorRun({
         runId: input.runId,
         fenceToken: input.fenceToken,
