@@ -62,8 +62,11 @@ interface TileEntry {
   agentId: string;
   agentName: string;
   agentIcon: string | null;
+  tileId?: string;
   connectionId: string;
   resourceUri: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
   minHeight?: number;
   maxHeight?: number;
 }
@@ -106,8 +109,11 @@ async function defaultHomeAgentNextActions(
             agentId: id,
             agentName: virtualMcp.title,
             agentIcon: virtualMcp.icon,
+            tileId: t.tileId,
             connectionId: t.connectionId as string,
             resourceUri: t.resourceUri,
+            toolName: t.toolName,
+            toolInput: t.toolInput,
             minHeight: t.minHeight,
             maxHeight: t.maxHeight,
           }));
