@@ -18,8 +18,9 @@
  *
  * Architecture note: the relay driver is the SAME `consumeHarnessStream`
  * kernel both hosted and daemon-relayed paths feed. These tests drive it
- * through the pull-relay path (daemon tunnel → POST /chunks) exactly as
- * `harness-conformance.spec.ts` does — the only codex-specific detail is
+ * through the pull-relay path (daemon publishes chunks to the run's JetStream
+ * stream) exactly as `harness-conformance.spec.ts` does — the only
+ * codex-specific detail is
  * `harness_id = 'codex'` on the thread row and
  * `codingAgentProvider: "codex"` in the relayed finish chunk.
  *
@@ -43,6 +44,7 @@ import {
   buildErrorRelayBody,
   buildTurnRelayBody,
 } from "../fixtures/relay-chunks";
+import { publishRelayBody } from "../fixtures/relay-nats";
 import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -215,23 +217,14 @@ async function dispatchCodexAndClaimWorkItem(
   return { runId, workItem: workItem as unknown as WorkItem };
 }
 
-/** POST a canned NDJSON chunk-relay body as the fake daemon. */
-function postRelay(
-  api: APIRequestContext,
-  orgSlug: string,
-  runId: string,
-  fenceToken: string,
-  body: string,
-  fromSeq = 1,
-) {
-  return api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
-    headers: {
-      "content-type": "application/x-ndjson",
-      "x-fence-token": fenceToken,
-      "x-relay-from": String(fromSeq),
-    },
-    data: body,
-  });
+/**
+ * Relay a canned NDJSON chunk body as the fake daemon: publish it straight to
+ * the run's JetStream stream, exactly as the desktop daemon now does (the old
+ * POST /chunks ingest route is gone). Persistence is async — callers poll the
+ * DB for the projector's durable effects.
+ */
+function relay(runId: string, fenceToken: string, body: string) {
+  return publishRelayBody({ runId, fenceToken, body });
 }
 
 // Per-test budget: setup + dispatch + claim work item + relay + reads.
@@ -275,14 +268,7 @@ test.describe("CLI session resume (codex, desktop-link relay)", () => {
         codingAgentSessionId: sessionId,
         codingAgentProvider: "codex",
       });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      expect(res.status()).toBe(200);
+      await relay(runId, workItem.runFenceToken, body);
 
       // The session id + provider must land on the assistant message
       // metadata so the NEXT turn's dispatch can read it back. Persistence
@@ -349,14 +335,7 @@ test.describe("CLI session resume (codex, desktop-link relay)", () => {
         codingAgentSessionId: sessionId,
         codingAgentProvider: "codex",
       });
-      const res1 = await postRelay(
-        api,
-        orgSlug,
-        t1.runId,
-        t1.workItem.runFenceToken,
-        body1,
-      );
-      expect(res1.status()).toBe(200);
+      await relay(t1.runId, t1.workItem.runFenceToken, body1);
 
       // Turn 1 must be terminal AND the session id must be folded onto the
       // assistant message metadata before turn 2 dispatches — poll until
@@ -449,14 +428,7 @@ test.describe("CLI session resume (codex, desktop-link relay)", () => {
         code: "harness_crashed",
         message: "Session expired — start a new thread.",
       });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      expect(res.status()).toBe(200);
+      await relay(runId, workItem.runFenceToken, body);
 
       // The kernel's onError path persists an error part + transitions the run
       // to "failed". Both are written by the async durable projector — poll

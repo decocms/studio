@@ -2,10 +2,10 @@
  * Faithful canned harness-output chunk sequences for the chunk-relay return
  * path (protocol v2). A real desktop daemon relays its sandbox harness's raw
  * `UIMessageChunk`s wrapped as seq-numbered `RelayLine`s
- * ({seq, event: DispatchSSEEvent}) to
- *   POST /api/:org/links/runs/:runId/chunks
- * (see `links/protocol/relay.ts` + `link-daemon/chunk-relay.ts`). The
- * cluster-side `consumeRelayedRun` feeds them into the SAME harness kernel
+ * ({seq, event: DispatchSSEEvent}) by publishing them straight to the run's
+ * JetStream stream `decopilot.stream.<runId>` (see `links/protocol/relay.ts` +
+ * `link-daemon/direct-nats-publisher.ts`; the e2e `relay-nats.ts` helper drives
+ * the same path). The durable projector feeds them into the SAME harness kernel
  * (`consumeHarnessStream`) hosted runs use, so these fixtures double as the
  * conformance corpus: title/usage/parts/status/session all flow through one
  * code path regardless of whether the chunk source is in-process (hosted) or

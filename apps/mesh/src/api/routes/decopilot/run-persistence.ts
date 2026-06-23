@@ -44,7 +44,7 @@ export interface AssistantEmitterArgs {
  * seqs from 0 and `baseTimeMs = max(existing created_at) + 1`. This is the one
  * place that computes the assistant base; every writer derives it identically.
  */
-export async function createAssistantEmitter(
+async function createAssistantEmitter(
   args: AssistantEmitterArgs,
 ): Promise<PartEmitter> {
   const maxExistingMs = await args.messageParts.maxCreatedAtMsForRun(

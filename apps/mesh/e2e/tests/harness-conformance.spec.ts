@@ -5,24 +5,27 @@
  * ## What "conformance" means here
  *
  * After Transport Convergence the cluster has a SINGLE consume-side stream
- * layer: `consumeHarnessStream` (the harness kernel). BOTH the hosted path
- * (`dispatch-run.ts` → in-process harness chunks) and the pull-relay path
- * (`link-ingest-routes.ts` → `consumeRelayedRun` → daemon-relayed chunks) feed
- * the SAME kernel. So title gating, usage → metadata + PostHog, part
- * persistence, run-status transitions, and the claude-code session round-trip
- * are kernel behaviors that MUST hold identically no matter where the chunks
- * originate. This suite encodes those behaviors as a case list and drives them
- * through the relay path — the one path fully drivable headless in e2e.
+ * layer: `consumeHarnessStream` (the harness kernel), driven by the durable
+ * projector. BOTH the hosted path (`dispatch-run.ts` → in-process harness
+ * chunks → JetStream) and the pull-relay path (daemon publishes chunks straight
+ * to `decopilot.stream.<runId>`) feed the SAME projector/kernel. So title
+ * gating, usage → metadata + PostHog, part persistence, run-status transitions,
+ * and the claude-code session round-trip are kernel behaviors that MUST hold
+ * identically no matter where the chunks originate. This suite encodes those
+ * behaviors as a case list and drives them through the relay path — the one
+ * path fully drivable headless in e2e.
  *
  * ## Drivers
  *
  * - **relay driver (RUNNABLE):** the tunnel link pattern. Seed a v2
  *   thread pinned to a user-desktop/claude-code target, claim link presence,
  *   POST /messages (→ 202 + the gate publishes a work item over NATS), receive
- *   that work item through `@decocms/tunnel`, then POST a CANNED NDJSON chunk
- *   relay to /chunks with the run fence token. The cluster kernel consumes the
- *   relayed chunks and commits all durable effects. Assertions read the DB +
- *   the v2 read-path tool (`COLLECTION_THREAD_MESSAGES_LIST`).
+ *   that work item through `@decocms/tunnel`, then publish a CANNED NDJSON chunk
+ *   relay straight to the run's JetStream stream with the run fence token (the
+ *   `relay()` helper, mirroring `direct-nats-publisher`). The durable projector
+ *   consumes the relayed chunks and commits all durable effects ASYNCHRONOUSLY,
+ *   so assertions POLL the DB + the v2 read-path tool
+ *   (`COLLECTION_THREAD_MESSAGES_LIST`).
  *
  * - **hosted driver (NOT headless-runnable — see `test.skip` block at the
  *   bottom):** triggering a hosted decopilot turn end-to-end requires a REAL
@@ -57,6 +60,8 @@ import {
   buildErrorRelayBody,
   buildTurnRelayBody,
 } from "../fixtures/relay-chunks";
+import { publishRelayBody } from "../fixtures/relay-nats";
+import { sleep } from "@decocms/std";
 // The auto-titler gates on the thread title being this exact default; import
 // the source constant so the gating cases stay in lockstep if it ever changes.
 import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";
@@ -237,23 +242,18 @@ async function dispatchAndClaimWorkItem(
   return { runId, workItem };
 }
 
-/** POST a canned NDJSON chunk-relay body as the fake daemon. */
-function postRelay(
-  api: APIRequestContext,
-  orgSlug: string,
-  runId: string,
-  fenceToken: string,
-  body: string,
-  fromSeq = 1,
-) {
-  return api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
-    headers: {
-      "content-type": "application/x-ndjson",
-      "x-fence-token": fenceToken,
-      "x-relay-from": String(fromSeq),
-    },
-    data: body,
-  });
+/**
+ * Relay a canned NDJSON chunk body as the fake daemon: publish each line
+ * straight to the run's JetStream stream (`decopilot.stream.<runId>`), exactly
+ * as the desktop daemon now does — the old POST /chunks ingest route is gone.
+ *
+ * Returns the publisher's `lastSeq` (highest wire seq incl. the terminal
+ * `done`), the same value the old `/chunks` ack reported. Persistence is async:
+ * the always-on durable projector materializes parts + flips status shortly
+ * after, so callers must POLL the DB for durable effects.
+ */
+function relay(runId: string, fenceToken: string, body: string) {
+  return publishRelayBody({ runId, fenceToken, body });
 }
 
 /** Read back the folded messages via the real v2 read-path tool. */
@@ -316,15 +316,8 @@ test.describe("harness conformance — relay driver", () => {
       const messageId = `msg_conf_parts_${Date.now()}`;
       const text = `conformance-parts-marker-${Date.now()}`;
       const { body, lineCount } = buildTurnRelayBody({ messageId, text });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      expect(res.status()).toBe(200);
-      expect(await res.json()).toMatchObject({ ok: true, lastSeq: lineCount });
+      const { lastSeq } = await relay(runId, workItem.runFenceToken, body);
+      expect(lastSeq).toBe(lineCount);
 
       // Persistence is async (durable DBOS projector). Poll the DB + read path
       // until the projection lands.
@@ -347,16 +340,19 @@ test.describe("harness conformance — relay driver", () => {
     }
   });
 
-  test("relay persists the assistant message + flips status SYNCHRONOUSLY (no projector wait), ordered after the user message, never empty", async ({
+  test("relay persists the assistant message + flips status, ordered after the user message, never empty", async ({
     authedPage,
   }) => {
-    // The regression bundle: before the live-persistence fix the relay path
-    // wrote nothing — the assistant message + terminal status came only from
-    // the async projector, so a reload between stream-end and projection saw
-    // the message missing ("disappears"), the status stuck pending ("status
-    // too late"), and a content-less finish folded to an empty bubble. This
-    // case asserts ALL durable effects are present the instant the relay POST
-    // returns 200, with NO polling for the projector.
+    // The regression bundle: the relay path must, once projected, leave the
+    // assistant message present, the status terminal, the parts ordered
+    // (user before assistant — the "out of order" bug), and the assistant
+    // bubble non-empty (a content-less finish must not fold to a blank bubble).
+    //
+    // NOTE: with the direct-NATS projector, persistence is ASYNC — the daemon
+    // publishes to JetStream and the durable projector commits parts + flips
+    // status shortly after (the synchronous relay-side write was removed with
+    // the /chunks route). So these effects are asserted as eventually-consistent
+    // (polled), not the instant the relay returns.
     test.setTimeout(CASE_TIMEOUT_MS);
     const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
@@ -383,52 +379,45 @@ test.describe("harness conformance — relay driver", () => {
       const messageId = `msg_sync_${Date.now()}`;
       const text = `sync-persist-marker-${Date.now()}`;
       const { body, lineCount } = buildTurnRelayBody({ messageId, text });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      expect(res.status()).toBe(200);
-      expect(await res.json()).toMatchObject({ ok: true, lastSeq: lineCount });
+      const { lastSeq } = await relay(runId, workItem.runFenceToken, body);
+      expect(lastSeq).toBe(lineCount);
 
-      // ── No poll: the /chunks handler awaits the live consume (persistence +
-      // status flip) before responding, so everything is durable RIGHT NOW. ──
+      // The durable projector persists the assistant message + flips status
+      // asynchronously — poll until ALL the regression-bundle effects hold.
+      await expect(async () => {
+        // 1. The assistant message persisted: a text part + a finish anchor.
+        const parts = await fetchParts(db, runId);
+        const assistantKinds = parts
+          .filter((p) => p.role === "assistant")
+          .map((p) => p.kind);
+        expect(assistantKinds).toContain("text");
+        expect(assistantKinds).toContain("finish");
 
-      // 1. The assistant message persisted: a text part + a finish anchor.
-      const parts = await fetchParts(db, runId);
-      const assistantKinds = parts
-        .filter((p) => p.role === "assistant")
-        .map((p) => p.kind);
-      expect(assistantKinds).toContain("text");
-      expect(assistantKinds).toContain("finish");
+        // 2. The run status flipped to completed — the "status too late" bug.
+        expect(await fetchThreadStatus(db, runId)).toBe("completed");
 
-      // 2. The run status already flipped to completed (not waiting on the
-      //    projector) — the "status too late" bug.
-      expect(await fetchThreadStatus(db, runId)).toBe("completed");
+        // 3. Ordering: the user message's parts sort strictly before the
+        //    assistant's — the "out of order" bug. Assert at the DB level
+        //    (created_at), independent of any read-path cache.
+        const ordered = await db.query<{ role: string; created_at: string }>(
+          `SELECT role, MIN(created_at) AS created_at FROM thread_message_parts
+             WHERE run_id = $1 GROUP BY role ORDER BY created_at`,
+          [runId],
+        );
+        const roleOrder = ordered.rows.map((r) => r.role);
+        expect(roleOrder).toEqual(["user", "assistant"]);
 
-      // 3. Ordering: the user message's parts sort strictly before the
-      //    assistant's — the "out of order" bug. Assert at the DB level
-      //    (created_at), independent of any read-path cache.
-      const ordered = await db.query<{ role: string; created_at: string }>(
-        `SELECT role, MIN(created_at) AS created_at FROM thread_message_parts
-           WHERE run_id = $1 GROUP BY role ORDER BY created_at`,
-        [runId],
-      );
-      const roleOrder = ordered.rows.map((r) => r.role);
-      expect(roleOrder).toEqual(["user", "assistant"]);
-
-      // 4. Never empty: the folded assistant message has a renderable part
-      //    carrying the relayed text (no blank bubble).
-      const items = await listMessages(api, orgSlug, threadId);
-      const userIdx = items.findIndex((m) => m.role === "user");
-      const assistantIdx = items.findIndex((m) => m.role === "assistant");
-      expect(userIdx).toBeGreaterThanOrEqual(0);
-      expect(assistantIdx).toBeGreaterThan(userIdx);
-      const assistant = items[assistantIdx]!;
-      expect(assistant.parts.length).toBeGreaterThan(0);
-      expect(JSON.stringify(assistant.parts)).toContain(text);
+        // 4. Never empty: the folded assistant message has a renderable part
+        //    carrying the relayed text (no blank bubble).
+        const items = await listMessages(api, orgSlug, threadId);
+        const userIdx = items.findIndex((m) => m.role === "user");
+        const assistantIdx = items.findIndex((m) => m.role === "assistant");
+        expect(userIdx).toBeGreaterThanOrEqual(0);
+        expect(assistantIdx).toBeGreaterThan(userIdx);
+        const assistant = items[assistantIdx]!;
+        expect(assistant.parts.length).toBeGreaterThan(0);
+        expect(JSON.stringify(assistant.parts)).toContain(text);
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
       await daemon?.close();
       await db.end();
@@ -471,14 +460,7 @@ test.describe("harness conformance — relay driver", () => {
           text: "the weather is fine",
           title: newTitle,
         });
-        const res = await postRelay(
-          api,
-          orgSlug,
-          runId,
-          workItem.runFenceToken,
-          body,
-        );
-        expect(res.status()).toBe(200);
+        await relay(runId, workItem.runFenceToken, body);
         // Auto-title persistence is async (durable projector). The projector is
         // idempotent (writes the title exactly once), so the value becomes
         // stable once projected — poll until it lands.
@@ -511,14 +493,7 @@ test.describe("harness conformance — relay driver", () => {
           text: "an answer",
           title: `Should Not Apply ${Date.now()}`,
         });
-        const res = await postRelay(
-          api,
-          orgSlug,
-          runId,
-          workItem.runFenceToken,
-          body,
-        );
-        expect(res.status()).toBe(200);
+        await relay(runId, workItem.runFenceToken, body);
         // Title interceptor gates on the thread's CURRENT DB title (read at
         // relay time) != default, so the user's title survives. (Here that
         // equals the title set at thread creation — nothing renames between
@@ -577,14 +552,7 @@ test.describe("harness conformance — relay driver", () => {
         text: "tokens counted",
         usage,
       });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      expect(res.status()).toBe(200);
+      await relay(runId, workItem.runFenceToken, body);
 
       // Persistence is async (durable projector). Poll the DB + read path until
       // the usage-bearing finish anchor projects.
@@ -644,14 +612,7 @@ test.describe("harness conformance — relay driver", () => {
         messageId: `msg_conf_complete_${Date.now()}`,
         text: "done",
       });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      expect(res.status()).toBe(200);
+      await relay(runId, workItem.runFenceToken, body);
       // The terminal status is written by the async durable projector, so poll
       // until the run transitions to completed.
       await expect(async () => {
@@ -694,17 +655,9 @@ test.describe("harness conformance — relay driver", () => {
         code: "harness_error",
         message: "simulated harness failure",
       });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      // The relay was delivered in full; the cluster acks even on a consume
-      // failure (retrying can't fix it). The run is transitioned to failed by
-      // the kernel's onError path.
-      expect(res.status()).toBe(200);
+      // The relay is published in full; an in-band error line transitions the
+      // run to failed via the kernel's onError path (in the projector).
+      await relay(runId, workItem.runFenceToken, body);
       // The failed transition + error/finish parts are written by the async
       // durable projector, so poll until the run reaches the terminal state.
       await expect(async () => {
@@ -759,14 +712,7 @@ test.describe("harness conformance — relay driver", () => {
         text: "first answer",
         codingAgentSessionId: sessionId,
       });
-      const res1 = await postRelay(
-        api,
-        orgSlug,
-        t1.runId,
-        t1.workItem.runFenceToken,
-        body,
-      );
-      expect(res1.status()).toBe(200);
+      await relay(t1.runId, t1.workItem.runFenceToken, body);
       // Turn 1's terminal status + the folded session id are written by the
       // async durable projector. Turn 1 must be terminal AND its session id must
       // be folded onto the assistant message metadata (so the next turn's
@@ -831,32 +777,22 @@ test.describe("harness conformance — relay driver", () => {
         text: "idempotent answer",
       });
 
-      // First POST: full prefix.
-      const res1 = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      expect(res1.status()).toBe(200);
-      expect(await res1.json()).toMatchObject({ ok: true, lastSeq: lineCount });
-      const countAfterFirst = await fetchPartRowIdCount(db, runId);
-      expect(countAfterFirst).toBeGreaterThanOrEqual(2);
+      // First relay: full prefix. The projector persists asynchronously, so
+      // poll until the parts land, then snapshot the row count.
+      const { lastSeq } = await relay(runId, workItem.runFenceToken, body);
+      expect(lastSeq).toBe(lineCount);
+      let countAfterFirst = 0;
+      await expect(async () => {
+        countAfterFirst = await fetchPartRowIdCount(db, runId);
+        expect(countAfterFirst).toBeGreaterThanOrEqual(2);
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
 
-      // Second POST: identical full prefix (reconnect replay). A terminal
-      // session may already be settled; the relay re-opens a fresh session and
-      // re-consumes the prefix — parts are id-deduped, so the row count is
-      // unchanged.
-      const res2 = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      // The replay is acked (200) — the run is idempotently re-driven.
-      expect(res2.status()).toBe(200);
+      // Second relay: identical full prefix (reconnect replay). JetStream
+      // `Nats-Msg-Id` dedup drops the duplicate lines server-side, and parts are
+      // id-deduped (ON CONFLICT id DO NOTHING) — so the row count is unchanged.
+      await relay(runId, workItem.runFenceToken, body);
+      // Give the projector a window to (not) add rows, then assert no growth.
+      await sleep(3_000);
       const countAfterSecond = await fetchPartRowIdCount(db, runId);
       expect(countAfterSecond).toBe(countAfterFirst);
     } finally {
@@ -867,12 +803,13 @@ test.describe("harness conformance — relay driver", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Negative / authz conformance — the chunk-relay endpoint contract.
+// Negative / authz conformance — the direct-NATS relay contract.
 //
 // These overlap link-ingest.spec.ts but are kept in the conformance suite as
 // the relay-driver's "rejection" cases so the case list is self-contained.
-// They seed the thread row directly (no dispatch needed — they assert the
-// endpoint's gate, not the kernel).
+// They seed the thread row directly (no dispatch needed) and assert the
+// projector's gates (fence mismatch skipped, unknown run never projected)
+// at the DB level — the old HTTP route's 409/404 responses are gone.
 // ---------------------------------------------------------------------------
 
 async function seedV2Thread(
@@ -903,11 +840,13 @@ async function seedV2Thread(
 }
 
 test.describe("harness conformance — relay endpoint rejections", () => {
-  test("stale fence token rejected 409 and no parts land", async ({
+  test("mismatched fence stream is skipped and no parts land", async ({
     authedPage,
   }) => {
-    const { page, user, orgSlug } = authedPage;
-    const api = page.context().request;
+    // Fence enforcement moved from the (deleted) HTTP route to the projector:
+    // `shouldSkipProjection` skips a stream whose fence differs from the run's
+    // current run_fence_token, so a stale-fence relay commits nothing.
+    const { user, orgSlug } = authedPage;
     const db = await connectDevDb();
     try {
       const orgId = await orgIdForSlug(db, orgSlug);
@@ -920,54 +859,44 @@ test.describe("harness conformance — relay endpoint rejections", () => {
         messageId: `msg_conf_stale_${Date.now()}`,
         text: "should not land",
       });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        `fence_stale_${Date.now()}`,
-        body,
-      );
-      expect(res.status()).toBe(409);
-      expect(await res.json()).toMatchObject({ error: "fenced" });
+      await relay(runId, `fence_stale_${Date.now()}`, body);
+      // Give the projector a window to observe + skip the mismatched stream,
+      // then assert nothing was committed.
+      await sleep(4_000);
       expect(await fetchParts(db, runId)).toHaveLength(0);
     } finally {
       await db.end();
     }
   });
 
-  test("foreign-org runId rejected 404", async ({ authedPage }) => {
-    // A run whose thread does not exist in the path org is indistinguishable
-    // from "not found" — 404 before any fence/cancel lookup.
-    const { page, orgSlug } = authedPage;
-    const api = page.context().request;
+  test("relayed stream for an unknown run persists nothing", async () => {
+    // There is no cluster HTTP route to 404 a foreign/missing run anymore;
+    // authz is enforced at the NATS publish layer (the daemon's scoped creds).
+    // A stream for a runId with no thread row can't resolve an org, so the
+    // projector consumer never schedules a projection — nothing is persisted.
     const db = await connectDevDb();
     try {
+      const runId = `thrd_does_not_exist_${Date.now()}`;
       const { body } = buildTurnRelayBody({
         messageId: `msg_conf_foreign_${Date.now()}`,
-        text: "should 404",
+        text: "should not land",
       });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        `thrd_does_not_exist_${Date.now()}`,
-        `any_${Date.now()}`,
-        body,
-      );
-      expect(res.status()).toBe(404);
-      expect(await res.json()).toMatchObject({ error: "not found" });
+      await relay(runId, `any_${Date.now()}`, body);
+      await sleep(4_000);
+      expect(await fetchParts(db, runId)).toHaveLength(0);
     } finally {
       await db.end();
     }
   });
 
-  test("resumed relay with no parked session (x-relay-from > 1) opens fresh (no 410; idempotent resend)", async ({
+  test("a full-prefix relay lands (idempotent resend, no session affinity)", async ({
     authedPage,
   }) => {
-    // The 410 stub is gone: a resumed relay with no parked session opens a fresh
-    // session and accepts the lines (a full-prefix resend is idempotent, §10),
-    // instead of dead-ending the daemon.
-    const { page, user, orgSlug } = authedPage;
-    const api = page.context().request;
+    // The old route parked an in-memory session and 410'd a resume that found
+    // none. The direct-NATS path has no session affinity: a full-prefix relay
+    // is always idempotent (JetStream `Nats-Msg-Id` dedup) and the projector
+    // materializes it from seq 1.
+    const { user, orgSlug } = authedPage;
     const db = await connectDevDb();
     try {
       const orgId = await orgIdForSlug(db, orgSlug);
@@ -981,12 +910,9 @@ test.describe("harness conformance — relay endpoint rejections", () => {
         messageId: `msg_conf_lost_${Date.now()}`,
         text: "resumed turn lands",
       });
-      // x-relay-from > 1 with no in-memory session for this runId.
-      const res = await postRelay(api, orgSlug, runId, fenceToken, body, 5);
-      expect(res.status()).toBe(200);
-      expect(await res.json()).toMatchObject({ ok: true });
+      await relay(runId, fenceToken, body);
       // Parts are written by the async durable projector, so poll until the
-      // resumed relay's lines land.
+      // relay's lines land.
       await expect(async () => {
         expect((await fetchParts(db, runId)).length).toBeGreaterThan(0);
       }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
@@ -1071,14 +997,7 @@ test.describe("harness conformance — pull-seam body offload", () => {
         messageId: `msg_conf_offload_${Date.now()}`,
         text: "offloaded-turn-answer",
       });
-      const res = await postRelay(
-        api,
-        orgSlug,
-        runId,
-        workItem.runFenceToken,
-        body,
-      );
-      expect(res.status()).toBe(200);
+      await relay(runId, workItem.runFenceToken, body);
       // Parts + terminal status are written by the async durable projector, so
       // poll until the run projects and completes.
       await expect(async () => {

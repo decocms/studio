@@ -39,7 +39,7 @@ export interface TunnelLinkDaemon {
   close(): Promise<void>;
 }
 
-async function openNats(): Promise<NatsConnection> {
+export async function openNats(): Promise<NatsConnection> {
   // CI provisions an unauthenticated NATS (no NATS_CREDS). A local `deco
   // services` / dev stack runs NATS in operator mode, where the same creds file
   // the cluster uses (NATS_CREDS) is required — honor it so the relay suite is
