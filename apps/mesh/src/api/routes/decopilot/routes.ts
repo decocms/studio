@@ -905,5 +905,58 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     }
   });
 
+  // ============================================================================
+  // Subtask Stream Endpoint — tail a backgrounded subtask's per-job subject
+  // ============================================================================
+  //
+  // A backgrounded `subtask` runs off the thread and publishes its live run to
+  // `decopilot.stream.<jobId>` (NOT the thread's subject), so the subtask card's
+  // panel can tail it without colliding with the thread's own single-writer
+  // stream. `deliverPolicy: "all"` replays the run from its start, since the
+  // panel typically opens after the subtask was kicked off. The jobId must be a
+  // `bgtool:<threadId>:…` id for THIS thread — that scoping is the authz.
+  app.get("/:org/decopilot/threads/:threadId/jobs/:jobId/stream", async (c) => {
+    try {
+      const { taskId } = await validateThreadAccess(c);
+      const jobId = c.req.param("jobId");
+      if (!jobId || !jobId.startsWith(`bgtool:${taskId}:`)) {
+        return c.body(null, 404);
+      }
+
+      const tailChunkStream = await streamBuffer.createTailStream(
+        jobId,
+        c.req.raw.signal,
+        { deliverPolicy: "all" },
+      );
+      if (!tailChunkStream) return c.body(null, 204);
+
+      const tailStream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          const reader = tailChunkStream.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              writer.write(value);
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        },
+      });
+
+      return wrapWithSseKeepalive(
+        createUIMessageStreamResponse({
+          stream: tailStream,
+          consumeSseStream: consumeStream,
+        }),
+      );
+    } catch (err) {
+      if (err instanceof HTTPException) throw err;
+      console.error("[decopilot:subtask-stream] Error", stringifyError(err));
+      return c.body(null, 500);
+    }
+  });
+
   return app;
 }

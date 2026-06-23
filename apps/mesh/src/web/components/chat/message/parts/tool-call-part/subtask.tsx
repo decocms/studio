@@ -15,6 +15,9 @@ import { ArrowUpRight, Tool02, Users03 } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
 import type { SubtaskToolPart } from "../../../types.ts";
 import { useSubtaskRun } from "../../../subtask-runs-context.tsx";
+import { useChatTask } from "../../../context.tsx";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useSubtaskStream } from "./use-subtask-stream.ts";
 import { MemoizedMarkdown } from "../../../markdown.tsx";
 import { MessageUsageStats } from "../../../usage-stats.tsx";
 import type { UsageStats as UsageStatsType } from "@/web/lib/usage-utils.ts";
@@ -137,6 +140,7 @@ function SubtaskCard({
   summary,
   state,
   usage,
+  onOpenChange,
   children,
 }: {
   icon: ReactNode;
@@ -144,9 +148,15 @@ function SubtaskCard({
   summary?: ReactNode;
   state: "loading" | "error" | "idle";
   usage?: UsageStatsType | null;
+  /** Notified when the panel opens/closes — lets a caller gate a live tail. */
+  onOpenChange?: (open: boolean) => void;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
   const isLoading = state === "loading";
   const isError = state === "error";
 
@@ -349,18 +359,34 @@ function BackgroundSubtaskBody({
   );
 }
 
-/** Backgrounded subtask: a row whose panel shows its live run. */
+/** Backgrounded subtask: a row whose panel tails the subagent's OWN live stream
+ *  (`…/jobs/:jobId/stream`) while the panel is open, falling back to the
+ *  persisted nested rows once the run completes / the live buffer is purged. */
 function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
   const jobId = (part.output as { jobId?: string } | undefined)?.jobId;
-  const nested = useSubtaskRun(jobId);
+  const { taskId: threadId } = useChatTask();
+  const { org } = useProjectContext();
+  const [open, setOpen] = useState(false);
+
+  // Persisted nested run (after the reaction refetch brings the rows in).
+  const persisted = useSubtaskRun(jobId);
+  // Live tail — only while the panel is open.
+  const live = useSubtaskStream({
+    orgSlug: org.slug,
+    threadId,
+    jobId,
+    enabled: open,
+  });
+
+  const liveItems = live.messages.flatMap((m) => m.parts ?? []);
+  const persistedItems = persisted.flatMap((m) => m.parts ?? []);
+  const items = liveItems.length > 0 ? liveItems : persistedItems;
+
   const prompt = part.input?.prompt ?? "No prompt provided";
-
-  const items = nested.flatMap((m) => m.parts ?? []);
-  const streaming =
-    items.length === 0 ||
-    items.some((p) => (p as { state?: string }).state === "streaming");
-
   const summary = prompt.length > 120 ? `${prompt.slice(0, 120)}…` : prompt;
+  // "Running" until the completed run's rows are persisted (the reaction-turn
+  // refetch). The live tail's own streaming flag drives the panel body.
+  const running = persisted.length === 0;
 
   return (
     <SubtaskCard
@@ -375,13 +401,14 @@ function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
       }
       title="Subtask"
       summary={summary}
-      state={streaming ? "loading" : "idle"}
+      state={running ? "loading" : "idle"}
+      onOpenChange={setOpen}
     >
       <BackgroundSubtaskBody
         jobId={jobId}
         prompt={prompt}
         items={items}
-        streaming={streaming}
+        streaming={live.streaming || running}
       />
     </SubtaskCard>
   );

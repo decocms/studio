@@ -31,6 +31,12 @@ import {
   type GenerateImageInput,
   type GenerateImageResult,
 } from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
+import { runAgentLoop } from "./run-agent-loop";
+import { resolveSubagent } from "./resolve-subagent";
+import { createSideChannelWriter } from "@decocms/harness/side-channel-writer";
+import { ingestRun } from "@/api/routes/decopilot/ingest-run";
+import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
+import type { UIMessageChunk } from "ai";
 
 // Re-export from the side-effect-free `queue-names` module so `index.ts` can
 // reference the name without importing this module (which registers a workflow).
@@ -67,6 +73,10 @@ export interface BackgroundToolRuntime {
   /** Enqueue via a decoupled `DBOSClient` — `DBOS.startWorkflow` is illegal
    *  inside the agent-loop step that fires the backgroundable tool. */
   systemDatabaseUrl: string;
+  /** Publishes a backgrounded subtask's live run to its own JetStream subject
+   *  (`decopilot.stream.<jobId>`), so the client can tail it without touching
+   *  the thread's single-writer stream. */
+  streamBuffer: Pick<StreamBuffer, "publishRawChunk" | "publishDone">;
 }
 
 let runtime: BackgroundToolRuntime | null = null;
@@ -164,11 +174,6 @@ async function requireMeshContext(
   }
   return meshCtx;
 }
-
-// Subtask completion nudge — shared by the workflow subtask producer and the
-// inline defer-to-background path (harness-deps).
-const SUBTASK_DONE_NUDGE =
-  "The background subtask you started has completed; its result is now in the conversation above. Review it and continue with the user's request — do NOT call subtask again for this.";
 
 /** Resolve a thread row's dispatch target + harness (hosted vs desktop link). */
 function resolveThreadTarget(
@@ -279,78 +284,183 @@ const PRODUCERS: Record<string, BackgroundProducer> = {
     },
   },
 
-  // A backgrounded `subtask` runs as its OWN serialized run on the parent thread
-  // (`isSubagent`, capped steps). The thread-gate's per-thread concurrency=1
-  // keeps its stream from colliding with the main turn; `reactStep` (enqueued
-  // after, FIFO) resumes the parent once it terminates and its messages land.
+  // A backgrounded `subtask` runs its subagent loop OFF the thread as a plain
+  // workflow step (like generate_image), so it never occupies the per-thread
+  // gate — the user keeps chatting while it works. Its report is delivered as a
+  // message nested under the subtask card AND fed into the reaction nudge so the
+  // parent model can actually use it (the inline path returns it as tool output;
+  // this path has to hand it over explicitly).
   subtask: {
     run: async (job) => {
-      const cfg = await DBOS.runStep(
-        () => resolveSubagentRunConfigStep(job.ctx),
-        { name: "resolveSubagentRun" },
+      // The step streams the subagent live to `decopilot.stream.<jobId>` and
+      // persists its run (nested under the subtask card). It returns the report
+      // so we can hand it to the parent — the inline path returns it as the
+      // tool output; this path has to feed it into the reaction explicitly.
+      const { report, finishReason, models } = await DBOS.runStep(
+        () => runSubtaskStep(job.ctx),
+        { name: "runSubtask" },
       );
-      await enqueueThreadRun(
-        {
-          threadId: job.ctx.threadId,
-          request: {
-            messages: [
-              {
-                id: `${job.ctx.jobId}:prompt`,
-                role: "user",
-                metadata: { internal: true },
-                parts: [{ type: "text", text: cfg.prompt }],
-              },
-              // biome-ignore lint/suspicious/noExplicitAny: ChatMessage union built from the cluster tool set
-            ] as any,
-            models: cfg.models,
-            agent: { id: cfg.targetAgentId },
-            temperature: job.ctx.temperature,
-            toolApprovalLevel: "auto",
-            mode: "default",
-            organizationId: job.ctx.orgId,
-            userId: job.ctx.userId,
-            taskId: job.ctx.threadId,
-            branch: job.ctx.branch ?? undefined,
-            target: cfg.target,
-            harnessId: cfg.harnessId ?? undefined,
-            isSubagent: true,
-            // Nests the run's messages under the subtask card (`output.jobId`).
-            subtaskJobId: job.ctx.jobId,
-            maxAgentSteps: SUBAGENT_STEP_LIMIT,
-          },
-          source: "background-tool",
-        },
-        { workflowID: `${job.ctx.jobId}:subagent` },
-      );
-      return { models: cfg.models, reactionNudge: SUBTASK_DONE_NUDGE };
+      const hasReport = report.trim().length > 0;
+      const reactionNudge = hasReport
+        ? `The background subtask you started has completed. Its result:\n\n${report}\n\nUse this to continue with the user's request — do NOT call subtask again for this.`
+        : `The background subtask you started completed but produced no usable output${finishReason === "length" ? " (it hit its step limit)" : ""}. Continue with the user's request without calling subtask again for this.`;
+      return { models, reactionNudge };
     },
   },
 };
 
-/** Resolve a backgrounded subtask's serialized run: models, target agent
- *  (self-clone when `agent_id` omitted/== caller), target + harness from the
- *  parent thread. A `DBOS.runStep` so the reads are journaled. */
-async function resolveSubagentRunConfigStep(
+/** Collect the assistant text from a folded final message. */
+function extractAssistantText(
+  message: { parts?: unknown[] } | undefined,
+): string {
+  if (!message?.parts) return "";
+  return message.parts
+    .map((p) =>
+      p && typeof p === "object" && (p as { type?: string }).type === "text"
+        ? ((p as { text?: string }).text ?? "")
+        : "",
+    )
+    .filter((t) => t.trim().length > 0)
+    .join("")
+    .trim();
+}
+
+/**
+ * Run a backgrounded subtask's subagent loop OFF the thread, streaming it live
+ * to its OWN JetStream subject (`decopilot.stream.<jobId>`) and persisting its
+ * messages (tagged `subtaskJobId`) — keyed by `jobId`, never the thread's id, so
+ * it neither blocks the per-thread gate nor collides with the thread's own
+ * stream/fence. Reuses the shared `ingestRun` publish+persist unit; the client's
+ * per-job tail folds it into the subtask card. Returns the report for the
+ * reaction nudge. A plain workflow step → memoized on replay.
+ */
+async function runSubtaskStep(
   ctx: BackgroundToolContext,
-): Promise<{
-  prompt: string;
-  models: ModelsConfig;
-  targetAgentId: string;
-  target: DispatchTarget;
-  harnessId: HarnessId | null;
-}> {
+): Promise<{ report: string; finishReason: string; models: ModelsConfig }> {
   const meshCtx = await requireMeshContext(ctx);
+  const organization = meshCtx.organization;
+  if (!organization) {
+    throw new Error(
+      `[background-tool] organization context unavailable for subtask (org ${ctx.orgId})`,
+    );
+  }
   const input = ctx.input as { prompt: string; agent_id?: string };
   const isSelf = !input.agent_id || input.agent_id === ctx.agentId;
-  const targetAgentId = isSelf ? ctx.agentId : input.agent_id!;
-  const parent = await meshCtx.storage.threads.get(ctx.threadId);
+  const targetId = isSelf ? ctx.agentId : input.agent_id!;
   const models = await resolveReactionModels(meshCtx);
-  return {
-    prompt: input.prompt,
-    models,
-    targetAgentId,
-    ...resolveThreadTarget(parent),
+  const provider = await meshCtx.aiProviders.activate(
+    models.credentialId,
+    ctx.orgId,
+  );
+  // runAgentLoop wants the harness ModelsConfig (per-slot `credentialId`); the
+  // cluster `resolveReactionModels` shape carries it at top level for `thinking`.
+  const harnessModels = {
+    thinking: { ...models.thinking, credentialId: models.credentialId },
+    ...(models.image ? { image: models.image } : {}),
+    ...(models.deepResearch ? { deepResearch: models.deepResearch } : {}),
   };
+  const { mcpClient, targetRef } = await resolveSubagent(
+    meshCtx,
+    ctx.orgId,
+    targetId,
+    { superUser: isSelf },
+  );
+  // Nested tool chunks the subagent emits go to this discarded side channel;
+  // the run's own message stream (text + tool calls) flows through
+  // `toUIMessageStream` into the per-job subject below.
+  const sideChannel = createSideChannelWriter();
+  // Wire the run's abort to the thread-cancel path so cancelling the thread
+  // stops the subtask too (the registry is fanned out over NATS).
+  const abort = registerBackgroundAbort(ctx.threadId);
+  let report = "";
+  let finishReason = "stop";
+  try {
+    const handle = await runAgentLoop({
+      kind: "subagent",
+      ctx: meshCtx,
+      organization,
+      virtualMcp: targetRef,
+      mcpClient: mcpClient as never,
+      provider,
+      models: harnessModels,
+      messages: [{ role: "user", content: input.prompt }],
+      abortSignal: abort.signal,
+      stepLimit: SUBAGENT_STEP_LIMIT,
+      toolApprovalLevel: "auto",
+      planMode: false,
+      writer: sideChannel.writer,
+      subtaskParams: {
+        provider,
+        organization,
+        models: harnessModels,
+        needsApproval: false,
+      },
+      passthroughClient: mcpClient as never,
+    });
+
+    // Stamp `subtaskJobId` on the run's messages so the client nests them under
+    // the originating subtask card.
+    let msgN = 0;
+    const uiStream = handle.result.toUIMessageStream({
+      generateMessageId: () => `${ctx.jobId}:msg:${msgN++}`,
+      messageMetadata: ({ part }: { part: { type: string } }) =>
+        part.type === "start" ? { subtaskJobId: ctx.jobId } : undefined,
+    }) as ReadableStream<UIMessageChunk>;
+
+    let seq = 0;
+    async function* seqChunks(): AsyncGenerator<{
+      seq: number;
+      chunk: UIMessageChunk;
+    }> {
+      const reader = uiStream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          yield { seq: ++seq, chunk: value };
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    }
+
+    // Persist under runId=jobId but thread_id=the originating thread, so the
+    // rows belong to the thread yet group under the job for nesting.
+    const emitter = new PartEmitter({
+      storage: meshCtx.storage.threads.messageParts(),
+      orgId: ctx.orgId,
+      threadId: ctx.threadId,
+      runId: ctx.jobId,
+    });
+
+    await ingestRun(
+      { runId: ctx.jobId, fenceToken: ctx.jobId, chunks: seqChunks() },
+      {
+        streamBuffer: requireRuntime().streamBuffer,
+        persistence: emitter,
+        title: {
+          threadId: ctx.threadId,
+          currentThreadTitle: undefined,
+          // The job stream never sets the thread title.
+          persistTitle: async () => {},
+        },
+        hooks: {
+          onFinish: async (message, fr) => {
+            const text = extractAssistantText(
+              message as { parts?: unknown[] } | undefined,
+            );
+            if (text) report = text;
+            if (fr) finishReason = fr;
+          },
+        },
+      },
+    );
+    return { report, finishReason, models };
+  } finally {
+    sideChannel.close();
+    unregisterBackgroundAbort(ctx.threadId, abort);
+    await mcpClient.close().catch(() => {});
+  }
 }
 
 /** `generate_image` heavy body, memoized as the `runHeavyTool` step so a replay

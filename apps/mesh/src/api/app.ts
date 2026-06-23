@@ -1542,6 +1542,9 @@ export async function createApp(options: CreateAppOptions = {}) {
       getSettings().databaseUrl,
       getSettings().databasePgSsl,
     ),
+    // A backgrounded subtask publishes its live run to `decopilot.stream.<jobId>`
+    // through this buffer (off the thread's own stream).
+    streamBuffer,
   });
 
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
