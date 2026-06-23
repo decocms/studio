@@ -1,5 +1,6 @@
 import type { NatsConnection } from "@nats-io/nats-core";
 import type { WorkItem } from "../links/link-work-item";
+import type { DirectNatsPublisher } from "./direct-nats-publisher";
 import {
   handleLocalDispatch,
   relayWorkItemFailure,
@@ -15,6 +16,8 @@ export interface LinkWorkItemDispatchInput {
   fetchImpl?: typeof fetch;
   outbox: Outbox;
   getNatsConnection?: () => NatsConnection | null;
+  /** Test seam threaded through to both relay paths. */
+  relayPublisher?: DirectNatsPublisher;
 }
 
 function deriveHandle(item: WorkItem): string {
@@ -32,19 +35,14 @@ function deriveHandle(item: WorkItem): string {
 
 async function relayClaimedWorkItemFailure(
   input: LinkWorkItemDispatchInput,
-  signal: AbortSignal,
+  nc: NatsConnection,
   item: WorkItem,
   code: string,
   message: string,
 ): Promise<void> {
   await relayWorkItemFailure(
     item,
-    {
-      clusterBaseUrl: input.clusterBaseUrl,
-      getClusterToken: input.getAccessToken,
-      fetchImpl: input.fetchImpl,
-      signal,
-    },
+    { natsConnection: nc, relayPublisher: input.relayPublisher },
     code,
     message,
   );
@@ -60,6 +58,15 @@ export async function dispatchLinkWorkItem(
     `[link-work] work item runId=${item.runId} threadId=${item.threadId} handle=${handle}`,
   );
 
+  // Derive the NATS connection once — both relay paths (expiry/ensureSandbox
+  // failures and the streaming chunk relay) publish directly to JetStream.
+  const nc = input.getNatsConnection?.() ?? null;
+  if (!nc) {
+    throw new Error(
+      "[link-work] NATS connection unavailable for direct relay publish",
+    );
+  }
+
   const mcp = (item.harnessInput as { mcp?: { expiresAt?: number } }).mcp;
   if (typeof mcp?.expiresAt === "number" && mcp.expiresAt <= Date.now()) {
     console.warn(
@@ -67,12 +74,7 @@ export async function dispatchLinkWorkItem(
     );
     await relayWorkItemFailure(
       item,
-      {
-        clusterBaseUrl: input.clusterBaseUrl,
-        getClusterToken: input.getAccessToken,
-        fetchImpl: input.fetchImpl,
-        signal,
-      },
+      { natsConnection: nc, relayPublisher: input.relayPublisher },
       "work_item_expired",
       "work item credentials expired before the daemon claimed it — send the message again",
     );
@@ -115,19 +117,12 @@ export async function dispatchLinkWorkItem(
     );
     await relayClaimedWorkItemFailure(
       input,
-      signal,
+      nc,
       item,
       "sandbox_start_failed",
       "desktop sandbox failed to start for this run; send the message again",
     );
     return;
-  }
-
-  const nc = input.getNatsConnection?.() ?? null;
-  if (!nc) {
-    throw new Error(
-      "[link-work] NATS connection unavailable for direct relay publish",
-    );
   }
 
   const releaseDispatch = input.provider.acquireDispatch(handle);
@@ -142,6 +137,7 @@ export async function dispatchLinkWorkItem(
       signal: AbortSignal.any([signal, runAc.signal]),
       outbox: input.outbox,
       natsConnection: nc,
+      relayPublisher: input.relayPublisher,
     });
   } catch (err) {
     console.error(
@@ -150,7 +146,7 @@ export async function dispatchLinkWorkItem(
     );
     await relayClaimedWorkItemFailure(
       input,
-      signal,
+      nc,
       item,
       "local_dispatch_failed",
       "desktop harness dispatch failed before producing a terminal result; send the message again",

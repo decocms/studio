@@ -803,14 +803,29 @@ test("work dispatch is bound to runLifetimeSignal, not the per-session signal", 
   const runLifetimeAc = new AbortController();
   let capturedSignal: AbortSignal | undefined;
 
-  // When ensureSandbox throws, dispatchLinkWorkItem calls relayClaimedWorkItemFailure
-  // with the `signal` argument it received, which flows through relayWorkItemFailure
-  // into fetchImpl as RequestInit.signal — giving us a clean seam to capture it.
-  const failProvider: DesktopSandboxProvider = {
+  // handleLocalDispatch sends the run's composite signal to the sandbox
+  // `/_sandbox/dispatch` fetch (RequestInit.signal) — a clean seam to capture
+  // it. The chunk relay now publishes to NATS (injected fake publisher), so it
+  // never hits fetchImpl. We hold the dispatch SSE open until both signal
+  // assertions are made, so the captured signal is the live run signal.
+  const releaseDispatch = deferred<void>();
+  const okProvider: DesktopSandboxProvider = {
     ...provider,
-    ensureSandbox: async () => {
-      throw new Error("sandbox-not-available");
+    getDaemonToken: () => "daemon-token",
+  };
+
+  const relayLines: Array<{ runId: string }> = [];
+  const fakeRelayPublisher = {
+    publishLine: async (i: {
+      runId: string;
+      line: { event: { type: string } };
+    }) => {
+      relayLines.push(i);
+      return (i.line.event.type === "done" ? "terminal" : "published") as
+        | "published"
+        | "terminal";
     },
+    publishDone: async () => {},
   };
 
   const validWorkItem = {
@@ -820,16 +835,34 @@ test("work dispatch is bound to runLifetimeSignal, not the per-session signal", 
     userId: "user-1",
     runFenceToken: "fence-1",
     orgSlug: "my-org",
-    harnessInput: {},
+    harnessInput: {
+      agent: { id: "agent-1" },
+      mcp: { expiresAt: Date.now() + 60_000 },
+    },
   };
 
   const connectionInput = makeBaseTunnelInput({
-    provider: failProvider,
+    provider: okProvider,
     runLifetimeSignal: runLifetimeAc.signal,
-    fetchImpl: ((_url, init) => {
-      capturedSignal = init?.signal ?? undefined;
-      // Return a 200 so relayWorkItemFailure doesn't throw.
-      return Promise.resolve(new Response(null, { status: 200 }));
+    getNatsConnection: () => ({}) as unknown as NatsConnection,
+    relayPublisher: fakeRelayPublisher,
+    fetchImpl: (async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/_sandbox/dispatch")) {
+        capturedSignal = init?.signal ?? undefined;
+        // Keep the SSE body pending until the test releases it, so the run's
+        // signal stays live while we assert on it.
+        await releaseDispatch.promise;
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('data: {"type":"done"}\n\n'));
+              c.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      throw new Error(`unexpected fetch ${url}`);
     }) as typeof fetch,
   });
 
@@ -860,6 +893,9 @@ test("work dispatch is bound to runLifetimeSignal, not the per-session signal", 
   // Aborting the run-lifetime signal DOES abort the run's signal.
   runLifetimeAc.abort();
   expect(capturedSignal!.aborted).toBe(true);
+
+  // Let the now-aborted dispatch unwind so no work dangles past the test.
+  releaseDispatch.resolve();
 });
 
 test("work dispatch receives the active NATS connection via getNatsConnection", async () => {
@@ -911,8 +947,20 @@ test("work dispatch receives the active NATS connection via getNatsConnection", 
     getDaemonToken: () => "daemon-token",
   };
 
+  // The chunk relay publishes to NATS — inject a fake publisher so a real
+  // JetStream client is never built from the bare fake connection. This test
+  // only asserts the nc null-guard passes (i.e. `/_sandbox/dispatch` is hit).
+  const fakeRelayPublisher = {
+    publishLine: async () => "published" as const,
+    publishDone: async () => {},
+  };
+
   const handle = await connectToClusterTunnel(
-    makeBaseTunnelInput({ fetchImpl, provider: providerWithToken }),
+    makeBaseTunnelInput({
+      fetchImpl,
+      provider: providerWithToken,
+      relayPublisher: fakeRelayPublisher,
+    }),
     {
       fetchSession: async () => sessionWithoutAuth,
       connectNats: async () => fakeNatsConnection,

@@ -42,12 +42,15 @@
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
+import { jetstream } from "@nats-io/jetstream";
 import type { NatsConnection } from "@nats-io/nats-core";
 import type { WorkItem } from "../links/link-work-item";
+import { relayDispatchSSEAsChunkStream } from "./chunk-relay";
 import {
-  type RelayPostResult,
-  relayDispatchSSEAsChunkStream,
-} from "./chunk-relay";
+  createDirectNatsPublisher,
+  type DirectNatsPublisher,
+  publishRelayBodyToNats,
+} from "./direct-nats-publisher";
 import type { Outbox } from "./outbox";
 
 const DISPATCH_START_TIMEOUT_MS = 15_000;
@@ -66,12 +69,12 @@ const RELAY_MAX_TIMEOUT_MS =
 
 /**
  * Relay a synthesized terminal failure for a work item that cannot run
- * (expired credentials, etc.) over the normal /chunks channel, so the
+ * (expired credentials, etc.) by publishing directly to JetStream, so the
  * cluster kernel persists the failure and the gate unblocks.
  *
- * Posts exactly two NDJSON relay lines:
- *   seq 1 — error event with `code` + `message`
- *   seq 2 — done event
+ * Publishes exactly:
+ *   seq 1 — error event (converted to `{p:{type:"error",errorText}}`)
+ *   done  — `{done:true,finalSeq:1}`
  *
  * Security note: `code` and `message` are informational strings — they must
  * never contain the fence token, API keys, or any other secret from the work
@@ -79,39 +82,26 @@ const RELAY_MAX_TIMEOUT_MS =
  */
 export async function relayWorkItemFailure(
   work: WorkItem,
-  deps: Pick<
-    LocalDispatchDeps,
-    "clusterBaseUrl" | "getClusterToken" | "fetchImpl" | "signal"
-  >,
+  deps: {
+    natsConnection: NatsConnection;
+    relayPublisher?: DirectNatsPublisher;
+  },
   code: string,
   message: string,
 ): Promise<void> {
-  const fetcher = deps.fetchImpl ?? fetch;
-  const clusterToken = await deps.getClusterToken();
-  const body =
-    JSON.stringify({ seq: 1, event: { type: "error", code, message } }) +
-    "\n" +
-    JSON.stringify({ seq: 2, event: { type: "done" } }) +
-    "\n";
-  const res = await fetcher(
-    `${deps.clusterBaseUrl}/api/${work.orgSlug}/links/runs/${work.runId}/chunks`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${clusterToken}`,
-        "x-fence-token": work.runFenceToken,
-        "content-type": "application/x-ndjson",
-        "x-relay-from": "1",
-      },
-      body,
-      signal: deps.signal,
-    },
-  );
-  if (!res.ok) {
-    throw new Error(
-      `[relayWorkItemFailure] cluster rejected failure relay (${res.status})`,
-    );
-  }
+  const publisher =
+    deps.relayPublisher ??
+    createDirectNatsPublisher({ js: jetstream(deps.natsConnection) });
+  await publisher.publishLine({
+    runId: work.runId,
+    fenceToken: work.runFenceToken,
+    line: { seq: 1, event: { type: "error", code, message } },
+  });
+  await publisher.publishDone({
+    runId: work.runId,
+    fenceToken: work.runFenceToken,
+    finalSeq: 1,
+  });
 }
 
 export interface LocalDispatchDeps {
@@ -178,10 +168,13 @@ export interface LocalDispatchDeps {
     jitter?: number;
   };
   /**
-   * Active NATS connection threaded from the link-daemon work dispatch.
-   * Reserved for Task 6 (direct JetStream publish); not consumed here yet.
+   * Active NATS connection threaded from the link-daemon work dispatch. The
+   * chunk relay and synthesized failure relay both publish directly to
+   * JetStream built from this connection.
    */
-  natsConnection?: NatsConnection;
+  natsConnection: NatsConnection;
+  /** Test seam. Production omits it → built from `jetstream(natsConnection)`. */
+  relayPublisher?: DirectNatsPublisher;
 }
 
 /**
@@ -320,11 +313,13 @@ export async function handleLocalDispatch(
     throw new Error("[handleLocalDispatch] dispatch response body is null");
   }
 
-  // ── Step 2: relay raw chunk lines to the cluster /chunks endpoint ──────
+  // ── Step 2: relay raw chunk lines directly to JetStream ────────────────
   // Retry/backoff and full-prefix resend live inside the chunk relay; this
-  // post impl performs exactly one streaming upload attempt.
-  const clusterToken = await deps.getClusterToken();
-  const chunksUrl = `${deps.clusterBaseUrl}/api/${work.orgSlug}/links/runs/${work.runId}/chunks`;
+  // post impl publishes the buffered prefix to NATS (JetStream dedupes by
+  // msgID, so resending the whole prefix on reconnect is safe).
+  const publisher =
+    deps.relayPublisher ??
+    createDirectNatsPublisher({ js: jetstream(deps.natsConnection) });
 
   await relayDispatchSSEAsChunkStream({
     dispatchBody: dispatchRes.body,
@@ -338,76 +333,14 @@ export async function handleLocalDispatch(
       maxAttempts: RELAY_MAX_ATTEMPTS,
       maxTimeout: RELAY_MAX_TIMEOUT_MS,
     },
-    post: async (body, fromSeq) => {
-      // Bun-specific fetch options absent from the DOM RequestInit typings:
-      //  - `duplex: "half"` — required by the Fetch spec for streaming request
-      //    bodies; supported by Node/Bun/undici. Verified on Bun 1.3.14: the
-      //    upload is delivered incrementally.
-      //  - `verbose` — env-gated (DECO_LINK_FETCH_VERBOSE=1). Prints Bun's
-      //    HTTP/connection transcript to stderr so a "socket connection closed
-      //    unexpectedly" reveals its real cause (HTTP/2 GOAWAY / idle timeout /
-      //    RST) on the next relay reset. Noisy (fires on every POST) — keep off
-      //    by default; flip it on only while hunting a relay-reset.
-      const init: RequestInit & { duplex: "half"; verbose?: boolean } = {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${clusterToken}`,
-          "x-fence-token": work.runFenceToken,
-          "content-type": "application/x-ndjson",
-          "x-relay-from": String(fromSeq),
-        },
+    post: async (body) => {
+      const { lastSeq } = await publishRelayBodyToNats({
         body,
-        duplex: "half",
-        signal: deps.signal,
-        ...(process.env.DECO_LINK_FETCH_VERBOSE === "1"
-          ? { verbose: true }
-          : {}),
-      };
-      let res: Response;
-      try {
-        res = await fetcher(chunksUrl, init);
-      } catch (err) {
-        // The streaming POST to the cluster threw (e.g. "socket connection
-        // closed unexpectedly"). This is per-ATTEMPT and factual (the POST to
-        // chunksUrl errored), but it can ALSO fire as downstream fallout when
-        // the SANDBOX leg failed first — the errored request body propagates
-        // here. chunk-relay's `[relay-diag] ROOT=...` line is the definitive
-        // leg. Re-thrown so chunk-relay's retry/backoff still applies.
-        const e = err as {
-          name?: string;
-          message?: string;
-          code?: string;
-          errno?: number;
-          cause?: unknown;
-        };
-        const causeStr =
-          e?.cause instanceof Error ? e.cause.message : String(e?.cause ?? "?");
-        console.error(
-          `[relay-diag] cluster-POST attempt errored runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} name=${e?.name ?? typeof err} code=${e?.code ?? "?"} errno=${e?.errno ?? "?"} cause=${causeStr} msg=${e?.message ?? String(err)}`,
-        );
-        throw err;
-      }
-      if (!res.ok) {
-        // The cluster explains the rejection in the response body (4xx
-        // fence/cancel reason, 5xx message). Read it — capped — so a relay
-        // reset is diagnosable beyond the bare status. Reading is safe here:
-        // the body is otherwise discarded when we throw.
-        let body = "";
-        try {
-          body = (await res.text()).slice(0, 500);
-        } catch {
-          body = "<unreadable>";
-        }
-        console.error(
-          `[relay-diag] CLUSTER-RELAY POST non-ok runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} status=${res.status} body=${JSON.stringify(body)}`,
-        );
-        const err = new Error(
-          `[handleLocalDispatch] relay failed (${res.status})`,
-        );
-        (err as { status?: number }).status = res.status;
-        throw err;
-      }
-      return (await res.json()) as RelayPostResult;
+        runId: work.runId,
+        fenceToken: work.runFenceToken,
+        publisher,
+      });
+      return { ok: true, lastSeq };
     },
   });
 }
