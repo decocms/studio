@@ -206,6 +206,63 @@ describe("buildAgentSystemPrompt", () => {
     expect(joined).toContain("my-prompt");
   });
 
+  const fakeOrgFs = (files: Record<string, string>) =>
+    ({
+      read: async (volume: string, path: string) => {
+        if (volume !== "home" || !(path in files)) {
+          throw new Error("not a live file");
+        }
+        return new TextEncoder().encode(files[path]);
+      },
+    }) as never;
+
+  test("kind: 'agent' eager-loads org and user MEMORY.md blocks", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      ctx: {
+        orgFs: fakeOrgFs({
+          "MEMORY.md": "Org uses Bun workspaces.",
+          "users/u1/MEMORY.md": "Ada prefers terse replies.",
+        }),
+      } as never,
+      organization: { id: "org_test", slug: "acme" } as never,
+      user: { id: "u1", name: "Ada" },
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).toContain("persistent organization memory index");
+    expect(joined).toContain("Org uses Bun workspaces.");
+    expect(joined).toContain("persistent user memory index");
+    expect(joined).toContain("Ada prefers terse replies.");
+  });
+
+  test("user memory omitted when no user is provided", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      ctx: { orgFs: fakeOrgFs({ "MEMORY.md": "Org fact." }) } as never,
+      organization: { id: "org_test", slug: "acme" } as never,
+      // no user
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).toContain("persistent organization memory index");
+    expect(joined).not.toContain("persistent user memory index");
+  });
+
+  test("kind: 'subagent' omits memory blocks", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "subagent",
+      ctx: { orgFs: fakeOrgFs({ "MEMORY.md": "Org fact." }) } as never,
+      organization: { id: "org_test", slug: "acme" } as never,
+      user: { id: "u1" },
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).not.toContain("persistent organization memory index");
+    expect(joined).not.toContain("persistent user memory index");
+    expect(joined).not.toContain("Org fact.");
+  });
+
   test("kind: 'subagent' omits prompts block when passthroughClient is not provided", async () => {
     const out = await buildAgentSystemPrompt({
       ...baseOpts,
