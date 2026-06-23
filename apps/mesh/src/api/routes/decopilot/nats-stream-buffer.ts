@@ -40,6 +40,7 @@ import {
 } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 import { meter } from "@/observability";
+import { encodeMsHistogram, publishedChunksCounter } from "./stream-metrics";
 
 // `meter` is a NoopMeter until initObservability() runs at bootstrap
 // (index.ts), and this module is imported *before* that — so instruments
@@ -62,26 +63,9 @@ const publishErrorsCounter = lazyInstrument(() =>
   }),
 );
 
-// Per-chunk JSON.stringify+encode time. Pod-level (no org attribute) on
-// purpose: this is loop-occupancy, meant to be correlated with eventloop.delay
-// to see how much of a saturated thread is the encode path. Always-on
-// (the STREAM_ENCODE_TRACE profiler is the gated verbose-log counterpart).
-const encodeMsHistogram = lazyInstrument(() =>
-  meter.createHistogram("decopilot.stream.encode_ms", {
-    description: "Per-chunk JSON.stringify+encode time for decopilot stream",
-    unit: "ms",
-  }),
-);
-
-// Logical chunks published (one per stream part, before fragmentation). Tagged
-// by org.id (low cardinality) so publish rate per org is visible — the proxy
-// for token throughput driving socket fan-out.
-const publishedChunksCounter = lazyInstrument(() =>
-  meter.createCounter("decopilot.stream.published_chunks", {
-    description: "Logical decopilot stream chunks published to JetStream",
-    unit: "{chunks}",
-  }),
-);
+// encode_ms + published_chunks live in ./stream-metrics so the link-daemon's
+// direct-nats-publisher (the path agent-sandbox runs actually take) feeds the
+// same instruments instead of double-registering them.
 
 // 30 min — projector-lag SLA: the stream is the sole path to the DB (Phase C),
 // so retention must outlast a projector outage long enough to catch up. Tune later.
