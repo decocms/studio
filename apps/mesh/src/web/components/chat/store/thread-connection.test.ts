@@ -693,6 +693,35 @@ describe("submit", () => {
     expect(conn.finishReason.get()).toBe(null);
     await p;
   });
+
+  test("stamps the optimistic user message with a top-level created_at", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+    const conn = getOrOpenStream("acme", "thread-stamp", { client: null });
+    await new Promise((r) => setTimeout(r, 20));
+
+    await conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "user-stamp",
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+        },
+      },
+      baseOpts,
+    );
+
+    // Without the stamp the optimistic user row reads as +Infinity and the
+    // assistant reply (finite metadata/finish timestamp) sorts ahead of it →
+    // "No response was generated" on the turn that triggered the run.
+    const userRow = conn.messages.get().find((m) => m.id === "user-stamp") as
+      | (UIMessage & { created_at?: string })
+      | undefined;
+    expect(userRow?.created_at).toBeDefined();
+    expect(Number.isFinite(new Date(userRow!.created_at!).getTime())).toBe(
+      true,
+    );
+  });
 });
 
 // ─── submit() — defer POST while client-side resolutions are pending ─────────
