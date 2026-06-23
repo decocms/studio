@@ -66,6 +66,7 @@ describe("GET /api/config", () => {
   it("reports agent-sandbox runtime availability when agent-sandbox provider is configured", async () => {
     setGlobalSettings({
       ...originalSettings,
+      localMode: false,
       sandboxProviderKind: "agent-sandbox",
     });
 
@@ -78,12 +79,27 @@ describe("GET /api/config", () => {
   it("does not report agent-sandbox runtime availability for user-desktop provider", async () => {
     setGlobalSettings({
       ...originalSettings,
+      localMode: false,
       sandboxProviderKind: "user-desktop",
     });
 
     const res = await publicConfigRoutes.request("/");
     expect(res.status).toBe(200);
     const body = await res.json();
+    expect(body.config.runtime).toEqual({ agentSandbox: false });
+  });
+
+  it("does not report agent-sandbox in local mode even with the agent-sandbox provider", async () => {
+    setGlobalSettings({
+      ...originalSettings,
+      localMode: true,
+      sandboxProviderKind: "agent-sandbox",
+    });
+
+    const res = await publicConfigRoutes.request("/");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // No cloud agent-sandbox cluster exists locally → cloud Decopilot unavailable.
     expect(body.config.runtime).toEqual({ agentSandbox: false });
   });
 });

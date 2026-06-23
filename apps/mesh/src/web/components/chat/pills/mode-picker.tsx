@@ -209,7 +209,9 @@ export function ModePickerPure({
   const isLocal = mode !== "cloud-decopilot";
   const showHarnessLabel = lockedHarness != null;
   const harnessLabel = lockedHarness ? HARNESS_LABEL[lockedHarness] : null;
-  const cloudRows = ROWS.filter((row) => row.group === "cloud");
+  const cloudRows = ROWS.filter(
+    (row) => row.group === "cloud" && row.isAvailable(availability),
+  );
   const localRows = ROWS.filter((row) => row.group === "local");
 
   const handleSelect = (m: AgentMode) => {
