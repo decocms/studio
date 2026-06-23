@@ -145,6 +145,7 @@ import {
 import type { DispatchFn } from "../links/link-dispatch-types";
 import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
+import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
@@ -1524,10 +1525,28 @@ export async function createApp(options: CreateAppOptions = {}) {
           }
         : null;
     },
-    completeRunIfNotCompleted: (runId, orgId) =>
-      projectorThreadStorage.completeRunIfNotCompleted(runId, orgId),
-    markRunFailed: (runId, orgId, reason, kind) =>
-      projectorThreadStorage.markRunFailed(runId, orgId, reason, kind),
+    completeRunIfNotCompleted: async (runId, orgId) => {
+      const flipped = await projectorThreadStorage.completeRunIfNotCompleted(
+        runId,
+        orgId,
+      );
+      // Push the terminal status to the org SSE so the sidebar chip updates
+      // live. user-desktop runs finalize here (not via the run-reactor), so
+      // without this the chip stays "running" until a refetch. `flipped` is
+      // null on a no-op (already terminal) → no double-publish.
+      emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      return flipped;
+    },
+    markRunFailed: async (runId, orgId, reason, kind) => {
+      const flipped = await projectorThreadStorage.markRunFailed(
+        runId,
+        orgId,
+        reason,
+        kind,
+      );
+      emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      return flipped;
+    },
     persistTitle: (runId, orgId, title) =>
       projectorThreadStorage.update(runId, orgId, { title }),
     onTitleUpdated: async ({ runId, orgId, title }) => {

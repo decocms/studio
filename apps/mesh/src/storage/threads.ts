@@ -87,7 +87,11 @@ export class OrgScopedThreadStorage {
     return this.inner.completeRunIfNotCompleted(id, this.requireOrg());
   }
 
-  markRunFailed(id: string, reason: string, kind: string): Promise<void> {
+  markRunFailed(
+    id: string,
+    reason: string,
+    kind: string,
+  ): Promise<Thread | null> {
     return this.inner.markRunFailed(id, this.requireOrg(), reason, kind);
   }
 
@@ -447,8 +451,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
     organizationId: string,
     reason: string,
     kind: string,
-  ): Promise<void> {
-    await this.db
+  ): Promise<Thread | null> {
+    const rows = await this.db
       .updateTable("threads")
       .set({
         status: "failed",
@@ -462,7 +466,11 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "in_progress")
+      .returningAll()
       .execute();
+
+    const row = rows[0];
+    return row ? this.threadFromDbRow(row) : null;
   }
 
   async forceFailIfInProgress(
