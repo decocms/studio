@@ -64,11 +64,11 @@ describe("genTitle fallback", () => {
       timeoutMs: 10, // tiny self-timeout; no parent abort, no finish()
     });
     const result = await handle.promise;
-    // First 10 chars of "Build a complex dashboard app" → "Build a co".
-    expect(result).toBe("Build a co");
+    // First 32 chars of "Build a complex dashboard app".
+    expect(result).toBe("Build a complex dashboard app");
   });
 
-  test("when the LLM throws, falls back to userMessage.slice(0, 10).trim()", async () => {
+  test("when the LLM throws, falls back to userMessage.slice(0, 32).trim()", async () => {
     const abortController = new AbortController();
     const handle = genTitle({
       abortSignal: abortController.signal,
@@ -77,12 +77,11 @@ describe("genTitle fallback", () => {
     });
     handle.finish();
     const result = await handle.promise;
-    // First 10 chars of "Fix the login button on mobile devices please"
-    // are "Fix the lo"; trimmed.
-    expect(result).toBe("Fix the lo");
+    // First 32 chars of "Fix the login button on mobile devices please".
+    expect(result).toBe("Fix the login button on mobile d");
   });
 
-  test("user message under 10 chars is returned verbatim (trimmed)", async () => {
+  test("user message under 32 chars is returned verbatim (trimmed)", async () => {
     const abortController = new AbortController();
     const handle = genTitle({
       abortSignal: abortController.signal,
@@ -94,16 +93,16 @@ describe("genTitle fallback", () => {
     expect(result).toBe("hi");
   });
 
-  test("user message exactly 10 chars is returned verbatim", async () => {
+  test("user message exactly 32 chars is returned verbatim", async () => {
     const abortController = new AbortController();
     const handle = genTitle({
       abortSignal: abortController.signal,
       model: makeFailingModel(new Error("boom")),
-      userMessage: "0123456789",
+      userMessage: "01234567890123456789012345678901",
     });
     handle.finish();
     const result = await handle.promise;
-    expect(result).toBe("0123456789");
+    expect(result).toBe("01234567890123456789012345678901");
   });
 
   test("empty user message falls back to 'New chat'", async () => {
@@ -142,7 +141,7 @@ describe("genTitle fallback", () => {
     });
     handle.finish();
     const result = await handle.promise;
-    expect(result).toBe("Fix the lo");
+    expect(result).toBe("Fix the login button on mobile d");
   });
 
   test("parent abort resolves to null (no fallback emitted)", async () => {

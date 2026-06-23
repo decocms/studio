@@ -47,6 +47,7 @@ const POST_STREAM_GRACE_MS = 10_000;
 // chat" for the whole run — it should surface the deterministic fallback
 // promptly so a title appears soon after submit.
 const TITLE_GEN_TIMEOUT_MS = 20_000;
+const FALLBACK_TITLE_MAX_CHARS = 32;
 
 export function genTitle(config: {
   /** Optional: aborts title generation when the parent stream is cancelled.
@@ -90,13 +91,13 @@ export function genTitle(config: {
   };
 
   // Fallback used when the LLM call errors or produces unusable output.
-  // Spec: take the literal first 10 characters of the user message, trim,
+  // Spec: take the literal first 32 characters of the user message, trim,
   // and fall through to "New chat" if there's no usable letter/digit.
   // Short, deterministic, and cheap; the user can rename the thread at
-  // any time. 10 chars was picked over the previous 60-char first-line
+  // any time. 32 chars was picked over the previous 60-char first-line
   // shape to keep failed/empty titles visually compact in the sidebar.
   const fallbackTitle = (() => {
-    const candidate = userMessage.slice(0, 10).trim();
+    const candidate = userMessage.slice(0, FALLBACK_TITLE_MAX_CHARS).trim();
     return hasUsableText(candidate) ? candidate : "New chat";
   })();
 
