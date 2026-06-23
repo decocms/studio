@@ -115,6 +115,11 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
   const pending: Promise<void>[] = [];
   let streamFinished = false;
   let errored = false;
+  // Flipped true when the source AsyncIterable itself throws (as opposed to
+  // emitting an in-band {type:"error"} chunk). Used to gate the onFinish hook:
+  // an in-band error still allows onFinish to fire (recovery detection); a
+  // source throw poisons the run and must suppress it.
+  let sourceThrew = false;
   // Flipped false when any persistence handoff throws. Surfaced to the onFinish
   // hook so a live caller does not mark the run completed over a failed write.
   let persistenceOk = true;
@@ -124,10 +129,19 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
     resolveComplete = resolve;
   });
 
+  const guardedChunks = (async function* () {
+    try {
+      yield* options.chunks;
+    } catch (e) {
+      sourceThrew = true;
+      throw e;
+    }
+  })();
+
   const uiStream = createUIMessageStream({
     originalMessages: options.originalMessages,
     execute: ({ writer }) => {
-      const intercepted = interceptTitleChunks(options.chunks, {
+      const intercepted = interceptTitleChunks(guardedChunks, {
         ctx: null as never,
         isStreamFinished: () => streamFinished,
         currentThreadTitle: options.title.currentThreadTitle,
@@ -183,7 +197,7 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
           console.error("[consume-harness-stream] onUsage hook failed", e),
         );
       }
-      if (!errored) {
+      if (!sourceThrew) {
         await Promise.resolve(
           options.hooks?.onFinish?.(responseMessage, finishReason, {
             persistenceOk,
