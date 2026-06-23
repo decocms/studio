@@ -15,7 +15,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { Download01, LinkExternal01 } from "@untitledui/icons";
+import { Download01, Folder, LinkExternal01 } from "@untitledui/icons";
+import { Link, useParams } from "@tanstack/react-router";
 import {
   FilePreview,
   FilePreviewShimmer,
@@ -32,19 +33,57 @@ import { basename, parseLibraryPath } from "./location";
 
 const isHtml = (name: string) => /\.html?$/i.test(name);
 
+/** Jump to the file's folder in the Library page. Shown only when the preview
+ *  is opened away from the Library itself (e.g. over a chat conversation). */
+function SeeInLibraryLink({
+  org,
+  previewPath,
+}: {
+  org: string;
+  previewPath: string;
+}) {
+  const parentPath = previewPath.split("/").slice(0, -1).join("/");
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      asChild
+      className="shrink-0 gap-1.5 text-xs text-muted-foreground"
+    >
+      <Link
+        to="/$org/files"
+        params={{ org }}
+        search={{ path: parentPath, preview: previewPath }}
+      >
+        <Folder size={14} />
+        See in library
+      </Link>
+    </Button>
+  );
+}
+
 export function LibraryPreviewDialog({
   previewPath,
   onClose,
+  showSeeInLibrary = false,
 }: {
   /** Browse-grammar path of the open file ("<volume>/<path...>"). */
   previewPath: string;
   onClose: () => void;
+  /** Render a "See in library" link (set when previewing outside the Library). */
+  showSeeInLibrary?: boolean;
 }) {
   const location = parseLibraryPath(previewPath);
   const { volume, dirPath: filePath } = location;
   const { data: entry, isPending } = useOrgFsStat(volume, filePath);
   const downloadUrl = useOrgFsDownloadUrl(volume ?? "");
   const filename = basename(filePath);
+  const { org } = useParams({ strict: false }) as { org?: string };
+
+  const seeInLibrary =
+    showSeeInLibrary && org ? (
+      <SeeInLibraryLink org={org} previewPath={previewPath} />
+    ) : null;
 
   const file =
     entry && entry.kind === "file"
@@ -76,7 +115,12 @@ export function LibraryPreviewDialog({
               marker={entryMarker(entry)}
               title={filename}
               savePath={volume === "home" ? filePath : undefined}
-              trailing={<div className="w-8 shrink-0" />}
+              trailing={
+                <>
+                  {seeInLibrary}
+                  <div className="w-8 shrink-0" />
+                </>
+              }
             />
           </>
         ) : (
@@ -96,6 +140,7 @@ export function LibraryPreviewDialog({
                   </span>
                 )}
               </div>
+              {seeInLibrary}
               {file && (
                 <>
                   <Tooltip>

@@ -73,6 +73,7 @@ import {
 } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
+import { OrgFilePreviewMount } from "./org-file-preview";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -468,6 +469,7 @@ export default function AgentShellLayout() {
   return (
     <Suspense fallback={<ShellRouteLoading />}>
       <AgentInsetProvider />
+      <OrgFilePreviewMount />
     </Suspense>
   );
 }
