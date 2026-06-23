@@ -173,6 +173,15 @@ export async function ingestRun(
     }
   }
 
+  // Deterministic assistant-message ids, IDENTICAL to the durable projector's
+  // scheme (`${runId}:msg:${n}` in fold order — see project-run.ts). The live
+  // ingest persistence and the projector both fold the same chunk stream, so
+  // matching ids mean their part rows collide on `ON CONFLICT (id) DO NOTHING`
+  // instead of duplicating. Without this the live write used a random SDK id and
+  // the projector a deterministic one → the same run persisted twice.
+  let msgCounter = 0;
+  const generateMessageId = () => `${runId}:msg:${msgCounter++}`;
+
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: dedupedChunks(),
     title: {
@@ -180,6 +189,7 @@ export async function ingestRun(
       persistTitle: async () => {},
     },
     persistence: deps.persistence ?? NOOP_PERSISTENCE,
+    generateMessageId,
     hooks: deps.hooks,
     errorMessageId: input.errorMessageId,
   });
