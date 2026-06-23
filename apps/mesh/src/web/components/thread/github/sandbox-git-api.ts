@@ -186,7 +186,14 @@ function isBlocksGenJsonPath(path: string): boolean {
   return path === "blocks.gen.json" || path.endsWith("/blocks.gen.json");
 }
 
-/** Publish (squash-merge) is only allowed for CMS JSON under `.deco/` (plus generated blocks). */
+/** Auto-generated Tailwind CSS output. */
+function isTailwindCssPath(path: string): boolean {
+  return (
+    path === "static/tailwind.css" || path.endsWith("/static/tailwind.css")
+  );
+}
+
+/** Publish (squash-merge) is only allowed for CMS JSON under `.deco/` (plus generated assets). */
 export function isDecoOnlyDiff(
   diff: GitDiffResult | null | undefined,
 ): boolean {
@@ -194,7 +201,11 @@ export function isDecoOnlyDiff(
   const paths = Object.keys(diff.diffs);
   if (paths.length === 0) return false;
   return paths.every(
-    (p) => p === ".deco" || p.startsWith(".deco/") || isBlocksGenJsonPath(p),
+    (p) =>
+      p === ".deco" ||
+      p.startsWith(".deco/") ||
+      isBlocksGenJsonPath(p) ||
+      isTailwindCssPath(p),
   );
 }
 
