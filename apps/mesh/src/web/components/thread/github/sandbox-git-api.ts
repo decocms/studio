@@ -188,7 +188,9 @@ function isBlocksGenJsonPath(path: string): boolean {
 
 /** Auto-generated Tailwind CSS output. */
 function isTailwindCssPath(path: string): boolean {
-  return path === "static/tailwind.css" || path.endsWith("/static/tailwind.css");
+  return (
+    path === "static/tailwind.css" || path.endsWith("/static/tailwind.css")
+  );
 }
 
 /** Publish (squash-merge) is only allowed for CMS JSON under `.deco/` (plus generated assets). */
