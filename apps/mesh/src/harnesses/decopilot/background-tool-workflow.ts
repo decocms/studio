@@ -163,11 +163,11 @@ async function requireMeshContext(
 
 // Subtask completion nudge — shared by the workflow subtask producer and the
 // inline defer-to-background path (harness-deps).
-export const SUBTASK_DONE_NUDGE =
+const SUBTASK_DONE_NUDGE =
   "The background subtask you started has completed; its result is now in the conversation above. Review it and continue with the user's request — do NOT call subtask again for this.";
 
 /** Resolve a thread row's dispatch target + harness (hosted vs desktop link). */
-export function resolveThreadTarget(
+function resolveThreadTarget(
   thread:
     | { sandbox_provider_kind?: string | null; harness_id?: string | null }
     | null
