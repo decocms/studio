@@ -228,7 +228,12 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
         avatar: "",
       };
     case "categories":
-      return { name: "New category", slug: `category-${randomHex(8)}` };
+      return {
+        name: "New category",
+        slug: `category-${randomHex(8)}`,
+        description: "",
+        sections: [],
+      };
     default: {
       const _exhaustive: never = kind;
       throw new Error(`Unhandled blog kind: ${String(_exhaustive)}`);
