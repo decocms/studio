@@ -6,7 +6,12 @@
 
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense } from "react";
-import { useMCPClient, useProjectContext } from "@decocms/mesh-sdk";
+import {
+  getHomeTiles,
+  useMCPClient,
+  useProjectContext,
+} from "@decocms/mesh-sdk";
+import { useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowRight } from "@untitledui/icons";
@@ -24,6 +29,8 @@ import {
   useHomeAgentsWriter,
 } from "@/web/hooks/use-organization-settings";
 import { useStartThreadFromPrompt } from "@/web/hooks/use-start-thread-from-prompt";
+import { useStudioTools } from "@/web/lib/studio-tools";
+import { KEYS } from "@/web/lib/query-keys";
 import { TileBoard } from "./tile-board/tile-board";
 import { useBoardLayout } from "./tile-board/use-board-layout";
 import type { TileInstance } from "./tile-board/types";
@@ -386,6 +393,8 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
   const homeIds = useDefaultHomeAgents()?.ids ?? [];
   const pinnedAgentIds = new Set(homeIds);
   const homeWriter = useHomeAgentsWriter();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
 
   // Agents that have a UI tile own their prompts — those prompts render
   // inline inside the tile, not as their own grid cards.
@@ -437,12 +446,71 @@ export function HomeGrid({ isEditMode }: HomeGridProps) {
         toast.error("Couldn't remove from home — please try again."),
       );
   };
+
+  /** Remove a single tile from the agent's `homeTiles` metadata instead
+   *  of yanking the whole agent off the board. Only falls back to
+   *  removing the agent when this was the last (or only) tile. */
+  const removeSingleTile = async (tileData: HomeTileEntry) => {
+    const agentTileCount = tiles.filter(
+      (t) => t.agentId === tileData.agentId,
+    ).length;
+
+    if (agentTileCount <= 1) {
+      removeAgentFromHome(tileData.agentId);
+      return;
+    }
+
+    try {
+      const agent = await studio.call("COLLECTION_VIRTUAL_MCP_GET", {
+        id: tileData.agentId,
+      });
+      const item = agent.item;
+      if (!item) throw new Error("Agent not found");
+
+      const currentTiles = getHomeTiles(item.metadata?.ui);
+      const nextTiles = tileData.tileId
+        ? currentTiles.filter((t) => t.tileId !== tileData.tileId)
+        : currentTiles.filter(
+            (t) =>
+              t.connectionId !== tileData.connectionId ||
+              t.resourceUri !== tileData.resourceUri,
+          );
+
+      await studio.call("COLLECTION_VIRTUAL_MCP_UPDATE", {
+        id: tileData.agentId,
+        data: {
+          metadata: {
+            ...(item.metadata ?? {}),
+            ui: {
+              ...(item.metadata?.ui ?? {}),
+              homeTile: null,
+              homeTiles: nextTiles,
+            },
+          },
+        },
+      });
+
+      void queryClient.invalidateQueries({
+        queryKey: KEYS.homeNextActions(org.slug),
+      });
+    } catch {
+      toast.error("Couldn't remove tile — please try again.");
+    }
+  };
+
   const removeCandidate = (id: string) => {
     const candidate = candidatesById.get(id);
-    if (candidate && pinnedAgentIds.has(candidate.data.agentId)) {
-      removeAgentFromHome(candidate.data.agentId);
-    } else {
+    if (!candidate) return;
+
+    if (!pinnedAgentIds.has(candidate.data.agentId)) {
       layout.hideTile(id);
+      return;
+    }
+
+    if (candidate.kind === "tile") {
+      void removeSingleTile(candidate.data);
+    } else {
+      removeAgentFromHome(candidate.data.agentId);
     }
   };
 
