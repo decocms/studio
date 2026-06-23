@@ -11,6 +11,7 @@ import {
   type ClusterConnectionTunnelInput,
 } from "./cluster-connection-tunnel";
 import type { ConnectionOptions, NatsConnection } from "@nats-io/nats-core";
+import { encodeSubjectToken } from "@decocms/tunnel/subject";
 import type { ControlHandler } from "./control-handler";
 import { openInMemoryOutbox } from "./outbox";
 import type { DesktopSandboxProvider } from "./user-desktop-provider";
@@ -185,6 +186,7 @@ describe("buildNatsConnectOptions", () => {
   it("allows unauthenticated NATS connection options when session has no credentials or token", () => {
     expect(buildNatsConnectOptions(sessionWithoutAuth)).toEqual({
       servers: ["nats://127.0.0.1:4222"],
+      inboxPrefix: `_INBOX.${encodeSubjectToken(sessionWithoutAuth.tunnelHostname)}`,
     });
   });
 

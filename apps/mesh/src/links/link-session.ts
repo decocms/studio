@@ -45,6 +45,12 @@ export function buildDaemonCredentialPermissions(
         `${hostPrefix}.request`,
         `${hostPrefix}.req.*.body`,
         `${hostPrefix}.req.*.abort`,
+        // Per-daemon request/reply inbox. JetStream `publish()` (used by the
+        // direct-NATS chunk relay) awaits a PubAck delivered on a reply inbox,
+        // so the daemon must be able to subscribe to its own inbox. Scoped to
+        // this host's token (NOT `_INBOX.>`) so one daemon cannot read another
+        // tenant's replies — the daemon sets a matching `inboxPrefix`.
+        `_INBOX.${hostToken}.>`,
       ],
     },
     publish: {

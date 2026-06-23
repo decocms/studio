@@ -1,6 +1,7 @@
 import { hostname as osHostname } from "node:os";
 import { retry, sleep, type RetryOptions } from "@decocms/std";
 import * as tunnel from "@decocms/tunnel";
+import { encodeSubjectToken } from "@decocms/tunnel/subject";
 import {
   credsAuthenticator,
   tokenAuthenticator,
@@ -423,6 +424,12 @@ export function buildNatsConnectOptions(
   return {
     servers: session.connection.urls,
     ...(authenticator ? { authenticator } : {}),
+    // Scope the request/reply inbox to this daemon's host token so JetStream
+    // PubAcks (from the direct-NATS chunk relay's `js.publish`) land on a
+    // subject the minted credentials are allowed to subscribe to. Must match
+    // the `_INBOX.<hostToken>.>` subscribe grant in
+    // `buildDaemonCredentialPermissions`.
+    inboxPrefix: `_INBOX.${encodeSubjectToken(session.tunnelHostname)}`,
   };
 }
 

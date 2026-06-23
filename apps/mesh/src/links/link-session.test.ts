@@ -26,6 +26,7 @@ describe("link session helpers", () => {
           `tunnel.v1.host.${hostToken}.request`,
           `tunnel.v1.host.${hostToken}.req.*.body`,
           `tunnel.v1.host.${hostToken}.req.*.abort`,
+          `_INBOX.${hostToken}.>`,
         ],
       },
       publish: {
