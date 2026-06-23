@@ -6,6 +6,7 @@ export interface SandboxConfig {
   virtualMcpId: string;
   branch: string;
   previewUrl?: string;
+  siteSlug?: string | null;
 }
 
 export interface FieldProps {

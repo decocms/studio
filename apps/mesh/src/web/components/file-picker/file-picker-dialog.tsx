@@ -52,6 +52,7 @@ interface FilePickerDialogProps {
   onOpenChange: (open: boolean) => void;
   mode: FilePickerMode;
   onSelect: (publicUrl: string) => void;
+  lockedConfigId?: string | null;
 }
 
 export const LAST_CONFIG_KEY = "file-picker:last-config-id";
@@ -77,6 +78,7 @@ export function FilePickerDialog(props: FilePickerDialogProps) {
           <Suspense fallback={<Skeleton className="h-64 w-full" />}>
             <PickerBody
               mode={props.mode}
+              lockedConfigId={props.lockedConfigId}
               onSelect={(url) => {
                 props.onSelect(url);
                 props.onOpenChange(false);
@@ -100,15 +102,24 @@ function PickerError({ error }: { error: Error }) {
 
 function PickerBody({
   mode,
+  lockedConfigId,
   onSelect,
 }: {
   mode: FilePickerMode;
+  lockedConfigId?: string | null;
   onSelect: (url: string) => void;
 }) {
   const configs = useFileConfigs();
 
   if (configs.length === 0) {
     return <NoConfigsEmpty />;
+  }
+
+  if (lockedConfigId) {
+    const locked = configs.find((config) => config.id === lockedConfigId);
+    if (locked) {
+      return <BucketPanel config={locked} mode={mode} onSelect={onSelect} />;
+    }
   }
 
   if (configs.length === 1) {
