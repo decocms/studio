@@ -142,10 +142,10 @@ function ActivityChart({ connectionId, orgId, timeframe }: ActivityChartProps) {
           </ChartContainer>
           <div className="flex justify-between px-3 mt-1 pb-3">
             <span className="text-[10px] text-muted-foreground">
-              {chartData[0]?.label}
+              {chartData?.[0]?.label}
             </span>
             <span className="text-[10px] text-muted-foreground">
-              {chartData[chartData.length - 1]?.label}
+              {chartData?.[chartData.length - 1]?.label}
             </span>
           </div>
         </div>
