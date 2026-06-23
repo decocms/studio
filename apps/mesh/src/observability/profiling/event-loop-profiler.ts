@@ -29,14 +29,13 @@ let busy = false;
 
 function post(
   method: string,
-  params?: unknown,
+  params?: Record<string, unknown>,
 ): Promise<{ profile?: CpuProfile }> {
   return new Promise((resolve, reject) =>
-    session!.post(
-      method,
-      params as never,
-      (err: Error | null, res: { profile?: CpuProfile }) =>
-        err ? reject(err) : resolve(res),
+    session!.post(method, params, (err, res) =>
+      err
+        ? reject(err)
+        : resolve((res ?? {}) as unknown as { profile?: CpuProfile }),
     ),
   );
 }
@@ -76,7 +75,8 @@ function hottestStack(profile: CpuProfile, windowMs: number): string[] | null {
   const counts = new Map<number, number>();
   for (let i = samples.length - 1; i >= 0; i--) {
     acc += timeDeltas[i] ?? 0;
-    counts.set(samples[i], (counts.get(samples[i]) ?? 0) + 1);
+    const id = samples[i];
+    if (id !== undefined) counts.set(id, (counts.get(id) ?? 0) + 1);
     if (acc >= windowUs) break;
   }
   let hotId = -1;

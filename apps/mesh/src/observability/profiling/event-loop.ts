@@ -65,8 +65,11 @@ export function startEventLoopMonitor(): () => void {
   // only the severe, kill-causing blocks are worth a profile.
   const profileEnabled = process.env.EVENT_LOOP_PROFILE === "1";
   const profileMs = Number(process.env.EVENT_LOOP_PROFILE_MS ?? 1000);
+  // 10ms sampling: naming a multi-second block needs ~tens of samples, not
+  // thousands, so this keeps the stack-walk overhead ~10x lower than 1ms while
+  // still resolving the culprit. Override for finer resolution if ever needed.
   const profileIntervalUs = Number(
-    process.env.EVENT_LOOP_PROFILE_INTERVAL_US ?? 1000,
+    process.env.EVENT_LOOP_PROFILE_INTERVAL_US ?? 10_000,
   );
   // Discard accumulated samples between the (rare) stalls so the profile buffer
   // stays bounded. The reset timer can't fire mid-block, so it never splits a
