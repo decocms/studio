@@ -18,13 +18,13 @@
  *      `sandboxDaemonToken` and returns a `text/event-stream` SSE body of
  *      `ui-message-chunk` / `error` / `done` events.
  *
- *   2. Relay the SSE body as an NDJSON stream of `RelayLine`s:
- *        POST ${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/chunks
- *      with `x-fence-token: ${runFenceToken}`, `x-relay-from: <fromSeq>`
- *      (resend start, always 1), `content-type: application/x-ndjson`, and
- *      `Authorization: Bearer <cluster token>`, as a `duplex:"half"`
- *      streaming upload. The cluster replies `{ ok, lastSeq }` once the body
- *      ends.
+ *   2. Relay the SSE body to JetStream as seq-keyed stream envelopes: each
+ *      `RelayLine` is published to `decopilot.stream.<runId>` over the daemon's
+ *      active NATS connection (`{ p: chunk }` for content — error events are
+ *      converted to error chunks — and `{ done, finalSeq }` for the terminal
+ *      marker) with deterministic `Nats-Msg-Id`s so an at-least-once resend
+ *      dedupes. The durable projector is the sole consumer that materializes
+ *      parts/title/status from that log.
  *
  * ⚠️ ORG SLUG vs ID NOTE:
  *   WorkItem carries `orgId` (the DB UUID) and `orgSlug` (the URL-safe slug).
@@ -117,16 +117,6 @@ export interface LocalDispatchDeps {
    */
   sandboxDaemonToken: string;
   /**
-   * Cluster origin, e.g. "https://studio.deco.cx". The relay upload is sent
-   * to `${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/chunks`.
-   */
-  clusterBaseUrl: string;
-  /**
-   * Returns the bearer token for the cluster chunks endpoint. Called once
-   * per dispatch so that a refreshed token is used.
-   */
-  getClusterToken: () => Promise<string> | string;
-  /**
    * Optional override for the harness id sent in the dispatch POST body.
    * When omitted, derived from `work.harnessInput` (see module note).
    */
@@ -137,8 +127,8 @@ export interface LocalDispatchDeps {
    */
   fetchImpl?: typeof fetch;
   /**
-   * Abort signal propagated to the sandbox dispatch fetch, the chunk relay,
-   * and every cluster relay fetch.
+   * Abort signal propagated to the sandbox dispatch fetch and the chunk relay
+   * (which now publishes to JetStream rather than POSTing to the cluster).
    */
   signal?: AbortSignal;
   /**

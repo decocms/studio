@@ -940,7 +940,9 @@ test("work dispatch receives the active NATS connection via getNatsConnection", 
     return new Response(null, { status: 204 });
   }) as typeof fetch;
 
-  let capturedTunnelFetch: ((req: Request) => Promise<Response>) | undefined;
+  let capturedTunnelFetch:
+    | ((req: Request) => Response | Promise<Response>)
+    | undefined;
 
   const providerWithToken: DesktopSandboxProvider = {
     ...provider,

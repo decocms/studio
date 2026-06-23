@@ -23,10 +23,8 @@ import { openInMemoryOutbox, openOutbox } from "./outbox";
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
 const SANDBOX_BASE = "http://127.0.0.1:9123";
-const CLUSTER_BASE = "https://studio.example.com";
 const ORG_SLUG = "acme";
 const DAEMON_TOKEN = "daemon-tok-abc";
-const CLUSTER_TOKEN = "cluster-tok-xyz";
 const FENCE_TOKEN = "fence-tok-123";
 const RUN_ID = "run_01";
 
@@ -160,8 +158,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       natsConnection: FAKE_NC,
       relayPublisher: fp.publisher,
@@ -236,8 +232,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       natsConnection: FAKE_NC,
       relayPublisher: fp.publisher,
@@ -282,8 +276,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       dispatchStartTimeoutMs: 5,
       natsConnection: FAKE_NC,
@@ -332,8 +324,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       natsConnection: FAKE_NC,
       relayPublisher: publisher,
@@ -393,8 +383,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       natsConnection: FAKE_NC,
       relayPublisher: failingPublisher,
@@ -435,8 +423,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       harnessId: "codex",
       fetchImpl: fetchImpl as unknown as typeof fetch,
       natsConnection: FAKE_NC,
@@ -481,8 +467,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       natsConnection: FAKE_NC,
       relayPublisher: fp.publisher,
@@ -540,8 +524,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       natsConnection: FAKE_NC,
       relayPublisher: fp.publisher,
@@ -587,8 +569,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       natsConnection: FAKE_NC,
       relayPublisher: fp.publisher,
@@ -621,8 +601,6 @@ describe("handleLocalDispatch", () => {
     await handleLocalDispatch(validWorkItem, {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       outbox,
       natsConnection: FAKE_NC,
@@ -666,8 +644,6 @@ describe("handleLocalDispatch", () => {
     await handleLocalDispatch(validWorkItem, {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       outbox,
       natsConnection: FAKE_NC,
@@ -715,8 +691,6 @@ describe("handleLocalDispatch", () => {
       outbox: openInMemoryOutbox(),
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
-      clusterBaseUrl: CLUSTER_BASE,
-      getClusterToken: async () => CLUSTER_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       signal: ac.signal,
       natsConnection: FAKE_NC,

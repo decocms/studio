@@ -131,8 +131,6 @@ export async function dispatchLinkWorkItem(
     await handleLocalDispatch(item, {
       sandboxDispatchUrl: sandboxApiUrl,
       sandboxDaemonToken,
-      clusterBaseUrl: input.clusterBaseUrl,
-      getClusterToken: input.getAccessToken,
       fetchImpl: input.fetchImpl,
       signal: AbortSignal.any([signal, runAc.signal]),
       outbox: input.outbox,
