@@ -439,7 +439,13 @@ export class NatsStreamBuffer implements StreamBuffer {
     // `msgID` is the NATS dedup header field (Nats-Msg-Id): a seq-keyed id lets
     // an at-least-once producer re-publish without double-writing.
     const msgID = opts?.msgId;
+    // `ingestRun` (the durable producer) publishes every UI chunk through here,
+    // not through `pump()` — so the stream throughput/encode metrics must be
+    // recorded on this path or they stay flat zero while streaming works.
+    const t0 = performance.now();
     const bytes = this.encoder.encode(JSON.stringify({ p: chunk }));
+    encodeMsHistogram().record(performance.now() - t0);
+    publishedChunksCounter().add(1);
     if (bytes.length > MAX_CHUNKED_BYTES) {
       console.warn(
         `[Decopilot] dropping oversized raw chunk for thread ${taskId}: ${(
