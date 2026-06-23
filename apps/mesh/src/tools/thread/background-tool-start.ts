@@ -18,27 +18,46 @@ import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-to
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 
-const InputSchema = z.object({
+// Fields common to every backgroundable tool. Identity is never read from the
+// body — org/user come from ctx; `fenceToken` must match the active run.
+const commonFields = {
   threadId: z.string(),
-  /** Run fence token — must match the thread's active run fence. */
   fenceToken: z.string(),
-  toolName: z.literal("generate_image"),
-  // Validate the payload against the real schema so a compromised daemon can't
-  // push an unvalidated shape into image generation.
-  input: GenerateImageInputSchema,
   toolCallId: z.string(),
   agentId: z.string(),
   temperature: z.number(),
   toolApprovalLevel: z.enum(["auto", "readonly"]),
   branch: z.string().nullable().optional(),
+};
+
+// Subtask payload the workflow's `subtask` producer reads (prompt + optional
+// target agent). Kept minimal — the producer re-resolves models/target itself.
+const SubtaskBgInputSchema = z.object({
+  prompt: z.string(),
+  agent_id: z.string().optional(),
 });
+
+// Discriminated on `toolName` so each tool's payload is validated against its
+// real schema (a compromised daemon can't push an unvalidated shape).
+const InputSchema = z.discriminatedUnion("toolName", [
+  z.object({
+    toolName: z.literal("generate_image"),
+    input: GenerateImageInputSchema,
+    ...commonFields,
+  }),
+  z.object({
+    toolName: z.literal("subtask"),
+    input: SubtaskBgInputSchema,
+    ...commonFields,
+  }),
+]);
 
 const OutputSchema = z.object({ jobId: z.string() });
 
 export const THREAD_BACKGROUND_TOOL_START = defineTool({
   name: "THREAD_BACKGROUND_TOOL_START",
   description:
-    "Enqueue a slow built-in tool (generate_image) as a durable background job on the active run's thread. Used by desktop daemons — not called by the model.",
+    "Enqueue a slow built-in tool (generate_image or subtask) as a durable background job on the active run's thread. Used by desktop daemons — not called by the model.",
   annotations: {
     title: "Start Background Tool",
     readOnlyHint: false,

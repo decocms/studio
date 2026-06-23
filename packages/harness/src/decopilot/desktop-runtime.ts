@@ -52,6 +52,7 @@ import { createLanguageModel } from "./mesh-provider";
 import { toolsFromMCP } from "./mcp-tools";
 import { buildLocalTools } from "./desktop-local-tools";
 import { createMcpBackgroundDispatcher } from "./built-in-tools/mcp-background-dispatcher";
+import type { BackgroundDispatcher } from "./built-in-tools/backgroundable";
 import { getDesktopSandboxFsBuilder } from "./desktop-sandbox-fs-registry";
 import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./desktop-prompt";
 import { resolveModeConfig } from "./mode-config";
@@ -127,6 +128,45 @@ export function resolveDesktopSubtaskCodingWorkspace(
   targetAgentId: string | undefined,
 ): HarnessStreamInput["codingWorkspace"] {
   return targetAgentId ? undefined : input.codingWorkspace;
+}
+
+/**
+ * Build the cluster-backed background dispatcher for a desktop run, or null when
+ * the link material is absent (no object-storage source / fence token, or the
+ * base URL doesn't carry the org-scoped `/object-storage` suffix). Calls the
+ * `THREAD_BACKGROUND_TOOL_START` management tool over `/mcp/self`, reusing the
+ * run's bearer (same temp credentials as the object-storage source) + the run
+ * fence token. The org-scoped API base is derived from the object-storage
+ * source so the `:org` slug exactly matches what the cluster minted.
+ */
+function buildBackgroundDispatcher(
+  input: HarnessStreamInput,
+): BackgroundDispatcher | null {
+  const objectStorageBase = input.objectStorageSource?.baseUrl ?? "";
+  const apiBase = objectStorageBase.replace(/\/object-storage\/?$/, "");
+  if (
+    !input.objectStorageSource ||
+    !input.runFenceToken ||
+    apiBase === objectStorageBase
+  ) {
+    return null;
+  }
+  return createMcpBackgroundDispatcher({
+    source: {
+      kind: "http",
+      url: `${apiBase}/mcp/self`,
+      headers: input.objectStorageSource.headers,
+      expiresAt: input.objectStorageSource.expiresAt,
+    },
+    threadId: input.threadId,
+    fenceToken: input.runFenceToken,
+    snapshot: {
+      agentId: input.agent.id,
+      temperature: input.temperature,
+      toolApprovalLevel: input.toolApprovalLevel,
+      branch: input.branch ?? null,
+    },
+  });
 }
 
 /**
@@ -361,39 +401,10 @@ function createDesktopToolRuntime(args: {
           branch: streamInput.branch,
           userId: streamInput.user.id,
         });
-        // Backgroundable generate_image: enqueue the work on the cluster
-        // (which has DBOS + org credentials) so the daemon's turn doesn't
-        // block. Calls the `THREAD_BACKGROUND_TOOL_START` management tool over
-        // `/mcp/self`, reusing the run's bearer (same temp credentials as the
-        // object-storage source) + the run fence token. Absent material → null
-        // → generate_image runs inline (unchanged).
-        // Derive the org-scoped API base from the object-storage source so the
-        // `:org` slug exactly matches what the cluster minted (avoids the
-        // organizationSlug/projectSlug ambiguity).
-        const objectStorageBase =
-          streamInput.objectStorageSource?.baseUrl ?? "";
-        const apiBase = objectStorageBase.replace(/\/object-storage\/?$/, "");
+        // Backgroundable built-ins (generate_image, subtask): enqueue on the
+        // cluster (DBOS + org credentials) so the daemon's turn doesn't block.
         const imageBackgroundDispatcher =
-          streamInput.objectStorageSource &&
-          streamInput.runFenceToken &&
-          apiBase !== objectStorageBase
-            ? createMcpBackgroundDispatcher({
-                source: {
-                  kind: "http",
-                  url: `${apiBase}/mcp/self`,
-                  headers: streamInput.objectStorageSource.headers,
-                  expiresAt: streamInput.objectStorageSource.expiresAt,
-                },
-                threadId: streamInput.threadId,
-                fenceToken: streamInput.runFenceToken,
-                snapshot: {
-                  agentId: streamInput.agent.id,
-                  temperature: streamInput.temperature,
-                  toolApprovalLevel: streamInput.toolApprovalLevel,
-                  branch: streamInput.branch ?? null,
-                },
-              })
-            : null;
+          buildBackgroundDispatcher(streamInput);
         const localTools = buildLocalTools({
           writer: sideChannel.writer,
           toolOutputMap,
@@ -570,6 +581,10 @@ export function buildDesktopEnvironmentTools(args: {
     needsApproval: input.mode === "plan" || input.toolApprovalLevel !== "auto",
     runSubtask,
     onChildUsage: (usage) => parentOnChildUsage?.(usage),
+    // Lets the model opt a subtask into a durable cluster background run
+    // (`background: true`) instead of blocking the daemon's turn — same path
+    // generate_image uses. Null when link material is absent → runs inline.
+    backgroundDispatcher: buildBackgroundDispatcher(input),
   });
 
   const parentToolRuntime = createDesktopToolRuntime({

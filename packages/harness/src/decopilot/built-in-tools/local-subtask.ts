@@ -23,6 +23,7 @@ import { tool, zodSchema, type UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 import type { ModelsConfig } from "../../types";
 import type { SubtaskRunResult } from "../run-core";
+import type { BackgroundDispatcher } from "./backgroundable";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -42,6 +43,16 @@ export const SubtaskInputSchema = z.object({
       "The ID of the agent (Virtual MCP) to delegate to. Must exist and be " +
         "active in the current organization. OMIT to clone yourself — a fresh " +
         "subagent with your exact tools and instructions but an empty context.",
+    ),
+  background: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run the subagent in the BACKGROUND and return immediately instead of " +
+        "blocking this turn. Set true for long, fire-and-forget discovery whose " +
+        "result you do NOT need in this same reply — the result is delivered to " +
+        "the conversation when it finishes and you'll be nudged to use it then. " +
+        "Leave false/omit when you need the answer now to act on it this turn.",
     ),
 });
 
@@ -101,6 +112,14 @@ export interface LocalSubtaskParams {
    * still rides the `data-tool-subtask-metadata` chunk.
    */
   onChildUsage?: (usage: SubtaskRunResult["usage"]) => void;
+  /**
+   * Cluster-backed background dispatcher. When present and the model passes
+   * `background: true`, the subtask is enqueued as a durable cluster job
+   * (delivered + reacted-to later) instead of running inline on the daemon.
+   * Absent (no link material / tests) → `background` is ignored and the
+   * subtask runs inline.
+   */
+  backgroundDispatcher?: BackgroundDispatcher | null;
 }
 
 export function createLocalSubtaskTool(params: LocalSubtaskParams) {
@@ -111,18 +130,41 @@ export function createLocalSubtaskTool(params: LocalSubtaskParams) {
     needsApproval,
     runSubtask,
     onChildUsage,
+    backgroundDispatcher,
   } = params;
 
   return tool({
     description: SUBTASK_DESCRIPTION,
     inputSchema: zodSchema(SubtaskInputSchema),
     needsApproval,
-    execute: async ({ prompt, agent_id }, { abortSignal, toolCallId }) => {
+    execute: async (
+      { prompt, agent_id, background },
+      { abortSignal, toolCallId },
+    ) => {
       const startTime = performance.now();
       // `undefined` target = self-clone; an explicit, different agent_id =
       // cross-agent delegation. The adapter resolves the actual target.
       const target =
         agent_id && agent_id !== selfAgentId ? agent_id : undefined;
+
+      // Background opt-in: enqueue a durable cluster child run and return a
+      // started handle instead of blocking the daemon's turn. The result +
+      // reaction turn are delivered to the thread later (same path as the
+      // cluster subtask tool). Without a dispatcher it falls through to inline.
+      if (background && backgroundDispatcher) {
+        const { jobId } = await backgroundDispatcher.start({
+          toolName: "subtask",
+          input: { prompt, ...(agent_id ? { agent_id } : {}) },
+          toolCallId,
+        });
+        return {
+          text:
+            `Subtask started in the background (jobId=${jobId}). Its result will ` +
+            `appear in the conversation shortly — keep helping the user and do ` +
+            `NOT call subtask again for this request.`,
+          finishReason: "stop",
+        };
+      }
 
       const result = await runSubtask(
         prompt,
