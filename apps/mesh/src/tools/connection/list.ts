@@ -20,10 +20,6 @@ import {
 import { LANGUAGE_MODEL_BINDING } from "@decocms/bindings/llm";
 import { MCP_BINDING } from "@decocms/bindings/mcp";
 import { OBJECT_STORAGE_BINDING } from "@decocms/bindings/object-storage";
-import {
-  WORKFLOW_BINDING,
-  WORKFLOW_EXECUTION_BINDING,
-} from "@decocms/bindings/workflow";
 import { AI_GATEWAY_BILLING_BINDING } from "@decocms/bindings/ai-gateway";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { z } from "zod";
@@ -76,8 +72,6 @@ const BUILTIN_BINDING_CHECKERS: Record<string, Binder> = {
   ASSISTANTS: ASSISTANTS_BINDING,
   MCP: MCP_BINDING,
   OBJECT_STORAGE: OBJECT_STORAGE_BINDING,
-  WORKFLOW: WORKFLOW_BINDING,
-  WORKFLOW_EXECUTION: WORKFLOW_EXECUTION_BINDING,
   AI_GATEWAY_BILLING: AI_GATEWAY_BILLING_BINDING,
   EVENT_BUS: EVENT_BUS_BINDING,
   TRIGGER: TRIGGER_BINDING,

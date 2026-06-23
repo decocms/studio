@@ -21,12 +21,6 @@ import { BindingRegistry, injectBindingSchemas } from "./bindings.ts";
 import { Event, type EventHandlers } from "./events.ts";
 import type { DefaultEnv, User } from "./index.ts";
 import { State } from "./state.ts";
-import {
-  type WorkflowDefinition,
-  Workflow,
-  WORKFLOW_SCOPES,
-  workflowToolId,
-} from "./workflows.ts";
 import { type InstallContext, makeCreateAgent } from "./agents.ts";
 
 // Re-export EventHandlers type and SELF constant for external use
@@ -41,7 +35,6 @@ export type {
   TriggerResult,
   AutomationTrigger,
 } from "./agents.ts";
-export type { WorkflowDefinition } from "./workflows.ts";
 
 export const createRuntimeContext = (prev?: AppContext) => {
   const store = State.getStore();
@@ -544,9 +537,6 @@ export interface CreateMCPServerOptions<
             | Promise<CreatedResource[]>)
       >
     | ((env: TEnv) => CreatedResource[] | Promise<CreatedResource[]>);
-  workflows?:
-    | WorkflowDefinition[]
-    | ((env: TEnv) => WorkflowDefinition[] | Promise<WorkflowDefinition[]>);
 }
 
 export type Fetch<TEnv = unknown> = (
@@ -571,13 +561,11 @@ const getEventBus = (
     : env?.MESH_REQUEST_CONTEXT?.state?.[prop];
 };
 
-// TEnv is erased here because toolsFor() only reads events/workflows/configuration
+// TEnv is erased here because toolsFor() only reads events/configuration
 // and doesn't need the full env type. Replacing `any` with a proper generic
 // would require threading TEnv through toolsFor, which is a larger refactor.
-type ResolvedMCPServerOptions<TSchema extends ZodTypeAny = never> = Omit<
-  CreateMCPServerOptions<any, TSchema>, // eslint-disable-line @typescript-eslint/no-explicit-any
-  "workflows"
-> & { workflows?: WorkflowDefinition[] };
+type ResolvedMCPServerOptions<TSchema extends ZodTypeAny = never> =
+  CreateMCPServerOptions<any, TSchema>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 const getMeshCtx = (input: { runtimeContext: AppContext }) => {
   const ctx = input.runtimeContext.env.MESH_REQUEST_CONTEXT;
@@ -590,7 +578,6 @@ const getMeshCtx = (input: { runtimeContext: AppContext }) => {
 
 const toolsFor = <TSchema extends ZodTypeAny = never>({
   events,
-  workflows,
   configuration: { state: schema, scopes, onChange, onInstall } = {},
 }: ResolvedMCPServerOptions<TSchema> = {}): CreatedTool[] => {
   const jsonSchema = schema
@@ -598,7 +585,7 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
     : { type: "object", properties: {} };
   const busProp = String(events?.bus ?? "EVENT_BUS");
   return [
-    ...(onChange || onInstall || events || workflows?.length
+    ...(onChange || onInstall || events
       ? [
           createTool({
             id: "ON_MCP_CONFIGURATION",
@@ -670,22 +657,6 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 }
               }
 
-              if (workflows?.length) {
-                const {
-                  connectionId: wfConnectionId,
-                  meshUrl,
-                  token,
-                } = getMeshCtx(input);
-                if (wfConnectionId && meshUrl) {
-                  await Workflow.sync(
-                    workflows,
-                    meshUrl,
-                    wfConnectionId,
-                    token,
-                  );
-                }
-              }
-
               return Promise.resolve({});
             },
           }),
@@ -729,97 +700,10 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
           scopes: [
             ...((scopes as string[]) ?? []),
             ...(events ? [`${busProp}::EVENT_SYNC_SUBSCRIPTIONS`] : []),
-            ...(workflows?.length ? [...WORKFLOW_SCOPES] : []),
           ],
         });
       },
     }),
-
-    // Auto-generated trigger tool for each declared workflow.
-    // Calls COLLECTION_WORKFLOW_EXECUTION_CREATE on the mesh and returns the
-    // execution ID immediately (fire-and-forget; poll with
-    // COLLECTION_WORKFLOW_EXECUTION_GET to track progress).
-    ...(workflows?.length
-      ? workflows.map((wf) => {
-          const id = wf.toolId ?? workflowToolId(wf.title);
-          const baseDescription = [
-            wf.description
-              ? `Run workflow: ${wf.description}`
-              : `Start the "${wf.title}" workflow.`,
-            "Returns an execution_id immediately. Use COLLECTION_WORKFLOW_EXECUTION_GET to track progress.",
-          ].join(" ");
-          return createTool({
-            id,
-            description: (() => {
-              if (!wf.inputSchema) return baseDescription;
-              const schemaStr = JSON.stringify(wf.inputSchema, null, 2);
-              return schemaStr.length <= 2048
-                ? `${baseDescription}\n\nInput schema:\n${schemaStr}`
-                : `${baseDescription}\n\nThis workflow expects structured input. Use COLLECTION_WORKFLOW_GET to inspect the full input schema.`;
-            })(),
-            inputSchema: z.object({
-              input: z
-                .record(z.string(), z.unknown())
-                .optional()
-                .describe(
-                  "Input data for the workflow. Steps reference these values via @input.field.",
-                ),
-              virtual_mcp_id: z
-                .string()
-                .optional()
-                .describe(
-                  wf.virtual_mcp_id
-                    ? `Virtual MCP ID to use for execution (defaults to "${wf.virtual_mcp_id}").`
-                    : "Virtual MCP ID that will execute the workflow steps.",
-                ),
-              start_at_epoch_ms: z
-                .number()
-                .int()
-                .min(0)
-                .optional()
-                .describe(
-                  "Unix timestamp (ms) for scheduled execution. Omit to start immediately.",
-                ),
-            }),
-            outputSchema: z.object({
-              execution_id: z
-                .string()
-                .describe("ID of the created workflow execution."),
-            }),
-            execute: async (input) => {
-              const { connectionId, meshUrl, token } = getMeshCtx(input);
-
-              if (!connectionId || !meshUrl) {
-                throw new Error(
-                  `[${id}] Missing MESH_REQUEST_CONTEXT (connectionId or meshUrl).`,
-                );
-              }
-
-              const ctx = input.context as {
-                input?: Record<string, unknown>;
-                virtual_mcp_id?: string;
-                start_at_epoch_ms?: number;
-              };
-
-              const virtualMcpId = ctx.virtual_mcp_id ?? wf.virtual_mcp_id;
-
-              const collectionId = Workflow.workflowId(connectionId, wf.title);
-              const executionId = await Workflow.createExecution(
-                meshUrl,
-                token,
-                {
-                  workflow_collection_id: collectionId,
-                  virtual_mcp_id: virtualMcpId,
-                  input: ctx.input,
-                  start_at_epoch_ms: ctx.start_at_epoch_ms,
-                },
-              );
-
-              return { execution_id: executionId };
-            },
-          });
-        })
-      : []),
   ];
 };
 
@@ -854,7 +738,6 @@ export const createMCPServer = <
     tools: CreatedTool[];
     prompts: CreatedPrompt[];
     resources: CreatedResource[];
-    workflows?: WorkflowDefinition[];
   };
 
   let cached: Registrations | null = null;
@@ -927,14 +810,7 @@ export const createMCPServer = <
           tools = await resolveArray<CreatedTool>(options.tools, bindings);
         }
 
-        const resolvedWorkflows =
-          typeof options.workflows === "function"
-            ? await options.workflows(bindings)
-            : options.workflows;
-
-        tools.push(
-          ...toolsFor<TSchema>({ ...options, workflows: resolvedWorkflows }),
-        );
+        tools.push(...toolsFor<TSchema>({ ...options }));
 
         let prompts: CreatedPrompt[];
         if (typeof options.prompts === "function") {
@@ -962,7 +838,6 @@ export const createMCPServer = <
           tools,
           prompts,
           resources,
-          workflows: resolvedWorkflows,
         };
         cached = result;
         return result;

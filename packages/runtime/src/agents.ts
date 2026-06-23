@@ -7,7 +7,7 @@ import { MCPClient } from "./mcp.ts";
  * An "agent" in Studio is a Virtual MCP (a curated bundle of connections +
  * tools, optionally with instructions). `createAgent` is typed sugar over the
  * mesh self-endpoint tools COLLECTION_VIRTUAL_MCP_CREATE + AUTOMATION_CREATE +
- * AUTOMATION_TRIGGER_ADD — the same self-client pattern `Workflow.sync` uses.
+ * AUTOMATION_TRIGGER_ADD via the self-client pattern.
  *
  * Exposed to MCP authors through `configuration.onInstall`, which fires once on
  * the first ON_MCP_CONFIGURATION call (first config save) for a connection.

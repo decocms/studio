@@ -28,7 +28,6 @@
     "./mcp": "./src/well-known/mcp.ts",
     "./assistant": "./src/well-known/assistant.ts",
     "./prompt": "./src/well-known/prompt.ts",
-    "./workflow": "./src/well-known/workflow.ts",
     "./plugins": "./src/core/plugins.ts",
     "./plugin-router": "./src/core/plugin-router.tsx",
     "./ai-gateway": "./src/well-known/ai-gateway.ts",

@@ -29,10 +29,8 @@ export {
   type ResourceExecutionContext,
   type ResourceContents,
   type CreatedResource,
-  type WorkflowDefinition,
   ensureAuthenticated,
 } from "./tools.ts";
-export { createWorkflow } from "./workflows.ts";
 import type { Binding } from "./wrangler.ts";
 export { proxyConnectionForId, BindingOf, AgentOf } from "./bindings.ts";
 export { type CORSOptions, type CORSOrigin } from "./cors.ts";

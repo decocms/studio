@@ -503,20 +503,6 @@ const settingsStoreRegistryRoute = createRoute({
   ),
 });
 
-const settingsWorkflowsRoute = createRoute({
-  getParentRoute: () => settingsLayout,
-  path: "/workflows",
-  component: lazyRouteComponent(() => import("./routes/orgs/workflow.tsx")),
-});
-
-const settingsWorkflowDetailRoute = createRoute({
-  getParentRoute: () => settingsLayout,
-  path: "/workflows/$itemId",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/workflow-detail.tsx"),
-  ),
-});
-
 // Org-level plugin route (for org-admin)
 const orgPluginRoute = createRoute({
   getParentRoute: () => agentShellLayout,
@@ -636,8 +622,6 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsStoreRoute,
   settingsStoreRegistryRoute,
   settingsRegistryRoute,
-  settingsWorkflowsRoute,
-  settingsWorkflowDetailRoute,
 ]);
 
 const unifiedChatWithChildren = unifiedChatRoute.addChildren([

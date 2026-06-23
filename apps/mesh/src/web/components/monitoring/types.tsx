@@ -40,7 +40,7 @@ import type {
   MonitoringLog as BaseMonitoringLog,
   MonitoringLogsResponse as BaseMonitoringLogsResponse,
 } from "./monitoring-stats-row.tsx";
-import { MonacoCodeEditor } from "../details/workflow/components/monaco-editor.tsx";
+import { MonacoCodeEditor } from "../monaco-editor.tsx";
 
 // Re-export base types for convenience
 export type { BaseMonitoringLog, BaseMonitoringLogsResponse };

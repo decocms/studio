@@ -1,8 +1,7 @@
 /**
- * Unified `/api/:org/watch` SSE pool. Every consumer (decopilot thread events,
- * workflow execution events) shares ONE cross-tab connection per org that
- * streams the union of their event types; each takes a `filterEventTypes` view
- * of its own.
+ * Unified `/api/:org/watch` SSE pool. Consumers share ONE cross-tab connection
+ * per org that streams the union of their event types; each takes a
+ * `filterEventTypes` view of its own.
  */
 
 import { ALL_DECOPILOT_EVENT_TYPES } from "@decocms/mesh-sdk";
@@ -12,22 +11,11 @@ import {
   type SSESubscription,
 } from "./create-sse-subscription";
 
-/** Concrete workflow event names emitted on `/watch`. */
-const WORKFLOW_EVENT_TYPES = [
-  "workflow.execution.created",
-  "workflow.execution.resumed",
-  "workflow.step.execute",
-  "workflow.step.completed",
-];
-
-/** `?types=` patterns sent to the server; `workflow.*` is a wildcard it expands. */
-const WATCH_URL_TYPES = [...ALL_DECOPILOT_EVENT_TYPES, "workflow.*"];
+/** `?types=` patterns sent to the server. */
+const WATCH_URL_TYPES = [...ALL_DECOPILOT_EVENT_TYPES];
 
 /** Concrete event names the client attaches listeners for. */
-const WATCH_EVENT_TYPES = [
-  ...ALL_DECOPILOT_EVENT_TYPES,
-  ...WORKFLOW_EVENT_TYPES,
-];
+const WATCH_EVENT_TYPES = [...ALL_DECOPILOT_EVENT_TYPES];
 
 /** The single shared, cross-tab `/watch` connection (streams the full union). */
 const watchSSE: SSESubscription = createSSESubscription({
@@ -42,9 +30,3 @@ const watchSSE: SSESubscription = createSSESubscription({
 export const decopilotWatchView: SSESubscription = filterEventTypes(watchSSE, [
   ...ALL_DECOPILOT_EVENT_TYPES,
 ]);
-
-/** Workflow execution events. */
-export const workflowWatchView: SSESubscription = filterEventTypes(
-  watchSSE,
-  WORKFLOW_EVENT_TYPES,
-);

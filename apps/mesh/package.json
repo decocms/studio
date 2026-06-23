@@ -137,7 +137,6 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@tiptap/core": "3.20.2",
-    "@tiptap/extension-mention": "3.20.2",
     "@tiptap/extension-placeholder": "3.20.2",
     "@tiptap/pm": "3.20.2",
     "@tiptap/react": "3.20.2",
@@ -163,7 +162,6 @@
     "jose": "^6.0.11",
     "lucide-react": "^0.468.0",
     "marked": "^15.0.6",
-    "mesh-plugin-workflows": "workspace:*",
     "nanoid": "^5.1.6",
     "pg": "^8.16.3",
     "prettier": "^3.4.2",
@@ -181,8 +179,7 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.1",
     "vite-tsconfig-paths": "^5.1.4",
-    "zod": "^4.0.0",
-    "zustand": "^5.0.9"
+    "zod": "^4.0.0"
   },
   "homepage": "https://github.com/decocms/studio",
   "keywords": [

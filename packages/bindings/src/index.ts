@@ -121,9 +121,6 @@ export {
   type DeleteObjectsOutput,
 } from "./well-known/object-storage";
 
-// Re-export workflow binding types
-export { WORKFLOWS_COLLECTION_BINDING } from "./well-known/workflow";
-
 // Re-export brand binding types (for reading org brand context)
 export {
   BrandColorsSchema,
