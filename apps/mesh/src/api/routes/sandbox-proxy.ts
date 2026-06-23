@@ -93,6 +93,7 @@ const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
  * allows up to 60s for upstream headers (see `daemon/proxy.ts`).
  */
 const QUICK_FILE_OP_TIMEOUT_MS = 10_000;
+const GIT_STATUS_TIMEOUT_MS = 2_000;
 
 /**
  * Abort signal for quick file ops: the inbound request's signal (client
@@ -527,10 +528,20 @@ export const createSandboxRoutes = () => {
     proxyDaemon(c, "/_sandbox/git/status", {
       method: "GET",
       map404to410: true,
+      signal: AbortSignal.any([
+        c.req.raw.signal,
+        AbortSignal.timeout(GIT_STATUS_TIMEOUT_MS),
+      ]),
     }),
   );
   app.post("/:virtualMcpId/:branch/git/status", (c) =>
-    proxyDaemon(c, "/_sandbox/git/status", { map404to410: true }),
+    proxyDaemon(c, "/_sandbox/git/status", {
+      map404to410: true,
+      signal: AbortSignal.any([
+        c.req.raw.signal,
+        AbortSignal.timeout(GIT_STATUS_TIMEOUT_MS),
+      ]),
+    }),
   );
   app.post("/:virtualMcpId/:branch/git/diff", (c) =>
     proxyDaemon(c, "/_sandbox/git/diff", {
