@@ -150,13 +150,14 @@ export async function buildAgentSystemPrompt(
       : "org/<slug>";
     const userId = opts.user?.id;
     const [org, usr] = await Promise.all([
-      loadMemoryBlock(opts.ctx, "organization", "MEMORY.md", homeBase),
+      loadMemoryBlock(opts.ctx, "organization", "MEMORY.md", homeBase, userId),
       userId
         ? loadMemoryBlock(
             opts.ctx,
             "user",
             `users/${userId}/MEMORY.md`,
             homeBase,
+            userId,
           )
         : Promise.resolve(null),
     ]);
@@ -221,19 +222,32 @@ export async function buildAgentSystemPrompt(
  *  a log. Larger files are truncated with a pointer to read the rest on demand. */
 const MEMORY_INJECT_CAP = 16_000;
 
+/** Raw starter content seeded on first load so the agent's later
+ *  Read(MEMORY.md) never hits a missing file. Kept minimal — just a heading. */
+function memoryTemplate(scope: "organization" | "user"): string {
+  return scope === "organization"
+    ? "# Organization memory\n\nDurable facts shared with everyone in this organization. Keep this a concise, curated index — not a log.\n"
+    : "# User memory\n\nFacts and preferences specific to you. Keep this a concise, curated index — not a log.\n";
+}
+
 /**
  * Read a MEMORY.md index from the `home` volume and render it as a system
  * block. `scope` is "organization" (shared) or "user" (private to the current
  * user); `path` is volume-relative (e.g. "MEMORY.md" or "users/<id>/MEMORY.md")
  * and `homeBase` is the sandbox mount path ("org/<slug>") used only for display.
- * Returns null when org-fs is unavailable, the file is absent, or it is empty —
- * the orgFs prompt already tells the agent where to create it. Never throws.
+ * `actor` is the user id used to seed the file on first load.
+ *
+ * On the first load, if the file is genuinely absent it is created with a raw
+ * default template so the agent's later Read(MEMORY.md) doesn't fail. Returns
+ * null when org-fs is unavailable, the file was just seeded, or it is empty.
+ * Never throws.
  */
 async function loadMemoryBlock(
   ctx: StudioContext,
   scope: "organization" | "user",
   path: string,
   homeBase: string,
+  actor: string | undefined,
 ): Promise<string | null> {
   if (!ctx.orgFs) return null;
   let content: string;
@@ -241,7 +255,23 @@ async function loadMemoryBlock(
     const bytes = await ctx.orgFs.read("home", path);
     content = new TextDecoder().decode(bytes).trim();
   } catch {
-    return null; // not a live file yet
+    // Read failed. Seed a default template only when the file is genuinely
+    // absent — a `stat` guard so a transient read error never clobbers an
+    // existing file with the blank template. Best-effort; never throws.
+    if (actor) {
+      try {
+        const existing = await ctx.orgFs.stat("home", path);
+        if (!existing) {
+          await ctx.orgFs.write("home", path, memoryTemplate(scope), {
+            actor,
+            contentType: "text/markdown",
+          });
+        }
+      } catch {
+        // ignore — seeding is best-effort
+      }
+    }
+    return null;
   }
   if (!content) return null;
   const displayPath = `${homeBase}/${path}`;
