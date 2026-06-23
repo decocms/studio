@@ -3,6 +3,19 @@
   <head>
     <meta name="theme-color" content="#f6f4ed" />
     <script>
+      // Reload once on modulepreload 404 (rolling deployment — old pod missing new chunk).
+      // Shares the cooldown key with ChunkErrorBoundary to prevent double-reload loops.
+      window.addEventListener('vite:preloadError', function() {
+        var key = '__mesh_chunk_reload_ts';
+        var last = sessionStorage.getItem(key);
+        var now = Date.now();
+        if (!last || now - Number(last) > 10000) {
+          sessionStorage.setItem(key, String(now));
+          location.reload();
+        }
+      });
+    </script>
+    <script>
       // Apply dark mode class before first paint to prevent flash
       (function() {
         try {
