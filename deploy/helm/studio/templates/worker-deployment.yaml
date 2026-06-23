@@ -33,9 +33,20 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.metrics.scrape .Values.podAnnotations }}
       annotations:
+        {{- if .Values.metrics.scrape }}
+        # Worker runs the stream pump (encode/publish) and the run executors, so
+        # its metrics (decopilot.stream.*, eventloop.delay) only reach Prometheus
+        # if vmagent's kubernetes-pods job scrapes this pod too — same block as
+        # the API deployment.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.service.targetPort | default 3000 | quote }}
+        prometheus.io/path: {{ .Values.metrics.path | quote }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "chart-deco-studio.name" . }}-worker
