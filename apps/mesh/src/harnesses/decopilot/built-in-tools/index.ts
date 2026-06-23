@@ -254,6 +254,10 @@ async function buildAllTools(
           // Self-clones inherit the parent's sandbox tools so they can run
           // bash / file I/O against the SAME sandbox.
           vmTools,
+          // Full parent built-in params so a delegated subagent is built with
+          // the SAME heavy tools (vm/generate_image/web_search), not the light
+          // core. The subagent's own client/sandbox are substituted downstream.
+          parentBuiltInParams: params,
         },
         ctx,
       ),

@@ -365,6 +365,45 @@ async function runSubtaskStep(
     targetId,
     { superUser: isSelf },
   );
+
+  // Give the backgrounded subagent the SAME heavy built-ins the parent has
+  // (vm file tools, generate_image, web_search) instead of the light core —
+  // otherwise it only sees todo_write + read_tool_output and can't write files
+  // or generate images. Providers + sandbox identity are rebuilt here since this
+  // runs detached on a workflow step, not on the parent's turn.
+  const imageInfo = harnessModels.image;
+  const deepInfo = harnessModels.deepResearch;
+  const imageProvider = imageInfo?.credentialId
+    ? await meshCtx.aiProviders.activate(imageInfo.credentialId, ctx.orgId)
+    : null;
+  const deepResearchProvider = deepInfo?.credentialId
+    ? await meshCtx.aiProviders.activate(deepInfo.credentialId, ctx.orgId)
+    : null;
+  const subagentBuiltInParams = {
+    provider,
+    imageProvider,
+    deepResearchProvider,
+    organization,
+    models: harnessModels,
+    toolApprovalLevel: ctx.toolApprovalLevel,
+    isPlanMode: false,
+    passthroughClient: mcpClient as never,
+    pendingImages: [],
+    // Self-clone shares the parent's sandbox (same virtualMcpId/branch/userId);
+    // a cross-agent delegate has a different sandbox identity but the same keying.
+    vmContext: {
+      virtualMcpId: targetRef.id,
+      branch: targetRef.repo
+        ? (ctx.branch ?? `thread:${ctx.threadId}`)
+        : "ephemeral",
+      userId: ctx.userId,
+      threadId: ctx.threadId,
+    },
+    taskId: ctx.threadId,
+    agentId: targetRef.id,
+    // Depth-1: a backgrounded subagent can't itself background/re-delegate.
+    backgroundDispatcher: null,
+  };
   // Nested tool chunks the subagent emits go to this discarded side channel;
   // the run's own message stream (text + tool calls) flows through
   // `toUIMessageStream` into the per-job subject below.
@@ -396,6 +435,7 @@ async function runSubtaskStep(
         needsApproval: false,
       },
       passthroughClient: mcpClient as never,
+      subagentBuiltInParams,
     });
 
     // Stamp `subtaskJobId` on the run's messages so the client nests them under

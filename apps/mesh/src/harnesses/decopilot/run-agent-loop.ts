@@ -38,6 +38,7 @@ import {
 } from "@decocms/harness/decopilot/prompt-constants";
 import { buildAgentSystemPrompt } from "./build-agent-system-prompt";
 import { assembleAgentTools } from "./assemble-agent-tools";
+import type { BuiltinToolParams } from "./built-in-tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
 import type { SubtaskParams } from "./built-in-tools/subtask";
 import type { ConnectionsBlockTool } from "@decocms/harness/decopilot/connections-block";
@@ -98,6 +99,10 @@ export interface RunAgentLoopOptions {
    *  built from `enabledTools` reconstructed from message history). Subagents
    *  don't pass this. Merged last so parent extras shadow assembled tools. */
   extraTools?: ToolSet;
+  /** Full built-in params for a SUBAGENT — gives a delegated subagent the
+   *  parent's heavy built-ins (vm file tools, generate_image, web_search) instead
+   *  of the light core. Forwarded verbatim to `assembleAgentTools`. */
+  subagentBuiltInParams?: Omit<BuiltinToolParams, "toolOutputMap">;
   /** Additional per-request system messages appended AFTER the stable system
    *  messages produced by buildAgentSystemPrompt. Parent uses this for
    *  `processedSystemMessages` (inline <system> blocks from the user's
@@ -183,6 +188,7 @@ export async function runAgentLoop(
     subtaskParams: opts.subtaskParams,
     resolveArgs,
     onToolCalled,
+    fullBuiltInParams: opts.subagentBuiltInParams,
   });
   // Merge extra tools (e.g., parent's state-dependent `enable_tool`) after
   // the shared assembler. Parent extras shadow assembled tools intentionally.
