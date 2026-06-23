@@ -53,6 +53,26 @@ const publishErrorsCounter = meter.createCounter(
   },
 );
 
+// Per-chunk JSON.stringify+encode time. Pod-level (no org attribute) on
+// purpose: this is loop-occupancy, meant to be correlated with eventloop.delay
+// to see how much of a saturated thread is the encode path. Always-on
+// (the STREAM_ENCODE_TRACE profiler is the gated verbose-log counterpart).
+const encodeMsHistogram = meter.createHistogram("decopilot.stream.encode_ms", {
+  description: "Per-chunk JSON.stringify+encode time for decopilot stream",
+  unit: "ms",
+});
+
+// Logical chunks published (one per stream part, before fragmentation). Tagged
+// by org.id (low cardinality) so publish rate per org is visible — the proxy
+// for token throughput driving socket fan-out.
+const publishedChunksCounter = meter.createCounter(
+  "decopilot.stream.published_chunks",
+  {
+    description: "Logical decopilot stream chunks published to JetStream",
+    unit: "{chunks}",
+  },
+);
+
 // 30 min — projector-lag SLA: the stream is the sole path to the DB (Phase C),
 // so retention must outlast a projector outage long enough to catch up. Tune later.
 const MAX_AGE_NS = 30 * 60 * 1_000_000_000; // 30 min
@@ -315,14 +335,12 @@ export class NatsStreamBuffer implements StreamBuffer {
     // back together by `createTailStream`. Fragments carry raw byte slices
     // of the encoded `{ p: value }` JSON, so reassembly is byte-exact.
     const publishChunk = (value: unknown): void => {
-      let bytes: Uint8Array;
-      if (streamEncodeProfiler) {
-        const t0 = performance.now();
-        bytes = encoder.encode(JSON.stringify({ p: value }));
-        streamEncodeProfiler.record(performance.now() - t0, bytes.length);
-      } else {
-        bytes = encoder.encode(JSON.stringify({ p: value }));
-      }
+      const t0 = performance.now();
+      const bytes = encoder.encode(JSON.stringify({ p: value }));
+      const encodeMs = performance.now() - t0;
+      encodeMsHistogram.record(encodeMs);
+      publishedChunksCounter.add(1, { "org.id": orgId ?? "unknown" });
+      streamEncodeProfiler?.record(encodeMs, bytes.length);
       if (bytes.length <= MAX_PUBLISH_BYTES) {
         tracker.publish(js, subj, bytes);
         return;
