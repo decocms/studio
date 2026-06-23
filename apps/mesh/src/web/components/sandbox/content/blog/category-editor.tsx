@@ -76,12 +76,16 @@ export function CategoryEditor({
               />
             </div>
 
-            <InlineText
-              value={str(category.description)}
-              onChange={(v) => setField("description", v)}
-              placeholder="Add a description…"
-              className="mt-4 text-base text-muted-foreground"
-            />
+            <div className="mt-4 space-y-2">
+              <Label htmlFor="category-description">Description</Label>
+              <Input
+                id="category-description"
+                value={str(category.description)}
+                onChange={(e) => setField("description", e.target.value)}
+                placeholder="Short description for this category"
+                className="h-10"
+              />
+            </div>
 
             <div className="mt-6 border-t" />
 
