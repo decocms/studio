@@ -7,7 +7,8 @@
     "./plugins/require-cn-classname.js",
     "./plugins/ban-direct-auth-client-organization.js",
     "./plugins/ban-ref-current-assignment.js",
-    "./plugins/ban-cross-tree-imports.js"
+    "./plugins/ban-cross-tree-imports.js",
+    "./plugins/ban-e2e-app-imports.js"
   ],
   "ignorePatterns": ["apps/docs/*"],
   "rules": {
@@ -22,7 +23,8 @@
     "require-cn-classname/require-cn-classname": "error",
     "ban-direct-auth-client-organization/ban-direct-auth-client-organization": "error",
     "ban-ref-current-assignment/ban-ref-current-assignment": "error",
-    "ban-cross-tree-imports/ban-cross-tree-imports": "warn"
+    "ban-cross-tree-imports/ban-cross-tree-imports": "warn",
+    "ban-e2e-app-imports/ban-e2e-app-imports": "error"
   },
   "plugins": ["react"]
 }

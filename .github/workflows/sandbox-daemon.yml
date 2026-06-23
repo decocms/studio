@@ -83,8 +83,15 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # The fs `grep` route shells out to ripgrep; install it so that test can
+      # assert results strictly instead of tolerating "grep unavailable".
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Build daemon bundle
         run: bun run --cwd=packages/sandbox build
 
       - name: Run daemon e2e tests
-        run: bun test packages/sandbox/daemon/daemon.e2e.test.ts
+        # All daemon e2e specs end in `.e2e.test.ts` (core + git + proxy +
+        # dispatch); the helpers file is `.e2e.helpers.ts` and is not matched.
+        run: bun test packages/sandbox/daemon/daemon*.e2e.test.ts

@@ -333,6 +333,7 @@ Located in `plugins/`:
 - `ban-use-effect.ts` - ban useEffect
 - `ban-memoization.ts` - ban useMemo/useCallback/memo
 - `ensure-tailwind-design-system-tokens.ts` - enforce Tailwind consistency
+- `ban-e2e-app-imports.js` - deny-by-default import allowlist for the `packages/e2e` suite (see E2E isolation below)
 
 ### TypeScript
 - Favor explicit types over `any`
@@ -348,6 +349,30 @@ See [`TESTING.md`](./TESTING.md) for the testing philosophy and rules.
 - **E2E (Playwright)** — everything else. Real Postgres + NATS + Better Auth. Lives in `apps/mesh/e2e/tests/`.
 
 If a test needs `vi.mock`, `mock.module`, a stubbed `StudioContext`, or a fake `fetch` — it's not a unit test. Move it to e2e.
+
+### E2E isolation (black-box contract)
+
+The e2e suite is a **black-box contract** over HTTP + DB: spin the server, hit it over the wire,
+assert on responses. It must stay decoupled from the implementation so a component can be rewritten
+— even in another language — and the same suite still holds. The in-sandbox daemon's suite
+(`packages/sandbox/daemon/daemon.e2e.*.test.ts`) already works this way: it spawns the built binary
+(swap it via the `DAEMON_E2E_CMD` env) and asserts only over HTTP. The mesh suite is migrating into
+the dedicated `packages/e2e` workspace behind the same wall (follow-up PR).
+
+Rules:
+- **No imports from `apps/*/src/**` and no `@/` mesh alias** in `packages/e2e`. Enforced by
+  `plugins/ban-e2e-app-imports.js` (oxlint, `error`, deny-by-default) + a `paths: {}` override in
+  `packages/e2e/tsconfig.json`. Only a small explicit allowlist of published packages is permitted
+  (any unlisted `@decocms/*` is denied too, so app code creeping into `packages/` can't silently
+  widen the test surface).
+- **Do not silence this lint.** If a test needs a value, either **inline the expected shape** (a
+  black-box test owning its contract is correct, not duplication — a divergence from the app is a
+  wire-contract regression *signal*) or add the dep to **both** `packages/e2e/package.json` and the
+  plugin allowlist, with justification.
+- **Tenant-scope every DB assertion** (per-test org/user/thread/run) — that's what makes
+  `fullyParallel` safe. Never assert on values shared across runs; the one global namespace is email
+  domain (use a unique domain per run). Playwright's worker count is effectively the Postgres
+  connection budget.
 
 ## Working with Tools
 
