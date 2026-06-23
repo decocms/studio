@@ -156,7 +156,35 @@ function applyLocally(
   action: SubmitAction,
 ): UIMessage[] | null {
   if (action.kind === "message") {
-    return [...prev, action.message];
+    // Stamp a top-level `created_at` the moment the user submits. Without it the
+    // optimistic user row reads as +Infinity in `readTimestamp`/`mergeAndSort`,
+    // while the assistant reply gets a finite timestamp (run-start
+    // `metadata.created_at`, or its finish anchor) — so the reply sorts AHEAD of
+    // the user row that triggered it. The turn then renders empty ("No response
+    // was generated") with its answer detached under the next turn, until a
+    // refetch brings the DB `created_at`.
+    //
+    // The just-submitted message is the newest in the thread, so stamp it
+    // strictly after every existing finite timestamp — not a bare `now`, which
+    // can tie (to the millisecond) with a frozen assistant just anchored by
+    // stop(); the role tiebreak would then wrongly sort the new user ahead of
+    // that earlier assistant. A persisted refetch (incoming carries the DB
+    // `created_at`) overwrites this via `preserveCreatedAt`. No-op if a
+    // `created_at` is already present.
+    const msg = action.message as UIMessage & { created_at?: string };
+    if (msg.created_at != null) return [...prev, msg];
+    let maxMs = 0;
+    for (const m of prev) {
+      const ts = (m as { created_at?: string | number | Date }).created_at;
+      if (ts == null) continue;
+      const t = new Date(ts).getTime();
+      if (Number.isFinite(t) && t > maxMs) maxMs = t;
+    }
+    const ms = Math.max(Date.now(), maxMs + 1);
+    return [
+      ...prev,
+      { ...msg, created_at: new Date(ms).toISOString() } as UIMessage,
+    ];
   }
   // toolOutput / approval — locate the part by id on any assistant message.
   // The newest occurrence wins (the same toolCallId shouldn't appear twice
