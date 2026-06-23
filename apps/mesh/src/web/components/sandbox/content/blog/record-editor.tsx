@@ -8,7 +8,7 @@ import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 
-type RecordKind = Extract<BlogKind, "authors" | "categories">;
+type RecordKind = Extract<BlogKind, "authors">;
 
 interface FieldDef {
   key: string;
@@ -30,15 +30,10 @@ const FIELDS: Record<RecordKind, FieldDef[]> = {
     { key: "company", label: "Company", widget: "text" },
     { key: "avatar", label: "Avatar", widget: "image" },
   ],
-  categories: [
-    { key: "name", label: "Name", widget: "text" },
-    { key: "slug", label: "Slug", widget: "text", placeholder: "my-category" },
-  ],
 };
 
 const TITLE: Record<RecordKind, string> = {
   authors: "Author",
-  categories: "Category",
 };
 
 export function RecordEditor({
