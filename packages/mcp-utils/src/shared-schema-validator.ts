@@ -75,14 +75,27 @@ class MemoizingJsonSchemaValidator {
     const cached = this.#byRef.get(schema);
     if (cached) return cached as Validator<T>;
 
-    const key = stableStringify(schema);
-    let compiled = this.#cache.get(key);
-    if (!compiled) {
-      compiled = this.#ajv.compile(schema);
-      this.#cache.set(key, compiled);
-    }
-    const validate = compiled;
+    // Compile LAZILY on first validate, not here. The MCP SDK's
+    // `Client.listTools()` calls `cacheToolMetadata()`, which loops over EVERY
+    // listed tool and calls `getValidator(tool.outputSchema)` in one
+    // synchronous tick. Compiling eagerly here stacked N cold Ajv compiles in
+    // that single tick — a measured 326ms event-loop stall on a large
+    // aggregated listTools (the "16 → ~600ms" burst the createAjv() comment
+    // predicts). Deferring to first `validate()` means the loop only allocates
+    // N closures; each schema's compile happens later, one-per-tick, when a
+    // tool is actually called and its output validated — and tools that are
+    // listed but never called cost nothing. Still bounded + content-keyed.
+    let validate: ValidateFunction | undefined;
     const validator: Validator<T> = (input: unknown): ValidatorResult<T> => {
+      if (!validate) {
+        const key = stableStringify(schema);
+        let compiled = this.#cache.get(key);
+        if (!compiled) {
+          compiled = this.#ajv.compile(schema);
+          this.#cache.set(key, compiled);
+        }
+        validate = compiled;
+      }
       if (validate(input)) {
         return { valid: true, data: input as T, errorMessage: undefined };
       }
