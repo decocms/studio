@@ -112,6 +112,8 @@ describe("dispatchLinkWorkItem", () => {
         provider: provider(ensureCalls),
         fetchImpl: dispatchFetch(urls),
         outbox: openInMemoryOutbox(),
+        getNatsConnection: () =>
+          ({}) as unknown as import("@nats-io/nats-core").NatsConnection,
       },
       new AbortController().signal,
       item,
@@ -140,6 +142,8 @@ describe("dispatchLinkWorkItem", () => {
         provider: provider(ensureCalls),
         fetchImpl: dispatchFetch(urls),
         outbox: openInMemoryOutbox(),
+        getNatsConnection: () =>
+          ({}) as unknown as import("@nats-io/nats-core").NatsConnection,
       },
       new AbortController().signal,
       workItem({

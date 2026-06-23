@@ -42,6 +42,7 @@
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
+import type { NatsConnection } from "@nats-io/nats-core";
 import type { WorkItem } from "../links/link-work-item";
 import {
   type RelayPostResult,
@@ -176,6 +177,11 @@ export interface LocalDispatchDeps {
     maxTimeout?: number;
     jitter?: number;
   };
+  /**
+   * Active NATS connection threaded from the link-daemon work dispatch.
+   * Reserved for Task 6 (direct JetStream publish); not consumed here yet.
+   */
+  natsConnection?: NatsConnection;
 }
 
 /**

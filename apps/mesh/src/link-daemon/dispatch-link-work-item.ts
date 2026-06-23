@@ -1,3 +1,4 @@
+import type { NatsConnection } from "@nats-io/nats-core";
 import type { WorkItem } from "../links/link-work-item";
 import {
   handleLocalDispatch,
@@ -13,6 +14,7 @@ export interface LinkWorkItemDispatchInput {
   provider: DesktopSandboxProvider;
   fetchImpl?: typeof fetch;
   outbox: Outbox;
+  getNatsConnection?: () => NatsConnection | null;
 }
 
 function deriveHandle(item: WorkItem): string {
@@ -121,6 +123,13 @@ export async function dispatchLinkWorkItem(
     return;
   }
 
+  const nc = input.getNatsConnection?.() ?? null;
+  if (!nc) {
+    throw new Error(
+      "[link-work] NATS connection unavailable for direct relay publish",
+    );
+  }
+
   const releaseDispatch = input.provider.acquireDispatch(handle);
   const runAc = runAbortRegistry.register(item.runId);
   try {
@@ -132,6 +141,7 @@ export async function dispatchLinkWorkItem(
       fetchImpl: input.fetchImpl,
       signal: AbortSignal.any([signal, runAc.signal]),
       outbox: input.outbox,
+      natsConnection: nc,
     });
   } catch (err) {
     console.error(

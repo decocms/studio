@@ -862,6 +862,107 @@ test("work dispatch is bound to runLifetimeSignal, not the per-session signal", 
   expect(capturedSignal!.aborted).toBe(true);
 });
 
+test("work dispatch receives the active NATS connection via getNatsConnection", async () => {
+  const natsClosed = deferred<void | Error>();
+  const serverClosed = deferred<void>();
+  // When the fake nc is injected via connectNats, startActive() should build
+  // connectionInput = { ...input, getNatsConnection: () => nc } and pass it
+  // to createTunnelCommandFetch. Then dispatchLinkWorkItem should call
+  // getNatsConnection() to get nc — the null-guard passes, and handleLocalDispatch
+  // is reached. We verify this by confirming a /_sandbox/dispatch POST occurs
+  // (proving the nc null-guard didn't throw).
+  const fakeNatsConnection = {
+    publish: () => {},
+    flush: async () => {},
+    close: async () => natsClosed.resolve(undefined),
+    closed: async () => natsClosed.promise,
+  } as never as NatsConnection;
+
+  const workItemSent = deferred<void>();
+  const urlsSeen: string[] = [];
+  const fetchImpl: typeof fetch = (async (url: string) => {
+    urlsSeen.push(String(url));
+    if (String(url).includes("/_sandbox/dispatch")) {
+      workItemSent.resolve();
+      // Return a minimal SSE done to end the dispatch.
+      return new Response(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {"type":"done"}\n\n'));
+            c.close();
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        },
+      );
+    }
+    if (String(url).includes("/links/runs/")) {
+      return Response.json({ ok: true, lastSeq: 1 });
+    }
+    return new Response(null, { status: 204 });
+  }) as typeof fetch;
+
+  let capturedTunnelFetch: ((req: Request) => Promise<Response>) | undefined;
+
+  const providerWithToken: DesktopSandboxProvider = {
+    ...provider,
+    getDaemonToken: () => "daemon-token",
+  };
+
+  const handle = await connectToClusterTunnel(
+    makeBaseTunnelInput({ fetchImpl, provider: providerWithToken }),
+    {
+      fetchSession: async () => sessionWithoutAuth,
+      connectNats: async () => fakeNatsConnection,
+      serveTunnel: async (options) => {
+        capturedTunnelFetch = options.fetch;
+        return {
+          hostname: options.hostname,
+          closed: serverClosed.promise,
+          close: async () => serverClosed.resolve(),
+        };
+      },
+      sleep: waitForAbortSleep,
+    },
+  );
+
+  // Dispatch a work item through the tunnel fetch handler.
+  const validWorkItemBody = JSON.stringify({
+    runId: "run-1",
+    threadId: "thread-1",
+    orgId: "org-1",
+    userId: "user-1",
+    runFenceToken: "fence-1",
+    orgSlug: "my-org",
+    harnessInput: {
+      agent: { id: "agent-1" },
+      mcp: { expiresAt: Date.now() + 60_000 },
+    },
+  });
+  const res = await capturedTunnelFetch!(
+    new Request("http://tunnel.local/api/links/work", {
+      method: "POST",
+      body: validWorkItemBody,
+    }),
+  );
+  expect(res.status).toBe(202);
+
+  // Wait for the async work to reach the sandbox dispatch fetch.
+  await Promise.race([
+    workItemSent.promise,
+    new Promise<void>((resolve) => setTimeout(resolve, 200)),
+  ]);
+
+  // If getNatsConnection was NOT wired, the null-guard in dispatchLinkWorkItem
+  // would throw before reaching handleLocalDispatch, and /_sandbox/dispatch
+  // would never be called. Its presence confirms the accessor is threaded.
+  expect(urlsSeen.some((u) => u.includes("/_sandbox/dispatch"))).toBe(true);
+
+  await handle.close();
+});
+
 test("GET /api/links/status returns hostname, capabilities, cliVersion", async () => {
   const fetchImpl = createTunnelCommandFetch({
     connectionInput: {

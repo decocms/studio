@@ -514,12 +514,17 @@ export async function connectToClusterTunnel(
     let tunnelServer: tunnel.TunnelServer | undefined;
     const activeWork = new Set<Promise<void>>();
 
+    const connectionInput = {
+      ...input,
+      getNatsConnection: () => nc,
+    };
+
     try {
       tunnelServer = await (deps.serveTunnel ?? tunnel.serve)({
         connection: nc,
         hostname: session.tunnelHostname,
         fetch: createTunnelCommandFetch({
-          connectionInput: input,
+          connectionInput,
           controlHandler,
           signal: ac.signal,
           activeWork,
