@@ -164,7 +164,9 @@ function SubtaskCard({
         <div
           className={cn(
             "relative shrink-0 size-4 flex items-center justify-center [&>svg]:size-4",
-            isError ? "[&>svg]:text-warning/70" : "[&>svg]:text-muted-foreground/75",
+            isError
+              ? "[&>svg]:text-warning/70"
+              : "[&>svg]:text-muted-foreground/75",
           )}
         >
           {icon}
@@ -237,7 +239,9 @@ function SubtaskResultBody({ part }: { part: SubtaskToolPart }) {
         {response.trim() ? (
           <MemoizedMarkdown id={`${part.toolCallId}-result`} text={response} />
         ) : (
-          <p className="text-[13px] text-muted-foreground/60 italic">Running…</p>
+          <p className="text-[13px] text-muted-foreground/60 italic">
+            Running…
+          </p>
         )}
       </section>
     </div>
