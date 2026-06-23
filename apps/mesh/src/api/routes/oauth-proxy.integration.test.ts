@@ -29,7 +29,6 @@ import {
 } from "../../database/test-db-pg";
 import type { StudioDatabase } from "../../database";
 import { createApp } from "../app";
-import type { EventBus } from "../../event-bus";
 import { auth } from "../../auth";
 import { setGlobalSettings, getSettings } from "../../settings";
 
@@ -85,29 +84,6 @@ interface AuthServerMetadata {
 // Test Setup
 // =============================================================================
 
-function createMockEventBus(): EventBus {
-  return {
-    start: async () => {},
-    stop: () => {},
-    isRunning: () => false,
-    publish: async () => ({}) as never,
-    subscribe: async () => ({}) as never,
-    unsubscribe: async () => ({ success: true }),
-    listSubscriptions: async () => [],
-    getSubscription: async () => null,
-    getEvent: async () => null,
-    cancelEvent: async () => ({ success: true }),
-    ackEvent: async () => ({ success: true }),
-    syncSubscriptions: async () => ({
-      created: 0,
-      updated: 0,
-      deleted: 0,
-      unchanged: 0,
-      subscriptions: [],
-    }),
-  };
-}
-
 let database: StudioDatabase;
 let app: Awaited<ReturnType<typeof createApp>>;
 const connectionMap = new Map<string, string>();
@@ -120,7 +96,7 @@ describe("MCP OAuth Proxy E2E", () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
     await seedCommonTestPgFixtures(database);
-    app = await createApp({ database, eventBus: createMockEventBus() });
+    app = await createApp({ database, disableNats: true });
 
     const orgId = "org_test";
 

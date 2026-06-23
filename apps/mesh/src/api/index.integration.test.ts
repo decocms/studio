@@ -10,7 +10,6 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
-import type { EventBus } from "../event-bus";
 import { setGlobalSettings, getSettings } from "../settings";
 import { createApp } from "./app";
 
@@ -26,50 +25,6 @@ if (!getSettings().encryptionKey) {
 /**
  * Create a no-op mock event bus for testing
  */
-function createMockEventBus(): EventBus {
-  return {
-    start: async () => {},
-    stop: () => {},
-    isRunning: () => false,
-    publish: async () =>
-      ({
-        id: "mock-event",
-        organizationId: "org",
-        type: "test",
-        source: "test",
-        specversion: "1.0",
-        time: new Date().toISOString(),
-        datacontenttype: "application/json",
-        status: "pending",
-        attempts: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }) as never,
-    subscribe: async () =>
-      ({
-        id: "mock-sub",
-        organizationId: "org",
-        connectionId: "conn",
-        eventType: "test",
-        enabled: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }) as never,
-    unsubscribe: async () => ({ success: true }),
-    listSubscriptions: async () => [],
-    getEvent: async () => null,
-    cancelEvent: async () => ({ success: true }),
-    ackEvent: async () => ({ success: true }),
-    getSubscription: async () => null,
-    syncSubscriptions: async () => ({
-      created: 0,
-      updated: 0,
-      deleted: 0,
-      unchanged: 0,
-      subscriptions: [],
-    }),
-  };
-}
 
 describe("Hono App", () => {
   let database: StudioDatabase;
@@ -78,7 +33,7 @@ describe("Hono App", () => {
   beforeEach(async () => {
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
-    app = await createApp({ database, eventBus: createMockEventBus() });
+    app = await createApp({ database, disableNats: true });
   });
 
   afterEach(async () => {

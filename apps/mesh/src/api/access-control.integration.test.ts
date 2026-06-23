@@ -15,36 +15,12 @@ import {
   resetTestPgDatabase,
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
-import type { EventBus } from "../event-bus";
 import type { Permission } from "../storage/types";
 import { createApp } from "./app";
 
 /**
  * Create a no-op mock event bus for testing
  */
-function createMockEventBus(): EventBus {
-  return {
-    getSubscription: async () => null,
-    getEvent: async () => null,
-    cancelEvent: async () => ({ success: true }),
-    ackEvent: async () => ({ success: true }),
-    syncSubscriptions: async () => ({
-      created: 0,
-      updated: 0,
-      deleted: 0,
-      unchanged: 0,
-      subscriptions: [],
-    }),
-    isRunning: () => false,
-    start: async () => {},
-    stop: async () => {},
-    publish: async () => ({ success: true }) as any,
-    subscribe: async () =>
-      ({ success: true, subscriptionId: "mock-sub" }) as any,
-    unsubscribe: async () => ({ success: true }),
-    listSubscriptions: async () => [],
-  };
-}
 
 // ============================================================================
 // Types
@@ -125,7 +101,7 @@ describe("Access Control Integration Tests", () => {
     await resetTestPgDatabase(database);
 
     // Create app instance with test database and mock event bus
-    app = await createApp({ database, eventBus: createMockEventBus() });
+    app = await createApp({ database, disableNats: true });
 
     // Initialize test data maps
     testUsers = new Map();

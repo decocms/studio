@@ -128,7 +128,6 @@ export async function buildThreadTestContext(): Promise<ThreadTestEnv> {
     } as never,
     baseUrl: "https://mesh.example.com",
     metadata: { requestId: "req_test", timestamp: new Date() },
-    eventBus: null as never,
     objectStorage: null as never,
     aiProviders: null as never,
     createMCPProxy: vi.fn().mockResolvedValue({}),

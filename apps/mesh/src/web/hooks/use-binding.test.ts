@@ -2,10 +2,6 @@ import { resolveBindingType } from "@/web/hooks/use-binding";
 import { describe, expect, it } from "bun:test";
 
 describe("resolveBindingType", () => {
-  it("should resolve @deco/event-bus to EVENT_BUS", () => {
-    expect(resolveBindingType("@deco/event-bus")).toBe("EVENT_BUS");
-  });
-
   it("should resolve @deco/llm to LLMS", () => {
     expect(resolveBindingType("@deco/llm")).toBe("LLMS");
   });

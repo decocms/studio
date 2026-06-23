@@ -251,7 +251,6 @@ import type { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import type { BetterAuthInstance } from "@/auth";
 import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { OrgScopedAsyncResearchJobStorage } from "@/storage/async-research-jobs";
-import type { EventBus } from "../event-bus/interface";
 import type { ConnectionStorage } from "../storage/connection";
 import type {
   MonitoringStorage,
@@ -376,9 +375,6 @@ export interface StudioContext extends HarnessContext {
 
   // Request metadata (non-HTTP specific)
   metadata: RequestMetadata;
-
-  // Event bus for publishing and subscribing to events
-  eventBus: EventBus;
 
   // AI Provider factory
   aiProviders: AIProviderFactory;

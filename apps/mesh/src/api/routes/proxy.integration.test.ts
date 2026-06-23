@@ -17,7 +17,6 @@ import {
   resetTestPgDatabase,
 } from "../../database/test-db-pg";
 import type { StudioDatabase } from "../../database";
-import type { EventBus } from "../../event-bus";
 import { setGlobalSettings, getSettings } from "../../settings";
 import { createApp } from "../app";
 
@@ -28,30 +27,6 @@ function ensureEncryptionKey() {
       encryptionKey: process.env.ENCRYPTION_KEY!,
     });
   }
-}
-
-function createMockEventBus(): EventBus {
-  return {
-    getSubscription: async () => null,
-    getEvent: async () => null,
-    cancelEvent: async () => ({ success: true }),
-    ackEvent: async () => ({ success: true }),
-    syncSubscriptions: async () => ({
-      created: 0,
-      updated: 0,
-      deleted: 0,
-      unchanged: 0,
-      subscriptions: [],
-    }),
-    isRunning: () => false,
-    start: async () => {},
-    stop: async () => {},
-    publish: async () => ({ success: true }) as any,
-    subscribe: async () =>
-      ({ success: true, subscriptionId: "mock-sub" }) as any,
-    unsubscribe: async () => ({ success: true }),
-    listSubscriptions: async () => [],
-  };
 }
 
 describe("MCP Proxy null-org bypass", () => {
@@ -65,7 +40,7 @@ describe("MCP Proxy null-org bypass", () => {
     ensureEncryptionKey();
     database = await connectTestPgDatabase();
     await resetTestPgDatabase(database);
-    app = await createApp({ database, eventBus: createMockEventBus() });
+    app = await createApp({ database, disableNats: true });
 
     const now = new Date().toISOString();
 

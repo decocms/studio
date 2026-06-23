@@ -11,17 +11,12 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import { MessageQuestionCircle } from "@untitledui/icons";
-import {
-  useMonitorScheduleCancel,
-  useMonitorScheduleSet,
-  useRegistryMonitorConfig,
-} from "@/web/hooks/registry/use-monitor";
+import { useRegistryMonitorConfig } from "@/web/hooks/registry/use-monitor";
 import type {
   MonitorFailureAction,
   RegistryMonitorConfig,
 } from "@/web/lib/registry/types";
 import { MONITOR_AGENT_DEFAULT_SYSTEM_PROMPT } from "@/tools/registry/shared";
-import { CronScheduleSelector } from "./cron-schedule-selector";
 
 function hasChanges(
   a: RegistryMonitorConfig,
@@ -35,16 +30,12 @@ function hasChanges(
     a.testPublicOnly !== b.testPublicOnly ||
     a.testPrivateOnly !== b.testPrivateOnly ||
     a.includePendingRequests !== b.includePendingRequests ||
-    (a.agentContext ?? "") !== (b.agentContext ?? "") ||
-    a.schedule !== b.schedule ||
-    a.cronExpression !== b.cronExpression
+    (a.agentContext ?? "") !== (b.agentContext ?? "")
   );
 }
 
 export function MonitorConfiguration() {
   const { settings, saveMutation } = useRegistryMonitorConfig();
-  const scheduleSetMutation = useMonitorScheduleSet();
-  const scheduleCancelMutation = useMonitorScheduleCancel();
   const prevSettingsRef = useRef(settings);
   const [draft, setDraft] = useState<RegistryMonitorConfig>(settings);
   const [justSaved, setJustSaved] = useState(false);
@@ -66,30 +57,8 @@ export function MonitorConfiguration() {
   };
 
   const save = async () => {
-    const normalizedCron = draft.cronExpression?.trim() ?? "";
-    let scheduleEventId = settings.scheduleEventId ?? "";
-
-    if (draft.schedule === "cron" && normalizedCron.length > 0) {
-      const cronChanged = normalizedCron !== (settings.cronExpression ?? "");
-      if (cronChanged && scheduleEventId) {
-        await scheduleCancelMutation.mutateAsync(scheduleEventId);
-      }
-      if (cronChanged || !scheduleEventId) {
-        const scheduleResult = await scheduleSetMutation.mutateAsync({
-          cronExpression: normalizedCron,
-          config: draft,
-        });
-        scheduleEventId = scheduleResult.scheduleEventId;
-      }
-    } else if (scheduleEventId) {
-      await scheduleCancelMutation.mutateAsync(scheduleEventId);
-      scheduleEventId = "";
-    }
-
     const nextDraft: RegistryMonitorConfig = {
       ...draft,
-      cronExpression: normalizedCron,
-      scheduleEventId,
       agentContext: (draft.agentContext ?? "").trim(),
     };
     await saveMutation.mutateAsync(nextDraft);
@@ -121,18 +90,9 @@ export function MonitorConfiguration() {
           <Button
             size="sm"
             onClick={save}
-            disabled={
-              saveMutation.isPending ||
-              scheduleSetMutation.isPending ||
-              scheduleCancelMutation.isPending ||
-              !isDirty
-            }
+            disabled={saveMutation.isPending || !isDirty}
           >
-            {saveMutation.isPending ||
-            scheduleSetMutation.isPending ||
-            scheduleCancelMutation.isPending
-              ? "Saving..."
-              : "Save settings"}
+            {saveMutation.isPending ? "Saving..." : "Save settings"}
           </Button>
         </div>
       </div>
@@ -249,31 +209,6 @@ export function MonitorConfiguration() {
             <pre className="text-[11px] bg-muted/50 border border-border rounded px-3 py-2 whitespace-pre-wrap max-h-64 overflow-auto">
               {MONITOR_AGENT_DEFAULT_SYSTEM_PROMPT}
             </pre>
-          )}
-        </div>
-
-        <div className="space-y-1 md:col-span-2">
-          <FieldLabel
-            label="Schedule"
-            hint="Set automatic test runs. Manual mode runs only when you click Start QA run."
-          />
-          <select
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-            value={draft.schedule ?? "manual"}
-            onChange={(e) =>
-              setPartial({
-                schedule: e.target.value as RegistryMonitorConfig["schedule"],
-              })
-            }
-          >
-            <option value="manual">Manual only</option>
-            <option value="cron">Cron schedule</option>
-          </select>
-          {(draft.schedule ?? "manual") === "cron" && (
-            <CronScheduleSelector
-              value={draft.cronExpression ?? ""}
-              onChange={(cronExpression) => setPartial({ cronExpression })}
-            />
           )}
         </div>
 

@@ -87,26 +87,14 @@ export function devLogger() {
             const toolName = sanitizeForLog(body.params.name);
             const args = body.params.arguments || {};
 
-            // For event bus calls, show the event type prominently
-            if (toolName === "EVENT_PUBLISH" && args.type) {
-              const eventType = sanitizeForLog(String(args.type));
-              mcpInfo = `${colors.tool}EVENT_PUBLISH${colors.reset} ${colors.bold}→ ${eventType}${colors.reset}`;
-            } else if (toolName === "EVENT_SUBSCRIBE" && args.eventType) {
-              const eventType = sanitizeForLog(String(args.eventType));
-              mcpInfo = `${colors.tool}EVENT_SUBSCRIBE${colors.reset} ${colors.bold}← ${eventType}${colors.reset}`;
-            } else if (toolName === "EVENT_UNSUBSCRIBE" && args.eventType) {
-              const eventType = sanitizeForLog(String(args.eventType));
-              mcpInfo = `${colors.tool}EVENT_UNSUBSCRIBE${colors.reset} ${colors.dim}✕ ${eventType}${colors.reset}`;
-            } else {
-              // Default: show tool name with arg keys (sanitized)
-              const argKeys = Object.keys(args).map((k) => sanitizeForLog(k));
-              const argsStr =
-                argKeys.length > 0
-                  ? argKeys.slice(0, 3).join(",") +
-                    (argKeys.length > 3 ? "…" : "")
-                  : "";
-              mcpInfo = `${colors.tool}${toolName}${colors.dim}(${argsStr})${colors.reset}`;
-            }
+            // Show tool name with arg keys (sanitized)
+            const argKeys = Object.keys(args).map((k) => sanitizeForLog(k));
+            const argsStr =
+              argKeys.length > 0
+                ? argKeys.slice(0, 3).join(",") +
+                  (argKeys.length > 3 ? "…" : "")
+                : "";
+            mcpInfo = `${colors.tool}${toolName}${colors.dim}(${argsStr})${colors.reset}`;
           } else if (body.method) {
             mcpInfo = `${colors.dim}${sanitizeForLog(body.method)}${colors.reset}`;
           }

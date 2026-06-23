@@ -1,10 +1,6 @@
 /* oxlint-disable no-explicit-any */
 /* oxlint-disable ban-types */
-import {
-  OnEventsInputSchema,
-  OnEventsOutputSchema,
-  type EventBusBindingClient,
-} from "@decocms/bindings";
+import { OnEventsInputSchema, OnEventsOutputSchema } from "@decocms/bindings";
 import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport as HttpServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
@@ -467,13 +463,6 @@ export interface OAuthConfig {
   };
 }
 
-/**
- * Constructs a type by picking all properties from T that are assignable to Value.
- */
-type PickByType<T, Value> = {
-  [P in keyof T as T[P] extends Value ? P : never]: T[P];
-};
-
 export interface CreateMCPServerOptions<
   Env = unknown,
   TSchema extends ZodTypeAny = never,
@@ -487,7 +476,6 @@ export interface CreateMCPServerOptions<
   before?: (env: TEnv) => Promise<void> | void;
   oauth?: OAuthConfig;
   events?: {
-    bus?: keyof PickByType<State, EventBusBindingClient>;
     handlers?: EventHandlers<TEnv, TSchema>;
   };
   configuration?: {
@@ -551,16 +539,6 @@ export interface AppContext<TEnv extends DefaultEnv = DefaultEnv> {
   req?: Request;
 }
 
-const getEventBus = (
-  prop: string | number,
-  env: DefaultEnv,
-): EventBusBindingClient | undefined => {
-  const bus = env as unknown as { [prop]: EventBusBindingClient };
-  return typeof bus[prop] !== "undefined"
-    ? bus[prop]
-    : env?.MESH_REQUEST_CONTEXT?.state?.[prop];
-};
-
 // TEnv is erased here because toolsFor() only reads events/configuration
 // and doesn't need the full env type. Replacing `any` with a proper generic
 // would require threading TEnv through toolsFor, which is a larger refactor.
@@ -583,7 +561,6 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
   const jsonSchema = schema
     ? injectBindingSchemas(z.toJSONSchema(schema) as Record<string, unknown>)
     : { type: "object", properties: {} };
-  const busProp = String(events?.bus ?? "EVENT_BUS");
   return [
     ...(onChange || onInstall || events
       ? [
@@ -621,40 +598,6 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 await onInstall(input.runtimeContext.env, {
                   createAgent: makeCreateAgent(meshUrl, token, connectionId),
                 });
-              }
-              const bus = getEventBus(busProp, input.runtimeContext.env);
-              if (events && state && bus) {
-                const { connectionId } = getMeshCtx(input);
-                // Sync subscriptions - always call to handle deletions too
-                const subscriptions = Event.subscriptions(
-                  events?.handlers ?? ({} as Record<string, never>),
-                  state,
-                  connectionId,
-                );
-                await bus.EVENT_SYNC_SUBSCRIPTIONS({ subscriptions });
-
-                // Publish cron events for SELF cron subscriptions
-                // Publishing is idempotent - if cron event already exists, it returns existing
-                if (connectionId) {
-                  const cronSubscriptions = subscriptions.filter(
-                    (sub) =>
-                      sub.eventType.startsWith("cron/") &&
-                      sub.publisher === connectionId,
-                  );
-
-                  await Promise.all(
-                    cronSubscriptions.map(async (sub) => {
-                      const parsed = Event.parseCron(sub.eventType);
-                      if (parsed) {
-                        const [, cronExpression] = parsed;
-                        await bus.EVENT_PUBLISH({
-                          type: sub.eventType,
-                          cron: cronExpression,
-                        });
-                      }
-                    }),
-                  );
-                }
               }
 
               return Promise.resolve({});
@@ -697,10 +640,7 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
       execute: () => {
         return Promise.resolve({
           stateSchema: jsonSchema,
-          scopes: [
-            ...((scopes as string[]) ?? []),
-            ...(events ? [`${busProp}::EVENT_SYNC_SUBSCRIPTIONS`] : []),
-          ],
+          scopes: [...((scopes as string[]) ?? [])],
         });
       },
     }),

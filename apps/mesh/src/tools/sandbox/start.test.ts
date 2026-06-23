@@ -266,7 +266,6 @@ function makeCtx(overrides: {
     } as never,
     baseUrl: "https://mesh.example.com",
     metadata: { requestId: "req_1", timestamp: new Date() },
-    eventBus: null as never,
     objectStorage: null as never,
     aiProviders: null as never,
     createMCPProxy: null as never,

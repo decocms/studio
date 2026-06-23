@@ -27,34 +27,11 @@ import {
   seedCommonTestPgFixtures,
 } from "../database/test-db-pg";
 import type { StudioDatabase } from "../database";
-import type { EventBus } from "../event-bus";
 import { createApp } from "./app";
 
 /**
  * Create a no-op mock event bus for testing (mirrors integration.test.ts).
  */
-function createMockEventBus(): EventBus {
-  return {
-    start: async () => {},
-    stop: () => {},
-    isRunning: () => false,
-    publish: async () => ({}) as never,
-    subscribe: async () => ({}) as never,
-    unsubscribe: async () => ({ success: true }),
-    listSubscriptions: async () => [],
-    getSubscription: async () => null,
-    getEvent: async () => null,
-    cancelEvent: async () => ({ success: true }),
-    ackEvent: async () => ({ success: true }),
-    syncSubscriptions: async () => ({
-      created: 0,
-      updated: 0,
-      deleted: 0,
-      unchanged: 0,
-      subscriptions: [],
-    }),
-  };
-}
 
 /**
  * Build a verifyApiKey mock that returns a valid key bound to the given
@@ -127,8 +104,8 @@ describe("org-scoped API coexistence", () => {
 
     // Build the app against the seeded DB. Production deps that aren't relevant
     // here (NATS, automations, decopilot streams) are stubbed by createApp when
-    // an explicit eventBus is passed.
-    app = await createApp({ database, eventBus: createMockEventBus() });
+    // disableNats is set.
+    app = await createApp({ database, disableNats: true });
 
     // Default principal: user_1 (member of org_1). Tests can override.
     vi.spyOn(auth.api, "getMcpSession").mockResolvedValue(null);
