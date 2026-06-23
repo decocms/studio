@@ -1,34 +1,18 @@
 import type { Tool } from "ai";
 
 /**
- * Backgroundable tools — opt-in mechanism for slow tool calls.
- *
- * Some built-in tools (e.g. `generate_image`) can take tens of seconds. Run
- * inline, they hold the agent-loop step open, which keeps the turn — and the
- * per-thread gate — busy, so the user can't send another message until the
- * tool finishes. A backgroundable tool instead hands the work to a durable
- * background job and returns IMMEDIATELY with a handle. The model finishes its
- * turn, the thread frees up, and the job delivers its result into the thread
- * later (see the cluster's background-tool workflow).
- *
- * The heavy work + durability live in the cluster (DBOS). This module only
- * defines the seam: a `BackgroundDispatcher` the wrapper calls. When no
- * dispatcher is injected (desktop, tests), `makeBackgroundable` returns the
- * inline tool unchanged — backgrounding is a cluster capability, not a
- * behavior change everywhere.
+ * Backgroundable tools — opt-in seam for slow tool calls. Some built-ins (e.g.
+ * `generate_image`) take tens of seconds; run inline they hold the turn (and
+ * the per-thread gate) open. The cluster (DBOS) owns the durable work; this
+ * module only defines the `BackgroundDispatcher` seam. Absent on desktop/tests
+ * → `makeBackgroundable` returns the inline tool unchanged.
  */
 
-/**
- * Enqueues the real tool work as a durable background job and returns a handle
- * the model can mention. Implemented by the cluster; absent on desktop/tests.
- */
+/** Enqueues the real tool work as a durable background job. Cluster-only. */
 export interface BackgroundDispatcher {
   start(req: {
-    /** Backgroundable tool name, used to route to the right heavy fn. */
     toolName: string;
-    /** The model-supplied tool input, forwarded to the background job. */
     input: unknown;
-    /** The originating tool call id (for correlation / telemetry). */
     toolCallId: string;
   }): Promise<{ jobId: string }>;
 }
@@ -40,16 +24,34 @@ export interface BackgroundStartedOutput {
   note: string;
 }
 
+/**
+ * Runtime "send to background" for an INLINE tool call (Claude Code's "background
+ * a running command"). Unlike `BackgroundDispatcher` (restart as a durable job),
+ * this hands an ALREADY-RUNNING call's work to a detached drain — no restart.
+ * Cluster-only.
+ */
+export interface DeferToBackgroundHook {
+  /** Register a running call as deferrable. `deferred` resolves on a "send to
+   *  background" request; `dispose` drops the registration. */
+  awaitDefer(toolCallId: string): { deferred: Promise<void>; dispose(): void };
+  /** Deliver a detached run's conclusion: persist it nested in the tool card
+   *  and resume the parent agent. */
+  deliver(args: {
+    jobId: string;
+    toolCallId: string;
+    text: string;
+    error?: string;
+    finishReason?: string;
+  }): Promise<void>;
+}
+
 const STARTED_NOTE =
   "Running in the background. The result will appear in the conversation as " +
   "soon as it's ready — keep helping the user in the meantime, and do not " +
   "wait for it or call this tool again for the same request.";
 
-/**
- * Wrap a tool so its `execute` enqueues a background job and returns a started
- * handle instead of blocking the turn. Returns the inner tool unchanged when
- * `dispatcher` is null/undefined, so callers can wrap unconditionally.
- */
+/** Wrap a tool so `execute` enqueues a background job and returns a started
+ *  handle. Returns the inner tool unchanged when `dispatcher` is absent. */
 export function makeBackgroundable(
   toolName: string,
   innerTool: Tool,
@@ -69,7 +71,5 @@ export function makeBackgroundable(
       });
       return { background: true, status: "started", jobId, note: STARTED_NOTE };
     },
-    // The wrapper's execute returns a different shape than the inline tool; the
-    // AI SDK only needs a callable here, so widen back to the inner tool type.
   } as Tool;
 }

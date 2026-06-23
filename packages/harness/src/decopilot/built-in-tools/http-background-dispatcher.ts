@@ -1,15 +1,10 @@
 import type { BackgroundDispatcher } from "./backgroundable";
 
 /**
- * Desktop-daemon `BackgroundDispatcher`: enqueues the slow tool's work back on
- * the CLUSTER instead of running it locally. The daemon has no DBOS and is
- * ephemeral; the cluster owns durability, the org credentials, and the thread
- * DB. So `start()` POSTs to the cluster's fence-authed enqueue route, which
- * runs the existing `backgroundToolWorkflow` (generate → append → react). The
- * daemon's tool returns the started handle immediately and its turn ends.
- *
- * Auth reuses the same bearer the daemon already presents for object storage /
- * MCP (the run's 1h temp key), plus the run fence token (single-writer guard).
+ * Desktop-daemon `BackgroundDispatcher`: the daemon has no DBOS, so `start()`
+ * POSTs the work back to the cluster's fence-authed enqueue route (which runs
+ * `backgroundToolWorkflow`) and returns immediately. Auth = the run's temp
+ * bearer + fence token.
  */
 export interface HttpBackgroundDispatcherOptions {
   /** Cluster enqueue endpoint, e.g. `${base}/threads/${threadId}/background-tool`. */

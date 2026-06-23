@@ -117,6 +117,10 @@ export interface ChatStreamContextValue {
     params: SendMessageParams | Metadata["tiptapDoc"],
   ) => Promise<void>;
   stop: () => void;
+  /** Push a still-running tool call (an inline subtask) to the background. The
+   *  owning pod hands the in-flight work to a detached drain and resumes the
+   *  agent when it finishes. No-op if the call already finished. */
+  deferToolToBackground: (toolCallId: string) => void;
   /** Single mutator entry point — new user message, tool output, or approval
    *  response. Patches local messages, clears finishReason, POSTs to /messages.
    *  Throws if a toolOutput / approval target isn't found in current messages. */
@@ -1086,6 +1090,19 @@ export function ActiveTaskProvider({
     }
   };
 
+  // Send a running tool call (inline subtask) to the background. Fire-and-
+  // forget across pods; a 404/closed thread or an already-finished call is a
+  // harmless no-op (best-effort, like cancel).
+  const deferToolToBackground = (toolCallId: string) => {
+    if (!taskId) return;
+    void fetch(
+      `/api/${org.slug}/decopilot/threads/${taskId}/tool-calls/${toolCallId}/background`,
+      { method: "POST", credentials: "include" },
+    ).catch((err) => {
+      console.error("[chat] deferToolToBackground", err);
+    });
+  };
+
   // sendMessage wrapper: accept both SendMessageParams and raw tiptapDoc
   const sendMessagePublic = (
     params: SendMessageParams | Metadata["tiptapDoc"],
@@ -1122,6 +1139,7 @@ export function ActiveTaskProvider({
     status: statusToString(connStatus),
     sendMessage: sendMessagePublic,
     stop: () => void cancelRun(),
+    deferToolToBackground,
     submit: (action, opts) => conn.submit(action, opts),
     error: chatError,
     clearError: () => setChatError(null),

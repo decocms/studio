@@ -44,7 +44,15 @@ import type {
 } from "@decocms/harness/decopilot/engine";
 import { runAgentLoop } from "./run-agent-loop";
 import type { DecopilotTelemetry } from "@decocms/harness/decopilot/run-stream";
-import { createBackgroundToolDispatcher } from "./background-tool-workflow";
+import {
+  createBackgroundToolDispatcher,
+  resolveThreadTarget,
+  resumeThreadAfterBackground,
+  SUBTASK_DONE_NUDGE,
+} from "./background-tool-workflow";
+import { registerDeferrable } from "@/api/routes/decopilot/tool-defer-registry";
+import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
+import type { DeferToBackgroundHook } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 
 /**
  * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled
@@ -130,6 +138,48 @@ export function buildClusterEnvironmentTools(args: {
       const toolOutputMap = new Map<string, string>();
       const pendingImages: PendingImage[] = [];
       const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(ctx);
+
+      // Runtime "send to background" for an inline subtask (Claude Code Ctrl-B):
+      // `awaitDefer` lets the running tool observe the per-pod defer request;
+      // `deliver` persists the detached run's conclusion (nested in the card)
+      // and resumes the parent agent. Both rebuilt from this run's live context.
+      const deferToBackground: DeferToBackgroundHook = {
+        awaitDefer: registerDeferrable,
+        deliver: async ({ jobId, text, error, finishReason }) => {
+          const resultText = error
+            ? `Subtask failed: ${error}`
+            : finishReason === "length"
+              ? `[Subtask hit step limit — partial result below.]\n\n${text}`.trim()
+              : text?.trim() || "Subtask completed (no output).";
+          await new PartEmitter({
+            storage: ctx.storage.threads.messageParts(),
+            orgId: streamInput.organizationId,
+            threadId: streamInput.threadId,
+            runId: jobId,
+          }).emitFinal({
+            id: `${jobId}:msg`,
+            role: "assistant",
+            parts: [{ type: "text", text: resultText }],
+            metadata: { subtaskJobId: jobId },
+            // biome-ignore lint/suspicious/noExplicitAny: AnyMessage doesn't type metadata; emitFinal reads it via cast
+          } as any);
+          const thread = await ctx.storage.threads.get(streamInput.threadId);
+          await resumeThreadAfterBackground({
+            meshCtx: ctx,
+            threadId: streamInput.threadId,
+            orgId: streamInput.organizationId,
+            userId: streamInput.user.id,
+            agentId: streamInput.agent.id,
+            temperature: streamInput.temperature,
+            toolApprovalLevel: streamInput.toolApprovalLevel,
+            branch: streamInput.branch ?? null,
+            ...resolveThreadTarget(thread),
+            jobId,
+            nudge: SUBTASK_DONE_NUDGE,
+          });
+        },
+      };
+
       const assembled = await assembleDecopilotTools(streamInput, ctx, {
         writer: sideChannel.writer,
         toolOutputMap,
@@ -172,6 +222,7 @@ export function buildClusterEnvironmentTools(args: {
           toolApprovalLevel: streamInput.toolApprovalLevel,
           branch: streamInput.branch ?? null,
         }),
+        deferToBackground,
         htmlArtifactBuffer,
         // Roll subtask child usage into the parent run's accumulator
         // (Task 17). Threaded into the subtask tool via getBuiltInTools.

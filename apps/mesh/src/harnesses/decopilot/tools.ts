@@ -24,7 +24,10 @@ import type { GithubRepo } from "@decocms/mesh-sdk";
 import type { StudioContext } from "@/core/studio-context";
 import type { PassthroughClient } from "@/mcp-clients/virtual-mcp/passthrough-client";
 import type { MeshProvider } from "@/ai-providers/types";
-import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import type {
+  BackgroundDispatcher,
+  DeferToBackgroundHook,
+} from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 import {
   getBuiltInTools,
   type PendingImage,
@@ -121,6 +124,9 @@ export interface AssembleDecopilotToolsExtras {
   /** Cluster-injected: makes slow built-ins (generate_image) run as durable
    *  background jobs instead of holding the turn open. Omitted on desktop. */
   backgroundDispatcher?: BackgroundDispatcher | null;
+  /** Cluster-injected: lets an inline subtask be pushed to the background
+   *  mid-run via a "send to background" request. Omitted on desktop. */
+  deferToBackground?: DeferToBackgroundHook | null;
   /**
    * Portable MCP-client seam (HarnessDeps `mcpForAgent`). Generalizes the
    * cluster's in-process `createVirtualClientFrom(virtualMcp, ctx,
@@ -315,6 +321,7 @@ export async function assembleDecopilotTools(
         agentId: input.agent.id,
         onChildUsage: extras.onChildUsage,
         backgroundDispatcher: extras.backgroundDispatcher,
+        deferToBackground: extras.deferToBackground,
       },
       ctx,
     );

@@ -31,6 +31,7 @@ import {
   validateThreadOwnership,
 } from "./helpers";
 import type { CancelBroadcast } from "./cancel-broadcast";
+import type { ToolDeferBroadcast } from "./nats-tool-defer-broadcast";
 import type { StreamBuffer } from "./stream-buffer";
 import type { RunRegistry } from "./run-registry";
 import {
@@ -471,6 +472,8 @@ async function validate(
 
 export interface DecopilotDeps {
   cancelBroadcast: CancelBroadcast;
+  /** Cross-pod fan-out for "send this running tool call to the background". */
+  toolDeferBroadcast: ToolDeferBroadcast;
   streamBuffer: StreamBuffer;
   runRegistry: RunRegistry;
   /**
@@ -483,7 +486,8 @@ export interface DecopilotDeps {
 }
 
 export function createDecopilotRoutes(deps: DecopilotDeps) {
-  const { cancelBroadcast, streamBuffer, runRegistry } = deps;
+  const { cancelBroadcast, toolDeferBroadcast, streamBuffer, runRegistry } =
+    deps;
   const app = new Hono<{ Variables: { meshContext: StudioContext } }>();
 
   // ============================================================================
@@ -765,6 +769,28 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
     return c.json({ cancelled: true, async: true }, 202);
   });
+
+  // ============================================================================
+  // Defer-to-background — push a still-running tool call (inline subtask) to
+  // the background. The owning pod hands the in-flight work to a detached
+  // drain and resumes the agent when it finishes (Claude Code's Ctrl-B).
+  // ============================================================================
+
+  app.post(
+    "/:org/decopilot/threads/:threadId/tool-calls/:toolCallId/background",
+    async (c) => {
+      // Ownership/membership check — same gate as cancel.
+      await validateThreadOwnership(c);
+      const toolCallId = c.req.param("toolCallId");
+      if (!toolCallId || /[.*>\s]/.test(toolCallId)) {
+        return c.json({ error: "invalid toolCallId" }, 400);
+      }
+      // Fire-and-forget across pods; whichever pod runs the call detaches it.
+      // A no-op (already finished / not running) is fine — best-effort.
+      toolDeferBroadcast.broadcast(toolCallId);
+      return c.json({ deferred: true }, 202);
+    },
+  );
 
   // ============================================================================
   // Stream Endpoint — tail the per-thread JetStream subject

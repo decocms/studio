@@ -128,6 +128,8 @@ import {
   type ProviderKeyCache,
 } from "../storage/provider-key-cache";
 import { NatsCancelBroadcast } from "./routes/decopilot/nats-cancel-broadcast";
+import { NatsToolDeferBroadcast } from "./routes/decopilot/nats-tool-defer-broadcast";
+import { requestDefer } from "./routes/decopilot/tool-defer-registry";
 import type { StreamBuffer } from "./routes/decopilot/stream-buffer";
 import { NatsStreamBuffer } from "./routes/decopilot/nats-stream-buffer";
 import {
@@ -1092,6 +1094,24 @@ export async function createApp(options: CreateAppOptions = {}) {
       console.error("[Decopilot] CancelBroadcast start failed:", err);
     });
 
+  // "Send a running tool call to the background." Works local-only until NATS
+  // is ready (single-pod/dev); the prod branch's `natsProvider` enables
+  // cross-pod fan-out. `onDefer` resolves the in-process registration the
+  // owning pod's inline `subtask` is waiting on.
+  const toolDeferBroadcast = new NatsToolDeferBroadcast({
+    getConnection: () => natsProvider?.getConnection() ?? null,
+  });
+  toolDeferBroadcast
+    .start((toolCallId) => requestDefer(toolCallId))
+    .catch((err) => {
+      console.error("[Decopilot] ToolDeferBroadcast start failed:", err);
+    });
+  natsProvider?.onReady(() => {
+    toolDeferBroadcast.start().catch((err) => {
+      console.error("[ToolDeferBroadcast] Deferred start failed:", err);
+    });
+  });
+
   // Re-start cancel broadcast subscription when NATS connects
   natsProvider?.onReady(() => {
     cancelBroadcast.start().catch((err) => {
@@ -1113,6 +1133,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     runRegistry.dispose();
     asyncResearchJobSweeper.dispose();
     cancelBroadcast.stop().catch(() => {});
+    toolDeferBroadcast.stop().catch(() => {});
     streamBuffer.teardown();
     mcpListCache?.teardown();
     modelListCache.teardown();
@@ -1816,6 +1837,7 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   const decopilotRoutes = createDecopilotRoutes({
     cancelBroadcast,
+    toolDeferBroadcast,
     streamBuffer,
     runRegistry,
     linkStatusProbe,

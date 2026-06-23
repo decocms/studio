@@ -45,7 +45,10 @@ import { createUpdateInterestsTool } from "@decocms/harness/decopilot/built-in-t
 import { proposePlanTool } from "@decocms/harness/decopilot/built-in-tools/propose-plan";
 import { createGenerateImageTool } from "./generate-image";
 import { makeBackgroundable } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
-import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import type {
+  BackgroundDispatcher,
+  DeferToBackgroundHook,
+} from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
 import {
@@ -133,6 +136,13 @@ export interface BuiltinToolParams {
    * the turn open. Absent on desktop/tests → those tools run inline.
    */
   backgroundDispatcher?: BackgroundDispatcher | null;
+  /**
+   * When present, an inline `subtask` (model did NOT set `background: true`)
+   * can be deferred to the background mid-run via a "send to background"
+   * request, handing the in-flight run to a detached drain. Absent on
+   * desktop/tests.
+   */
+  deferToBackground?: DeferToBackgroundHook | null;
 }
 
 export type { PendingImage };
@@ -166,6 +176,7 @@ async function buildAllTools(
     agentId,
     onChildUsage,
     backgroundDispatcher,
+    deferToBackground,
   } = params;
   const approvalOpts = { isPlanMode };
   const userId = ctx.auth?.user?.id;
@@ -250,6 +261,9 @@ async function buildAllTools(
         // Cluster only: lets the model opt a subtask into a durable background
         // run (`background: true`) instead of blocking the turn.
         backgroundDispatcher,
+        // Cluster only: lets an inline subtask be pushed to the background
+        // mid-run via a "send to background" request (Claude Code's Ctrl-B).
+        deferToBackground,
       },
       ctx,
     );

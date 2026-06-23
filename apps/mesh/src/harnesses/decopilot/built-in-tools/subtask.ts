@@ -20,7 +20,10 @@ import { runAgentLoop } from "../run-agent-loop";
 import { SUBAGENT_STEP_LIMIT } from "@decocms/harness/decopilot/prompt-constants";
 import { acquireSubagentSlot } from "./subagent-concurrency";
 import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
-import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import type {
+  BackgroundDispatcher,
+  DeferToBackgroundHook,
+} from "@decocms/harness/decopilot/built-in-tools/backgroundable";
 
 export const SubtaskInputSchema = z.object({
   prompt: z
@@ -109,13 +112,12 @@ export interface SubtaskParams {
    * vmContext, e.g. Claude Code).
    */
   vmTools?: ToolSet;
-  /**
-   * Cluster background dispatcher. When present AND the model sets
-   * `background: true`, a validated subtask is enqueued as a durable child run
-   * (returns a started handle immediately) instead of running inline. Absent on
-   * desktop/tests → `background` is ignored and the subtask runs inline.
-   */
+  /** Cluster only: with `background: true`, enqueue the subtask as a durable
+   *  child run instead of running inline. Absent → `background` ignored. */
   backgroundDispatcher?: BackgroundDispatcher | null;
+  /** Cluster only: lets an inline subtask be deferred mid-run — hands the
+   *  already-running subagent to a detached drain (no restart). */
+  deferToBackground?: DeferToBackgroundHook | null;
 }
 
 export function resolveSubtaskCodingWorkspace(
@@ -155,6 +157,88 @@ function formatToolCall(toolName: string, input: unknown): string {
   return args ? `${toolName} ${args}` : toolName;
 }
 
+function errMessage(e: unknown): string | undefined {
+  if (!e) return undefined;
+  return e instanceof Error ? e.message : String(e);
+}
+
+type RunAgentLoopHandle = Awaited<ReturnType<typeof runAgentLoop>>;
+
+/**
+ * Finish a deferred subtask off the parent turn: drain the SAME already-running
+ * stream to completion (no restart), then `deferToBackground.deliver` persists
+ * its conclusion nested in the card and resumes the parent. In-process and
+ * best-effort — a pod crash loses it.
+ */
+async function drainDetachedSubtask(args: {
+  iterator: AsyncIterator<unknown>;
+  handle: RunAgentLoopHandle;
+  deferToBackground: DeferToBackgroundHook;
+  jobId: string;
+  toolCallId: string;
+  onChildUsage?: (u: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }) => void;
+  releaseSlot: () => void;
+  closeClient: () => void;
+}): Promise<void> {
+  const {
+    iterator,
+    handle,
+    deferToBackground,
+    jobId,
+    toolCallId,
+    onChildUsage,
+    releaseSlot,
+    closeClient,
+  } = args;
+  try {
+    // Drain the rest of the stream — we only need it to run to completion; the
+    // conclusion comes from `handle.result.steps`, same as the inline path.
+    while (true) {
+      const { done } = await iterator.next();
+      if (done) break;
+    }
+    const error = await handle.error;
+    const finishReason = await handle.result.finishReason;
+    const steps = await handle.result.steps;
+    const aggregatedText = steps
+      .map((s) => s.text ?? "")
+      .filter((t) => t.trim().length > 0)
+      .join("\n\n")
+      .trim();
+    const usage = await handle.result.usage;
+    onChildUsage?.({
+      inputTokens: usage.inputTokens ?? 0,
+      outputTokens: usage.outputTokens ?? 0,
+      totalTokens: usage.totalTokens ?? 0,
+    });
+    await deferToBackground.deliver({
+      jobId,
+      toolCallId,
+      text: aggregatedText,
+      error: errMessage(error),
+      finishReason,
+    });
+  } catch (err) {
+    console.error(`[subtask:detached:${toolCallId}] drain failed`, err);
+    await deferToBackground
+      .deliver({
+        jobId,
+        toolCallId,
+        text: "",
+        error: errMessage(err) ?? "detached subtask failed",
+        finishReason: "error",
+      })
+      .catch(() => {});
+  } finally {
+    releaseSlot();
+    closeClient();
+  }
+}
+
 const SUBTASK_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: false,
@@ -177,6 +261,7 @@ export function createSubtaskTool(
     vmTools,
     codingWorkspace,
     backgroundDispatcher,
+    deferToBackground,
   } = params;
 
   return tool({
@@ -245,21 +330,16 @@ export function createSubtaskTool(
         }
       }
 
-      // Background opt-in: the target is validated (allowlist), so enqueue it as
-      // a durable child run and return a started handle instead of blocking this
-      // turn. The cluster workflow runs the subagent, appends its conclusion to
-      // the thread, and nudges the model to use it. Inline path (below) is used
-      // when not backgrounding or when no dispatcher is wired (desktop/tests).
+      // Background opt-in: target is validated, so enqueue a durable child run
+      // and return a started handle instead of blocking the turn.
       if (background && backgroundDispatcher) {
         const { jobId } = await backgroundDispatcher.start({
           toolName: "subtask",
           input: { prompt, agent_id: targetId },
           toolCallId,
         });
-        // `background: true` marks this as the START placeholder (not a result).
-        // The UI renders it as a compact "running in background" line instead of
-        // a full card, so it doesn't duplicate the streamed result card the
-        // background job delivers. `jobId` correlates the two.
+        // `background: true` marks the START placeholder; the UI renders it as a
+        // compact line keyed by `jobId` (filled in by the delivered result).
         yield {
           text:
             `Subtask started in the background (jobId=${jobId}). Its result will ` +
@@ -290,6 +370,18 @@ export function createSubtaskTool(
       }
       const { mcpClient, targetRef } = resolved;
       const targetLabel = targetRef.id;
+
+      // Register as deferrable. The flag is polled between stream events (not
+      // raced against next()) so we never consume a chunk we can't hand off.
+      const deferReg = deferToBackground?.awaitDefer(toolCallId);
+      let deferRequested = false;
+      deferReg?.deferred
+        .then(() => {
+          deferRequested = true;
+        })
+        .catch(() => {});
+      // When handed off, the detached drain owns slot release + client close.
+      let handedOff = false;
 
       const releaseSlot = await acquireSubagentSlot();
       try {
@@ -333,10 +425,40 @@ export function createSubtaskTool(
           extraTools: isSelf ? vmTools : undefined,
         });
 
+        // Driven by hand (not `for await`) so we can check the defer flag before
+        // consuming each event and hand the SAME open iterator to the drain.
+        const iterator = handle.result.fullStream[Symbol.asyncIterator]();
         let streamedText = "";
         let lastFlush = 0;
         const FLUSH_MS = 200;
-        for await (const part of handle.result.fullStream) {
+        while (true) {
+          if (deferRequested && deferToBackground) {
+            const jobId = crypto.randomUUID();
+            handedOff = true;
+            void drainDetachedSubtask({
+              iterator,
+              handle,
+              deferToBackground,
+              jobId,
+              toolCallId,
+              onChildUsage,
+              releaseSlot,
+              closeClient: () => mcpClient.close().catch(() => {}),
+            });
+            // START placeholder, same shape as the model-opt-in path.
+            yield {
+              text:
+                `Subtask moved to the background (jobId=${jobId}). Its result ` +
+                `will appear here shortly — keep helping the user; you'll be ` +
+                `resumed when it finishes.`,
+              finishReason: "stop",
+              background: true,
+              jobId,
+            };
+            return;
+          }
+          const { value: part, done } = await iterator.next();
+          if (done) break;
           if (part.type === "text-delta") {
             streamedText += part.text;
             const now = performance.now();
@@ -403,8 +525,12 @@ export function createSubtaskTool(
         //    correct.
         yield { text: aggregatedText, error, finishReason };
       } finally {
-        releaseSlot();
-        mcpClient.close().catch(() => {});
+        deferReg?.dispose();
+        // If handed off, the detached drain owns slot release + client close.
+        if (!handedOff) {
+          releaseSlot();
+          mcpClient.close().catch(() => {});
+        }
       }
     },
     toModelOutput: ({ output }) => {

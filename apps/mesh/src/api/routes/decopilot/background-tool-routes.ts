@@ -1,18 +1,10 @@
 /**
- * Background-tool enqueue route (daemon → cluster).
- *
+ * Background-tool enqueue route (daemon → cluster):
  *   POST /api/:org/threads/:threadId/background-tool
  *
- * A desktop-daemon run can't background a slow tool itself (no DBOS, ephemeral
- * process). Instead its `generate_image` posts here and the cluster runs the
- * durable `backgroundToolWorkflow` (generate → append → react). Auth mirrors
- * the link-ingest chunk route: the daemon presents the run's temp bearer (so
- * `resolveOrgFromPath` + principal resolve org/user) plus the run fence token,
- * which must match the active run — a stale/foreign run can't enqueue work.
- *
- * Identity (org, user) comes from the authenticated context, never the body;
- * the body only carries the tool payload + the thread/model snapshot the
- * reaction turn needs.
+ * A desktop daemon (no DBOS) posts a slow tool's work here; the cluster runs
+ * `backgroundToolWorkflow`. Auth = the run's temp bearer (org/user from the
+ * context) + fence token (must match the active run). Identity never from body.
  */
 
 import { Hono, type Context } from "hono";
@@ -25,9 +17,8 @@ import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-to
 
 const BodySchema = z.object({
   toolName: z.literal("generate_image"),
-  // Validate the tool payload here rather than casting it in the heavy step —
-  // the daemon is authenticated but a buggy/compromised one shouldn't push an
-  // unvalidated shape into image generation.
+  // Validate the payload here so a compromised daemon can't push an unvalidated
+  // shape into image generation.
   input: GenerateImageInputSchema,
   toolCallId: z.string(),
   agentId: z.string(),

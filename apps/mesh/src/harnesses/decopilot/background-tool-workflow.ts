@@ -1,33 +1,16 @@
 /**
- * Background-tool DBOS workflow.
- *
- * Some built-in tools (today: `generate_image`) are slow enough that running
- * them inline freezes the user's turn — and the per-thread gate — until they
- * finish. A backgroundable tool instead enqueues this workflow and returns a
- * "started" handle immediately (see `makeBackgroundable` in the harness), so
- * the turn completes and the thread keeps accepting messages. This workflow
- * then, durably and on any pod:
- *
- *   1. `runHeavyTool`   — re-run the tool's heavy body (memoized as a DBOS step,
- *                          so a replay returns the recorded result rather than
- *                          regenerating a different image).
- *   2. `appendResult`   — append the result to the thread as an assistant
- *                          message (renders via the normal generate_image card).
- *   3. react            — re-enter the per-thread gate via `enqueueThreadRun`
- *                          so the agent acknowledges/continues. Serialized
- *                          behind any in-flight user turn by the gate.
- *
- * No bespoke job table: DBOS owns durability (replay), idempotency (step
- * memoization), status (`listWorkflows`) and cancellation (`cancelWorkflow`).
- * The `jobId` is the workflow id; it is surfaced on the started tool result.
- *
- * Runtime deps (the mesh-context factory) are wired via `setBackgroundToolRuntime`
- * BEFORE `DBOS.launch()`. The workflow is registered at import time so the
- * recovery executor can replay it after a crash.
+ * Background-tool DBOS workflow: runs a slow built-in (generate_image, subtask)
+ * off the user's turn, then re-enters the thread-gate to let the agent react.
+ * DBOS owns durability/idempotency/status — no bespoke job table; `jobId` is
+ * the workflow id. Deps wired via `setBackgroundToolRuntime` before launch.
  */
 
 import { DBOS, DBOSClient } from "@dbos-inc/dbos-sdk";
-import { enqueueThreadRun } from "@/dispatch-queue";
+import {
+  enqueueThreadRun,
+  THREAD_GATE_QUEUE,
+  type ThreadGateContext,
+} from "@/dispatch-queue";
 import type { StudioContextFactory } from "@/automations/fire";
 import type { ModelInfo, ModelsConfig } from "@/api/routes/decopilot/types";
 import { resolveTier, tryResolveTier } from "@/core/resolve-tier";
@@ -49,24 +32,15 @@ import {
   type GenerateImageResult,
 } from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
 
-/** Background-tool jobs run on one partitioned queue, partitioned by orgId —
- *  same fairness model as automations: a saturated org blocks only its own
- *  partition. The reaction turn hops to the thread-gate, not this queue. The
- *  name lives in the side-effect-free `queue-names` module so `index.ts` can
- *  put it in the worker pod-role listen filter without importing this module
- *  (which registers a workflow at import time). */
+// Re-export from the side-effect-free `queue-names` module so `index.ts` can
+// reference the name without importing this module (which registers a workflow).
 export { BACKGROUND_TOOLS_QUEUE } from "@/dispatch-queue/queue-names";
 import { BACKGROUND_TOOLS_QUEUE } from "@/dispatch-queue/queue-names";
 /** Per-org (per-partition) concurrency cap for heavy background tool runs. */
 export const BACKGROUND_TOOLS_PARTITION_CONCURRENCY = 5;
 
-/**
- * Thread snapshot captured at the originating turn, carried so the reaction
- * turn can be rebuilt on any pod. Only serializable primitives — the model
- * config (incl. the image credential) is re-resolved from the org's tiers in
- * the workflow, the same way interactive chat and automations do, which keeps
- * a single `ModelsConfig` type across the heavy step and the reaction request.
- */
+/** Serializable thread snapshot carried so the reaction turn can be rebuilt on
+ *  any pod. Models are re-resolved in-workflow, not carried. */
 export interface BackgroundToolSnapshot {
   threadId: string;
   orgId: string;
@@ -90,9 +64,8 @@ export interface BackgroundToolContext extends BackgroundToolSnapshot {
 
 export interface BackgroundToolRuntime {
   meshContextFactory: StudioContextFactory;
-  /** DBOS system-database URL (ssl-resolved), used to enqueue the job via a
-   *  decoupled `DBOSClient` — `DBOS.startWorkflow` is illegal from inside the
-   *  agent-loop step that fires the backgroundable tool. */
+  /** Enqueue via a decoupled `DBOSClient` — `DBOS.startWorkflow` is illegal
+   *  inside the agent-loop step that fires the backgroundable tool. */
   systemDatabaseUrl: string;
 }
 
@@ -111,14 +84,8 @@ function requireRuntime(): BackgroundToolRuntime {
   return runtime;
 }
 
-/**
- * Decoupled enqueue client. The backgroundable tool fires from within the
- * thread-gate's `dispatchRunAndWait` step, and DBOS forbids starting/enqueuing
- * a workflow from inside a step. `DBOSClient.enqueue` writes the queue row
- * directly to the system DB, which is legal from anywhere; the launched
- * executor then dequeues and runs `backgroundToolWorkflow` normally. Created
- * lazily (first enqueue is post-launch, so the `dbos` schema exists) and reused.
- */
+// `DBOSClient.enqueue` writes the queue row directly to the system DB, legal
+// from inside a step (unlike `DBOS.startWorkflow`). Lazy + reused.
 let dbosClientPromise: Promise<DBOSClient> | null = null;
 
 function getDbosClient(): Promise<DBOSClient> {
@@ -156,14 +123,8 @@ function toModelInfo(
   };
 }
 
-/**
- * Re-resolve the org's chat + image tiers into a `ModelsConfig`, mirroring the
- * interactive chat path (`resolvePerRequestModels`) and automations. The chat
- * tier defaults to "smart" — the reaction is a brief acknowledgement turn, so
- * the exact thinking model isn't load-bearing; the image tier is what the
- * heavy step activates. `web_research` is resolved too so the reaction turn
- * keeps the same tool surface as a normal chat turn.
- */
+/** Re-resolve the org's chat ("smart") + image + web_research tiers into a
+ *  `ModelsConfig`, same as the interactive chat path. */
 async function resolveReactionModels(
   meshCtx: StudioContext,
 ): Promise<ModelsConfig> {
@@ -204,13 +165,67 @@ async function requireMeshContext(
   return meshCtx;
 }
 
+// Subtask completion nudge — shared by the workflow subtask producer and the
+// inline defer-to-background path (harness-deps).
+export const SUBTASK_DONE_NUDGE =
+  "The background subtask you started has completed; its result is now in the conversation above. Review it and continue with the user's request — do NOT call subtask again for this.";
+
+/** Resolve a thread row's dispatch target + harness (hosted vs desktop link). */
+export function resolveThreadTarget(
+  thread:
+    | { sandbox_provider_kind?: string | null; harness_id?: string | null }
+    | null
+    | undefined,
+): { target: DispatchTarget; harnessId: HarnessId } {
+  return {
+    target: resolveDispatchTarget({
+      sandboxProviderKind: (thread?.sandbox_provider_kind ??
+        "agent-sandbox") as never,
+    }),
+    harnessId: (thread?.harness_id ?? "decopilot") as HarnessId,
+  };
+}
+
+/** Build the reaction turn's dispatch request — an internal nudge the model
+ *  sees but the user doesn't, routed where the thread runs. */
+function buildReactionRequest(
+  s: BackgroundToolSnapshot & { jobId: string },
+  opts: {
+    models: ModelsConfig;
+    nudge: string;
+    target: DispatchTarget;
+    harnessId: HarnessId | null;
+  },
+): ThreadGateContext["request"] {
+  return {
+    messages: [
+      {
+        id: `${s.jobId}:react-msg`,
+        role: "user",
+        metadata: { internal: true },
+        parts: [{ type: "text", text: opts.nudge }],
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: ChatMessage part union is built from the cluster tool set
+    ] as any,
+    models: opts.models,
+    agent: { id: s.agentId },
+    temperature: s.temperature,
+    toolApprovalLevel: s.toolApprovalLevel,
+    mode: "default",
+    organizationId: s.orgId,
+    userId: s.userId,
+    taskId: s.threadId,
+    branch: s.branch ?? undefined,
+    resumedFromBackground: true,
+    target: opts.target,
+    harnessId: opts.harnessId ?? undefined,
+  };
+}
+
 /**
- * Per-tool heavy-work implementation. `run` executes in WORKFLOW context: it
- * issues its own `DBOS.runStep`s for non-deterministic/external work (so a
- * replay returns recorded results instead of re-running) and appends output
- * through the `job` sink. Returns the models it resolved for the reaction turn
- * to reuse. `generate_image` is the one-shot case (one heavy step, one final
- * append); streaming tools (bash, subtask) will emit incrementally here.
+ * Per-tool heavy-work implementation. `run` executes in WORKFLOW context,
+ * issuing its own `DBOS.runStep`s for non-deterministic work and appending
+ * output through `job`. Returns the resolved models for the reaction turn.
  */
 interface BackgroundProducer {
   run(
@@ -221,10 +236,8 @@ interface BackgroundProducer {
 /** Workflow-provided context + parts sink handed to each producer. */
 interface BackgroundJob {
   ctx: BackgroundToolContext;
-  /** Rebuild the org mesh context (call inside your own step). */
   meshContext(): Promise<StudioContext>;
-  /** Append the job's terminal assistant message (parts + finish anchor) as a
-   *  recorded `appendResult` step. */
+  /** Append the job's terminal assistant message as a recorded step. */
   emitFinal(parts: AnyMessage["parts"]): Promise<void>;
 }
 
@@ -266,21 +279,16 @@ const PRODUCERS: Record<string, BackgroundProducer> = {
     },
   },
 
-  // A backgrounded `subtask` is dispatched as its OWN serialized run on the
-  // parent thread. The thread-gate's per-thread concurrency=1 keeps it from
-  // overlapping the main turn or any other run, so its stream never collides
-  // with theirs (the bug that interleaved chunks + orphaned text parts). It runs
-  // fresh (`isSubagent`: no parent history, `subtask` excluded, capped steps),
-  // and the normal run pipeline streams it live + persists it — no manual chunk
-  // plumbing, correct framing, survives refresh.
+  // A backgrounded `subtask` runs as its OWN serialized run on the parent thread
+  // (`isSubagent`, capped steps). The thread-gate's per-thread concurrency=1
+  // keeps its stream from colliding with the main turn; `reactStep` (enqueued
+  // after, FIFO) resumes the parent once it terminates and its messages land.
   subtask: {
     run: async (job) => {
       const cfg = await DBOS.runStep(
         () => resolveSubagentRunConfigStep(job.ctx),
         { name: "resolveSubagentRun" },
       );
-      // Enqueued from WORKFLOW context (DBOS.startWorkflow is legal here, not in
-      // a step). Idempotent workflow id ⇒ a replay collapses onto the same run.
       await enqueueThreadRun(
         {
           threadId: job.ctx.threadId,
@@ -289,8 +297,6 @@ const PRODUCERS: Record<string, BackgroundProducer> = {
               {
                 id: `${job.ctx.jobId}:prompt`,
                 role: "user",
-                // `internal` hides the prompt from the UI; the subagent still
-                // receives it. The subagent's streamed reply is the visible part.
                 metadata: { internal: true },
                 parts: [{ type: "text", text: cfg.prompt }],
               },
@@ -308,8 +314,7 @@ const PRODUCERS: Record<string, BackgroundProducer> = {
             target: cfg.target,
             harnessId: cfg.harnessId ?? undefined,
             isSubagent: true,
-            // Correlates the run's messages to the subtask tool-call card
-            // (`output.jobId`) so the UI nests them there.
+            // Nests the run's messages under the subtask card (`output.jobId`).
             subtaskJobId: job.ctx.jobId,
             maxAgentSteps: SUBAGENT_STEP_LIMIT,
           },
@@ -317,27 +322,14 @@ const PRODUCERS: Record<string, BackgroundProducer> = {
         },
         { workflowID: `${job.ctx.jobId}:subagent` },
       );
-      // Resume the parent agent once the subagent finishes. The reaction turn
-      // is enqueued (by `reactStep`) AFTER the subagent run above, on the same
-      // thread-gate partition (concurrency=1, FIFO), so the gate runs it only
-      // when the subagent has terminated — by which point its messages are in
-      // the thread history for the parent to read.
-      return {
-        models: cfg.models,
-        reactionNudge:
-          "The background subtask you started has completed; its result is now in the conversation above. Review it and continue with the user's request — do NOT call subtask again for this.",
-      };
+      return { models: cfg.models, reactionNudge: SUBTASK_DONE_NUDGE };
     },
   },
 };
 
-/**
- * Resolve what a backgrounded subtask's serialized run needs: the org model
- * config, the target agent (self-clone — `agent_id` omitted/== caller —
- * resolves to the caller), and the dispatch target + harness inherited from the
- * parent thread. A `DBOS.runStep` so the DB reads + tier resolution are
- * journaled (and not re-done on replay).
- */
+/** Resolve a backgrounded subtask's serialized run: models, target agent
+ *  (self-clone when `agent_id` omitted/== caller), target + harness from the
+ *  parent thread. A `DBOS.runStep` so the reads are journaled. */
 async function resolveSubagentRunConfigStep(
   ctx: BackgroundToolContext,
 ): Promise<{
@@ -353,21 +345,11 @@ async function resolveSubagentRunConfigStep(
   const targetAgentId = isSelf ? ctx.agentId : input.agent_id!;
   const parent = await meshCtx.storage.threads.get(ctx.threadId);
   const models = await resolveReactionModels(meshCtx);
-  const target = resolveDispatchTarget({
-    sandboxProviderKind: (parent?.sandbox_provider_kind ??
-      "agent-sandbox") as never,
-  });
-  const harnessId = (parent?.harness_id ?? "decopilot") as HarnessId;
-  return { prompt: input.prompt, models, targetAgentId, target, harnessId };
+  return { prompt: input.prompt, models, targetAgentId, ...resolveThreadTarget(parent) };
 }
 
-/**
- * `generate_image` heavy body. Memoized by DBOS as the `runHeavyTool` step: on
- * replay the recorded result is returned, so the (non-idempotent) image
- * generation never runs twice. Resolves the org's model tiers and returns BOTH
- * the small URI-bearing result and the resolved `models` so the reaction turn
- * reuses the same config without a second resolution.
- */
+/** `generate_image` heavy body, memoized as the `runHeavyTool` step so a replay
+ *  never regenerates. Returns the result + resolved models for the reaction. */
 async function runGenerateImageStep(
   job: BackgroundJob,
 ): Promise<{ result: GenerateImageResult; models: ModelsConfig }> {
@@ -390,12 +372,8 @@ async function runGenerateImageStep(
   return { result, models };
 }
 
-/**
- * Append the job's terminal assistant message via the stream-of-record
- * `PartEmitter` — the exact shape the live tool emits, so the UI renders it
- * through the normal card. Message id is derived from the jobId (deterministic)
- * so a step replay can't mint a duplicate message.
- */
+/** Append the job's terminal assistant message via `PartEmitter` (same shape as
+ *  the live tool). Message id derived from jobId so a replay can't duplicate. */
 async function appendPartsStep(
   ctx: BackgroundToolContext,
   parts: AnyMessage["parts"],
@@ -418,35 +396,22 @@ async function appendPartsStep(
   });
 }
 
-/**
- * Resolve the reaction turn's dispatch target + harness from the thread row.
- * Hosted threads → agent-sandbox; desktop-linked threads → the user's daemon
- * (so the reaction runs where the thread runs, not hosted). Optimistic: no
- * liveness check — a dead desktop link surfaces as "not connected" downstream,
- * same as a normal chat turn. Returns null only when the mesh context can't be
- * rebuilt for the org.
- */
+/** Resolve the reaction turn's target + harness from the thread row. Returns
+ *  null only when the mesh context can't be rebuilt. */
 async function resolveReactionTargetStep(
   ctx: BackgroundToolContext,
 ): Promise<{ target: DispatchTarget; harnessId: HarnessId | null } | null> {
-  const rt = requireRuntime();
-  const meshCtx = await rt.meshContextFactory(ctx.orgId, ctx.userId);
+  const meshCtx = await requireRuntime().meshContextFactory(
+    ctx.orgId,
+    ctx.userId,
+  );
   if (!meshCtx) return null;
-  const thread = await meshCtx.storage.threads.get(ctx.threadId);
-  const target = resolveDispatchTarget({
-    sandboxProviderKind: (thread?.sandbox_provider_kind ??
-      "agent-sandbox") as never,
-  });
-  const harnessId = (thread?.harness_id ?? "decopilot") as HarnessId;
-  return { target, harnessId };
+  return resolveThreadTarget(await meshCtx.storage.threads.get(ctx.threadId));
 }
 
-/**
- * Re-enter the per-thread gate so the agent reacts to the delivered result.
- * The trigger message rides the request's first non-system message (the only
- * non-system message dispatch persists/forwards). Serialized behind any
- * in-flight user turn by the gate (partition concurrency = 1).
- */
+/** Re-enter the per-thread gate so the agent reacts to the delivered result.
+ *  Serialized behind any in-flight user turn by the gate. Idempotent on
+ *  `${jobId}:react` — a replay collapses onto the existing reaction run. */
 async function reactStep(
   ctx: BackgroundToolContext,
   models: ModelsConfig,
@@ -459,41 +424,59 @@ async function reactStep(
   await enqueueThreadRun(
     {
       threadId: ctx.threadId,
-      request: {
-        messages: [
-          {
-            // Deterministic id (a workflow replay must not mint a new one) and
-            // `internal` so the UI hides this nudge — the model still sees it.
-            id: `${ctx.jobId}:react-msg`,
-            role: "user",
-            metadata: { internal: true },
-            parts: [{ type: "text", text: reactionNudge }],
-          },
-          // biome-ignore lint/suspicious/noExplicitAny: ChatMessage part union is built from the cluster tool set
-        ] as any,
+      request: buildReactionRequest(ctx, {
         models,
-        agent: { id: ctx.agentId },
-        temperature: ctx.temperature,
-        toolApprovalLevel: ctx.toolApprovalLevel,
-        mode: "default",
-        organizationId: ctx.orgId,
-        userId: ctx.userId,
-        taskId: ctx.threadId,
-        branch: ctx.branch ?? undefined,
-        // Flags the resumed turn so the UI shows a "resumed after background
-        // tool" indicator on the message.
-        resumedFromBackground: true,
-        // Route the reaction to where the thread runs (hosted vs the user's
-        // desktop link). Omitting it would default to agent-sandbox and run a
-        // desktop-pinned thread hosted.
+        nudge: reactionNudge,
         target: reaction.target,
-        harnessId: reaction.harnessId ?? undefined,
-      },
+        harnessId: reaction.harnessId,
+      }),
       source: "background-tool",
     },
-    // Idempotent: a replay re-enqueues the same workflow id, collapsing onto
-    // the existing reaction run instead of spawning a duplicate.
     { workflowID: `${ctx.jobId}:react` },
+  );
+}
+
+/**
+ * Resume the parent agent after an inline tool deferred mid-run (the `subtask`
+ * "send to background" path) finished. Enqueues via the decoupled `DBOSClient`
+ * because the caller (a detached drain) runs outside any workflow and may carry
+ * a step's async-local context that would make `DBOS.startWorkflow` throw.
+ * Idempotent on `${jobId}:react`.
+ */
+export async function resumeThreadAfterBackground(args: {
+  meshCtx: StudioContext;
+  threadId: string;
+  orgId: string;
+  userId: string;
+  agentId: string;
+  temperature: number;
+  toolApprovalLevel: ToolApprovalLevel;
+  branch: string | null;
+  target: DispatchTarget;
+  harnessId: HarnessId | null;
+  jobId: string;
+  nudge: string;
+}): Promise<void> {
+  const models = await resolveReactionModels(args.meshCtx);
+  const gateCtx: ThreadGateContext = {
+    threadId: args.threadId,
+    request: buildReactionRequest(args, {
+      models,
+      nudge: args.nudge,
+      target: args.target,
+      harnessId: args.harnessId,
+    }),
+    source: "background-tool",
+  };
+  const client = await getDbosClient();
+  await client.enqueue(
+    {
+      workflowName: "threadGateWorkflow",
+      queueName: THREAD_GATE_QUEUE,
+      queuePartitionKey: args.threadId,
+      workflowID: `${args.jobId}:react`,
+    },
+    gateCtx,
   );
 }
 
@@ -505,9 +488,7 @@ async function backgroundToolWorkflowFn(
     throw new Error(`[background-tool] unknown tool "${ctx.toolName}"`);
   }
   const { models, reactionNudge } = await producer.run(makeJob(ctx));
-  // `enqueueThreadRun` is fire-and-forget (starts a workflow, doesn't await it),
-  // so the reaction runs from the body rather than as a recorded step. A `null`
-  // nudge skips the reaction turn entirely (no producer does today).
+  // A null nudge skips the reaction turn (no producer does today).
   if (reactionNudge) await reactStep(ctx, models, reactionNudge);
 }
 
@@ -517,12 +498,8 @@ DBOS.registerWorkflow(backgroundToolWorkflowFn, {
   name: "backgroundToolWorkflow",
 });
 
-/**
- * Build a `BackgroundDispatcher` bound to the originating turn's thread/model
- * snapshot. Each `start()` mints a jobId (== workflow id) and enqueues the
- * workflow on the org's partition, returning the handle for the started tool
- * result. Cluster-only — desktop/tests pass no dispatcher and tools run inline.
- */
+/** Cluster `BackgroundDispatcher` bound to the turn's snapshot. Each `start()`
+ *  mints a jobId (== workflow id) and enqueues the workflow on the org partition. */
 export function createBackgroundToolDispatcher(
   snapshot: BackgroundToolSnapshot,
 ): BackgroundDispatcher {

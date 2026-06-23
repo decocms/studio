@@ -5,7 +5,9 @@ import { IntegrationIcon } from "@/web/components/integration-icon";
 import { useVirtualMCP, type ToolDefinition } from "@decocms/mesh-sdk";
 import { Tool02, Users03 } from "@untitledui/icons";
 import type { TextUIPart } from "ai";
+import { useState, type ReactNode } from "react";
 import type { SubtaskToolPart } from "../../../types.ts";
+import { useOptionalChatStream } from "../../../context.tsx";
 import { useSubtaskRun } from "../../../subtask-runs-context.tsx";
 import { MessageTextPart } from "../text-part.tsx";
 import { extractTextFromOutput, getToolPartErrorText } from "../utils.ts";
@@ -52,12 +54,8 @@ export function extractSubtaskResponse(output: unknown): string | null {
   return extractTextFromOutput(output);
 }
 
-/**
- * A backgrounded subtask's tool call returns a `{ background: true }` START
- * marker; the real run streams in later as separate messages tagged with this
- * call's `jobId`. So this tool part renders as a `BackgroundSubtaskCard` that
- * nests that run, rather than the standard (synchronous) subtask card.
- */
+/** A backgrounded subtask returns a `{ background: true }` START marker; its run
+ *  streams in later as `jobId`-tagged messages, nested in `BackgroundSubtaskCard`. */
 function isBackgroundStart(output: unknown): boolean {
   return (
     !!output &&
@@ -138,18 +136,10 @@ function useSubtaskShellConfig({
   };
 }
 
-/**
- * A backgrounded subtask runs as its own serialized subagent run whose messages
- * are tagged with this tool call's `jobId` (`metadata.subtaskJobId`). They're
- * filtered out of the top-level list and rendered NESTED here, inside the tool
- * card — the subagent's streamed reply grows in the detail panel live (the card
- * auto-opens while running), Claude-Code style. No `useVirtualMCP` so the
- * Suspense fallback can render this without itself suspending.
- */
-/** A single nested tool call — shows the tool name + its INPUT only (the
- *  subagent's tool outputs are intentionally hidden inside the parent card).
- *  A compact custom row rather than the full `MessagePart` switch, which would
- *  create an `assistant.tsx ↔ index` cycle (and render outputs). */
+const NESTED_INPUT_MAX_CHARS = 600;
+
+/** A single nested tool call — name + INPUT only (outputs are hidden). A custom
+ *  row, not the full `MessagePart` switch, which would cycle via `assistant.tsx`. */
 function NestedToolCall({
   part,
 }: {
@@ -161,8 +151,13 @@ function NestedToolCall({
   const inputStr = part.input != null ? JSON.stringify(part.input) : "";
   const summary =
     inputStr.length > 80 ? `${inputStr.slice(0, 80)}…` : inputStr || undefined;
-  const detail =
+  // Cap the expanded input — a `write` carries the whole file body otherwise.
+  const pretty =
     part.input != null ? JSON.stringify(part.input, null, 2) : null;
+  const detail =
+    pretty && pretty.length > NESTED_INPUT_MAX_CHARS
+      ? `${pretty.slice(0, NESTED_INPUT_MAX_CHARS)}\n… (${pretty.length - NESTED_INPUT_MAX_CHARS} more characters)`
+      : pretty;
   return (
     <ToolCallShell
       icon={<Tool02 />}
@@ -175,6 +170,8 @@ function NestedToolCall({
   );
 }
 
+/** Renders a backgrounded subtask's run NESTED in the tool card: its messages
+ *  (tagged `subtaskJobId`) are filtered from the top level and shown here. */
 function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
   const jobId = (part.output as { jobId?: string } | undefined)?.jobId;
   const nested = useSubtaskRun(jobId);
@@ -248,12 +245,58 @@ function BackgroundSubtaskCard({ part }: SubtaskPartProps) {
   );
 }
 
+/** "Send to background" affordance under a running inline subtask — defers the
+ *  in-flight run server-side. Best-effort (no-op if it already finished). */
+function DeferToBackgroundButton({ toolCallId }: { toolCallId: string }) {
+  const stream = useOptionalChatStream();
+  const [requested, setRequested] = useState(false);
+  if (!stream?.deferToolToBackground) return null;
+  return (
+    <button
+      type="button"
+      disabled={requested}
+      onClick={() => {
+        setRequested(true);
+        stream.deferToolToBackground(toolCallId);
+      }}
+      className="mt-0.5 ml-6 self-start text-[12px] text-muted-foreground/60 [@media(hover:hover)]:hover:text-foreground underline underline-offset-2 disabled:opacity-50 disabled:no-underline"
+    >
+      {requested ? "Moving to background…" : "Send to background"}
+    </button>
+  );
+}
+
+/** Inline subtask card + (while running) the send-to-background affordance. */
+function InlineSubtaskCard({
+  part,
+  shell,
+  title,
+  icon,
+}: {
+  part: SubtaskToolPart;
+  shell: Omit<ReturnType<typeof useSubtaskShellConfig>, "fallbackTitle">;
+  title: ReactNode;
+  icon: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col">
+      <ToolCallShell icon={icon} title={title} {...shell} />
+      {shell.state === "loading" && (
+        <DeferToBackgroundButton toolCallId={part.toolCallId} />
+      )}
+    </div>
+  );
+}
+
 export function SubtaskPartFallback(props: SubtaskPartProps) {
   const { fallbackTitle, ...shell } = useSubtaskShellConfig(props);
   if (isBackgroundStart(props.part.output))
     return <BackgroundSubtaskCard {...props} />;
   return (
-    <ToolCallShell
+    <InlineSubtaskCard
+      part={props.part}
+      shell={shell}
+      title={fallbackTitle}
       icon={
         <IntegrationIcon
           icon={undefined}
@@ -263,8 +306,6 @@ export function SubtaskPartFallback(props: SubtaskPartProps) {
           fallbackIcon={<Users03 />}
         />
       }
-      title={fallbackTitle}
-      {...shell}
     />
   );
 }
@@ -280,7 +321,10 @@ export function SubtaskPart(props: SubtaskPartProps) {
     return <BackgroundSubtaskCard {...props} />;
 
   return (
-    <ToolCallShell
+    <InlineSubtaskCard
+      part={props.part}
+      shell={shell}
+      title={agent?.title ?? fallbackTitle}
       icon={
         <IntegrationIcon
           icon={agent?.icon}
@@ -290,8 +334,6 @@ export function SubtaskPart(props: SubtaskPartProps) {
           fallbackIcon={<Users03 />}
         />
       }
-      title={agent?.title ?? fallbackTitle}
-      {...shell}
     />
   );
 }
