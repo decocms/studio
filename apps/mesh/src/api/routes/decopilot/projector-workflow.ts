@@ -88,6 +88,12 @@ export interface ProjectorWorkflowRuntime {
     kind: "harness" | "transport" | "projection",
   ): Promise<unknown>;
   persistTitle(runId: string, orgId: string, title: string): Promise<unknown>;
+  onTitleUpdated(input: {
+    runId: string;
+    orgId: string;
+    title: string;
+  }): Promise<void>;
+  bumpProgress(input: { runId: string; orgId: string }): Promise<void>;
   recordCompleted(input: {
     runId: string;
     orgId: string;
@@ -201,6 +207,7 @@ async function projectFromJetStreamStep(
       currentThreadTitle,
       persistTitle: async (_threadId, title) => {
         await rt.persistTitle(input.runId, orgId, title);
+        await rt.onTitleUpdated({ runId: input.runId, orgId, title });
       },
     },
   });
@@ -467,6 +474,11 @@ async function projectCheckpointFromJetStreamStep(
       currentThreadTitle,
       persistTitle: async (_threadId, title) => {
         await rt.persistTitle(input.runId, input.orgId, title);
+        await rt.onTitleUpdated({
+          runId: input.runId,
+          orgId: input.orgId,
+          title,
+        });
       },
     },
   });
@@ -505,10 +517,20 @@ async function projectCheckpointWorkflowFn(
   if ("skip" in resolved) return;
 
   const currentThreadTitle = resolved.row.title;
-  await DBOS.runStep(
+  const { projected } = await DBOS.runStep(
     () => projectCheckpointFromJetStreamStep(input, currentThreadTitle),
     { name: "projectCheckpointFromJetStream" },
   );
+  if (projected) {
+    await DBOS.runStep(
+      () =>
+        requireRuntime().bumpProgress({
+          runId: input.runId,
+          orgId: input.orgId,
+        }),
+      { name: "bumpCheckpointProgress" },
+    );
+  }
 }
 
 const projectCheckpointWorkflow = DBOS.registerWorkflow(

@@ -19,6 +19,7 @@ import {
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
+import { createDecopilotThreadStatusEvent } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
@@ -1521,6 +1522,26 @@ export async function createApp(options: CreateAppOptions = {}) {
       projectorThreadStorage.markRunFailed(runId, orgId, reason, kind),
     persistTitle: (runId, orgId, title) =>
       projectorThreadStorage.update(runId, orgId, { title }),
+    onTitleUpdated: async ({ runId, orgId, title }) => {
+      const row = await projectorThreadStorage
+        .get(runId, orgId)
+        .catch(() => null);
+      sseHub.emit(
+        orgId,
+        createDecopilotThreadStatusEvent(runId, row?.status ?? "in_progress", {
+          title,
+          virtualMcpId: row?.virtual_mcp_id ?? undefined,
+          createdBy: row?.created_by,
+          triggerId: row?.trigger_id,
+          branch: row?.branch ?? null,
+          createdAt: row?.created_at,
+          updatedAt: row?.updated_at,
+        }),
+      );
+    },
+    bumpProgress: async ({ runId, orgId }) => {
+      await projectorThreadStorage.bumpProgress(runId, orgId);
+    },
     recordCompleted: async ({ runId, orgId, distinctId, usage }) => {
       posthog.capture({
         distinctId,
