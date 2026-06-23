@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveCodexModelId } from "./index";
+import { buildCodexDefaultSettings, resolveCodexModelId } from "./index";
 
 describe("resolveCodexModelId", () => {
   it("resolves current Codex CLI model IDs", () => {
@@ -17,6 +17,14 @@ describe("resolveCodexModelId", () => {
     );
     expect(() => resolveCodexModelId("codex:gpt-5.2")).toThrow(
       "Unknown Codex model ID",
+    );
+  });
+});
+
+describe("buildCodexDefaultSettings", () => {
+  it("runs Codex without sandbox restrictions", () => {
+    expect(buildCodexDefaultSettings({}).sandboxPolicy).toBe(
+      "danger-full-access",
     );
   });
 });
