@@ -53,6 +53,10 @@ import { toolsFromMCP } from "./mcp-tools";
 import { buildLocalTools } from "./desktop-local-tools";
 import { createMcpBackgroundDispatcher } from "./built-in-tools/mcp-background-dispatcher";
 import type { BackgroundDispatcher } from "./built-in-tools/backgroundable";
+import {
+  createDesktopSubtaskDispatcher,
+  type DesktopSubtaskDispatcherOptions,
+} from "./built-in-tools/desktop-subtask-dispatcher";
 import { getDesktopSandboxFsBuilder } from "./desktop-sandbox-fs-registry";
 import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./desktop-prompt";
 import { resolveModeConfig } from "./mode-config";
@@ -135,17 +139,16 @@ export function resolveDesktopSubtaskCodingWorkspace(
 }
 
 /**
- * Build the cluster-backed background dispatcher for a desktop run, or null when
- * the link material is absent (no object-storage source / fence token, or the
- * base URL doesn't carry the org-scoped `/object-storage` suffix). Calls the
- * `THREAD_BACKGROUND_TOOL_START` management tool over `/mcp/self`, reusing the
- * run's bearer (same temp credentials as the object-storage source) + the run
- * fence token. The org-scoped API base is derived from the object-storage
- * source so the `:org` slug exactly matches what the cluster minted.
+ * Build the studio management-MCP source (`/mcp/self`) for a desktop run, or
+ * null when the link material is absent (no object-storage source / fence token,
+ * or the base URL doesn't carry the org-scoped `/object-storage` suffix). Reuses
+ * the run's bearer (same temp credentials as the object-storage source). The
+ * org-scoped API base is derived from the object-storage source so the `:org`
+ * slug exactly matches what the cluster minted.
  */
-function buildBackgroundDispatcher(
+function buildSelfMcpSource(
   input: HarnessStreamInput,
-): BackgroundDispatcher | null {
+): DecopilotHttpMcpSource | null {
   const objectStorageBase = input.objectStorageSource?.baseUrl ?? "";
   const apiBase = objectStorageBase.replace(/\/object-storage\/?$/, "");
   if (
@@ -155,21 +158,54 @@ function buildBackgroundDispatcher(
   ) {
     return null;
   }
+  return {
+    kind: "http",
+    url: `${apiBase}/mcp/self`,
+    headers: input.objectStorageSource.headers,
+    expiresAt: input.objectStorageSource.expiresAt,
+  };
+}
+
+function snapshotOf(input: HarnessStreamInput) {
+  return {
+    agentId: input.agent.id,
+    temperature: input.temperature,
+    toolApprovalLevel: input.toolApprovalLevel,
+    branch: input.branch ?? null,
+  };
+}
+
+/** generate_image background dispatcher: enqueue on the cluster (it has no local
+ *  sandbox), via `THREAD_BACKGROUND_TOOL_START` over `/mcp/self`. */
+function buildBackgroundDispatcher(
+  input: HarnessStreamInput,
+): BackgroundDispatcher | null {
+  const source = buildSelfMcpSource(input);
+  if (!source || !input.runFenceToken) return null;
   return createMcpBackgroundDispatcher({
-    source: {
-      kind: "http",
-      url: `${apiBase}/mcp/self`,
-      headers: input.objectStorageSource.headers,
-      expiresAt: input.objectStorageSource.expiresAt,
-    },
+    source,
     threadId: input.threadId,
     fenceToken: input.runFenceToken,
-    snapshot: {
-      agentId: input.agent.id,
-      temperature: input.temperature,
-      toolApprovalLevel: input.toolApprovalLevel,
-      branch: input.branch ?? null,
-    },
+    snapshot: snapshotOf(input),
+  });
+}
+
+/** subtask background dispatcher: runs the subagent HERE (the daemon's real
+ *  sandbox), detached, then delivers its report to the cluster via
+ *  `THREAD_SUBTASK_DELIVER` over `/mcp/self`. Null when link material is absent
+ *  → `background` falls back to inline. */
+function buildSubtaskDispatcher(
+  input: HarnessStreamInput,
+  runSubtask: DesktopSubtaskDispatcherOptions["runSubtask"],
+): BackgroundDispatcher | null {
+  const source = buildSelfMcpSource(input);
+  if (!source || !input.runFenceToken) return null;
+  return createDesktopSubtaskDispatcher({
+    source,
+    threadId: input.threadId,
+    fenceToken: input.runFenceToken,
+    snapshot: snapshotOf(input),
+    runSubtask,
   });
 }
 
@@ -593,7 +629,9 @@ export function buildDesktopEnvironmentTools(args: {
       runSubtask,
       onChildUsage: (usage) => parentOnChildUsage?.(usage),
     }),
-    buildBackgroundDispatcher(input),
+    // Backgrounded subtask runs on the daemon (real sandbox) detached, then
+    // delivers — NOT enqueued on the cluster like generate_image.
+    buildSubtaskDispatcher(input, runSubtask),
   );
 
   const parentToolRuntime = createDesktopToolRuntime({
