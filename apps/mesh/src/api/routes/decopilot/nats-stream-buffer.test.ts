@@ -88,7 +88,11 @@ test("decopilot stream is file-backed with a dedup window and SLA retention", ()
   const c = decopilotStreamConfig();
   expect(c.storage).toBe(StorageType.File);
   expect(c.duplicate_window).toBeGreaterThanOrEqual(2 * 60 * 1_000_000_000); // >= 2min (ns)
-  expect(c.max_age).toBeGreaterThanOrEqual(30 * 60 * 1_000_000_000); // >= 30min SLA
+  // Retention must outlast a day-long desktop run so seq 1 survives until the
+  // terminal projection re-reads [1..finalSeq].
+  expect(c.max_age).toBeGreaterThanOrEqual(24 * 60 * 60 * 1_000_000_000); // >= 24h
+  expect(c.max_msgs_per_subject).toBeGreaterThanOrEqual(500_000);
+  expect(c.max_bytes).toBeGreaterThanOrEqual(4 * 1024 * 1024 * 1024); // >= 4GB
 });
 
 describe("NatsStreamBuffer", () => {

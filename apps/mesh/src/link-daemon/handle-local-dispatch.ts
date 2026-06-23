@@ -56,6 +56,21 @@ import type { Outbox } from "./outbox";
 const DISPATCH_START_TIMEOUT_MS = 15_000;
 
 /**
+ * Resolve the CURRENT live NATS connection for a relay publish, throwing a
+ * labeled error if none is available. The getter is re-invoked per publish
+ * attempt so an in-flight run survives a tunnel-session renewal (which recycles
+ * the connection).
+ */
+function requireLiveNc(nc: NatsConnection | null): NatsConnection {
+  if (!nc) {
+    throw new Error(
+      "[handleLocalDispatch] no live NATS connection for relay publish",
+    );
+  }
+  return nc;
+}
+
+/**
  * Relay retry budget, env-tunable for ops without a rebuild (undefined → the
  * widened chunk-relay defaults: 12 attempts / 30s max backoff ≈ 2.5 min). The
  * wide window lets a transient cluster/edge ECONNRESET recover instead of
@@ -83,7 +98,7 @@ const RELAY_MAX_TIMEOUT_MS =
 export async function relayWorkItemFailure(
   work: WorkItem,
   deps: {
-    natsConnection: NatsConnection;
+    getNatsConnection: () => NatsConnection | null;
     relayPublisher?: DirectNatsPublisher;
   },
   code: string,
@@ -91,7 +106,9 @@ export async function relayWorkItemFailure(
 ): Promise<void> {
   const publisher =
     deps.relayPublisher ??
-    createDirectNatsPublisher({ js: jetstream(deps.natsConnection) });
+    createDirectNatsPublisher({
+      js: jetstream(requireLiveNc(deps.getNatsConnection())),
+    });
   await publisher.publishLine({
     runId: work.runId,
     fenceToken: work.runFenceToken,
@@ -158,12 +175,13 @@ export interface LocalDispatchDeps {
     jitter?: number;
   };
   /**
-   * Active NATS connection threaded from the link-daemon work dispatch. The
-   * chunk relay and synthesized failure relay both publish directly to
-   * JetStream built from this connection.
+   * Returns the CURRENT live NATS connection. Re-sourced per publish attempt
+   * so an in-flight run survives a tunnel-session renewal (which recycles the
+   * connection). The chunk relay and synthesized failure relay both publish
+   * directly to JetStream built from this connection.
    */
-  natsConnection: NatsConnection;
-  /** Test seam. Production omits it → built from `jetstream(natsConnection)`. */
+  getNatsConnection: () => NatsConnection | null;
+  /** Test seam. Production omits it → built from `jetstream(getNatsConnection())`. */
   relayPublisher?: DirectNatsPublisher;
 }
 
@@ -307,10 +325,6 @@ export async function handleLocalDispatch(
   // Retry/backoff and full-prefix resend live inside the chunk relay; this
   // post impl publishes the buffered prefix to NATS (JetStream dedupes by
   // msgID, so resending the whole prefix on reconnect is safe).
-  const publisher =
-    deps.relayPublisher ??
-    createDirectNatsPublisher({ js: jetstream(deps.natsConnection) });
-
   await relayDispatchSSEAsChunkStream({
     dispatchBody: dispatchRes.body,
     runId: work.runId,
@@ -324,6 +338,13 @@ export async function handleLocalDispatch(
       maxTimeout: RELAY_MAX_TIMEOUT_MS,
     },
     post: async (body) => {
+      // Build the publisher PER attempt so a retry after a tunnel-session
+      // renewal re-sources the NEW live connection (the prior one is closed).
+      const publisher =
+        deps.relayPublisher ??
+        createDirectNatsPublisher({
+          js: jetstream(requireLiveNc(deps.getNatsConnection())),
+        });
       const { lastSeq } = await publishRelayBodyToNats({
         body,
         runId: work.runId,

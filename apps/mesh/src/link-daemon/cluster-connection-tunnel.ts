@@ -495,6 +495,11 @@ export async function connectToClusterTunnel(
   const now = deps.now ?? (() => new Date());
   let stopRequested = false;
   let active: ActiveTunnelConnection | undefined;
+  // The CURRENT live NATS connection, updated on every `startActive`. In-flight
+  // dispatches read this (via `getNatsConnection`) per publish attempt, so a run
+  // that started under a prior session re-sources the NEW connection after a
+  // tunnel-session renewal (which recycles the old connection).
+  let liveNc: NatsConnection | null = null;
   let firstReady:
     | { resolve: () => void; reject: (err: unknown) => void }
     | undefined;
@@ -516,6 +521,7 @@ export async function connectToClusterTunnel(
   const startActive = async (): Promise<ActiveTunnelConnection> => {
     const session = await fetchSessionWithRetry();
     const nc = await (deps.connectNats ?? connectNats)(session);
+    liveNc = nc;
     monitorNatsStatus(nc, session.tunnelHostname, now);
     const ac = new AbortController();
     let tunnelServer: tunnel.TunnelServer | undefined;
@@ -523,7 +529,7 @@ export async function connectToClusterTunnel(
 
     const connectionInput = {
       ...input,
-      getNatsConnection: () => nc,
+      getNatsConnection: () => liveNc,
     };
 
     try {

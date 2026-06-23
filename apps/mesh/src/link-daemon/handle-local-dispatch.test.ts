@@ -160,7 +160,7 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: fp.publisher,
     };
 
@@ -234,7 +234,7 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: fp.publisher,
     };
 
@@ -279,7 +279,7 @@ describe("handleLocalDispatch", () => {
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       dispatchStartTimeoutMs: 5,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: fp.publisher,
     };
 
@@ -327,7 +327,7 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: publisher,
     };
 
@@ -387,7 +387,7 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: failingPublisher,
       relayRetry: { maxAttempts: 3, minTimeout: 1, maxTimeout: 2, jitter: 0 },
     };
@@ -396,6 +396,68 @@ describe("handleLocalDispatch", () => {
 
     // Two POST attempts: the first dropped at seq 1, the second drained the
     // complete prefix (7 chunks + done) from seq 1.
+    expect(postAttempts).toBe(2);
+    expect(prefixes.at(-1)!).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  // ── Test: a session renewal mid-run recovers via per-attempt re-source ──
+
+  it("recovers when the first publish attempt throws ClosedConnectionError (session renewal) and a retry succeeds", async () => {
+    let postAttempts = 0;
+    let current: number[] = [];
+    const prefixes: number[][] = [];
+
+    const fetchImpl = async (url: string): Promise<Response> => {
+      if (url.includes("/_sandbox/dispatch")) {
+        return new Response(makeBodyStream(dispatchSSE(TEXT_CHUNKS)), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      throw new Error(`Unexpected fetch to ${url}`);
+    };
+
+    // Simulate a tunnel-session renewal: the FIRST post attempt's publish
+    // throws a ClosedConnectionError (the pinned connection was recycled). It
+    // has no `.status`, so chunk-relay treats it as retriable; the retry
+    // re-sources the (now live) connection and drains the whole prefix again.
+    const renewalPublisher = {
+      publishLine: async (i: RecordedLine) => {
+        if (i.line.seq === 1) {
+          if (current.length > 0) prefixes.push(current);
+          current = [];
+          postAttempts++;
+        }
+        current.push(i.line.seq);
+        if (postAttempts === 1) {
+          // No `.status` → retriable, mirroring a real ClosedConnectionError.
+          throw new Error("ClosedConnectionError: connection closed");
+        }
+        return (i.line.event.type === "done" ? "terminal" : "published") as
+          | "published"
+          | "terminal";
+      },
+      publishDone: async () => {
+        prefixes.push(current);
+        current = [];
+      },
+      publishCheckpoint: async () => {},
+    };
+
+    const deps: LocalDispatchDeps = {
+      outbox: openInMemoryOutbox(),
+      sandboxDispatchUrl: SANDBOX_BASE,
+      sandboxDaemonToken: DAEMON_TOKEN,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      getNatsConnection: () => FAKE_NC,
+      relayPublisher: renewalPublisher,
+      relayRetry: { maxAttempts: 3, minTimeout: 1, maxTimeout: 2, jitter: 0 },
+    };
+
+    await handleLocalDispatch(validWorkItem, deps);
+
+    // The renewal dropped attempt 1 at seq 1; the retry re-sent the full prefix
+    // (7 chunks + done) from seq 1, so the run still relays everything.
     expect(postAttempts).toBe(2);
     expect(prefixes.at(-1)!).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
@@ -428,7 +490,7 @@ describe("handleLocalDispatch", () => {
       sandboxDaemonToken: DAEMON_TOKEN,
       harnessId: "codex",
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: fp.publisher,
     };
 
@@ -471,7 +533,7 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: fp.publisher,
     };
 
@@ -528,7 +590,7 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: fp.publisher,
     };
 
@@ -573,7 +635,7 @@ describe("handleLocalDispatch", () => {
       sandboxDispatchUrl: SANDBOX_BASE,
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: fp.publisher,
     };
 
@@ -606,7 +668,7 @@ describe("handleLocalDispatch", () => {
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       outbox,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: fp.publisher,
     });
 
@@ -650,7 +712,7 @@ describe("handleLocalDispatch", () => {
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       outbox,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: failingPublisher,
       // Fast budget — this test asserts durability after exhaustion, not the
       // (widened) production retry window.
@@ -697,7 +759,7 @@ describe("handleLocalDispatch", () => {
       sandboxDaemonToken: DAEMON_TOKEN,
       fetchImpl: fetchImpl as unknown as typeof fetch,
       signal: ac.signal,
-      natsConnection: FAKE_NC,
+      getNatsConnection: () => FAKE_NC,
       relayPublisher: fp.publisher,
     };
 
@@ -718,7 +780,7 @@ describe("relayWorkItemFailure", () => {
 
     await relayWorkItemFailure(
       validWorkItem,
-      { relayPublisher: fp.publisher, natsConnection: FAKE_NC },
+      { relayPublisher: fp.publisher, getNatsConnection: () => FAKE_NC },
       "work_item_expired",
       "credentials expired",
     );
@@ -757,7 +819,7 @@ describe("relayWorkItemFailure", () => {
     await expect(
       relayWorkItemFailure(
         validWorkItem,
-        { relayPublisher: publisher, natsConnection: FAKE_NC },
+        { relayPublisher: publisher, getNatsConnection: () => FAKE_NC },
         "work_item_expired",
         "credentials expired",
       ),

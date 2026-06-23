@@ -35,14 +35,16 @@ function deriveHandle(item: WorkItem): string {
 
 async function relayClaimedWorkItemFailure(
   input: LinkWorkItemDispatchInput,
-  nc: NatsConnection,
   item: WorkItem,
   code: string,
   message: string,
 ): Promise<void> {
   await relayWorkItemFailure(
     item,
-    { natsConnection: nc, relayPublisher: input.relayPublisher },
+    {
+      getNatsConnection: input.getNatsConnection!,
+      relayPublisher: input.relayPublisher,
+    },
     code,
     message,
   );
@@ -58,10 +60,11 @@ export async function dispatchLinkWorkItem(
     `[link-work] work item runId=${item.runId} threadId=${item.threadId} handle=${handle}`,
   );
 
-  // Derive the NATS connection once — both relay paths (expiry/ensureSandbox
-  // failures and the streaming chunk relay) publish directly to JetStream.
-  const nc = input.getNatsConnection?.() ?? null;
-  if (!nc) {
+  // Early guard: a live NATS connection must exist at dispatch time. The relay
+  // paths re-source the connection PER publish attempt via the GETTER (not this
+  // captured value), so an in-flight run survives a tunnel-session renewal that
+  // recycles the connection.
+  if (!(input.getNatsConnection?.() ?? null)) {
     throw new Error(
       "[link-work] NATS connection unavailable for direct relay publish",
     );
@@ -74,7 +77,10 @@ export async function dispatchLinkWorkItem(
     );
     await relayWorkItemFailure(
       item,
-      { natsConnection: nc, relayPublisher: input.relayPublisher },
+      {
+        getNatsConnection: input.getNatsConnection!,
+        relayPublisher: input.relayPublisher,
+      },
       "work_item_expired",
       "work item credentials expired before the daemon claimed it — send the message again",
     );
@@ -117,7 +123,6 @@ export async function dispatchLinkWorkItem(
     );
     await relayClaimedWorkItemFailure(
       input,
-      nc,
       item,
       "sandbox_start_failed",
       "desktop sandbox failed to start for this run; send the message again",
@@ -134,7 +139,7 @@ export async function dispatchLinkWorkItem(
       fetchImpl: input.fetchImpl,
       signal: AbortSignal.any([signal, runAc.signal]),
       outbox: input.outbox,
-      natsConnection: nc,
+      getNatsConnection: input.getNatsConnection!,
       relayPublisher: input.relayPublisher,
     });
   } catch (err) {
@@ -144,7 +149,6 @@ export async function dispatchLinkWorkItem(
     );
     await relayClaimedWorkItemFailure(
       input,
-      nc,
       item,
       "local_dispatch_failed",
       "desktop harness dispatch failed before producing a terminal result; send the message again",
