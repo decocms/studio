@@ -41,36 +41,46 @@ import {
 import type { StreamBuffer } from "./stream-buffer";
 import { meter } from "@/observability";
 
+// `meter` is a NoopMeter until initObservability() runs at bootstrap
+// (index.ts), and this module is imported *before* that — so instruments
+// created at module top bind the noop and silently never export. Create them
+// lazily on first use, by which point `meter` has been reassigned to the real
+// provider. (This is why the metrics below historically reported no data.)
+const lazyInstrument = <T>(make: () => T): (() => T) => {
+  let v: T | undefined;
+  return () => (v ??= make());
+};
+
 // B5: counter for JetStream publish errors — tagged by org.id (low cardinality).
 // Increment happens inside createPublishTracker's catch where publish failures
 // are already sampled-logged; the counter lets alerting fire without log scraping.
-const publishErrorsCounter = meter.createCounter(
-  "decopilot.stream.publish_errors",
-  {
+const publishErrorsCounter = lazyInstrument(() =>
+  meter.createCounter("decopilot.stream.publish_errors", {
     description:
       "Number of JetStream publish failures for decopilot stream chunks",
     unit: "{errors}",
-  },
+  }),
 );
 
 // Per-chunk JSON.stringify+encode time. Pod-level (no org attribute) on
 // purpose: this is loop-occupancy, meant to be correlated with eventloop.delay
 // to see how much of a saturated thread is the encode path. Always-on
 // (the STREAM_ENCODE_TRACE profiler is the gated verbose-log counterpart).
-const encodeMsHistogram = meter.createHistogram("decopilot.stream.encode_ms", {
-  description: "Per-chunk JSON.stringify+encode time for decopilot stream",
-  unit: "ms",
-});
+const encodeMsHistogram = lazyInstrument(() =>
+  meter.createHistogram("decopilot.stream.encode_ms", {
+    description: "Per-chunk JSON.stringify+encode time for decopilot stream",
+    unit: "ms",
+  }),
+);
 
 // Logical chunks published (one per stream part, before fragmentation). Tagged
 // by org.id (low cardinality) so publish rate per org is visible — the proxy
 // for token throughput driving socket fan-out.
-const publishedChunksCounter = meter.createCounter(
-  "decopilot.stream.published_chunks",
-  {
+const publishedChunksCounter = lazyInstrument(() =>
+  meter.createCounter("decopilot.stream.published_chunks", {
     description: "Logical decopilot stream chunks published to JetStream",
     unit: "{chunks}",
-  },
+  }),
 );
 
 // 30 min — projector-lag SLA: the stream is the sole path to the DB (Phase C),
@@ -198,7 +208,7 @@ function createPublishTracker(taskId: string, orgId?: string) {
           // fire without log scraping. Tag by org.id (low cardinality); fall
           // back to "unknown" when the org context isn't available at this
           // call site (e.g. standalone test harness without a dispatch context).
-          publishErrorsCounter.add(1, { "org.id": orgId ?? "unknown" });
+          publishErrorsCounter().add(1, { "org.id": orgId ?? "unknown" });
           if (errors === 1 || errors % 100 === 0) {
             console.warn(
               `[Decopilot] JetStream publish failed for thread ${taskId} (${errors} total):`,
@@ -337,8 +347,8 @@ export class NatsStreamBuffer implements StreamBuffer {
       const t0 = performance.now();
       const bytes = encoder.encode(JSON.stringify({ p: value }));
       const encodeMs = performance.now() - t0;
-      encodeMsHistogram.record(encodeMs);
-      publishedChunksCounter.add(1, { "org.id": orgId ?? "unknown" });
+      encodeMsHistogram().record(encodeMs);
+      publishedChunksCounter().add(1, { "org.id": orgId ?? "unknown" });
       streamEncodeProfiler?.record(encodeMs, bytes.length);
       if (bytes.length <= MAX_PUBLISH_BYTES) {
         tracker.publish(js, subj, bytes);
