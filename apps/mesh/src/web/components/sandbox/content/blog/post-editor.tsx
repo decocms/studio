@@ -41,7 +41,17 @@ import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { InsertBlockDivider } from "./block-picker";
 import { BlockRow } from "./blocks/block-row";
 import { type RawBlock } from "./blocks/block-registry";
-import { InlineText, str } from "./blocks/primitives";
+import { AddButton, InlineText, RemoveButton, str } from "./blocks/primitives";
+
+type ExtraProp = { key: string; value: string };
+
+function asExtraProps(value: unknown): ExtraProp[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => ({
+    key: str((item as Record<string, unknown>)?.key),
+    value: str((item as Record<string, unknown>)?.value),
+  }));
+}
 
 type BlockItem = { id: string; block: RawBlock };
 
@@ -292,8 +302,58 @@ function PostSettings({
           selected={post.categories}
           onChange={(v) => onChange("categories", v)}
         />
+        <ExtraPropsField
+          value={post.extraProps}
+          onChange={(v) => onChange("extraProps", v)}
+        />
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function ExtraPropsField({
+  value,
+  onChange,
+}: {
+  value: unknown;
+  onChange: (value: ExtraProp[]) => void;
+}) {
+  const items = asExtraProps(value);
+  const set = (i: number, patch: Partial<ExtraProp>) =>
+    onChange(items.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
+
+  return (
+    <div className="space-y-2">
+      <Label>Extra props</Label>
+      {items.length > 0 && (
+        <ul className="space-y-2">
+          {items.map((prop, i) => (
+            <li key={i} className="group/item flex items-center gap-2">
+              <Input
+                value={prop.key}
+                onChange={(e) => set(i, { key: e.target.value })}
+                placeholder="key"
+                className="h-9 flex-1"
+              />
+              <Input
+                value={prop.value}
+                onChange={(e) => set(i, { value: e.target.value })}
+                placeholder="value"
+                className="h-9 flex-1"
+              />
+              <RemoveButton
+                label="Remove prop"
+                onClick={() => onChange(items.filter((_, idx) => idx !== i))}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      <AddButton
+        label="Add prop"
+        onClick={() => onChange([...items, { key: "", value: "" }])}
+      />
+    </div>
   );
 }
 
