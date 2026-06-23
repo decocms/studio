@@ -763,7 +763,7 @@ async function prepareRun(
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
 ): Promise<PreparedRun> {
-  const { runRegistry, streamBuffer, sseHub } = deps;
+  const { runRegistry, streamBuffer } = deps;
 
   // Normalize: ensure every message has an id (runtime callers may omit it)
   input = {

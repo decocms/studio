@@ -102,6 +102,7 @@ function fakePublisher() {
     publishDone: async (i: RecordedDone) => {
       dones.push(i);
     },
+    publishCheckpoint: async () => {},
   };
   return { publisher, lines, dones };
 }
@@ -318,6 +319,7 @@ describe("handleLocalDispatch", () => {
         throw err;
       },
       publishDone: async () => {},
+      publishCheckpoint: async () => {},
     };
 
     const deps: LocalDispatchDeps = {
@@ -377,6 +379,7 @@ describe("handleLocalDispatch", () => {
         prefixes.push(current);
         current = [];
       },
+      publishCheckpoint: async () => {},
     };
 
     const deps: LocalDispatchDeps = {
@@ -639,6 +642,7 @@ describe("handleLocalDispatch", () => {
         throw new Error("nats down");
       },
       publishDone: async () => {},
+      publishCheckpoint: async () => {},
     };
 
     await handleLocalDispatch(validWorkItem, {
@@ -747,6 +751,7 @@ describe("relayWorkItemFailure", () => {
         throw new Error("nats publish rejected");
       },
       publishDone: async () => {},
+      publishCheckpoint: async () => {},
     };
 
     await expect(
