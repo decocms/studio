@@ -986,6 +986,31 @@ export class ThreadConnection {
       this.status.set({ kind: "ready" });
     }
     if (last && !discard) {
+      // Anchor the finished assistant with a top-level `created_at`. A streamed
+      // message that never received one reads as +Infinity in `mergeAndSort`;
+      // on the NEXT submit the role tiebreak (user before assistant) then sorts
+      // the new user row ahead of this reply — the prior turn renders empty and
+      // its answer lands under the new turn. Prefer the run-start metadata
+      // timestamp when present, else stamp finish time. Mirrors the cancel-path
+      // anchor; a later persisted refetch (which carries the DB `created_at`)
+      // overwrites this via upsert. No-op once a top-level `created_at` exists.
+      const anchorId = last.id;
+      this.messages.update((msgs) => {
+        const i = msgs.findIndex((m) => m.id === anchorId);
+        if (i === -1) return msgs;
+        const row = msgs[i] as UIMessage & { created_at?: string };
+        if (row.created_at != null) return msgs;
+        const metaTs = (
+          row.metadata as { created_at?: string | number | Date } | undefined
+        )?.created_at;
+        const created_at =
+          metaTs != null
+            ? new Date(metaTs).toISOString()
+            : new Date().toISOString();
+        const next = [...msgs];
+        next[i] = { ...row, created_at } as UIMessage;
+        return next;
+      });
       this.observer?.onFinish?.(last, this.messages.get(), finishReason);
     }
   }
