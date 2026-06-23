@@ -203,4 +203,74 @@ export class OrgFsClient implements OrgFsApi {
     if (!res.ok) return this.fail(res);
     return (await res.json()) as OrgFsChangePage;
   }
+
+  /**
+   * Server-push change feed: open the `/changes?stream=1` SSE stream and invoke
+   * `onPage` for each page (same shape as `changes()`), so the invalidator
+   * primes and refreshes identically to the long-poll path. Resolves when the
+   * server ends the stream (reconnect) or `signal` aborts. Throws
+   * `OrgFsApiError` on a non-OK status, or a plain Error when the server didn't
+   * answer with an event-stream (old build / no NATS) — the caller then falls
+   * back to the `changes()` poll loop.
+   */
+  async streamChanges(
+    since: string,
+    onPage: (page: OrgFsChangePage) => void | Promise<void>,
+    signal: AbortSignal,
+    opts?: { limit?: number },
+  ): Promise<void> {
+    const params: Record<string, string> = { since, stream: "1" };
+    if (opts?.limit != null) params.limit = String(opts.limit);
+    const res = await this.fetch(this.url("changes", params), {
+      headers: { ...this.headers, accept: "text/event-stream" },
+      signal,
+    });
+    if (!res.ok) return this.fail(res);
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("text/event-stream") || !res.body) {
+      throw new Error("org-fs change stream unavailable (no SSE response)");
+    }
+    for await (const page of readSseData<OrgFsChangePage>(res.body)) {
+      await onPage(page);
+    }
+  }
+}
+
+/**
+ * Minimal SSE reader: yields the parsed JSON of each frame's `data:` payload.
+ * Comment frames (`:keepalive`) and data-less frames yield nothing. Sufficient
+ * for this feed — every real frame is a single-line JSON `data:`.
+ */
+async function* readSseData<T>(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<T, void, unknown> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let data = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl: number;
+      // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic line loop
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).replace(/\r$/, "");
+        buf = buf.slice(nl + 1);
+        if (line === "") {
+          if (data) {
+            yield JSON.parse(data) as T;
+            data = "";
+          }
+          continue;
+        }
+        if (line.startsWith(":")) continue; // comment / keepalive
+        if (line.startsWith("data:")) data += line.slice(5).replace(/^ /, "");
+        // other fields (event:, id:) are irrelevant to this feed
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }

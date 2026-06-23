@@ -30,6 +30,7 @@ import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { streamSSE } from "hono/streaming";
 import type { NatsConnection } from "@nats-io/nats-core";
 import { ForbiddenError, UnauthorizedError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
@@ -64,6 +65,12 @@ const MAX_RECENT_LIMIT = 200;
 const DEFAULT_RECENT_LIMIT = 50;
 /** Long-poll hold time, just under the usual 30s gateway/proxy timeout. */
 const CHANGES_LONG_POLL_MS = 28_000;
+/**
+ * SSE keepalive cadence for `/changes?stream=1`. A comment frame every interval
+ * resets the gateway/proxy idle timer, so the stream stays open indefinitely
+ * (unlike the long-poll, which MUST return before the ~30s cap and reconnect).
+ */
+const CHANGES_STREAM_KEEPALIVE_MS = 15_000;
 /**
  * Spread window for the post-nudge re-query. One write fans out to every mount
  * watching that (org, volume); jittering keeps a herd from hitting the change
@@ -166,11 +173,77 @@ async function waitForChanges(
   }
 }
 
+/**
+ * Server-push variant of the change feed: an SSE stream held open indefinitely.
+ * One `changes` event per change-feed page, NDJSON-style cursor paging
+ * preserved so the consumer primes exactly like the long-poll path. Subscribes
+ * to the volume's NATS notify BEFORE the first drain (a write landing mid-
+ * catch-up is buffered for the subscription, never missed), then re-drains on
+ * every nudge. A keepalive comment defeats the gateway idle timeout, so steady
+ * state is zero reconnects — push latency is the NATS publish.
+ *
+ * Caller guarantees `nc`/`subject` are non-null (no NATS → no push to give, so
+ * the route falls back to the plain JSON page and the daemon uses its poll loop).
+ */
+function streamChanges(
+  c: Ctx,
+  fs: OrgFs,
+  nc: NatsConnection,
+  subject: string,
+  q: { volume: string; since: string; limit: number },
+): Response {
+  // Defeat proxy buffering so frames flush as written (mirrors vm-events).
+  c.header("X-Accel-Buffering", "no");
+  c.header("Content-Encoding", "identity");
+  return streamSSE(c, async (stream) => {
+    let since = q.since;
+    const sub = nc.subscribe(subject);
+    const keepalive = setInterval(() => {
+      stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        clearInterval(keepalive);
+      });
+    }, CHANGES_STREAM_KEEPALIVE_MS);
+    stream.onAbort(() => {
+      clearInterval(keepalive);
+      try {
+        sub.unsubscribe();
+      } catch {
+        // ignore
+      }
+    });
+
+    // Drain from `since` to the feed head, emitting one event per page and
+    // advancing the cursor. `for await` over the subscription processes one
+    // nudge at a time, so drains never interleave or double-advance `since`.
+    const drain = async () => {
+      for (;;) {
+        const page = await fs.changes(q.volume, since, q.limit);
+        await stream.writeSSE({ event: "changes", data: JSON.stringify(page) });
+        since = page.cursor;
+        if (!page.hasMore) return;
+      }
+    };
+
+    try {
+      await drain(); // catch-up: lets the consumer prime to the head
+      for await (const _msg of sub) await drain();
+    } finally {
+      clearInterval(keepalive);
+      try {
+        sub.unsubscribe();
+      } catch {
+        // ignore
+      }
+    }
+  });
+}
+
 export interface OrgFsRoutesDeps {
   /**
    * Shared NATS connection (null until connected / when unconfigured). Powers
-   * the `/changes?wait=1` long-poll and the post-write wake-up nudge. Without
-   * it, `/changes` stays a plain immediate-return feed.
+   * the `/changes?wait=1` long-poll, the `/changes?stream=1` SSE feed, and the
+   * post-write wake-up nudge. Without it, `/changes` stays a plain
+   * immediate-return feed.
    */
   getConnection?: () => NatsConnection | null;
 }
@@ -360,12 +433,18 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
 
   // Change feed since a cursor ("0" = from the beginning).
   //
+  // `?stream=1` (preferred): an SSE stream held open indefinitely, pushing a
+  // `changes` event per page on every write (NATS notify) with a keepalive to
+  // beat the idle timeout — zero reconnects while idle. Requires NATS; without
+  // it, falls through to a plain JSON page so the consumer can detect the
+  // missing stream and use its poll loop.
+  //
   // `?wait=1` long-polls: if nothing has changed since the cursor, the request
   // is held open (subscribed to the volume's NATS notify) until a write nudges
-  // it or the hold time expires, then re-queried. This lets the mount
-  // invalidator wake instantly on writes instead of polling on a timer. Without
-  // a NATS connection it degrades to an immediate return (the daemon's own
-  // poll-timeout floor backs off so it never busy-loops).
+  // it or the hold time expires, then re-queried. The legacy push path, kept
+  // for daemons that predate `stream=1`. Without NATS it degrades to an
+  // immediate return (the daemon's own poll-timeout floor backs off so it
+  // never busy-loops).
   app.get("/:volume/changes", async (c) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_READ");
@@ -375,8 +454,26 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       Math.max(Number(c.req.query("limit")) || DEFAULT_CHANGES_LIMIT, 1),
       MAX_CHANGES_LIMIT,
     );
+    const stream =
+      c.req.query("stream") === "1" || c.req.query("stream") === "true";
     const wait = c.req.query("wait") === "1" || c.req.query("wait") === "true";
     try {
+      if (stream) {
+        const nc = getConnection();
+        const subject = nc
+          ? orgFsChangeSubject(r.ctx.organization!.id, volume)
+          : null;
+        if (nc && subject) {
+          // The stream loops `fs.changes` internally; reject a bad cursor up
+          // front (it can't return a 400 once the SSE body has started).
+          if (!/^\d+$/.test(since)) {
+            return c.json({ error: `Invalid cursor: ${since}` }, 400);
+          }
+          return streamChanges(c, r.fs, nc, subject, { volume, since, limit });
+        }
+        // No NATS → fall through to a plain JSON page (not event-stream); the
+        // daemon detects the content-type mismatch and uses its poll loop.
+      }
       if (!wait) {
         return c.json(await r.fs.changes(volume, since, limit));
       }

@@ -74,4 +74,64 @@ describe("runInvalidator", () => {
     ]);
     expect(refreshed).toEqual(["new"]);
   });
+
+  it("stream path: primes then refreshes parents of pushed pages", async () => {
+    const ac = new AbortController();
+    const refreshed: string[] = [];
+    await runInvalidator({
+      stream: async (since, onPage) => {
+        expect(since).toBe("0"); // first connect resumes from the start
+        await onPage({
+          entries: [{ parent: "a" }],
+          cursor: "1",
+          hasMore: false,
+        }); // prime
+        await onPage({
+          entries: [{ parent: "b" }],
+          cursor: "2",
+          hasMore: false,
+        }); // real
+        ac.abort();
+      },
+      changes: async () => {
+        throw new Error("poll loop must not run while streaming");
+      },
+      refresh: async (dir) => {
+        refreshed.push(dir);
+      },
+      signal: ac.signal,
+      pollMs: 0,
+    });
+    expect(refreshed).toEqual(["b"]);
+  });
+
+  it("falls back to the poll loop when the stream errors, resuming from the cursor", async () => {
+    const ac = new AbortController();
+    const refreshed: string[] = [];
+    const polledFrom: string[] = [];
+    await runInvalidator({
+      stream: async (since, onPage) => {
+        await onPage({ entries: [], cursor: "9", hasMore: false }); // prime, advance cursor
+        throw new Error("stream dropped");
+      },
+      changes: async (since) => {
+        polledFrom.push(since);
+        if (polledFrom.length > 1) {
+          ac.abort(); // stop on the empty tail, not the data-bearing page
+          return { entries: [], cursor: since, hasMore: false };
+        }
+        return { entries: [{ parent: "p" }], cursor: "10", hasMore: false };
+      },
+      refresh: async (dir) => {
+        refreshed.push(dir);
+      },
+      signal: ac.signal,
+      pollMs: 0,
+    });
+    // Poll resumed from the stream's advanced cursor (no re-read from 0),
+    // then from the page's cursor on the tail.
+    expect(polledFrom).toEqual(["9", "10"]);
+    // ...and stayed primed, so the post-prime page refreshed.
+    expect(refreshed).toEqual(["p"]);
+  });
 });

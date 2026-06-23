@@ -66,7 +66,7 @@ export type InvalidatorFactory = (opts: {
   log: (msg: string, err?: unknown) => void;
 }) => VolumeInvalidator;
 
-/** Real factory: poll the change feed → rclone `vfs/refresh` (see invalidator.ts). */
+/** Real factory: change feed → rclone `vfs/refresh` (see invalidator.ts). */
 const defaultInvalidatorFactory: InvalidatorFactory = ({
   client,
   rcUrl,
@@ -74,8 +74,11 @@ const defaultInvalidatorFactory: InvalidatorFactory = ({
 }) => {
   const ac = new AbortController();
   void runInvalidator({
-    // wait: true → server holds the request open until a write nudge or its
-    // hold timeout, so this is push-driven with the poll floor as a safety net.
+    // Preferred: SSE stream held open by the server, pushing on every write.
+    stream: (since, onPage, signal) =>
+      client.streamChanges(since, onPage, signal),
+    // Fallback when streaming is unavailable (old mesh / NATS down): the
+    // long-poll feed, with the poll floor as a safety net.
     changes: (since) => client.changes(since, { wait: true }),
     refresh: makeRcRefresh(rcUrl),
     signal: ac.signal,
