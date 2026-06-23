@@ -28,7 +28,6 @@ export type CapabilityId =
   | "registry:manage"
   | "registry:monitor"
   | "api-keys:manage"
-  | "event-bus:use"
   | "storage:delete"
   | "connections:sql";
 

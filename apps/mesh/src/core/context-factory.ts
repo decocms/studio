@@ -71,7 +71,6 @@ import type {
 // Configuration
 // ============================================================================
 
-import type { EventBus } from "../event-bus/interface";
 import type { MemberRoleCache } from "../auth/member-role-cache";
 
 // ============================================================================
@@ -122,7 +121,6 @@ export interface StudioContextConfig {
     tracer: Tracer;
     meter: Meter;
   };
-  eventBus: EventBus;
   modelListCache?: ModelListCache;
   providerKeyCache?: ProviderKeyCache;
   memberRoleCache?: MemberRoleCache;
@@ -1319,8 +1317,8 @@ export async function createStudioContextFactory(
 
     // Resolve caller connection ID: explicit header takes priority, then fall
     // back to the connectionId embedded in the mesh JWT. This ensures that
-    // management tools (e.g. EVENT_PUBLISH on _self) see the caller's
-    // connection ID even when the runtime doesn't set x-caller-id.
+    // management tools on _self see the caller's connection ID even when the
+    // runtime doesn't set x-caller-id.
     const connectionId =
       req?.headers.get("x-caller-id") ??
       authResult.user?.connectionId ??
@@ -1445,7 +1443,6 @@ export async function createStudioContextFactory(
           req?.headers.get("x-mesh-properties"),
         ),
       },
-      eventBus: config.eventBus,
       linkStatusProbe: config.linkStatusProbe,
       publishLinkControlFrame: config.publishLinkControlFrame,
       aiProviders: aiProviderFactory,

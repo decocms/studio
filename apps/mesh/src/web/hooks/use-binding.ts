@@ -5,13 +5,12 @@ import type { ConnectionEntity } from "@/tools/connection/schema";
  * Maps `@deco/` binding type identifiers (from MCP_CONFIGURATION stateSchema `__type.const`)
  * to BUILTIN_BINDINGS keys.
  *
- * When a binding field declares `__type: "@deco/event-bus"`, we resolve it to the
- * builtin "EVENT_BUS" binding and match connections by their tools instead of
+ * When a binding field declares `__type: "@deco/llm"`, we resolve it to the
+ * builtin "LLMS" binding and match connections by their tools instead of
  * falling back to app-name matching (which doesn't work for built-in bindings
  * like the Mesh MCP).
  */
 const BINDING_TYPE_TO_BUILTIN: Record<string, string> = {
-  "@deco/event-bus": "EVENT_BUS",
   "@deco/llm": "LLMS",
   "@deco/trigger": "TRIGGER",
   "@deco/object-storage": "OBJECT_STORAGE",
@@ -23,7 +22,6 @@ const BINDING_TYPE_TO_BUILTIN: Record<string, string> = {
  * Returns undefined if the type is not a well-known builtin.
  *
  * @example
- * resolveBindingType("@deco/event-bus") // "EVENT_BUS"
  * resolveBindingType("@deco/llm")       // "LLMS"
  * resolveBindingType("@deco/unknown")   // undefined
  */

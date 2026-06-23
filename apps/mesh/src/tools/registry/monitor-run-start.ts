@@ -1,6 +1,5 @@
 import { defineTool } from "@/core/define-tool";
 import { requireOrganization, type StudioContext } from "@/core/studio-context";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import {
   generateText,
   jsonSchema,
@@ -84,10 +83,6 @@ export function cancelMonitorRun(runId: string): boolean {
   controller.abort();
   runningControllers.delete(runId);
   return true;
-}
-
-function logWarn(...msgParts: unknown[]): void {
-  console.warn(LOG_PREFIX, ...msgParts);
 }
 
 function logError(...msgParts: unknown[]): void {
@@ -203,33 +198,6 @@ function resolveAgentTimeoutMs(config: RegistryMonitorConfig): number {
   const estimatedBySteps = config.perToolTimeoutMs * steps + 15_000;
   // Agentic runs include multiple LLM/tool cycles, so keep a higher bound than per-MCP timeout.
   return Math.max(config.perMcpTimeoutMs, estimatedBySteps);
-}
-
-async function publishMonitorEvent(args: {
-  ctx: MonitorToolContext;
-  type: string;
-  subject: string;
-  data?: Record<string, unknown>;
-}): Promise<void> {
-  const selfConnectionId = WellKnownOrgMCPId.SELF(args.ctx.organization.id);
-  const proxy = await args.ctx.createMCPProxy(selfConnectionId);
-  try {
-    await proxy.callTool({
-      name: "EVENT_PUBLISH",
-      arguments: {
-        type: args.type,
-        subject: args.subject,
-        data: args.data,
-      },
-    });
-  } catch (error) {
-    logWarn(
-      `Failed to publish event ${args.type}:`,
-      error instanceof Error ? error.message : String(error),
-    );
-  } finally {
-    await proxy.close?.().catch(() => {});
-  }
 }
 
 function extractTextParts(
@@ -1055,7 +1023,6 @@ async function runMonitorLoop(args: {
   monitorConfig: RegistryMonitorConfig;
   signal: AbortSignal;
 }): Promise<void> {
-  const runStartedAt = Date.now();
   const storage = args.ctx.storage.registry;
 
   const allItems = await storage.items.list(args.organizationId, {
@@ -1095,15 +1062,6 @@ async function runMonitorLoop(args: {
       status: "completed",
       started_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
-    });
-    await publishMonitorEvent({
-      ctx: args.ctx,
-      type: "registry.monitor.completed",
-      subject: args.runId,
-      data: {
-        runId: args.runId,
-        total: 0,
-      },
     });
     return;
   }
@@ -1214,43 +1172,12 @@ async function runMonitorLoop(args: {
       failed_items: failed,
       skipped_items: skipped,
     });
-
-    if (result.status === "failed" || result.status === "error") {
-      await publishMonitorEvent({
-        ctx: args.ctx,
-        type: "registry.monitor.item_failed",
-        subject: item.id,
-        data: {
-          runId: args.runId,
-          itemId: item.id,
-          itemTitle: item.title,
-          status: result.status,
-          errorMessage: result.errorMessage,
-          actionTaken: result.actionTaken,
-        },
-      });
-    }
   }
 
-  const totalElapsed = Date.now() - runStartedAt;
   await storage.monitorRuns.update(args.organizationId, args.runId, {
     status: "completed",
     current_item_id: null,
     finished_at: new Date().toISOString(),
-  });
-
-  await publishMonitorEvent({
-    ctx: args.ctx,
-    type: "registry.monitor.completed",
-    subject: args.runId,
-    data: {
-      runId: args.runId,
-      total: tested,
-      passed,
-      failed,
-      skipped,
-      durationMs: totalElapsed,
-    },
   });
 }
 
@@ -1303,15 +1230,6 @@ async function startMonitorRun(
           finished_at: new Date().toISOString(),
         })
         .catch(() => {});
-      await publishMonitorEvent({
-        ctx: monitorCtx,
-        type: "registry.monitor.failed",
-        subject: run.id,
-        data: {
-          runId: run.id,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      });
       logError(`Run ${run.id} failed with uncaught error:`, error);
     })
     .finally(() => {

@@ -19,7 +19,6 @@ import {
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
 import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
@@ -33,7 +32,7 @@ import {
 } from "../core/context-factory";
 import type { StudioContext } from "../core/studio-context";
 import { closeDatabase, getDb, type StudioDatabase } from "../database";
-import { createEventBus, type EventBus } from "../event-bus";
+import { startSSEHub } from "../event-bus";
 import {
   flushMonitoringData,
   meter,
@@ -240,9 +239,6 @@ export function getProxyDispatch(): DispatchFn {
   }
   return sharedProxyDispatch;
 }
-
-// Track current event bus instance for cleanup during HMR
-let currentEventBus: EventBus | null = null;
 
 // Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
 let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
@@ -684,28 +680,6 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
 };
 
 /**
- * Publish a public event for an org.
- * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
- * on the `/api/:org/...` mount) or, when missing, from the legacy
- * `:organizationId` path param.
- */
-const eventsHandler: MiddlewareHandler<Env> = async (c) => {
-  const ctx = c.var.meshContext;
-  const orgId = ctx.organization?.id ?? c.req.param("organizationId");
-  if (!orgId) {
-    return c.json({ error: "organization id missing" }, 400);
-  }
-  await ctx.eventBus.publish(orgId, WellKnownOrgMCPId.SELF(orgId), {
-    data: await c.req.json(),
-    type: `public:${c.req.param("type")}`,
-    subject: c.req.query("subject"),
-    deliverAt: c.req.query("deliverAt"),
-    cron: c.req.query("cron"),
-  });
-  return c.json({ success: true });
-};
-
-/**
  * SSE events endpoint — streams events for an organization in real time.
  * Resolves the org from `ctx.organization.id` (set by `resolveOrgFromPath`
  * on the `/api/:org/watch` mount). Auth is required.
@@ -840,8 +814,8 @@ interface ResourceServerMetadata {
 export interface CreateAppOptions {
   /** Custom database instance (for testing) */
   database?: StudioDatabase;
-  /** Custom event bus instance (for testing) */
-  eventBus?: EventBus;
+  /** Skip NATS wiring and use local-only no-op stubs (for testing) */
+  disableNats?: boolean;
 }
 
 /**
@@ -852,22 +826,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   const database = options.database ?? getDb();
   let isShuttingDown = false;
 
-  // Stop any existing event bus worker and SSE hub (cleanup during HMR)
-  if (currentEventBus && currentEventBus.isRunning()) {
-    // Fire and forget - don't block app creation
-    // The stop is mostly synchronous, async part is just UNLISTEN cleanup
-    Promise.resolve(currentEventBus.stop()).catch((error) => {
-      console.error("[EventBus] Error stopping previous worker:", error);
-    });
-    sseHub.stop().catch((error) => {
-      console.error(
-        "[SSEHub] Error stopping previous broadcast (HMR cleanup):",
-        error,
-      );
-    });
-  }
+  // Stop any existing SSE hub broadcast (cleanup during HMR). No-op if not started.
+  sseHub.stop().catch((error) => {
+    console.error(
+      "[SSEHub] Error stopping previous broadcast (HMR cleanup):",
+      error,
+    );
+  });
 
-  let eventBus: EventBus;
   let mcpListCache: McpListCache | null;
   let connectionCircuitStore: ConnectionCircuitStore;
   // Durable projector consumer handle + once-per-pod start guard. Started in the
@@ -887,9 +853,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   let linkWorkPublisher: LinkWorkPublisher | undefined;
   let natsProvider: NatsConnectionProvider | null = null;
 
-  if (options.eventBus) {
-    // Test mode: use provided event bus and no-op stubs (no NATS required)
-    eventBus = options.eventBus;
+  if (options.disableNats) {
+    // Test mode: no-op stubs (no NATS required)
     // Local-only (no NATS): cross-replica broadcast is a no-op, TTL still applies.
     providerKeyCache = createProviderKeyCache();
     mcpListCache = {
@@ -1016,7 +981,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       stop: () => natsCancelBroadcast.stop(),
     };
 
-    eventBus = createEventBus(database, natsProvider);
+    startSSEHub(natsProvider);
 
     // When NATS connects, (re-)initialize all deferred consumers
     natsProvider.onReady(() => {
@@ -1075,9 +1040,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       }
     });
   }
-
-  // Track for cleanup during HMR
-  currentEventBus = eventBus;
 
   // Decopilot strategy cleanup on HMR / shutdown
   if (currentDecopilotCleanup) await currentDecopilotCleanup();
@@ -1410,7 +1372,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       tracer,
       meter,
     },
-    eventBus,
     modelListCache,
     providerKeyCache,
     memberRoleCache,
@@ -1420,31 +1381,26 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   ContextFactory.set(factory);
 
-  // Initialize plugin storage BEFORE starting the event bus, because the
-  // startup hooks (runPluginStartupHooks) need storage to be ready and they
-  // run as soon as eventBus.start() resolves — which can happen during any
-  // `await` between here and where initializePluginStorage used to live.
+  // Initialize plugin storage before running plugin startup hooks, which need
+  // storage to be ready.
   const vault = new CredentialVault(getSettings().encryptionKey);
   initializePluginStorage(database.db, vault);
 
-  // Start the event bus worker (async - resets stuck deliveries from previous crashes)
-  // Then run plugin startup hooks (e.g., recover stuck workflow executions)
+  // Run plugin startup hooks (e.g., recover stuck executions).
   // Random jitter (0-2s) prevents all pods from hitting the DB simultaneously
   // after a deployment causes simultaneous restarts.
   const startupJitterMs = Math.random() * 2000;
   new Promise((r) => setTimeout(r, startupJitterMs))
-    .then(() => eventBus.start())
     .then(() => {
       // db is typed as `any` to avoid Kysely version mismatch issues between packages
       return runPluginStartupHooks({
         db: database.db as any,
-        publish: async (organizationId, event) => {
-          await eventBus.publish(organizationId, "", event);
-        },
+        // Event bus removed — publishing follow-up events is a no-op.
+        publish: async () => {},
       });
     })
     .catch((error) => {
-      console.error("[EventBus] Error during startup:", error);
+      console.error("[PluginStartup] Error during startup:", error);
     });
 
   // Public skill sets: synced by a DBOS scheduled workflow (one pod per tick
@@ -1594,7 +1550,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   };
 
   // ============================================================================
-  // Automation Event Dispatcher — wire automations into the event bus
+  // Automation Event Dispatcher — fires automations from trigger callbacks
   // ============================================================================
 
   const automationEventDispatcher = new AutomationEventDispatcher(
@@ -1610,19 +1566,6 @@ export async function createApp(options: CreateAppOptions = {}) {
         { idempotencyKey },
       ),
   );
-
-  // Inject into the event bus worker so processed events trigger automations.
-  // The cast is needed because the EventBus interface doesn't expose this
-  // integration point — it lives on the concrete implementation only.
-  if ("setAutomationEventDispatcher" in eventBus) {
-    (
-      eventBus as unknown as {
-        setAutomationEventDispatcher: (
-          dispatcher: AutomationEventDispatcher,
-        ) => void;
-      }
-    ).setAutomationEventDispatcher(automationEventDispatcher);
-  }
 
   // Orphan/crash recovery is owned by the external DBOS Conductor now: it
   // recovers a dead executor's PENDING workflows (incl. the thread-gate
@@ -1969,11 +1912,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // the org-scoped route: /api/:org/kv/:key.
   const kvStorage = new KyselyKVStorage(database.db);
 
-  // Public Events endpoint — legacy mount with deprecation log. New mount
-  // lives at `POST /api/:org/events/:type` (registered via createOrgScopedApi).
-  app.use("/org/:organizationId/events/:type", logDeprecatedRoute);
-  app.post("/org/:organizationId/events/:type", eventsHandler);
-
   // Downstream token management routes
   // Legacy mount at /api/* with deprecation log; the new /api/:org/* mount
   // is wired in a later task.
@@ -2068,7 +2006,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     mountDevAssets: usesLocalObjectStorage(),
     mcpAuth,
     oauthProxyHandler,
-    eventsHandler,
     watchHandler,
     betterAuthProtectedResourceHandler,
     getNatsConnection: () => natsProvider?.getConnection() ?? null,
@@ -2082,8 +2019,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Mount routes from registered server plugins
   // - Public routes are mounted at root level (e.g., /connect/:sessionId)
   // - Authenticated routes are mounted at /api/plugins/:pluginId/*
-  // Note: vault and initializePluginStorage are called earlier (before eventBus.start)
-  // to avoid race conditions with plugin onStartup hooks.
+  // Note: vault and initializePluginStorage are called earlier (before plugin
+  // startup hooks) to avoid race conditions with plugin onStartup hooks.
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mountPluginRoutes(app, { db: database.db as any, vault });
@@ -2111,7 +2048,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
     // Phase 1: Stop all workers/consumers in parallel (independent of each other)
     await Promise.allSettled([
-      eventBus.isRunning() ? eventBus.stop() : Promise.resolve(),
       sseHub.stop(),
       currentDecopilotCleanup
         ? Promise.resolve(currentDecopilotCleanup()).finally(() => {

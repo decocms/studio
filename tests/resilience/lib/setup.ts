@@ -1,10 +1,5 @@
 import { afterAll, afterEach, beforeAll } from "bun:test";
-import {
-  clearReceivedEvents,
-  createApiKey,
-  getTestSession,
-  mcpCall,
-} from "./studio-client";
+import { createApiKey, getTestSession, mcpCall } from "./studio-client";
 import { pollUntil } from "./poll-until";
 import { PROXY_NAMES } from "./toxic-presets";
 import { resetAll } from "./toxiproxy";
@@ -14,7 +9,6 @@ export const testState = {
   apiKey: "",
   cookie: "",
   everythingConnectionId: "",
-  subscriberConnectionId: "",
 };
 
 export function registerTestHooks() {
@@ -90,31 +84,7 @@ export function registerTestHooks() {
       : createConnResult.result;
     testState.everythingConnectionId = connData?.item?.id ?? connData?.id ?? "";
 
-    console.log("[setup] Step 7: Registering subscriber-mock connection...");
-    // 7. Register subscriber-mock as connection
-    const createSubResult = await mcpCall(
-      `${testState.orgId}_self`,
-      "tools/call",
-      {
-        name: "COLLECTION_CONNECTIONS_CREATE",
-        arguments: {
-          data: {
-            title: "Subscriber Mock (Resilience Test)",
-            connection_type: "HTTP",
-            connection_url: "http://subscriber-mock:3003/mcp",
-            app_name: "subscriber-mock",
-          },
-        },
-      },
-      { cookie: testState.cookie },
-    );
-    const subResultText = createSubResult.result?.content?.[0]?.text;
-    const subData = subResultText
-      ? JSON.parse(subResultText)
-      : createSubResult.result;
-    testState.subscriberConnectionId = subData?.item?.id ?? subData?.id ?? "";
-
-    // 8. Baseline check — call echo on everything-server to confirm connectivity
+    // Baseline check — call echo on everything-server to confirm connectivity
     const baseline = await mcpCall(
       testState.everythingConnectionId,
       "tools/call",
@@ -132,8 +102,6 @@ export function registerTestHooks() {
   afterEach(async () => {
     // Reset all toxics and re-enable all proxies
     await resetAll();
-    // Clear subscriber mock received events
-    await clearReceivedEvents();
   });
 
   afterAll(async () => {
@@ -146,21 +114,6 @@ export function registerTestHooks() {
           {
             name: "COLLECTION_CONNECTIONS_DELETE",
             arguments: { id: testState.everythingConnectionId },
-          },
-          { cookie: testState.cookie },
-        );
-      }
-    } catch {
-      /* best effort */
-    }
-    try {
-      if (testState.subscriberConnectionId) {
-        await mcpCall(
-          `${testState.orgId}_self`,
-          "tools/call",
-          {
-            name: "COLLECTION_CONNECTIONS_DELETE",
-            arguments: { id: testState.subscriberConnectionId },
           },
           { cookie: testState.cookie },
         );

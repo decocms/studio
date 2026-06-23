@@ -92,14 +92,6 @@ const ALL_TOOL_NAMES = [
   "API_KEY_LIST",
   "API_KEY_UPDATE",
   "API_KEY_DELETE",
-  // Event Bus tools
-  "EVENT_PUBLISH",
-  "EVENT_SUBSCRIBE",
-  "EVENT_UNSUBSCRIBE",
-  "EVENT_CANCEL",
-  "EVENT_ACK",
-  "EVENT_SUBSCRIPTION_LIST",
-  "EVENT_SYNC_SUBSCRIPTIONS",
   // User tools
   "USER_GET",
   // Thread tools
@@ -200,8 +192,6 @@ const ALL_TOOL_NAMES = [
   "REGISTRY_MONITOR_CONNECTION_LIST",
   "REGISTRY_MONITOR_CONNECTION_SYNC",
   "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
-  "REGISTRY_MONITOR_SCHEDULE_SET",
-  "REGISTRY_MONITOR_SCHEDULE_CANCEL",
 
   // VM tools (app-only)
   "SANDBOX_START",
@@ -482,42 +472,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete API key",
     category: "API Keys",
     dangerous: true,
-  },
-  // Event Bus tools
-  {
-    name: "EVENT_PUBLISH",
-    description: "Publish events",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_SUBSCRIBE",
-    description: "Subscribe to events",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_UNSUBSCRIBE",
-    description: "Unsubscribe from events",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_CANCEL",
-    description: "Cancel recurring events",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_ACK",
-    description: "Acknowledge event delivery",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_SUBSCRIPTION_LIST",
-    description: "List event subscriptions",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_SYNC_SUBSCRIPTIONS",
-    description: "Sync subscriptions to desired state",
-    category: "Event Bus",
   },
   // User tools
   {
@@ -957,16 +911,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Registry",
   },
   {
-    name: "REGISTRY_MONITOR_SCHEDULE_SET",
-    description: "Set monitor schedule",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_SCHEDULE_CANCEL",
-    description: "Cancel monitor schedule",
-    category: "Registry",
-  },
-  {
     name: "SANDBOX_START",
     description: "Start a sandbox VM with dev server preview",
     category: "VM",
@@ -1293,8 +1237,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "REGISTRY_MONITOR_CONNECTION_LIST",
       "REGISTRY_MONITOR_CONNECTION_SYNC",
       "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
-      "REGISTRY_MONITOR_SCHEDULE_SET",
-      "REGISTRY_MONITOR_SCHEDULE_CANCEL",
     ],
   },
   // Developer
@@ -1308,21 +1250,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "API_KEY_LIST",
       "API_KEY_UPDATE",
       "API_KEY_DELETE",
-    ],
-  },
-  {
-    id: "event-bus:use",
-    label: "Use event bus",
-    description: "Publish events and manage subscriptions",
-    section: "Developer",
-    tools: [
-      "EVENT_PUBLISH",
-      "EVENT_SUBSCRIBE",
-      "EVENT_UNSUBSCRIBE",
-      "EVENT_CANCEL",
-      "EVENT_ACK",
-      "EVENT_SUBSCRIPTION_LIST",
-      "EVENT_SYNC_SUBSCRIPTIONS",
     ],
   },
   {

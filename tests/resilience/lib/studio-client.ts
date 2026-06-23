@@ -2,7 +2,6 @@ import { fetchWithAuth } from "../../shared/lib/fetch";
 import { pollUntil } from "./poll-until";
 
 const STUDIO_URL = "http://127.0.0.1:13000";
-const SUBSCRIBER_MOCK_URL = "http://127.0.0.1:13003";
 
 // ---------------------------------------------------------------------------
 // Generic fetch helper
@@ -61,35 +60,6 @@ export async function waitForHealth(
     },
     { timeoutMs, intervalMs: 1000, label: "waitForHealth" },
   );
-}
-
-// ---------------------------------------------------------------------------
-// Subscriber mock helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Retrieve all events the subscriber-mock has received so far.
- */
-export async function getReceivedEvents(): Promise<any[]> {
-  const res = await fetch(`${SUBSCRIBER_MOCK_URL}/received`);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "<unreadable>");
-    throw new Error(`getReceivedEvents failed: HTTP ${res.status} — ${body}`);
-  }
-  return (await res.json()) as any[];
-}
-
-/**
- * Clear the subscriber-mock's event buffer.
- */
-export async function clearReceivedEvents(): Promise<void> {
-  const res = await fetch(`${SUBSCRIBER_MOCK_URL}/received`, {
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "<unreadable>");
-    throw new Error(`clearReceivedEvents failed: HTTP ${res.status} — ${body}`);
-  }
 }
 
 // ---------------------------------------------------------------------------

@@ -9,7 +9,6 @@ import {
 import type { StudioDatabase } from "../database";
 import { createStudioContextFactory } from "./context-factory";
 import type { BetterAuthInstance } from "./studio-context";
-import type { EventBus } from "../event-bus/interface";
 import type { QueryEngine } from "../monitoring/query-engine";
 
 // Pass stub engines so the factory's default branch (which lazy-imports
@@ -22,28 +21,6 @@ const noopEngine: QueryEngine = { query: async () => [] };
 const stubMonitoringEngines = () => ({
   monitoringEngine: noopEngine,
   metricEngine: noopEngine,
-});
-
-// Mock EventBus
-const createMockEventBus = (): EventBus => ({
-  publish: vi.fn().mockResolvedValue({}),
-  subscribe: vi.fn().mockResolvedValue({}),
-  unsubscribe: vi.fn().mockResolvedValue({ success: true }),
-  listSubscriptions: vi.fn().mockResolvedValue([]),
-  getSubscription: vi.fn().mockResolvedValue(null),
-  getEvent: vi.fn().mockResolvedValue(null),
-  cancelEvent: vi.fn().mockResolvedValue({ success: true }),
-  ackEvent: vi.fn().mockResolvedValue({ success: true }),
-  syncSubscriptions: vi.fn().mockResolvedValue({
-    created: 0,
-    updated: 0,
-    deleted: 0,
-    unchanged: 0,
-    subscriptions: [],
-  }),
-  start: vi.fn(),
-  stop: vi.fn(),
-  isRunning: vi.fn().mockReturnValue(false),
 });
 
 describe("createStudioContextFactory", () => {
@@ -106,7 +83,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -134,7 +110,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -163,7 +138,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -187,7 +161,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -218,7 +191,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -257,7 +229,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -279,7 +250,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -306,7 +276,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -358,7 +327,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -401,7 +369,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -444,7 +411,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 
@@ -483,7 +449,6 @@ describe("createStudioContextFactory", () => {
           tracer: trace.getTracer("test"),
           meter: {} as unknown as Meter,
         },
-        eventBus: createMockEventBus(),
         monitoringEngines: stubMonitoringEngines(),
       });
 

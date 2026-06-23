@@ -57,21 +57,6 @@ services:
       retries: 10
       start_period: 10s
 
-  subscriber-mock:
-    build:
-      context: ./subscriber-mock
-    command: ["bun", "run", "/app/server.ts"]
-    ports:
-      - "127.0.0.1:13003:3003"
-    environment:
-      PORT: "3003"
-    healthcheck:
-      test: ["CMD-SHELL", "bun -e \"const r = await fetch('http://localhost:3003/health'); if(!r.ok) process.exit(1)\""]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 5s
-
   studio:
     build:
       context: ../../

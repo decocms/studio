@@ -159,18 +159,3 @@ export async function createMCPProxy(
     superUser: false,
   });
 }
-
-/**
- * Create a MCP proxy for a downstream connection with super user access
- * @param connectionIdOrConnection - The connection ID or connection entity
- * @param ctx - The mesh context
- * @returns The MCP proxy
- */
-export async function dangerouslyCreateSuperUserMCPProxy(
-  connectionIdOrConnection: string | ConnectionEntity,
-  ctx: StudioContext,
-) {
-  return createMCPProxyDoNotUseDirectly(connectionIdOrConnection, ctx, {
-    superUser: true,
-  });
-}

@@ -3,8 +3,6 @@
  *
  * Create a new MCP connection (organization-scoped) with collection binding compliance.
  */
-
-import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { posthog } from "../../posthog";
@@ -138,15 +136,6 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
         ?.set("tools", connection.id, tools as Tool[])
         .catch(() => {});
     }
-
-    await ctx.eventBus.publish(
-      organization.id,
-      WellKnownOrgMCPId.SELF(organization.id),
-      {
-        type: "connection.created",
-        data: connection,
-      },
-    );
 
     posthog.capture({
       distinctId: userId,

@@ -24,8 +24,6 @@ import { REGISTRY_MONITOR_RESULT_LIST } from "./monitor-result-list";
 import { REGISTRY_MONITOR_CONNECTION_LIST } from "./monitor-connection-list";
 import { REGISTRY_MONITOR_CONNECTION_SYNC } from "./monitor-connection-sync";
 import { REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH } from "./monitor-connection-update-auth";
-import { REGISTRY_MONITOR_SCHEDULE_SET } from "./monitor-schedule-set";
-import { REGISTRY_MONITOR_SCHEDULE_CANCEL } from "./monitor-schedule-cancel";
 import {
   COLLECTION_REGISTRY_APP_FILTERS,
   COLLECTION_REGISTRY_APP_GET,
@@ -64,6 +62,4 @@ export const tools = [
   REGISTRY_MONITOR_CONNECTION_LIST,
   REGISTRY_MONITOR_CONNECTION_SYNC,
   REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH,
-  REGISTRY_MONITOR_SCHEDULE_SET,
-  REGISTRY_MONITOR_SCHEDULE_CANCEL,
 ];

@@ -17,7 +17,6 @@ import {
 import type { BoundAuthClient, StudioContext } from "../../core/studio-context";
 import { ConnectionStorage } from "../../storage/connection";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
-import type { EventBus } from "../../event-bus/interface";
 import * as fetchToolsModule from "./fetch-tools";
 
 // Create a mock BoundAuthClient for tests
@@ -131,16 +130,6 @@ describe("Connection Tools", () => {
         requestId: "req_123",
         timestamp: new Date(),
       },
-      eventBus: {
-        publish: vi.fn().mockResolvedValue({}),
-        subscribe: vi.fn().mockResolvedValue({}),
-        unsubscribe: vi.fn().mockResolvedValue({ success: true }),
-        listSubscriptions: vi.fn().mockResolvedValue([]),
-        getSubscription: vi.fn().mockResolvedValue(null),
-        start: vi.fn(),
-        stop: vi.fn(),
-        isRunning: vi.fn().mockReturnValue(false),
-      } as unknown as EventBus,
       objectStorage: null as never,
       orgFs: null,
       aiProviders: null as never,

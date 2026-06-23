@@ -353,55 +353,6 @@ export function useRegistryMonitorConfig() {
   };
 }
 
-export function useMonitorScheduleSet() {
-  const queryClient = useQueryClient();
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-
-  return useMutation({
-    mutationFn: async (args: {
-      cronExpression: string;
-      config?: Partial<RegistryMonitorConfig>;
-    }) =>
-      callTool<{ scheduleEventId: string }>(
-        client,
-        "REGISTRY_MONITOR_SCHEDULE_SET",
-        args,
-      ),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: KEYS.registryConfig() });
-    },
-  });
-}
-
-export function useMonitorScheduleCancel() {
-  const queryClient = useQueryClient();
-  const { org } = useProjectContext();
-  const client = useMCPClient({
-    connectionId: SELF_MCP_ALIAS_ID,
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
-
-  return useMutation({
-    mutationFn: async (scheduleEventId: string) =>
-      callTool<{ success: boolean }>(
-        client,
-        "REGISTRY_MONITOR_SCHEDULE_CANCEL",
-        {
-          scheduleEventId,
-        },
-      ),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: KEYS.registryConfig() });
-    },
-  });
-}
-
 export function useBrokenMonitorsCount() {
   const runsQuery = useMonitorRuns("completed");
   const latestRunId = runsQuery.data?.items?.[0]?.id;
