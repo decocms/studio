@@ -37,12 +37,14 @@ import {
   useVirtualMCPActions,
   useVirtualMCPs,
   type VirtualMCPEntity,
+  type VirtualMcpHomeTile,
 } from "@decocms/mesh-sdk";
 import {
   useDefaultHomeAgents,
   useHomeAgentsWriter,
 } from "@/web/hooks/use-organization-settings";
 import { useHomeNextActions } from "@/web/hooks/use-home-next-actions";
+import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import {
@@ -61,12 +63,14 @@ import {
   Minus,
   Plus,
   SearchSm,
+  Settings01,
   X,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { IntegrationIcon } from "@/web/components/integration-icon";
+import { ToolInputForm } from "@/web/components/tool-input-form";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
@@ -84,6 +88,8 @@ interface UITool {
   name: string;
   description?: string;
   resourceUri: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  inputSchema?: { properties?: Record<string, any>; required?: string[] };
 }
 
 interface ConnectionUITools {
@@ -550,7 +556,7 @@ function AgentExpansion({
   agent: VirtualMCPEntity;
   home: HomeBoard;
 }) {
-  const pinned = getHomeTiles(agent.metadata?.ui);
+  const pinnedTiles = getHomeTiles(agent.metadata?.ui);
   const connectionIds = (agent.connections ?? [])
     .map((c) => c.connection_id)
     .sort();
@@ -562,7 +568,7 @@ function AgentExpansion({
         agent={agent}
         home={home}
         connectionIds={connectionIds}
-        pinnedResourceUris={new Set(pinned.map((t) => t.resourceUri))}
+        pinnedTiles={pinnedTiles}
       />
       <Suspense fallback={<PromptListSkeleton />}>
         <AgentPromptList
@@ -588,12 +594,12 @@ function AgentToolList({
   agent,
   home,
   connectionIds,
-  pinnedResourceUris,
+  pinnedTiles,
 }: {
   agent: VirtualMCPEntity;
   home: HomeBoard;
   connectionIds: string[];
-  pinnedResourceUris: Set<string>;
+  pinnedTiles: VirtualMcpHomeTile[];
 }) {
   const studio = useStudioTools();
 
@@ -611,7 +617,12 @@ function AgentToolList({
               const resourceUri = getUIResourceUri(t._meta);
               if (!resourceUri) return [];
               return [
-                { name: t.name, description: t.description, resourceUri },
+                {
+                  name: t.name,
+                  description: t.description,
+                  resourceUri,
+                  inputSchema: t.inputSchema as UITool["inputSchema"],
+                },
               ];
             });
             return {
@@ -638,70 +649,388 @@ function AgentToolList({
       </div>
     );
   }
-  // Quietly hide the section when nothing relevant exists — the prompt
-  // list below still shows up.
   if (!data || data.length === 0) return null;
 
+  // Build a lookup from connectionId+resourceUri to the UITool definition
+  // so pinned tile rows can resolve their tool's inputSchema.
+  const toolByKey = new Map<
+    string,
+    { conn: ConnectionUITools; tool: UITool }
+  >();
+  for (const conn of data) {
+    for (const tool of conn.uiTools) {
+      toolByKey.set(`${conn.id}:${tool.resourceUri}`, { conn, tool });
+    }
+  }
+
+  const hasPinned = pinnedTiles.some((tile) => {
+    const key = `${tile.connectionId}:${tile.resourceUri}`;
+    return toolByKey.has(key);
+  });
+
   return (
-    <div className="flex flex-col gap-0.5">
-      {data.map((conn) =>
-        conn.uiTools.map((tool) => (
-          <ToolRow
-            key={`${conn.id}:${tool.name}`}
-            agent={agent}
-            home={home}
-            connection={conn}
-            tool={tool}
-            isPinned={pinnedResourceUris.has(tool.resourceUri)}
-          />
-        )),
+    <div className="flex flex-col gap-2">
+      {hasPinned && (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground px-2">
+            Pinned tiles
+          </span>
+          {pinnedTiles.map((tile) => {
+            const key = `${tile.connectionId}:${tile.resourceUri}`;
+            const match = toolByKey.get(key);
+            if (!match) return null;
+            return (
+              <PinnedTileRow
+                key={tile.tileId ?? key}
+                agent={agent}
+                home={home}
+                connection={match.conn}
+                tool={match.tool}
+                tile={tile}
+              />
+            );
+          })}
+        </div>
       )}
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground px-2">
+          Add tile
+        </span>
+        {data.map((conn) =>
+          conn.uiTools.map((tool) => (
+            <AddToolRow
+              key={`add:${conn.id}:${tool.name}`}
+              agent={agent}
+              home={home}
+              connection={conn}
+              tool={tool}
+            />
+          )),
+        )}
+      </div>
     </div>
   );
 }
 
-function ToolRow({
+/** Coerce form values for persistence: JSON-parse object/array fields,
+ * convert number/integer strings. Returns null on parse error (caller
+ * should toast). */
+function coerceFormValues(
+  values: Record<string, unknown>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  properties: Record<string, any>,
+): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(values)) {
+    const type = properties[key]?.type;
+    if ((type === "object" || type === "array") && typeof raw === "string") {
+      if (!raw.trim()) continue;
+      try {
+        out[key] = JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    } else if (
+      (type === "number" || type === "integer") &&
+      typeof raw === "string"
+    ) {
+      if (!raw.trim()) continue;
+      out[key] = Number(raw);
+    } else if (raw !== "" && raw != null) {
+      out[key] = raw;
+    }
+  }
+  return out;
+}
+
+/** Stringify toolInput values for form display: object/array values become
+ * JSON strings so they render in a Textarea. */
+function seedFormValues(
+  toolInput: Record<string, unknown> | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  properties: Record<string, any> | undefined,
+): Record<string, unknown> {
+  if (!toolInput || !properties) return {};
+  const init: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(toolInput)) {
+    const type = properties[key]?.type;
+    if (
+      (type === "object" || type === "array") &&
+      val != null &&
+      typeof val !== "string"
+    ) {
+      init[key] = JSON.stringify(val, null, 2);
+    } else {
+      init[key] = val;
+    }
+  }
+  return init;
+}
+
+/** Summarize toolInput for display in the pinned tile row. */
+function toolInputSummary(
+  toolInput: Record<string, unknown> | undefined,
+): string {
+  if (!toolInput) return "";
+  const entries = Object.entries(toolInput).filter(
+    ([, v]) => v != null && v !== "",
+  );
+  if (entries.length === 0) return "";
+  return entries
+    .slice(0, 3)
+    .map(([k, v]) => {
+      const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+      return `${k}=${s.length > 20 ? `${s.slice(0, 20)}…` : s}`;
+    })
+    .join(", ");
+}
+
+/** Row for a pinned tile instance — shows a summary, gear to edit, minus to remove. */
+function PinnedTileRow({
   agent,
   home,
   connection,
   tool,
-  isPinned,
+  tile,
 }: {
   agent: VirtualMCPEntity;
   home: HomeBoard;
   connection: ConnectionUITools;
   tool: UITool;
-  isPinned: boolean;
+  tile: VirtualMcpHomeTile;
 }) {
   const [submitting, setSubmitting] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const hasProps =
+    tool.inputSchema?.properties &&
+    Object.keys(tool.inputSchema.properties).length > 0;
 
-  const handleClick = async () => {
-    // Pinning a tile pulls the agent onto the home; block when full.
-    if (!isPinned && !home.isOnHome(agent.id) && home.atLimit) {
-      toast.error(`Home is full (${HOME_LIMIT}) — remove an agent first`);
-      return;
-    }
+  const [formValues, setFormValues] = useState<Record<string, unknown>>(() =>
+    seedFormValues(tile.toolInput, tool.inputSchema?.properties),
+  );
+
+  const handleRemove = async () => {
     setSubmitting(true);
     try {
       const baseTiles = getHomeTiles(agent.metadata?.ui);
-      const nextTiles = isPinned
-        ? baseTiles.filter((t) => t.resourceUri !== tool.resourceUri)
-        : [
-            ...baseTiles,
-            { connectionId: connection.id, resourceUri: tool.resourceUri },
-          ];
+      const nextTiles = tile.tileId
+        ? baseTiles.filter((t) => t.tileId !== tile.tileId)
+        : baseTiles.filter((t) => t !== tile);
       const nextMetadata = {
         ...(agent.metadata ?? {}),
         ui: {
           ...(agent.metadata?.ui ?? {}),
-          // Clear the legacy slot — `homeTiles` is now canonical.
           homeTile: null,
           homeTiles: nextTiles,
         },
       };
       await home.saveAgentMetadata(agent, nextMetadata);
+      setShowForm(false);
     } catch (err) {
-      console.error("[home-tiles] failed to toggle tile", err);
+      console.error("[home-tiles] failed to remove tile", err);
+      toast.error("Couldn't update home — please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSubmitting(true);
+    try {
+      let toolInput: Record<string, unknown> | undefined;
+      if (hasProps && tool.inputSchema?.properties) {
+        const coerced = coerceFormValues(
+          formValues,
+          tool.inputSchema.properties,
+        );
+        if (!coerced) {
+          toast.error("Invalid JSON in one of the fields — please fix it.");
+          setSubmitting(false);
+          return;
+        }
+        if (Object.keys(coerced).length > 0) toolInput = coerced;
+      }
+
+      const baseTiles = getHomeTiles(agent.metadata?.ui);
+      const nextTiles = baseTiles.map((t) => {
+        const isMatch = tile.tileId ? t.tileId === tile.tileId : t === tile;
+        if (!isMatch) return t;
+        return {
+          ...t,
+          toolInput,
+        };
+      });
+      const nextMetadata = {
+        ...(agent.metadata ?? {}),
+        ui: {
+          ...(agent.metadata?.ui ?? {}),
+          homeTile: null,
+          homeTiles: nextTiles,
+        },
+      };
+      await home.saveAgentMetadata(agent, nextMetadata);
+      setShowForm(false);
+    } catch (err) {
+      console.error("[home-tiles] failed to save tile", err);
+      toast.error("Couldn't update home — please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const summary = toolInputSummary(tile.toolInput);
+
+  return (
+    <div className="flex flex-col rounded-md bg-accent/20">
+      <div className="flex items-center gap-2.5 px-2 py-1">
+        <IntegrationIcon
+          icon={connection.icon}
+          name={connection.title}
+          size="xs"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm text-foreground">
+            {toTitleCase(tool.name)}
+          </div>
+          {summary && (
+            <div className="truncate text-[10px] text-muted-foreground font-mono">
+              {summary}
+            </div>
+          )}
+        </div>
+        {hasProps && (
+          <button
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            aria-label="Configure tile props"
+            title="Configure tile props"
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60"
+          >
+            <Settings01 size={14} />
+          </button>
+        )}
+        <ToggleButton
+          isPinned
+          submitting={submitting}
+          onClick={handleRemove}
+          label="Remove from home"
+        />
+      </div>
+      {showForm && hasProps && tool.inputSchema?.properties && (
+        <div className="px-3 pb-2 pt-1 flex flex-col gap-2">
+          <ToolInputForm
+            properties={tool.inputSchema.properties}
+            required={tool.inputSchema.required}
+            values={formValues}
+            onChange={(key, value) =>
+              setFormValues((prev) => ({ ...prev, [key]: value }))
+            }
+          />
+          <div className="flex items-center gap-2 justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setShowForm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              disabled={submitting}
+              onClick={handleSave}
+            >
+              {submitting ? (
+                <Loading01 size={12} className="animate-spin" />
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Row to add a new tile instance of a tool. Always creates a fresh tile
+ * with a unique tileId so the same tool can be pinned multiple times with
+ * different toolInput. */
+function AddToolRow({
+  agent,
+  home,
+  connection,
+  tool,
+}: {
+  agent: VirtualMCPEntity;
+  home: HomeBoard;
+  connection: ConnectionUITools;
+  tool: UITool;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const hasProps =
+    tool.inputSchema?.properties &&
+    Object.keys(tool.inputSchema.properties).length > 0;
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+
+  const handleAdd = async () => {
+    // If the tool has configurable props, show the form first.
+    if (hasProps && !showForm) {
+      setShowForm(true);
+      return;
+    }
+
+    if (!home.isOnHome(agent.id) && home.atLimit) {
+      toast.error(`Home is full (${HOME_LIMIT}) — remove an agent first`);
+      return;
+    }
+
+    await saveTile();
+  };
+
+  const saveTile = async () => {
+    setSubmitting(true);
+    try {
+      let toolInput: Record<string, unknown> | undefined;
+      if (hasProps && tool.inputSchema?.properties) {
+        const coerced = coerceFormValues(
+          formValues,
+          tool.inputSchema.properties,
+        );
+        if (!coerced) {
+          toast.error("Invalid JSON in one of the fields — please fix it.");
+          setSubmitting(false);
+          return;
+        }
+        if (Object.keys(coerced).length > 0) toolInput = coerced;
+      }
+
+      const baseTiles = getHomeTiles(agent.metadata?.ui);
+      const nextTiles = [
+        ...baseTiles,
+        {
+          tileId: crypto.randomUUID(),
+          connectionId: connection.id,
+          resourceUri: tool.resourceUri,
+          toolName: tool.name,
+          ...(toolInput ? { toolInput } : {}),
+        },
+      ];
+      const nextMetadata = {
+        ...(agent.metadata ?? {}),
+        ui: {
+          ...(agent.metadata?.ui ?? {}),
+          homeTile: null,
+          homeTiles: nextTiles,
+        },
+      };
+      await home.saveAgentMetadata(agent, nextMetadata);
+      setShowForm(false);
+      setFormValues({});
+    } catch (err) {
+      console.error("[home-tiles] failed to add tile", err);
       toast.error("Couldn't update home — please try again.");
     } finally {
       setSubmitting(false);
@@ -709,21 +1038,60 @@ function ToolRow({
   };
 
   return (
-    <div className="flex items-center gap-2.5 rounded-md px-2 py-1 hover:bg-accent/40">
-      <IntegrationIcon
-        icon={connection.icon}
-        name={connection.title}
-        size="xs"
-      />
-      <div className="min-w-0 flex-1 truncate text-sm text-foreground">
-        {toTitleCase(tool.name)}
+    <div className="flex flex-col rounded-md hover:bg-accent/40">
+      <div className="flex items-center gap-2.5 px-2 py-1">
+        <IntegrationIcon
+          icon={connection.icon}
+          name={connection.title}
+          size="xs"
+        />
+        <div className="min-w-0 flex-1 truncate text-sm text-foreground">
+          {toTitleCase(tool.name)}
+        </div>
+        <ToggleButton
+          isPinned={false}
+          submitting={submitting}
+          onClick={handleAdd}
+          label="Add to home"
+        />
       </div>
-      <ToggleButton
-        isPinned={isPinned}
-        submitting={submitting}
-        onClick={handleClick}
-        label={isPinned ? "Remove from home" : "Add to home"}
-      />
+      {showForm && hasProps && tool.inputSchema?.properties && (
+        <div className="px-3 pb-2 pt-1 flex flex-col gap-2">
+          <ToolInputForm
+            properties={tool.inputSchema.properties}
+            required={tool.inputSchema.required}
+            values={formValues}
+            onChange={(key, value) =>
+              setFormValues((prev) => ({ ...prev, [key]: value }))
+            }
+          />
+          <div className="flex items-center gap-2 justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                setShowForm(false);
+                setFormValues({});
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              disabled={submitting}
+              onClick={saveTile}
+            >
+              {submitting ? (
+                <Loading01 size={12} className="animate-spin" />
+              ) : (
+                "Pin"
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

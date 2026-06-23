@@ -45,8 +45,10 @@ function promptCandidateId(p: HomePromptEntry): string {
 }
 
 function tileCandidateId(t: HomeTileEntry): string {
-  // Disambiguates multiple tiles pinned to the same agent by including
-  // the resource URI — each (agent, resource) pair is its own grid tile.
+  // When a tileId exists (new tiles), use it for stable identity — this
+  // allows multiple tiles backed by the same tool/resource with different
+  // toolInput to coexist. Fall back to agent+resource for legacy tiles.
+  if (t.tileId) return `tile:${t.tileId}`;
   return `tile:${t.agentId}:${t.resourceUri}`;
 }
 
@@ -267,6 +269,7 @@ function TileAppPanel({
       orgSlug={orgSlug}
       connectionId={tile.connectionId}
       client={client}
+      toolInput={tile.toolInput}
       displayMode="fullscreen"
       minHeight={tile.minHeight ?? 200}
       maxHeight={tile.maxHeight ?? 4000}
