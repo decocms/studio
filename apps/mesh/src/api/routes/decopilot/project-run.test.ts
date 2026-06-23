@@ -39,6 +39,7 @@ describe("projectRun", () => {
     const dlq: Array<{ runId: string; error: unknown }> = [];
     const result = await projectRun({
       runId: "run_1",
+      fenceToken: "fence_1",
       chunks: helloChunks(),
       persistence: okPersistence(),
       onDlq: async (runId, error) => {
@@ -63,6 +64,7 @@ describe("projectRun", () => {
     };
     const result = await projectRun({
       runId: "run_1",
+      fenceToken: "fence_1",
       chunks: helloChunks(),
       persistence: poison,
       onDlq: async (runId, error) => {
@@ -94,6 +96,7 @@ describe("projectRun", () => {
     const dlq: Array<{ runId: string; error: unknown }> = [];
     const result = await projectRun({
       runId: "run_1",
+      fenceToken: "fence_1",
       chunks: errorChunks(),
       persistence,
       onDlq: async (runId, error) => {
@@ -114,6 +117,7 @@ describe("projectRun", () => {
     // A healthy run: outcome.failed=false.
     const result = await projectRun({
       runId: "r1",
+      fenceToken: "fence_1",
       chunks: helloChunks(),
       persistence: okPersistence(),
       onDlq: async () => {},
@@ -121,6 +125,60 @@ describe("projectRun", () => {
     });
     expect(result.ok).toBe(true);
     expect(result.outcome?.failed).toBe(false);
+  });
+
+  test("two turns of one thread (same runId, different fence) persist DISJOINT message ids", async () => {
+    // Regression for the cross-turn collision that dropped a fully-generated
+    // 2nd-turn response ("No response was generated"). runId == threadId is
+    // STABLE across turns; only the per-turn fence differs. Under the old
+    // `${runId}:msg:${n}` scheme both turns emitted "thread_1:msg:0", so turn
+    // 2's part rows collided with turn 1's and ON CONFLICT DO NOTHING dropped
+    // them. The fence namespace makes the two turns disjoint.
+    const capture = () => {
+      const ids: string[] = [];
+      const persistence: HarnessStreamPersistence = {
+        emitStepParts: async (m) => {
+          ids.push(m.id);
+        },
+        emitFinal: async (m) => {
+          ids.push(m.id);
+        },
+        emitError: async () => {},
+      };
+      return { ids, persistence };
+    };
+
+    const turn1 = capture();
+    await projectRun({
+      runId: "thread_1",
+      fenceToken: "fence_a",
+      chunks: helloChunks(),
+      persistence: turn1.persistence,
+      onDlq: async () => {},
+      backoffMs: () => 0,
+    });
+
+    const turn2 = capture();
+    await projectRun({
+      runId: "thread_1",
+      fenceToken: "fence_b",
+      chunks: helloChunks(),
+      persistence: turn2.persistence,
+      onDlq: async () => {},
+      backoffMs: () => 0,
+    });
+
+    expect(turn1.ids.length).toBeGreaterThan(0);
+    expect(turn2.ids.length).toBeGreaterThan(0);
+    expect(turn1.ids.every((id) => id.startsWith("thread_1:fence_a:"))).toBe(
+      true,
+    );
+    expect(turn2.ids.every((id) => id.startsWith("thread_1:fence_b:"))).toBe(
+      true,
+    );
+    // No message id appears in BOTH turns → ON CONFLICT DO NOTHING can never
+    // drop turn 2's rows against turn 1's.
+    expect(turn1.ids.some((id) => turn2.ids.includes(id))).toBe(false);
   });
 
   test("a transient failure that recovers before exhaustion succeeds without DLQ", async () => {
@@ -136,6 +194,7 @@ describe("projectRun", () => {
     };
     const result = await projectRun({
       runId: "run_1",
+      fenceToken: "fence_1",
       chunks: helloChunks(),
       persistence: flaky,
       onDlq: async () => {

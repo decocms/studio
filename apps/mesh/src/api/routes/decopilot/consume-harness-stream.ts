@@ -67,21 +67,25 @@ export interface ConsumeHarnessStreamOptions {
   sanitizeErrorText?: (error: unknown) => string;
   /**
    * Message id for the error part the kernel synthesizes on a stream error.
-   * MUST be deterministic per run (`error-${runId}`) so the SAME error message
-   * dedupes across re-projection attempts, DBOS step retries, daemon
-   * full-prefix resends, and the live/projector double-write — the
-   * deterministic-id idempotency `projectRun` relies on. Defaults to a random
-   * UUID only for callers with no run identity (none persist on retry).
+   * MUST be deterministic per turn (`error-${runId}:${fenceToken}`, see
+   * message-ids.ts) so the SAME error message dedupes across re-projection
+   * attempts, DBOS step retries, daemon full-prefix resends, and the
+   * live/projector double-write — the deterministic-id idempotency `projectRun`
+   * relies on — while DISTINCT turns of the same thread never collide. Defaults
+   * to a random UUID only for callers with no run identity (none persist on
+   * retry).
    */
   errorMessageId?: string;
   /**
    * Id generator for the reassembled assistant message(s). The projector passes
-   * a DETERMINISTIC generator (`${runId}:msg:${n}`) so every re-fold of the same
-   * run — terminal projection, checkpoint passes, and reconnect-replay
-   * redelivery — reassembles the SAME message id and therefore the SAME part row
-   * ids (`${runId}:${messageId}:${seq}`), which `ON CONFLICT (id) DO NOTHING`
-   * dedupes. Omitted on the live path → the SDK's default random id (no
-   * persistence-idempotency requirement there).
+   * a DETERMINISTIC generator (`${runId}:${fenceToken}:msg:${n}`, see
+   * message-ids.ts) so every re-fold of the same turn — terminal projection,
+   * checkpoint passes, and reconnect-replay redelivery — reassembles the SAME
+   * message id and therefore the SAME part row ids
+   * (`${runId}:${messageId}:${seq}`), which `ON CONFLICT (id) DO NOTHING`
+   * dedupes. The fence token namespaces each turn so distinct turns of the same
+   * thread (runId == threadId is stable) never collide. Omitted on the live
+   * path → the SDK's default random id (no persistence-idempotency there).
    */
   generateMessageId?: () => string;
 }

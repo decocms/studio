@@ -195,6 +195,7 @@ async function projectFromJetStreamStep(
   }
   const result = await projectRun({
     runId: input.runId,
+    fenceToken: input.fenceToken,
     chunks: reconstructed.chunks,
     persistence: await persistenceFor(input.runId, orgId, rt.messageParts),
     onDlq: async (_runId, error) => {
@@ -459,6 +460,7 @@ async function projectCheckpointFromJetStreamStep(
   if (!range.ok || range.chunks.length === 0) return { projected: false };
   const result = await projectRun({
     runId: input.runId,
+    fenceToken: input.fenceToken,
     chunks: range.chunks,
     // Non-terminal persistence: writes step parts but skips the finish anchor.
     persistence: await checkpointPersistenceFor(
