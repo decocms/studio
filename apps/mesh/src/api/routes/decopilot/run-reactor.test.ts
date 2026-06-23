@@ -4,7 +4,7 @@ import { reactAll, type RunReactorDeps } from "./run-reactor";
 import type { StreamBuffer } from "./stream-buffer";
 
 describe("run reactor", () => {
-  test("RUN_FAILED leaves stream cleanup to the projector workflow", async () => {
+  test("RUN_FAILED purges the abandoned run's stream buffer", async () => {
     const purged: string[] = [];
     const updates: unknown[] = [];
     const emitted: unknown[] = [];
@@ -43,13 +43,19 @@ describe("run reactor", () => {
             orgId: "org_1",
             reason: "error",
           },
+          // Post-projection RUN_FAILED carries no in-memory state (the run was
+          // evicted); orgId rides on the event. See RunTransition.
+          state: undefined,
         },
       ],
       deps,
     );
 
     expect(updates).toHaveLength(1);
-    expect(purged).toEqual([]);
+    // Failed runs are NOT projected, so the durable projector never runs its
+    // cleanup step for them — the reactor purges the abandoned stream buffer
+    // here as explicit cleanup (see run-reactor.ts RUN_FAILED handling).
+    expect(purged).toEqual(["run_1"]);
     expect(emitted).toHaveLength(2);
   });
 });
