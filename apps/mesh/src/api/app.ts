@@ -1008,49 +1008,57 @@ export async function createApp(options: CreateAppOptions = {}) {
       providerKeyCache.start();
       // Subscribe to cross-replica MCP read/result cache invalidations.
       startMcpCacheInvalidation(() => natsProvider!.getConnection());
-      streamBuffer.init().catch((err: unknown) => {
-        console.warn(
-          "[StreamBuffer] Deferred init failed, late-join disabled:",
-          err,
-        );
-      });
-      // Durable explicit-ack projector consumer (spec §5.4) — the SOLE DB
-      // writer post-cutover (parts + title + terminal status). Every pod runs
-      // it: JetStream's durable pull consumer distributes each done marker to
-      // exactly one pod (competing consumers), and the DBOS workflow ID keyed
-      // by (runId, fenceToken) dedups any redelivery overlap — so no leader
-      // election is needed for correctness. Guarded so a NATS reconnect's
-      // repeated onReady fires don't bind a second consume() loop on this pod.
-      if (!projectorStarted) {
-        projectorStarted = true;
-        void (async () => {
-          const nc = natsProvider!.getConnection();
-          const js = natsProvider!.getJetStream();
-          if (!nc || !js) {
-            projectorStarted = false;
-            return;
-          }
-          const jsm = await jetstreamManager(nc);
-          const { startDurableProjector } = await import(
-            "./routes/decopilot/start-durable-projector"
-          );
-          projectorHandle = await startDurableProjector({
-            jsm,
-            js,
-            resolveOrgId: async (runId: string) => {
-              const row = await database.db
-                .selectFrom("threads")
-                .select(["organization_id"])
-                .where("id", "=", runId)
-                .executeTakeFirst();
-              return row?.organization_id ?? null;
-            },
-          });
-        })().catch((err: unknown) => {
+      // `streamBuffer.init()` CREATES the DECOPILOT_STREAMS JetStream stream.
+      // The durable projector consumer (below) binds to that stream, so it must
+      // start ONLY after init resolves — on a fresh NATS (e2e / first boot)
+      // binding the consumer in the same tick races stream creation and fails
+      // with StreamNotFoundError, leaving the projector dead and parts/status
+      // never materialized. Chaining serializes create-then-bind.
+      streamBuffer
+        .init()
+        .then(() => {
+          // Durable explicit-ack projector consumer (spec §5.4) — the SOLE DB
+          // writer post-cutover (parts + title + terminal status). Every pod
+          // runs it: JetStream's durable pull consumer distributes each done
+          // marker to exactly one pod (competing consumers), and the DBOS
+          // workflow ID keyed by (runId, fenceToken) dedups any redelivery
+          // overlap — so no leader election is needed. Guarded so a NATS
+          // reconnect's repeated onReady fires don't bind a second consume()
+          // loop on this pod.
+          if (projectorStarted) return;
+          projectorStarted = true;
+          return (async () => {
+            const nc = natsProvider!.getConnection();
+            const js = natsProvider!.getJetStream();
+            if (!nc || !js) {
+              projectorStarted = false;
+              return;
+            }
+            const jsm = await jetstreamManager(nc);
+            const { startDurableProjector } = await import(
+              "./routes/decopilot/start-durable-projector"
+            );
+            projectorHandle = await startDurableProjector({
+              jsm,
+              js,
+              resolveOrgId: async (runId: string) => {
+                const row = await database.db
+                  .selectFrom("threads")
+                  .select(["organization_id"])
+                  .where("id", "=", runId)
+                  .executeTakeFirst();
+                return row?.organization_id ?? null;
+              },
+            });
+          })();
+        })
+        .catch((err: unknown) => {
           projectorStarted = false;
-          console.warn("[DurableProjector] Deferred init failed:", err);
+          console.warn(
+            "[Decopilot] StreamBuffer/projector init failed (late-join + projection disabled):",
+            err,
+          );
         });
-      }
     });
   }
 
