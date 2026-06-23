@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Plus } from "@untitledui/icons";
+import { Box, Plus } from "@untitledui/icons";
+import type { ComponentType, SVGProps } from "react";
 import {
   Command,
   CommandEmpty,
@@ -14,12 +15,76 @@ import {
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
-import type { BlogBlockType } from "./blog-data";
+import { getIconComponent } from "@/web/components/agent-icon";
+import type { BlogBlockSource, BlogBlockType } from "./blog-data";
+
+type IconComponent = ComponentType<SVGProps<SVGSVGElement> & { size?: number }>;
+
+const GROUP_LABEL: Record<BlogBlockSource, string> = {
+  app: "Blocks",
+  site: "Custom blocks",
+};
+
+function BlockIcon({
+  iconName,
+  iconUrl,
+  alt,
+}: {
+  iconName: string;
+  iconUrl?: string;
+  alt: string;
+}) {
+  const Icon: IconComponent = getIconComponent(iconName) ?? Box;
+  return (
+    <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+      {iconUrl ? (
+        <img src={iconUrl} alt={alt} className="size-5 object-contain" />
+      ) : (
+        <Icon size={16} className="text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
+function BlockItem({
+  type,
+  onInsert,
+}: {
+  type: BlogBlockType;
+  onInsert: (resolveType: string) => void;
+}) {
+  return (
+    <CommandItem
+      value={`${type.title} ${type.resolveType} ${type.description ?? ""}`}
+      onSelect={() => onInsert(type.resolveType)}
+      className="flex items-center gap-2.5"
+    >
+      <BlockIcon
+        iconName={type.iconName}
+        iconUrl={type.iconUrl}
+        alt={type.title}
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="text-sm font-medium">{type.title}</span>
+        {type.description && (
+          <span className="truncate text-xs text-muted-foreground">
+            {type.description}
+          </span>
+        )}
+      </div>
+    </CommandItem>
+  );
+}
 
 /**
  * The WordPress-style "insert here" affordance: a thin hover zone with a
  * centered ⊕ that opens a searchable block-type picker and inserts at
  * this position. Always visible (not just on hover) when `alwaysShow`.
+ *
+ * Blocks are grouped by source: built-ins from the `deco-cms/blog` app
+ * under "Blocks", and site-defined sections (`site/sections/Blog/Post/*`)
+ * under "Custom blocks". If only one source is present the heading is
+ * omitted to keep the picker compact.
  */
 export function InsertBlockDivider({
   blockTypes,
@@ -31,6 +96,21 @@ export function InsertBlockDivider({
   alwaysShow?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+
+  const appBlocks: BlogBlockType[] = [];
+  const siteBlocks: BlogBlockType[] = [];
+  for (const type of blockTypes) {
+    (type.source === "site" ? siteBlocks : appBlocks).push(type);
+  }
+
+  const handleInsert = (resolveType: string) => {
+    onInsert(resolveType);
+    setOpen(false);
+  };
+
+  // Only label groups when both are present — a lone group with a heading
+  // looks heavy in a narrow popover.
+  const showHeadings = appBlocks.length > 0 && siteBlocks.length > 0;
 
   return (
     <div
@@ -62,31 +142,37 @@ export function InsertBlockDivider({
             <Plus size={14} />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-64 p-0" align="center">
+        <PopoverContent className="w-80 p-0" align="center">
           <Command>
             <CommandInput placeholder="Search blocks…" />
-            <CommandList>
+            <CommandList className="max-h-80">
               <CommandEmpty>No blocks found.</CommandEmpty>
-              <CommandGroup>
-                {blockTypes.map((type) => (
-                  <CommandItem
-                    key={type.resolveType}
-                    value={`${type.title} ${type.resolveType}`}
-                    onSelect={() => {
-                      onInsert(type.resolveType);
-                      setOpen(false);
-                    }}
-                    className="flex flex-col items-start gap-0.5"
-                  >
-                    <span className="text-sm font-medium">{type.title}</span>
-                    {type.description && (
-                      <span className="line-clamp-1 text-xs text-muted-foreground">
-                        {type.description}
-                      </span>
-                    )}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+              {siteBlocks.length > 0 && (
+                <CommandGroup
+                  heading={showHeadings ? GROUP_LABEL.site : undefined}
+                >
+                  {siteBlocks.map((type) => (
+                    <BlockItem
+                      key={type.resolveType}
+                      type={type}
+                      onInsert={handleInsert}
+                    />
+                  ))}
+                </CommandGroup>
+              )}
+              {appBlocks.length > 0 && (
+                <CommandGroup
+                  heading={showHeadings ? GROUP_LABEL.app : undefined}
+                >
+                  {appBlocks.map((type) => (
+                    <BlockItem
+                      key={type.resolveType}
+                      type={type}
+                      onInsert={handleInsert}
+                    />
+                  ))}
+                </CommandGroup>
+              )}
             </CommandList>
           </Command>
         </PopoverContent>
