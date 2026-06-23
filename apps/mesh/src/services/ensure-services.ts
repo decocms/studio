@@ -32,6 +32,11 @@ import {
   type NatsOperatorArtifacts,
   type NatsOperatorKeys,
 } from "./nats-operator-config";
+import {
+  ensureDevNatsToxiProxy,
+  isDevNatsToxiProxyEnabled,
+  stopDevNatsToxiProxy,
+} from "./dev-nats-toxiproxy";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -699,21 +704,32 @@ async function ensureNats(
   const artifacts = await buildNatsOperatorArtifacts(keys);
   const credsPath = natsClusterCredsPath(home);
 
+  // The NATS chaos harness needs the server on 0.0.0.0 so the Toxiproxy
+  // container can reach it via host.docker.internal; default is loopback.
+  const bindHost = isDevNatsToxiProxyEnabled() ? "0.0.0.0" : "127.0.0.1";
+
   // Check state.json for an existing managed instance
   const existing = readState(home, "nats");
   if (existing !== null) {
     if (isOwnedProcess(existing.pid, "nats-server")) {
-      info.state = "running";
-      info.pid = existing.pid;
-      info.port = existing.port;
-      info.owner = "managed";
-      return {
-        info,
-        tunnel: natsTunnelConfigFrom(artifacts, existing.port, credsPath),
-      };
+      // Reuse only when the running instance's bind interface matches what we
+      // need. In chaos mode a previously-loopback instance is unreachable from
+      // the container, so restart it fresh with the right binding.
+      if (bindHost === "127.0.0.1") {
+        info.state = "running";
+        info.pid = existing.pid;
+        info.port = existing.port;
+        info.owner = "managed";
+        return {
+          info,
+          tunnel: natsTunnelConfigFrom(artifacts, existing.port, credsPath),
+        };
+      }
+      await stopNats(home);
+    } else {
+      // Dead process — clean up stale state
+      await removeState(home, "nats");
     }
-    // Dead process — clean up stale state
-    await removeState(home, "nats");
   }
 
   // Allocate dynamic ports (TCP for cluster/daemon, WS for fidelity with prod).
@@ -733,6 +749,7 @@ async function ensureNats(
     tcpPort: port,
     wsPort,
     storeDir: dataDir,
+    bindHost,
     artifacts,
   });
   writeFileSync(natsConfPath(home), conf);
@@ -1497,6 +1514,18 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
     const ensured = await ensureNats(inputs.home);
     natsInfo = ensured.info;
     natsTunnel = ensured.tunnel;
+
+    // Optional dev chaos: insert a Toxiproxy hop ONLY on the daemon -> NATS leg.
+    // The cluster still talks to NATS directly (via `outputs.natsUrls` below);
+    // we rewrite only the URL handed to the daemon through the link session, so
+    // HTTP routes are untouched. NATS was bound to 0.0.0.0 above for this.
+    if (isDevNatsToxiProxyEnabled() && natsTunnel) {
+      const handle = await ensureDevNatsToxiProxy({ natsPort: natsInfo.port });
+      natsTunnel = { ...natsTunnel, publicUrl: handle.config.publicUrl };
+      console.log(
+        `[dev-nats-toxiproxy] daemon NATS routed through ${handle.config.publicUrl} -> ${handle.config.upstream} (admin ${handle.config.apiUrl})`,
+      );
+    }
   }
 
   const services: ServiceInfo[] = [pgInfo, natsInfo];
@@ -1598,6 +1627,10 @@ export async function stopServices(home: string): Promise<void> {
   await stopPostgres(home);
   await stopNats(home);
   await stopMinio(home);
+  // Best-effort: tear down the dev NATS chaos proxy container if it was started.
+  if (isDevNatsToxiProxyEnabled()) {
+    await stopDevNatsToxiProxy().catch(() => {});
+  }
   console.log("\nAll managed services stopped.");
 }
 
