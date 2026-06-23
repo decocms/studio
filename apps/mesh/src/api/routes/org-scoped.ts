@@ -30,7 +30,6 @@ import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createLinkIngestRoutes } from "./decopilot/link-ingest-routes";
-import { createBackgroundToolRoutes } from "./decopilot/background-tool-routes";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -113,10 +112,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
       sseHub: deps.sseHub,
     }),
   ); // /api/:org/links/runs/:runId/chunks
-
-  // Daemon → cluster: enqueue a slow built-in (generate_image) as a durable
-  // cluster job so a desktop-linked run doesn't block its turn.
-  app.route("/", createBackgroundToolRoutes()); // /api/:org/threads/:threadId/background-tool
 
   if (deps.mountDevAssets) {
     app.route("/dev-assets", createDevAssetsRoutes({ orgFromPath: true }));

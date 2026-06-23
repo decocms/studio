@@ -51,7 +51,7 @@ import {
 import { createLanguageModel } from "./mesh-provider";
 import { toolsFromMCP } from "./mcp-tools";
 import { buildLocalTools } from "./desktop-local-tools";
-import { createHttpBackgroundDispatcher } from "./built-in-tools/http-background-dispatcher";
+import { createMcpBackgroundDispatcher } from "./built-in-tools/mcp-background-dispatcher";
 import { getDesktopSandboxFsBuilder } from "./desktop-sandbox-fs-registry";
 import { buildDesktopPrompt, PARENT_STEP_LIMIT } from "./desktop-prompt";
 import { resolveModeConfig } from "./mode-config";
@@ -363,9 +363,10 @@ function createDesktopToolRuntime(args: {
         });
         // Backgroundable generate_image: enqueue the work on the cluster
         // (which has DBOS + org credentials) so the daemon's turn doesn't
-        // block. Reuses the run's object-storage auth (same temp bearer) +
-        // the run fence token. Absent material → null → generate_image runs
-        // inline (unchanged).
+        // block. Calls the `THREAD_BACKGROUND_TOOL_START` management tool over
+        // `/mcp/self`, reusing the run's bearer (same temp credentials as the
+        // object-storage source) + the run fence token. Absent material → null
+        // → generate_image runs inline (unchanged).
         // Derive the org-scoped API base from the object-storage source so the
         // `:org` slug exactly matches what the cluster minted (avoids the
         // organizationSlug/projectSlug ambiguity).
@@ -376,9 +377,14 @@ function createDesktopToolRuntime(args: {
           streamInput.objectStorageSource &&
           streamInput.runFenceToken &&
           apiBase !== objectStorageBase
-            ? createHttpBackgroundDispatcher({
-                url: `${apiBase}/threads/${encodeURIComponent(streamInput.threadId)}/background-tool`,
-                headers: streamInput.objectStorageSource.headers,
+            ? createMcpBackgroundDispatcher({
+                source: {
+                  kind: "http",
+                  url: `${apiBase}/mcp/self`,
+                  headers: streamInput.objectStorageSource.headers,
+                  expiresAt: streamInput.objectStorageSource.expiresAt,
+                },
+                threadId: streamInput.threadId,
                 fenceToken: streamInput.runFenceToken,
                 snapshot: {
                   agentId: streamInput.agent.id,

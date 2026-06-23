@@ -13,3 +13,6 @@ export { COLLECTION_THREADS_DELETE } from "./delete";
 
 // Thread messages tool
 export { COLLECTION_THREAD_MESSAGES_LIST } from "./list-messages";
+
+// Background-tool enqueue (daemon → cluster)
+export { THREAD_BACKGROUND_TOOL_START } from "./background-tool-start";
