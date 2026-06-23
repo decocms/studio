@@ -368,5 +368,39 @@ describe("RunRegistry (in-memory state machine)", () => {
       expect(registry.isRunning("old")).toBe(false);
       expect(registry.isRunning("fresh")).toBe(true);
     });
+
+    it("evicts but never fails a run the DB already shows terminal (projector completed it out-of-band)", async () => {
+      // Desktop/link runs are completed by the durable projector out-of-band;
+      // their in-memory registry entry lingers as "running" with no progress, so
+      // the idle reaper would otherwise FORCE_FAIL and overwrite `completed`.
+      let now = new Date("2024-01-01T00:00:00Z");
+      const failWrites: unknown[] = [];
+      const deps = inertDeps();
+      (deps.storage as unknown as { get: unknown }).get = async () => ({
+        id: "t1",
+        status: "completed",
+      });
+      (deps.storage as unknown as { update: unknown }).update = async (
+        _id: string,
+        _org: string,
+        data: { status?: string },
+      ) => {
+        if (data?.status === "failed") failWrites.push(data);
+        return null;
+      };
+      const registry = new RunRegistry(deps, () => now);
+      createdRegistries.push(registry);
+
+      startThread(registry, "t1", "org1", "u1");
+      now = new Date(now.getTime() + RUN_IDLE_TIMEOUT_MS + 1);
+      await (
+        registry as unknown as { reapStaleRuns(): Promise<void> }
+      ).reapStaleRuns();
+
+      // The completed status is never overwritten with "failed" ...
+      expect(failWrites).toEqual([]);
+      // ... and the stale in-memory entry is still evicted.
+      expect(registry.isRunning("t1")).toBe(false);
+    });
   });
 });

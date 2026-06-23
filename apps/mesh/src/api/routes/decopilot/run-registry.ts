@@ -231,6 +231,25 @@ export class RunRegistry {
       )
         continue;
 
+      // The durable status is authoritative: a desktop/link run is completed
+      // (or failed) by the projector OUT-OF-BAND, so its in-memory entry lingers
+      // as "running" with no in-process progress bumps. Such a run is finished,
+      // not stuck — evict the stale entry WITHOUT force-failing, so the reaper
+      // never overwrites a `completed` run with `failed`. A DB read failure
+      // falls through to the force-fail path (the reaper must still be able to
+      // kill a genuinely stuck run when storage is momentarily unavailable).
+      const durable = await this.deps.storage
+        .get(taskId, state.orgId)
+        .catch(() => null);
+      if (durable && durable.status !== "in_progress") {
+        const lingering = this.states.get(taskId);
+        if (lingering?.status.tag === "running") {
+          lingering.status.abortController.abort();
+        }
+        this.states.delete(taskId);
+        continue;
+      }
+
       console.warn(
         `[RunRegistry] Reaping stuck run for thread ${taskId} (idle > ${
           RUN_IDLE_TIMEOUT_MS / 60_000
