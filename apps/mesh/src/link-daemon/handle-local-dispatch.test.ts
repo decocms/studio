@@ -179,6 +179,11 @@ describe("handleLocalDispatch", () => {
     expect(dispatchHeaders.authorization).toBe(`Bearer ${DAEMON_TOKEN}`);
     expect(dispatchHeaders["content-type"]).toBe("application/json");
     expect(dispatchHeaders.accept).toBe("text/event-stream");
+    // Bun's fetch default-times-out a long-lived stream; the harness SSE can
+    // idle for minutes (slow tool call / deep reasoning), so the read would trip
+    // `TimeoutError: The operation timed out` and the run dies as
+    // `local_dispatch_failed`. The loopback dispatch MUST disable it.
+    expect((dispatchCall!.init as { timeout?: boolean }).timeout).toBe(false);
 
     // Verify the dispatch body shape: { harnessId, input }
     const dispatchBodyStr = dispatchCall!.init.body as string;
