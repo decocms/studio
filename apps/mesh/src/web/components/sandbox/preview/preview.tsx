@@ -378,19 +378,29 @@ export function PreviewContent() {
     };
   }, [sectionsOpen]);
 
+  const getPreviewOrigin = (): string => {
+    try {
+      return previewUrl
+        ? new URL(previewUrl, window.location.href).origin
+        : window.location.origin;
+    } catch {
+      return window.location.origin;
+    }
+  };
+
   const injectVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
     if (!win) return;
     win.postMessage(
       { type: "visual-editor::activate", script: VISUAL_EDITOR_SCRIPT },
-      "*",
+      getPreviewOrigin(),
     );
   };
 
   const deactivateVisualEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
     if (!win) return;
-    win.postMessage({ type: "visual-editor::deactivate" }, "*");
+    win.postMessage({ type: "visual-editor::deactivate" }, getPreviewOrigin());
   };
 
   const injectCmsEditor = () => {
@@ -398,14 +408,14 @@ export function PreviewContent() {
     if (!win) return;
     win.postMessage(
       { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
-      "*",
+      getPreviewOrigin(),
     );
   };
 
   const deactivateCmsEditor = () => {
     const win = previewIframeRef.current?.contentWindow;
     if (!win) return;
-    win.postMessage({ type: "cms-editor::deactivate" }, "*");
+    win.postMessage({ type: "cms-editor::deactivate" }, getPreviewOrigin());
   };
 
   const handleViewModeChange = (mode: PreviewViewMode) => {

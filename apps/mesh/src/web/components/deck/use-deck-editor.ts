@@ -123,6 +123,9 @@ export function useDeckEditor(args: {
   };
 
   const postToIframe = (msg: DeckHostMessage) => {
+    // Deck iframes are sandboxed (opaque origin) so we must use "*" here —
+    // a sandboxed iframe's origin is "null" and no targetOrigin string can
+    // match it. The iframe's own message listener validates e.source instead.
     machine.iframe?.contentWindow?.postMessage(msg, "*");
   };
 
