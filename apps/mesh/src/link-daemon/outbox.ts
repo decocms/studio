@@ -32,11 +32,9 @@ import { assertBunRuntime } from "./outbox-runtime";
  * the pump has buffered but the publisher hasn't confirmed yet — so this is now
  * a backstop for a stalled publisher, not the per-run size limit it used to be.
  * The old 64 MiB value capped the WHOLE run (terminal-only truncation) and was
- * too small for long/verbose agent runs; default bumped to 512 MiB and made
- * env-tunable (`DECO_LINK_MAX_OUTBOX_BYTES`, bytes) for ops without a rebuild.
+ * too small for long/verbose agent runs; bumped to 512 MiB.
  */
-export const MAX_OUTBOX_BYTES =
-  Number(process.env.DECO_LINK_MAX_OUTBOX_BYTES) || 512 * 1024 * 1024;
+export const MAX_OUTBOX_BYTES = 512 * 1024 * 1024;
 
 export interface OutboxAppend {
   runId: string;
