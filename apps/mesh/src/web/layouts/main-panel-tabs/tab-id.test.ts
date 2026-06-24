@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   formatDeckTabId,
   formatFileTabId,
+  formatLibraryFileTabId,
   isLegacySettingsTab,
   isPerThreadTab,
   parseAutomationTabId,
   parseDeckTabId,
   parseFileTabId,
+  parseLibraryFileTabId,
   resolveDefaultTabId,
   resolveActiveTabAndOpen,
   resolveTabClickTarget,
@@ -81,6 +83,36 @@ describe("deck tab id", () => {
 
   test("deck tabs are per-thread", () => {
     expect(isPerThreadTab(formatDeckTabId("decks/a.html"))).toBe(true);
+  });
+});
+
+describe("library file tab id", () => {
+  test("round-trips Library browse paths (home + public sets)", () => {
+    for (const path of [
+      "home/docs/spec final.md",
+      "public/core/skills/a.ts",
+      "uploads/My.File_2.csv",
+    ]) {
+      expect(parseLibraryFileTabId(formatLibraryFileTabId(path))).toEqual({
+        path,
+      });
+    }
+  });
+
+  test("non-library-file tab → null", () => {
+    expect(parseLibraryFileTabId("settings")).toBeNull();
+    expect(parseLibraryFileTabId("file:home%2Fa.md")).toBeNull();
+    expect(parseLibraryFileTabId("deck:decks%2Fa.html")).toBeNull();
+    expect(parseLibraryFileTabId(undefined)).toBeNull();
+    expect(parseLibraryFileTabId("library-file:")).toBeNull();
+  });
+
+  test("malformed percent-encoding → null, not a throw", () => {
+    expect(parseLibraryFileTabId("library-file:%E0%A4%A")).toBeNull();
+  });
+
+  test("library file tabs are per-thread", () => {
+    expect(isPerThreadTab(formatLibraryFileTabId("home/a.md"))).toBe(true);
   });
 });
 
