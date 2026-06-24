@@ -295,6 +295,46 @@ describe("readProjectorRunLog", () => {
     expect(unsubscribed()).toBe(true);
   });
 
+  test("reassembles a fragmented chunk delivered through the stream", async () => {
+    // The streaming reader decodes incrementally; a fragmented chunk (raw byte
+    // slices that aren't valid JSON alone) must still reassemble across arrivals.
+    const full = JSON.stringify({
+      p: { type: "text-delta", delta: "hello world" },
+    });
+    const frag = (idx: number, raw: string): ReaderMsg => {
+      const headers: Record<string, string> = {
+        "Nats-Msg-Id": `run_1:fence_a:1:frag:${idx}`,
+        "Dp-Frag-Total": "2",
+        "Dp-Frag-Idx": String(idx),
+      };
+      return {
+        subject: "decopilot.stream.run_1",
+        data: enc.encode(raw),
+        headers: { get: (name: string) => headers[name] },
+      };
+    };
+    const { js } = fakeJetStream((push) => {
+      push(frag(0, full.slice(0, 20)));
+      push(frag(1, full.slice(20)));
+      push(readerMsg("run_1:fence_a:done:1", { done: true, finalSeq: 1 }));
+    });
+
+    const result = await readProjectorRunLog({
+      js,
+      runId: "run_1",
+      fenceToken: "fence_a",
+      finalSeq: 1,
+      idleTimeoutMs: 1000,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.chunks).toEqual([
+        { type: "text-delta", delta: "hello world" } as UIMessageChunk,
+      ]);
+    }
+  });
+
   test("falls back to a best-effort reconstruct when the log is idle and incomplete", async () => {
     const { js } = fakeJetStream((push) => {
       // The {done} marker never arrives; the idle timeout fires.
