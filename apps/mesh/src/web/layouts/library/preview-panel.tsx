@@ -31,6 +31,7 @@ import {
   useOrgFsDownloadUrl,
   useOrgFsStat,
 } from "@/web/hooks/use-org-fs";
+import { FileShareButton } from "./file-share-button";
 import { basename, parseLibraryPath } from "./location";
 
 const isHtml = (name: string) => /\.html?$/i.test(name);
@@ -85,7 +86,17 @@ export function LibraryPreviewPanel({
         marker={entryMarker(entry)}
         title={filename}
         savePath={volume === "home" ? filePath : undefined}
-        trailing={<PreviewClose onClose={onClose} />}
+        trailing={
+          <>
+            <FileShareButton
+              volume={volume ?? ""}
+              path={filePath}
+              readPublic={entry.readPublic ?? false}
+              url={window.location.origin + file.downloadUrl}
+            />
+            <PreviewClose onClose={onClose} />
+          </>
+        }
       />
     );
   }
@@ -104,8 +115,14 @@ export function LibraryPreviewPanel({
             </span>
           )}
         </div>
-        {file && (
+        {file && entry && (
           <>
+            <FileShareButton
+              volume={volume ?? ""}
+              path={filePath}
+              readPublic={entry.readPublic ?? false}
+              url={window.location.origin + file.downloadUrl}
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" asChild>

@@ -23,6 +23,8 @@ export interface OrgFsEntry {
   contentHash?: string | null;
   /** Dir follows the Claude Code skill format (contains SKILL.md). */
   hasSkill?: boolean;
+  /** File is served by the /read proxy to anyone (no auth). Files only. */
+  readPublic?: boolean;
 }
 
 export interface OrgFsUsage {
@@ -241,6 +243,49 @@ export function useOrgFsWriteText(volume: string) {
         },
       );
       return ((await res.json()) as { entry: OrgFsEntry }).entry;
+    },
+  });
+}
+
+/**
+ * Toggle a file's public-read flag — share to anyone with the link, or revoke.
+ * Optimistically flips the cached `stat` so the Share toggle reacts instantly,
+ * then revalidates (rolling back on error).
+ */
+export function useOrgFsSetPublic(volume: string) {
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      path: string;
+      public: boolean;
+    }): Promise<OrgFsEntry> => {
+      const res = await fsFetch(
+        fsUrl(org.slug, volume, "public", { path: input.path }),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ public: input.public }),
+        },
+      );
+      return ((await res.json()) as { entry: OrgFsEntry }).entry;
+    },
+    onMutate: async (input) => {
+      const key = KEYS.orgFsStat(org.id, volume, input.path);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<OrgFsEntry | null>(key);
+      queryClient.setQueryData<OrgFsEntry | null>(key, (old) =>
+        old ? { ...old, readPublic: input.public } : old,
+      );
+      return { key, previous };
+    },
+    onError: (_err, _input, ctx) => {
+      if (ctx) queryClient.setQueryData(ctx.key, ctx.previous);
+    },
+    onSettled: (_data, _err, input) => {
+      queryClient.invalidateQueries({
+        queryKey: KEYS.orgFsStat(org.id, volume, input.path),
+      });
     },
   });
 }

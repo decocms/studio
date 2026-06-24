@@ -20,6 +20,8 @@ export interface OrgFsEntry {
   updatedAt: string;
   /** Chat/run that last wrote this file; null when not tied to a dispatch. */
   threadId: string | null;
+  /** When true, the `/read` proxy serves this file to anyone (no auth). */
+  readPublic: boolean;
 }
 
 type OrgFsEntryRow = {
@@ -37,6 +39,7 @@ type OrgFsEntryRow = {
   updated_by: string;
   updated_at: Date | string;
   thread_id: string | null;
+  read_public: boolean;
 };
 
 function toIso(value: Date | string | null): string | null {
@@ -60,6 +63,7 @@ function rowToEntry(row: OrgFsEntryRow): OrgFsEntry {
     updatedBy: row.updated_by,
     updatedAt: toIso(row.updated_at) ?? "",
     threadId: row.thread_id,
+    readPublic: row.read_public,
   };
 }
 
@@ -78,6 +82,7 @@ const COLUMNS = [
   "updated_by",
   "updated_at",
   "thread_id",
+  "read_public",
 ] as const satisfies readonly (keyof OrgFsEntryTable)[];
 
 /** Bump `seq` to the next value of the global sequence on every write. */
@@ -351,6 +356,37 @@ export class OrgFsEntryStorage {
         ]),
       )
       .execute();
+  }
+
+  /**
+   * Set a file's public-read flag. Returns the updated entry, or null if no
+   * live file exists at the path. Deliberately does NOT bump `seq`: visibility
+   * is metadata, not content, so the change feed (mount invalidation) stays
+   * quiet — only `updated_by`/`updated_at` move, recording who toggled it.
+   */
+  async setReadPublic(params: {
+    organizationId: string;
+    volume: string;
+    path: string;
+    readPublic: boolean;
+    actor: string;
+  }): Promise<OrgFsEntry | null> {
+    const now = new Date();
+    const row = await this.db
+      .updateTable("org_fs_entry")
+      .set({
+        read_public: params.readPublic,
+        updated_by: params.actor,
+        updated_at: now,
+      })
+      .where("organization_id", "=", params.organizationId)
+      .where("volume", "=", params.volume)
+      .where("path", "=", params.path)
+      .where("kind", "=", "file")
+      .where("deleted_at", "is", null)
+      .returning(COLUMNS)
+      .executeTakeFirst();
+    return row ? rowToEntry(row as OrgFsEntryRow) : null;
   }
 
   /** Live file count + total bytes for a volume (for quota / usage display). */

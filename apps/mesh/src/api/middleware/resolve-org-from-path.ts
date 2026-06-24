@@ -1,9 +1,21 @@
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
 import { isOrgArchived } from "../../core/org-archived";
 
 import { isBrowserNavigation } from "../utils/browser-navigation";
+
+/**
+ * The org-fs read proxy (`GET .../fs/:volume/read`) serves files flagged
+ * read_public to anyone — so a signed-in user who isn't a member of the owning
+ * org must still reach it. This detects that one route so the membership gate
+ * below can defer to it; the route serves only public files and still gates
+ * everything else on ORG_FS_READ (which a non-member fails → 403). Every other
+ * org-scoped route stays member-gated.
+ */
+function isPublicReadPath(c: Context): boolean {
+  return c.req.method === "GET" && /\/fs\/[^/]+\/read$/.test(c.req.path);
+}
 
 export const resolveOrgFromPath: MiddlewareHandler<{
   Variables: { meshContext: StudioContext };
@@ -68,15 +80,26 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       .executeTakeFirst();
 
     if (!membership) {
-      // Bounce browser navigations into the SPA so OrgAccessGate shows the
-      // styled "No access" screen (with invite/auto-join handling) instead of
-      // raw JSON in the address bar.
-      if (isBrowserNavigation(c)) {
-        return c.redirect(`/${encodeURIComponent(org.slug)}`, 302);
+      // A public file read is reachable by anyone, including signed-in
+      // non-members — let it fall through to the route (which serves only
+      // read_public files and 403s the rest). All other routes stay gated.
+      if (!isPublicReadPath(c)) {
+        // Bounce browser navigations into the SPA so OrgAccessGate shows the
+        // styled "No access" screen (with invite/auto-join handling) instead of
+        // raw JSON in the address bar.
+        if (isBrowserNavigation(c)) {
+          return c.redirect(`/${encodeURIComponent(org.slug)}`, 302);
+        }
+        return c.json(
+          { error: "forbidden: not a member of organization" },
+          403,
+        );
       }
-      return c.json({ error: "forbidden: not a member of organization" }, 403);
+      // pathRole stays undefined; the org is still resolved + rebound below so
+      // the read route can stat the file and serve it if it's public.
+    } else {
+      pathRole = membership.role;
     }
-    pathRole = membership.role;
   }
 
   ctx.organization = {

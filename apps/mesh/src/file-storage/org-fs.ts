@@ -108,6 +108,32 @@ export class OrgFs {
     return this.storage.getBytes(fsObjectKey(volume, entry.path));
   }
 
+  /**
+   * Toggle a file's public-read flag. A public file is served by the `/read`
+   * proxy to anyone, no auth. Throws if the path is not a live file.
+   */
+  async setReadPublic(
+    volume: string,
+    path: string,
+    readPublic: boolean,
+    opts: { actor: string },
+  ): Promise<OrgFsEntry> {
+    const entry = await this.requireFile(volume, path);
+    const updated = await this.manifest.setReadPublic({
+      organizationId: this.organizationId,
+      volume,
+      path: entry.path,
+      readPublic,
+      actor: opts.actor,
+    });
+    // requireFile already proved the row exists and is live; the update can
+    // only miss on a concurrent delete, which we treat as not-found.
+    if (!updated) {
+      throw new OrgFsNotFoundError(`No such file: ${entry.path}`);
+    }
+    return updated;
+  }
+
   /** Presigned GET URL for a file — the byte path the mount fetches lazily. */
   async presignRead(
     volume: string,

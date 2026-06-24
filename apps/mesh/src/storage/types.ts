@@ -373,6 +373,10 @@ export interface OrgFsEntryTable {
    *  dispatch (mount write-backs, backfill). Scopes live deck previews to
    *  the originating chat. */
   thread_id: string | null;
+  /** When true, the `/fs/:volume/read` proxy serves this file to anyone —
+   *  no auth, no org membership. Files only; defaults to false (org-only).
+   *  Preserved across overwrites; reset by delete + recreate. */
+  read_public: ColumnType<boolean, boolean | undefined, boolean>;
 }
 
 /** Public DTO for a file config — never exposes access key / secret key. */
