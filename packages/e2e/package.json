@@ -1,0 +1,11 @@
+{
+  "name": "@decocms/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Black-box e2e suite (HTTP + DB), isolated from app source. Landing pad — the mesh suite migrates here in a follow-up PR.",
+  "type": "module",
+  "scripts": {
+    "//check": "Becomes `tsc --noEmit` once the suite migrates here (tsconfig.json is the isolation artifact). No sources yet, so check is a no-op to keep `bun run --workspaces check` green.",
+    "check": "echo 'packages/e2e: scaffold, no sources yet (see README)'"
+  }
+}

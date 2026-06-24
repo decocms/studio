@@ -1,204 +1,144 @@
 /**
- * End-to-end smoke tests for the in-VM daemon.
+ * Daemon conformance suite — CORE (auth, config, fs, tasks, orgfs, smoke).
  *
- * Spawns the bundled daemon script on a random localhost port under Bun,
- * exercising real HTTP/SSE endpoints. Since the daemon's production spawn
- * uses uid/gid=1000 in production, we set DAEMON_DROP_PRIVILEGES=0 in tests
- * so spawn works when we're not root.
+ * Spawns the daemon under test (see daemon.e2e.helpers.ts — swap the binary via
+ * DAEMON_E2E_CMD) and exercises real HTTP/SSE endpoints. Every assertion is a
+ * black-box contract; no daemon source is imported. Git/exec, reverse-proxy,
+ * and dispatch live in sibling daemon.e2e.*.test.ts files.
+ *
+ * Privilege note: some daemon paths (gitSync) request a uid/gid=1000 drop, but
+ * the daemon runs under Bun, which silently ignores spawn uid/gid — so the
+ * suite runs as the invoking (non-root) user. A reimplementation that actually
+ * honored uid/gid while running as a different user on Linux would EPERM in the
+ * git routes; that's a runtime quirk these tests lean on, not a guaranteed part
+ * of the contract.
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawn, type ChildProcess } from "node:child_process";
 
-const DAEMON_BUNDLE = join(import.meta.dir, "dist", "daemon.js");
-const DAEMON_TOKEN = "t".repeat(32);
+import {
+  authHeaders,
+  type Daemon,
+  HOOK_TIMEOUT_MS,
+  jsonAuthHeaders,
+  readSseUntil,
+  resolveDaemonCmd,
+  startDaemon,
+  stopDaemon,
+  url,
+  writeRepoFile,
+} from "./daemon.e2e.helpers";
 
-// CI cold-start of `bun` + the bundled daemon listener occasionally exceeds
-// Bun's default 5s hook timeout, especially on shared runners under load.
-// Each test in this file spawns a fresh daemon, so we give beforeEach and
-// afterEach generous headroom.
-const HOOK_TIMEOUT_MS = 30_000;
-const PORT_WAIT_TIMEOUT_MS = 20_000;
+const toBody = (obj: unknown) => JSON.stringify(obj);
 
-function authHeaders(
-  extra: Record<string, string> = {},
-): Record<string, string> {
-  return { Authorization: `Bearer ${DAEMON_TOKEN}`, ...extra };
-}
+// --- Swappable spawn target (no daemon needed) -------------------------------
 
-let daemonProc: ChildProcess | null = null;
-let daemonPort = 0;
-let appDir = "";
-
-/**
- * Ask the OS for a free port via a transient bind on port 0. Far less flaky
- * than picking a random number in a fixed range, which collides with other
- * runner processes or with sockets the previous test left in TIME_WAIT.
- */
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer();
-    srv.unref();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      if (typeof addr === "object" && addr && typeof addr.port === "number") {
-        const { port } = addr;
-        srv.close(() => resolve(port));
-      } else {
-        srv.close(() => reject(new Error("freePort: bad address")));
-      }
-    });
+describe("daemon e2e: swappable spawn target", () => {
+  it("defaults to running the bundled daemon under bun when DAEMON_E2E_CMD is unset", () => {
+    const cmd = resolveDaemonCmd(undefined);
+    expect(cmd[0]).toBe("bun");
+    expect(cmd[1]).toMatch(/dist\/daemon\.js$/);
+    expect(cmd.length).toBe(2);
   });
-}
 
-async function waitForPort(
-  port: number,
-  proc: ChildProcess,
-  stderrBuf: { value: string },
-  timeoutMs = PORT_WAIT_TIMEOUT_MS,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (proc.exitCode !== null || proc.signalCode !== null) {
-      throw new Error(
-        `daemon exited before /health responded (code=${proc.exitCode} signal=${proc.signalCode}) stderr=${stderrBuf.value.slice(-2000)}`,
-      );
-    }
-    try {
-      const res = await fetch(`http://localhost:${port}/health`);
-      if (res.ok) return;
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`daemon did not listen on :${port} within ${timeoutMs}ms`);
-}
-
-async function startDaemon(extraEnv: Record<string, string> = {}) {
-  appDir = mkdtempSync(join(tmpdir(), "daemon-e2e-"));
-  daemonPort = await freePort();
-  daemonProc = spawn("bun", [DAEMON_BUNDLE], {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      DAEMON_TOKEN,
-      DAEMON_BOOT_ID: `boot-${daemonPort}`,
-      APP_ROOT: appDir,
-      PROXY_PORT: String(daemonPort),
-      DEV_PORT: "3000",
-      DAEMON_NO_AUTOSTART: "1",
-      DAEMON_DROP_PRIVILEGES: "0",
-      ...extraEnv,
-    },
-  });
-  // Capture stderr so a port-bind crash (or any startup error) is surfaced
-  // in the assertion instead of presenting as a silent 20s timeout.
-  const stderrBuf = { value: "" };
-  daemonProc.stdout?.on("data", (c) =>
-    process.stderr.write(`[daemon:out] ${c}`),
-  );
-  daemonProc.stderr?.on("data", (c) => {
-    stderrBuf.value += c.toString();
-    process.stderr.write(`[daemon:err] ${c}`);
-  });
-  await waitForPort(daemonPort, daemonProc, stderrBuf);
-}
-
-async function stopDaemon() {
-  if (daemonProc) {
-    const proc = daemonProc;
-    daemonProc = null;
-    if (proc.exitCode === null && proc.signalCode === null) {
-      // Wait for OS to reap the process so its bound port is released before
-      // the next startDaemon picks a fresh one.
-      await new Promise<void>((resolve) => {
-        proc.once("exit", () => resolve());
-        proc.kill("SIGKILL");
-      });
-    }
-  }
-  if (appDir) {
-    rmSync(appDir, { recursive: true, force: true });
-    appDir = "";
-  }
-}
-
-describe("daemon e2e (runs generated script under Bun)", () => {
-  beforeEach(async () => {
-    await startDaemon();
-  }, HOOK_TIMEOUT_MS);
-  afterEach(async () => {
-    await stopDaemon();
-  }, HOOK_TIMEOUT_MS);
-
-  it("GET /_decopilot_vm/scripts returns { scripts: [] } before discovery", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/scripts`,
-      { headers: authHeaders() },
+  it("parses a JSON-array DAEMON_E2E_CMD verbatim", () => {
+    expect(resolveDaemonCmd('["./target/release/daemon", "--flag x"]')).toEqual(
+      ["./target/release/daemon", "--flag x"],
     );
+  });
+
+  it("falls back to whitespace-split for a plain string", () => {
+    expect(resolveDaemonCmd("bun /abs/daemon.js")).toEqual([
+      "bun",
+      "/abs/daemon.js",
+    ]);
+  });
+});
+
+// --- Harness self-check: readSseUntil must be deadline-bounded ---------------
+
+describe("daemon e2e: readSseUntil is deadline-bounded", () => {
+  it("rejects within the deadline on a stream that never emits or closes", async () => {
+    // An upstream that accepts the connection and then stalls forever — the
+    // worst case for an unbounded `reader.read()`.
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start() {
+              /* never enqueue, never close */
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+    });
+    try {
+      const startedAt = Date.now();
+      await expect(
+        readSseUntil(`http://localhost:${server.port}/`, {
+          predicate: () => false,
+          deadlineMs: 300,
+        }),
+      ).rejects.toThrow(/within 300ms/);
+      // Bounded — must not stall until Bun's global test timeout.
+      expect(Date.now() - startedAt).toBeLessThan(5000);
+    } finally {
+      server.stop(true);
+    }
+  });
+});
+
+// --- Smoke / CORS / no-auth GETs (shared daemon — read-only) -----------------
+
+describe("daemon e2e: smoke, CORS, dual-prefix", () => {
+  let d: Daemon;
+  beforeAll(async () => {
+    d = await startDaemon();
+  }, HOOK_TIMEOUT_MS);
+  afterAll(async () => {
+    await stopDaemon(d);
+  }, HOOK_TIMEOUT_MS);
+
+  it("GET /_sandbox/scripts returns { scripts: [] } before discovery", async () => {
+    const res = await fetch(url(d, "/_sandbox/scripts"), {
+      headers: authHeaders(),
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     const body = (await res.json()) as { scripts: string[] };
     expect(body.scripts).toEqual([]);
   });
 
-  it("serves /_decopilot_vm/* without auth and sets CORS headers", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/scripts`,
-    );
+  it("serves no-auth GETs and sets CORS on the native branch", async () => {
+    const res = await fetch(url(d, "/_sandbox/scripts"));
     expect(res.status).toBe(200);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
-    const body = (await res.json()) as { scripts: string[] };
-    expect(body.scripts).toEqual([]);
   });
 
-  it("POST /_decopilot_vm/bash executes a command and returns stdout", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/bash`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ command: "echo hello-world" }),
-      },
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      stdout: string;
-      stderr: string;
-      exitCode: number;
-    };
-    expect(body.stdout.trim()).toBe("hello-world");
-    expect(body.exitCode).toBe(0);
-  });
-
-  it("GET /_decopilot_vm/events streams an SSE status event on connect", async () => {
-    const ctrl = new AbortController();
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/events`,
-      { signal: ctrl.signal, headers: authHeaders() },
-    );
+  it("GET /_sandbox/events streams an SSE status event on connect", async () => {
+    const { res } = await readSseUntil(url(d, "/_sandbox/events"), {
+      headers: authHeaders(),
+      predicate: (acc) =>
+        acc.includes("event: status") && acc.includes("data:"),
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     expect(res.headers.get("x-accel-buffering")).toBe("no");
-
-    const reader = res.body!.getReader();
-    const chunk = await reader.read();
-    const text = new TextDecoder().decode(chunk.value);
-    expect(text).toContain("event: status");
-    expect(text).toContain("data:");
-    ctrl.abort();
   });
 
-  it("OPTIONS /_decopilot_vm/bash returns CORS headers (no auth required)", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/bash`,
-      { method: "OPTIONS" },
-    );
+  it("OPTIONS preflight returns 204 + CORS headers (no auth)", async () => {
+    const res = await fetch(url(d, "/_sandbox/bash"), { method: "OPTIONS" });
     expect(res.status).toBe(204);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
@@ -207,614 +147,681 @@ describe("daemon e2e (runs generated script under Bun)", () => {
     );
   });
 
-  // TODO(#3259): pre-existing failure since the daemon state-machine PR
-  // landed. Tests skipped to keep CI honest while the fixtures are updated
-  // to POST /config and adapt to the new proxy 503 / "No dev server" copy.
-  it.skip("SSE replays buffered events on connect and delivers live broadcasts", async () => {
-    // Fire a request to produce a log line in the "daemon" replay buffer.
-    await fetch(`http://localhost:${daemonPort}/_decopilot_vm/scripts`, {
+  it("sets Access-Control-Allow-Origin=* on every response branch", async () => {
+    const scripts = await fetch(url(d, "/_sandbox/scripts"), {
       headers: authHeaders(),
     });
-    // Give the daemon a moment to append to its replay buffer.
-    await new Promise((r) => setTimeout(r, 50));
-
-    const ctrl = new AbortController();
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/events`,
-      { signal: ctrl.signal, headers: authHeaders() },
-    );
-    expect(res.status).toBe(200);
-
-    const reader = res.body!.getReader();
-    const decoder = new TextDecoder();
-
-    // First chunk should include the `status` event (replay).
-    const first = await reader.read();
-    const firstText = decoder.decode(first.value);
-    expect(firstText).toContain("event: status");
-
-    // Trigger a new log line by hitting the proxy fallthrough, and confirm
-    // we see it live on the SSE stream within a deadline. Headroom on shared
-    // CI runners — the proxy round-trip + SSE chunk delivery occasionally
-    // exceeds 3s under load.
-    const deadline = Date.now() + 8000;
-    let saw = false;
-    await fetch(`http://localhost:${daemonPort}/something-live`).catch(() => {
-      /* proxy upstream likely 502 — we only care about the log side-effect */
-    });
-    while (!saw && Date.now() < deadline) {
-      const r = await reader.read();
-      if (r.done) break;
-      const t = decoder.decode(r.value);
-      if (t.includes("proxy") && t.includes("something-live")) saw = true;
-    }
-    expect(saw).toBe(true);
-    ctrl.abort();
-  });
-
-  it.skip("POST /_decopilot_vm/exec/setup returns { ok: true } when idle", async () => {
-    // Boot autostart is stripped by patchForTest so the daemon is idle here.
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/exec/setup`,
-      { method: "POST", headers: authHeaders() },
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean };
-    expect(body.ok).toBe(true);
-  });
-
-  it.skip("POST /_decopilot_vm/exec/setup concurrent calls return [200, 409]", async () => {
-    // A local HTTP server that accepts connections but never responds.
-    // git clone's curl transport will hang in the headers-read phase, which
-    // keeps the orchestrator's spawnClone() awaiting — and so setupRunning
-    // stays true long enough for the second POST to see it.
-    const blocker = Bun.serve({
-      port: 0,
-      fetch: () => new Promise<Response>(() => {}),
-    });
-    try {
-      await stopDaemon();
-      await startDaemon({
-        CLONE_URL: `http://127.0.0.1:${blocker.port}/no-op.git`,
-        REPO_NAME: "test/repo",
-        BRANCH: "main",
-        GIT_USER_NAME: "test",
-        GIT_USER_EMAIL: "t@e",
-      });
-      const first = fetch(
-        `http://localhost:${daemonPort}/_decopilot_vm/exec/setup`,
-        { method: "POST", headers: authHeaders() },
-      );
-      const second = fetch(
-        `http://localhost:${daemonPort}/_decopilot_vm/exec/setup`,
-        { method: "POST", headers: authHeaders() },
-      );
-      const [r1, r2] = await Promise.all([first, second]);
-      const statuses = [r1.status, r2.status].sort();
-      expect(statuses[0]).toBe(200);
-      expect([409, 503]).toContain(statuses[1]);
-    } finally {
-      blocker.stop(true);
-    }
-  });
-
-  it.skip("POST /_decopilot_vm/exec/<unknown> before setup returns 400", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/exec/dev`,
-      { method: "POST", headers: authHeaders() },
-    );
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("setup not complete");
-  });
-
-  it.skip("POST /_decopilot_vm/kill/<name> when process isn't running returns 400", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/kill/nonexistent`,
-      { method: "POST", headers: authHeaders() },
-    );
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("not running");
-  });
-
-  it.skip("POST /_decopilot_vm/grep and /_decopilot_vm/glob succeed (confirms uid/gid stripped from spawn)", async () => {
-    // Create a file in appDir to search
-    const sampleFile = join(appDir, "needle.txt");
-    writeFileSync(sampleFile, "hello world\n");
-
-    const toBody = (obj: unknown) => JSON.stringify(obj);
-
-    const grepRes = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/grep`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: toBody({ pattern: "hello", output_mode: "content" }),
-      },
-    );
-    expect(grepRes.status).toBe(200);
-    const grepBody = (await grepRes.json()) as { results: string };
-    expect(grepBody.results).toContain("hello world");
-
-    const globRes = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/glob`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: toBody({ pattern: "*.txt" }),
-      },
-    );
-    expect(globRes.status).toBe(200);
-    const globBody = (await globRes.json()) as { files: string[] };
-    expect(globBody.files).toContain("needle.txt");
-  });
-
-  it.skip("POST /_decopilot_vm/read returns file contents with line numbers", async () => {
-    const sampleFile = join(appDir, "greet.txt");
-    writeFileSync(sampleFile, "line1\nline2\nline3\n");
-    const toBody = (obj: unknown) => JSON.stringify(obj);
-
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/read`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: toBody({ path: "greet.txt" }),
-      },
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { content: string; lineCount: number };
-    expect(body.content).toContain("1\tline1");
-    expect(body.content).toContain("2\tline2");
-    expect(body.lineCount).toBeGreaterThanOrEqual(3);
-  });
-
-  it("POST /_decopilot_vm/write + /edit round-trip", async () => {
-    const toBody = (obj: unknown) => JSON.stringify(obj);
-
-    const wr = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/write`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: toBody({ path: "ed.txt", content: "hello world" }),
-      },
-    );
-    expect(wr.status).toBe(200);
-
-    const ed = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/edit`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: toBody({
-          path: "ed.txt",
-          old_string: "world",
-          new_string: "bun",
-        }),
-      },
-    );
-    expect(ed.status).toBe(200);
-    const edBody = (await ed.json()) as { ok: boolean; replacements: number };
-    expect(edBody.ok).toBe(true);
-    expect(edBody.replacements).toBe(1);
-  });
-
-  it("POST /_decopilot_vm/bash with a timeout-killed command resolves with exitCode=-1 (does not hang)", async () => {
-    // Exercises the same Promise-resolution path as a spawn "error" event:
-    // child terminates externally (timeout-triggered SIGKILL) and close
-    // resolves the await promise with -1. If handleBash ever hangs on
-    // spawn failures, this test would time out.
-    const toBody = (obj: unknown) => JSON.stringify(obj);
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/bash`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: toBody({ command: "sleep 30", timeout: 500 }),
-      },
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { exitCode: number };
-    expect(body.exitCode).toBe(-1);
-  });
-
-  it("POST /_decopilot_vm/bash with invalid JSON body returns 400", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/bash`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: "not-valid-json-!!@#$",
-      },
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("daemon stays up and keeps probing upstream even when upstream is unreachable", async () => {
-    // UPSTREAM is :3000 (per startDaemon fixture) — nothing is listening there.
-    // The probe should fail gracefully and not crash the daemon. Give it time
-    // for at least one probe cycle (1s initial + 3s fast interval), then
-    // confirm the daemon is still responsive.
-    await new Promise((r) => setTimeout(r, 1500));
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/scripts`,
-      { headers: authHeaders() },
-    );
-    expect(res.status).toBe(200);
-  });
-});
-
-describe("daemon e2e (Bun-native server guarantees)", () => {
-  beforeEach(async () => {
-    await startDaemon();
-  }, HOOK_TIMEOUT_MS);
-  afterEach(async () => {
-    await stopDaemon();
-  }, HOOK_TIMEOUT_MS);
-
-  it("returns Access-Control-Allow-Origin=* on every /_decopilot_vm/* response branch", async () => {
-    // 1. GET /scripts (native Response branch)
-    const scripts = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/scripts`,
-      { headers: authHeaders() },
-    );
     expect(scripts.headers.get("access-control-allow-origin")).toBe("*");
-
-    // 2. OPTIONS preflight (native Response branch)
-    const preflight = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/bash`,
-      { method: "OPTIONS" },
-    );
+    const preflight = await fetch(url(d, "/_sandbox/bash"), {
+      method: "OPTIONS",
+    });
     expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
-
-    // 3. POST /bash (Bun-native Response)
-    const bash = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/bash`,
-      {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ command: "true" }),
-      },
-    );
+    const bash = await fetch(url(d, "/_sandbox/bash"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ command: "true" }),
+    });
     expect(bash.headers.get("access-control-allow-origin")).toBe("*");
-
-    // 4. GET unknown daemon route (404 catch-all)
-    const missing = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/does-not-exist`,
-      { headers: authHeaders() },
-    );
+    const missing = await fetch(url(d, "/_sandbox/does-not-exist"), {
+      headers: authHeaders(),
+    });
     expect(missing.headers.get("access-control-allow-origin")).toBe("*");
   });
 
   it("unknown daemon route returns 404 JSON (not a proxy forward)", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/does-not-exist`,
-      { headers: authHeaders() },
-    );
+    const res = await fetch(url(d, "/_sandbox/does-not-exist"), {
+      headers: authHeaders(),
+    });
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("Not found");
   });
-});
 
-// TODO(sandbox-daemon): all tests in this block fail since the state-machine
-// refactor (#3259). The new daemon's startup/upstream logic differs from
-// what these tests expect; main passes only by shard luck. Re-enable after
-// the daemon-state-machine maintainer refreshes them.
-describe.skip("daemon e2e (reverse proxy)", () => {
-  let upstreamServer: ReturnType<typeof Bun.serve> | null = null;
-  let upstreamPort = 0;
-
-  async function startWithUpstream(
-    upstreamHandler: (req: Request) => Response | Promise<Response>,
-  ) {
-    upstreamServer = Bun.serve({ port: 0, fetch: upstreamHandler });
-    upstreamPort = upstreamServer.port as number;
-    await startDaemon({ DEV_PORT: String(upstreamPort) });
-  }
-
-  async function startWithoutUpstream() {
-    // Point upstream at a port where nothing is listening.
-    upstreamPort = await freePort();
-    await startDaemon({ DEV_PORT: String(upstreamPort) });
-  }
-
-  afterEach(async () => {
-    await stopDaemon();
-    if (upstreamServer) {
-      upstreamServer.stop(true);
-      upstreamServer = null;
-    }
-  }, HOOK_TIMEOUT_MS);
-
-  // TODO(#3259): pre-existing failure since the daemon state-machine PR
-  // landed. The proxy 503 page text/headers changed and the bootstrap
-  // requirement now blocks these flows; tests skipped pending fixture refresh.
-  it.skip("injects BOOTSTRAP and strips XFO/CSP/content-encoding for HTML", async () => {
-    await startWithUpstream(
-      () =>
-        new Response("<html><body><h1>hi</h1></body></html>", {
-          headers: {
-            "Content-Type": "text/html",
-            "X-Frame-Options": "DENY",
-            "Content-Security-Policy": "default-src 'none'",
-          },
-        }),
-    );
-
-    const res = await fetch(`http://localhost:${daemonPort}/page`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("x-frame-options")).toBeNull();
-    expect(res.headers.get("content-security-policy")).toBeNull();
-    expect(res.headers.get("content-encoding")).toBeNull();
-    const body = await res.text();
-    // The daemon injects IFRAME_BOOTSTRAP_SCRIPT (a <script> tag) before </body>.
-    expect(body).toContain("<script>");
-    expect(body).toContain("</body>");
-    // The script should appear before the closing </body>.
-    expect(body.indexOf("<script>")).toBeLessThan(body.lastIndexOf("</body>"));
+  // Dual-serve compat (T11): both the canonical /_sandbox/* and legacy
+  // /_decopilot_vm/* prefixes are served for one release window.
+  it("GET /_sandbox/idle and legacy /_decopilot_vm/idle both work without auth", async () => {
+    expect((await fetch(url(d, "/_sandbox/idle"))).status).toBe(200);
+    expect((await fetch(url(d, "/_decopilot_vm/idle"))).status).toBe(200);
   });
 
-  it.skip("passes through non-HTML responses untouched", async () => {
-    await startWithUpstream(() =>
-      Response.json({ ok: true }, { headers: { "X-Frame-Options": "DENY" } }),
-    );
-
-    const res = await fetch(`http://localhost:${daemonPort}/api/data`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("x-frame-options")).toBeNull();
-    const body = (await res.json()) as { ok: boolean };
-    expect(body.ok).toBe(true);
-  });
-
-  it.skip("returns 503 'Server is starting' HTML when upstream is unreachable at /", async () => {
-    await startWithoutUpstream();
-    const res = await fetch(`http://localhost:${daemonPort}/`);
-    expect(res.status).toBe(503);
-    expect(res.headers.get("retry-after")).toBe("1");
-    expect(res.headers.get("access-control-allow-origin")).toBe("*");
-    const body = await res.text();
-    expect(body).toContain("Server is starting");
-  });
-
-  it.skip("returns 502 JSON when upstream is unreachable at a non-root path", async () => {
-    await startWithoutUpstream();
-    const res = await fetch(`http://localhost:${daemonPort}/api/thing`);
-    expect(res.status).toBe(502);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("proxy error");
-  });
-
-  it.skip("forwards POST bodies to upstream", async () => {
-    let receivedBody = "";
-    await startWithUpstream(async (req) => {
-      receivedBody = await req.text();
-      return Response.json({ ok: true });
-    });
-
-    const res = await fetch(`http://localhost:${daemonPort}/api/echo`, {
+  it("POST /_decopilot_vm/bash (legacy prefix) with bearer is not 401/404", async () => {
+    const res = await fetch(url(d, "/_decopilot_vm/bash"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hello: "world" }),
-    });
-    expect(res.status).toBe(200);
-    expect(receivedBody).toBe('{"hello":"world"}');
-  });
-
-  it.skip("forwards chunked POST bodies to upstream", async () => {
-    let receivedBody = "";
-    await startWithUpstream(async (req) => {
-      receivedBody = await req.text();
-      return Response.json({ ok: true });
-    });
-
-    const stream = new ReadableStream({
-      start(c) {
-        c.enqueue(new TextEncoder().encode("chunk1 "));
-        c.enqueue(new TextEncoder().encode("chunk2"));
-        c.close();
-      },
-    });
-    // `duplex: "half"` required by fetch when streaming a request body.
-    const res = await fetch(`http://localhost:${daemonPort}/api/echo`, {
-      method: "POST",
-      body: stream,
-      // @ts-expect-error — duplex is valid but not in all TS lib types
-      duplex: "half",
-    });
-    expect(res.status).toBe(200);
-    expect(receivedBody).toBe("chunk1 chunk2");
-  });
-
-  it.skip("strips Authorization from the request seen by the dev server", async () => {
-    let seenAuth: string | null = "<<unset>>";
-    await startWithUpstream((req) => {
-      seenAuth = req.headers.get("authorization");
-      return Response.json({ ok: true });
-    });
-    const res = await fetch(`http://localhost:${daemonPort}/api/sniff`, {
-      headers: { Authorization: `Bearer ${DAEMON_TOKEN}` },
-    });
-    expect(res.status).toBe(200);
-    expect(seenAuth).toBeNull();
-  });
-});
-
-describe("daemon e2e (auth on mutating routes)", () => {
-  beforeEach(async () => {
-    await startDaemon();
-  }, HOOK_TIMEOUT_MS);
-  afterEach(async () => {
-    await stopDaemon();
-  }, HOOK_TIMEOUT_MS);
-
-  const toBody = (obj: unknown) => JSON.stringify(obj);
-
-  const MUTATING_POSTS: Array<{
-    name: string;
-    path: string;
-    body: string;
-  }> = [
-    { name: "read", path: "/_decopilot_vm/read", body: toBody({ path: "x" }) },
-    {
-      name: "write",
-      path: "/_decopilot_vm/write",
-      body: toBody({ path: "x", content: "y" }),
-    },
-    {
-      name: "edit",
-      path: "/_decopilot_vm/edit",
-      body: toBody({ path: "x", old_string: "a", new_string: "b" }),
-    },
-    {
-      name: "grep",
-      path: "/_decopilot_vm/grep",
-      body: toBody({ pattern: "x" }),
-    },
-    {
-      name: "glob",
-      path: "/_decopilot_vm/glob",
-      body: toBody({ pattern: "*" }),
-    },
-    {
-      name: "bash",
-      path: "/_decopilot_vm/bash",
+      headers: jsonAuthHeaders(),
       body: toBody({ command: "true" }),
-    },
-    { name: "exec/setup", path: "/_decopilot_vm/exec/setup", body: "" },
-    { name: "kill/foo", path: "/_decopilot_vm/kill/foo", body: "" },
-  ];
-
-  for (const m of MUTATING_POSTS) {
-    it(`POST ${m.name} without bearer returns 401`, async () => {
-      const res = await fetch(`http://localhost:${daemonPort}${m.path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: m.body,
-      });
-      expect(res.status).toBe(401);
-    });
-
-    it(`POST ${m.name} with wrong bearer returns 401`, async () => {
-      const res = await fetch(`http://localhost:${daemonPort}${m.path}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer wrong-token",
-        },
-        body: m.body,
-      });
-      expect(res.status).toBe(401);
-    });
-
-    it(`POST ${m.name} with correct bearer is not 401`, async () => {
-      const res = await fetch(`http://localhost:${daemonPort}${m.path}`, {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: m.body,
-      });
-      expect(res.status).not.toBe(401);
-    });
-  }
-
-  it("GET /health works without auth", async () => {
-    const res = await fetch(`http://localhost:${daemonPort}/health`);
-    expect(res.status).toBe(200);
-  });
-
-  it("GET /_decopilot_vm/idle works without auth", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/idle`,
-    );
-    expect(res.status).toBe(200);
-  });
-
-  // Dual-serve compatibility (T11): the daemon serves both the canonical
-  // `/_sandbox/*` prefix and the legacy `/_decopilot_vm/*` prefix for one
-  // release window. The cluster speaks only `/_sandbox/*`; old clusters
-  // still rolling out keep hitting the legacy prefix until they update.
-  it("GET /_sandbox/idle works without auth (new prefix)", async () => {
-    const res = await fetch(`http://localhost:${daemonPort}/_sandbox/idle`);
-    expect(res.status).toBe(200);
-  });
-
-  it("GET /_decopilot_vm/idle works without auth (legacy prefix dual-serve)", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/idle`,
-    );
-    expect(res.status).toBe(200);
-  });
-
-  it("POST /_sandbox/bash with correct bearer is not 401 (new prefix dual-serve)", async () => {
-    const res = await fetch(`http://localhost:${daemonPort}/_sandbox/bash`, {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ command: "true" }),
     });
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(404);
   });
 
-  it("GET /_decopilot_vm/scripts works without auth", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/scripts`,
-    );
-    expect(res.status).toBe(200);
-  });
-
-  it("GET /_decopilot_vm/events works without auth", async () => {
-    const ctrl = new AbortController();
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/events`,
-      { signal: ctrl.signal },
-    );
-    expect(res.status).toBe(200);
-    ctrl.abort();
-  });
-
-  it("GET /health tolerates an arbitrary Authorization header", async () => {
-    const res = await fetch(`http://localhost:${daemonPort}/health`, {
+  it("GET /health works without auth and tolerates an arbitrary Authorization header", async () => {
+    expect((await fetch(url(d, "/health"))).status).toBe(200);
+    const withJunk = await fetch(url(d, "/health"), {
       headers: { Authorization: "Bearer junk-token" },
     });
-    expect(res.status).toBe(200);
+    expect(withJunk.status).toBe(200);
   });
 
-  it("GET /_decopilot_vm/idle tolerates an arbitrary Authorization header", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/idle`,
-      { headers: { Authorization: "Bearer junk-token" } },
-    );
-    expect(res.status).toBe(200);
-  });
-
-  it("GET /_decopilot_vm/scripts tolerates an arbitrary Authorization header", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/scripts`,
-      { headers: { Authorization: "Bearer junk-token" } },
-    );
-    expect(res.status).toBe(200);
-  });
-
-  it("GET /_decopilot_vm/events tolerates an arbitrary Authorization header", async () => {
-    const ctrl = new AbortController();
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/events`,
-      {
-        signal: ctrl.signal,
+  it("no-auth GETs tolerate an arbitrary Authorization header", async () => {
+    for (const path of ["/_sandbox/idle", "/_sandbox/scripts"]) {
+      const res = await fetch(url(d, path), {
         headers: { Authorization: "Bearer junk-token" },
-      },
-    );
+      });
+      expect(res.status).toBe(200);
+    }
+  });
+});
+
+// --- bash (shared daemon) ----------------------------------------------------
+
+describe("daemon e2e: bash", () => {
+  let d: Daemon;
+  beforeAll(async () => {
+    d = await startDaemon();
+  }, HOOK_TIMEOUT_MS);
+  afterAll(async () => {
+    await stopDaemon(d);
+  }, HOOK_TIMEOUT_MS);
+
+  it("executes a command and returns stdout", async () => {
+    const res = await fetch(url(d, "/_sandbox/bash"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ command: "echo hello-world" }),
+    });
     expect(res.status).toBe(200);
-    ctrl.abort();
+    const body = (await res.json()) as { stdout: string; exitCode: number };
+    expect(body.stdout.trim()).toBe("hello-world");
+    expect(body.exitCode).toBe(0);
   });
 
-  it("OPTIONS /_decopilot_vm/* preflight works without auth", async () => {
-    const res = await fetch(
-      `http://localhost:${daemonPort}/_decopilot_vm/bash`,
-      { method: "OPTIONS" },
-    );
-    expect(res.status).toBe(204);
+  it("a timeout-killed command resolves with exitCode=-1 (does not hang)", async () => {
+    const res = await fetch(url(d, "/_sandbox/bash"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ command: "sleep 30", timeout: 500 }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { exitCode: number };
+    expect(body.exitCode).toBe(-1);
+  });
+
+  it("invalid JSON body returns 400", async () => {
+    const res = await fetch(url(d, "/_sandbox/bash"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: "not-valid-json-!!@#$",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("background mode returns a taskId + status", async () => {
+    const res = await fetch(url(d, "/_sandbox/bash"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ command: "true", mode: "background" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { taskId: string; status: string };
+    expect(typeof body.taskId).toBe("string");
+    expect(body.taskId.length).toBeGreaterThan(0);
+  });
+});
+
+// --- fs (shared daemon; each test uses a unique path) ------------------------
+
+describe("daemon e2e: fs", () => {
+  let d: Daemon;
+  beforeAll(async () => {
+    d = await startDaemon();
+  }, HOOK_TIMEOUT_MS);
+  afterAll(async () => {
+    await stopDaemon(d);
+  }, HOOK_TIMEOUT_MS);
+
+  it("write + read round-trip returns line-numbered content", async () => {
+    await writeRepoFile(d, "greet.txt", "line1\nline2\nline3\n");
+    const res = await fetch(url(d, "/_sandbox/read"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ path: "greet.txt" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      kind: string;
+      content: string;
+      lineCount: number;
+    };
+    expect(body.kind).toBe("text");
+    expect(body.content).toContain("1\tline1");
+    expect(body.content).toContain("2\tline2");
+    expect(body.lineCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it("write + edit round-trip", async () => {
+    await writeRepoFile(d, "ed.txt", "hello world");
+    const ed = await fetch(url(d, "/_sandbox/edit"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ path: "ed.txt", old_string: "world", new_string: "bun" }),
+    });
+    expect(ed.status).toBe(200);
+    const body = (await ed.json()) as { ok: boolean; replacements: number };
+    expect(body.ok).toBe(true);
+    expect(body.replacements).toBe(1);
+  });
+
+  it("edit of a missing string returns 400", async () => {
+    await writeRepoFile(d, "ed-missing.txt", "abc");
+    const res = await fetch(url(d, "/_sandbox/edit"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({
+        path: "ed-missing.txt",
+        old_string: "zzz",
+        new_string: "q",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("unlink reports existed=true then existed=false", async () => {
+    await writeRepoFile(d, "doomed.txt", "x");
+    const first = await fetch(url(d, "/_sandbox/unlink"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ path: "doomed.txt" }),
+    });
+    expect(first.status).toBe(200);
+    expect(((await first.json()) as { existed: boolean }).existed).toBe(true);
+    const second = await fetch(url(d, "/_sandbox/unlink"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ path: "doomed.txt" }),
+    });
+    expect(second.status).toBe(200);
+    expect(((await second.json()) as { existed: boolean }).existed).toBe(false);
+  });
+
+  it("mkdir + rename happy paths", async () => {
+    const mk = await fetch(url(d, "/_sandbox/mkdir"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ path: "subdir" }),
+    });
+    expect(mk.status).toBe(200);
+    await writeRepoFile(d, "from.txt", "movable");
+    const rn = await fetch(url(d, "/_sandbox/rename"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ from: "from.txt", to: "subdir/to.txt" }),
+    });
+    expect(rn.status).toBe(200);
+    expect(((await rn.json()) as { ok: boolean }).ok).toBe(true);
+  });
+
+  it("mkdir rejects a path escaping the root", async () => {
+    const res = await fetch(url(d, "/_sandbox/mkdir"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ path: "../escape" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("glob finds a written file (no ripgrep needed)", async () => {
+    await writeRepoFile(d, "needle.txt", "hay\n");
+    const res = await fetch(url(d, "/_sandbox/glob"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ pattern: "*.txt" }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { files: string[] };
+    expect(body.files).toContain("needle.txt");
+  });
+
+  it("grep finds matching content (strict in CI; tolerant locally without ripgrep)", async () => {
+    await writeRepoFile(d, "grepme.txt", "find-this-token\n");
+    const res = await fetch(url(d, "/_sandbox/grep"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ pattern: "find-this-token", output_mode: "content" }),
+    });
+    // CI installs ripgrep (see sandbox-daemon.yml), so there the route MUST
+    // work — no 500 escape hatch, otherwise a grep regression passes silently.
+    if (process.env.CI || res.status === 200) {
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { results: string };
+      expect(body.results).toContain("find-this-token");
+    } else {
+      // Local machine without ripgrep: the route surfaces a 500 "grep unavailable".
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as { error: string };
+      expect(body.error.toLowerCase()).toContain("grep");
+    }
+  });
+});
+
+// --- config (fresh daemon per test — mutates config/token) -------------------
+
+describe("daemon e2e: config", () => {
+  let d: Daemon;
+  beforeEach(async () => {
+    d = await startDaemon();
+  }, HOOK_TIMEOUT_MS);
+  afterEach(async () => {
+    await stopDaemon(d);
+  }, HOOK_TIMEOUT_MS);
+
+  it("GET /_sandbox/config on a fresh daemon returns null config + empty envKeys", async () => {
+    const res = await fetch(url(d, "/_sandbox/config"), {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      config: unknown;
+      envKeys: string[];
+      ready: boolean;
+      orchestrator: { running: boolean; pending: number };
+    };
+    expect(body.config).toBeNull();
+    expect(body.envKeys).toEqual([]);
+    expect(body.ready).toBe(false);
+    expect(body.orchestrator).toEqual({ running: false, pending: 0 });
+  });
+
+  it("POST /_sandbox/config bootstraps and reports the transition", async () => {
+    const res = await fetch(url(d, "/_sandbox/config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ application: { packageManager: { name: "npm" } } }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { transition: string; config: unknown };
+    expect(body.transition).toBe("bootstrap");
+    const get = await fetch(url(d, "/_sandbox/config"), {
+      headers: authHeaders(),
+    });
+    const cfg = (await get.json()) as {
+      config: { application?: { packageManager?: { name: string } } };
+    };
+    expect(cfg.config.application?.packageManager?.name).toBe("npm");
+  });
+
+  it("POST /_sandbox/config with invalid JSON returns 400", async () => {
+    const res = await fetch(url(d, "/_sandbox/config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: "}{not json",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /_sandbox/config with a non-object body returns 400", async () => {
+    const res = await fetch(url(d, "/_sandbox/config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: "null",
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("object");
+  });
+
+  it("rejects changing the immutable cloneUrl with 409", async () => {
+    const first = await fetch(url(d, "/_sandbox/config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({
+        git: { repository: { cloneUrl: "https://example.com/a.git" } },
+      }),
+    });
+    expect(first.status).toBe(200);
+    const second = await fetch(url(d, "/_sandbox/config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({
+        git: { repository: { cloneUrl: "https://example.com/b.git" } },
+      }),
+    });
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as { error: string };
+    expect(body.error).toContain("immutable");
+  });
+
+  it("env keys round-trip via GET (keys only, no values)", async () => {
+    const res = await fetch(url(d, "/_sandbox/config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ env: { FOO: "bar", BAZ: "qux" } }),
+    });
+    expect(res.status).toBe(200);
+    const get = await fetch(url(d, "/_sandbox/config"), {
+      headers: authHeaders(),
+    });
+    const body = (await get.json()) as { envKeys: string[] };
+    expect(body.envKeys).toEqual(["BAZ", "FOO"]);
+  });
+
+  it("auth.rotateToken with a too-short token returns 400", async () => {
+    const res = await fetch(url(d, "/_sandbox/config"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ auth: { rotateToken: "tooshort" } }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+// --- tasks (fresh daemon per test) -------------------------------------------
+
+describe("daemon e2e: tasks", () => {
+  let d: Daemon;
+  beforeEach(async () => {
+    d = await startDaemon();
+  }, HOOK_TIMEOUT_MS);
+  afterEach(async () => {
+    await stopDaemon(d);
+  }, HOOK_TIMEOUT_MS);
+
+  async function spawnBackground(command: string): Promise<string> {
+    const res = await fetch(url(d, "/_sandbox/bash"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({ command, mode: "background" }),
+    });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { taskId: string }).taskId;
+  }
+
+  it("GET /_sandbox/tasks lists a running background task", async () => {
+    const id = await spawnBackground("sleep 10");
+    const res = await fetch(url(d, "/_sandbox/tasks?status=running"), {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { tasks: { id: string }[] };
+    expect(body.tasks.some((t) => t.id === id)).toBe(true);
+  });
+
+  it("GET /_sandbox/tasks/:id returns a summary; unknown id is 404", async () => {
+    const id = await spawnBackground("sleep 10");
+    const res = await fetch(url(d, `/_sandbox/tasks/${id}`), {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { stdout: string; truncated: boolean };
+    expect(typeof body.stdout).toBe("string");
+    const missing = await fetch(url(d, "/_sandbox/tasks/does-not-exist"), {
+      headers: authHeaders(),
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it("kill a running task → ok; killing again → 400 not running", async () => {
+    const id = await spawnBackground("sleep 30");
+    const kill = await fetch(url(d, `/_sandbox/tasks/${id}/kill`), {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(kill.status).toBe(200);
+    expect(((await kill.json()) as { ok: boolean }).ok).toBe(true);
+    // Wait for the process to actually exit before re-killing.
+    await new Promise((r) => setTimeout(r, 200));
+    const again = await fetch(url(d, `/_sandbox/tasks/${id}/kill`), {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(again.status).toBe(400);
+  });
+
+  it("POST /_sandbox/tasks/kill-all returns a killed count", async () => {
+    await spawnBackground("sleep 30");
+    const res = await fetch(url(d, "/_sandbox/tasks/kill-all"), {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; killed: number };
+    expect(body.ok).toBe(true);
+    expect(body.killed).toBeGreaterThanOrEqual(1);
+  });
+
+  it("GET /_sandbox/tasks/:id/stream replays output then ends", async () => {
+    const id = await spawnBackground("echo streamed-line");
+    const { res } = await readSseUntil(url(d, `/_sandbox/tasks/${id}/stream`), {
+      headers: authHeaders(),
+      predicate: (acc) => acc.includes("event: end"),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+  });
+
+  it("DELETE a finished task → ok; deleting a running task → 400", async () => {
+    // Running task → 400.
+    const running = await spawnBackground("sleep 30");
+    const delRunning = await fetch(url(d, `/_sandbox/tasks/${running}`), {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    expect(delRunning.status).toBe(400);
+
+    // Finished task → ok. Spawn a fast task and wait for it to leave "running".
+    const quick = await spawnBackground("true");
+    const deadline = Date.now() + 5000;
+    let exited = false;
+    while (Date.now() < deadline) {
+      const r = await fetch(url(d, `/_sandbox/tasks/${quick}`), {
+        headers: authHeaders(),
+      });
+      if (
+        r.ok &&
+        ((await r.json()) as { status: string }).status !== "running"
+      ) {
+        exited = true;
+        break;
+      }
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    expect(exited).toBe(true);
+    const delDone = await fetch(url(d, `/_sandbox/tasks/${quick}`), {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    expect(delDone.status).toBe(200);
+    expect(((await delDone.json()) as { ok: boolean }).ok).toBe(true);
+  });
+});
+
+// --- orgfs-config ------------------------------------------------------------
+
+describe("daemon e2e: orgfs-config", () => {
+  const validConfig = toBody({
+    baseUrl: "https://cluster.example",
+    orgSlug: "acme",
+    token: "fs-scoped-token",
+    mounts: [{ volume: "skills", path: "skills", readonly: true }],
+  });
+
+  it(
+    "returns { written: false } when no sidecar path is configured",
+    async () => {
+      const d = await startDaemon();
+      try {
+        const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
+          method: "POST",
+          headers: jsonAuthHeaders(),
+          body: validConfig,
+        });
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as { written: boolean }).written).toBe(
+          false,
+        );
+      } finally {
+        await stopDaemon(d);
+      }
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  it(
+    "invalid org-fs config returns 400",
+    async () => {
+      const d = await startDaemon();
+      try {
+        const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
+          method: "POST",
+          headers: jsonAuthHeaders(),
+          body: toBody({ not: "a valid org-fs config" }),
+        });
+        expect(res.status).toBe(400);
+      } finally {
+        await stopDaemon(d);
+      }
+    },
+    HOOK_TIMEOUT_MS,
+  );
+
+  it(
+    "writes the config to the sidecar control path when configured",
+    async () => {
+      const sidecarDir = mkdtempSync(join(tmpdir(), "daemon-e2e-orgfs-"));
+      const sidecarPath = join(sidecarDir, "orgfs.json");
+      const d = await startDaemon({ ORGFS_SIDECAR_CONFIG_PATH: sidecarPath });
+      try {
+        const res = await fetch(url(d, "/_sandbox/orgfs-config"), {
+          method: "POST",
+          headers: jsonAuthHeaders(),
+          body: validConfig,
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { written: boolean };
+        // With a sidecar path wired and a valid config, the relay must write it.
+        expect(body.written).toBe(true);
+        expect(readFileSync(sidecarPath, "utf8").length).toBeGreaterThan(0);
+      } finally {
+        await stopDaemon(d);
+        rmSync(sidecarDir, { recursive: true, force: true });
+      }
+    },
+    HOOK_TIMEOUT_MS,
+  );
+});
+
+// --- auth matrix on mutating routes (shared daemon) --------------------------
+
+describe("daemon e2e: auth on mutating routes", () => {
+  let d: Daemon;
+  beforeAll(async () => {
+    d = await startDaemon();
+  }, HOOK_TIMEOUT_MS);
+  afterAll(async () => {
+    await stopDaemon(d);
+  }, HOOK_TIMEOUT_MS);
+
+  const MUTATING: Array<{
+    name: string;
+    path: string;
+    method?: string;
+    body: string;
+  }> = [
+    { name: "read", path: "/_sandbox/read", body: toBody({ path: "x" }) },
+    {
+      name: "write",
+      path: "/_sandbox/write",
+      body: toBody({ path: "x", content: "y" }),
+    },
+    {
+      name: "edit",
+      path: "/_sandbox/edit",
+      body: toBody({ path: "x", old_string: "a", new_string: "b" }),
+    },
+    { name: "unlink", path: "/_sandbox/unlink", body: toBody({ path: "x" }) },
+    { name: "mkdir", path: "/_sandbox/mkdir", body: toBody({ path: "x" }) },
+    {
+      name: "rename",
+      path: "/_sandbox/rename",
+      body: toBody({ from: "a", to: "b" }),
+    },
+    { name: "grep", path: "/_sandbox/grep", body: toBody({ pattern: "x" }) },
+    { name: "glob", path: "/_sandbox/glob", body: toBody({ pattern: "*" }) },
+    { name: "bash", path: "/_sandbox/bash", body: toBody({ command: "true" }) },
+    {
+      name: "config",
+      path: "/_sandbox/config",
+      body: toBody({ env: { A: "1" } }),
+    },
+    { name: "orgfs-config", path: "/_sandbox/orgfs-config", body: "{}" },
+    {
+      name: "git/publish",
+      path: "/_sandbox/git/publish",
+      body: toBody({ message: "m" }),
+    },
+    {
+      name: "git/discard",
+      path: "/_sandbox/git/discard",
+      body: toBody({ filepaths: ["x"] }),
+    },
+    {
+      name: "git/rebase",
+      path: "/_sandbox/git/rebase",
+      body: toBody({ base: "main" }),
+    },
+    {
+      name: "git/status",
+      path: "/_sandbox/git/status",
+      method: "GET",
+      body: "",
+    },
+    { name: "setup/clone", path: "/_sandbox/setup/clone", body: "" },
+    { name: "setup/install", path: "/_sandbox/setup/install", body: "" },
+    { name: "setup/start", path: "/_sandbox/setup/start", body: "" },
+    { name: "tasks/kill-all", path: "/_sandbox/tasks/kill-all", body: "" },
+    {
+      name: "dispatch",
+      path: "/_sandbox/dispatch",
+      body: toBody({ harnessId: "x", input: {} }),
+    },
+  ];
+
+  for (const m of MUTATING) {
+    const method = m.method ?? "POST";
+    it(`${method} ${m.name} without bearer → 401`, async () => {
+      const res = await fetch(url(d, m.path), {
+        method,
+        headers: m.body ? { "Content-Type": "application/json" } : {},
+        body: m.body || undefined,
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it(`${method} ${m.name} with wrong bearer → 401`, async () => {
+      const res = await fetch(url(d, m.path), {
+        method,
+        headers: {
+          Authorization: "Bearer wrong-token",
+          ...(m.body ? { "Content-Type": "application/json" } : {}),
+        },
+        body: m.body || undefined,
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it(`${method} ${m.name} with correct bearer is not 401`, async () => {
+      const res = await fetch(url(d, m.path), {
+        method,
+        headers: m.body ? jsonAuthHeaders() : authHeaders(),
+        body: m.body || undefined,
+      });
+      expect(res.status).not.toBe(401);
+    });
+  }
+
+  it("DELETE /_sandbox/runs/:id without bearer → 401", async () => {
+    const res = await fetch(url(d, "/_sandbox/runs/run-1"), {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(401);
   });
 });

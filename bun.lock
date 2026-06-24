@@ -38,7 +38,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "3.43.5",
+      "version": "3.48.2",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -188,7 +188,7 @@
     },
     "packages/bindings": {
       "name": "@decocms/bindings",
-      "version": "1.4.7",
+      "version": "1.4.9",
       "dependencies": {
         "@decocms/mcp-utils": "^1.0.5",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -209,9 +209,13 @@
         "create-deco": "./index.js",
       },
     },
+    "packages/e2e": {
+      "name": "@decocms/e2e",
+      "version": "0.0.0",
+    },
     "packages/harness": {
       "name": "@decocms/harness",
-      "version": "1.7.0",
+      "version": "1.9.0",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.85",
         "@ai-sdk/google": "^3.0.83",
@@ -268,7 +272,7 @@
     },
     "packages/runtime": {
       "name": "@decocms/runtime",
-      "version": "2.1.2",
+      "version": "2.1.4",
       "dependencies": {
         "@cloudflare/workers-types": "^4.20250617.0",
         "@decocms/bindings": "^1.0.7",
@@ -665,6 +669,8 @@
     "@decocms/bindings": ["@decocms/bindings@workspace:packages/bindings"],
 
     "@decocms/docs": ["@decocms/docs@workspace:apps/docs"],
+
+    "@decocms/e2e": ["@decocms/e2e@workspace:packages/e2e"],
 
     "@decocms/harness": ["@decocms/harness@workspace:packages/harness"],
 
