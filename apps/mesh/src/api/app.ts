@@ -1156,17 +1156,32 @@ export async function createApp(options: CreateAppOptions = {}) {
   // OpenTelemetry tracing middleware
   app.use("*", tracingMiddleware);
 
-  // CORS middleware
+  // CORS middleware — restrict to same-origin and configured base URL.
+  // Local mode additionally allows localhost/127.0.0.1 for dev tooling.
   app.use(
     "/*",
     cors({
       origin: (origin) => {
-        // Allow localhost and configured origins
-        if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
-          return origin;
+        const settings = getSettings();
+
+        // Same origin as the configured base URL is always allowed
+        if (settings.baseUrl) {
+          try {
+            if (origin === new URL(settings.baseUrl).origin) return origin;
+          } catch {
+            // Invalid baseUrl — fall through
+          }
         }
-        // TODO: Configure allowed origins from environment
-        return origin;
+
+        // Local mode allows localhost and loopback for dev tooling
+        if (settings.localMode) {
+          if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
+            return origin;
+          }
+        }
+
+        // Reject all other origins
+        return false;
       },
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
