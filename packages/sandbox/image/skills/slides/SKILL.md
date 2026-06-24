@@ -41,11 +41,18 @@ Themes (`--theme` or `"theme"` in data; default `aurora-light`):
 `aurora-light` (clean light, soft gradients), `ink-dark` (dark keynote,
 amber accents), `bold-gradient` (vivid full-bleed gradient, glass cards).
 
-`--theme` also accepts a **path to a custom theme file** — a complete deck
-shell HTML with a `{{{slides}}}` insertion point (copy a built-in from
-`org/public/core/slides/themes/` as the starting point and retune its
-CSS custom properties). Keep org brand themes in org-fs so they persist,
-e.g.:
+`--theme` also accepts a **path to a custom theme file**, in either shape:
+
+1. A **shell** with a `{{{slides}}}` insertion point (copy a built-in from
+   `org/public/core/slides/themes/` and retune its CSS custom properties).
+2. A **real deck** ("deck-as-theme") — a complete deck whose `<deck-viewer>`
+   holds example slides. On render, `{{title}}` is filled and the
+   `<deck-viewer>` body is replaced with the generated slides. So one file is
+   both an editable sample deck (open it in Studio and edit the slides inline,
+   like any deck) **and** the generation shell — the cleanest way to author a
+   brand theme.
+
+Keep org brand themes in org-fs so they persist, e.g.:
 
 ```sh
 slides-create --data @deck.json \
@@ -53,6 +60,22 @@ slides-create --data @deck.json \
   --templates-dir org/<slug>/templates/slides \
   --output org/<slug>/decks/q3.html
 ```
+
+### Brand folders
+
+If the org has a brand at `org/<slug>/brands/<name>/` (check with
+`ls org/<slug>/brands/`), honor it before any built-in theme (to *create* or
+edit a brand, use the `brand` skill):
+
+- **`tokens.css`** — the brand's `--brand-*` CSS custom properties. Inline
+  them into the deck (paste into the theme `<style>` block; never reference the
+  org-fs file by URL — preview iframes carry no cookies). A brand theme shell
+  maps deck variables onto them, e.g. `--deck-accent: var(--brand-primary);`.
+- **`slides-theme.html`** — if present it's a ready deck shell for this brand;
+  pass it as `--theme org/<slug>/brands/<name>/slides-theme.html`.
+- **`brand.md`** — voice, tone, do's and don'ts; read it and follow it when
+  writing slide copy.
+- **`logo.*`** — the brand logo; place it on the title/closing slides.
 
 ### Slide templates and their data
 

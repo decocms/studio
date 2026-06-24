@@ -15,6 +15,7 @@ import {
   DotsVertical,
   Download01,
   Folder,
+  Palette,
   Trash01,
   Zap,
 } from "@untitledui/icons";
@@ -32,6 +33,7 @@ import {
 } from "@/web/components/file-type-icon";
 import { FolderIcon } from "@/web/components/folder-icon";
 import { KEYS } from "@/web/lib/query-keys";
+import { parseBrandTokens } from "./brand";
 import { parseSkillMd } from "./skill";
 
 const IMAGE_EXTS = new Set([
@@ -369,6 +371,101 @@ export function SkillCard({
       <p className="line-clamp-2 min-h-8 text-xs leading-4 text-muted-foreground">
         {meta?.description ?? ""}
       </p>
+    </CardShell>
+  );
+}
+
+/**
+ * BrandCard — a brand folder (org-fs `brands/<name>/`), rendered first-class:
+ * palette tile, the dir name, and a strip of color swatches parsed from
+ * tokens.css (fetched lazily, shared with the preview's text cache). Click
+ * opens the brand preview; the menu reaches the underlying folder.
+ */
+export function BrandCard({
+  dirName,
+  updatedAt,
+  tokensUrl,
+  onOpen,
+  onBrowse,
+  onDelete,
+}: {
+  dirName: string;
+  updatedAt: string;
+  /** Byte URL of the dir's tokens.css (may 404 for brand.md-only folders). */
+  tokensUrl: string;
+  onOpen: () => void;
+  /** Open the underlying folder listing. */
+  onBrowse: () => void;
+  onDelete?: () => void;
+}) {
+  const { data } = useQuery({
+    queryKey: KEYS.fileText(tokensUrl),
+    queryFn: async () => {
+      const res = await fetch(tokensUrl, { credentials: "include" });
+      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+      return res.text();
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+  const swatches = data
+    ? parseBrandTokens(data)
+        .filter((t) => t.isColor)
+        .slice(0, 6)
+    : [];
+
+  return (
+    <CardShell onOpen={onOpen}>
+      <CardHeader
+        icon={
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Palette size={16} />
+          </div>
+        }
+        name={dirName}
+        meta={timeAgo(updatedAt)}
+        subtitle="Brand"
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Actions for ${dirName}`}
+              >
+                <DotsVertical size={14} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <DropdownMenuItem onClick={onBrowse}>
+                <Folder size={14} />
+                Browse files
+              </DropdownMenuItem>
+              {onDelete && (
+                <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                  <Trash01 size={14} />
+                  Delete
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
+      <div className="flex min-h-5 items-center gap-1.5">
+        {swatches.map((t) => (
+          <span
+            key={t.name}
+            className="size-5 rounded-full border border-border/60"
+            style={{ backgroundColor: t.value }}
+            title={`${t.name}: ${t.value}`}
+          />
+        ))}
+      </div>
     </CardShell>
   );
 }

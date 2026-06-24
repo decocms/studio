@@ -284,8 +284,10 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   // --- Reads ---------------------------------------------------------------
 
   // List a directory's immediate children (path "" = volume root). Dirs
-  // following the Claude Code skill format (containing SKILL.md) are marked
-  // `hasSkill` — one batch probe — so the Library renders them first-class.
+  // following a known folder convention are marked so the Library renders
+  // them first-class — `hasSkill` (Claude Code skills, contain SKILL.md) and
+  // `hasBrand` (brand folders, contain tokens.css or brand.md). One batch
+  // probe covers every candidate marker file.
   app.get("/:volume/list", async (c) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_READ");
@@ -293,18 +295,31 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     try {
       const entries = await r.fs.listDir(volume, c.req.query("path") ?? "");
       const dirs = entries.filter((e) => e.kind === "dir");
-      const skillMds = dirs.length
+      const exists = dirs.length
         ? await r.fs.filesExist(
             volume,
-            dirs.map((d) => `${d.path}/SKILL.md`),
+            dirs.flatMap((d) => [
+              `${d.path}/SKILL.md`,
+              `${d.path}/tokens.css`,
+              `${d.path}/brand.md`,
+            ]),
           )
         : new Set<string>();
       return c.json({
-        entries: entries.map((e) =>
-          e.kind === "dir" && skillMds.has(`${e.path}/SKILL.md`)
-            ? { ...e, hasSkill: true }
-            : e,
-        ),
+        entries: entries.map((e) => {
+          if (e.kind !== "dir") return e;
+          const hasSkill = exists.has(`${e.path}/SKILL.md`);
+          const hasBrand =
+            exists.has(`${e.path}/tokens.css`) ||
+            exists.has(`${e.path}/brand.md`);
+          return hasSkill || hasBrand
+            ? {
+                ...e,
+                ...(hasSkill && { hasSkill }),
+                ...(hasBrand && { hasBrand }),
+              }
+            : e;
+        }),
       });
     } catch (err) {
       return fsErrorResponse(c, err);
