@@ -1,6 +1,6 @@
 {
   "name": "@decocms/e2e",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Black-box e2e suite (HTTP + DB), isolated from app source. Landing pad — the mesh suite migrates here in a follow-up PR.",
   "type": "module",
