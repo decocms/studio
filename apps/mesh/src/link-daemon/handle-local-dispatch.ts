@@ -337,7 +337,7 @@ export async function handleLocalDispatch(
       maxAttempts: RELAY_MAX_ATTEMPTS,
       maxTimeout: RELAY_MAX_TIMEOUT_MS,
     },
-    post: async (body) => {
+    post: async (body, _fromSeq, onDurablyPublished) => {
       // Build the publisher PER attempt so a retry after a tunnel-session
       // renewal re-sources the NEW live connection (the prior one is closed).
       const publisher =
@@ -350,6 +350,9 @@ export async function handleLocalDispatch(
         runId: work.runId,
         fenceToken: work.runFenceToken,
         publisher,
+        // Each publishLine awaits its JetStream PubAck, so a reported seq is
+        // durable — let the relay drop that prefix from the outbox.
+        onPublished: onDurablyPublished,
       });
       return { ok: true, lastSeq };
     },

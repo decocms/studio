@@ -14,18 +14,23 @@
  * - STREAMING-FIRST: a sink attempt is opened immediately and each line is
  *   written as the SSE event arrives, so the consumer sees per-chunk progress
  *   (run liveness) instead of per-step batches.
- * - The sink acks once per attempt, after the body ends (`RelayPostResult`).
- *   Every line therefore stays in the durable outbox until an attempt succeeds
- *   after the terminal line was sent.
+ * - ROLLING TRUNCATION: a sink reports durably-published seqs via the
+ *   `onDurablyPublished` callback (the per-line NATS sink fires it on PubAck);
+ *   the relay drops that confirmed prefix from the outbox as it goes, so the
+ *   buffer holds only the in-flight (unconfirmed) window — not the whole run.
+ *   The terminal `RelayPostResult` ack then truncates whatever tail remains. A
+ *   sink that never reports keeps every line until terminal ack (old behavior).
  * - On a failed attempt (publish/connection drop) the relay retries with
- *   backoff; each new attempt resends the WHOLE buffered prefix from seq 1
- *   (`fromSeq: 1`) and then continues streaming live lines. JetStream
- *   `Nats-Msg-Id` dedup makes resending always safe.
+ *   backoff; each new attempt resends the buffered prefix from `fromSeq: 1` —
+ *   which after rolling truncation is the lowest still-unconfirmed seq (the
+ *   confirmed prefix is already durable at the sink) — then continues streaming
+ *   live lines. JetStream `Nats-Msg-Id` dedup makes resending always safe.
  * - Pump progress is independent of POST health: while disconnected the
  *   sandbox keeps streaming and lines accumulate in the buffer, up to
- *   `RELAY_BUFFER_MAX_BYTES` — beyond that the run fails loudly (with the
- *   runId) rather than ballooning daemon memory. Because acks are terminal,
- *   the cap also bounds the total relayable size of a single run.
+ *   `MAX_OUTBOX_BYTES` — beyond that the run fails loudly (with the runId)
+ *   rather than ballooning disk. With rolling truncation that cap bounds the
+ *   unconfirmed in-flight window (a stalled-publisher backstop), not the whole
+ *   run's relayable size.
  * - If the sandbox stream ends without a `done` event, the relay synthesizes
  *   a terminal `{type:"done"}` line so the cluster always sees a terminal.
  * - Aborting `signal` tears everything down: the sandbox SSE source is
@@ -64,6 +69,16 @@ export interface RelayDispatchSSEAsChunkStreamInput {
   post: (
     body: ReadableStream<Uint8Array> | string,
     fromSeq: number,
+    /**
+     * Reports the highest seq this attempt has DURABLY published (e.g. a
+     * JetStream PubAck for the per-line NATS sink). The relay drops the
+     * confirmed prefix from the outbox (rolling ackSeq truncation), so a long
+     * run's buffer stays bounded to the in-flight window instead of the whole
+     * run. Sinks whose lines are only durable at terminal ack (none today)
+     * simply never call it. Called in seq order; the relay truncates up to the
+     * value.
+     */
+    onDurablyPublished?: (ackSeq: number) => void,
   ) => Promise<RelayPostResult>;
   signal?: AbortSignal;
   /**
@@ -288,7 +303,14 @@ export async function relayDispatchSSEAsChunkStream(
   // ── Poster: streaming POST attempts with backoff + full-prefix resend ────
   const postOnce = async (): Promise<void> => {
     if (pumpError !== null) throw pumpError;
-    const result = await input.post(createAttemptBody(), 1);
+    // Rolling ackSeq truncation: as the sink confirms a line is durably
+    // published, drop the prefix from the outbox so the buffer never holds more
+    // than the unconfirmed in-flight window. The confirmed prefix is durable at
+    // the sink (JetStream dedupes by msgId), so a resend never needs it.
+    const onDurablyPublished = (ackSeq: number): void => {
+      outbox.truncateUpToSeq({ runId: input.runId, fenceToken, ackSeq });
+    };
+    const result = await input.post(createAttemptBody(), 1, onDurablyPublished);
     if (pumpError !== null) throw pumpError;
     if (!result.ok) {
       throw new Error(

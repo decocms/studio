@@ -143,9 +143,12 @@ describe("outbox append/replay", () => {
   });
 });
 
-describe("outbox cap (loud-fail preserves the 64 MiB contract)", () => {
-  it("MAX_OUTBOX_BYTES equals today's RELAY_BUFFER_MAX_BYTES (64 MiB)", () => {
-    expect(MAX_OUTBOX_BYTES).toBe(64 * 1024 * 1024);
+describe("outbox cap (loud-fail backstop)", () => {
+  it("MAX_OUTBOX_BYTES defaults to 512 MiB (env-tunable backstop, not the per-run limit)", () => {
+    // Bumped from the legacy 64 MiB once rolling ackSeq truncation bounded the
+    // outbox to the in-flight window; this is now only a stalled-publisher
+    // backstop. Env override (DECO_LINK_MAX_OUTBOX_BYTES) is unset in tests.
+    expect(MAX_OUTBOX_BYTES).toBe(512 * 1024 * 1024);
   });
 
   it("throws loudly with the runId when a single run exceeds the per-run cap", () => {

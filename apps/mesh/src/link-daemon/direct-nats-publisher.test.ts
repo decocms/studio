@@ -221,6 +221,76 @@ test("publishRelayBodyToNats emits no checkpoint when under the debounce", async
   expect(checkpoints).toEqual([]);
 });
 
+test("publishRelayBodyToNats reports onPublished at the checkpoint cadence (drives outbox truncation)", async () => {
+  const published: number[] = [];
+  const publisher = {
+    publishLine: async ({ line }: { line: { event: { type: string } } }) =>
+      line.event.type === "ui-message-chunk"
+        ? ("published" as const)
+        : ("terminal" as const),
+    publishDone: async () => {},
+    publishCheckpoint: async () => {},
+  };
+  let callCount = 0;
+  const times = [0, 4000, 8000, 12000, 16000];
+  const now = () => times[callCount++] ?? 16000;
+  const chunk = (seq: number) =>
+    JSON.stringify({
+      seq,
+      event: {
+        type: "ui-message-chunk",
+        chunk: { type: "text-delta", id: "1", delta: "x" },
+      },
+    });
+  const body = `${chunk(1)}\n${chunk(2)}\n${JSON.stringify({ seq: 3, event: { type: "done" } })}\n`;
+  await publishRelayBodyToNats({
+    body,
+    runId: "run_1",
+    fenceToken: "fence_1",
+    publisher,
+    now,
+    checkpointDebounceMs: 3000,
+    onPublished: (seq) => published.push(seq),
+  });
+  // Reported the durable high-water mark at each debounce crossing; the terminal
+  // flush is a no-op since seq 2 was already reported.
+  expect(published).toEqual([1, 2]);
+});
+
+test("publishRelayBodyToNats flushes a final onPublished even when no checkpoint fires", async () => {
+  const published: number[] = [];
+  const publisher = {
+    publishLine: async ({ line }: { line: { event: { type: string } } }) =>
+      line.event.type === "ui-message-chunk"
+        ? ("published" as const)
+        : ("terminal" as const),
+    publishDone: async () => {},
+    publishCheckpoint: async () => {},
+  };
+  const now = () => 1000; // never crosses the debounce window
+  const chunk = (seq: number) =>
+    JSON.stringify({
+      seq,
+      event: {
+        type: "ui-message-chunk",
+        chunk: { type: "text-delta", id: "1", delta: "x" },
+      },
+    });
+  const body = `${chunk(1)}\n${chunk(2)}\n${JSON.stringify({ seq: 3, event: { type: "done" } })}\n`;
+  await publishRelayBodyToNats({
+    body,
+    runId: "run_1",
+    fenceToken: "fence_1",
+    publisher,
+    now,
+    checkpointDebounceMs: 3000,
+    onPublished: (seq) => published.push(seq),
+  });
+  // No checkpoint crossed, but the terminal flush still reports the durable
+  // high-water mark so the outbox prefix is dropped before terminal ack.
+  expect(published).toEqual([2]);
+});
+
 describe("publishRelayBodyToNats", () => {
   test("processes string NDJSON body with chunk, heartbeat, and done", async () => {
     const { js, published } = makeFakeJs();

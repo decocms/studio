@@ -24,11 +24,19 @@ import type { OutboxLane } from "./outbox-lane";
 import { assertBunRuntime } from "./outbox-runtime";
 
 /**
- * Hard cap on the unacked outbox, per-run AND per-daemon (spec §5.1). On hit
- * the run fails loudly — the on-disk successor to today's in-memory
- * `RELAY_BUFFER_MAX_BYTES` 64 MiB loud-fail contract.
+ * Hard cap on the UNACKED outbox, per-run AND per-daemon (spec §5.1). On hit the
+ * run fails loudly instead of ballooning disk.
+ *
+ * With rolling ackSeq truncation (the relay drops each line once the sink
+ * confirms it durable), the outbox only ever holds the in-flight window — lines
+ * the pump has buffered but the publisher hasn't confirmed yet — so this is now
+ * a backstop for a stalled publisher, not the per-run size limit it used to be.
+ * The old 64 MiB value capped the WHOLE run (terminal-only truncation) and was
+ * too small for long/verbose agent runs; default bumped to 512 MiB and made
+ * env-tunable (`DECO_LINK_MAX_OUTBOX_BYTES`, bytes) for ops without a rebuild.
  */
-export const MAX_OUTBOX_BYTES = 64 * 1024 * 1024;
+export const MAX_OUTBOX_BYTES =
+  Number(process.env.DECO_LINK_MAX_OUTBOX_BYTES) || 512 * 1024 * 1024;
 
 export interface OutboxAppend {
   runId: string;
