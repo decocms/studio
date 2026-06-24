@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Copy01, DotsGrid, Trash01 } from "@untitledui/icons";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -7,19 +6,14 @@ import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { BlockEditor, type RawBlock } from "./block-registry";
 
 /**
- * Pixel height below which the row can't fit three 24px buttons stacked
- * vertically with 4px gaps (3*24 + 2*4 = 80, plus the 6px top inset).
- * Short blocks (divider, empty paragraph, single-line heading) fall under
- * this and switch to the inline action layout.
- */
-const SHORT_ROW_THRESHOLD_PX = 80;
-
-/**
  * One block in the post document. Borderless (Notion-style) — the left
- * gutter reveals a drag handle on hover; for tall blocks the duplicate
- * and delete buttons stack underneath, but for short blocks they move to
- * the right edge inline so they don't overflow below the row. Dragging
- * is bound to the handle only so it never fights with text editing.
+ * gutter reveals a drag handle on hover; the duplicate and delete buttons
+ * appear as a hover overlay at the top-right. The block's horizontal
+ * padding is constant (it never depends on the row's height) so typing in a
+ * paragraph never reflows the text — measuring height to switch the layout
+ * made blocks near the threshold jitter as the wrap width changed per
+ * keystroke. Dragging is bound to the handle only so it never fights with
+ * text editing.
  */
 export function BlockRow({
   id,
@@ -45,32 +39,15 @@ export function BlockRow({
     isDragging,
   } = useSortable({ id });
 
-  const [isShort, setIsShort] = useState(false);
-
   return (
     <div
-      // React 19 ref callback: wires dnd-kit's setNodeRef and starts a
-      // ResizeObserver in the same hook. Returning the cleanup tells React
-      // to disconnect when the element unmounts.
-      ref={(el) => {
-        setNodeRef(el);
-        if (!el) return;
-        const ro = new ResizeObserver(([entry]) => {
-          if (!entry) return;
-          setIsShort(entry.contentRect.height < SHORT_ROW_THRESHOLD_PX);
-        });
-        ro.observe(el);
-        return () => ro.disconnect();
-      }}
+      ref={setNodeRef}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
       }}
       className={cn(
-        "group/row relative rounded-md py-1.5 pl-12 transition-colors hover:bg-muted/40",
-        // Short rows host duplicate+delete inline on the right, so reserve
-        // gutter there too. Tall rows only need a small right margin.
-        isShort ? "pr-20" : "pr-2",
+        "group/row relative rounded-md py-1.5 pl-12 pr-2 transition-colors hover:bg-muted/40",
         isDragging && "opacity-50",
       )}
     >
@@ -83,14 +60,7 @@ export function BlockRow({
       >
         <DotsGrid size={14} />
       </button>
-      <div
-        className={cn(
-          "absolute flex gap-1 opacity-0 transition-opacity group-hover/row:opacity-100",
-          isShort
-            ? "right-2 top-1.5 flex-row"
-            : "left-1 top-9 flex-col items-center",
-        )}
-      >
+      <div className="absolute right-1 top-1 z-10 flex flex-row gap-0.5 rounded-md bg-background/80 opacity-0 backdrop-blur-sm transition-opacity group-hover/row:opacity-100">
         <button
           type="button"
           aria-label="Duplicate block"
