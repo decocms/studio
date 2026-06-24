@@ -71,7 +71,7 @@ export function jsonAuthHeaders(): Record<string, string> {
   return authHeaders({ "Content-Type": "application/json" });
 }
 
-/** Base URL for a daemon's sandbox routes. `prefix` defaults to legacy. */
+/** Absolute URL for a path on the daemon under test. */
 export function url(d: Daemon, path: string): string {
   return `http://localhost:${d.port}${path}`;
 }
@@ -168,10 +168,11 @@ export async function stopDaemon(d: Daemon | null): Promise<void> {
 // --- SSE ---------------------------------------------------------------------
 
 /**
- * Read an SSE stream until `predicate(accumulated)` is true, then abort. Always
- * bounded by a deadline so a stream that never satisfies the predicate fails
- * loudly instead of hanging the suite. Accumulates across chunks (event
- * boundaries split arbitrarily).
+ * Read an SSE stream until `predicate(accumulated)` is true, then abort.
+ * Hard-bounded by a deadline timer that aborts the request — so even a stream
+ * that emits no bytes and never closes (a `reader.read()` that would otherwise
+ * hang) fails loudly within `deadlineMs` instead of stalling until Bun's global
+ * timeout. Accumulates across chunks (event boundaries split arbitrarily).
  */
 export async function readSseUntil(
   target: string,
@@ -183,28 +184,67 @@ export async function readSseUntil(
     deadlineMs?: number;
   },
 ): Promise<{ res: Response; text: string }> {
+  const deadlineMs = opts.deadlineMs ?? 8000;
   const ctrl = new AbortController();
-  const res = await fetch(target, {
-    method: opts.method,
-    headers: opts.headers,
-    body: opts.body,
-    signal: ctrl.signal,
-  });
-  const reader = res.body!.getReader();
-  const dec = new TextDecoder();
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   let acc = "";
-  const deadline = Date.now() + (opts.deadlineMs ?? 8000);
-  try {
-    while (Date.now() < deadline) {
+  let matched: Response | undefined;
+
+  // Race the WHOLE operation (fetch + every read) against one deadline. Aborting
+  // the fetch signal does NOT reliably reject an in-flight `reader.read()` (nor
+  // a header-stalled `fetch`) in Bun, so the race — not the abort — is what
+  // bounds a stream that emits nothing and never closes.
+  const work = (async () => {
+    const res = await fetch(target, {
+      method: opts.method,
+      headers: opts.headers,
+      body: opts.body,
+      signal: ctrl.signal,
+    });
+    reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    while (true) {
       const r = await reader.read();
-      if (r.done) break;
+      if (r.done) return;
       acc += dec.decode(r.value, { stream: true });
-      if (opts.predicate(acc)) return { res, text: acc };
+      if (opts.predicate(acc)) {
+        matched = res;
+        return;
+      }
     }
+  })();
+  // The leaked read rejects once we abort/cancel below — swallow it so it never
+  // surfaces as an unhandled rejection after we've already timed out.
+  work.catch(() => {});
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"TIMEOUT">((resolve) => {
+    timer = setTimeout(() => resolve("TIMEOUT"), deadlineMs);
+  });
+
+  try {
+    const outcome = await Promise.race([
+      work.then(() => "DONE" as const),
+      timeout,
+    ]);
+    if (outcome === "TIMEOUT") {
+      throw new Error(
+        `SSE stream did not match within ${deadlineMs}ms; last 500 chars:\n${acc.slice(-500)}`,
+      );
+    }
+    if (matched) return { res: matched, text: acc };
+    throw new Error(
+      `SSE stream ended before predicate matched; last 500 chars:\n${acc.slice(-500)}`,
+    );
   } finally {
+    if (timer) clearTimeout(timer);
     ctrl.abort();
+    try {
+      await reader?.cancel();
+    } catch {
+      /* already closed */
+    }
   }
-  throw new Error(`SSE deadline reached; last 500 chars:\n${acc.slice(-500)}`);
 }
 
 // --- Bootstrap ---------------------------------------------------------------

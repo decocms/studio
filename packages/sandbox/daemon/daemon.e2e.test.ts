@@ -6,8 +6,12 @@
  * black-box contract; no daemon source is imported. Git/exec, reverse-proxy,
  * and dispatch live in sibling daemon.e2e.*.test.ts files.
  *
- * In production the daemon spawns with uid/gid=1000; tests run as a non-root
- * user, so we rely on the default (no privilege drop) which the bundle honors.
+ * Privilege note: some daemon paths (gitSync) request a uid/gid=1000 drop, but
+ * the daemon runs under Bun, which silently ignores spawn uid/gid — so the
+ * suite runs as the invoking (non-root) user. A reimplementation that actually
+ * honored uid/gid while running as a different user on Linux would EPERM in the
+ * git routes; that's a runtime quirk these tests lean on, not a guaranteed part
+ * of the contract.
  */
 import {
   afterAll,
@@ -58,6 +62,40 @@ describe("daemon e2e: swappable spawn target", () => {
       "bun",
       "/abs/daemon.js",
     ]);
+  });
+});
+
+// --- Harness self-check: readSseUntil must be deadline-bounded ---------------
+
+describe("daemon e2e: readSseUntil is deadline-bounded", () => {
+  it("rejects within the deadline on a stream that never emits or closes", async () => {
+    // An upstream that accepts the connection and then stalls forever — the
+    // worst case for an unbounded `reader.read()`.
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start() {
+              /* never enqueue, never close */
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+    });
+    try {
+      const startedAt = Date.now();
+      await expect(
+        readSseUntil(`http://localhost:${server.port}/`, {
+          predicate: () => false,
+          deadlineMs: 300,
+        }),
+      ).rejects.toThrow(/within 300ms/);
+      // Bounded — must not stall until Bun's global test timeout.
+      expect(Date.now() - startedAt).toBeLessThan(5000);
+    } finally {
+      server.stop(true);
+    }
   });
 });
 
@@ -343,18 +381,21 @@ describe("daemon e2e: fs", () => {
     expect(body.files).toContain("needle.txt");
   });
 
-  it("grep finds matching content (tolerates ripgrep being absent)", async () => {
+  it("grep finds matching content (strict in CI; tolerant locally without ripgrep)", async () => {
     await writeRepoFile(d, "grepme.txt", "find-this-token\n");
     const res = await fetch(url(d, "/_sandbox/grep"), {
       method: "POST",
       headers: jsonAuthHeaders(),
       body: toBody({ pattern: "find-this-token", output_mode: "content" }),
     });
-    if (res.status === 200) {
+    // CI installs ripgrep (see sandbox-daemon.yml), so there the route MUST
+    // work — no 500 escape hatch, otherwise a grep regression passes silently.
+    if (process.env.CI || res.status === 200) {
+      expect(res.status).toBe(200);
       const body = (await res.json()) as { results: string };
       expect(body.results).toContain("find-this-token");
     } else {
-      // CI without ripgrep: the route surfaces a 500 "grep unavailable".
+      // Local machine without ripgrep: the route surfaces a 500 "grep unavailable".
       expect(res.status).toBe(500);
       const body = (await res.json()) as { error: string };
       expect(body.error.toLowerCase()).toContain("grep");
@@ -558,12 +599,38 @@ describe("daemon e2e: tasks", () => {
   });
 
   it("DELETE a finished task → ok; deleting a running task → 400", async () => {
+    // Running task → 400.
     const running = await spawnBackground("sleep 30");
-    const del = await fetch(url(d, `/_sandbox/tasks/${running}`), {
+    const delRunning = await fetch(url(d, `/_sandbox/tasks/${running}`), {
       method: "DELETE",
       headers: authHeaders(),
     });
-    expect(del.status).toBe(400);
+    expect(delRunning.status).toBe(400);
+
+    // Finished task → ok. Spawn a fast task and wait for it to leave "running".
+    const quick = await spawnBackground("true");
+    const deadline = Date.now() + 5000;
+    let exited = false;
+    while (Date.now() < deadline) {
+      const r = await fetch(url(d, `/_sandbox/tasks/${quick}`), {
+        headers: authHeaders(),
+      });
+      if (
+        r.ok &&
+        ((await r.json()) as { status: string }).status !== "running"
+      ) {
+        exited = true;
+        break;
+      }
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    expect(exited).toBe(true);
+    const delDone = await fetch(url(d, `/_sandbox/tasks/${quick}`), {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    expect(delDone.status).toBe(200);
+    expect(((await delDone.json()) as { ok: boolean }).ok).toBe(true);
   });
 });
 
