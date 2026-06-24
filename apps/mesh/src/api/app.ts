@@ -1180,8 +1180,9 @@ export async function createApp(options: CreateAppOptions = {}) {
           }
         }
 
-        // Reject all other origins
-        return false;
+        // Reject all other origins — return empty string so Hono omits
+        // the Access-Control-Allow-Origin header entirely.
+        return "";
       },
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
