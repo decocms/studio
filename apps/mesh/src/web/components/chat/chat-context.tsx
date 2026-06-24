@@ -867,6 +867,32 @@ export function ActiveTaskProvider({
           });
           return;
         }
+        // open() tool: agent explicitly requested preview of a file. Invalidate
+        // the stat cache (same as data-deck-updated so the iframe renders fresh)
+        // then navigate. Emitted without an `id` so this chunk is NOT persisted
+        // as a message part and won't re-trigger navigation on reload.
+        if (chunk.type === "data-open-preview") {
+          const data = (chunk as unknown as { data: { filepath?: string } })
+            .data;
+          if (!data?.filepath) return;
+          const filepath = data.filepath;
+          const cb = cbRef.current;
+          cb.queryClient.invalidateQueries({
+            queryKey: KEYS.orgFsStat(cb.orgId, "home", filepath),
+          });
+          cb.queryClient.invalidateQueries({
+            queryKey: KEYS.orgFsRecent(cb.orgId),
+          });
+          cb.navigate({
+            to: ".",
+            search: (prev: Record<string, unknown>) => ({
+              ...prev,
+              main: formatDeckTabId(filepath),
+            }),
+            replace: true,
+          });
+          return;
+        }
         // Deck preview (slides skill): the harness emits `data-deck-updated`
         // when `decks/<name>.html` changes in the org home volume. Refresh
         // the stat (rolls the deck tab's cache-busted iframe src) and

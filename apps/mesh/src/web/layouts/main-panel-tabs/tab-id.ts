@@ -135,14 +135,16 @@ const FIXED_SYSTEM_TAB_SET = new Set<string>(FIXED_SYSTEM_TABS);
  *   - "app:<connectionId>:<toolName>"  (expanded tool / pinned view)
  *   - "automation:<id>"               (ephemeral automation detail)
  *   - "file:<encoded key>"            (ephemeral thread-output file preview)
- *   - "deck:<encoded path>"           (ephemeral HTML-artifact preview/editor)
+ *
+ * Note: "deck:<encoded path>" is intentionally NOT per-thread — deck files live
+ * in the org home volume and outlive any thread, so the preview should persist
+ * when the user starts a new chat to continue working on the same page.
  */
 export function isPerThreadTab(tabId: string): boolean {
   return (
     tabId.startsWith("app:") ||
     tabId.startsWith("automation:") ||
-    tabId.startsWith("file:") ||
-    tabId.startsWith("deck:")
+    tabId.startsWith("file:")
   );
 }
 

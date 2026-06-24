@@ -79,8 +79,8 @@ describe("deck tab id", () => {
     expect(parseDeckTabId("deck:%E0%A4%A")).toBeNull();
   });
 
-  test("deck tabs are per-thread", () => {
-    expect(isPerThreadTab(formatDeckTabId("decks/a.html"))).toBe(true);
+  test("deck tabs are NOT per-thread (org home volume survives task switches)", () => {
+    expect(isPerThreadTab(formatDeckTabId("decks/a.html"))).toBe(false);
   });
 });
 

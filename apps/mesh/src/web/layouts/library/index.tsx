@@ -11,7 +11,7 @@
 
 import { useRef, useState } from "react";
 import type { ComponentType, SVGProps } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ import {
   Eye,
   Globe01,
   Home01,
+  MessageCircle01,
   Plus,
   RefreshCw01,
   Stars01,
@@ -51,7 +52,15 @@ import { homeMountPath } from "@/file-storage/home-mount";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { FileTypeIcon } from "@/web/components/file-type-icon";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
+import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button";
+import { readLastLocation } from "@/web/lib/last-location";
+import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   type OrgFsEntry,
@@ -696,9 +705,13 @@ function LibraryPage() {
   );
 }
 
+const isHtmlPath = (name: string) => /\.html?$/i.test(name);
+
 export default function Library() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+  const urlParams = useParams({ strict: false }) as { org?: string };
+  const orgSlug = urlParams.org ?? "";
   const search = useSearch({ strict: false }) as { preview?: string };
   const previewPath = search.preview;
   const previewName = previewPath ? basename(previewPath) : "";
@@ -710,6 +723,36 @@ export default function Library() {
         preview: undefined,
       }),
     });
+
+  // Show a chat button in the top-left Toggles slot when a home-volume HTML
+  // file is being previewed, so the user can jump straight to the agent chat.
+  const previewLocation = previewPath ? parseLibraryPath(previewPath) : null;
+  const showChatToggle =
+    !isMobile &&
+    !!previewPath &&
+    previewLocation?.volume === "home" &&
+    isHtmlPath(previewName);
+
+  const openInChat = () => {
+    if (!previewLocation) return;
+    const lastLoc = readLastLocation();
+    const sameOrg = lastLoc?.org === orgSlug;
+    const taskId =
+      sameOrg && lastLoc?.taskId ? lastLoc.taskId : crypto.randomUUID();
+    const chatSearch: Record<string, unknown> = {
+      chat: 1,
+      // Keep the asset visible in the deck tab so it stays open alongside chat.
+      main: formatDeckTabId(previewLocation.dirPath),
+    };
+    if (sameOrg && lastLoc?.virtualmcpid) {
+      chatSearch.virtualmcpid = lastLoc.virtualmcpid;
+    }
+    navigate({
+      to: "/$org/$taskId",
+      params: { org: orgSlug, taskId },
+      search: () => chatSearch,
+    });
+  };
 
   if (isMobile) {
     return (
@@ -754,6 +797,21 @@ export default function Library() {
               onClick={closePreview}
             />
           </Toolbar.Tabs>
+          {showChatToggle && (
+            <Toolbar.Toggles>
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <ToolbarIconButton
+                    onClick={openInChat}
+                    aria-label="Open in chat"
+                  >
+                    <MessageCircle01 size={16} />
+                  </ToolbarIconButton>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Open in chat</TooltipContent>
+              </Tooltip>
+            </Toolbar.Toggles>
+          )}
           <ResizableHandle className="bg-sidebar" />
           <ResizablePanel order={2} minSize={25} defaultSize={45}>
             <div className="h-full p-0.5 pt-0.25">

@@ -7,6 +7,7 @@ import {
   Download01,
   Edit01,
   Edit02,
+  Eye,
   File06,
   Folder,
   Globe02,
@@ -48,6 +49,7 @@ export const TOOL_DISPLAY_MAP: Record<string, ToolDisplay> = {
   // System tools
   enable_tool: { icon: Tool01, label: "Enable Tool" },
   open_in_agent: { icon: Server01, label: "Open in Agent" },
+  open: { icon: Eye, label: "Open Preview" },
 
   // Sandbox / code execution tools
   sandbox: { icon: Code02, label: "Run Code" },

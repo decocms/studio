@@ -199,6 +199,16 @@ export async function buildAgentSystemPrompt(
 
   add("todoWrite", buildTodoWritePrompt());
 
+  add(
+    "openPreview",
+    `<open-preview>
+After writing or editing an HTML page or deck in the org home volume \
+(e.g. \`pages/landing.html\` or \`decks/q3.html\`), call \`open\` with the \
+home-volume-relative path so the user sees the result immediately in the \
+preview panel. Pass only the path relative to the home volume — no leading slash.
+</open-preview>`,
+  );
+
   // Attached files/skills ride along in agentInstructions (folded in by the
   // passthrough client's getInstructions), so they reach both the cluster and
   // sandbox-daemon run paths uniformly — no separate block here.

@@ -26,6 +26,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   web_search: { readOnly: true, destructive: false },
   generate_image: { readOnly: false, destructive: false },
   open_in_agent: { readOnly: false, destructive: false },
+  open: { readOnly: true, destructive: false },
   subtask: { readOnly: false, destructive: false },
   user_ask: { readOnly: true, destructive: false },
   propose_plan: { readOnly: true, destructive: false },
@@ -34,6 +35,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   update_interests: { readOnly: false, destructive: false },
 };
 import { createReadToolOutputTool } from "@decocms/harness/decopilot/built-in-tools/read-tool-output";
+import { createOpenTool } from "@decocms/harness/decopilot/built-in-tools/open";
 import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sandbox";
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
@@ -178,6 +180,9 @@ async function buildAllTools(
     isPlanMode,
     objectStorage: ctx.objectStorage,
   });
+  // open() is Studio-specific (navigates the React preview panel via
+  // data-open-preview) — registered here, not in portable-built-ins.
+  tools.open = createOpenTool(writer);
   if (userId) {
     // Cluster `interests.write` hook: closes over ctx/storage and forwards the
     // org/agent/user carried in the InterestsWrite payload. The tool itself no
@@ -349,6 +354,7 @@ async function buildAllTools(
     update_interests: ReturnType<typeof createUpdateInterestsTool>;
     subtask: ReturnType<typeof createSubtaskTool>;
     read_tool_output: ReturnType<typeof createReadToolOutputTool>;
+    open: ReturnType<typeof createOpenTool>;
     generate_image: ReturnType<typeof createGenerateImageTool>;
     web_search: ReturnType<typeof createWebSearchTool>;
     take_screenshot: ReturnType<typeof createTakeScreenshotTool>;

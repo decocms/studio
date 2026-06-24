@@ -533,6 +533,8 @@ function MessagePart({
       return null;
     case "tool-update_interests":
       return null;
+    case "tool-open":
+      return null;
     case "tool-user_ask":
       return (
         <UserAskPart
