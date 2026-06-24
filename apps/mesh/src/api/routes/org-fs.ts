@@ -302,7 +302,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       MAX_RECENT_LIMIT,
     );
     try {
-      return c.json({ entries: await ctx.orgFs.recent(limit) });
+      return c.json({
+        entries: await ctx.orgFs.recentWithEffectivePublic(limit),
+      });
     } catch (err) {
       return fsErrorResponse(c, err);
     }
@@ -317,8 +319,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
+    const path = c.req.query("path") ?? "";
     try {
-      const entries = await r.fs.listDir(volume, c.req.query("path") ?? "");
+      const entries = await r.fs.listDir(volume, path);
       const dirs = entries.filter((e) => e.kind === "dir");
       const skillMds = dirs.length
         ? await r.fs.filesExist(
@@ -326,12 +329,17 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             dirs.map((d) => `${d.path}/SKILL.md`),
           )
         : new Set<string>();
+      // Children of a published folder inherit public — one query for the
+      // whole listing, OR'd with each entry's own flag.
+      const inherit = await r.fs.childrenInheritPublic(volume, path);
       return c.json({
-        entries: entries.map((e) =>
-          e.kind === "dir" && skillMds.has(`${e.path}/SKILL.md`)
-            ? { ...e, hasSkill: true }
-            : e,
-        ),
+        entries: entries.map((e) => ({
+          ...e,
+          ...(e.kind === "dir" && skillMds.has(`${e.path}/SKILL.md`)
+            ? { hasSkill: true }
+            : {}),
+          effectivePublic: e.readPublic || inherit,
+        })),
       });
     } catch (err) {
       return fsErrorResponse(c, err);
@@ -346,7 +354,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     try {
       const entry = await r.fs.stat(volume, c.req.query("path") ?? "");
       if (!entry) return c.json({ error: "Not found" }, 404);
-      return c.json({ entry });
+      const effectivePublic =
+        entry.readPublic || (await r.fs.inheritsPublic(volume, entry.path));
+      return c.json({ entry: { ...entry, effectivePublic } });
     } catch (err) {
       return fsErrorResponse(c, err);
     }

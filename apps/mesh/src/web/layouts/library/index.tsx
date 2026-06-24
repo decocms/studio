@@ -65,6 +65,7 @@ import {
 import {
   FileCard,
   FolderCard,
+  type PublicState,
   RecentFileCard,
   SkillCard,
   timeAgo,
@@ -88,6 +89,16 @@ import { SkillPreviewDialog } from "./skill-preview-dialog";
 /** Absolute proxy link to copy when sharing a file. */
 function publicFileUrl(path: string): string {
   return `${window.location.origin}${path}`;
+}
+
+/** Badge state for a list entry: published here, inherited, or neither. */
+function publicStateOf(e: {
+  readPublic?: boolean;
+  effectivePublic?: boolean;
+}): PublicState | undefined {
+  if (e.readPublic) return "own";
+  if (e.effectivePublic) return "inherited";
+  return undefined;
 }
 
 /** The volumes every sandbox mounts (see file-storage/mount/provisioning.ts).
@@ -253,7 +264,7 @@ function RootView({
                 updatedAt={e.updatedAt}
                 size={e.size}
                 downloadUrl={fileUrl(e.volume, e.path)}
-                readPublic={e.readPublic}
+                publicState={publicStateOf(e)}
                 onOpen={() => onOpenFile(`${e.volume}/${e.path}`)}
                 onShare={() => shareFile(e)}
                 onDelete={() =>
@@ -311,7 +322,7 @@ function RootView({
                 filename={basename(e.path)}
                 updatedAt={e.updatedAt}
                 downloadUrl={fileUrl(e.volume, e.path)}
-                readPublic={e.readPublic}
+                publicState={publicStateOf(e)}
                 onOpen={() => onOpenFile(`${e.volume}/${e.path}`)}
                 onShare={() => shareFile(e)}
                 onDelete={() =>
@@ -428,7 +439,7 @@ function VolumeView({
                 dirName={basename(e.path)}
                 updatedAt={e.updatedAt}
                 skillMdUrl={fileUrl(volume, `${e.path}/SKILL.md`)}
-                readPublic={e.readPublic}
+                publicState={publicStateOf(e)}
                 onOpen={() => onOpenSkill(browsePathFor(location, e.path))}
                 onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
@@ -448,7 +459,7 @@ function VolumeView({
                 name={basename(e.path)}
                 meta={timeAgo(e.updatedAt)}
                 readOnly={location.readOnly}
-                readPublic={e.readPublic}
+                publicState={publicStateOf(e)}
                 onOpen={() => onOpenDir(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
@@ -467,7 +478,7 @@ function VolumeView({
                 filename={basename(e.path)}
                 updatedAt={e.updatedAt}
                 downloadUrl={fileUrl(volume, e.path)}
-                readPublic={e.readPublic}
+                publicState={publicStateOf(e)}
                 onOpen={() => onOpenFile(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
                 onDelete={deleteFor(e)}

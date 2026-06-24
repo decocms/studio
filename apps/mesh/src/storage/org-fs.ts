@@ -415,6 +415,30 @@ export class OrgFsEntryStorage {
     return !!row;
   }
 
+  /**
+   * Of `paths`, which are live public directories — the batch form of
+   * `hasPublicAncestorDir`, for computing effective-public over many entries
+   * (the cross-volume recent feed) in one query per volume.
+   */
+  async publicDirPaths(params: {
+    organizationId: string;
+    volume: string;
+    paths: string[];
+  }): Promise<string[]> {
+    if (params.paths.length === 0) return [];
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", params.organizationId)
+      .where("volume", "=", params.volume)
+      .where("kind", "=", "dir")
+      .where("read_public", "=", true)
+      .where("deleted_at", "is", null)
+      .where("path", "in", params.paths)
+      .select("path")
+      .execute();
+    return rows.map((r) => r.path);
+  }
+
   /** Live file count + total bytes for a volume (for quota / usage display). */
   async usage(
     organizationId: string,

@@ -23,8 +23,11 @@ export interface OrgFsEntry {
   contentHash?: string | null;
   /** Dir follows the Claude Code skill format (contains SKILL.md). */
   hasSkill?: boolean;
-  /** File is served by the /read proxy to anyone (no auth). Files only. */
+  /** This entry's own public flag (served to anyone with the link). */
   readPublic?: boolean;
+  /** Public via own flag OR a published ancestor folder (inherited). What the
+   *  UI should signal; `readPublic && !effectivePublic` never happens. */
+  effectivePublic?: boolean;
 }
 
 export interface OrgFsUsage {

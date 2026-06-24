@@ -166,6 +166,75 @@ export class OrgFs {
     );
   }
 
+  /**
+   * Whether `path` inherits public visibility from a published ancestor dir
+   * (its own `read_public` flag is NOT considered). Used to derive an entry's
+   * `effectivePublic = entry.readPublic || inheritsPublic(path)`.
+   */
+  async inheritsPublic(volume: string, path: string): Promise<boolean> {
+    assertValidVolume(volume);
+    return this.manifest.hasPublicAncestorDir(
+      this.organizationId,
+      volume,
+      ancestorsOf(normalizeFsPath(path)),
+    );
+  }
+
+  /**
+   * Whether the immediate children of `containerPath` inherit public — i.e.
+   * the container itself or any of its ancestors is a published dir. One query
+   * that resolves the inherited bit for a whole directory listing.
+   */
+  async childrenInheritPublic(
+    volume: string,
+    containerPath: string,
+  ): Promise<boolean> {
+    assertValidVolume(volume);
+    const norm = normalizeFsPath(containerPath);
+    if (norm === "") return false;
+    return this.manifest.hasPublicAncestorDir(this.organizationId, volume, [
+      ...ancestorsOf(norm),
+      norm,
+    ]);
+  }
+
+  /**
+   * `recent()` with `effectivePublic` per entry (own flag OR a published
+   * ancestor dir). Batches the ancestor lookup to one query per volume so the
+   * cross-volume feed stays cheap.
+   */
+  async recentWithEffectivePublic(
+    limit: number,
+  ): Promise<Array<OrgFsEntry & { effectivePublic: boolean }>> {
+    const entries = await this.recent(limit);
+    const ancestorsByVolume = new Map<string, Set<string>>();
+    for (const e of entries) {
+      let set = ancestorsByVolume.get(e.volume);
+      if (!set) {
+        set = new Set();
+        ancestorsByVolume.set(e.volume, set);
+      }
+      for (const a of ancestorsOf(e.path)) set.add(a);
+    }
+    const publicByVolume = new Map<string, Set<string>>();
+    await Promise.all(
+      [...ancestorsByVolume].map(async ([volume, paths]) => {
+        const found = await this.manifest.publicDirPaths({
+          organizationId: this.organizationId,
+          volume,
+          paths: [...paths],
+        });
+        publicByVolume.set(volume, new Set(found));
+      }),
+    );
+    return entries.map((e) => {
+      const publicDirs = publicByVolume.get(e.volume);
+      const inherited =
+        !!publicDirs && ancestorsOf(e.path).some((a) => publicDirs.has(a));
+      return { ...e, effectivePublic: e.readPublic || inherited };
+    });
+  }
+
   /** Presigned GET URL for a file — the byte path the mount fetches lazily. */
   async presignRead(
     volume: string,

@@ -53,7 +53,11 @@ function ShareControls({ volume, path, kind, readPublic, url }: ShareTarget) {
   // (the mutation writes this exact stat key), falling back to the seed value
   // while it loads.
   const { data: entry } = useOrgFsStat(volume, path);
-  const isPublic = entry?.readPublic ?? readPublic;
+  const own = entry?.readPublic ?? readPublic;
+  // Public via own flag OR a published ancestor folder. Inherited = public but
+  // not by its own flag — managed on the parent, not here.
+  const effective = entry?.effectivePublic ?? own;
+  const inherited = effective && !own;
   const [copied, setCopied] = useState(false);
   const isDir = kind === "dir";
   const subject = isDir ? "folder" : "file";
@@ -87,32 +91,40 @@ function ShareControls({ volume, path, kind, readPublic, url }: ShareTarget) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex w-full min-w-0 flex-col gap-3">
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          {isPublic ? <Globe01 size={16} /> : <Lock01 size={16} />}
+          {effective ? <Globe01 size={16} /> : <Lock01 size={16} />}
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-sm font-medium text-foreground">
-            {isPublic ? "Anyone with the link" : "Only your organization"}
+            {effective ? "Anyone with the link" : "Only your organization"}
           </span>
           <span className="text-xs text-muted-foreground">
-            {isPublic
-              ? isDir
-                ? "Anyone on the internet can view files in this folder via their link."
-                : "Anyone on the internet with the link can view this file."
+            {effective
+              ? inherited
+                ? "Public because it's inside a shared folder."
+                : isDir
+                  ? "Anyone on the internet can view files in this folder via their link."
+                  : "Anyone on the internet with the link can view this file."
               : `Only members of your organization can open ${
                   isDir ? "these files" : "this link"
                 }.`}
           </span>
         </div>
         <Switch
-          checked={isPublic}
-          disabled={setPublic.isPending}
+          checked={inherited ? true : own}
+          disabled={setPublic.isPending || inherited}
           onCheckedChange={handleToggle}
           aria-label={`Make ${subject} public`}
         />
       </div>
+      {inherited && (
+        <p className="rounded-md bg-muted/50 px-2.5 py-2 text-xs text-muted-foreground">
+          This {subject} is public because a parent folder is shared — manage it
+          from that folder.
+        </p>
+      )}
       {url && (
         <div className="flex items-center gap-2 rounded-md border border-input bg-muted/50 px-2 py-1.5">
           <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">

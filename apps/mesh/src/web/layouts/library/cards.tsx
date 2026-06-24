@@ -92,14 +92,25 @@ function ShareMenuItem({ onShare }: { onShare: () => void }) {
   );
 }
 
-/** Small badge marking a public file/folder in the grid. */
-function PublicBadge() {
+/** How a card is public: by its own flag, or inherited from a parent folder. */
+export type PublicState = "own" | "inherited";
+
+/** Small badge marking a public (or publicly-inherited) file/folder. */
+function PublicBadge({ state }: { state: PublicState }) {
+  const label =
+    state === "inherited"
+      ? "Public — inside a shared folder"
+      : "Public — anyone with the link can view";
   return (
-    <Globe01
-      size={12}
-      className="mt-0.5 shrink-0 text-muted-foreground"
-      aria-label="Public — anyone with the link can view"
-    />
+    <span title={label} className="mt-0.5 flex shrink-0 items-center">
+      <Globe01
+        size={12}
+        className={cn(
+          state === "inherited" ? "text-muted-foreground/60" : "text-primary",
+        )}
+        aria-label={label}
+      />
+    </span>
   );
 }
 
@@ -183,15 +194,15 @@ function CardHeader({
   name,
   meta,
   subtitle,
-  isPublic,
+  publicState,
   actions,
 }: {
   icon: React.ReactNode;
   name: string;
   meta?: string;
   subtitle?: string;
-  /** Render the "public" globe badge next to the name. */
-  isPublic?: boolean;
+  /** Render the "public" globe badge next to the name (own vs inherited). */
+  publicState?: PublicState;
   actions?: React.ReactNode;
 }) {
   return (
@@ -205,7 +216,7 @@ function CardHeader({
           >
             {name}
           </span>
-          {isPublic && <PublicBadge />}
+          {publicState && <PublicBadge state={publicState} />}
           {meta && (
             <span className="shrink-0 text-xs text-muted-foreground">
               {meta}
@@ -227,7 +238,7 @@ export function FolderCard({
   subtitle,
   glyph,
   readOnly,
-  readPublic,
+  publicState,
   onOpen,
   onShare,
   onDelete,
@@ -239,8 +250,8 @@ export function FolderCard({
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   /** View-only corner badge (public sets). */
   readOnly?: boolean;
-  /** Folder is published (its subtree serves publicly). */
-  readPublic?: boolean;
+  /** Public badge state (own = published here, inherited = via a parent). */
+  publicState?: PublicState;
   onOpen: () => void;
   onShare?: () => void;
   onDelete?: () => void;
@@ -258,7 +269,7 @@ export function FolderCard({
         name={name}
         meta={meta}
         subtitle={subtitle}
-        isPublic={readPublic}
+        publicState={publicState}
         actions={
           onShare || onDelete ? (
             <DropdownMenu>
@@ -297,7 +308,7 @@ export function FileCard({
   filename,
   updatedAt,
   downloadUrl,
-  readPublic,
+  publicState,
   onOpen,
   onShare,
   onDelete,
@@ -305,7 +316,7 @@ export function FileCard({
   filename: string;
   updatedAt: string;
   downloadUrl: string;
-  readPublic?: boolean;
+  publicState?: PublicState;
   onOpen: () => void;
   onShare?: () => void;
   onDelete?: () => void;
@@ -319,7 +330,7 @@ export function FileCard({
         name={filename}
         meta={timeAgo(updatedAt)}
         subtitle={describeFileType(filename)}
-        isPublic={readPublic}
+        publicState={publicState}
         actions={
           <FileActions
             downloadUrl={downloadUrl}
@@ -344,7 +355,7 @@ export function SkillCard({
   dirName,
   updatedAt,
   skillMdUrl,
-  readPublic,
+  publicState,
   onOpen,
   onBrowse,
   onShare,
@@ -354,7 +365,7 @@ export function SkillCard({
   updatedAt: string;
   /** Byte URL of the dir's SKILL.md. */
   skillMdUrl: string;
-  readPublic?: boolean;
+  publicState?: PublicState;
   onOpen: () => void;
   /** Open the underlying folder listing. */
   onBrowse: () => void;
@@ -384,7 +395,7 @@ export function SkillCard({
         name={meta?.name ?? dirName}
         meta={timeAgo(updatedAt)}
         subtitle="Skill"
-        isPublic={readPublic}
+        publicState={publicState}
         actions={
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -592,7 +603,7 @@ export function RecentFileCard(props: {
   updatedAt: string;
   size: number;
   downloadUrl: string;
-  readPublic?: boolean;
+  publicState?: PublicState;
   onOpen: () => void;
   onShare?: () => void;
   onDelete?: () => void;
@@ -609,7 +620,7 @@ export function RecentFileCard(props: {
         name={props.filename}
         meta={timeAgo(props.updatedAt)}
         subtitle={describeFileType(props.filename)}
-        isPublic={props.readPublic}
+        publicState={props.publicState}
         actions={
           <FileActions
             downloadUrl={props.downloadUrl}
