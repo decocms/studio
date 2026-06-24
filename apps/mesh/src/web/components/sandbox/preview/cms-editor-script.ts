@@ -13,27 +13,16 @@ export type CmsEditorPayload = z.infer<typeof CmsEditorPayloadSchema>;
  * hover and posts the section's index — matching the decofile sections array —
  * back to the parent on click.
  *
- * Framework sections that deco injects around the page's editable sections
- * (SEO, Theme, Analytics, etc.) are NOT part of the page's sections array, so
- * they're filtered out via IGNORED_MANIFEST_KEYS to keep DOM order aligned with
- * the index the editor panel uses.
+ * deco injects framework sections (SEO, Theme, Analytics, …) around the page's
+ * editable sections, so the DOM has more top-level sections than the decofile
+ * array. Rather than hardcoding which to skip, the editor sends the expected
+ * manifest-key sequence of the editable run and we align it within the DOM
+ * (see set-labels handler), so any leading/trailing framework sections drop out
+ * automatically.
  */
-const IGNORED_MANIFEST_KEYS = [
-  "website/sections/Seo/SeoV2.tsx",
-  "site/sections/Theme/Theme.tsx",
-  "htmx/sections/htmx.tsx",
-  "website/sections/Analytics/Analytics.tsx",
-  "site/sections/Session.tsx",
-  "site/sections/Miscellaneous/CartAlert.tsx",
-] as const;
-
 export const CMS_EDITOR_SCRIPT = `(function() {
   if (window.__cmsEditorActive) return;
   window.__cmsEditorActive = true;
-
-  var IGNORED_KEYS = ${JSON.stringify(
-    Object.fromEntries(IGNORED_MANIFEST_KEYS.map((k) => [k, 1])),
-  )};
 
   var highlight = document.createElement("div");
   highlight.style.cssText = "position:absolute;pointer-events:none;outline:2px solid #06b6d4;background:rgba(6,182,212,0.06);border-radius:2px;z-index:2147483647;display:none;";
@@ -49,11 +38,50 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       : true;
   };
 
-  // Resolve to the OUTERMOST page-level section: deco renders page sections as
-  // <section data-manifest-key>, but nested islands/sections carry the attribute
-  // too. Walk up and keep the last section ancestor so clicking nested content
-  // still maps to the top-level section the panel indexes. Framework sections
-  // (IGNORED_KEYS) aren't in the editable array, so treat them as no section.
+  // All top-level page sections in DOM order (deco renders page sections as
+  // <section data-manifest-key>; nested islands/sections carry the attribute
+  // too, hence the top-level filter). This is the full DOM run, framework
+  // sections included — getAllSections() narrows it to the editable window.
+  var topLevelSections = function() {
+    return Array.from(document.querySelectorAll("section[data-manifest-key]"))
+      .filter(isTopLevelSection);
+  };
+
+  // Expected manifest-key sequence of the editable sections, sent by the editor.
+  // Empty string = wildcard (e.g. multivariate, whose rendered key we can't
+  // predict). sectionOffset is where that run starts within topLevelSections().
+  var expectedKeys = [];
+  var sectionOffset = 0;
+  var recomputeOffset = function() {
+    if (!expectedKeys.length) { sectionOffset = 0; return; }
+    var domKeys = topLevelSections().map(function(s) {
+      return s.getAttribute("data-manifest-key");
+    });
+    var best = 0, bestScore = -1;
+    for (var o = 0; o + expectedKeys.length <= domKeys.length; o++) {
+      var score = 0;
+      for (var i = 0; i < expectedKeys.length; i++) {
+        var e = expectedKeys[i];
+        if (!e || e === domKeys[o + i]) score++;
+      }
+      if (score > bestScore) { bestScore = score; best = o; }
+    }
+    sectionOffset = best;
+  };
+
+  // The editable window, aligned to the decofile sections array so indexOf
+  // matches the index the editor panel uses. Until the editor sends the
+  // expected keys, fall back to the full top-level run.
+  var getAllSections = function() {
+    var all = topLevelSections();
+    return expectedKeys.length
+      ? all.slice(sectionOffset, sectionOffset + expectedKeys.length)
+      : all;
+  };
+
+  // Resolve to the OUTERMOST page-level section (clicking nested content still
+  // maps to the top-level section the panel indexes); null if it falls outside
+  // the editable window (a framework section deco injected).
   var findSection = function(el) {
     var node = el;
     var found = null;
@@ -63,16 +91,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       }
       node = node.parentElement;
     }
-    if (found && IGNORED_KEYS[found.getAttribute("data-manifest-key")]) return null;
-    return found;
-  };
-
-  // Only top-level, non-framework page sections, in DOM order, so indexOf
-  // matches the decofile sections array the editor panel indexes into.
-  var getAllSections = function() {
-    return Array.from(document.querySelectorAll("section[data-manifest-key]"))
-      .filter(isTopLevelSection)
-      .filter(function(s) { return !IGNORED_KEYS[s.getAttribute("data-manifest-key")]; });
+    if (!found) return null;
+    return getAllSections().indexOf(found) >= 0 ? found : null;
   };
 
   // Lazy sections async-render their real section inside a wrapper, so the
@@ -217,6 +237,8 @@ export const CMS_EDITOR_SCRIPT = `(function() {
     if (e.data && e.data.type === "cms-editor::set-labels" && Array.isArray(e.data.labels)) {
       sectionLabels = e.data.labels;
       if (Array.isArray(e.data.kinds)) sectionKinds = e.data.kinds;
+      if (Array.isArray(e.data.keys)) expectedKeys = e.data.keys;
+      recomputeOffset();
       if (lastSection) {
         lastLabel = labelFor(lastSection);
         lastKind = kindFor(lastSection);

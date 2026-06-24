@@ -116,6 +116,34 @@ const DEVICE_LABELS: Record<PreviewDeviceSize, string> = {
   desktop: "Desktop",
 };
 
+/**
+ * The manifest key deco renders as the top-level <section data-manifest-key>
+ * for a page section: saved-block references (globals) are resolved to their
+ * underlying component; a Lazy stays Lazy. Multivariate flags render their
+ * active variant, which we can't predict here, so they map to "" — a wildcard
+ * the iframe treats as "matches anything" when aligning the editable run.
+ */
+function resolveDomManifestKey(
+  section: { __resolveType?: unknown },
+  decofile: Record<string, unknown>,
+): string {
+  let rt =
+    typeof section?.__resolveType === "string" ? section.__resolveType : "";
+  for (let i = 0; rt && i < 5; i++) {
+    const block = decofile[rt];
+    const next =
+      block && typeof block === "object"
+        ? (block as { __resolveType?: unknown }).__resolveType
+        : undefined;
+    if (typeof next === "string" && next && next !== rt) {
+      rt = next;
+    } else {
+      break;
+    }
+  }
+  return rt.includes("flags/multivariate") ? "" : rt;
+}
+
 /** Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`). */
 function withDeviceHint(url: string, device: PreviewDeviceSize): string {
   const parsed = new URL(url, window.location.href);
@@ -229,18 +257,22 @@ export function PreviewContent() {
   // sections get a name — the DOM can't carry it (incl. globals inside async
   // rendering); non-global sections are empty so the iframe falls back to their
   // full resolve. `kind`: drives the highlight color (global / variant / normal).
-  const cmsSections =
+  const cmsRawSections =
     decofile && currentPageKey
-      ? parseSections(
-          getPageVariantSectionsAt(decofile, currentPageKey, 0),
-          decofile,
-        )
+      ? getPageVariantSectionsAt(decofile, currentPageKey, 0)
       : [];
+  const cmsSections = decofile ? parseSections(cmsRawSections, decofile) : [];
   const cmsSectionLabels = cmsSections.map((s) =>
     s.isSavedBlock ? s.label : "",
   );
   const cmsSectionKinds = cmsSections.map((s) =>
     s.isSavedBlock ? "global" : s.isMultivariate ? "variant" : "normal",
+  );
+  // Expected top-level manifest keys (saved-block refs resolved), used
+  // iframe-side to align the editable section run within the DOM — no hardcoded
+  // list of framework sections to skip.
+  const cmsSectionKeys = cmsRawSections.map((s) =>
+    resolveDomManifestKey(s, decofile ?? {}),
   );
 
   const iframeSrcRef = useRef<string | null>(null);
@@ -429,6 +461,7 @@ export function PreviewContent() {
         type: "cms-editor::set-labels",
         labels: cmsSectionLabels,
         kinds: cmsSectionKinds,
+        keys: cmsSectionKeys,
       },
       "*",
     );
