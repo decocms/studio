@@ -21,12 +21,20 @@ export { BRAND_CONTEXT_EXTRACT } from "./brand-context-extract";
 export { BRAND_GET, BRAND_LIST } from "./brand-get";
 
 // Domain management
-export { ORGANIZATION_DOMAIN_GET } from "./domain-get";
 export {
-  ORGANIZATION_DOMAIN_SET,
+  ORGANIZATION_DOMAIN_LIST,
+  ORGANIZATION_DOMAIN_ADD,
   ORGANIZATION_DOMAIN_UPDATE,
-  ORGANIZATION_DOMAIN_CLEAR,
-} from "./domain-set";
+  ORGANIZATION_DOMAIN_VERIFY,
+  ORGANIZATION_DOMAIN_REMOVE,
+} from "./domains";
+
+// Join requests (request-to-join / admin approval)
+export {
+  ORGANIZATION_JOIN_REQUEST_LIST,
+  ORGANIZATION_JOIN_REQUEST_APPROVE,
+  ORGANIZATION_JOIN_REQUEST_DENY,
+} from "./join-requests";
 
 // Member management
 export { ORGANIZATION_MEMBER_ADD } from "./member-add";

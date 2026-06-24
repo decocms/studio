@@ -62,11 +62,14 @@ test.describe("Onboarding: multi-org auto-join picker", () => {
 
     await db.query(
       `INSERT INTO organization_domains
-         (organization_id, domain, auto_join_enabled, created_at, updated_at)
-       VALUES ($1, $3, true, $4, $4), ($2, $3, true, $4, $4)
-       ON CONFLICT (organization_id) DO UPDATE
-         SET domain = EXCLUDED.domain,
-             auto_join_enabled = EXCLUDED.auto_join_enabled,
+         (id, organization_id, domain, join_mode, verification_status,
+          verification_method, verified_at, created_at, updated_at)
+       VALUES
+         (gen_random_uuid()::text, $1, $3, 'auto', 'verified', 'email', $4, $4, $4),
+         (gen_random_uuid()::text, $2, $3, 'auto', 'verified', 'email', $4, $4, $4)
+       ON CONFLICT (organization_id, domain) DO UPDATE
+         SET join_mode = EXCLUDED.join_mode,
+             verification_status = EXCLUDED.verification_status,
              updated_at = EXCLUDED.updated_at`,
       [ORG_A_ID, ORG_B_ID, TEST_DOMAIN, now],
     );

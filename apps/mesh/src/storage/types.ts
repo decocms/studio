@@ -1362,18 +1362,64 @@ export interface SandboxProviderStateTable {
 // Organization Domain Table Definition
 // ============================================================================
 
+export type DomainJoinMode = "off" | "auto" | "request";
+export type DomainVerificationStatus = "pending" | "verified";
+export type DomainVerificationMethod = "email" | "dns";
+
 export interface OrganizationDomainTable {
+  id: string;
   organization_id: string;
   domain: string;
-  auto_join_enabled: boolean;
+  join_mode: DomainJoinMode;
+  verification_status: DomainVerificationStatus;
+  verification_method: DomainVerificationMethod | null;
+  verification_token: string | null;
+  verified_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
 export interface OrganizationDomain {
+  id: string;
   organizationId: string;
   domain: string;
-  autoJoinEnabled: boolean;
+  joinMode: DomainJoinMode;
+  verificationStatus: DomainVerificationStatus;
+  verificationMethod: DomainVerificationMethod | null;
+  verificationToken: string | null;
+  verifiedAt: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export type JoinRequestStatus = "pending" | "approved" | "denied";
+
+export interface OrganizationJoinRequestTable {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  status: JoinRequestStatus;
+  decided_by: string | null;
+  decided_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+export interface OrganizationJoinRequest {
+  id: string;
+  organizationId: string;
+  userId: string;
+  status: JoinRequestStatus;
+  decidedBy: string | null;
+  decidedAt: Date | string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1539,8 +1585,11 @@ export interface Database {
   // Brand context (org-scoped company profile)
   brand_context: BrandContextTable;
 
-  // Organization domain claims (for auto-join)
+  // Organization domain claims (for auto-join / request-to-join)
   organization_domains: OrganizationDomainTable;
+
+  // Pending/decided requests to join an org
+  organization_join_requests: OrganizationJoinRequestTable;
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
