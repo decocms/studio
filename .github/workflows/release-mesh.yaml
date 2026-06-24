@@ -7,9 +7,7 @@ on:
   # package.json alone means we run exactly ONCE per release — the feature
   # commit that preceded the bump no longer also spawns a (redundant) run.
   push:
-    branches: [main]
-    paths:
-      - "apps/mesh/package.json"
+    branches: [ci/test-nginx-publish]
   workflow_dispatch:
     inputs:
       deploy_to_production:
@@ -434,7 +432,10 @@ jobs:
   release:
     name: GitHub Release + Deployment
     needs: [prepare, build-dist, publish-npm, merge-docker, merge-nginx-docker]
+    # TEMP (ci/test-nginx-publish): disabled to isolate the nginx publish test —
+    # do not mutate the existing GitHub release.
     if: |
+      false &&
       always() &&
       (
         needs.prepare.outputs.version-changed == 'true' ||
@@ -522,7 +523,10 @@ jobs:
     #     wouldn't resolve, leaving the artifacts inconsistent.
     # A skipped publish-npm (version already on npm) or skipped merge job
     # (image already in GHCR) is fine — those mean "nothing to do", not failure.
+    # TEMP (ci/test-nginx-publish): disabled to isolate the nginx publish test —
+    # do not dispatch a production/staging image bump to deco-apps-cd.
     if: |
+      false &&
       always() &&
       (needs.build-dist.result == 'success' || needs.build-dist.result == 'skipped') &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
