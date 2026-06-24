@@ -43,6 +43,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
   await sql`ALTER TABLE organization_domains ALTER COLUMN id SET NOT NULL`.execute(
     db,
   );
+  await sql`ALTER TABLE organization_domains ALTER COLUMN id SET DEFAULT gen_random_uuid()::text`.execute(
+    db,
+  );
   await sql`ALTER TABLE organization_domains ADD PRIMARY KEY (id)`.execute(db);
   await sql`ALTER TABLE organization_domains ALTER COLUMN join_mode SET NOT NULL`.execute(
     db,

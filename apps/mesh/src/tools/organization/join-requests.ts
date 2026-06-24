@@ -91,7 +91,25 @@ export const ORGANIZATION_JOIN_REQUEST_APPROVE = defineTool({
       throw new Error("Join request has already been decided");
     }
 
-    // Add the member. If they already joined some other way, treat as success.
+    // Claim the decision atomically BEFORE adding the member. If a concurrent
+    // deny won, decide() returns null and we add nothing — a denied request
+    // must never leave the user as a member. (If addMember then fails, the
+    // request is already approved + has no pending row, so org-access-status
+    // shows can-request again and the user can simply re-request.)
+    const actorId = getUserId(ctx);
+    const decided = await ctx.storage.organizationJoinRequests.decide(
+      request.id,
+      "approved",
+      actorId ?? request.userId,
+    );
+    if (!decided) {
+      // Another admin already decided this request (approve or deny) — respect
+      // it. If it was a concurrent approve, that caller added the member.
+      return { success: true };
+    }
+
+    // We won the transition; add the member (idempotent if they joined another
+    // way in the meantime).
     try {
       await ctx.boundAuth.organization.addMember({
         organizationId: org.id,
@@ -105,16 +123,7 @@ export const ORGANIZATION_JOIN_REQUEST_APPROVE = defineTool({
       }
     }
 
-    const actorId = getUserId(ctx);
-    const decided = await ctx.storage.organizationJoinRequests.decide(
-      request.id,
-      "approved",
-      actorId ?? request.userId,
-    );
-
-    // Only capture if this call won the transition (another admin may have
-    // raced). Membership is added regardless via the idempotent addMember.
-    if (decided && actorId) {
+    if (actorId) {
       posthog.capture({
         distinctId: actorId,
         event: "organization_join_request_approved",
