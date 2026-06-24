@@ -421,11 +421,13 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
         const redirectUrl = new URL(redirectUri);
         const allowedOriginObj = new URL(allowedOrigin);
 
-        // Check if redirect_uri origin matches the allowed origin
+        // Check if redirect_uri origin matches the allowed origin.
+        // Localhost is only allowed in local mode — in production, an attacker
+        // could set redirect_uri=http://localhost:8080/steal to intercept
+        // OAuth authorization codes on shared hosts or cloud environments.
         const isAllowed =
           redirectUrl.origin === allowedOriginObj.origin ||
-          // Allow localhost for development
-          redirectUrl.hostname === "localhost";
+          (getSettings().localMode && redirectUrl.hostname === "localhost");
 
         if (!isAllowed) {
           return c.json(
