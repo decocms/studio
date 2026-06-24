@@ -17,6 +17,8 @@ export type OrgAccessStatus =
       organization: OrgAccessStatusOrg;
     }
   | { status: "auto-domain-join"; organization: OrgAccessStatusOrg }
+  | { status: "can-request"; organization: OrgAccessStatusOrg }
+  | { status: "request-pending"; organization: OrgAccessStatusOrg }
   | { status: "no-access"; organization: OrgAccessStatusOrg }
   | { status: "not-found" };
 

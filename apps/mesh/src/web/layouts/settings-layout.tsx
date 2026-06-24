@@ -50,6 +50,7 @@ import {
 } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
+import { usePendingJoinRequests } from "@/web/hooks/use-join-requests";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Suspense } from "react";
 import { pluginSettingsSidebarItems } from "@/web/index";
@@ -73,6 +74,8 @@ interface SettingsNavItem {
   /** Restrict to privileged built-in roles (owner/admin). For screens backed
    *  by owner/admin-only APIs (e.g. role management). */
   privilegedOnly?: boolean;
+  /** Count for a small red notification dot on the item (omit / 0 = none). */
+  badge?: number;
 }
 
 interface SettingsNavGroup {
@@ -84,6 +87,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
   const currentProject = useProjectContext().project;
   const enabledPlugins = currentProject.enabledPlugins ?? [];
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
+  const joinRequestCount = usePendingJoinRequests().length;
 
   const enabledSettingsItems = pluginSettingsSidebarItems
     .filter((item) => enabledPlugins.includes(item.pluginId))
@@ -179,6 +183,7 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           icon: <Users03 size={14} />,
           to: "/$org/settings/members",
           requires: "members:manage",
+          badge: joinRequestCount,
         },
         {
           key: "roles",
@@ -290,7 +295,12 @@ export function SettingsSidebar() {
                         }
                         className="flex items-center gap-2.5 text-sm"
                       >
-                        <span className="shrink-0">{item.icon}</span>
+                        <span className="relative shrink-0">
+                          {item.icon}
+                          {item.badge ? (
+                            <span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 pointer-events-none" />
+                          ) : null}
+                        </span>
                         <span className="truncate">{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
@@ -376,7 +386,12 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                 )}
               >
-                <span className="shrink-0">{item.icon}</span>
+                <span className="relative shrink-0">
+                  {item.icon}
+                  {item.badge ? (
+                    <span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 pointer-events-none" />
+                  ) : null}
+                </span>
                 <span className="truncate">{item.label}</span>
               </Link>
             ))}

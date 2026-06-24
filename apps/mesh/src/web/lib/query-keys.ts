@@ -360,9 +360,13 @@ export const KEYS = {
   storeDiscovery: (orgId: string, registryId: string) =>
     ["store-discovery", orgId, registryId] as const,
 
-  // Organization domain (scoped by organization)
-  organizationDomain: (organizationId: string) =>
-    ["organization-domain", organizationId] as const,
+  // Organization domains (scoped by organization)
+  organizationDomains: (organizationId: string) =>
+    ["organization-domains", organizationId] as const,
+
+  // Pending join requests (scoped by organization)
+  organizationJoinRequests: (organizationId: string) =>
+    ["organization-join-requests", organizationId] as const,
 
   // Domain lookup (for onboarding — scoped by email domain)
   domainLookup: (domain: string) => ["domain-lookup", domain] as const,

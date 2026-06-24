@@ -266,6 +266,7 @@ import type { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import type { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import type { BrandContextStorage } from "../storage/brand-context";
 import type { OrganizationDomainStorage } from "../storage/organization-domains";
+import type { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
 import type { RegistryStorage } from "../storage/registry";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -318,6 +319,7 @@ export interface MeshStorage {
   registry: RegistryStorage;
   brandContext: BrandContextStorage;
   organizationDomains: OrganizationDomainStorage;
+  organizationJoinRequests: OrganizationJoinRequestStorage;
   kv: KVStorage;
   interests: InterestsStorage;
 }

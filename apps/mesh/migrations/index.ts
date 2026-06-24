@@ -116,6 +116,8 @@ import * as migration114runackedseq from "./114-run-acked-seq.ts";
 import * as migration115threadprojectedseq from "./115-thread-projected-seq.ts";
 import * as migration116orgsites from "./116-org-sites.ts";
 import * as migration117orgfileconfigssiteslug from "./117-org-file-configs-site-slug.ts";
+import * as migration118organizationdomainsmultiverify from "./118-organization-domains-multi-verify.ts";
+import * as migration119organizationjoinrequests from "./119-organization-join-requests.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -256,6 +258,9 @@ const migrations: Record<string, Migration> = {
   "115-thread-projected-seq": migration115threadprojectedseq,
   "116-org-sites": migration116orgsites,
   "117-org-file-configs-site-slug": migration117orgfileconfigssiteslug,
+  "118-organization-domains-multi-verify":
+    migration118organizationdomainsmultiverify,
+  "119-organization-join-requests": migration119organizationjoinrequests,
 };
 
 export default migrations;
