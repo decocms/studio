@@ -116,32 +116,47 @@ const DEVICE_LABELS: Record<PreviewDeviceSize, string> = {
   desktop: "Desktop",
 };
 
+const LAZY_RESOLVE_TYPE = "website/sections/Rendering/Lazy.tsx";
+
 /**
- * The manifest key deco renders as the top-level <section data-manifest-key>
- * for a page section: saved-block references (globals) are resolved to their
- * underlying component; a Lazy stays Lazy. Multivariate flags render their
- * active variant, which we can't predict here, so they map to "" — a wildcard
- * the iframe treats as "matches anything" when aligning the editable run.
+ * Candidate top-level `data-manifest-key`s a page section can render as, used
+ * iframe-side to align the editable run within the DOM. Saved-block refs
+ * (globals) resolve to their underlying component. A Lazy returns BOTH its
+ * loader key and the inner section's key — the classic runtime keeps the Lazy
+ * wrapper at top level, TanStack renders the inner section directly. Multivariate
+ * flags render an unpredictable active variant, so they return [] (a wildcard
+ * the iframe treats as "matches anything").
  */
-function resolveDomManifestKey(
-  section: { __resolveType?: unknown },
+function resolveSectionCandidates(
+  section: { __resolveType?: unknown; section?: unknown },
   decofile: Record<string, unknown>,
-): string {
-  let rt =
-    typeof section?.__resolveType === "string" ? section.__resolveType : "";
+): string[] {
+  let obj: { __resolveType?: unknown; section?: unknown } = section;
+  let rt = typeof obj?.__resolveType === "string" ? obj.__resolveType : "";
   for (let i = 0; rt && i < 5; i++) {
     const block = decofile[rt];
-    const next =
-      block && typeof block === "object"
-        ? (block as { __resolveType?: unknown }).__resolveType
-        : undefined;
-    if (typeof next === "string" && next && next !== rt) {
-      rt = next;
-    } else {
-      break;
+    if (block && typeof block === "object" && "__resolveType" in block) {
+      const next = (block as { __resolveType?: unknown }).__resolveType;
+      if (typeof next === "string" && next && next !== rt) {
+        obj = block as { __resolveType?: unknown; section?: unknown };
+        rt = next;
+        continue;
+      }
     }
+    break;
   }
-  return rt.includes("flags/multivariate") ? "" : rt;
+  if (!rt || rt.includes("flags/multivariate")) return [];
+  if (rt === LAZY_RESOLVE_TYPE) {
+    const inner =
+      obj.section && typeof obj.section === "object"
+        ? resolveSectionCandidates(
+            obj.section as { __resolveType?: unknown },
+            decofile,
+          )
+        : [];
+    return inner.length ? [rt, ...inner] : [rt];
+  }
+  return [rt];
 }
 
 /** Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`). */
@@ -268,11 +283,11 @@ export function PreviewContent() {
   const cmsSectionKinds = cmsSections.map((s) =>
     s.isSavedBlock ? "global" : s.isMultivariate ? "variant" : "normal",
   );
-  // Expected top-level manifest keys (saved-block refs resolved), used
-  // iframe-side to align the editable section run within the DOM — no hardcoded
-  // list of framework sections to skip.
+  // Candidate manifest keys per editable section, used iframe-side to align the
+  // editable run within the DOM (handles framework sections deco injects around
+  // OR between the editable ones) — no hardcoded list of sections to skip.
   const cmsSectionKeys = cmsRawSections.map((s) =>
-    resolveDomManifestKey(s, decofile ?? {}),
+    resolveSectionCandidates(s, decofile ?? {}),
   );
 
   const iframeSrcRef = useRef<string | null>(null);

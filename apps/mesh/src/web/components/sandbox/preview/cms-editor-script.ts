@@ -47,41 +47,57 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       .filter(isTopLevelSection);
   };
 
-  // Expected manifest-key sequence of the editable sections, sent by the editor.
-  // Empty string = wildcard (e.g. multivariate, whose rendered key we can't
-  // predict). sectionOffset is where that run starts within topLevelSections().
-  var expectedKeys = [];
-  var sectionOffset = 0;
-  var recomputeOffset = function() {
-    if (!expectedKeys.length) { sectionOffset = 0; return; }
-    var domKeys = topLevelSections().map(function(s) {
-      return s.getAttribute("data-manifest-key");
-    });
-    var best = 0, bestScore = -1;
-    for (var o = 0; o + expectedKeys.length <= domKeys.length; o++) {
-      var score = 0;
-      for (var i = 0; i < expectedKeys.length; i++) {
-        var e = expectedKeys[i];
-        if (!e || e === domKeys[o + i]) score++;
+  // Candidate manifest keys per editable section, sent by the editor. Each
+  // entry is an array of acceptable DOM keys: [] = wildcard (e.g. multivariate,
+  // whose rendered key we can't predict); a Lazy lists both its loader key and
+  // the inner section's key, since the classic runtime keeps the Lazy wrapper
+  // at top level while TanStack renders the inner section directly.
+  var sectionCandidates = [];
+
+  // Best in-order assignment of editable sections to DOM sections, maximizing
+  // key matches (DP / LCS-style). deco injects framework sections (SEO, Theme,
+  // Session, …) that may lead, trail, OR interleave with the editable run; this
+  // skips whichever don't match, on any runtime — no hardcoded list.
+  var computeAlignment = function(tops) {
+    var N = sectionCandidates.length, M = tops.length;
+    if (!N || M < N) return tops.slice();
+    var domKeys = tops.map(function(s) { return s.getAttribute("data-manifest-key"); });
+    var match = function(i, j) {
+      var c = sectionCandidates[i];
+      if (!c || !c.length) return 1;
+      return c.indexOf(domKeys[j]) >= 0 ? 1 : 0;
+    };
+    var dp = [], bt = [], i, j;
+    for (i = 0; i <= N; i++) { dp.push(new Array(M + 1).fill(0)); bt.push(new Array(M + 1).fill(0)); }
+    for (i = 1; i <= N; i++) {
+      for (j = i; j <= M; j++) {
+        var assign = dp[i - 1][j - 1] + match(i - 1, j - 1);
+        var skip = dp[i][j - 1];
+        if (j - 1 >= i && skip >= assign) { dp[i][j] = skip; bt[i][j] = 0; }
+        else { dp[i][j] = assign; bt[i][j] = 1; }
       }
-      if (score > bestScore) { bestScore = score; best = o; }
     }
-    sectionOffset = best;
+    var res = new Array(N);
+    i = N; j = M;
+    while (i > 0) {
+      if (bt[i][j] === 1) { res[i - 1] = tops[j - 1]; i--; j--; }
+      else { j--; }
+    }
+    return res;
   };
 
-  // The editable window, aligned to the decofile sections array so indexOf
-  // matches the index the editor panel uses. Until the editor sends the
-  // expected keys, fall back to the full top-level run.
+  // Editable sections, indexed to match the decofile array the panel uses.
+  // Recomputed from the live DOM each call (cheap, rAF-throttled) so it
+  // self-heals as client-rendered/lazy sections mount. Until the editor sends
+  // candidates, fall back to the full top-level run.
   var getAllSections = function() {
-    var all = topLevelSections();
-    return expectedKeys.length
-      ? all.slice(sectionOffset, sectionOffset + expectedKeys.length)
-      : all;
+    var tops = topLevelSections();
+    return sectionCandidates.length ? computeAlignment(tops) : tops;
   };
 
   // Resolve to the OUTERMOST page-level section (clicking nested content still
-  // maps to the top-level section the panel indexes); null if it falls outside
-  // the editable window (a framework section deco injected).
+  // maps to the top-level section the panel indexes); null if it isn't in the
+  // aligned editable set (a framework section deco injected).
   var findSection = function(el) {
     var node = el;
     var found = null;
@@ -237,8 +253,7 @@ export const CMS_EDITOR_SCRIPT = `(function() {
     if (e.data && e.data.type === "cms-editor::set-labels" && Array.isArray(e.data.labels)) {
       sectionLabels = e.data.labels;
       if (Array.isArray(e.data.kinds)) sectionKinds = e.data.kinds;
-      if (Array.isArray(e.data.keys)) expectedKeys = e.data.keys;
-      recomputeOffset();
+      if (Array.isArray(e.data.keys)) sectionCandidates = e.data.keys;
       if (lastSection) {
         lastLabel = labelFor(lastSection);
         lastKind = kindFor(lastSection);
