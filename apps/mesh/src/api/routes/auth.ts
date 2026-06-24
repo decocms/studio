@@ -17,8 +17,16 @@ import {
 } from "../../auth";
 import { getDb } from "../../database";
 import { extractBrandFromDomain } from "../../auth/extract-brand";
+import {
+  createEmailSender,
+  findEmailProvider,
+} from "../../auth/email-providers";
+import { emailButton, emailTemplate } from "../../auth/email-template";
+import { ADMIN_ROLES } from "../../auth/roles";
+import { getBaseUrl } from "../../core/server-constants";
 import { BrandContextStorage } from "../../storage/brand-context";
 import { OrganizationDomainStorage } from "../../storage/organization-domains";
+import { OrganizationJoinRequestStorage } from "../../storage/organization-join-requests";
 import { KNOWN_OAUTH_PROVIDERS, OAuthProvider } from "@/auth/oauth-providers";
 import {
   getLocalAdminUser,
@@ -305,7 +313,12 @@ app.get("/domain-lookup", async (c) => {
 
   try {
     const domainStorage = new OrganizationDomainStorage(getDb().db);
-    const records = await domainStorage.getAllByDomain(domain);
+    // Only verified domains in a discoverable join mode surface. Unverified
+    // claims aren't proven, and verified "off" domains are intentionally not
+    // discoverable (matches /org-access-status and /domain-join).
+    const records = (await domainStorage.getAllByDomain(domain)).filter(
+      (r) => r.verificationStatus === "verified" && r.joinMode !== "off",
+    );
 
     if (records.length === 0) {
       return c.json({ found: false, organizations: [] });
@@ -331,7 +344,7 @@ app.get("/domain-lookup", async (c) => {
           name: org.name,
           slug: org.slug,
           logo: org.logo,
-          autoJoinEnabled: r.autoJoinEnabled,
+          joinMode: r.joinMode,
         };
       })
       .filter((o): o is NonNullable<typeof o> => o !== null);
@@ -350,7 +363,7 @@ app.get("/domain-lookup", async (c) => {
  * Domain Auto-Join Endpoint (authenticated, verified email required)
  *
  * Adds the authenticated user to an organization that claimed their
- * email domain, provided that org has auto_join_enabled. With multiple
+ * email domain with a verified domain in "auto" join mode. With multiple
  * orgs allowed to claim a domain, callers SHOULD pass the target org's
  * slug in the body (e.g. picked from /domain-lookup). When omitted, the
  * endpoint joins the matching org only if exactly one auto-join-eligible
@@ -394,7 +407,9 @@ app.post("/domain-join", async (c) => {
     const db = getDb().db;
     const domainStorage = new OrganizationDomainStorage(db);
     const domainRecords = await domainStorage.getAllByDomain(emailDomain);
-    const eligible = domainRecords.filter((r) => r.autoJoinEnabled);
+    const eligible = domainRecords.filter(
+      (r) => r.verificationStatus === "verified" && r.joinMode === "auto",
+    );
     if (eligible.length === 0) {
       return c.json(
         {
@@ -629,7 +644,13 @@ app.post("/domain-setup", async (c) => {
     // inserts another row. Transient DB errors leave the org in place so
     // the user can retry claiming later.
     if (shouldClaimDomain) {
-      await domainStorage.setDomain(orgId, emailDomain, true);
+      // The creator's verified corporate email proves this domain (email
+      // trust), so it's verified immediately with auto-join on.
+      await domainStorage.add(orgId, emailDomain, {
+        joinMode: "auto",
+        verificationStatus: "verified",
+        verificationMethod: "email",
+      });
     }
 
     // Brand extraction (best-effort — don't fail the setup if this errors).
@@ -738,7 +759,9 @@ app.post("/domain-setup", async (c) => {
  *
  *   member            — user is already a member (shell should re-fetch)
  *   pending-invite    — there's a pending invitation for this email
- *   auto-domain-join  — the org has auto_join_enabled for the user's verified domain
+ *   auto-domain-join  — org claims the user's verified domain in "auto" mode
+ *   can-request       — org claims the verified domain in "request" mode
+ *   request-pending   — a join request already exists for this user
  *   no-access         — none of the above
  *   not-found         — slug doesn't resolve
  *
@@ -816,26 +839,216 @@ app.get("/org-access-status/:slug", async (c) => {
     console.error("[Auth] listUserInvitations failed:", error);
   }
 
-  // Auto domain join: org claimed user's domain with auto_join_enabled.
+  // Domain-based access: the org claims the user's verified domain.
+  //   auto    → auto-domain-join (one-click join)
+  //   request → can-request, or request-pending if one already exists
   if (session.user.emailVerified) {
     const emailDomain = session.user.email?.split("@")[1]?.toLowerCase();
     if (emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
       const domainRecord = await new OrganizationDomainStorage(
         db,
-      ).getByOrganizationId(org.id);
-      if (
-        domainRecord?.autoJoinEnabled &&
-        domainRecord.domain === emailDomain
-      ) {
-        return c.json({
-          status: "auto-domain-join" as const,
-          organization: { ...orgPayload, domain: emailDomain },
-        });
+      ).getByOrgAndDomain(org.id, emailDomain);
+      if (domainRecord?.verificationStatus === "verified") {
+        if (domainRecord.joinMode === "auto") {
+          return c.json({
+            status: "auto-domain-join" as const,
+            organization: { ...orgPayload, domain: emailDomain },
+          });
+        }
+        if (domainRecord.joinMode === "request") {
+          const pending = await new OrganizationJoinRequestStorage(
+            db,
+          ).getPending(org.id, session.user.id);
+          return c.json({
+            status: pending
+              ? ("request-pending" as const)
+              : ("can-request" as const),
+            organization: { ...orgPayload, domain: emailDomain },
+          });
+        }
       }
     }
   }
 
   return c.json({ status: "no-access" as const, organization: orgPayload });
+});
+
+/**
+ * Best-effort email to the org's admins/owners when a join request arrives.
+ * Mirrors the invitation email setup; never throws.
+ */
+async function notifyAdminsOfJoinRequest(
+  db: ReturnType<typeof getDb>["db"],
+  org: { id: string; slug: string; name: string },
+  requesterEmail: string,
+): Promise<void> {
+  try {
+    if (
+      !authConfig.inviteEmailProviderId ||
+      !authConfig.emailProviders ||
+      authConfig.emailProviders.length === 0
+    ) {
+      return;
+    }
+    const provider = findEmailProvider(
+      authConfig.emailProviders,
+      authConfig.inviteEmailProviderId,
+    );
+    if (!provider) return;
+
+    const members = await db
+      .selectFrom("member")
+      .innerJoin("user", "user.id", "member.userId")
+      .select(["user.email as email", "member.role as role"])
+      .where("member.organizationId", "=", org.id)
+      .execute();
+    // Roles are stored comma-joined (composite) and custom roles exist, so
+    // post-filter in JS instead of an exact SQL match.
+    const adminRoles = ADMIN_ROLES as readonly string[];
+    const admins = members.filter((m) =>
+      (m.role ?? "")
+        .split(",")
+        .map((r) => r.trim())
+        .some((r) => adminRoles.includes(r)),
+    );
+    if (admins.length === 0) return;
+
+    const sendEmail = createEmailSender(provider);
+    // Join requests are reviewed on the org general settings page (where the
+    // domain config + JoinRequestsSection render, gated org:manage).
+    const reviewUrl = `${getBaseUrl()}/${org.slug}/settings/general`;
+    await Promise.allSettled(
+      admins.map((a) =>
+        sendEmail({
+          to: a.email,
+          subject: `New request to join ${org.name}`,
+          html: emailTemplate({
+            preheader: `${requesterEmail} requested to join ${org.name}.`,
+            heading: "New join request",
+            subheading: `<strong>${requesterEmail}</strong> requested to join <strong>${org.name}</strong> on deco Studio.`,
+            body: emailButton("Review request", reviewUrl),
+            footnote:
+              "You can approve or deny this request from your members settings.",
+          }),
+        }),
+      ),
+    );
+  } catch (error) {
+    console.error("[Auth] Failed to notify admins of join request:", error);
+  }
+}
+
+/**
+ * Domain Request-to-Join Endpoint (authenticated, verified email required)
+ *
+ * For orgs that claim the user's verified domain in "request" join mode:
+ * records a pending membership request that an admin must approve. Mirrors
+ * /domain-join, but creates a request instead of adding a member directly.
+ *
+ * Route: POST /api/auth/custom/domain-request-join
+ * Body: { organizationSlug: string }
+ */
+app.post("/domain-request-join", async (c) => {
+  const session = (await auth.api.getSession({
+    headers: c.req.raw.headers,
+  })) as {
+    user?: { id: string; email: string; emailVerified: boolean };
+  } | null;
+  if (!session?.user) {
+    return c.json({ success: false, error: "Authentication required" }, 401);
+  }
+  if (!session.user.emailVerified) {
+    return c.json(
+      { success: false, error: "Email must be verified to request access" },
+      403,
+    );
+  }
+  const emailDomain = session.user.email?.split("@")[1]?.toLowerCase();
+  if (!emailDomain || GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
+    return c.json(
+      { success: false, error: "Generic email domains cannot request access" },
+      403,
+    );
+  }
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    organizationSlug?: unknown;
+  };
+  const targetSlug =
+    typeof body.organizationSlug === "string" && body.organizationSlug.trim()
+      ? body.organizationSlug.trim()
+      : null;
+  if (!targetSlug) {
+    return c.json(
+      { success: false, error: "organizationSlug is required" },
+      400,
+    );
+  }
+
+  try {
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select(["id", "slug", "name"])
+      .where("slug", "=", targetSlug)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ success: false, error: "Organization not found" }, 404);
+    }
+
+    // The org must claim this domain, verified, in request mode.
+    const domainRecord = await new OrganizationDomainStorage(
+      db,
+    ).getByOrgAndDomain(org.id, emailDomain);
+    if (
+      !domainRecord ||
+      domainRecord.verificationStatus !== "verified" ||
+      domainRecord.joinMode !== "request"
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "This organization is not accepting requests for your domain.",
+        },
+        403,
+      );
+    }
+
+    // Already a member? Nothing to request.
+    const existingMember = await db
+      .selectFrom("member")
+      .select(["id"])
+      .where("userId", "=", session.user.id)
+      .where("organizationId", "=", org.id)
+      .executeTakeFirst();
+    if (existingMember) {
+      return c.json({ success: true, slug: org.slug, alreadyMember: true });
+    }
+
+    await new OrganizationJoinRequestStorage(db).create(
+      org.id,
+      session.user.id,
+    );
+
+    await notifyAdminsOfJoinRequest(db, org, session.user.email);
+
+    posthog.capture({
+      distinctId: session.user.id,
+      event: "organization_join_requested",
+      groups: { organization: org.id },
+      properties: {
+        organization_id: org.id,
+        organization_slug: org.slug,
+        email_domain: emailDomain,
+      },
+    });
+
+    return c.json({ success: true, status: "pending" });
+  } catch (error) {
+    posthog.captureException(error, session.user.id);
+    console.error("[Auth] Domain request-join failed:", error);
+    return c.json({ success: false, error: "Failed to request access" }, 500);
+  }
 });
 
 export default app;

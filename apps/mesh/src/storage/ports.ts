@@ -19,8 +19,13 @@ import type {
   AsyncResearchJob,
   AsyncResearchJobCitation,
   BrandContext,
+  DomainJoinMode,
+  DomainVerificationMethod,
+  DomainVerificationStatus,
+  JoinRequestStatus,
   MonitoringLog,
   OrganizationDomain,
+  OrganizationJoinRequest,
   OrgSite,
   OrganizationSettings,
   OrganizationTag,
@@ -648,21 +653,67 @@ export interface TagStoragePort {
 // Organization Domain Storage Port
 // ============================================================================
 
+export interface AddDomainInput {
+  joinMode?: DomainJoinMode;
+  verificationStatus?: DomainVerificationStatus;
+  verificationMethod?: DomainVerificationMethod | null;
+  verificationToken?: string | null;
+}
+
 export interface OrganizationDomainStoragePort {
+  /** Every org claiming a domain (across orgs) — used by discovery/lookup. */
   getAllByDomain(domain: string): Promise<OrganizationDomain[]>;
-  getByOrganizationId(
-    organizationId: string,
-  ): Promise<OrganizationDomain | null>;
-  setDomain(
+  /** All domains an org has claimed. */
+  listByOrganizationId(organizationId: string): Promise<OrganizationDomain[]>;
+  getById(id: string): Promise<OrganizationDomain | null>;
+  getByOrgAndDomain(
     organizationId: string,
     domain: string,
-    autoJoinEnabled?: boolean,
-  ): Promise<OrganizationDomain>;
-  updateAutoJoin(
+  ): Promise<OrganizationDomain | null>;
+  add(
     organizationId: string,
-    autoJoinEnabled: boolean,
+    domain: string,
+    input?: AddDomainInput,
   ): Promise<OrganizationDomain>;
-  clearDomain(organizationId: string): Promise<void>;
+  updateJoinMode(
+    id: string,
+    joinMode: DomainJoinMode,
+  ): Promise<OrganizationDomain>;
+  markVerified(
+    id: string,
+    method: DomainVerificationMethod,
+  ): Promise<OrganizationDomain>;
+  removeById(id: string): Promise<void>;
+}
+
+export interface JoinRequestWithUser extends OrganizationJoinRequest {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  } | null;
+}
+
+export interface OrganizationJoinRequestStoragePort {
+  /** Create a pending request, or return the existing pending one (idempotent). */
+  create(
+    organizationId: string,
+    userId: string,
+  ): Promise<OrganizationJoinRequest>;
+  getById(id: string): Promise<OrganizationJoinRequest | null>;
+  getPending(
+    organizationId: string,
+    userId: string,
+  ): Promise<OrganizationJoinRequest | null>;
+  /** Pending requests for an org, enriched with the requesting user's profile. */
+  listPendingWithUser(organizationId: string): Promise<JoinRequestWithUser[]>;
+  /** Atomic pending→decided transition; null if it was already decided. */
+  decide(
+    id: string,
+    status: Exclude<JoinRequestStatus, "pending">,
+    decidedBy: string,
+  ): Promise<OrganizationJoinRequest | null>;
 }
 
 export interface OrgSiteStoragePort {

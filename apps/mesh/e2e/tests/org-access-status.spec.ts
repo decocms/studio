@@ -172,8 +172,9 @@ test.describe("GET /api/auth/custom/org-access-status/:slug", () => {
     const now = new Date().toISOString();
     await db.query(
       `INSERT INTO organization_domains
-         (organization_id, domain, auto_join_enabled, created_at, updated_at)
-       VALUES ($1, $2, true, $3, $3)`,
+         (id, organization_id, domain, join_mode, verification_status,
+          verification_method, verified_at, created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, 'auto', 'verified', 'email', $3, $3, $3)`,
       [orgAId, testDomain, now],
     );
 
@@ -201,7 +202,7 @@ test.describe("GET /api/auth/custom/org-access-status/:slug", () => {
     await userBCtx.dispose();
   });
 
-  test("does NOT auto-domain-join when auto_join_enabled is false", async ({
+  test("does NOT auto-domain-join when join mode is off", async ({
     playwright,
   }) => {
     const testDomain = `acme-disabled-${Date.now()}-${Math.floor(Math.random() * 100000)}.test`;
@@ -217,8 +218,9 @@ test.describe("GET /api/auth/custom/org-access-status/:slug", () => {
     const now = new Date().toISOString();
     await db.query(
       `INSERT INTO organization_domains
-         (organization_id, domain, auto_join_enabled, created_at, updated_at)
-       VALUES ($1, $2, false, $3, $3)`,
+         (id, organization_id, domain, join_mode, verification_status,
+          verification_method, verified_at, created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, 'off', 'verified', 'email', $3, $3, $3)`,
       [orgAId, testDomain, now],
     );
 
@@ -254,8 +256,9 @@ test.describe("GET /api/auth/custom/org-access-status/:slug", () => {
     const now = new Date().toISOString();
     await db.query(
       `INSERT INTO organization_domains
-         (organization_id, domain, auto_join_enabled, created_at, updated_at)
-       VALUES ($1, $2, true, $3, $3)`,
+         (id, organization_id, domain, join_mode, verification_status,
+          verification_method, verified_at, created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, 'auto', 'verified', 'email', $3, $3, $3)`,
       [orgAId, testDomain, now],
     );
 
@@ -292,6 +295,74 @@ test.describe("GET /api/auth/custom/org-access-status/:slug", () => {
     expect(body.status).toBe("no-access");
     expect(body.organization.slug).toBe(userA.orgSlug);
 
+    await userACtx.dispose();
+    await userBCtx.dispose();
+  });
+
+  test("request-mode domain: can-request, then request-pending after requesting", async ({
+    playwright,
+  }) => {
+    const testDomain = `acme-request-${Date.now()}-${Math.floor(Math.random() * 100000)}.test`;
+
+    // User A creates org A and claims testDomain (verified) in request mode.
+    const userACtx = await newApiContext(playwright);
+    const userA = await signUpViaApi(userACtx);
+    const orgAId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [userA.orgSlug],
+      )
+    ).rows[0]!.id;
+    const now = new Date().toISOString();
+    await db.query(
+      `INSERT INTO organization_domains
+         (id, organization_id, domain, join_mode, verification_status,
+          verification_method, verified_at, created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, 'request', 'verified', 'dns', $3, $3, $3)`,
+      [orgAId, testDomain, now],
+    );
+
+    // User B has a verified email on the domain.
+    const userBCtx = await newApiContext(playwright);
+    const userB = await signUpViaApi(userBCtx, {
+      email: `member-${Date.now()}@${testDomain}`,
+    });
+    await db.query(`UPDATE "user" SET "emailVerified" = true WHERE id = $1`, [
+      userB.userId,
+    ]);
+
+    // Before requesting: can-request.
+    const before = await userBCtx.get(ENDPOINT(userA.orgSlug));
+    expect(before.status()).toBe(200);
+    expect(((await before.json()) as { status: string }).status).toBe(
+      "can-request",
+    );
+
+    // Submit the request.
+    const reqRes = await userBCtx.post("/api/auth/custom/domain-request-join", {
+      data: { organizationSlug: userA.orgSlug },
+    });
+    expect(reqRes.ok()).toBe(true);
+    expect(((await reqRes.json()) as { success?: boolean }).success).toBe(true);
+
+    // A pending row exists.
+    const rows = await db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM organization_join_requests
+       WHERE organization_id = $1 AND user_id = $2 AND status = 'pending'`,
+      [orgAId, userB.userId],
+    );
+    expect(rows.rows[0]!.count).toBe("1");
+
+    // After requesting: request-pending.
+    const after = await userBCtx.get(ENDPOINT(userA.orgSlug));
+    expect(((await after.json()) as { status: string }).status).toBe(
+      "request-pending",
+    );
+
+    await db.query(
+      `DELETE FROM organization_join_requests WHERE organization_id = $1`,
+      [orgAId],
+    );
     await userACtx.dispose();
     await userBCtx.dispose();
   });

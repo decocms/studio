@@ -1,6 +1,8 @@
 import { AutoDomainJoinScreen } from "@/web/components/auto-domain-join-screen";
 import { NoAccessScreen } from "@/web/components/no-access-screen";
 import { PendingInviteScreen } from "@/web/components/pending-invite-screen";
+import { RequestPendingScreen } from "@/web/components/request-pending-screen";
+import { RequestToJoinScreen } from "@/web/components/request-to-join-screen";
 import { useOrgAccessStatus } from "@/web/hooks/use-org-access-status";
 import { clearLastLocation, readLastLocation } from "@/web/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
@@ -53,6 +55,26 @@ export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
         orgSlug={data.organization.slug}
         orgLogo={data.organization.logo}
         domain={data.organization.domain ?? ""}
+      />
+    );
+  }
+
+  if (data.status === "can-request") {
+    return (
+      <RequestToJoinScreen
+        orgName={data.organization.name}
+        orgSlug={data.organization.slug}
+        orgLogo={data.organization.logo}
+        domain={data.organization.domain ?? ""}
+      />
+    );
+  }
+
+  if (data.status === "request-pending") {
+    return (
+      <RequestPendingScreen
+        orgName={data.organization.name}
+        orgLogo={data.organization.logo}
       />
     );
   }
