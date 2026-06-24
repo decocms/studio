@@ -3,6 +3,7 @@ import { marked } from "marked";
 import React, { memo, useCallback, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -129,7 +130,10 @@ function Table(props: React.HTMLAttributes<HTMLTableElement>) {
 
 // Memoize the plugins arrays to prevent re-creating them on every render
 const remarkPluginsMemo = [remarkGfm];
-const rehypePluginsMemo = [rehypeRaw];
+// rehypeRaw parses raw HTML in markdown; rehypeSanitize (GitHub schema)
+// strips dangerous elements (iframe, script, object, embed, form) and
+// attributes (srcdoc, on*) to prevent stored XSS via chat messages.
+const rehypePluginsMemo = [rehypeRaw, rehypeSanitize];
 
 // Extend shared markdown components with chat-specific overrides (table with CSV copy, image lightbox)
 const markdownComponents = {
