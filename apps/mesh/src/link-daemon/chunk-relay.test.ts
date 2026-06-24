@@ -438,6 +438,33 @@ describe("relayDispatchSSEAsChunkStream", () => {
     outbox.close();
   });
 
+  it("drops the run's rows from the outbox when the relay FAILS (no leak)", async () => {
+    // `truncateRun` used to fire only on terminal SUCCESS, so a failed/aborted
+    // run leaked its rows forever — dead runs accumulated until the daemon-wide
+    // MAX_OUTBOX_BYTES wedged and every new run failed. The relay must drop a
+    // run's rows on EVERY terminal outcome.
+    const outbox = openOutbox({ path: ":memory:" });
+    await expect(
+      relayDispatchSSEAsChunkStream({
+        dispatchBody: sseBody([CHUNK_A, CHUNK_B, DONE]),
+        runId: "run_fail",
+        fenceToken: "fence_1",
+        outbox,
+        retry: { maxAttempts: 1, minTimeout: 1, maxTimeout: 10 },
+        post: async (body): Promise<RelayPostResult> => {
+          // Drain the body so the pump appends every line, THEN fail.
+          await readAllLines(body);
+          throw Object.assign(new Error("relay 503"), { status: 503 });
+        },
+      }),
+    ).rejects.toThrow();
+
+    expect(
+      outbox.replay({ runId: "run_fail", fenceToken: "fence_1", fromSeq: 1 }),
+    ).toEqual([]);
+    outbox.close();
+  });
+
   it("aborts cleanly via signal: rejects with the reason and cancels the source", async () => {
     const sse = pushableSSEBody();
     const firstLineSeen = Promise.withResolvers<void>();
@@ -498,7 +525,7 @@ describe("relayDispatchSSEAsChunkStream + durable outbox", () => {
     ).toEqual([]);
   });
 
-  it("survives a daemon crash mid-run: the reopened outbox holds the unacked prefix", async () => {
+  it("truncates a terminally-failed run's rows from the durable file (no cross-restart leak)", async () => {
     const sse = pushableSSEBody();
     const crashed = Promise.withResolvers<void>();
     const relayPromise = relayDispatchSSEAsChunkStream({
@@ -526,8 +553,12 @@ describe("relayDispatchSSEAsChunkStream + durable outbox", () => {
     sse.close();
     await relayPromise;
 
-    // The outbox file still holds the prefix (not truncated — never
-    // terminal-acked). Reopen at the same path to prove on-disk durability.
+    // The run terminally failed (retries exhausted), so the relay dropped its
+    // rows on the way out — even from the DURABLE file. A failed run no longer
+    // leaks its prefix (which used to accumulate dead runs until the daemon-wide
+    // cap wedged the relay). Reopen at the same path to prove the truncation hit
+    // disk. (Cross-restart resend is intentionally gone — the boot sweep would
+    // clear any survivors anyway, since a run can't outlive its daemon.)
     outbox.close();
     const reopened = openOutbox({ path: join(dir, "ob.sqlite") });
     const rows = reopened.replay({
@@ -535,7 +566,7 @@ describe("relayDispatchSSEAsChunkStream + durable outbox", () => {
       fenceToken: FENCE,
       fromSeq: 1,
     });
-    expect(rows.map((r) => r.wireSeq)).toEqual([1, 2]);
+    expect(rows).toEqual([]);
     reopened.close();
     // Reopen the shared handle so afterEach's close() is balanced.
     outbox = openOutbox({ path: join(dir, "ob.sqlite") });

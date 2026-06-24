@@ -94,6 +94,15 @@ export interface Outbox {
     fenceToken: string;
     ackSeq: number;
   }): void;
+  /**
+   * Boot-time sweep: drop ALL rows and reclaim the file. A run can't survive a
+   * daemon restart (its sandbox + harness die with it), so any rows present at
+   * daemon start are from a dead prior session — keeping them only risks wedging
+   * the new session at MAX_OUTBOX_BYTES (the leak that accumulated 11 days of
+   * failed runs in the field). Called once at daemon boot. Within a session the
+   * outbox still buffers normally for resend-on-reconnect.
+   */
+  clear(): void;
   journalMode(): string;
   close(): void;
 }
@@ -192,6 +201,17 @@ export function openOutbox(opts: OpenOutboxOptions): Outbox {
     },
     truncateUpToSeq(scope) {
       truncateUpToStmt.run(scope.runId, scope.fenceToken, scope.ackSeq);
+    },
+    clear() {
+      // DELETE un-wedges (the cap is on SUM(byte_length)); VACUUM reclaims the
+      // file's high-water-marked pages and is best-effort (a locked/full disk
+      // must not block daemon boot — the DELETE already did the load-bearing work).
+      db.exec("DELETE FROM outbox");
+      try {
+        db.exec("VACUUM");
+      } catch {
+        // best-effort
+      }
     },
     journalMode() {
       const row = db

@@ -383,6 +383,18 @@ export async function relayDispatchSSEAsChunkStream(
       );
     }
   } finally {
+    // A run's rows are useless once the relay returns: SUCCESS means the cluster
+    // acked them; FAILURE/ABORT means the run is dead (its sandbox SSE is
+    // cancelled). Drop them on EVERY terminal outcome so a failed/aborted run
+    // never leaks its prefix into the durable outbox — that leak (truncateRun
+    // previously fired only on success) accumulated dead runs until the
+    // daemon-wide MAX_OUTBOX_BYTES wedged the relay. Idempotent: the success
+    // path already truncated inside postOnce.
+    try {
+      outbox.truncateRun({ runId: input.runId, fenceToken });
+    } catch {
+      // Cleanup must never mask the real terminal error.
+    }
     // Close only an outbox we created; an injected one is the caller's to own.
     if (ownsOutbox) outbox.close();
   }

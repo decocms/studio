@@ -241,9 +241,14 @@ export async function startLinkDaemon(
   });
   // Durable uplink outbox (spec §5.1). One DB per daemon under the leaf data
   // dir (DATA_DIR is the leaf — do NOT append `.deco`; sandboxes live at
-  // `$DATA_DIR/link/sandboxes/...`). Survives daemon restart so a reconnect can
-  // resend the unacked relay prefix.
+  // `$DATA_DIR/link/sandboxes/...`). Within a session it buffers the unacked
+  // relay prefix for resend-on-reconnect.
   const outbox = openOutbox({ path: `${opts.dataDir}/link/outbox.sqlite` });
+  // Boot sweep: a run can't survive a daemon restart (its sandbox + harness die
+  // with it), so any rows left from a prior session are dead. Clear them so a
+  // new session never inherits a wedged outbox (the field leak that filled the
+  // 64 MiB cap with 11 days of failed runs and bricked the relay).
+  outbox.clear();
 
   // `shutdown` is declared below (it needs `cluster` in scope); the control
   // poller can in principle deliver a frame before that line runs, so route

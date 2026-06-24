@@ -143,6 +143,37 @@ describe("outbox append/replay", () => {
   });
 });
 
+describe("outbox boot sweep (clear)", () => {
+  it("clear() drops ALL rows so a fresh daemon boot starts un-wedged", () => {
+    outbox.append({
+      runId: "r1",
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 1,
+      line: line(1, "x"),
+    });
+    outbox.append({
+      runId: "r2",
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 1,
+      line: line(1, "y"),
+    });
+    expect(
+      outbox.replay({ runId: "r1", fenceToken: FENCE, fromSeq: 1 }),
+    ).toHaveLength(1);
+
+    outbox.clear();
+
+    expect(
+      outbox.replay({ runId: "r1", fenceToken: FENCE, fromSeq: 1 }),
+    ).toEqual([]);
+    expect(
+      outbox.replay({ runId: "r2", fenceToken: FENCE, fromSeq: 1 }),
+    ).toEqual([]);
+  });
+});
+
 describe("outbox cap (loud-fail backstop)", () => {
   it("MAX_OUTBOX_BYTES defaults to 512 MiB (env-tunable backstop, not the per-run limit)", () => {
     // Bumped from the legacy 64 MiB once rolling ackSeq truncation bounded the
