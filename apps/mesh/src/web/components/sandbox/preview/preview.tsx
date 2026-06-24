@@ -42,6 +42,8 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
+import { parseSections } from "@/web/components/sections-editor/parse-sections";
+import { getPageVariantSectionsAt } from "@/web/components/sections-editor/page-variants";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
@@ -222,6 +224,25 @@ export function PreviewContent() {
     : currentPage?.name;
   const currentPageKey = currentPage?.key ?? null;
 
+  // Per-section metadata for the CMS hover overlay, aligned by index with the
+  // iframe's top-level section list. `label`: ONLY global (saved block)
+  // sections get a name — the DOM can't carry it (incl. globals inside async
+  // rendering); non-global sections are empty so the iframe falls back to their
+  // full resolve. `kind`: drives the highlight color (global / variant / normal).
+  const cmsSections =
+    decofile && currentPageKey
+      ? parseSections(
+          getPageVariantSectionsAt(decofile, currentPageKey, 0),
+          decofile,
+        )
+      : [];
+  const cmsSectionLabels = cmsSections.map((s) =>
+    s.isSavedBlock ? s.label : "",
+  );
+  const cmsSectionKinds = cmsSections.map((s) =>
+    s.isSavedBlock ? "global" : s.isMultivariate ? "variant" : "normal",
+  );
+
   const iframeSrcRef = useRef<string | null>(null);
   /** Path we navigated to programmatically; ignore stale iframe onLoad events. */
   const intendedPathRef = useRef<string | null>(null);
@@ -398,6 +419,17 @@ export function PreviewContent() {
     if (!win) return;
     win.postMessage(
       { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
+      "*",
+    );
+    // Ordered after activate, so the script's listener is registered by the
+    // time this arrives. Re-sent on every (re)injection (mode switch, page
+    // navigation, save-reload) so labels track the current page.
+    win.postMessage(
+      {
+        type: "cms-editor::set-labels",
+        labels: cmsSectionLabels,
+        kinds: cmsSectionKinds,
+      },
       "*",
     );
   };
