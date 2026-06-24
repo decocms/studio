@@ -18,7 +18,7 @@ export type CmsEditorPayload = z.infer<typeof CmsEditorPayloadSchema>;
  * they're filtered out via IGNORED_MANIFEST_KEYS to keep DOM order aligned with
  * the index the editor panel uses.
  */
-export const IGNORED_MANIFEST_KEYS = [
+const IGNORED_MANIFEST_KEYS = [
   "website/sections/Seo/SeoV2.tsx",
   "site/sections/Theme/Theme.tsx",
   "htmx/sections/htmx.tsx",
