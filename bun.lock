@@ -38,7 +38,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "3.52.13",
+      "version": "3.53.0",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -321,6 +321,7 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
+        "@nats-io/jetstream": "3.4.0",
         "@types/bun": "latest",
         "typescript": "^5.8.3",
       },

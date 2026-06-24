@@ -3,7 +3,7 @@ import type { JetStreamClient } from "@nats-io/jetstream";
 import {
   createDirectNatsPublisher,
   publishRelayBodyToNats,
-} from "./direct-nats-publisher";
+} from "./relay-publisher";
 
 type PublishRecord = { subject: string; payload: unknown; msgID?: string };
 
