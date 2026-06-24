@@ -9,7 +9,10 @@
  * so that one is imported, not duplicated.
  */
 import type { JetStreamClient } from "@nats-io/jetstream";
-import { relayLineSchema, type RelayLine } from "@decocms/sandbox/dispatch/relay";
+import {
+  relayLineSchema,
+  type RelayLine,
+} from "@decocms/sandbox/dispatch/relay";
 
 // --- Stream subject + msgId scheme (mirrors projector-stream-messages.ts) -----
 
