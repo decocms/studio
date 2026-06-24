@@ -43,9 +43,12 @@ const { DBOS } = await import("@dbos-inc/dbos-sdk");
 // `require` to `verify-full`, but v3 / pg v9 will drop that upgrade and treat
 // `require` as encrypt-without-verification (libpq semantics).
 function withSslmode(url: string, ssl: boolean): string {
-  if (!ssl) return url;
   const u = new URL(url);
-  if (!u.searchParams.has("sslmode")) {
+  const sslmode = u.searchParams.get("sslmode");
+  if (
+    ["prefer", "require", "verify-ca"].includes(sslmode ?? "") ||
+    (!sslmode && ssl)
+  ) {
     u.searchParams.set("sslmode", "verify-full");
   }
   return u.toString();

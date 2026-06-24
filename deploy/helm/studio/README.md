@@ -761,7 +761,7 @@ When connecting to managed databases (such as AWS RDS, Google Cloud SQL, Azure D
 ```yaml
 database:
   engine: postgresql
-  url: "postgresql://user:password@host:5432/dbname?sslmode=verify-ca"
+  url: "postgresql://user:password@host:5432/dbname?sslmode=verify-full"
   caCert: |
     -----BEGIN CERTIFICATE-----
     MIID/jCCAuagAwIBAgIQdOCSuA9psBpQd8EI368/0DANBgkqhkiG9w0BAQsFADCB
@@ -803,7 +803,7 @@ configMap:
 ```yaml
 database:
   engine: postgresql
-  url: "postgresql://postgres:password@rds-instance.region.rds.amazonaws.com:5432/dbname?sslmode=verify-ca"
+  url: "postgresql://postgres:password@rds-instance.region.rds.amazonaws.com:5432/dbname?sslmode=verify-full"
   caCert: |
     -----BEGIN CERTIFICATE-----
     MIID/jCCAuagAwIBAgIQdOCSuA9psBpQd8EI368/0DANBgkqhkiG9w0BAQsFADCB
@@ -1175,7 +1175,7 @@ helm install deco-studio . -f existing-pvc-values.yaml -n deco-studio --create-n
 # postgresql-managed-values.yaml
 database:
   engine: postgresql
-  url: "postgresql://postgres:password@rds-instance.sa-east-1.rds.amazonaws.com:5432/mydb?sslmode=verify-ca"
+  url: "postgresql://postgres:password@rds-instance.sa-east-1.rds.amazonaws.com:5432/mydb?sslmode=verify-full"
   caCert: |
     -----BEGIN CERTIFICATE-----
     MIID/jCCAuagAwIBAgIQdOCSuA9psBpQd8EI368/0DANBgkqhkiG9w0BAQsFADCB

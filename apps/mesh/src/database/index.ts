@@ -182,9 +182,10 @@ function getPoolMax(): number {
 }
 
 function createPostgresDatabase(connectionString: string): StudioDatabase {
+  const normalizedConnectionString = withSslmode(connectionString, getSsl());
   const pool = instrumentPool(
     new Pool({
-      connectionString,
+      connectionString: normalizedConnectionString,
       max: getPoolMax(),
       ssl: getSsl(),
       ...defaultPoolOptions,
@@ -207,9 +208,12 @@ export function getDatabaseUrl(): string {
 
 /** Append `sslmode=verify-full` when SSL is required and not already set. */
 export function withSslmode(url: string, ssl: boolean): string {
-  if (!ssl) return url;
   const u = new URL(url);
-  if (!u.searchParams.has("sslmode")) {
+  const sslmode = u.searchParams.get("sslmode");
+  if (
+    ["prefer", "require", "verify-ca"].includes(sslmode ?? "") ||
+    (!sslmode && ssl)
+  ) {
     u.searchParams.set("sslmode", "verify-full");
   }
   return u.toString();
@@ -219,7 +223,7 @@ export function withSslmode(url: string, ssl: boolean): string {
  * Create a Kysely dialect for the given database URL.
  */
 export function getDbDialect(databaseUrl?: string): Dialect {
-  const url = databaseUrl || getDatabaseUrl();
+  const url = withSslmode(databaseUrl || getDatabaseUrl(), getSsl());
 
   return new PostgresDialect({
     pool: new Pool({
