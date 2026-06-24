@@ -30,6 +30,18 @@ const JOIN_MODE_LABELS: Record<JoinMode, string> = {
   request: "Require approval",
 };
 
+/** Explains what each join mode does, for the description under a verified domain. */
+function joinModeHelp(mode: JoinMode, domain: string): string {
+  switch (mode) {
+    case "auto":
+      return `Anyone with a verified @${domain} email joins automatically.`;
+    case "request":
+      return `People with a verified @${domain} email can request to join; an admin approves.`;
+    default:
+      return "Not discoverable — no one can find or join through this domain.";
+  }
+}
+
 export function DomainSettings() {
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
@@ -124,34 +136,39 @@ export function DomainSettings() {
                 }
                 description={
                   verified
-                    ? `Verified via ${d.verificationMethod === "email" ? "email match" : "DNS"}.`
+                    ? joinModeHelp(d.joinMode, d.domain)
                     : "Add the DNS record below, then verify."
                 }
                 action={
                   <div className="flex items-center gap-2">
                     {verified && (
-                      <Select
-                        value={d.joinMode}
-                        onValueChange={(value) =>
-                          updateModeMutation.mutate({
-                            id: d.id,
-                            joinMode: value as JoinMode,
-                          })
-                        }
-                      >
-                        <SelectTrigger className="w-44" size="sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(["off", "auto", "request"] as JoinMode[]).map(
-                            (mode) => (
-                              <SelectItem key={mode} value={mode}>
-                                {JOIN_MODE_LABELS[mode]}
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
+                      <>
+                        <span className="text-xs text-muted-foreground">
+                          Join mode
+                        </span>
+                        <Select
+                          value={d.joinMode}
+                          onValueChange={(value) =>
+                            updateModeMutation.mutate({
+                              id: d.id,
+                              joinMode: value as JoinMode,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-44" size="sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(["off", "auto", "request"] as JoinMode[]).map(
+                              (mode) => (
+                                <SelectItem key={mode} value={mode}>
+                                  {JOIN_MODE_LABELS[mode]}
+                                </SelectItem>
+                              ),
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </>
                     )}
                     {!verified && (
                       <Button
