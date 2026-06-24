@@ -23,7 +23,7 @@ import { jetstream } from "@nats-io/jetstream";
 import {
   createDirectNatsPublisher,
   publishRelayBodyToNats,
-} from "../../src/link-daemon/direct-nats-publisher";
+} from "./relay-publisher";
 import { openNats } from "./links-presence";
 
 export interface PublishRelayResult {
