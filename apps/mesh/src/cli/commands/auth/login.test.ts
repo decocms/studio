@@ -92,9 +92,13 @@ function mockTarget(target: string) {
       /^[A-Za-z0-9_-]+$/,
     );
     issuedCode = `code_${Math.random().toString(36).slice(2, 8)}`;
-    // Simulate the browser hitting the CLI callback after auth.
+    // Simulate the browser hitting the CLI callback after auth. Don't follow
+    // the callback server's 302 to `${target}/cli/auth-success` — that's a real
+    // external host; following it makes a live network call (flaky / slow in CI).
     await new Promise((r) => setTimeout(r, 10));
-    await fetch(`${redirectUri}?code=${issuedCode}&state=${state}`);
+    await fetch(`${redirectUri}?code=${issuedCode}&state=${state}`, {
+      redirect: "manual",
+    });
   });
 
   return {
@@ -168,7 +172,8 @@ describe("loginCommand", () => {
       const callback = parsed.searchParams.get("redirect_uri")!;
       const state = parsed.searchParams.get("state")!;
       await new Promise((r) => setTimeout(r, 10));
-      await fetch(`${callback}?code=c&state=${state}`);
+      // Don't follow the callback server's 302 to the external success page.
+      await fetch(`${callback}?code=c&state=${state}`, { redirect: "manual" });
     });
     const code = await loginCommand({
       dataDir: dir,

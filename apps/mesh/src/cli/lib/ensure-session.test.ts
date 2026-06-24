@@ -94,7 +94,14 @@ function mockOAuth() {
     const state = parsed.searchParams.get("state")!;
     code = "code_test";
     await new Promise((r) => setTimeout(r, 10));
-    await fetch(`${redirectUri}?code=${code}&state=${state}`);
+    // Deliver the callback to the local server, but DON'T follow its 302 to
+    // `${target}/cli/auth-success` — that's a real external studio host
+    // (e.g. studio-stg.decocms.com), and following it makes a live network
+    // call that hangs in CI until the 5s test timeout. The local server has
+    // already resolved waitForCallback before sending the redirect.
+    await fetch(`${redirectUri}?code=${code}&state=${state}`, {
+      redirect: "manual",
+    });
   });
 
   return { fetchMock, openBrowser };
