@@ -262,20 +262,29 @@ export async function handleLocalDispatch(
     }, dispatchStartTimeoutMs);
   }
 
+  // `timeout: false` is a Bun fetch option (not in the standard RequestInit).
+  // Bun default-times-out a long-lived stream, but the harness SSE legitimately
+  // idles for minutes during a slow tool call or deep reasoning — without this
+  // the body read trips `TimeoutError: The operation timed out` and the whole
+  // turn dies as `local_dispatch_failed` (observed on both codex AND claude-code).
+  // A genuine hang is still bounded by the run abort signal + the cluster
+  // reaper. Matches the agent-sandbox client (provider/agent-sandbox/client.ts).
+  const dispatchInit: RequestInit & { timeout?: boolean } = {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${deps.sandboxDaemonToken}`,
+      "content-type": "application/json",
+      accept: "text/event-stream",
+    },
+    body: dispatchBody,
+    signal: dispatchSignal,
+    timeout: false,
+  };
   let dispatchRes: Response;
   try {
     dispatchRes = await fetcher(
       `${deps.sandboxDispatchUrl}/_sandbox/dispatch`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${deps.sandboxDaemonToken}`,
-          "content-type": "application/json",
-          accept: "text/event-stream",
-        },
-        body: dispatchBody,
-        signal: dispatchSignal,
-      },
+      dispatchInit as RequestInit,
     );
   } catch (err) {
     if (timeoutController.signal.aborted && !deps.signal?.aborted) {
