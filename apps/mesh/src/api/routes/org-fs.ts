@@ -114,8 +114,18 @@ function byteResponse(
 
 /** Unlock cookie lifetime. */
 const UNLOCK_TTL_SEC = 60 * 60 * 12;
-/** Failed unlock attempts per (ip, org, volume, path) before a lockout. */
-const UNLOCK_MAX_ATTEMPTS = 10;
+/**
+ * Per (IP, share) attempt cap — the normal-case limiter. Best-effort: the
+ * client IP can be spoofed via X-Forwarded-For when not behind a trusted proxy,
+ * which is why the per-share cap is the real backstop.
+ */
+const UNLOCK_IP_MAX = 10;
+/**
+ * Per-share attempt cap across ALL IPs — bounds brute-force even when the
+ * per-IP limit is evaded by rotating X-Forwarded-For. Generous enough to
+ * tolerate a few users + typos without locking out a legitimate share.
+ */
+const UNLOCK_SHARE_MAX = 50;
 const UNLOCK_WINDOW_MS = 5 * 60 * 1000;
 
 /**
@@ -124,16 +134,16 @@ const UNLOCK_WINDOW_MS = 5 * 60 * 1000;
  * stays bounded. Good enough for a v1 gate; revisit if it needs to be global.
  */
 const unlockAttempts = new Map<string, { count: number; resetAt: number }>();
-function unlockAllowed(key: string): boolean {
+function overLimit(key: string, max: number): boolean {
   const e = unlockAttempts.get(key);
-  return !e || Date.now() > e.resetAt || e.count < UNLOCK_MAX_ATTEMPTS;
+  return !!e && Date.now() <= e.resetAt && e.count >= max;
 }
-function recordUnlockFail(key: string): void {
-  const now = Date.now();
-  if (unlockAttempts.size > 5000) {
-    for (const [k, v] of unlockAttempts)
-      if (now > v.resetAt) unlockAttempts.delete(k);
-  }
+function unlockAllowed(ipKey: string, shareKey: string): boolean {
+  return (
+    !overLimit(ipKey, UNLOCK_IP_MAX) && !overLimit(shareKey, UNLOCK_SHARE_MAX)
+  );
+}
+function bumpAttempt(key: string, now: number): void {
   const e = unlockAttempts.get(key);
   if (!e || now > e.resetAt) {
     unlockAttempts.set(key, { count: 1, resetAt: now + UNLOCK_WINDOW_MS });
@@ -141,11 +151,24 @@ function recordUnlockFail(key: string): void {
     e.count++;
   }
 }
+function recordUnlockFail(ipKey: string, shareKey: string): void {
+  const now = Date.now();
+  if (unlockAttempts.size > 5000) {
+    for (const [k, v] of unlockAttempts)
+      if (now > v.resetAt) unlockAttempts.delete(k);
+  }
+  bumpAttempt(ipKey, now);
+  bumpAttempt(shareKey, now);
+}
 
 function clientIp(c: Ctx): string {
+  // cf-connecting-ip is set by Cloudflare and not client-spoofable behind it;
+  // x-real-ip by many reverse proxies. The leftmost x-forwarded-for is
+  // client-supplied (spoofable) — last resort only.
   return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("cf-connecting-ip") ||
     c.req.header("x-real-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     "unknown"
   );
 }
@@ -783,8 +806,10 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       // password is one credential for the whole subtree, so all of its
       // sub-paths must share one attempt budget — otherwise an attacker
       // multiplies the lockout by guessing sibling paths under the same share.
-      const rlKey = `${clientIp(c)}|${orgId}|${volume}|${access.govPath}`;
-      if (!unlockAllowed(rlKey)) {
+      // Per-IP (normal case) + per-share (backstop vs X-Forwarded-For spoofing).
+      const ipKey = `${clientIp(c)}|${orgId}|${volume}|${access.govPath}`;
+      const shareKey = `share|${orgId}|${volume}|${access.govPath}`;
+      if (!unlockAllowed(ipKey, shareKey)) {
         return passwordFormResponse(
           c,
           {
@@ -801,8 +826,11 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
         .catch(() => ({}) as Record<string, unknown>);
       const password =
         typeof formBody.password === "string" ? formBody.password : "";
-      if (!password || !verifySharePassword(password, access.passwordHash)) {
-        recordUnlockFail(rlKey);
+      if (
+        !password ||
+        !(await verifySharePassword(password, access.passwordHash))
+      ) {
+        recordUnlockFail(ipKey, shareKey);
         return passwordFormResponse(
           c,
           { orgSlug, volume, path, error: "Incorrect password." },

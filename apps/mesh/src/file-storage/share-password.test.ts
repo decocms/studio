@@ -9,20 +9,20 @@ import {
 } from "./share-password";
 
 describe("share-password", () => {
-  it("hashes and verifies a password", () => {
-    const h = hashSharePassword("hunter2");
+  it("hashes and verifies a password", async () => {
+    const h = await hashSharePassword("hunter2");
     expect(h.startsWith("scrypt$")).toBe(true);
-    expect(verifySharePassword("hunter2", h)).toBe(true);
-    expect(verifySharePassword("wrong", h)).toBe(false);
+    expect(await verifySharePassword("hunter2", h)).toBe(true);
+    expect(await verifySharePassword("wrong", h)).toBe(false);
   });
 
-  it("salts — same password yields distinct hashes", () => {
-    expect(hashSharePassword("x")).not.toBe(hashSharePassword("x"));
+  it("salts — same password yields distinct hashes", async () => {
+    expect(await hashSharePassword("x")).not.toBe(await hashSharePassword("x"));
   });
 
-  it("rejects malformed stored hashes without throwing", () => {
-    expect(verifySharePassword("x", "garbage")).toBe(false);
-    expect(verifySharePassword("x", "scrypt$zz$zz")).toBe(false);
+  it("rejects malformed stored hashes without throwing", async () => {
+    expect(await verifySharePassword("x", "garbage")).toBe(false);
+    expect(await verifySharePassword("x", "scrypt$zz$zz")).toBe(false);
   });
 
   it("share secrets are random", () => {

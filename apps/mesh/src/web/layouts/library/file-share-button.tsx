@@ -135,6 +135,54 @@ function ShareControls({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const copyRow = url ? (
+    <div className="flex items-center gap-2 rounded-md border border-input bg-muted/50 px-2 py-1.5">
+      <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+        {url}
+      </code>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-6 shrink-0"
+        onClick={handleCopy}
+        aria-label="Copy link"
+      >
+        {copied ? (
+          <Check size={12} className="text-green-600" />
+        ) : (
+          <Copy01 size={12} />
+        )}
+      </Button>
+    </div>
+  ) : null;
+
+  // Inherited from a published parent folder: read-only here. The mode control
+  // is hidden because the parent governs the read — setting this node to "Org
+  // only" wouldn't actually restrict it (the parent still serves it), so the
+  // owner manages sharing on the parent, not here.
+  if (inherited) {
+    return (
+      <div className="flex w-full min-w-0 flex-col gap-3">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Globe01 size={16} />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="text-sm font-medium text-foreground">
+              Shared via a parent folder
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Anyone with the link can view{" "}
+              {isDir ? "files in this folder" : "this file"}. Manage sharing on
+              the parent folder.
+            </span>
+          </div>
+        </div>
+        {copyRow}
+      </div>
+    );
+  }
+
   return (
     <div className="flex w-full min-w-0 flex-col gap-3">
       <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
@@ -194,33 +242,7 @@ function ShareControls({
         </form>
       )}
 
-      {inherited && (
-        <p className="rounded-md bg-muted/50 px-2.5 py-2 text-xs text-muted-foreground">
-          Also shared via a parent folder — a setting here applies to just this{" "}
-          {subject}.
-        </p>
-      )}
-
-      {url && effective && (
-        <div className="flex items-center gap-2 rounded-md border border-input bg-muted/50 px-2 py-1.5">
-          <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-            {url}
-          </code>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
-            onClick={handleCopy}
-            aria-label="Copy link"
-          >
-            {copied ? (
-              <Check size={12} className="text-green-600" />
-            ) : (
-              <Copy01 size={12} />
-            )}
-          </Button>
-        </div>
-      )}
+      {effective && copyRow}
     </div>
   );
 }

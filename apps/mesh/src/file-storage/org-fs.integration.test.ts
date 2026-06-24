@@ -485,8 +485,12 @@ describe("OrgFs service (integration)", () => {
     if (access.access === "password") {
       expect(access.govPath).toBe("secret.pdf");
       expect(access.secret.length).toBeGreaterThan(0);
-      expect(verifySharePassword("hunter2", access.passwordHash)).toBe(true);
-      expect(verifySharePassword("nope", access.passwordHash)).toBe(false);
+      expect(await verifySharePassword("hunter2", access.passwordHash)).toBe(
+        true,
+      );
+      expect(await verifySharePassword("nope", access.passwordHash)).toBe(
+        false,
+      );
     }
   });
 
@@ -520,7 +524,7 @@ describe("OrgFs service (integration)", () => {
     expect(access.access).toBe("password");
     if (access.access === "password") {
       expect(access.govPath).toBe("vault");
-      expect(verifySharePassword("pw", access.passwordHash)).toBe(true);
+      expect(await verifySharePassword("pw", access.passwordHash)).toBe(true);
     }
   });
 
@@ -552,8 +556,8 @@ describe("OrgFs service (integration)", () => {
       throw new Error("expected password access");
     }
     expect(a2.secret).not.toBe(a1.secret);
-    expect(verifySharePassword("two", a2.passwordHash)).toBe(true);
-    expect(verifySharePassword("one", a2.passwordHash)).toBe(false);
+    expect(await verifySharePassword("two", a2.passwordHash)).toBe(true);
+    expect(await verifySharePassword("one", a2.passwordHash)).toBe(false);
   });
 
   afterAll(async () => {

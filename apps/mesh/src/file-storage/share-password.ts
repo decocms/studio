@@ -7,25 +7,32 @@
  * which is embedded in the token, so previously-issued cookies stop verifying.
  */
 
-import {
-  createHmac,
-  randomBytes,
-  scryptSync,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHmac, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 import { getSettings } from "../settings";
 
 const SCRYPT_KEYLEN = 64;
+// Async scrypt — the `/unlock` route is public and unauthenticated, so the sync
+// variant would block the event loop ~tens of ms per attempt and serialize
+// concurrent unlocks.
+const scryptAsync = promisify(scrypt) as (
+  password: string,
+  salt: Buffer,
+  keylen: number,
+) => Promise<Buffer>;
 
 /** scrypt hash as `scrypt$<saltHex>$<derivedHex>`. */
-export function hashSharePassword(password: string): string {
+export async function hashSharePassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  const derived = scryptSync(password, salt, SCRYPT_KEYLEN);
+  const derived = await scryptAsync(password, salt, SCRYPT_KEYLEN);
   return `scrypt$${salt.toString("hex")}$${derived.toString("hex")}`;
 }
 
 /** Constant-time verify against a `hashSharePassword` output. */
-export function verifySharePassword(password: string, stored: string): boolean {
+export async function verifySharePassword(
+  password: string,
+  stored: string,
+): Promise<boolean> {
   const parts = stored.split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
   const salt = Buffer.from(parts[1]!, "hex");
@@ -35,7 +42,7 @@ export function verifySharePassword(password: string, stored: string): boolean {
   if (salt.length === 0 || expected.length === 0) return false;
   let derived: Buffer;
   try {
-    derived = scryptSync(password, salt, expected.length);
+    derived = await scryptAsync(password, salt, expected.length);
   } catch {
     return false;
   }

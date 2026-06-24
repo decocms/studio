@@ -156,7 +156,7 @@ export class OrgFs {
           "A password is required to set password mode",
         );
       }
-      passwordHash = hashSharePassword(opts.password);
+      passwordHash = await hashSharePassword(opts.password);
       shareSecret = generateShareSecret();
     }
     const updated = await this.manifest.setShareMode({
