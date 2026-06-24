@@ -136,6 +136,11 @@ export class OrgFsEntryStorage {
           updated_by: params.actor,
           updated_at: now,
           seq: NEXT_SEQ,
+          // Reviving a tombstone (delete + recreate at the same path) starts
+          // private — a regenerated file must not silently re-expose itself.
+          // An in-place overwrite of a LIVE row keeps its current visibility
+          // (editing a published deck stays published).
+          read_public: sql<boolean>`case when org_fs_entry.deleted_at is not null then false else org_fs_entry.read_public end`,
           // Keep the existing thread stamp when this write isn't thread-tied
           // (e.g. the mount's vfs write-back echoes the deck-buffer's bytes
           // with no thread) so the fast-path provenance isn't nulled out.
@@ -192,6 +197,12 @@ export class OrgFsEntryStorage {
             updated_by: params.actor,
             updated_at: now,
             seq: NEXT_SEQ,
+            // Reviving a tombstone starts private; a no-op put on a LIVE dir
+            // must keep its current flag (a published folder stays published
+            // when a child is written under it). The `.where` above is an ON
+            // CONFLICT index-predicate, NOT an update guard, so this set fires
+            // for live dirs too — the CASE is what actually gates the reset.
+            read_public: sql<boolean>`case when org_fs_entry.deleted_at is not null then false else org_fs_entry.read_public end`,
           }),
       )
       .execute();

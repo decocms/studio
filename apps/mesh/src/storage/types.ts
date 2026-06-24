@@ -378,9 +378,10 @@ export interface OrgFsEntryTable {
    *  dispatch (mount write-backs, backfill). Scopes live deck previews to
    *  the originating chat. */
   thread_id: string | null;
-  /** When true, the `/fs/:volume/read` proxy serves this file to anyone —
-   *  no auth, no org membership. Files only; defaults to false (org-only).
-   *  Preserved across overwrites; reset by delete + recreate. */
+  /** When true, the `/fs/:volume/read` proxy serves this entry to anyone — no
+   *  auth, no org membership. On a dir it publishes the whole subtree (reads
+   *  inherit from a published ancestor). Defaults to false (org-only).
+   *  Preserved across in-place overwrites; reset to false on delete + recreate. */
   read_public: ColumnType<boolean, boolean | undefined, boolean>;
 }
 

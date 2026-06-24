@@ -1,15 +1,18 @@
 import type { Kysely } from "kysely";
 
 /**
- * Per-file public-read flag for org-fs entries. A file flagged `read_public`
- * is served by the `/fs/:volume/read` proxy to anyone — no auth, no org
- * membership — so a member can share a single file (a deck, an image, a PDF)
- * with the open internet via the same proxy URL the org already uses.
+ * Public-read flag for org-fs entries. An entry flagged `read_public` is
+ * served by the `/fs/:volume/read` proxy to anyone — no auth, no org
+ * membership — so a member can share something with the open internet via the
+ * same proxy URL the org already uses.
  *
- * Defaults to false (org-only, the prior behavior). Only files are ever
- * published; the flag is meaningless on dirs. Overwriting a file preserves
- * its flag (the putFile upsert leaves it untouched); delete + recreate starts
- * private again.
+ * Set on a FILE (a deck, an image, a PDF) it publishes that file; set on a
+ * DIR it publishes the whole subtree — the read path inherits from a published
+ * ancestor folder, so a page and its co-located assets go public together.
+ *
+ * Defaults to false (org-only). An in-place overwrite of a live file preserves
+ * its flag (editing a published deck stays published); delete + recreate
+ * (reviving a tombstone) starts private again, for both files and dirs.
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema

@@ -277,8 +277,14 @@ export function useOrgFsSetPublic(volume: string) {
       const key = KEYS.orgFsStat(org.id, volume, input.path);
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<OrgFsEntry | null>(key);
+      // Flip effectivePublic too: with only readPublic updated, unpublishing
+      // leaves effectivePublic stale-true, so the dialog briefly reads as
+      // inherited-public (switch snaps back on). The refetch corrects the rare
+      // case where a published ancestor still covers it.
       queryClient.setQueryData<OrgFsEntry | null>(key, (old) =>
-        old ? { ...old, readPublic: input.public } : old,
+        old
+          ? { ...old, readPublic: input.public, effectivePublic: input.public }
+          : old,
       );
       return { key, previous };
     },
