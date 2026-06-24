@@ -383,6 +383,14 @@ export interface OrgFsEntryTable {
    *  inherit from a published ancestor). Defaults to false (org-only).
    *  Preserved across in-place overwrites; reset to false on delete + recreate. */
   read_public: ColumnType<boolean, boolean | undefined, boolean>;
+  /** scrypt hash of the share password. Null on a published entry = fully
+   *  public; set = the proxy serves a password form first. Never sent to
+   *  clients. Meaningless unless `read_public`. */
+  share_password_hash: string | null;
+  /** Random per-node token mixed into unlock-cookie signatures; rotated on
+   *  every password change so old cookies stop validating. Null when not
+   *  password-protected. */
+  share_secret: string | null;
 }
 
 /** Public DTO for a file config — never exposes access key / secret key. */

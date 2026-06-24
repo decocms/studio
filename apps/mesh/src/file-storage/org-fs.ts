@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 import { detectContentType } from "../object-storage/key-utils";
-import type { OrgFsEntry, OrgFsEntryStorage } from "../storage/org-fs";
+import type {
+  OrgFsEntry,
+  OrgFsEntryStorage,
+  ShareMode,
+} from "../storage/org-fs";
 import {
   ancestorsOf,
   assertValidVolume,
@@ -10,6 +14,21 @@ import {
   normalizeFsPath,
   parentOf,
 } from "./org-fs-path";
+import { generateShareSecret, hashSharePassword } from "./share-password";
+
+/** What the `/read` proxy should do for a given path. */
+export type ReadAccess =
+  | { access: "private" }
+  | { access: "public" }
+  | {
+      access: "password";
+      /** Node the password sits on — the unlock cookie's scope. */
+      govPath: string;
+      /** Current secret version (rotated on password change). */
+      secret: string;
+      /** scrypt hash (server-only — never sent to clients). */
+      passwordHash: string;
+    };
 
 const DEFAULT_CHANGES_LIMIT = 500;
 const LIST_PAGE_SIZE = 1000;
@@ -109,16 +128,16 @@ export class OrgFs {
   }
 
   /**
-   * Toggle an entry's public-read flag. Works on a file (publishes that file)
-   * or a dir (publishes its whole subtree — the read path inherits from public
-   * ancestor dirs). A public file/subtree is served by `/read` to anyone, no
-   * auth. Throws if the path is not a live entry.
+   * Set an entry's share mode. `private`/`public` clear any password;
+   * `password` requires `opts.password`, hashes it, and rotates the node's
+   * secret (invalidating previously-issued unlock cookies). Works on a file or
+   * a dir (a dir governs its whole subtree). Throws if the path is not live.
    */
-  async setReadPublic(
+  async setShareMode(
     volume: string,
     path: string,
-    readPublic: boolean,
-    opts: { actor: string },
+    mode: ShareMode,
+    opts: { actor: string; password?: string },
   ): Promise<OrgFsEntry> {
     assertValidVolume(volume);
     const normalized = normalizeFsPath(path);
@@ -128,11 +147,25 @@ export class OrgFs {
       normalized,
     );
     if (!entry) throw new OrgFsNotFoundError(`No such path: ${normalized}`);
-    const updated = await this.manifest.setReadPublic({
+
+    let passwordHash: string | null = null;
+    let shareSecret: string | null = null;
+    if (mode === "password") {
+      if (!opts.password) {
+        throw new OrgFsValidationError(
+          "A password is required to set password mode",
+        );
+      }
+      passwordHash = hashSharePassword(opts.password);
+      shareSecret = generateShareSecret();
+    }
+    const updated = await this.manifest.setShareMode({
       organizationId: this.organizationId,
       volume,
       path: entry.path,
-      readPublic,
+      readPublic: mode !== "private",
+      passwordHash,
+      shareSecret,
       actor: opts.actor,
     });
     // The stat above proved the row exists and is live; the update can only
@@ -141,6 +174,48 @@ export class OrgFs {
       throw new OrgFsNotFoundError(`No such path: ${entry.path}`);
     }
     return updated;
+  }
+
+  /** Public/private convenience over setShareMode (clears any password). */
+  async setReadPublic(
+    volume: string,
+    path: string,
+    readPublic: boolean,
+    opts: { actor: string },
+  ): Promise<OrgFsEntry> {
+    return this.setShareMode(volume, path, readPublic ? "public" : "private", {
+      actor: opts.actor,
+    });
+  }
+
+  /**
+   * What the `/read` proxy should do for `path`: private (member-gated),
+   * public (serve to anyone), or password (serve the form/check the cookie).
+   * Resolves the most-specific published node (self or ancestor) — its
+   * password decides public-vs-gated.
+   */
+  async resolveReadAccess(volume: string, path: string): Promise<ReadAccess> {
+    assertValidVolume(volume);
+    const normalized = normalizeFsPath(path);
+    const entry = await this.manifest.get(
+      this.organizationId,
+      volume,
+      normalized,
+    );
+    if (!entry || entry.kind !== "file") return { access: "private" };
+    const gov = await this.manifest.resolveGoverningShare({
+      organizationId: this.organizationId,
+      volume,
+      candidatePaths: [normalized, ...ancestorsOf(normalized)],
+    });
+    if (!gov) return { access: "private" };
+    if (!gov.passwordHash) return { access: "public" };
+    return {
+      access: "password",
+      govPath: gov.path,
+      secret: gov.secret ?? "",
+      passwordHash: gov.passwordHash,
+    };
   }
 
   /**

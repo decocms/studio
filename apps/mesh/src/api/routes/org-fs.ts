@@ -30,15 +30,23 @@ import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { getCookie, setCookie } from "hono/cookie";
 import type { NatsConnection } from "@nats-io/nats-core";
 import { ForbiddenError, UnauthorizedError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
-import type { OrgFs } from "@/file-storage/org-fs";
+import type { OrgFs, ReadAccess } from "@/file-storage/org-fs";
 import {
   OrgFsNotFoundError,
   OrgFsQuotaError,
   OrgFsValidationError,
 } from "@/file-storage/org-fs";
+import {
+  signUnlockToken,
+  unlockCookieName,
+  verifySharePassword,
+  verifyUnlockToken,
+} from "@/file-storage/share-password";
+import type { ShareMode } from "@/storage/org-fs";
 import {
   notifyOrgFsChange,
   orgFsChangeSubject,
@@ -100,6 +108,112 @@ function byteResponse(
     headers["Content-Security-Policy"] = "sandbox allow-scripts allow-modals";
   }
   return c.body(Buffer.from(bytes), 200, headers);
+}
+
+// --- Password share gate -------------------------------------------------
+
+/** Unlock cookie lifetime. */
+const UNLOCK_TTL_SEC = 60 * 60 * 12;
+/** Failed unlock attempts per (ip, org, volume, path) before a lockout. */
+const UNLOCK_MAX_ATTEMPTS = 10;
+const UNLOCK_WINDOW_MS = 5 * 60 * 1000;
+
+/**
+ * In-memory unlock rate limiter — per-instance, so it blunts brute-force on a
+ * single share but doesn't coordinate across replicas. Lazily swept so the map
+ * stays bounded. Good enough for a v1 gate; revisit if it needs to be global.
+ */
+const unlockAttempts = new Map<string, { count: number; resetAt: number }>();
+function unlockAllowed(key: string): boolean {
+  const e = unlockAttempts.get(key);
+  return !e || Date.now() > e.resetAt || e.count < UNLOCK_MAX_ATTEMPTS;
+}
+function recordUnlockFail(key: string): void {
+  const now = Date.now();
+  if (unlockAttempts.size > 5000) {
+    for (const [k, v] of unlockAttempts)
+      if (now > v.resetAt) unlockAttempts.delete(k);
+  }
+  const e = unlockAttempts.get(key);
+  if (!e || now > e.resetAt) {
+    unlockAttempts.set(key, { count: 1, resetAt: now + UNLOCK_WINDOW_MS });
+  } else {
+    e.count++;
+  }
+}
+
+function clientIp(c: Ctx): string {
+  return (
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip") ||
+    "unknown"
+  );
+}
+
+function requestIsSecure(c: Ctx): boolean {
+  if (c.req.header("x-forwarded-proto") === "https") return true;
+  try {
+    return new URL(c.req.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** A valid, non-stale unlock cookie for a password-gated read? */
+function isUnlocked(
+  c: Ctx,
+  org: string,
+  volume: string,
+  access: Extract<ReadAccess, { access: "password" }>,
+): boolean {
+  const token = getCookie(c, unlockCookieName(org, volume, access.govPath));
+  if (!token) return false;
+  const res = verifyUnlockToken(token, {
+    org,
+    volume,
+    secret: access.secret,
+    nowSec: Math.floor(Date.now() / 1000),
+  });
+  return res?.govPath === access.govPath;
+}
+
+const escapeHtml = (s: string): string =>
+  s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+
+/** The interstitial password page served before a gated file (never the
+ *  sandbox CSP — the form must POST). */
+function passwordFormResponse(
+  c: Ctx,
+  opts: { orgSlug: string; volume: string; path: string; error?: string },
+  status: 401 | 429 = 401,
+): Response {
+  const action = `/api/${encodeURIComponent(opts.orgSlug)}/fs/${encodeURIComponent(
+    opts.volume,
+  )}/unlock?path=${encodeURIComponent(opts.path)}`;
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Password required</title><style>
+:root{color-scheme:light dark}
+body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.5 ui-sans-serif,system-ui,sans-serif;background:#f6f6f7;color:#18181b}
+@media(prefers-color-scheme:dark){body{background:#0b0b0c;color:#fafafa}}
+form{width:min(92vw,360px);padding:28px;border-radius:14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1),0 8px 30px rgba(0,0,0,.08);display:flex;flex-direction:column;gap:14px}
+@media(prefers-color-scheme:dark){form{background:#161618}}
+h1{margin:0;font-size:16px}
+p{margin:0;font-size:13px;color:#71717a}
+input{padding:10px 12px;border-radius:9px;border:1px solid #d4d4d8;font-size:14px;background:transparent;color:inherit}
+@media(prefers-color-scheme:dark){input{border-color:#3f3f46}}
+button{padding:10px 12px;border-radius:9px;border:0;background:#18181b;color:#fff;font-size:14px;font-weight:500;cursor:pointer}
+@media(prefers-color-scheme:dark){button{background:#fafafa;color:#18181b}}
+.err{color:#dc2626;font-size:13px}
+</style></head><body><form method="post" action="${escapeHtml(action)}">
+<h1>🔒 Password required</h1>
+<p>This file is shared with a password. Enter it to view.</p>
+${opts.error ? `<div class="err">${escapeHtml(opts.error)}</div>` : ""}
+<input type="password" name="password" placeholder="Password" autofocus autocomplete="current-password" required>
+<button type="submit">Unlock</button>
+</form></body></html>`;
+  return c.body(html, status, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
 }
 
 /** Translate an OrgFs error into an explicit JSON response (never thrown). */
@@ -365,18 +479,19 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
   // Read a file: `?presign=1` returns a presigned URL (the mount's byte path);
   // otherwise the bytes are streamed through mesh (convenient for the UI/dev).
   //
-  // Public fast-path: a file flagged `read_public` streams to ANYONE — no auth,
-  // no membership. resolveOrgFromPath binds ctx.orgFs to the path-resolved org
-  // even for anonymous / non-member callers and lets them reach this route (its
-  // public-read carve-out), so the same proxy URL the org uses works for the
-  // open internet once a file is published. `?presign` stays member-only:
-  // presigned URLs bypass mesh and aren't part of the share surface. `public-*`
-  // skill volumes are excluded — they're a separate, member-gated mechanism.
+  // Share fast-path: resolveOrgFromPath binds ctx.orgFs and lets anonymous /
+  // non-member callers reach this route (its public-share carve-out). A
+  // `public` file streams to anyone; a `password` file streams only with a
+  // valid unlock cookie, else returns the interstitial form. Everything else
+  // (private, or password-without-cookie for a member) falls through to the
+  // member-gated read — members never see the password prompt. `?presign` stays
+  // member-only; `public-*` skill volumes are a separate, member-gated path.
   app.get("/:volume/read", async (c) => {
     const volume = c.req.param("volume");
     const path = c.req.query("path") ?? "";
     const ctx = c.get("meshContext");
 
+    let access: ReadAccess = { access: "private" };
     if (
       !c.req.query("presign") &&
       ctx.organization?.id &&
@@ -384,18 +499,22 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       isValidVolume(volume) &&
       !isPublicVolume(volume)
     ) {
-      // Own flag OR inherited from a published ancestor folder. A failure
-      // probing visibility falls through to the authed read, never 500s.
-      const publiclyReadable = await ctx.orgFs
-        .isPubliclyReadable(volume, path)
-        .catch(() => false);
-      if (publiclyReadable) {
+      // A probe failure falls through to the member-gated read, never 500s.
+      access = await ctx.orgFs
+        .resolveReadAccess(volume, path)
+        .catch(() => ({ access: "private" as const }));
+      const serveOpen =
+        access.access === "public" ||
+        (access.access === "password" &&
+          isUnlocked(c, ctx.organization.id, volume, access));
+      if (serveOpen) {
         try {
+          // Public files may be shared-cached; password content must not be.
           return byteResponse(
             c,
             await ctx.orgFs.read(volume, path),
             path,
-            true,
+            access.access === "public",
           );
         } catch (err) {
           return fsErrorResponse(c, err);
@@ -403,8 +522,19 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       }
     }
 
+    // Member-gated. A non-member/anonymous hitting a password file gets the
+    // unlock form; a member reading it bypasses the prompt entirely.
     const r = await resolve(c, volume, "ORG_FS_READ");
-    if (!r.ok) return r.res;
+    if (!r.ok) {
+      if (access.access === "password") {
+        return passwordFormResponse(c, {
+          orgSlug: ctx.organization?.slug ?? "",
+          volume,
+          path,
+        });
+      }
+      return r.res;
+    }
     try {
       if (c.req.query("presign")) {
         return c.json({ url: await r.fs.presignRead(volume, path) });
@@ -564,11 +694,12 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     },
   );
 
-  // Toggle an entry's public-read flag. Body: { public: boolean }. Works on a
-  // file (publishes it) or a dir (publishes its whole subtree — /read inherits
-  // from public ancestor dirs). Gated on ORG_FS_WRITE — you can publish what
-  // you can write — and rejected on read-only `public-*` volumes by resolve().
-  // No `seq` bump: visibility is metadata, not content.
+  // Set an entry's share mode. Body: { mode: 'private'|'public'|'password',
+  // password? } (back-compat: { public: boolean }). Works on a file (shares it)
+  // or a dir (shares its whole subtree). Gated on ORG_FS_WRITE — you can share
+  // what you can write — and rejected on read-only `public-*` volumes by
+  // resolve(). Setting/changing the password rotates the node secret, so
+  // outstanding unlock cookies stop working. No `seq` bump.
   app.post(
     "/:volume/public",
     bodyLimit({
@@ -581,19 +712,118 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       if (!r.ok) return r.res;
       const path = c.req.query("path") ?? "";
       const body = (await c.req.json().catch(() => null)) as {
+        mode?: unknown;
         public?: unknown;
+        password?: unknown;
       } | null;
-      if (!body || typeof body.public !== "boolean") {
-        return c.json({ error: "Body must be { public: boolean }" }, 400);
+      const mode: ShareMode | null =
+        body?.mode === "private" ||
+        body?.mode === "public" ||
+        body?.mode === "password"
+          ? body.mode
+          : typeof body?.public === "boolean"
+            ? body.public
+              ? "public"
+              : "private"
+            : null;
+      if (!mode) {
+        return c.json(
+          {
+            error:
+              "Body must be { mode: 'private'|'public'|'password', password? }",
+          },
+          400,
+        );
       }
+      const password =
+        typeof body?.password === "string" ? body.password : undefined;
       try {
-        const entry = await r.fs.setReadPublic(volume, path, body.public, {
+        const entry = await r.fs.setShareMode(volume, path, mode, {
           actor: r.ctx.auth!.user!.id,
+          password,
         });
         return c.json({ entry });
       } catch (err) {
         return fsErrorResponse(c, err);
       }
+    },
+  );
+
+  // Unlock a password-gated share: verify the password, set the scoped unlock
+  // cookie, redirect back to the file. No auth (the public-facing gate);
+  // rate-limited per IP+path. resolveOrgFromPath's carve-out lets non-members
+  // reach it. Returns the form (with an error) on a bad/rate-limited attempt.
+  app.post(
+    "/:volume/unlock",
+    bodyLimit({
+      maxSize: MAX_JSON_BODY_BYTES,
+      onError: (c) => c.json({ error: "Request body too large" }, 413),
+    }),
+    async (c) => {
+      const volume = c.req.param("volume");
+      const path = c.req.query("path") ?? "";
+      const ctx = c.get("meshContext");
+      const orgId = ctx.organization?.id;
+      const orgSlug = ctx.organization?.slug ?? "";
+      if (
+        !orgId ||
+        !ctx.orgFs ||
+        !isValidVolume(volume) ||
+        isPublicVolume(volume)
+      ) {
+        return c.json({ error: "Not found" }, 404);
+      }
+      const rlKey = `${clientIp(c)}|${orgId}|${volume}|${path}`;
+      if (!unlockAllowed(rlKey)) {
+        return passwordFormResponse(
+          c,
+          {
+            orgSlug,
+            volume,
+            path,
+            error: "Too many attempts — wait a few minutes.",
+          },
+          429,
+        );
+      }
+      const access = await ctx.orgFs
+        .resolveReadAccess(volume, path)
+        .catch(() => ({ access: "private" as const }));
+      if (access.access !== "password") {
+        return c.json({ error: "Not password-protected" }, 404);
+      }
+      const formBody = await c.req
+        .parseBody()
+        .catch(() => ({}) as Record<string, unknown>);
+      const password =
+        typeof formBody.password === "string" ? formBody.password : "";
+      if (!password || !verifySharePassword(password, access.passwordHash)) {
+        recordUnlockFail(rlKey);
+        return passwordFormResponse(
+          c,
+          { orgSlug, volume, path, error: "Incorrect password." },
+          401,
+        );
+      }
+      const nowSec = Math.floor(Date.now() / 1000);
+      const token = signUnlockToken({
+        o: orgId,
+        v: volume,
+        p: access.govPath,
+        s: access.secret,
+        e: nowSec + UNLOCK_TTL_SEC,
+      });
+      setCookie(c, unlockCookieName(orgId, volume, access.govPath), token, {
+        httpOnly: true,
+        secure: requestIsSecure(c),
+        sameSite: "Lax",
+        path: `/api/${encodeURIComponent(orgSlug)}/fs/${encodeURIComponent(volume)}/read`,
+        maxAge: UNLOCK_TTL_SEC,
+      });
+      return c.redirect(
+        `/api/${encodeURIComponent(orgSlug)}/fs/${encodeURIComponent(volume)}/read?path=${encodeURIComponent(path)}`,
+        303,
+      );
     },
   );
 

@@ -55,6 +55,7 @@ import { HeaderTabButton } from "@/web/layouts/main-panel-tabs/header-tab-button
 import { KEYS } from "@/web/lib/query-keys";
 import {
   type OrgFsEntry,
+  type ShareMode,
   useOrgFsFileUrl,
   useOrgFsList,
   useOrgFsMutations,
@@ -91,12 +92,15 @@ function publicFileUrl(path: string): string {
   return `${window.location.origin}${path}`;
 }
 
-/** Badge state for a list entry: published here, inherited, or neither. */
+/** Badge state for a list entry: shared here (public/password), inherited from
+ *  a parent, or not shared. */
 function publicStateOf(e: {
+  shareMode?: ShareMode;
   readPublic?: boolean;
   effectivePublic?: boolean;
 }): PublicState | undefined {
-  if (e.readPublic) return "own";
+  if (e.shareMode === "password") return "password";
+  if (e.shareMode === "public" || e.readPublic) return "public";
   if (e.effectivePublic) return "inherited";
   return undefined;
 }
@@ -238,7 +242,8 @@ function RootView({
       volume: e.volume,
       path: e.path,
       kind: "file",
-      readPublic: e.readPublic ?? false,
+      shareMode: e.shareMode ?? "private",
+      effectivePublic: e.effectivePublic ?? false,
       url: publicFileUrl(fileUrl(e.volume, e.path)),
     });
 
@@ -420,7 +425,8 @@ function VolumeView({
             volume,
             path: entry.path,
             kind: entry.kind,
-            readPublic: entry.readPublic ?? false,
+            shareMode: entry.shareMode ?? "private",
+            effectivePublic: entry.effectivePublic ?? false,
             url:
               entry.kind === "file"
                 ? publicFileUrl(fileUrl(volume, entry.path))

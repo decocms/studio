@@ -6,15 +6,19 @@ import { isOrgArchived } from "../../core/org-archived";
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
 /**
- * The org-fs read proxy (`GET .../fs/:volume/read`) serves files flagged
- * read_public to anyone — so a signed-in user who isn't a member of the owning
- * org must still reach it. This detects that one route so the membership gate
- * below can defer to it; the route serves only public files and still gates
- * everything else on ORG_FS_READ (which a non-member fails → 403). Every other
+ * Public-share endpoints a non-member must still reach: the read proxy
+ * (`GET .../fs/:volume/read`, serves public/password files) and the password
+ * unlock (`POST .../fs/:volume/unlock`). The membership gate below defers to
+ * these; the routes themselves serve only shared content and still gate
+ * everything else on ORG_FS_READ (a non-member fails → 403). Every other
  * org-scoped route stays member-gated.
  */
-function isPublicReadPath(c: Context): boolean {
-  return c.req.method === "GET" && /\/fs\/[^/]+\/read$/.test(c.req.path);
+function isPublicSharePath(c: Context): boolean {
+  const p = c.req.path;
+  return (
+    (c.req.method === "GET" && /\/fs\/[^/]+\/read$/.test(p)) ||
+    (c.req.method === "POST" && /\/fs\/[^/]+\/unlock$/.test(p))
+  );
 }
 
 export const resolveOrgFromPath: MiddlewareHandler<{
@@ -80,10 +84,10 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       .executeTakeFirst();
 
     if (!membership) {
-      // A public file read is reachable by anyone, including signed-in
-      // non-members — let it fall through to the route (which serves only
-      // read_public files and 403s the rest). All other routes stay gated.
-      if (!isPublicReadPath(c)) {
+      // Public-share reads + password unlock are reachable by anyone, incl.
+      // signed-in non-members — let them fall through to the route (which serves
+      // only shared content and 403s the rest). All other routes stay gated.
+      if (!isPublicSharePath(c)) {
         // Bounce browser navigations into the SPA so OrgAccessGate shows the
         // styled "No access" screen (with invite/auto-join handling) instead of
         // raw JSON in the address bar.
