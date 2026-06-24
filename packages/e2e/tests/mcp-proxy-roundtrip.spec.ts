@@ -1,7 +1,7 @@
 /**
  * End-to-end smoke test for mesh's MCP proxy.
  *
- * Stands up a tiny test MCP server (apps/mesh/e2e/fixtures/test-mcp-server.ts),
+ * Stands up a tiny test MCP server (../fixtures/test-mcp-server.ts),
  * creates a real connection in mesh that points at it, then exercises the
  * proxy mount at /api/:org/mcp/:connectionId. Validates the whole chain:
  *

@@ -34,13 +34,15 @@ function candidateHomes(): string[] {
   const explicit = process.env.DATA_DIR ?? process.env.DECOCMS_HOME;
   const candidates: string[] = [];
   if (explicit) candidates.push(explicit);
-  // `deco dev` puts data in <cwd>/.deco/, but CWD depends on how the
-  // server was started (repo root vs. `apps/mesh`). Walk up the tree
-  // from process.cwd() — Playwright runs from `apps/mesh` but the dev
-  // server may have been started from the repo root.
+  // `deco dev` writes data to <cwd>/.deco/ where cwd is wherever the dev server
+  // was launched. Playwright now runs from `packages/e2e` but spawns the dev
+  // server from `apps/mesh` (webServer.cwd), so for each ancestor of cwd check
+  // both `<dir>/.deco` and `<dir>/apps/mesh/.deco` (covers repo-root and
+  // apps/mesh launches alike). CI sets DATABASE_URL, so none of this runs there.
   let dir = process.cwd();
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     candidates.push(join(dir, ".deco"));
+    candidates.push(join(dir, "apps", "mesh", ".deco"));
     const parent = join(dir, "..");
     if (parent === dir) break;
     dir = parent;
