@@ -11,11 +11,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DispatchSSEEvent } from "../links/protocol";
-import {
-  RELAY_BUFFER_MAX_BYTES,
-  type RelayLine,
-  relayLineSchema,
-} from "../links/protocol/relay";
+import { type RelayLine, relayLineSchema } from "../links/protocol/relay";
 import {
   type RelayPostResult,
   relayDispatchSSEAsChunkStream,
@@ -207,6 +203,100 @@ describe("relayDispatchSSEAsChunkStream", () => {
     await relayPromise;
   });
 
+  it("drops the durably-published prefix from the outbox as the post confirms each seq", async () => {
+    // Incremental ackSeq truncation: when the post reports a line as durably
+    // published (JetStream PubAck), the relay drops it from the outbox so the
+    // buffer stays bounded to the in-flight window instead of the whole run.
+    // Pre-fix the relay passed no confirm callback, so every line lingered until
+    // terminal truncation and a long run could blow MAX_OUTBOX_BYTES.
+    const outbox = openOutbox({ path: ":memory:" });
+    let retainedAfterConfirmingSeq1: number[] | null = null;
+
+    await relayDispatchSSEAsChunkStream({
+      dispatchBody: sseBody([CHUNK_A, CHUNK_B, DONE]),
+      runId: "run_1",
+      fenceToken: "fence_1",
+      outbox,
+      post: async (
+        body,
+        _fromSeq,
+        onDurablyPublished,
+      ): Promise<RelayPostResult> => {
+        if (typeof body === "string") throw new Error("expected a stream");
+        let last = 0;
+        for await (const line of ndjsonLines(body)) {
+          last = line.seq;
+          if (line.seq === 1) {
+            onDurablyPublished?.(1);
+            retainedAfterConfirmingSeq1 = outbox
+              .replay({ runId: "run_1", fenceToken: "fence_1", fromSeq: 1 })
+              .map((r) => r.wireSeq);
+          }
+        }
+        return { ok: true, lastSeq: last };
+      },
+    });
+
+    expect(retainedAfterConfirmingSeq1).not.toBeNull();
+    expect(retainedAfterConfirmingSeq1).not.toContain(1);
+    outbox.close();
+  });
+
+  it("writes a newline heartbeat into the POST body during idle gaps (defeats a CDN idle timeout)", async () => {
+    const sse = pushableSSEBody();
+    const heartbeatSeen = Promise.withResolvers<void>();
+    const realLines: RelayLine[] = [];
+
+    const relayPromise = relayDispatchSSEAsChunkStream({
+      dispatchBody: sse.body,
+      runId: "run_hb",
+      // Tiny interval so the idle gap below trips a heartbeat deterministically.
+      heartbeatMs: 5,
+      post: async (body): Promise<RelayPostResult> => {
+        if (typeof body === "string") throw new Error("expected a stream");
+        const reader = body.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        let last = 0;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let nl = buf.indexOf("\n");
+          while (nl !== -1) {
+            const line = buf.slice(0, nl);
+            buf = buf.slice(nl + 1);
+            if (line.length === 0) {
+              // A bare "\n" = the keepalive heartbeat (a blank NDJSON line).
+              heartbeatSeen.resolve();
+            } else {
+              const parsed = relayLineSchema.parse(JSON.parse(line));
+              realLines.push(parsed);
+              last = parsed.seq;
+            }
+            nl = buf.indexOf("\n");
+          }
+        }
+        return { ok: true, lastSeq: last };
+      },
+    });
+
+    // First real line, then stay idle (source open, no events) so the relay
+    // body must emit heartbeat newlines to keep bytes flowing.
+    sse.push(CHUNK_A);
+    await heartbeatSeen.promise;
+    sse.push(DONE);
+    sse.close();
+    await relayPromise;
+
+    // Heartbeats are transient wire bytes: they never become relay lines, so
+    // seq numbering is untouched.
+    expect(realLines).toEqual([
+      { seq: 1, event: CHUNK_A },
+      { seq: 2, event: DONE },
+    ]);
+  }, 2000);
+
   it("reconnects after a dropped POST and resends the full buffered prefix", async () => {
     const sse = pushableSSEBody();
     const attempts: { fromSeq: number; lines: RelayLine[] }[] = [];
@@ -315,10 +405,14 @@ describe("relayDispatchSSEAsChunkStream", () => {
     expect(postCalls).toBe(4);
   });
 
-  it("throws when the relay buffer exceeds RELAY_BUFFER_MAX_BYTES", async () => {
-    // Enough 1 MiB deltas to push the serialized lines past the cap.
+  it("still overflows loudly when the post never confirms durable progress (stalled-publisher backstop)", async () => {
+    // A post that reads the body but never calls onDurablyPublished → the relay
+    // cannot drop the prefix, so a run larger than the cap fills the outbox and
+    // fails loudly. Use a small explicit cap so the test stays fast.
+    const cap = 4 * 1024 * 1024; // 4 MiB
+    const outbox = openOutbox({ path: ":memory:", maxBytes: cap });
     const deltaBytes = 1024 * 1024;
-    const overflowCount = Math.ceil(RELAY_BUFFER_MAX_BYTES / deltaBytes) + 1;
+    const overflowCount = Math.ceil(cap / deltaBytes) + 1;
     const bigDelta = "x".repeat(deltaBytes);
     const events: unknown[] = [];
     for (let i = 0; i < overflowCount; i++) {
@@ -329,18 +423,46 @@ describe("relayDispatchSSEAsChunkStream", () => {
     }
     events.push(DONE);
 
-    // The post stub reads the body like a real upload: when the relay fails,
-    // the body errors and the read rejects.
     await expect(
       relayDispatchSSEAsChunkStream({
         dispatchBody: sseBody(events),
         runId: "run_overflow",
+        fenceToken: "fence_1",
+        outbox,
         post: async (body): Promise<RelayPostResult> => {
           const lines = await readAllLines(body);
           return { ok: true, lastSeq: lines.at(-1)?.seq ?? 0 };
         },
       }),
     ).rejects.toThrow(/run_overflow.*outbox exceeded MAX_OUTBOX_BYTES/);
+    outbox.close();
+  });
+
+  it("drops the run's rows from the outbox when the relay FAILS (no leak)", async () => {
+    // `truncateRun` used to fire only on terminal SUCCESS, so a failed/aborted
+    // run leaked its rows forever — dead runs accumulated until the daemon-wide
+    // MAX_OUTBOX_BYTES wedged and every new run failed. The relay must drop a
+    // run's rows on EVERY terminal outcome.
+    const outbox = openOutbox({ path: ":memory:" });
+    await expect(
+      relayDispatchSSEAsChunkStream({
+        dispatchBody: sseBody([CHUNK_A, CHUNK_B, DONE]),
+        runId: "run_fail",
+        fenceToken: "fence_1",
+        outbox,
+        retry: { maxAttempts: 1, minTimeout: 1, maxTimeout: 10 },
+        post: async (body): Promise<RelayPostResult> => {
+          // Drain the body so the pump appends every line, THEN fail.
+          await readAllLines(body);
+          throw Object.assign(new Error("relay 503"), { status: 503 });
+        },
+      }),
+    ).rejects.toThrow();
+
+    expect(
+      outbox.replay({ runId: "run_fail", fenceToken: "fence_1", fromSeq: 1 }),
+    ).toEqual([]);
+    outbox.close();
   });
 
   it("aborts cleanly via signal: rejects with the reason and cancels the source", async () => {
@@ -403,7 +525,7 @@ describe("relayDispatchSSEAsChunkStream + durable outbox", () => {
     ).toEqual([]);
   });
 
-  it("survives a daemon crash mid-run: the reopened outbox holds the unacked prefix", async () => {
+  it("truncates a terminally-failed run's rows from the durable file (no cross-restart leak)", async () => {
     const sse = pushableSSEBody();
     const crashed = Promise.withResolvers<void>();
     const relayPromise = relayDispatchSSEAsChunkStream({
@@ -431,8 +553,12 @@ describe("relayDispatchSSEAsChunkStream + durable outbox", () => {
     sse.close();
     await relayPromise;
 
-    // The outbox file still holds the prefix (not truncated — never
-    // terminal-acked). Reopen at the same path to prove on-disk durability.
+    // The run terminally failed (retries exhausted), so the relay dropped its
+    // rows on the way out — even from the DURABLE file. A failed run no longer
+    // leaks its prefix (which used to accumulate dead runs until the daemon-wide
+    // cap wedged the relay). Reopen at the same path to prove the truncation hit
+    // disk. (Cross-restart resend is intentionally gone — the boot sweep would
+    // clear any survivors anyway, since a run can't outlive its daemon.)
     outbox.close();
     const reopened = openOutbox({ path: join(dir, "ob.sqlite") });
     const rows = reopened.replay({
@@ -440,7 +566,7 @@ describe("relayDispatchSSEAsChunkStream + durable outbox", () => {
       fenceToken: FENCE,
       fromSeq: 1,
     });
-    expect(rows.map((r) => r.wireSeq)).toEqual([1, 2]);
+    expect(rows).toEqual([]);
     reopened.close();
     // Reopen the shared handle so afterEach's close() is balanced.
     outbox = openOutbox({ path: join(dir, "ob.sqlite") });

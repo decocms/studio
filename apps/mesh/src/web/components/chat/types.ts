@@ -67,6 +67,22 @@ export interface Metadata {
   title?: string;
   /** System prompt to prepend to messages at the transport layer */
   system?: string;
+  /**
+   * Marks a system-initiated turn (e.g. the background-tool reaction nudge)
+   * the model must see but the user must not — hidden in `useMessagePairs`
+   * while still loaded into the model's context.
+   */
+  internal?: boolean;
+  /**
+   * Set on a backgrounded subtask's run messages — the originating `subtask`
+   * tool call's job id (== that part's `output.jobId`). Hidden from the
+   * top-level list (`useMessagePairs`) and rendered NESTED inside the subtask
+   * card instead.
+   */
+  subtaskJobId?: string;
+  /** Set on a turn auto-resumed after a backgrounded tool (image / subtask)
+   *  finished — the UI shows a "resumed" indicator on the message. */
+  resumedFromBackground?: boolean;
   /** Tiptap document for rich user input (includes prompt tags with resources) */
   tiptapDoc?: TiptapDoc;
   /** Agent mentions in this message — used to render delegation cards */

@@ -1,5 +1,5 @@
 /**
- * buildKnowledgeBlock — renders an agent's attached files and skills into a
+ * buildKnowledgeBlock — renders an agent's attached reference FILES into a
  * `<knowledge>` block that is appended to the agent's served instructions.
  *
  * It lives in the served instructions (not a cluster-only prompt block) so it
@@ -8,7 +8,12 @@
  * cluster engine runs the richer `buildAgentSystemPrompt`. Keeping it here is
  * the single source that covers both.
  *
- * Awareness-first: the agent is told the complete set of attached items with
+ * Attached SKILLS are deliberately NOT listed here — they live in the single
+ * `<available-skills>` catalog (skills-instructions.ts), where they're flagged
+ * as user-configured. Keeping skill metadata in one place avoids the catalog
+ * and this block drifting out of sync.
+ *
+ * Awareness-first: the agent is told the complete set of attached files with
  * the exact sandbox path to read each one. Files are mounted into the agent's
  * org filesystem, so it can open them directly with its file tools (works for
  * text and binary alike) — no inlining needed.
@@ -24,18 +29,17 @@ function describe(file: KnowledgeFile): string {
 }
 
 /**
- * Build the `<knowledge>` block for an agent's attached files/skills, or
- * `null` when there are none. Pure and synchronous so it can be folded into
+ * Build the `<knowledge>` block for an agent's attached files, or `null` when
+ * there are none. Pure and synchronous so it can be folded into
  * `getInstructions()` on the passthrough client and the virtual-MCP endpoint.
  */
 function buildKnowledgeBlock(
   knowledge: KnowledgeFile[] | null | undefined,
   orgSlug: string,
 ): string | null {
-  if (!knowledge || knowledge.length === 0) return null;
-
-  const docs = knowledge.filter((f) => f.kind !== "skill");
-  const skills = knowledge.filter((f) => f.kind === "skill");
+  // Skills go in the <available-skills> catalog, not here.
+  const docs = (knowledge ?? []).filter((f) => f.kind !== "skill");
+  if (docs.length === 0) return null;
 
   const docInventory = docs
     .map(
@@ -43,21 +47,15 @@ function buildKnowledgeBlock(
         `- ${f.name} (${describe(f)}), read it at \`${orgFsSandboxPath(f.volume, f.path, orgSlug)}\``,
     )
     .join("\n");
-  const skillInventory = skills
-    .map(
-      (s) =>
-        `- ${s.name}: a skill at \`${orgFsSandboxPath(s.volume, s.path, orgSlug)}\`; read its \`SKILL.md\` before applying it`,
-    )
-    .join("\n");
 
-  const lines = [
+  return [
     "<knowledge>",
-    "The following files and skills are attached to you as reference knowledge. They are mounted in your sandbox at the paths below; read them with your file tools when relevant to the task, and treat them as authoritative reference material.",
-  ];
-  if (docInventory) lines.push("", "Attached files:", docInventory);
-  if (skillInventory) lines.push("", "Attached skills:", skillInventory);
-  lines.push("</knowledge>");
-  return lines.join("\n");
+    "The following files are attached to you as reference knowledge. They are mounted in your sandbox at the paths below; read them with your file tools when relevant to the task, and treat them as authoritative reference material.",
+    "",
+    "Attached files:",
+    docInventory,
+    "</knowledge>",
+  ].join("\n");
 }
 
 /** Append the knowledge block to an agent's instructions, if it has any. */

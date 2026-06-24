@@ -1,6 +1,10 @@
 export const DECOPILOT_STREAM_NAME = "DECOPILOT_STREAMS";
 export const DECOPILOT_STREAM_SUBJECT_PREFIX = "decopilot.stream";
 
+/** Debounce between incremental checkpoint markers, shared by BOTH producers
+ *  (hosted ingest + desktop daemon relay). Single source of truth. */
+export const CHECKPOINT_DEBOUNCE_MS = 3000;
+
 export type ParsedRunStreamMsgId =
   | {
       kind: "chunk";
@@ -14,6 +18,12 @@ export type ParsedRunStreamMsgId =
       runId: string;
       fenceToken: string;
       finalSeq: number;
+    }
+  | {
+      kind: "checkpoint";
+      runId: string;
+      fenceToken: string;
+      headSeq: number;
     };
 
 export interface DoneEnvelope {
@@ -69,6 +79,14 @@ export function buildDoneMsgId(input: {
   return `${input.runId}:${input.fenceToken}:done:${input.finalSeq}`;
 }
 
+export function buildCheckpointMsgId(input: {
+  runId: string;
+  fenceToken: string;
+  headSeq: number;
+}): string {
+  return `${input.runId}:${input.fenceToken}:ckpt:${input.headSeq}`;
+}
+
 export function parseRunStreamMsgId(
   msgId: string | undefined,
 ): ParsedRunStreamMsgId | null {
@@ -80,6 +98,12 @@ export function parseRunStreamMsgId(
     const finalSeq = positiveInt(fourth);
     return parts.length === 4 && finalSeq !== null
       ? { kind: "done", runId, fenceToken, finalSeq }
+      : null;
+  }
+  if (third === "ckpt") {
+    const headSeq = positiveInt(fourth);
+    return parts.length === 4 && headSeq !== null
+      ? { kind: "checkpoint", runId, fenceToken, headSeq }
       : null;
   }
   const seq = positiveInt(third);
@@ -103,5 +127,22 @@ export function isDoneEnvelope(value: unknown): value is DoneEnvelope {
     record.done === true &&
     Number.isInteger(record.finalSeq) &&
     (record.finalSeq as number) > 0
+  );
+}
+
+export interface CheckpointEnvelope {
+  checkpoint: true;
+  headSeq: number;
+}
+
+export function isCheckpointEnvelope(
+  value: unknown,
+): value is CheckpointEnvelope {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.checkpoint === true &&
+    Number.isInteger(record.headSeq) &&
+    (record.headSeq as number) > 0
   );
 }

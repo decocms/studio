@@ -6,7 +6,6 @@ interface UseDecofileParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
-  previewUrl?: string | null;
 }
 
 export function useDecofile(
@@ -14,7 +13,7 @@ export function useDecofile(
   options?: { fetchEnabled?: boolean },
 ) {
   const key = params
-    ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}/${params.previewUrl ?? ""}`
+    ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`
     : "";
   const fetchEnabled = options?.fetchEnabled ?? true;
   return useQuery({

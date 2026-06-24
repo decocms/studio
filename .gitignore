@@ -28,6 +28,9 @@ dist-ssr
 
 # Environment files
 .env
+
+# Operator-local backfill mapping (org/team ids) for scripts/backfill-org-sites.ts
+mapping.json
 **/.env
 
 # Editor directories and files
@@ -67,6 +70,8 @@ deploy/test*
 
 # Data Test files
 apps/benchmark/data
+# Local DevObjectStorage scratch dir (org-fs / skill-catalog integration tests)
+data/
 
 # AI planning files (root-level only, not docs/plans/)
 /plans

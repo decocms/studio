@@ -38,12 +38,15 @@ import { type VirtualClient } from "@decocms/harness/decopilot/built-in-tools/sa
 import { createVmTools } from "@decocms/harness/decopilot/built-in-tools/vm-tools/index";
 import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 import { buildClusterSandboxFs } from "./cluster-sandbox-fs";
-import { createSubtaskTool } from "./subtask";
+import { createSubtaskTool, SubtaskInputSchema } from "./subtask";
 import { userAskTool } from "@decocms/harness/decopilot/built-in-tools/user-ask";
 import { todoWriteTool } from "@decocms/harness/decopilot/built-in-tools/todo-write";
 import { createUpdateInterestsTool } from "@decocms/harness/decopilot/built-in-tools/update-interests";
 import { proposePlanTool } from "@decocms/harness/decopilot/built-in-tools/propose-plan";
 import { createGenerateImageTool } from "./generate-image";
+import { makeBackgroundable } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import type { BackgroundDispatcher } from "@decocms/harness/decopilot/built-in-tools/backgroundable";
+import { GenerateImageInputSchema } from "@decocms/harness/decopilot/built-in-tools/portable-media-tools";
 import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
 import {
@@ -125,6 +128,12 @@ export interface BuiltinToolParams {
     outputTokens: number;
     totalTokens: number;
   }) => void;
+  /**
+   * When present, slow built-ins flagged backgroundable (today: generate_image)
+   * enqueue a durable background job and return immediately instead of holding
+   * the turn open. Absent on desktop/tests → those tools run inline.
+   */
+  backgroundDispatcher?: BackgroundDispatcher | null;
 }
 
 export type { PendingImage };
@@ -157,6 +166,7 @@ async function buildAllTools(
     taskId,
     agentId,
     onChildUsage,
+    backgroundDispatcher,
   } = params;
   const approvalOpts = { isPlanMode };
   const userId = ctx.auth?.user?.id;
@@ -222,25 +232,37 @@ async function buildAllTools(
   }
   // subtask requires a provider (LLM calls) — skip when provider is null (Claude Code).
   if (provider) {
-    tools.subtask = createSubtaskTool(
-      writer,
-      {
-        provider,
-        organization,
-        models,
-        // Pass the caller's own agent id so the model can clone itself by
-        // omitting agent_id (heavy discovery → fresh, isolated context).
-        self: { id: agentId },
-        needsApproval:
-          toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
-        // Roll the child run's usage into the parent's accumulator (Task 17).
-        onChildUsage,
-        // Self-clones inherit the parent's sandbox tools so they can run
-        // bash / file I/O against the SAME sandbox.
-        vmTools,
-      },
-      ctx,
-    );
+    // Made backgroundable: the model can opt a subtask into a durable cluster
+    // run (`background: true`) instead of blocking the turn. Without a
+    // dispatcher (none wired) it runs inline.
+    tools.subtask = makeBackgroundable(
+      "subtask",
+      SubtaskInputSchema,
+      createSubtaskTool(
+        writer,
+        {
+          provider,
+          organization,
+          models,
+          // Pass the caller's own agent id so the model can clone itself by
+          // omitting agent_id (heavy discovery → fresh, isolated context).
+          self: { id: agentId },
+          needsApproval:
+            toolNeedsApproval(toolApprovalLevel, false, approvalOpts) !== false,
+          // Roll the child run's usage into the parent's accumulator (Task 17).
+          onChildUsage,
+          // Self-clones inherit the parent's sandbox tools so they can run
+          // bash / file I/O against the SAME sandbox.
+          vmTools,
+          // Full parent built-in params so a delegated subagent is built with
+          // the SAME heavy tools (vm/generate_image/web_search), not the light
+          // core. The subagent's own client/sandbox are substituted downstream.
+          parentBuiltInParams: params,
+        },
+        ctx,
+      ),
+      backgroundDispatcher,
+    ) as ReturnType<typeof createSubtaskTool>;
   }
   // generate_image requires a provider and an image model selection.
   // The provider is picked from `imageProvider` so the org can pair the
@@ -250,12 +272,23 @@ async function buildAllTools(
     // Cluster builds the `objectStorage` + `allowHttpExternalUrls` hooks from
     // StudioContext + settings; the tool itself no longer reads either
     // (HarnessDeps conversion).
-    tools.generate_image = createGenerateImageTool(writer, {
-      provider: imageProvider,
-      imageModelInfo: models.image,
-      objectStorage: ctx.objectStorage,
-      allowHttpExternalUrls: getSettings().localMode,
-    });
+    // generate_image is slow (tens of seconds). When a background dispatcher
+    // is wired (cluster, hosted runs) it's made backgroundable: the call
+    // enqueues a durable job and returns immediately so the turn finishes and
+    // the thread keeps accepting messages; the job delivers the image + a
+    // reaction turn later. Without a dispatcher it runs inline (today's
+    // behavior).
+    tools.generate_image = makeBackgroundable(
+      "generate_image",
+      GenerateImageInputSchema,
+      createGenerateImageTool(writer, {
+        provider: imageProvider,
+        imageModelInfo: models.image,
+        objectStorage: ctx.objectStorage,
+        allowHttpExternalUrls: getSettings().localMode,
+      }),
+      backgroundDispatcher,
+    ) as ReturnType<typeof createGenerateImageTool>;
   }
   // web_search consumes the cluster-built `researchJob` async-gen hook
   // (HarnessDeps conversion, spec §6). The provider/DB lifecycle lives in

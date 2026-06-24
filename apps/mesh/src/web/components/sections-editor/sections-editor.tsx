@@ -1,6 +1,7 @@
 import { useState, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
+import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import {
   ChevronDown,
   ChevronRight,
@@ -41,6 +42,7 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "./resolve-schema";
+import type { SandboxConfig } from "./fields/field-props";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -115,6 +117,7 @@ function SchemaFormPanel({
   meta,
   decofile,
   onSaveReferencedBlock,
+  sandbox,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -132,6 +135,7 @@ function SchemaFormPanel({
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
+  sandbox?: SandboxConfig | null;
 }) {
   const formBody =
     activeSchema && formValue ? (
@@ -157,6 +161,7 @@ function SchemaFormPanel({
           meta={meta}
           decofile={decofile}
           onSaveReferencedBlock={onSaveReferencedBlock}
+          sandbox={sandbox}
         />
       )
     ) : null;
@@ -472,6 +477,11 @@ export function SectionsEditor({
     useDecofile(previewFetchParams);
   const { data: meta, isLoading: metaLoading } =
     useLiveMeta(previewFetchParams);
+  const inset = useInsetContext();
+  const agentSiteSlug =
+    inset?.entity?.id === virtualMcpId
+      ? (inset.entity.metadata?.siteSlug ?? null)
+      : null;
 
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
@@ -823,6 +833,14 @@ export function SectionsEditor({
       }
     }
   }
+
+  const sandbox = {
+    orgSlug,
+    virtualMcpId,
+    branch,
+    previewUrl: previewUrl ?? undefined,
+    siteSlug: agentSiteSlug,
+  };
 
   const activeSchema =
     activeResolveType && meta ? resolveSchema(activeResolveType, meta) : null;
@@ -2315,6 +2333,7 @@ export function SectionsEditor({
             meta={meta}
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
+            sandbox={sandbox}
           />
         </ScrollArea>
       ) : isGlobalBlockMode ? (
@@ -2330,6 +2349,7 @@ export function SectionsEditor({
             meta={meta}
             decofile={decofile}
             onSaveReferencedBlock={saveReferencedBlock}
+            sandbox={sandbox}
           />
         </ScrollArea>
       ) : (

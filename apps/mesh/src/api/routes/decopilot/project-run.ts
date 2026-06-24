@@ -1,6 +1,10 @@
-import type { UIMessageChunk } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import type { HarnessStreamPersistence } from "./consume-harness-stream";
+import {
+  assistantMessageIdGenerator,
+  synthesizedErrorMessageId,
+} from "./message-ids";
 import {
   projectChunks,
   type ProjectChunksResult,
@@ -15,6 +19,10 @@ const BACKOFF_CAP_MS = 5000;
 
 export interface ProjectRunOptions {
   runId: string;
+  /** Per-turn run fence token. Namespaces the assistant/error message ids so
+   *  distinct turns of the same thread (runId == threadId is stable) never
+   *  collide while the same turn's re-folds stay idempotent. See message-ids.ts. */
+  fenceToken: string;
   /** Materialized chunks for this run (replayed identically on each attempt;
    *  PartEmitter deterministic ids make re-projection idempotent). */
   chunks: UIMessageChunk[];
@@ -26,6 +34,11 @@ export interface ProjectRunOptions {
   backoffMs?: (attempt: number) => number;
   /** When set, the projector persists the run's title chunk (sole writer). */
   title?: ProjectTitleOptions;
+  /**
+   * Prior completed messages to seed createUIMessageStream. Forwarded to
+   * projectChunks → consumeHarnessStream. Omitted → fresh fold (default).
+   */
+  originalMessages?: UIMessage[];
 }
 
 export interface ProjectRunResult {
@@ -63,16 +76,33 @@ export async function projectRun(
   let lastError: unknown = null;
   for (let attempt = 0; attempt < PROJECT_RUN_MAX_ATTEMPTS; attempt++) {
     try {
+      // Deterministic assistant-message ids in fold order, namespaced per turn
+      // by (runId, fenceToken). Every projection of this turn (terminal,
+      // checkpoint, and reconnect-replay redelivery) folds the same chunks in
+      // the same order, so the Nth message gets the SAME id each time →
+      // identical part row ids (`${runId}:${messageId}:${seq}`) → ON CONFLICT DO
+      // NOTHING dedupes instead of duplicating parts. The fence keeps DISTINCT
+      // turns of the same thread disjoint (see message-ids.ts).
+      const generateMessageId = assistantMessageIdGenerator(
+        options.runId,
+        options.fenceToken,
+      );
       const outcome = await projectChunks({
         chunks: (async function* () {
           yield* options.chunks;
         })(),
         persistence: options.persistence,
         sanitizeErrorText: options.sanitizeErrorText,
-        // Deterministic per run so an error message dedupes across this loop's
-        // attempts, DBOS step retries, and the live-path write (same id).
-        errorMessageId: `error-${options.runId}`,
+        // Deterministic per turn so an error message dedupes across this loop's
+        // attempts, DBOS step retries, and the live-path write (same id) while
+        // distinct turns never collide.
+        errorMessageId: synthesizedErrorMessageId(
+          options.runId,
+          options.fenceToken,
+        ),
+        generateMessageId,
         title: options.title,
+        originalMessages: options.originalMessages,
       });
       return { ok: true, attempts: attempt + 1, outcome };
     } catch (error) {

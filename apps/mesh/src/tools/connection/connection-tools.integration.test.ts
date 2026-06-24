@@ -17,7 +17,6 @@ import {
 import type { BoundAuthClient, StudioContext } from "../../core/studio-context";
 import { ConnectionStorage } from "../../storage/connection";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
-import type { EventBus } from "../../event-bus/interface";
 import * as fetchToolsModule from "./fetch-tools";
 
 // Create a mock BoundAuthClient for tests
@@ -87,6 +86,7 @@ describe("Connection Tools", () => {
         aiProviderKeys: null as never,
         secrets: null as never,
         orgFileConfigs: null as never,
+        orgSites: null as never,
         orgFsEntries: null as never,
         oauthPkceStates: null as never,
         automations: null as never,
@@ -96,6 +96,7 @@ describe("Connection Tools", () => {
         registry: null as never,
         brandContext: null as never,
         organizationDomains: null as never,
+        organizationJoinRequests: null as never,
         kv: null as never,
         interests: null as never,
       },
@@ -130,16 +131,6 @@ describe("Connection Tools", () => {
         requestId: "req_123",
         timestamp: new Date(),
       },
-      eventBus: {
-        publish: vi.fn().mockResolvedValue({}),
-        subscribe: vi.fn().mockResolvedValue({}),
-        unsubscribe: vi.fn().mockResolvedValue({ success: true }),
-        listSubscriptions: vi.fn().mockResolvedValue([]),
-        getSubscription: vi.fn().mockResolvedValue(null),
-        start: vi.fn(),
-        stop: vi.fn(),
-        isRunning: vi.fn().mockReturnValue(false),
-      } as unknown as EventBus,
       objectStorage: null as never,
       orgFs: null,
       aiProviders: null as never,

@@ -373,7 +373,14 @@ export function initObservability(): void {
         ? [
             new BatchSpanProcessor(monitoringTraceExporter, {
               scheduledDelayMillis: 60_000,
-              maxExportBatchSize: 1000,
+              // Local NDJSON export is a synchronous burst (per-row
+              // JSON.stringify + Buffer.byteLength in NDJSONExporter.exportRows).
+              // 250 keeps each burst ~4x shorter, with a yield between batches,
+              // instead of blocking the loop on up to 1000 spans at once — same
+              // rationale as the monitoring-log processor below. The remote OTLP
+              // span processor stays at 1000 (network-async, batch size is just
+              // wire efficiency there).
+              maxExportBatchSize: 250,
             }),
           ]
         : []),

@@ -1,3 +1,8 @@
+---
+name: slides
+description: Create and edit presentation decks as single self-contained HTML files with a live, editable preview and print-to-PDF export. Use when the user wants slides, a deck, or a presentation.
+---
+
 # slides — presentation decks
 
 Create and edit presentation decks as single self-contained HTML files,
@@ -11,7 +16,7 @@ with inline editing, and exports PDF by printing (the deck ships print CSS
 | ------------------------- | --------------------------------------------------------------------- |
 | Create a deck             | `slides-create --data @deck.json --output org/<slug>/decks/<name>.html` |
 | List themes / templates   | `slides-create --help`                                                 |
-| See a full data example   | `cat /mnt/skills/public/slides/examples/deck.json`                     |
+| See a full data example   | `cat org/public/core/slides/examples/deck.json`                     |
 | Edit an existing deck     | `read` the HTML, edit the `<section>` slides, write it back            |
 | Org brand templates       | add `--templates-dir org/<slug>/templates/slides`                      |
 | PDF export                | user prints from the preview — no action needed                        |
@@ -24,7 +29,7 @@ near-instantly and the user sees a live preview that updates as you work.
 
 ## Creating a deck
 
-1. Read `/mnt/skills/public/slides/examples/deck.json` once to learn the
+1. Read `org/public/core/slides/examples/deck.json` once to learn the
    data shapes.
 2. Author your own deck JSON (a file is easier to iterate than inline):
    `{ "title": …, "theme": …, "slides": [ { "template": …, "data": … } ] }`
@@ -38,7 +43,7 @@ amber accents), `bold-gradient` (vivid full-bleed gradient, glass cards).
 
 `--theme` also accepts a **path to a custom theme file** — a complete deck
 shell HTML with a `{{{slides}}}` insertion point (copy a built-in from
-`/mnt/skills/public/slides/themes/` as the starting point and retune its
+`org/public/core/slides/themes/` as the starting point and retune its
 CSS custom properties). Keep org brand themes in org-fs so they persist,
 e.g.:
 
@@ -65,7 +70,7 @@ slides-create --data @deck.json \
 | `closing`         | `heading`, `subheading?`, `cta?`                                           |
 
 This skill is built on the `templating` skill
-(`/mnt/skills/public/templating/SKILL.md`). For a one-off custom slide
+(`org/public/core/templating/SKILL.md`). For a one-off custom slide
 or deck template, render it directly with `create-from-template`; for an
 org's own slide layouts, keep them in `org/<slug>/templates/slides/` and
 pass `--templates-dir` — they resolve before the built-ins.

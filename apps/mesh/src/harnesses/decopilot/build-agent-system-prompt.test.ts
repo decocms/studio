@@ -206,6 +206,120 @@ describe("buildAgentSystemPrompt", () => {
     expect(joined).toContain("my-prompt");
   });
 
+  const fakeOrgFs = (files: Record<string, string>) => {
+    const writes: { path: string; body: string }[] = [];
+    const fs = {
+      writes,
+      read: async (volume: string, path: string) => {
+        if (volume !== "home" || !(path in files)) {
+          throw new Error("not a live file");
+        }
+        return new TextEncoder().encode(files[path]);
+      },
+      stat: async (volume: string, path: string) =>
+        volume === "home" && path in files ? { path } : null,
+      write: async (
+        _volume: string,
+        path: string,
+        body: string | Uint8Array,
+      ) => {
+        const text =
+          typeof body === "string" ? body : new TextDecoder().decode(body);
+        files[path] = text;
+        writes.push({ path, body: text });
+      },
+    };
+    return fs;
+  };
+
+  test("kind: 'agent' eager-loads org and user MEMORY.md blocks", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      ctx: {
+        orgFs: fakeOrgFs({
+          "MEMORY.md": "Org uses Bun workspaces.",
+          "users/u1/MEMORY.md": "Ada prefers terse replies.",
+        }),
+      } as never,
+      organization: { id: "org_test", slug: "acme" } as never,
+      user: { id: "u1", name: "Ada" },
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).toContain("persistent organization memory index");
+    expect(joined).toContain("Org uses Bun workspaces.");
+    expect(joined).toContain("persistent user memory index");
+    expect(joined).toContain("Ada prefers terse replies.");
+  });
+
+  test("user memory omitted when no user is provided", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      ctx: { orgFs: fakeOrgFs({ "MEMORY.md": "Org fact." }) } as never,
+      organization: { id: "org_test", slug: "acme" } as never,
+      // no user
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).toContain("persistent organization memory index");
+    expect(joined).not.toContain("persistent user memory index");
+  });
+
+  test("kind: 'subagent' omits memory blocks", async () => {
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "subagent",
+      ctx: { orgFs: fakeOrgFs({ "MEMORY.md": "Org fact." }) } as never,
+      organization: { id: "org_test", slug: "acme" } as never,
+      user: { id: "u1" },
+    });
+    const joined = JSON.stringify(out);
+    expect(joined).not.toContain("persistent organization memory index");
+    expect(joined).not.toContain("persistent user memory index");
+    expect(joined).not.toContain("Org fact.");
+  });
+
+  test("seeds default MEMORY.md templates on first load when absent", async () => {
+    const fs = fakeOrgFs({}); // nothing exists yet
+    const out = await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      ctx: { orgFs: fs } as never,
+      organization: { id: "org_test", slug: "acme" } as never,
+      user: { id: "u1", name: "Ada" },
+    });
+    // Both files seeded with a raw template, attributed to the current user.
+    const paths = fs.writes.map((w) => w.path).sort();
+    expect(paths).toEqual(["MEMORY.md", "users/u1/MEMORY.md"]);
+    expect(fs.writes.find((w) => w.path === "MEMORY.md")?.body).toContain(
+      "# Organization memory",
+    );
+    expect(
+      fs.writes.find((w) => w.path === "users/u1/MEMORY.md")?.body,
+    ).toContain("# User memory");
+    // Freshly seeded → nothing injected this session.
+    const joined = JSON.stringify(out);
+    expect(joined).not.toContain("persistent organization memory index");
+    expect(joined).not.toContain("persistent user memory index");
+  });
+
+  test("does not overwrite an existing file on a transient read error", async () => {
+    const fs = fakeOrgFs({ "MEMORY.md": "Real memory." });
+    // Make read fail even though the file exists (transient error).
+    fs.read = async () => {
+      throw new Error("transient");
+    };
+    await buildAgentSystemPrompt({
+      ...baseOpts,
+      kind: "agent",
+      ctx: { orgFs: fs } as never,
+      organization: { id: "org_test", slug: "acme" } as never,
+      user: { id: "u1" },
+    });
+    // stat still reports the org file as present → no clobbering write for it.
+    expect(fs.writes.map((w) => w.path)).not.toContain("MEMORY.md");
+  });
+
   test("kind: 'subagent' omits prompts block when passthroughClient is not provided", async () => {
     const out = await buildAgentSystemPrompt({
       ...baseOpts,

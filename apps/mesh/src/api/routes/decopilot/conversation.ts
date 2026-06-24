@@ -56,8 +56,13 @@ export async function loadAndMergeMessages(
   requestMessage: ChatMessage | undefined,
   systemMessages: ChatMessage[],
   windowSize: number,
+  /** Subagent runs start FRESH: skip the thread's history and send only the
+   *  system prompt + the request (the subtask prompt). */
+  skipHistory = false,
 ): Promise<ChatMessage[]> {
-  const threadMessages = await loadMemory(memory, windowSize);
+  const threadMessages = skipHistory
+    ? []
+    : await loadMemory(memory, windowSize);
   const conversation = mergeMessages(threadMessages, requestMessage);
   const allMessages: ChatMessage[] = [...systemMessages, ...conversation];
   return allMessages;

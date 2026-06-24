@@ -314,15 +314,28 @@ describe("selectHeaderButton", () => {
     expect(r.action).toBe("create-pr");
   });
 
-  test("unpushed commits with open PR → Save changes", () => {
+  test("unpushed commits with open PR (different head) → Save changes", () => {
     const r = selectHeaderButton(
       happyInput({
-        branch: ready({ unpushed: 2, aheadOfBase: 2 }),
-        pr: pr(),
+        branch: ready({ unpushed: 2, aheadOfBase: 2, headSha: "local999" }),
+        pr: pr({ headSha: "remote888" }),
       }),
     );
     expect(r.label).toBe("Save changes");
     expect(r.action).toBe("commit-and-push");
+  });
+
+  test("false-positive unpushed (headSha matches PR) → falls through to merge", () => {
+    const r = selectHeaderButton(
+      happyInput({
+        branch: ready({ unpushed: 1, aheadOfBase: 1, headSha: "abc123" }),
+        pr: pr({ headSha: "abc123" }),
+        reviews: reviews(),
+      }),
+    );
+    expect(r.label).toBe("Publish to production");
+    expect(r.action).toBe("merge-split");
+    expect(r.variant).toBe("success");
   });
 
   test("ahead of base + closed non-merged PR → Reopen PR", () => {

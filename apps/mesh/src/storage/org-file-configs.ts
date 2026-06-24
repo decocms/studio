@@ -15,8 +15,9 @@ type FileConfigRow = {
   force_path_style: boolean;
   prefix: string | null;
   public_url_base: string | null;
-  credential_type: "static" | "sts-session";
+  credential_type: "static" | "sts-session" | "managed";
   refresh_url: string | null;
+  site_slug: string | null;
   created_by: string;
   created_at: Date | string;
   updated_by: string;
@@ -36,6 +37,7 @@ const PUBLIC_COLUMNS = [
   "public_url_base",
   "credential_type",
   "refresh_url",
+  "site_slug",
   "created_by",
   "created_at",
   "updated_by",
@@ -49,10 +51,15 @@ const PUBLIC_COLUMNS = [
  * - `sts-session`: only the API key needed to authenticate the refresh call —
  *   no S3 secret is stored. The actual temporary credentials are fetched on
  *   demand from the config's `refreshUrl` and refreshed automatically.
+ * - `managed`: no secret at all. Studio mints prefix-scoped STS credentials
+ *   in-process for the config's `siteSlug` (see `tenant-credentials.ts`),
+ *   authorized by `org_sites` ownership. A sentinel blob is stored to satisfy
+ *   the NOT NULL `encrypted_credentials` column.
  */
 export type FileConfigCredentials =
   | { type: "static"; accessKeyId: string; secretAccessKey: string }
-  | { type: "sts-session"; apiKey: string };
+  | { type: "sts-session"; apiKey: string }
+  | { type: "managed" };
 
 function toIsoString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : String(value);
@@ -85,6 +92,7 @@ export class OrgFileConfigStorage {
       publicUrlBase: row.public_url_base,
       credentialType: row.credential_type ?? "static",
       refreshUrl: row.refresh_url,
+      siteSlug: row.site_slug,
       createdBy: row.created_by,
       createdAt: toIsoString(row.created_at),
       updatedBy: row.updated_by,
@@ -103,6 +111,7 @@ export class OrgFileConfigStorage {
     prefix?: string | null;
     publicUrlBase?: string | null;
     refreshUrl?: string | null;
+    siteSlug?: string | null;
     credentials: FileConfigCredentials;
     createdBy: string;
   }): Promise<FileConfigInfo> {
@@ -127,6 +136,7 @@ export class OrgFileConfigStorage {
         public_url_base: params.publicUrlBase ?? null,
         credential_type: params.credentials.type,
         refresh_url: params.refreshUrl ?? null,
+        site_slug: params.siteSlug ?? null,
         encrypted_credentials: encryptedCredentials,
         created_by: params.createdBy,
         created_at: now,
@@ -151,6 +161,7 @@ export class OrgFileConfigStorage {
     prefix?: string | null;
     publicUrlBase?: string | null;
     refreshUrl?: string | null;
+    siteSlug?: string | null;
     credentials?: FileConfigCredentials;
     updatedBy: string;
   }): Promise<FileConfigInfo> {
@@ -172,8 +183,9 @@ export class OrgFileConfigStorage {
       force_path_style: boolean;
       prefix: string | null;
       public_url_base: string | null;
-      credential_type: "static" | "sts-session";
+      credential_type: "static" | "sts-session" | "managed";
       refresh_url: string | null;
+      site_slug: string | null;
       encrypted_credentials: string;
       updated_by: string;
       updated_at: Date;
@@ -194,6 +206,7 @@ export class OrgFileConfigStorage {
     if (params.publicUrlBase !== undefined)
       patch.public_url_base = params.publicUrlBase;
     if (params.refreshUrl !== undefined) patch.refresh_url = params.refreshUrl;
+    if (params.siteSlug !== undefined) patch.site_slug = params.siteSlug;
     if (params.credentials !== undefined) {
       patch.credential_type = params.credentials.type;
       patch.encrypted_credentials = await this.vault.encrypt(
@@ -297,9 +310,14 @@ export class OrgFileConfigStorage {
    * directly, with no `type` field — so we never rely on the blob's shape.
    */
   private async decodeCredentials(row: {
-    credential_type: "static" | "sts-session";
+    credential_type: "static" | "sts-session" | "managed";
     encrypted_credentials: string;
   }): Promise<FileConfigCredentials> {
+    // `managed` rows hold no secret — the stored blob is a sentinel; studio
+    // mints credentials in-process. Short-circuit before touching the vault.
+    if (row.credential_type === "managed") {
+      return { type: "managed" };
+    }
     const decrypted = await this.vault.decrypt(row.encrypted_credentials);
     const parsed = JSON.parse(decrypted) as Record<string, unknown>;
     if ((row.credential_type ?? "static") === "sts-session") {

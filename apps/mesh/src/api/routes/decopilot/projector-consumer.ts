@@ -20,10 +20,11 @@
  * via an injected message iterable. The NATS binding
  * (`createDurableProjectorConsumer`) is thin + integration-only (multi-pod e2e).
  *
- * SINGLE WRITER: leadership is only a scheduler throttle now — correctness comes
- * from the DBOS workflow ID keyed by (runId, fenceToken), so duplicate scheduler
- * starts collapse instead of double-projecting. app.ts runs one consumer via
- * leader election; multi-pod e2e validates failover/replay.
+ * SINGLE WRITER: every pod runs a consumer. The durable pull consumer
+ * distributes each done marker to exactly one pod (competing consumers), and the
+ * DBOS workflow ID keyed by (runId, fenceToken) dedups any redelivery overlap,
+ * so duplicate scheduler starts collapse instead of double-projecting. No leader
+ * election; multi-pod e2e validates redelivery/replay.
  */
 import {
   AckPolicy,
@@ -34,11 +35,15 @@ import {
 import { computeLagMs, recordLag } from "./projector-metrics";
 import {
   DECOPILOT_STREAM_NAME,
+  isCheckpointEnvelope,
   isDoneEnvelope,
   parseRunStreamMsgId,
   runIdFromSubject,
 } from "./projector-stream-messages";
-import type { ProjectorWorkflowInput } from "./projector-workflow";
+import type {
+  ProjectorCheckpointInput,
+  ProjectorWorkflowInput,
+} from "./projector-workflow";
 
 // Re-exported so existing importers can keep resolving `runIdFromSubject` from
 // this module; the implementation lives in the shared identity helper.
@@ -77,6 +82,15 @@ export interface ProjectorConsumerOptions {
   enqueueProjectRun: (
     input: ProjectorWorkflowInput & { orgId: string },
   ) => Promise<unknown>;
+  /**
+   * Schedule a non-terminal checkpoint projection pass. Optional: only wired
+   * when incremental projection is enabled (Task 10). When absent, checkpoint
+   * markers are acked-and-skipped (the terminal `done` pass still projects the
+   * whole run, so correctness is preserved when the feature is off).
+   */
+  enqueueProjectCheckpoint?: (
+    input: ProjectorCheckpointInput,
+  ) => Promise<unknown>;
 }
 
 /**
@@ -100,7 +114,43 @@ export async function consumeProjectorMessages(
         await msg.ack();
         continue;
       }
-      const payload = JSON.parse(decoder.decode(msg.data)) as unknown;
+      // A fragmented chunk arrives as a raw byte-slice of the encoded
+      // `{p: value}` JSON (see NatsStreamBuffer.publishChunk), so an individual
+      // fragment is NOT valid JSON. The done/checkpoint markers we care about
+      // are tiny and never fragmented, so a parse failure is always a chunk we
+      // ack-and-skip anyway — never a transient error to redeliver. Acking here
+      // (instead of falling to the outer catch, which leaves it UNACKED) stops
+      // JetStream from redelivering the poison fragment forever.
+      let payload: unknown;
+      try {
+        payload = JSON.parse(decoder.decode(msg.data)) as unknown;
+      } catch {
+        await msg.ack();
+        continue;
+      }
+      if (isCheckpointEnvelope(payload)) {
+        if (options.enqueueProjectCheckpoint) {
+          const parsed = parseRunStreamMsgId(msg.msgId);
+          if (
+            parsed &&
+            parsed.kind === "checkpoint" &&
+            parsed.runId === runId &&
+            parsed.headSeq === payload.headSeq
+          ) {
+            const orgId = await options.resolveOrgId(runId);
+            if (orgId) {
+              await options.enqueueProjectCheckpoint({
+                runId,
+                fenceToken: parsed.fenceToken,
+                headSeq: payload.headSeq,
+                orgId,
+              });
+            }
+          }
+        }
+        await msg.ack();
+        continue;
+      }
       if (!isDoneEnvelope(payload)) {
         await msg.ack();
         continue;

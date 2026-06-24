@@ -30,6 +30,7 @@ import {
 } from "@nats-io/nats-core";
 import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
 import {
+  buildCheckpointMsgId,
   buildChunkMsgId,
   buildDoneMsgId,
   DECOPILOT_STREAM_NAME,
@@ -39,28 +40,43 @@ import {
 } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 import { meter } from "@/observability";
+import { encodeMsHistogram, publishedChunksCounter } from "./stream-metrics";
+
+// `meter` is a NoopMeter until initObservability() runs at bootstrap
+// (index.ts), and this module is imported *before* that — so instruments
+// created at module top bind the noop and silently never export. Create them
+// lazily on first use, by which point `meter` has been reassigned to the real
+// provider. (This is why the metrics below historically reported no data.)
+const lazyInstrument = <T>(make: () => T): (() => T) => {
+  let v: T | undefined;
+  return () => (v ??= make());
+};
 
 // B5: counter for JetStream publish errors — tagged by org.id (low cardinality).
 // Increment happens inside createPublishTracker's catch where publish failures
 // are already sampled-logged; the counter lets alerting fire without log scraping.
-const publishErrorsCounter = meter.createCounter(
-  "decopilot.stream.publish_errors",
-  {
+const publishErrorsCounter = lazyInstrument(() =>
+  meter.createCounter("decopilot.stream.publish_errors", {
     description:
       "Number of JetStream publish failures for decopilot stream chunks",
     unit: "{errors}",
-  },
+  }),
 );
+
+// encode_ms + published_chunks live in ./stream-metrics so the link-daemon's
+// direct-nats-publisher (the path agent-sandbox runs actually take) feeds the
+// same instruments instead of double-registering them.
 
 // 30 min — projector-lag SLA: the stream is the sole path to the DB (Phase C),
 // so retention must outlast a projector outage long enough to catch up. Tune later.
-const MAX_AGE_NS = 30 * 60 * 1_000_000_000; // 30 min
+const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long desktop runs
 // Time-based Nats-Msg-Id dedup window (spec §10.2): a republished chunk within
 // this window is dropped by JetStream, so an at-least-once producer (outbox
 // retry) can't double-write the same UI part.
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
-const MAX_BYTES = 500 * 1024 * 1024; // 500 MB
-const MAX_MSGS_PER_SUBJECT = 20_000; // ~20K chunks per thread
+const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
+const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop streams
+export { CHECKPOINT_DEBOUNCE_MS } from "./projector-stream-messages";
 
 /**
  * Pure stream config for `DECOPILOT_STREAMS`. File-backed so the run-scratch
@@ -176,7 +192,7 @@ function createPublishTracker(taskId: string, orgId?: string) {
           // fire without log scraping. Tag by org.id (low cardinality); fall
           // back to "unknown" when the org context isn't available at this
           // call site (e.g. standalone test harness without a dispatch context).
-          publishErrorsCounter.add(1, { "org.id": orgId ?? "unknown" });
+          publishErrorsCounter().add(1, { "org.id": orgId ?? "unknown" });
           if (errors === 1 || errors % 100 === 0) {
             console.warn(
               `[Decopilot] JetStream publish failed for thread ${taskId} (${errors} total):`,
@@ -312,14 +328,12 @@ export class NatsStreamBuffer implements StreamBuffer {
     // back together by `createTailStream`. Fragments carry raw byte slices
     // of the encoded `{ p: value }` JSON, so reassembly is byte-exact.
     const publishChunk = (value: unknown): void => {
-      let bytes: Uint8Array;
-      if (streamEncodeProfiler) {
-        const t0 = performance.now();
-        bytes = encoder.encode(JSON.stringify({ p: value }));
-        streamEncodeProfiler.record(performance.now() - t0, bytes.length);
-      } else {
-        bytes = encoder.encode(JSON.stringify({ p: value }));
-      }
+      const t0 = performance.now();
+      const bytes = encoder.encode(JSON.stringify({ p: value }));
+      const encodeMs = performance.now() - t0;
+      encodeMsHistogram().record(encodeMs);
+      publishedChunksCounter().add(1, { "org.id": orgId ?? "unknown" });
+      streamEncodeProfiler?.record(encodeMs, bytes.length);
       if (bytes.length <= MAX_PUBLISH_BYTES) {
         tracker.publish(js, subj, bytes);
         return;
@@ -409,7 +423,13 @@ export class NatsStreamBuffer implements StreamBuffer {
     // `msgID` is the NATS dedup header field (Nats-Msg-Id): a seq-keyed id lets
     // an at-least-once producer re-publish without double-writing.
     const msgID = opts?.msgId;
+    // `ingestRun` (the durable producer) publishes every UI chunk through here,
+    // not through `pump()` — so the stream throughput/encode metrics must be
+    // recorded on this path or they stay flat zero while streaming works.
+    const t0 = performance.now();
     const bytes = this.encoder.encode(JSON.stringify({ p: chunk }));
+    encodeMsHistogram().record(performance.now() - t0);
+    publishedChunksCounter().add(1);
     if (bytes.length > MAX_CHUNKED_BYTES) {
       console.warn(
         `[Decopilot] dropping oversized raw chunk for thread ${taskId}: ${(
@@ -457,6 +477,23 @@ export class NatsStreamBuffer implements StreamBuffer {
       this.encoder.encode(JSON.stringify({ done: true, finalSeq })),
       { msgID: buildDoneMsgId({ runId: taskId, fenceToken, finalSeq }) },
     );
+    return true;
+  }
+
+  async publishCheckpoint(
+    taskId: string,
+    fenceToken: string,
+    headSeq: number,
+  ): Promise<boolean> {
+    const js = this.js;
+    if (!js) return false;
+    js.publish(
+      streamSubject(taskId),
+      this.encoder.encode(JSON.stringify({ checkpoint: true, headSeq })),
+      {
+        msgID: buildCheckpointMsgId({ runId: taskId, fenceToken, headSeq }),
+      },
+    ).catch(() => {});
     return true;
   }
 

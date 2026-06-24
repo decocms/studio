@@ -16,6 +16,7 @@ function info(overrides: Partial<FileConfigInfo>): FileConfigInfo {
     publicUrlBase: null,
     credentialType: "static",
     refreshUrl: null,
+    siteSlug: null,
     createdBy: "u",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedBy: "u",

@@ -52,6 +52,7 @@ interface FilePickerDialogProps {
   onOpenChange: (open: boolean) => void;
   mode: FilePickerMode;
   onSelect: (publicUrl: string) => void;
+  lockedConfigId?: string | null;
 }
 
 export const LAST_CONFIG_KEY = "file-picker:last-config-id";
@@ -77,6 +78,7 @@ export function FilePickerDialog(props: FilePickerDialogProps) {
           <Suspense fallback={<Skeleton className="h-64 w-full" />}>
             <PickerBody
               mode={props.mode}
+              lockedConfigId={props.lockedConfigId}
               onSelect={(url) => {
                 props.onSelect(url);
                 props.onOpenChange(false);
@@ -100,15 +102,24 @@ function PickerError({ error }: { error: Error }) {
 
 function PickerBody({
   mode,
+  lockedConfigId,
   onSelect,
 }: {
   mode: FilePickerMode;
+  lockedConfigId?: string | null;
   onSelect: (url: string) => void;
 }) {
   const configs = useFileConfigs();
 
   if (configs.length === 0) {
     return <NoConfigsEmpty />;
+  }
+
+  if (lockedConfigId) {
+    const locked = configs.find((config) => config.id === lockedConfigId);
+    if (locked) {
+      return <BucketPanel config={locked} mode={mode} onSelect={onSelect} />;
+    }
   }
 
   if (configs.length === 1) {
@@ -277,11 +288,11 @@ function BucketPanel({
           multiple
           className="hidden"
           onChange={(e) => {
-            // Snapshot the selection and reset the input synchronously
-            // so the user can re-select the same file later — a native
-            // <input type="file"> won't fire onChange if the value
-            // hasn't changed since the previous selection.
-            const files = e.target.files;
+            // Copy the File refs out BEFORE resetting: `e.target.files` is a
+            // live FileList and `e.target.value = ""` (which lets the user
+            // re-pick the same file) empties it, so a bare reference would be
+            // length 0 by the time handleFiles runs.
+            const files = Array.from(e.target.files ?? []);
             e.target.value = "";
             handleFiles(files);
           }}

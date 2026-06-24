@@ -33,8 +33,22 @@ export function createCodexModel(
      *  instead of the cloned repo, so file edits land in the wrong tree. */
     cwd?: string;
     developerInstructions?: string;
+    /** On-disk thread id to resume. Omit on the first turn. */
+    resume?: string;
   },
 ): { model: LanguageModelV3; provider: CodexAppServerProvider } {
+  const defaultSettings = buildCodexDefaultSettings(options);
+
+  const provider = createCodexAppServer({
+    defaultSettings,
+  });
+
+  return { model: provider(modelId), provider };
+}
+
+type CodexModelOptions = NonNullable<Parameters<typeof createCodexModel>[1]>;
+
+export function buildCodexDefaultSettings(options?: CodexModelOptions) {
   const mcpServers = options?.mcpServers
     ? Object.fromEntries(
         Object.entries(options.mcpServers).map(([name, config]) => [
@@ -55,23 +69,25 @@ export function createCodexModel(
     approvalPolicy = "never";
   }
 
-  const provider = createCodexAppServer({
-    defaultSettings: {
-      mcpServers,
-      approvalPolicy,
-      cwd: options?.cwd ?? process.cwd(),
-      rmcpClient: true,
-      sandboxPolicy: "workspace-write",
-      connectionTimeoutMs: 30_000,
-      requestTimeoutMs: 300_000,
-      idleTimeoutMs: 60_000,
-      ...(options?.developerInstructions
-        ? { developerInstructions: options.developerInstructions }
-        : {}),
-    },
-  });
-
-  return { model: provider(modelId), provider };
+  return {
+    mcpServers,
+    approvalPolicy,
+    cwd: options?.cwd ?? process.cwd(),
+    rmcpClient: true,
+    sandboxPolicy: "danger-full-access",
+    // Persistent so the FIRST turn creates a non-ephemeral, resumable
+    // on-disk thread (stateless mode would create an ephemeral one).
+    threadMode: "persistent",
+    ...(options?.resume ? { resume: options.resume } : {}),
+    connectionTimeoutMs: 30_000,
+    requestTimeoutMs: 300_000,
+    idleTimeoutMs: 60_000,
+    ...(options?.developerInstructions
+      ? { developerInstructions: options.developerInstructions }
+      : {}),
+  } satisfies NonNullable<
+    Parameters<typeof createCodexAppServer>[0]
+  >["defaultSettings"];
 }
 
 /** Map composite model IDs to SDK model names. */

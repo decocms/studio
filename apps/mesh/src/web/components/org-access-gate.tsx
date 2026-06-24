@@ -1,6 +1,8 @@
 import { AutoDomainJoinScreen } from "@/web/components/auto-domain-join-screen";
 import { NoAccessScreen } from "@/web/components/no-access-screen";
 import { PendingInviteScreen } from "@/web/components/pending-invite-screen";
+import { RequestPendingScreen } from "@/web/components/request-pending-screen";
+import { RequestToJoinScreen } from "@/web/components/request-to-join-screen";
 import { useOrgAccessStatus } from "@/web/hooks/use-org-access-status";
 import { clearLastLocation, readLastLocation } from "@/web/lib/last-location";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
@@ -8,24 +10,34 @@ import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 /**
  * Renders the right "you can't enter here yet" screen when the shell layout's
  * activeOrg fetch comes back null. Hits /api/auth/custom/org-access-status to
- * differentiate no-access vs pending-invite vs auto-domain-join vs not-found.
+ * differentiate no-access / pending-invite / auto-domain-join / can-request /
+ * request-pending / not-found.
  */
 export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
   const { data } = useOrgAccessStatus(orgSlug);
 
-  if (data.status === "not-found" || data.status === "no-access") {
-    // A bad org must never be restored on the next cold entry. orgLayout's
-    // beforeLoad records the current org optimistically (before membership is
-    // known), so clear it here whether the user arrived deliberately or via a
-    // stale restore — otherwise homeRoute would keep bouncing them back here.
+  // We render only when the user is NOT a member. orgLayout's beforeLoad
+  // optimistically recorded this slug as the user's last location (before
+  // membership was known), so the home loader — and every gate screen's "Go to
+  // home" → "/" — would bounce them straight back here. Undo that optimistic
+  // write for every non-member status so leaving actually leaves.
+  if (data.status !== "member") {
     if (readLastLocation()?.org === orgSlug) clearLastLocation();
 
-    // Self-heal the home route's optimistic cached-slug redirect: bounce back
-    // to "/" so the loader can pick a valid destination instead of dead-ending.
-    // Only for the cached slug — a deliberate visit to a bad org (e.g. a shared
-    // link) should show the not-found / no-access screen, not silently bounce.
-    if (localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug) {
+    const cachedSlugMatches =
+      localStorage.getItem(LOCALSTORAGE_KEYS.lastOrgSlug()) === orgSlug;
+    if (cachedSlugMatches) {
       localStorage.removeItem(LOCALSTORAGE_KEYS.lastOrgSlug());
+    }
+
+    // not-found / no-access have nothing actionable here. If the user only
+    // landed here via the stale cached slug, bounce back to "/" so the loader
+    // picks a valid destination instead of dead-ending. A deliberate visit to a
+    // bad org (e.g. a shared link) still shows the screen rather than bouncing.
+    if (
+      cachedSlugMatches &&
+      (data.status === "not-found" || data.status === "no-access")
+    ) {
       window.location.href = "/";
       return null;
     }
@@ -53,6 +65,26 @@ export function OrgAccessGate({ orgSlug }: { orgSlug: string }) {
         orgSlug={data.organization.slug}
         orgLogo={data.organization.logo}
         domain={data.organization.domain ?? ""}
+      />
+    );
+  }
+
+  if (data.status === "can-request") {
+    return (
+      <RequestToJoinScreen
+        orgName={data.organization.name}
+        orgSlug={data.organization.slug}
+        orgLogo={data.organization.logo}
+        domain={data.organization.domain ?? ""}
+      />
+    );
+  }
+
+  if (data.status === "request-pending") {
+    return (
+      <RequestPendingScreen
+        orgName={data.organization.name}
+        orgLogo={data.organization.logo}
       />
     );
   }

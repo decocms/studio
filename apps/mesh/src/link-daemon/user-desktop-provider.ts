@@ -20,6 +20,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import type { LinkSandboxRegistry } from "../cli/link-sandbox-registry";
 
 // Not exported — only referenced via SandboxEvent.phase below.
 type SandboxPhase = "spawning" | "ready" | "failed" | "evicted" | "deleted";
@@ -119,6 +120,15 @@ export interface SandboxState {
   daemonToken: string;
 }
 
+type SandboxRegistryMetadata = Pick<
+  Parameters<LinkSandboxRegistry["upsert"]>[0],
+  "repoCloneUrl" | "branch" | "projectName"
+>;
+
+type TrackedSandboxState = SandboxState & {
+  registryMetadata: SandboxRegistryMetadata;
+};
+
 export interface DesktopSandboxProvider {
   ensureSandbox(
     input: EnsureSandboxInput,
@@ -142,6 +152,7 @@ export interface DesktopSandboxProvider {
 
 export interface DesktopSandboxProviderDeps {
   dataDir: string;
+  registry?: LinkSandboxRegistry;
   spawnDaemon: (args: {
     workdir: string;
     handle: string;
@@ -223,15 +234,46 @@ function bringUpCauseMessage(err: unknown): string {
   return String(err);
 }
 
+function projectNameFromCloneUrl(cloneUrl: string | undefined): string | null {
+  if (!cloneUrl) return null;
+  const trimmed = cloneUrl.trim().replace(/\/+$/, "");
+  if (!trimmed) return null;
+  const segment = trimmed.split(/[/:]/).filter(Boolean).at(-1);
+  if (!segment) return null;
+  return segment.replace(/\.git$/i, "") || null;
+}
+
+function registryMetadataFromInput(
+  input: EnsureSandboxInput,
+): SandboxRegistryMetadata {
+  return {
+    repoCloneUrl: input.repo?.cloneUrl ?? null,
+    branch: input.repo?.branch ?? null,
+    projectName: projectNameFromCloneUrl(input.repo?.cloneUrl),
+  };
+}
+
 export function createDesktopSandboxProvider(
   deps: DesktopSandboxProviderDeps,
 ): DesktopSandboxProvider {
   const cap = deps.maxSandboxes ?? 20;
-  const sandboxes = new Map<string, SandboxState>();
+  const sandboxes = new Map<string, TrackedSandboxState>();
   const pickPort = deps.pickPort ?? allocateEphemeralPort;
   const fetcher = deps.fetchImpl ?? fetch;
   const resolvePreviewUrl =
     deps.resolvePreviewUrl ?? ((_handle, port) => `http://127.0.0.1:${port}`);
+  const sandboxPath = (handle: string): string =>
+    join(deps.dataDir, "sandboxes", handle);
+  const persist = (row: Parameters<LinkSandboxRegistry["upsert"]>[0]): void => {
+    try {
+      deps.registry?.upsert(row);
+    } catch (err) {
+      console.warn(
+        `[user-desktop] failed to persist sandbox lifecycle handle=${row.handle} status=${row.status}:`,
+        err,
+      );
+    }
+  };
 
   // Observability must never break provider control flow: a throwing
   // onEvent consumer is swallowed (the JSDoc on SandboxEvent guarantees this).
@@ -275,7 +317,7 @@ export function createDesktopSandboxProvider(
     }
   };
 
-  const evictDead = (state: SandboxState): void => {
+  const evictDead = (state: TrackedSandboxState): void => {
     console.warn(
       `[user-desktop] evicting dead daemon handle=${state.handle} port=${state.port}`,
     );
@@ -290,6 +332,15 @@ export function createDesktopSandboxProvider(
     // registered replacement and leave the new daemon process orphaned.
     if (sandboxes.get(state.handle) === state) {
       sandboxes.delete(state.handle);
+      persist({
+        handle: state.handle,
+        status: "stopped",
+        sandboxPath: sandboxPath(state.handle),
+        port: null,
+        previewUrl: null,
+        ...state.registryMetadata,
+        error: null,
+      });
       emit({ handle: state.handle, phase: "evicted" });
     }
   };
@@ -328,44 +379,67 @@ export function createDesktopSandboxProvider(
       // already gone
     }
     sandboxes.delete(victim.handle);
+    persist({
+      handle: victim.handle,
+      status: "stopped",
+      sandboxPath: sandboxPath(victim.handle),
+      port: null,
+      previewUrl: null,
+      ...victim.registryMetadata,
+      error: null,
+    });
     emit({ handle: victim.handle, phase: "evicted" });
   }
 
   const buildEntry = async (
     input: EnsureSandboxInput,
   ): Promise<{ sandboxApiUrl: string; previewUrl: string; port: number }> => {
+    const metadata = registryMetadataFromInput(input);
+    const workdir = sandboxPath(input.handle);
+    persist({
+      handle: input.handle,
+      status: "spawning",
+      sandboxPath: workdir,
+      port: null,
+      previewUrl: null,
+      ...metadata,
+      error: null,
+    });
     emit({ handle: input.handle, phase: "spawning" });
     evictIfNeeded();
-    const workdir = join(deps.dataDir, "sandboxes", input.handle);
-    await mkdir(workdir, { recursive: true });
-    console.log(
-      `[user-desktop] ensure handle=${input.handle} repo=${input.repo?.cloneUrl ?? "(none)"} branch=${input.repo?.branch ?? "(none)"} runtime=${input.workload?.runtime ?? "(autodetect)"} pm=${input.workload?.packageManager ?? "(autodetect)"}`,
-    );
-    // Two ephemeral ports per sandbox: one for the daemon's HTTP/proxy
-    // (port) and one for the dev script the orchestrator will spawn
-    // (devPort). Without a dedicated devPort, every framework's
-    // default 3000 collides with the cluster (and with other sandboxes).
-    const daemonToken = randomBytes(24).toString("hex");
-    const [port, devPort] = await Promise.all([pickPort(), pickPort()]);
-    console.log(
-      `[user-desktop] spawn handle=${input.handle} port=${port} devPort=${devPort} workdir=${workdir}`,
-    );
-    const spawned = await Promise.resolve(
-      deps.spawnDaemon({
-        workdir,
-        handle: input.handle,
-        port,
-        daemonToken,
-        // Offload SSRF allowlist from the cluster's trusted ensure body.
-        // Defaults fail closed (empty list, no loopback) so a daemon spawned
-        // by an older cluster that doesn't push these stays safe.
-        offloadAllowedHosts: input.offloadAllowedHosts ?? [],
-        offloadAllowSameHostDev: input.offloadAllowSameHostDev ?? false,
-        // org-fs mount config (desktop-only); undefined → daemon skips mounting.
-        orgFsConfigJson: input.orgFsConfigJson,
-      }),
-    );
+    let port: number | undefined;
+    let spawned: SpawnResult | null = null;
+    let daemonToken!: string;
     try {
+      await mkdir(workdir, { recursive: true });
+      console.log(
+        `[user-desktop] ensure handle=${input.handle} repo=${input.repo?.cloneUrl ?? "(none)"} branch=${input.repo?.branch ?? "(none)"} runtime=${input.workload?.runtime ?? "(autodetect)"} pm=${input.workload?.packageManager ?? "(autodetect)"}`,
+      );
+      // Two ephemeral ports per sandbox: one for the daemon's HTTP/proxy
+      // (port) and one for the dev script the orchestrator will spawn
+      // (devPort). Without a dedicated devPort, every framework's
+      // default 3000 collides with the cluster (and with other sandboxes).
+      daemonToken = randomBytes(24).toString("hex");
+      const [daemonPort, devPort] = await Promise.all([pickPort(), pickPort()]);
+      port = daemonPort;
+      console.log(
+        `[user-desktop] spawn handle=${input.handle} port=${port} devPort=${devPort} workdir=${workdir}`,
+      );
+      spawned = await Promise.resolve(
+        deps.spawnDaemon({
+          workdir,
+          handle: input.handle,
+          port,
+          daemonToken,
+          // Offload SSRF allowlist from the cluster's trusted ensure body.
+          // Defaults fail closed (empty list, no loopback) so a daemon spawned
+          // by an older cluster that doesn't push these stays safe.
+          offloadAllowedHosts: input.offloadAllowedHosts ?? [],
+          offloadAllowSameHostDev: input.offloadAllowSameHostDev ?? false,
+          // org-fs mount config (desktop-only); undefined → daemon skips mounting.
+          orgFsConfigJson: input.orgFsConfigJson,
+        }),
+      );
       try {
         await deps.waitForHealth(port);
       } catch (err) {
@@ -395,27 +469,41 @@ export function createDesktopSandboxProvider(
       }
     } catch (err) {
       console.error(
-        `[user-desktop] sandbox bring-up failed handle=${input.handle} port=${port} (killing daemon):`,
+        `[user-desktop] sandbox bring-up failed handle=${input.handle} port=${port ?? "(none)"}${spawned ? " (killing daemon)" : ""}:`,
         err,
       );
-      try {
-        spawned.kill("SIGKILL");
-      } catch {
-        // already gone
+      if (spawned) {
+        try {
+          spawned.kill("SIGKILL");
+        } catch {
+          // already gone
+        }
       }
       emit({
         handle: input.handle,
         phase: "failed",
         error: bringUpCauseMessage(err),
       });
+      persist({
+        handle: input.handle,
+        status: "failed",
+        sandboxPath: workdir,
+        port: null,
+        previewUrl: null,
+        ...metadata,
+        error: bringUpCauseMessage(err),
+      });
       throw err;
+    }
+    if (!spawned || port === undefined) {
+      throw new Error("sandbox bring-up invariant violated");
     }
     const sandboxApiUrl = `http://127.0.0.1:${port}`;
     const previewUrl = resolvePreviewUrl(input.handle, port);
     console.log(
       `[user-desktop] ready handle=${input.handle} port=${port} sandboxApiUrl=${sandboxApiUrl} previewUrl=${previewUrl}`,
     );
-    const state: SandboxState = {
+    const state: TrackedSandboxState = {
       handle: input.handle,
       port,
       process: spawned,
@@ -424,8 +512,18 @@ export function createDesktopSandboxProvider(
       lastUsedAt: Date.now(),
       activeDispatchCount: 0,
       daemonToken,
+      registryMetadata: metadata,
     };
     sandboxes.set(input.handle, state);
+    persist({
+      handle: input.handle,
+      status: "ready",
+      sandboxPath: workdir,
+      port,
+      previewUrl,
+      ...metadata,
+      error: null,
+    });
     emit({
       handle: input.handle,
       phase: "ready",
@@ -444,6 +542,15 @@ export function createDesktopSandboxProvider(
             `[user-desktop] daemon process exited unexpectedly handle=${input.handle} port=${port} — removing from cache`,
           );
           sandboxes.delete(input.handle);
+          persist({
+            handle: input.handle,
+            status: "stopped",
+            sandboxPath: workdir,
+            port: null,
+            previewUrl: null,
+            ...metadata,
+            error: null,
+          });
           emit({ handle: input.handle, phase: "evicted" });
         } else {
           console.log(
@@ -538,6 +645,17 @@ export function createDesktopSandboxProvider(
         // already gone
       }
       sandboxes.delete(handle);
+      persist({
+        handle,
+        status: "stopped",
+        sandboxPath: sandboxPath(handle),
+        port: null,
+        previewUrl: null,
+        repoCloneUrl: null,
+        branch: null,
+        projectName: null,
+        error: null,
+      });
       emit({ handle, phase: "deleted" });
     },
     async shutdown() {

@@ -1,4 +1,4 @@
-import { DotsGrid, Trash01 } from "@untitledui/icons";
+import { Copy01, DotsGrid, Trash01 } from "@untitledui/icons";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@deco/ui/lib/utils.js";
@@ -6,10 +6,14 @@ import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { BlockEditor, type RawBlock } from "./block-registry";
 
 /**
- * One block in the post document. Borderless (Notion-style) — the gutter on
- * the left reveals a drag handle and delete on hover; the body renders the
- * block's native inline editor. Dragging is bound to the handle only so it
- * never fights with selecting/editing the block text.
+ * One block in the post document. Borderless (Notion-style) — the left
+ * gutter reveals a drag handle on hover; the duplicate and delete buttons
+ * appear as a hover overlay at the top-right. The block's horizontal
+ * padding is constant (it never depends on the row's height) so typing in a
+ * paragraph never reflows the text — measuring height to switch the layout
+ * made blocks near the threshold jitter as the wrap width changed per
+ * keystroke. Dragging is bound to the handle only so it never fights with
+ * text editing.
  */
 export function BlockRow({
   id,
@@ -17,12 +21,14 @@ export function BlockRow({
   meta,
   onChange,
   onDelete,
+  onDuplicate,
 }: {
   id: string;
   block: RawBlock;
   meta: LiveMeta;
   onChange: (next: RawBlock) => void;
   onDelete: () => void;
+  onDuplicate: () => void;
 }) {
   const {
     attributes,
@@ -45,15 +51,23 @@ export function BlockRow({
         isDragging && "opacity-50",
       )}
     >
-      <div className="absolute left-1 top-1.5 flex flex-col items-center gap-1 opacity-0 transition-opacity group-hover/row:opacity-100">
+      <button
+        type="button"
+        aria-label="Drag to reorder"
+        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100"
+        {...attributes}
+        {...listeners}
+      >
+        <DotsGrid size={14} />
+      </button>
+      <div className="absolute right-1 top-1 z-10 flex flex-row gap-0.5 rounded-md bg-background/80 opacity-0 backdrop-blur-sm transition-opacity group-hover/row:opacity-100">
         <button
           type="button"
-          aria-label="Drag to reorder"
-          className="flex h-6 w-6 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
-          {...attributes}
-          {...listeners}
+          aria-label="Duplicate block"
+          onClick={onDuplicate}
+          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
         >
-          <DotsGrid size={14} />
+          <Copy01 size={14} />
         </button>
         <button
           type="button"

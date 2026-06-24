@@ -12,7 +12,9 @@ import type {
   FileConfigCredentials,
   OrgFileConfigStorage,
 } from "../storage/org-file-configs";
+import type { OrgSiteStoragePort } from "../storage/ports";
 import type { FileConfigInfo } from "../storage/types";
+import { provisionTenantS3Credentials } from "./tenant-credentials";
 
 export interface FileConfigContext {
   info: FileConfigInfo;
@@ -93,10 +95,14 @@ export function buildS3Client(ctx: FileConfigContext): S3Client {
   const credentials =
     ctx.credentials.type === "sts-session"
       ? stsCredentialProvider(ctx.info, ctx.credentials.apiKey)
-      : {
-          accessKeyId: ctx.credentials.accessKeyId,
-          secretAccessKey: ctx.credentials.secretAccessKey,
-        };
+      : ctx.credentials.type === "managed"
+        ? // Mint prefix-scoped STS creds in-process for the config's slug. The
+          // SDK memoizes/refreshes by expiration, same as the sts-session path.
+          () => provisionTenantS3Credentials(ctx.info.siteSlug ?? "")
+        : {
+            accessKeyId: ctx.credentials.accessKeyId,
+            secretAccessKey: ctx.credentials.secretAccessKey,
+          };
 
   const client = new S3Client({
     region: ctx.info.region,
@@ -149,12 +155,34 @@ function encodeKey(key: string): string {
   return key.split("/").map(encodeURIComponent).join("/");
 }
 
+/** Thrown when an org tries to use a managed config for a slug it doesn't own. */
+export class FileConfigForbiddenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FileConfigForbiddenError";
+  }
+}
+
 export async function resolveFileConfig(
   storage: OrgFileConfigStorage,
+  orgSites: OrgSiteStoragePort,
   id: string,
   organizationId: string,
 ): Promise<FileConfigContext> {
-  return storage.resolveById(id, organizationId);
+  const ctx = await storage.resolveById(id, organizationId);
+  // Fail-closed: a `managed` config may only be used by the org that owns the
+  // site slug it mints for. This is the single choke point — every entry point
+  // (upload route, list tool) resolves through here, so the ownership check
+  // can't be bypassed regardless of which caller resolves the config.
+  if (ctx.info.credentialType === "managed") {
+    const slug = ctx.info.siteSlug;
+    if (!slug || !(await orgSites.isOwnedBy(slug, organizationId))) {
+      throw new FileConfigForbiddenError(
+        `Organization does not own site "${slug ?? "(none)"}" for managed file config ${id}`,
+      );
+    }
+  }
+  return ctx;
 }
 
 export interface ListedObject {

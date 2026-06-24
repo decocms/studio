@@ -1,14 +1,24 @@
 /* eslint-disable ban-memoization/ban-memoization */
 import { marked } from "marked";
-import React, { memo, useCallback, useMemo, useRef, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@deco/ui/components/button.tsx";
+import { cn } from "@deco/ui/lib/utils.ts";
 import { markdownComponents as sharedMarkdownComponents } from "@deco/ui/components/markdown.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import { ImageLightbox } from "./image-lightbox.tsx";
+import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
+import { OrgFileOpenContext } from "./org-file-open-context.tsx";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -131,9 +141,12 @@ function Table(props: React.HTMLAttributes<HTMLTableElement>) {
 const remarkPluginsMemo = [remarkGfm];
 const rehypePluginsMemo = [rehypeRaw];
 
-// Extend shared markdown components with chat-specific overrides (table with CSV copy, image lightbox)
+// Extend shared markdown components with chat-specific overrides (table with CSV
+// copy, image lightbox, clickable org-file references).
 const markdownComponents = {
   ...sharedMarkdownComponents,
+  code: (props: MdProps) => <MarkdownCode {...props} />,
+  a: (props: MdProps) => <MarkdownAnchor {...props} />,
   table: (props: React.HTMLAttributes<HTMLTableElement>) => (
     <Table {...props} />
   ),
@@ -191,6 +204,84 @@ type MdProps = {
   children?: React.ReactNode;
 } & Record<string, unknown>;
 
+// Inline-code styling, mirrored from the shared design-system `code` override.
+const INLINE_CODE_CLASS =
+  "px-1 py-0.5 bg-background border border-border rounded text-[14px] font-mono break-all";
+
+// Inline code that names an org file becomes a clickable chip; everything else
+// keeps the plain code styling. Block code (rendered via `pre > code`, and the
+// fenced blocks MemoizedMarkdown pre-splits) is never linkified. The chip is
+// clickable ONLY under an OrgFileOpenProvider (the chat shell) — elsewhere the
+// nav can't resolve, so it stays plain rather than a dead click.
+function MarkdownCode({ node: _n, className, children, ...p }: MdProps) {
+  const ctx = useContext(OrgFileOpenContext);
+  const isBlock =
+    typeof className === "string" && className.includes("language-");
+  const text = typeof children === "string" ? children : null;
+  const browsePath =
+    ctx && !isBlock && text
+      ? resolveOrgFileBrowsePath(text, ctx.orgSlug)
+      : null;
+  if (!ctx || !browsePath) {
+    return (
+      <code className={INLINE_CODE_CLASS} {...p}>
+        {children}
+      </code>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => ctx.open(browsePath)}
+      className={cn(
+        INLINE_CODE_CLASS,
+        "text-primary-dark hover:underline cursor-pointer",
+      )}
+      title="Open file"
+    >
+      {children}
+    </button>
+  );
+}
+
+// Markdown links whose href is an org file path open the in-chat preview;
+// all other links keep their external-tab behavior. `animate` routes the label
+// through the streaming word-fade animator. Like MarkdownCode, the in-chat
+// preview is wired only under an OrgFileOpenProvider.
+function MarkdownAnchor({
+  node: _n,
+  children,
+  animate,
+  ...p
+}: MdProps & { animate?: boolean }) {
+  const ctx = useContext(OrgFileOpenContext);
+  const href = typeof p.href === "string" ? p.href : undefined;
+  const browsePath =
+    ctx && href ? resolveOrgFileBrowsePath(href, ctx.orgSlug) : null;
+  const label = animate ? animateText(children) : children;
+  if (ctx && browsePath) {
+    return (
+      <button
+        type="button"
+        onClick={() => ctx.open(browsePath)}
+        className="text-primary-dark hover:underline break-all font-medium cursor-pointer"
+      >
+        {label}
+      </button>
+    );
+  }
+  return (
+    <a
+      {...p}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary-dark hover:underline break-all font-medium"
+    >
+      {label}
+    </a>
+  );
+}
+
 // Same design-system styling as `markdownComponents`, but text-bearing elements
 // route their text through `animateText`. Used only while a message streams.
 const animatedComponents = {
@@ -235,16 +326,7 @@ const animatedComponents = {
       {animateText(children)}
     </li>
   ),
-  a: ({ node: _n, children, ...p }: MdProps) => (
-    <a
-      {...p}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-primary-dark hover:underline break-all font-medium"
-    >
-      {animateText(children)}
-    </a>
-  ),
+  a: (props: MdProps) => <MarkdownAnchor {...props} animate />,
 } as typeof markdownComponents;
 
 const MemoizedMarkdownBlock = memo(

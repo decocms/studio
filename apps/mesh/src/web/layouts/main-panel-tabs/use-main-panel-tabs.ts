@@ -45,6 +45,7 @@ import {
   parseAutomationTabId,
   parseDeckTabId,
   parseFileTabId,
+  parseLibraryFileTabId,
   resolveActiveTabAndOpen,
   resolveDefaultTabId,
   resolveTabClickTarget,
@@ -330,9 +331,35 @@ export function useMainPanelTabs(ctx: {
       ]
     : [];
 
+  // Ephemeral Library file-preview tab (`?main=library-file:<path>`): an org
+  // file referenced from a chat message, opened as a side panel on desktop.
+  // Same pill semantics as file/deck previews; title is the basename.
+  const libraryFileTabParsed = parseLibraryFileTabId(activeTab);
+  const libraryFileName = libraryFileTabParsed
+    ? (libraryFileTabParsed.path.split("/").pop() ?? libraryFileTabParsed.path)
+    : null;
+  const libraryFileTabs: Tab[] = libraryFileName
+    ? [
+        {
+          id: activeTab,
+          title: libraryFileName,
+          kind: "file",
+          icon: {
+            kind: "component",
+            Component: (props) =>
+              createElement(FileTypeIcon, {
+                filename: libraryFileName,
+                ...props,
+              }),
+          },
+        },
+      ]
+    : [];
+
   const tabs: Tab[] = [
     ...fileTabs,
     ...deckTabs,
+    ...libraryFileTabs,
     ...layoutTabs.map((t) => ({
       id: t.id,
       title: t.title,

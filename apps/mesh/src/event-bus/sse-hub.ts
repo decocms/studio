@@ -17,8 +17,6 @@
  * - Pluggable broadcast: strategy handles cross-process replication
  */
 
-import type { Event } from "../storage/types";
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -236,28 +234,3 @@ function matchesAnyPattern(eventType: string, patterns: string[]): boolean {
 
 /** Global SSE hub instance */
 export const sseHub = new SSEHub();
-
-/**
- * Convert a database Event to an SSEEvent for streaming.
- */
-export function toSSEEvent(event: Event): SSEEvent {
-  return {
-    id: event.id,
-    type: event.type,
-    source: event.source,
-    subject: event.subject,
-    data: event.data ? tryParseJSON(event.data) : undefined,
-    time: event.time,
-  };
-}
-
-function tryParseJSON(value: unknown): unknown {
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-  return value;
-}

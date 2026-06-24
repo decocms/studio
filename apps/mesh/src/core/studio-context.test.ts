@@ -8,7 +8,6 @@ import {
   requireAuth,
   requireOrganization,
 } from "./studio-context";
-import type { EventBus } from "../event-bus/interface";
 
 // Helper to create mock context
 const createMockContext = (
@@ -31,6 +30,7 @@ const createMockContext = (
     aiProviderKeys: null as never,
     secrets: null as never,
     orgFileConfigs: null as never,
+    orgSites: null as never,
     orgFsEntries: null as never,
     oauthPkceStates: null as never,
     automations: null as never,
@@ -40,6 +40,7 @@ const createMockContext = (
     registry: null as never,
     brandContext: null as never,
     organizationDomains: null as never,
+    organizationJoinRequests: null as never,
     kv: null as never,
     interests: null as never,
   },
@@ -68,7 +69,6 @@ const createMockContext = (
     requestId: "req_123",
     timestamp: new Date(),
   },
-  eventBus: null as unknown as EventBus,
   objectStorage: null as never,
   orgFs: null,
   aiProviders: null as never,

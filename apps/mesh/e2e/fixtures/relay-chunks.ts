@@ -2,10 +2,10 @@
  * Faithful canned harness-output chunk sequences for the chunk-relay return
  * path (protocol v2). A real desktop daemon relays its sandbox harness's raw
  * `UIMessageChunk`s wrapped as seq-numbered `RelayLine`s
- * ({seq, event: DispatchSSEEvent}) to
- *   POST /api/:org/links/runs/:runId/chunks
- * (see `links/protocol/relay.ts` + `link-daemon/chunk-relay.ts`). The
- * cluster-side `consumeRelayedRun` feeds them into the SAME harness kernel
+ * ({seq, event: DispatchSSEEvent}) by publishing them straight to the run's
+ * JetStream stream `decopilot.stream.<runId>` (see `links/protocol/relay.ts` +
+ * `link-daemon/direct-nats-publisher.ts`; the e2e `relay-nats.ts` helper drives
+ * the same path). The durable projector feeds them into the SAME harness kernel
  * (`consumeHarnessStream`) hosted runs use, so these fixtures double as the
  * conformance corpus: title/usage/parts/status/session all flow through one
  * code path regardless of whether the chunk source is in-process (hosted) or
@@ -44,10 +44,14 @@ export interface BuildTurnOptions {
   usage?: HarnessTurnUsage;
   /**
    * When set, the final `finish` chunk carries `codingAgentSessionId` +
-   * `codingAgentProvider: "claude-code"` — the shape `lookupResumeSessionRef`
-   * reads back on the NEXT turn to populate `harnessInput.resumeSessionRef`.
+   * `codingAgentProvider` — the shape `resolveCliSessionRef` reads back on the
+   * NEXT turn to populate `harnessInput.resumeSessionRef`. Defaults to
+   * `"claude-code"` when unset (matches the original fixture behaviour).
+   * Pass `"codex"` when emulating a Codex harness relay.
    */
   codingAgentSessionId?: string;
+  /** Provider name stored alongside the session id. Defaults to `"claude-code"`. */
+  codingAgentProvider?: "claude-code" | "codex";
 }
 
 /** A single UIMessageChunk wrapped as the daemon's relay event. */
@@ -99,7 +103,8 @@ function buildTurnEvents(opts: BuildTurnOptions): unknown[] {
   if (opts.usage) messageMetadata.usage = opts.usage;
   if (opts.codingAgentSessionId) {
     messageMetadata.codingAgentSessionId = opts.codingAgentSessionId;
-    messageMetadata.codingAgentProvider = "claude-code";
+    messageMetadata.codingAgentProvider =
+      opts.codingAgentProvider ?? "claude-code";
   }
   const finishChunk: Record<string, unknown> = { type: "finish" };
   if (Object.keys(messageMetadata).length > 0) {

@@ -44,6 +44,7 @@ import type {
 } from "@decocms/harness/decopilot/engine";
 import { runAgentLoop } from "./run-agent-loop";
 import type { DecopilotTelemetry } from "@decocms/harness/decopilot/run-stream";
+import { createBackgroundToolDispatcher } from "./background-tool-workflow";
 
 /**
  * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled
@@ -129,6 +130,7 @@ export function buildClusterEnvironmentTools(args: {
       const toolOutputMap = new Map<string, string>();
       const pendingImages: PendingImage[] = [];
       const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(ctx);
+
       const assembled = await assembleDecopilotTools(streamInput, ctx, {
         writer: sideChannel.writer,
         toolOutputMap,
@@ -152,13 +154,25 @@ export function buildClusterEnvironmentTools(args: {
             ctx,
             "passthrough",
             opts?.superUser ?? false,
-            { listTimeoutMs: opts?.listTimeoutMs },
+            { listTimeoutMs: opts?.listTimeoutMs, includeSkillsCatalog: true },
           ),
         provider: modelRuntime.thinking.provider,
         imageProvider:
           modelRuntime.image?.provider ?? modelRuntime.thinking.provider,
         deepResearchProvider:
           modelRuntime.deepResearch?.provider ?? modelRuntime.thinking.provider,
+        // Hosted cluster runs get a DBOS-backed background dispatcher so slow
+        // built-ins (generate_image) don't freeze the turn. The reaction turn
+        // is rebuilt on any pod from this serializable snapshot.
+        backgroundDispatcher: createBackgroundToolDispatcher({
+          threadId: streamInput.threadId,
+          orgId: streamInput.organizationId,
+          userId: streamInput.user.id,
+          agentId: streamInput.agent.id,
+          temperature: streamInput.temperature,
+          toolApprovalLevel: streamInput.toolApprovalLevel,
+          branch: streamInput.branch ?? null,
+        }),
         htmlArtifactBuffer,
         // Roll subtask child usage into the parent run's accumulator
         // (Task 17). Threaded into the subtask tool via getBuiltInTools.

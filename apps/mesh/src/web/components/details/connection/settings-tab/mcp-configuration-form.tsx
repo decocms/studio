@@ -86,7 +86,7 @@ interface BindingFieldWithDynamicSchemaProps {
  * Resolves the binding filter for BindingSelector.
  *
  * Resolution order:
- * 1. Builtin binding: "@deco/event-bus" → "EVENT_BUS" (matched by tool capabilities)
+ * 1. Builtin binding: "@deco/llm" → "LLMS" (matched by tool capabilities)
  * 2. Dynamic registry: "@scope/app" → fetch tools from registry
  * 3. Inline schema: [{ name: "TOOL", inputSchema: {...} }] → used directly
  * 4. String passthrough: well-known name like "LLMS" → passed through
@@ -101,7 +101,7 @@ function BindingFieldWithDynamicSchema({
   className,
 }: BindingFieldWithDynamicSchemaProps) {
   // Resolve binding to a server-side filter.
-  // builtinBinding: "@deco/event-bus" → "EVENT_BUS"
+  // builtinBinding: "@deco/llm" → "LLMS"
   // string bindingSchema: well-known name like "LLMS" → passed through
   // array/object bindingSchema: custom binding schema → passed as object for server-side filtering
   const builtinBinding = resolveBindingType(bindingType);
@@ -271,7 +271,7 @@ function CustomObjectFieldTemplate(props: ObjectFieldTemplateProps) {
   const { schema, formData, title, description, registry } = props;
   const formContext = registry.formContext as FormContext | undefined;
 
-  // The `title` prop contains the field name (e.g., "EVENT_BUS", "DATABASE")
+  // The `title` prop contains the field name (e.g., "LLMS", "DATABASE")
   // This is the key we need for data operations
   const fieldKey = title || "";
 

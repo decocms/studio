@@ -693,6 +693,35 @@ describe("submit", () => {
     expect(conn.finishReason.get()).toBe(null);
     await p;
   });
+
+  test("stamps the optimistic user message with a top-level created_at", async () => {
+    globalThis.fetch = makeFetchMock() as unknown as typeof globalThis.fetch;
+    const conn = getOrOpenStream("acme", "thread-stamp", { client: null });
+    await new Promise((r) => setTimeout(r, 20));
+
+    await conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "user-stamp",
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+        },
+      },
+      baseOpts,
+    );
+
+    // Without the stamp the optimistic user row reads as +Infinity and the
+    // assistant reply (finite metadata/finish timestamp) sorts ahead of it →
+    // "No response was generated" on the turn that triggered the run.
+    const userRow = conn.messages.get().find((m) => m.id === "user-stamp") as
+      | (UIMessage & { created_at?: string })
+      | undefined;
+    expect(userRow?.created_at).toBeDefined();
+    expect(Number.isFinite(new Date(userRow!.created_at!).getTime())).toBe(
+      true,
+    );
+  });
 });
 
 // ─── submit() — defer POST while client-side resolutions are pending ─────────
@@ -1235,6 +1264,16 @@ describe("dropRedundantStubs", () => {
     expect(out.map((m) => m.id).sort()).toEqual(
       ["msg_async_stub_" + TC, "msg_live2", "u1"].sort(),
     );
+  });
+
+  test("drops a stub whose message-id suffix differs from its part toolCallId", () => {
+    // Legacy stubs were keyed by a hashed id (`msg_async_stub_sha256:…`) while
+    // their part carried the full toolCallId. Match by the part, not the suffix.
+    const hashedStub = assistantMsg("msg_async_stub_sha256:deadbeef", [
+      { type: "tool-web_search", toolCallId: TC, state: "input-available" },
+    ]);
+    const out = dropRedundantStubs([userMsg, hashedStub, live]);
+    expect(out.map((m) => m.id)).toEqual(["u1", "msg_live"]);
   });
 
   test("noop when there are no stubs (cheap fast path)", () => {

@@ -18,8 +18,11 @@ export interface HomeTileEntry {
   agentId: string;
   agentName: string;
   agentIcon: string | null;
+  tileId?: string;
   connectionId: string;
   resourceUri: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
   minHeight?: number;
   maxHeight?: number;
 }

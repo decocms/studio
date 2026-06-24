@@ -19,9 +19,6 @@ const BLOG_LOADER_RESOLVE_TYPES = {
   category: "blog/loaders/Category.ts",
 } as const;
 
-/** Prefix every blog content block (Paragraph, Heading, …) shares. */
-const BLOG_BLOCK_PREFIX = "blog/sections/blocks/";
-
 export type BlogKind = "posts" | "authors" | "categories";
 
 export const BLOG_KINDS: readonly BlogKind[] = [
@@ -231,7 +228,12 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
         avatar: "",
       };
     case "categories":
-      return { name: "New category", slug: `category-${randomHex(8)}` };
+      return {
+        name: "New category",
+        slug: `category-${randomHex(8)}`,
+        description: "",
+        sections: [],
+      };
     default: {
       const _exhaustive: never = kind;
       throw new Error(`Unhandled blog kind: ${String(_exhaustive)}`);
@@ -239,17 +241,168 @@ export function emptyBlogPayload(kind: BlogKind): Record<string, unknown> {
   }
 }
 
+export type BlogBlockSource = "app" | "site";
+
 export interface BlogBlockType {
   resolveType: string;
   title: string;
   description?: string;
-  icon?: string;
+  /** @untitledui/icons component name; resolved via getIconComponent. */
+  iconName: string;
+  /** URL when the section declares `@icon` as an image (http(s)/data/absolute). */
+  iconUrl?: string;
+  /** "app" = deco-cms/blog built-ins; "site" = section defined by this site. */
+  source: BlogBlockSource;
 }
 
 /**
- * Discover the content block types a post can contain
- * (`blog/sections/blocks/*`) from the live manifest, with title/icon
- * metadata for the inserter UI.
+ * Defaults for the well-known blog block component names. Used to give
+ * the inserter pretty labels, descriptions and icons.
+ *
+ * For **app blocks** (`blog/sections/blocks/*`) the catalog overrides the
+ * schema metadata — built-in schemas typically just echo the class name
+ * (e.g. "BlockImage"), and we want the friendly label ("Image") instead.
+ *
+ * For **site blocks** (`site/sections/Blog/Post/*`) the schema's `@title`
+ * / `@description` / `@icon` win — site authors should be in control of
+ * their own block presentation. The catalog only fills in when the schema
+ * omits a field.
+ */
+const KNOWN_BLOG_BLOCK_CATALOG: Record<
+  string,
+  { title: string; description: string; iconName: string }
+> = {
+  Paragraph: {
+    title: "Paragraph",
+    description: "Rich text content",
+    iconName: "Pilcrow01",
+  },
+  Heading: {
+    title: "Heading",
+    description: "Section title (H1–H6)",
+    iconName: "HeadingSquare",
+  },
+  Quote: {
+    title: "Quote",
+    description: "Pull quote",
+    iconName: "MessageTextSquare02",
+  },
+  Code: {
+    title: "Code",
+    description: "Code block with syntax highlighting",
+    iconName: "Code02",
+  },
+  List: {
+    title: "List",
+    description: "Bulleted or numbered list",
+    iconName: "List",
+  },
+  BlockImage: {
+    title: "Image",
+    description: "Image with optional caption",
+    iconName: "Image01",
+  },
+  Video: {
+    title: "Video",
+    description: "Embedded video",
+    iconName: "PlayCircle",
+  },
+  Divider: {
+    title: "Divider",
+    description: "Horizontal divider",
+    iconName: "Divider",
+  },
+  Cta: {
+    title: "Call to action",
+    description: "Button linking to a URL",
+    iconName: "CursorClick01",
+  },
+  Callout: {
+    title: "Callout",
+    description: "Highlighted note, tip or warning",
+    iconName: "Lightbulb02",
+  },
+  Stat: {
+    title: "Stat",
+    description: "Single key metric",
+    iconName: "BarChartSquareUp",
+  },
+  StatGroup: {
+    title: "Stat group",
+    description: "Row of metrics",
+    iconName: "BarChartSquare02",
+  },
+  CardGroup: {
+    title: "Card group",
+    description: "Grid of cards",
+    iconName: "LayoutGrid01",
+  },
+  Checklist: {
+    title: "Checklist",
+    description: "List of check items",
+    iconName: "CheckSquare",
+  },
+  Steps: {
+    title: "Steps",
+    description: "Step-by-step guide",
+    iconName: "LayersThree01",
+  },
+  Comparison: {
+    title: "Comparison",
+    description: "Side-by-side comparison",
+    iconName: "Columns03",
+  },
+  ProductCard: {
+    title: "Product card",
+    description: "Single product",
+    iconName: "Tag01",
+  },
+  ProductShelf: {
+    title: "Product shelf",
+    description: "Row of products",
+    iconName: "ShoppingBag01",
+  },
+};
+
+const FALLBACK_BLOG_BLOCK_ICON = "Box";
+
+function blogBlockSource(resolveType: string): BlogBlockSource {
+  return resolveType.startsWith("site/") ? "site" : "app";
+}
+
+/**
+ * Schema `icon` strings can be either an @untitledui/icons component name
+ * (e.g. "Pilcrow01") or an image URL declared via `@icon`. URLs start
+ * with a protocol, `data:`, or an absolute path.
+ */
+function isImageUrl(icon: string): boolean {
+  return (
+    icon.startsWith("http://") ||
+    icon.startsWith("https://") ||
+    icon.startsWith("data:") ||
+    icon.startsWith("/")
+  );
+}
+
+/**
+ * Pick the first defined value among the candidates. Used to express
+ * precedence chains compactly without `??` ladders that obscure intent.
+ */
+function pick<T>(...candidates: Array<T | undefined>): T | undefined {
+  for (const c of candidates) {
+    if (c !== undefined) return c;
+  }
+  return undefined;
+}
+
+/**
+ * Discover the content block types a post can contain from the live
+ * manifest, with title/icon metadata for the inserter UI. Recognizes both
+ * the `deco-cms/blog` app blocks (`blog/sections/blocks/*`) and
+ * site-defined blog blocks (`site/sections/Blog/Post/*`), matching the
+ * same set that `isBlogPostBlockResolveType` accepts everywhere else.
+ *
+ * Precedence depends on the block's source — see KNOWN_BLOG_BLOCK_CATALOG.
  */
 export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
   const seen = new Set<string>();
@@ -257,16 +410,43 @@ export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
   const groups = meta.manifest?.blocks ?? {};
   for (const group of Object.values(groups)) {
     for (const resolveType of Object.keys(group)) {
-      if (!resolveType.startsWith(BLOG_BLOCK_PREFIX) || seen.has(resolveType)) {
+      if (!isBlogPostBlockResolveType(resolveType) || seen.has(resolveType)) {
         continue;
       }
       seen.add(resolveType);
       const md = resolveBlockSchemaMetadata(resolveType, meta);
+      const name = blockComponentName(resolveType);
+      const catalog = KNOWN_BLOG_BLOCK_CATALOG[name];
+      const source = blogBlockSource(resolveType);
+
+      // Site blocks: schema's @title/@description/@icon wins. App blocks:
+      // catalog wins (built-in schemas just echo class names like "BlockImage").
+      const title =
+        (source === "site"
+          ? pick(md.title, catalog?.title)
+          : pick(catalog?.title, md.title)) ?? name;
+      const description =
+        source === "site"
+          ? pick(md.description, catalog?.description)
+          : pick(catalog?.description, md.description);
+
+      // `@icon` on a site block can be a URL (rendered as <img>) or an
+      // @untitledui/icons component name. App blocks always use the
+      // catalog icon — built-in schemas don't carry useful icon hints.
+      const rawIcon = source === "site" ? md.icon : undefined;
+      const iconUrl = rawIcon && isImageUrl(rawIcon) ? rawIcon : undefined;
+      const iconName =
+        iconUrl !== undefined
+          ? (catalog?.iconName ?? FALLBACK_BLOG_BLOCK_ICON)
+          : (pick(rawIcon, catalog?.iconName) ?? FALLBACK_BLOG_BLOCK_ICON);
+
       out.push({
         resolveType,
-        title: md.title ?? blockComponentName(resolveType),
-        description: md.description,
-        icon: md.icon,
+        title,
+        description,
+        iconName,
+        iconUrl,
+        source,
       });
     }
   }

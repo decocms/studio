@@ -143,9 +143,43 @@ describe("outbox append/replay", () => {
   });
 });
 
-describe("outbox cap (loud-fail preserves the 64 MiB contract)", () => {
-  it("MAX_OUTBOX_BYTES equals today's RELAY_BUFFER_MAX_BYTES (64 MiB)", () => {
-    expect(MAX_OUTBOX_BYTES).toBe(64 * 1024 * 1024);
+describe("outbox boot sweep (clear)", () => {
+  it("clear() drops ALL rows so a fresh daemon boot starts un-wedged", () => {
+    outbox.append({
+      runId: "r1",
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 1,
+      line: line(1, "x"),
+    });
+    outbox.append({
+      runId: "r2",
+      fenceToken: FENCE,
+      wireSeq: 1,
+      lane: 1,
+      line: line(1, "y"),
+    });
+    expect(
+      outbox.replay({ runId: "r1", fenceToken: FENCE, fromSeq: 1 }),
+    ).toHaveLength(1);
+
+    outbox.clear();
+
+    expect(
+      outbox.replay({ runId: "r1", fenceToken: FENCE, fromSeq: 1 }),
+    ).toEqual([]);
+    expect(
+      outbox.replay({ runId: "r2", fenceToken: FENCE, fromSeq: 1 }),
+    ).toEqual([]);
+  });
+});
+
+describe("outbox cap (loud-fail backstop)", () => {
+  it("MAX_OUTBOX_BYTES is 512 MiB (stalled-publisher backstop, not the per-run limit)", () => {
+    // Bumped from the legacy 64 MiB once rolling ackSeq truncation bounded the
+    // outbox to the in-flight window; this is now only a stalled-publisher
+    // backstop.
+    expect(MAX_OUTBOX_BYTES).toBe(512 * 1024 * 1024);
   });
 
   it("throws loudly with the runId when a single run exceeds the per-run cap", () => {

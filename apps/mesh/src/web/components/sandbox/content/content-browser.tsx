@@ -129,6 +129,10 @@ const RecordEditor = lazy(() =>
   import("./blog/record-editor").then((m) => ({ default: m.RecordEditor })),
 );
 
+const CategoryEditor = lazy(() =>
+  import("./blog/category-editor").then((m) => ({ default: m.CategoryEditor })),
+);
+
 const SectionsEditor = lazy(() =>
   import("@/web/components/sections-editor/sections-editor").then((m) => ({
     default: m.SectionsEditor,
@@ -799,15 +803,25 @@ function ContentBrowserReady({
                 block={decofile[selection.key] as Record<string, unknown>}
                 decofile={decofile}
                 meta={meta}
+                previewBaseUrl={previewUrl}
               />
-            ) : selection.collection === "authors" ||
-              selection.collection === "categories" ? (
-              <RecordEditor
-                key={`${selection.collection}:${selection.key}`}
+            ) : selection.collection === "categories" ? (
+              <CategoryEditor
+                key={`category:${selection.key}`}
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
-                kind={selection.collection}
+                blockKey={selection.key}
+                block={decofile[selection.key] as Record<string, unknown>}
+                meta={meta}
+              />
+            ) : selection.collection === "authors" ? (
+              <RecordEditor
+                key={`authors:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                kind="authors"
                 blockKey={selection.key}
                 block={decofile[selection.key] as Record<string, unknown>}
               />

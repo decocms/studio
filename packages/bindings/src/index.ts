@@ -49,41 +49,6 @@ export {
   type EventSubscriberBindingClient,
 } from "./well-known/event-subscriber";
 
-// Re-export event bus binding types (for interacting with an event bus)
-export {
-  EventPublishInputSchema,
-  type EventPublishInput,
-  EventPublishOutputSchema,
-  type EventPublishOutput,
-  EventSubscribeInputSchema,
-  type EventSubscribeInput,
-  EventSubscribeOutputSchema,
-  type EventSubscribeOutput,
-  EventUnsubscribeInputSchema,
-  type EventUnsubscribeInput,
-  EventUnsubscribeOutputSchema,
-  type EventUnsubscribeOutput,
-  EventCancelInputSchema,
-  type EventCancelInput,
-  EventCancelOutputSchema,
-  type EventCancelOutput,
-  EventAckInputSchema,
-  type EventAckInput,
-  EventAckOutputSchema,
-  type EventAckOutput,
-  SubscriptionItemSchema,
-  type SubscriptionItem,
-  SubscriptionDetailSchema,
-  type SubscriptionDetail,
-  EventSyncSubscriptionsInputSchema,
-  type EventSyncSubscriptionsInput,
-  EventSyncSubscriptionsOutputSchema,
-  type EventSyncSubscriptionsOutput,
-  EVENT_BUS_BINDING,
-  EventBusBinding,
-  type EventBusBindingClient,
-} from "./well-known/event-bus";
-
 // Re-export trigger binding types (for connections that can emit triggers)
 export {
   TriggerParamSchema,
@@ -120,9 +85,6 @@ export {
   type DeleteObjectsInput,
   type DeleteObjectsOutput,
 } from "./well-known/object-storage";
-
-// Re-export workflow binding types
-export { WORKFLOWS_COLLECTION_BINDING } from "./well-known/workflow";
 
 // Re-export brand binding types (for reading org brand context)
 export {

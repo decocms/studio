@@ -56,6 +56,7 @@ const DESKTOP_TOOL_KEYS_BASELINE = [
   "propose_plan",
   "read",
   "read_tool_output",
+  "skill",
   "subtask",
   "todo_write",
   "update_interests",

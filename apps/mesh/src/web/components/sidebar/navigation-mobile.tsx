@@ -1,9 +1,7 @@
-import { DEFAULT_LOGO, usePublicConfig } from "@/web/hooks/use-public-config";
 import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -12,29 +10,8 @@ import {
 import { cn } from "@deco/ui/lib/utils.ts";
 import { type ReactNode, Suspense } from "react";
 import { SidebarCollapsibleGroup } from "./sidebar-group";
+import { SidebarLogoHeader } from "./sidebar-logo-header";
 import type { NavigationSidebarItem, SidebarSection } from "./types";
-
-function MobileLogoHeader() {
-  const config = usePublicConfig();
-  const logo = config.logo ?? DEFAULT_LOGO;
-  const lightSrc = typeof logo === "string" ? logo : logo.light;
-  const darkSrc = typeof logo === "string" ? logo : logo.dark;
-
-  return (
-    <SidebarHeader className="flex flex-row items-center shrink-0 h-12 px-3 pb-0">
-      <img
-        src={lightSrc}
-        alt="Logo"
-        className="size-6 object-contain dark:hidden"
-      />
-      <img
-        src={darkSrc}
-        alt="Logo"
-        className="size-6 object-contain hidden dark:block"
-      />
-    </SidebarHeader>
-  );
-}
 
 function MobileNavigationItem({
   item,
@@ -132,8 +109,8 @@ export function MobileNavigationSidebar({
       className="bg-sidebar flex h-full w-full flex-col"
       data-sidebar="sidebar"
     >
-      <Suspense fallback={<div className="h-10 shrink-0" />}>
-        <MobileLogoHeader />
+      <Suspense fallback={<div className="h-12 shrink-0" />}>
+        <SidebarLogoHeader onToggle={onClose} />
       </Suspense>
       <SidebarContent className="flex flex-col flex-1 px-2 py-2 gap-0">
         {sections.map((section, index) => (

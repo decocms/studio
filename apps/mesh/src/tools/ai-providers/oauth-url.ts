@@ -9,6 +9,31 @@ import {
 } from "../../ai-providers/pkce";
 import { getSettings } from "../../settings";
 
+function isLocalhostAlias(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
+}
+
+function isAllowedCallbackOrigin(callbackUrl: string): boolean {
+  const settings = getSettings();
+  const base = settings.baseUrl ?? `http://localhost:${settings.port}`;
+  const callback = new URL(callbackUrl);
+  const baseUrl = new URL(base);
+
+  if (callback.origin === baseUrl.origin) return true;
+
+  return (
+    callback.protocol === baseUrl.protocol &&
+    isLocalhostAlias(callback.hostname) &&
+    isLocalhostAlias(baseUrl.hostname)
+  );
+}
+
 export const AI_PROVIDER_OAUTH_URL = defineTool({
   name: "AI_PROVIDER_OAUTH_URL",
   description:
@@ -20,9 +45,7 @@ export const AI_PROVIDER_OAUTH_URL = defineTool({
       .url()
       .refine(
         (url) => {
-          const settings = getSettings();
-          const base = settings.baseUrl ?? `http://localhost:${settings.port}`;
-          return new URL(url).origin === new URL(base).origin;
+          return isAllowedCallbackOrigin(url);
         },
         { message: "callbackUrl must be on the same origin as BASE_URL" },
       ),

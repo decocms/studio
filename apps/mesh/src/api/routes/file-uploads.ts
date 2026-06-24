@@ -21,7 +21,12 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { StudioContext } from "@/core/studio-context";
-import { buildPublicUrl, buildS3Client } from "@/file-storage/file-config-s3";
+import {
+  buildPublicUrl,
+  buildS3Client,
+  FileConfigForbiddenError,
+  resolveFileConfig,
+} from "@/file-storage/file-config-s3";
 import {
   MAX_UPLOAD_BYTES,
   UploadRejected,
@@ -118,10 +123,20 @@ export const createFileUploadRoutes = () => {
       }),
     );
 
-    const fileCfg = await ctx.storage.orgFileConfigs.resolveById(
-      configId,
-      orgId,
-    );
+    let fileCfg;
+    try {
+      fileCfg = await resolveFileConfig(
+        ctx.storage.orgFileConfigs,
+        ctx.storage.orgSites,
+        configId,
+        orgId,
+      );
+    } catch (err) {
+      if (err instanceof FileConfigForbiddenError) {
+        throw new HTTPException(403, { message: err.message });
+      }
+      throw err;
+    }
 
     const key = buildObjectKey({
       prefix: fileCfg.info.prefix,

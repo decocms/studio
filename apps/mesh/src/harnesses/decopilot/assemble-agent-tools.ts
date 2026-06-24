@@ -23,7 +23,9 @@ import {
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@decocms/harness/decopilot/harness-constants";
 import {
   buildBuiltInTools,
+  getBuiltInTools,
   type BuildBuiltInToolsOptions,
+  type BuiltinToolParams,
 } from "./built-in-tools";
 
 export type { BuildBuiltInToolsOptions };
@@ -51,6 +53,18 @@ export interface AssembleAgentToolsOptions {
   /** Cluster-injected hook: emit per-tool-call analytics (posthog). Omitted
    *  on desktop → no analytics. */
   onToolCalled?: (event: ToolCallAnalytics) => void;
+  /**
+   * Full built-in params for a SUBAGENT. When present (the `subtask` paths), the
+   * subagent is built with the SAME heavy built-ins the parent has — vm file
+   * tools (read/write/edit/bash/…), generate_image, web_search, screenshot —
+   * instead of the light core. Without it a subagent only sees todo_write +
+   * read_tool_output, so a delegated task can't write files or generate images.
+   * The loop's own `toolOutputMap` is injected here so MCP outputs and
+   * read_tool_output share one map; excluded subagent tools are still stripped.
+   * Omitted by the main-agent path, which injects its full built-ins via
+   * extraTools instead.
+   */
+  fullBuiltInParams?: Omit<BuiltinToolParams, "toolOutputMap">;
 }
 
 export interface AssembleAgentToolsResult {
@@ -79,14 +93,22 @@ export async function assembleAgentTools(
     },
   );
 
-  // 2. Built-in tools — full set first.
-  const allBuiltIns = buildBuiltInTools({
-    ctx: opts.ctx,
-    writer: opts.writer,
-    toolOutputMap,
-    subtaskParams: opts.subtaskParams,
-    planMode: opts.planMode,
-  });
+  // 2. Built-in tools — full set first. A subagent given `fullBuiltInParams`
+  //    gets the parent's heavy built-ins (vm/generate_image/web_search) bound to
+  //    THIS loop's writer + the shared toolOutputMap; otherwise the light core.
+  const allBuiltIns = opts.fullBuiltInParams
+    ? await getBuiltInTools(
+        opts.writer,
+        { ...opts.fullBuiltInParams, toolOutputMap },
+        opts.ctx,
+      )
+    : buildBuiltInTools({
+        ctx: opts.ctx,
+        writer: opts.writer,
+        toolOutputMap,
+        subtaskParams: opts.subtaskParams,
+        planMode: opts.planMode,
+      });
 
   // 3. Filter built-ins for subagent kind.
   const builtIns: Record<string, unknown> =

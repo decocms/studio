@@ -41,6 +41,14 @@ const hasUsableText = (s: string): boolean => /[\p{L}\p{N}]/u.test(s);
  */
 const POST_STREAM_GRACE_MS = 10_000;
 
+// Hard cap on how long we wait for the title model before falling back to the
+// clamped user message. Independent of the main stream: a slow/hung title model
+// (e.g. codex's separate title app-server) must NOT keep the thread on "New
+// chat" for the whole run — it should surface the deterministic fallback
+// promptly so a title appears soon after submit.
+const TITLE_GEN_TIMEOUT_MS = 20_000;
+const FALLBACK_TITLE_MAX_CHARS = 32;
+
 export function genTitle(config: {
   /** Optional: aborts title generation when the parent stream is cancelled.
    *  Undefined on the desktop/pull path, where the harness runs from a
@@ -48,8 +56,12 @@ export function genTitle(config: {
   abortSignal?: AbortSignal;
   model: LanguageModelV3;
   userMessage: string;
+  /** Override the self-timeout (ms) before falling back to the clamped user
+   *  message. Defaults to {@link TITLE_GEN_TIMEOUT_MS}. Tests pass a tiny value. */
+  timeoutMs?: number;
 }): { promise: Promise<string | null>; finish: () => void } {
   const { abortSignal, model, userMessage } = config;
+  const timeoutMs = config.timeoutMs ?? TITLE_GEN_TIMEOUT_MS;
 
   const titleAbortController = new AbortController();
 
@@ -63,6 +75,13 @@ export function genTitle(config: {
 
   let graceTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
+  // Self-timeout: cap title generation so a slow/hung title model falls back to
+  // the clamped user message promptly (≈ right after submit) instead of only
+  // resolving when the main stream ends. Fires regardless of stream lifetime.
+  const selfTimeoutId = setTimeout(() => {
+    titleAbortController.abort();
+  }, timeoutMs);
+
   // Called when the main LLM stream finishes — gives the title a grace
   // period to complete, then aborts so onFinish doesn't hang.
   const finish = () => {
@@ -72,13 +91,13 @@ export function genTitle(config: {
   };
 
   // Fallback used when the LLM call errors or produces unusable output.
-  // Spec: take the literal first 10 characters of the user message, trim,
+  // Spec: take the literal first 32 characters of the user message, trim,
   // and fall through to "New chat" if there's no usable letter/digit.
   // Short, deterministic, and cheap; the user can rename the thread at
-  // any time. 10 chars was picked over the previous 60-char first-line
+  // any time. 32 chars was picked over the previous 60-char first-line
   // shape to keep failed/empty titles visually compact in the sidebar.
   const fallbackTitle = (() => {
-    const candidate = userMessage.slice(0, 10).trim();
+    const candidate = userMessage.slice(0, FALLBACK_TITLE_MAX_CHARS).trim();
     return hasUsableText(candidate) ? candidate : "New chat";
   })();
 
@@ -105,10 +124,21 @@ export function genTitle(config: {
     } catch (error) {
       const err = error as Error;
       if (err.name === "AbortError") {
+        // Parent stream was cancelled (user hit stop) → do NOT title a cancelled
+        // run; emit nothing.
+        if (abortSignal?.aborted) {
+          console.warn(
+            "[decopilot:title] Title generation aborted (parent abort)",
+          );
+          return null;
+        }
+        // Otherwise it timed out (self-timeout or post-stream grace). Surface the
+        // deterministic clamped-user-message fallback so the thread never stays
+        // on "New chat" — NOT null, which would emit no title chunk.
         console.warn(
-          "[decopilot:title] Title generation aborted (timeout or parent abort)",
+          "[decopilot:title] Title generation timed out; using fallback",
         );
-        return null;
+        return fallbackTitle;
       }
       console.error(
         "[decopilot:title] ❌ Failed to generate title:",
@@ -117,6 +147,7 @@ export function genTitle(config: {
       return fallbackTitle;
     } finally {
       clearTimeout(graceTimeoutId);
+      clearTimeout(selfTimeoutId);
       abortSignal?.removeEventListener("abort", onParentAbort);
     }
   })();

@@ -81,6 +81,32 @@ function assertSandboxBranchParam(branch: string): void {
 const SUGGEST_COMMIT_MAX_BODY_BYTES = 512 * 1024;
 const PREVIEW_INVOKE_MAX_BODY_BYTES = 64 * 1024;
 
+/**
+ * Quick interactive file ops (read/write/mkdir/unlink/rename/glob) must fail
+ * FAST when the daemon link is partitioned. Without an explicit bound they
+ * inherit the tunnel dispatch's 30s first-frame timeout (see
+ * `links/tunnel-dispatch.ts`), so a read against a severed link hangs ~30s
+ * before erroring. These ops answer in well under a second on a healthy link,
+ * so a 10s ceiling never trips when the daemon is reachable but turns a
+ * partition into a prompt 502 instead of a 30s stall. Streaming/long ops
+ * (exec, events, git/*) are intentionally NOT bounded here - the daemon itself
+ * allows up to 60s for upstream headers (see `daemon/proxy.ts`).
+ */
+const QUICK_FILE_OP_TIMEOUT_MS = 10_000;
+const GIT_STATUS_TIMEOUT_MS = 2_000;
+
+/**
+ * Abort signal for quick file ops: the inbound request's signal (client
+ * disconnect) combined with a {@link QUICK_FILE_OP_TIMEOUT_MS} fast-fail
+ * timeout so a partitioned link errors promptly rather than hanging.
+ */
+function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
+  return AbortSignal.any([
+    c.req.raw.signal,
+    AbortSignal.timeout(QUICK_FILE_OP_TIMEOUT_MS),
+  ]);
+}
+
 // ---- Shared middleware ------------------------------------------------------
 
 /**
@@ -359,22 +385,40 @@ export const createSandboxRoutes = () => {
 
   // -- File write/read (base64-encoded body) --------------------------------
   app.post("/:virtualMcpId/:branch/write", (c) =>
-    proxyDaemon(c, "/_sandbox/write", { forwardJsonBody: true }),
+    proxyDaemon(c, "/_sandbox/write", {
+      forwardJsonBody: true,
+      signal: quickFileOpSignal(c),
+    }),
   );
   app.post("/:virtualMcpId/:branch/unlink", (c) =>
-    proxyDaemon(c, "/_sandbox/unlink", { forwardJsonBody: true }),
+    proxyDaemon(c, "/_sandbox/unlink", {
+      forwardJsonBody: true,
+      signal: quickFileOpSignal(c),
+    }),
   );
   app.post("/:virtualMcpId/:branch/mkdir", (c) =>
-    proxyDaemon(c, "/_sandbox/mkdir", { forwardJsonBody: true }),
+    proxyDaemon(c, "/_sandbox/mkdir", {
+      forwardJsonBody: true,
+      signal: quickFileOpSignal(c),
+    }),
   );
   app.post("/:virtualMcpId/:branch/rename", (c) =>
-    proxyDaemon(c, "/_sandbox/rename", { forwardJsonBody: true }),
+    proxyDaemon(c, "/_sandbox/rename", {
+      forwardJsonBody: true,
+      signal: quickFileOpSignal(c),
+    }),
   );
   app.post("/:virtualMcpId/:branch/read", (c) =>
-    proxyDaemon(c, "/_sandbox/read", { forwardJsonBody: true }),
+    proxyDaemon(c, "/_sandbox/read", {
+      forwardJsonBody: true,
+      signal: quickFileOpSignal(c),
+    }),
   );
   app.post("/:virtualMcpId/:branch/glob", (c) =>
-    proxyDaemon(c, "/_sandbox/glob", { forwardJsonBody: true }),
+    proxyDaemon(c, "/_sandbox/glob", {
+      forwardJsonBody: true,
+      signal: quickFileOpSignal(c),
+    }),
   );
 
   // -- Script exec/kill -----------------------------------------------------
@@ -484,10 +528,20 @@ export const createSandboxRoutes = () => {
     proxyDaemon(c, "/_sandbox/git/status", {
       method: "GET",
       map404to410: true,
+      signal: AbortSignal.any([
+        c.req.raw.signal,
+        AbortSignal.timeout(GIT_STATUS_TIMEOUT_MS),
+      ]),
     }),
   );
   app.post("/:virtualMcpId/:branch/git/status", (c) =>
-    proxyDaemon(c, "/_sandbox/git/status", { map404to410: true }),
+    proxyDaemon(c, "/_sandbox/git/status", {
+      map404to410: true,
+      signal: AbortSignal.any([
+        c.req.raw.signal,
+        AbortSignal.timeout(GIT_STATUS_TIMEOUT_MS),
+      ]),
+    }),
   );
   app.post("/:virtualMcpId/:branch/git/diff", (c) =>
     proxyDaemon(c, "/_sandbox/git/diff", {

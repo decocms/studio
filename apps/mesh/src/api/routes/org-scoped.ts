@@ -29,7 +29,6 @@ import { createToolsRestRoutes } from "./tools-rest";
 import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
-import { createLinkIngestRoutes } from "./decopilot/link-ingest-routes";
 
 interface OrgScopedDeps {
   kvStorage: KVStorage;
@@ -58,11 +57,6 @@ interface OrgScopedDeps {
    * connection's `organization_id` matches the resolved org).
    */
   oauthProxyHandler: MiddlewareHandler<Env>;
-  /**
-   * Public events handler (defined in app.ts). Mounted at
-   * `POST /api/:org/events/:type`.
-   */
-  eventsHandler: MiddlewareHandler<Env>;
   /**
    * SSE events handler (defined in app.ts). Mounted at
    * `GET /api/:org/watch`.
@@ -110,14 +104,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
     }),
   ); // /api/:org/trigger-callback
   app.route("/webhooks", createAutomationWebhookRoutes()); // /api/:org/webhooks/:triggerId[/:token]
-  app.route(
-    "/",
-    createLinkIngestRoutes({
-      streamBuffer: deps.streamBuffer,
-      sseHub: deps.sseHub,
-    }),
-  ); // /api/:org/links/runs/:runId/chunks
-
   if (deps.mountDevAssets) {
     app.route("/dev-assets", createDevAssetsRoutes({ orgFromPath: true }));
   }
@@ -156,8 +142,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   // must match the resolved org).
   app.all("/oauth-proxy/:connectionId/*", deps.oauthProxyHandler);
 
-  // Public events: POST /events/:type publishes; GET /watch streams.
-  app.post("/events/:type", deps.eventsHandler);
+  // SSE events: GET /watch streams.
   app.get("/watch", deps.watchHandler);
 
   return app;

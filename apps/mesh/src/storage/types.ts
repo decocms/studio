@@ -323,17 +323,22 @@ export interface OrgFileConfigTable {
   prefix: string | null;
   // Public URL host (e.g. R2 dev domain, CDN). Null = compute from bucket+region.
   public_url_base: string | null;
-  // "static" (long-lived key pair in encrypted_credentials) or "sts-session"
+  // "static" (long-lived key pair in encrypted_credentials), "sts-session"
   // (temporary creds fetched on demand from refresh_url; the encrypted blob
-  // holds only the API key for the refresh call). Has a DB default of 'static'.
+  // holds only the API key for the refresh call), or "managed" (no stored
+  // secret — studio mints prefix-scoped STS creds in-process for `site_slug`,
+  // authorized by org_sites ownership). Has a DB default of 'static'.
   credential_type: ColumnType<
-    "static" | "sts-session",
-    "static" | "sts-session" | undefined,
-    "static" | "sts-session"
+    "static" | "sts-session" | "managed",
+    "static" | "sts-session" | "managed" | undefined,
+    "static" | "sts-session" | "managed"
   >;
   // Endpoint that vends temporary credentials for `sts-session` configs. Null
-  // for `static`.
+  // for `static` / `managed`.
   refresh_url: string | null;
+  // Site slug a `managed` config mints credentials for (its `<slug>/` prefix on
+  // the shared tenant bucket). Null for `static` / `sts-session`.
+  site_slug: string | null;
   encrypted_credentials: string;
   created_by: string;
   created_at: ColumnType<Date, Date | string, never>;
@@ -391,8 +396,9 @@ export interface FileConfigInfo {
   forcePathStyle: boolean;
   prefix: string | null;
   publicUrlBase: string | null;
-  credentialType: "static" | "sts-session";
+  credentialType: "static" | "sts-session" | "managed";
   refreshUrl: string | null;
+  siteSlug: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -964,6 +970,12 @@ export interface ThreadTable {
    * run resets the floor at the call site (fence epoch change).
    */
   run_acked_seq: number | null;
+  /**
+   * Per-run projection cursor: how far through the JetStream chunk log the
+   * projector has durably written parts. Advances monotonically; never
+   * regresses. Defaults to 0 for new rows and pre-migration rows.
+   */
+  projected_seq: ColumnType<number, number | undefined, number>;
 }
 
 export interface ThreadExpandedTool {
@@ -1016,6 +1028,12 @@ export interface Thread {
    * writes it. New code MUST NOT depend on it.
    */
   link_transport: string | null;
+  /**
+   * Per-run projection cursor: how far through the JetStream chunk log the
+   * projector has durably written parts. Advances monotonically; never
+   * regresses. Defaults to 0 for new rows and pre-migration rows.
+   */
+  projected_seq: number;
 }
 
 /**
@@ -1348,20 +1366,93 @@ export interface SandboxProviderStateTable {
 // Organization Domain Table Definition
 // ============================================================================
 
+export type DomainJoinMode = "off" | "auto" | "request";
+export type DomainVerificationStatus = "pending" | "verified";
+export type DomainVerificationMethod = "email" | "dns";
+
 export interface OrganizationDomainTable {
+  id: string;
   organization_id: string;
   domain: string;
-  auto_join_enabled: boolean;
+  join_mode: DomainJoinMode;
+  verification_status: DomainVerificationStatus;
+  verification_method: DomainVerificationMethod | null;
+  verification_token: string | null;
+  verified_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
 export interface OrganizationDomain {
+  id: string;
   organizationId: string;
   domain: string;
-  autoJoinEnabled: boolean;
+  joinMode: DomainJoinMode;
+  verificationStatus: DomainVerificationStatus;
+  verificationMethod: DomainVerificationMethod | null;
+  verificationToken: string | null;
+  verifiedAt: Date | string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
+}
+
+export type JoinRequestStatus = "pending" | "approved" | "denied";
+
+export interface OrganizationJoinRequestTable {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  status: JoinRequestStatus;
+  decided_by: string | null;
+  decided_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+export interface OrganizationJoinRequest {
+  id: string;
+  organizationId: string;
+  userId: string;
+  status: JoinRequestStatus;
+  decidedBy: string | null;
+  decidedAt: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+// ============================================================================
+// Org Sites (asset tenancy: org owns globally-unique site slugs)
+// ============================================================================
+
+export interface OrgSiteTable {
+  // Globally-unique site slug = object-key prefix namespace in the shared
+  // tenant bucket. Primary key enforces global uniqueness across orgs.
+  slug: string;
+  organization_id: string;
+  // Provenance of the claim: 'deco-import' (migrated) or 'manual'.
+  source: ColumnType<string, string | undefined, string>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface OrgSite {
+  slug: string;
+  organizationId: string;
+  source: string;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
 }
 
 // ============================================================================
@@ -1498,8 +1589,14 @@ export interface Database {
   // Brand context (org-scoped company profile)
   brand_context: BrandContextTable;
 
-  // Organization domain claims (for auto-join)
+  // Organization domain claims (for auto-join / request-to-join)
   organization_domains: OrganizationDomainTable;
+
+  // Pending/decided requests to join an org
+  organization_join_requests: OrganizationJoinRequestTable;
+
+  // Asset tenancy: org ownership of globally-unique site slugs
+  org_sites: OrgSiteTable;
 
   sandbox_runner_state: SandboxProviderStateTable;
 }

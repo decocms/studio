@@ -20,6 +20,10 @@ mock.module("@/web/hooks/use-pending-invitations", () => ({
   ],
 }));
 
+mock.module("@/web/hooks/use-join-requests", () => ({
+  usePendingJoinRequests: () => [],
+}));
+
 mock.module("@/web/lib/release-feed", () => ({
   RELEASES: [
     {
@@ -57,7 +61,11 @@ describe("useInboxFeed", () => {
   it("pins invitations above releases and sorts releases newest-first", () => {
     const { result } = renderHook(() => useInboxFeed(), { wrapper });
     const ids = result.current.items.map((item) =>
-      item.type === "release" ? item.release.id : item.invitation.id,
+      item.type === "release"
+        ? item.release.id
+        : item.type === "invitation"
+          ? item.invitation.id
+          : item.request.id,
     );
     expect(ids).toEqual(["inv-1", "newer-release", "older-release"]);
   });

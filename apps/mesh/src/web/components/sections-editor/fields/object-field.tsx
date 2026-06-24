@@ -18,6 +18,7 @@ export function ObjectField({
   previewBaseUrl,
   onAddSectionItem,
   onRequestAddSection,
+  sandbox,
 }: FieldProps) {
   const [open, setOpen] = useState(false);
   const objValue =
@@ -77,6 +78,7 @@ export function ObjectField({
             previewBaseUrl={previewBaseUrl}
             onAddSectionItem={onAddSectionItem}
             onRequestAddSection={onRequestAddSection}
+            sandbox={sandbox}
           />
         </div>
       )}

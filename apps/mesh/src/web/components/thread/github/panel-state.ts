@@ -178,7 +178,15 @@ export function selectHeaderButton(
     };
   }
 
-  if (ready.unpushed > 0) {
+  // `unpushed` can be a false positive when the sandbox hasn't fetched the
+  // remote tracking ref (origin/<branch> missing). If the PR's head SHA
+  // matches the local HEAD, the commits are already on the remote — skip
+  // the push gate and fall through to the PR/merge logic below.
+  const trulyUnpushed =
+    ready.unpushed > 0 &&
+    !(pr && ready.headSha && pr.headSha && ready.headSha === pr.headSha);
+
+  if (trulyUnpushed) {
     if (!pr) {
       return {
         label: "Submit for review",

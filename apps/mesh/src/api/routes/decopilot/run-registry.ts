@@ -44,18 +44,30 @@ const INFLIGHT_END_EVENTS = new Set([
   "PREVIOUS_RUN_ABORTED",
 ]);
 
-const inflightRuns = meter.createUpDownCounter("decopilot.stream.inflight", {
-  description: "Number of in-flight decopilot stream requests",
-  unit: "{requests}",
-});
+// `meter` is a NoopMeter until initObservability() runs at bootstrap
+// (index.ts); this module is imported before that, so module-top instruments
+// bind the noop and never export. Create lazily on first use (post-init).
+const lazyInstrument = <T>(make: () => T): (() => T) => {
+  let v: T | undefined;
+  return () => (v ??= make());
+};
+
+const inflightRuns = lazyInstrument(() =>
+  meter.createUpDownCounter("decopilot.stream.inflight", {
+    description: "Number of in-flight decopilot stream requests",
+    unit: "{requests}",
+  }),
+);
 
 // I1: counter for reaper-forced run terminations — tagged by org.id and reason.
 // Incremented in reapStaleRuns whenever a stuck run is force-failed.
-const reapedRunsCounter = meter.createCounter("decopilot.run.reaped", {
-  description:
-    "Number of decopilot runs force-failed by the progress-based reaper",
-  unit: "{runs}",
-});
+const reapedRunsCounter = lazyInstrument(() =>
+  meter.createCounter("decopilot.run.reaped", {
+    description:
+      "Number of decopilot runs force-failed by the progress-based reaper",
+    unit: "{runs}",
+  }),
+);
 
 export class RunRegistry {
   private readonly states = new Map<string, RunState>();
@@ -120,12 +132,12 @@ export class RunRegistry {
       // Update inflight metric — only decrement when this registry had a
       // running state; ghost FORCE_FAIL events have no prior increment.
       if (INFLIGHT_START_EVENTS.has(event.type)) {
-        inflightRuns.add(1, { "org.id": event.orgId });
+        inflightRuns().add(1, { "org.id": event.orgId });
       } else if (
         INFLIGHT_END_EVENTS.has(event.type) &&
         stateBeforeEvent?.status.tag === "running"
       ) {
-        inflightRuns.add(-1, { "org.id": event.orgId });
+        inflightRuns().add(-1, { "org.id": event.orgId });
       }
     }
 
@@ -231,13 +243,32 @@ export class RunRegistry {
       )
         continue;
 
+      // The durable status is authoritative: a desktop/link run is completed
+      // (or failed) by the projector OUT-OF-BAND, so its in-memory entry lingers
+      // as "running" with no in-process progress bumps. Such a run is finished,
+      // not stuck — evict the stale entry WITHOUT force-failing, so the reaper
+      // never overwrites a `completed` run with `failed`. A DB read failure
+      // falls through to the force-fail path (the reaper must still be able to
+      // kill a genuinely stuck run when storage is momentarily unavailable).
+      const durable = await this.deps.storage
+        .get(taskId, state.orgId)
+        .catch(() => null);
+      if (durable && durable.status !== "in_progress") {
+        const lingering = this.states.get(taskId);
+        if (lingering?.status.tag === "running") {
+          lingering.status.abortController.abort();
+        }
+        this.states.delete(taskId);
+        continue;
+      }
+
       console.warn(
         `[RunRegistry] Reaping stuck run for thread ${taskId} (idle > ${
           RUN_IDLE_TIMEOUT_MS / 60_000
         }m) ...`,
       );
       // I1: emit metric before force-fail so it's visible even if execute() throws.
-      reapedRunsCounter.add(1, {
+      reapedRunsCounter().add(1, {
         "org.id": state.orgId,
         reason: "idle_timeout",
       });

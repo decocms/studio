@@ -16,10 +16,15 @@ import { toMeshStorageUri } from "../mesh-storage-uri";
 import {
   createPortableGenerateImageTool,
   createPortableTakeScreenshotTool,
+  GenerateImageInputSchema,
   type PortableImageModelInfo,
   type PortableImageProvider,
   type PortableMediaObjectStorage,
 } from "./portable-media-tools";
+import {
+  type BackgroundDispatcher,
+  makeBackgroundable,
+} from "./backgroundable";
 import type { PendingImage } from "./vm-tools/types";
 
 interface PortableObjectStorage extends PortableMediaObjectStorage {
@@ -44,6 +49,11 @@ export interface BuildPortableBuiltInToolsParams {
     provider: PortableImageProvider;
     imageModelInfo: PortableImageModelInfo;
   };
+  /** When present, generate_image is made backgroundable: the call enqueues a
+   *  durable cluster job and returns immediately instead of blocking the turn.
+   *  The daemon supplies an HTTP dispatcher that posts back to the cluster;
+   *  absent → generate_image runs inline (current behavior). */
+  imageBackgroundDispatcher?: BackgroundDispatcher | null;
   includeUnavailableClusterOnlyTools?: boolean;
 }
 
@@ -287,6 +297,7 @@ export function buildPortableBuiltInTools(
     objectStorage,
     pendingImages,
     imageTool,
+    imageBackgroundDispatcher,
     includeUnavailableClusterOnlyTools,
   } = params;
   const tools: Record<string, unknown> = {
@@ -302,10 +313,15 @@ export function buildPortableBuiltInTools(
   }
 
   if (imageTool) {
-    tools.generate_image = createPortableGenerateImageTool(writer, {
-      ...imageTool,
-      objectStorage,
-    });
+    tools.generate_image = makeBackgroundable(
+      "generate_image",
+      GenerateImageInputSchema,
+      createPortableGenerateImageTool(writer, {
+        ...imageTool,
+        objectStorage,
+      }),
+      imageBackgroundDispatcher,
+    );
   }
 
   if (process.env.BROWSERLESS_TOKEN) {

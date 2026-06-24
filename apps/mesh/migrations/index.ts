@@ -113,7 +113,12 @@ import * as migration111orgfsthreadid from "./111-org-fs-thread-id.ts";
 import * as migration112orgfileconfigscredentialtype from "./112-org-file-configs-credential-type.ts";
 import * as migration113threadfailurereason from "./113-thread-failure-reason.ts";
 import * as migration114runackedseq from "./114-run-acked-seq.ts";
-import * as migration115orgfsreadpublic from "./115-org-fs-read-public.ts";
+import * as migration115threadprojectedseq from "./115-thread-projected-seq.ts";
+import * as migration116orgsites from "./116-org-sites.ts";
+import * as migration117orgfileconfigssiteslug from "./117-org-file-configs-site-slug.ts";
+import * as migration118organizationdomainsmultiverify from "./118-organization-domains-multi-verify.ts";
+import * as migration119organizationjoinrequests from "./119-organization-join-requests.ts";
+import * as migration120orgfsreadpublic from "./120-org-fs-read-public.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -251,7 +256,13 @@ const migrations: Record<string, Migration> = {
     migration112orgfileconfigscredentialtype,
   "113-thread-failure-reason": migration113threadfailurereason,
   "114-run-acked-seq": migration114runackedseq,
-  "115-org-fs-read-public": migration115orgfsreadpublic,
+  "115-thread-projected-seq": migration115threadprojectedseq,
+  "116-org-sites": migration116orgsites,
+  "117-org-file-configs-site-slug": migration117orgfileconfigssiteslug,
+  "118-organization-domains-multi-verify":
+    migration118organizationdomainsmultiverify,
+  "119-organization-join-requests": migration119organizationjoinrequests,
+  "120-org-fs-read-public": migration120orgfsreadpublic,
 };
 
 export default migrations;

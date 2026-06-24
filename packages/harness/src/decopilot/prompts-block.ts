@@ -6,6 +6,8 @@
  * entirely.
  */
 
+import { csvField } from "./csv";
+
 export interface PromptsBlockEntry {
   name: string;
   description: string | null;
@@ -20,19 +22,6 @@ history (e.g. applied via /promptName in the UI), you MUST NOT call read_prompt
 for it — the content is already loaded. Follow its instructions directly.
 Only call read_prompt for prompts whose content is NOT yet in the conversation.
 </prompts-usage>`;
-
-function csvField(s: string | null | undefined): string {
-  if (s == null || s === "") return "";
-  if (
-    s.includes(",") ||
-    s.includes('"') ||
-    s.includes("\n") ||
-    s.includes(";")
-  ) {
-    return `"${s.replaceAll('"', '""')}"`;
-  }
-  return s;
-}
 
 export function buildPromptsBlock(prompts: PromptsBlockEntry[]): string | null {
   if (prompts.length === 0) return null;

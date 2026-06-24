@@ -33,7 +33,7 @@ export interface PortableImageModelInfo {
   id: string;
 }
 
-const GenerateImageInputSchema = z.object({
+export const GenerateImageInputSchema = z.object({
   prompt: z
     .string()
     .max(10000)
@@ -150,6 +150,7 @@ async function fetchImageBytes(
   params: {
     objectStorage?: PortableMediaObjectStorage | null;
     allowHttpExternalUrls?: boolean;
+    abortSignal?: AbortSignal;
   },
 ): Promise<Uint8Array> {
   const meshKey = parseMeshStorageKey(url);
@@ -171,7 +172,7 @@ async function fetchImageBytes(
   }
 
   validateExternalUrl(url, params.allowHttpExternalUrls === true);
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: params.abortSignal });
   if (!res.ok) {
     throw new Error(`Failed to fetch image from ${url}: ${res.status}`);
   }
@@ -180,17 +181,103 @@ async function fetchImageBytes(
   return bytes;
 }
 
+export interface GenerateImageCoreParams {
+  provider: PortableImageProvider;
+  imageModelInfo: PortableImageModelInfo;
+  objectStorage?: PortableMediaObjectStorage | null;
+  allowHttpExternalUrls?: boolean;
+  /** Aborts the in-flight provider call (and reference-image fetches). Wired by
+   *  the cluster's background job to the NATS-broadcast thread-cancel path so a
+   *  cancelled turn stops generation mid-flight, not just at the next step. */
+  abortSignal?: AbortSignal;
+}
+
+export interface GenerateImageResult {
+  success: true;
+  images: Array<{ uri: string; mediaType: string }>;
+  prompt: string;
+  model: string;
+  usage: { inputTokens: number; outputTokens: number };
+  usedReferenceImages: number;
+}
+
+/**
+ * The heavy image-generation body, extracted so it can run either inline
+ * inside the tool's `execute` (desktop / no background dispatcher) or from a
+ * durable background job on any pod (cluster). Pure over its inputs +
+ * injected `provider`/`objectStorage`, so a DBOS step can re-run it
+ * deterministically — no `writer`, no `toolCallId`, no UI side effects.
+ */
+export async function generateImageCore(
+  input: GenerateImageInput,
+  params: GenerateImageCoreParams,
+): Promise<GenerateImageResult> {
+  const { provider, imageModelInfo, objectStorage } = params;
+  const imageModel = provider.aiSdk.imageModel(imageModelInfo.id);
+  const hasRefs = input.referenceImages && input.referenceImages.length > 0;
+  const refImageBytes = hasRefs
+    ? await Promise.all(
+        input.referenceImages!.map((ref) => {
+          const raw = ref.uri ?? (ref as unknown as { url?: string }).url;
+          if (!raw) throw new Error("Reference image missing uri");
+          return fetchImageBytes(raw, params);
+        }),
+      )
+    : [];
+  const prompt = hasRefs
+    ? { text: input.prompt, images: refImageBytes }
+    : input.prompt;
+  const result = await generateImage({
+    model: imageModel,
+    prompt,
+    n: input.n ?? 1,
+    ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+    ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
+  });
+
+  if (!objectStorage) {
+    throw new Error(
+      "Object storage is unavailable; cannot persist the generated image.",
+    );
+  }
+
+  // Thinking image models (e.g. Gemini 3 Pro Image) emit intermediate
+  // draft images alongside the final one in a single response. Keep only
+  // the last N — the final renders — so we don't surface duplicate drafts.
+  const requested = input.n ?? 1;
+  const finalImages =
+    result.images.length > requested
+      ? result.images.slice(-requested)
+      : result.images;
+
+  const images = await Promise.all(
+    finalImages.map(async (img) => {
+      const mediaType = img.mediaType ?? "image/png";
+      const ext = mediaType.split("/")[1] ?? "png";
+      const key = `generated-images/${crypto.randomUUID()}.${ext}`;
+      const bytes = Uint8Array.from(atob(img.base64), (c) => c.charCodeAt(0));
+      await objectStorage.put(key, bytes, { contentType: mediaType });
+      return { uri: toMeshStorageUri(key), mediaType };
+    }),
+  );
+
+  return {
+    success: true,
+    images,
+    prompt: input.prompt,
+    model: imageModelInfo.id,
+    usage: {
+      inputTokens: result.usage.inputTokens ?? 0,
+      outputTokens: result.usage.outputTokens ?? 0,
+    },
+    usedReferenceImages: hasRefs ? input.referenceImages!.length : 0,
+  };
+}
+
 export function createPortableGenerateImageTool(
   writer: UIMessageStreamWriter,
-  params: {
-    provider: PortableImageProvider;
-    imageModelInfo: PortableImageModelInfo;
-    objectStorage?: PortableMediaObjectStorage | null;
-    allowHttpExternalUrls?: boolean;
-  },
+  params: GenerateImageCoreParams,
 ) {
-  const { provider, imageModelInfo, objectStorage } = params;
-
   return tool({
     description:
       "Generate an image from a text description, optionally using reference images. " +
@@ -202,67 +289,7 @@ export function createPortableGenerateImageTool(
     execute: async (input, options) => {
       const startTime = performance.now();
       try {
-        const imageModel = provider.aiSdk.imageModel(imageModelInfo.id);
-        const hasRefs =
-          input.referenceImages && input.referenceImages.length > 0;
-        const refImageBytes = hasRefs
-          ? await Promise.all(
-              input.referenceImages!.map((ref) => {
-                const raw = ref.uri ?? (ref as unknown as { url?: string }).url;
-                if (!raw) throw new Error("Reference image missing uri");
-                return fetchImageBytes(raw, params);
-              }),
-            )
-          : [];
-        const prompt = hasRefs
-          ? { text: input.prompt, images: refImageBytes }
-          : input.prompt;
-        const result = await generateImage({
-          model: imageModel,
-          prompt,
-          n: input.n ?? 1,
-          ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
-        });
-
-        if (!objectStorage) {
-          throw new Error(
-            "Object storage is unavailable; cannot persist the generated image.",
-          );
-        }
-
-        // Thinking image models (e.g. Gemini 3 Pro Image) emit intermediate
-        // draft images alongside the final one in a single response. Keep only
-        // the last N — the final renders — so we don't surface duplicate drafts.
-        const requested = input.n ?? 1;
-        const finalImages =
-          result.images.length > requested
-            ? result.images.slice(-requested)
-            : result.images;
-
-        const images = await Promise.all(
-          finalImages.map(async (img) => {
-            const mediaType = img.mediaType ?? "image/png";
-            const ext = mediaType.split("/")[1] ?? "png";
-            const key = `generated-images/${crypto.randomUUID()}.${ext}`;
-            const bytes = Uint8Array.from(atob(img.base64), (c) =>
-              c.charCodeAt(0),
-            );
-            await objectStorage.put(key, bytes, { contentType: mediaType });
-            return { uri: toMeshStorageUri(key), mediaType };
-          }),
-        );
-
-        return {
-          success: true,
-          images,
-          prompt: input.prompt,
-          model: imageModelInfo.id,
-          usage: {
-            inputTokens: result.usage.inputTokens ?? 0,
-            outputTokens: result.usage.outputTokens ?? 0,
-          },
-          usedReferenceImages: hasRefs ? input.referenceImages!.length : 0,
-        };
+        return await generateImageCore(input, params);
       } finally {
         writer.write({
           type: "data-tool-metadata",

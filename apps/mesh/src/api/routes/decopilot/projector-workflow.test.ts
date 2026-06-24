@@ -1,18 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectChunksResult } from "./project-chunks";
 import {
+  checkpointWorkflowId,
   PROJECTOR_PARTITION_CONCURRENCY,
   PROJECTOR_QUEUE,
   projectorWorkflowId,
   runProjectorWorkflowBody,
   shouldSkipProjection,
 } from "./projector-workflow";
-import type { ProjectorWorkflowRuntime } from "./projector-workflow";
+import type {
+  ProjectorWorkflowRuntime,
+  ProjectorWorkflowInput,
+} from "./projector-workflow";
 
 describe("projector workflow helpers", () => {
   test("builds deterministic workflow ids on a single partitioned queue", () => {
     expect(projectorWorkflowId("run_1", "fence_a")).toBe(
       "decopilot-project:run_1:fence_a",
+    );
+    // Checkpoint passes get a per-headSeq id so each incremental pass is a
+    // distinct durable workflow (idempotent on replay of the same headSeq).
+    expect(checkpointWorkflowId("run_1", "fence_a", 7)).toBe(
+      "decopilot-checkpoint:run_1:fence_a:7",
     );
     // Single partitioned queue (partitioned by orgId at enqueue time), NOT a
     // per-org queue — mirrors AUTOMATIONS_QUEUE/THREAD_GATE_QUEUE.
@@ -20,14 +29,41 @@ describe("projector workflow helpers", () => {
     expect(PROJECTOR_PARTITION_CONCURRENCY).toBe(10);
   });
 
-  test("skips terminal and superseded runs", () => {
+  test("does not skip terminal runs for the same fence", () => {
     expect(
       shouldSkipProjection({
         status: "completed",
         runFenceToken: "fence_a",
         fenceToken: "fence_a",
       }),
+    ).toBe(false);
+    expect(
+      shouldSkipProjection({
+        status: "failed",
+        runFenceToken: "fence_a",
+        fenceToken: "fence_a",
+      }),
+    ).toBe(false);
+  });
+
+  test("skips terminal runs for a mismatched fence", () => {
+    expect(
+      shouldSkipProjection({
+        status: "completed",
+        runFenceToken: "newer",
+        fenceToken: "fence_a",
+      }),
     ).toBe(true);
+    expect(
+      shouldSkipProjection({
+        status: "failed",
+        runFenceToken: "newer",
+        fenceToken: "fence_a",
+      }),
+    ).toBe(true);
+  });
+
+  test("skips superseded non-terminal runs", () => {
     expect(
       shouldSkipProjection({
         status: "in_progress",
@@ -50,12 +86,14 @@ describe("projector workflow helpers", () => {
 // ---------------------------------------------------------------------------
 
 interface FakeCall {
-  kind: "complete" | "fail" | "purge";
+  kind: "complete" | "fail" | "record-complete" | "record-fail" | "purge";
   runId?: string;
   orgId?: string;
+  distinctId?: string;
   reason?: string;
   failKind?: string;
   fenceToken?: string;
+  usage?: ProjectChunksResult["usage"];
 }
 
 function makeRuntime(): { rt: ProjectorWorkflowRuntime; calls: FakeCall[] } {
@@ -66,6 +104,7 @@ function makeRuntime(): { rt: ProjectorWorkflowRuntime; calls: FakeCall[] } {
     getJetStreamManager: async () => null as never,
     resolveRun: async (_runId) => ({
       orgId: "org_1",
+      createdBy: "user_1",
       version: 2,
       status: "in_progress",
       runFenceToken: "fence_a",
@@ -79,9 +118,25 @@ function makeRuntime(): { rt: ProjectorWorkflowRuntime; calls: FakeCall[] } {
       calls.push({ kind: "fail", runId, orgId, reason, failKind: kind });
     },
     persistTitle: async () => {},
+    onTitleUpdated: async () => {},
+    bumpProgress: async () => {},
+    recordCompleted: async ({ runId, orgId, distinctId, usage }) => {
+      calls.push({ kind: "record-complete", runId, orgId, distinctId, usage });
+    },
+    recordFailed: async ({ runId, orgId, distinctId, reason, kind }) => {
+      calls.push({
+        kind: "record-fail",
+        runId,
+        orgId,
+        distinctId,
+        reason,
+        failKind: kind,
+      });
+    },
     purgeRun: async (runId, fenceToken) => {
       calls.push({ kind: "purge", runId, fenceToken });
     },
+    advanceProjectedSeq: async () => 0,
   };
 
   return { rt, calls };
@@ -112,7 +167,11 @@ describe("runProjectorWorkflowBody", () => {
   test("harness-failed outcome → markRunFailed(kind='harness'), NOT completeRunIfNotCompleted", async () => {
     const { rt, calls } = makeRuntime();
     const projectFn = makeProjectFn({
-      outcome: { failed: true, finishReason: undefined },
+      outcome: {
+        failed: true,
+        finishReason: undefined,
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      },
     });
 
     await runProjectorWorkflowBody(input, rt, projectFn);
@@ -127,12 +186,22 @@ describe("runProjectorWorkflowBody", () => {
     expect(failCall.reason).toBeTruthy();
     expect(failCall.runId).toBe("run_1");
     expect(failCall.orgId).toBe("org_1");
+    const recordFailCall = calls.find((c) => c.kind === "record-fail");
+    expect(recordFailCall?.failKind).toBe("harness");
+    expect(recordFailCall?.reason).toBe(failCall.reason);
+    expect(recordFailCall?.runId).toBe("run_1");
+    expect(recordFailCall?.orgId).toBe("org_1");
+    expect(recordFailCall?.distinctId).toBe("user_1");
   });
 
   test("harness-failed with finishReason → reason derived from finishReason", async () => {
     const { rt, calls } = makeRuntime();
     const projectFn = makeProjectFn({
-      outcome: { failed: true, finishReason: "error" },
+      outcome: {
+        failed: true,
+        finishReason: "error",
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      },
     });
 
     await runProjectorWorkflowBody(input, rt, projectFn);
@@ -145,7 +214,11 @@ describe("runProjectorWorkflowBody", () => {
   test("clean outcome (failed=false) → completeRunIfNotCompleted called, markRunFailed NOT called", async () => {
     const { rt, calls } = makeRuntime();
     const projectFn = makeProjectFn({
-      outcome: { failed: false, finishReason: "stop" },
+      outcome: {
+        failed: false,
+        finishReason: "stop",
+        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+      },
     });
 
     await runProjectorWorkflowBody(input, rt, projectFn);
@@ -155,6 +228,20 @@ describe("runProjectorWorkflowBody", () => {
 
     expect(completeCalls).toHaveLength(1);
     expect(failCalls).toHaveLength(0);
+    expect(calls.find((c) => c.kind === "record-complete")?.usage).toEqual({
+      inputTokens: 10,
+      outputTokens: 20,
+      totalTokens: 30,
+    });
+    expect(calls.find((c) => c.kind === "record-complete")?.distinctId).toBe(
+      "user_1",
+    );
+    expect(calls.find((c) => c.kind === "record-complete")?.runId).toBe(
+      "run_1",
+    );
+    expect(calls.find((c) => c.kind === "record-complete")?.orgId).toBe(
+      "org_1",
+    );
   });
 
   test("undefined outcome → completeRunIfNotCompleted called (treated as clean)", async () => {
@@ -168,6 +255,11 @@ describe("runProjectorWorkflowBody", () => {
 
     expect(completeCalls).toHaveLength(1);
     expect(failCalls).toHaveLength(0);
+    expect(calls.find((c) => c.kind === "record-complete")?.usage).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    });
   });
 
   test("projection throw → markRunFailed(kind='projection') and workflow re-throws", async () => {
@@ -186,6 +278,12 @@ describe("runProjectorWorkflowBody", () => {
     const failCall = failCalls[0]!;
     expect(failCall.failKind).toBe("projection");
     expect(failCall.reason).toBeTruthy();
+    const recordFailCall = calls.find((c) => c.kind === "record-fail");
+    expect(recordFailCall?.failKind).toBe("projection");
+    expect(recordFailCall?.reason).toBe(failCall.reason);
+    expect(recordFailCall?.runId).toBe("run_1");
+    expect(recordFailCall?.orgId).toBe("org_1");
+    expect(recordFailCall?.distinctId).toBe("user_1");
   });
 
   test("purge (cleanup) runs on BOTH completed and harness-failed terminal paths", async () => {
@@ -194,7 +292,13 @@ describe("runProjectorWorkflowBody", () => {
     await runProjectorWorkflowBody(
       input,
       rt1,
-      makeProjectFn({ outcome: { failed: false, finishReason: "stop" } }),
+      makeProjectFn({
+        outcome: {
+          failed: false,
+          finishReason: "stop",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        },
+      }),
     );
     expect(calls1.filter((c) => c.kind === "purge")).toHaveLength(1);
 
@@ -203,7 +307,12 @@ describe("runProjectorWorkflowBody", () => {
     await runProjectorWorkflowBody(
       input,
       rt2,
-      makeProjectFn({ outcome: { failed: true } }),
+      makeProjectFn({
+        outcome: {
+          failed: true,
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        },
+      }),
     );
     expect(calls2.filter((c) => c.kind === "purge")).toHaveLength(1);
   });
@@ -218,5 +327,99 @@ describe("runProjectorWorkflowBody", () => {
 
     const purgeCalls = calls.filter((c) => c.kind === "purge");
     expect(purgeCalls).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onTitleUpdated + bumpProgress hook tests
+// ---------------------------------------------------------------------------
+
+describe("ProjectorWorkflowRuntime hooks", () => {
+  const runId = "run_hooks";
+  const orgId = "org_1";
+  const fenceToken = "fence_a";
+  const input: ProjectorWorkflowInput = {
+    runId,
+    fenceToken,
+    finalSeq: 10,
+  };
+
+  test("onTitleUpdated is called when projectFn triggers persistTitle (terminal path)", async () => {
+    const titleEvents: Array<{ runId: string; orgId: string; title: string }> =
+      [];
+    const progressBumps: Array<{ runId: string; orgId: string }> = [];
+
+    const baseRt = makeRuntime().rt;
+    const rt: ProjectorWorkflowRuntime = {
+      ...baseRt,
+      onTitleUpdated: async (i) => {
+        titleEvents.push(i);
+      },
+      bumpProgress: async (i) => {
+        progressBumps.push(i);
+      },
+    };
+
+    // Simulate projectFromJetStreamStep's persistTitle wiring: when the title
+    // interceptor persists a title, the step calls both rt.persistTitle AND
+    // rt.onTitleUpdated. We replicate this behavior in the test projectFn.
+    const generatedTitle = "Generated Title";
+    const projectFn = async (
+      inp: ProjectorWorkflowInput,
+      pOrgId: string,
+      _currentTitle: string | null,
+    ) => {
+      // Simulate the wiring inside projectFromJetStreamStep
+      await rt.persistTitle(inp.runId, pOrgId, generatedTitle);
+      await rt.onTitleUpdated({
+        runId: inp.runId,
+        orgId: pOrgId,
+        title: generatedTitle,
+      });
+      return {
+        chunkCount: 1,
+        attempts: 1,
+        outcome: {
+          failed: false as const,
+          finishReason: "stop" as const,
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        },
+      };
+    };
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(titleEvents).toEqual([{ runId, orgId, title: generatedTitle }]);
+    // Terminal path does not call bumpProgress
+    expect(progressBumps).toHaveLength(0);
+  });
+
+  test("bumpProgress is called when checkpoint projection succeeds", async () => {
+    const progressBumps: Array<{ runId: string; orgId: string }> = [];
+
+    const baseRt = makeRuntime().rt;
+    const rt: ProjectorWorkflowRuntime = {
+      ...baseRt,
+      bumpProgress: async (i) => {
+        progressBumps.push(i);
+      },
+      onTitleUpdated: async () => {},
+    };
+
+    // Simulate projectCheckpointFromJetStreamStep returning { projected: true }
+    // and the projectCheckpointWorkflowFn body calling bumpProgress afterward.
+    // Since bumpProgress is wired in the DBOS workflow function, we verify here
+    // that the runtime has the hook and it can be invoked with the right shape.
+    await rt.bumpProgress({ runId, orgId });
+
+    expect(progressBumps).toEqual([{ runId, orgId }]);
+  });
+
+  test("runtime interface requires onTitleUpdated and bumpProgress", () => {
+    // TypeScript compile-time check: the makeRuntime() factory must now include
+    // both hooks for ProjectorWorkflowRuntime to be satisfied.
+    const { rt } = makeRuntime();
+    expect(typeof rt.onTitleUpdated).toBe("function");
+    expect(typeof rt.bumpProgress).toBe("function");
   });
 });

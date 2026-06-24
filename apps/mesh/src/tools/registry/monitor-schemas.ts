@@ -194,21 +194,4 @@ export const RegistryMonitorConnectionUpdateAuthOutputSchema = z.object({
   success: z.boolean(),
 });
 
-export const RegistryMonitorScheduleSetInputSchema = z.object({
-  cronExpression: z.string().min(1),
-  config: RegistryMonitorConfigSchema.optional(),
-});
-
-export const RegistryMonitorScheduleSetOutputSchema = z.object({
-  scheduleEventId: z.string(),
-});
-
-export const RegistryMonitorScheduleCancelInputSchema = z.object({
-  scheduleEventId: z.string().min(1),
-});
-
-export const RegistryMonitorScheduleCancelOutputSchema = z.object({
-  success: z.boolean(),
-});
-
 export type RegistryMonitorConfig = z.infer<typeof RegistryMonitorConfigSchema>;

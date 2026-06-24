@@ -114,6 +114,14 @@ export type VirtualMcpUILayout = z.infer<typeof VirtualMcpUILayoutSchema>;
  */
 const VirtualMcpHomeTileSchema = z.object({
   /**
+   * Stable identifier for this tile instance. Allows multiple tiles
+   * backed by the same tool/resource with different `toolInput` to
+   * coexist on the home board. Generated via `crypto.randomUUID()` at
+   * pin time. Optional for backward compatibility with tiles saved
+   * before this field existed.
+   */
+  tileId: z.string().optional(),
+  /**
    * Optional for backward compatibility with tiles saved before this field
    * existed. The home API drops tiles that don't carry a connectionId (they
    * can't render correctly without it), but parsing must still succeed so
@@ -129,6 +137,18 @@ const VirtualMcpHomeTileSchema = z.object({
     .string()
     .describe(
       "ui:// resource URI exposed by `connectionId`. Read on the home page and rendered via MCPAppRenderer.",
+    ),
+  toolName: z
+    .string()
+    .optional()
+    .describe(
+      "Tool name — identifies which tool's inputSchema to display when editing tile props.",
+    ),
+  toolInput: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "User-configured input props passed to MCPAppRenderer when rendering the tile.",
     ),
   minHeight: z.number().int().positive().optional(),
   maxHeight: z.number().int().positive().optional(),
@@ -578,6 +598,11 @@ export const VirtualMCPEntitySchema = z.object({
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
       knowledge: knowledgeMetadataField,
+      siteSlug: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Linked asset site slug (managed storage tenancy)"),
     })
     .loose()
     .describe("Metadata"),
@@ -643,6 +668,11 @@ export const VirtualMCPCreateDataSchema = z.object({
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
       knowledge: knowledgeMetadataField,
+      siteSlug: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Linked asset site slug (managed storage tenancy)"),
     })
     .loose()
     .nullable()
@@ -704,6 +734,11 @@ export const VirtualMCPUpdateDataSchema = z.object({
         "Per-user, per-branch sandbox mapping: sandboxMap[userId][branch] -> { sandboxHandle, previewUrl }",
       ),
       knowledge: knowledgeMetadataField,
+      siteSlug: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Linked asset site slug (managed storage tenancy)"),
     })
     .loose()
     .nullable()

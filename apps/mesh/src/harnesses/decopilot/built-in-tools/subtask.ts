@@ -96,8 +96,19 @@ export interface SubtaskParams {
    * visible to the parent. Absent for cross-agent delegation (different agent =
    * different sandbox identity) and when the parent has no sandbox (no
    * vmContext, e.g. Claude Code).
+   *
+   * Only used as a FALLBACK when `parentBuiltInParams` is absent — when present,
+   * the subagent rebuilds its own full built-in set (vm tools included) instead.
    */
   vmTools?: ToolSet;
+  /**
+   * The parent's full built-in params (providers, models, vmContext, …). When
+   * present, a delegated subagent is built with the SAME heavy built-ins the
+   * parent has (vm file tools, generate_image, web_search) — fixing the
+   * "subagent only sees todo_write + read_tool_output" bug. The subagent's own
+   * passthrough client / agent id / sandbox are substituted in `createSubtaskTool`.
+   */
+  parentBuiltInParams?: import("./index").BuiltinToolParams;
 }
 
 export function resolveSubtaskCodingWorkspace(
@@ -122,18 +133,23 @@ export function resolveSubtaskCodingWorkspace(
 /** Max chars of a tool call's args shown in the live subtask stream. */
 const TOOL_CALL_ARG_CAP = 80;
 
+/** Cap a raw args string for display (drops empty `{}`). */
+function formatArgs(args: string): string {
+  if (args === "{}") return "";
+  return args.length > TOOL_CALL_ARG_CAP
+    ? args.slice(0, TOOL_CALL_ARG_CAP) + "…"
+    : args;
+}
+
 /** Render a subagent tool call as a short, capped one-liner for the stream. */
 function formatToolCall(toolName: string, input: unknown): string {
-  let args = "";
+  let raw = "";
   try {
-    args = typeof input === "string" ? input : JSON.stringify(input ?? {});
+    raw = typeof input === "string" ? input : JSON.stringify(input ?? {});
   } catch {
-    args = "";
+    raw = "";
   }
-  if (args === "{}") args = "";
-  if (args.length > TOOL_CALL_ARG_CAP) {
-    args = args.slice(0, TOOL_CALL_ARG_CAP) + "…";
-  }
+  const args = formatArgs(raw);
   return args ? `${toolName} ${args}` : toolName;
 }
 
@@ -158,6 +174,7 @@ export function createSubtaskTool(
     onChildUsage,
     vmTools,
     codingWorkspace,
+    parentBuiltInParams,
   } = params;
 
   return tool({
@@ -253,6 +270,27 @@ export function createSubtaskTool(
           isSelf,
         );
 
+        // Give the subagent the SAME heavy built-ins the parent has, rebuilt
+        // against the subagent's own passthrough client (and sandbox identity).
+        // A self-clone shares the parent's sandbox (same vmContext); a
+        // cross-agent delegate gets no vm file tools (different sandbox identity,
+        // not provisioned here). `subtask` itself is depth-1 so the subagent can't
+        // background or re-delegate (assembleAgentTools strips it regardless).
+        const subagentBuiltInParams = parentBuiltInParams
+          ? (() => {
+              const { toolOutputMap: _drop, ...rest } = parentBuiltInParams;
+              return {
+                ...rest,
+                passthroughClient: mcpClient as never,
+                agentId: targetRef.id,
+                vmContext: isSelf ? rest.vmContext : null,
+                backgroundDispatcher: null,
+                onChildUsage: undefined,
+                pendingImages: [],
+              };
+            })()
+          : undefined;
+
         // 3. Call runAgentLoop with subagent kind.
         const handle = await runAgentLoop({
           kind: "subagent",
@@ -281,35 +319,75 @@ export function createSubtaskTool(
           // (which is both the tool source AND the prompts source for the
           // target agent). This passes through to buildAgentSystemPrompt.
           passthroughClient: mcpClient,
-          // Self-clone only: inherit the parent's sandbox tools so the clone
-          // runs bash / file I/O against the SAME sandbox. A different agent
-          // has a different sandbox identity, so it must NOT inherit these.
-          extraTools: isSelf ? vmTools : undefined,
+          // Full heavy built-ins for the subagent (vm/generate_image/web_search).
+          subagentBuiltInParams,
+          // Fallback only — when no parent params are available (no full-built-in
+          // rebuild), a self-clone still inherits the parent's sandbox tools so
+          // it can run bash / file I/O against the SAME sandbox.
+          extraTools: subagentBuiltInParams
+            ? undefined
+            : isSelf
+              ? vmTools
+              : undefined,
         });
 
+        // Surface the subagent's tool calls in the live stream so the UI shows
+        // progress even while the subagent works silently (calling tools, not
+        // emitting text). The input STREAMS as it's generated (capped), so a
+        // long call (e.g. a file write) reveals progressively rather than
+        // popping in whole when the call completes.
         let streamedText = "";
+        // The tool call currently streaming its input (name + accumulated args).
+        let pending: { name: string; args: string } | null = null;
         let lastFlush = 0;
         const FLUSH_MS = 200;
+        // A committed `↳` line for a finished pending call (trailing newline).
+        const commitPending = (): void => {
+          if (!pending) return;
+          const args = formatArgs(pending.args);
+          const sep = streamedText && !streamedText.endsWith("\n") ? "\n" : "";
+          streamedText += `${sep}↳ ${args ? `${pending.name} ${args}` : pending.name}\n`;
+          pending = null;
+        };
+        // The live render = committed text + the in-progress `↳` line (no \n).
+        const render = (): string => {
+          if (!pending) return streamedText;
+          const args = formatArgs(pending.args);
+          const sep = streamedText && !streamedText.endsWith("\n") ? "\n" : "";
+          return `${streamedText}${sep}↳ ${args ? `${pending.name} ${args}` : pending.name}`;
+        };
         for await (const part of handle.result.fullStream) {
+          const now = performance.now();
           if (part.type === "text-delta") {
+            commitPending();
             streamedText += part.text;
-            const now = performance.now();
             if (now - lastFlush >= FLUSH_MS) {
               lastFlush = now;
               yield { text: streamedText };
             }
+          } else if (part.type === "tool-input-start") {
+            // A new call begins — commit any prior pending line, start streaming.
+            commitPending();
+            pending = { name: part.toolName, args: "" };
+            lastFlush = now;
+            yield { text: render() };
+          } else if (part.type === "tool-input-delta") {
+            if (pending) pending.args += part.delta;
+            if (now - lastFlush >= FLUSH_MS) {
+              lastFlush = now;
+              yield { text: render() };
+            }
           } else if (part.type === "tool-call") {
-            // Surface the subagent's tool executions in the live stream so the
-            // UI shows progress even while the subagent is working silently
-            // (calling tools, not emitting text). Args are capped to a few
-            // tokens — enough to identify the call, not a full dump.
+            // Authoritative complete input — finalize with the full (capped) args.
             const sep =
               streamedText && !streamedText.endsWith("\n") ? "\n" : "";
             streamedText += `${sep}↳ ${formatToolCall(part.toolName, part.input)}\n`;
-            lastFlush = performance.now();
+            pending = null;
+            lastFlush = now;
             yield { text: streamedText };
           }
         }
+        commitPending();
 
         // 5. Collect results from the resolved promises.
         const error = await handle.error;

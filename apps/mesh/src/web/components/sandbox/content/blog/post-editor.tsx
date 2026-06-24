@@ -1,20 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, Settings01 } from "@untitledui/icons";
-import {
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { ChevronDown, LinkExternal01, Settings01 } from "@untitledui/icons";
+import { Button } from "@deco/ui/components/button.tsx";
 import {
   Collapsible,
   CollapsibleContent,
@@ -28,25 +14,23 @@ import { cn } from "@deco/ui/lib/utils.js";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { StringField } from "@/web/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
-import {
-  buildBlogBlock,
-  discoverBlogBlockTypes,
-  getBlogPayload,
-  listBlogPayloads,
-} from "./blog-data";
+import { buildBlogBlock, getBlogPayload, listBlogPayloads } from "./blog-data";
+import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { BlogSandboxProvider } from "./blog-sandbox-context";
-import { InsertBlockDivider } from "./block-picker";
-import { BlockRow } from "./blocks/block-row";
-import { type RawBlock } from "./blocks/block-registry";
-import { InlineText, str } from "./blocks/primitives";
+import { asBlocks, BlockDocument } from "./block-document";
+import { AddButton, InlineText, RemoveButton, str } from "./blocks/primitives";
 
-type BlockItem = { id: string; block: RawBlock };
+type ExtraProp = { key: string; value: string };
 
-function asBlocks(value: unknown): RawBlock[] {
-  return Array.isArray(value) ? (value as RawBlock[]) : [];
+function asExtraProps(value: unknown): ExtraProp[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => ({
+    key: str((item as Record<string, unknown>)?.key),
+    value: str((item as Record<string, unknown>)?.value),
+  }));
 }
 
 /**
@@ -63,6 +47,7 @@ export function PostEditor({
   block,
   decofile,
   meta,
+  previewBaseUrl,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -71,6 +56,7 @@ export function PostEditor({
   block: Record<string, unknown> | undefined;
   decofile: Record<string, unknown>;
   meta: LiveMeta;
+  previewBaseUrl?: string | null;
 }) {
   const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
@@ -79,59 +65,14 @@ export function PostEditor({
     save.mutate({ blockKey, data: buildBlogBlock(blockKey, "posts", next) });
   });
 
-  const blockTypes = discoverBlogBlockTypes(meta);
-
-  // Ids and blocks are co-located in one piece of state so dnd-kit's
-  // sortable identity never drifts from the block list. All mutations go
-  // through syncBlocks which updates both atomically.
-  const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
-    asBlocks(initial.sections).map((blk) => ({ id: uid(), block: blk })),
-  );
-
-  const ids = blockItems.map((x) => x.id);
-  const blocks = blockItems.map((x) => x.block);
-
-  const syncBlocks = (items: BlockItem[]) => {
-    setBlockItems(items);
-    setPost({ ...post, sections: items.map((x) => x.block) });
-  };
-
   const setField = (key: string, value: unknown) =>
     setPost({ ...post, [key]: value });
 
-  const insertAt = (index: number, resolveType: string) => {
-    const next = [...blockItems];
-    next.splice(index, 0, { id: uid(), block: { __resolveType: resolveType } });
-    syncBlocks(next);
-  };
-
-  const updateAt = (index: number, value: RawBlock) => {
-    syncBlocks(
-      blockItems.map((item, i) =>
-        i === index ? { ...item, block: value } : item,
-      ),
-    );
-  };
-
-  const removeAt = (index: number) => {
-    syncBlocks(blockItems.filter((_, i) => i !== index));
-  };
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = blockItems.findIndex((x) => x.id === String(active.id));
-    const newIndex = blockItems.findIndex((x) => x.id === String(over.id));
-    if (oldIndex === -1 || newIndex === -1) return;
-    syncBlocks(arrayMove(blockItems, oldIndex, newIndex));
-  };
+  const previewUrl = buildBlogPostPreviewUrl({
+    decofile,
+    post,
+    previewBaseUrl,
+  });
 
   return (
     <BlogSandboxProvider
@@ -144,7 +85,28 @@ export function PostEditor({
           <span className="truncate text-sm font-medium">
             {str(post.title) || "Untitled post"}
           </span>
-          <SaveStatus isPending={save.isPending} isError={save.isError} />
+          <div className="flex shrink-0 items-center gap-3">
+            <SaveStatus isPending={save.isPending} isError={save.isError} />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!previewUrl}
+              title={
+                previewUrl
+                  ? "Open the post preview in a new tab"
+                  : "Set the post slug (and its category) plus the blog app's pageSlug to preview"
+              }
+              onClick={() => {
+                if (previewUrl) {
+                  window.open(previewUrl, "_blank", "noopener,noreferrer");
+                }
+              }}
+            >
+              <LinkExternal01 size={14} />
+              See preview
+            </Button>
+          </div>
         </div>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
@@ -162,54 +124,17 @@ export function PostEditor({
 
             <div className="mt-6 border-t" />
 
-            {/* Block document */}
-            <div className="mt-2">
-              {blocks.length === 0 && (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  This post has no content yet. Use ⊕ to add your first block.
-                </p>
-              )}
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={ids}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <InsertBlockDivider
-                    blockTypes={blockTypes}
-                    onInsert={(rt) => insertAt(0, rt)}
-                    alwaysShow={blocks.length === 0}
-                  />
-                  {blockItems.map(({ id, block: blk }, index) => (
-                    <div key={id}>
-                      <BlockRow
-                        id={id}
-                        block={blk}
-                        meta={meta}
-                        onChange={(v) => updateAt(index, v)}
-                        onDelete={() => removeAt(index)}
-                      />
-                      <InsertBlockDivider
-                        blockTypes={blockTypes}
-                        onInsert={(rt) => insertAt(index + 1, rt)}
-                      />
-                    </div>
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </div>
+            <BlockDocument
+              value={asBlocks(post.sections)}
+              onChange={(next) => setField("sections", next)}
+              meta={meta}
+              emptyMessage="This post has no content yet. Use ⊕ to add your first block."
+            />
           </div>
         </div>
       </div>
     </BlogSandboxProvider>
   );
-}
-
-function uid(): string {
-  return crypto.randomUUID();
 }
 
 function PostSettings({
@@ -292,8 +217,58 @@ function PostSettings({
           selected={post.categories}
           onChange={(v) => onChange("categories", v)}
         />
+        <ExtraPropsField
+          value={post.extraProps}
+          onChange={(v) => onChange("extraProps", v)}
+        />
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function ExtraPropsField({
+  value,
+  onChange,
+}: {
+  value: unknown;
+  onChange: (value: ExtraProp[]) => void;
+}) {
+  const items = asExtraProps(value);
+  const set = (i: number, patch: Partial<ExtraProp>) =>
+    onChange(items.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
+
+  return (
+    <div className="space-y-2">
+      <Label>Extra props</Label>
+      {items.length > 0 && (
+        <ul className="space-y-2">
+          {items.map((prop, i) => (
+            <li key={i} className="group/item flex items-center gap-2">
+              <Input
+                value={prop.key}
+                onChange={(e) => set(i, { key: e.target.value })}
+                placeholder="key"
+                className="h-9 flex-1"
+              />
+              <Input
+                value={prop.value}
+                onChange={(e) => set(i, { value: e.target.value })}
+                placeholder="value"
+                className="h-9 flex-1"
+              />
+              <RemoveButton
+                label="Remove prop"
+                onClick={() => onChange(items.filter((_, idx) => idx !== i))}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      <AddButton
+        label="Add prop"
+        onClick={() => onChange([...items, { key: "", value: "" }])}
+      />
+    </div>
   );
 }
 

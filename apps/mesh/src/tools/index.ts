@@ -22,7 +22,6 @@ import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
 import * as ConnectionTools from "./connection";
 import * as DatabaseTools from "./database";
-import * as EventBusTools from "./eventbus";
 import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as OrganizationTools from "./organization";
@@ -61,10 +60,14 @@ export const CORE_TOOLS = [
   OrganizationTools.BRAND_CONTEXT_EXTRACT,
   OrganizationTools.BRAND_GET,
   OrganizationTools.BRAND_LIST,
-  OrganizationTools.ORGANIZATION_DOMAIN_GET,
-  OrganizationTools.ORGANIZATION_DOMAIN_SET,
+  OrganizationTools.ORGANIZATION_DOMAIN_LIST,
+  OrganizationTools.ORGANIZATION_DOMAIN_ADD,
   OrganizationTools.ORGANIZATION_DOMAIN_UPDATE,
-  OrganizationTools.ORGANIZATION_DOMAIN_CLEAR,
+  OrganizationTools.ORGANIZATION_DOMAIN_VERIFY,
+  OrganizationTools.ORGANIZATION_DOMAIN_REMOVE,
+  OrganizationTools.ORGANIZATION_JOIN_REQUEST_LIST,
+  OrganizationTools.ORGANIZATION_JOIN_REQUEST_APPROVE,
+  OrganizationTools.ORGANIZATION_JOIN_REQUEST_DENY,
   OrganizationTools.ORGANIZATION_MEMBER_ADD,
   OrganizationTools.ORGANIZATION_MEMBER_REMOVE,
   OrganizationTools.ORGANIZATION_MEMBER_LIST,
@@ -100,15 +103,6 @@ export const CORE_TOOLS = [
   ApiKeyTools.API_KEY_UPDATE,
   ApiKeyTools.API_KEY_DELETE,
 
-  // Event Bus tools
-  EventBusTools.EVENT_PUBLISH,
-  EventBusTools.EVENT_SUBSCRIBE,
-  EventBusTools.EVENT_UNSUBSCRIBE,
-  EventBusTools.EVENT_CANCEL,
-  EventBusTools.EVENT_ACK,
-  EventBusTools.EVENT_SUBSCRIPTION_LIST,
-  EventBusTools.EVENT_SYNC_SUBSCRIPTIONS,
-
   // User tools
   UserTools.USER_GET,
 
@@ -119,6 +113,8 @@ export const CORE_TOOLS = [
   ThreadTools.COLLECTION_THREADS_UPDATE,
   ThreadTools.COLLECTION_THREADS_DELETE,
   ThreadTools.COLLECTION_THREAD_MESSAGES_LIST,
+  ThreadTools.THREAD_BACKGROUND_TOOL_START,
+  ThreadTools.THREAD_SUBTASK_DELIVER,
 
   // Tag tools
   TagTools.TAGS_LIST,

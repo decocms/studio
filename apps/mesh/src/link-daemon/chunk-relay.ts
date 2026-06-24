@@ -3,34 +3,41 @@
  * spec "Transport Convergence").
  *
  * The local sandbox streams `DispatchSSEEvent`s over loopback SSE. The relay
- * forwards every event verbatim to the cluster as a seq-numbered NDJSON
- * `RelayLine`, so the cluster-side harness kernel is the only consumer of
+ * forwards every event as a seq-numbered NDJSON `RelayLine` to an injected
+ * `post` sink. Production wires that sink to direct JetStream publishing (see
+ * `handle-local-dispatch` + `direct-nats-publisher`), so each line lands on
+ * `decopilot.stream.<runId>` and the durable projector is the sole consumer of
  * harness output — titles, usage, and session metadata survive because the
  * daemon no longer folds chunks into part rows.
  *
- * Reconnect/backfill contract:
- * - STREAMING-FIRST: a POST attempt is opened immediately and each line is
- *   written as the SSE event arrives, so the cluster sees per-chunk progress
+ * Reconnect/backfill contract (sink-agnostic):
+ * - STREAMING-FIRST: a sink attempt is opened immediately and each line is
+ *   written as the SSE event arrives, so the consumer sees per-chunk progress
  *   (run liveness) instead of per-step batches.
- * - The cluster acks only once per POST, after the body ends
- *   (`RelayPostResult`). Every line therefore stays in an in-memory buffer
- *   until a POST attempt succeeds after the terminal line was sent.
- * - On a failed POST (connection drop, 5xx) the relay retries with backoff;
- *   each new attempt resends the WHOLE buffered prefix from seq 1
- *   (`fromSeq: 1`) and then continues streaming live lines. The cluster
- *   dedupes by seq, so resending is always safe.
+ * - ROLLING TRUNCATION: a sink reports durably-published seqs via the
+ *   `onDurablyPublished` callback (the per-line NATS sink fires it on PubAck);
+ *   the relay drops that confirmed prefix from the outbox as it goes, so the
+ *   buffer holds only the in-flight (unconfirmed) window — not the whole run.
+ *   The terminal `RelayPostResult` ack then truncates whatever tail remains. A
+ *   sink that never reports keeps every line until terminal ack (old behavior).
+ * - On a failed attempt (publish/connection drop) the relay retries with
+ *   backoff; each new attempt resends the buffered prefix from `fromSeq: 1` —
+ *   which after rolling truncation is the lowest still-unconfirmed seq (the
+ *   confirmed prefix is already durable at the sink) — then continues streaming
+ *   live lines. JetStream `Nats-Msg-Id` dedup makes resending always safe.
  * - Pump progress is independent of POST health: while disconnected the
  *   sandbox keeps streaming and lines accumulate in the buffer, up to
- *   `RELAY_BUFFER_MAX_BYTES` — beyond that the run fails loudly (with the
- *   runId) rather than ballooning daemon memory. Because acks are terminal,
- *   the cap also bounds the total relayable size of a single run.
+ *   `MAX_OUTBOX_BYTES` — beyond that the run fails loudly (with the runId)
+ *   rather than ballooning disk. With rolling truncation that cap bounds the
+ *   unconfirmed in-flight window (a stalled-publisher backstop), not the whole
+ *   run's relayable size.
  * - If the sandbox stream ends without a `done` event, the relay synthesizes
  *   a terminal `{type:"done"}` line so the cluster always sees a terminal.
  * - Aborting `signal` tears everything down: the sandbox SSE source is
  *   cancelled, in-flight/queued POST attempts stop, and the relay rejects
  *   with the abort reason.
  */
-import { retry, RetryError } from "@decocms/std";
+import { retry, RetryError, sleep } from "@decocms/std";
 import { parseDispatchSSEEvents } from "../harnesses/parse-dispatch-sse";
 import type { DispatchSSEEvent } from "../links/protocol";
 import type { RelayLine } from "../links/protocol/relay";
@@ -62,6 +69,16 @@ export interface RelayDispatchSSEAsChunkStreamInput {
   post: (
     body: ReadableStream<Uint8Array> | string,
     fromSeq: number,
+    /**
+     * Reports the highest seq this attempt has DURABLY published (e.g. a
+     * JetStream PubAck for the per-line NATS sink). The relay drops the
+     * confirmed prefix from the outbox (rolling ackSeq truncation), so a long
+     * run's buffer stays bounded to the in-flight window instead of the whole
+     * run. Sinks whose lines are only durable at terminal ack (none today)
+     * simply never call it. Called in seq order; the relay truncates up to the
+     * value.
+     */
+    onDurablyPublished?: (ackSeq: number) => void,
   ) => Promise<RelayPostResult>;
   signal?: AbortSignal;
   /**
@@ -94,9 +111,30 @@ export interface RelayDispatchSSEAsChunkStreamInput {
     maxTimeout?: number;
     jitter?: number;
   };
+  /**
+   * Idle-gap keepalive interval for the streaming POST body, in ms. When the
+   * relay has no new line to send for this long (a model think-gap / between
+   * steps), it writes a blank NDJSON line (`"\n"`) into the request body so the
+   * upload keeps emitting bytes. A long-lived streaming POST that writes nothing
+   * during an idle gap is reset by an intermediary idle timeout — in the field a
+   * Cloudflare edge ~15s idle timeout fires a fast `ECONNRESET` ("socket
+   * connection closed unexpectedly"), and because each retry resends from seq 1
+   * and goes idle again, a single >15s think-gap can make a run never finish.
+   * The blank line is a no-op on the wire: the cluster's `ndjsonLines` parser
+   * trims and skips empty lines, so it never becomes a relay line and seq
+   * numbering / prefix-replay are untouched. Default 10s (margin under 15s);
+   * tests override with a tiny value.
+   */
+  heartbeatMs?: number;
 }
 
 const encoder = new TextEncoder();
+
+/** Default keepalive cadence — comfortably under the ~15s CDN idle timeout. */
+const DEFAULT_HEARTBEAT_MS = 10_000;
+
+/** Blank NDJSON line: keeps bytes flowing; the cluster parser skips it. */
+const HEARTBEAT_BYTES = encoder.encode("\n");
 
 /**
  * Relay a sandbox dispatch SSE body to the cluster as seq-numbered NDJSON
@@ -194,6 +232,8 @@ export async function relayDispatchSSEAsChunkStream(
     throw pumpError;
   });
 
+  const heartbeatMs = input.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
+
   // ── Attempt bodies: replay the durable prefix, then follow live ──────────
   const createAttemptBody = (): ReadableStream<Uint8Array> => {
     let cursor = 0; // highest wireSeq already enqueued; replay from cursor+1
@@ -231,7 +271,30 @@ export async function relayDispatchSSEAsChunkStream(
             controller.close();
             return;
           }
-          await waiter;
+          // Idle: no buffered line and the pump is still running. Wait for the
+          // next line, but if the gap exceeds `heartbeatMs` emit a blank-line
+          // keepalive so the streaming upload keeps writing bytes and a CDN
+          // idle timeout (Cloudflare ~15s) can't reset it. `sleep`'s timer is
+          // cancelled (via its signal) the moment a line arrives, so an active
+          // run never accumulates timers.
+          const hbAbort = new AbortController();
+          const winner = await Promise.race([
+            waiter.then(() => "line" as const),
+            sleep(heartbeatMs, { signal: hbAbort.signal })
+              .then(() => "heartbeat" as const)
+              // Aborted (a line won the race) → fall through and re-check state.
+              .catch(() => "line" as const),
+          ]);
+          hbAbort.abort();
+          if (winner === "heartbeat") {
+            try {
+              controller.enqueue(HEARTBEAT_BYTES);
+            } catch {
+              // Consumer cancelled this attempt's upload — durable rows remain.
+              return;
+            }
+            return;
+          }
         }
       },
     });
@@ -240,7 +303,14 @@ export async function relayDispatchSSEAsChunkStream(
   // ── Poster: streaming POST attempts with backoff + full-prefix resend ────
   const postOnce = async (): Promise<void> => {
     if (pumpError !== null) throw pumpError;
-    const result = await input.post(createAttemptBody(), 1);
+    // Rolling ackSeq truncation: as the sink confirms a line is durably
+    // published, drop the prefix from the outbox so the buffer never holds more
+    // than the unconfirmed in-flight window. The confirmed prefix is durable at
+    // the sink (JetStream dedupes by msgId), so a resend never needs it.
+    const onDurablyPublished = (ackSeq: number): void => {
+      outbox.truncateUpToSeq({ runId: input.runId, fenceToken, ackSeq });
+    };
+    const result = await input.post(createAttemptBody(), 1, onDurablyPublished);
     if (pumpError !== null) throw pumpError;
     if (!result.ok) {
       throw new Error(
@@ -313,6 +383,18 @@ export async function relayDispatchSSEAsChunkStream(
       );
     }
   } finally {
+    // A run's rows are useless once the relay returns: SUCCESS means the cluster
+    // acked them; FAILURE/ABORT means the run is dead (its sandbox SSE is
+    // cancelled). Drop them on EVERY terminal outcome so a failed/aborted run
+    // never leaks its prefix into the durable outbox — that leak (truncateRun
+    // previously fired only on success) accumulated dead runs until the
+    // daemon-wide MAX_OUTBOX_BYTES wedged the relay. Idempotent: the success
+    // path already truncated inside postOnce.
+    try {
+      outbox.truncateRun({ runId: input.runId, fenceToken });
+    } catch {
+      // Cleanup must never mask the real terminal error.
+    }
     // Close only an outbox we created; an injected one is the caller's to own.
     if (ownsOutbox) outbox.close();
   }

@@ -1,25 +1,34 @@
 /**
- * E2E: POST /api/:org/links/runs/:runId/chunks — link chunk-relay return path.
+ * E2E: direct-NATS chunk-relay ingest → durable-projector persistence.
  *
- * The desktop daemon runs a harness locally and relays its raw output as
- * seq-numbered NDJSON `RelayLine`s to this endpoint (protocol v2), which:
- *   1. Enforces org-scoped thread ownership (404 for foreign/missing runs).
- *   2. Checks the durable cancel flag, then the run_fence_token (409s).
- *   3. Feeds the relayed chunks into the harness kernel
- *      (consumeHarnessStream), which commits parts via PartEmitter.
- *   4. Pumps kernel output to the JetStream live edge and transitions the
- *      run terminal before acking the terminal POST with {ok, lastSeq}.
+ * The desktop daemon runs a harness locally and publishes its raw output as
+ * seq-numbered `RelayLine`s straight to the run's JetStream stream
+ * `decopilot.stream.<runId>` (protocol v2; see `link-daemon/direct-nats-publisher.ts`).
+ * The always-on durable projector consumes that stream and:
+ *   1. Resolves the run's org (a stream for an unknown run is never projected).
+ *   2. Skips a stream whose fence differs from the run's current
+ *      run_fence_token (`shouldSkipProjection`).
+ *   3. Feeds the relayed chunks into the harness kernel (consumeHarnessStream),
+ *      which commits parts via PartEmitter and transitions the run terminal.
  *
- * This spec verifies the happy path (matching fence → 200 + parts land +
- * status completed), the stale-fence path (409 + zero parts), the no-fence
- * path (409 + zero parts), and the lost-session resume path (410).
+ * Persistence is ASYNC — publishing returns once the lines are on the stream;
+ * the projector materializes parts + flips `threads.status` shortly after, so
+ * these tests POLL the DB (the old synchronous `/chunks` ack is gone).
+ *
+ * This spec verifies the happy path (matching fence → parts land + status
+ * completed), the stale-fence path (mismatched fence → zero parts), and the
+ * full-prefix resend path (idempotent → parts land). The old HTTP route's
+ * status-code contract (200/409/404/410) no longer exists; fence/ownership
+ * enforcement now lives in the projector and is asserted at the DB level.
  *
  * Wire format: one `{seq, event}\n` JSON line per DispatchSSEEvent, ending
  * with a `{type:"done"}` terminal line (see links/protocol/relay.ts).
  */
 
+import { sleep } from "@decocms/std";
 import { expect, test } from "../fixtures/test";
 import { connectDevDb } from "../fixtures/db";
+import { publishRelayBody } from "../fixtures/relay-nats";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,7 +86,7 @@ async function fetchParts(
   return rows;
 }
 
-/** Fetch the durable thread status (terminal transition before terminal ack). */
+/** Fetch the durable thread status. */
 async function fetchThreadStatus(
   db: Awaited<ReturnType<typeof connectDevDb>>,
   threadId: string,
@@ -116,24 +125,15 @@ function buildRelayBody(messageId: string, text: string): string {
     .join("\n")}\n`;
 }
 
-function relayHeaders(fenceToken: string, fromSeq = 1): Record<string, string> {
-  return {
-    "content-type": "application/x-ndjson",
-    "x-fence-token": fenceToken,
-    "x-relay-from": String(fromSeq),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", () => {
-  test("matching fence token → 200 {ok,lastSeq} and parts land in thread_message_parts", async ({
+test.describe("direct-NATS chunk relay ingest", () => {
+  test("matching fence → parts land in thread_message_parts and run completes", async ({
     authedPage,
   }) => {
-    const { page, user, orgSlug } = authedPage;
-    const api = page.context().request;
+    const { user, orgSlug } = authedPage;
     const db = await connectDevDb();
     try {
       const orgId = await orgIdForSlug(db, orgSlug);
@@ -150,19 +150,18 @@ test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", 
       const relayBody = buildRelayBody(messageId, bodyText);
       const lineCount = relayBody.trim().split("\n").length;
 
-      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
-        headers: relayHeaders(fenceToken),
-        data: relayBody,
+      const { lastSeq } = await publishRelayBody({
+        runId,
+        fenceToken,
+        body: relayBody,
       });
-
-      expect(res.status()).toBe(200);
-      const json = await res.json();
-      expect(json).toMatchObject({ ok: true, lastSeq: lineCount });
+      // The publisher echoes the highest wire seq (incl. the terminal `done`),
+      // matching what the old `/chunks` ack returned as lastSeq.
+      expect(lastSeq).toBe(lineCount);
 
       // Parts + terminal status are written by the async durable projector
-      // (it reconstructs the run from JetStream after the relay POST returns),
-      // so poll until they land: a text part + finish anchor, and status
-      // 'completed' (which releases the pull gate's threads.status poll).
+      // (it reconstructs the run from JetStream), so poll until they land: a
+      // text part + finish anchor, and status 'completed'.
       await expect(async () => {
         const parts = await fetchParts(db, runId);
         expect(parts.length).toBeGreaterThanOrEqual(2);
@@ -176,11 +175,10 @@ test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", 
     }
   });
 
-  test("stale fence token → 409 and zero parts land", async ({
+  test("mismatched fence → projector skips, zero parts land", async ({
     authedPage,
   }) => {
-    const { page, user, orgSlug } = authedPage;
-    const api = page.context().request;
+    const { user, orgSlug } = authedPage;
     const db = await connectDevDb();
     try {
       const orgId = await orgIdForSlug(db, orgSlug);
@@ -193,73 +191,34 @@ test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", 
         runFenceToken: realToken,
       });
 
-      const messageId = `msg_stale_e2e_${Date.now()}`;
-      const relayBody = buildRelayBody(messageId, "should not land");
+      const relayBody = buildRelayBody(
+        `msg_stale_e2e_${Date.now()}`,
+        "should not land",
+      );
 
-      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
-        headers: relayHeaders(staleToken),
-        data: relayBody,
+      // The run's fence is realToken; the projector loads it and SKIPS this
+      // mismatched-fence stream (shouldSkipProjection) — nothing is committed.
+      await publishRelayBody({
+        runId,
+        fenceToken: staleToken,
+        body: relayBody,
       });
 
-      expect(res.status()).toBe(409);
-      const json = await res.json();
-      expect(json).toMatchObject({ error: "fenced" });
-
-      // No parts should have been written.
-      const parts = await fetchParts(db, runId);
-      expect(parts).toHaveLength(0);
+      // Give the projector a window to observe + skip, then assert no parts.
+      await sleep(4_000);
+      expect(await fetchParts(db, runId)).toHaveLength(0);
     } finally {
       await db.end();
     }
   });
 
-  test("null fence (no active run) → 409 'no active run fence' and zero parts land", async ({
+  test("full-prefix resend is idempotent and the lines land", async ({
     authedPage,
   }) => {
-    // When run_fence_token is null there is no active pull run for the
-    // thread, so the endpoint must refuse to write anything regardless of
-    // the presented token.
-    const { page, user, orgSlug } = authedPage;
-    const api = page.context().request;
-    const db = await connectDevDb();
-    try {
-      const orgId = await orgIdForSlug(db, orgSlug);
-
-      const runId = await seedV2Thread(db, {
-        orgId,
-        userId: user.userId,
-        runFenceToken: null,
-      });
-
-      const messageId = `msg_nofence_e2e_${Date.now()}`;
-      const relayBody = buildRelayBody(messageId, "should not land");
-
-      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
-        headers: relayHeaders(`any_token_${Date.now()}`),
-        data: relayBody,
-      });
-
-      expect(res.status()).toBe(409);
-      const json = await res.json();
-      expect(json).toMatchObject({ error: "no active run fence" });
-
-      // No parts should have been written.
-      const parts = await fetchParts(db, runId);
-      expect(parts).toHaveLength(0);
-    } finally {
-      await db.end();
-    }
-  });
-
-  test("resumed relay with no parked session (x-relay-from > 1) opens fresh (no 410; idempotent resend)", async ({
-    authedPage,
-  }) => {
-    // Registry loss (pod restart) is no longer terminal: a full-prefix resend
-    // is idempotent (§10, the cluster dedupes by seq), so a resumed relay with
-    // no parked session opens a FRESH session and accepts the lines rather than
-    // 410-ing the daemon into giving up.
-    const { page, user, orgSlug } = authedPage;
-    const api = page.context().request;
+    // Registry loss (pod restart) is no longer terminal and there is no session
+    // affinity: a full-prefix resend is idempotent (JetStream `Nats-Msg-Id`
+    // dedup) and the projector materializes the run from seq 1.
+    const { user, orgSlug } = authedPage;
     const db = await connectDevDb();
     try {
       const orgId = await orgIdForSlug(db, orgSlug);
@@ -271,19 +230,15 @@ test.describe("POST /api/:org/links/runs/:runId/chunks — chunk relay ingest", 
         runFenceToken: fenceToken,
       });
 
-      const messageId = `msg_lost_e2e_${Date.now()}`;
-      const relayBody = buildRelayBody(messageId, "resumed turn lands");
+      const relayBody = buildRelayBody(
+        `msg_lost_e2e_${Date.now()}`,
+        "resumed turn lands",
+      );
 
-      const res = await api.post(`/api/${orgSlug}/links/runs/${runId}/chunks`, {
-        headers: relayHeaders(fenceToken, 5),
-        data: relayBody,
-      });
+      await publishRelayBody({ runId, fenceToken, body: relayBody });
 
-      expect(res.status()).toBe(200);
-      expect(await res.json()).toMatchObject({ ok: true });
-
-      // The fresh session processed the relayed turn → parts persist (written
-      // by the async durable projector, so poll until they land).
+      // Parts are written by the async durable projector, so poll until the
+      // relay's lines land.
       await expect(async () => {
         const parts = await fetchParts(db, runId);
         expect(parts.length).toBeGreaterThan(0);

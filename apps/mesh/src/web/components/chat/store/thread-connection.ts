@@ -156,7 +156,35 @@ function applyLocally(
   action: SubmitAction,
 ): UIMessage[] | null {
   if (action.kind === "message") {
-    return [...prev, action.message];
+    // Stamp a top-level `created_at` the moment the user submits. Without it the
+    // optimistic user row reads as +Infinity in `readTimestamp`/`mergeAndSort`,
+    // while the assistant reply gets a finite timestamp (run-start
+    // `metadata.created_at`, or its finish anchor) — so the reply sorts AHEAD of
+    // the user row that triggered it. The turn then renders empty ("No response
+    // was generated") with its answer detached under the next turn, until a
+    // refetch brings the DB `created_at`.
+    //
+    // The just-submitted message is the newest in the thread, so stamp it
+    // strictly after every existing finite timestamp — not a bare `now`, which
+    // can tie (to the millisecond) with a frozen assistant just anchored by
+    // stop(); the role tiebreak would then wrongly sort the new user ahead of
+    // that earlier assistant. A persisted refetch (incoming carries the DB
+    // `created_at`) overwrites this via `preserveCreatedAt`. No-op if a
+    // `created_at` is already present.
+    const msg = action.message as UIMessage & { created_at?: string };
+    if (msg.created_at != null) return [...prev, msg];
+    let maxMs = 0;
+    for (const m of prev) {
+      const ts = (m as { created_at?: string | number | Date }).created_at;
+      if (ts == null) continue;
+      const t = new Date(ts).getTime();
+      if (Number.isFinite(t) && t > maxMs) maxMs = t;
+    }
+    const ms = Math.max(Date.now(), maxMs + 1);
+    return [
+      ...prev,
+      { ...msg, created_at: new Date(ms).toISOString() } as UIMessage,
+    ];
   }
   // toolOutput / approval — locate the part by id on any assistant message.
   // The newest occurrence wins (the same toolCallId shouldn't appear twice
@@ -986,7 +1014,45 @@ export class ThreadConnection {
       this.status.set({ kind: "ready" });
     }
     if (last && !discard) {
+      // Anchor the finished assistant with a top-level `created_at`. A streamed
+      // message that never received one reads as +Infinity in `mergeAndSort`;
+      // on the NEXT submit the role tiebreak (user before assistant) then sorts
+      // the new user row ahead of this reply — the prior turn renders empty and
+      // its answer lands under the new turn. Prefer the run-start metadata
+      // timestamp when present, else stamp finish time. Mirrors the cancel-path
+      // anchor; a later persisted refetch (which carries the DB `created_at`)
+      // overwrites this via upsert. No-op once a top-level `created_at` exists.
+      const anchorId = last.id;
+      this.messages.update((msgs) => {
+        const i = msgs.findIndex((m) => m.id === anchorId);
+        if (i === -1) return msgs;
+        const row = msgs[i] as UIMessage & { created_at?: string };
+        if (row.created_at != null) return msgs;
+        const metaTs = (
+          row.metadata as { created_at?: string | number | Date } | undefined
+        )?.created_at;
+        const created_at =
+          metaTs != null
+            ? new Date(metaTs).toISOString()
+            : new Date().toISOString();
+        const next = [...msgs];
+        next[i] = { ...row, created_at } as UIMessage;
+        return next;
+      });
       this.observer?.onFinish?.(last, this.messages.get(), finishReason);
+
+      // A turn auto-resumed after a backgrounded tool (image / subtask) delivers
+      // that tool's result as a SEPARATE assistant message, appended directly to
+      // the DB by the background workflow — it never rides this live stream. Pull
+      // the latest page now so the delivered result shows without a manual
+      // refresh. Runs after the reaction folded, so it can't clobber in-flight
+      // streaming; the merge is upsert-by-id.
+      const meta = last.metadata as
+        | { resumedFromBackground?: boolean }
+        | undefined;
+      if (meta?.resumedFromBackground) {
+        void this.refetchLatestPage();
+      }
     }
   }
 
@@ -1139,9 +1205,29 @@ export function dropRedundantStubs(messages: UIMessage[]): UIMessage[] {
 
   return messages.filter((m) => {
     if (!m.id.startsWith(ASYNC_STUB_ID_PREFIX)) return true;
-    const toolCallId = m.id.slice(ASYNC_STUB_ID_PREFIX.length);
+    // Match by the stub's own tool-web_search part id — robust to any id shape.
+    // (The id suffix is only a fallback for a malformed stub with no part.)
+    const toolCallId =
+      webSearchToolCallId(m) ?? m.id.slice(ASYNC_STUB_ID_PREFIX.length);
     return !covered.has(toolCallId);
   });
+}
+
+/** First `tool-web_search` part's `toolCallId` on a message, if any. */
+function webSearchToolCallId(m: UIMessage): string | undefined {
+  for (const p of m.parts) {
+    if (
+      p &&
+      typeof p === "object" &&
+      "type" in p &&
+      (p as { type: string }).type === "tool-web_search" &&
+      "toolCallId" in p &&
+      typeof (p as { toolCallId?: unknown }).toolCallId === "string"
+    ) {
+      return (p as { toolCallId: string }).toolCallId;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -1217,6 +1303,9 @@ export function getOrOpenStream(
   if (current?.key === key) return current;
   current?.dispose();
   current = new ThreadConnection(orgSlug, threadId, opts);
+  // DEBUG (temporary): expose the live store for inspecting in-memory order.
+  if (typeof window !== "undefined")
+    (window as unknown as { __conn?: ThreadConnection }).__conn = current;
   return current;
 }
 

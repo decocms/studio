@@ -251,7 +251,6 @@ import type { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import type { BetterAuthInstance } from "@/auth";
 import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { OrgScopedAsyncResearchJobStorage } from "@/storage/async-research-jobs";
-import type { EventBus } from "../event-bus/interface";
 import type { ConnectionStorage } from "../storage/connection";
 import type {
   MonitoringStorage,
@@ -267,12 +266,14 @@ import type { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import type { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import type { BrandContextStorage } from "../storage/brand-context";
 import type { OrganizationDomainStorage } from "../storage/organization-domains";
+import type { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
 import type { RegistryStorage } from "../storage/registry";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
+import { OrgSiteStorage } from "@/storage/org-sites";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
 import type { OrgFs } from "@/file-storage/org-fs";
 import type { KVStorage } from "@/storage/kv";
@@ -307,6 +308,7 @@ export interface MeshStorage {
   aiProviderKeys: AIProviderKeyStorage;
   secrets: SecretStorage;
   orgFileConfigs: OrgFileConfigStorage;
+  orgSites: OrgSiteStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;
   automations: AutomationsStorage;
@@ -317,6 +319,7 @@ export interface MeshStorage {
   registry: RegistryStorage;
   brandContext: BrandContextStorage;
   organizationDomains: OrganizationDomainStorage;
+  organizationJoinRequests: OrganizationJoinRequestStorage;
   kv: KVStorage;
   interests: InterestsStorage;
 }
@@ -374,9 +377,6 @@ export interface StudioContext extends HarnessContext {
 
   // Request metadata (non-HTTP specific)
   metadata: RequestMetadata;
-
-  // Event bus for publishing and subscribing to events
-  eventBus: EventBus;
 
   // AI Provider factory
   aiProviders: AIProviderFactory;

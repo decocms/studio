@@ -213,6 +213,21 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
+
+    // Managed asset storage (shared deco tenant bucket). Defaults match the
+    // legacy admin platform so an existing deployment works without new env.
+    s3TenantBucket: envVars.S3_TENANT_BUCKET || "new-deco-sites-assets",
+    s3TenantRegion: envVars.S3_TENANT_REGION || "us-west-2",
+    // No default: for real AWS the SDK derives the endpoint from region (so the
+    // two can't drift). Set S3_TENANT_ENDPOINT only for a non-AWS S3 store.
+    s3TenantEndpoint: envVars.S3_TENANT_ENDPOINT,
+    s3TenantPublicUrlBase:
+      envVars.S3_TENANT_PUBLIC_URL_BASE || "https://decoims.com",
+    awsS3TenantRoleArn: envVars.AWS_S3_TENANT_ROLE_ARN,
+    awsS3TenantProvisionerAccessKeyId:
+      envVars.AWS_S3_TENANT_PROVISIONER_ACCESS_KEY_ID,
+    awsS3TenantProvisionerSecretAccessKey:
+      envVars.AWS_S3_TENANT_PROVISIONER_SECRET_ACCESS_KEY,
   };
 
   return {

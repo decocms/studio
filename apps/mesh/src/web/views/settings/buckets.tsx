@@ -101,6 +101,10 @@ function FileConfigRow({
               <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
                 STS
               </span>
+            ) : config.credentialType === "managed" ? (
+              <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                Managed
+              </span>
             ) : null}
             <span className="text-xs text-muted-foreground truncate">
               {config.bucket} · {config.region}

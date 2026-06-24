@@ -42,6 +42,7 @@ import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { BrandContextStorage } from "../storage/brand-context";
 import { OrganizationDomainStorage } from "../storage/organization-domains";
+import { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyInterestsStorage } from "../storage/interests";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
@@ -71,7 +72,6 @@ import type {
 // Configuration
 // ============================================================================
 
-import type { EventBus } from "../event-bus/interface";
 import type { MemberRoleCache } from "../auth/member-role-cache";
 
 // ============================================================================
@@ -122,7 +122,6 @@ export interface StudioContextConfig {
     tracer: Tracer;
     meter: Meter;
   };
-  eventBus: EventBus;
   modelListCache?: ModelListCache;
   providerKeyCache?: ProviderKeyCache;
   memberRoleCache?: MemberRoleCache;
@@ -490,6 +489,7 @@ import { createClientPool } from "@/mcp-clients/outbound/client-pool";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
 import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
+import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
 import { OrgFs } from "@/file-storage/org-fs";
 import { OAuthPkceStateStorage } from "@/storage/oauth-pkce-states";
@@ -1250,6 +1250,7 @@ export async function createStudioContextFactory(
     ),
     secrets: new SecretStorage(config.db, vault),
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
+    orgSites: new OrgSiteStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
     automations: createAutomationsStorage(config.db),
@@ -1266,6 +1267,7 @@ export async function createStudioContextFactory(
     },
     brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
+    organizationJoinRequests: new OrganizationJoinRequestStorage(config.db),
     kv: kvStorage,
     interests: new KyselyInterestsStorage(kvStorage),
     // Note: Organizations, teams, members, roles managed by Better Auth organization plugin
@@ -1317,8 +1319,8 @@ export async function createStudioContextFactory(
 
     // Resolve caller connection ID: explicit header takes priority, then fall
     // back to the connectionId embedded in the mesh JWT. This ensures that
-    // management tools (e.g. EVENT_PUBLISH on _self) see the caller's
-    // connection ID even when the runtime doesn't set x-caller-id.
+    // management tools on _self see the caller's connection ID even when the
+    // runtime doesn't set x-caller-id.
     const connectionId =
       req?.headers.get("x-caller-id") ??
       authResult.user?.connectionId ??
@@ -1443,7 +1445,6 @@ export async function createStudioContextFactory(
           req?.headers.get("x-mesh-properties"),
         ),
       },
-      eventBus: config.eventBus,
       linkStatusProbe: config.linkStatusProbe,
       publishLinkControlFrame: config.publishLinkControlFrame,
       aiProviders: aiProviderFactory,

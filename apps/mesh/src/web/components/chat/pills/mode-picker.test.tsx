@@ -282,7 +282,7 @@ describe("ModePickerPure", () => {
     expect(onSelect).toHaveBeenCalledWith("local-claude-code");
   });
 
-  it("renders cloud decopilot even when agent-sandbox is not configured", () => {
+  it("drops cloud decopilot when agent-sandbox is not configured", () => {
     const { getByRole, getAllByRole } = render(
       <ModePickerPure
         mode="local-decopilot"
@@ -297,12 +297,11 @@ describe("ModePickerPure", () => {
       />,
     );
     fireEvent.click(getByRole("button", { name: /Decopilot/i }));
-    // Every runtime remains visible/selectable; errors are surfaced after the
-    // user tries to run.
+    // No agent sandbox (e.g. local/dev mode) → cloud Decopilot can't run and
+    // isn't fixable from the menu, so it's omitted. Local runtimes remain.
     const items = getAllByRole("menuitem");
     expect(items.map((i) => i.textContent)).toEqual([
-      expect.stringMatching(/Decopilot/),
-      expect.stringMatching(/Decopilot/),
+      expect.stringMatching(/Runs on your desktop/),
       expect.stringMatching(/Claude Code/),
       expect.stringMatching(/Codex/),
     ]);

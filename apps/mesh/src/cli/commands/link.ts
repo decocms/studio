@@ -16,6 +16,12 @@ import { join } from "node:path";
 import { ensureSession } from "../lib/ensure-session";
 import { startLinkDaemon, type LinkDaemonMonitor } from "../../link-daemon";
 import { formatLogLine } from "../format-log-line";
+import {
+  openLinkSandboxRegistry,
+  registryPathForDataDir,
+  type LinkSandboxRecord,
+  type LinkSandboxRegistry,
+} from "../link-sandbox-registry";
 
 export interface LinkCommandOptions {
   port?: number;
@@ -34,6 +40,8 @@ export interface LinkCommandOptions {
   banner?: boolean;
   /** Hot-reload sandbox daemons spawned by this link process. */
   hotReload?: boolean;
+  /** Prune safe stale local sandboxes before starting link. */
+  prune?: boolean;
 }
 
 /**
@@ -117,7 +125,24 @@ export async function runLinkCommand(
 
   let restoreConsole: (() => void) | undefined;
   let logFd: number | undefined;
+  let registry: LinkSandboxRegistry | undefined;
+  const closeRegistry = () => {
+    if (registry === undefined) return;
+    try {
+      registry.close();
+    } catch {
+      // already closed
+    } finally {
+      registry = undefined;
+    }
+  };
   try {
+    const sandboxRoot = join(dataDir, "sandboxes");
+    registry = openLinkSandboxRegistry({
+      path: registryPathForDataDir(dataDir),
+      managedSandboxRoot: sandboxRoot,
+    });
+
     // Login flow (may open a browser / prompt) runs with normal console.
     // Auth targets the same studio we link against.
     const session = await ensureSession({
@@ -134,6 +159,17 @@ export async function runLinkCommand(
       await assertStudioAcceptsToken(clusterBaseUrl, session.accessToken);
     }
 
+    let persistedRows: LinkSandboxRecord[] = registry.reconcile();
+    if (opts.prune) {
+      const pruneResult = registry.prune({ missing: true, merged: true });
+      if (!opts.tui) {
+        console.log(
+          `Pruned local sandboxes: removed ${pruneResult.removed.length}, skipped ${pruneResult.skipped.length}.`,
+        );
+      }
+      persistedRows = registry.reconcile();
+    }
+
     let monitor: LinkDaemonMonitor | undefined;
 
     if (opts.tui) {
@@ -148,6 +184,7 @@ export async function runLinkCommand(
         setIngress,
         setLogPath,
         setMachine,
+        setPersistedSandboxes,
       } = await import("../link-store");
 
       // link.log — the daemon's own intercepted console (cluster connection,
@@ -164,6 +201,7 @@ export async function runLinkCommand(
       logFd = openSync(logPath, "w");
       setLogPath(logPath);
 
+      setPersistedSandboxes(persistedRows);
       setClusterUrl(clusterBaseUrl);
       setCluster("connecting");
       monitor = {
@@ -178,6 +216,8 @@ export async function runLinkCommand(
       const { printBanner } = await import("../banner-art");
       printBanner(opts.version ?? "0.0.0");
     }
+
+    closeRegistry();
 
     // Standalone `deco link` isolates each sandbox daemon's output into its own
     // `<workdir>/tmp/daemon.log`. The managed/dev daemon leaves it off so its
@@ -211,5 +251,6 @@ export async function runLinkCommand(
         // already closed
       }
     }
+    closeRegistry();
   }
 }

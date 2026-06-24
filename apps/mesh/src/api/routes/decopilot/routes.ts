@@ -57,6 +57,8 @@ import {
 } from "@decocms/sandbox/provider";
 import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
+import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
+import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -718,7 +720,27 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     // Persist durable cancel flag so the ingest backstop rejects 409.
     await ctx.storage.threads.setCancelRequested(taskId, organization.id);
 
-    // Try to cancel locally first
+    // Tear down any background-tool workflows this thread started (image gen /
+    // backgrounded subtasks). They run on their own DBOS queue, so the
+    // in-memory run cancel below doesn't reach them. Non-fatal: a DBOS hiccup
+    // must not block the user-facing cancel.
+    await cancelThreadBackgroundJobs(taskId).catch((err) => {
+      console.error("[decopilot:cancel] failed to cancel background jobs", {
+        taskId,
+        err,
+      });
+    });
+
+    // Abort in-flight background work on this pod now, and fan the cancel out
+    // to every pod over NATS. Always broadcast: a background job runs on
+    // whichever pod DBOS dequeued it, so a locally-owned turn no longer implies
+    // no other pod is involved. Each pod's onCancel aborts its background
+    // controllers (`abortBackgroundJobs`) and cancels the live turn if it owns
+    // it; both are no-ops where they don't apply.
+    abortBackgroundJobs(taskId);
+    cancelBroadcast.broadcast(taskId);
+
+    // Try to cancel the live turn locally for an immediate response.
     const cancelTransitions = await runRegistry.execute({
       type: "CANCEL",
       taskId,
@@ -731,8 +753,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       return c.json({ cancelled: true });
     }
 
-    // Not on this pod — broadcast to all pods
-    cancelBroadcast.broadcast(taskId);
     cancelBroadcast.publishControlFrame(userId, {
       type: "cancel",
       runId: taskId,
@@ -881,6 +901,59 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       console.error("[decopilot:stream] Error", stringifyError(err));
+      return c.body(null, 500);
+    }
+  });
+
+  // ============================================================================
+  // Subtask Stream Endpoint — tail a backgrounded subtask's per-job subject
+  // ============================================================================
+  //
+  // A backgrounded `subtask` runs off the thread and publishes its live run to
+  // `decopilot.stream.<jobId>` (NOT the thread's subject), so the subtask card's
+  // panel can tail it without colliding with the thread's own single-writer
+  // stream. `deliverPolicy: "all"` replays the run from its start, since the
+  // panel typically opens after the subtask was kicked off. The jobId must be a
+  // `bgtool:<threadId>:…` id for THIS thread — that scoping is the authz.
+  app.get("/:org/decopilot/threads/:threadId/jobs/:jobId/stream", async (c) => {
+    try {
+      const { taskId } = await validateThreadAccess(c);
+      const jobId = c.req.param("jobId");
+      if (!jobId || !jobId.startsWith(`bgtool:${taskId}:`)) {
+        return c.body(null, 404);
+      }
+
+      const tailChunkStream = await streamBuffer.createTailStream(
+        jobId,
+        c.req.raw.signal,
+        { deliverPolicy: "all" },
+      );
+      if (!tailChunkStream) return c.body(null, 204);
+
+      const tailStream = createUIMessageStream({
+        execute: async ({ writer }) => {
+          const reader = tailChunkStream.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              writer.write(value);
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        },
+      });
+
+      return wrapWithSseKeepalive(
+        createUIMessageStreamResponse({
+          stream: tailStream,
+          consumeSseStream: consumeStream,
+        }),
+      );
+    } catch (err) {
+      if (err instanceof HTTPException) throw err;
+      console.error("[decopilot:subtask-stream] Error", stringifyError(err));
       return c.body(null, 500);
     }
   });

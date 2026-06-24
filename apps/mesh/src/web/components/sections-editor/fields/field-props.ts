@@ -1,6 +1,14 @@
 import type { LiveMeta, SchemaProperty } from "../resolve-schema";
 import type { SectionCatalogEntry } from "../section-catalog";
 
+export interface SandboxConfig {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  previewUrl?: string;
+  siteSlug?: string | null;
+}
+
 export interface FieldProps {
   schema: SchemaProperty;
   value: unknown;
@@ -22,4 +30,5 @@ export interface FieldProps {
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
+  sandbox?: SandboxConfig | null;
 }

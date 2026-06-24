@@ -43,6 +43,10 @@ import { buildCurrentContextPrompt } from "../decopilot/system-prompt";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
 import { genTitle } from "../decopilot/title-generator";
 import { stringifyError } from "../decopilot/stream-error";
+import {
+  CliSessionExpiredError,
+  isStaleSessionError,
+} from "../cli-session-error";
 import type {
   Harness,
   HarnessContext,
@@ -233,6 +237,9 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
             `[claude-code] stream error model=${sdkModelId} cwd=${cwd ?? "(default)"}:`,
             stringifyError(err),
           );
+          if (input.resumeSessionRef && isStaleSessionError(err)) {
+            throw new CliSessionExpiredError(err);
+          }
           throw err;
         }
       },

@@ -17,6 +17,14 @@
  * API instead of awaiting the launcher's exit. `unmount()` detaches the OS
  * mount and kills the child.
  *
+ * macOS staleness: an NFS mount survives the rclone process that served it, so
+ * any ungraceful exit (SIGKILL, crash, sleep) leaves a ghost mount that hangs
+ * I/O and pops the "Server connections interrupted" dialog. Two defenses live
+ * here: `mount()` force-detaches any stale mount at the path before mounting
+ * (reclaim), and the macOS mount is `soft` with a bounded `timeo` so a dead
+ * server fails fast instead of hanging forever (FUSE on Linux already does this
+ * via ENOTCONN).
+ *
  * `rclonePath` must point at a real rclone binary with mount support (the
  * Homebrew build notably lacks it). When rclone isn't available the daemon
  * should not construct this — see MountManager (mounting is then skipped).
@@ -28,6 +36,105 @@ import type { MountHandle, Mounter } from "./mount-manager";
 /** How long to wait for the mount to attach before giving up. */
 const READY_TIMEOUT_MS = 15_000;
 const READY_POLL_MS = 200;
+
+/**
+ * macOS `mount_nfs` options (passed through rclone `nfsmount --option`):
+ *  - actimeo=1: the macOS NFS client caches dir/file attributes ~5s by default,
+ *    which would mask the invalidator's freshness; 1s is cheap against a
+ *    loopback server.
+ *  - locallocks: rclone's NFS server has no lock daemon (NLM), so apps that take
+ *    file locks (sqlite, editors) would hang against it. The mount is strictly
+ *    single-client (loopback), so client-local lock semantics are exact.
+ *  - soft: return an I/O error once a request exhausts its retransmissions
+ *    instead of blocking forever. Safe here because the server is loopback —
+ *    healthy it answers in microseconds, dead it refuses the connection — so
+ *    this only ever trips when rclone is genuinely gone, turning the classic NFS
+ *    hard-mount hang (+ persistent reconnect dialog) into a fast, recoverable
+ *    error. Writes land in rclone's local VFS cache first, so a slow mesh never
+ *    makes a write slow enough to trip this.
+ *  - timeo=100 (tenths of a sec → 10s) / retrans=2: generous per-request
+ *    headroom so a legitimately slow read (first open of a large uncached file
+ *    that rclone must fetch whole from the mesh) is not killed, while still
+ *    bounding a dead-server hang to ~tens of seconds. Tuning knob: lower timeo
+ *    for snappier dead-mount recovery only if large-read tests still pass.
+ *  - nobrowse: keep the volume out of the Finder sidebar/desktop, reducing the
+ *    surface for Finder-driven reconnect prompts.
+ */
+const MAC_NFS_OPTIONS =
+  "actimeo=1,locallocks,soft,timeo=100,retrans=2,nobrowse";
+
+/**
+ * Build the full rclone argv (everything after the binary path). Pure so the
+ * option set is unit-testable without spawning rclone.
+ */
+export function buildMountArgs(opts: {
+  isMac: boolean;
+  mountPath: string;
+  /** FUSE `--allow-other` (Linux only). */
+  allowOther?: boolean;
+  readonly?: boolean;
+  rcAddr?: string;
+}): string[] {
+  const mountArgs = opts.isMac
+    ? ["nfsmount", "wd:", opts.mountPath, "--option", MAC_NFS_OPTIONS]
+    : [
+        "mount",
+        "wd:",
+        opts.mountPath,
+        ...(opts.allowOther ? ["--allow-other"] : []),
+      ];
+  const rcArgs = opts.rcAddr
+    ? ["--rc", "--rc-addr", opts.rcAddr, "--rc-no-auth"]
+    : [];
+  // Public sets: enforce read-only at the mount, and blanket-exec perms (the
+  // manifest carries no mode bits; skill helper scripts need +x).
+  const roArgs = opts.readonly ? ["--read-only", "--file-perms", "0755"] : [];
+  return [
+    ...mountArgs,
+    "--vfs-cache-mode",
+    "full",
+    // Flush closed files fast: agent outputs become chips/visible to the org
+    // ~1s after close instead of rclone's 5s default. Files written
+    // incrementally still upload after write-quiescence.
+    "--vfs-write-back",
+    "1s",
+    // Safety-net TTL if the invalidator isn't running or misses a change; the
+    // change-feed-driven vfs/refresh (invalidator.ts) is what makes external
+    // writes show up in ~1s.
+    "--dir-cache-time",
+    "10s",
+    ...rcArgs,
+    ...roArgs,
+  ];
+}
+
+/**
+ * Force-detach whatever is mounted at `mountPath` (best-effort, never throws).
+ * Used both to tear down our own mount and to reclaim a stale ghost left by a
+ * previously-killed session before mounting fresh. On a path that isn't a mount
+ * point every command exits non-zero and we simply move on.
+ */
+export function detachMount(mountPath: string, isMac: boolean): void {
+  // NFS + FUSE both unmount via `umount`; on Linux `fusermount -u` is the
+  // unprivileged path, so try it first there.
+  const cmds: string[][] = isMac
+    ? [["umount", "-f", mountPath]]
+    : [
+        ["fusermount", "-u", mountPath],
+        ["umount", mountPath],
+      ];
+  for (const cmd of cmds) {
+    // `umount -f` is the non-blocking force path, but bound it anyway: this
+    // runs on every mount (reclaim) and at shutdown, and a wedged kernel
+    // unmount must never hang the daemon.
+    const p = Bun.spawnSync(cmd, {
+      stdout: "ignore",
+      stderr: "ignore",
+      timeout: 5000,
+    });
+    if (p.exitCode === 0) break;
+  }
+}
 
 export function createRcloneMounter(
   rclonePath: string,
@@ -41,57 +148,27 @@ export function createRcloneMounter(
   const isMac = process.platform === "darwin";
   return {
     async mount({ webdavUrl, mountPath, rcAddr, readonly }) {
-      const args = isMac
-        ? // actimeo=1: the macOS NFS client caches dir/file attributes ~5s by
-          // default, which would mask the invalidator's freshness; 1s is cheap
-          // against a loopback server.
-          // locallocks: rclone's NFS server has no lock daemon (NLM), so apps
-          // that take file locks (sqlite, editors) would hang against it. The
-          // mount is strictly single-client (loopback), so client-local lock
-          // semantics are exact.
-          ["nfsmount", "wd:", mountPath, "--option", "actimeo=1,locallocks"]
-        : [
-            "mount",
-            "wd:",
-            mountPath,
-            ...(opts.allowOther ? ["--allow-other"] : []),
-          ];
-      const rcArgs = rcAddr
-        ? ["--rc", "--rc-addr", rcAddr, "--rc-no-auth"]
-        : [];
-      // Public sets: enforce read-only at the mount, and blanket-exec perms
-      // (the manifest carries no mode bits; skill helper scripts need +x).
-      const roArgs = readonly ? ["--read-only", "--file-perms", "0755"] : [];
-      const proc = Bun.spawn(
-        [
-          rclonePath,
-          ...args,
-          "--vfs-cache-mode",
-          "full",
-          // Flush closed files fast: agent outputs become chips/visible to
-          // the org ~1s after close instead of rclone's 5s default. Files
-          // written incrementally still upload after write-quiescence.
-          "--vfs-write-back",
-          "1s",
-          // Safety-net TTL if the invalidator isn't running or misses a change;
-          // the change-feed-driven vfs/refresh (invalidator.ts) is what makes
-          // external writes show up in ~1s.
-          "--dir-cache-time",
-          "10s",
-          ...rcArgs,
-          ...roArgs,
-        ],
-        {
-          env: {
-            ...process.env,
-            RCLONE_CONFIG_WD_TYPE: "webdav",
-            RCLONE_CONFIG_WD_URL: webdavUrl,
-            RCLONE_CONFIG_WD_VENDOR: "other",
-          },
-          stdout: "ignore",
-          stderr: "ignore",
+      // Reclaim: clear a stale mount from a prior killed session so we don't
+      // layer a fresh mount over a hung one (no-op on a clean path).
+      detachMount(mountPath, isMac);
+
+      const args = buildMountArgs({
+        isMac,
+        mountPath,
+        allowOther: opts.allowOther,
+        readonly,
+        rcAddr,
+      });
+      const proc = Bun.spawn([rclonePath, ...args], {
+        env: {
+          ...process.env,
+          RCLONE_CONFIG_WD_TYPE: "webdav",
+          RCLONE_CONFIG_WD_URL: webdavUrl,
+          RCLONE_CONFIG_WD_VENDOR: "other",
         },
-      );
+        stdout: "ignore",
+        stderr: "ignore",
+      });
       try {
         await waitForMount(proc, rcAddr, args[0]!, mountPath);
       } catch (err) {
@@ -152,20 +229,12 @@ function makeHandle(
   isMac: boolean,
 ): MountHandle {
   return {
+    // Surfaced so MountManager can watch for an unexpected rclone death and
+    // self-heal (reclaim + remount) before the mount goes stale.
+    exited: proc.exited,
     async unmount() {
-      // Detach the OS mount first; NFS + FUSE both unmount via `umount`, and on
-      // Linux `fusermount -u` is the unprivileged path, so try it first there.
-      const cmds: string[][] = isMac
-        ? [["umount", "-f", mountPath]]
-        : [
-            ["fusermount", "-u", mountPath],
-            ["umount", mountPath],
-          ];
-      for (const cmd of cmds) {
-        const p = Bun.spawnSync(cmd, { stdout: "ignore", stderr: "ignore" });
-        if (p.exitCode === 0) break;
-      }
-      // Then stop the foreground rclone child.
+      // Detach the OS mount first, then stop the foreground rclone child.
+      detachMount(mountPath, isMac);
       try {
         proc.kill();
       } catch {

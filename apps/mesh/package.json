@@ -1,6 +1,6 @@
 {
   "name": "decocms",
-  "version": "3.37.9",
+  "version": "3.53.0",
   "description": "Deco CMS — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "repository": {
@@ -55,6 +55,7 @@
     "@ai-sdk/openai": "^3.0.73",
     "@anthropic-ai/sdk": "^0.105.0",
     "@aws-sdk/client-s3": "^3.1013.0",
+    "@aws-sdk/client-sts": "^3.1013.0",
     "@aws-sdk/lib-storage": "^3.1013.0",
     "@aws-sdk/s3-request-presigner": "^3.1013.0",
     "@clickhouse/client": "^1.8.1",
@@ -136,7 +137,6 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@tiptap/core": "3.20.2",
-    "@tiptap/extension-mention": "3.20.2",
     "@tiptap/extension-placeholder": "3.20.2",
     "@tiptap/pm": "3.20.2",
     "@tiptap/react": "3.20.2",
@@ -162,7 +162,6 @@
     "jose": "^6.0.11",
     "lucide-react": "^0.468.0",
     "marked": "^15.0.6",
-    "mesh-plugin-workflows": "workspace:*",
     "nanoid": "^5.1.6",
     "pg": "^8.16.3",
     "prettier": "^3.4.2",
@@ -180,8 +179,7 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.1",
     "vite-tsconfig-paths": "^5.1.4",
-    "zod": "^4.0.0",
-    "zustand": "^5.0.9"
+    "zod": "^4.0.0"
   },
   "homepage": "https://github.com/decocms/studio",
   "keywords": [

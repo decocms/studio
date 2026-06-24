@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { sleep } from "@decocms/std";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   type InvalidatorFactory,
@@ -68,20 +69,39 @@ describe("parseOrgFsConfig", () => {
 function fakeMounter(opts: { failVolumes?: Set<string> } = {}) {
   const calls: { webdavUrl: string; mountPath: string }[] = [];
   const unmounted: string[] = [];
+  // mountPath -> resolver for that mount's `exited`, so a test can simulate an
+  // unexpected rclone death with crash(mountPath).
+  const exiters = new Map<string, (code: number) => void>();
   const mounter: Mounter = {
     async mount({ webdavUrl, mountPath }) {
       calls.push({ webdavUrl, mountPath });
       // Fail volumes whose mount path ends with a flagged segment.
       for (const v of opts.failVolumes ?? [])
         if (mountPath.endsWith(`/${v}`)) throw new Error(`forced fail ${v}`);
+      let resolveExit!: (code: number) => void;
+      const exited = new Promise<number>((res) => {
+        resolveExit = res;
+      });
+      exiters.set(mountPath, resolveExit);
       return {
+        exited,
         async unmount() {
           unmounted.push(mountPath);
+          resolveExit(0); // mirrors the real handle: unmount resolves exited
         },
       };
     },
   };
-  return { mounter, calls, unmounted };
+  /** Simulate an unexpected rclone death for the mount at `mountPath`. */
+  const crash = (mountPath: string) => exiters.get(mountPath)?.(1);
+  return { mounter, calls, unmounted, crash };
+}
+
+/** Poll until `cond` holds (or throw). For the fire-and-forget death watcher. */
+async function waitUntil(cond: () => boolean, timeoutMs = 1000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!cond() && Date.now() < deadline) await sleep(5);
+  if (!cond()) throw new Error("condition not met in time");
 }
 
 const config = (
@@ -187,6 +207,43 @@ describe("MountManager", () => {
     await mm.start(config([{ volume: "evil", path: "../../etc" }]), appRoot);
     expect(calls.length).toBe(0);
     expect(inv.started).toEqual([]);
+    expect(mm.list()).toEqual([]);
+  });
+
+  it("self-heals: an unexpected rclone exit reclaims + remounts once", async () => {
+    const { mounter, calls, unmounted, crash } = fakeMounter();
+    const inv = fakeInvalidators();
+    const mm = new MountManager(mounter, () => {}, inv.factory);
+    await mm.start(config([{ volume: "skills", path: "skills" }]), appRoot);
+    const path = join(appRoot, "org/skills");
+    expect(calls.length).toBe(1);
+
+    // rclone crashes → reclaim the stale mount, then remount once.
+    crash(path);
+    await waitUntil(() => calls.length === 2);
+    expect(unmounted).toContain(path);
+    expect(mm.list().map((m) => m.volume)).toEqual(["skills"]);
+    // a fresh invalidator for the remount (started twice total: orig + remount)
+    expect(inv.started.filter((s) => s.volume === "skills").length).toBe(2);
+
+    // a SECOND crash does not remount again (one-shot self-heal).
+    crash(path);
+    await waitUntil(() => mm.list().length === 0);
+    expect(calls.length).toBe(2);
+
+    await mm.stop();
+  });
+
+  it("does not remount when the exit comes from a deliberate stop()", async () => {
+    const { mounter, calls } = fakeMounter();
+    const inv = fakeInvalidators();
+    const mm = new MountManager(mounter, () => {}, inv.factory);
+    await mm.start(config([{ volume: "skills", path: "skills" }]), appRoot);
+    expect(calls.length).toBe(1);
+
+    await mm.stop(); // unmount() resolves exited, but `closing` blocks the watcher
+    await sleep(20); // let any stray watcher microtask run
+    expect(calls.length).toBe(1); // no remount
     expect(mm.list()).toEqual([]);
   });
 });

@@ -59,10 +59,14 @@ const ALL_TOOL_NAMES = [
   "BRAND_CONTEXT_EXTRACT",
   "BRAND_GET",
   "BRAND_LIST",
-  "ORGANIZATION_DOMAIN_GET",
-  "ORGANIZATION_DOMAIN_SET",
+  "ORGANIZATION_DOMAIN_LIST",
+  "ORGANIZATION_DOMAIN_ADD",
   "ORGANIZATION_DOMAIN_UPDATE",
-  "ORGANIZATION_DOMAIN_CLEAR",
+  "ORGANIZATION_DOMAIN_VERIFY",
+  "ORGANIZATION_DOMAIN_REMOVE",
+  "ORGANIZATION_JOIN_REQUEST_LIST",
+  "ORGANIZATION_JOIN_REQUEST_APPROVE",
+  "ORGANIZATION_JOIN_REQUEST_DENY",
   "ORGANIZATION_MEMBER_ADD",
   "ORGANIZATION_MEMBER_REMOVE",
   "ORGANIZATION_MEMBER_LIST",
@@ -92,14 +96,6 @@ const ALL_TOOL_NAMES = [
   "API_KEY_LIST",
   "API_KEY_UPDATE",
   "API_KEY_DELETE",
-  // Event Bus tools
-  "EVENT_PUBLISH",
-  "EVENT_SUBSCRIBE",
-  "EVENT_UNSUBSCRIBE",
-  "EVENT_CANCEL",
-  "EVENT_ACK",
-  "EVENT_SUBSCRIPTION_LIST",
-  "EVENT_SYNC_SUBSCRIPTIONS",
   // User tools
   "USER_GET",
   // Thread tools
@@ -109,6 +105,8 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_THREADS_UPDATE",
   "COLLECTION_THREADS_DELETE",
   "COLLECTION_THREAD_MESSAGES_LIST",
+  "THREAD_BACKGROUND_TOOL_START",
+  "THREAD_SUBTASK_DELIVER",
   // Tag tools
   "TAGS_LIST",
   "TAGS_CREATE",
@@ -200,8 +198,6 @@ const ALL_TOOL_NAMES = [
   "REGISTRY_MONITOR_CONNECTION_LIST",
   "REGISTRY_MONITOR_CONNECTION_SYNC",
   "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
-  "REGISTRY_MONITOR_SCHEDULE_SET",
-  "REGISTRY_MONITOR_SCHEDULE_CANCEL",
 
   // VM tools (app-only)
   "SANDBOX_START",
@@ -336,24 +332,46 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
-    name: "ORGANIZATION_DOMAIN_GET",
-    description: "Get organization domain claim",
+    name: "ORGANIZATION_DOMAIN_LIST",
+    description: "List organization domain claims",
     category: "Organizations",
   },
   {
-    name: "ORGANIZATION_DOMAIN_SET",
-    description: "Set organization domain claim",
+    name: "ORGANIZATION_DOMAIN_ADD",
+    description: "Claim an email domain for the organization",
     category: "Organizations",
   },
   {
     name: "ORGANIZATION_DOMAIN_UPDATE",
-    description: "Update organization domain settings",
+    description: "Set a domain's join mode",
     category: "Organizations",
   },
   {
-    name: "ORGANIZATION_DOMAIN_CLEAR",
-    description: "Clear organization domain claim",
+    name: "ORGANIZATION_DOMAIN_VERIFY",
+    description: "Verify a domain via DNS TXT record",
     category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_DOMAIN_REMOVE",
+    description: "Remove an organization domain claim",
+    category: "Organizations",
+    dangerous: true,
+  },
+  {
+    name: "ORGANIZATION_JOIN_REQUEST_LIST",
+    description: "List pending requests to join the organization",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_JOIN_REQUEST_APPROVE",
+    description: "Approve a request to join the organization",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_JOIN_REQUEST_DENY",
+    description: "Deny a request to join the organization",
+    category: "Organizations",
+    dangerous: true,
   },
   {
     name: "ORGANIZATION_MEMBER_ADD",
@@ -483,42 +501,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "API Keys",
     dangerous: true,
   },
-  // Event Bus tools
-  {
-    name: "EVENT_PUBLISH",
-    description: "Publish events",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_SUBSCRIBE",
-    description: "Subscribe to events",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_UNSUBSCRIBE",
-    description: "Unsubscribe from events",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_CANCEL",
-    description: "Cancel recurring events",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_ACK",
-    description: "Acknowledge event delivery",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_SUBSCRIPTION_LIST",
-    description: "List event subscriptions",
-    category: "Event Bus",
-  },
-  {
-    name: "EVENT_SYNC_SUBSCRIPTIONS",
-    description: "Sync subscriptions to desired state",
-    category: "Event Bus",
-  },
   // User tools
   {
     name: "USER_GET",
@@ -555,6 +537,16 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "COLLECTION_THREAD_MESSAGES_LIST",
     description: "List thread messages",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_BACKGROUND_TOOL_START",
+    description: "Enqueue a slow built-in tool as a background job",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_SUBTASK_DELIVER",
+    description: "Deliver a backgrounded subtask's result to its thread",
     category: "Threads",
   },
   // Tag tools
@@ -957,16 +949,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Registry",
   },
   {
-    name: "REGISTRY_MONITOR_SCHEDULE_SET",
-    description: "Set monitor schedule",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_SCHEDULE_CANCEL",
-    description: "Cancel monitor schedule",
-    category: "Registry",
-  },
-  {
     name: "SANDBOX_START",
     description: "Start a sandbox VM with dev server preview",
     category: "VM",
@@ -1093,6 +1075,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_THREADS_UPDATE",
       "COLLECTION_THREADS_DELETE",
       "COLLECTION_THREAD_MESSAGES_LIST",
+      // Background a slow built-in on your own thread — gated per-handler by
+      // the run fence token, same trust boundary as the chat turn itself.
+      "THREAD_BACKGROUND_TOOL_START",
+      "THREAD_SUBTASK_DELIVER",
     ],
   },
   // Organization
@@ -1116,10 +1102,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "BRAND_CONTEXT_EXTRACT",
       "BRAND_GET",
       "BRAND_LIST",
-      "ORGANIZATION_DOMAIN_GET",
-      "ORGANIZATION_DOMAIN_SET",
+      "ORGANIZATION_DOMAIN_LIST",
+      "ORGANIZATION_DOMAIN_ADD",
       "ORGANIZATION_DOMAIN_UPDATE",
-      "ORGANIZATION_DOMAIN_CLEAR",
+      "ORGANIZATION_DOMAIN_VERIFY",
+      "ORGANIZATION_DOMAIN_REMOVE",
     ],
   },
   {
@@ -1132,6 +1119,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_MEMBER_ADD",
       "ORGANIZATION_MEMBER_REMOVE",
       "ORGANIZATION_MEMBER_UPDATE_ROLE",
+      // Approving/denying join requests adds members, and the UI lives on the
+      // members page — keep it under members:manage.
+      "ORGANIZATION_JOIN_REQUEST_LIST",
+      "ORGANIZATION_JOIN_REQUEST_APPROVE",
+      "ORGANIZATION_JOIN_REQUEST_DENY",
     ],
     dangerous: true,
   },
@@ -1293,8 +1285,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "REGISTRY_MONITOR_CONNECTION_LIST",
       "REGISTRY_MONITOR_CONNECTION_SYNC",
       "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
-      "REGISTRY_MONITOR_SCHEDULE_SET",
-      "REGISTRY_MONITOR_SCHEDULE_CANCEL",
     ],
   },
   // Developer
@@ -1308,21 +1298,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "API_KEY_LIST",
       "API_KEY_UPDATE",
       "API_KEY_DELETE",
-    ],
-  },
-  {
-    id: "event-bus:use",
-    label: "Use event bus",
-    description: "Publish events and manage subscriptions",
-    section: "Developer",
-    tools: [
-      "EVENT_PUBLISH",
-      "EVENT_SUBSCRIBE",
-      "EVENT_UNSUBSCRIBE",
-      "EVENT_CANCEL",
-      "EVENT_ACK",
-      "EVENT_SUBSCRIPTION_LIST",
-      "EVENT_SYNC_SUBSCRIPTIONS",
     ],
   },
   {

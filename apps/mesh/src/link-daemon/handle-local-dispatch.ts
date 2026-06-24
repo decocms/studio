@@ -18,13 +18,13 @@
  *      `sandboxDaemonToken` and returns a `text/event-stream` SSE body of
  *      `ui-message-chunk` / `error` / `done` events.
  *
- *   2. Relay the SSE body as an NDJSON stream of `RelayLine`s:
- *        POST ${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/chunks
- *      with `x-fence-token: ${runFenceToken}`, `x-relay-from: <fromSeq>`
- *      (resend start, always 1), `content-type: application/x-ndjson`, and
- *      `Authorization: Bearer <cluster token>`, as a `duplex:"half"`
- *      streaming upload. The cluster replies `{ ok, lastSeq }` once the body
- *      ends.
+ *   2. Relay the SSE body to JetStream as seq-keyed stream envelopes: each
+ *      `RelayLine` is published to `decopilot.stream.<runId>` over the daemon's
+ *      active NATS connection (`{ p: chunk }` for content — error events are
+ *      converted to error chunks — and `{ done, finalSeq }` for the terminal
+ *      marker) with deterministic `Nats-Msg-Id`s so an at-least-once resend
+ *      dedupes. The durable projector is the sole consumer that materializes
+ *      parts/title/status from that log.
  *
  * ⚠️ ORG SLUG vs ID NOTE:
  *   WorkItem carries `orgId` (the DB UUID) and `orgSlug` (the URL-safe slug).
@@ -42,14 +42,33 @@
  *
  * ⚠️ SHIPPED DAEMON — needs human review before merge.
  */
+import { jetstream } from "@nats-io/jetstream";
+import type { NatsConnection } from "@nats-io/nats-core";
 import type { WorkItem } from "../links/link-work-item";
+import { relayDispatchSSEAsChunkStream } from "./chunk-relay";
 import {
-  type RelayPostResult,
-  relayDispatchSSEAsChunkStream,
-} from "./chunk-relay";
+  createDirectNatsPublisher,
+  type DirectNatsPublisher,
+  publishRelayBodyToNats,
+} from "./direct-nats-publisher";
 import type { Outbox } from "./outbox";
 
 const DISPATCH_START_TIMEOUT_MS = 15_000;
+
+/**
+ * Resolve the CURRENT live NATS connection for a relay publish, throwing a
+ * labeled error if none is available. The getter is re-invoked per publish
+ * attempt so an in-flight run survives a tunnel-session renewal (which recycles
+ * the connection).
+ */
+function requireLiveNc(nc: NatsConnection | null): NatsConnection {
+  if (!nc) {
+    throw new Error(
+      "[handleLocalDispatch] no live NATS connection for relay publish",
+    );
+  }
+  return nc;
+}
 
 /**
  * Relay retry budget, env-tunable for ops without a rebuild (undefined → the
@@ -65,12 +84,12 @@ const RELAY_MAX_TIMEOUT_MS =
 
 /**
  * Relay a synthesized terminal failure for a work item that cannot run
- * (expired credentials, etc.) over the normal /chunks channel, so the
+ * (expired credentials, etc.) by publishing directly to JetStream, so the
  * cluster kernel persists the failure and the gate unblocks.
  *
- * Posts exactly two NDJSON relay lines:
- *   seq 1 — error event with `code` + `message`
- *   seq 2 — done event
+ * Publishes exactly:
+ *   seq 1 — error event (converted to `{p:{type:"error",errorText}}`)
+ *   done  — `{done:true,finalSeq:1}`
  *
  * Security note: `code` and `message` are informational strings — they must
  * never contain the fence token, API keys, or any other secret from the work
@@ -78,39 +97,28 @@ const RELAY_MAX_TIMEOUT_MS =
  */
 export async function relayWorkItemFailure(
   work: WorkItem,
-  deps: Pick<
-    LocalDispatchDeps,
-    "clusterBaseUrl" | "getClusterToken" | "fetchImpl" | "signal"
-  >,
+  deps: {
+    getNatsConnection: () => NatsConnection | null;
+    relayPublisher?: DirectNatsPublisher;
+  },
   code: string,
   message: string,
 ): Promise<void> {
-  const fetcher = deps.fetchImpl ?? fetch;
-  const clusterToken = await deps.getClusterToken();
-  const body =
-    JSON.stringify({ seq: 1, event: { type: "error", code, message } }) +
-    "\n" +
-    JSON.stringify({ seq: 2, event: { type: "done" } }) +
-    "\n";
-  const res = await fetcher(
-    `${deps.clusterBaseUrl}/api/${work.orgSlug}/links/runs/${work.runId}/chunks`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${clusterToken}`,
-        "x-fence-token": work.runFenceToken,
-        "content-type": "application/x-ndjson",
-        "x-relay-from": "1",
-      },
-      body,
-      signal: deps.signal,
-    },
-  );
-  if (!res.ok) {
-    throw new Error(
-      `[relayWorkItemFailure] cluster rejected failure relay (${res.status})`,
-    );
-  }
+  const publisher =
+    deps.relayPublisher ??
+    createDirectNatsPublisher({
+      js: jetstream(requireLiveNc(deps.getNatsConnection())),
+    });
+  await publisher.publishLine({
+    runId: work.runId,
+    fenceToken: work.runFenceToken,
+    line: { seq: 1, event: { type: "error", code, message } },
+  });
+  await publisher.publishDone({
+    runId: work.runId,
+    fenceToken: work.runFenceToken,
+    finalSeq: 1,
+  });
 }
 
 export interface LocalDispatchDeps {
@@ -126,16 +134,6 @@ export interface LocalDispatchDeps {
    */
   sandboxDaemonToken: string;
   /**
-   * Cluster origin, e.g. "https://studio.deco.cx". The relay upload is sent
-   * to `${clusterBaseUrl}/api/${orgSlug}/links/runs/${runId}/chunks`.
-   */
-  clusterBaseUrl: string;
-  /**
-   * Returns the bearer token for the cluster chunks endpoint. Called once
-   * per dispatch so that a refreshed token is used.
-   */
-  getClusterToken: () => Promise<string> | string;
-  /**
    * Optional override for the harness id sent in the dispatch POST body.
    * When omitted, derived from `work.harnessInput` (see module note).
    */
@@ -146,8 +144,8 @@ export interface LocalDispatchDeps {
    */
   fetchImpl?: typeof fetch;
   /**
-   * Abort signal propagated to the sandbox dispatch fetch, the chunk relay,
-   * and every cluster relay fetch.
+   * Abort signal propagated to the sandbox dispatch fetch and the chunk relay
+   * (which now publishes to JetStream rather than POSTing to the cluster).
    */
   signal?: AbortSignal;
   /**
@@ -176,6 +174,15 @@ export interface LocalDispatchDeps {
     maxTimeout?: number;
     jitter?: number;
   };
+  /**
+   * Returns the CURRENT live NATS connection. Re-sourced per publish attempt
+   * so an in-flight run survives a tunnel-session renewal (which recycles the
+   * connection). The chunk relay and synthesized failure relay both publish
+   * directly to JetStream built from this connection.
+   */
+  getNatsConnection: () => NatsConnection | null;
+  /** Test seam. Production omits it → built from `jetstream(getNatsConnection())`. */
+  relayPublisher?: DirectNatsPublisher;
 }
 
 /**
@@ -255,20 +262,29 @@ export async function handleLocalDispatch(
     }, dispatchStartTimeoutMs);
   }
 
+  // `timeout: false` is a Bun fetch option (not in the standard RequestInit).
+  // Bun default-times-out a long-lived stream, but the harness SSE legitimately
+  // idles for minutes during a slow tool call or deep reasoning — without this
+  // the body read trips `TimeoutError: The operation timed out` and the whole
+  // turn dies as `local_dispatch_failed` (observed on both codex AND claude-code).
+  // A genuine hang is still bounded by the run abort signal + the cluster
+  // reaper. Matches the agent-sandbox client (provider/agent-sandbox/client.ts).
+  const dispatchInit: RequestInit & { timeout?: boolean } = {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${deps.sandboxDaemonToken}`,
+      "content-type": "application/json",
+      accept: "text/event-stream",
+    },
+    body: dispatchBody,
+    signal: dispatchSignal,
+    timeout: false,
+  };
   let dispatchRes: Response;
   try {
     dispatchRes = await fetcher(
       `${deps.sandboxDispatchUrl}/_sandbox/dispatch`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${deps.sandboxDaemonToken}`,
-          "content-type": "application/json",
-          accept: "text/event-stream",
-        },
-        body: dispatchBody,
-        signal: dispatchSignal,
-      },
+      dispatchInit as RequestInit,
     );
   } catch (err) {
     if (timeoutController.signal.aborted && !deps.signal?.aborted) {
@@ -314,12 +330,10 @@ export async function handleLocalDispatch(
     throw new Error("[handleLocalDispatch] dispatch response body is null");
   }
 
-  // ── Step 2: relay raw chunk lines to the cluster /chunks endpoint ──────
+  // ── Step 2: relay raw chunk lines directly to JetStream ────────────────
   // Retry/backoff and full-prefix resend live inside the chunk relay; this
-  // post impl performs exactly one streaming upload attempt.
-  const clusterToken = await deps.getClusterToken();
-  const chunksUrl = `${deps.clusterBaseUrl}/api/${work.orgSlug}/links/runs/${work.runId}/chunks`;
-
+  // post impl publishes the buffered prefix to NATS (JetStream dedupes by
+  // msgID, so resending the whole prefix on reconnect is safe).
   await relayDispatchSSEAsChunkStream({
     dispatchBody: dispatchRes.body,
     runId: work.runId,
@@ -332,76 +346,24 @@ export async function handleLocalDispatch(
       maxAttempts: RELAY_MAX_ATTEMPTS,
       maxTimeout: RELAY_MAX_TIMEOUT_MS,
     },
-    post: async (body, fromSeq) => {
-      // Bun-specific fetch options absent from the DOM RequestInit typings:
-      //  - `duplex: "half"` — required by the Fetch spec for streaming request
-      //    bodies; supported by Node/Bun/undici. Verified on Bun 1.3.14: the
-      //    upload is delivered incrementally.
-      //  - `verbose` — env-gated (DECO_LINK_FETCH_VERBOSE=1). Prints Bun's
-      //    HTTP/connection transcript to stderr so a "socket connection closed
-      //    unexpectedly" reveals its real cause (HTTP/2 GOAWAY / idle timeout /
-      //    RST) on the next relay reset. Noisy (fires on every POST) — keep off
-      //    by default; flip it on only while hunting a relay-reset.
-      const init: RequestInit & { duplex: "half"; verbose?: boolean } = {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${clusterToken}`,
-          "x-fence-token": work.runFenceToken,
-          "content-type": "application/x-ndjson",
-          "x-relay-from": String(fromSeq),
-        },
+    post: async (body, _fromSeq, onDurablyPublished) => {
+      // Build the publisher PER attempt so a retry after a tunnel-session
+      // renewal re-sources the NEW live connection (the prior one is closed).
+      const publisher =
+        deps.relayPublisher ??
+        createDirectNatsPublisher({
+          js: jetstream(requireLiveNc(deps.getNatsConnection())),
+        });
+      const { lastSeq } = await publishRelayBodyToNats({
         body,
-        duplex: "half",
-        signal: deps.signal,
-        ...(process.env.DECO_LINK_FETCH_VERBOSE === "1"
-          ? { verbose: true }
-          : {}),
-      };
-      let res: Response;
-      try {
-        res = await fetcher(chunksUrl, init);
-      } catch (err) {
-        // The streaming POST to the cluster threw (e.g. "socket connection
-        // closed unexpectedly"). This is per-ATTEMPT and factual (the POST to
-        // chunksUrl errored), but it can ALSO fire as downstream fallout when
-        // the SANDBOX leg failed first — the errored request body propagates
-        // here. chunk-relay's `[relay-diag] ROOT=...` line is the definitive
-        // leg. Re-thrown so chunk-relay's retry/backoff still applies.
-        const e = err as {
-          name?: string;
-          message?: string;
-          code?: string;
-          errno?: number;
-          cause?: unknown;
-        };
-        const causeStr =
-          e?.cause instanceof Error ? e.cause.message : String(e?.cause ?? "?");
-        console.error(
-          `[relay-diag] cluster-POST attempt errored runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} name=${e?.name ?? typeof err} code=${e?.code ?? "?"} errno=${e?.errno ?? "?"} cause=${causeStr} msg=${e?.message ?? String(err)}`,
-        );
-        throw err;
-      }
-      if (!res.ok) {
-        // The cluster explains the rejection in the response body (4xx
-        // fence/cancel reason, 5xx message). Read it — capped — so a relay
-        // reset is diagnosable beyond the bare status. Reading is safe here:
-        // the body is otherwise discarded when we throw.
-        let body = "";
-        try {
-          body = (await res.text()).slice(0, 500);
-        } catch {
-          body = "<unreadable>";
-        }
-        console.error(
-          `[relay-diag] CLUSTER-RELAY POST non-ok runId=${work.runId} fromSeq=${fromSeq} url=${chunksUrl} status=${res.status} body=${JSON.stringify(body)}`,
-        );
-        const err = new Error(
-          `[handleLocalDispatch] relay failed (${res.status})`,
-        );
-        (err as { status?: number }).status = res.status;
-        throw err;
-      }
-      return (await res.json()) as RelayPostResult;
+        runId: work.runId,
+        fenceToken: work.runFenceToken,
+        publisher,
+        // Each publishLine awaits its JetStream PubAck, so a reported seq is
+        // durable — let the relay drop that prefix from the outbox.
+        onPublished: onDurablyPublished,
+      });
+      return { ok: true, lastSeq };
     },
   });
 }

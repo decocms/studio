@@ -251,6 +251,7 @@ export function ArrayField({
   previewBaseUrl,
   onAddSectionItem,
   onRequestAddSection,
+  sandbox,
 }: FieldProps) {
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
@@ -364,6 +365,22 @@ export function ArrayField({
     const next = [...items];
     next[index] = val;
     onChange(next);
+
+    // When editing the currently selected item, the display label may change
+    // (e.g. editing the "alt" or "name" field that drives getArrayItemLabel).
+    // Update the breadcrumb so resolveArrayItemSelection keeps matching.
+    if (index === selectedIndex && selectedIndex !== null) {
+      const oldLabel = itemLabel(items[index], index);
+      const newLabel = getArrayItemLabel(val, index, itemSchema);
+      if (oldLabel !== newLabel) {
+        const crumbIndex = findBreadcrumbLabelIndex(breadcrumbPath, oldLabel);
+        if (crumbIndex >= 0) {
+          const updatedBreadcrumb = [...breadcrumbPath];
+          updatedBreadcrumb[crumbIndex] = newLabel;
+          onBreadcrumbChange?.(updatedBreadcrumb);
+        }
+      }
+    }
   };
 
   const sensors = useSensors(
@@ -456,6 +473,7 @@ export function ArrayField({
             previewBaseUrl={previewBaseUrl}
             onAddSectionItem={onAddSectionItem}
             onRequestAddSection={onRequestAddSection}
+            sandbox={sandbox}
           />
         ) : editorSchema ? (
           renderField({
@@ -474,6 +492,7 @@ export function ArrayField({
             previewBaseUrl,
             onAddSectionItem,
             onRequestAddSection,
+            sandbox,
           })
         ) : null}
       </div>
