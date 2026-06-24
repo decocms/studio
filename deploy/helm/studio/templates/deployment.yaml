@@ -44,6 +44,13 @@ spec:
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        # Front-door selector label(s) for the NLB. Applied to the combo
+        # (nginx + API) pods ONLY — deliberately NOT in worker-deployment.yaml —
+        # so labelling the front door never registers the worker as a public
+        # NLB target. See nginx.frontDoorLabels in values.yaml.
+        {{- with .Values.nginx.frontDoorLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       {{- if .Values.terminationGracePeriodSeconds }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
