@@ -38,7 +38,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "3.48.2",
+      "version": "3.53.0",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -211,11 +211,29 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "0.0.0",
+      "version": "0.0.1",
+      "dependencies": {
+        "@decocms/harness": "workspace:*",
+        "@decocms/sandbox": "workspace:*",
+        "@decocms/std": "workspace:*",
+        "@decocms/tunnel": "workspace:*",
+        "@modelcontextprotocol/sdk": "1.29.0",
+        "@nats-io/jetstream": "3.4.0",
+        "@nats-io/nats-core": "3.4.0",
+        "@nats-io/transport-node": "3.4.0",
+        "@playwright/test": "^1.58.2",
+        "pg": "^8.16.3",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.1",
+        "@types/pg": "^8.15.6",
+        "typescript": "^5.9.3",
+      },
     },
     "packages/harness": {
       "name": "@decocms/harness",
-      "version": "1.9.0",
+      "version": "1.9.2",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.85",
         "@ai-sdk/google": "^3.0.83",
@@ -236,7 +254,7 @@
     },
     "packages/mcp-utils": {
       "name": "@decocms/mcp-utils",
-      "version": "1.0.9",
+      "version": "1.0.10",
       "dependencies": {
         "@decocms/std": "^0.1.0",
         "ajv": "^8.20.0",
@@ -253,7 +271,7 @@
     },
     "packages/mesh-sdk": {
       "name": "@decocms/mesh-sdk",
-      "version": "1.11.0",
+      "version": "1.12.0",
       "dependencies": {
         "@decocms/bindings": "^1.1.1",
         "@decocms/mcp-utils": "workspace:*",
@@ -293,7 +311,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.3.0",
+      "version": "1.3.1",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/std": "workspace:*",
@@ -303,6 +321,7 @@
         "zod": "^4.0.0",
       },
       "devDependencies": {
+        "@nats-io/jetstream": "3.4.0",
         "@types/bun": "latest",
         "typescript": "^5.8.3",
       },
@@ -3402,6 +3421,8 @@
 
     "@decocms/better-auth/better-call": ["better-call@1.1.5", "", { "dependencies": { "@better-auth/utils": "^0.3.0", "@better-fetch/fetch": "^1.1.4", "rou3": "^0.7.10", "set-cookie-parser": "^2.7.1" }, "peerDependencies": { "zod": "^4.0.0" }, "optionalPeers": ["zod"] }, "sha512-nQJ3S87v6wApbDwbZ++FrQiSiVxWvZdjaO+2v6lZJAG2WWggkB2CziUDjPciz3eAt9TqfRursIQMZIcpkBnvlw=="],
 
+    "@decocms/e2e/@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
+
     "@decocms/runtime/@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
 
     "@decocms/sandbox/@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
@@ -3865,6 +3886,8 @@
     "@better-auth/sso/better-auth/better-call": ["better-call@1.1.4", "", { "dependencies": { "@better-auth/utils": "^0.3.0", "@better-fetch/fetch": "^1.1.4", "rou3": "^0.7.10", "set-cookie-parser": "^2.7.1" }, "peerDependencies": { "zod": "^4.0.0" }, "optionalPeers": ["zod"] }, "sha512-NJouLY6IVKv0nDuFoc6FcbKDFzEnmgMNofC9F60Mwx1Ecm7X6/Ecyoe5b+JSVZ42F/0n46/M89gbYP1ZCVv8xQ=="],
 
     "@decocms/better-auth/better-call/set-cookie-parser": ["set-cookie-parser@2.7.2", "", {}, "sha512-oeM1lpU/UvhTxw+g3cIfxXHyJRc/uidd3yK1P242gzHds0udQBYzs3y8j4gCCW+ZJ7ad0yctld8RYO+bdurlvw=="],
+
+    "@decocms/e2e/@types/bun/bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 
     "@decocms/runtime/@types/bun/bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 

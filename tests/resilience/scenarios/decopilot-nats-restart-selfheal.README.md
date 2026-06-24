@@ -80,6 +80,6 @@ The bodies of `bootstrapSession` / `wireMockProvider` / `createTestAgent` /
 
 The *durable write/read correctness* — `foldParts` (C5), the storage adapter
 (C1/C2/C5/R14/R18), the v2 read-path branch — is covered by co-located unit /
-integration tests and `apps/mesh/e2e/tests/decopilot-parts-readpath.spec.ts`.
+integration tests and `packages/e2e/tests/decopilot-parts-readpath.spec.ts`.
 This resilience scenario adds the missing piece: the **end-to-end self-heal
 across a real NATS fault**, which only the container harness can prove.

@@ -25,7 +25,6 @@ const ALLOWED_EXACT = new Set([
   "@playwright/test",
   "pg",
   "zod",
-  "@modelcontextprotocol/sdk",
   "@nats-io/jetstream",
   "@nats-io/transport-node",
   "@nats-io/nats-core",
@@ -103,6 +102,12 @@ const banE2eAppImportsRule = {
       });
     };
 
+    // Known gap: a type-position `import("../../apps/mesh/src/...").Foo`
+    // (TSImportType) is NOT caught — oxlint's experimental JS-plugin traversal
+    // doesn't dispatch named visitors for TS type nodes (verified against
+    // oxlint 1.23.0). The risk is low: a type-only import is erased at runtime
+    // and creates no dependency, and the alias forms (`@/`, `@deco/*`) ARE
+    // caught by tsc (paths:{}). Revisit if oxlint adds type-node visitors.
     return {
       ImportDeclaration: checkSource,
       ExportNamedDeclaration: checkSource,

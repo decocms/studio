@@ -23,9 +23,11 @@ import { signUp } from "../fixtures/auth";
 import { OnboardingPage } from "../pages/onboarding";
 import { expect, test } from "../fixtures/test";
 
-/** Unique per-spec-run domain. Avoids collisions across re-runs and
- *  across parallel test files (Playwright config pins workers: 1, but
- *  the suffix keeps cleanup simple even if that changes). */
+/** Unique per-spec-run domain. The Playwright config runs fully parallel
+ *  (workers: CI ? 4 : undefined — NOT pinned to 1), so the `Date.now()` suffix
+ *  is what keeps this domain-keyed state from colliding across parallel
+ *  workers/files and re-runs. Email domain is the one global namespace the
+ *  suite shares; every other assertion is tenant-scoped. */
 const TEST_DOMAIN = `acme-e2e-${Date.now()}.test`;
 const ORG_A_SLUG = `e2e-acme-a-${Date.now()}`;
 const ORG_B_SLUG = `e2e-acme-b-${Date.now()}`;

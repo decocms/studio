@@ -31,6 +31,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@nats-io/jetstream": "3.4.0",
     "@types/bun": "latest",
     "typescript": "^5.8.3"
   }

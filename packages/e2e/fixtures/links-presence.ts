@@ -12,15 +12,23 @@
 import { readFileSync } from "node:fs";
 import { sleep } from "@decocms/std";
 import { serve, type TunnelServer } from "@decocms/tunnel";
+import { encodeSubjectToken } from "@decocms/tunnel/subject";
 import { expect, type APIRequestContext } from "@playwright/test";
 import { connect } from "@nats-io/transport-node";
 import { credsAuthenticator, type NatsConnection } from "@nats-io/nats-core";
-import { buildUserTunnelHostname } from "../../src/links/tunnel-host";
-import type { WorkItem } from "../../src/links/link-work-item";
-import { workItemSchema } from "../../src/links/link-work-item";
-import type { Capability } from "../../src/links/protocol";
+import type { Capability } from "@decocms/sandbox/dispatch";
+import { workItemSchema, type WorkItem } from "./work-item-schema";
 
 const DEFAULT_NATS_URL = "nats://localhost:4222";
+
+/**
+ * Inlined contract: the tunnel hostname the cluster's status probe addresses.
+ * Mirrors the app's `src/links/tunnel-host.ts` — the format `user-<token>.link`
+ * IS the wire contract this fake daemon must serve under.
+ */
+function buildUserTunnelHostname(userId: string): string {
+  return `user-${encodeSubjectToken(userId)}.link`;
+}
 const DEFAULT_WORK_ITEM_TIMEOUT_MS = 35_000;
 
 type WorkItemMatcher = (item: WorkItem) => boolean;
