@@ -34,3 +34,27 @@ export function canAssignRole(
   if (callerRole === "admin") return targetRole !== "owner";
   return false;
 }
+
+/**
+ * Validate that the caller's role is allowed to create/update API keys with
+ * the requested permissions. Owners and admins can grant any permissions
+ * (they bypass all checks at runtime anyway). Regular users cannot grant
+ * wildcard ("*") permissions — they may only grant specific tool names
+ * they themselves hold.
+ */
+export function validateApiKeyPermissions(
+  callerRole: string | undefined,
+  permissions: Record<string, string[]> | undefined,
+): void {
+  if (!permissions) return;
+  // Owners and admins bypass — they already have full access at runtime
+  if (callerRole === "owner" || callerRole === "admin") return;
+
+  for (const [resource, actions] of Object.entries(permissions)) {
+    if (actions.includes("*")) {
+      throw new Error(
+        `Insufficient privileges to grant wildcard permissions on "${resource}". Only admins and owners can create wildcard API keys.`,
+      );
+    }
+  }
+}

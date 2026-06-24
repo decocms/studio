@@ -8,6 +8,7 @@
 import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
 import { getUserId, requireAuth } from "../../core/studio-context";
+import { validateApiKeyPermissions } from "../../auth/roles";
 import { ApiKeyCreateInputSchema, ApiKeyCreateOutputSchema } from "./schema";
 
 export const API_KEY_CREATE = defineTool({
@@ -31,6 +32,10 @@ export const API_KEY_CREATE = defineTool({
 
     // Check authorization for this tool
     await ctx.access.check();
+
+    // Validate the caller is allowed to grant the requested permissions.
+    // Regular users cannot create wildcard API keys — only owners/admins can.
+    validateApiKeyPermissions(ctx.auth.user?.role, input.permissions);
 
     // Create the API key via Better Auth with organization context
     // This ensures the API key is scoped to the current organization

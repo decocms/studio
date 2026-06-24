@@ -7,6 +7,7 @@
 
 import { defineTool } from "../../core/define-tool";
 import { getUserId, requireAuth } from "../../core/studio-context";
+import { validateApiKeyPermissions } from "../../auth/roles";
 import { ApiKeyUpdateInputSchema, ApiKeyUpdateOutputSchema } from "./schema";
 
 // Type for API key metadata with organization
@@ -65,6 +66,10 @@ export const API_KEY_UPDATE = defineTool({
     if (keyOrgId !== currentOrgId) {
       throw new Error("Cannot update API key from another organization");
     }
+
+    // Validate the caller is allowed to grant the requested permissions.
+    // Regular users cannot escalate to wildcard API keys — only owners/admins can.
+    validateApiKeyPermissions(ctx.auth.user?.role, input.permissions);
 
     // Update the API key via Better Auth
     // Preserve the organization in metadata to prevent org change
