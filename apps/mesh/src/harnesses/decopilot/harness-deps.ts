@@ -159,6 +159,8 @@ export function buildClusterEnvironmentTools(args: {
         provider: modelRuntime.thinking.provider,
         imageProvider:
           modelRuntime.image?.provider ?? modelRuntime.thinking.provider,
+        webSearchProvider:
+          modelRuntime.webSearch?.provider ?? modelRuntime.thinking.provider,
         deepResearchProvider:
           modelRuntime.deepResearch?.provider ?? modelRuntime.thinking.provider,
         // Hosted cluster runs get a DBOS-backed background dispatcher so slow

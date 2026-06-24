@@ -76,6 +76,7 @@ export interface ModelRuntime {
   fast?: ModelRuntimeSlot;
   smart?: ModelRuntimeSlot;
   image?: ModelRuntimeSlot;
+  webSearch?: ModelRuntimeSlot;
   deepResearch?: ModelRuntimeSlot;
 }
 
@@ -113,7 +114,7 @@ export function buildModelRuntimeFromSources(
   const thinkingProvider = createProvider(thinkingSource);
 
   const optionalSlot = (
-    slot: "fast" | "smart" | "image" | "deepResearch",
+    slot: "fast" | "smart" | "image" | "webSearch" | "deepResearch",
   ): ModelRuntimeSlot | undefined => {
     const model = sources.models[slot];
     if (!model) return undefined;
@@ -135,12 +136,14 @@ export function buildModelRuntimeFromSources(
   const fast = optionalSlot("fast");
   const smart = optionalSlot("smart");
   const image = optionalSlot("image");
+  const webSearch = optionalSlot("webSearch");
   const deepResearch = optionalSlot("deepResearch");
   return {
     thinking: { model: sources.models.thinking, provider: thinkingProvider },
     ...(fast ? { fast } : {}),
     ...(smart ? { smart } : {}),
     ...(image ? { image } : {}),
+    ...(webSearch ? { webSearch } : {}),
     ...(deepResearch ? { deepResearch } : {}),
   };
 }

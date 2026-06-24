@@ -131,23 +131,47 @@ export const IMAGE_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
 };
 
 /**
- * Preferred web research models per provider.
- * Falls back to first model whose id includes "sonar" or "deepresearch".
+ * Preferred quick web-search models per provider — fast, streaming search
+ * (e.g. Perplexity Sonar). Falls back to first non-deep model whose id
+ * includes "sonar". Deliberately excludes deep-research models: the quick
+ * `web_search` tool forces the streaming path, and pinning a deep/async model
+ * here would make every quick search launch a slow research job.
  */
-export const WEB_RESEARCH_MODEL_PREFERENCES: Partial<
+export const WEB_SEARCH_MODEL_PREFERENCES: Partial<
   Record<ProviderId, string[]>
 > = {
-  openrouter: [
-    "perplexity/sonar",
-    "perplexity/sonar-pro",
-    "perplexity/deep-research",
-  ],
-  deco: [
-    "perplexity/sonar",
-    "perplexity/sonar-pro",
-    "perplexity/deep-research",
-  ],
+  openrouter: ["perplexity/sonar", "perplexity/sonar-pro"],
+  deco: ["perplexity/sonar", "perplexity/sonar-pro"],
 };
+
+/**
+ * Preferred deep-research models per provider — slow, multi-source reports
+ * (e.g. Perplexity deep-research, Gemini Deep Research async). Falls back to
+ * the first model whose id includes "deepresearch" or whose catalog entry
+ * advertises `asyncResearch`.
+ */
+export const DEEP_RESEARCH_MODEL_PREFERENCES: Partial<
+  Record<ProviderId, string[]>
+> = {
+  openrouter: ["perplexity/deep-research", "perplexity/sonar-pro"],
+  deco: ["perplexity/deep-research", "perplexity/sonar-pro"],
+};
+
+/** True when a model id reads as a deep-research model (substring match). */
+function isDeepResearchModelId(modelId: string): boolean {
+  return modelId
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .includes("deepresearch");
+}
+
+/** True when a model id reads as a Perplexity Sonar (quick search) model. */
+function isSonarModelId(modelId: string): boolean {
+  return modelId
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .includes("sonar");
+}
 
 export interface SimpleModeModelSlot {
   keyId: string;
@@ -162,7 +186,10 @@ export interface SimpleModeDefaults {
     thinking: SimpleModeModelSlot | null;
   };
   image: SimpleModeModelSlot | null;
-  webResearch: SimpleModeModelSlot | null;
+  /** Quick web search (Sonar). */
+  webSearch: SimpleModeModelSlot | null;
+  /** Deep research (deep-research / async). */
+  deepResearch: SimpleModeModelSlot | null;
 }
 
 function resolveSlot(
@@ -202,7 +229,8 @@ export function pickSimpleModeDefaults(
   const result: SimpleModeDefaults = {
     chat: { fast: null, smart: null, thinking: null },
     image: null,
-    webResearch: null,
+    webSearch: null,
+    deepResearch: null,
   };
 
   for (const key of keys) {
@@ -238,15 +266,26 @@ export function pickSimpleModeDefaults(
         (m) => m.capabilities?.includes("image") === true,
       );
     }
-    if (!result.webResearch) {
-      result.webResearch = resolveSlot(
+    if (!result.webSearch) {
+      result.webSearch = resolveSlot(
         models,
         key.id,
-        WEB_RESEARCH_MODEL_PREFERENCES[providerId] ?? [],
-        (m) => {
-          const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
-          return n.includes("sonar") || n.includes("deepresearch");
-        },
+        WEB_SEARCH_MODEL_PREFERENCES[providerId] ?? [],
+        // Quick search fallback: a Sonar model that is NOT a deep-research one.
+        (m) => isSonarModelId(m.modelId) && !isDeepResearchModelId(m.modelId),
+      );
+    }
+    if (!result.deepResearch) {
+      result.deepResearch = resolveSlot(
+        models,
+        key.id,
+        DEEP_RESEARCH_MODEL_PREFERENCES[providerId] ?? [],
+        // Deep fallback: an async-research model or one whose id reads "deep
+        // research"; sonar-pro is an acceptable last resort.
+        (m) =>
+          m.asyncResearch === true ||
+          isDeepResearchModelId(m.modelId) ||
+          isSonarModelId(m.modelId),
       );
     }
   }

@@ -1,5 +1,10 @@
 import { type Kysely } from "kysely";
-import type { SimpleModeTier } from "../src/tools/organization/schema";
+
+// Frozen against this migration's historical output shape. At the time 077 ran,
+// `SimpleModeTier` was fast/smart/thinking/image/web_research. The live type has
+// since split `web_research` into `web_search`/`deep_research` (migration 118),
+// so we pin the tier union locally instead of importing the moving type.
+type SimpleModeTier = "fast" | "smart" | "thinking" | "image" | "web_research";
 
 type LegacySlot = { keyId: string; modelId: string; title?: string };
 

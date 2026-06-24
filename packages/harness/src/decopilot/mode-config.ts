@@ -7,6 +7,7 @@ export const CHAT_MODES = [
   "default",
   "plan",
   "web-search",
+  "deep-research",
   "gen-image",
 ] as const;
 
@@ -16,12 +17,13 @@ export interface ResolvedModeConfig {
   /** When true, use plan-mode hard-block + propose_plan + enable_tool gating */
   isPlanMode: boolean;
   /** First step only — forces this tool name when present in the tool set */
-  forcedFirstStepTool: "web_search" | "generate_image" | null;
+  forcedFirstStepTool: "web_search" | "deep_research" | "generate_image" | null;
   /** Injected when mode is plan */
   planPrompt: string | null;
   /**
-   * When mode is web-search and web_search is registered — behavior hint for the model.
-   * Omitted for other modes even if the tool exists.
+   * When mode is web-search or deep-research (and the matching tool is
+   * registered) — behavior hint for the model. Omitted for other modes
+   * even if the tool exists.
    */
   webSearchInstructionPrompt: string | null;
 }
@@ -48,10 +50,13 @@ function buildPlanPrompt(isCliAgent: boolean): string {
 
 const WEB_SEARCH_INSTRUCTION_PROMPT =
   "<web-search>\n" +
-  "The web_search tool streams its research result directly to the user in real time. " +
-  "After a search completes, do NOT repeat, summarize, or restate the research content — " +
-  "the user can already see it. Simply confirm the search succeeded and highlight key " +
+  "The web_search and deep_research tools stream their result directly to the user in " +
+  "real time. After one completes, do NOT repeat, summarize, or restate the content — " +
+  "the user can already see it. Simply confirm it succeeded and highlight key " +
   "takeaways in one or two sentences. Only elaborate if the user explicitly asks.\n\n" +
+  "Pick the right tool for the task: use `web_search` for quick, up-to-date lookups and " +
+  "fact-checking where a fast answer suffices; use `deep_research` for in-depth, " +
+  "multi-source reports where thoroughness matters more than latency.\n\n" +
   "For large results, the tool result contains a `uri` (mesh-storage:…) instead of " +
   "inline content. To re-access the full research in a later turn, call " +
   "`read_resource` with that URI.\n" +
@@ -69,15 +74,19 @@ export function resolveModeConfig(
   const forcedFirstStepTool =
     mode === "web-search"
       ? "web_search"
-      : mode === "gen-image"
-        ? "generate_image"
-        : null;
+      : mode === "deep-research"
+        ? "deep_research"
+        : mode === "gen-image"
+          ? "generate_image"
+          : null;
 
   const planPrompt =
     mode === "plan" ? buildPlanPrompt(options.isCliAgent) : null;
 
   const webSearchInstructionPrompt =
-    mode === "web-search" ? WEB_SEARCH_INSTRUCTION_PROMPT : null;
+    mode === "web-search" || mode === "deep-research"
+      ? WEB_SEARCH_INSTRUCTION_PROMPT
+      : null;
 
   return {
     isPlanMode,

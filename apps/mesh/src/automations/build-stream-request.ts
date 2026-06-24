@@ -32,6 +32,7 @@ export interface ResolvedAutomationModel {
   credentialId: string;
   thinking: ModelShape;
   image?: ModelShape & { credentialId: string };
+  webSearch?: ModelShape & { credentialId: string };
   deepResearch?: ModelShape & { credentialId: string };
 }
 
@@ -75,6 +76,7 @@ export function buildStreamRequest(
       credentialId: resolved.credentialId,
       thinking: resolved.thinking,
       ...(resolved.image ? { image: resolved.image } : {}),
+      ...(resolved.webSearch ? { webSearch: resolved.webSearch } : {}),
       ...(resolved.deepResearch ? { deepResearch: resolved.deepResearch } : {}),
     },
     // Caller guarantees `automation.kind === "agent"` (the workflow only

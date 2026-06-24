@@ -60,8 +60,10 @@ function makeWebSearchTool(args: {
 }) {
   const researchJob = createClusterResearchJob({
     provider: args.provider,
-    deepResearchModelInfo: DEEP_RESEARCH_MODEL,
+    modelInfo: DEEP_RESEARCH_MODEL,
     ctx: args.ctx,
+    mode: "deep",
+    toolName: "web_search",
   });
   return createWebSearchTool(args.writer, {
     researchJob,

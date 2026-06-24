@@ -58,7 +58,7 @@ export const StreamRequestSchema = z
         "Pinned on first message. Subsequent messages ignore this field.",
       ),
     mode: z
-      .enum(["default", "plan", "web-search", "gen-image"])
+      .enum(["default", "plan", "web-search", "deep-research", "gen-image"])
       .default("default"),
   })
   .strict();

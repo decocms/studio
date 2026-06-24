@@ -557,6 +557,7 @@ function MessagePart({
         />
       );
     case "tool-web_search":
+    case "tool-deep_research":
       return (
         <WebSearchPart
           part={part}
