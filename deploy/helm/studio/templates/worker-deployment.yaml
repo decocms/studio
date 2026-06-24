@@ -41,7 +41,7 @@ spec:
         # if vmagent's kubernetes-pods job scrapes this pod too — same block as
         # the API deployment.
         prometheus.io/scrape: "true"
-        prometheus.io/port: {{ .Values.service.targetPort | default 3000 | quote }}
+        prometheus.io/port: {{ .Values.configMap.meshConfig.PORT | default "3000" | quote }}
         prometheus.io/path: {{ .Values.metrics.path | quote }}
         {{- end }}
         {{- with .Values.podAnnotations }}
@@ -84,7 +84,7 @@ spec:
           {{- end }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.targetPort | default 3000 }}
+              containerPort: {{ .Values.configMap.meshConfig.PORT | default "3000" | int }}
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -93,8 +93,14 @@ spec:
                 name: {{ include "chart-deco-studio.secretName" . }}
           env:
             # Role: dequeue only the agent/automation run queues.
+            - name: PORT
+              value: {{ .Values.configMap.meshConfig.PORT | default "3000" | quote }}
             - name: MESH_DISPATCH_ROLE
               value: worker
+            {{- if .Values.terminationGracePeriodSeconds }}
+            - name: SHUTDOWN_GRACE_SECONDS
+              value: {{ .Values.terminationGracePeriodSeconds | quote }}
+            {{- end }}
             {{- if .Values.tunnel.nats.clusterCreds.enabled }}
             - name: NATS_CREDS
               value: {{ include "chart-deco-studio.natsClusterCredsPath" . | quote }}
