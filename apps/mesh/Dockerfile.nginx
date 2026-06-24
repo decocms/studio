@@ -1,0 +1,19 @@
+FROM oven/bun:1-slim AS bundle
+
+RUN groupadd -g 1001 bunapp && \
+    useradd -u 1001 -g bunapp -m -s /bin/sh bunuser && \
+    mkdir -p /app/apps/mesh && \
+    chown -R bunuser:bunapp /app
+
+USER bunuser
+WORKDIR /app/apps/mesh
+
+COPY decocms.tgz /tmp/decocms.tgz
+RUN bun add /tmp/decocms.tgz
+
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+
+COPY --from=bundle /app/apps/mesh/node_modules/decocms/dist/client/ /usr/share/nginx/html/
+COPY deploy/helm/studio/files/api-nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 8080
