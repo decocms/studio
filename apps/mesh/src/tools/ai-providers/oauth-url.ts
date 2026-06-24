@@ -19,13 +19,6 @@ function isLocalhostAlias(hostname: string): boolean {
   );
 }
 
-function normalizedPort(url: URL): string {
-  if (url.port) return url.port;
-  if (url.protocol === "http:") return "80";
-  if (url.protocol === "https:") return "443";
-  return "";
-}
-
 function isAllowedCallbackOrigin(callbackUrl: string): boolean {
   const settings = getSettings();
   const base = settings.baseUrl ?? `http://localhost:${settings.port}`;
@@ -36,7 +29,6 @@ function isAllowedCallbackOrigin(callbackUrl: string): boolean {
 
   return (
     callback.protocol === baseUrl.protocol &&
-    normalizedPort(callback) === normalizedPort(baseUrl) &&
     isLocalhostAlias(callback.hostname) &&
     isLocalhostAlias(baseUrl.hostname)
   );
