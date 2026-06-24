@@ -144,12 +144,27 @@ export async function publishRelayBodyToNats(input: {
   publisher: DirectNatsPublisher;
   now?: () => number;
   checkpointDebounceMs?: number;
+  /**
+   * Reports the highest CONTENT seq durably published so far (each `publishLine`
+   * awaits its JetStream PubAck before `finalSeq` advances, so everything up to
+   * this value is durable). The relay uses it to drop the confirmed prefix from
+   * the outbox. Throttled to the checkpoint cadence (+ a final report) so it
+   * does not trigger a truncation per line.
+   */
+  onPublished?: (seq: number) => void;
 }): Promise<PublishRelayBodyResult> {
   const now = input.now ?? Date.now;
   const debounceMs = input.checkpointDebounceMs ?? CHECKPOINT_DEBOUNCE_MS;
   let maxWireSeq = 0;
   let finalSeq = 0; // highest CONTENT seq (chunks + converted error), for done
+  let reportedSeq = 0;
   let lastCheckpointAt = now(); // first checkpoint fires one debounce window in
+  const reportPublished = (): void => {
+    if (input.onPublished && finalSeq > reportedSeq) {
+      reportedSeq = finalSeq;
+      input.onPublished(finalSeq);
+    }
+  };
   for await (const value of ndjsonValues(input.body)) {
     const parsed = relayLineSchema.safeParse(value);
     if (!parsed.success) continue; // skip blank/garbage lines (heartbeats already skipped)
@@ -169,6 +184,7 @@ export async function publishRelayBodyToNats(input: {
           fenceToken: input.fenceToken,
           headSeq: finalSeq,
         });
+        reportPublished();
       }
     }
   }
@@ -179,5 +195,6 @@ export async function publishRelayBodyToNats(input: {
       finalSeq,
     });
   }
+  reportPublished();
   return { lastSeq: maxWireSeq };
 }

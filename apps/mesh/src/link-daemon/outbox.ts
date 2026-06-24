@@ -24,11 +24,19 @@ import type { OutboxLane } from "./outbox-lane";
 import { assertBunRuntime } from "./outbox-runtime";
 
 /**
- * Hard cap on the unacked outbox, per-run AND per-daemon (spec §5.1). On hit
- * the run fails loudly — the on-disk successor to today's in-memory
- * `RELAY_BUFFER_MAX_BYTES` 64 MiB loud-fail contract.
+ * Hard cap on the UNACKED outbox, per-run AND per-daemon (spec §5.1). On hit the
+ * run fails loudly instead of ballooning disk.
+ *
+ * With rolling ackSeq truncation (the relay drops each line once the sink
+ * confirms it durable), the outbox only ever holds the in-flight window — lines
+ * the pump has buffered but the publisher hasn't confirmed yet — so this is now
+ * a backstop for a stalled publisher, not the per-run size limit it used to be.
+ * The old 64 MiB value capped the WHOLE run (terminal-only truncation) and was
+ * too small for long/verbose agent runs; default bumped to 512 MiB and made
+ * env-tunable (`DECO_LINK_MAX_OUTBOX_BYTES`, bytes) for ops without a rebuild.
  */
-export const MAX_OUTBOX_BYTES = 64 * 1024 * 1024;
+export const MAX_OUTBOX_BYTES =
+  Number(process.env.DECO_LINK_MAX_OUTBOX_BYTES) || 512 * 1024 * 1024;
 
 export interface OutboxAppend {
   runId: string;
@@ -86,6 +94,15 @@ export interface Outbox {
     fenceToken: string;
     ackSeq: number;
   }): void;
+  /**
+   * Boot-time sweep: drop ALL rows and reclaim the file. A run can't survive a
+   * daemon restart (its sandbox + harness die with it), so any rows present at
+   * daemon start are from a dead prior session — keeping them only risks wedging
+   * the new session at MAX_OUTBOX_BYTES (the leak that accumulated 11 days of
+   * failed runs in the field). Called once at daemon boot. Within a session the
+   * outbox still buffers normally for resend-on-reconnect.
+   */
+  clear(): void;
   journalMode(): string;
   close(): void;
 }
@@ -184,6 +201,17 @@ export function openOutbox(opts: OpenOutboxOptions): Outbox {
     },
     truncateUpToSeq(scope) {
       truncateUpToStmt.run(scope.runId, scope.fenceToken, scope.ackSeq);
+    },
+    clear() {
+      // DELETE un-wedges (the cap is on SUM(byte_length)); VACUUM reclaims the
+      // file's high-water-marked pages and is best-effort (a locked/full disk
+      // must not block daemon boot — the DELETE already did the load-bearing work).
+      db.exec("DELETE FROM outbox");
+      try {
+        db.exec("VACUUM");
+      } catch {
+        // best-effort
+      }
     },
     journalMode() {
       const row = db

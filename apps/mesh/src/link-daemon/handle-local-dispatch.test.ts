@@ -682,7 +682,7 @@ describe("handleLocalDispatch", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("survives a daemon crash: the injected file outbox holds the unacked prefix", async () => {
+  it("truncates a terminally-failed run's rows from the injected file outbox (no leak)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hld-crash-"));
     const outbox = openOutbox({ path: join(dir, "ob.sqlite") });
 
@@ -696,9 +696,10 @@ describe("handleLocalDispatch", () => {
       throw new Error(`Unexpected fetch to ${url}`);
     };
 
-    // The relay publish always fails transiently — the run never reaches a
-    // terminal ack, so the prefix stays durable. If deps.outbox were not
-    // plumbed through, the injected file outbox would be empty here.
+    // The relay publish always fails — the run terminally fails after the retry
+    // budget. The injected file outbox is still exercised (deps.outbox is
+    // plumbed through), but the failed run's rows are dropped on the way out
+    // rather than leaking durably.
     const failingPublisher = {
       publishLine: async () => {
         throw new Error("nats down");
@@ -726,8 +727,9 @@ describe("handleLocalDispatch", () => {
       fenceToken: FENCE_TOKEN,
       fromSeq: 1,
     });
-    // 7 chunk lines + the synthesized terminal done = 8.
-    expect(rows.map((r) => r.wireSeq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    // Terminally failed → the relay truncated the run's rows, even from the
+    // durable file. No leak survives to wedge a future session.
+    expect(rows).toEqual([]);
     reopened.close();
     rmSync(dir, { recursive: true, force: true });
   });
