@@ -75,6 +75,33 @@ type Resolved =
   | { ok: true; ctx: StudioContext; fs: OrgFs }
   | { ok: false; res: Response };
 
+/**
+ * Stream file bytes with the right content-type and, for member-authored HTML
+ * (deck previews, generated pages), a sandbox CSP so the top-level document
+ * runs with an opaque origin — its scripts can't make credentialed same-origin
+ * calls. allow-modals keeps window.print() working for the deck PDF-export
+ * path. Public files revalidate (no shared caching past an unpublish); private
+ * files stay uncacheable.
+ */
+function byteResponse(
+  c: Ctx,
+  bytes: Uint8Array,
+  path: string,
+  isPublic: boolean,
+): Response {
+  const contentType = detectContentType(path);
+  const headers: Record<string, string> = {
+    "Content-Type": contentType,
+    "Cache-Control": isPublic
+      ? "public, max-age=0, must-revalidate"
+      : "private, max-age=0",
+  };
+  if (contentType.startsWith("text/html")) {
+    headers["Content-Security-Policy"] = "sandbox allow-scripts allow-modals";
+  }
+  return c.body(Buffer.from(bytes), 200, headers);
+}
+
 /** Translate an OrgFs error into an explicit JSON response (never thrown). */
 function fsErrorResponse(c: Ctx, err: unknown): Response {
   if (err instanceof OrgFsQuotaError)
@@ -275,7 +302,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       MAX_RECENT_LIMIT,
     );
     try {
-      return c.json({ entries: await ctx.orgFs.recent(limit) });
+      return c.json({
+        entries: await ctx.orgFs.recentWithEffectivePublic(limit),
+      });
     } catch (err) {
       return fsErrorResponse(c, err);
     }
@@ -290,8 +319,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const volume = c.req.param("volume");
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
+    const path = c.req.query("path") ?? "";
     try {
-      const entries = await r.fs.listDir(volume, c.req.query("path") ?? "");
+      const entries = await r.fs.listDir(volume, path);
       const dirs = entries.filter((e) => e.kind === "dir");
       const skillMds = dirs.length
         ? await r.fs.filesExist(
@@ -299,12 +329,17 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
             dirs.map((d) => `${d.path}/SKILL.md`),
           )
         : new Set<string>();
+      // Children of a published folder inherit public — one query for the
+      // whole listing, OR'd with each entry's own flag.
+      const inherit = await r.fs.childrenInheritPublic(volume, path);
       return c.json({
-        entries: entries.map((e) =>
-          e.kind === "dir" && skillMds.has(`${e.path}/SKILL.md`)
-            ? { ...e, hasSkill: true }
-            : e,
-        ),
+        entries: entries.map((e) => ({
+          ...e,
+          ...(e.kind === "dir" && skillMds.has(`${e.path}/SKILL.md`)
+            ? { hasSkill: true }
+            : {}),
+          effectivePublic: e.readPublic || inherit,
+        })),
       });
     } catch (err) {
       return fsErrorResponse(c, err);
@@ -319,7 +354,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     try {
       const entry = await r.fs.stat(volume, c.req.query("path") ?? "");
       if (!entry) return c.json({ error: "Not found" }, 404);
-      return c.json({ entry });
+      const effectivePublic =
+        entry.readPublic || (await r.fs.inheritsPublic(volume, entry.path));
+      return c.json({ entry: { ...entry, effectivePublic } });
     } catch (err) {
       return fsErrorResponse(c, err);
     }
@@ -327,32 +364,52 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
 
   // Read a file: `?presign=1` returns a presigned URL (the mount's byte path);
   // otherwise the bytes are streamed through mesh (convenient for the UI/dev).
+  //
+  // Public fast-path: a file flagged `read_public` streams to ANYONE — no auth,
+  // no membership. resolveOrgFromPath binds ctx.orgFs to the path-resolved org
+  // even for anonymous / non-member callers and lets them reach this route (its
+  // public-read carve-out), so the same proxy URL the org uses works for the
+  // open internet once a file is published. `?presign` stays member-only:
+  // presigned URLs bypass mesh and aren't part of the share surface. `public-*`
+  // skill volumes are excluded — they're a separate, member-gated mechanism.
   app.get("/:volume/read", async (c) => {
     const volume = c.req.param("volume");
+    const path = c.req.query("path") ?? "";
+    const ctx = c.get("meshContext");
+
+    if (
+      !c.req.query("presign") &&
+      ctx.organization?.id &&
+      ctx.orgFs &&
+      isValidVolume(volume) &&
+      !isPublicVolume(volume)
+    ) {
+      // Own flag OR inherited from a published ancestor folder. A failure
+      // probing visibility falls through to the authed read, never 500s.
+      const publiclyReadable = await ctx.orgFs
+        .isPubliclyReadable(volume, path)
+        .catch(() => false);
+      if (publiclyReadable) {
+        try {
+          return byteResponse(
+            c,
+            await ctx.orgFs.read(volume, path),
+            path,
+            true,
+          );
+        } catch (err) {
+          return fsErrorResponse(c, err);
+        }
+      }
+    }
+
     const r = await resolve(c, volume, "ORG_FS_READ");
     if (!r.ok) return r.res;
-    const path = c.req.query("path") ?? "";
     try {
       if (c.req.query("presign")) {
         return c.json({ url: await r.fs.presignRead(volume, path) });
       }
-      const bytes = await r.fs.read(volume, path);
-      const contentType = detectContentType(path);
-      const headers: Record<string, string> = {
-        "Content-Type": contentType,
-        "Cache-Control": "private, max-age=0",
-      };
-      // Member-authored HTML (deck previews, generated pages) renders in
-      // sandboxed iframes AND can be opened top-level ("open in new tab",
-      // PDF export). CSP-sandbox the response so the top-level document
-      // also runs with an opaque origin — its scripts can't make
-      // credentialed same-origin calls. allow-modals keeps window.print()
-      // working for the deck PDF-export path.
-      if (contentType.startsWith("text/html")) {
-        headers["Content-Security-Policy"] =
-          "sandbox allow-scripts allow-modals";
-      }
-      return c.body(Buffer.from(bytes), 200, headers);
+      return byteResponse(c, await r.fs.read(volume, path), path, false);
     } catch (err) {
       return fsErrorResponse(c, err);
     }
@@ -501,6 +558,39 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
         });
         notifyOrgFsChange(getConnection(), r.ctx.organization!.id, volume);
         return c.json({ ok: true });
+      } catch (err) {
+        return fsErrorResponse(c, err);
+      }
+    },
+  );
+
+  // Toggle an entry's public-read flag. Body: { public: boolean }. Works on a
+  // file (publishes it) or a dir (publishes its whole subtree — /read inherits
+  // from public ancestor dirs). Gated on ORG_FS_WRITE — you can publish what
+  // you can write — and rejected on read-only `public-*` volumes by resolve().
+  // No `seq` bump: visibility is metadata, not content.
+  app.post(
+    "/:volume/public",
+    bodyLimit({
+      maxSize: MAX_JSON_BODY_BYTES,
+      onError: (c) => c.json({ error: "Request body too large" }, 413),
+    }),
+    async (c) => {
+      const volume = c.req.param("volume");
+      const r = await resolve(c, volume, "ORG_FS_WRITE");
+      if (!r.ok) return r.res;
+      const path = c.req.query("path") ?? "";
+      const body = (await c.req.json().catch(() => null)) as {
+        public?: unknown;
+      } | null;
+      if (!body || typeof body.public !== "boolean") {
+        return c.json({ error: "Body must be { public: boolean }" }, 400);
+      }
+      try {
+        const entry = await r.fs.setReadPublic(volume, path, body.public, {
+          actor: r.ctx.auth!.user!.id,
+        });
+        return c.json({ entry });
       } catch (err) {
         return fsErrorResponse(c, err);
       }

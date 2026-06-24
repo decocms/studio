@@ -23,6 +23,11 @@ export interface OrgFsEntry {
   contentHash?: string | null;
   /** Dir follows the Claude Code skill format (contains SKILL.md). */
   hasSkill?: boolean;
+  /** This entry's own public flag (served to anyone with the link). */
+  readPublic?: boolean;
+  /** Public via own flag OR a published ancestor folder (inherited). What the
+   *  UI should signal; `readPublic && !effectivePublic` never happens. */
+  effectivePublic?: boolean;
 }
 
 export interface OrgFsUsage {
@@ -241,6 +246,60 @@ export function useOrgFsWriteText(volume: string) {
         },
       );
       return ((await res.json()) as { entry: OrgFsEntry }).entry;
+    },
+  });
+}
+
+/**
+ * Toggle a file's public-read flag — share to anyone with the link, or revoke.
+ * Optimistically flips the cached `stat` so the Share toggle reacts instantly,
+ * then revalidates (rolling back on error).
+ */
+export function useOrgFsSetPublic(volume: string) {
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      path: string;
+      public: boolean;
+    }): Promise<OrgFsEntry> => {
+      const res = await fsFetch(
+        fsUrl(org.slug, volume, "public", { path: input.path }),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ public: input.public }),
+        },
+      );
+      return ((await res.json()) as { entry: OrgFsEntry }).entry;
+    },
+    onMutate: async (input) => {
+      const key = KEYS.orgFsStat(org.id, volume, input.path);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<OrgFsEntry | null>(key);
+      // Flip effectivePublic too: with only readPublic updated, unpublishing
+      // leaves effectivePublic stale-true, so the dialog briefly reads as
+      // inherited-public (switch snaps back on). The refetch corrects the rare
+      // case where a published ancestor still covers it.
+      queryClient.setQueryData<OrgFsEntry | null>(key, (old) =>
+        old
+          ? { ...old, readPublic: input.public, effectivePublic: input.public }
+          : old,
+      );
+      return { key, previous };
+    },
+    onError: (_err, _input, ctx) => {
+      if (ctx) queryClient.setQueryData(ctx.key, ctx.previous);
+    },
+    onSettled: (_data, _err, input) => {
+      queryClient.invalidateQueries({
+        queryKey: KEYS.orgFsStat(org.id, volume, input.path),
+      });
+      // Refresh the browser listings + recent feed so public badges re-render.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.orgFsVolume(org.id, volume),
+      });
+      queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
     },
   });
 }

@@ -20,6 +20,8 @@ export interface OrgFsEntry {
   updatedAt: string;
   /** Chat/run that last wrote this file; null when not tied to a dispatch. */
   threadId: string | null;
+  /** When true, the `/read` proxy serves this file to anyone (no auth). */
+  readPublic: boolean;
 }
 
 type OrgFsEntryRow = {
@@ -37,6 +39,7 @@ type OrgFsEntryRow = {
   updated_by: string;
   updated_at: Date | string;
   thread_id: string | null;
+  read_public: boolean;
 };
 
 function toIso(value: Date | string | null): string | null {
@@ -60,6 +63,7 @@ function rowToEntry(row: OrgFsEntryRow): OrgFsEntry {
     updatedBy: row.updated_by,
     updatedAt: toIso(row.updated_at) ?? "",
     threadId: row.thread_id,
+    readPublic: row.read_public,
   };
 }
 
@@ -78,6 +82,7 @@ const COLUMNS = [
   "updated_by",
   "updated_at",
   "thread_id",
+  "read_public",
 ] as const satisfies readonly (keyof OrgFsEntryTable)[];
 
 /** Bump `seq` to the next value of the global sequence on every write. */
@@ -131,6 +136,11 @@ export class OrgFsEntryStorage {
           updated_by: params.actor,
           updated_at: now,
           seq: NEXT_SEQ,
+          // Reviving a tombstone (delete + recreate at the same path) starts
+          // private — a regenerated file must not silently re-expose itself.
+          // An in-place overwrite of a LIVE row keeps its current visibility
+          // (editing a published deck stays published).
+          read_public: sql<boolean>`case when org_fs_entry.deleted_at is not null then false else org_fs_entry.read_public end`,
           // Keep the existing thread stamp when this write isn't thread-tied
           // (e.g. the mount's vfs write-back echoes the deck-buffer's bytes
           // with no thread) so the fast-path provenance isn't nulled out.
@@ -187,6 +197,12 @@ export class OrgFsEntryStorage {
             updated_by: params.actor,
             updated_at: now,
             seq: NEXT_SEQ,
+            // Reviving a tombstone starts private; a no-op put on a LIVE dir
+            // must keep its current flag (a published folder stays published
+            // when a child is written under it). The `.where` above is an ON
+            // CONFLICT index-predicate, NOT an update guard, so this set fires
+            // for live dirs too — the CASE is what actually gates the reset.
+            read_public: sql<boolean>`case when org_fs_entry.deleted_at is not null then false else org_fs_entry.read_public end`,
           }),
       )
       .execute();
@@ -351,6 +367,87 @@ export class OrgFsEntryStorage {
         ]),
       )
       .execute();
+  }
+
+  /**
+   * Set an entry's public-read flag. Works on files and dirs: a public dir
+   * publishes its whole subtree (the read route inherits from public ancestor
+   * dirs). Returns the updated entry, or null if no live entry exists at the
+   * path. Deliberately does NOT bump `seq`: visibility is metadata, not
+   * content, so the change feed (mount invalidation) stays quiet — only
+   * `updated_by`/`updated_at` move, recording who toggled it.
+   */
+  async setReadPublic(params: {
+    organizationId: string;
+    volume: string;
+    path: string;
+    readPublic: boolean;
+    actor: string;
+  }): Promise<OrgFsEntry | null> {
+    const now = new Date();
+    const row = await this.db
+      .updateTable("org_fs_entry")
+      .set({
+        read_public: params.readPublic,
+        updated_by: params.actor,
+        updated_at: now,
+      })
+      .where("organization_id", "=", params.organizationId)
+      .where("volume", "=", params.volume)
+      .where("path", "=", params.path)
+      .where("deleted_at", "is", null)
+      .returning(COLUMNS)
+      .executeTakeFirst();
+    return row ? rowToEntry(row as OrgFsEntryRow) : null;
+  }
+
+  /**
+   * True if any of `paths` is a live, public directory. Powers the read
+   * route's inherited public check — a file inside a published folder serves
+   * publicly. Empty `paths` → false.
+   */
+  async hasPublicAncestorDir(
+    organizationId: string,
+    volume: string,
+    paths: string[],
+  ): Promise<boolean> {
+    if (paths.length === 0) return false;
+    const row = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("kind", "=", "dir")
+      .where("read_public", "=", true)
+      .where("deleted_at", "is", null)
+      .where("path", "in", paths)
+      .select("path")
+      .limit(1)
+      .executeTakeFirst();
+    return !!row;
+  }
+
+  /**
+   * Of `paths`, which are live public directories — the batch form of
+   * `hasPublicAncestorDir`, for computing effective-public over many entries
+   * (the cross-volume recent feed) in one query per volume.
+   */
+  async publicDirPaths(params: {
+    organizationId: string;
+    volume: string;
+    paths: string[];
+  }): Promise<string[]> {
+    if (params.paths.length === 0) return [];
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", params.organizationId)
+      .where("volume", "=", params.volume)
+      .where("kind", "=", "dir")
+      .where("read_public", "=", true)
+      .where("deleted_at", "is", null)
+      .where("path", "in", params.paths)
+      .select("path")
+      .execute();
+    return rows.map((r) => r.path);
   }
 
   /** Live file count + total bytes for a volume (for quota / usage display). */

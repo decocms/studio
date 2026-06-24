@@ -33,6 +33,7 @@ import {
   useOrgFsDownloadUrl,
   useOrgFsStat,
 } from "@/web/hooks/use-org-fs";
+import { FileShareButton } from "./file-share-button";
 import { basename, parseLibraryPath } from "./location";
 import { SeeInLibraryLink } from "./see-in-library-link";
 
@@ -107,6 +108,12 @@ export function LibraryFilePreview({
           savePath={volume === "home" ? filePath : undefined}
           trailing={
             <>
+              <FileShareButton
+                volume={volume ?? ""}
+                path={filePath}
+                readPublic={entry.readPublic ?? false}
+                url={window.location.origin + file.downloadUrl}
+              />
               {seeInLibrary}
               {isDialog ? (
                 <div className="w-8 shrink-0" />
@@ -149,6 +156,12 @@ export function LibraryFilePreview({
         {seeInLibrary}
         {file && (
           <>
+            <FileShareButton
+              volume={volume ?? ""}
+              path={filePath}
+              readPublic={entry?.readPublic ?? false}
+              url={window.location.origin + file.downloadUrl}
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" asChild>

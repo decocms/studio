@@ -406,6 +406,70 @@ describe("OrgFs service (integration)", () => {
     ).toBe("two");
   });
 
+  // --- Public sharing (read_public + inheritance) ------------------------
+
+  it("publishes a file and reverts it; only a public file is publicly readable", async () => {
+    await fs.write("home", "deck.html", "<h1>hi</h1>", { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(false);
+
+    const pub = await fs.setReadPublic("home", "deck.html", true, {
+      actor: ACTOR,
+    });
+    expect(pub.readPublic).toBe(true);
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(true);
+
+    await fs.setReadPublic("home", "deck.html", false, { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(false);
+  });
+
+  it("in-place overwrite preserves the public flag", async () => {
+    await fs.write("home", "deck.html", "v1", { actor: ACTOR });
+    await fs.setReadPublic("home", "deck.html", true, { actor: ACTOR });
+    await fs.write("home", "deck.html", "v2", { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(true);
+  });
+
+  it("delete + recreate resets a file to private (fails closed)", async () => {
+    await fs.write("home", "deck.html", "v1", { actor: ACTOR });
+    await fs.setReadPublic("home", "deck.html", true, { actor: ACTOR });
+    await fs.delete("home", "deck.html", { actor: ACTOR });
+    // Regenerating at the same path must NOT revive the published flag.
+    await fs.write("home", "deck.html", "v2", { actor: ACTOR });
+    expect((await fs.stat("home", "deck.html"))?.readPublic).toBe(false);
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(false);
+  });
+
+  it("publishing a folder makes its whole subtree publicly readable", async () => {
+    await fs.write("home", "site/index.html", "page", { actor: ACTOR });
+    await fs.write("home", "site/assets/logo.png", "img", { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "site/assets/logo.png")).toBe(
+      false,
+    );
+
+    await fs.setReadPublic("home", "site", true, { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "site/index.html")).toBe(true);
+    expect(await fs.isPubliclyReadable("home", "site/assets/logo.png")).toBe(
+      true,
+    );
+    // A file added AFTER publishing the folder inherits too.
+    await fs.write("home", "site/assets/new.png", "img2", { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "site/assets/new.png")).toBe(
+      true,
+    );
+
+    await fs.setReadPublic("home", "site", false, { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "site/index.html")).toBe(false);
+  });
+
+  it("delete + recreate resets a folder to private", async () => {
+    await fs.write("home", "site/index.html", "page", { actor: ACTOR });
+    await fs.setReadPublic("home", "site", true, { actor: ACTOR });
+    await fs.delete("home", "site", { actor: ACTOR });
+    await fs.write("home", "site/index.html", "page2", { actor: ACTOR });
+    expect((await fs.stat("home", "site"))?.readPublic).toBe(false);
+    expect(await fs.isPubliclyReadable("home", "site/index.html")).toBe(false);
+  });
+
   afterAll(async () => {
     rmSync(ASSETS_DIR, { recursive: true, force: true });
     if (db) await closeTestPgDatabase(db);
