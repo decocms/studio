@@ -24,7 +24,7 @@ import { safePath } from "../paths";
 // import style entry.ts uses for harness factories).
 import { OrgFsClient } from "../../../../apps/mesh/src/file-storage/mount/client";
 import { createWebdavHandler } from "../../../../apps/mesh/src/file-storage/mount/webdav";
-import type { OrgFsMountConfig } from "./config";
+import type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
 import { makeRcRefresh, runInvalidator } from "./invalidator";
 
 export type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
@@ -32,6 +32,12 @@ export type { OrgFsMountConfig, OrgFsVolumeMount } from "./config";
 /** A handle to an established OS mount. */
 export interface MountHandle {
   unmount(): Promise<void>;
+  /**
+   * Resolves when the underlying mount process exits. Lets MountManager notice
+   * an unexpected rclone death (crash/OOM with the daemon still alive) and
+   * self-heal before the mount goes stale. Optional: fakes/tests may omit it.
+   */
+  exited?: Promise<number>;
 }
 
 /**
@@ -90,6 +96,12 @@ interface ActiveMount {
   stopServer: () => void;
   handle: MountHandle;
   invalidator: VolumeInvalidator;
+  /**
+   * Set before any intentional teardown (`stop()` or the death watcher's own
+   * cleanup) so the `handle.exited` watcher can tell a deliberate unmount apart
+   * from a crash and not fight it / re-mount over it.
+   */
+  closing: boolean;
 }
 
 /** Bind :0 to grab a free loopback port for rclone's rc, then release it. */
@@ -122,6 +134,9 @@ export function resolveMountPath(appRoot: string, p: string): string | null {
 
 export class MountManager {
   private active: ActiveMount[] = [];
+  private config: OrgFsMountConfig | null = null;
+  private appRoot = "";
+  private stopped = false;
 
   constructor(
     private readonly mounter: Mounter,
@@ -132,66 +147,137 @@ export class MountManager {
 
   /** Serve + mount every configured volume. Never throws. */
   async start(config: OrgFsMountConfig, appRoot: string): Promise<void> {
+    this.config = config;
+    this.appRoot = appRoot;
+    this.stopped = false;
     for (const m of config.mounts) {
+      await this.mountOne(m);
+    }
+  }
+
+  /**
+   * Serve + mount a single volume and register it in `active`. Never throws.
+   * `canRemount` gates the death-watcher's one-shot self-heal: the initial
+   * mount allows it, a watcher-triggered remount does not (bounds it to a
+   * single retry — see "Out of scope" follow-up for backoff).
+   */
+  private async mountOne(
+    m: OrgFsVolumeMount,
+    canRemount = true,
+  ): Promise<void> {
+    const config = this.config;
+    if (!config || this.stopped) return;
+    try {
+      const mountPath = resolveMountPath(this.appRoot, m.path);
+      if (!mountPath) {
+        this.log(`skip ${m.volume}: mount path "${m.path}" escapes appRoot`);
+        return;
+      }
+      mkdirSync(mountPath, { recursive: true });
+
+      const client = new OrgFsClient({
+        baseUrl: config.baseUrl,
+        orgSlug: config.orgSlug,
+        volume: m.volume,
+        token: config.token,
+      });
+      // Loopback only; rclone is the sole client and it sits behind it.
+      const server = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        fetch: createWebdavHandler(client),
+      });
+      const webdavUrl = `http://127.0.0.1:${server.port}`;
+
       try {
-        const mountPath = resolveMountPath(appRoot, m.path);
-        if (!mountPath) {
-          this.log(`skip ${m.volume}: mount path "${m.path}" escapes appRoot`);
-          continue;
-        }
-        mkdirSync(mountPath, { recursive: true });
-
-        const client = new OrgFsClient({
-          baseUrl: config.baseUrl,
-          orgSlug: config.orgSlug,
+        const rcAddr = `127.0.0.1:${await freePort()}`;
+        const handle = await this.mounter.mount({
+          webdavUrl,
+          mountPath,
+          rcAddr,
+          readonly: m.readonly,
+        });
+        // Near-realtime freshness: feed-driven vfs/refresh against rclone's rc.
+        const invalidator = this.startInvalidator({
+          client,
+          rcUrl: `http://${rcAddr}`,
           volume: m.volume,
-          token: config.token,
+          log: this.log,
         });
-        // Loopback only; rclone is the sole client and it sits behind it.
-        const server = Bun.serve({
-          port: 0,
-          hostname: "127.0.0.1",
-          fetch: createWebdavHandler(client),
+        const entry: ActiveMount = {
+          volume: m.volume,
+          mountPath,
+          stopServer: () => server.stop(true),
+          handle,
+          invalidator,
+          closing: false,
+        };
+        this.active.push(entry);
+        // Self-heal: an unexpected rclone death (crash/OOM, daemon still alive)
+        // would leave a stale mount that hangs/nags. Watch the child's exit and
+        // reclaim + remount once. A deliberate unmount sets `closing` first, so
+        // this only fires on a real crash.
+        void handle.exited?.then(() => {
+          void this.onRcloneExit(entry, m, canRemount);
         });
-        const webdavUrl = `http://127.0.0.1:${server.port}`;
-
-        try {
-          const rcAddr = `127.0.0.1:${await freePort()}`;
-          const handle = await this.mounter.mount({
-            webdavUrl,
-            mountPath,
-            rcAddr,
-            readonly: m.readonly,
-          });
-          // Near-realtime freshness: feed-driven vfs/refresh against rclone's rc.
-          const invalidator = this.startInvalidator({
-            client,
-            rcUrl: `http://${rcAddr}`,
-            volume: m.volume,
-            log: this.log,
-          });
-          this.active.push({
-            volume: m.volume,
-            mountPath,
-            stopServer: () => server.stop(true),
-            handle,
-            invalidator,
-          });
-          this.log(`mounted ${m.volume} at ${mountPath}`);
-        } catch (err) {
-          server.stop(true);
-          this.log(`mount failed for ${m.volume} (skipped)`, err);
-        }
+        this.log(`mounted ${m.volume} at ${mountPath}`);
       } catch (err) {
+        server.stop(true);
         this.log(`mount failed for ${m.volume} (skipped)`, err);
       }
+    } catch (err) {
+      this.log(`mount failed for ${m.volume} (skipped)`, err);
     }
+  }
+
+  /**
+   * React to an unexpected rclone exit: drop the entry, reclaim the now-stale
+   * kernel mount (rclone is already gone, so `unmount()` just force-detaches),
+   * then remount once if allowed. Never throws.
+   */
+  private async onRcloneExit(
+    entry: ActiveMount,
+    m: OrgFsVolumeMount,
+    canRemount: boolean,
+  ): Promise<void> {
+    if (entry.closing) return; // deliberate teardown — not a crash
+    const idx = this.active.indexOf(entry);
+    if (idx === -1) return; // already removed
+    entry.closing = true;
+    this.active.splice(idx, 1);
+    this.log(`rclone for ${entry.volume} exited unexpectedly; reclaiming`);
+    try {
+      entry.invalidator.stop();
+    } catch {
+      // already stopped
+    }
+    try {
+      await entry.handle.unmount();
+    } catch (err) {
+      this.log(`reclaim unmount failed for ${entry.volume}`, err);
+    }
+    try {
+      entry.stopServer();
+    } catch {
+      // server already stopped
+    }
+    if (this.stopped || !canRemount) {
+      if (!canRemount)
+        this.log(`not remounting ${entry.volume} (retried once)`);
+      return;
+    }
+    this.log(`remounting ${entry.volume}`);
+    await this.mountOne(m, false); // the remount itself does not re-remount
   }
 
   /** Unmount everything and stop the WebDAV servers. Never throws. */
   async stop(): Promise<void> {
+    this.stopped = true;
     const mounts = this.active;
     this.active = [];
+    // Flag intent before any unmount so each handle.exited watcher sees a
+    // deliberate teardown and doesn't try to reclaim/remount.
+    for (const a of mounts) a.closing = true;
     await Promise.all(
       mounts.map(async (a) => {
         try {

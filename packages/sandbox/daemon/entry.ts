@@ -14,7 +14,7 @@ import { InstallState } from "./install/install-state";
 import { LifecycleManager } from "./lifecycle/manager";
 import { readConfig } from "./persistence";
 import { MountManager } from "./org-fs/mount-manager";
-import { createRcloneMounter } from "./org-fs/mounter";
+import { createRcloneMounter, detachMount } from "./org-fs/mounter";
 import { parseOrgFsConfig } from "./org-fs/config";
 import { repointOutputLink, repointUploadLink } from "./org-fs/thread-links";
 import { ensureRepoOrgLink } from "./org-fs/repo-link";
@@ -890,11 +890,15 @@ async function repointOutputLinkForRun(threadId: string): Promise<boolean> {
   return true;
 }
 
-process.on("SIGTERM", async () => {
+let shuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
   taskManager.shutdown();
   branchStatus.stop();
   // Best-effort unmount before exit (rclone --daemon detaches, so it would
-  // otherwise outlive us). Abrupt SIGKILL/pod-delete skips this — tolerated.
+  // otherwise outlive us). A truly abrupt SIGKILL skips this — the sync `exit`
+  // handler below and the next boot's reclaim are the backstops.
   if (mountManager) {
     await mountManager.stop().catch(() => {});
   }
@@ -915,4 +919,26 @@ process.on("SIGTERM", async () => {
     }
   }
   process.exit(0);
+}
+
+// SIGINT too: the user Ctrl-C'ing the `decocms link` terminal signals the whole
+// process group, and without a handler the default action skips the unmount —
+// leaving a stale macOS NFS mount that hangs and pops the reconnect dialog.
+process.on("SIGTERM", () => void shutdown());
+process.on("SIGINT", () => void shutdown());
+
+// Last-resort synchronous detach for any path that bypassed shutdown() (a raw
+// process.exit, or shutdown() not finishing). After stop() ran, list() is empty
+// so this is a no-op; it only does work on the residual exit path. `umount -f`
+// is the non-blocking force-detach — detaching the kernel mount is what stops
+// the hang/dialog; the orphaned rclone child then exits on its own.
+const isMac = process.platform === "darwin";
+process.on("exit", () => {
+  for (const { mountPath } of mountManager?.list() ?? []) {
+    try {
+      detachMount(mountPath, isMac);
+    } catch {
+      // best-effort
+    }
+  }
 });
