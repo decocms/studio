@@ -3,6 +3,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  openLinkSandboxRegistry,
+  registryPathForDataDir,
+  type LinkSandboxRegistry,
+} from "../cli/link-sandbox-registry";
+import {
   createDesktopSandboxProvider,
   type SandboxEvent,
 } from "./user-desktop-provider";
@@ -16,6 +21,23 @@ function fakeDaemonSpawner() {
 
 function tmpDataDir(): string {
   return mkdtempSync(join(tmpdir(), "link-prov-"));
+}
+
+function fakeRegistry(): {
+  registry: LinkSandboxRegistry;
+  upserts: Parameters<LinkSandboxRegistry["upsert"]>[0][];
+} {
+  const upserts: Parameters<LinkSandboxRegistry["upsert"]>[0][] = [];
+  return {
+    upserts,
+    registry: {
+      upsert: (row) => upserts.push(row),
+      list: () => [],
+      reconcile: () => [],
+      prune: () => ({ removed: [], skipped: [] }),
+      close: () => {},
+    },
+  };
 }
 
 describe("desktop sandbox provider", () => {
@@ -157,6 +179,189 @@ describe("desktop sandbox provider", () => {
       expect(phases).toContain("ready");
       expect(phases.indexOf("spawning")).toBeLessThan(phases.indexOf("ready"));
     } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists ready and deleted lifecycle transitions to the registry", async () => {
+    const dataDir = tmpDataDir();
+    try {
+      const { registry, upserts } = fakeRegistry();
+      let portCounter = 30000;
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        registry,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        postConfig: async () => {},
+        waitForHealth: async () => {},
+        pickPort: () => portCounter++,
+        resolvePreviewUrl: (handle, port) =>
+          `http://${handle}.localhost:${port}`,
+      });
+
+      await provider.ensureSandbox({
+        handle: "abc",
+        repo: {
+          cloneUrl: "https://github.com/decocms/studio.git",
+          branch: "alpha-hydrae",
+        },
+      });
+      await provider.deleteSandbox("abc");
+
+      expect(upserts).toEqual([
+        {
+          handle: "abc",
+          status: "spawning",
+          sandboxPath: join(dataDir, "sandboxes", "abc"),
+          port: null,
+          previewUrl: null,
+          repoCloneUrl: "https://github.com/decocms/studio.git",
+          branch: "alpha-hydrae",
+          projectName: "studio",
+          error: null,
+        },
+        {
+          handle: "abc",
+          status: "ready",
+          sandboxPath: join(dataDir, "sandboxes", "abc"),
+          port: 30000,
+          previewUrl: "http://abc.localhost:30000",
+          repoCloneUrl: "https://github.com/decocms/studio.git",
+          branch: "alpha-hydrae",
+          projectName: "studio",
+          error: null,
+        },
+        {
+          handle: "abc",
+          status: "stopped",
+          sandboxPath: join(dataDir, "sandboxes", "abc"),
+          port: null,
+          previewUrl: null,
+          repoCloneUrl: null,
+          branch: null,
+          projectName: null,
+          error: null,
+        },
+      ]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not create registry rows when deleting an unknown handle", async () => {
+    const dataDir = tmpDataDir();
+    try {
+      const { registry, upserts } = fakeRegistry();
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        registry,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        postConfig: async () => {},
+        waitForHealth: async () => {},
+      });
+
+      await provider.deleteSandbox("missing");
+
+      expect(upserts).toEqual([]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists failed when setup fails before daemon health checks", async () => {
+    const dataDir = tmpDataDir();
+    try {
+      const { registry, upserts } = fakeRegistry();
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        registry,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        postConfig: async () => {},
+        waitForHealth: async () => {},
+        pickPort: () => {
+          throw new Error("no port available");
+        },
+      });
+
+      await expect(
+        provider.ensureSandbox({
+          handle: "early-fail",
+          repo: {
+            cloneUrl: "git@github.com:decocms/studio.git",
+            branch: "alpha-hydrae",
+          },
+        }),
+      ).rejects.toThrow("no port available");
+
+      expect(upserts).toEqual([
+        {
+          handle: "early-fail",
+          status: "spawning",
+          sandboxPath: join(dataDir, "sandboxes", "early-fail"),
+          port: null,
+          previewUrl: null,
+          repoCloneUrl: "git@github.com:decocms/studio.git",
+          branch: "alpha-hydrae",
+          projectName: "studio",
+          error: null,
+        },
+        {
+          handle: "early-fail",
+          status: "failed",
+          sandboxPath: join(dataDir, "sandboxes", "early-fail"),
+          port: null,
+          previewUrl: null,
+          repoCloneUrl: "git@github.com:decocms/studio.git",
+          branch: "alpha-hydrae",
+          projectName: "studio",
+          error: "no port available",
+        },
+      ]);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves registry metadata after delete writes a stopped row", async () => {
+    const dataDir = tmpDataDir();
+    const registry = openLinkSandboxRegistry({
+      path: registryPathForDataDir(dataDir),
+      managedSandboxRoot: join(dataDir, "sandboxes"),
+    });
+    try {
+      let portCounter = 30000;
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        registry,
+        spawnDaemon: () => fakeDaemonSpawner(),
+        postConfig: async () => {},
+        waitForHealth: async () => {},
+        pickPort: () => portCounter++,
+      });
+
+      await provider.ensureSandbox({
+        handle: "sticky",
+        repo: {
+          cloneUrl: "https://github.com/decocms/studio.git",
+          branch: "feature/sticky",
+        },
+      });
+      await provider.deleteSandbox("sticky");
+
+      expect(registry.list()).toEqual([
+        expect.objectContaining({
+          handle: "sticky",
+          status: "stopped",
+          port: null,
+          previewUrl: null,
+          repoCloneUrl: "https://github.com/decocms/studio.git",
+          branch: "feature/sticky",
+          projectName: "studio",
+          error: null,
+        }),
+      ]);
+    } finally {
+      registry.close();
       rmSync(dataDir, { recursive: true, force: true });
     }
   });
