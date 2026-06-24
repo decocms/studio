@@ -94,7 +94,12 @@ function mockTarget(target: string) {
     issuedCode = `code_${Math.random().toString(36).slice(2, 8)}`;
     // Simulate the browser hitting the CLI callback after auth.
     await new Promise((r) => setTimeout(r, 10));
-    await fetch(`${redirectUri}?code=${issuedCode}&state=${state}`);
+    // `redirect: "manual"` — the callback server answers 302 to the studio's
+    // real `/cli/auth-success` page; following it would chase an external host
+    // (slow/unreachable in CI) and hang. We only need to deliver the code.
+    await fetch(`${redirectUri}?code=${issuedCode}&state=${state}`, {
+      redirect: "manual",
+    });
   });
 
   return {
