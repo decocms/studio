@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, Settings01 } from "@untitledui/icons";
+import { ChevronDown, LinkExternal01, Settings01 } from "@untitledui/icons";
+import { Button } from "@deco/ui/components/button.tsx";
 import {
   Collapsible,
   CollapsibleContent,
@@ -14,6 +15,7 @@ import { ImageField } from "@/web/components/sections-editor/fields/image-field"
 import { StringField } from "@/web/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { buildBlogBlock, getBlogPayload, listBlogPayloads } from "./blog-data";
+import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -45,6 +47,7 @@ export function PostEditor({
   block,
   decofile,
   meta,
+  previewBaseUrl,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -53,6 +56,7 @@ export function PostEditor({
   block: Record<string, unknown> | undefined;
   decofile: Record<string, unknown>;
   meta: LiveMeta;
+  previewBaseUrl?: string | null;
 }) {
   const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
@@ -63,6 +67,12 @@ export function PostEditor({
 
   const setField = (key: string, value: unknown) =>
     setPost({ ...post, [key]: value });
+
+  const previewUrl = buildBlogPostPreviewUrl({
+    decofile,
+    post,
+    previewBaseUrl,
+  });
 
   return (
     <BlogSandboxProvider
@@ -75,7 +85,28 @@ export function PostEditor({
           <span className="truncate text-sm font-medium">
             {str(post.title) || "Untitled post"}
           </span>
-          <SaveStatus isPending={save.isPending} isError={save.isError} />
+          <div className="flex shrink-0 items-center gap-3">
+            <SaveStatus isPending={save.isPending} isError={save.isError} />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!previewUrl}
+              title={
+                previewUrl
+                  ? "Open the post preview in a new tab"
+                  : "Set the post slug (and its category) plus the blog app's pageSlug to preview"
+              }
+              onClick={() => {
+                if (previewUrl) {
+                  window.open(previewUrl, "_blank", "noopener,noreferrer");
+                }
+              }}
+            >
+              <LinkExternal01 size={14} />
+              See preview
+            </Button>
+          </div>
         </div>
 
         <div className="min-w-0 flex-1 overflow-y-auto">

@@ -803,6 +803,7 @@ function ContentBrowserReady({
                 block={decofile[selection.key] as Record<string, unknown>}
                 decofile={decofile}
                 meta={meta}
+                previewBaseUrl={previewUrl}
               />
             ) : selection.collection === "categories" ? (
               <CategoryEditor
