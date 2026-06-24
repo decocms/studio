@@ -773,7 +773,17 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       ) {
         return c.json({ error: "Not found" }, 404);
       }
-      const rlKey = `${clientIp(c)}|${orgId}|${volume}|${path}`;
+      const access = await ctx.orgFs
+        .resolveReadAccess(volume, path)
+        .catch(() => ({ access: "private" as const }));
+      if (access.access !== "password") {
+        return c.json({ error: "Not password-protected" }, 404);
+      }
+      // Rate-limit on the GOVERNING node, not the requested path: a folder
+      // password is one credential for the whole subtree, so all of its
+      // sub-paths must share one attempt budget — otherwise an attacker
+      // multiplies the lockout by guessing sibling paths under the same share.
+      const rlKey = `${clientIp(c)}|${orgId}|${volume}|${access.govPath}`;
       if (!unlockAllowed(rlKey)) {
         return passwordFormResponse(
           c,
@@ -785,12 +795,6 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
           },
           429,
         );
-      }
-      const access = await ctx.orgFs
-        .resolveReadAccess(volume, path)
-        .catch(() => ({ access: "private" as const }));
-      if (access.access !== "password") {
-        return c.json({ error: "Not password-protected" }, 404);
       }
       const formBody = await c.req
         .parseBody()
