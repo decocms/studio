@@ -914,9 +914,8 @@ async function notifyAdminsOfJoinRequest(
     if (admins.length === 0) return;
 
     const sendEmail = createEmailSender(provider);
-    // Join requests are reviewed on the org general settings page (where the
-    // domain config + JoinRequestsSection render, gated org:manage).
-    const reviewUrl = `${getBaseUrl()}/${org.slug}/settings/general`;
+    // Join requests are reviewed on the members settings page.
+    const reviewUrl = `${getBaseUrl()}/${org.slug}/settings/members`;
     await Promise.allSettled(
       admins.map((a) =>
         sendEmail({

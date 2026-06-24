@@ -1107,11 +1107,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_DOMAIN_UPDATE",
       "ORGANIZATION_DOMAIN_VERIFY",
       "ORGANIZATION_DOMAIN_REMOVE",
-      // Reviewing domain-driven join requests lives with domain config — the
-      // approve/deny UI renders on the same org:manage settings page.
-      "ORGANIZATION_JOIN_REQUEST_LIST",
-      "ORGANIZATION_JOIN_REQUEST_APPROVE",
-      "ORGANIZATION_JOIN_REQUEST_DENY",
     ],
   },
   {
@@ -1124,6 +1119,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_MEMBER_ADD",
       "ORGANIZATION_MEMBER_REMOVE",
       "ORGANIZATION_MEMBER_UPDATE_ROLE",
+      // Approving/denying join requests adds members, and the UI lives on the
+      // members page — keep it under members:manage.
+      "ORGANIZATION_JOIN_REQUEST_LIST",
+      "ORGANIZATION_JOIN_REQUEST_APPROVE",
+      "ORGANIZATION_JOIN_REQUEST_DENY",
     ],
     dangerous: true,
   },
