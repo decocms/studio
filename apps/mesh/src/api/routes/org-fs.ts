@@ -348,7 +348,13 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       // also runs with an opaque origin — its scripts can't make
       // credentialed same-origin calls. allow-modals keeps window.print()
       // working for the deck PDF-export path.
-      if (contentType.startsWith("text/html")) {
+      //
+      // SVG files can contain <script> elements that execute at the
+      // application origin — same CSP sandbox treatment as HTML.
+      if (
+        contentType.startsWith("text/html") ||
+        contentType === "image/svg+xml"
+      ) {
         headers["Content-Security-Policy"] =
           "sandbox allow-scripts allow-modals";
       }
