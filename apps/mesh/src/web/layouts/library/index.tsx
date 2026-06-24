@@ -80,9 +80,15 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/web/components/resizable";
+import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
 import { LibraryPreviewPanel } from "./preview-panel";
 import { SkillPreviewDialog } from "./skill-preview-dialog";
+
+/** Absolute proxy link to copy when sharing a file. */
+function publicFileUrl(path: string): string {
+  return `${window.location.origin}${path}`;
+}
 
 /** The volumes every sandbox mounts (see file-storage/mount/provisioning.ts).
  *  `glyph` marks the folder body, Finder-special-folder style. Skills are
@@ -203,16 +209,27 @@ function Breadcrumbs({
 function RootView({
   onOpenDir,
   onOpenFile,
+  onShare,
   onDelete,
 }: {
   onOpenDir: (path: string) => void;
   onOpenFile: (previewPath: string) => void;
+  onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
   const { org } = useProjectContext();
   const recent = useOrgFsRecent();
   const publicSets = useOrgFsPublicSets();
   const fileUrl = useOrgFsFileUrl();
+
+  const shareFile = (e: OrgFsEntry & { volume: string }) =>
+    onShare({
+      volume: e.volume,
+      path: e.path,
+      kind: "file",
+      readPublic: e.readPublic ?? false,
+      url: publicFileUrl(fileUrl(e.volume, e.path)),
+    });
 
   const entries = recent.data ?? [];
   const recentlyAdded = entries.slice(0, RECENTLY_ADDED_COUNT);
@@ -236,7 +253,9 @@ function RootView({
                 updatedAt={e.updatedAt}
                 size={e.size}
                 downloadUrl={fileUrl(e.volume, e.path)}
+                readPublic={e.readPublic}
                 onOpen={() => onOpenFile(`${e.volume}/${e.path}`)}
+                onShare={() => shareFile(e)}
                 onDelete={() =>
                   onDelete({ volume: e.volume, path: e.path, kind: "file" })
                 }
@@ -292,7 +311,9 @@ function RootView({
                 filename={basename(e.path)}
                 updatedAt={e.updatedAt}
                 downloadUrl={fileUrl(e.volume, e.path)}
+                readPublic={e.readPublic}
                 onOpen={() => onOpenFile(`${e.volume}/${e.path}`)}
+                onShare={() => shareFile(e)}
                 onDelete={() =>
                   onDelete({ volume: e.volume, path: e.path, kind: "file" })
                 }
@@ -334,12 +355,14 @@ function VolumeView({
   onOpenDir,
   onOpenFile,
   onOpenSkill,
+  onShare,
   onDelete,
 }: {
   location: LibraryLocation;
   onOpenDir: (path: string) => void;
   onOpenFile: (previewPath: string) => void;
   onOpenSkill: (skillPath: string) => void;
+  onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
   const volume = location.volume ?? "";
@@ -377,6 +400,22 @@ function VolumeView({
       ? undefined
       : () => onDelete({ volume, path: entry.path, kind: entry.kind });
 
+  // Read-only volumes (public skill sets) can't be published.
+  const shareFor = (entry: OrgFsEntry) =>
+    location.readOnly
+      ? undefined
+      : () =>
+          onShare({
+            volume,
+            path: entry.path,
+            kind: entry.kind,
+            readPublic: entry.readPublic ?? false,
+            url:
+              entry.kind === "file"
+                ? publicFileUrl(fileUrl(volume, entry.path))
+                : undefined,
+          });
+
   return (
     <>
       {skills.length > 0 && (
@@ -389,8 +428,10 @@ function VolumeView({
                 dirName={basename(e.path)}
                 updatedAt={e.updatedAt}
                 skillMdUrl={fileUrl(volume, `${e.path}/SKILL.md`)}
+                readPublic={e.readPublic}
                 onOpen={() => onOpenSkill(browsePathFor(location, e.path))}
                 onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
+                onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
               />
             ))}
@@ -407,7 +448,9 @@ function VolumeView({
                 name={basename(e.path)}
                 meta={timeAgo(e.updatedAt)}
                 readOnly={location.readOnly}
+                readPublic={e.readPublic}
                 onOpen={() => onOpenDir(browsePathFor(location, e.path))}
+                onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
               />
             ))}
@@ -424,7 +467,9 @@ function VolumeView({
                 filename={basename(e.path)}
                 updatedAt={e.updatedAt}
                 downloadUrl={fileUrl(volume, e.path)}
+                readPublic={e.readPublic}
                 onOpen={() => onOpenFile(browsePathFor(location, e.path))}
+                onShare={shareFor(e)}
                 onDelete={deleteFor(e)}
               />
             ))}
@@ -468,6 +513,7 @@ function LibraryPage() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
     null,
   );
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -600,6 +646,7 @@ function LibraryPage() {
           <RootView
             onOpenDir={onOpenDir}
             onOpenFile={onOpenFile}
+            onShare={setShareTarget}
             onDelete={setPendingDelete}
           />
         ) : location.volume === null ? (
@@ -612,6 +659,7 @@ function LibraryPage() {
             onOpenDir={onOpenDir}
             onOpenFile={onOpenFile}
             onOpenSkill={onOpenSkill}
+            onShare={setShareTarget}
             onDelete={setPendingDelete}
           />
         )}
@@ -666,6 +714,13 @@ function LibraryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ShareDialog
+        target={shareTarget}
+        onOpenChange={(open) => {
+          if (!open) setShareTarget(null);
+        }}
+      />
 
       <AlertDialog
         open={pendingDelete !== null}

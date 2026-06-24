@@ -286,6 +286,11 @@ export function useOrgFsSetPublic(volume: string) {
       queryClient.invalidateQueries({
         queryKey: KEYS.orgFsStat(org.id, volume, input.path),
       });
+      // Refresh the browser listings + recent feed so public badges re-render.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.orgFsVolume(org.id, volume),
+      });
+      queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
     },
   });
 }

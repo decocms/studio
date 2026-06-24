@@ -109,8 +109,10 @@ export class OrgFs {
   }
 
   /**
-   * Toggle a file's public-read flag. A public file is served by the `/read`
-   * proxy to anyone, no auth. Throws if the path is not a live file.
+   * Toggle an entry's public-read flag. Works on a file (publishes that file)
+   * or a dir (publishes its whole subtree — the read path inherits from public
+   * ancestor dirs). A public file/subtree is served by `/read` to anyone, no
+   * auth. Throws if the path is not a live entry.
    */
   async setReadPublic(
     volume: string,
@@ -118,7 +120,14 @@ export class OrgFs {
     readPublic: boolean,
     opts: { actor: string },
   ): Promise<OrgFsEntry> {
-    const entry = await this.requireFile(volume, path);
+    assertValidVolume(volume);
+    const normalized = normalizeFsPath(path);
+    const entry = await this.manifest.get(
+      this.organizationId,
+      volume,
+      normalized,
+    );
+    if (!entry) throw new OrgFsNotFoundError(`No such path: ${normalized}`);
     const updated = await this.manifest.setReadPublic({
       organizationId: this.organizationId,
       volume,
@@ -126,12 +135,35 @@ export class OrgFs {
       readPublic,
       actor: opts.actor,
     });
-    // requireFile already proved the row exists and is live; the update can
-    // only miss on a concurrent delete, which we treat as not-found.
+    // The stat above proved the row exists and is live; the update can only
+    // miss on a concurrent delete, which we treat as not-found.
     if (!updated) {
-      throw new OrgFsNotFoundError(`No such file: ${entry.path}`);
+      throw new OrgFsNotFoundError(`No such path: ${entry.path}`);
     }
     return updated;
+  }
+
+  /**
+   * Whether `path` is a live file the `/read` proxy may serve to anyone:
+   * either its own `read_public` flag is set, or it inherits from a public
+   * ancestor directory (publishing a folder publishes everything under it,
+   * now and later). Dirs and missing paths are not readable.
+   */
+  async isPubliclyReadable(volume: string, path: string): Promise<boolean> {
+    assertValidVolume(volume);
+    const normalized = normalizeFsPath(path);
+    const entry = await this.manifest.get(
+      this.organizationId,
+      volume,
+      normalized,
+    );
+    if (!entry || entry.kind !== "file") return false;
+    if (entry.readPublic) return true;
+    return this.manifest.hasPublicAncestorDir(
+      this.organizationId,
+      volume,
+      ancestorsOf(normalized),
+    );
   }
 
   /** Presigned GET URL for a file — the byte path the mount fetches lazily. */

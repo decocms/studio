@@ -15,6 +15,8 @@ import {
   DotsVertical,
   Download01,
   Folder,
+  Globe01,
+  Share07,
   Trash01,
   Zap,
 } from "@untitledui/icons";
@@ -80,13 +82,36 @@ function extOf(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
 
+/** Shared "Share" menu item — opens the share dialog for a file/folder. */
+function ShareMenuItem({ onShare }: { onShare: () => void }) {
+  return (
+    <DropdownMenuItem onClick={onShare}>
+      <Share07 size={14} />
+      Share
+    </DropdownMenuItem>
+  );
+}
+
+/** Small badge marking a public file/folder in the grid. */
+function PublicBadge() {
+  return (
+    <Globe01
+      size={12}
+      className="mt-0.5 shrink-0 text-muted-foreground"
+      aria-label="Public — anyone with the link can view"
+    />
+  );
+}
+
 function FileActions({
   downloadUrl,
   filename,
+  onShare,
   onDelete,
 }: {
   downloadUrl: string;
   filename: string;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -103,6 +128,7 @@ function FileActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        {onShare && <ShareMenuItem onShare={onShare} />}
         <DropdownMenuItem asChild>
           <a href={downloadUrl} download={filename}>
             <Download01 size={14} />
@@ -157,12 +183,15 @@ function CardHeader({
   name,
   meta,
   subtitle,
+  isPublic,
   actions,
 }: {
   icon: React.ReactNode;
   name: string;
   meta?: string;
   subtitle?: string;
+  /** Render the "public" globe badge next to the name. */
+  isPublic?: boolean;
   actions?: React.ReactNode;
 }) {
   return (
@@ -176,6 +205,7 @@ function CardHeader({
           >
             {name}
           </span>
+          {isPublic && <PublicBadge />}
           {meta && (
             <span className="shrink-0 text-xs text-muted-foreground">
               {meta}
@@ -197,7 +227,9 @@ export function FolderCard({
   subtitle,
   glyph,
   readOnly,
+  readPublic,
   onOpen,
+  onShare,
   onDelete,
 }: {
   name: string;
@@ -207,7 +239,10 @@ export function FolderCard({
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   /** View-only corner badge (public sets). */
   readOnly?: boolean;
+  /** Folder is published (its subtree serves publicly). */
+  readPublic?: boolean;
   onOpen: () => void;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -223,8 +258,9 @@ export function FolderCard({
         name={name}
         meta={meta}
         subtitle={subtitle}
+        isPublic={readPublic}
         actions={
-          onDelete ? (
+          onShare || onDelete ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -241,10 +277,13 @@ export function FolderCard({
                 align="end"
                 onClick={(e) => e.stopPropagation()}
               >
-                <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                  <Trash01 size={14} />
-                  Delete
-                </DropdownMenuItem>
+                {onShare && <ShareMenuItem onShare={onShare} />}
+                {onDelete && (
+                  <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                    <Trash01 size={14} />
+                    Delete
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : undefined
@@ -258,13 +297,17 @@ export function FileCard({
   filename,
   updatedAt,
   downloadUrl,
+  readPublic,
   onOpen,
+  onShare,
   onDelete,
 }: {
   filename: string;
   updatedAt: string;
   downloadUrl: string;
+  readPublic?: boolean;
   onOpen: () => void;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -276,10 +319,12 @@ export function FileCard({
         name={filename}
         meta={timeAgo(updatedAt)}
         subtitle={describeFileType(filename)}
+        isPublic={readPublic}
         actions={
           <FileActions
             downloadUrl={downloadUrl}
             filename={filename}
+            onShare={onShare}
             onDelete={onDelete}
           />
         }
@@ -299,17 +344,21 @@ export function SkillCard({
   dirName,
   updatedAt,
   skillMdUrl,
+  readPublic,
   onOpen,
   onBrowse,
+  onShare,
   onDelete,
 }: {
   dirName: string;
   updatedAt: string;
   /** Byte URL of the dir's SKILL.md. */
   skillMdUrl: string;
+  readPublic?: boolean;
   onOpen: () => void;
   /** Open the underlying folder listing. */
   onBrowse: () => void;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   const { data } = useQuery({
@@ -335,6 +384,7 @@ export function SkillCard({
         name={meta?.name ?? dirName}
         meta={timeAgo(updatedAt)}
         subtitle="Skill"
+        isPublic={readPublic}
         actions={
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -356,6 +406,7 @@ export function SkillCard({
                 <Folder size={14} />
                 Browse files
               </DropdownMenuItem>
+              {onShare && <ShareMenuItem onShare={onShare} />}
               {onDelete && (
                 <DropdownMenuItem variant="destructive" onClick={onDelete}>
                   <Trash01 size={14} />
@@ -541,7 +592,9 @@ export function RecentFileCard(props: {
   updatedAt: string;
   size: number;
   downloadUrl: string;
+  readPublic?: boolean;
   onOpen: () => void;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -556,10 +609,12 @@ export function RecentFileCard(props: {
         name={props.filename}
         meta={timeAgo(props.updatedAt)}
         subtitle={describeFileType(props.filename)}
+        isPublic={props.readPublic}
         actions={
           <FileActions
             downloadUrl={props.downloadUrl}
             filename={props.filename}
+            onShare={props.onShare}
             onDelete={props.onDelete}
           />
         }

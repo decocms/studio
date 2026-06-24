@@ -374,8 +374,12 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       isValidVolume(volume) &&
       !isPublicVolume(volume)
     ) {
-      const entry = await ctx.orgFs.stat(volume, path).catch(() => null);
-      if (entry?.kind === "file" && entry.readPublic) {
+      // Own flag OR inherited from a published ancestor folder. A failure
+      // probing visibility falls through to the authed read, never 500s.
+      const publiclyReadable = await ctx.orgFs
+        .isPubliclyReadable(volume, path)
+        .catch(() => false);
+      if (publiclyReadable) {
         try {
           return byteResponse(
             c,
@@ -550,10 +554,11 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     },
   );
 
-  // Toggle a file's public-read flag. Body: { public: boolean }. When true, the
-  // /read proxy serves this file to anyone (no auth). Gated on ORG_FS_WRITE —
-  // you can publish what you can write — and rejected on read-only `public-*`
-  // volumes by resolve(). No `seq` bump: visibility is metadata, not content.
+  // Toggle an entry's public-read flag. Body: { public: boolean }. Works on a
+  // file (publishes it) or a dir (publishes its whole subtree — /read inherits
+  // from public ancestor dirs). Gated on ORG_FS_WRITE — you can publish what
+  // you can write — and rejected on read-only `public-*` volumes by resolve().
+  // No `seq` bump: visibility is metadata, not content.
   app.post(
     "/:volume/public",
     bodyLimit({

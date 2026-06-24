@@ -359,10 +359,12 @@ export class OrgFsEntryStorage {
   }
 
   /**
-   * Set a file's public-read flag. Returns the updated entry, or null if no
-   * live file exists at the path. Deliberately does NOT bump `seq`: visibility
-   * is metadata, not content, so the change feed (mount invalidation) stays
-   * quiet — only `updated_by`/`updated_at` move, recording who toggled it.
+   * Set an entry's public-read flag. Works on files and dirs: a public dir
+   * publishes its whole subtree (the read route inherits from public ancestor
+   * dirs). Returns the updated entry, or null if no live entry exists at the
+   * path. Deliberately does NOT bump `seq`: visibility is metadata, not
+   * content, so the change feed (mount invalidation) stays quiet — only
+   * `updated_by`/`updated_at` move, recording who toggled it.
    */
   async setReadPublic(params: {
     organizationId: string;
@@ -382,11 +384,35 @@ export class OrgFsEntryStorage {
       .where("organization_id", "=", params.organizationId)
       .where("volume", "=", params.volume)
       .where("path", "=", params.path)
-      .where("kind", "=", "file")
       .where("deleted_at", "is", null)
       .returning(COLUMNS)
       .executeTakeFirst();
     return row ? rowToEntry(row as OrgFsEntryRow) : null;
+  }
+
+  /**
+   * True if any of `paths` is a live, public directory. Powers the read
+   * route's inherited public check — a file inside a published folder serves
+   * publicly. Empty `paths` → false.
+   */
+  async hasPublicAncestorDir(
+    organizationId: string,
+    volume: string,
+    paths: string[],
+  ): Promise<boolean> {
+    if (paths.length === 0) return false;
+    const row = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", organizationId)
+      .where("volume", "=", volume)
+      .where("kind", "=", "dir")
+      .where("read_public", "=", true)
+      .where("deleted_at", "is", null)
+      .where("path", "in", paths)
+      .select("path")
+      .limit(1)
+      .executeTakeFirst();
+    return !!row;
   }
 
   /** Live file count + total bytes for a volume (for quota / usage display). */
