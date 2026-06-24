@@ -74,6 +74,7 @@ import {
 import { useEnsureTask } from "@/web/hooks/use-ensure-task";
 import { ShellRouteLoading } from "@/web/layouts/shell-route-loading";
 import { OrgFilePreviewMount } from "./org-file-preview";
+import { OrgFileOpenProvider } from "@/web/components/chat/org-file-open-context";
 
 // ---------------------------------------------------------------------------
 // Types & Context
@@ -468,8 +469,10 @@ function AgentInsetProvider() {
 export default function AgentShellLayout() {
   return (
     <Suspense fallback={<ShellRouteLoading />}>
-      <AgentInsetProvider />
-      <OrgFilePreviewMount />
+      <OrgFileOpenProvider>
+        <AgentInsetProvider />
+        <OrgFilePreviewMount />
+      </OrgFileOpenProvider>
     </Suspense>
   );
 }

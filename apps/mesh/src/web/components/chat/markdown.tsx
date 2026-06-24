@@ -1,19 +1,24 @@
 /* eslint-disable ban-memoization/ban-memoization */
 import { marked } from "marked";
-import React, { memo, useCallback, useMemo, useRef, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { useNavigate, useParams } from "@tanstack/react-router";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { markdownComponents as sharedMarkdownComponents } from "@deco/ui/components/markdown.tsx";
 import { Check, Copy01 } from "@untitledui/icons";
 import { ImageLightbox } from "./image-lightbox.tsx";
 import { resolveOrgFileBrowsePath } from "./org-file-ref.ts";
-import { formatLibraryFileTabId } from "@/web/layouts/main-panel-tabs/tab-id";
+import { OrgFileOpenContext } from "./org-file-open-context.tsx";
 // @ts-ignore - correct
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism/index.js";
 
@@ -203,39 +208,21 @@ type MdProps = {
 const INLINE_CODE_CLASS =
   "px-1 py-0.5 bg-background border border-border rounded text-[14px] font-mono break-all";
 
-// Opens an org file referenced in chat without leaving the conversation,
-// mirroring the Library's panel/dialog split: desktop opens the file as a
-// main-panel side tab (`?main=library-file:<path>`), mobile opens the dialog
-// overlay (`?preview=<path>`, rendered by OrgFilePreviewMount).
-function useOpenOrgFile() {
-  const navigate = useNavigate();
-  const isMobile = useIsMobile();
-  const { org } = useParams({ strict: false }) as { org?: string };
-  const open = (browsePath: string) =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => {
-        if (isMobile) return { ...prev, preview: browsePath };
-        // Desktop: side tab. Drop any stale `?preview=` so the two models
-        // never both resolve to a file at once.
-        const { preview: _omit, ...rest } = prev;
-        return { ...rest, main: formatLibraryFileTabId(browsePath) };
-      },
-    });
-  return { orgSlug: org, open };
-}
-
 // Inline code that names an org file becomes a clickable chip; everything else
 // keeps the plain code styling. Block code (rendered via `pre > code`, and the
-// fenced blocks MemoizedMarkdown pre-splits) is never linkified.
+// fenced blocks MemoizedMarkdown pre-splits) is never linkified. The chip is
+// clickable ONLY under an OrgFileOpenProvider (the chat shell) — elsewhere the
+// nav can't resolve, so it stays plain rather than a dead click.
 function MarkdownCode({ node: _n, className, children, ...p }: MdProps) {
-  const { orgSlug, open } = useOpenOrgFile();
+  const ctx = useContext(OrgFileOpenContext);
   const isBlock =
     typeof className === "string" && className.includes("language-");
   const text = typeof children === "string" ? children : null;
   const browsePath =
-    !isBlock && text ? resolveOrgFileBrowsePath(text, orgSlug) : null;
-  if (!browsePath) {
+    ctx && !isBlock && text
+      ? resolveOrgFileBrowsePath(text, ctx.orgSlug)
+      : null;
+  if (!ctx || !browsePath) {
     return (
       <code className={INLINE_CODE_CLASS} {...p}>
         {children}
@@ -245,7 +232,7 @@ function MarkdownCode({ node: _n, className, children, ...p }: MdProps) {
   return (
     <button
       type="button"
-      onClick={() => open(browsePath)}
+      onClick={() => ctx.open(browsePath)}
       className={cn(
         INLINE_CODE_CLASS,
         "text-primary-dark hover:underline cursor-pointer",
@@ -259,22 +246,24 @@ function MarkdownCode({ node: _n, className, children, ...p }: MdProps) {
 
 // Markdown links whose href is an org file path open the in-chat preview;
 // all other links keep their external-tab behavior. `animate` routes the label
-// through the streaming word-fade animator.
+// through the streaming word-fade animator. Like MarkdownCode, the in-chat
+// preview is wired only under an OrgFileOpenProvider.
 function MarkdownAnchor({
   node: _n,
   children,
   animate,
   ...p
 }: MdProps & { animate?: boolean }) {
-  const { orgSlug, open } = useOpenOrgFile();
+  const ctx = useContext(OrgFileOpenContext);
   const href = typeof p.href === "string" ? p.href : undefined;
-  const browsePath = href ? resolveOrgFileBrowsePath(href, orgSlug) : null;
+  const browsePath =
+    ctx && href ? resolveOrgFileBrowsePath(href, ctx.orgSlug) : null;
   const label = animate ? animateText(children) : children;
-  if (browsePath) {
+  if (ctx && browsePath) {
     return (
       <button
         type="button"
-        onClick={() => open(browsePath)}
+        onClick={() => ctx.open(browsePath)}
         className="text-primary-dark hover:underline break-all font-medium cursor-pointer"
       >
         {label}
