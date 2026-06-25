@@ -106,12 +106,6 @@ nginx:
         - ALL
     readOnlyRootFilesystem: false
   preStopSleepSeconds: 15
-  # Labels stamped onto the combo (nginx + API) pods so a front-door
-  # LoadBalancer (e.g. the deco-apps-cd NLB) can select them by a stable label
-  # instead of app.kubernetes.io/name. Applied to the combo deployment ONLY
-  # (never the worker), so the raw-API worker is never registered as a public
-  # target. Empty by default; set e.g. { decocms.com/frontdoor: "true" }.
-  frontDoorLabels: {}
 
 configMap:
   meshConfig:
