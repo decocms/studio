@@ -195,7 +195,14 @@ export async function handleDispatchRequest(
       headers: { "content-type": "application/json" },
     });
   }
+  if (typeof parsed.runId !== "string") {
+    return new Response(JSON.stringify({ error: "missing_run_id" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
   const harnessId = parsed.harnessId;
+  const runId = parsed.runId;
 
   const encoder = new TextEncoder();
 
@@ -277,7 +284,6 @@ export async function handleDispatchRequest(
           return;
         }
         const input = inputParse.data;
-        const runId = input.threadId;
 
         // Rebase the symbolic workspace cwd fields onto this daemon's sandbox
         // root (spec: "Harness Input Contract" Q4 — containment by
@@ -361,7 +367,6 @@ export async function handleDispatchRequest(
     );
   }
   const input = inputParse.data;
-  const runId = input.threadId;
 
   // Rebase the symbolic workspace cwd fields onto this daemon's sandbox root
   // (spec: "Harness Input Contract" Q4 — containment by construction).

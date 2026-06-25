@@ -237,11 +237,13 @@ export async function handleLocalDispatch(
   // from messagesRef when present.
   const dispatchBody = work.messagesRef
     ? JSON.stringify({
+        runId: work.runId,
         harnessId,
         input: work.harnessInput,
         messagesRef: work.messagesRef,
       })
     : JSON.stringify({
+        runId: work.runId,
         harnessId,
         input: work.harnessInput,
       });

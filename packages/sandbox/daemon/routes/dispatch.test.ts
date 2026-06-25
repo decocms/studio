@@ -56,10 +56,11 @@ async function readSSE(res: Response): Promise<string[]> {
 describe("POST /_sandbox/dispatch", () => {
   it("emits the harness's UIMessageChunks as SSE", async () => {
     const body = JSON.stringify({
+      runId: "run-dispatch-1",
       harnessId: "fake",
       input: {
         ...fixtures.FIXTURE_MINIMAL_INPUT,
-        threadId: "run-dispatch-1",
+        threadId: "thread-dispatch-1",
       },
     });
     const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
@@ -88,8 +89,9 @@ describe("POST /_sandbox/dispatch", () => {
       }),
     });
     const body = JSON.stringify({
+      runId: "run-prelude",
       harnessId: "fake",
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: "run-prelude" },
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: "thread-prelude" },
     });
 
     const res = await handleDispatchRequest(authedDispatch(body), deps);
@@ -125,8 +127,9 @@ describe("POST /_sandbox/dispatch", () => {
 
   it("rejects a bearer token that does not match", async () => {
     const body = JSON.stringify({
+      runId: "run-token-2",
       harnessId: "fake",
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: "run-token-2" },
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: "thread-token-2" },
     });
     const res = await handleDispatchRequest(
       authedDispatch(body, "wrong-token"),
@@ -136,7 +139,20 @@ describe("POST /_sandbox/dispatch", () => {
   });
 
   it("returns 400 on invalid input shape", async () => {
-    const body = JSON.stringify({ harnessId: "fake", input: { bogus: true } });
+    const body = JSON.stringify({
+      runId: "run-invalid-input",
+      harnessId: "fake",
+      input: { bogus: true },
+    });
+    const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when the dispatch envelope has no runId", async () => {
+    const body = JSON.stringify({
+      harnessId: "fake",
+      input: fixtures.FIXTURE_MINIMAL_INPUT,
+    });
     const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
     expect(res.status).toBe(400);
   });
@@ -151,8 +167,12 @@ describe("POST /_sandbox/dispatch", () => {
 
     // Subsequent dispatch with the same runId should be rejected.
     const body = JSON.stringify({
+      runId,
       harnessId: "fake",
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: runId },
+      input: {
+        ...fixtures.FIXTURE_MINIMAL_INPUT,
+        threadId: "thread-tombstone-1",
+      },
     });
     const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
     expect(res.status).toBe(410);
@@ -199,10 +219,11 @@ describe("POST /_sandbox/dispatch", () => {
       });
 
       const body = JSON.stringify({
+        runId: "run-cancel-midstream",
         harnessId: "fake",
         input: {
           ...fixtures.FIXTURE_MINIMAL_INPUT,
-          threadId: "run-cancel-midstream",
+          threadId: "thread-cancel-midstream",
         },
       });
       const res = await handleDispatchRequest(authedDispatch(body), deps);
@@ -254,8 +275,12 @@ describe("POST /_sandbox/dispatch", () => {
     });
 
     const body = JSON.stringify({
+      runId,
       harnessId: "fake",
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: runId },
+      input: {
+        ...fixtures.FIXTURE_MINIMAL_INPUT,
+        threadId: "thread-signal-inject",
+      },
     });
     const res = await handleDispatchRequest(authedDispatch(body), deps);
     expect(res.status).toBe(200);
@@ -297,10 +322,11 @@ describe("POST /_sandbox/dispatch", () => {
     });
 
     const body = JSON.stringify({
+      runId,
       harnessId: "fake",
       input: {
         ...fixtures.FIXTURE_MINIMAL_INPUT,
-        threadId: runId,
+        threadId: "thread-cwd-rebase",
         workspace: {
           cwd: "/repo",
           repo: {
@@ -336,8 +362,9 @@ describe("POST /_sandbox/dispatch", () => {
   it("wraps harness errors as an error SSE event followed by done", async () => {
     const harnessId = "throws";
     const body = JSON.stringify({
+      runId: "run-error-1",
       harnessId,
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: "run-error-1" },
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: "thread-error-1" },
     });
     const deps = makeDeps({
       lookupHarness: () => ({
