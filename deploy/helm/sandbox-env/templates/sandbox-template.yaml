@@ -234,6 +234,14 @@ spec:
             - name: DENO_CACHE_S3_ENDPOINT
               value: {{ .Values.denoCache.endpoint | quote }}
             {{- end }}
+            {{- if .Values.denoCache.pathPrefix }}
+            - name: DENO_CACHE_S3_PATH_PREFIX
+              value: {{ .Values.denoCache.pathPrefix | quote }}
+            {{- end }}
+            {{- if .Values.denoCache.pathFile }}
+            - name: DENO_CACHE_S3_PATH_FILE
+              value: {{ .Values.denoCache.pathFile | quote }}
+            {{- end }}
             {{- if .Values.denoCache.path }}
             - name: DENO_CACHE_S3_PATH
               value: {{ .Values.denoCache.path | quote }}

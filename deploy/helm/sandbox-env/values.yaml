@@ -245,9 +245,11 @@ readOnlyRootFilesystem: true
 # bucket:               S3 bucket name (required).
 # endpoint:             S3-compatible endpoint override, e.g. for MinIO or R2.
 #                       Defaults to AWS virtual-hosted URL when omitted.
-# path:                 explicit object key, e.g. "my-org/my-repo/cache.tar.zst".
-#                       When omitted, derived automatically as
-#                       "<github-owner>/<github-repo>/cache.tar.zst".
+# pathPrefix:           prefix prepended to the repo name, e.g. "my-org" →
+#                       "my-org/<repo>/<pathFile>".
+# pathFile:             cache filename (default "cache.tar.zst").
+# path:                 full explicit object key — overrides pathPrefix and
+#                       pathFile entirely, e.g. "my-org/my-repo/cache.tar.zst".
 denoCache:
   secretName: ""
   accessKeyIdKey: "accessKeyId"
@@ -255,6 +257,8 @@ denoCache:
   region: ""
   bucket: ""
   endpoint: ""
+  pathPrefix: ""
+  pathFile: ""
   path: ""
 
 # ── sentinel token ─────────────────────────────────────────────────────

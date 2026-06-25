@@ -5,15 +5,12 @@ import { resolvePmRoot } from "../paths";
 import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
-function parseGithubOwnerRepo(
-  cloneUrl: string,
-): { owner: string; repo: string } | null {
+function parseGithubRepoName(cloneUrl: string): string | null {
   // Handles authenticated URLs (x-access-token:...@github.com) and plain ones.
   const match = cloneUrl.match(
-    /github\.com\/([^/@]+)\/([^/.]+?)(?:\.git)?(?:[?#]|$)/,
+    /github\.com\/[^/@]+\/([^/.]+?)(?:\.git)?(?:[?#]|$)/,
   );
-  if (!match) return null;
-  return { owner: match[1], repo: match[2] };
+  return match ? match[1] : null;
 }
 
 /**
@@ -27,11 +24,14 @@ function parseGithubOwnerRepo(
  *   DENO_CACHE_S3_BUCKET
  *
  * Optional env vars:
- *   DENO_CACHE_S3_ENDPOINT  — S3-compatible endpoint (e.g. MinIO, R2, GCS)
- *                             defaults to AWS S3 virtual-hosted URL
- *   DENO_CACHE_S3_PATH      — explicit object key (e.g. "my/cache.tar.zst")
- *                             defaults to "<owner>/<repo>/cache.tar.zst"
- *                             derived from the GitHub clone URL
+ *   DENO_CACHE_S3_ENDPOINT    — S3-compatible endpoint (e.g. MinIO, R2, GCS)
+ *                               defaults to AWS S3 virtual-hosted URL
+ *   DENO_CACHE_S3_PATH_PREFIX — path prefix prepended to the repo name,
+ *                               e.g. "my-org/caches" →
+ *                               "my-org/caches/<repo>/cache.tar.zst"
+ *   DENO_CACHE_S3_PATH_FILE   — cache filename, defaults to "cache.tar.zst"
+ *   DENO_CACHE_S3_PATH        — full explicit object key, overrides prefix
+ *                               and file derivation entirely
  *
  * Non-fatal: any failure (missing creds, object not found, network error)
  * is logged and the sandbox continues to start normally.
@@ -52,14 +52,17 @@ export function tryWarmDenoCache(deps: InstallDeps): Promise<number> | null {
   const bucket = process.env.DENO_CACHE_S3_BUCKET;
   if (!region || !bucket) return null;
 
-  // Resolve the object path: explicit override or derived from owner/repo.
+  // Resolve the object path: explicit override takes precedence; otherwise
+  // build from prefix + repo name + file.
   let cachePath = process.env.DENO_CACHE_S3_PATH;
   if (!cachePath) {
     const cloneUrl = config.git?.repository?.cloneUrl;
     if (!cloneUrl) return null;
-    const ownerRepo = parseGithubOwnerRepo(cloneUrl);
-    if (!ownerRepo) return null;
-    cachePath = `${ownerRepo.owner}/${ownerRepo.repo}/cache.tar.zst`;
+    const repoName = parseGithubRepoName(cloneUrl);
+    if (!repoName) return null;
+    const prefix = process.env.DENO_CACHE_S3_PATH_PREFIX ?? "";
+    const file = process.env.DENO_CACHE_S3_PATH_FILE ?? "cache.tar.zst";
+    cachePath = prefix ? `${prefix}/${repoName}/${file}` : `${repoName}/${file}`;
   }
 
   const endpoint = process.env.DENO_CACHE_S3_ENDPOINT;
