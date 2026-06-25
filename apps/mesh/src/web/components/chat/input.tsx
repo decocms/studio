@@ -67,6 +67,7 @@ import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/web/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
 import { shouldRenderInlineModeRow } from "./input-mode-row";
+import { ThreadQueuePanel } from "./queue-panel";
 
 // ============================================================================
 // useWindowFileDrop - Reusable hook for window-level file drag & drop
@@ -459,6 +460,13 @@ export function ChatInput({
               an active task — it depends on useChatStream + useChatTask, both
               absent on the home composer. */}
           {stream && taskCtx && <ChatHighlight />}
+
+          {stream && taskCtx && taskId ? (
+            <ThreadQueuePanel
+              taskId={taskId}
+              active={isStreaming || isRunInProgress}
+            />
+          ) : null}
 
           <TiptapProvider
             key={taskId}
