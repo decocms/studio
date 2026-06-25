@@ -207,6 +207,35 @@ spec:
             - name: ORGFS_SIDECAR_STATUS_PATH
               value: "/run/orgfs/status.json"
             {{- end }}
+            {{- if .Values.decoSiteCache.secretName }}
+            # Optional S3 credentials for pre-populating the Deno module
+            # cache on sandbox start. When set, the daemon downloads
+            # <owner>/<repo>/cache.tar.zst from the assets bucket before
+            # running `deno task dev`, avoiding cold first-run downloads.
+            # Non-fatal: if the object is missing the sandbox starts normally.
+            - name: DENO_DECO_CACHE_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.decoSiteCache.secretName }}
+                  key: {{ .Values.decoSiteCache.accessKeyIdKey | default "accessKeyId" }}
+            - name: DENO_DECO_CACHE_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.decoSiteCache.secretName }}
+                  key: {{ .Values.decoSiteCache.secretAccessKeyKey | default "secretAccessKey" }}
+            {{- if .Values.decoSiteCache.region }}
+            - name: DENO_DECO_CACHE_S3_REGION
+              value: {{ .Values.decoSiteCache.region | quote }}
+            {{- end }}
+            {{- if .Values.decoSiteCache.bucket }}
+            - name: DENO_DECO_CACHE_S3_BUCKET
+              value: {{ .Values.decoSiteCache.bucket | quote }}
+            {{- end }}
+            {{- if .Values.decoSiteCache.endpoint }}
+            - name: DENO_DECO_CACHE_S3_ENDPOINT
+              value: {{ .Values.decoSiteCache.endpoint | quote }}
+            {{- end }}
+            {{- end }}
           ports:
             - name: daemon
               containerPort: 9000

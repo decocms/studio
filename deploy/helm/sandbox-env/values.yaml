@@ -230,6 +230,28 @@ orgFs:
 # dev server start) on staging before merging an override.
 readOnlyRootFilesystem: true
 
+# ── deno S3 cache ──────────────────────────────────────────────────────
+# When secretName is set, the sandbox daemon will attempt to pre-populate
+# $DENO_DIR from S3 before running `deno task dev`. The cache tarball is
+# expected at <bucket>/<owner>/<repo>/cache.tar.zst (the same path the
+# admin build pipeline produces). Non-fatal: a missing object or download
+# failure is logged and the sandbox starts with a cold Deno cache.
+#
+# secretName: name of the K8s Secret holding the S3 credentials.
+# accessKeyIdKey / secretAccessKeyKey: keys inside the Secret holding the
+#   DENO_DECO_CACHE_S3_ACCESS_KEY_ID / DENO_DECO_CACHE_S3_SECRET_ACCESS_KEY values
+#   (defaults to "accessKeyId" / "secretAccessKey").
+# region: AWS region (default sa-east-1 if omitted).
+# bucket: S3 bucket name (default deco-assets-storage if omitted).
+# endpoint: optional S3-compatible endpoint override (e.g. for GCS).
+decoSiteCache:
+  secretName: ""
+  accessKeyIdKey: "accessKeyId"
+  secretAccessKeyKey: "secretAccessKey"
+  region: ""
+  bucket: ""
+  endpoint: ""
+
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
   # Optional: supply an explicit token so CI can pass the same value to
