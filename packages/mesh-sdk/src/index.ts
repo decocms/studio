@@ -189,6 +189,10 @@ export {
   selectDefaultModel,
   getFastModel,
   pickSimpleModeDefaults,
+  isDeepResearchModelId,
+  isQuickSearchModelId,
+  isQuickSearchModel,
+  isDeepResearchModel,
   type SimpleModeModelSlot,
   type SimpleModeDefaults,
 } from "./lib/default-model";

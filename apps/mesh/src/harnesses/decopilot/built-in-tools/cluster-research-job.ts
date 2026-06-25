@@ -73,10 +73,13 @@ export function createClusterResearchJob(deps: {
   modelInfo: ModelInfo;
   ctx: StudioContext;
   /**
-   * "quick" — always use the streaming path (fast web search), even if the
-   * configured model also supports async research. This is what the
-   * `web_search` tool wires so a misconfigured deep/async model can't turn a
-   * quick lookup into a slow research job.
+   * "quick" — always use the streaming path, even if the configured model
+   * also supports async research. Wired by the `web_search` tool. This is a
+   * defense-in-depth guard: it guarantees a quick lookup never *launches an
+   * async research job*, but it does not by itself guarantee low latency (a
+   * slow model pinned to the slot would still stream slowly). Keeping slow
+   * models out of the `web_search` slot is the UI filter's job
+   * (`isQuickSearchModel`); this is the backstop if one slips through.
    * "deep" — auto-select the async path when the provider can handle the
    * model (Gemini Deep Research), else stream. Wired by `deep_research`.
    */

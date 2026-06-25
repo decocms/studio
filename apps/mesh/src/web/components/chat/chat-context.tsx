@@ -50,6 +50,8 @@ import {
 } from "./pills/agent-options";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
+  isDeepResearchModel,
+  isQuickSearchModel,
   pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -432,11 +434,10 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     imageModels[0] ??
     null;
 
-  // Quick web search models (Sonar, streaming) — exclude async-only deep models.
-  const webSearchModels = allKeyModels.filter((m) => {
-    const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
-    return n.includes("sonar") && m.asyncResearch !== true;
-  });
+  // Quick web search models (Sonar / search-preview / online, streaming) —
+  // excludes async-only deep models. Shared classifier with settings + the
+  // SDK default-picker so the three never drift.
+  const webSearchModels = allKeyModels.filter(isQuickSearchModel);
   const validatedStoredWebSearch = findModel(
     storedWebSearchRef,
     keys,
@@ -456,15 +457,8 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     validatedStoredWebSearch ??
     defaultWebSearchModel;
 
-  // Deep research models (deep-research / async, sonar-pro fallback).
-  const deepResearchModels = allKeyModels.filter((m) => {
-    const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
-    return (
-      m.asyncResearch === true ||
-      n.includes("deepresearch") ||
-      n.includes("sonar")
-    );
-  });
+  // Deep research models (async / deep-research, sonar-pro fallback).
+  const deepResearchModels = allKeyModels.filter(isDeepResearchModel);
   const validatedStoredDeepResearch = findModel(
     storedDeepResearchRef,
     keys,

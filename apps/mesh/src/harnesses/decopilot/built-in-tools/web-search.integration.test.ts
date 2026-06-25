@@ -39,7 +39,10 @@ import {
 import { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
 import type { StudioContext } from "@/core/studio-context";
 import { googleAdapter } from "@/ai-providers/adapters/google";
-import { AsyncResearchTerminalError } from "@/ai-providers/types";
+import {
+  AsyncResearchTerminalError,
+  type MeshProvider,
+} from "@/ai-providers/types";
 import type { ModelInfo } from "@decocms/harness/decopilot/model-info";
 import type { UIMessageStreamWriter } from "ai";
 import { createWebSearchTool } from "@decocms/harness/decopilot/built-in-tools/web-search";
@@ -669,5 +672,157 @@ describe("web_search async-research e2e", () => {
     expect(row!.status).toBe("abandoned");
     expect(row!.completedAt).not.toBeNull();
     expect(row!.lastError ?? "").toContain("abandoned by sweeper");
+  });
+});
+
+// ============================================================================
+// Path selection — quick vs deep (pure, no Postgres). The load-bearing
+// guarantee: `web_search` (mode "quick") never enters the async-research path,
+// even when the provider would happily accept an async job for the model.
+// ============================================================================
+
+describe("createClusterResearchJob — path selection", () => {
+  const MODEL: ModelInfo = {
+    id: "any-research-model",
+    title: "Any",
+    provider: "google",
+  };
+
+  // Two sentinels distinguish which branch the generator entered without
+  // needing a real `streamText` model or a real async-research provider:
+  //   STREAMING_PATH — runStreamingResearch called `aiSdk.languageModel`
+  //   ASYNC_PATH     — runAsyncResearch called `storage.upsertPending`
+  function makeProvider(opts: {
+    canHandle: boolean;
+    onStart?: () => void;
+    onLanguageModel?: () => void;
+  }): MeshProvider {
+    return {
+      info: { id: "test-provider" },
+      asyncResearch: {
+        canHandle: () => opts.canHandle,
+        start: async () => {
+          opts.onStart?.();
+          return { jobId: "int_test" };
+        },
+        resume: async () => ({
+          text: "unused",
+          citations: [],
+          usage: { inputTokens: 0, outputTokens: 0 },
+        }),
+      },
+      aiSdk: {
+        languageModel: () => {
+          opts.onLanguageModel?.();
+          throw new Error("STREAMING_PATH");
+        },
+      },
+    } as unknown as MeshProvider;
+  }
+
+  function makeCtx(onUpsert?: () => void): StudioContext {
+    return {
+      storage: {
+        asyncResearchJobs: {
+          upsertPending: async () => {
+            onUpsert?.();
+            throw new Error("ASYNC_PATH");
+          },
+        },
+      },
+      objectStorage: null,
+    } as unknown as StudioContext;
+  }
+
+  function runFirstStep(
+    provider: MeshProvider,
+    ctx: StudioContext,
+    mode: "quick" | "deep",
+  ) {
+    const job = createClusterResearchJob({
+      provider,
+      modelInfo: MODEL,
+      ctx,
+      mode,
+      toolName: mode === "quick" ? "web_search" : "deep_research",
+    });
+    return job({
+      query: "q",
+      taskId: "t",
+      toolCallId: "tc",
+      abortSignal: undefined,
+    }).next();
+  }
+
+  it('mode "quick" always streams, even when the provider can handle async research', async () => {
+    let startCalled = false;
+    let upsertCalled = false;
+    let languageModelCalled = false;
+    const provider = makeProvider({
+      canHandle: true, // provider WOULD accept an async job…
+      onStart: () => {
+        startCalled = true;
+      },
+      onLanguageModel: () => {
+        languageModelCalled = true;
+      },
+    });
+
+    await expect(
+      runFirstStep(
+        provider,
+        makeCtx(() => (upsertCalled = true)),
+        "quick",
+      ),
+    ).rejects.toThrow("STREAMING_PATH");
+
+    // …but quick mode never touched the async path.
+    expect(startCalled).toBe(false);
+    expect(upsertCalled).toBe(false);
+    expect(languageModelCalled).toBe(true);
+  });
+
+  it('mode "deep" uses the async path when the provider can handle the model', async () => {
+    let upsertCalled = false;
+    let languageModelCalled = false;
+    const provider = makeProvider({
+      canHandle: true,
+      onLanguageModel: () => {
+        languageModelCalled = true;
+      },
+    });
+
+    await expect(
+      runFirstStep(
+        provider,
+        makeCtx(() => (upsertCalled = true)),
+        "deep",
+      ),
+    ).rejects.toThrow("ASYNC_PATH");
+
+    expect(upsertCalled).toBe(true);
+    expect(languageModelCalled).toBe(false);
+  });
+
+  it('mode "deep" falls back to streaming when the provider cannot handle the model', async () => {
+    let upsertCalled = false;
+    let languageModelCalled = false;
+    const provider = makeProvider({
+      canHandle: false,
+      onLanguageModel: () => {
+        languageModelCalled = true;
+      },
+    });
+
+    await expect(
+      runFirstStep(
+        provider,
+        makeCtx(() => (upsertCalled = true)),
+        "deep",
+      ),
+    ).rejects.toThrow("STREAMING_PATH");
+
+    expect(upsertCalled).toBe(false);
+    expect(languageModelCalled).toBe(true);
   });
 });

@@ -304,9 +304,10 @@ async function buildAllTools(
   // via Google while chat is on LiteLLM). Hook presence is the gate — desktop
   // omits the providers and these tools simply aren't in the set (§5.1).
   //
-  // web_search forces the streaming path (mode "quick"): even if an org pins a
-  // deep/async model to the web_search tier, a quick lookup never launches a
-  // slow async research job.
+  // web_search forces the streaming path (mode "quick") as a backstop: even if
+  // a deep/async model slips into the web_search tier, a quick lookup never
+  // launches an async research job. The primary guard against slow models in
+  // this slot is the capability-aware UI filter (`isQuickSearchModel`).
   if (webSearchProvider && models.webSearch) {
     const researchJob = createClusterResearchJob({
       provider: webSearchProvider,

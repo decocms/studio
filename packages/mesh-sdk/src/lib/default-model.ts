@@ -132,10 +132,11 @@ export const IMAGE_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
 
 /**
  * Preferred quick web-search models per provider — fast, streaming search
- * (e.g. Perplexity Sonar). Falls back to first non-deep model whose id
- * includes "sonar". Deliberately excludes deep-research models: the quick
- * `web_search` tool forces the streaming path, and pinning a deep/async model
- * here would make every quick search launch a slow research job.
+ * (e.g. Perplexity Sonar). This is the curated default *pick*; the broader
+ * `isQuickSearchModel` predicate is what governs which models are *available*
+ * in the slot (so non-Perplexity search models still show up). Deliberately
+ * excludes deep-research models: pinning a deep/async model here would make
+ * every quick search launch a slow research job.
  */
 export const WEB_SEARCH_MODEL_PREFERENCES: Partial<
   Record<ProviderId, string[]>
@@ -157,20 +158,55 @@ export const DEEP_RESEARCH_MODEL_PREFERENCES: Partial<
   deco: ["perplexity/deep-research", "perplexity/sonar-pro"],
 };
 
-/** True when a model id reads as a deep-research model (substring match). */
-function isDeepResearchModelId(modelId: string): boolean {
-  return modelId
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .includes("deepresearch");
+function normalizeModelId(modelId: string): string {
+  return modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** True when a model id reads as a Perplexity Sonar (quick search) model. */
-function isSonarModelId(modelId: string): boolean {
-  return modelId
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .includes("sonar");
+/** True when a model id reads as a deep-research model (substring match). */
+export function isDeepResearchModelId(modelId: string): boolean {
+  return normalizeModelId(modelId).includes("deepresearch");
+}
+
+/**
+ * Quick web-search model id markers. Broader than Perplexity Sonar so a
+ * non-Perplexity search model still lands in the quick `web_search` slot:
+ *   - "sonar"         — Perplexity Sonar family
+ *   - "searchpreview" — OpenAI `gpt-4o(-mini)-search-preview`
+ *   - "online"        — OpenRouter `:online` variants
+ * Bare "search" is intentionally avoided — it is a substring of "research".
+ */
+const QUICK_SEARCH_MODEL_ID_MARKERS = ["sonar", "searchpreview", "online"];
+
+/** True when a model id reads as a quick web-search model. Deep-research ids
+ *  are excluded so a deep model never classifies as quick. */
+export function isQuickSearchModelId(modelId: string): boolean {
+  const n = normalizeModelId(modelId);
+  if (n.includes("deepresearch")) return false;
+  return QUICK_SEARCH_MODEL_ID_MARKERS.some((marker) => n.includes(marker));
+}
+
+/** Quick web-search models: search-capable but NOT async-only. An async model
+ *  must go to the `deep_research` slot — pinning it to `web_search` would make
+ *  a quick lookup launch a slow research job. The id heuristic is a secondary
+ *  signal; `asyncResearch` is the load-bearing exclusion. */
+export function isQuickSearchModel(m: {
+  modelId: string;
+  asyncResearch?: boolean;
+}): boolean {
+  return m.asyncResearch !== true && isQuickSearchModelId(m.modelId);
+}
+
+/** Deep-research models: async-research models, ids that read "deep research",
+ *  or a quick-search model as a capable fallback (e.g. sonar-pro). */
+export function isDeepResearchModel(m: {
+  modelId: string;
+  asyncResearch?: boolean;
+}): boolean {
+  return (
+    m.asyncResearch === true ||
+    isDeepResearchModelId(m.modelId) ||
+    isQuickSearchModelId(m.modelId)
+  );
 }
 
 export interface SimpleModeModelSlot {
@@ -271,8 +307,7 @@ export function pickSimpleModeDefaults(
         models,
         key.id,
         WEB_SEARCH_MODEL_PREFERENCES[providerId] ?? [],
-        // Quick search fallback: a Sonar model that is NOT a deep-research one.
-        (m) => isSonarModelId(m.modelId) && !isDeepResearchModelId(m.modelId),
+        isQuickSearchModel,
       );
     }
     if (!result.deepResearch) {
@@ -280,12 +315,7 @@ export function pickSimpleModeDefaults(
         models,
         key.id,
         DEEP_RESEARCH_MODEL_PREFERENCES[providerId] ?? [],
-        // Deep fallback: an async-research model or one whose id reads "deep
-        // research"; sonar-pro is an acceptable last resort.
-        (m) =>
-          m.asyncResearch === true ||
-          isDeepResearchModelId(m.modelId) ||
-          isSonarModelId(m.modelId),
+        isDeepResearchModel,
       );
     }
   }

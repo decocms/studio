@@ -14,6 +14,8 @@ import {
   type AiProviderModel,
 } from "@/web/hooks/collections/use-ai-providers";
 import {
+  isDeepResearchModel,
+  isQuickSearchModel,
   pickSimpleModeDefaults,
   type SimpleModeModelSlot,
 } from "@decocms/mesh-sdk";
@@ -31,28 +33,13 @@ import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 const filterImageModels = (m: AiProviderModel) =>
   m.capabilities?.includes("image") === true;
 
-const isDeepModel = (m: AiProviderModel) => {
-  if (m.asyncResearch === true) return true;
-  const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return n.includes("deepresearch");
-};
-
-const isSonarModel = (m: AiProviderModel) =>
-  m.modelId
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .includes("sonar");
-
-// Quick web search: streaming Sonar-style models. Async-only deep-research
-// models are excluded — pinning one here would make every quick lookup launch
-// a slow research job (the exact UX we're avoiding).
-const filterWebSearchModels = (m: AiProviderModel) =>
-  isSonarModel(m) && m.asyncResearch !== true;
-
-// Deep research: async-research models or anything that reads as "deep
-// research"; sonar-pro is allowed as a capable fallback.
-const filterDeepResearchModels = (m: AiProviderModel) =>
-  isDeepModel(m) || isSonarModel(m);
+// Quick web search vs deep research classifiers are shared with the chat
+// picker and the SDK default-picker (`@decocms/mesh-sdk`) so the three never
+// drift. Quick = search-capable but not async-only (pinning an async model
+// here would make every quick lookup launch a slow research job); deep =
+// async / deep-research, with sonar-pro allowed as a capable fallback.
+const filterWebSearchModels = (m: AiProviderModel) => isQuickSearchModel(m);
+const filterDeepResearchModels = (m: AiProviderModel) => isDeepResearchModel(m);
 
 const TIER_ROWS = [
   {
