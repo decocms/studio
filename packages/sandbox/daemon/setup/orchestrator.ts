@@ -27,7 +27,7 @@ import type { Application, Config } from "../types";
 import { autodetectApplication } from "./autodetect";
 import { spawnClone } from "./clone";
 import { configureGitIdentity } from "./identity";
-import { spawnInstall, trySpawnDecoSiteCache } from "./install";
+import { spawnInstall, tryWarmDenoCache } from "./install";
 import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
@@ -325,7 +325,7 @@ export class SetupOrchestrator {
     if (!installPromise) {
       // For deno, opportunistically pre-populate the cache from S3.
       // Non-fatal: failure just means a cold first run.
-      const cachePromise = trySpawnDecoSiteCache({
+      const cachePromise = tryWarmDenoCache({
         config,
         env: config.env,
         onChunk: (_src, data) => {

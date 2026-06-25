@@ -17,35 +17,52 @@ function parseGithubOwnerRepo(
 }
 
 /**
- * For deco site repos (Deno), tries to pre-populate $DENO_DIR from S3 so
- * the first `deno task dev` doesn't need to re-fetch all remote imports.
+ * For Deno projects, tries to pre-populate $DENO_DIR from any S3-compatible
+ * storage so the first `deno task dev` skips remote import fetching.
  *
- * Requires DENO_DECO_CACHE_S3_ACCESS_KEY_ID + DENO_DECO_CACHE_S3_SECRET_ACCESS_KEY
- * in the pod environment. Non-fatal: any failure (missing creds, S3 object
- * not found, network error) is logged and the sandbox continues normally.
+ * Required env vars:
+ *   DENO_CACHE_S3_ACCESS_KEY_ID
+ *   DENO_CACHE_S3_SECRET_ACCESS_KEY
+ *   DENO_CACHE_S3_REGION
+ *   DENO_CACHE_S3_BUCKET
+ *
+ * Optional env vars:
+ *   DENO_CACHE_S3_ENDPOINT  — S3-compatible endpoint (e.g. MinIO, R2, GCS)
+ *                             defaults to AWS S3 virtual-hosted URL
+ *   DENO_CACHE_S3_PATH      — explicit object key (e.g. "my/cache.tar.zst")
+ *                             defaults to "<owner>/<repo>/cache.tar.zst"
+ *                             derived from the GitHub clone URL
+ *
+ * Non-fatal: any failure (missing creds, object not found, network error)
+ * is logged and the sandbox continues to start normally.
  */
-export function trySpawnDecoSiteCache(deps: InstallDeps): Promise<number> | null {
+export function tryWarmDenoCache(deps: InstallDeps): Promise<number> | null {
   const { config } = deps;
   if (config.application?.packageManager?.name !== "deno") return null;
 
   // Only attempt if S3 credentials are present — avoids spawning a shell
   // and showing misleading output when the env vars aren't configured.
   if (
-    !process.env.DENO_DECO_CACHE_S3_ACCESS_KEY_ID ||
-    !process.env.DENO_DECO_CACHE_S3_SECRET_ACCESS_KEY
+    !process.env.DENO_CACHE_S3_ACCESS_KEY_ID ||
+    !process.env.DENO_CACHE_S3_SECRET_ACCESS_KEY
   )
     return null;
 
-  const cloneUrl = config.git?.repository?.cloneUrl;
-  if (!cloneUrl) return null;
-  const ownerRepo = parseGithubOwnerRepo(cloneUrl);
-  if (!ownerRepo) return null;
-
-  const { owner, repo } = ownerRepo;
-  const region = process.env.DENO_DECO_CACHE_S3_REGION;
-  const bucket = process.env.DENO_DECO_CACHE_S3_BUCKET;
+  const region = process.env.DENO_CACHE_S3_REGION;
+  const bucket = process.env.DENO_CACHE_S3_BUCKET;
   if (!region || !bucket) return null;
-  const endpoint = process.env.DENO_DECO_CACHE_S3_ENDPOINT;
+
+  // Resolve the object path: explicit override or derived from owner/repo.
+  let cachePath = process.env.DENO_CACHE_S3_PATH;
+  if (!cachePath) {
+    const cloneUrl = config.git?.repository?.cloneUrl;
+    if (!cloneUrl) return null;
+    const ownerRepo = parseGithubOwnerRepo(cloneUrl);
+    if (!ownerRepo) return null;
+    cachePath = `${ownerRepo.owner}/${ownerRepo.repo}/cache.tar.zst`;
+  }
+
+  const endpoint = process.env.DENO_CACHE_S3_ENDPOINT;
   const baseUrl = endpoint
     ? `${endpoint}/${bucket}`
     : `https://${bucket}.s3.${region}.amazonaws.com`;
@@ -53,23 +70,23 @@ export function trySpawnDecoSiteCache(deps: InstallDeps): Promise<number> | null
   // Credentials are referenced as shell variables so they never appear in
   // the command string or in process listings.
   const cmd = [
-    `DECO_CACHE_TMP=$(mktemp)`,
-    `DECO_DIR=\${DENO_DIR:-$HOME/.deno}`,
-    `mkdir -p "$DECO_DIR"`,
+    `DENO_CACHE_TMP=$(mktemp)`,
+    `DENO_CACHE_DIR=\${DENO_DIR:-$HOME/.deno}`,
+    `mkdir -p "$DENO_CACHE_DIR"`,
     `if curl -sf --aws-sigv4 "aws:amz:${region}:s3" \\`,
-    `    --user "$DENO_DECO_CACHE_S3_ACCESS_KEY_ID:$DENO_DECO_CACHE_S3_SECRET_ACCESS_KEY" \\`,
-    `    "${baseUrl}/${owner}/${repo}/cache.tar.zst" -o "$DECO_CACHE_TMP"; then`,
-    `  zstd -d "$DECO_CACHE_TMP" --stdout | tar xf - -C "$DECO_DIR" --no-same-permissions --no-same-owner`,
-    `  echo "[deco-site cache] deno deps restored from s3 (${owner}/${repo})"`,
+    `    --user "$DENO_CACHE_S3_ACCESS_KEY_ID:$DENO_CACHE_S3_SECRET_ACCESS_KEY" \\`,
+    `    "${baseUrl}/${cachePath}" -o "$DENO_CACHE_TMP"; then`,
+    `  zstd -d "$DENO_CACHE_TMP" --stdout | tar xf - -C "$DENO_CACHE_DIR" --no-same-permissions --no-same-owner`,
+    `  echo "[deno cache] restored from s3 (${cachePath})"`,
     `else`,
-    `  echo "[deco-site cache] s3 cache not available (${owner}/${repo}) — deno will fetch deps on first run"`,
+    `  echo "[deno cache] not available (${cachePath}) — deno will fetch deps on first run"`,
     `fi`,
-    `rm -f "$DECO_CACHE_TMP"`,
+    `rm -f "$DENO_CACHE_TMP"`,
   ].join("\n");
 
   deps.onChunk(
     "setup",
-    `\r\n[deco-site cache] fetching deno deps from s3 (${owner}/${repo})...\r\n`,
+    `\r\n[deno cache] fetching from s3 (${cachePath})...\r\n`,
   );
   return spawnSetupStep(cmd, deps.onChunk, {
     dropPrivileges: deps.dropPrivileges,

@@ -207,33 +207,36 @@ spec:
             - name: ORGFS_SIDECAR_STATUS_PATH
               value: "/run/orgfs/status.json"
             {{- end }}
-            {{- if .Values.decoSiteCache.secretName }}
-            # Optional S3 credentials for pre-populating the Deno module
-            # cache on sandbox start. When set, the daemon downloads
-            # <owner>/<repo>/cache.tar.zst from the assets bucket before
-            # running `deno task dev`, avoiding cold first-run downloads.
-            # Non-fatal: if the object is missing the sandbox starts normally.
-            - name: DENO_DECO_CACHE_S3_ACCESS_KEY_ID
+            {{- if .Values.denoCache.secretName }}
+            # Optional: pre-populate $DENO_DIR from any S3-compatible storage
+            # before running `deno task dev`. Supports AWS S3, GCS, R2, MinIO.
+            # Non-fatal: missing object or download failure is logged and the
+            # sandbox starts with a cold Deno cache.
+            - name: DENO_CACHE_S3_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.decoSiteCache.secretName }}
-                  key: {{ .Values.decoSiteCache.accessKeyIdKey | default "accessKeyId" }}
-            - name: DENO_DECO_CACHE_S3_SECRET_ACCESS_KEY
+                  name: {{ .Values.denoCache.secretName }}
+                  key: {{ .Values.denoCache.accessKeyIdKey | default "accessKeyId" }}
+            - name: DENO_CACHE_S3_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.decoSiteCache.secretName }}
-                  key: {{ .Values.decoSiteCache.secretAccessKeyKey | default "secretAccessKey" }}
-            {{- if .Values.decoSiteCache.region }}
-            - name: DENO_DECO_CACHE_S3_REGION
-              value: {{ .Values.decoSiteCache.region | quote }}
+                  name: {{ .Values.denoCache.secretName }}
+                  key: {{ .Values.denoCache.secretAccessKeyKey | default "secretAccessKey" }}
+            {{- if .Values.denoCache.region }}
+            - name: DENO_CACHE_S3_REGION
+              value: {{ .Values.denoCache.region | quote }}
             {{- end }}
-            {{- if .Values.decoSiteCache.bucket }}
-            - name: DENO_DECO_CACHE_S3_BUCKET
-              value: {{ .Values.decoSiteCache.bucket | quote }}
+            {{- if .Values.denoCache.bucket }}
+            - name: DENO_CACHE_S3_BUCKET
+              value: {{ .Values.denoCache.bucket | quote }}
             {{- end }}
-            {{- if .Values.decoSiteCache.endpoint }}
-            - name: DENO_DECO_CACHE_S3_ENDPOINT
-              value: {{ .Values.decoSiteCache.endpoint | quote }}
+            {{- if .Values.denoCache.endpoint }}
+            - name: DENO_CACHE_S3_ENDPOINT
+              value: {{ .Values.denoCache.endpoint | quote }}
+            {{- end }}
+            {{- if .Values.denoCache.path }}
+            - name: DENO_CACHE_S3_PATH
+              value: {{ .Values.denoCache.path | quote }}
             {{- end }}
             {{- end }}
           ports:
