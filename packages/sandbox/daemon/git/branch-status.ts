@@ -42,6 +42,8 @@ export class BranchStatusMonitor {
   private watchInitialized = false;
   /** Boot-dirty paths → working-tree content hash at `armBaseline()`. */
   private dirtyBaseline: Map<string, string> | null = null;
+  /** Optional callback fired when the repo watcher detects a file change. */
+  onFileChanged: ((path: string) => void) | null = null;
 
   constructor(
     private readonly config: Config,
@@ -162,6 +164,9 @@ export class BranchStatusMonitor {
             return;
           }
           this.schedule();
+          if (typeof filename === "string") {
+            this.onFileChanged?.(filename);
+          }
         },
       );
       this.repoWatcher.on("error", () => {});

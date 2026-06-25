@@ -65,6 +65,7 @@ export interface DaemonEventMap {
   scripts: { scripts: string[] };
   branch: { meta: BranchMeta };
   reload: Record<string, never>;
+  "file-changed": { path: string };
 }
 
 export type DaemonEventName = keyof DaemonEventMap;

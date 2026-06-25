@@ -29,7 +29,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@decocms/mesh-sdk";
+import { KEYS } from "@/web/lib/query-keys";
 
 import type {
   ClaimFailureReason,
@@ -123,6 +125,7 @@ const DAEMON_EVENT_TYPES: readonly DaemonEventName[] = [
   "scripts",
   "branch",
   "reload",
+  "file-changed",
 ] as const;
 // `log` is broadcast separately — same SSE stream, different shape.
 const LOG_EVENT = "log" as const;
@@ -178,6 +181,7 @@ export function SandboxEventsProvider({
   children: ReactNode;
 }) {
   const { org } = useProjectContext();
+  const queryClient = useQueryClient();
   const [phase, setPhase] = useState<ClaimPhase | null>(null);
   const [lifecycle, setLifecycle] = useState<LifecycleState>({ phase: "idle" });
   const [status, setStatus] = useState<DaemonStatus>({ state: "running" });
@@ -348,6 +352,32 @@ export function SandboxEventsProvider({
               }
             }
             return;
+          case "file-changed": {
+            const { path: filePath } =
+              payload as DaemonEventPayload<"file-changed">;
+            const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
+            if (filePath.startsWith(".deco/")) {
+              void queryClient.invalidateQueries({
+                queryKey: KEYS.decofile(cacheKey),
+              });
+            } else {
+              // liveMeta keys include previewUrl as suffix
+              // (e.g. ["live-meta", "org/vmcp/branch/https://..."])
+              // — use predicate to match all liveMeta entries for
+              // this sandbox regardless of previewUrl.
+              void queryClient.invalidateQueries({
+                predicate: (query) => {
+                  const key = query.queryKey;
+                  return (
+                    key[0] === "live-meta" &&
+                    typeof key[1] === "string" &&
+                    key[1].startsWith(`${cacheKey}/`)
+                  );
+                },
+              });
+            }
+            return;
+          }
         }
       } catch {
         // ignore parse errors
@@ -467,7 +497,14 @@ export function SandboxEventsProvider({
       directEs?.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
     };
-  }, [virtualMcpId, branch, org.slug, enabled, directDaemonEventsUrl]);
+  }, [
+    virtualMcpId,
+    branch,
+    org.slug,
+    enabled,
+    directDaemonEventsUrl,
+    queryClient,
+  ]);
 
   const value: SandboxEventsValue = {
     phase,
