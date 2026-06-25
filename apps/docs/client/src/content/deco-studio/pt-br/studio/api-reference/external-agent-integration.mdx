@@ -1,0 +1,160 @@
+---
+title: Chame um agent a partir do seu app
+description: Controle um agent do Studio a partir de um sistema externo com uma API key escopada — crie uma thread, execute o agent, faça stream da resposta e leia a thread de volta
+icon: MessageCircle
+---
+
+import Callout from "../../../../../components/ui/Callout.astro";
+
+## Visão geral
+
+Você pode controlar qualquer agent do Studio a partir de um sistema externo — o
+backend de um chatbot, um handler de webhook, um job de CRON — usando uma **API
+key** escopada sobre HTTP puro. O fluxo é o mesmo que o client web do Studio usa:
+
+1. **Crie uma thread** para o agent.
+2. **Poste uma mensagem** para enfileirar uma execução.
+3. **Faça stream** da resposta do agent em tempo real.
+4. **Leia a thread completa** depois, a partir do armazenamento durável.
+
+Nenhum SDK é necessário — cada passo é uma requisição HTTP normal autenticada com
+`Authorization: Bearer <api-key>`.
+
+## Crie a API key
+
+A forma mais rápida é pelo diálogo **Connect** do agent → **Call from your app** →
+**Create API key**. Ele gera uma key escopada exatamente para as tools que este
+fluxo precisa e a exibe uma única vez.
+
+Para criá-la programaticamente, chame a tool `API_KEY_CREATE` com estas
+permissões:
+
+```json
+{
+  "name": "chat-bridge-my-agent",
+  "permissions": {
+    "self": [
+      "COLLECTION_THREADS_CREATE",
+      "COLLECTION_THREADS_GET",
+      "COLLECTION_THREAD_MESSAGES_LIST",
+      "COLLECTION_THREADS_LIST"
+    ]
+  },
+  "expiresIn": 7776000
+}
+```
+
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| `name` | `string` | Rótulo legível por humanos |
+| `permissions` | `{ [resource]: string[] }` | `self` contém as tools de gerenciamento acima |
+| `expiresIn` | `number` | Tempo de vida em **segundos** (aqui, 90 dias). Omita para não expirar |
+
+<Callout type="warning">
+  `expiresIn` é um **número** de segundos, não uma string. O valor da key é
+  retornado apenas uma vez, na criação — armazene-o imediatamente.
+</Callout>
+
+Os endpoints de execução e stream abaixo exigem apenas que a key pertença a um
+membro da org, então nenhuma concessão escopada por connection é necessária. As
+permissões `self` são apenas o que as **tools** de leitura/escrita da thread
+exigem.
+
+## Endpoints
+
+Todos os paths são escopados por org, onde `:org` é o **slug** da sua organização.
+
+| Passo | Método e path |
+|------|---------------|
+| Criar thread | `POST /api/:org/tools/COLLECTION_THREADS_CREATE` |
+| Executar agent | `POST /api/:org/decopilot/threads/:threadId/messages` |
+| Stream | `GET /api/:org/decopilot/threads/:threadId/stream` |
+| Ler thread | `POST /api/:org/tools/COLLECTION_THREAD_MESSAGES_LIST` |
+| Status da thread | `POST /api/:org/tools/COLLECTION_THREADS_GET` |
+
+### 1. Crie uma thread
+
+O `virtual_mcp_id` é o id do agent (Virtual MCP) — encontre-o na URL do agent ou
+via `COLLECTION_CONNECTIONS_LIST`.
+
+```bash
+curl -X POST "$MESH_BASE_URL/api/$MESH_ORG/tools/COLLECTION_THREADS_CREATE" \
+  -H "Authorization: Bearer $MESH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "data": { "title": "Support chat", "virtual_mcp_id": "'"$MESH_AGENT_ID"'" } }'
+# → { "item": { "id": "thrd_...", "status": "...", ... } }
+```
+
+Use o `item.id` retornado como `:threadId` nos próximos passos. (Você também pode
+fornecer seu próprio `data.id`.)
+
+### 2. Execute o agent
+
+Isto enfileira uma execução e retorna `202` imediatamente — o corpo não carrega
+nenhum output.
+
+```bash
+curl -X POST "$MESH_BASE_URL/api/$MESH_ORG/decopilot/threads/$THREAD_ID/messages" \
+  -H "Authorization: Bearer $MESH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{ "role": "user", "parts": [{ "type": "text", "text": "Hello!" }] }],
+    "agent": { "id": "'"$MESH_AGENT_ID"'" },
+    "tier": "smart"
+  }'
+# → 202 { "taskId": "thrd_..." }
+```
+
+<Callout type="info">
+  O corpo da requisição é validado de forma estrita — envie apenas `messages`,
+  `agent` e os opcionais `tier` / `temperature`. Exatamente uma mensagem não-system
+  é permitida por chamada. O id da thread fica na URL; não coloque também um
+  `thread_id` divergente no corpo.
+</Callout>
+
+### 3. Faça stream da resposta
+
+O output do agent é um stream de [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
+(chunks de UI-message do AI SDK), suportado por NATS JetStream no lado do servidor.
+
+```bash
+curl -N "$MESH_BASE_URL/api/$MESH_ORG/decopilot/threads/$THREAD_ID/stream" \
+  -H "Authorization: Bearer $MESH_API_KEY" \
+  -H "Accept: text/event-stream"
+```
+
+<Callout type="tip">
+  Abra o stream **antes** de postar a mensagem, para não perder os primeiros
+  chunks. O `EventSource` nativo do navegador não consegue enviar um header
+  `Authorization` — use `fetch()` e leia o corpo da resposta como um stream.
+</Callout>
+
+<Callout type="warning">
+  O stream é um buffer ao vivo efêmero (~5 minutos de retenção), não o sistema de
+  registro. Para o transcript durável, leia a thread (passo 4).
+</Callout>
+
+### 4. Leia a thread de volta
+
+O transcript autoritativo e durável fica disponível a qualquer momento:
+
+```bash
+curl -X POST "$MESH_BASE_URL/api/$MESH_ORG/tools/COLLECTION_THREAD_MESSAGES_LIST" \
+  -H "Authorization: Bearer $MESH_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "thread_id": "'"$THREAD_ID"'", "limit": 200 }'
+```
+
+Acompanhe o progresso da execução com `COLLECTION_THREADS_GET`
+(`{ "id": "<threadId>" }`) e observe `status` mover de `in_progress` para
+`completed` ou `failed`.
+
+## Escopo e segurança
+
+- Uma key é vinculada a uma única organização (embutida na criação). O `:org` no
+  path deve corresponder ao slug daquela org.
+- As permissões `self` da thread controlam o acesso às **tools** de
+  leitura/escrita, mas os endpoints de execução e stream autorizam apenas com base
+  na associação à org — então qualquer key válida da org pode controlar agents.
+  Trate essas keys como qualquer credencial de produção: nomeie-as por integração,
+  defina uma expiração e faça rotação deletando (`API_KEY_DELETE`) e recriando.

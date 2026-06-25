@@ -1,0 +1,41 @@
+---
+title: Library
+description: A Drive-like browser for your organization's shared filesystem
+icon: Folder
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## What is the Library?
+
+**Library** is a file browser for your organization's shared filesystem — reachable from the top of the left sidebar. It's the human-facing window onto the same files your agents read and write: anything an agent saves to the org filesystem shows up here, and anything you drop here is available to your agents.
+
+Think of it as your organization's shared drive, with a few well-known areas.
+
+## Volumes
+
+The Library is organized into volumes:
+
+- **Home** — the org's shared, free-form home folder. This is where agents record durable knowledge and where you keep context you want every agent to be able to reach. Editable by everyone.
+- **Uploads** — files attached to conversations land here automatically. When you drop a file into a chat, it's available to the agent without a copy step.
+- **Outputs** — the shared output folder for agent runs. Files an agent produces during a run surface here.
+- **Public sets** — curated, read-only skill sets synced from versioned repositories, exposed for agents to reference.
+
+A **Recently added** feed across all volumes sits at the top so you can jump back to whatever you (or your agents) touched last. Navigate with breadcrumbs; the current location is reflected in the page URL, so you can link a teammate straight to a folder.
+
+## How it maps to the sandbox
+
+The Library and the agent sandbox are two views of the same filesystem. Inside a sandbox these volumes are mounted under `org/`:
+
+| Library volume | Sandbox path |
+|---|---|
+| Home | `org/<your-org>/` |
+| Uploads | `org/upload` |
+| Outputs | `org/output` |
+| Public sets | `org/public/<set>` |
+
+Files written to the Home folder and to Outputs sync to your organization's cloud storage and are visible to every member and agent. External changes appear inside a running sandbox within about a second.
+
+<Callout type="info">
+  For how agents use these folders at runtime — recording durable knowledge, reading chat attachments, writing run output — see [Decopilot → Overview](/en/studio/decopilot/overview#built-in-tools).
+</Callout>

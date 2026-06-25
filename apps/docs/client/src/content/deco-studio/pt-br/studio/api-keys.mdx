@@ -46,7 +46,7 @@ Adicione a API key na configuração do seu cliente MCP:
 {
   "mcpServers": {
     "deco": {
-      "url": "https://studio.decocms.com/mcp/agent/your-agent-id",
+      "url": "https://studio.decocms.com/api/your-org-slug/mcp/gateway/your-agent-id",
       "transport": "http",
       "headers": {
         "Authorization": "Bearer mcp_key_abc123..."
@@ -55,6 +55,8 @@ Adicione a API key na configuração do seu cliente MCP:
   }
 }
 ```
+
+Substitua `your-org-slug` pelo slug da sua organização e `your-agent-id` pelo id do agent. Veja a referência [Connection Proxy](/pt-br/studio/api-reference/connection-proxy) para o esquema completo de paths.
 
 ## Boas Práticas de Segurança
 

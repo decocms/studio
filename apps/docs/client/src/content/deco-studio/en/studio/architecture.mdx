@@ -4,10 +4,10 @@ description: How Studio is wired end to end — edge, cloud cluster, and desktop
 icon: Network
 ---
 
-import Callout from "../../../../../components/ui/Callout.astro";
-import ArchitectureDiagram from "../../../../../components/ArchitectureDiagram.astro";
+import Callout from "../../../../components/ui/Callout.astro";
+import ArchitectureDiagram from "../../../../components/ArchitectureDiagram.astro";
 
-This page describes how a running Studio deployment is wired together: the tiers, what each one does, and how a request becomes an agent run, a tool call, or a sandbox preview. It is the conceptual companion to the [Kubernetes](/studio/self-hosting/deploy/kubernetes) and [Docker Compose](/studio/self-hosting/deploy/docker-compose) deploy guides.
+This page describes how a running Studio deployment is wired together: the tiers, what each one does, and how a request becomes an agent run, a tool call, or a sandbox preview. It's useful background whether you self-host or use the cloud, and it's the conceptual companion to the [Kubernetes](/en/studio/self-hosting/deploy/kubernetes) and [Docker Compose](/en/studio/self-hosting/deploy/docker-compose) deploy guides.
 
 ## The three tiers
 
@@ -56,7 +56,7 @@ These three deployments are separate and scale on their own. The web tier was sp
 | Tier | Deployment | Responsibility |
 | --- | --- | --- |
 | **Web** | nginx | Serves the React SPA and reverse-proxies `/api`, `/mcp`, `/oauth-proxy`, `/.well-known` to the API Service. Port 8080. |
-| **API** | Hono, `MESH_DISPATCH_ROLE=api` | HTTP routes, Better Auth, the MCP proxy, access control. **Enqueues** decopilot runs onto DBOS queues and tails NATS to stream output back to the UI. Stateless. **Does not run the agent loop.** |
+| **API** | Hono, `MESH_DISPATCH_ROLE=api` | HTTP routes, Better Auth, the MCP proxy, access control. **Enqueues** Decopilot runs onto DBOS queues and tails NATS to stream output back to the UI. Stateless. **Does not run the agent loop.** |
 | **Worker** | Hono, `MESH_DISPATCH_ROLE=worker` | **Dequeues** DBOS queues (via `listenQueues`) and **runs the agent loop** (`streamText`: model → tool → repeat). CPU-bound. These are the run executors; scale horizontally. |
 
 <Callout type="note">
@@ -76,7 +76,7 @@ The set of queues a worker pod listens on is configured by env (`listenQueues`).
   **The event bus is dormant.** The CloudEvents pub/sub *feature* (`EVENT_PUBLISH`/`EVENT_SUBSCRIBE`, the durable event queue, `ON_EVENTS` subscribers) is only consumed by the workflow plugin, which is not in use. NATS itself is **not** dormant — it serves the live jobs listed above. Don't conflate the two.
 </Callout>
 
-## The decopilot run lifecycle
+## The Decopilot run lifecycle
 
 1. A message (`POST /messages`) or an automation fire creates a **run** on a thread.
 2. The **API** enqueues it onto a DBOS queue in Postgres:
@@ -127,7 +127,7 @@ A sandbox clones the repo, runs the dev server, and exposes an in-pod **daemon**
 
 ### Org filesystem (org-fs)
 
-Each sandbox can mount the **org filesystem** at `<appRoot>/org/<volume>`, so the agent and dev server read and write org files as ordinary paths. The mount stack is `rclone (NFS/FUSE) → the daemon's loopback WebDAV → /api/:org/fs/* → S3` — the same object store as the file routes, surfaced as a mounted volume.
+Each sandbox can mount the **org filesystem** at `<appRoot>/org/<volume>`, so the agent and dev server read and write org files as ordinary paths. The mount stack is `rclone (NFS/FUSE) → the daemon's loopback WebDAV → /api/:org/fs/* → S3` — the same object store as the file routes, surfaced as a mounted volume. This is the same filesystem you browse in the [Library](/en/studio/library).
 
 It is wired on **both** providers, with different mount mechanics:
 

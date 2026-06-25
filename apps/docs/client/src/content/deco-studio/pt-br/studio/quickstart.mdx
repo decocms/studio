@@ -43,34 +43,37 @@ Quando quiser usar suas próprias keys (Anthropic, Google, OpenRouter, etc.) ou 
 
 ---
 
-## Crie ou abra um agente
+## Comece a conversar (Decopilot)
 
-A sidebar mostra seus agentes. Clique em um existente ou crie um novo pelo botão **+**.
+Você não precisa construir nada para começar. A tela inicial é um composer de chat — _"What's on your mind?"_ — alimentado pelo **Decopilot**, o assistente embutido do Studio. Digite um pedido e ele põe mãos à obra, usando quaisquer tools que você tenha conectado. Cada conversa fica salva em **Decopilot**, na sidebar à esquerda.
 
-Quando você está dentro de um agente, a tela tem três partes:
+Quando estiver pronto para criar um worker focado e reutilizável, crie um agent dedicado.
 
-- **Esquerda** — a lista de threads (conversas anteriores com este agente)
-- **Centro / inferior** — o input do chat
-- **Direita** — o painel do agente: **Settings** (instruções, connections), **Automations** e **Git** (se vinculado)
+## Crie um agent
 
-Abra a aba **Settings** à direita e escreva uma instrução de uma linha descrevendo o que este agente deve fazer.
+Use o botão **+** / "Browse agents" na sidebar para criar um novo agent. Assim que ele abrir, a tela se divide em duas partes:
+
+- **Esquerda** — o chat. Acima do input ficam o **model picker** (nível do modelo) e o **runtime picker** (onde o agent roda — na cloud ou na sua própria máquina; veja [Agents](/pt-br/studio/agents#where-an-agent-runs)).
+- **Direita** — um painel com abas. A aba **Settings** guarda instruções, connections e arquivos; **Automations** guarda schedules e triggers. Outras abas (Preview, Content, Review changes) aparecem apenas para agents vinculados a um repo ou site.
+
+Abra a aba **Settings** e escreva uma instrução de uma linha descrevendo o que este agent deve fazer.
 
 ---
 
 ## Anexe uma connection
 
-Connections são as ferramentas que seu agente pode usar — GitHub, Slack, Shopify, seu banco de dados, seu próprio MCP server. Você pode adicioná-las diretamente a partir do agente que acabou de criar:
+Connections são as tools que seu agent pode usar — GitHub, Slack, Shopify, seu banco de dados, seu próprio MCP server. Você pode adicioná-las diretamente a partir do agent que acabou de criar:
 
-1. No painel direito do agente, em **Settings**, abra a seção **Connections**
+1. No painel direito do agent, em **Settings**, abra a seção **Connections**
 2. Clique em **Add connection**
 3. Pesquise no catálogo (ex.: Gmail) ou escolha **Custom Connection** para adicionar um MCP server não listado
 4. Clique em **Connect** e siga o fluxo de sign-in ou cole uma key
-5. Escolha quais ferramentas dessa connection este agente deve ter
+5. Escolha quais tools dessa connection este agent deve ter
 
-As credenciais são criptografadas e nunca expostas ao seu time. Connections adicionadas dessa forma ficam armazenadas no **nível da org** — aparecem em **Settings → Connections** e podem ser anexadas a outros agentes também.
+As credenciais são criptografadas e nunca expostas ao seu time. Connections adicionadas dessa forma ficam armazenadas no **nível da org** — aparecem em **Settings → Connections** e podem ser anexadas a outros agents também.
 
 <Callout type="tip">
-  Você também pode começar por **Settings → Connections** e instalar uma connection antecipadamente, e depois anexá-la aos agentes. O resultado é o mesmo — escolha a ordem que fizer mais sentido.
+  Você também pode começar por **Settings → Connections** e instalar uma connection antecipadamente, e depois anexá-la aos agents. O resultado é o mesmo — escolha a ordem que fizer mais sentido.
 </Callout>
 
 O catálogo é populado pelos registries habilitados em **Settings → Store**.
@@ -79,21 +82,21 @@ O catálogo é populado pelos registries habilitados em **Settings → Store**.
 
 ## Converse com ele
 
-Basta digitar. O agente usa as ferramentas que você anexou.
+Basta digitar. O agent usa as tools que você anexou.
 
 ```
 Send an email to me@example.com with a poem about MCP.
 ```
 
-Acompanhe a execução no chat. Cada chamada de ferramenta é registrada em **Settings → Monitor**.
+Acompanhe a execução no chat. Cada chamada de tool é registrada em **Settings → Monitor**.
 
 <Callout type="success">
-  Tudo pronto! A partir daqui, configure [Automations](/pt-br/studio/automations) para rodar agentes em uma agenda ou evento, convide [members](/pt-br/studio/user-management) do time, ou construa mais agentes.
+  Tudo pronto! A partir daqui, configure [Automations](/pt-br/studio/automations) para rodar agents em um schedule ou evento, convide [members](/pt-br/studio/user-management) do time, ou construa mais agents.
 </Callout>
 
 ## Próximos passos
 
-- **[Key concepts](./concepts)** — Anatomia do Studio: o shell do agente vs. Settings
-- **[Agents](./agents)** — Como desenhar e configurar agentes
-- **[Decopilot](./decopilot/overview)** — O assistente de AI embutido no Studio
+- **[Key concepts](./concepts)** — Anatomia do Studio: o shell do agent vs. Settings
+- **[Agents](./agents)** — Como desenhar e configurar agents
+- **[Decopilot](./decopilot/overview)** — O assistente de IA embutido no Studio
 - **[Self-hosting](./self-hosting/quickstart)** — Deploy em Docker Compose ou Kubernetes

@@ -8,27 +8,35 @@ import Callout from "../../../../../components/ui/Callout.astro";
 
 ## 1) Run deco Studio
 
-Pick one:
+Pick one. Studio uses **PostgreSQL** as its database; the local options below provision one for you.
 
 ### Option A: one-command local setup
 
 ```bash
-bunx decostudio
+bunx -p decocms deco
 ```
+
+Spins up a local instance with an embedded PostgreSQL — fully private, everything stays on your machine. The package is published as `decocms`; the binary it ships is `deco`.
 
 ### Option B: local setup with Docker Compose
 
+The shipped compose files live in the repo under `deploy/docker-compose/`. The `docker-compose.postgres.yml` variant bundles PostgreSQL, so it works on its own:
+
 ```bash
-# 1. Configure environment variables
-# Edit .env and configure BETTER_AUTH_SECRET (required)
-# Generate a secret: openssl rand -base64 32
-cp conf-examples/env.example .env
+# 1. Clone the repo and enter the compose directory
+git clone https://github.com/decocms/studio.git
+cd studio/deploy/docker-compose
 
-# 2. Configure authentication
-cp conf-examples/auth-config.json.example auth-config.json
+# 2. Create a .env with a generated auth secret + Postgres credentials
+cat > .env << EOF
+BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+POSTGRES_USER=studio_user
+POSTGRES_PASSWORD=$(openssl rand -base64 24)
+POSTGRES_DB=studio_db
+EOF
 
-# 3. Start the application
-docker compose up -d
+# 3. Start Studio + PostgreSQL
+docker compose -f docker-compose.postgres.yml up -d
 
 # 4. Access
 open http://localhost:3000
@@ -47,29 +55,33 @@ bun run dev
 
 ### Option D: deploy to Kubernetes (Helm)
 
+The chart lives in the repo under `deploy/helm/studio`. Run from that directory:
+
 ```bash
 # 1. Generate a secure secret for authentication
 SECRET=$(openssl rand -base64 32)
 
 # 2. Install the chart with the generated secret
-helm install deco-mcp-mesh . \
-  --namespace deco-mcp-mesh \
+helm install deco-studio . \
+  --namespace deco-studio \
   --create-namespace \
   --set secret.BETTER_AUTH_SECRET="$SECRET"
 
 # 3. Wait for pods to be ready
 kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/instance=deco-mcp-mesh \
-  -n deco-mcp-mesh \
+  -l app.kubernetes.io/instance=deco-studio \
+  -n deco-studio \
   --timeout=300s
 
 # 4. Access via port-forward
-kubectl port-forward svc/deco-mcp-mesh 8080:80 -n deco-mcp-mesh
+kubectl port-forward svc/deco-studio 8080:80 -n deco-studio
 ```
 
 The application will be available at `http://localhost:8080`.
 
-**More details:** [Kubernetes: Helm Chart](/en/studio/self-hosting/deploy/kubernetes)
+<Callout type="warning">
+  The chart's default values are for evaluation only (single replica). For anything real, point it at a **PostgreSQL** database (`database.engine: postgresql`, `database.url`) and scale from there. See [Kubernetes: Helm Chart](/en/studio/self-hosting/deploy/kubernetes).
+</Callout>
 
 ## 2) Create a Connection
 
