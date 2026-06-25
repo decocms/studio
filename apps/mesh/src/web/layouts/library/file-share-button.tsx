@@ -1,14 +1,15 @@
 /**
- * Share controls for Library files and folders — copy the proxy link and flip
- * visibility between org-only and public.
+ * Share controls for Library files and folders — pick a visibility mode and
+ * copy the proxy link.
  *
- * A public file serves to anyone with its link; a public folder publishes its
- * whole subtree (the read proxy inherits from public ancestor folders), so a
- * page and its co-located assets go public together. Toggling never moves
+ * Three modes: org-only (private), public (anyone with the link), and password
+ * (anyone with the link AND the password — the `/read` proxy serves a form
+ * first). On a folder the mode governs the whole subtree (the read proxy
+ * resolves the most-specific published ancestor). Changing mode never moves
  * anything — the same `/api/:org/fs/:volume/read?path=…` link just changes who
  * it works for.
  *
- * Three surfaces share one body (`ShareControls`): `FileShareButton` (the
+ * Two surfaces share one body (`ShareControls`): `FileShareButton` (the
  * preview-toolbar popover) and `ShareDialog` (opened from Library cards).
  */
 
@@ -19,61 +20,92 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@deco/ui/components/popover.tsx";
-import { Switch } from "@deco/ui/components/switch.tsx";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
-import { Check, Copy01, Globe01, Lock01, Share07 } from "@untitledui/icons";
+import { cn } from "@deco/ui/lib/utils.ts";
+import {
+  Check,
+  Copy01,
+  Globe01,
+  Key01,
+  Lock01,
+  Share07,
+} from "@untitledui/icons";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useOrgFsSetPublic, useOrgFsStat } from "@/web/hooks/use-org-fs";
+import {
+  type ShareMode,
+  useOrgFsSetShareMode,
+  useOrgFsStat,
+} from "@/web/hooks/use-org-fs";
 
 export interface ShareTarget {
   volume: string;
   /** In-volume path of the file or folder. */
   path: string;
   kind: "file" | "dir";
-  /** Last-known public state — seeds the toggle until the live stat loads. */
-  readPublic: boolean;
+  /** Last-known own mode — seeds the control until the live stat loads. */
+  shareMode: ShareMode;
+  /** Last-known effective-public (own or inherited) — seeds the inherited note. */
+  effectivePublic: boolean;
   /** Absolute proxy link to copy. Files only; folders have no single URL. */
   url?: string;
 }
 
-/** The shared body: a visibility switch and (for files) a copy-link row. */
-function ShareControls({ volume, path, kind, readPublic, url }: ShareTarget) {
-  const setPublic = useOrgFsSetPublic(volume);
-  // Read live state so the switch reflects the optimistic toggle immediately
-  // (the mutation writes this exact stat key), falling back to the seed value
-  // while it loads.
+const MODES: { mode: ShareMode; label: string; Icon: typeof Globe01 }[] = [
+  { mode: "private", label: "Org only", Icon: Lock01 },
+  { mode: "public", label: "Public", Icon: Globe01 },
+  { mode: "password", label: "Password", Icon: Key01 },
+];
+
+/** The shared body: a 3-way mode control, an optional password field, and (for
+ *  files) a copy-link row. */
+function ShareControls({
+  volume,
+  path,
+  kind,
+  shareMode,
+  effectivePublic,
+  url,
+}: ShareTarget) {
+  const setShareMode = useOrgFsSetShareMode(volume);
+  // Read live state so the control reflects the optimistic change immediately
+  // (the mutation writes this exact stat key), seeding from the snapshot.
   const { data: entry } = useOrgFsStat(volume, path);
-  const own = entry?.readPublic ?? readPublic;
-  // Public via own flag OR a published ancestor folder. Inherited = public but
-  // not by its own flag — managed on the parent, not here.
-  const effective = entry?.effectivePublic ?? own;
-  const inherited = effective && !own;
-  const [copied, setCopied] = useState(false);
+  const ownMode: ShareMode = entry?.shareMode ?? shareMode;
+  const effective = entry?.effectivePublic ?? effectivePublic;
+  const inherited = effective && ownMode === "private";
   const isDir = kind === "dir";
   const subject = isDir ? "folder" : "file";
 
-  const handleToggle = (next: boolean) => {
-    setPublic.mutate(
-      { path, public: next },
+  const [showPassword, setShowPassword] = useState(false);
+  const [password, setPassword] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const apply = (mode: ShareMode, pw?: string) => {
+    setShareMode.mutate(
+      { path, mode, password: pw },
       {
-        onSuccess: () =>
+        onSuccess: () => {
+          setShowPassword(false);
+          setPassword("");
           toast.success(
-            next
-              ? isDir
-                ? "Anyone with the link can now view files in this folder"
-                : "Anyone with the link can now view this file"
-              : `This ${subject} is now org-only`,
-          ),
+            mode === "private"
+              ? `This ${subject} is now org-only`
+              : mode === "public"
+                ? `Anyone with the link can now view this ${subject}`
+                : `This ${subject} is now password-protected`,
+          );
+        },
         onError: (err) =>
           toast.error(
             err instanceof Error ? err.message : "Failed to update sharing",
@@ -81,6 +113,19 @@ function ShareControls({ volume, path, kind, readPublic, url }: ShareTarget) {
       },
     );
   };
+
+  // Password mode reveals the field and applies on submit; the others apply at
+  // once.
+  const selectMode = (mode: ShareMode) => {
+    if (mode === "password") {
+      setShowPassword(true);
+      return;
+    }
+    setShowPassword(false);
+    apply(mode);
+  };
+
+  const activeMode: ShareMode = showPassword ? "password" : ownMode;
 
   const handleCopy = async () => {
     if (!url) return;
@@ -90,61 +135,114 @@ function ShareControls({ volume, path, kind, readPublic, url }: ShareTarget) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const copyRow = url ? (
+    <div className="flex items-center gap-2 rounded-md border border-input bg-muted/50 px-2 py-1.5">
+      <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+        {url}
+      </code>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-6 shrink-0"
+        onClick={handleCopy}
+        aria-label="Copy link"
+      >
+        {copied ? (
+          <Check size={12} className="text-green-600" />
+        ) : (
+          <Copy01 size={12} />
+        )}
+      </Button>
+    </div>
+  ) : null;
+
+  // Inherited from a published parent folder: read-only here. The mode control
+  // is hidden because the parent governs the read — setting this node to "Org
+  // only" wouldn't actually restrict it (the parent still serves it), so the
+  // owner manages sharing on the parent, not here.
+  if (inherited) {
+    return (
+      <div className="flex w-full min-w-0 flex-col gap-3">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Globe01 size={16} />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="text-sm font-medium text-foreground">
+              Shared via a parent folder
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Anyone with the link can view{" "}
+              {isDir ? "files in this folder" : "this file"}. Manage sharing on
+              the parent folder.
+            </span>
+          </div>
+        </div>
+        {copyRow}
+      </div>
+    );
+  }
+
   return (
     <div className="flex w-full min-w-0 flex-col gap-3">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          {effective ? <Globe01 size={16} /> : <Lock01 size={16} />}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="text-sm font-medium text-foreground">
-            {effective ? "Anyone with the link" : "Only your organization"}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {effective
-              ? inherited
-                ? "Public because it's inside a shared folder."
-                : isDir
-                  ? "Anyone on the internet can view files in this folder via their link."
-                  : "Anyone on the internet with the link can view this file."
-              : `Only members of your organization can open ${
-                  isDir ? "these files" : "this link"
-                }.`}
-          </span>
-        </div>
-        <Switch
-          checked={inherited ? true : own}
-          disabled={setPublic.isPending || inherited}
-          onCheckedChange={handleToggle}
-          aria-label={`Make ${subject} public`}
-        />
-      </div>
-      {inherited && (
-        <p className="rounded-md bg-muted/50 px-2.5 py-2 text-xs text-muted-foreground">
-          This {subject} is public because a parent folder is shared — manage it
-          from that folder.
-        </p>
-      )}
-      {url && (
-        <div className="flex items-center gap-2 rounded-md border border-input bg-muted/50 px-2 py-1.5">
-          <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-            {url}
-          </code>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
-            onClick={handleCopy}
-            aria-label="Copy link"
-          >
-            {copied ? (
-              <Check size={12} className="text-green-600" />
-            ) : (
-              <Copy01 size={12} />
+      <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+        {MODES.map(({ mode, label, Icon }) => (
+          <button
+            key={mode}
+            type="button"
+            disabled={setShareMode.isPending}
+            onClick={() => selectMode(mode)}
+            className={cn(
+              "flex flex-col items-center gap-1 rounded-md px-2 py-2 text-xs font-medium transition-colors disabled:opacity-60",
+              activeMode === mode
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
             )}
+          >
+            <Icon size={15} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        {activeMode === "private"
+          ? `Only members of your organization can open ${isDir ? "these files" : "this link"}.`
+          : activeMode === "public"
+            ? isDir
+              ? "Anyone on the internet can view files in this folder via their link."
+              : "Anyone on the internet with the link can view this file."
+            : `Anyone with the link AND the password can view ${isDir ? "files in this folder" : "this file"}.`}
+      </p>
+
+      {activeMode === "password" && (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (password) apply("password", password);
+          }}
+        >
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={ownMode === "password" ? "New password" : "Password"}
+            autoComplete="new-password"
+            className="h-8 text-xs"
+          />
+          <Button
+            type="submit"
+            size="sm"
+            className="shrink-0"
+            disabled={!password || setShareMode.isPending}
+          >
+            {ownMode === "password" ? "Update" : "Set"}
           </Button>
-        </div>
+        </form>
       )}
+
+      {effective && copyRow}
     </div>
   );
 }
@@ -153,12 +251,14 @@ function ShareControls({ volume, path, kind, readPublic, url }: ShareTarget) {
 export function FileShareButton({
   volume,
   path,
-  readPublic,
+  shareMode,
+  effectivePublic,
   url,
 }: {
   volume: string;
   path: string;
-  readPublic: boolean;
+  shareMode: ShareMode;
+  effectivePublic: boolean;
   url: string;
 }) {
   return (
@@ -178,7 +278,8 @@ export function FileShareButton({
           volume={volume}
           path={path}
           kind="file"
-          readPublic={readPublic}
+          shareMode={shareMode}
+          effectivePublic={effectivePublic}
           url={url}
         />
       </PopoverContent>

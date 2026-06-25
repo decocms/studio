@@ -16,6 +16,7 @@ import {
   Download01,
   Folder,
   Globe01,
+  Key01,
   Share07,
   Trash01,
   Zap,
@@ -92,18 +93,22 @@ function ShareMenuItem({ onShare }: { onShare: () => void }) {
   );
 }
 
-/** How a card is public: by its own flag, or inherited from a parent folder. */
-export type PublicState = "own" | "inherited";
+/** How a card is shared: public/password by its own flag, or inherited. */
+export type PublicState = "public" | "password" | "inherited";
 
-/** Small badge marking a public (or publicly-inherited) file/folder. */
+/** Small badge marking a shared file/folder (globe = public, key = password,
+ *  muted globe = inherited from a parent). */
 function PublicBadge({ state }: { state: PublicState }) {
   const label =
-    state === "inherited"
-      ? "Public — inside a shared folder"
-      : "Public — anyone with the link can view";
+    state === "password"
+      ? "Password-protected — link + password to view"
+      : state === "inherited"
+        ? "Shared via a parent folder"
+        : "Public — anyone with the link can view";
+  const Icon = state === "password" ? Key01 : Globe01;
   return (
     <span title={label} className="mt-0.5 flex shrink-0 items-center">
-      <Globe01
+      <Icon
         size={12}
         className={cn(
           state === "inherited" ? "text-muted-foreground/60" : "text-primary",

@@ -111,7 +111,8 @@ export function LibraryFilePreview({
               <FileShareButton
                 volume={volume ?? ""}
                 path={filePath}
-                readPublic={entry.readPublic ?? false}
+                shareMode={entry.shareMode ?? "private"}
+                effectivePublic={entry.effectivePublic ?? false}
                 url={window.location.origin + file.downloadUrl}
               />
               {seeInLibrary}
@@ -159,7 +160,8 @@ export function LibraryFilePreview({
             <FileShareButton
               volume={volume ?? ""}
               path={filePath}
-              readPublic={entry?.readPublic ?? false}
+              shareMode={entry?.shareMode ?? "private"}
+              effectivePublic={entry?.effectivePublic ?? false}
               url={window.location.origin + file.downloadUrl}
             />
             <Tooltip>

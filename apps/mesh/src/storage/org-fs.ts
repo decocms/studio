@@ -20,9 +20,14 @@ export interface OrgFsEntry {
   updatedAt: string;
   /** Chat/run that last wrote this file; null when not tied to a dispatch. */
   threadId: string | null;
-  /** When true, the `/read` proxy serves this file to anyone (no auth). */
+  /** When true, the `/read` proxy serves this entry by link (own flag). */
   readPublic: boolean;
+  /** This node's own share mode, derived from read_public + password presence.
+   *  The raw password hash is NEVER exposed — only this derived label. */
+  shareMode: ShareMode;
 }
+
+export type ShareMode = "private" | "public" | "password";
 
 type OrgFsEntryRow = {
   organization_id: string;
@@ -40,6 +45,7 @@ type OrgFsEntryRow = {
   updated_at: Date | string;
   thread_id: string | null;
   read_public: boolean;
+  share_password_hash: string | null;
 };
 
 function toIso(value: Date | string | null): string | null {
@@ -64,6 +70,11 @@ function rowToEntry(row: OrgFsEntryRow): OrgFsEntry {
     updatedAt: toIso(row.updated_at) ?? "",
     threadId: row.thread_id,
     readPublic: row.read_public,
+    shareMode: !row.read_public
+      ? "private"
+      : row.share_password_hash
+        ? "password"
+        : "public",
   };
 }
 
@@ -83,6 +94,9 @@ const COLUMNS = [
   "updated_at",
   "thread_id",
   "read_public",
+  // Selected to DERIVE shareMode in rowToEntry; the raw hash is dropped there
+  // and never reaches the DTO/API.
+  "share_password_hash",
 ] as const satisfies readonly (keyof OrgFsEntryTable)[];
 
 /** Bump `seq` to the next value of the global sequence on every write. */
@@ -370,18 +384,20 @@ export class OrgFsEntryStorage {
   }
 
   /**
-   * Set an entry's public-read flag. Works on files and dirs: a public dir
-   * publishes its whole subtree (the read route inherits from public ancestor
-   * dirs). Returns the updated entry, or null if no live entry exists at the
-   * path. Deliberately does NOT bump `seq`: visibility is metadata, not
-   * content, so the change feed (mount invalidation) stays quiet — only
-   * `updated_by`/`updated_at` move, recording who toggled it.
+   * Set an entry's share mode (read_public + password hash + secret) in one
+   * update. Works on files and dirs: a public/password dir governs its whole
+   * subtree (reads resolve the most-specific public ancestor). Returns the
+   * updated entry, or null if no live entry exists. Deliberately does NOT bump
+   * `seq`: visibility is metadata, not content, so the change feed (mount
+   * invalidation) stays quiet — only `updated_by`/`updated_at` move.
    */
-  async setReadPublic(params: {
+  async setShareMode(params: {
     organizationId: string;
     volume: string;
     path: string;
     readPublic: boolean;
+    passwordHash: string | null;
+    shareSecret: string | null;
     actor: string;
   }): Promise<OrgFsEntry | null> {
     const now = new Date();
@@ -389,6 +405,8 @@ export class OrgFsEntryStorage {
       .updateTable("org_fs_entry")
       .set({
         read_public: params.readPublic,
+        share_password_hash: params.passwordHash,
+        share_secret: params.shareSecret,
         updated_by: params.actor,
         updated_at: now,
       })
@@ -399,6 +417,42 @@ export class OrgFsEntryStorage {
       .returning(COLUMNS)
       .executeTakeFirst();
     return row ? rowToEntry(row as OrgFsEntryRow) : null;
+  }
+
+  /**
+   * Among `candidatePaths` (a node + its ancestors), the most-specific live
+   * public node and its password hash/secret — the node that governs a read's
+   * share semantics. Null when none is published.
+   */
+  async resolveGoverningShare(params: {
+    organizationId: string;
+    volume: string;
+    candidatePaths: string[];
+  }): Promise<{
+    path: string;
+    passwordHash: string | null;
+    secret: string | null;
+  } | null> {
+    if (params.candidatePaths.length === 0) return null;
+    const rows = await this.db
+      .selectFrom("org_fs_entry")
+      .where("organization_id", "=", params.organizationId)
+      .where("volume", "=", params.volume)
+      .where("read_public", "=", true)
+      .where("deleted_at", "is", null)
+      .where("path", "in", params.candidatePaths)
+      .select(["path", "share_password_hash", "share_secret"])
+      .execute();
+    if (rows.length === 0) return null;
+    // Most-specific (longest path) wins — a node's own setting overrides an
+    // inherited one.
+    rows.sort((a, b) => b.path.length - a.path.length);
+    const gov = rows[0]!;
+    return {
+      path: gov.path,
+      passwordHash: gov.share_password_hash,
+      secret: gov.share_secret,
+    };
   }
 
   /**
