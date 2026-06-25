@@ -180,9 +180,13 @@ export async function handleDispatchRequest(
 
   const body = await req.text();
 
-  let parsed: { harnessId: unknown; input: unknown };
+  let parsed: { runId?: unknown; harnessId?: unknown; input?: unknown };
   try {
-    parsed = JSON.parse(body) as { harnessId: unknown; input: unknown };
+    parsed = JSON.parse(body) as {
+      runId?: unknown;
+      harnessId?: unknown;
+      input?: unknown;
+    };
   } catch {
     return new Response(JSON.stringify({ error: "bad_json" }), {
       status: 400,
@@ -289,6 +293,7 @@ export async function handleDispatchRequest(
         // root (spec: "Harness Input Contract" Q4 — containment by
         // construction).
         rebaseInputWorkspace(input);
+        const rebasedInput = input;
 
         // 3. Tombstone check — a cancel may have landed first. Surface it as a
         //    terminal error rather than starting a doomed harness.
@@ -311,16 +316,16 @@ export async function handleDispatchRequest(
         // `genTitle({ abortSignal })` receive a real signal instead of
         // `undefined` (which crashes genTitle's `addEventListener`) — and so a
         // DELETE /_sandbox/runs/:id actually aborts the in-flight model call.
-        (input as { signal?: AbortSignal }).signal = ctrl.signal;
+        (rebasedInput as { signal?: AbortSignal }).signal = ctrl.signal;
 
         console.log(
-          `[dispatch] received (offload) harness=${harnessId} runId=${runId} threadId=${input.threadId} bytes=${messagesRef.bytes}`,
+          `[dispatch] received (offload) harness=${harnessId} runId=${runId} threadId=${rebasedInput.threadId} bytes=${messagesRef.bytes}`,
         );
 
         // 4. Look up + run.
         let harness: DispatchHarness;
         try {
-          harness = deps.lookupHarness(harnessId, input);
+          harness = deps.lookupHarness(harnessId, rebasedInput);
         } catch (err) {
           activeRuns.delete(runId);
           console.error(
@@ -371,6 +376,7 @@ export async function handleDispatchRequest(
   // Rebase the symbolic workspace cwd fields onto this daemon's sandbox root
   // (spec: "Harness Input Contract" Q4 — containment by construction).
   rebaseInputWorkspace(input);
+  const rebasedInput = input;
 
   // Tombstone check — a cancel landed before this dispatch did. Decline
   // and let the cluster surface a clear cancellation instead of starting
@@ -392,15 +398,15 @@ export async function handleDispatchRequest(
   // Re-inject the per-run AbortSignal — see the offload path above for the full
   // rationale. The wire input never carries `signal` (not serializable), so the
   // harness would otherwise see `input.signal === undefined`.
-  (input as { signal?: AbortSignal }).signal = ctrl.signal;
+  (rebasedInput as { signal?: AbortSignal }).signal = ctrl.signal;
 
   console.log(
-    `[dispatch] received harness=${harnessId} runId=${runId} threadId=${input.threadId}`,
+    `[dispatch] received harness=${harnessId} runId=${runId} threadId=${rebasedInput.threadId}`,
   );
 
   let harness: DispatchHarness;
   try {
-    harness = deps.lookupHarness(harnessId, input);
+    harness = deps.lookupHarness(harnessId, rebasedInput);
   } catch (err) {
     activeRuns.delete(runId);
     console.error(
