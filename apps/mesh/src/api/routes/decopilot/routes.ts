@@ -59,6 +59,7 @@ import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
+import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -722,55 +723,46 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // Cancel Endpoint — cancel ongoing run (local or via NATS to owning pod)
   // ============================================================================
 
-  app.post("/:org/decopilot/cancel/:threadId", async (c) => {
-    const { ctx, taskId, thread, organization, userId } =
-      await validateThreadOwnership(c);
-
-    // Persist durable cancel flag so the ingest backstop rejects 409.
+  // Shared run-cancel teardown: durable cancel flag, background-job teardown,
+  // in-pod abort + cross-pod NATS broadcast, local turn cancel, ghost force-fail.
+  // Used by the stop endpoint and the per-item queue cancel (running head).
+  async function cancelActiveThreadRun(args: {
+    ctx: StudioContext;
+    taskId: string;
+    thread: Thread;
+    organization: { id: string };
+    userId: string;
+  }): Promise<void> {
+    const { ctx, taskId, thread, organization, userId } = args;
     await ctx.storage.threads.setCancelRequested(taskId, organization.id);
-
-    // Tear down any background-tool workflows this thread started (image gen /
-    // backgrounded subtasks). They run on their own DBOS queue, so the
-    // in-memory run cancel below doesn't reach them. Non-fatal: a DBOS hiccup
-    // must not block the user-facing cancel.
     await cancelThreadBackgroundJobs(taskId).catch((err) => {
       console.error("[decopilot:cancel] failed to cancel background jobs", {
         taskId,
         err,
       });
     });
-
-    // Abort in-flight background work on this pod now, and fan the cancel out
-    // to every pod over NATS. Always broadcast: a background job runs on
-    // whichever pod DBOS dequeued it, so a locally-owned turn no longer implies
-    // no other pod is involved. Each pod's onCancel aborts its background
-    // controllers (`abortBackgroundJobs`) and cancels the live turn if it owns
-    // it; both are no-ops where they don't apply.
+    // Free a stranded/stuck PENDING gate head so the partition slot releases and
+    // the queue can proceed (an orphaned gate ignores the in-memory run cancel).
+    await cancelThreadGateHead(taskId).catch((err) => {
+      console.error("[decopilot:cancel] failed to cancel gate head", {
+        taskId,
+        err,
+      });
+    });
     abortBackgroundJobs(taskId);
     cancelBroadcast.broadcast(taskId);
-
-    // Try to cancel the live turn locally for an immediate response.
     const cancelTransitions = await runRegistry.execute({
       type: "CANCEL",
       taskId,
     });
-    if (cancelTransitions.some((t) => t.event.type === "RUN_FAILED")) {
-      cancelBroadcast.publishControlFrame(userId, {
-        type: "cancel",
-        runId: taskId,
-      });
-      return c.json({ cancelled: true });
-    }
-
     cancelBroadcast.publishControlFrame(userId, {
       type: "cancel",
       runId: taskId,
     });
-
-    // Ghost run: server restarted while a run was in progress. No pod has this
-    // run in memory, so the broadcast will never resolve. Force-fail the thread
-    // in the DB so the user can send new messages.
-    if (thread.status === "in_progress") {
+    const producedRunFailed = cancelTransitions.some(
+      (t) => t.event.type === "RUN_FAILED",
+    );
+    if (!producedRunFailed && thread.status === "in_progress") {
       console.warn("[decopilot:cancel] Ghost run detected, force-failing", {
         taskId,
       });
@@ -791,7 +783,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           );
         });
     }
+  }
 
+  app.post("/:org/decopilot/cancel/:threadId", async (c) => {
+    const { ctx, taskId, thread, organization, userId } =
+      await validateThreadOwnership(c);
+    await cancelActiveThreadRun({ ctx, taskId, thread, organization, userId });
     return c.json({ cancelled: true, async: true }, 202);
   });
 
