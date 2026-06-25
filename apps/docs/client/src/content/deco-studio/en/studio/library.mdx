@@ -23,6 +23,36 @@ The Library is organized into volumes:
 
 A **Recently added** feed across all volumes sits at the top so you can jump back to whatever you (or your agents) touched last. Navigate with breadcrumbs; the current location is reflected in the page URL, so you can link a teammate straight to a folder.
 
+You can drag and drop files directly into any editable volume to upload them.
+
+## Brands
+
+The Library has first-class support for **org brands** — a structured identity folder your agents and the slides skill use to produce on-brand output.
+
+A brand lives at `org/home/brands/<name>/` and contains four files:
+
+| File | Purpose |
+|---|---|
+| `tokens.css` | CSS variables for colors, typography, spacing, radius, and shadow |
+| `brand.md` | Written brand guidelines: voice, tone, and visual identity notes |
+| `logo` | Logo file (SVG, PNG, or similar) |
+| `slides-theme.html` | A sample deck that doubles as the generation shell for the slides skill |
+
+### Creating and editing a brand
+
+Brands appear as cards directly in the Library. Click a brand card to open the **side-panel editor**, which lets you:
+
+- Edit color ramps (primary, secondary, neutrals) with a live band preview
+- Adjust typography, spacing, radius, and shadow values
+- Write or refine the brand's voice and tone guidelines
+- Preview the brand applied to a sample deck and UI components in real time
+
+To create a brand from scratch, ask any agent: *"Create a brand for [name]"* — agents with access to the `core/brand` skill will scaffold the full folder structure and populate it with sensible defaults.
+
+<Callout type="tip">
+  The `slides-theme.html` file in a brand folder acts as both the generation shell and an editable sample deck. Modifying it directly changes the starting point for every deck the slides skill generates under that brand.
+</Callout>
+
 ## How it maps to the sandbox
 
 The Library and the agent sandbox are two views of the same filesystem. Inside a sandbox these volumes are mounted under `org/`:
