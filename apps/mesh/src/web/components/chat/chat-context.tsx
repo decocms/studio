@@ -999,8 +999,28 @@ export function ActiveTaskProvider({
       onToolCall: (event) => cbRef.current.onToolCall(event as never),
     };
     conn.observer = observer;
+
+    // Refresh the pending-message queue on every SSE run start/end edge. A
+    // gate dequeue flips conn.status idle→active (the next queued message
+    // began streaming); a finish flips active→idle (the slot freed). This is
+    // the SSE-driven replacement for the old 3s poll — the queue panel updates
+    // exactly when the thread gate advances, off the same stream the chat uses.
+    const isActiveStatus = (k: ConnStatus["kind"]) =>
+      k === "submitted" || k === "streaming";
+    let prevActive = isActiveStatus(conn.status.get().kind);
+    const unsubStatus = conn.status.subscribe(() => {
+      const active = isActiveStatus(conn.status.get().kind);
+      if (active === prevActive) return;
+      prevActive = active;
+      const cb = cbRef.current;
+      cb.queryClient.invalidateQueries({
+        queryKey: KEYS.threadQueue(cb.taskId),
+      });
+    });
+
     return () => {
       if (conn.observer === observer) conn.observer = null;
+      unsubStatus();
     };
   }, [conn]);
 

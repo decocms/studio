@@ -12,25 +12,17 @@ export interface QueueItemDTO {
 }
 
 /**
- * Poll this thread's pending gate queue. Polls every 3s while the run is active
- * or items exist (cheap, bounded), otherwise idles (re-fetched on send via the
- * KEYS.threadQueue invalidation in chat-context). No useEffect (lint ban).
+ * Read this thread's pending gate queue. Event-driven, not polled: the query
+ * is re-fetched via `KEYS.threadQueue` invalidation on send (chat-context),
+ * on cancel (below), and on every SSE run start/end edge (the `conn.status`
+ * subscription in chat-context). No timer, no useEffect (lint ban).
  */
-export function useThreadQueue(
-  taskId: string,
-  opts: { active: boolean },
-): { items: QueueItemDTO[] } {
+export function useThreadQueue(taskId: string): { items: QueueItemDTO[] } {
   const { org } = useProjectContext();
   const { data } = useQuery({
     queryKey: KEYS.threadQueue(taskId),
     enabled: Boolean(taskId),
     staleTime: 0,
-    refetchInterval: (query) => {
-      const n =
-        (query.state.data as { items?: QueueItemDTO[] } | undefined)?.items
-          ?.length ?? 0;
-      return opts.active || n > 0 ? 3000 : false;
-    },
     queryFn: async (): Promise<{ items: QueueItemDTO[] }> => {
       const res = await fetch(`/api/${org.slug}/decopilot/queue/${taskId}`, {
         credentials: "include",
