@@ -156,6 +156,26 @@ export async function generatePresignedGetUrl(
 // Phase 1 — uploadFileParts
 // ============================================================================
 
+/** Sentinels that uploadFileParts injects after a successful materialization. */
+const ATTACHMENT_ANNOTATION_PREFIXES = ["[Attached files", "[Uploaded files"];
+
+/**
+ * True when a message already carries an attachment annotation — i.e. it was
+ * already materialized by a prior uploadFileParts pass. Makes uploadFileParts
+ * idempotent so running it at POST *and* at dispatch can't double-annotate.
+ */
+export function messageHasAttachmentAnnotation(message: ChatMessage): boolean {
+  return message.parts.some(
+    (p) =>
+      p.type === "text" &&
+      "text" in p &&
+      typeof p.text === "string" &&
+      ATTACHMENT_ANNOTATION_PREFIXES.some((s) =>
+        p.text.trimStart().startsWith(s),
+      ),
+  );
+}
+
 /** The composer's attachment marker: `[file:://<encodeURIComponent(name)>]`.
  *  File parts carry it as their `filename`; text-file attachments are decoded
  *  inline as a text part of `<marker>\n<content>` (see web derive-parts.ts). */
@@ -276,6 +296,11 @@ export async function uploadFileParts(
   if (lastUserIdx === -1) return messages;
 
   const message = messages[lastUserIdx]!;
+
+  // Idempotent: a message already annotated was materialized on a prior pass
+  // (e.g. at POST); skip so the dispatch-time pass can't re-upload / re-annotate.
+  if (messageHasAttachmentAnnotation(message)) return messages;
+
   const dataUrlParts = message.parts.filter(
     (p) =>
       p.type === "file" &&

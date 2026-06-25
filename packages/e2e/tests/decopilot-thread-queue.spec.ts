@@ -215,3 +215,77 @@ test("POST cancel 404s for a workflowId scoped to another thread", async ({
   );
   expect(res.status()).toBe(404);
 });
+
+test("POST externalizes a data: attachment out of the DBOS workflow input", async ({
+  authedPage,
+}) => {
+  // Object storage (S3 + org-fs) must be available for this assertion to hold:
+  // uploadFileParts only materializes when ctx.orgFs is present, which requires
+  // a real S3-backed objectStorage. Skip on plain local dev without MinIO.
+  test.skip(
+    !(
+      process.env.S3_ENDPOINT &&
+      process.env.S3_BUCKET &&
+      process.env.S3_ACCESS_KEY_ID &&
+      process.env.S3_SECRET_ACCESS_KEY
+    ),
+    "requires S3 env (S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY); see e2e.yml MinIO setup",
+  );
+
+  const { page, orgSlug } = authedPage;
+  const api = page.context().request;
+  const db = await connectDevDb();
+
+  try {
+    const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
+
+    // A tiny 1×1 PNG as a data: URL — represents a user-attached image.
+    const tinyPng =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    const messageId = `img-${Date.now()}`;
+
+    const res = await api.post(
+      `/api/${orgSlug}/decopilot/threads/${threadId}/messages`,
+      {
+        data: {
+          messages: [
+            {
+              id: messageId,
+              role: "user",
+              parts: [
+                { type: "text", text: "describe this" },
+                {
+                  type: "file",
+                  url: tinyPng,
+                  mediaType: "image/png",
+                  filename: "a.png",
+                },
+              ],
+            },
+          ],
+          agent: { id: agentId },
+          branch: "ephemeral",
+          harnessId: "decopilot",
+          temperature: 0.5,
+        },
+        headers: { "content-type": "application/json" },
+      },
+    );
+    expect(res.status()).toBe(202);
+
+    // The persisted gate input must NOT contain the base64 data: blob.
+    // `inputs` is a TEXT column (the {"json":[ctx]} envelope) — read as string.
+    const wfId = `thread-run:${threadId}:${messageId}`;
+    const { rows } = await db.query(
+      `SELECT inputs FROM dbos.workflow_status WHERE workflow_uuid = $1`,
+      [wfId],
+    );
+    const serialized = String(
+      (rows[0] as { inputs: string } | undefined)?.inputs ?? "",
+    );
+    expect(serialized).not.toContain("data:image/png;base64,");
+    expect(serialized).toContain("mesh-storage:");
+  } finally {
+    await db.end();
+  }
+});

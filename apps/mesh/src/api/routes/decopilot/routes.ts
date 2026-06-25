@@ -43,6 +43,7 @@ import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { resolveHarnessId } from "./dispatch-run";
+import { uploadFileParts } from "./file-materializer";
 import { stringifyError } from "@decocms/harness/decopilot/stream-error";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import {
@@ -676,11 +677,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const target = resolveDispatchTarget({ sandboxProviderKind: pinnedKind });
 
       const { abortSignal: _ignored, ...rest } = input;
+      // Externalize attachments NOW (data: base64 → mesh-storage: refs) so the
+      // gate workflow input persisted in dbos.workflow_inputs stays small. The
+      // dispatch-time uploadFileParts is now an idempotent no-op for these.
+      const materializedMessages = await uploadFileParts(input.messages, ctx, {
+        threadId: taskId,
+      });
       const serializableRequest = {
         ...rest,
+        messages: materializedMessages,
         target,
         harnessId: pinnedHarness,
       };
+      // computeIdempotencyKey reads input.messages (the originals) so the
+      // workflowID is unaffected by materialization (data: → mesh-storage: swap).
       const lastMsg = input.messages[input.messages.length - 1];
       const idempotencyKey = computeIdempotencyKey(lastMsg);
       const workflowID = idempotencyKey
