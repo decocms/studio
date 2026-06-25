@@ -60,25 +60,34 @@ export function DevAgentSetup({
     null;
   const linkedId = linked?.id ?? null;
 
-  const stampDevAgent = (
-    devAgent: VirtualMCPEntity,
-    liveAgentId: string | null,
-  ) =>
+  // Stamp `liveAgentId` on the dev agent's row by id. VIRTUAL_MCP_UPDATE
+  // shallow-merges metadata server-side, so we send only the changed key — no
+  // need to spread the existing metadata, which crucially lets us link a
+  // just-imported dev agent that isn't in the (async-refetched) `allAgents` list
+  // yet (the GitHub-import path).
+  const setLiveAgentId = (devAgentId: string, liveAgentId: string | null) =>
     actions.update
       .mutateAsync({
-        id: devAgent.id,
-        data: { metadata: { ...devAgent.metadata, liveAgentId } },
+        id: devAgentId,
+        // VIRTUAL_MCP_UPDATE shallow-merges metadata server-side, so send only
+        // the changed key — the merge preserves everything else, and crucially
+        // this needs no read of the dev agent's current metadata (which a
+        // just-imported agent isn't in `allAgents` for yet). The mutation type
+        // models the full metadata object, so assert through the partial.
+        data: {
+          metadata: { liveAgentId } as unknown as NonNullable<
+            VirtualMCPEntity["metadata"]
+          >,
+        },
       })
       .catch(() => {
         // mutateAsync already surfaced the error via toast.
       });
 
-  const linkDevAgent = (devAgentId: string) => {
-    const devAgent = (allAgents ?? []).find((a) => a.id === devAgentId);
-    if (devAgent) void stampDevAgent(devAgent, virtualMcp.id);
-  };
+  const linkDevAgent = (devAgentId: string) =>
+    void setLiveAgentId(devAgentId, virtualMcp.id);
   const unlinkDevAgent = () => {
-    if (linked) void stampDevAgent(linked, null);
+    if (linkedId) void setLiveAgentId(linkedId, null);
   };
 
   const linkableAgents = (allAgents ?? []).filter(

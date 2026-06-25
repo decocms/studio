@@ -46,8 +46,11 @@ const MCP_AUTH_TOKEN_KEY = "MCP_AUTH_TOKEN";
 
 /**
  * Resolve the synthetic dev connection for `agentId` and the acting user.
- * Returns `null` when the agent is missing, the user has no live sandbox, or no
- * dev token is available — every caller treats `null` as "not running".
+ * Returns `null` when the agent is missing/cross-org, isn't a dev agent (no
+ * `metadata.liveAgentId`), or the acting user has no running sandbox for it (no
+ * sandboxMap entry / no previewUrl) — every caller treats `null` as "not
+ * running". A missing dev token is NOT a null condition: it just yields an
+ * authless connection (the default; the URL handle is the secret).
  */
 export async function resolveDevConnection(
   ctx: StudioContext,
