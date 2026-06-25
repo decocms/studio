@@ -1,0 +1,153 @@
+/* ──────────────────────────────────────────────────────────────────
+   Acme — Design Tokens
+   Full brand token system. Everything lives in the `--brand-*` namespace
+   so the Library brand card/editor, the deck-theme mapping
+   (`--deck-*: var(--brand-*)`) and any HTML consumer read it the same way.
+   Consumers inline this file; never reference it by URL from a preview
+   iframe (opaque origin carries no cookies).
+   ────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  /* ───────────────  CORE (the 8 the deck theme maps)  ─────────────── */
+  --brand-primary: #0a84ff; /* actions, links, key data, focus */
+  --brand-secondary: #5e5ce6; /* supporting accent, gradients */
+  --brand-accent: #ff375f; /* one highlight per view — never body */
+  --brand-bg: #0b0f1a; /* deep canvas (data / focus / decks) */
+  --brand-fg: #f5f7ff; /* text on the deep canvas */
+  --brand-font-display: "Space Grotesk", sans-serif;
+  --brand-font-body: "Inter", sans-serif;
+  --brand-radius: 14px;
+
+  /* ─────────────────────────  COLOR RAMPS  ───────────────────────── */
+  /* Primary — Acme blue */
+  --brand-primary-50: #eef6ff;
+  --brand-primary-100: #d9ecff;
+  --brand-primary-200: #b5d9ff;
+  --brand-primary-300: #84c0ff;
+  --brand-primary-400: #4aa3ff;
+  --brand-primary-500: #0a84ff;
+  --brand-primary-600: #0a6ad6;
+  --brand-primary-700: #0b54a8;
+  --brand-primary-800: #0e4585;
+  --brand-primary-900: #0f3a6e;
+  --brand-primary-950: #0a2547;
+
+  /* Secondary — indigo */
+  --brand-secondary-50: #eeeefc;
+  --brand-secondary-100: #deddfa;
+  --brand-secondary-200: #c2c0f5;
+  --brand-secondary-300: #9e9bee;
+  --brand-secondary-400: #7d79ea;
+  --brand-secondary-500: #5e5ce6;
+  --brand-secondary-600: #4a47cf;
+  --brand-secondary-700: #3d3aa8;
+  --brand-secondary-800: #333186;
+  --brand-secondary-900: #2c2b6b;
+  --brand-secondary-950: #1a1942;
+
+  /* Accent — hot pink (spice, not sauce) */
+  --brand-accent-50: #fff0f3;
+  --brand-accent-100: #ffdce3;
+  --brand-accent-200: #ffbecb;
+  --brand-accent-300: #ff8fa6;
+  --brand-accent-400: #ff5d7e;
+  --brand-accent-500: #ff375f;
+  --brand-accent-600: #ed1f4b;
+  --brand-accent-700: #c8143b;
+  --brand-accent-800: #a51435;
+  --brand-accent-900: #88152f;
+  --brand-accent-950: #4b0716;
+
+  /* Neutral — cool slate (text, surfaces, the deep canvas at 950) */
+  --brand-neutral-50: #f5f7fa;
+  --brand-neutral-100: #e9edf3;
+  --brand-neutral-200: #d2dae5;
+  --brand-neutral-300: #adbacb;
+  --brand-neutral-400: #7d8ba3;
+  --brand-neutral-500: #5a6982;
+  --brand-neutral-600: #45526a;
+  --brand-neutral-700: #364154;
+  --brand-neutral-800: #232c3d;
+  --brand-neutral-900: #151b28;
+  --brand-neutral-950: #0b0f1a;
+
+  /* ───────────────────────  SEMANTIC COLORS  ─────────────────────── */
+  --brand-success: #16a34a;
+  --brand-success-bg: #e7f6ec;
+  --brand-success-fg: #0f7a37;
+  --brand-warning: #d99e00;
+  --brand-warning-bg: #fdf3d6;
+  --brand-warning-fg: #8a6500;
+  --brand-error: #e5484d;
+  --brand-error-bg: #fde7e8;
+  --brand-error-fg: #b01319;
+  --brand-info: #0a84ff;
+  --brand-info-bg: #e8f1ff;
+  --brand-info-fg: #0b54a8;
+
+  /* ───────────────────  SURFACES & TEXT (roles)  ─────────────────── */
+  --brand-bg-subtle: #121826; /* card on the deep canvas */
+  --brand-bg-elevated: #1a2233; /* raised surface / popover */
+  --brand-fg-muted: #9fb0c9; /* secondary text on deep */
+  --brand-fg-subtle: #6b7a93; /* meta / captions */
+  --brand-border: rgba(245, 247, 255, 0.1);
+  --brand-border-strong: rgba(245, 247, 255, 0.18);
+  --brand-ring: rgba(10, 132, 255, 0.45); /* focus ring */
+
+  /* ──────────────────────────  TYPE  ─────────────────────────────── */
+  --brand-font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --brand-text-xs: 12px;
+  --brand-text-sm: 14px;
+  --brand-text-base: 16px;
+  --brand-text-lg: 19px;
+  --brand-text-xl: 23px;
+  --brand-text-2xl: 28px;
+  --brand-text-3xl: 34px;
+  --brand-text-4xl: 42px;
+  --brand-text-5xl: 52px;
+  --brand-fw-regular: 400;
+  --brand-fw-medium: 500;
+  --brand-fw-semibold: 600;
+  --brand-fw-bold: 700;
+  --brand-leading-tight: 1.1;
+  --brand-leading-snug: 1.3;
+  --brand-leading-normal: 1.5;
+  --brand-tracking-tight: -0.02em;
+  --brand-tracking-normal: 0;
+  --brand-tracking-wide: 0.08em;
+
+  /* ────────────────────────  SPACING (4px)  ──────────────────────── */
+  --brand-space-1: 4px;
+  --brand-space-2: 8px;
+  --brand-space-3: 12px;
+  --brand-space-4: 16px;
+  --brand-space-5: 20px;
+  --brand-space-6: 24px;
+  --brand-space-8: 32px;
+  --brand-space-10: 40px;
+  --brand-space-12: 48px;
+  --brand-space-16: 64px;
+  --brand-space-20: 80px;
+
+  /* ──────────────────────────  RADII  ────────────────────────────── */
+  --brand-radius-sm: 8px;
+  --brand-radius-md: 12px;
+  --brand-radius-lg: 16px;
+  --brand-radius-xl: 24px;
+  --brand-radius-full: 9999px;
+
+  /* ─────────────────────────  SHADOWS  ───────────────────────────── */
+  --brand-shadow-sm: 0 1px 2px rgba(8, 12, 22, 0.4);
+  --brand-shadow-md: 0 6px 16px rgba(8, 12, 22, 0.45);
+  --brand-shadow-lg: 0 18px 48px rgba(8, 12, 22, 0.55);
+  --brand-shadow-glow:
+    0 0 0 1px rgba(10, 132, 255, 0.4), 0 8px 32px rgba(10, 132, 255, 0.25);
+
+  /* ─────────────────────────  MOTION  ────────────────────────────── */
+  --brand-duration-fast: 140ms;
+  --brand-duration-base: 220ms;
+  --brand-duration-slow: 360ms;
+  --brand-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}

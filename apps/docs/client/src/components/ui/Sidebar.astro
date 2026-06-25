@@ -81,15 +81,19 @@ function buildTree(docs: any[]): TreeNode[] {
                   "overview",
                   "quickstart",
                   "concepts",
+                  "architecture",
                   "agents",
                   "connections",
                   "automations",
                   "monitoring",
                   "ai-providers",
                   "buckets",
-                  "projects",
+                  "library",
+                  "digital-experience",
+                  "agentic-cms",
                   "store",
                   "api-keys",
+                  "secrets",
                   "user-management",
                   "api-reference",
                 ]
@@ -110,18 +114,6 @@ function buildTree(docs: any[]): TreeNode[] {
 
           const aIndex = studioFolderOrder.indexOf(a.name);
           const bIndex = studioFolderOrder.indexOf(b.name);
-          if (aIndex !== -1 && bIndex !== -1) {
-            return aIndex - bIndex;
-          }
-          if (aIndex !== -1) return -1;
-          if (bIndex !== -1) return 1;
-        }
-
-        // Custom order for solutions subfolder
-        if (parentPath === "solutions") {
-          const solutionsOrder = ["overview", "agentic-cms"];
-          const aIndex = solutionsOrder.indexOf(a.name);
-          const bIndex = solutionsOrder.indexOf(b.name);
           if (aIndex !== -1 && bIndex !== -1) {
             return aIndex - bIndex;
           }
@@ -173,11 +165,7 @@ function buildTree(docs: any[]): TreeNode[] {
 
         // Custom order for self-hosting section
         if (parentPath === "self-hosting") {
-          const selfHostingOrder = [
-            "quickstart",
-            "architecture",
-            "authentication",
-          ];
+          const selfHostingOrder = ["quickstart", "authentication"];
           const aIndex = selfHostingOrder.indexOf(a.name);
           const bIndex = selfHostingOrder.indexOf(b.name);
           if (aIndex !== -1 && bIndex !== -1) {
@@ -189,27 +177,12 @@ function buildTree(docs: any[]): TreeNode[] {
 
         // Custom order for api-reference section
         if (parentPath === "api-reference") {
-          const apiRefOrder = ["built-in-tools"];
+          const apiRefOrder = [
+            "connection-proxy",
+            "external-agent-integration",
+          ];
           const aIndex = apiRefOrder.indexOf(a.name);
           const bIndex = apiRefOrder.indexOf(b.name);
-          if (aIndex !== -1 && bIndex !== -1) {
-            return aIndex - bIndex;
-          }
-          if (aIndex !== -1) return -1;
-          if (bIndex !== -1) return 1;
-        }
-
-        // Custom order for built-in-tools section
-        if (parentPath === "built-in-tools") {
-          const builtInToolsOrder = [
-            "enable-tool",
-            "subtask-run",
-            "user-ask",
-            "resource-read",
-            "prompt-read",
-          ];
-          const aIndex = builtInToolsOrder.indexOf(a.name);
-          const bIndex = builtInToolsOrder.indexOf(b.name);
           if (aIndex !== -1 && bIndex !== -1) {
             return aIndex - bIndex;
           }
@@ -241,7 +214,6 @@ function buildTree(docs: any[]): TreeNode[] {
           // Order follows improved information architecture
           studio: 0, // decocms docs (main product)
           "getting-started": 1, // Getting Started (after intro)
-          solutions: 2, // Pre-built agent suites (Agentic CMS, etc.)
           decopilot: 3, // Decopilot (elevated section within mcp-mesh)
           "self-hosting": 4, // Self-hosting section
           deploy: 5, // Deploy section (under self-hosting)

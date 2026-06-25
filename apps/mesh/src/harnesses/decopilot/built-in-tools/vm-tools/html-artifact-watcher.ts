@@ -5,7 +5,7 @@
  * side panel opens/refreshes the live preview.
  *
  * Detection is change-feed based rather than tool-based: every sandbox
- * write to the mounted `org/<slug>/` path flows through the WebDAV serve
+ * write to the mounted `org/home/` path flows through the WebDAV serve
  * layer into `OrgFs.write` and the manifest change feed, so artifacts
  * created via bash (the `slides-create` CLI) are caught the same as
  * `write`-tool edits. The cursor snapshots at run start; `sweep()` is hooked
@@ -18,7 +18,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import { homeMountPath } from "@/file-storage/home-mount";
+import { HOME_MOUNT_PATH } from "@/file-storage/home-mount";
 import { matchOwnHtmlArtifact } from "@decocms/harness/decopilot/built-in-tools/vm-tools/html-artifact-paths";
 import type { UIMessageStreamWriter } from "ai";
 
@@ -50,7 +50,7 @@ export function createHtmlArtifactWatcher(
   if (!orgFs || !orgSlug || !ownerId) {
     return { sweep: async () => {} };
   }
-  const mountDir = homeMountPath(orgSlug);
+  const mountDir = HOME_MOUNT_PATH;
   // The home volume is org-wide and shared across every chat and member; emit
   // only entries this run produced. Exact thread match for tool-written decks
   // (the deck-buffer stamps `thread_id`); same-user fallback for unstamped

@@ -33,6 +33,13 @@ const WebSearchInputSchema = z.object({
 
 export type WebSearchInput = z.infer<typeof WebSearchInputSchema>;
 
+/** Default description for the quick `web_search` tool. */
+const DEFAULT_WEB_SEARCH_DESCRIPTION =
+  "Search the web for up-to-date information and synthesize a concise answer. " +
+  "Use this for quick lookups, fact-checking, current events, or when the answer " +
+  "requires knowledge beyond your training data and a fast response is enough. " +
+  "For exhaustive, multi-source reports prefer `deep_research` when available.";
+
 export function createWebSearchTool(
   writer: UIMessageStreamWriter,
   params: {
@@ -41,16 +48,15 @@ export function createWebSearchTool(
     toolOutputMap: Map<string, string>;
     /** Current thread/task id — used to scope persisted research jobs. */
     taskId: string;
+    /** Overrides the tool description — used by `deep_research`, which shares
+     *  this factory but advertises a different intent to the model. */
+    description?: string;
   },
 ) {
   const { researchJob, toolOutputMap, taskId } = params;
 
   return tool({
-    description:
-      "Search the web and synthesize a comprehensive research report. " +
-      "Use this when the user needs up-to-date information from the internet, " +
-      "in-depth research on a topic, fact-checking, or when the answer requires " +
-      "knowledge beyond your training data.",
+    description: params.description ?? DEFAULT_WEB_SEARCH_DESCRIPTION,
     inputSchema: zodSchema(WebSearchInputSchema),
     execute: async (input, options) => {
       const startTime = performance.now();

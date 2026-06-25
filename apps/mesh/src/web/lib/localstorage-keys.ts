@@ -14,6 +14,8 @@ export const LOCALSTORAGE_KEYS = {
     `mesh:chat:selectedMode:${locator}`,
   chatSelectedImageModel: (locator: ProjectLocator) =>
     `mesh:chat:selectedImageModel:${locator}`,
+  chatSelectedWebSearchModel: (locator: ProjectLocator) =>
+    `mesh:chat:selectedWebSearchModel:${locator}`,
   chatSelectedDeepResearchModel: (locator: ProjectLocator) =>
     `mesh:chat:selectedDeepResearchModel:${locator}`,
   chatSimpleModeTier: (locator: ProjectLocator) =>

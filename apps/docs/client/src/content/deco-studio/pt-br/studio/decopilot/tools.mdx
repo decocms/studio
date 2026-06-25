@@ -1,40 +1,42 @@
 ---
 title: Tools
-description: O que o Decopilot pode fazer e os dois tipos de ferramentas a que ele tem acesso
+description: O que o Decopilot pode fazer e os dois tipos de tools a que ele tem acesso
 icon: Wrench
 ---
 
-## Dois tipos de ferramentas
+## Dois tipos de tools
 
-O Decopilot tem acesso a dois tipos de ferramentas:
+O Decopilot tem acesso a dois tipos de tools:
 
-**Ferramentas built-in** — sempre disponíveis, usadas para gerenciar trabalho, delegar tarefas e ler contexto. As mesmas independentemente do escopo.
+**Tools built-in** — sempre disponíveis, usadas para gerenciar trabalho, delegar tarefas e ler contexto. As mesmas independentemente do escopo.
 
-**Ferramentas de escopo** — vêm das conexões anexadas no seu escopo atual. No escopo de organização, são as built-ins de toda a organização. No escopo de agente, são as ferramentas anexadas ao agente aberto.
+**Scope tools** — vêm das connections anexadas no seu escopo atual. No escopo de org, são as built-ins de toda a organização. No escopo de agent, são as tools anexadas ao agent aberto.
 
 ---
 
-## Ferramentas built-in
+## Tools built-in
 
-| Ferramenta | Disponível em subtarefas | O que faz |
+Essas são as tools que o agent Decopilot usa internamente para gerenciar o próprio trabalho — não uma API HTTP pública que você chama de fora. Para a superfície externa, "traga seu próprio client" (endpoints MCP, a REST API de threads do Decopilot), veja a [API Reference](/pt-br/studio/api-reference/connection-proxy).
+
+| Tool | Disponível em subtasks | O que faz |
 |---|:---:|---|
-| `subtask` | Não | Inicia uma subtarefa, opcionalmente com um agente específico |
+| `subtask` | Não | Inicia uma subtask, opcionalmente com um agent específico |
 | `user_ask` | Não | Pergunta a você quando precisa de input |
-| `enable_tool` | Sim | Ativa uma ferramenta de escopo para que ela possa ser chamada no próximo passo |
+| `enable_tool` | Sim | Ativa uma scope tool para que ela possa ser chamada no próximo passo |
 | `read_resource` | Sim | Lê documentação ou diretrizes do escopo atual |
 | `read_prompt` | Sim | Lê um template de prompt reutilizável |
-| `read_tool_output` | Sim | Relê um resultado grande de ferramenta que foi descarregado para armazenamento |
+| `read_tool_output` | Sim | Relê um resultado grande de tool que foi descarregado para armazenamento |
 | `web_search` | Sim | Executa uma pesquisa web profunda e transmite o resultado (requer um modelo de pesquisa web) |
 | `generate_image` | Sim | Gera uma imagem com o modelo de imagem configurado |
-| `propose_plan` | Não | Propõe um plano para aprovação (registrada apenas no modo plan) |
+| `propose_plan` | Não | Propõe um plano para aprovação (registrada apenas no plan mode) |
 
-Subtarefas têm acesso restrito — não podem iniciar subtarefas adicionais nem fazer perguntas a você, já que são feitas para executar e reportar de volta sem interrupção.
+Subtasks têm acesso restrito — não podem iniciar subtasks adicionais nem fazer perguntas a você, já que são feitas para executar e reportar de volta sem interrupção.
 
-### Agentes apoiados por sandbox recebem VM tools
+### Agents apoiados por sandbox recebem VM tools
 
-Quando um agente tem um sandbox (um repositório do GitHub vinculado, veja [Agents](/pt-br/studio/agents)), o Decopilot também recebe seis **VM tools** que operam dentro desse sandbox:
+Quando um agent tem um sandbox (um repo do GitHub vinculado, veja [Agents](/pt-br/studio/agents)), o Decopilot também recebe seis **VM tools** que operam dentro desse sandbox:
 
-| Ferramenta | O que faz |
+| Tool | O que faz |
 |---|---|
 | `bash` | Executa um comando de shell no sandbox |
 | `read` | Lê um arquivo do sandbox |
@@ -43,33 +45,31 @@ Quando um agente tem um sandbox (um repositório do GitHub vinculado, veja [Agen
 | `grep` | Pesquisa conteúdo de arquivos com ripgrep |
 | `glob` | Lista arquivos que correspondem a um padrão de caminho |
 
-Essas ferramentas são provisionadas de forma preguiçosa — o sandbox só inicia na primeira chamada de VM tool.
+Essas tools são provisionadas de forma preguiçosa — o sandbox só inicia na primeira chamada de VM tool.
 
 ---
 
-## Ferramentas de escopo
+## Scope tools
 
-Ferramentas de escopo são as capacidades específicas de domínio atreladas ao seu contexto atual. Abra um agente e você verá as ferramentas anexadas a ele — ferramentas Shopify se o agente tiver a conexão Shopify, ferramentas de envio se tiver ShipStation, e assim por diante.
+Scope tools são as capacidades específicas de domínio atreladas ao seu contexto atual. Abra um agent e você verá as tools anexadas a ele — tools Shopify se o agent tiver a connection Shopify, tools de envio se tiver ShipStation, e assim por diante.
 
-**Exemplo**: um agente de fulfillment de pedidos pode expor:
+**Exemplo**: um agent de fulfillment de pedidos pode expor:
 
 - `GET_ORDERS` — busca pedidos de clientes
 - `UPDATE_INVENTORY` — atualiza níveis de estoque
 - `CREATE_SHIPPING_LABEL` — gera etiquetas de envio
 - `GET_PRODUCTS` — lista o catálogo de produtos
 
-Quais ferramentas estão disponíveis depende das conexões anexadas ao agente atual. Veja [Agents](/pt-br/studio/agents) para saber como organizar isso.
+Quais tools estão disponíveis depende das connections anexadas ao agent atual. Veja [Agents](/pt-br/studio/agents) para saber como organizar isso.
 
 ---
 
-## Como o Decopilot usa ferramentas
+## Como o Decopilot usa tools
 
-O Decopilot começa cada tarefa apenas com suas ferramentas built-in. Ele vê as ferramentas de escopo listadas em suas instruções e as utiliza conforme necessário para completar sua solicitação.
+O Decopilot começa cada tarefa apenas com suas tools built-in. Ele vê as scope tools listadas em suas instruções e as utiliza conforme necessário para completar sua solicitação.
 
-Para trabalhos complexos, pode delegar a uma subtarefa (usando `subtask`) ou carregar contexto adicional primeiro (usando `read_resource` ou `read_prompt`) antes de agir.
+Para trabalhos complexos, pode delegar a uma subtask (usando `subtask`) ou carregar contexto adicional primeiro (usando `read_resource` ou `read_prompt`) antes de agir.
 
 ---
 
 **A seguir:** veja [Contexto e tarefas](/pt-br/studio/decopilot/context-and-tasks) para entender como o Decopilot gerencia memória.
-
-Para a referência técnica completa, veja [Built-in Tools](/pt-br/studio/api-reference/built-in-tools).

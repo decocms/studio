@@ -51,7 +51,12 @@ export type ToolApprovalLevel = "auto" | "readonly";
  *  "plan" (sets `isPlanMode` for read-only restrictions); decopilot
  *  interprets the rest internally. Mirrors
  *  `apps/mesh/src/harnesses/decopilot/mode-config.ts:CHAT_MODES`. */
-export type ChatMode = "default" | "plan" | "web-search" | "gen-image";
+export type ChatMode =
+  | "default"
+  | "plan"
+  | "web-search"
+  | "deep-research"
+  | "gen-image";
 
 /** Per-model selection passed in the wire input. Every slot carries its own
  *  credentialId (decision D14) — there is no root credential. */
@@ -75,6 +80,11 @@ export interface ModelsConfig {
   fast?: ModelSelection;
   smart?: ModelSelection;
   image?: ModelSelection;
+  /** Quick web search (streaming, e.g. Perplexity Sonar) — powers the
+   *  `web_search` built-in tool. */
+  webSearch?: ModelSelection;
+  /** Deep research (async/multi-source, e.g. Gemini Deep Research or
+   *  Perplexity deep-research) — powers the `deep_research` built-in tool. */
   deepResearch?: ModelSelection;
 }
 

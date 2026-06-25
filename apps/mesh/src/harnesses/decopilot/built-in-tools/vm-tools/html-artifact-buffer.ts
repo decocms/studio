@@ -1,6 +1,6 @@
 /**
  * HTML-artifact buffer (cluster glue) — fast-path mirror for `write`/`edit`
- * tool calls on `org/<slug>/{decks,pages}/<name>.html`. The sandbox mount's
+ * tool calls on `org/home/{decks,pages}/<name>.html`. The sandbox mount's
  * vfs write-back takes seconds to reach org-fs; mirroring the tool's full
  * content server-side at step end makes the live preview (and the change-feed
  * watcher, which emits the `data-deck-updated` part) see the bytes
@@ -14,7 +14,7 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import { homeMountPath } from "@/file-storage/home-mount";
+import { HOME_MOUNT_PATH } from "@/file-storage/home-mount";
 import { matchHtmlArtifactToolPath } from "@decocms/harness/decopilot/built-in-tools/vm-tools/html-artifact-paths";
 import type { HtmlArtifactBuffer } from "@decocms/harness/decopilot/built-in-tools/vm-tools/types";
 
@@ -29,7 +29,7 @@ export function createHtmlArtifactBuffer(
   const orgSlug = ctx.organization?.slug ?? null;
   const actor = ctx.auth?.user?.id ?? null;
   if (!orgFs || !orgSlug || !actor) return NOOP;
-  const mountDir = homeMountPath(orgSlug);
+  const mountDir = HOME_MOUNT_PATH;
   // Stamp the writing chat so the watcher can scope its preview to this
   // run instead of every org-wide change (the home volume is shared).
   const threadId = ctx.metadata?.threadId ?? null;

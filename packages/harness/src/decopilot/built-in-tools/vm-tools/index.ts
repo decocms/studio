@@ -39,7 +39,6 @@ export function createVmTools(params: VmToolsParams) {
     toolOutputMap,
     needsApproval,
     pendingImages,
-    ctx,
   } = params;
   const approvalFor = (mutating: boolean) => (mutating ? needsApproval : false);
 
@@ -92,7 +91,7 @@ export function createVmTools(params: VmToolsParams) {
     inputSchema: zodSchema(WriteInputSchema),
     execute: async (input) => {
       const daemonResult = await call("/_sandbox/write", input);
-      // Fast path: mirror `org/<slug>/{decks,pages}/*.html` content into
+      // Fast path: mirror `org/home/{decks,pages}/*.html` content into
       // org-fs server-side at step end (skips the mount's slow vfs write-back)
       // so the live-preview watcher sees the bytes in the same step.
       htmlArtifactBuffer?.enqueue(input.path, input.content);
@@ -156,7 +155,7 @@ export function createVmTools(params: VmToolsParams) {
     description: SKILL_DESCRIPTION,
     inputSchema: zodSchema(SkillInputSchema),
     execute: async ({ id }) => {
-      const path = resolveSkillPath(id, ctx.organization?.slug);
+      const path = resolveSkillPath(id);
       if (!path) {
         return {
           error: `Invalid skill id "${id}". Use an id from <available-skills>.`,

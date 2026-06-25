@@ -232,10 +232,11 @@ async function resolvePerRequestModels(
     };
   }
 
-  const [chat, image, webResearch] = await Promise.all([
+  const [chat, image, webSearch, deepResearch] = await Promise.all([
     resolveTier(ctx, tier ?? "smart"),
     tryResolveTier(ctx, "image"),
-    tryResolveTier(ctx, "web_research"),
+    tryResolveTier(ctx, "web_search"),
+    tryResolveTier(ctx, "deep_research"),
   ]);
   return {
     credentialId: chat.credentialId,
@@ -243,11 +244,19 @@ async function resolvePerRequestModels(
     ...(image
       ? { image: { ...toModelInfo(image), credentialId: image.credentialId } }
       : {}),
-    ...(webResearch
+    ...(webSearch
+      ? {
+          webSearch: {
+            ...toModelInfo(webSearch),
+            credentialId: webSearch.credentialId,
+          },
+        }
+      : {}),
+    ...(deepResearch
       ? {
           deepResearch: {
-            ...toModelInfo(webResearch),
-            credentialId: webResearch.credentialId,
+            ...toModelInfo(deepResearch),
+            credentialId: deepResearch.credentialId,
           },
         }
       : {}),

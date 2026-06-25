@@ -19,7 +19,7 @@ export interface PendingImage {
 }
 
 /**
- * Fast-path mirror for live HTML artifacts (`org/<slug>/{decks,pages}/
+ * Fast-path mirror for live HTML artifacts (`org/home/{decks,pages}/
  * <name>.html`). `write`/`edit` enqueue the full post-write content; the
  * cluster flush writes it server-side into org-fs, skipping the sandbox
  * mount's multi-second vfs write-back so the preview (and the change-feed

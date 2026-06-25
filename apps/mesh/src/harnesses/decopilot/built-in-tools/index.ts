@@ -24,6 +24,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   read_resource: { readOnly: true, destructive: false },
   read_prompt: { readOnly: true, destructive: false },
   web_search: { readOnly: true, destructive: false },
+  deep_research: { readOnly: true, destructive: false },
   generate_image: { readOnly: false, destructive: false },
   open_in_agent: { readOnly: false, destructive: false },
   subtask: { readOnly: false, destructive: false },
@@ -87,9 +88,13 @@ export interface BuiltinToolParams {
    *  (or no tier is configured) — otherwise a separately-activated
    *  provider matching the image-tier credential. */
   imageProvider: MeshProvider | null;
-  /** Provider used to instantiate `web_search`'s deep-research path.
+  /** Provider used to instantiate the quick `web_search` tool. Same aliasing
+   *  rule as `imageProvider` — defaults to the chat provider when the org's
+   *  `web_search` tier shares the chat credential. */
+  webSearchProvider: MeshProvider | null;
+  /** Provider used to instantiate `deep_research`'s async/deep path.
    *  Same aliasing rule as `imageProvider`. Decoupling from the chat
-   *  provider lets web_search keep using a Gemini deep-research model
+   *  provider lets deep_research keep using a Gemini deep-research model
    *  even when the chat is routed via LiteLLM/OpenRouter. */
   deepResearchProvider: MeshProvider | null;
   organization: OrganizationScope;
@@ -153,6 +158,7 @@ async function buildAllTools(
   const {
     provider,
     imageProvider,
+    webSearchProvider,
     deepResearchProvider,
     organization,
     models,
@@ -290,23 +296,52 @@ async function buildAllTools(
       backgroundDispatcher,
     ) as ReturnType<typeof createGenerateImageTool>;
   }
-  // web_search consumes the cluster-built `researchJob` async-gen hook
-  // (HarnessDeps conversion, spec §6). The provider/DB lifecycle lives in
-  // `createClusterResearchJob`; the tool only drives the generator. The hook
-  // is built from `deepResearchProvider` so the deep-research tier can use
-  // Gemini's async research API even when the chat model is served by another
-  // provider (e.g. LiteLLM). Hook presence is the gate — desktop omits it and
-  // `web_search` is simply not in the set (§5.1).
-  if (deepResearchProvider && models.deepResearch) {
+  // web_search (quick) and deep_research (deep) both consume the cluster-built
+  // `researchJob` async-gen hook (HarnessDeps conversion, spec §6). The
+  // provider/DB lifecycle lives in `createClusterResearchJob`; the tools only
+  // drive the generator. Each tier resolves its own provider so it can use a
+  // different model/credential than the chat model (e.g. Gemini deep research
+  // via Google while chat is on LiteLLM). Hook presence is the gate — desktop
+  // omits the providers and these tools simply aren't in the set (§5.1).
+  //
+  // web_search forces the streaming path (mode "quick") as a backstop: even if
+  // a deep/async model slips into the web_search tier, a quick lookup never
+  // launches an async research job. The primary guard against slow models in
+  // this slot is the capability-aware UI filter (`isQuickSearchModel`).
+  if (webSearchProvider && models.webSearch) {
     const researchJob = createClusterResearchJob({
-      provider: deepResearchProvider,
-      deepResearchModelInfo: models.deepResearch,
+      provider: webSearchProvider,
+      modelInfo: models.webSearch,
       ctx,
+      mode: "quick",
+      toolName: "web_search",
     });
     tools.web_search = createWebSearchTool(writer, {
       researchJob,
       toolOutputMap,
       taskId,
+    });
+  }
+  // deep_research auto-selects the async deep-research path when the provider
+  // supports it (Gemini Deep Research), else streams (Perplexity deep-research).
+  if (deepResearchProvider && models.deepResearch) {
+    const researchJob = createClusterResearchJob({
+      provider: deepResearchProvider,
+      modelInfo: models.deepResearch,
+      ctx,
+      mode: "deep",
+      toolName: "deep_research",
+    });
+    tools.deep_research = createWebSearchTool(writer, {
+      researchJob,
+      toolOutputMap,
+      taskId,
+      description:
+        "Run in-depth, multi-source research and synthesize a comprehensive, " +
+        "cited report. Use this when the user needs thorough analysis, a " +
+        "literature/market review, or a question that warrants exploring many " +
+        "sources — accuracy and depth matter more than latency. For quick " +
+        "lookups or fact-checks, use `web_search` instead.",
     });
   }
   // take_screenshot, scrape_url, inspect_page require Browserless API token.
@@ -351,6 +386,7 @@ async function buildAllTools(
     read_tool_output: ReturnType<typeof createReadToolOutputTool>;
     generate_image: ReturnType<typeof createGenerateImageTool>;
     web_search: ReturnType<typeof createWebSearchTool>;
+    deep_research: ReturnType<typeof createWebSearchTool>;
     take_screenshot: ReturnType<typeof createTakeScreenshotTool>;
     scrape_url: ReturnType<typeof createScrapeUrlTool>;
     inspect_page: ReturnType<typeof createInspectPageTool>;

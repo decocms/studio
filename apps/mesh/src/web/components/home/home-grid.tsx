@@ -195,6 +195,17 @@ function AgentUITile({
 
   return (
     <div className="relative flex h-full w-full flex-col p-3">
+      {!isEditMode && (
+        <button
+          type="button"
+          onClick={() => void startBlank()}
+          disabled={starting}
+          aria-busy={starting}
+          className="mb-1 self-start rounded-md px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-progress disabled:opacity-60"
+        >
+          Open chat
+        </button>
+      )}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border">
           <Suspense fallback={<TilePanelSkeleton />}>
@@ -217,17 +228,6 @@ function AgentUITile({
           </div>
         )}
       </div>
-      {!isEditMode && (
-        <button
-          type="button"
-          onClick={() => void startBlank()}
-          disabled={starting}
-          aria-busy={starting}
-          className="absolute bottom-2 right-2 rounded-md px-2 py-1 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-progress disabled:opacity-60"
-        >
-          Open chat
-        </button>
-      )}
       {dialog}
     </div>
   );
@@ -332,20 +332,9 @@ function TileErrorFallback({
         type="button"
         onClick={() => void startBlank()}
         disabled={starting || isEditMode}
-        className={cn(
-          "flex items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          isEditMode && "pl-10 pr-10",
-        )}
+        className="mb-1 self-start rounded-md px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-progress disabled:opacity-60"
       >
-        <AgentAvatar icon={tile.agentIcon} name={tile.agentName} size="sm+" />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="truncate text-sm font-medium text-foreground">
-            {tile.agentName}
-          </div>
-          <div className="truncate text-xs text-muted-foreground">
-            UI unavailable — open chat
-          </div>
-        </div>
+        Open chat
       </button>
       {chips.length > 0 && !isEditMode && (
         <div className="grid grid-cols-1 gap-2 overflow-hidden sm:grid-cols-2">

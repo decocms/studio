@@ -1,113 +1,102 @@
 ---
-title: Provedores de IA
-description: Configure provedores de modelos de IA para o Decopilot e agentes — gerencie credenciais, descubra modelos e monitore creditos
+title: AI Providers
+description: Conecte os modelos de IA que alimentam o Decopilot e seus agents
 icon: Sparkles
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## O que sao Provedores de IA?
+## O que são AI providers?
 
-**Provedores de IA** fornecem os modelos de linguagem que alimentam o [Decopilot](/pt-br/studio/decopilot/overview) e os agentes no deco Studio. O sistema de provedores suporta multiplos fornecedores simultaneamente, cada um com suas proprias credenciais e catalogos de modelos.
+**AI Providers** são os serviços de modelos de IA que alimentam o [Decopilot](/pt-br/studio/decopilot/overview) e seus agents. Você conecta um provider uma vez no nível da organização, e todos os seus agents passam a usá-lo a partir daí.
 
-Chaves de provedores sao escopadas por organizacao e criptografadas em repouso no cofre de credenciais. Voce pode configurar multiplos provedores e alternar entre modelos conforme necessario.
+O Studio suporta múltiplos providers ao mesmo tempo — você pode combinar e alternar entre eles.
 
-## Provedores Suportados
+## Default models: uma escolha por propósito
 
-| Provedor | ID | Metodos de Autenticacao | Recursos Principais |
-|----------|-----|-------------|--------------|
-| **Deco AI Gateway** | `deco` | OAuth PKCE, API key | Acesso gerenciado a 100+ modelos, saldo de creditos, recarga |
-| **Anthropic** | `anthropic` | API key | Acesso direto aos modelos Claude |
-| **Google** | `google` | API key | Acesso aos modelos Google AI |
-| **OpenRouter** | `openrouter` | OAuth PKCE, API key | API unificada para 100+ familias de modelos |
-| **Claude Code** | `claude-code` | CLI activate | Integracao com CLI do Claude Code — detecta instalacao local |
+Você não escolhe um model toda vez que inicia uma tarefa. Em vez disso, o Studio usa cinco **default models**, um para cada tipo de trabalho:
 
-<Callout type="info">
-  O Deco AI Gateway e opcionalmente habilitado via variavel de ambiente `DECO_AI_GATEWAY_ENABLED`. Quando habilitado, fornece acesso gerenciado a modelos de multiplos fornecedores atraves de um unico relacionamento de cobranca.
-</Callout>
+| Default | Para que serve | Escolha típica |
+|---|---|---|
+| **Fast** | Respostas rápidas, interações curtas | Claude Haiku, GPT-4 mini, Gemini Flash |
+| **Smart** | Equilíbrio entre velocidade e capacidade — o default do dia a dia | Claude Sonnet, GPT-4o, Gemini Pro |
+| **Thinking** | Raciocínio mais difícil, planejamento longo | Claude Opus, série o, Gemini Ultra |
+| **Image** | Geração de imagens | GPT Image, Imagen, etc. |
+| **Web research** | Busca na web e deep research | Sonar, Perplexity, etc. |
 
-## Metodos de Autenticacao
+Configure isso uma vez em **Settings → AI Providers → Default models**. Quando um agent ou o Decopilot escolhe um tier, ele roteia para o model que você definiu. Mude um default e cada agent passa a usar o novo model imediatamente — sem reconfigurar agent por agent.
 
-Cada provedor declara quais metodos de conexao suporta:
+Você ainda pode sobrescrever isso por agent quando necessário, mas os defaults cobrem o caso comum.
 
-### API Key
+## Deco AI Gateway
 
-O metodo mais comum. Voce fornece uma chave secreta emitida pelo provedor (ex: do Anthropic Console ou Google AI Studio). A chave e criptografada e armazenada no cofre do deco Studio.
+O **Deco AI Gateway** é o provider recomendado. Organizações novas começam com créditos — sem API keys para gerenciar — e ele dá acesso a mais de 100 models de diversos fornecedores por trás de uma única connection. Pague conforme usar.
 
-Chaves sao hasheadas (SHA-256) para deduplicacao — se voce adicionar a mesma chave duas vezes, a entrada existente e atualizada em vez de criar uma duplicata.
+Se quiser usar suas próprias keys mais tarde, adicione outro provider; o Studio usará o provider que você definir para cada tier de default model.
 
-### OAuth PKCE
+Você pode conferir o crédito restante do gateway e fazer recarga diretamente em **Settings → AI Providers**.
 
-Um fluxo de autorizacao baseado em navegador para provedores que o suportam (OpenRouter, Deco AI Gateway). O fluxo:
+## Outros providers
 
-1. O deco Studio gera uma URL de autorizacao com um desafio PKCE
-2. Voce completa a autorizacao no seu navegador
-3. O deco Studio troca o codigo por uma API key
-4. A chave e armazenada criptografada no cofre
+Clique em **Connect provider** em **Settings → AI Providers** para adicionar qualquer um destes:
 
-### CLI Activate
+| Provider | Observações |
+|---|---|
+| **OpenRouter** | Uma conta, centenas de models de diversos fornecedores |
+| **Anthropic** | API key direta da Anthropic — família Claude |
+| **Google Gemini** | API key direta do Google AI Studio — família Gemini |
+| **OpenAI-compatible** | Qualquer endpoint que fale a API OpenAI Chat Completions |
 
-Apenas para integracao com Claude Code. Detecta a instalacao local do CLI e o estado de autenticacao — sem necessidade de entrada manual de chave.
+### Presets OpenAI-compatible
 
-## Gerenciando Chaves de Provedores
+O provider **OpenAI-compatible** tem presets com marca para deployments comuns — escolha um e o Studio preenche a base URL automaticamente. Você também pode escolher **Custom** e colar qualquer URL.
 
-O gerenciamento de chaves de provedores esta disponivel atraves de ferramentas MCP:
+| Preset | Para que serve |
+|---|---|
+| **OpenAI** | API key direta da OpenAI — GPT-4, GPT-5, etc. |
+| **LiteLLM** | Um gateway LiteLLM gerenciado pelo seu time |
+| **Ollama** | Models open-source rodando localmente via Ollama |
+| **LM Studio** | Models abertos rodando através do LM Studio |
+| **vLLM** | O servidor vLLM self-hosted do seu time |
+| **Custom** | Qualquer outro endpoint compatível com OpenAI (avançado) |
 
-| Ferramenta | Proposito |
-|------|---------|
-| `AI_PROVIDER_KEY_CREATE` | Armazenar uma nova API key (criptografada em repouso) |
-| `AI_PROVIDER_KEY_LIST` | Listar chaves armazenadas, opcionalmente filtradas por provedor |
-| `AI_PROVIDER_KEY_DELETE` | Remover uma chave armazenada |
-| `AI_PROVIDERS_ACTIVE` | Listar provedores que tem pelo menos uma chave configurada |
+### Providers somente locais
 
-Chaves sao escopadas por organizacao com rastreamento de auditoria — cada chave registra quem a adicionou e quando.
+Quando o Studio roda localmente (via `bunx -p decocms deco`), dois providers extras aparecem, delegando a um CLI instalado na sua máquina:
 
-## Descoberta de Modelos
+| Provider | Observações |
+|---|---|
+| **Claude Code** | Conduz uma sessão do CLI `claude` — usa sua auth Anthropic existente |
+| **Codex** | Conduz uma sessão do CLI `codex` |
 
-Uma vez que uma chave de provedor esta configurada, voce pode descobrir modelos disponiveis:
+Eles não aparecem no produto cloud.
 
-```
-AI_PROVIDERS_LIST_MODELS(provider_key_id)
-```
+## Como um provider é conectado
 
-Cada modelo inclui:
+**API key** — o método mais comum. Cole a key do dashboard do seu provider. Ela é armazenada criptografada e nunca exposta ao seu time.
 
-- **ID e titulo do modelo** — identificador e nome legivel
-- **Capacidades** — o que o modelo pode fazer: `text`, `vision`, `tools`, `reasoning`, `image`, `audio`
-- **Limites de contexto** — tamanho da janela de contexto e maximo de tokens de saida
-- **Custos** — precos de tokens de entrada e saida
+**Sign in with browser** — para providers que suportam (Deco AI Gateway, OpenRouter). Você é levado à página de login do provider, autoriza o acesso e o Studio cuida do resto.
 
-Listas de modelos sao cacheadas por organizacao e provedor para evitar chamadas de API redundantes. Modelos de provedores nao-OpenRouter sao enriquecidos com metadados do catalogo do OpenRouter quando disponivel (descricoes, capacidades, precos).
+**Local endpoint** — para os presets Ollama, LM Studio, vLLM, LiteLLM ou Custom do OpenAI-compatible: cole a base URL onde o Studio consegue alcançar o servidor.
 
-<Callout type="tip">
-  A disponibilidade de modelos pode ser filtrada por politicas de permissao de modelos no nivel da organizacao. Se um modelo que voce espera nao esta listado, verifique as permissoes de modelo da sua organizacao.
-</Callout>
+**CLI activate** — para Claude Code e Codex em modo local: o Studio roda o CLI instalado na sua máquina; nenhuma key é armazenada do lado do Studio.
 
-## Creditos e Cobranca
+## Quais models estão disponíveis?
 
-Para provedores que suportam (atualmente Deco AI Gateway):
+Uma vez que um provider está conectado, você pode navegar pelos models disponíveis. Cada model mostra:
 
-| Ferramenta | Proposito |
-|------|---------|
-| `AI_PROVIDER_CREDITS` | Verificar saldo restante (em centavos) |
-| `AI_PROVIDER_TOPUP_URL` | Gerar URL de checkout para adicionar creditos (USD ou BRL) |
+- Seu nome e capacidades (texto, visão, geração de imagem, etc.)
+- Tamanho da janela de contexto
+- Preço por token
 
-Verifique o saldo de creditos quando usuarios reportam falhas de geracao — creditos insuficientes sao uma causa comum.
+A disponibilidade de models pode ser filtrada pelas configurações de permissão de model da sua organização. Se um model que você espera não aparece, verifique com o admin da sua org.
 
-## Como o Decopilot Usa Provedores
+## Fallback
 
-O Decopilot e os agentes selecionam modelos de provedores ativos ao processar tarefas. O sistema de provedores gerencia:
-
-- **Selecao de modelo** — escolher o modelo certo para a tarefa
-- **Injecao de credenciais** — descriptografar e fornecer a API key no momento da requisicao
-- **Fallback** — usar provedores alternativos quando o primario nao esta disponivel
-
-Veja [Visao Geral do Decopilot](/pt-br/studio/decopilot/overview) para detalhes sobre como agentes interagem com modelos de IA.
+Se o provider por trás de um tier de default estiver indisponível, o Studio faz fallback para outro provider conectado automaticamente — então uma queda temporária em um fornecedor não quebra seus agents.
 
 ---
 
-## Proximos Passos
-
 <Callout type="info">
-Comece configurando pelo menos um provedor de IA para habilitar o Decopilot. Veja [Quickstart do Decopilot](/pt-br/studio/decopilot/quickstart) para comecar, ou [API Keys](/pt-br/studio/api-keys) para gerenciar acesso programatico ao deco Studio.
+Organizações novas já vêm com créditos do Deco AI Gateway — você pode começar a usar o Decopilot e seus agents sem configurar nada. Veja [Decopilot](/pt-br/studio/decopilot/overview) ou [API Keys](/pt-br/studio/api-keys) para gerenciar acesso programático ao próprio Studio.
 </Callout>

@@ -17,7 +17,7 @@ Each automation has:
 - **An agent** — the one doing the work
 - **A prompt** — what it should do each time it runs
 - **A model** — which AI provider and credentials to use
-- **A trigger** — when it fires (schedule, event, or manual)
+- **A trigger** — when it fires (schedule, event, or webhook)
 
 <Callout type="warning">
   Automations approve all tool calls automatically — there's no human review step. Attach only the tools the agent actually needs so it can't do more than you intend.
@@ -27,7 +27,7 @@ Each automation has:
 
 You manage automations in two places:
 
-- **Inside an agent** — open the agent and click the **Automations** tab in the right panel. You'll see the automations attached to this specific agent, and you can create new ones in context.
+- **Inside an agent** — open the agent and click the **Automations** tab. You'll see the automations attached to this specific agent, and you can create new ones in context.
 - **Settings → Automations** — the org-wide list of every automation across every agent, useful for overview, audit, or housekeeping.
 
 ## When to use automations
@@ -41,11 +41,11 @@ If you want a human in the loop — reviewing actions before they happen — ope
 ## Creating an automation
 
 1. Open the agent you want to run
-2. Click the **Automations** tab in the right panel
+2. Click the **Automations** tab
 3. Click **New automation**
 4. Write the prompt — what should the agent do each run?
 5. Pick a model and credentials
-6. Add a trigger (schedule, event, or both)
+6. Add a trigger (schedule, event, or webhook)
 7. Activate it
 
 ## Triggers
@@ -61,18 +61,20 @@ Runs the automation on a recurring schedule. Times are in UTC.
 | `0 9 * * 1` | Every Monday at 9:00 AM |
 | `*/5 * * * *` | Every 5 minutes |
 
-Minimum interval is 60 seconds. If the system restarts, missed runs are caught and fired on the next cycle.
+Minimum interval is 5 minutes — `*/5 * * * *` is the tightest schedule allowed. If the system restarts, missed runs are caught and fired on the next cycle.
 
 ### Event
 
 Fires when a connected service publishes a matching event. You specify the connection, the event type, and optional filters — only events that match all filters trigger the automation.
 
+### Webhook
+
+Fires when an external system sends an HTTP request to a dedicated URL. When you add a webhook trigger, Studio mints a one-time URL and a secret token (shown once) — POST to that URL to run the automation. You can rotate the token if it's ever exposed.
+
 ## Limits
 
-- Maximum 3 runs per automation at the same time
 - Maximum 10 automation runs across your organization at once
 - Each run times out after 5 minutes
-- Event chains are limited to 3 levels deep (prevents loops)
 - Event payloads are capped at 1 MB
 
 If the person who created an automation leaves the organization, it's automatically deactivated.

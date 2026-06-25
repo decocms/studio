@@ -889,6 +889,7 @@ async function prepareRun(
       fastSource,
       smartSource,
       imageSource,
+      webSearchSource,
       deepResearchSource,
       mem,
       userContext,
@@ -898,6 +899,7 @@ async function prepareRun(
       resolveSlot(models.fast),
       resolveSlot(models.smart),
       resolveSlot(models.image),
+      resolveSlot(models.webSearch),
       resolveSlot(models.deepResearch),
       createMemory(ctx.storage.threads, {
         organization_id: input.organizationId,
@@ -932,6 +934,7 @@ async function prepareRun(
           ...(fastSource ? { fast: fastSource } : {}),
           ...(smartSource ? { smart: smartSource } : {}),
           ...(imageSource ? { image: imageSource } : {}),
+          ...(webSearchSource ? { webSearch: webSearchSource } : {}),
           ...(deepResearchSource ? { deepResearch: deepResearchSource } : {}),
         }
       : undefined;
@@ -951,9 +954,11 @@ async function prepareRun(
         harnessId,
         thinkingSourceResolved: !!thinkingSource,
         imageSourceResolved: !!imageSource,
+        webSearchSourceResolved: !!webSearchSource,
         deepResearchSourceResolved: !!deepResearchSource,
         thinkingModelId: models.thinking.id,
         hasImage: !!models.image,
+        hasWebSearch: !!models.webSearch,
         hasDeepResearch: !!models.deepResearch,
       });
     }

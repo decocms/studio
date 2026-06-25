@@ -50,7 +50,8 @@ export const SimpleModeTierSchema = z.enum([
   "smart",
   "thinking",
   "image",
-  "web_research",
+  "web_search",
+  "deep_research",
 ]);
 
 export type SimpleModeTier = z.infer<typeof SimpleModeTierSchema>;
@@ -70,7 +71,8 @@ export const SimpleModeConfigSchema = z.object({
     smart: ModelSlotSchema,
     thinking: ModelSlotSchema,
     image: ModelSlotSchema,
-    web_research: ModelSlotSchema,
+    web_search: ModelSlotSchema,
+    deep_research: ModelSlotSchema,
   }),
 });
 

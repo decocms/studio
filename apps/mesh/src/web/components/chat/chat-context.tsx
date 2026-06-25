@@ -50,6 +50,8 @@ import {
 } from "./pills/agent-options";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import {
+  isDeepResearchModel,
+  isQuickSearchModel,
   pickSimpleModeDefaults,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
@@ -173,6 +175,9 @@ export interface ChatPrefsContextValue {
   /** Selected image generation model (null = no image models available) */
   imageModel: AiProviderModel | null;
   setImageModel: (model: AiProviderModel | null) => void;
+  /** Selected quick web search model (null = no web search models available) */
+  webSearchModel: AiProviderModel | null;
+  setWebSearchModel: (model: AiProviderModel | null) => void;
   /** Selected deep research model (null = no deep research models available) */
   deepResearchModel: AiProviderModel | null;
   setDeepResearchModel: (model: AiProviderModel | null) => void;
@@ -361,6 +366,11 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     LOCALSTORAGE_KEYS.chatSelectedImageModel(locator),
     null,
   );
+  const [storedWebSearchRef, setStoredWebSearchRef] =
+    useLocalStorage<ModelRef | null>(
+      LOCALSTORAGE_KEYS.chatSelectedWebSearchModel(locator),
+      null,
+    );
   const [storedDeepResearchRef, setStoredDeepResearchRef] =
     useLocalStorage<ModelRef | null>(
       LOCALSTORAGE_KEYS.chatSelectedDeepResearchModel(locator),
@@ -397,8 +407,11 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   const { models: simpleImageModels } = useAiProviderModels(
     simpleMode.tiers.image?.keyId,
   );
-  const { models: simpleWebResearchModels } = useAiProviderModels(
-    simpleMode.tiers.web_research?.keyId,
+  const { models: simpleWebSearchModels } = useAiProviderModels(
+    simpleMode.tiers.web_search?.keyId,
+  );
+  const { models: simpleDeepResearchModels } = useAiProviderModels(
+    simpleMode.tiers.deep_research?.keyId,
   );
 
   const selectedModel: AiProviderModel | null =
@@ -421,25 +434,47 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     imageModels[0] ??
     null;
 
-  const deepResearchModels = allKeyModels.filter((m) => {
-    const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
-    return n.includes("sonar") || n.includes("deepresearch");
-  });
+  // Quick web search models (Sonar / search-preview / online, streaming) —
+  // excludes async-only deep models. Shared classifier with settings + the
+  // SDK default-picker so the three never drift.
+  const webSearchModels = allKeyModels.filter(isQuickSearchModel);
+  const validatedStoredWebSearch = findModel(
+    storedWebSearchRef,
+    keys,
+    webSearchModels,
+  );
+  const defaultWebSearchModel =
+    webSearchModels.find((m) => m.modelId === "perplexity/sonar") ??
+    webSearchModels[0] ??
+    null;
+  const resolvedWebSearchModel: AiProviderModel | null =
+    findModel(
+      simpleMode.tiers.web_search,
+      keys,
+      simpleWebSearchModels,
+      simpleMode.tiers.web_search?.title,
+    ) ??
+    validatedStoredWebSearch ??
+    defaultWebSearchModel;
+
+  // Deep research models (async / deep-research, sonar-pro fallback).
+  const deepResearchModels = allKeyModels.filter(isDeepResearchModel);
   const validatedStoredDeepResearch = findModel(
     storedDeepResearchRef,
     keys,
     deepResearchModels,
   );
   const defaultDeepResearchModel =
-    deepResearchModels.find((m) => m.modelId === "perplexity/sonar") ??
+    deepResearchModels.find((m) => m.modelId === "perplexity/deep-research") ??
+    deepResearchModels.find((m) => m.asyncResearch === true) ??
     deepResearchModels[0] ??
     null;
   const resolvedDeepResearchModel: AiProviderModel | null =
     findModel(
-      simpleMode.tiers.web_research,
+      simpleMode.tiers.deep_research,
       keys,
-      simpleWebResearchModels,
-      simpleMode.tiers.web_research?.title,
+      simpleDeepResearchModels,
+      simpleMode.tiers.deep_research?.title,
     ) ??
     validatedStoredDeepResearch ??
     defaultDeepResearchModel;
@@ -567,6 +602,12 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     imageModel: resolvedImageModel,
     setImageModel: (model: AiProviderModel | null) => {
       setStoredImageRef(
+        model?.keyId ? { keyId: model.keyId, modelId: model.modelId } : null,
+      );
+    },
+    webSearchModel: resolvedWebSearchModel,
+    setWebSearchModel: (model: AiProviderModel | null) => {
+      setStoredWebSearchRef(
         model?.keyId ? { keyId: model.keyId, modelId: model.modelId } : null,
       );
     },
@@ -774,6 +815,7 @@ export function ActiveTaskProvider({
   }
   const {
     imageModel,
+    webSearchModel,
     deepResearchModel,
     chatMode,
     setChatMode,
@@ -1019,12 +1061,15 @@ export function ActiveTaskProvider({
     if (modeToSend === "gen-image" && !imageModel) {
       modeToSend = "default";
     }
-    if (modeToSend === "web-search" && !deepResearchModel) {
+    if (modeToSend === "web-search" && !webSearchModel) {
+      modeToSend = "default";
+    }
+    if (modeToSend === "deep-research" && !deepResearchModel) {
       modeToSend = "default";
     }
     // Plan and gen-image modes are sticky — the user explicitly toggles them
-    // off. Web-search is one-shot (resets after each send).
-    if (modeToSend === "web-search") {
+    // off. Web-search and deep-research are one-shot (reset after each send).
+    if (modeToSend === "web-search" || modeToSend === "deep-research") {
       setChatMode("default");
     }
 

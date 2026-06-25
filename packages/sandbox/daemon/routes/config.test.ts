@@ -178,4 +178,24 @@ describe("makeConfigReadHandler", () => {
       SEED.git?.repository?.cloneUrl,
     );
   });
+
+  it("returns repoDir when provided", async () => {
+    const h = makeConfigReadHandler({
+      daemonBootId: BOOT_ID,
+      store,
+      repoDir: "/home/user/project",
+    });
+    const res = await h();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { repoDir: string | null };
+    expect(body.repoDir).toBe("/home/user/project");
+  });
+
+  it("returns null repoDir when not provided", async () => {
+    const h = makeConfigReadHandler({ daemonBootId: BOOT_ID, store });
+    const res = await h();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { repoDir: string | null };
+    expect(body.repoDir).toBeNull();
+  });
 });

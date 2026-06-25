@@ -25,7 +25,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/mesh
+  IMAGE_NAME: ${{ github.repository }}/studio
+  NGINX_IMAGE_NAME: ${{ github.repository }}/studio-nginx
 
 jobs:
   prepare:
@@ -44,6 +45,7 @@ jobs:
       version-changed: ${{ steps.version.outputs.version-changed }}
       npm-tag: ${{ steps.version.outputs.npm-tag }}
       image-exists: ${{ steps.image.outputs.image-exists }}
+      nginx-image-exists: ${{ steps.nginx-image.outputs.image-exists }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,6 +84,16 @@ jobs:
             echo "image-exists=false" >> $GITHUB_OUTPUT
             echo "Image ${{ steps.version.outputs.version }} not in GHCR, will build"
           fi
+      - name: Check if nginx Docker image exists
+        id: nginx-image
+        run: |
+          if docker manifest inspect ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ steps.version.outputs.version }} >/dev/null 2>&1; then
+            echo "image-exists=true" >> $GITHUB_OUTPUT
+            echo "Nginx image ${{ steps.version.outputs.version }} already in GHCR"
+          else
+            echo "image-exists=false" >> $GITHUB_OUTPUT
+            echo "Nginx image ${{ steps.version.outputs.version }} not in GHCR, will build"
+          fi
 
   # Build the npm tarball EXACTLY ONCE, then hand it to both publish-npm and
   # build-docker as a workflow artifact. `npm pack` does not run prepublishOnly,
@@ -93,7 +105,8 @@ jobs:
     needs: prepare
     if: |
       needs.prepare.outputs.version-changed == 'true' ||
-      needs.prepare.outputs.image-exists == 'false'
+      needs.prepare.outputs.image-exists == 'false' ||
+      needs.prepare.outputs.nginx-image-exists == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -253,6 +266,78 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-nginx-docker:
+    name: Build Nginx Docker (${{ matrix.arch }})
+    needs: [prepare, build-dist]
+    if: |
+      always() &&
+      needs.prepare.outputs.nginx-image-exists == 'false' &&
+      needs.build-dist.result == 'success'
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Download package artifact into build context
+        uses: actions/download-artifact@v4
+        with:
+          name: mesh-package
+          path: docker-context
+      - name: Normalize tarball filename
+        run: mv docker-context/decocms-*.tgz docker-context/decocms.tgz
+      - name: Copy tarball to repository root
+        run: cp docker-context/decocms.tgz decocms.tgz
+      - name: Image labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/mesh/Dockerfile.nginx
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=mesh-nginx-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=mesh-nginx-${{ matrix.arch }}
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/nginx-digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/nginx-digests/${digest#sha256:}"
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: nginx-digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/nginx-digests/*
+          if-no-files-found: error
+          retention-days: 1
+
   # Assemble the per-arch digests pushed by build-docker into one tagged
   # multi-arch manifest list and push it to GHCR. This is the job that makes
   # `ghcr.io/.../mesh:<version>` resolve to both amd64 + arm64.
@@ -301,15 +386,65 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
 
-  release:
-    name: GitHub Release + Deployment
-    needs: [prepare, build-dist, publish-npm, merge-docker]
+  merge-nginx-docker:
+    name: Merge & push Nginx Docker manifest
+    needs: [prepare, build-nginx-docker]
     if: |
       always() &&
-      (needs.prepare.outputs.version-changed == 'true' || needs.prepare.outputs.image-exists == 'false') &&
+      needs.prepare.outputs.nginx-image-exists == 'false' &&
+      needs.build-nginx-docker.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/nginx-digests
+          pattern: nginx-digests-*
+          merge-multiple: true
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Extract metadata (tags)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.version }}
+            type=raw,value=latest
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/nginx-digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}@sha256:%s ' *)
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
+
+  release:
+    name: GitHub Release + Deployment
+    needs: [prepare, build-dist, publish-npm, merge-docker, merge-nginx-docker]
+    if: |
+      always() &&
+      (
+        needs.prepare.outputs.version-changed == 'true' ||
+        needs.prepare.outputs.image-exists == 'false' ||
+        needs.prepare.outputs.nginx-image-exists == 'false'
+      ) &&
       (needs.build-dist.result == 'success' || needs.build-dist.result == 'skipped') &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
-      (needs.merge-docker.result == 'success' || needs.merge-docker.result == 'skipped')
+      (needs.merge-docker.result == 'success' || needs.merge-docker.result == 'skipped') &&
+      (needs.merge-nginx-docker.result == 'success' || needs.merge-nginx-docker.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -336,6 +471,7 @@ jobs:
             ### Install via Docker
             ```bash
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
+            docker pull ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
 
             docker run -d \
               -p 3000:3000 \
@@ -362,6 +498,7 @@ jobs:
           echo "### Docker" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.NGINX_IMAGE_NAME }}:${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
   # ---------------------------------------------------------------------------
@@ -375,23 +512,29 @@ jobs:
   # ---------------------------------------------------------------------------
   bump-deco-apps-cd:
     name: Trigger deco-apps-cd bump
-    needs: [prepare, build-dist, publish-npm, merge-docker]
-    # Only bump when this release is fully consistent across the artifact pair:
+    needs: [prepare, build-dist, publish-npm, merge-docker, merge-nginx-docker]
+    # Only bump when this release is fully consistent across the artifact set:
     #   * a VALID image for this version exists (either already published, so
-    #     merge-docker is skipped, or freshly built + merged), AND
+    #     its merge job is skipped, or freshly built + merged), AND
     #   * the npm side didn't fail. publish-npm is gated separately because the
     #     docker build is parallel to it — without this clause, an npm failure
     #     could still ship an image to prod whose `bunx @decocms/mesh@X`
-    #     wouldn't resolve, leaving the two artifacts inconsistent.
-    # A skipped publish-npm (version already on npm) or skipped merge-docker
+    #     wouldn't resolve, leaving the artifacts inconsistent.
+    # A skipped publish-npm (version already on npm) or skipped merge job
     # (image already in GHCR) is fine — those mean "nothing to do", not failure.
     if: |
       always() &&
       (needs.build-dist.result == 'success' || needs.build-dist.result == 'skipped') &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
       (
-        needs.prepare.outputs.image-exists == 'true' ||
-        needs.merge-docker.result == 'success'
+        (
+          needs.prepare.outputs.image-exists == 'true' ||
+          needs.merge-docker.result == 'success'
+        ) &&
+        (
+          needs.prepare.outputs.nginx-image-exists == 'true' ||
+          needs.merge-nginx-docker.result == 'success'
+        )
       )
     runs-on: ubuntu-latest
     # Reuses DEPLOY_REPO_TOKEN — the decobot machine-user PAT already used to

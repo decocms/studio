@@ -38,6 +38,7 @@ export async function getNavigationLinks(
 
     // 2. Core Concepts
     "studio/concepts",
+    "studio/architecture",
 
     // 3. The product, page by page
     "studio/agents",
@@ -46,39 +47,29 @@ export async function getNavigationLinks(
     "studio/monitoring",
     "studio/ai-providers",
     "studio/buckets",
+    "studio/library",
 
     // 4. Decopilot
     "studio/decopilot/overview",
     "studio/decopilot/context-and-tasks",
     "studio/decopilot/tools",
 
-    // 5. Solutions
-    "studio/solutions/overview",
-    "studio/solutions/agentic-cms",
+    // 5. Digital Experience
+    "studio/digital-experience",
+    "studio/agentic-cms",
 
-    // 6. Coming soon
-    "studio/projects",
-
-    // 7. Catalog & admin
+    // 6. Catalog & admin
     "studio/store",
     "studio/api-keys",
+    "studio/secrets",
     "studio/user-management",
 
-    // 9. API Reference
+    // 9. API Reference (the external HTTP API)
     "studio/api-reference/connection-proxy",
     "studio/api-reference/external-agent-integration",
-    "studio/api-reference/built-in-tools",
-    "studio/api-reference/built-in-tools/tool-search",
-    "studio/api-reference/built-in-tools/tool-enable",
-    "studio/api-reference/built-in-tools/agent-search",
-    "studio/api-reference/built-in-tools/subtask-run",
-    "studio/api-reference/built-in-tools/user-ask",
-    "studio/api-reference/built-in-tools/resource-read",
-    "studio/api-reference/built-in-tools/prompt-read",
 
     // 10. Self-Hosting
     "studio/self-hosting/quickstart",
-    "studio/self-hosting/architecture",
     "studio/self-hosting/authentication",
     "studio/self-hosting/monitoring",
     "studio/self-hosting/deploy/docker-compose",

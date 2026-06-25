@@ -3,7 +3,7 @@
  * watcher (org-fs change-feed entries) and any tool-path detection.
  *
  * Convention: HTML artifacts the user should see live in the org home
- * volume, which sandboxes see mounted at `org/<homeMountPath>/`:
+ * volume, which sandboxes see mounted at the fixed `org/home/`:
  *   - `decks/<name>.html` — presentation decks (the `slides` skill)
  *   - `pages/<name>.html` — standalone pages (landing pages, one-pagers)
  * The Studio web UI previews (and for decks, edits) the same files.
@@ -80,8 +80,10 @@ export function matchOwnHtmlArtifact(
 
 /**
  * Match a SANDBOX tool path (`write`/`edit`/bash cwd-relative or absolute)
- * against the mounted deck dir, e.g. `org/acme/decks/launch.html` or
- * `/app/repo/org/acme/decks/launch.html`. Returns the volume-relative ref.
+ * against the mounted deck dir, e.g. `org/home/decks/launch.html` or
+ * `/app/repo/org/home/decks/launch.html`. `homeMountPath` is the fixed `home`
+ * (kept as a param so the matcher stays pure/testable). Returns the
+ * volume-relative ref.
  */
 export function matchHtmlArtifactToolPath(
   rawPath: string,

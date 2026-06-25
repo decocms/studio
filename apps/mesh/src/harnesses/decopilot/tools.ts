@@ -104,11 +104,14 @@ export interface AssembleDecopilotToolsExtras {
   /** Provider for `generate_image`. Caller passes the chat provider when
    *  the org's `image` tier shares the chat credential. */
   imageProvider: MeshProvider | null;
-  /** Provider for `web_search`'s deep-research path. Caller passes the
-   *  chat provider when the org's `web_research` tier shares the chat
+  /** Provider for the quick `web_search` tool. Caller passes the chat
+   *  provider when the org's `web_search` tier shares the chat credential. */
+  webSearchProvider: MeshProvider | null;
+  /** Provider for the `deep_research` tool's async/deep path. Caller passes
+   *  the chat provider when the org's `deep_research` tier shares the chat
    *  credential. */
   deepResearchProvider: MeshProvider | null;
-  /** Per-turn HTML-artifact fast-path mirror (`org/<slug>/{decks,pages}/
+  /** Per-turn HTML-artifact fast-path mirror (`org/home/{decks,pages}/
    *  *.html`) — flushed into org-fs at step-end by the dispatch layer. */
   htmlArtifactBuffer?: HtmlArtifactBuffer;
   /** Usage roll-up sink (Task 17) — forwarded to the `subtask` built-in so a
@@ -301,6 +304,7 @@ export async function assembleDecopilotTools(
       {
         provider: extras.provider,
         imageProvider: extras.imageProvider,
+        webSearchProvider: extras.webSearchProvider,
         deepResearchProvider: extras.deepResearchProvider,
         organization,
         models: input.models,

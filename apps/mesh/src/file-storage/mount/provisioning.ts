@@ -7,12 +7,13 @@
  * becomes per-agent configurable. Three volumes (org skills are deliberately
  * NOT a cloud volume — skills belong in versioned repos, surfaced through
  * the read-only public sets):
- *   - `home`    → mounted at `<appRoot>/org/<orgSlug>` (visible, editable):
+ *   - `home`    → mounted at `<appRoot>/org/home` (visible, editable):
  *     the org's shared home folder, free-form — members and agents organize
  *     it with whatever subfolders they want, and knowledge accumulates
- *     across every run (no per-thread scoping). The volume NAME is the
- *     stable `home` (uniform keyspace across orgs); only the mount path
- *     carries the slug, which is immutable by design (see CLAUDE.md).
+ *     across every run (no per-thread scoping). Both the volume NAME and the
+ *     mount path are the fixed `home`, so `org/home/` is a stable path that
+ *     prompts, skills, and code can hardcode. The Library shows the org's
+ *     slug as this folder's display label (see `homeDisplayName`).
  *   - `outputs` → mounted at `<appRoot>/org/.outputs` (hidden); the daemon
  *     repoints a per-run symlink `<appRoot>/org/output → .outputs/<threadId>`
  *     so the agent sees a bare `output/` that is, externally, that thread's
@@ -23,7 +24,7 @@
  *     folder appear in the sandbox with no copy step.
  */
 
-import { homeMountPath } from "../home-mount";
+import { HOME_MOUNT_PATH } from "../home-mount";
 import {
   getPublicSets,
   isPublicVolume,
@@ -53,15 +54,12 @@ const DEFAULT_MOUNTS: ReadonlyArray<{ volume: string; path: string }> = [
  * The sandbox path an org-fs (volume, path) is reachable at inside a run —
  * the inverse of the mount table above. Lets server-side code (e.g. the agent
  * knowledge block) tell the agent exactly where to read an attached file.
+ * Slug-independent: the home volume always mounts at the fixed `org/home`.
  * `path` "" returns the volume's mount root.
  */
-export function orgFsSandboxPath(
-  volume: string,
-  path: string,
-  orgSlug: string,
-): string {
+export function orgFsSandboxPath(volume: string, path: string): string {
   let base: string;
-  if (volume === "home") base = `org/${homeMountPath(orgSlug)}`;
+  if (volume === "home") base = `org/${HOME_MOUNT_PATH}`;
   else if (volume === "outputs") base = `org/${ORG_FS_OUTPUTS_MOUNT_PATH}`;
   else if (volume === "uploads") base = `org/${ORG_FS_UPLOADS_MOUNT_PATH}`;
   else if (isPublicVolume(volume)) {
@@ -82,8 +80,8 @@ export function buildOrgFsConfig(opts: {
     orgSlug: opts.orgSlug,
     token: opts.token,
     mounts: [
-      // The org's home folder mounts under the org's own name.
-      { volume: "home", path: homeMountPath(opts.orgSlug) },
+      // The org's home folder mounts at the fixed `org/home` (hardcodable path).
+      { volume: "home", path: HOME_MOUNT_PATH },
       ...DEFAULT_MOUNTS.map((m) => ({ ...m })),
       ...(opts.publicSets ?? []).map((set) => ({
         volume: publicVolumeForSet(set),

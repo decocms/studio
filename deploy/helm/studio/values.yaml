@@ -22,7 +22,6 @@ image:
 service:
   type: ClusterIP
   port: 80
-  targetPort: 3000
   # Same-zone endpoint preference (kube-proxy topology hints) to cut cross-zone
   # traffic. Empty → field omitted (REQUIRED on k8s < 1.31, where it's rejected).
   # Set "PreferClose" on k8s >= 1.31. Best-effort: needs pods spread across zones
@@ -39,13 +38,13 @@ metrics:
 
 resources:
   requests:
-    memory: "2Gi"
-    cpu: "2000m"
+    cpu: "750m"
+    memory: "1Gi"
   limits:
-    memory: "2Gi"
+    memory: "1Gi"
 
 database:
-  engine: sqlite # sqlite | postgresql
+  engine: postgresql # postgresql required for split API/worker pods
   url: ""        # Required when engine=postgresql
   caCert: ""     # Optional: Specify existing CA certificate in PEM format
 
@@ -65,30 +64,15 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
-# Pod dispatch-role split (see apps/mesh MESH_DISPATCH_ROLE). One release, one
-# Argo app: the main Deployment serves HTTP; an optional `worker` Deployment
-# runs the agent loop. Workers carry a distinct `app.kubernetes.io/name`
-# (`<name>-worker`), so the main Deployment selector AND the Service selector
-# do NOT match them — workers stay OFF the load balancer and receive work only
-# by pulling the DBOS queue. /stream is served by the (api) main pods, which
-# tail NATS for chunks the workers published. Health probes hit pods directly,
-# so workers stay live regardless of Service membership.
-#
-# Rollout: set worker.enabled=true first (workers come up; main is still "all"
-# so nothing breaks), confirm workers dequeue, THEN set dispatchRole=api so the
-# main pods stop running the agent loop. Rollback = unset both.
-#
-# dispatchRole controls the MAIN deployment's MESH_DISPATCH_ROLE.
-#   "" (default) → unset → "all" (unchanged behavior). Set to "api" once
-#   workers exist so HTTP pods stop dequeuing runs. Env-only update (rolling,
-#   no recreate); does NOT touch the immutable selector.
-dispatchRole: ""
-
 worker:
+  # Worker Deployment for agent/automation run queues. The main Deployment is
+  # API-only behind nginx, so workers are required to dequeue runs. Workers carry
+  # a distinct `app.kubernetes.io/name` (`<name>-worker`), so the main Service
+  # selector does not match them.
   # When true, render a second Deployment (`<fullname>-worker`) that dequeues
-  # only the agent/automation run queues (MESH_DISPATCH_ROLE=worker). Default
-  # false → chart output is identical to before.
-  enabled: false
+  # only the agent/automation run queues (MESH_DISPATCH_ROLE=worker). Required
+  # because the main Deployment now runs API-only containers behind nginx.
+  enabled: true
   replicaCount: 2
   # Workers are CPU-bound on LLM streams — give headroom and scale on CPU.
   resources:
@@ -103,71 +87,17 @@ worker:
   # Extra env for worker pods only (merged after the shared envFrom).
   env: []
 
-# Static-SPA + reverse-proxy split (the "web" role). When enabled, renders an
-# nginx Deployment + Service (`<fullname>-web`) that serves the prebuilt client
-# bundle and reverse-proxies API/system paths to the main Service (same origin).
-# Cut over by pointing the external gateway/NLB at the web Service. Default
-# false → chart output is unchanged. See deploy/nginx/README.md.
-#
-# No separate web image: an initContainer copies the bundle out of the mesh
-# image (already on the studio nodes), and nginx is the stock image with its
-# config mounted from a ConfigMap.
-web:
-  enabled: false
-  replicaCount: 2
-  # Mesh image to extract the SPA bundle from. Empty repository/tag → inherit the
-  # API image (image.repository / image.tag). Pin tag separately to roll the UI
-  # independently of the API.
-  bundleImage:
-    repository: ""
+nginx:
+  image:
+    repository: ghcr.io/decocms/studio/studio-nginx
     tag: ""
     pullPolicy: IfNotPresent
-  # Path of the built bundle inside the mesh image (where `bun add decocms`
-  # installs it).
-  bundlePath: /app/apps/mesh/node_modules/decocms/dist/client
-  # Numeric uid of the mesh image (its USER is the non-numeric "bunuser", which
-  # kubelet can't verify against runAsNonRoot). Pins the bundle initContainer.
-  bundleRunAsUser: 1001
-  # Stock nginx that serves the bundle + reverse-proxies. The unprivileged
-  # variant listens on 8080 and runs as uid 101 (non-root) out of the box.
-  nginxImage: nginxinc/nginx-unprivileged:1.27-alpine
-  nginxImagePullPolicy: IfNotPresent
-  # nginx access log → stdout. Set false to disable (e.g. when an edge/CDN +
-  # app OTel already capture requests). /healthz is never logged either way.
-  accessLog: true
-  # host:port of the API (main) Service. Empty → in-namespace main Service.
-  # Set to an FQDN (<svc>.<ns>.svc.cluster.local:80) for cross-namespace.
-  apiUpstream: ""
-  # Front-door pod labels for blue-green LB retargeting. When non-empty, these
-  # labels sit on the API pods while web.enabled=false and move to the nginx
-  # pods when web.enabled=true. Point your external LB/NLB selector at them
-  # ONCE; then cutover/rollback is just flipping web.enabled. Flipping rolls the
-  # pods that gain/lose the label once. Default {} → no labels, output unchanged.
-  frontDoorLabels: {}
-  #   decocms.com/frontdoor: "true"
-  service:
-    type: ClusterIP
-    port: 80
-  # Graceful-drain knobs for NLB-fronted rollouts (target-type: ip). The preStop
-  # sleep keeps the pod serving while the LB controller deregisters its IP, so
-  # in-flight requests aren't reset. Grace must exceed the sleep + nginx drain.
-  preStopSleepSeconds: 15
-  terminationGracePeriodSeconds: 45
-  # Set to fully replace the default preStop hook (e.g. a custom drain command).
-  lifecycle: {}
   resources:
     requests:
-      cpu: "50m"
-      memory: "64Mi"
-    limits:
+      cpu: "500m"
       memory: "128Mi"
-  # fsGroup so the initContainer (mesh image, uid 1001) can write the shared
-  # emptyDir; nginx (uid 101) reads the world-readable bundle files.
-  podSecurityContext:
-    fsGroup: 1001
-  # No runAsUser → the nginx image's uid 101 / mesh image's uid 1001 stand.
-  # readOnlyRootFilesystem stays off so nginx can write its cache/pid + the
-  # envsubst'd config.
+    limits:
+      memory: "256Mi"
   securityContext:
     runAsNonRoot: true
     allowPrivilegeEscalation: false
@@ -175,15 +105,13 @@ web:
       drop:
         - ALL
     readOnlyRootFilesystem: false
-  # Empty → the template defaults to a SOFT podAffinity preferring nodes that
-  # already run API pods, so the (large) mesh image pulled by the bundle
-  # initContainer is cache-warm. Set to override (or to {} via --set to keep the
-  # default; set a non-empty affinity to replace it entirely).
-  affinity: {}
-  # Empty → the template defaults to a SOFT zone spread (maxSkew 1,
-  # ScheduleAnyway) so same-zone routing has a web endpoint per zone. Override
-  # with your own constraints.
-  topologySpreadConstraints: []
+  preStopSleepSeconds: 15
+  # Labels stamped onto the combo (nginx + API) pods so a front-door
+  # LoadBalancer (e.g. the deco-apps-cd NLB) can select them by a stable label
+  # instead of app.kubernetes.io/name. Applied to the combo deployment ONLY
+  # (never the worker), so the raw-API worker is never registered as a public
+  # target. Empty by default; set e.g. { decocms.com/frontdoor: "true" }.
+  frontDoorLabels: {}
 
 configMap:
   meshConfig:

@@ -301,15 +301,18 @@ describe("fs handlers", () => {
     expect(body.files).toContain(".deco/blocks/foo.json");
   });
 
-  it("glob: excludes sensitive dotfiles outside .deco", async () => {
+  it("glob: shows dotfiles but excludes GLOB_EXCLUDE_DIRS", async () => {
     writeFileSync(join(appRoot, ".env"), "SECRET=1");
     mkdirSync(join(appRoot, ".deco/blocks"), { recursive: true });
     writeFileSync(join(appRoot, ".deco/blocks/foo.json"), "{}");
+    mkdirSync(join(appRoot, ".git"), { recursive: true });
+    writeFileSync(join(appRoot, ".git/config"), "");
     const h = makeGlobHandler({ appRoot, repoDir: appRoot });
     const res = await h(post("/_sandbox/glob", { pattern: "**/*" }));
     const body = (await res.json()) as { files: string[] };
-    expect(body.files).not.toContain(".env");
+    expect(body.files).toContain(".env");
     expect(body.files).toContain(".deco/blocks/foo.json");
+    expect(body.files).not.toContain(".git/config");
   });
 
   it("glob: includes empty directories without placeholder files", async () => {

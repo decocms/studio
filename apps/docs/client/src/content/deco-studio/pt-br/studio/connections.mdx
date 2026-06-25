@@ -1,90 +1,90 @@
 ---
-title: Conexões
-description: Conecte ferramentas e serviços ao Studio — uma única vez, com segurança, para todo o seu time
+title: Connections
+description: Conecte tools e serviços ao Studio — uma única vez, com segurança, para todo o seu time
 icon: Network
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-## O que são conexões?
+## O que são connections?
 
-**Conexões** são as ferramentas e serviços que você plugou no Studio — GitHub, Slack, um banco de dados, sua própria API ou qualquer outro serviço compatível com MCP.
+**Connections** são as tools e serviços que você plugou no Studio — GitHub, Slack, um banco de dados, sua própria API ou qualquer outro serviço compatível com MCP.
 
-Você configura uma conexão uma vez. A partir daí, qualquer pessoa na sua organização pode anexá-la a um agente sem nunca lidar com credenciais.
+Você configura uma connection uma vez. A partir daí, qualquer pessoa na sua org pode anexá-la a um agent sem nunca lidar com credentials.
 
 ## Onde elas ficam
 
-As conexões são gerenciadas no nível da organização em **Settings → Connections**. É onde você:
+As connections são gerenciadas no nível da org em **Settings → Connections**. É onde você:
 
 - Navega no catálogo de MCPs disponíveis e instala um novo
-- Adiciona uma **Custom Connection** para um servidor MCP que não está no catálogo
-- Configura credenciais para uma conexão existente
-- Atualiza ou revoga credenciais em um único lugar
+- Adiciona uma **Custom Connection** para um MCP server que não está no catálogo
+- Configura credentials para uma connection existente
+- Atualiza ou revoga credentials em um único lugar
 
 O catálogo é alimentado pelos registries que você tem habilitados — veja [Store](/pt-br/studio/store) para adicionar ou alternar registries (Deco Store, comunidade, privado).
 
-Para colocar uma conexão em uso, anexe-a a um [agente](/pt-br/studio/agents): dentro do agente, abra a aba **Settings** no painel direito e escolha a conexão (e as ferramentas específicas dela) que você quer que esse agente use.
+Para colocar uma connection em uso, anexe-a a um [agent](/pt-br/studio/agents): dentro do agent, abra a aba **Settings** no painel direito e escolha a connection (e as tools específicas dela) que você quer que esse agent use.
 
-## Por que conexões existem
+## Por que connections existem
 
-Sem um lugar central para ferramentas, cada pessoa e cada cliente de IA gerencia suas próprias credenciais. Trocar uma senha? Atualize em dez lugares. Revogar o acesso de alguém? Torça para que ela não esteja usando uma chave hardcoded em algum lugar.
+Sem um lugar central para tools, cada pessoa e cada client de IA gerencia suas próprias credentials. Trocar uma senha? Atualize em dez lugares. Revogar o acesso de alguém? Torça para que ela não esteja usando uma chave hardcoded em algum lugar.
 
-As conexões resolvem isso sendo a fonte única da verdade:
+As connections resolvem isso sendo a fonte única da verdade:
 
-- **Credenciais armazenadas uma vez** — criptografadas em repouso, descriptografadas apenas quando uma ferramenta é chamada
-- **Compartilhadas entre o time** — qualquer pessoa com acesso pode usar a ferramenta sem ver as credenciais
-- **Fáceis de atualizar** — altere as credenciais em um lugar; todo agente herda automaticamente
-- **Fáceis de revogar** — remova uma conexão e ninguém mais pode usá-la, imediatamente
-- **Totalmente registradas** — toda chamada de ferramenta é registrada em [Settings → Monitor](/pt-br/studio/monitoring)
+- **Credentials armazenadas uma vez** — criptografadas em repouso, descriptografadas apenas quando uma tool é chamada
+- **Compartilhadas entre o time** — qualquer pessoa com acesso pode usar a tool sem ver as credentials
+- **Fáceis de atualizar** — altere as credentials em um lugar; todo agent herda automaticamente
+- **Fáceis de revogar** — remova uma connection e ninguém mais pode usá-la, imediatamente
+- **Totalmente logadas** — toda tool call é registrada em [Settings → Monitor](/pt-br/studio/monitoring)
 
-## Tipos de conexão
+## Tipos de connection
 
 **Apps SaaS** — GitHub, Slack, Notion, Google Drive e serviços semelhantes. A maioria conecta com OAuth de um clique, então você nunca copia um token.
 
-**Infraestrutura** — Bancos de dados, APIs de nuvem, serviços internos. Você configura o endpoint e as credenciais, o Studio cuida do resto.
+**Infraestrutura** — Bancos de dados, APIs de cloud, serviços internos. Você configura o endpoint e as credentials, o Studio cuida do resto.
 
-**Ferramentas customizadas** — Seu próprio servidor MCP expondo operações específicas do seu domínio. Pluge e compartilhe como qualquer outra conexão.
+**Custom tools** — Seu próprio MCP server expondo operações específicas do seu domínio. Plugue e compartilhe como qualquer outra connection.
 
-Todos os tipos de conexão funcionam da mesma forma: configure uma vez no nível da organização, anexe a quaisquer agentes que precisem delas.
+Todos os tipos de connection funcionam da mesma forma: configure uma vez no nível da org, anexe a quaisquer agents que precisem delas.
 
-### Transportes
+### Transports
 
-Por baixo dos panos, toda conexão usa um destes transportes. Você normalmente não precisa pensar nisso — o Studio escolhe o formato certo com base na entrada do catálogo ou no que você cola em **Custom Connection** — mas isso importa quando você está conectando um servidor MCP por conta própria:
+Por baixo dos panos, toda connection usa um destes transports. Você normalmente não precisa pensar nisso — o Studio escolhe o formato certo com base na entrada do catálogo ou no que você cola em **Custom Connection** — mas isso importa quando você está conectando um MCP server por conta própria:
 
-| Transporte | Quando usar |
+| Transport | Quando usar |
 |---|---|
-| **HTTP** | O padrão para servidores MCP hospedados. JSON-RPC sobre HTTP. |
-| **SSE** | Server-Sent Events — para servidores HTTP que fazem streaming de resultados de ferramentas de longa duração. |
-| **WebSocket** | Streaming bidirecional para servidores MCP que precisam de um socket persistente. |
+| **HTTP** | O padrão para MCP servers hospedados. JSON-RPC sobre HTTP. |
+| **SSE** | Server-Sent Events — para servidores HTTP que fazem streaming de resultados de tools de longa duração. |
+| **WebSocket** | Streaming bidirecional para MCP servers que precisam de um socket persistente. |
 | **STDIO** | Inicia um processo local e fala MCP via stdin/stdout. Usado por MCPs estilo CLI em self-host local. |
-| **Virtual** | O próprio endpoint do agente — um MCP composto, feito de outras conexões, servido pelo Studio. |
+| **Virtual** | O próprio endpoint do agent — um MCP composto, feito de outras connections, servido pelo Studio. |
 
-## Como funciona uma chamada de ferramenta
+## Como funciona uma tool call
 
-Quando um agente chama uma ferramenta através de uma conexão:
+Quando um agent chama uma tool através de uma connection:
 
-1. O agente se autentica no Studio
-2. O Studio verifica que ele tem permissão para usar aquela ferramenta
-3. O Studio recupera as credenciais armazenadas para a conexão
+1. O agent se autentica no Studio
+2. O Studio verifica que ele tem permissão para usar aquela tool
+3. O Studio recupera as credentials armazenadas para a connection
 4. O Studio envia a requisição para o serviço externo
-5. O Studio registra a chamada (ferramenta, tempo, entradas, saídas, status)
-6. O Studio retorna o resultado para o agente
+5. O Studio registra a chamada (tool, tempo, inputs, outputs, status)
+6. O Studio retorna o resultado para o agent
 
-O serviço externo nunca vê seu agente diretamente — apenas o Studio. As credenciais nunca deixam o perímetro seguro do Studio.
+O serviço externo nunca vê seu agent diretamente — apenas o Studio. As credentials nunca deixam o perímetro seguro do Studio.
 
 ```
 GitHub Connection  ──┐
-Slack Connection   ──┼──▶ Agent ──▶ Seu time ou outros clientes
+Slack Connection   ──┼──▶ Agent ──▶ Seu time ou outros clients
 Database Connection──┘
 ```
 
-## Conectando clientes de IA ao Studio
+## Conectando AI clients ao Studio
 
-Uma vez que seus agentes estejam configurados, aponte clientes de IA externos (Claude Desktop, Cursor, apps MCP customizados) para o endpoint MCP de um agente para usar suas ferramentas.
+Uma vez que seus agents estejam configurados, aponte AI clients externos (Claude Desktop, Cursor, MCP apps customizados) para o endpoint MCP de um agent para usar suas tools.
 
-- **Para clientes interativos** — use OAuth, que cuida do login e da identidade por usuário
+- **Para clients interativos** — use OAuth, que cuida do login e da identidade por usuário
 - **Para automação e server-to-server** — use API keys, mais rápido de configurar e ideal para scripts ou execuções não supervisionadas
 
 <Callout type="tip">
-  Use um [Agent](/pt-br/studio/agents) quando quiser um único endpoint expondo um conjunto curado de ferramentas. Use a [connection proxy URL](/pt-br/studio/api-reference/connection-proxy) apenas se precisar de acesso bruto a uma única conexão.
+  Use um [Agent](/pt-br/studio/agents) quando quiser um único endpoint expondo um conjunto curado de tools. Use a [connection proxy URL](/pt-br/studio/api-reference/connection-proxy) apenas se precisar de acesso bruto a uma única connection.
 </Callout>

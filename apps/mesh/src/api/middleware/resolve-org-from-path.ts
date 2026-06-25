@@ -1,9 +1,25 @@
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
 import { isOrgArchived } from "../../core/org-archived";
 
 import { isBrowserNavigation } from "../utils/browser-navigation";
+
+/**
+ * Public-share endpoints a non-member must still reach: the read proxy
+ * (`GET .../fs/:volume/read`, serves public/password files) and the password
+ * unlock (`POST .../fs/:volume/unlock`). The membership gate below defers to
+ * these; the routes themselves serve only shared content and still gate
+ * everything else on ORG_FS_READ (a non-member fails → 403). Every other
+ * org-scoped route stays member-gated.
+ */
+function isPublicSharePath(c: Context): boolean {
+  const p = c.req.path;
+  return (
+    (c.req.method === "GET" && /\/fs\/[^/]+\/read$/.test(p)) ||
+    (c.req.method === "POST" && /\/fs\/[^/]+\/unlock$/.test(p))
+  );
+}
 
 export const resolveOrgFromPath: MiddlewareHandler<{
   Variables: { meshContext: StudioContext };
@@ -68,15 +84,26 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       .executeTakeFirst();
 
     if (!membership) {
-      // Bounce browser navigations into the SPA so OrgAccessGate shows the
-      // styled "No access" screen (with invite/auto-join handling) instead of
-      // raw JSON in the address bar.
-      if (isBrowserNavigation(c)) {
-        return c.redirect(`/${encodeURIComponent(org.slug)}`, 302);
+      // Public-share reads + password unlock are reachable by anyone, incl.
+      // signed-in non-members — let them fall through to the route (which serves
+      // only shared content and 403s the rest). All other routes stay gated.
+      if (!isPublicSharePath(c)) {
+        // Bounce browser navigations into the SPA so OrgAccessGate shows the
+        // styled "No access" screen (with invite/auto-join handling) instead of
+        // raw JSON in the address bar.
+        if (isBrowserNavigation(c)) {
+          return c.redirect(`/${encodeURIComponent(org.slug)}`, 302);
+        }
+        return c.json(
+          { error: "forbidden: not a member of organization" },
+          403,
+        );
       }
-      return c.json({ error: "forbidden: not a member of organization" }, 403);
+      // pathRole stays undefined; the org is still resolved + rebound below so
+      // the read route can stat the file and serve it if it's public.
+    } else {
+      pathRole = membership.role;
     }
-    pathRole = membership.role;
   }
 
   ctx.organization = {

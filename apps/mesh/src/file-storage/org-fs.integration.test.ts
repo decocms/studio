@@ -33,6 +33,7 @@ import { DevObjectStorage } from "../object-storage/dev-object-storage";
 import { S3Service } from "../object-storage/s3-service";
 import { OrgFsEntryStorage } from "../storage/org-fs";
 import { OrgFs, OrgFsQuotaError, OrgFsValidationError } from "./org-fs";
+import { verifySharePassword } from "./share-password";
 
 const ORG = "org_fs_svc";
 const ACTOR = "user_fs_svc";
@@ -404,6 +405,159 @@ describe("OrgFs service (integration)", () => {
     expect(
       new TextDecoder().decode(await s3Fs.read(volume, "nested/deep/two.md")),
     ).toBe("two");
+  });
+
+  // --- Public sharing (read_public + inheritance) ------------------------
+
+  it("publishes a file and reverts it; only a public file is publicly readable", async () => {
+    await fs.write("home", "deck.html", "<h1>hi</h1>", { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(false);
+
+    const pub = await fs.setReadPublic("home", "deck.html", true, {
+      actor: ACTOR,
+    });
+    expect(pub.readPublic).toBe(true);
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(true);
+
+    await fs.setReadPublic("home", "deck.html", false, { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(false);
+  });
+
+  it("in-place overwrite preserves the public flag", async () => {
+    await fs.write("home", "deck.html", "v1", { actor: ACTOR });
+    await fs.setReadPublic("home", "deck.html", true, { actor: ACTOR });
+    await fs.write("home", "deck.html", "v2", { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(true);
+  });
+
+  it("delete + recreate resets a file to private (fails closed)", async () => {
+    await fs.write("home", "deck.html", "v1", { actor: ACTOR });
+    await fs.setReadPublic("home", "deck.html", true, { actor: ACTOR });
+    await fs.delete("home", "deck.html", { actor: ACTOR });
+    // Regenerating at the same path must NOT revive the published flag.
+    await fs.write("home", "deck.html", "v2", { actor: ACTOR });
+    expect((await fs.stat("home", "deck.html"))?.readPublic).toBe(false);
+    expect(await fs.isPubliclyReadable("home", "deck.html")).toBe(false);
+  });
+
+  it("publishing a folder makes its whole subtree publicly readable", async () => {
+    await fs.write("home", "site/index.html", "page", { actor: ACTOR });
+    await fs.write("home", "site/assets/logo.png", "img", { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "site/assets/logo.png")).toBe(
+      false,
+    );
+
+    await fs.setReadPublic("home", "site", true, { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "site/index.html")).toBe(true);
+    expect(await fs.isPubliclyReadable("home", "site/assets/logo.png")).toBe(
+      true,
+    );
+    // A file added AFTER publishing the folder inherits too.
+    await fs.write("home", "site/assets/new.png", "img2", { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "site/assets/new.png")).toBe(
+      true,
+    );
+
+    await fs.setReadPublic("home", "site", false, { actor: ACTOR });
+    expect(await fs.isPubliclyReadable("home", "site/index.html")).toBe(false);
+  });
+
+  it("delete + recreate resets a folder to private", async () => {
+    await fs.write("home", "site/index.html", "page", { actor: ACTOR });
+    await fs.setReadPublic("home", "site", true, { actor: ACTOR });
+    await fs.delete("home", "site", { actor: ACTOR });
+    await fs.write("home", "site/index.html", "page2", { actor: ACTOR });
+    expect((await fs.stat("home", "site"))?.readPublic).toBe(false);
+    expect(await fs.isPubliclyReadable("home", "site/index.html")).toBe(false);
+  });
+
+  // --- Password sharing ---------------------------------------------------
+
+  it("password mode gates a file with a verifiable hash + secret", async () => {
+    await fs.write("home", "secret.pdf", "data", { actor: ACTOR });
+    await fs.setShareMode("home", "secret.pdf", "password", {
+      actor: ACTOR,
+      password: "hunter2",
+    });
+    expect((await fs.stat("home", "secret.pdf"))?.shareMode).toBe("password");
+    const access = await fs.resolveReadAccess("home", "secret.pdf");
+    expect(access.access).toBe("password");
+    if (access.access === "password") {
+      expect(access.govPath).toBe("secret.pdf");
+      expect(access.secret.length).toBeGreaterThan(0);
+      expect(await verifySharePassword("hunter2", access.passwordHash)).toBe(
+        true,
+      );
+      expect(await verifySharePassword("nope", access.passwordHash)).toBe(
+        false,
+      );
+    }
+  });
+
+  it("password mode requires a password", async () => {
+    await fs.write("home", "x.txt", "y", { actor: ACTOR });
+    expect(
+      fs.setShareMode("home", "x.txt", "password", { actor: ACTOR }),
+    ).rejects.toThrow();
+  });
+
+  it("resolveReadAccess: private / public / back to private", async () => {
+    await fs.write("home", "a.txt", "1", { actor: ACTOR });
+    expect((await fs.resolveReadAccess("home", "a.txt")).access).toBe(
+      "private",
+    );
+    await fs.setShareMode("home", "a.txt", "public", { actor: ACTOR });
+    expect((await fs.resolveReadAccess("home", "a.txt")).access).toBe("public");
+    await fs.setShareMode("home", "a.txt", "private", { actor: ACTOR });
+    expect((await fs.resolveReadAccess("home", "a.txt")).access).toBe(
+      "private",
+    );
+  });
+
+  it("a password folder gates its whole subtree (inherited govern node)", async () => {
+    await fs.write("home", "vault/doc.pdf", "x", { actor: ACTOR });
+    await fs.setShareMode("home", "vault", "password", {
+      actor: ACTOR,
+      password: "pw",
+    });
+    const access = await fs.resolveReadAccess("home", "vault/doc.pdf");
+    expect(access.access).toBe("password");
+    if (access.access === "password") {
+      expect(access.govPath).toBe("vault");
+      expect(await verifySharePassword("pw", access.passwordHash)).toBe(true);
+    }
+  });
+
+  it("most-specific wins: a public file inside a password folder is public", async () => {
+    await fs.write("home", "vault/open.txt", "x", { actor: ACTOR });
+    await fs.setShareMode("home", "vault", "password", {
+      actor: ACTOR,
+      password: "pw",
+    });
+    await fs.setShareMode("home", "vault/open.txt", "public", { actor: ACTOR });
+    expect((await fs.resolveReadAccess("home", "vault/open.txt")).access).toBe(
+      "public",
+    );
+  });
+
+  it("changing the password rotates the node secret (invalidates old cookies)", async () => {
+    await fs.write("home", "s.txt", "x", { actor: ACTOR });
+    await fs.setShareMode("home", "s.txt", "password", {
+      actor: ACTOR,
+      password: "one",
+    });
+    const a1 = await fs.resolveReadAccess("home", "s.txt");
+    await fs.setShareMode("home", "s.txt", "password", {
+      actor: ACTOR,
+      password: "two",
+    });
+    const a2 = await fs.resolveReadAccess("home", "s.txt");
+    if (a1.access !== "password" || a2.access !== "password") {
+      throw new Error("expected password access");
+    }
+    expect(a2.secret).not.toBe(a1.secret);
+    expect(await verifySharePassword("two", a2.passwordHash)).toBe(true);
+    expect(await verifySharePassword("one", a2.passwordHash)).toBe(false);
   });
 
   afterAll(async () => {

@@ -1794,31 +1794,29 @@ Define step-by-step how the agent should handle requests.
                 <h2 className="text-sm font-medium text-foreground">
                   Instructions
                 </h2>
-                {!hasGithubRepo && (
-                  <div className="flex items-center gap-2">
-                    {!form.watch("metadata.instructions")?.trim() && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleInsertTemplate}
-                      >
-                        + Prompt template
-                      </Button>
-                    )}
+                <div className="flex items-center gap-2">
+                  {!form.watch("metadata.instructions")?.trim() && (
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={
-                        isImproving ||
-                        !form.watch("metadata.instructions")?.trim()
-                      }
-                      onClick={handleImprovePrompt}
+                      onClick={handleInsertTemplate}
                     >
-                      <Stars01 size={13} />
-                      Improve
+                      + Prompt template
                     </Button>
-                  </div>
-                )}
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      isImproving ||
+                      !form.watch("metadata.instructions")?.trim()
+                    }
+                    onClick={handleImprovePrompt}
+                  >
+                    <Stars01 size={13} />
+                    Improve
+                  </Button>
+                </div>
               </div>
               <Controller
                 name="metadata.instructions"
@@ -1835,7 +1833,6 @@ Define step-by-step how the agent should handle requests.
                         field.onBlur();
                         flushAndSave();
                       }}
-                      disabled={hasGithubRepo}
                       placeholder="Define how this agent should behave, what tone to use, any constraints or guidelines..."
                       className="min-h-[200px] max-h-[360px] overflow-auto resize-none text-base text-muted-foreground placeholder:text-muted-foreground/40 leading-relaxed border-0 shadow-none px-4 py-3 pr-11 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent"
                       style={{ boxShadow: "none" }}
