@@ -6,6 +6,37 @@ import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
 /**
+ * Derives the S3 cache object key for a repo, using two heuristics:
+ *
+ *   1. Clone URL owner is `deco-sites` → known deco storefront org.
+ *   2. Repo has a `.deco/` directory (post-clone) → deco storefront in a
+ *      custom org (e.g. a white-label or enterprise setup).
+ *
+ * Returns null when neither heuristic matches or owner/repo can't be parsed.
+ * An explicit DECO_CACHE_S3_PATH env var always takes precedence.
+ */
+function resolveDecoCachePath(config: Config): string | null {
+  if (process.env.DECO_CACHE_S3_PATH) return process.env.DECO_CACHE_S3_PATH;
+
+  const cloneUrl = config.git?.repository?.cloneUrl;
+  const match = cloneUrl?.match(
+    /github\.com\/([^/@]+)\/([^/.]+?)(?:\.git)?(?:[?#]|$)/,
+  );
+  if (!match) return null;
+  const [, owner, repo] = match;
+
+  // Heuristic 1: deco-sites GitHub org.
+  if (owner === "deco-sites") return `${owner}/${repo}/cache.tar.zst`;
+
+  // Heuristic 2: any org with a .deco/ directory (post-clone).
+  if (config.repoDir && existsSync(join(config.repoDir, ".deco"))) {
+    return `${owner}/${repo}/cache.tar.zst`;
+  }
+
+  return null;
+}
+
+/**
  * For Deno projects, tries to pre-populate $DENO_DIR from any S3-compatible
  * storage so the first `deno task dev` skips remote import fetching.
  *
@@ -18,9 +49,7 @@ import { spawnSetupStep } from "./spawn-step";
  * Optional env vars:
  *   DECO_CACHE_S3_ENDPOINT — S3-compatible endpoint (e.g. MinIO, R2, GCS)
  *                            defaults to AWS S3 virtual-hosted URL
- *   DECO_CACHE_S3_PATH     — object key (e.g. "owner/repo/cache.tar.zst");
- *                            for deco.cx sites this is injected automatically
- *                            by the mesh from the Virtual MCP metadata
+ *   DECO_CACHE_S3_PATH     — explicit object key; overrides auto-detection
  *
  * Non-fatal: any failure (missing creds, object not found, network error)
  * is logged and the sandbox continues to start normally.
@@ -41,7 +70,7 @@ export function tryWarmDenoCache(deps: InstallDeps): Promise<number> | null {
   const bucket = process.env.DECO_CACHE_S3_BUCKET;
   if (!region || !bucket) return null;
 
-  const cachePath = process.env.DECO_CACHE_S3_PATH;
+  const cachePath = resolveDecoCachePath(config);
   if (!cachePath) return null;
 
   const endpoint = process.env.DECO_CACHE_S3_ENDPOINT;

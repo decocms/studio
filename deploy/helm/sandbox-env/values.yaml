@@ -230,6 +230,37 @@ orgFs:
 # dev server start) on staging before merging an override.
 readOnlyRootFilesystem: true
 
+# ── deco S3 cache ──────────────────────────────────────────────────────
+# When configured, the sandbox daemon automatically pre-populates the Deno
+# module cache from S3 before the first `deno task dev` for repos it detects
+# as deco storefronts (owner=deco-sites, or has a .deco/ directory).
+# Non-fatal: missing object or download failure is logged; sandbox starts
+# with a cold cache. Credentials never leave the sandbox pod — the daemon
+# reads them directly from env, no mesh involvement.
+#
+# Two mutually exclusive ways to supply the credentials Secret:
+#   A) secretName — reference an existing K8s Secret in agent-sandbox-system.
+#   B) externalSecret.enabled=true — chart creates a SecretStore +
+#      ExternalSecret that pulls from AWS Secrets Manager automatically.
+#
+# region:   S3 region (required for AWS; use "auto" for R2/GCS).
+# bucket:   S3 bucket name (required).
+# endpoint: S3-compatible endpoint override for R2, MinIO, GCS, etc.
+decoCache:
+  secretName: ""
+  accessKeyIdRef: "accessKeyId"
+  secretAccessKeyRef: "secretAccessKey"
+  region: ""
+  bucket: ""
+  endpoint: ""
+  externalSecret:
+    enabled: false
+    secretPath: ""
+    refreshInterval: "1h"
+    provider:
+      aws:
+        region: ""
+
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
   # Optional: supply an explicit token so CI can pass the same value to

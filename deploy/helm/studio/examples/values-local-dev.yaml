@@ -1,0 +1,72 @@
+# Local development override for Rancher Desktop (k3s / arm64)
+#
+# Usage:
+#   helm dep update deploy/helm/studio
+#   helm upgrade --install studio deploy/helm/studio \
+#     -f deploy/helm/studio/examples/values-local-dev.yaml \
+#     -n studio --create-namespace
+#
+# Then access the app:
+#   kubectl port-forward -n studio svc/studio 8080:80
+#   open http://localhost:8080
+
+# Use SQLite so no external postgres is needed.
+# NOTE: worker.enabled must be false when using SQLite (worker requires postgresql).
+database:
+  engine: sqlite
+
+# Worker requires postgresql — disabled for SQLite local dev.
+worker:
+  enabled: false
+
+# arm64 (Apple Silicon) — override the default amd64 nodeSelector.
+nodeSelector:
+  kubernetes.io/arch: arm64
+
+# k3s default storage class is "local-path"; "gp3" doesn't exist locally.
+persistence:
+  storageClass: "local-path"
+  size: 2Gi
+
+# Single-node cluster — topology spread constraints cause Pending pods.
+topologySpreadConstraints: []
+
+# Lighten resource requests for local dev.
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    memory: "512Mi"
+
+# Minimal required secrets for local dev (not for production).
+secret:
+  BETTER_AUTH_SECRET: "local-dev-secret-change-me"
+  ENCRYPTION_KEY: ""
+
+configMap:
+  meshConfig:
+    NODE_ENV: "development"
+    PORT: "3000"
+    HOST: "0.0.0.0"
+    # Adjust these if you port-forward to a different port.
+    BETTER_AUTH_URL: "http://localhost:8080"
+    BASE_URL: "http://localhost:8080"
+    DATA_DIR: "/app/data"
+    DATABASE_POOL_MAX: "5"
+    DECO_AI_GATEWAY_ENABLED: "false"
+
+# NATS subchart — reduce storage for local.
+nats:
+  enabled: true
+  config:
+    jetstream:
+      memoryStore:
+        enabled: true
+        maxSize: 256Mi
+      fileStore:
+        enabled: true
+        pvc:
+          enabled: true
+          size: 2Gi
+          storageClassName: "local-path"
