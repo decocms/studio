@@ -24,6 +24,7 @@ import {
   Lock01,
   Microphone01,
   Stop,
+  Telescope,
   Upload01,
   X,
 } from "@untitledui/icons";
@@ -262,6 +263,7 @@ export function ChatInput({
     isModelsLoading,
     tiptapDocRef,
     imageModel,
+    webSearchModel,
     deepResearchModel,
     chatMode,
     setChatMode,
@@ -587,7 +589,7 @@ export function ChatInput({
                           />
                         </button>
                       )}
-                      {chatMode === "web-search" && deepResearchModel && (
+                      {chatMode === "web-search" && webSearchModel && (
                         <button
                           type="button"
                           disabled={isStreaming}
@@ -607,6 +609,33 @@ export function ChatInput({
                           <Globe02 size={14} className="shrink-0" />
                           <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
                             Web search
+                          </span>
+                          <X
+                            size={14}
+                            className="shrink-0 hidden group-hover:block group-disabled:hidden"
+                          />
+                        </button>
+                      )}
+                      {chatMode === "deep-research" && deepResearchModel && (
+                        <button
+                          type="button"
+                          disabled={isStreaming}
+                          onClick={() => {
+                            playSwitchSound();
+                            track("chat_mode_changed", {
+                              from_mode: "deep-research",
+                              to_mode: "default",
+                              source: "pill_dismiss",
+                            });
+                            setChatMode("default");
+                          }}
+                          title="Deep research"
+                          aria-label="Deep research"
+                          className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        >
+                          <Telescope size={14} className="shrink-0" />
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
+                            Deep research
                           </span>
                           <X
                             size={14}

@@ -70,23 +70,39 @@ function log(
  */
 export function createClusterResearchJob(deps: {
   provider: MeshProvider;
-  deepResearchModelInfo: ModelInfo;
+  modelInfo: ModelInfo;
   ctx: StudioContext;
+  /**
+   * "quick" — always use the streaming path, even if the configured model
+   * also supports async research. Wired by the `web_search` tool. This is a
+   * defense-in-depth guard: it guarantees a quick lookup never *launches an
+   * async research job*, but it does not by itself guarantee low latency (a
+   * slow model pinned to the slot would still stream slowly). Keeping slow
+   * models out of the `web_search` slot is the UI filter's job
+   * (`isQuickSearchModel`); this is the backstop if one slips through.
+   * "deep" — auto-select the async path when the provider can handle the
+   * model (Gemini Deep Research), else stream. Wired by `deep_research`.
+   */
+  mode: "quick" | "deep";
+  /** Tool name the async path records on its persisted job + stub message. */
+  toolName: string;
 }) {
-  const { provider, deepResearchModelInfo, ctx } = deps;
-  const modelId = deepResearchModelInfo.id;
+  const { provider, modelInfo, ctx, mode, toolName } = deps;
+  const modelId = modelInfo.id;
 
   return async function* researchJob(
     params: ResearchParams,
   ): AsyncGenerator<{ progress: string }, ResearchResult> {
     const asyncResearch = provider.asyncResearch;
-    const useAsyncResearch = asyncResearch?.canHandle(modelId) === true;
+    const useAsyncResearch =
+      mode === "deep" && asyncResearch?.canHandle(modelId) === true;
     if (useAsyncResearch && asyncResearch) {
       return yield* runAsyncResearch({
         params,
         asyncResearch,
         providerId: provider.info.id,
         modelId,
+        toolName,
         ctx,
       });
     }
@@ -103,6 +119,7 @@ interface AsyncResearchInvocation {
   asyncResearch: NonNullable<MeshProvider["asyncResearch"]>;
   providerId: string;
   modelId: string;
+  toolName: string;
   ctx: StudioContext;
 }
 
@@ -111,6 +128,7 @@ async function* runAsyncResearch({
   asyncResearch,
   providerId,
   modelId,
+  toolName,
   ctx,
 }: AsyncResearchInvocation): AsyncGenerator<
   { progress: string },
@@ -179,7 +197,7 @@ async function* runAsyncResearch({
     // found for tool call ID …".
     await ctx.storage.asyncResearchJobs.markPolling(toolCallId, interactionId, {
       threadId: taskId,
-      toolName: "web_search",
+      toolName,
       query: params.query,
     });
     job = { ...job, interactionId, status: "polling" };

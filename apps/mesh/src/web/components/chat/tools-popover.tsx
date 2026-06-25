@@ -39,6 +39,7 @@ import {
   Plus,
   Settings04,
   ShieldTick,
+  Telescope,
 } from "@untitledui/icons";
 import { Suspense, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
@@ -275,8 +276,21 @@ export function ToolsPopover({
     setOpen(false);
   };
 
+  const handleForceDeepResearch = () => {
+    playSwitchSound();
+    const nextMode = chatMode === "deep-research" ? "default" : "deep-research";
+    track("chat_mode_changed", {
+      from_mode: chatMode,
+      to_mode: nextMode,
+      source: "tools_popover",
+    });
+    setChatMode(nextMode);
+    setOpen(false);
+  };
+
   const isImageActive = chatMode === "gen-image";
   const isWebSearchActive = chatMode === "web-search";
+  const isDeepResearchActive = chatMode === "deep-research";
 
   return (
     <>
@@ -399,6 +413,23 @@ export function ToolsPopover({
             />
             <span className="flex-1">Web search</span>
             {isWebSearchActive && (
+              <span className="text-xs text-blue-500 font-medium">On</span>
+            )}
+          </DropdownMenuItem>
+
+          {/* Deep research */}
+          <DropdownMenuItem
+            onClick={handleForceDeepResearch}
+            className={cn(
+              isDeepResearchActive && "text-blue-600 dark:text-blue-400",
+            )}
+          >
+            <Telescope
+              size={16}
+              className={cn(isDeepResearchActive && "text-blue-500")}
+            />
+            <span className="flex-1">Deep research</span>
+            {isDeepResearchActive && (
               <span className="text-xs text-blue-500 font-medium">On</span>
             )}
           </DropdownMenuItem>

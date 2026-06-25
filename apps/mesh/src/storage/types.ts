@@ -142,7 +142,8 @@ export type SimpleModeTier =
   | "smart"
   | "thinking"
   | "image"
-  | "web_research";
+  | "web_search"
+  | "deep_research";
 
 export interface SimpleModeConfig {
   tiers: Record<SimpleModeTier, SimpleModeModelSlot | null>;

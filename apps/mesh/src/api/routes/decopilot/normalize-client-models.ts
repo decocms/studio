@@ -23,9 +23,10 @@ import type { ModelInfo, ModelsConfig as ClientModelsConfig } from "./types";
  */
 export type ClientModelsInput = Omit<
   ClientModelsConfig,
-  "image" | "deepResearch"
+  "image" | "webSearch" | "deepResearch"
 > & {
   image?: ModelInfo & { credentialId?: string };
+  webSearch?: ModelInfo & { credentialId?: string };
   deepResearch?: ModelInfo & { credentialId?: string };
   smart?: ModelInfo;
   coding?: unknown;
@@ -90,6 +91,14 @@ export function normalizeClientModels(models: ClientModelsInput): ModelsConfig {
     ...(models.smart ? { smart: toSelection(models.smart, root) } : {}),
     ...(models.image
       ? { image: toSelection(models.image, models.image.credentialId ?? root) }
+      : {}),
+    ...(models.webSearch
+      ? {
+          webSearch: toSelection(
+            models.webSearch,
+            models.webSearch.credentialId ?? root,
+          ),
+        }
       : {}),
     ...(models.deepResearch
       ? {

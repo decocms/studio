@@ -241,12 +241,13 @@ async function prepareFireStep(
   // web_search) light up the same way they do in interactive chat. Without
   // these, the automation agent reports "I don't have a web_search tool"
   // even when the org has Perplexity/Gemini Deep Research configured.
-  const [resolved, image, webResearch] = await Promise.all([
+  const [resolved, image, webSearch, deepResearch] = await Promise.all([
     pinned
       ? resolveSpecificModel(meshCtx, pinned.credentialId, pinned.modelId)
       : resolveTier(meshCtx, tier),
     tryResolveTier(meshCtx, "image"),
-    tryResolveTier(meshCtx, "web_research"),
+    tryResolveTier(meshCtx, "web_search"),
+    tryResolveTier(meshCtx, "deep_research"),
   ]);
   const toModel = (r: Awaited<ReturnType<typeof resolveTier>>) => ({
     id: r.modelId,
@@ -266,11 +267,19 @@ async function prepareFireStep(
     ...(image
       ? { image: { ...toModel(image), credentialId: image.credentialId } }
       : {}),
-    ...(webResearch
+    ...(webSearch
+      ? {
+          webSearch: {
+            ...toModel(webSearch),
+            credentialId: webSearch.credentialId,
+          },
+        }
+      : {}),
+    ...(deepResearch
       ? {
           deepResearch: {
-            ...toModel(webResearch),
-            credentialId: webResearch.credentialId,
+            ...toModel(deepResearch),
+            credentialId: deepResearch.credentialId,
           },
         }
       : {}),

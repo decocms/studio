@@ -14,6 +14,8 @@ import {
   type AiProviderModel,
 } from "@/web/hooks/collections/use-ai-providers";
 import {
+  isDeepResearchModel,
+  isQuickSearchModel,
   pickSimpleModeDefaults,
   type SimpleModeModelSlot,
 } from "@decocms/mesh-sdk";
@@ -31,11 +33,13 @@ import { useDebouncedAutosave } from "@/web/hooks/use-debounced-autosave.ts";
 const filterImageModels = (m: AiProviderModel) =>
   m.capabilities?.includes("image") === true;
 
-const filterWebResearchModels = (m: AiProviderModel) => {
-  if (m.asyncResearch === true) return true;
-  const n = m.modelId.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return n.includes("sonar") || n.includes("deepresearch");
-};
+// Quick web search vs deep research classifiers are shared with the chat
+// picker and the SDK default-picker (`@decocms/mesh-sdk`) so the three never
+// drift. Quick = search-capable but not async-only (pinning an async model
+// here would make every quick lookup launch a slow research job); deep =
+// async / deep-research, with sonar-pro allowed as a capable fallback.
+const filterWebSearchModels = (m: AiProviderModel) => isQuickSearchModel(m);
+const filterDeepResearchModels = (m: AiProviderModel) => isDeepResearchModel(m);
 
 const TIER_ROWS = [
   {
@@ -63,10 +67,16 @@ const TIER_ROWS = [
     filter: filterImageModels,
   },
   {
-    key: "web_research" as const,
-    label: "Web research",
-    description: "Web search and deep research",
-    filter: filterWebResearchModels,
+    key: "web_search" as const,
+    label: "Web search",
+    description: "Quick, up-to-date answers from the web",
+    filter: filterWebSearchModels,
+  },
+  {
+    key: "deep_research" as const,
+    label: "Deep research",
+    description: "In-depth, multi-source research reports",
+    filter: filterDeepResearchModels,
   },
 ] as const;
 
@@ -226,7 +236,8 @@ export function SimpleModeSection() {
           smart: null,
           thinking: null,
           image: null,
-          web_research: null,
+          web_search: null,
+          deep_research: null,
         },
       });
     }
@@ -252,9 +263,12 @@ export function SimpleModeSection() {
       smart: isStale(current.tiers.smart) ? null : current.tiers.smart,
       thinking: isStale(current.tiers.thinking) ? null : current.tiers.thinking,
       image: isStale(current.tiers.image) ? null : current.tiers.image,
-      web_research: isStale(current.tiers.web_research)
+      web_search: isStale(current.tiers.web_search)
         ? null
-        : current.tiers.web_research,
+        : current.tiers.web_search,
+      deep_research: isStale(current.tiers.deep_research)
+        ? null
+        : current.tiers.deep_research,
     };
 
     const needsFill =
@@ -262,14 +276,16 @@ export function SimpleModeSection() {
       !clearedTiers.smart ||
       !clearedTiers.thinking ||
       !clearedTiers.image ||
-      !clearedTiers.web_research;
+      !clearedTiers.web_search ||
+      !clearedTiers.deep_research;
 
     const tiersUnchanged =
       clearedTiers.fast === current.tiers.fast &&
       clearedTiers.smart === current.tiers.smart &&
       clearedTiers.thinking === current.tiers.thinking &&
       clearedTiers.image === current.tiers.image &&
-      clearedTiers.web_research === current.tiers.web_research;
+      clearedTiers.web_search === current.tiers.web_search &&
+      clearedTiers.deep_research === current.tiers.deep_research;
 
     if (!needsFill && tiersUnchanged) return;
 
@@ -281,7 +297,8 @@ export function SimpleModeSection() {
           smart: clearedTiers.smart ?? defaults.chat.smart,
           thinking: clearedTiers.thinking ?? defaults.chat.thinking,
           image: clearedTiers.image ?? defaults.image,
-          web_research: clearedTiers.web_research ?? defaults.webResearch,
+          web_search: clearedTiers.web_search ?? defaults.webSearch,
+          deep_research: clearedTiers.deep_research ?? defaults.deepResearch,
         },
       },
       { keepDirty: true },

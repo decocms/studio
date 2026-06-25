@@ -52,12 +52,15 @@ const PersistedRunConfigRawSchema = z.object({
     thinking: PersistedModelInfoSchema,
     fast: PersistedModelInfoSchema.optional(),
     image: PersistedToolModelInfoSchema.optional(),
+    webSearch: PersistedToolModelInfoSchema.optional(),
     deepResearch: PersistedToolModelInfoSchema.optional(),
   }),
   agent: z.object({ id: z.string() }),
   temperature: z.number(),
   toolApprovalLevel: z.enum(["auto", "readonly", "plan"]).optional(),
-  mode: z.enum(["default", "plan", "web-search", "gen-image"]).optional(),
+  mode: z
+    .enum(["default", "plan", "web-search", "deep-research", "gen-image"])
+    .optional(),
   windowSize: z.number().optional(),
   triggerId: z.string().optional(),
 });
