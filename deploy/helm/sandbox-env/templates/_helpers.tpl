@@ -146,6 +146,21 @@ atomic and gives a pointer to the right install command.
 {{- end }}
 {{- end }}
 
+{{/*
+Validate decoCache: if secretName is set, region and bucket are required —
+the daemon silently skips cache warm-up when either is missing.
+*/}}
+{{- define "sandbox-env.validateDecoCache" -}}
+{{- if .Values.decoCache.secretName }}
+{{- if not .Values.decoCache.region }}
+{{- fail "sandbox-env: decoCache.secretName is set but decoCache.region is empty — region is required for S3 request signing" -}}
+{{- end }}
+{{- if not .Values.decoCache.bucket }}
+{{- fail "sandbox-env: decoCache.secretName is set but decoCache.bucket is empty — bucket is required to locate the cache object" -}}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{- define "sandbox-env.housekeeperName" -}}
 {{- printf "sandbox-housekeeper-%s" (include "sandbox-env.envName" .) -}}
 {{- end }}
