@@ -3,7 +3,7 @@
  * can be surfaced up front (the `<available-skills>` block) for Claude-Code
  * style progressive discovery. Reads the same `SKILL.md` folders the sandbox
  * mounts: the shared read-only public sets (`org/public/<set>/`) plus the
- * org's own home volume (`org/<slug>/`).
+ * org's own home volume (`org/home/`).
  *
  * Each entry carries a collision-free `id` (`<set>/<dir>` for public,
  * `home/<dir>` for home) that doubles as the `skill` tool's argument and maps
@@ -127,8 +127,7 @@ async function buildPublicEntries(
         name: s.name,
         description: s.description,
         source: `public:${set}`,
-        // org-independent for public volumes (slug arg is ignored).
-        sandboxPath: orgFsSandboxPath(volume, s.dirPath, ""),
+        sandboxPath: orgFsSandboxPath(volume, s.dirPath),
       });
     }
   }
@@ -151,11 +150,10 @@ function buildOrgFs(ctx: StudioContext, orgId: string): OrgFs {
   return new OrgFs(storage, ctx.storage.orgFsEntries, orgId);
 }
 
-/** Home skills: bounded probe of `org/<slug>/*` and `org/<slug>/skills/*`. */
+/** Home skills: bounded probe of `org/home/*` and `org/home/skills/*`. */
 async function buildHomeEntries(
   ctx: StudioContext,
   orgId: string,
-  orgSlug: string,
   budget: { remaining: number },
 ): Promise<SkillCatalogEntry[]> {
   const home = buildOrgFs(ctx, orgId);
@@ -168,7 +166,7 @@ async function buildHomeEntries(
     name: s.name,
     description: s.description,
     source: "home",
-    sandboxPath: orgFsSandboxPath(HOME_VOLUME, s.dirPath, orgSlug),
+    sandboxPath: orgFsSandboxPath(HOME_VOLUME, s.dirPath),
   }));
 }
 
@@ -180,12 +178,11 @@ async function buildHomeEntries(
 export async function buildSkillCatalog(
   ctx: StudioContext,
   orgId: string,
-  orgSlug: string,
 ): Promise<SkillCatalogEntry[]> {
   const budget = { remaining: MAX_SKILLS };
   const [pub, home] = await Promise.all([
     buildPublicEntries(ctx, budget),
-    buildHomeEntries(ctx, orgId, orgSlug, budget),
+    buildHomeEntries(ctx, orgId, budget),
   ]);
   return [...pub, ...home].sort(
     (a, b) => a.source.localeCompare(b.source) || a.id.localeCompare(b.id),

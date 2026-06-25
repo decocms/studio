@@ -35,7 +35,6 @@ function describe(file: KnowledgeFile): string {
  */
 function buildKnowledgeBlock(
   knowledge: KnowledgeFile[] | null | undefined,
-  orgSlug: string,
 ): string | null {
   // Skills go in the <available-skills> catalog, not here.
   const docs = (knowledge ?? []).filter((f) => f.kind !== "skill");
@@ -44,7 +43,7 @@ function buildKnowledgeBlock(
   const docInventory = docs
     .map(
       (f) =>
-        `- ${f.name} (${describe(f)}), read it at \`${orgFsSandboxPath(f.volume, f.path, orgSlug)}\``,
+        `- ${f.name} (${describe(f)}), read it at \`${orgFsSandboxPath(f.volume, f.path)}\``,
     )
     .join("\n");
 
@@ -62,9 +61,8 @@ function buildKnowledgeBlock(
 export function withKnowledge(
   instructions: string | undefined,
   knowledge: KnowledgeFile[] | null | undefined,
-  orgSlug: string,
 ): string | undefined {
-  const block = buildKnowledgeBlock(knowledge, orgSlug);
+  const block = buildKnowledgeBlock(knowledge);
   if (!block) return instructions;
   return instructions ? `${instructions}\n\n${block}` : block;
 }

@@ -53,7 +53,7 @@ function usage() {
       "         [--theme <name>] [--templates-dir <dir>] [-f]",
       "",
       "  --data           Deck description: inline JSON or @path/to/deck.json",
-      "  --output         Path to write the deck HTML (e.g. org/<slug>/decks/launch.html)",
+      "  --output         Path to write the deck HTML (e.g. org/home/decks/launch.html)",
       "  --theme          Built-in theme name OR path to a custom theme .html",
       '                   (overrides the data\'s "theme" field)',
       "  --templates-dir  Extra directory to resolve slide templates from (checked first)",
@@ -151,7 +151,7 @@ function resolveSlideTemplate(name, templatesDir) {
  * `--theme` (or the data's "theme" field) accepts either a built-in name
  * (`ink-dark`) or a path to a custom theme shell file — a complete deck
  * HTML with a `{{{slides}}}` insertion point. Org brand themes live in
- * org-fs (e.g. `org/<slug>/templates/slides/brand-theme.html`) and inject
+ * org-fs (e.g. `org/home/templates/slides/brand-theme.html`) and inject
  * the same way slide templates do via --templates-dir.
  */
 function resolveThemePath(value) {

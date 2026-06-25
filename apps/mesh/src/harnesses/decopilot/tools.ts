@@ -111,7 +111,7 @@ export interface AssembleDecopilotToolsExtras {
    *  the chat provider when the org's `deep_research` tier shares the chat
    *  credential. */
   deepResearchProvider: MeshProvider | null;
-  /** Per-turn HTML-artifact fast-path mirror (`org/<slug>/{decks,pages}/
+  /** Per-turn HTML-artifact fast-path mirror (`org/home/{decks,pages}/
    *  *.html`) — flushed into org-fs at step-end by the dispatch layer. */
   htmlArtifactBuffer?: HtmlArtifactBuffer;
   /** Usage roll-up sink (Task 17) — forwarded to the `subtask` built-in so a

@@ -11,14 +11,14 @@ everything that generates output consumes it.
 | Task | How |
 | --- | --- |
 | See a complete example | read `examples/tokens.css` and `examples/brand.md` (in this skill folder) |
-| Create a brand | write the files into `org/<slug>/brands/<name>/` (steps below) |
-| Build a deck theme | `slides-create … --theme org/<slug>/brands/<name>/slides-theme.html` (see the `slides` skill) |
+| Create a brand | write the files into `org/home/brands/<name>/` (steps below) |
+| Build a deck theme | `slides-create … --theme org/home/brands/<name>/slides-theme.html` (see the `slides` skill) |
 | Edit later | the user edits it in Studio's Library → Brands (or you rewrite the files) |
 
 ## Convention
 
-A brand is `org/<slug>/brands/<name>/` (run `ls org/` for the slug; `<name>`
-is lowercase kebab, e.g. `acme`):
+A brand is `org/home/brands/<name>/` (`<name>` is lowercase kebab, e.g.
+`acme`):
 
 | File | What |
 | --- | --- |
@@ -100,18 +100,18 @@ inlined (decks must be self-contained). Build it once:
    ```sh
    slides-create --data @deck.json \
      --theme <retuned-theme.html> \
-     --output org/<slug>/brands/<name>/slides-theme.html
+     --output org/home/brands/<name>/slides-theme.html
    ```
 
 Decks then use it: `slides-create --theme
-org/<slug>/brands/<name>/slides-theme.html …` (full flow in the `slides` skill).
+org/home/brands/<name>/slides-theme.html …` (full flow in the `slides` skill).
 
 ## Building a brand — workflow
 
 1. **Gather inputs:** brand name, a primary color (+ any secondary/accent),
    fonts, voice notes, logo. Ask for what's missing; infer sensible defaults
    from the primary (neutral ramp, semantic colors).
-2. `mkdir org/<slug>/brands/<name>/`.
+2. `mkdir org/home/brands/<name>/`.
 3. Write **`tokens.css`** — copy the example, swap in the colors/fonts, build
    the ramps around the seed colors.
 4. Write **`brand.md`** — the bible, with real canonical copy examples.
