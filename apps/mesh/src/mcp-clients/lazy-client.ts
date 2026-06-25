@@ -96,6 +96,12 @@ export function createLazyClient(
     { capabilities: {}, jsonSchemaValidator: sharedJsonSchemaValidator },
   );
 
+  // Dev connections point at an ephemeral sandbox dev server that hot-reloads:
+  // never serve its tool lists or ui:// reads from cache, or edits won't show.
+  const isDevConnection =
+    (connection.metadata as { isDevConnection?: boolean } | null)
+      ?.isDevConnection === true;
+
   // Shared promise for the real client (single-flight)
   let realClientPromise: Promise<Client> | null = null;
 
@@ -136,9 +142,10 @@ export function createLazyClient(
     buildCachedResult: (cached: unknown[]) => T,
   ) => {
     return async (params?: unknown, options?: RequestOptions): Promise<T> => {
-      // Bypass cache for VIRTUAL connections or paginated requests
+      // Bypass cache for VIRTUAL / dev connections or paginated requests
       if (
         connection.connection_type === "VIRTUAL" ||
+        isDevConnection ||
         !cache ||
         shouldBypassCache(params, options)
       ) {
@@ -201,7 +208,8 @@ export function createLazyClient(
   // forwarded to the live fetch but excluded from the cache key.
   // null when MCP caching is disabled (settings-gated).
   const readCache = getMcpReadCache();
-  const cacheReads = connection.connection_type !== "VIRTUAL";
+  const cacheReads =
+    connection.connection_type !== "VIRTUAL" && !isDevConnection;
 
   placeholder.callTool = async (params, resultSchema, options) => {
     const toolName = (params as { name?: unknown })?.name;

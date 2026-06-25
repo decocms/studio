@@ -26,7 +26,9 @@ import type {
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
+import type { ConnectionEntity } from "@/tools/connection/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
+import { resolveDevConnection } from "@/api/routes/dev-connection";
 import type { SideChannelWriter } from "@decocms/harness/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
@@ -145,17 +147,37 @@ export function buildClusterEnvironmentTools(args: {
         // client over the run's resolved Virtual MCP. superUser/listTimeout
         // come from the caller (assembleDecopilotTools). The daemon/desktop
         // factory supplies an HTTP-backed impl at the agent's mcp.url.
-        mcpForAgent: (_agentId, opts) =>
-          createVirtualClientFrom(
-            // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
-            // the transport type widens the field to a loose bag so the
-            // daemon can ship without the cluster's storage types.
-            streamInput.virtualMcp as VirtualMCPEntity,
+        mcpForAgent: async (_agentId, opts) => {
+          // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
+          // the transport type widens the field to a loose bag so the
+          // daemon can ship without the cluster's storage types.
+          const vm = streamInput.virtualMcp as VirtualMCPEntity;
+          // Dev-capable agents (githubRepo — a cheap pre-filter) expose their
+          // running sandbox dev server's tools in the toolset. The real gate
+          // (dev/live pairing + the user's own sandbox) lives in
+          // resolveDevConnection, which returns null otherwise — degrades
+          // silently to no injection.
+          let devConnection: ConnectionEntity | null = null;
+          if (vm.id && vm.metadata?.githubRepo?.url && streamInput.user.id) {
+            devConnection = await resolveDevConnection(
+              ctx,
+              vm.id,
+              streamInput.user.id,
+              streamInput.branch ?? undefined,
+            ).catch(() => null);
+          }
+          return createVirtualClientFrom(
+            vm,
             ctx,
             "passthrough",
             opts?.superUser ?? false,
-            { listTimeoutMs: opts?.listTimeoutMs, includeSkillsCatalog: true },
-          ),
+            {
+              listTimeoutMs: opts?.listTimeoutMs,
+              includeSkillsCatalog: true,
+              additionalConnections: devConnection ? [devConnection] : [],
+            },
+          );
+        },
         provider: modelRuntime.thinking.provider,
         imageProvider:
           modelRuntime.image?.provider ?? modelRuntime.thinking.provider,

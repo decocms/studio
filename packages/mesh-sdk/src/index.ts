@@ -236,6 +236,9 @@ export {
   // Decopilot utilities
   isDecopilot,
   getDecopilotId,
+  // Dev connection (ephemeral sandbox dev-server) utilities
+  getDevConnectionId,
+  parseDevConnectionId,
   // Site Diagnostics utilities
   isSiteDiagnostics,
   getSiteDiagnosticsId,

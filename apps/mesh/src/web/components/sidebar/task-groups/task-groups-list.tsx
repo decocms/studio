@@ -42,10 +42,12 @@ import {
 } from "../sidebar-agent-groups-context";
 import { SortableCollapsedTaskGroups } from "./sortable-collapsed-task-groups";
 import {
+  foldDevGroupsIntoLive,
   groupThreadsByVirtualMcp,
   groupThreadsByStatus,
   TOOL_CALL_RUNS_GROUP_KEY,
 } from "./group-threads";
+import { getLiveDevAgentMaps } from "@/web/lib/agent-capabilities";
 import { removeGroupFromOrder, syncOrdersOnOrgPinToggle } from "./stable-order";
 import { SortableTaskGroups } from "./sortable-task-groups";
 import { StatusGroup } from "./task-group";
@@ -84,6 +86,7 @@ export function TaskGroupsList({
   const { org } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const agents = useVirtualMCPs();
+  const { liveToDev, devToLive } = getLiveDevAgentMaps(agents);
   const serverOrgPinnedIds = getServerPinnedIds(agents);
   const canManageOrgPin = useCanPinAgentsForOrg();
   const virtualMcpActions = useVirtualMCPActions();
@@ -162,9 +165,16 @@ export function TaskGroupsList({
     filters,
   );
 
+  // Dev agents are hidden from agent PICKERS (browse popover, @-mention, add
+  // to home). Their thread groups are folded into the live counterpart's group
+  // (rendered as a "Develop" sub-section) so dev sessions stay navigable under
+  // one entry instead of a confusing standalone group.
   const groups = useSidebarGroupOrder(
     orderScope,
-    groupThreadsByVirtualMcp(sortedThreads, decopilotId),
+    foldDevGroupsIntoLive(
+      groupThreadsByVirtualMcp(sortedThreads, decopilotId),
+      devToLive,
+    ),
     decopilotId,
     orgPinnedIds,
     orderRevision,
@@ -267,9 +277,14 @@ export function TaskGroupsList({
 
   const buildAgentGroupRenderProps = (group: (typeof groups)[number]) => {
     const filtered = typeFiltered(memberFiltered(group.threads));
+    const devPartnerId = liveToDev.get(group.virtualMcpId) ?? null;
     return {
       virtualMcpId: group.virtualMcpId,
       threads: filtered,
+      devPartnerId,
+      devGroupVisibleCount: devPartnerId
+        ? (agentThreadCounts.get(devPartnerId) ?? 0)
+        : 0,
       activeTaskId,
       filters,
       groupVisibleCount: agentThreadCounts.get(group.virtualMcpId) ?? 0,

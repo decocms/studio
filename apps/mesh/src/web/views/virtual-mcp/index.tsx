@@ -104,6 +104,7 @@ import {
   agentHasClonableSource,
   agentHasConnectedGithub,
 } from "@/web/lib/agent-capabilities";
+import { DevAgentSetup } from "@/web/components/dev-agent/dev-agent-setup.tsx";
 import { FIXED_SYSTEM_TABS } from "@/web/layouts/main-panel-tabs/tab-id";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
 import { EnvVarsField } from "@/web/components/sandbox/runtime-card/env-vars-field";
@@ -1885,6 +1886,9 @@ Define step-by-step how the agent should handle requests.
               form={form}
               flushAndSave={flushAndSave}
             />
+
+            {/* Development agent section (link a dev counterpart) */}
+            <DevAgentSetup virtualMcp={virtualMcp} />
 
             {/* Sandbox section */}
             <div className="flex flex-col gap-3">

@@ -56,6 +56,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { usePublicConfig } from "@/web/hooks/use-public-config";
 import { getServerPinnedIds } from "@/web/hooks/use-navigate-to-agent";
+import { getDevAgentIds } from "@/web/lib/agent-capabilities";
 import {
   useSidebarAgentGroupsEmpty,
   useBumpSidebarOrderRevision,
@@ -182,9 +183,13 @@ function PinAgentPopoverContent({
 
   const navigateToNewTask = useNavigateToNewTaskWithBranchCarry(org.slug);
 
+  // Dev agents are reached via the Develop/Live toggle on their live
+  // counterpart, not as standalone browse entries.
+  const devAgentIds = getDevAgentIds(allAgents);
   const lowerSearch = search.toLowerCase();
   const userAgents = agents
     .filter((s) => !isDecopilot(s.id))
+    .filter((s) => !devAgentIds.has(s.id))
     .filter((s) => !search || s.title.toLowerCase().includes(lowerSearch));
 
   const handleSelect = (agent: VirtualMCPEntity) => {

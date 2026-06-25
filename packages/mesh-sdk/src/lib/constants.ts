@@ -257,6 +257,18 @@ const decopilotPrefix = createWellKnownAgentPrefix("decopilot_");
 export const isDecopilot = decopilotPrefix.is;
 export const getDecopilotId = decopilotPrefix.get;
 
+// ---- Dev connection (ephemeral sandbox dev-server) ----
+// Synthetic, never-persisted connection id pointing at an agent's running
+// sandbox dev server: `dev_<virtualMcpId>`. Resolved per-acting-user at request
+// time (see apps/mesh/src/api/routes/dev-connection.ts). Mirrors the `_self`
+// synthetic-id bypass in the proxy. `dev_` doesn't collide with other
+// well-known ids (`*_self`, `*_dev-assets` uses a hyphen).
+const devConnectionPrefix = createWellKnownAgentPrefix("dev_");
+/** Mint the synthetic dev-connection id for an agent (virtual MCP) id. */
+export const getDevConnectionId = devConnectionPrefix.get;
+/** Returns the agent id when `id` is a `dev_<agentId>` connection id; else null. */
+export const parseDevConnectionId = devConnectionPrefix.is;
+
 export function getWellKnownDecopilotVirtualMCP(
   organizationId: string,
 ): VirtualMCPEntity {

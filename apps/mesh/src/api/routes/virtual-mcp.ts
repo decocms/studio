@@ -18,9 +18,11 @@ import { createServerFromClient, getDecopilotId } from "@decocms/mesh-sdk";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
-import type { StudioContext } from "../../core/studio-context";
+import { getUserId, type StudioContext } from "../../core/studio-context";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
+import { resolveDevConnection } from "./dev-connection";
+import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { Env } from "../hono-env";
 import { serveMcpRequest } from "../utils/serve-mcp";
 
@@ -139,6 +141,24 @@ export async function handleVirtualMcpRequest(
       };
     }
 
+    // Dev-capable agents (githubRepo — a cheap pre-filter) surface their
+    // running sandbox dev server's tools in the served toolset.
+    // resolveDevConnection enforces the real gate (dev/live pairing + the
+    // acting user's own sandbox) and returns null otherwise — degrades
+    // silently. Safe on this legacy route's looser org binding: it only
+    // resolves a sandbox the acting user themselves started (gated by
+    // SANDBOX_START's ctx.access.check), so a non-member reaches nothing.
+    const actingUserId = getUserId(ctx);
+    let devConnection: ConnectionEntity | null = null;
+    if (virtualMcp.id && virtualMcp.metadata?.githubRepo?.url && actingUserId) {
+      devConnection = await resolveDevConnection(
+        ctx,
+        virtualMcp.id,
+        actingUserId,
+        c.req.query("branch") ?? undefined,
+      ).catch(() => null);
+    }
+
     // Create client from entity (always passthrough)
     const client = await ctx.tracer.startActiveSpan(
       "studio.virtual_mcp.create_client",
@@ -152,7 +172,10 @@ export async function handleVirtualMcpRequest(
             false,
             // Serves the agent's MCP (incl. the desktop daemon); surface the
             // skill catalog in the instructions it reads.
-            { includeSkillsCatalog: true },
+            {
+              includeSkillsCatalog: true,
+              additionalConnections: devConnection ? [devConnection] : [],
+            },
           );
           span.setStatus({ code: SpanStatusCode.OK });
           return result;

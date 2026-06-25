@@ -29,6 +29,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { getDevAgentIds } from "@/web/lib/agent-capabilities";
 import {
   getHomeTiles,
   isDecopilot,
@@ -232,8 +233,11 @@ function DrawerBody({ search }: { search: string }) {
     .filter((a): a is VirtualMCPEntity => !!a)
     .filter(matches);
 
+  // Dev agents are reached via the Develop/Live toggle, not added to home.
+  const devAgentIds = getDevAgentIds(agents);
   const available = agents
     .filter((a) => a.id && !isDecopilot(a.id))
+    .filter((a) => !devAgentIds.has(a.id))
     .filter((a) => !home.isOnHome(a.id))
     .filter(matches)
     .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
