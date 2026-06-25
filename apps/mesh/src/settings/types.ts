@@ -89,6 +89,15 @@ export interface Settings {
   s3SecretAccessKey: string | undefined;
   s3ForcePathStyle: boolean;
 
+  // Deco site cache S3 (AWS S3 — separate from the R2 object storage above).
+  // When set, mesh injects these into the sandbox daemon so it can pre-warm
+  // the Deno module cache before `deno task dev` for deco.cx imported sites.
+  decoCacheS3AccessKeyId: string | undefined;
+  decoCacheS3SecretAccessKey: string | undefined;
+  decoCacheS3Region: string | undefined;
+  decoCacheS3Bucket: string | undefined;
+  decoCacheS3Endpoint: string | undefined;
+
   // Monitoring object storage (OTLP-JSON over GCS S3-compatible endpoint).
   // When monitoringS3Bucket is set and clickhouseUrl is not, the dashboard reads
   // OTLP-JSON log files from this bucket via embedded DuckDB + httpfs. Endpoint /

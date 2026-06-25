@@ -485,15 +485,11 @@ async function provisionSandbox(
   const envEntries = (metadata as RuntimeConfigMeta).runtime?.env ?? null;
 
   // deco.cx sites are identified by `siteSlug` in metadata (set only during
-  // import via the deco.cx importer). When present, inject DECO_CACHE_S3_PATH
-  // so the daemon can warm the Deno module cache from S3 without needing a
-  // path template configured in Helm.
+  // import via the deco.cx importer). When present, inject DECO_CACHE_S3_*
+  // so the daemon can warm the Deno module cache from S3.
   const siteSlug =
     typeof metadata.siteSlug === "string" ? metadata.siteSlug : null;
-  const decoCachePath =
-    siteSlug && githubRepo
-      ? `${githubRepo.owner}/${githubRepo.name}/cache.tar.zst`
-      : undefined;
+  const decoCacheEnv = buildDecoCacheEnv(siteSlug, githubRepo);
 
   await resolveAndPushEnv({
     ctx,
@@ -502,9 +498,7 @@ async function provisionSandbox(
     orgId,
     userId,
     entries: envEntries,
-    ...(decoCachePath
-      ? { extraEnv: { DECO_CACHE_S3_PATH: decoCachePath } }
-      : {}),
+    ...(decoCacheEnv ? { extraEnv: decoCacheEnv } : {}),
   });
 
   // Preserve `createdAt` across resumes so the booting overlay's elapsed
@@ -552,6 +546,24 @@ async function provisionSandbox(
  * matches what the picker previously wrote (`{ selected, port }`), so
  * readers (resolveRuntimeConfig, any client inspectors) keep working.
  */
+function buildDecoCacheEnv(
+  siteSlug: string | null,
+  githubRepo: GithubRepo | null,
+): Record<string, string> | null {
+  if (!siteSlug || !githubRepo) return null;
+  const s = getSettings();
+  if (!s.decoCacheS3AccessKeyId || !s.decoCacheS3SecretAccessKey) return null;
+  const env: Record<string, string> = {
+    DECO_CACHE_S3_ACCESS_KEY_ID: s.decoCacheS3AccessKeyId,
+    DECO_CACHE_S3_SECRET_ACCESS_KEY: s.decoCacheS3SecretAccessKey,
+    DECO_CACHE_S3_PATH: `${githubRepo.owner}/${githubRepo.name}/cache.tar.zst`,
+  };
+  if (s.decoCacheS3Region) env.DECO_CACHE_S3_REGION = s.decoCacheS3Region;
+  if (s.decoCacheS3Bucket) env.DECO_CACHE_S3_BUCKET = s.decoCacheS3Bucket;
+  if (s.decoCacheS3Endpoint) env.DECO_CACHE_S3_ENDPOINT = s.decoCacheS3Endpoint;
+  return env;
+}
+
 async function persistDetectedRuntime(
   ctx: StudioContext,
   virtualMcpId: string,

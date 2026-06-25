@@ -230,49 +230,6 @@ orgFs:
 # dev server start) on staging before merging an override.
 readOnlyRootFilesystem: true
 
-# ── deco S3 cache ──────────────────────────────────────────────────────
-# When enabled, the sandbox daemon pre-populates the module cache from any
-# S3-compatible storage before the first run. Supports AWS S3, GCS (S3
-# interop), Cloudflare R2, MinIO, etc. Non-fatal: a missing object or
-# download failure is logged and the sandbox starts with a cold cache.
-#
-# Two mutually exclusive ways to supply the credentials Secret:
-#
-#   A) Bring your own Secret (default):
-#      Set secretName to an existing K8s Secret in agent-sandbox-system.
-#
-#   B) ExternalSecret (recommended for AWS):
-#      Set externalSecret.enabled=true — the chart creates a SecretStore +
-#      ExternalSecret that pulls from AWS Secrets Manager and materialises
-#      the K8s Secret automatically. secretName is ignored in this mode.
-#
-# accessKeyIdRef /
-#   secretAccessKeyRef: key names inside the Secret
-#                       (defaults: "accessKeyId" / "secretAccessKey").
-# region:               S3 region (required).
-# bucket:               S3 bucket name (required).
-# endpoint:             S3-compatible endpoint override, e.g. for MinIO or R2.
-#                       Defaults to AWS virtual-hosted URL when omitted.
-decoCache:
-  # Mode A: reference an existing K8s Secret (ignored when externalSecret.enabled).
-  secretName: ""
-  accessKeyIdRef: "accessKeyId"
-  secretAccessKeyRef: "secretAccessKey"
-  region: ""
-  bucket: ""
-  endpoint: ""
-  # Mode B: provision the Secret via External Secrets Operator (AWS Secrets Manager).
-  externalSecret:
-    enabled: false
-    # Path to the secret in AWS Secrets Manager (required when enabled).
-    # The secret must contain the keys matching accessKeyIdRef / secretAccessKeyRef.
-    secretPath: ""
-    refreshInterval: "1h"
-    provider:
-      aws:
-        # AWS region for Secrets Manager — may differ from decoCache.region
-        # (e.g. secrets in us-east-1, S3 bucket in eu-west-1).
-        region: ""
 
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:

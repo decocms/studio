@@ -185,6 +185,13 @@ export function resolveConfig(
       envVars.S3_FORCE_PATH_STYLE === "true" ||
       envVars.S3_FORCE_PATH_STYLE === "1",
 
+    // Deco site cache S3 (separate from R2 object storage).
+    decoCacheS3AccessKeyId: envVars.DECO_CACHE_S3_ACCESS_KEY_ID,
+    decoCacheS3SecretAccessKey: envVars.DECO_CACHE_S3_SECRET_ACCESS_KEY,
+    decoCacheS3Region: envVars.DECO_CACHE_S3_REGION,
+    decoCacheS3Bucket: envVars.DECO_CACHE_S3_BUCKET,
+    decoCacheS3Endpoint: envVars.DECO_CACHE_S3_ENDPOINT,
+
     // Monitoring object storage (OTLP-JSON over GCS). Raw env passthrough;
     // fallback to s3* is applied at the context-factory consumption point.
     monitoringS3Bucket: envVars.MONITORING_S3_BUCKET,
