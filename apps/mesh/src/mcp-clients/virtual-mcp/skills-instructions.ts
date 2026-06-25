@@ -27,9 +27,8 @@ export async function renderSkillsCatalogBlock(
 ): Promise<string | null> {
   const orgId = ctx.organization?.id;
   if (!orgId) return null;
-  const orgSlug = ctx.organization?.slug ?? "";
   try {
-    const entries = await buildSkillCatalog(ctx, orgId, orgSlug);
+    const entries = await buildSkillCatalog(ctx, orgId);
     if (entries.length === 0) return null;
 
     // Skills the user attached to this agent, matched to catalog entries by
@@ -37,7 +36,7 @@ export async function renderSkillsCatalogBlock(
     const attached = new Set(
       (virtualMcp.metadata?.knowledge ?? [])
         .filter((k) => k.kind === "skill")
-        .map((k) => orgFsSandboxPath(k.volume, k.path, orgSlug)),
+        .map((k) => orgFsSandboxPath(k.volume, k.path)),
     );
     const configuredIds = entries
       .filter((e) => attached.has(e.sandboxPath))

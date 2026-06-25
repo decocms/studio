@@ -111,12 +111,12 @@ export const WRITE_DESCRIPTION =
   // (durable, Library-visible, deck editing).
   "Viewable HTML artifacts get a LIVE PREVIEW in the chat side panel " +
   "and persist in the org's shared folder when written under " +
-  "`org/<your-org-slug>/` (lowercase-kebab names):\n" +
-  "- Presentation decks / slides → `org/<your-org-slug>/decks/<name>.html` " +
+  "`org/home/` (lowercase-kebab names):\n" +
+  "- Presentation decks / slides → `org/home/decks/<name>.html` " +
   "— load the slides skill (`skill({ id: 'core/slides' })`) FIRST " +
   "and create the deck with its CLI.\n" +
   "- Standalone pages (landing pages, brand kits, one-pagers) → " +
-  "`org/<your-org-slug>/pages/<name>.html` — single self-contained " +
+  "`org/home/pages/<name>.html` — single self-contained " +
   "HTML file.\n" +
   "HTML written anywhere else will not render a preview.";
 
@@ -142,8 +142,8 @@ export const BASH_DESCRIPTION =
   "Execute a shell command in the VM's project directory. " +
   "Working directory is the project root. Timeout default 30s, max 2min.\n\n" +
   "The organization filesystem is mounted at `org/`:\n" +
-  "- `org/<your-org-slug>/` — the org's shared home folder (editable, " +
-  "shared across runs; `ls org/` shows the actual name). Organize it " +
+  "- `org/home/` — the org's shared home folder (editable, " +
+  "shared across runs). Organize it " +
   "freely; check it before non-trivial work and record durable facts, " +
   "decisions, and learnings as small markdown files.\n" +
   "- `org/public/<set>/` — curated read-only skill sets, mounted here. Your " +

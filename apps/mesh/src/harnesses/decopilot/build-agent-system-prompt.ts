@@ -135,19 +135,17 @@ export async function buildAgentSystemPrompt(
   add("codingWorkspace", buildCodingWorkspacePrompt(opts.codingWorkspace));
 
   // Org filesystem layout. org-fs is mounted into every sandbox now (desktop +
-  // cluster), so this is unconditional. Passing the slug lets the prompt name
-  // `org/<slug>/` directly instead of telling the agent to `ls org/` to
-  // discover it. Skills are surfaced separately via the <available-skills>
-  // catalog (served instructions). Stable per org, so still cache-safe.
-  add("orgFs", buildOrgFilesystemPrompt(opts.organization.slug, opts.user?.id));
+  // cluster), so this is unconditional. The home folder mounts at the fixed
+  // `org/home/` for every org, so the prompt names it directly (no `ls org/`
+  // discovery, no per-org slug). Skills are surfaced separately via the
+  // <available-skills> catalog (served instructions). Fully cache-stable.
+  add("orgFs", buildOrgFilesystemPrompt(opts.user?.id));
 
   // Eager-load the MEMORY.md indexes (Claude-Code-style persistent memory):
   // one shared org-wide, one private to the current user. Parent agent only —
   // subagents get a focused task, not the whole memory.
   if (opts.kind === "agent") {
-    const homeBase = opts.organization.slug
-      ? `org/${opts.organization.slug}`
-      : "org/<slug>";
+    const homeBase = "org/home";
     const userId = opts.user?.id;
     const [org, usr] = await Promise.all([
       loadMemoryBlock(opts.ctx, "organization", "MEMORY.md", homeBase, userId),
@@ -234,7 +232,7 @@ function memoryTemplate(scope: "organization" | "user"): string {
  * Read a MEMORY.md index from the `home` volume and render it as a system
  * block. `scope` is "organization" (shared) or "user" (private to the current
  * user); `path` is volume-relative (e.g. "MEMORY.md" or "users/<id>/MEMORY.md")
- * and `homeBase` is the sandbox mount path ("org/<slug>") used only for display.
+ * and `homeBase` is the sandbox mount path ("org/home") used only for display.
  * `actor` is the user id used to seed the file on first load.
  *
  * On the first load, if the file is genuinely absent it is created with a raw

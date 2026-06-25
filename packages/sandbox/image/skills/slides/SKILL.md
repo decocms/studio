@@ -14,18 +14,18 @@ with inline editing, and exports PDF by printing (the deck ships print CSS
 
 | Task                      | How                                                                   |
 | ------------------------- | --------------------------------------------------------------------- |
-| Create a deck             | `slides-create --data @deck.json --output org/<slug>/decks/<name>.html` |
+| Create a deck             | `slides-create --data @deck.json --output org/home/decks/<name>.html`   |
 | List themes / templates   | `slides-create --help`                                                 |
 | See a full data example   | `cat org/public/core/slides/examples/deck.json`                     |
 | Edit an existing deck     | `read` the HTML, edit the `<section>` slides, write it back            |
-| Org brand templates       | add `--templates-dir org/<slug>/templates/slides`                      |
+| Org brand templates       | add `--templates-dir org/home/templates/slides`                        |
 | PDF export                | user prints from the preview — no action needed                        |
 
 ## Path convention
 
-Decks live at `org/<slug>/decks/<name>.html` (run `ls org/` for the org
-slug; `<name>` is lowercase kebab). Files written there sync to Studio
-near-instantly and the user sees a live preview that updates as you work.
+Decks live at `org/home/decks/<name>.html` (`<name>` is lowercase kebab).
+Files written there sync to Studio near-instantly and the user sees a live
+preview that updates as you work.
 
 ## Creating a deck
 
@@ -33,7 +33,7 @@ near-instantly and the user sees a live preview that updates as you work.
    data shapes.
 2. Author your own deck JSON (a file is easier to iterate than inline):
    `{ "title": …, "theme": …, "slides": [ { "template": …, "data": … } ] }`
-3. Render: `slides-create --data @deck.json --output org/<slug>/decks/<name>.html`
+3. Render: `slides-create --data @deck.json --output org/home/decks/<name>.html`
 4. Iterate content by editing the **HTML output** (see lifecycle below),
    or re-render with `-f` only while the user hasn't touched the deck.
 
@@ -56,9 +56,9 @@ Keep org brand themes in org-fs so they persist, e.g.:
 
 ```sh
 slides-create --data @deck.json \
-  --theme org/<slug>/templates/slides/brand-theme.html \
-  --templates-dir org/<slug>/templates/slides \
-  --output org/<slug>/decks/q3.html
+  --theme org/home/templates/slides/brand-theme.html \
+  --templates-dir org/home/templates/slides \
+  --output org/home/decks/q3.html
 ```
 
 ### Brand folders
@@ -95,7 +95,7 @@ edit a brand, use the `brand` skill):
 This skill is built on the `templating` skill
 (`org/public/core/templating/SKILL.md`). For a one-off custom slide
 or deck template, render it directly with `create-from-template`; for an
-org's own slide layouts, keep them in `org/<slug>/templates/slides/` and
+org's own slide layouts, keep them in `org/home/templates/slides/` and
 pass `--templates-dir` — they resolve before the built-ins.
 
 ## Lifecycle — templates create, edits go to the HTML
