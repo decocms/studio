@@ -15,6 +15,7 @@ import {
   PROJECTOR_QUEUE,
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
+import { buildDbosConfig } from "./dbos/config";
 import { getSettings } from "./settings";
 import { initObservability } from "./observability";
 import { startProfiling } from "./observability/profiling";
@@ -83,22 +84,21 @@ const listenQueues: string[] | undefined =
       ? []
       : undefined; // "all" → omit → DBOS listens to every queue
 
-DBOS.setConfig({
-  name: "decocms",
-  systemDatabaseUrl: withSslmode(settings.databaseUrl, settings.databasePgSsl),
-  systemDatabaseSchemaName: "dbos",
-  // SDK default is 10. Cap lower so N replicas don't exhaust RDS slots —
-  // bump via `DBOS_POOL_SIZE` if the workflow workload demands more in-flight
-  // steps per pod.
-  systemDatabasePoolSize: Number(process.env.DBOS_POOL_SIZE ?? 5),
-  // N workers all call DBOS.launch(); the admin server would otherwise fight
-  // over port 3001. Re-enable per-process once we need workflow admin HTTP.
-  runAdminServer: false,
-  executorID: settings.podName,
-  // Pod-role queue filter (see above). Omitted for "all" so behavior is
-  // identical to before unless a role is explicitly set.
-  ...(listenQueues !== undefined ? { listenQueues } : {}),
-});
+DBOS.setConfig(
+  buildDbosConfig({
+    systemDatabaseUrl: withSslmode(
+      settings.databaseUrl,
+      settings.databasePgSsl,
+    ),
+    // SDK default is 10. Cap lower so N replicas don't exhaust RDS slots —
+    // bump via `DBOS_POOL_SIZE` if the workflow workload demands more in-flight
+    // steps per pod.
+    poolSize: Number(process.env.DBOS_POOL_SIZE ?? 5),
+    executorID: settings.podName,
+    // Pod-role queue filter (see RUN_QUEUES above). undefined => "all".
+    listenQueues,
+  }),
+);
 
 const { createApp } = await import("./api/app");
 const { isServerPath } = await import("./api/utils/paths");
