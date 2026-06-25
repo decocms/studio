@@ -175,6 +175,11 @@ await DBOS.launch({
   ...(conductorKey ? { conductorKey } : {}),
   ...(conductorKey && conductorURL ? { conductorURL } : {}),
 });
+// Surface the DBOS application version on every boot so the pin is verifiable
+// from pod logs (`grep "dbos] application version"`). Expect the pinned
+// DBOS_WORKFLOW_VERSION ("1"), never a 32-char hash — a hash means the pin was
+// bypassed (e.g. DBOS__CLOUD / DBOS__APPVERSION env). See dbos/workflow-version.ts.
+console.log(`[dbos] application version: ${DBOS.applicationVersion}`);
 // Post-launch DBOS setup (queue registration, schedule reconciliation).
 // Must run after launch because registerQueue / listSchedules require an
 // initialized executor.
