@@ -392,6 +392,8 @@ export const KEYS = {
   liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
+  sandboxRepoDir: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["sandbox-repo-dir", orgSlug, virtualMcpId, branch] as const,
 
   // Link daemon status (user-scoped; the cluster derives the userSub
   // from the bearer session, so we don't include it in the key).
