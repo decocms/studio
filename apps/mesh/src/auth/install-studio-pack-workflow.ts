@@ -71,6 +71,9 @@ async function installStudioPackWorkflowFn(
   });
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 const installStudioPackWorkflow = DBOS.registerWorkflow(
   installStudioPackWorkflowFn,
   { name: "installStudioPackWorkflow" },

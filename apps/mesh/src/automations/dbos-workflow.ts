@@ -480,6 +480,9 @@ async function fireAutomationWorkflowFn(
   return { taskId };
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 export const fireAutomationWorkflow = DBOS.registerWorkflow(
   fireAutomationWorkflowFn,
   { name: "fireAutomationWorkflow" },
@@ -500,6 +503,9 @@ async function cronEntryWorkflowFn(
   })(ctx);
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 export const cronEntryWorkflow = DBOS.registerWorkflow(cronEntryWorkflowFn, {
   name: "cronEntryWorkflow",
 });
@@ -574,6 +580,9 @@ async function automationsGcWorkflowFn(
   });
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 const automationsGcWorkflow = DBOS.registerWorkflow(automationsGcWorkflowFn, {
   name: "automationsGcWorkflow",
 });

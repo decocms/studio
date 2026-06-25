@@ -512,6 +512,9 @@ async function threadGateWorkflowFn(
   return runDispatchSteps(ctx);
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 const threadGateWorkflow = DBOS.registerWorkflow(threadGateWorkflowFn, {
   name: "threadGateWorkflow",
   // A gate now spans the whole run (no 1 h cap), so a multi-hour run can

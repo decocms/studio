@@ -42,6 +42,9 @@ let registered = false;
 export function registerMonitoringRetentionWorkflow(): void {
   if (registered) return;
   registered = true;
+  // ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+  // step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+  // — see apps/mesh/src/dbos/workflow-version.ts.
   const wf = DBOS.registerWorkflow(monitoringRetentionWorkflowFn, {
     name: "monitoringRetentionWorkflow",
   });

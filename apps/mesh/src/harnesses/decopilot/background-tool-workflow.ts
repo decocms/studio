@@ -698,6 +698,9 @@ async function backgroundToolWorkflowFn(
 
 // Registered at import time so the executor can dequeue (and recover) it; we
 // enqueue by name via DBOSClient, so the returned handle isn't needed here.
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 DBOS.registerWorkflow(backgroundToolWorkflowFn, {
   name: "backgroundToolWorkflow",
 });

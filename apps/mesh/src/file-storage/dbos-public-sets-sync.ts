@@ -74,6 +74,9 @@ let registeredWorkflow: typeof publicSetsSyncWorkflowFn | null = null;
 // Must run before DBOS.launch(). Guarded so HMR repeats don't re-register.
 export function registerPublicSetsSyncWorkflow(): void {
   if (registeredWorkflow) return;
+  // ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+  // step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+  // — see apps/mesh/src/dbos/workflow-version.ts.
   registeredWorkflow = DBOS.registerWorkflow(publicSetsSyncWorkflowFn, {
     name: "publicSetsSyncWorkflow",
   });
