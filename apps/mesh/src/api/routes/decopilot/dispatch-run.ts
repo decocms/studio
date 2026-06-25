@@ -63,10 +63,7 @@ import type {
   ModelsConfig,
 } from "@/harnesses";
 import { createSecretModelSource } from "@/harnesses";
-import {
-  WORKSPACE_CWD_DEFAULT,
-  WORKSPACE_CWD_REPO,
-} from "@decocms/harness/workspace-cwd";
+import { WORKSPACE_CWD_REPO } from "@decocms/harness/workspace-cwd";
 import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
 import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
 import {
@@ -308,25 +305,24 @@ export function resolveHarnessId(providerId: string | undefined): HarnessId {
 }
 
 /** Symbolic cwd: "/repo" for repo-backed sandbox dispatch (the daemon rebases
- *  onto its sandbox root); "default" otherwise (harness uses its SDK default,
- *  never fails). Hosted/in-pod runs always get "default". */
+ *  onto its sandbox root); null otherwise (harness uses its SDK default). */
 function resolveWorkspaceCwd(
   virtualMcp: { metadata?: unknown } | null,
   sandboxProviderKind: DispatchTarget["sandboxProviderKind"],
-): { cwd: string } {
+): { cwd: "/repo" | null } {
   const hasRepo = !!(
     virtualMcp?.metadata as { githubRepo?: unknown } | undefined
   )?.githubRepo;
   if (sandboxProviderKind === "user-desktop" && hasRepo) {
     return { cwd: WORKSPACE_CWD_REPO };
   }
-  return { cwd: WORKSPACE_CWD_DEFAULT };
+  return { cwd: null };
 }
 
 export function buildCodingWorkspaceInput(input: {
   virtualMcp: { metadata?: unknown } | null;
   branch?: string | null;
-  workspace: { cwd: string };
+  workspace: { cwd: string | null };
 }): CodingWorkspacePromptInput {
   const githubRepo = (
     input.virtualMcp?.metadata as { githubRepo?: unknown } | undefined
