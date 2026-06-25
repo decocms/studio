@@ -77,6 +77,11 @@ import { derivePhaseProgress } from "./derive-phase-progress";
 import { track } from "@/web/lib/posthog-client";
 import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 
+const VSCODE_ICON_URL =
+  "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
+const CURSOR_ICON_URL =
+  "https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png";
+
 const SectionsEditor = lazy(() =>
   import("@/web/components/sections-editor/sections-editor").then((m) => ({
     default: m.SectionsEditor,
@@ -866,7 +871,7 @@ export function PreviewContent() {
                           }
                         >
                           <img
-                            src="https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png"
+                            src={VSCODE_ICON_URL}
                             alt="VSCode"
                             width={14}
                             height={14}
@@ -881,7 +886,7 @@ export function PreviewContent() {
                           }
                         >
                           <img
-                            src="https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png"
+                            src={CURSOR_ICON_URL}
                             alt="Cursor"
                             width={14}
                             height={14}
@@ -910,7 +915,7 @@ export function PreviewContent() {
                     }
                   >
                     <img
-                      src="https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png"
+                      src={VSCODE_ICON_URL}
                       alt="VSCode"
                       width={14}
                       height={14}
@@ -930,7 +935,7 @@ export function PreviewContent() {
                     }
                   >
                     <img
-                      src="https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png"
+                      src={CURSOR_ICON_URL}
                       alt="Cursor"
                       width={14}
                       height={14}
