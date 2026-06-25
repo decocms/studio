@@ -1,0 +1,151 @@
+---
+title: "Arquitetura"
+description: Como o Studio é conectado de ponta a ponta — edge, cloud cluster e desktop — e como requests, runs e sandboxes fluem entre as camadas.
+icon: Network
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+import ArchitectureDiagram from "../../../../components/ArchitectureDiagram.astro";
+
+Esta página descreve como um deployment do Studio em execução é montado: as camadas, o que cada uma faz e como um request vira um run de agent, uma chamada de tool ou um preview de sandbox. É um bom material de fundo tanto se você faz self-host quanto se usa a cloud, e é o complemento conceitual dos guias de deploy de [Kubernetes](/pt-br/studio/self-hosting/deploy/kubernetes) e [Docker Compose](/pt-br/studio/self-hosting/deploy/docker-compose).
+
+## As três camadas
+
+O Studio abrange três fronteiras de confiança/localidade:
+
+- **Edge** — o caminho da internet pública: um CDN e um load balancer L4.
+- **Cloud cluster** — o deployment no Kubernetes: web, API, workers, Postgres, NATS e cloud sandboxes.
+- **Desktop** — o laptop do usuário, conectado via `deco link`, onde o desktop loop e o desktop sandbox podem rodar.
+
+<ArchitectureDiagram />
+
+O mesmo fluxo em texto:
+
+```
+EDGE                CLOUD CLUSTER                                     DESKTOP
+────                ─────────────                                     ───────
+
+Client ─▶ CF ─┬─▶ NLB ─▶ Web(nginx) ─▶ API ──┬─▶ MCP Proxy ─▶ Downstream MCP (ext)
+              │                               ├─▶ Files/Storage ─▶ Object Store (ext)
+              │                               ├─▶ DB (Postgres)
+              │                               ├─▶ NATS ───────────────▶ Link Daemon
+              │                               └─▶ Worker                    │
+              │                                     │  model                ▼
+              │                                     ├──────────▶ LLM   Desktop Loop ─▶ Desktop Sandbox
+              │                                     ├─▶ DB                   │              └─ Org FS (mount)
+              │                                     ├─▶ Files/Storage        └─(MCP presigned)─▶ API
+              │                                     ├─▶ Downstream MCP (in-process bridge)
+              │                                     └─▶ Cloud Sandbox ─┬─ Daemon API (/_sandbox/*)
+              │                                                        └─ Org FS (sidecar) ─▶ /api/:org/fs ─▶ S3
+              └─▶ Gateway (k8s) ─▶ Preview (public dev-server)
+```
+
+## Edge
+
+| Componente | Função |
+| --- | --- |
+| **CF** (Cloudflare) | Terminação TLS, cache estático da SPA, mitigação de DDoS/bots. Primeiro salto de todo o tráfego. |
+| **NLB** | Load balancer L4 na frente do cluster. Roteia para os pods de web (front-door); o seletor `frontDoorLabels` decide quais pods recebem o ingress. |
+
+## Cloud cluster
+
+### Web, API e Worker escalam de forma independente
+
+Esses três deployments são separados e escalam por conta própria. A camada de web foi separada da API (o "front-door split") para que o front door estático possa fazer deploy e escalar em uma cadência diferente da do application server.
+
+| Camada | Deployment | Responsabilidade |
+| --- | --- | --- |
+| **Web** | nginx | Serve a SPA em React e faz reverse-proxy de `/api`, `/mcp`, `/oauth-proxy`, `/.well-known` para o Service da API. Porta 8080. |
+| **API** | Hono, `MESH_DISPATCH_ROLE=api` | Rotas HTTP, Better Auth, o MCP proxy, controle de acesso. **Enfileira** runs do Decopilot nas queues do DBOS e acompanha o NATS para fazer streaming do output de volta para a UI. Stateless. **Não roda o agent loop.** |
+| **Worker** | Hono, `MESH_DISPATCH_ROLE=worker` | **Desenfileira** as queues do DBOS (via `listenQueues`) e **roda o agent loop** (`streamText`: model → tool → repete). Limitado por CPU. São os executores de run; escalam horizontalmente. |
+
+<Callout type="note">
+  A separação é por role, não por imagem — ambos rodam o mesmo build. `MESH_DISPATCH_ROLE` decide se um pod escuta as queues do DBOS (`worker`) ou apenas serve HTTP e enfileira (`api`). Um setup de deployment único pode usar `all`.
+</Callout>
+
+O conjunto de queues que um pod worker escuta é configurado por env (`listenQueues`). Por isso, os pools de workers podem ser separados por queue do DBOS — rodando workflows diferentes em pools separados com seus próprios recursos e escalonamento.
+
+### Datastores
+
+| Componente | Função |
+| --- | --- |
+| **DB** (PostgreSQL, via Kysely) | Sistema de registro: orgs, connections, credential vault, audit, threads + mensagens e `sandbox_runner_state`. Também mantém as **queues do DBOS e o journal `workflow_status`** que tornam os runs duráveis e recuperáveis. |
+| **NATS** | Infraestrutura de mensageria ao vivo com três tarefas: (1) fan-out do JetStream `/stream` (`decopilot.stream.<thread>`) → live tail da UI; (2) a work-queue de pull (`link.work.<user>`) → desktop; (3) o KV de link-claim (`studio_links`) que rastreia qual pod é dono do link de cada usuário. |
+
+<Callout type="warning">
+  **O event bus está dormente.** O *recurso* de pub/sub de CloudEvents (`EVENT_PUBLISH`/`EVENT_SUBSCRIBE`, a queue de eventos durável, os subscribers `ON_EVENTS`) só é consumido pelo plugin de workflow, que não está em uso. O NATS em si **não** está dormente — ele serve as tarefas ao vivo listadas acima. Não confunda as duas coisas.
+</Callout>
+
+## O ciclo de vida de um run do Decopilot
+
+1. Uma mensagem (`POST /messages`) ou o disparo de uma automation cria um **run** em uma thread.
+2. A **API** o enfileira em uma queue do DBOS no Postgres:
+   - `THREAD_GATE_QUEUE` — serializada por thread (concorrência 1 por `threadId`).
+   - `AUTOMATIONS_QUEUE` — paralelismo por org.
+3. Um **Worker** o desenfileira e roda o agent loop: chama o model, executa as chamadas de tool, repete (até um limite de steps).
+4. Os chunks de output são publicados no NATS e acompanhados de volta para a UI via `/stream`.
+5. Se o pod cair, o **replay do journal do DBOS** retoma os steps retriáveis em outro pod — a recuperação é trabalho do framework, não feito à mão.
+
+Há dois transportes para o passo 3:
+
+- **Hosted** (padrão) — o run executa in-process no worker e usa um **cloud sandbox**.
+- **Pull** — o run é publicado no NATS `link.work.<user>`; o **desktop** do usuário o pega e roda o loop localmente contra um **desktop sandbox**.
+
+## MCP: in-process vs. as rotas de proxy
+
+Essa distinção importa para raciocinar sobre o sistema:
+
+- **O worker chama tools de MCP in-process.** O agent loop monta um `PassthroughClient` sobre um bridge em memória e chama as tools diretamente — **sem salto HTTP dentro do cluster**. Ele ainda se conecta para fora a downstream MCP servers.
+- **As rotas do MCP proxy são para clients externos.** `/mcp/virtual-mcp/:id`, `/mcp/:connectionId`, `/oauth-proxy/*` e `/.well-known` são servidas pela **API** para IDEs externas (Cursor, Claude, VS Code). O worker não usa essas rotas.
+
+### Quais rotas são chamadas por quem
+
+| Rotas | API / externo | Worker |
+| --- | --- | --- |
+| MCP proxy (`/mcp/*`, `/oauth-proxy/*`, `.well-known`) | ✅ clients externos via API | ❌ (in-process no lugar) |
+| File & object-storage (`/api/:org/files/*`, GET/PUT presigned, uploads, `/api/:org/fs/*`) | ✅ servindo clients | ✅ tools de agent leem/escrevem arquivos e geram presigned URLs |
+| Apenas worker via HTTP | — | nenhuma — as chamadas de tool são in-process |
+
+As rotas de file e object-storage são a verdadeira superfície "chamada por ambos", e são respaldadas por um **Object Store** compatível com S3. As rotas `/api/:org/fs/*` também dão suporte ao [mount do org-filesystem](#org-filesystem-org-fs) dentro das sandboxes.
+
+## Sandboxes
+
+Uma sandbox clona o repo, roda o dev server e expõe um **daemon** in-pod. Sua superfície HTTP se divide em duas:
+
+| Superfície | Auth | Propósito | Quem chama |
+| --- | --- | --- | --- |
+| **Preview** (catch-all `*`) | Nenhuma — o handle (subdomínio) é o segredo | Faz reverse-proxy do dev server em execução (o preview ao vivo da app); injeta HMR. `/_sandbox/*` é ativamente rejeitado aqui. | O navegador do usuário final em `<handle>.preview.<domain>`, através do **Cloudflare** (LB) → um **Kubernetes Gateway** (Istio Gateway API / HTTPRoute) → o daemon |
+| **Daemon API** (`/_sandbox/*`) | Bearer `DAEMON_TOKEN` | Superfície de controle: operações de fs (read/write/edit/bash/grep), git (status/diff/publish), exec de scripts, setup (clone → install → start), tasks, eventos SSE, dispatch do harness. | O cluster (worker para as tools de fs/git/bash do agent; API para setup + eventos da UI) |
+
+### Cloud vs. desktop sandboxes
+
+| | Cloud sandbox | Desktop sandbox |
+| --- | --- | --- |
+| Onde | operador agent-sandbox + um pod `SandboxClaim` por (user, projectRef) | Mesmo daemon, iniciado localmente no laptop |
+| Acessado via | port-forward do k8s / Service in-cluster (controle); ingress ou port-forward (preview) | loopback (controle); `<handle>.localhost:<port>` (preview) |
+| Selecionado quando | é o padrão para runs hosted | um `deco link` está ativo — `user-desktop` é o provider padrão então |
+
+### Org filesystem (org-fs)
+
+Cada sandbox pode montar o **org filesystem** em `<appRoot>/org/<volume>`, para que o agent e o dev server leiam e escrevam arquivos da org como paths comuns. A stack de mount é `rclone (NFS/FUSE) → o WebDAV de loopback do daemon → /api/:org/fs/* → S3` — o mesmo object store das rotas de arquivo, exposto como um volume montado. É o mesmo filesystem que você navega na [Library](/pt-br/studio/library).
+
+Ele é conectado em **ambos** os providers, com mecânicas de mount diferentes:
+
+| | Cloud sandbox | Desktop sandbox |
+| --- | --- | --- |
+| Quem monta | um container **sidecar privilegiado** (o daemon não-privilegiado não consegue montar) | o **daemon diretamente** (ele tem permissões completas) |
+| Entrega da config | pós-bind: mesh `POST /_sandbox/orgfs-config`; o daemon a repassa para um control volume compartilhado que o sidecar observa (claims do warm-pool rejeitam `spec.env`) | env de boot: `ORGFS_CONFIG`, montada na inicialização do daemon |
+| Propagação | `rclone` com `allowOther` para que o mount se propague ao container principal | client único — sem necessidade de propagação |
+
+## Desktop
+
+Quando um usuário roda `deco link`, um **Link Daemon** no laptop dele faz long-poll no cluster (`/api/links/work` para chat, `/api/links/proxy` para controle de sandbox) e envia heartbeats de presença para o KV de link-claim do NATS. Os runs puxados (pulled) executam no **Desktop Loop** (`runNativeAgentLoopCore`) — uma cópia portável do agent loop. O thinking model é injetado pelo cluster, e o MCP é acessado via HTTP por uma presigned URL de volta para o cluster.
+
+## Em resumo
+
+- **Web / API / Worker** são deployments independentes; os workers são os executores de run do DBOS.
+- **Os runs são duráveis** via queues + journal do DBOS no Postgres; a recuperação é automática.
+- **As chamadas de tool de MCP são in-process** no worker; as rotas de proxy `/mcp/*` são apenas para clients externos.
+- **As rotas de file/object-storage** são a superfície compartilhada entre API e worker.
+- **O NATS está ao vivo**; o recurso de event-bus de CloudEvents está dormente.
+- **As sandboxes** expõem um preview público e uma control API protegida por token, na cloud (k8s) ou no desktop (`deco link`).

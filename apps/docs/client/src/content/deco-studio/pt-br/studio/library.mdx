@@ -1,0 +1,41 @@
+---
+title: Library
+description: Um navegador estilo Drive para o filesystem compartilhado da sua organização
+icon: Folder
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## O que é a Library?
+
+A **Library** é um navegador de arquivos para o filesystem compartilhado da sua organização — acessível pelo topo da sidebar esquerda. É a janela voltada para pessoas sobre os mesmos arquivos que seus agents leem e escrevem: tudo o que um agent salva no filesystem da org aparece aqui, e tudo o que você solta aqui fica disponível para seus agents.
+
+Pense nela como o drive compartilhado da sua organização, com algumas áreas bem conhecidas.
+
+## Volumes
+
+A Library é organizada em volumes:
+
+- **Home** — a pasta home compartilhada e de formato livre da org. É aqui que os agents registram conhecimento durável e onde você guarda o contexto que quer deixar ao alcance de todos os agents. Editável por todo mundo.
+- **Uploads** — arquivos anexados a conversas caem aqui automaticamente. Quando você solta um arquivo num chat, ele fica disponível para o agent sem nenhum passo de cópia.
+- **Outputs** — a pasta de output compartilhada das execuções de agents. Arquivos que um agent produz durante uma execução aparecem aqui.
+- **Public sets** — public sets de skills curados e somente leitura, sincronizados a partir de repositórios versionados, expostos para os agents consultarem.
+
+Um feed de **Recently added** que cruza todos os volumes fica no topo, para você voltar rapidamente a qualquer coisa que você (ou seus agents) tocou por último. Navegue pelos breadcrumbs; a localização atual é refletida na URL da página, então você pode mandar para um colega o link direto de uma pasta.
+
+## Como ela mapeia para o sandbox
+
+A Library e o sandbox do agent são duas visões do mesmo filesystem. Dentro de um sandbox, esses volumes são montados em `org/`:
+
+| Volume da Library | Caminho no sandbox |
+|---|---|
+| Home | `org/<your-org>/` |
+| Uploads | `org/upload` |
+| Outputs | `org/output` |
+| Public sets | `org/public/<set>` |
+
+Arquivos escritos na pasta Home e em Outputs sincronizam com o cloud storage da sua organização e ficam visíveis para todos os membros e agents. Mudanças externas aparecem dentro de um sandbox em execução em cerca de um segundo.
+
+<Callout type="info">
+  Para entender como os agents usam essas pastas em runtime — registrando conhecimento durável, lendo anexos de chat, escrevendo o output de uma execução — veja [Decopilot → Visão geral](/pt-br/studio/decopilot/overview#built-in-tools).
+</Callout>

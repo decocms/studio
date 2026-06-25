@@ -1,101 +1,129 @@
 ---
-title: Agentes
-description: MCPs virtuais de propósito único projetados para tarefas específicas
+title: Agents
+description: A superfície de trabalho do Studio — um agent, um trabalho, seu próprio histórico de thread e tools
 icon: Bot
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
 
-<Callout type="info">
-  Esta página documenta a **arquitetura planejada** para agentes no deco Studio. A implementação está em desenvolvimento.
+## O que é um agent?
+
+Um **agent** é uma IA configurada para um trabalho específico: um conjunto focado de tools, instruções claras e um único propósito. Agents são a superfície de trabalho do Studio — quase tudo o que você faz no produto acontece dentro de um.
+
+Um agent tem:
+
+- **Um objetivo claro** — o que ele faz e quando usá-lo
+- **As tools certas** — apenas o que ele precisa, anexadas a partir das suas [connections](/pt-br/studio/connections)
+- **Instruções detalhadas** — como se comportar, o que priorizar, o que evitar
+- **Um histórico de thread** — cada conversa passada com ele, salva e retomável
+- **Um layout** — o que o usuário vê ao abrir o agent, além de quaisquer pinned views trazidas das suas tools conectadas
+- **Um sandbox opcional** — um runtime isolado onde o agent pode rodar código de um repo vinculado (seu próprio MCP server, um dev server, etc.)
+- **Automations opcionais** — schedules ou triggers de evento que executam o agent sem supervisão
+
+Você chega a um agent pela home grid, pela lista de threads na sidebar ou pelo botão **+** / "Browse agents". Abra um e a tela inteira se torna aquele agent.
+
+## A tela do agent
+
+Quando você abre um agent, a tela se divide em duas:
+
+- **Esquerda — chat.** Converse com o agent em linguagem natural; ele usa as tools anexadas para fazer o trabalho. Suas mensagens e threads passadas com este agent ficam aqui. Acima do input estão o **model picker** e o **runtime picker** (veja [Onde um agent roda](#where-an-agent-runs)).
+- **Direita — um painel com abas.** Quais abas aparecem depende do que o agent é:
+
+| Tab | Quando aparece |
+|---|---|
+| **Settings** | Sempre que você pode gerenciar agents — nome, descrição, ícone, instruções, connections anexadas, files & skills, e **layout** (a view padrão, mais pinned views de tools que expõem uma UI interativa) |
+| **Automations** | Sempre — schedules e triggers de evento anexados a este agent |
+| **Preview** | Quando o agent é respaldado por um repo ou site clonável — um preview ao vivo do que ele constrói |
+| **Content** | Quando esse repo expõe páginas ou seções editáveis — edite o conteúdo inline |
+| **Review changes** | Quando o agent está vinculado a um repo do GitHub **e tem um pull request aberto** — revise a branch e seu diff |
+
+Um agent baseado em Git também mostra um **branch selector** ao lado do runtime picker, e um indicador de **status do sandbox** enquanto seu ambiente inicializa.
+
+Tudo sobre um único agent vive nesta única tela.
+
+### Layout e pinned views
+
+Algumas connections expõem mais do que tools — elas trazem uma UI interativa (um dashboard, um formulário, um explorador de dados) junto ao seu endpoint MCP. Nas configurações de **Layout** do agent, você pode fixar qualquer uma dessas views para que apareçam como abas de nível superior dentro do agent. É assim que um agent se transforma em um pequeno app de propósito específico, e não apenas um chat.
+
+Essas views vêm de **MCP apps**.
+
+### MCP apps: estendendo o Studio com tools + UI
+
+Um **MCP app** é a forma de estender o Studio hoje. É um MCP server comum que empacota duas coisas em um único pacote:
+
+- **Tools** — as ações que um agent pode executar
+- **Views** — UIs em React (uma página, um painel, um dashboard) entregues como resources, vinculadas a tools específicas via `_meta.ui.resourceUri`
+
+Quando um MCP app é instalado como uma connection, o Studio sabe quais views pertencem a quais tools. Fixe uma view no Layout do agent e ela aparece como uma aba no agent — clicar no resultado de uma tool relevante, ou abrir a aba diretamente, carrega a view inline. A comunicação bidirecional entre o chat e a view é tratada pelo Studio.
+
+Para criar um MCP app você usa o framework `@decocms/runtime` (React 19 + Tailwind + shadcn, compilado para um único arquivo HTML com Vite). O template de referência — incluindo estrutura de projeto, configuração de build e exemplos de tools-com-views — fica em [github.com/decocms/mcp-app](https://github.com/decocms/mcp-app).
+
+Em um release futuro, o Studio permitirá que você construa views simples diretamente dentro da UI do agent, sem precisar criar um repo. Para qualquer coisa custom ou de nível de produção hoje, comece pelo template repo acima.
+
+### Sandbox
+
+Um agent pode ser respaldado por código. Vincule-o a um repositório do GitHub em **Settings → Sandbox** e o Studio executará o repo como um ambiente de dev isolado com escopo daquele agent — tipicamente o próprio MCP server do agent, mas pode ser qualquer serviço que o agent precise. O sandbox inicia sob demanda, vive apenas enquanto o agent precisar dele, e nunca vaza entre agents.
+
+## Onde um agent roda
+
+Acima do input do chat, ao lado do model picker, está o **runtime picker**. Ele controla *onde* o agent executa e *qual harness* o conduz. Há dois grupos:
+
+**Cloud**
+
+- **Decopilot** — _"Roda em um agent sandbox."_ O agent executa em um sandbox gerenciado pelo Studio. Este é o padrão, sempre disponível, sem nada para instalar.
+
+**Local** — rode o agent na sua própria máquina. Até que um runtime local seja conectado, essas opções exibem **"Desktop not detected"** e ficam desabilitadas.
+
+- **Decopilot** — o harness do Decopilot, rodando no seu desktop
+- **Claude Code** — conduz o agent com o CLI do [Claude Code](https://claude.com/claude-code)
+- **Codex** — conduz o agent com o CLI do Codex
+
+Rodar localmente significa que o sandbox do agent vive na sua máquina: ele pode ler e escrever seus arquivos locais, usar suas ferramentas instaladas e rodar com suas próprias credenciais — enquanto o Studio continua tratando o chat, as connections e o logging. O cloud sandbox, por outro lado, é totalmente gerenciado e isolado por agent.
+
+Para habilitar as opções locais, conecte um runtime de desktop com `deco link`. O Studio detecta a connection e acende quaisquer harnesses que ela expõe — **Claude Code** e **Codex** aparecem assim que seu CLI estiver disponível na máquina vinculada.
+
+<Callout type="tip">
+  Cloud é o padrão certo para execuções sem supervisão e para colegas de time que não deveriam precisar de uma configuração local. Recorra a um runtime local quando o agent precisar da sua máquina — seus arquivos, suas credenciais ou um coding harness como Claude Code ou Codex.
 </Callout>
 
-## O que são Agentes?
+## Um agent é um MCP virtual
 
-**Agentes** são MCPs virtuais de propósito único otimizados para tarefas específicas. Enquanto [Projetos](/pt-br/studio/projects) fornecem ambientes de trabalho de uso geral, agentes focam especificamente em realizar uma coisa bem feita.
+Cada agent no Studio é exposto como seu próprio **endpoint MCP**: um pacote curado de tools, resources e instruções ao qual qualquer client compatível com MCP pode se conectar. Você pode pensar em um agent como um "MCP server virtual" que você monta visualmente — escolha algumas tools das suas connections, adicione instruções, e você publicou um endpoint MCP focado que seu time (ou seus outros agents) pode usar.
 
-Agentes fornecem:
+É por isso que o mesmo agent pode ser usado de três formas diferentes:
 
-- **Capacidades focadas** - Ferramentas curadas para tarefas específicas
-- **Contexto específico da tarefa** - Recursos e diretrizes adaptados ao propósito do agente
-- **Design de propósito único** - Objetivo claro sem complexidade desnecessária
+- **Pelo chat do Studio** — abra o agent e converse com ele
+- **Por um client externo** — aponte Cursor, Claude Desktop ou qualquer MCP client para o endpoint do agent
+- **Por outro agent ou tool** — chame-o programaticamente via MCP
 
-Agentes são configurações disponíveis em toda a organização, acessíveis na barra lateral na seção **Agents**. Cada agente pode ser iniciado em qualquer escopo (tarefas, subtarefas, projetos) com contexto de execução limpo, fornecendo um espaço de trabalho focado para sua tarefa específica.
+Quando duas connections anexadas expõem uma tool com o mesmo nome, a da connection listada primeiro vence; a duplicata é descartada silenciosamente.
 
-A distinção principal: projetos organizam capacidades para contextos de trabalho amplos, enquanto agentes otimizam para execução de propósito único.
+## Anexando connections
 
-## Como os Agentes Funcionam
+Connections ficam em **Settings → Connections** no nível da org. Dentro da aba **Settings** de um agent, você escolhe quais connections (e quais tools específicas de cada uma) o agent pode usar. Escolha de forma restrita. Um agent com três tools bem escolhidas se comporta de forma mais previsível do que um com trinta.
 
-Agentes seguem o mesmo padrão das habilidades padrão de agente (arquivos `SKILL.md`), tornando-os familiares e fáceis de entender:
+## Agents integrados
 
-**Como habilidades SKILL.md:**
-- **Descrição** - Breve explicação do que o agente faz e quando usá-lo (como o campo `description:` no `SKILL.md`)
-- **Instruções** - Diretrizes detalhadas de como o agente opera (como o corpo de um arquivo `SKILL.md`)
+O Studio já vem com agents para gerenciar a própria plataforma — criar outros agents, configurar connections, gerenciar membros, navegar na store. Eles estão disponíveis imediatamente, sem configuração.
 
-**Mais capacidades de MCP Virtual:**
-- **Nome** - Identifica o agente (ex: "Agente de Deploy", "Agente de Pesquisa")
-- **Ferramentas** - Ações que o agente pode executar (selecione de [conexões](/pt-br/studio/connections) ou defina inline)
-- **Recursos** - Contexto adicional e documentação
-- **Prompts** - Templates de workflow
+## Projetando um bom agent
 
-[decopilot](/pt-br/studio/decopilot/overview) usa o campo **descrição** para entender quando iniciar cada agente — assim como usa descrições de habilidades para saber quando invocá-las. Isso torna os agentes descobríveis e automaticamente disponíveis quando relevantes para a tarefa em questão.
+**Mantenha o escopo restrito.** Um agent que faz uma coisa bem é mais confiável e fácil de manter do que um que tenta fazer tudo. Se você se pegar anexando tools não relacionadas, crie um segundo agent.
 
-Como agentes são [MCPs Virtuais](/pt-br/studio/virtual-mcps), você pode compô-los a partir de conexões existentes, definir capacidades inline ou combinar ambas as abordagens.
+**Escreva instruções como um handoff.** Workflow passo a passo, casos extremos para observar, o que fazer quando algo dá errado. O campo de instruções é onde vivem a personalidade e o julgamento do agent.
 
-## Exemplo: Agente de Fulfillment de Pedidos
+**Escolha tools deliberadamente.** Um agent de atendimento ao cliente precisa de tools de consulta de pedidos e reembolso — não de tools de estoque ou marketing.
 
-Um agente de fulfillment de pedidos pode agregar ferramentas do Shopify para gestão de pedidos, ferramentas do ShipStation para geração de etiquetas de envio e ferramentas do Slack para notificações da equipe de fulfillment. O agente lida com o fulfillment de pedidos com um conjunto focado de ferramentas — buscar pedidos pendentes, verificar estoque, gerar etiquetas de envio, enviar notificações de rastreamento — tudo dentro do seu escopo de propósito único.
+**Bom**: "Order Fulfillment Agent" — processa e envia pedidos
+**Amplo demais**: "Ecommerce Operations Agent" — fulfillment, atendimento ao cliente, estoque, marketing, analytics…
 
-## Agentes Integrados
+## Formas de rodar um agent
 
-O deco Studio inclui agentes integrados para operações comuns do mesh. Esses agentes usam o **Management MCP** — um MCP autorreferencial que expõe capacidades de gerenciamento do mesh através do protocolo MCP.
-
-Agentes integrados disponíveis prontos para uso:
-
-- **Gerenciamento de Agentes** - Criar, editar e excluir agentes
-- **Gerenciamento de Conexões** - Gerenciar conexões de servidores MCP
-- **Gerenciamento de Permissões** - Controlar acesso e autorização
-- **MCP Store** - Navegar e instalar MCPs da loja
-- **Gerenciamento de Usuários** - Convidar e gerenciar membros da organização
-
-Esses agentes operam no nível da organização e utilizam ferramentas do Management MCP para configuração da plataforma.
-
-## Princípios de Design de Agentes
-
-**Foco em propósito único**: Cada agente deve fazer uma coisa bem. Escopo restrito melhora clareza, confiabilidade e manutenibilidade.
-
-**Descrição clara**: Escreva descrições que ajudem o decopilot a entender quando iniciar o agente. Use o padrão `[Verbo] + [Objeto] + [Contexto]`:
-- "Processar pedidos de clientes e gerar etiquetas de envio"
-- "Analisar dados de vendas para otimização de estoque"
-- "Processar reembolsos e devoluções de clientes"
-
-**Instruções detalhadas**: Forneça diretrizes claras no campo de instruções — assim como faria em um arquivo `SKILL.md`. Inclua restrições, etapas do workflow e diretrizes comportamentais.
-
-**Seleção de ferramentas**: Escolha ferramentas alinhadas com a descrição do agente. Um agente de atendimento ao cliente precisa de ferramentas de consulta de pedidos e reembolso; um agente de estoque precisa de ferramentas de verificação de estoque e alertas. Acesso muito amplo a ferramentas dilui o foco.
-
-**Bom**: "Agente de Fulfillment de Pedidos" (processa e envia pedidos)
-**Muito amplo**: "Agente de Operações de Ecommerce" (fulfillment, atendimento ao cliente, estoque, marketing, analytics...)
-
-## Usando Agentes
-
-Agentes podem ser usados de várias formas:
-
-- **Iniciados pelo decopilot** - Agentes criados sob demanda com contexto limpo para tarefas específicas
-- **Agentes integrados** - Agentes pré-configurados para operações do mesh, prontos imediatamente
-- **Agentes personalizados** - Agentes específicos de domínio para os workflows únicos da sua equipe
-
-Ao trabalhar com um agente, você verá apenas as ferramentas, recursos e prompts configurados para o propósito específico daquele agente. Essa visão focada ajuda você a manter o foco sem distrações.
-
-## Resumo dos Benefícios
-
-Agentes fornecem capacidades focadas com vantagens claras:
-
-- **Capacidades focadas** - Design de propósito único garante clareza e confiabilidade
-- **Contexto limpo** - Agentes iniciados começam com contexto limpo para sua tarefa
-- **Padrões reutilizáveis** - Defina uma vez, use em projetos e workflows
-- **Operações integradas** - Agentes pré-configurados para tarefas comuns do mesh
-- **Gerenciamento autorreferencial** - O Management MCP permite que agentes gerenciem o próprio mesh
+- **Interativamente** — abra o agent e converse
+- **Sem supervisão** — anexe uma [automation](/pt-br/studio/automations) que o execute em um schedule ou evento
+- **Pelo Decopilot** — o Decopilot pode passar uma tarefa para um agent especialista em uma subtask (veja [Decopilot](/pt-br/studio/decopilot/overview))
+- **Pelo seu próprio código** — chame seu endpoint MCP diretamente
 
 ---
 
-**Próximos passos**: Aprenda sobre [MCPs Virtuais](/pt-br/studio/virtual-mcps) para entender a fundação, explore o [decopilot](/pt-br/studio/decopilot/overview) para ver como agentes são iniciados dinamicamente, ou configure [Automações](/pt-br/studio/automations) para execução autônoma de agentes em schedules e eventos.
+**Próximo:** Anexe tools via [Connections](/pt-br/studio/connections), execute agents sem supervisão com [Automations](/pt-br/studio/automations), ou veja [Decopilot](/pt-br/studio/decopilot/overview) para entender como o assistente integrado do Studio usa agents.

@@ -1,0 +1,61 @@
+---
+title: Agentic CMS
+description: Um CMS visual para storefronts e sites de conteúdo, com agents de IA que operam o site junto com você
+icon: LayoutTemplate
+---
+
+import Callout from "../../../../components/ui/Callout.astro";
+
+## O que é o Agentic CMS?
+
+O **Agentic CMS** é a próxima geração do [deco.cx](https://docs.deco.cx) — um CMS visual para storefronts e experiências digitais ricas em conteúdo, construído sobre o [deco Studio](/pt-br/studio/overview). É o carro-chefe da [suíte Digital Experience](/pt-br/studio/digital-experience) da deco.
+
+São duas coisas em uma:
+
+- **Um CMS** — componentes React type-safe, loaders em TypeScript, theme editor, versionamento baseado em Git, colaboração em tempo real entre desenvolvedores e times de conteúdo. O mesmo modelo que o deco.cx estabeleceu, refinado.
+- **Um time de agents** — workers de IA focados que produzem conteúdo, ajustam o design, enriquecem o catálogo e mantêm o site saudável. Eles trabalham junto com o seu time e você mantém o controle.
+
+## Para quem é
+
+Times que gerenciam **storefronts** (ecommerce, marketplaces) e **sites orientados a conteúdo** (mídia, D2C de marca, bases de conhecimento) que querem:
+
+- A colaboração e a performance de uma stack code-first
+- A velocidade e o alcance de um editor visual
+- Agents de IA que escalam o trabalho operacional — sem esconder o que estão fazendo
+
+Ele elimina a fronteira entre "o time de engenharia que mantém o site" e "o time de conteúdo que o preenche." Ambos trabalham no mesmo produto, com agents cuidando do trabalho repetitivo no meio do caminho.
+
+## Git-native, por design
+
+Toda mudança no seu site — seja feita por uma pessoa no editor visual ou por um agent a partir do chat — passa pelo mesmo workflow Git que você já conhece:
+
+1. A mudança é commitada em uma branch
+2. Um pull request é aberto com um diff que seu time pode revisar
+3. Revisores aprovam ou pedem mudanças
+4. No merge, a mudança vai para o seu site
+
+Esse é o mesmo modelo que o deco.cx pioneirou, e ele se mantém diretamente. **Agents não pulam a revisão.** Eles abrem PRs como qualquer outra pessoa, e seu time continua sendo a fonte da verdade — seu repo, suas branches, seu histórico. Faça rollback, audite e rastreie qualquer mudança até seu autor, humano ou agent.
+
+## Como se relaciona com o deco.cx
+
+Se você está vindo do deco.cx, o Agentic CMS é a mesma linha de produto — os mesmos conceitos centrais (sections, loaders, blocks, theme editor, Decopilot), agora plugados no Studio para que seu storefront venha com um control plane de agents completo ao seu redor.
+
+| conceito deco.cx | Agentic CMS hoje |
+|---|---|
+| Sections (componentes React/TS) | Iguais, com variantes opcionais geradas por agents |
+| Loaders (busca de dados) | Iguais, agora visíveis como tools para seus agents |
+| Blocks (unidades reutilizáveis) | Iguais |
+| Theme Editor | Igual |
+| Decopilot | Promovido a assistente de primeira classe com escopo no seu site |
+| Admin UI | Agora parte do agent shell do Studio |
+| Git workflow | Igual — toda mudança passa pela revisão de PR |
+
+Projetos deco.cx existentes continuam funcionando. A migração adiciona a camada de agents; ela não substitui sua base de código.
+
+## Primeiros passos
+
+Abra o Studio, encontre o agent **deco Site Editor** e aponte-o para o seu site.
+
+<Callout type="info">
+  O Agentic CMS não é um produto separado — é uma configuração de Studio + o CMS do deco.cx, empacotada para times de storefront. Tudo o que você aprende sobre agents, connections e automations do Studio se aplica diretamente.
+</Callout>

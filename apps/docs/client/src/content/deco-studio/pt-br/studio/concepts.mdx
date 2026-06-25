@@ -1,168 +1,102 @@
 ---
-title: Conceitos
-description: Os conceitos fundamentais que sustentam o deco Studio
+title: Conceitos-chave
+description: Como o deco Studio é organizado e como as peças se encaixam
 icon: BookOpen
 ---
 
-## Entidades Principais
+import Callout from "../../../../components/ui/Callout.astro";
 
-- **Organização**: o limite de tenant de nível superior. Tudo (conexões, agentes, projetos, logs) é escopado por organização.
-- **Membros**: usuários convidados para uma organização com papéis e permissões específicos.
-- **Conexão**: um endpoint MCP upstream configurado (geralmente HTTP), opcionalmente com credenciais armazenadas. Veja [Conexões](/pt-br/studio/connections).
-- **MCP Virtual**: agrega ferramentas/recursos/prompts de servidores conectados em um único MCP. Agentes e Projetos são ambos MCPs Virtuais diferenciados por um campo `subtype`. Veja [MCPs Virtuais](/pt-br/studio/virtual-mcps).
-- **Agente**: um MCP Virtual com subtype `agent` — focado em tarefas específicas com conjunto curado de ferramentas. Veja [Agentes](/pt-br/studio/agents).
-- **Projeto**: um MCP Virtual com subtype `project` — organiza ferramentas, recursos, prompts e configurações específicas de projeto. Veja [Projetos](/pt-br/studio/projects).
-- **Automação**: execuções autônomas de agentes em schedule ou gatilho de evento. Veja [Automações](/pt-br/studio/automations).
-- **Thread**: uma sessão de conversa persistente com um agente. Armazena mensagens de chat e rastreia status (`in_progress`, `requires_action`, `completed`, `failed`).
-- **Event Bus**: sistema pub/sub entre conexões seguindo a spec CloudEvents v1.0. Suporta entrega agendada, eventos recorrentes via cron e garantias de entrega at-least-once.
-- **Store**: o marketplace integrado para descobrir e instalar servidores MCP a partir da Deco Store e registros da comunidade. Veja [Store](/pt-br/studio/store).
-- **Provedor de IA**: um fornecedor de modelos de IA configurado (Anthropic, OpenRouter, Google, Deco AI Gateway) que fornece modelos para o Decopilot e agentes. Veja [Provedores de IA](/pt-br/studio/ai-providers).
-- **Chaves de Provedor de IA**: API keys criptografadas para provedores de modelos de IA, escopadas por organizacao. Veja [Provedores de IA](/pt-br/studio/ai-providers).
-- **Tags**: labels no nivel da organizacao para categorizar e filtrar membros.
+## Como o Studio é organizado
 
-## Entendendo Agentes vs. Projetos
+O Studio usa um pequeno conjunto de conceitos que se constroem uns sobre os outros. Depois que você entende esses, todo o resto vem por consequência.
 
-Tanto agentes quanto projetos são MCPs Virtuais armazenados na mesma tabela `connections`, diferenciados por um campo `subtype` (`agent` ou `project`). Eles servem propósitos diferentes no seu workflow:
+- **Organization** — seu workspace de nível mais alto. Tudo pertence a uma org: members, agents, connections, automations e logs.
+- **Agent** — uma IA configurada para um trabalho específico: um conjunto focado de tools, instruções claras e um propósito restrito. Agents são a superfície de trabalho do Studio. Veja [Agents](/pt-br/studio/agents).
+- **Connection** — uma tool ou serviço que você plugou (GitHub, Slack, um banco de dados, sua própria API). As credenciais são armazenadas uma vez e compartilhadas com segurança. Veja [Connections](/pt-br/studio/connections).
+- **Thread** — uma sessão de conversa dentro de um agent. O Studio salva o histórico para você poder voltar a um trabalho em andamento.
+- **Automation** — uma execução de agent que dispara em um schedule ou em resposta a um evento. Veja [Automations](/pt-br/studio/automations).
+- **AI Provider** — um modelo de IA configurado (Anthropic, Google, OpenRouter ou o Deco AI Gateway) que alimenta seus agents e o Decopilot. Veja [AI Providers](/pt-br/studio/ai-providers).
+- **Member** — uma pessoa na sua organização com um role e permissões.
 
-**Projetos** são unidades organizacionais de uso geral para trabalho contínuo:
-- **Escopo amplo** - Cobrem múltiplos workflows e capacidades dentro de um contexto de trabalho
-- **Longa duração** - Evoluem ao longo do tempo conforme o trabalho progride
-- **Colaboração em equipe** - Espaço de trabalho compartilhado para membros da equipe
-- **Exemplo** - Projeto "Migração de Loja Multi-Marca" com ferramentas de sincronização de estoque, gestão de pedidos e migração de dados de clientes
-- **Quando usar** - Organizando trabalho por linha de produto, cliente, equipe ou iniciativa
+---
 
-**Agentes** são configurações em toda a organização que podem ser iniciados em qualquer contexto:
-- **Escopo restrito** - Objetivo claro e focado com conjunto curado de ferramentas
-- **Específico para tarefas** - Projetados para operações ou workflows particulares
-- **Estado de execução limpo** - Cada instância começa com contexto limpo em tarefas, subtarefas ou projetos
-- **Exemplo** - "Agente de Processamento de Reembolsos" que apenas processa reembolsos e autorizações de devolução de clientes
-- **Quando usar** - Operações focadas, gerenciamento integrado do mesh ou workflows especializados
+## Anatomia da UI do Studio
 
-Ambos compartilham a mesma arquitetura e modelo de armazenamento de MCP Virtual, mas seus princípios de design diferem: projetos organizam capacidades para contextos de trabalho amplos, enquanto agentes são configurações reutilizáveis que podem ser instanciadas sob demanda com estado de execução limpo.
+### Home e a sidebar
 
-## Primitivas do Protocolo MCP
+Quando você abre o Studio, cai na **tela inicial**: um único campo de chat — _"What's on your mind?"_ — alimentado pelo **Decopilot**, o assistente nativo do Studio, além de um grid customizável de atalhos para seus agents. É só começar a digitar para iniciar; a conversa que você começa fica salva em **Decopilot** na sidebar.
 
-O deco Studio é totalmente compatível com o [MCP](https://modelcontextprotocol.io/). O Model Context Protocol define três primitivas principais:
+A sidebar fixa à esquerda é a mesma em qualquer lugar que você vá:
 
-- **[Ferramentas](https://modelcontextprotocol.io/docs/concepts/tools)**: Funções executáveis expostas por servidores MCP que permitem que agentes de IA executem ações (criar arquivos, consultar bancos de dados, chamar APIs, etc.).
-- **[Recursos](https://modelcontextprotocol.io/docs/concepts/resources)**: Fontes de dados somente leitura com URIs (como `org://`, `project://`, `agent://`) que fornecem contexto para agentes de IA.
-- **[Prompts](https://modelcontextprotocol.io/docs/concepts/prompts)**: Templates reutilizáveis com variáveis para workflows e operações comuns.
+- **Home** — o campo de chat da tela inicial.
+- **Library** — um navegador de arquivos para o filesystem compartilhado da sua organização. Veja [Library](/pt-br/studio/library).
+- **Threads** — suas conversas recentes, agrupadas por agent (as do Decopilot ficam em "Decopilot"). Clique em uma para retomá-la; comece uma nova pela Home ou pelo botão **+** / "Browse agents".
+- **Settings** — abre a partir da parte de baixo da sidebar; tudo que não está atrelado a um único agent.
 
-O deco Studio trabalha exclusivamente com clientes e servidores compatíveis com MCP, fornecendo uma camada de protocolo padrão para comunicação de agentes de IA. Para a arquitetura completa do protocolo, veja a [documentação do Model Context Protocol](https://modelcontextprotocol.io/docs/concepts/architecture).
+### O workspace do agent
 
-## Capacidades da Plataforma
+Abra um agent — ou inicie uma thread com ele — e a tela se divide em duas:
 
-### Gerenciamento de Usuários e Controle de Acesso
+- **Esquerda — chat.** Converse com o agent em linguagem natural; ele usa as tools anexadas para fazer o trabalho. As mensagens anteriores ficam aqui. Acima do campo de entrada ficam o **model picker** e o **runtime picker** (onde o agent roda — veja [Agents](/pt-br/studio/agents#where-an-agent-runs)).
+- **Direita — um painel com abas.** Quais abas aparecem depende do agent:
+  - **Settings** — instruções, connections anexadas, files & skills (exibido se você pode gerenciar agents)
+  - **Automations** — schedules e gatilhos de eventos (sempre disponível)
+  - **Preview** — um preview ao vivo, para agents baseados em um repo ou site
+  - **Content** — edite páginas e seções, para agents baseados em conteúdo
+  - **Review changes** — review de branch e PR, para agents Git-native com um pull request aberto
 
-O deco Studio fornece gerenciamento de usuários no nível da organização com permissões granulares:
+Tudo que você precisa para usar, configurar e monitorar um único agent fica nessa mesma tela. Veja [Agents](/pt-br/studio/agents) para o detalhamento completo.
 
-- **Organizações multi-usuário** - Convide membros da equipe e gerencie seu acesso
-- **Permissões baseadas em papéis** - Controle o que os usuários podem ver e fazer dentro da organização
-- **Gerenciamento de API keys** - Gere API keys escopadas para acesso programático
-- **Permissões por conexão** - Restrinja acesso a ferramentas por conexão (ex: acesso somente leitura ao GitHub)
+### Settings
 
-Veja [Gerenciamento de Usuários](/pt-br/studio/user-management) para detalhes sobre como gerenciar acesso da equipe.
+Tudo que não está atrelado a um único agent fica em **Settings**. Abra a partir do canto inferior esquerdo da sidebar. Lá dentro você encontra:
 
-### Segurança e Gerenciamento de Credenciais
+- **Organization** — General, Brand Context, AI Providers, Secrets, Buckets
+- **Build** — Connections, Agents (o catálogo), Automations, Store
+- **Manage** — Monitor, Members, Roles, Security (SSO)
+- **Extensions** — Plugins
+- **Account** — Profile & Preferences
 
-- **Vault de Credenciais**: Credenciais de conexão são criptografadas em repouso e só são descriptografadas no momento da requisição
-- **Menor privilégio**: API keys e permissões são escopadas para ferramentas específicas
-- **Logs de auditoria**: Toda invocação de ferramenta é registrada com identidade do chamador, entradas e saídas
-- **Zero trust**: Todas as requisições são autenticadas e autorizadas, independente da origem
+Quando outras páginas destes docs dizem "vá em Connections" ou "abra o Monitor", elas se referem a essas seções de Settings.
 
-### Monitoramento Integrado
+---
 
-O deco Studio inclui monitoramento de primeira classe para todo o tráfego MCP:
+## Como o protocolo funciona
 
-- **Logs de invocação de ferramentas**: Veja cada chamada de ferramenta com entradas, saídas, timing e chamador
-- **Rastreamento de requisições**: Siga requisições através de múltiplos servidores MCP
-- **Replay e debug**: Reproduza invocações passadas de ferramentas para entender o comportamento
-- **Analytics de uso**: Entenda quais ferramentas e capacidades estão sendo utilizadas
+O deco Studio é construído sobre o [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), um padrão aberto para conectar clients de IA a tools e serviços. Você não precisa entender o MCP para usar o Studio, mas conhecer os três blocos de construção ajuda:
 
-Veja [Monitoramento](/pt-br/studio/monitoring) para detalhes.
+- **Tools** — ações que uma IA pode executar (buscar em um banco de dados, enviar um email, criar um arquivo)
+- **Resources** — fontes de dados somente leitura que dão contexto a uma IA (documentos, configs, dados da org)
+- **Prompts** — templates reutilizáveis para workflows comuns, com variáveis que você pode preencher
 
-## Como a Plataforma Funciona
+O Studio fica entre seus clients de IA (como Claude Desktop ou Cursor) e suas tools, cuidando de autenticação, roteamento e logging para cada requisição.
 
-O deco Studio fica entre clientes MCP e servidores MCP, fornecendo uma camada de controle unificada:
+---
+
+## Como uma requisição flui pelo Studio
+
+Quando um agent chama uma tool, eis o que acontece:
 
 ```
-┌─────────┐                    ┌──────────┐                  ┌────────────┐
-│ Cliente  │ ──[autenticar]────▶│ deco Studio │ ──[com creds]──▶│ Servidor   │
-│ (Cursor)│                    │          │                  │ MCP(GitHub)│
-└─────────┘ ◀──[resposta]──────└──────────┘ ◀─[resposta]─────└────────────┘
-                                     │
-                                     └──▶ [log de auditoria]
+┌─────────┐                    ┌──────────────┐                  ┌────────────┐
+│ Client  │ ──[authenticate]──▶│  deco Studio │ ──[with creds]──▶│ MCP Server │
+│ (Cursor)│                    │              │                  │  (GitHub)  │
+└─────────┘ ◀──[response]──────└──────────────┘ ◀─[response]─────└────────────┘
+                                      │
+                                      └──▶ [audit log]
 ```
 
-### Fluxo de Requisição
+1. O client se autentica no Studio
+2. O Studio verifica se o client tem permissão para usar a tool solicitada
+3. O Studio recupera as credenciais armazenadas para aquela connection
+4. O Studio encaminha a requisição para o serviço upstream
+5. O Studio registra a invocação — tool, timing, inputs, outputs e quem chamou
+6. O Studio retorna a resposta para o client
 
-1. **Cliente se autentica** no deco Studio (sessão OAuth ou API key)
-2. **Cliente faz requisição** para uma Conexão, Agente, Projeto ou o Management MCP
-3. **deco Studio autoriza** a requisição contra as permissões do cliente
-4. **deco Studio carrega credenciais** do vault criptografado para a(s) Conexão(ões) alvo
-5. **deco Studio faz proxy** da requisição do protocolo MCP para o(s) servidor(es) upstream
-6. **deco Studio registra** a invocação para monitoramento e auditoria
-7. **deco Studio retorna** a resposta para o cliente
+As credenciais nunca saem do Studio, toda ação é registrada e o acesso é consistente independentemente de qual client fez a requisição.
 
-Este fluxo garante que clientes nunca lidam com credenciais diretamente, todo acesso é autorizado consistentemente e toda operação é observável.
+---
 
-## Padrões Arquiteturais
+## Por que o monitoramento é nativo
 
-### Multi-Tenancy Através de Organizações
-
-Organizações fornecem o limite de isolamento de nível superior. Tudo no deco Studio é **escopado por organização**:
-
-- Conexões, MCPs Virtuais, Projetos e Agentes são específicos da organização
-- Credenciais armazenadas em vaults isolados por organização
-- Membros, papéis e permissões são escopados por organização
-- Logs de monitoramento e trilhas de auditoria isolados por organização
-
-Este modelo de multi-tenancy permite que provedores SaaS atendam múltiplos clientes, empresas separem departamentos e agências isolem organizações de clientes.
-
-### Composição ao Invés de Configuração
-
-O deco Studio segue um **modelo de composição** ao invés de exigir configuração complexa:
-
-**Conecte** servidores MCP individuais (GitHub, Slack, bancos de dados)
-↓
-**Componha-os** em MCPs Virtuais com superfícies curadas de ferramentas
-↓
-**Organize** em Projetos (para equipes) e Agentes (para tarefas específicas)
-↓
-**Exponha** através de um único endpoint compatível com MCP
-
-Este padrão permite construir capacidades complexas a partir de componentes simples e reutilizáveis sem mudanças de infraestrutura ou deploys.
-
-## Decisões de Design
-
-### Por que MCPs Virtuais São Editáveis
-
-Servidores MCP tradicionais expõem um conjunto fixo de ferramentas definidas em seu código. Os MCPs Virtuais do deco Studio são **editáveis em tempo de execução** porque são configuração, não código. Isso permite:
-
-- **Superfícies dinâmicas de ferramentas**: Adicione ou remova ferramentas sem deploys
-- **Criação de recursos**: Gere documentação e contexto dinamicamente
-- **Evolução de prompts**: Atualize templates com base em padrões de uso
-- **Workflows sem código**: Não-desenvolvedores podem compor capacidades
-
-Essa editabilidade é o motivo pelo qual Projetos e Agentes são MCPs Virtuais — eles precisam evoluir conforme o trabalho progride.
-
-### Por que o Monitoramento é Integrado
-
-Em deploys MCP tradicionais, observabilidade é uma preocupação secundária — cada cliente registra logs independentemente (ou não registra), cada servidor MCP tem sua própria estratégia de logging, e não há visão unificada do uso de ferramentas. O deco Studio torna o monitoramento **de primeira classe** registrando toda invocação de ferramenta que passa pela plataforma.
-
-Este monitoramento integrado permite:
-- **Debugging**: Rastreie falhas através de múltiplos servidores MCP
-- **Visibilidade de custos**: Veja quais ferramentas são caras ou lentas
-- **Padrões de uso**: Entenda quais capacidades as equipes realmente usam
-- **Auditoria de segurança**: Rastreie quem acessou o quê, quando e por quê
-
-### Por que o Protocolo MCP
-
-O deco Studio poderia ter inventado seu próprio protocolo para comunicação agente-ferramenta, mas construir sobre o MCP fornece:
-
-- **Compatibilidade com o ecossistema**: Funciona com qualquer cliente (Claude Desktop, Cursor) e servidor compatível com MCP
-- **Semântica padrão**: Ferramentas, Recursos e Prompts têm significados bem definidos
-- **Especificação aberta**: MCP é neutro em relação a fornecedores e evolui através de contribuições da comunidade
-- **Efeitos de rede**: Conforme o ecossistema MCP cresce, usuários do deco Studio se beneficiam automaticamente
-
-Ao ser nativo MCP, o deco Studio se torna infraestrutura para o ecossistema mais amplo, não um silo proprietário.
+Sem um control plane, cada client gerencia seus próprios logs — ou não registra nada. O Studio registra cada chamada de tool que passa pela plataforma, criando um único lugar para debugar falhas, acompanhar performance e auditar quem acessou o quê. Sem configuração extra. Veja [Monitoring](/pt-br/studio/monitoring).

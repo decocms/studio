@@ -1,40 +1,40 @@
 ---
-title: Contexto e tarefas
-description: Como o Decopilot gerencia memória e como usar subtarefas para trabalhos pesados
+title: Context e tasks
+description: Como o Decopilot gerencia memory e como usar subtasks para trabalhos pesados
 icon: Layers
 ---
 
 import Callout from "../../../../../components/ui/Callout.astro";
 
-O Decopilot organiza o trabalho como **tarefas** (suas conversas) e **subtarefas** (conversas paralelas focadas que se ramificam). Entender como elas compartilham memória ajuda você a fazer mais em uma única sessão.
+O Decopilot organiza o trabalho como **tasks** (suas conversas) e **subtasks** (conversas paralelas focadas que se ramificam). Entender como elas compartilham memory ajuda você a fazer mais em uma única sessão.
 
-## O que é uma tarefa?
+## O que é uma task?
 
-Uma **tarefa** é sua conversa com o Decopilot — onde você conversa, o Decopilot usa ferramentas e o trabalho é feito. Toda tarefa roda em um escopo (organização ou agente — veja [Visão geral](/pt-br/studio/decopilot/overview)) que determina quais instruções e ferramentas são carregadas.
+Uma **task** é sua conversa com o Decopilot — onde você conversa, o Decopilot usa tools e o trabalho é feito. Toda task roda em um escopo (org ou agent — veja [Visão geral](/pt-br/studio/decopilot/overview)) que determina quais instruções e tools são carregadas.
 
-Toda tarefa tem um destes quatro estados:
+Toda task tem um destes quatro estados:
 
-- **Em andamento** — o agente está trabalhando ou aguardando sua próxima mensagem
-- **Requer ação** — pausada, aguardando seu input (uma ferramenta precisa de aprovação ou ele fez uma pergunta)
-- **Concluída** — o trabalho terminou com sucesso
-- **Falhou** — algo deu errado ou a tarefa expirou
+- **In progress** — o agent está trabalhando ou aguardando sua próxima mensagem
+- **Requires action** — pausada, aguardando seu input (uma tool precisa de aprovação ou ele fez uma pergunta)
+- **Completed** — o trabalho terminou com sucesso
+- **Failed** — algo deu errado ou a task expirou
 
-Tarefas expiram após **30 minutos de inatividade**. Se você está trabalhando em algo mais longo, envie uma mensagem periodicamente para mantê-la ativa.
+Tasks expiram após **30 minutos de inatividade**. Se você está trabalhando em algo mais longo, envie uma mensagem periodicamente para mantê-la ativa.
 
 ---
 
-## Como a memória se enche
+## Como a memory se enche
 
-Todo modelo de IA tem um limite de quanto pode reter em memória ao mesmo tempo — suas instruções, as ferramentas disponíveis e todo o histórico da conversa contam para esse limite. Quanto mais você discutiu, mais memória é ocupada.
+Todo model de IA tem um limite de quanto pode reter em memory ao mesmo tempo — suas instruções, as tools disponíveis e todo o histórico da conversa contam para esse limite. Quanto mais você discutiu, mais memory é ocupada.
 
-Quando uma tarefa começa, o Decopilot carrega:
+Quando uma task começa, o Decopilot carrega:
 
 - Suas instruções e comportamentos centrais
 - Diretrizes do seu escopo atual
-- As ferramentas disponíveis nesse escopo
+- As tools disponíveis nesse escopo
 - Seu histórico de conversa até o momento
 
-Conforme a conversa cresce, o histórico ocupa mais espaço. Quando fica muito cheio, o Decopilot automaticamente resume as partes mais antigas e mantém o resumo no lugar — liberando espaço sem perder o contexto importante.
+Conforme a conversa cresce, o histórico ocupa mais espaço. Quando fica muito cheio, o Decopilot automaticamente resume as partes mais antigas e mantém o resumo no lugar — liberando espaço sem perder o context importante.
 
 ### A regra 40/80
 
@@ -45,43 +45,43 @@ Conforme a conversa cresce, o histórico ocupa mais espaço. Quando fica muito c
 Você pode acionar isso manualmente com o comando `/compact` — útil antes de iniciar uma nova fase de trabalho complexo.
 
 <Callout type="tip">
-Use `/compact` quando estiver terminando uma grande tarefa e iniciando outra. Ele mantém a conversa enxuta sem perder o que importa.
+Use `/compact` quando estiver terminando uma grande task e iniciando outra. Ele mantém a conversa enxuta sem perder o que importa.
 </Callout>
 
 ---
 
-## Subtarefas
+## Subtasks
 
-Uma **subtarefa** é uma conversa separada que se ramifica da sua tarefa principal para lidar com trabalho focado. A diferença-chave: ela começa do zero — sem histórico da sua conversa principal.
+Uma **subtask** é uma conversa separada que se ramifica da sua task principal para lidar com trabalho focado. A diferença-chave: ela começa do zero — sem histórico da sua conversa principal.
 
-A subtarefa roda, faz o trabalho e retorna apenas um curto resumo para sua tarefa principal. Detalhes completos ficam salvos no histórico da tarefa, caso você precise.
+A subtask roda, faz o trabalho e retorna apenas um curto resumo para sua task principal. Detalhes completos ficam salvos no histórico da task, caso você precise.
 
-### Tarefa principal vs. subtarefa
+### Main task vs. subtask
 
-| | Tarefa principal | Subtarefa |
+| | Main task | Subtask |
 |---|---|---|
 | Histórico da conversa | Acumula ao longo do tempo | Começa do zero |
 | Pode fazer perguntas a você | Sim | Não |
-| Pode criar subtarefas | Sim | Não |
-| Retorno à tarefa pai | N/D | Apenas resumo |
+| Pode criar subtasks | Sim | Não |
+| Retorno à task pai | N/D | Apenas resumo |
 
-Subtarefas não podem fazer perguntas a você nem criar subtarefas adicionais — elas rodam de forma autônoma e reportam de volta.
+Subtasks não podem fazer perguntas a você nem criar subtasks adicionais — elas rodam de forma autônoma e reportam de volta.
 
-### Quando subtarefas ajudam
+### Quando subtasks ajudam
 
 **Pesquisa e análise** — aprofundar em dados, explorar opções ou investigar um problema. Você recebe a conclusão, não cada passo.
 
-**Cálculos complexos** — qualquer coisa que gera saída verbosa pertence a uma subtarefa. Você vê o resultado, não os bastidores.
+**Cálculos complexos** — qualquer coisa que gera saída verbosa pertence a uma subtask. Você vê o resultado, não os bastidores.
 
 **Verificações de qualidade** — auditorias, validação, revisões. Rode-as separadamente e receba um resumo de volta.
 
-**Trabalho em paralelo** — se dois pedaços de trabalho não dependem um do outro, rode-os como subtarefas separadas ao mesmo tempo.
+**Trabalho em paralelo** — se dois pedaços de trabalho não dependem um do outro, rode-os como subtasks separadas ao mesmo tempo.
 
-### Usando agentes especialistas em subtarefas
+### Usando agents especialistas em subtasks
 
-Você pode rodar uma subtarefa com um [agente](/pt-br/studio/agents) específico — um configurado para um domínio em particular. O agente traz seu próprio conjunto focado de ferramentas e instruções sem afetar sua conversa principal.
+Você pode rodar uma subtask com um [agent](/pt-br/studio/agents) específico — um configurado para um domínio em particular. O agent traz seu próprio conjunto focado de tools e instruções sem afetar sua conversa principal.
 
-**Exemplo**: sua tarefa principal é coordenar fulfillment de pedidos. Você inicia subtarefas usando um **Inventory Agent** para checar estoque, um **Shipping Agent** para planejar logística e um **Customer Service Agent** para preparar notas de suporte. Cada um roda de forma independente; sua tarefa principal recebe os resumos e coordena o resultado.
+**Exemplo**: sua main task é coordenar fulfillment de pedidos. Você inicia subtasks usando um **Inventory Agent** para checar estoque, um **Shipping Agent** para planejar logística e um **Customer Service Agent** para preparar notas de suporte. Cada um roda de forma independente; sua main task recebe os resumos e coordena o resultado.
 
 ---
 
@@ -89,14 +89,14 @@ Você pode rodar uma subtarefa com um [agente](/pt-br/studio/agents) específico
 
 **Fique de olho no indicador de uso** — quando estiver se aproximando de 40%, pense em encerrar a fase atual ou usar `/compact`.
 
-**Use subtarefas para trabalho pesado** — pesquisa, análise de dados, revisões de código e qualquer coisa que gere saídas longas deve acontecer em subtarefas. Mantenha os resumos na sua conversa principal.
+**Use subtasks para trabalho pesado** — pesquisa, análise de dados, code reviews e qualquer coisa que gere saídas longas deve acontecer em subtasks. Mantenha os resumos na sua conversa principal.
 
-**Seja seletivo com ferramentas** — o Decopilot carrega ferramentas na memória. Não habilite ferramentas que você não precisa para a tarefa atual.
+**Seja seletivo com tools** — o Decopilot carrega tools na memory. Não habilite tools que você não precisa para a task atual.
 
-**Rode coisas em paralelo** — se duas subtarefas não dependem uma da outra, inicie-as ao mesmo tempo.
+**Rode coisas em paralelo** — se duas subtasks não dependem uma da outra, inicie-as ao mesmo tempo.
 
-**Escreva prompts claros** — "Analisar tendências de demanda de vestuário no Q4" é mais útil do que "Fazer análise" quando revisar o histórico de tarefas depois.
+**Escreva prompts claros** — "Analisar tendências de demanda de vestuário no Q4" é mais útil do que "Fazer análise" quando revisar o histórico de tasks depois.
 
 ---
 
-**A seguir:** veja [Tools](/pt-br/studio/decopilot/tools) para a referência completa de ferramentas, ou [Agents](/pt-br/studio/agents) para agentes especialistas que você pode usar em subtarefas.
+**A seguir:** veja [Tools](/pt-br/studio/decopilot/tools) para a referência completa de tools, ou [Agents](/pt-br/studio/agents) para agents especialistas que você pode usar em subtasks.

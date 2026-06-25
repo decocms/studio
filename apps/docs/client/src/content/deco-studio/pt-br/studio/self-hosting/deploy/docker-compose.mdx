@@ -6,479 +6,147 @@ icon: Container
 
 import Callout from "../../../../../../components/ui/Callout.astro";
 
-Este guia cobre o deploy do deco Studio localmente usando Docker Compose para testes rápidos e desenvolvimento.
+Este guia cobre como rodar o deco Studio com Docker Compose para testes e avaliação self-hosted.
 
-Saiba mais: [o site do deco Studio](https://www.decocms.com)
+Código-fonte (arquivos de compose): [decocms/studio → deploy/docker-compose](https://github.com/decocms/studio/tree/main/deploy/docker-compose)
 
-Código-fonte (Docker Compose + README): [decocms/mesh/deploy](https://github.com/decocms/mesh/tree/main/deploy/docker-compose)
+## Visão geral
 
-## Visão Geral
+O Studio usa **PostgreSQL** como banco de dados. O repositório inclui dois arquivos de compose em `deploy/docker-compose/`:
 
-- **PGlite por padrão** - Funciona imediatamente sem configuração adicional
-- **PostgreSQL opcional** - Configure via variável de ambiente
-- **Persistência de dados** - Volume Docker para manter dados entre reinicializações
-- **Health checks** - Monitoramento automático de saúde da aplicação
-- **Configuração via variáveis** - Todas as configurações via `.env`
+- **`docker-compose.postgres.yml`** — Studio **mais um PostgreSQL embutido**. Funciona por conta própria; é o ponto de partida recomendado.
+- **`docker-compose.yml`** — apenas o Studio, esperando um PostgreSQL fornecido por você (uma instância gerenciada ou uma rodando na sua máquina).
+
+Ambos usam um volume Docker para persistência e um health check automático em `/health`.
 
 ## Pré-requisitos
 
 - Docker 20.10+
 - Docker Compose 2.0+
-- (Opcional) PostgreSQL se quiser usar banco de dados externo
+- Um banco PostgreSQL — embutido (via `docker-compose.postgres.yml`) ou o seu próprio
 
-## Início Rápido
-
-A forma mais rápida de testar a aplicação:
+## Início rápido (PostgreSQL embutido)
 
 ```bash
-# 1. Configurar variáveis de ambiente
-# Crie um arquivo .env com pelo menos BETTER_AUTH_SECRET
+# 1. Clone o repositório e entre no diretório do compose
+git clone https://github.com/decocms/studio.git
+cd studio/deploy/docker-compose
+
+# 2. Crie um .env com um auth secret e credenciais do Postgres
 cat > .env << EOF
 BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+POSTGRES_USER=studio_user
+POSTGRES_PASSWORD=$(openssl rand -base64 24)
+POSTGRES_DB=studio_db
 EOF
 
-# 2. Configurar autenticação
-cat > auth-config.json << 'EOF'
-{
-  "emailAndPassword": {
-    "enabled": true
-  }
-}
-EOF
+# 3. Inicie o Studio + PostgreSQL
+docker compose -f docker-compose.postgres.yml up -d
 
-# 3. Iniciar a aplicação
-docker compose up -d
-
-# 4. Acessar
+# 4. Acesse
 open http://localhost:3000
 ```
 
+O arquivo `docker-compose.postgres.yml` monta o `DATABASE_URL` automaticamente a partir das variáveis `POSTGRES_*`, usando o serviço `postgres` como host.
+
 <Callout type="tip">
-  Essas configurações são tudo que você precisa para começar a testar com o deco Studio. Se precisar de outras opções, confira as seções abaixo.
+  `BETTER_AUTH_SECRET` é a única variável estritamente obrigatória para a aplicação. As variáveis `POSTGRES_*` têm valores padrão, mas sempre defina uma senha de verdade.
 </Callout>
 
-### Configuração Mínima
+## Variáveis de ambiente
 
-O arquivo `.env` precisa de pelo menos:
-
-```bash
-BETTER_AUTH_SECRET=seu_secret_gerado_aqui
-```
-
-Todas as outras variáveis têm valores padrão que funcionam para testes locais.
-
-## Configuração
-
-### Variáveis de Ambiente
-
-O arquivo `.env` contém todas as configurações.
+Defina estas no `.env` ao lado do arquivo de compose:
 
 | Variável | Padrão | Descrição |
 |----------|---------|-------------|
+| `BETTER_AUTH_SECRET` | **obrigatório** | Secret de autenticação. Gere com `openssl rand -base64 32` |
 | `IMAGE_REPOSITORY` | `ghcr.io/decocms/studio/studio` | Repositório da imagem |
 | `IMAGE_TAG` | `latest` | Tag da imagem |
 | `PORT` | `3000` | Porta exposta no host |
-| `NODE_ENV` | `production` | Ambiente do Node.js |
-| `BETTER_AUTH_URL` | `http://localhost:3000` | URL para autenticação |
-| `BASE_URL` | `http://localhost:3000` | URL base da aplicação |
-| `BETTER_AUTH_SECRET` | **obrigatório** | Secret de autenticação |
-| `DATABASE_URL` | `file:///app/data/mesh.pglite` | URL do banco de dados (PGlite ou PostgreSQL) |
+| `BASE_URL` / `BETTER_AUTH_URL` | `http://localhost:3000` | URLs públicas da aplicação |
+| `DATABASE_URL` | veja abaixo | Connection string do PostgreSQL |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `studio_user` / — / `studio_db` | Credenciais do Postgres embutido (apenas no compose postgres) |
 
-## Usando PGlite (Padrão)
+O container roda como usuário `1001:1001` e persiste dados no volume `studio-data`; o Postgres embutido persiste em `postgres-data`.
 
-PGlite é o padrão e não requer configuração adicional:
+## Usando seu próprio PostgreSQL
 
-```bash
-# .env
-DATABASE_URL=file:///app/data/mesh.pglite
-```
-
-Os dados serão persistidos no volume Docker `mesh-data` e mantidos entre reinicializações.
-
-**Vantagens:**
-- ✅ Zero configuração
-- ✅ Funciona imediatamente
-- ✅ Ideal para desenvolvimento e testes
-
-**Limitações:**
-- ⚠️ Apenas 1 instância (não escalável horizontalmente)
-- ⚠️ Performance limitada para grandes volumes de dados
-
-## Usando PostgreSQL
-
-Para usar PostgreSQL, você tem duas opções:
-
-### Opção 1: Usar docker-compose.postgres.yml (Recomendado)
-
-Já existe um arquivo `docker-compose.postgres.yml` pronto para uso.
-
-Configure no `.env`:
-
-```bash
-POSTGRES_USER=mesh_user
-POSTGRES_PASSWORD=senha_segura_aqui
-POSTGRES_DB=mesh_db
-```
-
-Inicie com PostgreSQL incluído:
-
-```bash
-docker compose -f docker-compose.postgres.yml up -d
-```
-
-A `DATABASE_URL` será configurada automaticamente, mas você pode especificá-la se necessário:
-
-```bash
-DATABASE_URL=postgresql://mesh_user:senha_segura_aqui@postgres:5432/mesh_db
-```
-
-### Opção 2: PostgreSQL Externo
-
-Se você já tem um PostgreSQL rodando (local ou remoto):
+Para apontar o Studio para um banco externo, use o `docker-compose.yml` base e defina `DATABASE_URL`:
 
 ```bash
 # .env
-DATABASE_URL=postgresql://usuario:senha@host:5432/nome_do_banco
+BETTER_AUTH_SECRET=your_generated_secret_here
+DATABASE_URL=postgresql://user:password@host:5432/database_name
 ```
 
-**Exemplo com PostgreSQL local:**
-
 ```bash
-DATABASE_URL=postgresql://postgres:password@host.docker.internal:5432/mesh_db
-```
-
-**Exemplo com PostgreSQL remoto:**
-
-```bash
-DATABASE_URL=postgresql://user:password@db.example.com:5432/mesh_db
+docker compose up -d
 ```
 
 <Callout type="info">
-  **Nota:** `localhost` dentro do container se refere ao próprio container.
-
-  - Se você está usando o PostgreSQL incluído do `docker-compose.postgres.yml`, o host deve ser o nome do serviço: `postgres`.
-  - Se você está conectando ao PostgreSQL rodando na sua máquina, use `host.docker.internal` (Docker Desktop) ou o IP da sua máquina na rede local.
+  `localhost` dentro do container se refere ao próprio container. Para alcançar um PostgreSQL rodando na sua máquina, use `host.docker.internal` (Docker Desktop) ou o IP da sua máquina na rede local. Com o `docker-compose.postgres.yml` embutido, o host é o nome do serviço `postgres`.
 </Callout>
 
-**Vantagens do PostgreSQL:**
-- ✅ Suporta múltiplas instâncias (escalabilidade horizontal)
-- ✅ Melhor performance para grandes volumes
-- ✅ Recursos avançados (backups, replicação, etc.)
+## Opções de autenticação
 
-## Configuração de Autenticação
-
-### Localização no Container
-
-O arquivo `auth-config.json` é montado no caminho:
-
-```
-/app/apps/mesh/auth-config.json
-```
-
-### Como Funciona no Docker Compose
-
-#### Arquivo Local
-
-O arquivo `auth-config.json` deve existir na pasta raiz, junto com o docker-compose para iniciar a stack:
-
-```yaml
-volumes:
-  - ./auth-config.json:/app/apps/mesh/auth-config.json:ro
-```
-
-#### Montagem no Container
-
-- **Origem**: `./auth-config.json` (arquivo na raiz, junto com o docker-compose)
-- **Destino**: `/app/apps/mesh/auth-config.json` (dentro do container)
-- **Modo**: `ro` (somente leitura)
-
-#### Quando é Carregado
-
-A aplicação deco Studio carrega este arquivo na inicialização para configurar:
-
-- Autenticação por Email/Senha
-- Provedores sociais (Google, GitHub)
-- Provedores SAML
-- Provedores de email (Resend, etc.)
-- Configuração de magic link
-
-### Exemplos de Configuração
-
-#### Configuração Simples
-
-Use esta configuração quando você só precisa de autenticação básica por email e senha:
-
-```json
-{
-  "emailAndPassword": {
-    "enabled": true
-  }
-}
-```
-
-**Quando usar:**
-- Apenas autenticação por email/senha
-- Não precisa de SSO ou login social
-- Não precisa enviar emails (convites, magic links, etc.)
-
-#### Configuração Completa (SSO + Email)
-
-Use esta configuração quando precisar de recursos avançados como SSO, login social e envio de emails:
-
-```json
-{
-  "emailAndPassword": {
-    "enabled": true
-  },
-  "socialProviders": {
-    "google": {
-      "clientId": "",
-      "clientSecret": ""
-    },
-    "github": {
-      "clientId": "",
-      "clientSecret": ""
-    }
-  },
-  "saml": {
-    "enabled": false,
-    "providers": []
-  },
-  "emailProviders": [
-    {
-      "id": "resend-primary",
-      "provider": "resend",
-      "config": {
-        "apiKey": "",
-        "fromEmail": "noreply@example.com"
-      }
-    }
-  ],
-  "inviteEmailProviderId": "resend-primary",
-  "magicLinkConfig": {
-    "enabled": true,
-    "emailProviderId": "resend-primary"
-  }
-}
-```
-
-**Quando usar:**
-- Precisa de SSO (SAML)
-- Precisa de login social (Google, GitHub)
-- Precisa enviar emails (convites, magic links, etc.)
-- Precisa de magic links para autenticação sem senha
-
-### Estrutura Completa de Referência
-
-A estrutura completa do arquivo `auth-config.json` inclui:
-
-- **emailAndPassword**: Autenticação básica por email/senha
-- **socialProviders**: Provedores sociais (Google, GitHub)
-- **saml**: Configuração SAML para SSO enterprise
-- **emailProviders**: Configuração de provedores de email (Resend, etc.)
-- **inviteEmailProviderId**: ID do provedor de email para envio de convites
-- **magicLinkConfig**: Configuração de magic link (autenticação via link enviado por email)
-
-### Como Editar
-
-1. **Edite o arquivo localmente**:
+Por padrão, a stack embutida usa autenticação por email/senha. Para habilitar login social, descomente e defina as variáveis dos provedores no bloco `environment` do compose (ou no seu `.env`):
 
 ```bash
-# Abra seu editor com o arquivo e faça as edições
-vim auth-config.json
+AUTH_GOOGLE_CLIENT_ID=...
+AUTH_GOOGLE_CLIENT_SECRET=...
+AUTH_GITHUB_CLIENT_ID=...
+AUTH_GITHUB_CLIENT_SECRET=...
 ```
 
-2. **Reinicie o container** para carregar as alterações:
+Para configurações mais ricas (SAML/SSO, provedores de email, magic links), monte um `auth-config.json` dentro do container em `/app/apps/mesh/auth-config.json` adicionando um volume ao serviço `studio`, usando [`apps/mesh/auth-config.example.json`](https://github.com/decocms/studio/blob/main/apps/mesh/auth-config.example.json) como ponto de partida. Veja [Autenticação](/pt-br/studio/self-hosting/authentication) para a referência completa.
+
+## Operações
+
+### Logs e status
 
 ```bash
-docker compose restart mesh
+# Acompanhe os logs da aplicação
+docker compose logs -f studio
+
+# Status do container
+docker compose ps
+
+# Uso de recursos (o nome do container é "decocms")
+docker stats decocms
 ```
 
-3. **Ou recrie o container**:
+### Atualizar a imagem
 
 ```bash
-docker compose up -d --force-recreate mesh
+docker compose pull
+docker compose up -d
+```
+
+Fixe uma versão definindo `IMAGE_TAG` no `.env` antes do pull.
+
+### Backup e restauração (PostgreSQL)
+
+```bash
+# Backup (serviço Postgres embutido)
+docker compose exec postgres pg_dump -U studio_user studio_db > backup-$(date +%Y%m%d).sql
+
+# Restauração
+docker compose exec -T postgres psql -U studio_user studio_db < backup-20240101.sql
+```
+
+### Resetar todos os dados
+
+```bash
+docker compose down -v   # remove os volumes nomeados (studio-data, postgres-data)
+docker compose -f docker-compose.postgres.yml up -d
 ```
 
 <Callout type="warning">
-  O arquivo deve ser um JSON válido. Se o arquivo não existir, o Docker Compose falhará ao iniciar. Não faça commit de secrets (clientSecret, apiKey) no arquivo em produção.
+  `docker compose down -v` **apaga os volumes permanentemente**. Faça backup primeiro se os dados importam. Um `docker compose down` simples (sem `-v`) mantém seus volumes.
 </Callout>
 
 ## Segurança
 
-### Gerar BETTER_AUTH_SECRET
-
-<Callout type="warning">
-  Sempre gere um secret seguro em produção!
-</Callout>
-
-```bash
-# Gerar secret seguro (32+ caracteres)
-openssl rand -base64 32
-
-# Adicionar ao .env
-BETTER_AUTH_SECRET=seu_secret_gerado_aqui
-```
-
-### Proteger arquivo .env
-
-```bash
-# Não faça commit do .env no Git
-echo ".env" >> .gitignore
-
-# Definir permissões restritivas
-chmod 600 .env
-```
-
-## Monitoramento
-
-### Logs
-
-```bash
-# Ver logs em tempo real
-docker compose logs -f mesh
-
-# Ver últimas 100 linhas
-docker compose logs --tail=100 mesh
-
-# Ver logs desde um timestamp
-docker compose logs --since 2024-01-01T00:00:00 mesh
-```
-
-### Status do Container
-
-```bash
-# Ver status
-docker compose ps
-
-# Ver detalhes
-docker compose ps -a
-
-# Ver uso de recursos
-docker stats deco-mcp-mesh
-```
-
-### Resetar Volume (Apagar Dados)
-
-Para resetar completamente os dados e começar do zero:
-
-#### Método 1: Usar Docker Compose (Recomendado)
-
-```bash
-# Parar containers e remover volumes
-docker compose down -v
-
-# Reiniciar com volume vazio
-docker compose up -d
-```
-
-A flag `-v` remove os volumes nomeados definidos no `docker-compose.yml`.
-
-#### Método 2: Resetar volume específico
-
-```bash
-# Parar apenas o serviço
-docker compose stop mesh
-
-# Remover volume específico
-docker volume rm docker_mesh-data
-
-# Ou se estiver em outro diretório:
-docker volume rm helm-chart-deco-mcp-mesh_mesh-data
-
-# Reiniciar (vai criar novo volume vazio)
-docker compose up -d
-```
-
-#### Método 3: Backup antes de resetar
-
-```bash
-# 1. Fazer backup primeiro
-docker compose exec mesh cp -r /app/data/mesh.pglite /app/data/mesh.pglite.backup
-docker compose cp mesh:/app/data/mesh.pglite ./backup-$(date +%Y%m%d-%H%M%S).pglite
-
-# 2. Resetar
-docker compose down -v
-docker compose up -d
-```
-
-#### Método 4: Resetar apenas o PGlite (manter outros dados)
-
-Se quiser resetar apenas o banco de dados PGlite mantendo outros arquivos:
-
-```bash
-# Entrar no container
-docker compose exec mesh sh
-
-# Dentro do container, remover apenas o banco
-rm -rf /app/data/mesh.pglite
-
-# Reiniciar a aplicação (vai recriar o banco)
-exit
-docker compose restart mesh
-```
-
-#### Verificar volumes
-
-```bash
-# Listar volumes
-docker volume ls | grep mesh
-
-# Ver detalhes do volume
-docker volume inspect docker_mesh-data
-
-# Ver tamanho utilizado
-docker system df -v
-```
-
-<Callout type="warning">
-  `docker compose down -v` **apaga permanentemente todos os dados**. Faça backup primeiro se tiver dados importantes. Volumes não são removidos automaticamente quando você executa `docker compose down` (sem `-v`).
-</Callout>
-
-## Atualização
-
-### Atualizar Imagem
-
-```bash
-# Parar aplicação
-docker compose down
-
-# Atualizar imagem
-docker compose pull
-
-# Reiniciar
-docker compose up -d
-```
-
-### Atualizar para versão específica
-
-```bash
-# Editar .env
-IMAGE_TAG=0.1.24
-
-# Atualizar
-docker compose pull
-docker compose up -d
-```
-
-## Backup e Restauração
-
-### Backup (PGlite)
-
-```bash
-# Criar backup
-docker compose exec mesh cp -r /app/data/mesh.pglite /app/data/mesh.pglite.backup
-
-# Copiar para o host
-docker compose cp mesh:/app/data/mesh.pglite ./backup-$(date +%Y%m%d).pglite
-```
-
-### Backup (PostgreSQL)
-
-```bash
-# Backup do banco
-docker compose exec postgres pg_dump -U mesh_user mesh_db > backup-$(date +%Y%m%d).sql
-
-# Restaurar
-docker compose exec -T postgres psql -U mesh_user mesh_db < backup-20240101.sql
-```
+- Sempre gere um `BETTER_AUTH_SECRET` forte (`openssl rand -base64 32`) e um `POSTGRES_PASSWORD` de verdade.
+- Não faça commit do `.env` (`echo ".env" >> .gitignore`; `chmod 600 .env`).
+- Não faça commit de secrets (client secrets, API keys) em nenhum `auth-config.json` montado.

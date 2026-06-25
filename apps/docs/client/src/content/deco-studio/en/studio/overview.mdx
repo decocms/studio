@@ -8,9 +8,9 @@ import Callout from "../../../../components/ui/Callout.astro";
 
 ![deco](https://assets.decocache.com/mcp/9a3facd8-1199-4635-becc-bdc3f5ee7ab1/deco-banner-capy.png)
 
-## The home for your AI agents
+## The control plane for your AI agents
 
-deco Studio is where you build agents, connect them to tools, run them on schedules or events, and see exactly what they're doing. Self-host or use the cloud. Built on the [Model Context Protocol](https://modelcontextprotocol.io).
+deco Studio is the open-source control plane for your AI agents — **one MCP endpoint for all your agents, tools, and models**. Build and hire agents, connect them to your tools, run them on schedules or events, and **track every token and dollar in real time**. It runs locally but you control it from any browser. Self-host or use the cloud — built on the [Model Context Protocol](https://modelcontextprotocol.io).
 
 ### Agents
 
@@ -26,7 +26,7 @@ Run an agent unattended on a schedule or in response to an event. Attached to a 
 
 ### Observability
 
-Every tool call your agents make is logged automatically — who called it, when, what came back, and how long it took. One place to debug, audit, and watch performance.
+**Know what every agent costs.** Every tool call your agents make is logged automatically — who called it, when, what came back, how long it took, and what it cost. Track token spend across providers, latency, and error rates in one place to debug, audit, and watch performance.
 
 ### Extensibility
 
@@ -34,12 +34,24 @@ Studio is open at every layer:
 
 - **MCP apps** — bundle tools with React views in a single package, and Studio will render those views directly inside the agent. Start from the [template repo](https://github.com/decocms/mcp-app).
 - **Sandboxes** — back an agent with a GitHub repository and Studio runs it as an isolated dev environment scoped to that agent (typically the agent's own MCP server).
-- **Git-native** — code-backed agents live in a real repo with branches and PRs, surfaced in the agent's **Git** tab. Your version control stays your source of truth.
+- **Git-native** — code-backed agents live in a real repo with branches and PRs, surfaced in the agent's **Review changes** tab. Your version control stays your source of truth.
 - **MCP everywhere** — every agent is exposed as its own MCP endpoint, callable from Cursor, Claude Desktop, your own code, or another agent.
 
-### Solutions: pre-built agent suites
+### Digital Experience: packaged agents on top of Studio
 
-For teams managing storefronts and content-heavy digital experiences, deco offers **packaged agent suites** built on top of Studio — the most complete one available today is the **[Agentic CMS](./solutions/agentic-cms)**, the evolution of [deco.cx](https://docs.deco.cx). See [Solutions](./solutions/overview) for the full list.
+For teams managing storefronts and content-heavy digital experiences, deco ships a **Digital Experience suite** built on top of Studio — the flagship is the **[Agentic CMS](./agentic-cms)**, the evolution of [deco.cx](https://docs.deco.cx). See [Digital Experience](./digital-experience) for the full picture.
+
+---
+
+## Three ways to work
+
+Studio meets you at your level. The same product supports three kinds of work, and you move between them freely:
+
+- **Chat — for everyone.** Just talk to [Decopilot](./decopilot/overview), the built-in pilot on your home screen. Ask for what you want and it gets it done — answering questions, running your tools, and even creating agents, automations, and connections _for_ you. A brand-new, non-technical user can be productive on day one without configuring anything.
+- **Configure — for power users.** When you want repeatable systems, set them up by hand: design focused [agents](./agents), curate their [tools](./connections), schedule [automations](./automations), and manage roles and access. You're building the machine the whole team relies on.
+- **Build — for developers.** Go deeper with code. Back an agent with a [sandbox](./agents#where-an-agent-runs) and a Git repo, run it locally with your own harness, and extend Studio itself by shipping [MCP apps](./agents) — tools bundled with their own React UI. Your repo stays the source of truth.
+
+Most teams use all three at once: the pilot for quick work, hand-built systems for the routine, and code for anything custom.
 
 ---
 
@@ -47,8 +59,8 @@ For teams managing storefronts and content-heavy digital experiences, deco offer
 
 | | |
 |---|---|
-| **Build agents** | Compose focused AI workers from your connected tools, instructions, and resources |
-| **Connect tools** | Add GitHub, Slack, databases, or any MCP server — credentials stay secure |
+| **Build & hire agents** | Compose focused AI workers from your tools and instructions — or hire ready-made ones from the [Store](./store) |
+| **Connect tools** | Add GitHub, Slack, databases, or any MCP server with one-click OAuth — credentials stay secure |
 | **Run hands-free** | Trigger agents on schedules or events with automations |
 | **See everything** | Logs, costs, and traces for every agent action, in one dashboard |
 | **Extend with code** | Ship MCP apps (tools + UI) and back agents with Git repos in their own sandboxes |

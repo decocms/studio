@@ -5,7 +5,6 @@ icon: BookOpen
 ---
 
 import Callout from "../../../../components/ui/Callout.astro";
-import ProjectsComingSoon from "../../../../components/ui/ProjectsComingSoon.astro";
 
 ## How Studio is organized
 
@@ -16,31 +15,43 @@ Studio uses a small set of concepts that build on each other. Once you understan
 - **Connection** — a tool or service you've plugged in (GitHub, Slack, a database, your own API). Credentials are stored once and shared securely. See [Connections](/en/studio/connections).
 - **Thread** — a conversation session inside an agent. Studio saves the history so you can come back to ongoing work.
 - **Automation** — an agent run that fires on a schedule or in response to an event. See [Automations](/en/studio/automations).
-- **AI Provider** — a configured AI model (Anthropic, Google, OpenRouter, or the Deco AI Gateway) that powers your agents and decopilot. See [AI Providers](/en/studio/ai-providers).
+- **AI Provider** — a configured AI model (Anthropic, Google, OpenRouter, or the Deco AI Gateway) that powers your agents and Decopilot. See [AI Providers](/en/studio/ai-providers).
 - **Member** — a person in your organization with a role and permissions.
-- **Project** — a planned second level of hierarchy that will group agents, connections, and context around a shared goal or team. See [Projects](/en/studio/projects).
-
-<ProjectsComingSoon />
 
 ---
 
 ## Anatomy of the Studio UI
 
-### The agent shell
+### Home and the sidebar
 
-This is where day-to-day work happens. The persistent sidebar on the left shows your organization's agents. Click an agent and you get:
+When you open Studio you land on the **home screen**: a single chat composer — _"What's on your mind?"_ — backed by **Decopilot**, Studio's built-in assistant, plus a customizable grid of shortcuts to your agents. Just start typing to get going; the conversation you start is saved under **Decopilot** in the sidebar.
 
-- **Threads list (left)** — every conversation you've had with this agent.
-- **Chat (center / bottom)** — where you talk to the agent.
-- **Agent panel (right)** — the agent's configuration: its attached connections, its instructions, and tabs for **Settings**, **Automations**, and (when linked to GitHub) **Git**.
+The persistent left sidebar is the same everywhere you go:
 
-Everything you need to use, configure, and monitor a single agent lives on this one screen.
+- **Home** — the home chat composer.
+- **Library** — a file browser for your organization's shared filesystem. See [Library](/en/studio/library).
+- **Threads** — your recent conversations, grouped by agent (Decopilot's live under "Decopilot"). Click one to resume it; start a new one from Home or the **+** / "Browse agents" button.
+- **Settings** — opens from the bottom of the sidebar; everything that isn't tied to a single agent.
+
+### The agent workspace
+
+Open an agent — or start a thread with one — and the screen splits in two:
+
+- **Left — chat.** Talk to the agent in natural language; it uses its attached tools to do the work. Past messages live here. Above the input sit the **model-tier picker** and the **runtime picker** (where the agent runs — see [Agents](/en/studio/agents#where-an-agent-runs)).
+- **Right — a tabbed panel.** Which tabs appear depends on the agent:
+  - **Settings** — instructions, attached connections, files & skills (shown if you can manage agents)
+  - **Automations** — schedules and event triggers (always available)
+  - **Preview** — a live preview, for agents backed by a repo or site
+  - **Content** — edit pages and sections, for content-backed agents
+  - **Review changes** — branch and PR review, for Git-backed agents with an open pull request
+
+Everything you need to use, configure, and monitor a single agent lives on this one screen. See [Agents](/en/studio/agents) for the full breakdown.
 
 ### Settings
 
 Everything that isn't tied to a single agent lives under **Settings**. Open it from the bottom-left of the sidebar. Inside you'll find:
 
-- **Organization** — General, Brand Context, AI Providers
+- **Organization** — General, Brand Context, AI Providers, Secrets, Buckets
 - **Build** — Connections, Agents (the catalog), Automations, Store
 - **Manage** — Monitor, Members, Roles, Security (SSO)
 - **Extensions** — Plugins
