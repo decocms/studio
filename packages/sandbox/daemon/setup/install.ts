@@ -42,8 +42,9 @@ export function trySpawnDecoSiteCache(deps: InstallDeps): Promise<number> | null
   if (!ownerRepo) return null;
 
   const { owner, repo } = ownerRepo;
-  const region = process.env.DENO_DECO_CACHE_S3_REGION ?? "sa-east-1";
-  const bucket = process.env.DENO_DECO_CACHE_S3_BUCKET ?? "deco-assets-storage";
+  const region = process.env.DENO_DECO_CACHE_S3_REGION;
+  const bucket = process.env.DENO_DECO_CACHE_S3_BUCKET;
+  if (!region || !bucket) return null;
   const endpoint = process.env.DENO_DECO_CACHE_S3_ENDPOINT;
   const baseUrl = endpoint
     ? `${endpoint}/${bucket}`
