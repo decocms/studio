@@ -7,7 +7,6 @@ import {
   Copy01,
   DotsHorizontal,
   Edit01,
-  Eye,
   File02,
   Flag01,
   Globe02,
@@ -88,9 +87,9 @@ import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/sect
 import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
 import {
-  SectionPreviewPane,
+  SectionSidePanel,
   type SectionPreviewTarget,
-} from "./section-preview-pane";
+} from "./section-side-panel";
 import { AvailableSectionEditor } from "./available-section-editor";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
@@ -416,8 +415,7 @@ function ContentBrowserReady({
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
-  // Section preview pane (saved-section editing only)
-  const [previewOpen, setPreviewOpen] = useState(true);
+  // Reload signal for the saved-section side panel (bumped after autosaves).
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
 
   if (decofileLoading || metaLoading) {
@@ -627,6 +625,24 @@ function ContentBrowserReady({
   const saveReferencedBlock = createReferencedBlockSaver((blockKey, data) =>
     saveBlock.mutate({ blockKey, data }),
   );
+
+  // Persist edits made in the saved-section JSON tab, then reload the preview.
+  const handleApplySavedJson = (
+    blockKey: string,
+    data: Record<string, unknown>,
+  ) => {
+    saveBlock.mutate(
+      { blockKey, data },
+      {
+        onSuccess: () =>
+          setTimeout(
+            () => setPreviewReloadKey((k) => k + 1),
+            PREVIEW_SETTLE_MS,
+          ),
+        onError: (err) => toast.error(`Save failed: ${err.message}`),
+      },
+    );
+  };
 
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
     const source = decofile[section.key] as Record<string, unknown> | undefined;
@@ -860,8 +876,6 @@ function ContentBrowserReady({
               siteTheme={siteTheme}
               meta={meta}
               decofile={decofile}
-              previewOpen={previewOpen}
-              onTogglePreview={() => setPreviewOpen((v) => !v)}
               reloadKey={previewReloadKey}
               onSaved={() => {
                 // Give the dev server a moment to pick up the block write
@@ -873,6 +887,7 @@ function ContentBrowserReady({
               }}
               isCreating={saveBlock.isPending}
               onCreateAvailable={handleCreateAvailableSection}
+              onApplySavedJson={handleApplySavedJson}
               onSaveReferencedBlock={saveReferencedBlock}
             />
           ) : selection && selection.collection !== "available-section" ? (
@@ -1087,12 +1102,11 @@ function SectionsRightPane({
   siteTheme,
   meta,
   decofile,
-  previewOpen,
-  onTogglePreview,
   reloadKey,
   onSaved,
   isCreating,
   onCreateAvailable,
+  onApplySavedJson,
   onSaveReferencedBlock,
 }: {
   selection:
@@ -1111,8 +1125,6 @@ function SectionsRightPane({
   siteTheme?: Record<string, unknown>;
   meta: LiveMeta;
   decofile: Record<string, unknown>;
-  previewOpen: boolean;
-  onTogglePreview: () => void;
   reloadKey: number;
   onSaved: () => void;
   isCreating: boolean;
@@ -1121,6 +1133,7 @@ function SectionsRightPane({
     blockId: string,
     data: Record<string, unknown>,
   ) => Promise<void>;
+  onApplySavedJson: (blockKey: string, data: Record<string, unknown>) => void;
   onSaveReferencedBlock: (
     blockKey: string,
     data: Record<string, unknown>,
@@ -1163,6 +1176,7 @@ function SectionsRightPane({
     kind: "saved",
     blockKey: selection.key,
   };
+  const savedBlock = decofile[selection.key];
 
   return (
     <div className="flex h-full w-full min-w-0">
@@ -1180,35 +1194,17 @@ function SectionsRightPane({
           onSaved={onSaved}
         />
       </div>
-      {previewOpen ? (
-        <div className="flex w-1/2 min-w-[280px] shrink-0 flex-col border-l">
-          <SectionPreviewPane
-            previewUrl={previewUrl}
-            livePageResolveType={livePageResolveType}
-            target={previewTarget}
-            theme={siteTheme}
-            reloadKey={reloadKey}
-            onHide={onTogglePreview}
-          />
-        </div>
-      ) : (
-        <div className="flex w-9 shrink-0 items-start justify-center border-l pt-1.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                onClick={onTogglePreview}
-                aria-label="Show preview"
-              >
-                <Eye size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left">Show preview</TooltipContent>
-          </Tooltip>
-        </div>
-      )}
+      <SectionSidePanel
+        key={`panel:${selection.key}`}
+        previewUrl={previewUrl}
+        livePageResolveType={livePageResolveType}
+        previewTarget={previewTarget}
+        theme={siteTheme}
+        reloadKey={reloadKey}
+        jsonValue={JSON.stringify(savedBlock ?? {}, null, 2)}
+        onApplyJson={(data) => onApplySavedJson(selection.key, data)}
+        initialTab="preview"
+      />
     </div>
   );
 }

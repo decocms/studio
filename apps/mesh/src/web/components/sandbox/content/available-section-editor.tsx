@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ChevronRight, Eye, Globe02 } from "@untitledui/icons";
+import { useEffect, useRef, useState } from "react";
+import { ChevronRight, Save01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
@@ -17,13 +17,16 @@ import {
 } from "@/web/components/sections-editor/resolve-schema";
 import { validateBlockId } from "@/web/components/sections-editor/page-sections";
 import { MakeReusableModal } from "@/web/components/sections-editor/make-reusable-modal";
-import { SectionPreviewPane } from "./section-preview-pane";
+import { SectionSidePanel } from "./section-side-panel";
+
+/** Debounce before reloading the preview after a form edit. */
+const PREVIEW_DEBOUNCE_MS = 600;
 
 /**
  * Editor for an "available" (raw manifest) section that has NOT been saved as a
  * global block yet. Edits live in local state and only persist when the user
- * names and saves the section. The preview is hidden by default and reflects
- * the in-progress form data when opened or refreshed.
+ * names and saves the section. The side panel previews the in-progress data
+ * (auto-reloads, debounced) and offers an editable JSON view of the same data.
  */
 export function AvailableSectionEditor({
   orgSlug,
@@ -68,9 +71,17 @@ export function AvailableSectionEditor({
   const [formValue, setFormValue] = useState<Record<string, unknown>>({});
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
   const [formResetKey, setFormResetKey] = useState(0);
-  const [previewVisible, setPreviewVisible] = useState(false);
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [saveOpen, setSaveOpen] = useState(false);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cancel a pending debounced reload when the editor unmounts.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect — timer lifecycle cleanup
+  useEffect(() => {
+    return () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    };
+  }, []);
 
   const schema = resolveSchema(resolveType, meta);
   const typeLabel =
@@ -93,8 +104,23 @@ export function AvailableSectionEditor({
     setFormResetKey((key) => key + 1);
   };
 
-  const showPreview = () => {
-    setPreviewVisible(true);
+  const schedulePreviewReload = () => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+    reloadTimerRef.current = setTimeout(() => {
+      setPreviewReloadKey((k) => k + 1);
+    }, PREVIEW_DEBOUNCE_MS);
+  };
+
+  const handleFormChange = (next: Record<string, unknown>) => {
+    setFormValue(next);
+    // Keep the preview in sync with what the user is typing (debounced).
+    schedulePreviewReload();
+  };
+
+  // Apply edits made directly in the JSON tab back to the form state.
+  const handleApplyJson = (data: Record<string, unknown>) => {
+    setFormValue(data);
+    setFormResetKey((key) => key + 1);
     setPreviewReloadKey((k) => k + 1);
   };
 
@@ -111,8 +137,8 @@ export function AvailableSectionEditor({
   return (
     <div className="flex h-full w-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Header: breadcrumb + save action */}
-        <div className="shrink-0 border-b border-global-section/22 bg-global-section/12 px-3 py-2.5 dark:bg-global-section/16">
+        {/* Header: breadcrumb + save action (neutral — this section isn't global yet) */}
+        <div className="shrink-0 border-b px-3 py-2.5">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
             <nav
               aria-label="Editing breadcrumb"
@@ -133,10 +159,10 @@ export function AvailableSectionEditor({
                       onClick={() => handleBreadcrumbClick(index)}
                       title={crumb}
                       className={cn(
-                        "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-global-section/15",
+                        "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
                         isLast
-                          ? "font-semibold text-global-section-fg dark:text-global-section-fg-dark"
-                          : "text-foreground/80",
+                          ? "font-medium text-foreground"
+                          : "text-muted-foreground",
                       )}
                     >
                       {crumb}
@@ -147,26 +173,22 @@ export function AvailableSectionEditor({
             </nav>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="shrink-0 cursor-help">
-                  <Globe02 className="size-4 text-global-section-fg dark:text-global-section-fg-dark" />
-                </span>
+                <Button
+                  size="icon"
+                  className="size-8 shrink-0"
+                  disabled={isCreating}
+                  onClick={() => setSaveOpen(true)}
+                  aria-label="Save as global section"
+                >
+                  <Save01 size={14} />
+                </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[260px]">
-                Editing a new section. Save it as a global block to reuse it
-                across your site.
+              <TooltipContent side="bottom">
+                Save as global section
               </TooltipContent>
             </Tooltip>
-            <Button
-              size="sm"
-              className="shrink-0"
-              disabled={isCreating}
-              onClick={() => setSaveOpen(true)}
-            >
-              <Globe02 size={14} />
-              Save as global section
-            </Button>
           </div>
-          <p className="mt-1.5 py-1 pl-1 text-sm leading-snug text-foreground">
+          <p className="mt-1.5 py-1 pl-1 text-sm leading-snug text-muted-foreground">
             {typeLabel} — edits stay local until you save this as a global
             section.
           </p>
@@ -180,7 +202,9 @@ export function AvailableSectionEditor({
                   key={formResetKey}
                   schema={schema}
                   value={formValue}
-                  onChange={(v) => setFormValue(v as Record<string, unknown>)}
+                  onChange={(v) =>
+                    handleFormChange(v as Record<string, unknown>)
+                  }
                   basePath=""
                   breadcrumbPath={fieldBreadcrumbs}
                   onBreadcrumbChange={setFieldBreadcrumbs}
@@ -199,36 +223,16 @@ export function AvailableSectionEditor({
         </ScrollArea>
       </div>
 
-      {previewVisible ? (
-        <div className="flex w-1/2 min-w-[280px] shrink-0 flex-col border-l">
-          <SectionPreviewPane
-            previewUrl={previewUrl}
-            livePageResolveType={livePageResolveType}
-            target={{ kind: "inline", resolveType, data: formValue }}
-            theme={siteTheme}
-            reloadKey={previewReloadKey}
-            onHide={() => setPreviewVisible(false)}
-            onRefresh={() => setPreviewReloadKey((k) => k + 1)}
-          />
-        </div>
-      ) : (
-        <div className="flex w-9 shrink-0 items-start justify-center border-l pt-1.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                onClick={showPreview}
-                aria-label="Show preview"
-              >
-                <Eye size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left">Show preview</TooltipContent>
-          </Tooltip>
-        </div>
-      )}
+      <SectionSidePanel
+        previewUrl={previewUrl}
+        livePageResolveType={livePageResolveType}
+        previewTarget={{ kind: "inline", resolveType, data: formValue }}
+        theme={siteTheme}
+        reloadKey={previewReloadKey}
+        onRefreshPreview={() => setPreviewReloadKey((k) => k + 1)}
+        jsonValue={JSON.stringify(formValue, null, 2)}
+        onApplyJson={handleApplyJson}
+      />
 
       <MakeReusableModal
         open={saveOpen}
