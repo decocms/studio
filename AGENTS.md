@@ -346,7 +346,7 @@ See [`TESTING.md`](./TESTING.md) for the testing philosophy and rules.
 
 **Short version:** two tiers, no third.
 - **Unit (`bun test`)** — pure logic only. No mocks, no DB, no network. Co-located `*.test.ts` next to source.
-- **E2E (Playwright)** — everything else. Real Postgres + NATS + Better Auth. Lives in `apps/mesh/e2e/tests/`.
+- **E2E (Playwright)** — everything else. Real Postgres + NATS + Better Auth. Lives in `packages/e2e/tests/` (the isolated `@decocms/e2e` workspace).
 
 If a test needs `vi.mock`, `mock.module`, a stubbed `StudioContext`, or a fake `fetch` — it's not a unit test. Move it to e2e.
 
@@ -356,8 +356,9 @@ The e2e suite is a **black-box contract** over HTTP + DB: spin the server, hit i
 assert on responses. It must stay decoupled from the implementation so a component can be rewritten
 — even in another language — and the same suite still holds. The in-sandbox daemon's suite
 (`packages/sandbox/daemon/daemon.e2e.*.test.ts`) already works this way: it spawns the built binary
-(swap it via the `DAEMON_E2E_CMD` env) and asserts only over HTTP. The mesh suite is migrating into
-the dedicated `packages/e2e` workspace behind the same wall (follow-up PR).
+(swap it via the `DAEMON_E2E_CMD` env) and asserts only over HTTP. The mesh suite lives in the
+dedicated `packages/e2e` (`@decocms/e2e`) workspace behind the same wall — its Playwright config
+spawns the app dev server from `apps/mesh` via `webServer.cwd` (a process boundary, not an import).
 
 Rules:
 - **No imports from `apps/*/src/**` and no `@/` mesh alias** in `packages/e2e`. Enforced by

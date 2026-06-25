@@ -6,7 +6,7 @@ export interface GitSyncOpts {
   env?: NodeJS.ProcessEnv;
   /** When true (default), drops to deco:1000/1000. Set false for system-level git config as root. */
   asUser?: boolean;
-  /** Kill the git process after this many ms. Default: 60 000 (60 s). */
+  /** Kill the git process after this many ms. Default: 10 000 (10 s). */
   timeoutMs?: number;
 }
 
@@ -15,7 +15,7 @@ export interface GitError extends Error {
   status: number;
 }
 
-const DEFAULT_GIT_TIMEOUT_MS = 60_000;
+const DEFAULT_GIT_TIMEOUT_MS = 10_000;
 
 export function gitSync(args: string[], opts: GitSyncOpts): string {
   const asUser = opts.asUser !== false;

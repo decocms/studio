@@ -19,7 +19,7 @@ const stub = (rel: string) => path.join(here, "ct", "harness", "stubs", rel);
  *
  * Test files are `*.ct.tsx` under ./ct/tests so they never collide with:
  *   - `bun test` (unit) — globs `*.test.ts` / `*.spec.ts` under src/ + packages/
- *   - `playwright test` (e2e) — testDir ./e2e, matches `*.spec.ts`
+ *   - `playwright test` (e2e) — the `@decocms/e2e` workspace (packages/e2e)
  */
 export default defineConfig({
   testDir: "./ct/tests",

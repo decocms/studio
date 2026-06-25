@@ -23,7 +23,16 @@ export interface OrgFsEntry {
   contentHash?: string | null;
   /** Dir follows the Claude Code skill format (contains SKILL.md). */
   hasSkill?: boolean;
+  /** This entry's own public flag (served to anyone with the link). */
+  readPublic?: boolean;
+  /** Public via own flag OR a published ancestor folder (inherited). What the
+   *  UI should signal; `readPublic && !effectivePublic` never happens. */
+  effectivePublic?: boolean;
+  /** This entry's own share mode (private / public / password). */
+  shareMode?: ShareMode;
 }
+
+export type ShareMode = "private" | "public" | "password";
 
 export interface OrgFsUsage {
   files: number;
@@ -241,6 +250,68 @@ export function useOrgFsWriteText(volume: string) {
         },
       );
       return ((await res.json()) as { entry: OrgFsEntry }).entry;
+    },
+  });
+}
+
+/**
+ * Set a file/folder's share mode (private / public / password). Password mode
+ * carries the new password (which rotates the node secret server-side).
+ * Optimistically updates the cached `stat` so the dialog reacts instantly, then
+ * revalidates (rolling back on error).
+ */
+export function useOrgFsSetShareMode(volume: string) {
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      path: string;
+      mode: ShareMode;
+      password?: string;
+    }): Promise<OrgFsEntry> => {
+      const res = await fsFetch(
+        fsUrl(org.slug, volume, "public", { path: input.path }),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: input.mode, password: input.password }),
+        },
+      );
+      return ((await res.json()) as { entry: OrgFsEntry }).entry;
+    },
+    onMutate: async (input) => {
+      const key = KEYS.orgFsStat(org.id, volume, input.path);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<OrgFsEntry | null>(key);
+      // Flip effectivePublic too: with only readPublic updated, going private
+      // leaves effectivePublic stale-true, so the dialog briefly reads as
+      // inherited-public. The refetch corrects the rare case where a published
+      // ancestor still covers it.
+      const isPublic = input.mode !== "private";
+      queryClient.setQueryData<OrgFsEntry | null>(key, (old) =>
+        old
+          ? {
+              ...old,
+              readPublic: isPublic,
+              effectivePublic: isPublic,
+              shareMode: input.mode,
+            }
+          : old,
+      );
+      return { key, previous };
+    },
+    onError: (_err, _input, ctx) => {
+      if (ctx) queryClient.setQueryData(ctx.key, ctx.previous);
+    },
+    onSettled: (_data, _err, input) => {
+      queryClient.invalidateQueries({
+        queryKey: KEYS.orgFsStat(org.id, volume, input.path),
+      });
+      // Refresh the browser listings + recent feed so public badges re-render.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.orgFsVolume(org.id, volume),
+      });
+      queryClient.invalidateQueries({ queryKey: KEYS.orgFsRecent(org.id) });
     },
   });
 }

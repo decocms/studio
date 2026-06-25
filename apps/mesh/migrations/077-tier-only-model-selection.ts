@@ -2,7 +2,7 @@ import { type Kysely } from "kysely";
 
 // Frozen against this migration's historical output shape. At the time 077 ran,
 // `SimpleModeTier` was fast/smart/thinking/image/web_research. The live type has
-// since split `web_research` into `web_search`/`deep_research` (migration 118),
+// since split `web_research` into `web_search`/`deep_research` (migration 122),
 // so we pin the tier union locally instead of importing the moving type.
 type SimpleModeTier = "fast" | "smart" | "thinking" | "image" | "web_research";
 

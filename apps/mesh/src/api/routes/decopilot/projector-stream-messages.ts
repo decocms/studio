@@ -1,9 +1,26 @@
-export const DECOPILOT_STREAM_NAME = "DECOPILOT_STREAMS";
-export const DECOPILOT_STREAM_SUBJECT_PREFIX = "decopilot.stream";
+import {
+  buildChunkMsgId,
+  buildCheckpointMsgId,
+  buildDoneMsgId,
+  CHECKPOINT_DEBOUNCE_MS,
+  DECOPILOT_STREAM_SUBJECT_PREFIX,
+  streamSubject,
+} from "@decocms/sandbox/dispatch/relay-publisher";
 
-/** Debounce between incremental checkpoint markers, shared by BOTH producers
- *  (hosted ingest + desktop daemon relay). Single source of truth. */
-export const CHECKPOINT_DEBOUNCE_MS = 3000;
+export const DECOPILOT_STREAM_NAME = "DECOPILOT_STREAMS";
+
+// The producer-side wire helpers (subject + msgId builders + checkpoint
+// debounce) live in the shared package — the single source of truth, also used
+// by the e2e fake-daemon relay. Re-exported here so the projector + ingest code
+// keep their one import site.
+export {
+  buildChunkMsgId,
+  buildCheckpointMsgId,
+  buildDoneMsgId,
+  CHECKPOINT_DEBOUNCE_MS,
+  DECOPILOT_STREAM_SUBJECT_PREFIX,
+  streamSubject,
+};
 
 export type ParsedRunStreamMsgId =
   | {
@@ -31,10 +48,6 @@ export interface DoneEnvelope {
   finalSeq: number;
 }
 
-function assertSafeSubjectToken(id: string): void {
-  if (/[.*>\s]/.test(id)) throw new Error("Invalid NATS subject token");
-}
-
 function positiveInt(value: string | undefined): number | null {
   if (!value) return null;
   const n = Number(value);
@@ -47,44 +60,11 @@ function nonnegativeInt(value: string | undefined): number | null {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
-export function streamSubject(runId: string): string {
-  assertSafeSubjectToken(runId);
-  return `${DECOPILOT_STREAM_SUBJECT_PREFIX}.${runId}`;
-}
-
 export function runIdFromSubject(subject: string): string | null {
   const prefix = `${DECOPILOT_STREAM_SUBJECT_PREFIX}.`;
   if (!subject.startsWith(prefix)) return null;
   const runId = subject.slice(prefix.length);
   return runId.length > 0 ? runId : null;
-}
-
-export function buildChunkMsgId(input: {
-  runId: string;
-  fenceToken: string;
-  seq: number;
-  fragmentIndex?: number;
-}): string {
-  const base = `${input.runId}:${input.fenceToken}:${input.seq}`;
-  return input.fragmentIndex === undefined
-    ? base
-    : `${base}:frag:${input.fragmentIndex}`;
-}
-
-export function buildDoneMsgId(input: {
-  runId: string;
-  fenceToken: string;
-  finalSeq: number;
-}): string {
-  return `${input.runId}:${input.fenceToken}:done:${input.finalSeq}`;
-}
-
-export function buildCheckpointMsgId(input: {
-  runId: string;
-  fenceToken: string;
-  headSeq: number;
-}): string {
-  return `${input.runId}:${input.fenceToken}:ckpt:${input.headSeq}`;
 }
 
 export function parseRunStreamMsgId(

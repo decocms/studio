@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { __testing } from "./118-split-web-research-tier";
+import { __testing } from "./122-split-web-research-tier";
 
 const { splitWebResearchTier, isAlreadySplit } = __testing;
 

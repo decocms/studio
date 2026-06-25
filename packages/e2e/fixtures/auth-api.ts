@@ -12,7 +12,27 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import { isOrgArchived } from "../../src/core/org-archived";
+
+/**
+ * Inlined contract: an org is archived when its `metadata.archived === true`.
+ * Owned here (not imported from app source) so the black-box suite stays
+ * decoupled — see the app's `src/core/org-archived.ts`.
+ */
+function isOrgArchived(
+  org: { metadata?: unknown } | null | undefined,
+): boolean {
+  const raw = org?.metadata;
+  if (!raw) return false;
+  try {
+    const meta =
+      typeof raw === "string"
+        ? (JSON.parse(raw) as { archived?: boolean })
+        : (raw as { archived?: boolean });
+    return meta.archived === true;
+  } catch {
+    return false;
+  }
+}
 
 export interface SignUpResult {
   name: string;

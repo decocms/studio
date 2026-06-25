@@ -25,6 +25,7 @@ import { AddConnectionDialog } from "@/web/views/virtual-mcp/add-connection-dial
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
 import { track } from "@/web/lib/posthog-client";
 import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item";
+import { JoinRequestItem } from "@/web/components/sidebar/footer/join-request-item";
 import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
 import { ReleaseCard } from "@/web/components/release-channel/release-card";
 import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
@@ -96,26 +97,38 @@ function InboxPopover({ children }: { children: ReactNode }) {
                   Nothing here yet
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Invitations and release updates will appear here
+                  Invitations, join requests, and release updates will appear
+                  here
                 </p>
               </div>
             ) : (
               <div className="overflow-y-auto flex-1">
-                {items.map((item) =>
-                  item.type === "invitation" ? (
-                    <InvitationItem
-                      key={`inv-${item.invitation.id}`}
-                      invitation={item.invitation}
-                    />
-                  ) : (
+                {items.map((item) => {
+                  if (item.type === "join-request") {
+                    return (
+                      <JoinRequestItem
+                        key={`req-${item.request.id}`}
+                        request={item.request}
+                      />
+                    );
+                  }
+                  if (item.type === "invitation") {
+                    return (
+                      <InvitationItem
+                        key={`inv-${item.invitation.id}`}
+                        invitation={item.invitation}
+                      />
+                    );
+                  }
+                  return (
                     <InboxReleaseItem
                       key={`rel-${item.release.id}`}
                       release={item.release}
                       isSeen={item.isSeen}
                       onSelect={() => handleSelectRelease(item.release.id)}
                     />
-                  ),
-                )}
+                  );
+                })}
               </div>
             )}
           </>

@@ -42,6 +42,8 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
+import { parseSections } from "@/web/components/sections-editor/parse-sections";
+import { getPageVariantSectionsAt } from "@/web/components/sections-editor/page-variants";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import {
   extractGlobalSections,
@@ -75,6 +77,12 @@ import {
 import { SandboxStateCard } from "./state-card";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import { track } from "@/web/lib/posthog-client";
+import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
+
+const VSCODE_ICON_URL =
+  "https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png";
+const CURSOR_ICON_URL =
+  "https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png";
 
 const SectionsEditor = lazy(() =>
   import("@/web/components/sections-editor/sections-editor").then((m) => ({
@@ -113,6 +121,69 @@ const DEVICE_LABELS: Record<PreviewDeviceSize, string> = {
   tablet: "Tablet (768px)",
   desktop: "Desktop",
 };
+
+const LAZY_RESOLVE_TYPE = "website/sections/Rendering/Lazy.tsx";
+
+/**
+ * Candidate top-level `data-manifest-key`s a page section can render as, used
+ * iframe-side to align the editable run within the DOM. Saved-block refs
+ * (globals) resolve to their underlying component. A Lazy returns BOTH its
+ * loader key and the inner section's key — the classic runtime keeps the Lazy
+ * wrapper at top level, TanStack renders the inner section directly. Multivariate
+ * flags render an unpredictable active variant, so they return [] (a wildcard
+ * the iframe treats as "matches anything").
+ */
+function resolveSectionCandidates(
+  section: { __resolveType?: unknown; section?: unknown; variants?: unknown },
+  decofile: Record<string, unknown>,
+): string[] {
+  let obj: { __resolveType?: unknown; section?: unknown; variants?: unknown } =
+    section;
+  let rt = typeof obj?.__resolveType === "string" ? obj.__resolveType : "";
+  for (let i = 0; rt && i < 5; i++) {
+    const block = decofile[rt];
+    if (block && typeof block === "object" && "__resolveType" in block) {
+      const next = (block as { __resolveType?: unknown }).__resolveType;
+      if (typeof next === "string" && next && next !== rt) {
+        obj = block as typeof obj;
+        rt = next;
+        continue;
+      }
+    }
+    break;
+  }
+  if (!rt) return [];
+  // Multivariate (A/B) renders one of its variants — collect every variant's
+  // possible key so it matches whichever rendered (NOT a blind wildcard, which
+  // could otherwise grab an adjacent framework section).
+  if (rt.includes("flags/multivariate")) {
+    const variants = Array.isArray(obj.variants) ? obj.variants : [];
+    const keys: string[] = [];
+    for (const v of variants) {
+      const value = (v as { value?: unknown })?.value;
+      if (value && typeof value === "object") {
+        for (const k of resolveSectionCandidates(
+          value as { __resolveType?: unknown },
+          decofile,
+        )) {
+          if (!keys.includes(k)) keys.push(k);
+        }
+      }
+    }
+    return keys;
+  }
+  if (rt === LAZY_RESOLVE_TYPE) {
+    const inner =
+      obj.section && typeof obj.section === "object"
+        ? resolveSectionCandidates(
+            obj.section as { __resolveType?: unknown },
+            decofile,
+          )
+        : [];
+    return inner.length ? [rt, ...inner] : [rt];
+  }
+  return [rt];
+}
 
 /** Deco reads `deviceHint` to force SSR device matchers (see deco `deviceOf`). */
 function withDeviceHint(url: string, device: PreviewDeviceSize): string {
@@ -178,6 +249,14 @@ export function PreviewContent() {
   const lifecyclePhase = vmEvents.lifecycle.phase;
   const devServerReady = lifecyclePhase === "running";
 
+  const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
+  const repoDir = useSandboxRepoDir({
+    orgSlug: org.slug,
+    virtualMcpId: virtualMcpId ?? "",
+    branch: branch ?? "",
+    enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
+  });
+
   // Decofile pages for the URL bar dropdown — fetch only after dev server is up.
   const decofileParams =
     virtualMcpId && branch && devServerReady
@@ -221,6 +300,29 @@ export function PreviewContent() {
     ? activeGlobalSection.name
     : currentPage?.name;
   const currentPageKey = currentPage?.key ?? null;
+
+  // Per-section metadata for the CMS hover overlay, aligned by index with the
+  // iframe's top-level section list. `label`: ONLY global (saved block)
+  // sections get a name — the DOM can't carry it (incl. globals inside async
+  // rendering); non-global sections are empty so the iframe falls back to their
+  // full resolve. `kind`: drives the highlight color (global / variant / normal).
+  const cmsRawSections =
+    decofile && currentPageKey
+      ? getPageVariantSectionsAt(decofile, currentPageKey, 0)
+      : [];
+  const cmsSections = decofile ? parseSections(cmsRawSections, decofile) : [];
+  const cmsSectionLabels = cmsSections.map((s) =>
+    s.isSavedBlock ? s.label : "",
+  );
+  const cmsSectionKinds = cmsSections.map((s) =>
+    s.isSavedBlock ? "global" : s.isMultivariate ? "variant" : "normal",
+  );
+  // Candidate manifest keys per editable section, used iframe-side to align the
+  // editable run within the DOM (handles framework sections deco injects around
+  // OR between the editable ones) — no hardcoded list of sections to skip.
+  const cmsSectionKeys = cmsRawSections.map((s) =>
+    resolveSectionCandidates(s, decofile ?? {}),
+  );
 
   const iframeSrcRef = useRef<string | null>(null);
   /** Path we navigated to programmatically; ignore stale iframe onLoad events. */
@@ -398,6 +500,18 @@ export function PreviewContent() {
     if (!win) return;
     win.postMessage(
       { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
+      "*",
+    );
+    // Ordered after activate, so the script's listener is registered by the
+    // time this arrives. Re-sent on every (re)injection (mode switch, page
+    // navigation, save-reload) so labels track the current page.
+    win.postMessage(
+      {
+        type: "cms-editor::set-labels",
+        labels: cmsSectionLabels,
+        kinds: cmsSectionKinds,
+        keys: cmsSectionKeys,
+      },
       "*",
     );
   };
@@ -846,10 +960,91 @@ export function PreviewContent() {
                         </DropdownMenuItem>
                       </>
                     )}
+                    {repoDir && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() =>
+                            window.open(
+                              `vscode://file${repoDir}?windowId=_blank`,
+                            )
+                          }
+                        >
+                          <img
+                            src={VSCODE_ICON_URL}
+                            alt="VSCode"
+                            width={14}
+                            height={14}
+                          />
+                          Open in VSCode
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            window.open(
+                              `cursor://file${repoDir}?windowId=_blank`,
+                            )
+                          }
+                        >
+                          <img
+                            src={CURSOR_ICON_URL}
+                            alt="Cursor"
+                            width={14}
+                            height={14}
+                          />
+                          Open in Cursor
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
             </>
+          )}
+
+          {/* IDE buttons — visible only in code mode, right-aligned */}
+          {viewMode === "code" && repoDir && (
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Open in VSCode"
+                    onClick={() =>
+                      window.open(`vscode://file${repoDir}?windowId=_blank`)
+                    }
+                  >
+                    <img
+                      src={VSCODE_ICON_URL}
+                      alt="VSCode"
+                      width={14}
+                      height={14}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Open in VSCode</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Open in Cursor"
+                    onClick={() =>
+                      window.open(`cursor://file${repoDir}?windowId=_blank`)
+                    }
+                  >
+                    <img
+                      src={CURSOR_ICON_URL}
+                      alt="Cursor"
+                      width={14}
+                      height={14}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Open in Cursor</TooltipContent>
+              </Tooltip>
+            </div>
           )}
         </div>
       )}

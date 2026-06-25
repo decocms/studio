@@ -360,9 +360,13 @@ export const KEYS = {
   storeDiscovery: (orgId: string, registryId: string) =>
     ["store-discovery", orgId, registryId] as const,
 
-  // Organization domain (scoped by organization)
-  organizationDomain: (organizationId: string) =>
-    ["organization-domain", organizationId] as const,
+  // Organization domains (scoped by organization)
+  organizationDomains: (organizationId: string) =>
+    ["organization-domains", organizationId] as const,
+
+  // Pending join requests (scoped by organization)
+  organizationJoinRequests: (organizationId: string) =>
+    ["organization-join-requests", organizationId] as const,
 
   // Domain lookup (for onboarding — scoped by email domain)
   domainLookup: (domain: string) => ["domain-lookup", domain] as const,
@@ -388,6 +392,8 @@ export const KEYS = {
   liveMeta: (previewUrl: string) => ["live-meta", previewUrl] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
+  sandboxRepoDir: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["sandbox-repo-dir", orgSlug, virtualMcpId, branch] as const,
 
   // Link daemon status (user-scoped; the cluster derives the userSub
   // from the bearer session, so we don't include it in the key).

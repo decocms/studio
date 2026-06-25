@@ -58,7 +58,7 @@ interface DomainLookupOrganization {
   name: string;
   slug: string;
   logo: string | null;
-  autoJoinEnabled: boolean;
+  joinMode: "off" | "auto" | "request";
 }
 
 interface DomainLookupResult {
@@ -192,6 +192,33 @@ function OnboardingContent({
     },
   });
 
+  // Track which orgs the user has already requested, per-slug — a single
+  // mutation's `variables` would collapse the "Request sent" state to the
+  // most recent org and let an earlier one be re-requested (duplicate email).
+  const [requestedSlugs, setRequestedSlugs] = useState<Set<string>>(new Set());
+
+  const requestJoinMutation = useMutation({
+    mutationFn: async (organizationSlug: string) => {
+      const res = await fetch("/api/auth/custom/domain-request-join", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationSlug }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to request access");
+      }
+      if (data.alreadyMember && data.slug) {
+        window.location.href = `/${data.slug}`;
+      }
+      return organizationSlug;
+    },
+    onSuccess: (organizationSlug) => {
+      setRequestedSlugs((prev) => new Set(prev).add(organizationSlug));
+    },
+  });
+
   const [creatingNewOrg, setCreatingNewOrg] = useState(false);
 
   if (domainLoading) {
@@ -207,10 +234,10 @@ function OnboardingContent({
     );
   }
 
+  // domain-lookup only returns verified domains in a discoverable join mode
+  // (auto/request) — "off" and unverified claims are filtered server-side.
   const matchingOrgs = domainLookup?.organizations ?? [];
-  const autoJoinOrgs = matchingOrgs.filter((o) => o.autoJoinEnabled);
-  const hasMatchingOrg = matchingOrgs.length > 0;
-  const canAutoJoin = autoJoinOrgs.length > 0;
+  const canAutoJoin = matchingOrgs.some((o) => o.joinMode === "auto");
   const pendingSlug = joinOrgMutation.variables ?? null;
 
   if (creatingNewOrg) {
@@ -226,29 +253,35 @@ function OnboardingContent({
     );
   }
 
-  // At least one org has auto-join enabled → show join card(s) + option to
-  // create your own. If multiple orgs match, render all of them as a
-  // picker; the user explicitly chooses which to join.
-  if (canAutoJoin) {
+  // One picker over every discoverable org. Auto → one-click Join; request →
+  // Request to join (needs admin approval). Both kinds can match the same
+  // domain, so they share a single list.
+  if (matchingOrgs.length > 0) {
     return (
       <AuthSplitLayout>
         <div className="grid gap-10">
           <OnboardingHeader
             title={
-              autoJoinOrgs.length === 1
-                ? "You have access to an organization"
-                : "You have access to multiple organizations"
+              canAutoJoin
+                ? matchingOrgs.length === 1
+                  ? "You have access to an organization"
+                  : "You have access to multiple organizations"
+                : "Request access to an organization"
             }
             description={
-              autoJoinOrgs.length === 1
+              canAutoJoin
                 ? "Your email domain matches an existing organization."
-                : "Your email domain matches more than one. Pick one to join."
+                : "Your email domain matches an organization that requires admin approval to join."
             }
           />
           <div className="grid gap-2">
-            {autoJoinOrgs.map((org) => {
+            {matchingOrgs.map((org) => {
               const isJoining =
                 joinOrgMutation.isPending && pendingSlug === org.slug;
+              const isRequesting =
+                requestJoinMutation.isPending &&
+                requestJoinMutation.variables === org.slug;
+              const hasRequested = requestedSlugs.has(org.slug);
               return (
                 <div
                   key={org.id}
@@ -270,20 +303,42 @@ function OnboardingContent({
                       @{emailDomain}
                     </p>
                   </div>
-                  <Button
-                    size="default"
-                    onClick={() => joinOrgMutation.mutate(org.slug)}
-                    disabled={joinOrgMutation.isPending}
-                  >
-                    {isJoining ? (
-                      <span className="flex items-center gap-2">
-                        <Loading01 size={14} className="animate-spin" />{" "}
-                        Joining...
-                      </span>
-                    ) : (
-                      "Join"
-                    )}
-                  </Button>
+                  {org.joinMode === "auto" ? (
+                    <Button
+                      size="default"
+                      onClick={() => joinOrgMutation.mutate(org.slug)}
+                      disabled={joinOrgMutation.isPending}
+                    >
+                      {isJoining ? (
+                        <span className="flex items-center gap-2">
+                          <Loading01 size={14} className="animate-spin" />{" "}
+                          Joining...
+                        </span>
+                      ) : (
+                        "Join"
+                      )}
+                    </Button>
+                  ) : hasRequested ? (
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      Request sent
+                    </span>
+                  ) : (
+                    <Button
+                      size="default"
+                      variant="outline"
+                      onClick={() => requestJoinMutation.mutate(org.slug)}
+                      disabled={requestJoinMutation.isPending}
+                    >
+                      {isRequesting ? (
+                        <span className="flex items-center gap-2">
+                          <Loading01 size={14} className="animate-spin" />{" "}
+                          Requesting...
+                        </span>
+                      ) : (
+                        "Request to join"
+                      )}
+                    </Button>
+                  )}
                 </div>
               );
             })}
@@ -295,6 +350,13 @@ function OnboardingContent({
                 : "Failed to join organization"}
             </p>
           )}
+          {requestJoinMutation.error && (
+            <p className="text-xs text-destructive">
+              {requestJoinMutation.error instanceof Error
+                ? requestJoinMutation.error.message
+                : "Failed to request access"}
+            </p>
+          )}
           <button
             type="button"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors text-center"
@@ -302,65 +364,6 @@ function OnboardingContent({
           >
             Create a new organization instead
           </button>
-        </div>
-      </AuthSplitLayout>
-    );
-  }
-
-  // Domain has matching org(s) but none with auto-join → show info + option
-  // to create your own org. (Showing one card per match would just look
-  // like a useless list — collapse into a single summary line.)
-  if (hasMatchingOrg) {
-    return (
-      <AuthSplitLayout>
-        <div className="grid gap-10">
-          <OnboardingHeader
-            title={
-              matchingOrgs.length === 1
-                ? `${matchingOrgs[0]!.name} is already set up`
-                : `${matchingOrgs.length} organizations use @${emailDomain}`
-            }
-            description={
-              matchingOrgs.length === 1
-                ? "This organization doesn't have auto-join enabled."
-                : "None of them have auto-join enabled — ask an admin for an invitation, or create your own."
-            }
-          />
-          <div className="grid gap-2">
-            {matchingOrgs.map((org) => (
-              <div
-                key={org.id}
-                className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4"
-              >
-                <Avatar
-                  url={
-                    org.logo ??
-                    `https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`
-                  }
-                  fallback={org.name.charAt(0).toUpperCase()}
-                  shape="square"
-                  size="base"
-                  className="h-10 w-10 shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{org.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    @{emailDomain}
-                  </p>
-                </div>
-                <span className="text-xs text-muted-foreground shrink-0">
-                  Ask admin for invitation
-                </span>
-              </div>
-            ))}
-          </div>
-          <Button
-            size="xl"
-            className="w-full"
-            onClick={() => setCreatingNewOrg(true)}
-          >
-            Create a new organization
-          </Button>
         </div>
       </AuthSplitLayout>
     );

@@ -107,6 +107,6 @@ export async function up(db: Kysely<unknown>): Promise<void> {
 
 export async function down(_db: Kysely<unknown>): Promise<void> {
   throw new Error(
-    "118-split-web-research-tier is not reversible. Restore from snapshot.",
+    "122-split-web-research-tier is not reversible. Restore from snapshot.",
   );
 }

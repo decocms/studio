@@ -379,6 +379,19 @@ export interface OrgFsEntryTable {
    *  dispatch (mount write-backs, backfill). Scopes live deck previews to
    *  the originating chat. */
   thread_id: string | null;
+  /** When true, the `/fs/:volume/read` proxy serves this entry to anyone — no
+   *  auth, no org membership. On a dir it publishes the whole subtree (reads
+   *  inherit from a published ancestor). Defaults to false (org-only).
+   *  Preserved across in-place overwrites; reset to false on delete + recreate. */
+  read_public: ColumnType<boolean, boolean | undefined, boolean>;
+  /** scrypt hash of the share password. Null on a published entry = fully
+   *  public; set = the proxy serves a password form first. Never sent to
+   *  clients. Meaningless unless `read_public`. */
+  share_password_hash: string | null;
+  /** Random per-node token mixed into unlock-cookie signatures; rotated on
+   *  every password change so old cookies stop validating. Null when not
+   *  password-protected. */
+  share_secret: string | null;
 }
 
 /** Public DTO for a file config — never exposes access key / secret key. */
@@ -1363,18 +1376,64 @@ export interface SandboxProviderStateTable {
 // Organization Domain Table Definition
 // ============================================================================
 
+export type DomainJoinMode = "off" | "auto" | "request";
+export type DomainVerificationStatus = "pending" | "verified";
+export type DomainVerificationMethod = "email" | "dns";
+
 export interface OrganizationDomainTable {
+  id: string;
   organization_id: string;
   domain: string;
-  auto_join_enabled: boolean;
+  join_mode: DomainJoinMode;
+  verification_status: DomainVerificationStatus;
+  verification_method: DomainVerificationMethod | null;
+  verification_token: string | null;
+  verified_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
 export interface OrganizationDomain {
+  id: string;
   organizationId: string;
   domain: string;
-  autoJoinEnabled: boolean;
+  joinMode: DomainJoinMode;
+  verificationStatus: DomainVerificationStatus;
+  verificationMethod: DomainVerificationMethod | null;
+  verificationToken: string | null;
+  verifiedAt: Date | string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export type JoinRequestStatus = "pending" | "approved" | "denied";
+
+export interface OrganizationJoinRequestTable {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  status: JoinRequestStatus;
+  decided_by: string | null;
+  decided_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+export interface OrganizationJoinRequest {
+  id: string;
+  organizationId: string;
+  userId: string;
+  status: JoinRequestStatus;
+  decidedBy: string | null;
+  decidedAt: Date | string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -1540,8 +1599,11 @@ export interface Database {
   // Brand context (org-scoped company profile)
   brand_context: BrandContextTable;
 
-  // Organization domain claims (for auto-join)
+  // Organization domain claims (for auto-join / request-to-join)
   organization_domains: OrganizationDomainTable;
+
+  // Pending/decided requests to join an org
+  organization_join_requests: OrganizationJoinRequestTable;
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
