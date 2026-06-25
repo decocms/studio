@@ -22,7 +22,7 @@
  * Studio's /deck-runtime/v1/deck-viewer.js.
  *
  * Built on the `templating` skill's mustache engine — see
- * /mnt/skills/public/templating/SKILL.md for the template syntax.
+ * org/public/core/templating/SKILL.md for the template syntax.
  */
 
 import {

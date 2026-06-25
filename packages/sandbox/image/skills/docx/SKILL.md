@@ -15,7 +15,7 @@ Print text content from a `.docx` as plain text. Paragraphs are separated by
 blank lines; tables are rendered with tab-separated cells.
 
 ```
-python /mnt/skills/public/docx/extract.py <path-to-file.docx>
+python org/public/core/docx/extract.py <path-to-file.docx>
 ```
 
 ## Direct python-docx usage
