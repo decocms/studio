@@ -63,7 +63,7 @@ This is **not** a license to test route handlers with a mocked DB. Real DB, sing
 - **Real Postgres, real NATS, real Better Auth, real HTTP, real browser.**
 - The only acceptable "mock" is at the *infrastructure edge* — e.g., a flaky test MCP server you bring up as a real process, not a mocked client inside the app.
 - **What belongs here:** anything that crosses the auth, HTTP-route, MCP, NATS, event-bus, or UI boundary; any flow whose bugs are wiring bugs (a handler orchestrating real storage + SSE under real concurrency); anything that would otherwise force you to mock your own code to test it.
-- **Where:** `apps/mesh/e2e/tests/*.spec.ts`.
+- **Where:** `packages/e2e/tests/*.spec.ts`.
 
 ## Writing an e2e spec
 
@@ -79,9 +79,9 @@ test("creates a connection for the authed user", async ({ authedPage }) => {
 
 - Use `import { test } from "../fixtures/test"` — that's the extended Playwright `test` with shared fixtures.
 - Default to the **`authedPage`** fixture. It signs up a fresh user via the Better Auth API, sets cookies on the browser context, and gives you `{ page, user, orgSlug }`. Each test gets a unique user + org.
-- Use **API factories** from `apps/mesh/e2e/fixtures/factories.ts` for setup state (create org, create connection, invite member). Don't `INSERT` directly when an API path exists.
-- Use **`connectDevDb()`** (from `apps/mesh/e2e/fixtures/db.ts`) for **assertions** about DB state, or for seeding state that has no API (e.g., `organization_domains` rows).
-- Use **page objects** from `apps/mesh/e2e/pages/` for recurring screens. Promote an inline helper to a page object on the *second* use, not the first.
+- Use **API factories** from `packages/e2e/fixtures/factories.ts` for setup state (create org, create connection, invite member). Don't `INSERT` directly when an API path exists.
+- Use **`connectDevDb()`** (from `packages/e2e/fixtures/db.ts`) for **assertions** about DB state, or for seeding state that has no API (e.g., `organization_domains` rows).
+- Use **page objects** from `packages/e2e/pages/` for recurring screens. Promote an inline helper to a page object on the *second* use, not the first.
 
 ### Exception: signup and onboarding specs
 
@@ -157,7 +157,7 @@ Adding a test is just choosing the right filename — it auto-routes.
 
 - Good unit test: [`apps/mesh/src/encryption/credential-vault.test.ts`](apps/mesh/src/encryption/credential-vault.test.ts)
 - Good storage-integration test: [`apps/mesh/src/storage/threads.integration.test.ts`](apps/mesh/src/storage/threads.integration.test.ts)
-- Good e2e spec: [`apps/mesh/e2e/tests/connection-create.spec.ts`](apps/mesh/e2e/tests/connection-create.spec.ts)
+- Good e2e spec: [`packages/e2e/tests/connection-create.spec.ts`](packages/e2e/tests/connection-create.spec.ts)
 </content>
 </invoke>
 

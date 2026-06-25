@@ -5,6 +5,7 @@ import { CollectionTableWrapper } from "@/web/components/collections/collection-
 import { EmptyState } from "@/web/components/empty-state.tsx";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { InviteMemberDialog } from "@/web/components/invite-member-dialog";
+import { JoinRequestsSection } from "@/web/components/settings/join-requests-section";
 import { track } from "@/web/lib/posthog-client";
 import { useMembers } from "@/web/hooks/use-members";
 import {
@@ -863,6 +864,7 @@ function OrgMembersContent() {
       <Page.Content>
         <Page.Body>
           <div className="flex flex-col gap-6">
+            <JoinRequestsSection />
             <Page.Title>Members</Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">

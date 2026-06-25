@@ -1,6 +1,6 @@
 {
   "name": "decocms",
-  "version": "3.52.13",
+  "version": "3.57.0",
   "description": "Deco CMS — Self-hostable MCP Gateway for managing AI connections and tools",
   "author": "Deco team",
   "repository": {
@@ -30,8 +30,6 @@
     "start": "bun run ./dist/server/server.js",
     "migrate": "bun run src/database/migrate.ts",
     "test": "bun test",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
     "test:ct": "playwright test -c playwright-ct.config.ts",
     "test:ct:ui": "playwright test -c playwright-ct.config.ts --ui",
     "better-auth:migrate": "bunx --bun @better-auth/cli migrate -y --config src/auth/index.ts",

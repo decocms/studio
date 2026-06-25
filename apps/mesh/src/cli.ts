@@ -65,6 +65,10 @@ const { values, positionals } = parseArgs({
       type: "boolean",
       default: false,
     },
+    prune: {
+      type: "boolean",
+      default: false,
+    },
     target: { type: "string" },
     env: { type: "string", short: "e" },
     "dry-run": {
@@ -114,6 +118,7 @@ Auth Options:
 Link Options:
   [studio-url]      Studio to link against (default: https://studio.decocms.com)
   --port <port>     Local port for the daemon (default: 5174)
+  --prune           Prune safe stale local sandboxes before starting link
 
 Backfill Options (backfill-assets):
   --target <t>          all | threads | connections | organizations (default: all)
@@ -312,6 +317,7 @@ if (command === "link") {
     tui,
     version: await getVersion(),
     hotReload: values.hot === true,
+    prune: values.prune === true,
     // Managed daemons (dev / npx --local-sandbox-provider) suppress the
     // banner — the parent dev/serve process already renders one.
     banner: process.env.DECOCMS_LINK_MANAGED !== "1",

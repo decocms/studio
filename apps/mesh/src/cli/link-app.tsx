@@ -12,6 +12,12 @@ function statusCell(row: SandboxRow): { color: string; text: string } {
   if (row.status === "ready") return { color: "green", text: "● Live" };
   if (row.status === "spawning")
     return { color: "yellow", text: "◌ Starting…" };
+  if (row.status === "stopped") return { color: "gray", text: "■ Stopped" };
+  if (row.status === "missing") return { color: "yellow", text: "□ Missing" };
+  if (row.status === "merged") return { color: "cyan", text: "✓ Merged" };
+  if (row.status === "invalid") return { color: "red", text: "✗ Invalid" };
+  if (row.status === "failed")
+    return { color: "red", text: `✗ Failed: ${row.error ?? "failed"}` };
   return { color: "red", text: `✗ Error: ${row.error ?? ""}` };
 }
 
@@ -20,6 +26,7 @@ function statusCell(row: SandboxRow): { color: string; text: string } {
 // still separates from the next. PREVIEW URL is last and takes the rest.
 const COLS = {
   project: 18,
+  branch: 22,
   status: 14,
 } as const;
 
@@ -73,6 +80,11 @@ export function LinkApp() {
                 PROJECT
               </Text>
             </Box>
+            <Box width={COLS.branch} flexShrink={0} marginRight={1}>
+              <Text dimColor wrap="truncate-end">
+                BRANCH
+              </Text>
+            </Box>
             <Box width={COLS.status} flexShrink={0} marginRight={1}>
               <Text dimColor wrap="truncate-end">
                 STATUS
@@ -89,7 +101,12 @@ export function LinkApp() {
             return (
               <Box key={row.handle}>
                 <Box width={COLS.project} flexShrink={0} marginRight={1}>
-                  <Text wrap="truncate-end">{row.handle}</Text>
+                  <Text wrap="truncate-end">
+                    {row.projectName ?? row.handle}
+                  </Text>
+                </Box>
+                <Box width={COLS.branch} flexShrink={0} marginRight={1}>
+                  <Text wrap="truncate-end">{row.branch ?? "—"}</Text>
                 </Box>
                 <Box width={COLS.status} flexShrink={0} marginRight={1}>
                   <Text color={s.color} wrap="truncate-end">

@@ -1,14 +1,19 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import {
   applySandboxEvent,
   getLinkState,
+  pushSandboxEvent,
+  resetLinkStateForTests,
   type SandboxRow,
+  setPersistedSandboxes,
   setLogPath,
 } from "./link-store";
 
 function empty(): Map<string, SandboxRow> {
   return new Map();
 }
+
+afterEach(() => resetLinkStateForTests());
 
 describe("applySandboxEvent", () => {
   it("adds a spawning row then promotes it to ready with port", () => {
@@ -58,22 +63,44 @@ describe("applySandboxEvent", () => {
     expect(m.get("a")?.port).toBe(7);
   });
 
-  it("removes the row on evicted and deleted", () => {
+  it("marks known rows stopped on evicted and deleted", () => {
     let m = applySandboxEvent(empty(), {
       handle: "a",
       phase: "ready",
       port: 7,
+      previewUrl: "http://a.localhost:5174",
     });
     m = applySandboxEvent(m, { handle: "a", phase: "evicted" });
-    expect(m.has("a")).toBe(false);
+    expect(m.get("a")).toEqual(
+      expect.objectContaining({
+        status: "stopped",
+        port: null,
+        previewUrl: null,
+      }),
+    );
 
     let n = applySandboxEvent(empty(), {
       handle: "b",
       phase: "ready",
       port: 8,
+      previewUrl: "http://b.localhost:5174",
     });
     n = applySandboxEvent(n, { handle: "b", phase: "deleted" });
-    expect(n.has("b")).toBe(false);
+    expect(n.get("b")).toEqual(
+      expect.objectContaining({
+        status: "stopped",
+        port: null,
+        previewUrl: null,
+      }),
+    );
+  });
+
+  it("keeps unknown evicted and deleted rows absent", () => {
+    let m = applySandboxEvent(empty(), { handle: "a", phase: "evicted" });
+    expect(m.has("a")).toBe(false);
+
+    m = applySandboxEvent(m, { handle: "b", phase: "deleted" });
+    expect(m.has("b")).toBe(false);
   });
 });
 
@@ -81,5 +108,149 @@ describe("setLogPath", () => {
   it("stores the log path on the link state", () => {
     setLogPath("/tmp/deco/link.log");
     expect(getLinkState().logPath).toBe("/tmp/deco/link.log");
+  });
+});
+
+describe("setPersistedSandboxes", () => {
+  it("removes persisted rows that are absent from a fresh registry snapshot", () => {
+    setPersistedSandboxes([
+      {
+        handle: "old",
+        status: "stopped",
+        sandboxPath: "/tmp/deco/sandboxes/old",
+        port: null,
+        previewUrl: null,
+        repoCloneUrl: null,
+        branch: null,
+        projectName: null,
+        error: null,
+        createdAt: 1,
+        updatedAt: 2,
+        lastSeenAt: 2,
+        missingSince: null,
+      },
+    ]);
+
+    setPersistedSandboxes([]);
+
+    expect(getLinkState().sandboxes.has("old")).toBe(false);
+  });
+
+  it("preserves an existing live row over a stale persisted row", () => {
+    pushSandboxEvent({
+      handle: "old",
+      phase: "ready",
+      port: 9999,
+      previewUrl: "http://old.localhost:5174",
+    });
+
+    setPersistedSandboxes([
+      {
+        handle: "old",
+        status: "stopped",
+        sandboxPath: "/tmp/deco/sandboxes/old",
+        port: null,
+        previewUrl: null,
+        repoCloneUrl: null,
+        branch: "feat/old",
+        projectName: "studio",
+        error: null,
+        createdAt: 1,
+        updatedAt: 2,
+        lastSeenAt: 2,
+        missingSince: null,
+      },
+    ]);
+
+    expect(getLinkState().sandboxes.get("old")).toEqual(
+      expect.objectContaining({
+        status: "ready",
+        port: 9999,
+        previewUrl: "http://old.localhost:5174",
+      }),
+    );
+  });
+
+  it("hydrates stopped and missing rows from the registry", () => {
+    setPersistedSandboxes([
+      {
+        handle: "old",
+        status: "stopped",
+        sandboxPath: "/tmp/deco/sandboxes/old",
+        port: null,
+        previewUrl: null,
+        repoCloneUrl: "https://github.com/decocms/studio.git",
+        branch: "feat/old",
+        projectName: "studio",
+        error: null,
+        createdAt: 1,
+        updatedAt: 2,
+        lastSeenAt: 2,
+        missingSince: null,
+      },
+      {
+        handle: "gone",
+        status: "missing",
+        sandboxPath: "/tmp/deco/sandboxes/gone",
+        port: null,
+        previewUrl: null,
+        repoCloneUrl: null,
+        branch: null,
+        projectName: null,
+        error: null,
+        createdAt: 1,
+        updatedAt: 3,
+        lastSeenAt: null,
+        missingSince: 3,
+      },
+    ]);
+
+    expect([...getLinkState().sandboxes.values()]).toEqual([
+      expect.objectContaining({
+        handle: "old",
+        status: "stopped",
+        branch: "feat/old",
+        projectName: "studio",
+      }),
+      expect.objectContaining({
+        handle: "gone",
+        status: "missing",
+      }),
+    ]);
+  });
+
+  it("promotes a persisted stopped row when a live ready event arrives", () => {
+    setPersistedSandboxes([
+      {
+        handle: "old",
+        status: "stopped",
+        sandboxPath: "/tmp/deco/sandboxes/old",
+        port: null,
+        previewUrl: null,
+        repoCloneUrl: null,
+        branch: "feat/old",
+        projectName: "studio",
+        error: null,
+        createdAt: 1,
+        updatedAt: 2,
+        lastSeenAt: 2,
+        missingSince: null,
+      },
+    ]);
+
+    const next = applySandboxEvent(getLinkState().sandboxes, {
+      handle: "old",
+      phase: "ready",
+      port: 9999,
+      previewUrl: "http://old.localhost:5174",
+    });
+
+    expect(next.get("old")).toEqual(
+      expect.objectContaining({
+        status: "ready",
+        branch: "feat/old",
+        port: 9999,
+      }),
+    );
   });
 });

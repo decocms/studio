@@ -15,7 +15,10 @@ import {
   DotsVertical,
   Download01,
   Folder,
+  Globe01,
+  Key01,
   Palette,
+  Share07,
   Trash01,
   Zap,
 } from "@untitledui/icons";
@@ -82,13 +85,51 @@ function extOf(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
 
+/** Shared "Share" menu item — opens the share dialog for a file/folder. */
+function ShareMenuItem({ onShare }: { onShare: () => void }) {
+  return (
+    <DropdownMenuItem onClick={onShare}>
+      <Share07 size={14} />
+      Share
+    </DropdownMenuItem>
+  );
+}
+
+/** How a card is shared: public/password by its own flag, or inherited. */
+export type PublicState = "public" | "password" | "inherited";
+
+/** Small badge marking a shared file/folder (globe = public, key = password,
+ *  muted globe = inherited from a parent). */
+function PublicBadge({ state }: { state: PublicState }) {
+  const label =
+    state === "password"
+      ? "Password-protected — link + password to view"
+      : state === "inherited"
+        ? "Shared via a parent folder"
+        : "Public — anyone with the link can view";
+  const Icon = state === "password" ? Key01 : Globe01;
+  return (
+    <span title={label} className="mt-0.5 flex shrink-0 items-center">
+      <Icon
+        size={12}
+        className={cn(
+          state === "inherited" ? "text-muted-foreground/60" : "text-primary",
+        )}
+        aria-label={label}
+      />
+    </span>
+  );
+}
+
 function FileActions({
   downloadUrl,
   filename,
+  onShare,
   onDelete,
 }: {
   downloadUrl: string;
   filename: string;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -105,6 +146,7 @@ function FileActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        {onShare && <ShareMenuItem onShare={onShare} />}
         <DropdownMenuItem asChild>
           <a href={downloadUrl} download={filename}>
             <Download01 size={14} />
@@ -159,12 +201,15 @@ function CardHeader({
   name,
   meta,
   subtitle,
+  publicState,
   actions,
 }: {
   icon: React.ReactNode;
   name: string;
   meta?: string;
   subtitle?: string;
+  /** Render the "public" globe badge next to the name (own vs inherited). */
+  publicState?: PublicState;
   actions?: React.ReactNode;
 }) {
   return (
@@ -178,6 +223,7 @@ function CardHeader({
           >
             {name}
           </span>
+          {publicState && <PublicBadge state={publicState} />}
           {meta && (
             <span className="shrink-0 text-xs text-muted-foreground">
               {meta}
@@ -199,7 +245,9 @@ export function FolderCard({
   subtitle,
   glyph,
   readOnly,
+  publicState,
   onOpen,
+  onShare,
   onDelete,
 }: {
   name: string;
@@ -209,7 +257,10 @@ export function FolderCard({
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   /** View-only corner badge (public sets). */
   readOnly?: boolean;
+  /** Public badge state (own = published here, inherited = via a parent). */
+  publicState?: PublicState;
   onOpen: () => void;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -225,8 +276,9 @@ export function FolderCard({
         name={name}
         meta={meta}
         subtitle={subtitle}
+        publicState={publicState}
         actions={
-          onDelete ? (
+          onShare || onDelete ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -243,10 +295,13 @@ export function FolderCard({
                 align="end"
                 onClick={(e) => e.stopPropagation()}
               >
-                <DropdownMenuItem variant="destructive" onClick={onDelete}>
-                  <Trash01 size={14} />
-                  Delete
-                </DropdownMenuItem>
+                {onShare && <ShareMenuItem onShare={onShare} />}
+                {onDelete && (
+                  <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                    <Trash01 size={14} />
+                    Delete
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : undefined
@@ -260,13 +315,17 @@ export function FileCard({
   filename,
   updatedAt,
   downloadUrl,
+  publicState,
   onOpen,
+  onShare,
   onDelete,
 }: {
   filename: string;
   updatedAt: string;
   downloadUrl: string;
+  publicState?: PublicState;
   onOpen: () => void;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -278,10 +337,12 @@ export function FileCard({
         name={filename}
         meta={timeAgo(updatedAt)}
         subtitle={describeFileType(filename)}
+        publicState={publicState}
         actions={
           <FileActions
             downloadUrl={downloadUrl}
             filename={filename}
+            onShare={onShare}
             onDelete={onDelete}
           />
         }
@@ -301,17 +362,21 @@ export function SkillCard({
   dirName,
   updatedAt,
   skillMdUrl,
+  publicState,
   onOpen,
   onBrowse,
+  onShare,
   onDelete,
 }: {
   dirName: string;
   updatedAt: string;
   /** Byte URL of the dir's SKILL.md. */
   skillMdUrl: string;
+  publicState?: PublicState;
   onOpen: () => void;
   /** Open the underlying folder listing. */
   onBrowse: () => void;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   const { data } = useQuery({
@@ -337,6 +402,7 @@ export function SkillCard({
         name={meta?.name ?? dirName}
         meta={timeAgo(updatedAt)}
         subtitle="Skill"
+        publicState={publicState}
         actions={
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -358,6 +424,7 @@ export function SkillCard({
                 <Folder size={14} />
                 Browse files
               </DropdownMenuItem>
+              {onShare && <ShareMenuItem onShare={onShare} />}
               {onDelete && (
                 <DropdownMenuItem variant="destructive" onClick={onDelete}>
                   <Trash01 size={14} />
@@ -638,7 +705,9 @@ export function RecentFileCard(props: {
   updatedAt: string;
   size: number;
   downloadUrl: string;
+  publicState?: PublicState;
   onOpen: () => void;
+  onShare?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -653,10 +722,12 @@ export function RecentFileCard(props: {
         name={props.filename}
         meta={timeAgo(props.updatedAt)}
         subtitle={describeFileType(props.filename)}
+        publicState={props.publicState}
         actions={
           <FileActions
             downloadUrl={props.downloadUrl}
             filename={props.filename}
+            onShare={props.onShare}
             onDelete={props.onDelete}
           />
         }

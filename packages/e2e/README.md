@@ -6,10 +6,11 @@ a **contract**, not a unit of the app: it must run identically against any
 implementation of that contract, so the app could be rewritten — even in another
 language — and these tests still hold.
 
-> **Status:** landing pad. The mesh e2e suite (`apps/mesh/e2e/`) migrates here in
-> a follow-up PR (re-homing the dev-server launch, DB cwd resolution, CI
-> `working-directory`, and the `migrate`/`test:e2e` scripts). For now this package
-> holds only its manifest, isolation `tsconfig`, and the enforcement docs below.
+Run it with `bun run --cwd=packages/e2e test:e2e`. The Playwright config spawns
+the app's dev server from `apps/mesh` (`webServer.cwd`) — the suite's only tie to
+the app, and it's a process boundary (spawn + HTTP), not a code import. Locally
+you need Postgres + NATS up; in CI those are provided as services and the DB is
+addressed via `DATABASE_URL` (see `.github/workflows/e2e.yml`).
 
 ## Isolation rule (enforced)
 

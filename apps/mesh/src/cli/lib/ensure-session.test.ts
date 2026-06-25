@@ -94,7 +94,13 @@ function mockOAuth() {
     const state = parsed.searchParams.get("state")!;
     code = "code_test";
     await new Promise((r) => setTimeout(r, 10));
-    await fetch(`${redirectUri}?code=${code}&state=${state}`);
+    // `redirect: "manual"` — the callback server answers 302 to the studio's
+    // real `/cli/auth-success` page; following it would chase an external host
+    // (e.g. an unreachable staging studio) and hang the login. We only need to
+    // deliver the code to the local callback server, not render the success page.
+    await fetch(`${redirectUri}?code=${code}&state=${state}`, {
+      redirect: "manual",
+    });
   });
 
   return { fetchMock, openBrowser };

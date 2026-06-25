@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import type { BoundObjectStorage } from "../object-storage/bound-object-storage";
 import { detectContentType } from "../object-storage/key-utils";
-import type { OrgFsEntry, OrgFsEntryStorage } from "../storage/org-fs";
+import type {
+  OrgFsEntry,
+  OrgFsEntryStorage,
+  ShareMode,
+} from "../storage/org-fs";
 import {
   ancestorsOf,
   assertValidVolume,
@@ -10,6 +14,21 @@ import {
   normalizeFsPath,
   parentOf,
 } from "./org-fs-path";
+import { generateShareSecret, hashSharePassword } from "./share-password";
+
+/** What the `/read` proxy should do for a given path. */
+export type ReadAccess =
+  | { access: "private" }
+  | { access: "public" }
+  | {
+      access: "password";
+      /** Node the password sits on — the unlock cookie's scope. */
+      govPath: string;
+      /** Current secret version (rotated on password change). */
+      secret: string;
+      /** scrypt hash (server-only — never sent to clients). */
+      passwordHash: string;
+    };
 
 const DEFAULT_CHANGES_LIMIT = 500;
 const LIST_PAGE_SIZE = 1000;
@@ -106,6 +125,189 @@ export class OrgFs {
   async read(volume: string, path: string): Promise<Uint8Array> {
     const entry = await this.requireFile(volume, path);
     return this.storage.getBytes(fsObjectKey(volume, entry.path));
+  }
+
+  /**
+   * Set an entry's share mode. `private`/`public` clear any password;
+   * `password` requires `opts.password`, hashes it, and rotates the node's
+   * secret (invalidating previously-issued unlock cookies). Works on a file or
+   * a dir (a dir governs its whole subtree). Throws if the path is not live.
+   */
+  async setShareMode(
+    volume: string,
+    path: string,
+    mode: ShareMode,
+    opts: { actor: string; password?: string },
+  ): Promise<OrgFsEntry> {
+    assertValidVolume(volume);
+    const normalized = normalizeFsPath(path);
+    const entry = await this.manifest.get(
+      this.organizationId,
+      volume,
+      normalized,
+    );
+    if (!entry) throw new OrgFsNotFoundError(`No such path: ${normalized}`);
+
+    let passwordHash: string | null = null;
+    let shareSecret: string | null = null;
+    if (mode === "password") {
+      if (!opts.password) {
+        throw new OrgFsValidationError(
+          "A password is required to set password mode",
+        );
+      }
+      passwordHash = await hashSharePassword(opts.password);
+      shareSecret = generateShareSecret();
+    }
+    const updated = await this.manifest.setShareMode({
+      organizationId: this.organizationId,
+      volume,
+      path: entry.path,
+      readPublic: mode !== "private",
+      passwordHash,
+      shareSecret,
+      actor: opts.actor,
+    });
+    // The stat above proved the row exists and is live; the update can only
+    // miss on a concurrent delete, which we treat as not-found.
+    if (!updated) {
+      throw new OrgFsNotFoundError(`No such path: ${entry.path}`);
+    }
+    return updated;
+  }
+
+  /** Public/private convenience over setShareMode (clears any password). */
+  async setReadPublic(
+    volume: string,
+    path: string,
+    readPublic: boolean,
+    opts: { actor: string },
+  ): Promise<OrgFsEntry> {
+    return this.setShareMode(volume, path, readPublic ? "public" : "private", {
+      actor: opts.actor,
+    });
+  }
+
+  /**
+   * What the `/read` proxy should do for `path`: private (member-gated),
+   * public (serve to anyone), or password (serve the form/check the cookie).
+   * Resolves the most-specific published node (self or ancestor) — its
+   * password decides public-vs-gated.
+   */
+  async resolveReadAccess(volume: string, path: string): Promise<ReadAccess> {
+    assertValidVolume(volume);
+    const normalized = normalizeFsPath(path);
+    const entry = await this.manifest.get(
+      this.organizationId,
+      volume,
+      normalized,
+    );
+    if (!entry || entry.kind !== "file") return { access: "private" };
+    const gov = await this.manifest.resolveGoverningShare({
+      organizationId: this.organizationId,
+      volume,
+      candidatePaths: [normalized, ...ancestorsOf(normalized)],
+    });
+    if (!gov) return { access: "private" };
+    if (!gov.passwordHash) return { access: "public" };
+    return {
+      access: "password",
+      govPath: gov.path,
+      secret: gov.secret ?? "",
+      passwordHash: gov.passwordHash,
+    };
+  }
+
+  /**
+   * Whether `path` is a live file the `/read` proxy may serve to anyone:
+   * either its own `read_public` flag is set, or it inherits from a public
+   * ancestor directory (publishing a folder publishes everything under it,
+   * now and later). Dirs and missing paths are not readable.
+   */
+  async isPubliclyReadable(volume: string, path: string): Promise<boolean> {
+    assertValidVolume(volume);
+    const normalized = normalizeFsPath(path);
+    const entry = await this.manifest.get(
+      this.organizationId,
+      volume,
+      normalized,
+    );
+    if (!entry || entry.kind !== "file") return false;
+    if (entry.readPublic) return true;
+    return this.manifest.hasPublicAncestorDir(
+      this.organizationId,
+      volume,
+      ancestorsOf(normalized),
+    );
+  }
+
+  /**
+   * Whether `path` inherits public visibility from a published ancestor dir
+   * (its own `read_public` flag is NOT considered). Used to derive an entry's
+   * `effectivePublic = entry.readPublic || inheritsPublic(path)`.
+   */
+  async inheritsPublic(volume: string, path: string): Promise<boolean> {
+    assertValidVolume(volume);
+    return this.manifest.hasPublicAncestorDir(
+      this.organizationId,
+      volume,
+      ancestorsOf(normalizeFsPath(path)),
+    );
+  }
+
+  /**
+   * Whether the immediate children of `containerPath` inherit public — i.e.
+   * the container itself or any of its ancestors is a published dir. One query
+   * that resolves the inherited bit for a whole directory listing.
+   */
+  async childrenInheritPublic(
+    volume: string,
+    containerPath: string,
+  ): Promise<boolean> {
+    assertValidVolume(volume);
+    const norm = normalizeFsPath(containerPath);
+    if (norm === "") return false;
+    return this.manifest.hasPublicAncestorDir(this.organizationId, volume, [
+      ...ancestorsOf(norm),
+      norm,
+    ]);
+  }
+
+  /**
+   * `recent()` with `effectivePublic` per entry (own flag OR a published
+   * ancestor dir). Batches the ancestor lookup to one query per volume so the
+   * cross-volume feed stays cheap.
+   */
+  async recentWithEffectivePublic(
+    limit: number,
+  ): Promise<Array<OrgFsEntry & { effectivePublic: boolean }>> {
+    const entries = await this.recent(limit);
+    const ancestorsByVolume = new Map<string, Set<string>>();
+    for (const e of entries) {
+      let set = ancestorsByVolume.get(e.volume);
+      if (!set) {
+        set = new Set();
+        ancestorsByVolume.set(e.volume, set);
+      }
+      for (const a of ancestorsOf(e.path)) set.add(a);
+    }
+    const publicByVolume = new Map<string, Set<string>>();
+    await Promise.all(
+      [...ancestorsByVolume].map(async ([volume, paths]) => {
+        const found = await this.manifest.publicDirPaths({
+          organizationId: this.organizationId,
+          volume,
+          paths: [...paths],
+        });
+        publicByVolume.set(volume, new Set(found));
+      }),
+    );
+    return entries.map((e) => {
+      const publicDirs = publicByVolume.get(e.volume);
+      const inherited =
+        !!publicDirs && ancestorsOf(e.path).some((a) => publicDirs.has(a));
+      return { ...e, effectivePublic: e.readPublic || inherited };
+    });
   }
 
   /** Presigned GET URL for a file — the byte path the mount fetches lazily. */
