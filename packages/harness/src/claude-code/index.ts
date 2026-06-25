@@ -8,18 +8,15 @@
  *  - Does NOT build a Decopilot-style system prompt or tool catalog; it only
  *    appends CLI-safe workspace/instruction context through the SDK's
  *    `systemPrompt` preset.
- *  - Supports resume via `input.resumeSessionRef`, derived by the shared
- *    layer (Task 12) from prior
- *    `finish-step.providerMetadata["claude-code"].sessionId`. The harness
- *    just forwards that opaque token to the SDK's `resume` setting.
+ *  - Supports resume via `input.harness.sessionId`, derived by the shared
+ *    layer from prior `finish-step.providerMetadata["claude-code"].sessionId`.
+ *    The harness just forwards that opaque token to the SDK's `resume`
+ *    setting.
  *
  * Working-directory resolution: the cluster sends `input.workspace.cwd` as
- * a SYMBOLIC value — either "default" (no checkout, use SDK default) or
- * "/repo" (repo checkout inside the sandbox). The daemon rebases "/repo"
- * onto its own sandbox root before the harness ever sees it, so by the
- * time we reach `effectiveCwd()` the value is already a host-absolute path
- * or the "default" sentinel. `effectiveCwd("default")` returns `undefined`
- * so the CLI subprocess inherits `process.cwd()` from the daemon.
+ * a symbolic value: null means no SDK cwd override; "/repo" means the repo
+ * checkout. The desktop daemon rebases "/repo" onto its sandbox checkout path
+ * before invoking the harness after receiving dispatch input.
  *
  * Behavior parity with stream-core: the inline call at lines 888–906
  * passes `mcpServers` (single `cms` entry), `toolApprovalLevel`,
@@ -55,12 +52,12 @@ import type {
 } from "../types";
 
 export function buildClaudeCodeSystemPrompt(input: {
-  codingWorkspace?: HarnessStreamInput["codingWorkspace"];
+  workspace?: HarnessStreamInput["workspace"];
   agentInstructions?: string;
   now?: Date;
 }) {
   const parts = [
-    buildCodingWorkspacePrompt(input.codingWorkspace),
+    buildCodingWorkspacePrompt(input.workspace),
     input.agentInstructions?.trim()
       ? `<agent-instructions>\n${input.agentInstructions.trim()}\n</agent-instructions>`
       : null,
@@ -86,12 +83,10 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    line 889.
         const sdkModelId = resolveClaudeCodeModelId(input.models.thinking.id);
 
-        // 2. Translate the symbolic workspace.cwd to an SDK option. The daemon
-        //    has already rebased "/repo" onto its sandbox root before the
-        //    harness runs, so we receive either the rebased absolute path or
-        //    the "default" sentinel. `effectiveCwd("default")` → undefined
-        //    (SDK default = process.cwd()); any other value passes through
-        //    as the CLI subprocess working directory.
+        // 2. Translate the workspace cwd to an SDK option. `null` means no
+        //    override (SDK default = process.cwd()); "/repo" passes through
+        //    unless a desktop daemon has already rebased it to its sandbox
+        //    checkout path before calling the harness.
         const cwd = effectiveCwd(input.workspace.cwd);
 
         // Diagnostics: on the user-desktop path this runs inside the spawned
@@ -101,7 +96,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         // signal — wrong cwd (CLI runs outside the checkout), an
         // unreachable MCP endpoint, or a bad model id.
         console.log(
-          `[claude-code] stream start model=${sdkModelId} cwd=${cwd ?? "(default)"} mcpUrl=${input.mcp.url} mode=${input.mode} resume=${input.resumeSessionRef ? "yes" : "no"}`,
+          `[claude-code] stream start model=${sdkModelId} cwd=${cwd ?? "(default)"} mcpUrl=${input.mcp.url} mode=${input.mode} resume=${input.harness.sessionId ? "yes" : "no"}`,
         );
 
         // 3. Build the Claude Code language model. The MCP URL + headers
@@ -110,15 +105,8 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    Mirrors stream-core lines 888–906 — the CLI options and
         //    preset append prompt are threaded through.
         const systemPrompt = buildClaudeCodeSystemPrompt({
-          codingWorkspace: input.codingWorkspace,
-          agentInstructions:
-            typeof input.virtualMcp.metadata === "object" &&
-            input.virtualMcp.metadata !== null &&
-            typeof (input.virtualMcp.metadata as { instructions?: unknown })
-              .instructions === "string"
-              ? (input.virtualMcp.metadata as { instructions: string })
-                  .instructions
-              : undefined,
+          workspace: input.workspace,
+          agentInstructions: input.agent.instructions,
         });
         const languageModel = createClaudeCodeModel(sdkModelId, {
           mcpServers: {
@@ -133,7 +121,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
           },
           toolApprovalLevel: input.toolApprovalLevel,
           isPlanMode: input.mode === "plan",
-          resume: input.resumeSessionRef,
+          resume: input.harness.sessionId,
           cwd,
           systemPrompt,
         });
@@ -145,7 +133,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    `apps/mesh/src/harnesses/cli-message-prep.ts` for details —
         //    a previous `as never` cast hid this mismatch and would have
         //    thrown `InvalidPromptError` at runtime.
-        const messages = await prepCliMessages(input.messages);
+        const messages = await prepCliMessages([input.userMessage]);
 
         // 4a. Start title generation with Claude Code's fast model. The
         //     cluster interceptor only persists/broadcasts the result chunk.
@@ -196,7 +184,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
         //    `codingAgentSessionId` / `codingAgentProvider` at the top of
         //    the message metadata so the shared layer persists them onto
         //    the response message's metadata. Subsequent turns read those
-        //    fields back to recover `input.resumeSessionRef`. Matches the
+        //    fields back to recover `input.harness.sessionId`. Matches the
         //    inline original (stream-core.ts:1404–1417 + 1549–1550)
         //    byte-for-byte.
         //
@@ -237,7 +225,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
             `[claude-code] stream error model=${sdkModelId} cwd=${cwd ?? "(default)"}:`,
             stringifyError(err),
           );
-          if (input.resumeSessionRef && isStaleSessionError(err)) {
+          if (input.harness.sessionId && isStaleSessionError(err)) {
             throw new CliSessionExpiredError(err);
           }
           throw err;

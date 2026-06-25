@@ -7,7 +7,7 @@
  *    reaches mesh's MCP endpoint directly).
  *  - Does NOT build a system prompt (the CLI has its own).
  *  - Supports resume: each turn spawns a fresh codex app-server process, but
- *    `resume: input.resumeSessionRef` reloads the on-disk thread (the app
+ *    `resume: input.harness.sessionId` reloads the on-disk thread (the app
  *    server persists rollouts under HOME, which survives the per-turn
  *    subprocess on the long-lived desktop daemon). `threadMode: "persistent"`
  *    (set in createCodexModel) makes the first turn's thread non-ephemeral so
@@ -57,12 +57,12 @@ import type {
 } from "../types";
 
 export function buildCodexDeveloperInstructions(input: {
-  codingWorkspace?: HarnessStreamInput["codingWorkspace"];
+  workspace?: HarnessStreamInput["workspace"];
   agentInstructions?: string;
   now?: Date;
 }): string | undefined {
   const parts = [
-    buildCodingWorkspacePrompt(input.codingWorkspace),
+    buildCodingWorkspacePrompt(input.workspace),
     input.agentInstructions?.trim()
       ? `<agent-instructions>\n${input.agentInstructions.trim()}\n</agent-instructions>`
       : null,
@@ -82,24 +82,14 @@ export const codexHarnessFactory: HarnessFactory = {
         //    name (e.g. `gpt-5.4`). Mirrors stream-core line 922.
         const sdkModelId = resolveCodexModelId(input.models.thinking.id);
 
-        // 2. Translate the symbolic workspace.cwd to an SDK option. The daemon
-        //    has already rebased "/repo" onto its sandbox root before the
-        //    harness runs, so we receive either the rebased absolute path or
-        //    the "default" sentinel. `effectiveCwd("default")` → undefined
-        //    (SDK default = process.cwd()); any other value passes through
-        //    as the codex app-server subprocess working directory.
+        // 2. Translate the workspace cwd to an SDK option. `null` means no
+        //    override (SDK default = process.cwd()); "/repo" passes through
+        //    unless a desktop daemon has already rebased it to its sandbox
+        //    checkout path before calling the harness.
         const cwd = effectiveCwd(input.workspace.cwd);
-        const agentInstructions =
-          typeof input.virtualMcp.metadata === "object" &&
-          input.virtualMcp.metadata !== null &&
-          typeof (input.virtualMcp.metadata as { instructions?: unknown })
-            .instructions === "string"
-            ? (input.virtualMcp.metadata as { instructions: string })
-                .instructions
-            : undefined;
         const developerInstructions = buildCodexDeveloperInstructions({
-          codingWorkspace: input.codingWorkspace,
-          agentInstructions,
+          workspace: input.workspace,
+          agentInstructions: input.agent.instructions,
         });
 
         // Diagnostics: on the user-desktop path this runs inside the spawned
@@ -139,7 +129,7 @@ export const codexHarnessFactory: HarnessFactory = {
           isPlanMode: input.mode === "plan",
           cwd,
           developerInstructions,
-          resume: input.resumeSessionRef,
+          resume: input.harness.sessionId,
         });
 
         try {
@@ -150,7 +140,7 @@ export const codexHarnessFactory: HarnessFactory = {
           //    See `apps/mesh/src/harnesses/cli-message-prep.ts` for
           //    details — a previous `as never` cast hid this mismatch
           //    and would have thrown `InvalidPromptError` at runtime.
-          const messages = await prepCliMessages(input.messages);
+          const messages = await prepCliMessages([input.userMessage]);
 
           // 3a. Start title generation with Codex's fast model. This uses a
           //     separate app-server process so title generation can run in
@@ -243,7 +233,7 @@ export const codexHarnessFactory: HarnessFactory = {
               yield chunk;
             }
           } catch (err) {
-            if (input.resumeSessionRef && isStaleSessionError(err)) {
+            if (input.harness.sessionId && isStaleSessionError(err)) {
               throw new CliSessionExpiredError(err);
             }
             throw err;
