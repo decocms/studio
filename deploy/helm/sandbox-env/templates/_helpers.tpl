@@ -146,7 +146,6 @@ atomic and gives a pointer to the right install command.
 {{- end }}
 {{- end }}
 
-
 {{- define "sandbox-env.housekeeperName" -}}
 {{- printf "sandbox-housekeeper-%s" (include "sandbox-env.envName" .) -}}
 {{- end }}
