@@ -63,10 +63,7 @@ spec:
       securityContext:
         {{- include "chart-deco-studio.podSecurityContext" . | nindent 8 }}
       containers:
-        # The front-door / web tier. Runs the nginx image (serves the SPA +
-        # proxies to the API sidecars); named "-web" for the user-facing web
-        # tier rather than the implementation (nginx).
-        - name: {{ .Chart.Name }}-web
+        - name: {{ .Chart.Name }}-nginx
           {{- with .Values.nginx.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
