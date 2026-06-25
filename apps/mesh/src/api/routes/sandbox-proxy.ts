@@ -246,66 +246,106 @@ async function proxyDaemon(
     headers.set("content-type", "application/json");
   }
 
+  const signal = opts?.signal;
   const requestInit = {
     method,
     headers,
     body,
-    ...(opts?.signal ? { signal: opts.signal } : {}),
+    ...(signal ? { signal } : {}),
   };
 
-  let upstream: Response;
-  try {
-    upstream = await runner.proxyDaemonRequest(
+  /**
+   * Resolve the daemon, optionally retry on 404→adopt, and return the
+   * upstream response. Extracted so that the caller can race the whole
+   * operation against the abort signal — the signal on `requestInit`
+   * only covers the final `fetch`, not the record resolution /
+   * resurrection that precedes it and can take tens of seconds when a
+   * sandbox was evicted.
+   */
+  const resolveAndFetch = async (): Promise<Response> => {
+    let upstream = await runner.proxyDaemonRequest(
       claimName,
       daemonPath,
       requestInit,
     );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return c.json({ error: `Daemon unreachable: ${message}` }, 502);
-  }
 
-  if (opts?.map404to410 && upstream.status === 404) {
-    try {
-      await upstream.body?.cancel();
-    } catch {
-      /* ignore */
-    }
-    const adopted = await runner.adoptLiveClaim?.(
-      { userId, projectRef },
-      claimName,
-    );
-    if (adopted) {
+    if (opts?.map404to410 && upstream.status === 404) {
       try {
+        await upstream.body?.cancel();
+      } catch {
+        /* ignore */
+      }
+      const adopted = await runner.adoptLiveClaim?.(
+        { userId, projectRef },
+        claimName,
+      );
+      if (adopted) {
         upstream = await runner.proxyDaemonRequest(
           claimName,
           daemonPath,
           requestInit,
         );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return c.json({ error: `Daemon unreachable: ${message}` }, 502);
+      }
+      if (upstream.status === 404) {
+        try {
+          await upstream.body?.cancel();
+        } catch {
+          /* ignore */
+        }
+        return new Response(
+          JSON.stringify({
+            error:
+              "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
+          }),
+          {
+            status: 410,
+            headers: {
+              "content-type": "application/json",
+              ...SANDBOX_PROXY_CACHE_HEADERS,
+            },
+          },
+        );
       }
     }
-    if (upstream.status === 404) {
-      return c.json(
-        {
-          error:
-            "Sandbox handle is gone. The sandbox needs to be re-provisioned.",
-        },
-        410,
-        SANDBOX_PROXY_CACHE_HEADERS,
-      );
-    }
-  }
 
-  const text = await upstream.text();
-  const contentType =
-    upstream.headers.get("content-type") ?? "application/json";
-  return new Response(text, {
-    status: upstream.status,
-    headers: { "content-type": contentType, ...SANDBOX_PROXY_CACHE_HEADERS },
-  });
+    const text = await upstream.text();
+    const contentType =
+      upstream.headers.get("content-type") ?? "application/json";
+    return new Response(text, {
+      status: upstream.status,
+      headers: { "content-type": contentType, ...SANDBOX_PROXY_CACHE_HEADERS },
+    });
+  };
+
+  try {
+    // When a signal is provided, race the entire resolve+fetch operation
+    // against it. Without this, record resolution (getRecord → rehydrate,
+    // resurrectByHandle → ensure) can take tens of seconds on an evicted
+    // sandbox, and the signal only aborts the final HTTP fetch — not the
+    // K8s/port-forward work that precedes it.
+    if (signal) {
+      // Attach a no-op catch so that if the signal wins the race and
+      // resolveAndFetch later rejects (its inner fetch aborts via the
+      // same signal), the rejection is swallowed instead of surfacing
+      // as an unhandled promise rejection.
+      const work = resolveAndFetch();
+      work.catch(() => {});
+      const upstream = await Promise.race([
+        work,
+        new Promise<never>((_, reject) => {
+          if (signal.aborted) return reject(signal.reason);
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+      ]);
+      return upstream;
+    }
+    return await resolveAndFetch();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ error: `Daemon unreachable: ${message}` }, 502);
+  }
 }
 
 async function fetchDaemonJson<T>(
