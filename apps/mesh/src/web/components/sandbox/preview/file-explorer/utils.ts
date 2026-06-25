@@ -92,7 +92,7 @@ export function directoryNeedsLazyLoad(
   loadedLazyDirs: ReadonlySet<string>,
 ): boolean {
   return (
-    getPathDepth(treePath) > EXPLORER_EAGER_DEPTH &&
+    getPathDepth(treePath) >= EXPLORER_EAGER_DEPTH &&
     !loadedLazyDirs.has(treePath)
   );
 }
