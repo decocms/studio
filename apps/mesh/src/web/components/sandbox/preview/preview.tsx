@@ -128,24 +128,44 @@ const LAZY_RESOLVE_TYPE = "website/sections/Rendering/Lazy.tsx";
  * the iframe treats as "matches anything").
  */
 function resolveSectionCandidates(
-  section: { __resolveType?: unknown; section?: unknown },
+  section: { __resolveType?: unknown; section?: unknown; variants?: unknown },
   decofile: Record<string, unknown>,
 ): string[] {
-  let obj: { __resolveType?: unknown; section?: unknown } = section;
+  let obj: { __resolveType?: unknown; section?: unknown; variants?: unknown } =
+    section;
   let rt = typeof obj?.__resolveType === "string" ? obj.__resolveType : "";
   for (let i = 0; rt && i < 5; i++) {
     const block = decofile[rt];
     if (block && typeof block === "object" && "__resolveType" in block) {
       const next = (block as { __resolveType?: unknown }).__resolveType;
       if (typeof next === "string" && next && next !== rt) {
-        obj = block as { __resolveType?: unknown; section?: unknown };
+        obj = block as typeof obj;
         rt = next;
         continue;
       }
     }
     break;
   }
-  if (!rt || rt.includes("flags/multivariate")) return [];
+  if (!rt) return [];
+  // Multivariate (A/B) renders one of its variants — collect every variant's
+  // possible key so it matches whichever rendered (NOT a blind wildcard, which
+  // could otherwise grab an adjacent framework section).
+  if (rt.includes("flags/multivariate")) {
+    const variants = Array.isArray(obj.variants) ? obj.variants : [];
+    const keys: string[] = [];
+    for (const v of variants) {
+      const value = (v as { value?: unknown })?.value;
+      if (value && typeof value === "object") {
+        for (const k of resolveSectionCandidates(
+          value as { __resolveType?: unknown },
+          decofile,
+        )) {
+          if (!keys.includes(k)) keys.push(k);
+        }
+      }
+    }
+    return keys;
+  }
   if (rt === LAZY_RESOLVE_TYPE) {
     const inner =
       obj.section && typeof obj.section === "object"
