@@ -167,6 +167,7 @@ export interface HarnessStreamInput {
   currentThreadTitle?: string;
   signal: AbortSignal;
   traceparent?: string;
+  runFenceToken?: string;
 }
 
 /** A Harness produces a stream of UI message chunks for a conversation turn.
