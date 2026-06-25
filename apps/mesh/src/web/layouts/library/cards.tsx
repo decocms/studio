@@ -183,7 +183,12 @@ function CardHeader({
           )}
         </div>
         {subtitle && (
-          <span className="text-xs text-muted-foreground">{subtitle}</span>
+          <span
+            className="truncate text-xs text-muted-foreground"
+            title={subtitle}
+          >
+            {subtitle}
+          </span>
         )}
       </div>
       {actions}
