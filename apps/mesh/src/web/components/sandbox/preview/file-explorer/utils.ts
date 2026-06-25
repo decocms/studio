@@ -65,9 +65,6 @@ export function validateExplorerEntryName(name: string): string | null {
   ) {
     return "Name cannot contain /, \\, or ..";
   }
-  if (trimmed.startsWith(".")) {
-    return "Name cannot start with a dot";
-  }
   return null;
 }
 
@@ -95,7 +92,7 @@ export function directoryNeedsLazyLoad(
   loadedLazyDirs: ReadonlySet<string>,
 ): boolean {
   return (
-    getPathDepth(treePath) > EXPLORER_EAGER_DEPTH &&
+    getPathDepth(treePath) >= EXPLORER_EAGER_DEPTH &&
     !loadedLazyDirs.has(treePath)
   );
 }
