@@ -421,6 +421,9 @@ async function projectRunWorkflowFn(
   }
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 const projectRunWorkflow = DBOS.registerWorkflow(projectRunWorkflowFn, {
   name: "projectRunWorkflow",
 });
@@ -535,6 +538,9 @@ async function projectCheckpointWorkflowFn(
   }
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 const projectCheckpointWorkflow = DBOS.registerWorkflow(
   projectCheckpointWorkflowFn,
   { name: "projectCheckpointWorkflow" },
