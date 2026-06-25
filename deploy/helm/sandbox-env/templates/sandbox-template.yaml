@@ -234,10 +234,6 @@ spec:
             - name: DECO_CACHE_S3_ENDPOINT
               value: {{ .Values.decoCache.endpoint | quote }}
             {{- end }}
-            {{- if .Values.decoCache.pathTemplate }}
-            - name: DECO_CACHE_S3_PATH_TEMPLATE
-              value: {{ .Values.decoCache.pathTemplate | quote }}
-            {{- end }}
             {{- if .Values.decoCache.path }}
             - name: DECO_CACHE_S3_PATH
               value: {{ .Values.decoCache.path | quote }}

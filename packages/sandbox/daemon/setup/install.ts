@@ -6,26 +6,6 @@ import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
 /**
- * Substitutes {owner} and {repo} placeholders in a path template using the
- * clone URL. Handles authenticated URLs (x-access-token:...@github.com) and
- * plain ones. Returns null if the template needs placeholders but the URL
- * doesn't match.
- */
-function resolveCachePathFromTemplate(
-  template: string,
-  cloneUrl: string | undefined,
-): string | null {
-  if (!template.includes("{")) return template;
-  if (!cloneUrl) return null;
-  const match = cloneUrl.match(
-    /github\.com\/([^/@]+)\/([^/.]+?)(?:\.git)?(?:[?#]|$)/,
-  );
-  if (!match) return null;
-  const [, owner, repo] = match;
-  return template.replace("{owner}", owner).replace("{repo}", repo);
-}
-
-/**
  * For Deno projects, tries to pre-populate $DENO_DIR from any S3-compatible
  * storage so the first `deno task dev` skips remote import fetching.
  *
@@ -36,12 +16,11 @@ function resolveCachePathFromTemplate(
  *   DECO_CACHE_S3_BUCKET
  *
  * Optional env vars:
- *   DECO_CACHE_S3_ENDPOINT      — S3-compatible endpoint (e.g. MinIO, R2, GCS)
- *                                 defaults to AWS S3 virtual-hosted URL
- *   DECO_CACHE_S3_PATH_TEMPLATE — object key template with {owner} and {repo}
- *                                 placeholders, e.g. "{owner}/{repo}/cache.tar.zst"
- *   DECO_CACHE_S3_PATH          — full explicit object key, overrides
- *                                 DECO_CACHE_S3_PATH_TEMPLATE entirely
+ *   DECO_CACHE_S3_ENDPOINT — S3-compatible endpoint (e.g. MinIO, R2, GCS)
+ *                            defaults to AWS S3 virtual-hosted URL
+ *   DECO_CACHE_S3_PATH     — object key (e.g. "owner/repo/cache.tar.zst");
+ *                            for deco.cx sites this is injected automatically
+ *                            by the mesh from the Virtual MCP metadata
  *
  * Non-fatal: any failure (missing creds, object not found, network error)
  * is logged and the sandbox continues to start normally.
@@ -62,17 +41,8 @@ export function tryWarmDenoCache(deps: InstallDeps): Promise<number> | null {
   const bucket = process.env.DECO_CACHE_S3_BUCKET;
   if (!region || !bucket) return null;
 
-  // Explicit path takes precedence; otherwise expand the template.
-  let cachePath = process.env.DECO_CACHE_S3_PATH;
-  if (!cachePath) {
-    const template = process.env.DECO_CACHE_S3_PATH_TEMPLATE;
-    if (!template) return null;
-    cachePath = resolveCachePathFromTemplate(
-      template,
-      config.git?.repository?.cloneUrl,
-    );
-    if (!cachePath) return null;
-  }
+  const cachePath = process.env.DECO_CACHE_S3_PATH;
+  if (!cachePath) return null;
 
   const endpoint = process.env.DECO_CACHE_S3_ENDPOINT;
   const baseUrl = endpoint

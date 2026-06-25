@@ -245,15 +245,10 @@ readOnlyRootFilesystem: true
 # bucket:               S3 bucket name (required).
 # endpoint:             S3-compatible endpoint override, e.g. for MinIO or R2.
 #                       Defaults to AWS virtual-hosted URL when omitted.
-# pathTemplate:         object key template supporting {owner} and {repo}
-#                       placeholders — substituted from the repo's clone URL.
-#                       Example: "{owner}/{repo}/cache.tar.zst"
-#                       A plain string with no placeholders is used as-is.
-# path:                 full explicit object key — overrides pathTemplate
-#                       entirely, e.g. "my-org/my-repo/cache.tar.zst".
+# path:                 full explicit object key, e.g. "my-org/my-repo/cache.tar.zst".
 #                       For deco.cx sites this is injected automatically by
-#                       the mesh when siteSlug is present in the Virtual MCP
-#                       metadata — no need to set it here in that case.
+#                       the mesh from the Virtual MCP metadata — no need to
+#                       set it here in that case.
 decoCache:
   secretName: ""
   accessKeyIdKey: "accessKeyId"
@@ -261,7 +256,6 @@ decoCache:
   region: ""
   bucket: ""
   endpoint: ""
-  pathTemplate: ""
   path: ""
 
 # ── sentinel token ─────────────────────────────────────────────────────
