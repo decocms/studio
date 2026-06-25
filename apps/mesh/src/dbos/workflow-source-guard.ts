@@ -8,10 +8,10 @@ import { join } from "node:path";
  * trailing "(" excludes prose mentions (e.g. the comment in queue-names.ts).
  * Split across a concatenation so this file does not match its own marker.
  */
-export const WORKFLOW_MARKER = "DBOS.registerWorkflow" + "(";
+const WORKFLOW_MARKER = "DBOS.registerWorkflow" + "(";
 
 /** Non-test `.ts` files under rootDir that register a workflow, sorted. */
-export function discoverWorkflowFiles(rootDir: string): string[] {
+function discoverWorkflowFiles(rootDir: string): string[] {
   const glob = new Glob("**/*.ts");
   const out: string[] = [];
   for (const rel of glob.scanSync({ cwd: rootDir })) {
