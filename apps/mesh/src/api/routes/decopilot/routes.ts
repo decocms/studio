@@ -59,7 +59,10 @@ import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
-import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
+import {
+  cancelThreadGateHead,
+  listThreadGateQueue,
+} from "@/dispatch-queue/thread-gate-queue";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -790,6 +793,21 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       await validateThreadOwnership(c);
     await cancelActiveThreadRun({ ctx, taskId, thread, organization, userId });
     return c.json({ cancelled: true, async: true }, 202);
+  });
+
+  // ============================================================================
+  // Queue List Endpoint — list the thread's pending gate workflows
+  // ============================================================================
+  //
+  // GET /:org/decopilot/queue/:threadId
+  //
+  // List this thread's pending gate workflows (running head + queued tail) so
+  // the UI can show and cancel them. Owner-only.
+
+  app.get("/:org/decopilot/queue/:threadId", async (c) => {
+    const { taskId } = await validateThreadOwnership(c);
+    const items = await listThreadGateQueue(taskId);
+    return c.json({ items });
   });
 
   // ============================================================================

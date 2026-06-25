@@ -1,5 +1,6 @@
 // packages/e2e/tests/decopilot-thread-queue.spec.ts
-import { test, expect } from "../fixtures/test";
+import { test, expect, newApiContext } from "../fixtures/test";
+import { signUpViaApi } from "../fixtures/auth-api";
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import type { APIRequestContext } from "@playwright/test";
@@ -100,5 +101,72 @@ test("stop cancels a stuck PENDING gate head (frees the partition slot)", async 
     expect((rows[0] as { status: string }).status).toBe("CANCELLED");
   } finally {
     await db.end();
+  }
+});
+
+test("GET queue lists PENDING + ENQUEUED gate messages, oldest first", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const api = page.context().request;
+  const db = await connectDevDb();
+
+  try {
+    const { threadId } = await createAgentAndThread(api, orgSlug);
+
+    await seedGate(db, threadId, {
+      id: "head",
+      status: "PENDING",
+      at: 1000,
+      text: "running one",
+    });
+    await seedGate(db, threadId, {
+      id: "q2",
+      status: "ENQUEUED",
+      at: 3000,
+      text: "second",
+    });
+    await seedGate(db, threadId, {
+      id: "q1",
+      status: "ENQUEUED",
+      at: 2000,
+      text: "first",
+    });
+
+    const res = await api.get(`/api/${orgSlug}/decopilot/queue/${threadId}`);
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{ messageId: string; status: string; text: string }>;
+    };
+    expect(body.items.map((i) => i.messageId)).toEqual(["head", "q1", "q2"]);
+    expect(body.items[0]).toMatchObject({
+      status: "running",
+      text: "running one",
+    });
+    expect(body.items[1]).toMatchObject({ status: "queued", text: "first" });
+  } finally {
+    await db.end();
+  }
+});
+
+test("GET queue 403s for a non-owner", async ({ authedPage, playwright }) => {
+  const { page, orgSlug } = authedPage;
+  const ownerApi = page.context().request;
+
+  // Create a thread owned by the primary user.
+  const { threadId } = await createAgentAndThread(ownerApi, orgSlug);
+
+  // A second user who has no membership in orgSlug.
+  const otherCtx = await newApiContext(playwright);
+  await signUpViaApi(otherCtx);
+
+  try {
+    // The other user tries to read the owner's thread queue — should 403.
+    const res = await otherCtx.get(
+      `/api/${orgSlug}/decopilot/queue/${threadId}`,
+    );
+    expect(res.status()).toBe(403);
+  } finally {
+    await otherCtx.dispose();
   }
 });
