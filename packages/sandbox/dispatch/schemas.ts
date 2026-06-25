@@ -103,10 +103,12 @@ export const harnessStreamInputSchema = z
     toolAllowlist: z.array(z.string()).nullable().optional(),
     // Per-run parent agent-loop step cap. absent = PARENT_STEP_LIMIT default.
     maxAgentSteps: z.number().int().optional(),
-    user: z.object({ id: z.string(), email: z.string() }),
+    user: z.object({ id: z.string(), email: z.string() }).strict(),
     organizationId: z.string(),
     organizationSlug: z.string().optional(),
-    agent: z.object({ id: z.string(), instructions: z.string().optional() }),
+    agent: z
+      .object({ id: z.string(), instructions: z.string().optional() })
+      .strict(),
     triggerId: z.string().optional(),
     currentThreadTitle: z.string().optional(),
     traceparent: z.string().optional(),

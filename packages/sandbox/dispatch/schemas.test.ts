@@ -72,23 +72,35 @@ describe("harnessStreamInputSchema (v3)", () => {
     expect(result.success).toBe(true);
   });
 
-  test("rejects removed shared harness fields", () => {
-    const input = {
+  test.each([
+    ["runId", "run-1"],
+    ["taskId", "task-1"],
+    ["resumeSessionRef", "old-session"],
+    ["messages", []],
+    [
+      "codingWorkspace",
+      { cwd: "/repo", branch: "main", workspaceKind: "github" },
+    ],
+    ["projectSlug", "legacy"],
+    ["virtualMcp", { id: "agent-1" }],
+  ] as const)("rejects removed shared harness field %s", (field, value) => {
+    const result = harnessStreamInputSchema.safeParse({
       ...FIXTURE_MINIMAL_INPUT,
-      runId: "run-1",
-      taskId: "task-1",
-      resumeSessionRef: "old-session",
-      messages: [],
-      codingWorkspace: {
-        cwd: "/repo",
-        branch: "main",
-        workspaceKind: "github",
-      },
-      projectSlug: "legacy",
-      virtualMcp: { id: "agent-1" },
-    };
+      [field]: value,
+    });
 
-    const result = harnessStreamInputSchema.safeParse(input);
+    expect(result.success).toBe(false);
+  });
+
+  test.each([
+    ["user", { id: "user-fixture", email: "fixture@example.com", admin: true }],
+    ["agent", { id: "agent-fixture", metadata: {} }],
+  ] as const)("rejects unknown nested keys on %s", (field, value) => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...FIXTURE_MINIMAL_INPUT,
+      [field]: value,
+    });
+
     expect(result.success).toBe(false);
   });
 
