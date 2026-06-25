@@ -13,6 +13,8 @@ interface ResolveAndPushParams {
   orgId: string;
   userId: string;
   entries: RuntimeEnvEntry[] | null | undefined;
+  /** Additional key→value pairs merged into the push alongside resolved entries. */
+  extraEnv?: Record<string, string>;
 }
 
 /**
@@ -32,11 +34,14 @@ export async function resolveAndPushEnv({
   orgId,
   userId,
   entries,
+  extraEnv,
 }: ResolveAndPushParams): Promise<void> {
-  if (!entries || entries.length === 0) return;
+  const hasEntries = entries && entries.length > 0;
+  const hasExtra = extraEnv && Object.keys(extraEnv).length > 0;
+  if (!hasEntries && !hasExtra) return;
 
-  const env: Record<string, string> = {};
-  for (const entry of entries) {
+  const env: Record<string, string> = { ...extraEnv };
+  for (const entry of entries ?? []) {
     if (entry.kind === "literal") {
       env[entry.key] = entry.value;
       continue;
@@ -62,7 +67,7 @@ export async function resolveAndPushEnv({
     }
   }
 
-  if (Object.keys(env).length === 0) return;
+  if (Object.keys(env).length === 0) return; // all secret resolutions skipped
 
   const res = await runner.proxyDaemonRequest(handle, "/_sandbox/config", {
     method: "PUT",

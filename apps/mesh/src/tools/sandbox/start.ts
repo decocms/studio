@@ -483,6 +483,18 @@ async function provisionSandbox(
   // *before* it can start install/dev. Daemon deep-merges, so resuming an
   // already-claimed sandbox stays idempotent.
   const envEntries = (metadata as RuntimeConfigMeta).runtime?.env ?? null;
+
+  // deco.cx sites are identified by `siteSlug` in metadata (set only during
+  // import via the deco.cx importer). When present, inject DECO_CACHE_S3_PATH
+  // so the daemon can warm the Deno module cache from S3 without needing a
+  // path template configured in Helm.
+  const siteSlug =
+    typeof metadata.siteSlug === "string" ? metadata.siteSlug : null;
+  const decoCachePath =
+    siteSlug && githubRepo
+      ? `${githubRepo.owner}/${githubRepo.name}/cache.tar.zst`
+      : undefined;
+
   await resolveAndPushEnv({
     ctx,
     runner,
@@ -490,6 +502,9 @@ async function provisionSandbox(
     orgId,
     userId,
     entries: envEntries,
+    ...(decoCachePath
+      ? { extraEnv: { DECO_CACHE_S3_PATH: decoCachePath } }
+      : {}),
   });
 
   // Preserve `createdAt` across resumes so the booting overlay's elapsed

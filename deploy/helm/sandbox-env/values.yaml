@@ -230,12 +230,12 @@ orgFs:
 # dev server start) on staging before merging an override.
 readOnlyRootFilesystem: true
 
-# ── deno S3 cache ──────────────────────────────────────────────────────
+# ── deco S3 cache ──────────────────────────────────────────────────────
 # When secretName is set, the sandbox daemon will attempt to pre-populate
-# $DENO_DIR from any S3-compatible storage before running `deno task dev`.
+# the module cache from any S3-compatible storage before the first run.
 # Supports AWS S3, GCS (S3 interop), Cloudflare R2, MinIO, etc.
 # Non-fatal: a missing object or download failure is logged and the sandbox
-# starts with a cold Deno cache.
+# starts with a cold cache.
 #
 # secretName:           K8s Secret holding the S3 credentials (required).
 # accessKeyIdKey /
@@ -245,20 +245,23 @@ readOnlyRootFilesystem: true
 # bucket:               S3 bucket name (required).
 # endpoint:             S3-compatible endpoint override, e.g. for MinIO or R2.
 #                       Defaults to AWS virtual-hosted URL when omitted.
-# pathPrefix:           prefix prepended to the repo name, e.g. "my-org" →
-#                       "my-org/<repo>/<pathFile>".
-# pathFile:             cache filename (default "cache.tar.zst").
-# path:                 full explicit object key — overrides pathPrefix and
-#                       pathFile entirely, e.g. "my-org/my-repo/cache.tar.zst".
-denoCache:
+# pathTemplate:         object key template supporting {owner} and {repo}
+#                       placeholders — substituted from the repo's clone URL.
+#                       Example: "{owner}/{repo}/cache.tar.zst"
+#                       A plain string with no placeholders is used as-is.
+# path:                 full explicit object key — overrides pathTemplate
+#                       entirely, e.g. "my-org/my-repo/cache.tar.zst".
+#                       For deco.cx sites this is injected automatically by
+#                       the mesh when siteSlug is present in the Virtual MCP
+#                       metadata — no need to set it here in that case.
+decoCache:
   secretName: ""
   accessKeyIdKey: "accessKeyId"
   secretAccessKeyKey: "secretAccessKey"
   region: ""
   bucket: ""
   endpoint: ""
-  pathPrefix: ""
-  pathFile: ""
+  pathTemplate: ""
   path: ""
 
 # ── sentinel token ─────────────────────────────────────────────────────
