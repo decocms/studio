@@ -489,6 +489,7 @@ const configReadH = makeConfigReadHandler({
     ready: isReady(),
   }),
   getTasks: () => phaseManager.recent(20),
+  repoDir: bootConfig.repoDir,
 });
 // Closure mutates `bootConfig.daemonToken` in place so the
 // `requireToken(req, bootConfig.daemonToken)` calls below — which read the

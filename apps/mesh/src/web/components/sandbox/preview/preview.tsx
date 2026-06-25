@@ -75,6 +75,7 @@ import {
 import { SandboxStateCard } from "./state-card";
 import { derivePhaseProgress } from "./derive-phase-progress";
 import { track } from "@/web/lib/posthog-client";
+import { useSandboxRepoDir } from "../hooks/use-sandbox-repo-dir";
 
 const SectionsEditor = lazy(() =>
   import("@/web/components/sections-editor/sections-editor").then((m) => ({
@@ -177,6 +178,14 @@ export function PreviewContent() {
   const previewUrl = lifecycle.previewUrl;
   const lifecyclePhase = vmEvents.lifecycle.phase;
   const devServerReady = lifecyclePhase === "running";
+
+  const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
+  const repoDir = useSandboxRepoDir({
+    orgSlug: org.slug,
+    virtualMcpId: virtualMcpId ?? "",
+    branch: branch ?? "",
+    enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
+  });
 
   // Decofile pages for the URL bar dropdown — fetch only after dev server is up.
   const decofileParams =
@@ -846,10 +855,91 @@ export function PreviewContent() {
                         </DropdownMenuItem>
                       </>
                     )}
+                    {repoDir && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() =>
+                            window.open(
+                              `vscode://file${repoDir}?windowId=_blank`,
+                            )
+                          }
+                        >
+                          <img
+                            src="https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png"
+                            alt="VSCode"
+                            width={14}
+                            height={14}
+                          />
+                          Open in VSCode
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            window.open(
+                              `cursor://file${repoDir}?windowId=_blank`,
+                            )
+                          }
+                        >
+                          <img
+                            src="https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png"
+                            alt="Cursor"
+                            width={14}
+                            height={14}
+                          />
+                          Open in Cursor
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
             </>
+          )}
+
+          {/* IDE buttons — visible only in code mode, right-aligned */}
+          {viewMode === "code" && repoDir && (
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Open in VSCode"
+                    onClick={() =>
+                      window.open(`vscode://file${repoDir}?windowId=_blank`)
+                    }
+                  >
+                    <img
+                      src="https://decoims.com/decocms/01b321bd-4613-4b2c-9348-35058444d210/Visual_Studio_Code_1.35_icon.svg.png"
+                      alt="VSCode"
+                      width={14}
+                      height={14}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Open in VSCode</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Open in Cursor"
+                    onClick={() =>
+                      window.open(`cursor://file${repoDir}?windowId=_blank`)
+                    }
+                  >
+                    <img
+                      src="https://decoims.com/decocms/7583d3b5-81d0-4afb-becf-6a59bbb3a68e/cursor-logo-icon-freelogovectors.net_.png"
+                      alt="Cursor"
+                      width={14}
+                      height={14}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Open in Cursor</TooltipContent>
+              </Tooltip>
+            </div>
           )}
         </div>
       )}
