@@ -63,8 +63,8 @@ slides-create --data @deck.json \
 
 ### Brand folders
 
-If the org has a brand at `org/<slug>/brands/<name>/` (check with
-`ls org/<slug>/brands/`), honor it before any built-in theme (to *create* or
+If the org has a brand at `org/home/brands/<name>/` (check with
+`ls org/home/brands/`), honor it before any built-in theme (to *create* or
 edit a brand, use the `brand` skill):
 
 - **`tokens.css`** — the brand's `--brand-*` CSS custom properties. Inline
@@ -72,7 +72,7 @@ edit a brand, use the `brand` skill):
   org-fs file by URL — preview iframes carry no cookies). A brand theme shell
   maps deck variables onto them, e.g. `--deck-accent: var(--brand-primary);`.
 - **`slides-theme.html`** — if present it's a ready deck shell for this brand;
-  pass it as `--theme org/<slug>/brands/<name>/slides-theme.html`.
+  pass it as `--theme org/home/brands/<name>/slides-theme.html`.
 - **`brand.md`** — voice, tone, do's and don'ts; read it and follow it when
   writing slide copy.
 - **`logo.*`** — the brand logo; place it on the title/closing slides.
