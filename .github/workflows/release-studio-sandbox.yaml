@@ -15,6 +15,10 @@ jobs:
   build-push:
     name: Build & Push studio-sandbox image
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      # true only when a NEW image was actually built + pushed this run.
+      pushed: ${{ steps.tag-check.outputs.exists != 'true' }}
     permissions:
       contents: read
       packages: write
@@ -122,3 +126,39 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+  # GitOps: auto-bump the studio-sandbox image tag in deco-apps-cd, mirroring
+  # release-mesh. We fire the GENERIC `image-bump` repository_dispatch; that
+  # repo's own bump-image.yml self-commits the tag with its native token (no
+  # cross-repo write credential lives here).
+  #
+  # Only STG is bumped: studio-sandbox-stg auto-syncs, so it rolls + tests the
+  # new image automatically. studio-sandbox-prod is auto-sync by default too,
+  # so it's deliberately left to a manual promotion (bump its values file by
+  # hand) — add "apps/studio-sandbox-prod/values.yaml" to `files` only after
+  # gating that app with `syncPolicy.automated: null`, the way deco-studio does.
+  bump-deco-apps-cd:
+    name: Trigger deco-apps-cd bump (stg)
+    needs: build-push
+    if: needs.build-push.outputs.pushed == 'true'
+    runs-on: ubuntu-latest
+    # Reuses DEPLOY_REPO_TOKEN (decobot PAT, admin on decocms/deco-apps-cd) —
+    # same token + mechanism as release-mesh. A convenience that must never red
+    # the release: if the token isn't present the step no-ops and the job passes.
+    env:
+      DISPATCH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+    steps:
+      - name: Skip notice (dispatch token not configured)
+        if: env.DISPATCH_TOKEN == ''
+        run: echo "::notice::DEPLOY_REPO_TOKEN not set — skipping the deco-apps-cd bump."
+      - name: Dispatch image-bump to deco-apps-cd
+        if: env.DISPATCH_TOKEN != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          repository: decocms/deco-apps-cd
+          event-type: image-bump
+          client-payload: '{"version": "${{ needs.build-push.outputs.version }}", "repository": "decocms/studio/studio-sandbox", "files": ["apps/studio-sandbox-stg/values.yaml"]}'
+      - name: Summary
+        if: env.DISPATCH_TOKEN != ''
+        run: echo "Dispatched \`image-bump\` (studio-sandbox ${{ needs.build-push.outputs.version }} -> stg) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"
