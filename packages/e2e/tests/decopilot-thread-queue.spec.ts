@@ -170,3 +170,48 @@ test("GET queue 403s for a non-owner", async ({ authedPage, playwright }) => {
     await otherCtx.dispose();
   }
 });
+
+test("POST cancel removes a queued item", async ({ authedPage }) => {
+  const { page, orgSlug } = authedPage;
+  const api = page.context().request;
+  const db = await connectDevDb();
+
+  try {
+    const { threadId } = await createAgentAndThread(api, orgSlug);
+
+    const wfId = await seedGate(db, threadId, {
+      id: "to-cancel",
+      status: "ENQUEUED",
+      at: Date.now(),
+      text: "x",
+    });
+
+    const res = await api.post(
+      `/api/${orgSlug}/decopilot/queue/${threadId}/cancel/${encodeURIComponent(wfId)}`,
+    );
+    expect(res.status()).toBe(202);
+
+    const { rows } = await db.query(
+      `SELECT status FROM dbos.workflow_status WHERE workflow_uuid = $1`,
+      [wfId],
+    );
+    expect((rows[0] as { status: string }).status).toBe("CANCELLED");
+  } finally {
+    await db.end();
+  }
+});
+
+test("POST cancel 404s for a workflowId scoped to another thread", async ({
+  authedPage,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const api = page.context().request;
+
+  const { threadId } = await createAgentAndThread(api, orgSlug);
+
+  const foreign = encodeURIComponent("thread-run:someone-else:msg-1");
+  const res = await api.post(
+    `/api/${orgSlug}/decopilot/queue/${threadId}/cancel/${foreign}`,
+  );
+  expect(res.status()).toBe(404);
+});

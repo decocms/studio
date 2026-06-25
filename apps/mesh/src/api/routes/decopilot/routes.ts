@@ -61,6 +61,7 @@ import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-too
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
 import {
   cancelThreadGateHead,
+  cancelThreadGateWorkflow,
   listThreadGateQueue,
 } from "@/dispatch-queue/thread-gate-queue";
 
@@ -808,6 +809,40 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     const { taskId } = await validateThreadOwnership(c);
     const items = await listThreadGateQueue(taskId);
     return c.json({ items });
+  });
+
+  // ============================================================================
+  // Queue Per-Item Cancel Endpoint — cancel one pending gate workflow
+  // ============================================================================
+  //
+  // POST /:org/decopilot/queue/:threadId/cancel/:workflowId
+  //
+  // Cancel one pending gate item. A queued (ENQUEUED) item is just removed; the
+  // running head (PENDING) additionally runs the full run-cancel teardown.
+
+  app.post("/:org/decopilot/queue/:threadId/cancel/:workflowId", async (c) => {
+    const { ctx, taskId, thread, organization, userId } =
+      await validateThreadOwnership(c);
+    const workflowId = c.req.param("workflowId");
+
+    // The item must currently be pending for THIS thread (prefix-scoped list).
+    const items = await listThreadGateQueue(taskId);
+    const target = items.find((i) => i.workflowId === workflowId);
+    if (!target) return c.body(null, 404);
+
+    const ok = await cancelThreadGateWorkflow(taskId, workflowId);
+    if (!ok) return c.body(null, 404);
+
+    if (target.status === "running") {
+      await cancelActiveThreadRun({
+        ctx,
+        taskId,
+        thread,
+        organization,
+        userId,
+      });
+    }
+    return c.json({ cancelled: true }, 202);
   });
 
   // ============================================================================
