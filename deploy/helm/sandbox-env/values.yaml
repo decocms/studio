@@ -262,15 +262,13 @@ decoCache:
   bucket: ""
   endpoint: ""
   # Mode B: provision the Secret via External Secrets Operator (AWS Secrets Manager).
+  # Uses decoCache.region for the SecretStore AWS region.
   externalSecret:
     enabled: false
     # Path to the secret in AWS Secrets Manager (required when enabled).
     # The secret must contain the keys matching accessKeyIdRef / secretAccessKeyRef.
     secretPath: ""
     refreshInterval: "1h"
-    provider:
-      aws:
-        region: ""
 
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:

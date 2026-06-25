@@ -169,8 +169,8 @@ Validate decoCache configuration.
   {{- if not $es.secretPath }}
     {{- fail "sandbox-env: decoCache.externalSecret.enabled=true requires decoCache.externalSecret.secretPath" -}}
   {{- end }}
-  {{- if not $es.provider.aws.region }}
-    {{- fail "sandbox-env: decoCache.externalSecret.enabled=true requires decoCache.externalSecret.provider.aws.region" -}}
+  {{- if not .Values.decoCache.region }}
+    {{- fail "sandbox-env: decoCache.externalSecret.enabled=true requires decoCache.region (used for the SecretStore AWS region)" -}}
   {{- end }}
 {{- end }}
 {{- end }}
