@@ -8,10 +8,13 @@ import type { HarnessStreamInputWire } from "./schemas";
 
 export const FIXTURE_MINIMAL_INPUT: HarnessStreamInputWire = {
   threadId: "thr-fixture",
-  runId: "run-fixture",
-  taskId: "thr-fixture",
-  messages: [],
-  workspace: { cwd: "default" },
+  userMessage: {
+    id: "msg-fixture",
+    role: "user",
+    parts: [{ type: "text", text: "hello" }],
+  },
+  harness: {},
+  workspace: { cwd: null },
   models: {
     thinking: {
       id: "claude-code:opus",
@@ -29,6 +32,5 @@ export const FIXTURE_MINIMAL_INPUT: HarnessStreamInputWire = {
   toolApprovalLevel: "auto",
   user: { id: "user-fixture", email: "fixture@example.com" },
   organizationId: "org-fixture",
-  virtualMcp: { id: "agent-fixture" },
   agent: { id: "agent-fixture" },
 };

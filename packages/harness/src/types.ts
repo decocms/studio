@@ -5,12 +5,6 @@ import type { UIMessage, UIMessageChunk } from "ai";
 // `ai` dependency — keeping a SINGLE hoisted `ai` instance (avoids the
 // double-AI-SDK / broken-instanceof hazard).
 export type { UIMessageChunk } from "ai";
-import type {
-  DecopilotMcpSource,
-  DecopilotModelSources,
-  DecopilotObjectStorageSource,
-} from "./sources";
-import type { CodingWorkspacePromptInput } from "./coding-workspace-prompt";
 
 export { createSecretModelSource } from "./sources";
 export type {
@@ -94,6 +88,25 @@ export interface ModelsConfig {
  *  the AI SDK's generic `UIMessage` already provides. */
 export type ChatMessage = UIMessage;
 
+export type HarnessWorkspace =
+  | {
+      cwd: "/repo";
+      repo: {
+        owner: string;
+        name: string;
+        connectedGithub: boolean;
+      };
+      branch: string | null;
+    }
+  | {
+      cwd: null;
+    };
+
+export interface HarnessAgent {
+  id: string;
+  instructions?: string;
+}
+
 /** One recent thread, pre-resolved agent-side for the prompt's history block.
  *  `updated_at` is an ISO string (the portable prompt builder formats the date
  *  label). Mirrors the fields `renderRecentThreadsSection` reads. */
@@ -128,139 +141,32 @@ export interface HarnessUserContext {
   agents?: PromptAgentSummary[];
 }
 
-/** Input passed to every Harness.stream() call. Fully serializable except
- *  AbortSignal — designed so a future remote transport can JSON-serialize it
- *  over an HTTP+SSE wire (cancel becomes a separate RPC). */
 export interface HarnessStreamInput {
-  // ===== Identity =====
   threadId: string;
-  runId: string;
-  /** Opaque resume token, restored from prior `finish-message.providerMetadata`. */
-  resumeSessionRef?: string;
-
-  // ===== Conversation =====
-  messages: ChatMessage[];
-
-  // ===== Workspace =====
-  /** Symbolic, logically-resolved working directory (see workspace-cwd.ts).
-   *  Required. The daemon rebases non-"default" values onto its sandbox root. */
-  workspace: { cwd: string };
-  /** Pre-renderable coding workspace facts shared by Decopilot and CLI harness prompts. */
-  codingWorkspace?: CodingWorkspacePromptInput;
-
-  // ===== Models (already resolved: credential → key/headers, permissions checked) =====
+  userMessage: ChatMessage;
+  harness: {
+    sessionId?: string;
+  };
+  workspace: HarnessWorkspace;
   models: ModelsConfig;
-  /** Resolved Decopilot model sources by slot. `thinking` is the canonical
-   *  primary slot; optional slots let built-ins and auto-title use the
-   *  credential already selected by the cluster without receiving cluster
-   *  provider objects. Secret sources are serializable and may cross the link
-   *  protocol; in-process model sources are local-only and must not cross it. */
-  modelSources?: DecopilotModelSources;
-  /** Resolved MCP source. HTTP sources are serializable; in-process clients are
-   *  local-only and stripped before remote dispatch. */
-  mcpSource?: DecopilotMcpSource;
-  /** HTTP object-storage API source for runtimes that cannot access
-   *  cluster-local object-storage clients. */
-  objectStorageSource?: DecopilotObjectStorageSource;
-
-  // ===== Tool gateway =====
-  /** Serializable HTTP MCP endpoint the harness should connect to.
-   *  In-process Decopilot may use DecopilotMcpSource(kind="in-process")
-   *  outside the wire schema; such values must never cross the link
-   *  protocol boundary. The Bearer token is a 1h-TTL temp key —
-   *  `expiresAt` carries its absolute deadline so remote daemons can
-   *  refresh proactively. */
   mcp: {
     url: string;
     headers: Record<string, string>;
     expiresAt: number;
   };
-
-  // ===== Mode (forwarded; each harness interprets independently) =====
   mode: ChatMode;
-
-  // ===== Knobs =====
   temperature: number;
   toolApprovalLevel: ToolApprovalLevel;
-  /**
-   * Optional allowlist of model-facing tool names. When set, the assembled
-   * toolset (MCP + built-ins) is filtered down to just these names before the
-   * model sees it. `null`/absent = full toolset. Set by automations that pin a
-   * specific subset of tools.
-   */
   toolAllowlist?: string[] | null;
-  /**
-   * Parent agent-loop step cap (AI SDK `stopWhen: stepCountIs(...)`). Absent
-   * leaves the decopilot harness on its `PARENT_STEP_LIMIT` default. Set by
-   * automations that pin a custom ceiling.
-   */
   maxAgentSteps?: number;
-  /**
-   * Run is a subagent (a backgrounded `subtask` dispatched as its own
-   * serialized run on the parent thread). Drives `runEngine({ kind: "subagent" })`
-   * — excludes the nested `subtask`/`user_ask`/`propose_plan` built-ins (depth-1)
-   * and uses the subagent prompt. The caller also skips history-seeding and caps
-   * steps via `maxAgentSteps`.
-   */
-  isSubagent?: boolean;
-  /**
-   * When this run is a backgrounded subtask, the originating `subtask` tool
-   * call's job id. Stamped onto the run's assistant-message metadata so the UI
-   * can nest the run inside that tool-call card.
-   */
-  subtaskJobId?: string;
-  /**
-   * This run was auto-enqueued to resume the agent after a backgrounded tool
-   * (image / subtask) finished. Stamped onto the assistant-message metadata so
-   * the UI can flag the turn as a background-completion resume.
-   */
-  resumedFromBackground?: boolean;
-
-  // ===== Identity context (for prompts, audit) =====
   user: { id: string; email: string };
   organizationId: string;
   organizationSlug?: string;
-  /** Optional project slug for agents pinned to a project. */
-  projectSlug?: string;
-
-  /** Loaded VirtualMcp entity (the agent definition). Decopilot reads metadata,
-   *  connection list, and github-repo info from this; CLI harnesses use `id`
-   *  and may append `metadata.instructions` to their CLI-safe prompt context.
-   *  Typed as a permissive bag in the package — the cluster passes its richer
-   *  `VirtualMCPEntity` shape and TS accepts the widening. */
-  virtualMcp: { id: string; metadata?: unknown; [k: string]: unknown };
-  /** Convenience: same as `virtualMcp.id`. Kept separate to avoid forcing CLI
-   *  harnesses to destructure the full entity. */
-  agent: { id: string };
-
-  // ===== Optional thread state =====
-  branch?: string | null;
-  taskId?: string;
+  agent: HarnessAgent;
   triggerId?: string;
-  /** Current persisted thread title. Decopilot harness uses this to decide
-   *  whether to run auto-title (only when title still equals the default). */
   currentThreadTitle?: string;
-
-  // ===== Lifecycle =====
-  /** Aborts when the consumer disconnects or the user cancels. */
   signal: AbortSignal;
-
-  // ===== Trace propagation =====
   traceparent?: string;
-
-  /**
-   * Single-writer fence token for this run (spec §3.5). Minted by
-   * prepareRun (Phase B) and included in every ingest append by the
-   * desktop daemon. Absent on ws-path runs.
-   */
-  runFenceToken?: string;
-
-  // ===== Pre-resolved prompt data (read agent-side before dispatch) =====
-  /** Threads / interests / sibling-agents, pre-resolved by `prepareRun` so the
-   *  portable prompt builder renders them without any `ctx.storage` reach-in.
-   *  Absent on runs whose caller didn't pre-resolve (e.g. desktop) ⇒ the
-   *  corresponding prompt blocks are skipped. */
-  userContext?: HarnessUserContext;
 }
 
 /** A Harness produces a stream of UI message chunks for a conversation turn.
