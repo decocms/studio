@@ -161,6 +161,11 @@ test("GET queue 403s for a non-owner", async ({ authedPage, playwright }) => {
   await signUpViaApi(otherCtx);
 
   try {
+    // TODO(e2e-hardening): this proves a NON-MEMBER gets 403 (org-membership
+    // middleware). The owner-only guard (validateThreadOwnership: created_by !=
+    // userId) for a non-owner who IS a member of the same org is not yet
+    // covered — add a second org member via an invite/accept fixture and assert
+    // 403 on another member's thread when this suite runs against real infra.
     // The other user tries to read the owner's thread queue — should 403.
     const res = await otherCtx.get(
       `/api/${orgSlug}/decopilot/queue/${threadId}`,

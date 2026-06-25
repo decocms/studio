@@ -843,6 +843,12 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
     const ok = await cancelThreadGateWorkflow(taskId, workflowId);
     if (!ok) return c.body(null, 404);
 
+    // For a running head, also run the full run-cancel teardown (abort + NATS
+    // broadcast + run-registry CANCEL). cancelActiveThreadRun re-cancels the
+    // gate head via cancelThreadGateHead — that re-cancel is idempotent
+    // (DBOS.cancelWorkflows on an already-cancelled workflow is a no-op), so the
+    // explicit cancelThreadGateWorkflow above covers the queued case and this
+    // covers the live run.
     if (target.status === "running") {
       await cancelActiveThreadRun({
         ctx,

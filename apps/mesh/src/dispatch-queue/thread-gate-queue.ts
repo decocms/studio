@@ -18,7 +18,7 @@ export interface ThreadQueueItem {
   enqueuedAt: number;
 }
 
-/** Concatenate the text parts of the last user message. Pure + total. */
+/** Concatenate the text parts of the last user message, concatenated and trimmed for display. Pure + total. */
 export function extractUserMessageText(messages: ChatMessage[]): string {
   if (!Array.isArray(messages) || messages.length === 0) return "";
   const lastUserIdx = messages.findLastIndex((m) => m?.role === "user");
@@ -51,6 +51,8 @@ export function gateStatusToQueueItem(
     workflowId: status.workflowID,
     messageId: status.workflowID.slice(prefix.length),
     text,
+    // Caller (listThreadGateQueue) pre-filters to PENDING/ENQUEUED, so the
+    // else branch is ENQUEUED → "queued".
     status: status.status === "PENDING" ? "running" : "queued",
     enqueuedAt: status.createdAt,
   };
