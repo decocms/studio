@@ -188,6 +188,8 @@ export const KEYS = {
   threadSandbox: (orgKey: string, taskId: string | undefined) =>
     ["thread-sandbox", "v2", orgKey, taskId] as const,
   threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
+  threadQueue: (threadId: string) =>
+    ["decopilot", "thread-queue", threadId] as const,
   // Fetched text content of a previewed file (FilePreview), keyed by URL.
   fileText: (downloadUrl: string) => ["file-text", downloadUrl] as const,
   // First bytes of a CSV/TSV file for the card thumbnail (range request).

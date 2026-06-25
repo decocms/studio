@@ -1106,6 +1106,9 @@ export function ActiveTaskProvider({
         }),
       },
     );
+    queryClient.invalidateQueries({
+      queryKey: KEYS.threadQueue(capturedTaskId),
+    });
   }
 
   // Cancel run
