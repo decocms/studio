@@ -141,18 +141,16 @@ export async function handleVirtualMcpRequest(
       };
     }
 
-    // Surface the dev sandbox's tools when this agent is the dev side of a
-    // dev/live pair and the acting user has a sandbox up. resolveDevConnection
-    // is the single gate — reverse lookup (some agent's `metadata.devAgentId ===
-    // this` ) + the user's own running sandbox — and returns null otherwise,
-    // cheaply (no sandbox → early return before any list query). The dev agent
-    // has no local pairing field (the single `devAgentId` ref lives on its live
-    // partner), so we can't gate on this agent's own metadata. Safe on this
+    // Surface the dev sandbox's tools when this agent is a dev agent (develops a
+    // live counterpart) and the acting user has a sandbox up. The pairing ref
+    // lives on the dev agent itself (`metadata.liveAgentId`), so this gate is a
+    // free local field check — non-dev agents skip the resolver entirely.
+    // resolveDevConnection re-checks it + the user's own sandbox. Safe on this
     // legacy route's looser org binding: it only resolves a sandbox the acting
     // user themselves started.
     const actingUserId = getUserId(ctx);
     let devConnection: ConnectionEntity | null = null;
-    if (virtualMcp.id && actingUserId) {
+    if (virtualMcp.id && virtualMcp.metadata?.liveAgentId && actingUserId) {
       devConnection = await resolveDevConnection(
         ctx,
         virtualMcp.id,

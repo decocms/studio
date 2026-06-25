@@ -62,6 +62,14 @@ export async function resolveDevConnection(
   if (!vm || vm.organization_id !== orgId) return null;
 
   const metadata = (vm.metadata ?? {}) as Record<string, unknown>;
+  // Gate: only a dev agent (one developing a live counterpart) gets a dev
+  // connection. The pairing ref lives on the dev agent itself
+  // (`metadata.liveAgentId`), so this is a local field check on the row already
+  // fetched — no per-request reverse lookup over the org's agents (which matters
+  // since every agent has a sandbox). A Start-Website / Hydrogen agent has a
+  // repo + sandbox too but no liveAgentId, so it's excluded.
+  if (!metadata.liveAgentId) return null;
+
   const userMap = readSandboxMap(metadata)[actingUserId];
   if (!userMap) return null;
 
@@ -69,15 +77,6 @@ export async function resolveDevConnection(
     ? pickEntryForBranch(userMap, branch)
     : pickMostRecentEntry(userMap);
   if (!picked?.entry.previewUrl) return null;
-
-  // Gate: only the dev side of a dev/live pair (an MCP app being developed)
-  // gets a dev connection. A Start-Website / Hydrogen agent also has a repo +
-  // sandbox but isn't an MCP app — it's never paired, so it's excluded. The
-  // pairing (some live agent's `metadata.devAgentId === this agent`) is the
-  // MCP-app signal. Only queried once we know a sandbox is actually running.
-  const orgAgents = await ctx.storage.virtualMcps.list(orgId);
-  const isPaired = orgAgents.some((a) => a.metadata?.devAgentId === agentId);
-  if (!isPaired) return null;
 
   // Authless by default — most dev servers run open. If the app gates /mcp
   // behind a query token (MCP_AUTH_TOKEN in runtime.env), append it: query

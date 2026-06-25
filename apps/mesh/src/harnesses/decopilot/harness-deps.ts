@@ -152,15 +152,13 @@ export function buildClusterEnvironmentTools(args: {
           // the transport type widens the field to a loose bag so the
           // daemon can ship without the cluster's storage types.
           const vm = streamInput.virtualMcp as VirtualMCPEntity;
-          // Surface the dev sandbox's tools when this agent is the dev side of a
-          // dev/live pair and the user has a sandbox up. resolveDevConnection is
-          // the single gate — reverse lookup (some agent's `metadata.devAgentId
-          // === this`) + the user's own running sandbox — null otherwise. The
-          // dev agent has no local pairing field (the single `devAgentId` ref
-          // lives on its live partner), so we can't gate on this agent's own
-          // metadata.
+          // Surface the dev sandbox's tools when this agent is a dev agent
+          // (develops a live counterpart) and the user has a sandbox up. The
+          // pairing ref lives on the dev agent itself (`metadata.liveAgentId`),
+          // so this gate is a free local field check — non-dev agents skip the
+          // resolver entirely. resolveDevConnection re-checks it + the sandbox.
           let devConnection: ConnectionEntity | null = null;
-          if (vm.id && streamInput.user.id) {
+          if (vm.id && vm.metadata?.liveAgentId && streamInput.user.id) {
             devConnection = await resolveDevConnection(
               ctx,
               vm.id,

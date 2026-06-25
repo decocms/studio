@@ -51,20 +51,35 @@ export function DevAgentSetup({
     return null;
   }
 
-  const linkedId = virtualMcp.metadata?.devAgentId ?? null;
-  const linked = linkedId
-    ? (allAgents ?? []).find((a) => a.id === linkedId)
-    : null;
+  // The pairing ref lives on the dev agent (`metadata.liveAgentId`) so the
+  // server gates dev-connection injection with a local field check (no
+  // per-request reverse lookup). This view sits on the live agent, so its dev
+  // counterpart is found by reverse scan, and link/unlink writes the DEV row.
+  const linked =
+    (allAgents ?? []).find((a) => a.metadata?.liveAgentId === virtualMcp.id) ??
+    null;
+  const linkedId = linked?.id ?? null;
 
-  const setDevAgent = (devAgentId: string | null) =>
+  const stampDevAgent = (
+    devAgent: VirtualMCPEntity,
+    liveAgentId: string | null,
+  ) =>
     actions.update
       .mutateAsync({
-        id: virtualMcp.id,
-        data: { metadata: { ...virtualMcp.metadata, devAgentId } },
+        id: devAgent.id,
+        data: { metadata: { ...devAgent.metadata, liveAgentId } },
       })
       .catch(() => {
         // mutateAsync already surfaced the error via toast.
       });
+
+  const linkDevAgent = (devAgentId: string) => {
+    const devAgent = (allAgents ?? []).find((a) => a.id === devAgentId);
+    if (devAgent) void stampDevAgent(devAgent, virtualMcp.id);
+  };
+  const unlinkDevAgent = () => {
+    if (linked) void stampDevAgent(linked, null);
+  };
 
   const linkableAgents = (allAgents ?? []).filter(
     (a) =>
@@ -93,7 +108,7 @@ export function DevAgentSetup({
                 variant="outline"
                 size="sm"
                 className="shrink-0"
-                onClick={() => void setDevAgent(null)}
+                onClick={unlinkDevAgent}
               >
                 Unlink
               </Button>
@@ -116,7 +131,7 @@ export function DevAgentSetup({
                   Import from GitHub
                 </Button>
                 {linkableAgents.length > 0 ? (
-                  <Select onValueChange={(id) => void setDevAgent(id)}>
+                  <Select onValueChange={linkDevAgent}>
                     <SelectTrigger size="sm" className="w-56">
                       <SelectValue placeholder="Or link an existing dev agent…" />
                     </SelectTrigger>
@@ -140,7 +155,7 @@ export function DevAgentSetup({
         title="Import a dev agent from GitHub"
         onImportComplete={({ virtualMcpId }) => {
           setGithubOpen(false);
-          void setDevAgent(virtualMcpId);
+          linkDevAgent(virtualMcpId);
         }}
       />
     </div>
