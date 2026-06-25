@@ -1,0 +1,99 @@
+# Static SPA + reverse-proxy for the Studio web bundle. Mounted from a ConfigMap
+# into the stock nginx image; the entrypoint runs envsubst over it at start.
+# ${API_UPSTREAM} is the only env var substituted; nginx's own $vars are left
+# intact because the stock entrypoint only envsubst's defined env names.
+
+# For WS upgrades, Connection: upgrade. For normal requests, EMPTY (not "close")
+# so the upstream keepalive pool below is reused instead of a new TCP per request.
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      "";
+}
+
+# Keepalive pool to the API so /api requests reuse connections (no TCP + handshake
+# per request). server holds ${API_UPSTREAM}; resolved at config-load (pins the
+# ClusterIP — see the location comment).
+upstream studio_api {
+  server ${API_UPSTREAM};
+  keepalive 32;
+}
+
+server {
+  listen 8080;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # ${WEB_ACCESS_LOG} is "/dev/stdout" (default) or "off" (web.accessLog: false,
+  # e.g. when an edge/CDN + app OTel already capture requests). /healthz stays
+  # off regardless (below).
+  access_log ${WEB_ACCESS_LOG};
+
+  # Match the app's MAX_UPLOAD_BYTES (file-storage/upload-policy.ts = 100MB).
+  # nginx defaults to 1m and would 413 large uploads before they reach the API.
+  client_max_body_size 100m;
+
+  # Clickjacking + cache guards live on the SPA `location /` below, NOT at server
+  # level. nginx's add_header inheritance would otherwise push them onto the
+  # proxied /api location, re-stamping frame-ancestors 'none' over the API's own
+  # per-path CSP — which breaks the file/fs previews the app deliberately iframes
+  # (it exempts /files and /fs/.../read). Scoping to the SPA protects the app
+  # shell while proxied API responses keep the headers the app set.
+
+  location = /healthz {
+    access_log off;
+    add_header Content-Type text/plain;
+    return 200 "ok\n";
+  }
+
+  # API + system paths → Bun server. Same origin keeps auth cookies first-party.
+  # Path set mirrors apps/mesh vite.config.ts proxy + isServerPath.
+  location ~ ^/(api|mcp|oauth-proxy|\.well-known|org|health|metrics)(/|$) {
+    # ponytail: upstream resolves at config-load and pins the ClusterIP. Fine
+    # here (the API Service exists in the same Helm release). If the Service is
+    # recreated with a new ClusterIP, `kubectl rollout restart` the web Deployment.
+    proxy_pass http://studio_api;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # SSE / MCP streams + WS upgrades: no buffering, long timeouts both ways.
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_buffering off;
+    # Stream large uploads (up to 100MB) straight to the API instead of
+    # buffering the whole body to nginx disk first.
+    proxy_request_buffering off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+  }
+
+  # Hashed assets are content-addressed → cache forever WHEN PRESENT (no
+  # `always`: the immutable header applies to the 2xx only). A chunk that's
+  # briefly missing during a rollout (old/new pods both behind the LB, each
+  # holding only its own bundle) must return a NON-cacheable 404. Cloudflare
+  # negative-caches bare 404s for 3 minutes by default, so a single skewed
+  # request poisons that chunk URL for everyone behind the colo for minutes —
+  # trapping the SPA on the stale-chunk screen. The explicit `no-store` on the
+  # miss (below) makes Cloudflare BYPASS instead, so it self-heals immediately
+  # once the rollout settles.
+  location /assets/ {
+    try_files $uri @asset_missing;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+  }
+  location @asset_missing {
+    add_header Cache-Control "no-store" always;
+    return 404;
+  }
+
+  # SPA fallback. Clickjacking + no-cache guards live here (not server-level) so
+  # they apply to the app shell only — never inherited onto the proxied /api
+  # location, whose responses carry the API's own per-path CSP.
+  location / {
+    add_header Cache-Control "no-cache" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Content-Security-Policy "frame-ancestors 'none'" always;
+    try_files $uri /index.html;
+  }
+}

@@ -131,14 +131,9 @@ jobs:
           version: v3.16.4
 
       - name: Lint
-        run: |
-          helm lint deploy/helm/studio \
-            --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio
+        run: helm lint deploy/helm/studio
 
       # Subchart .tgz files are vendored under deploy/helm/studio/charts/
       # (see .gitignore comment) — no `helm dependency build` needed.
       - name: Render
-        run: |
-          helm template deco-studio deploy/helm/studio \
-            --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio \
-            > /dev/null
+        run: helm template deco-studio deploy/helm/studio > /dev/null

@@ -137,28 +137,13 @@ Global validations to ensure scaling requirements are met.
 {{- end }}
 
 {{/*
-Guards the API/worker split: the main deployment is API-only behind nginx, so
-there must be a worker deployment to pick up run queues.
+Guards the dispatch-role split: if the main deployment stops dequeuing runs
+(dispatchRole=api) there must be a worker deployment to pick them up, or runs
+never dispatch.
 */}}
 {{- define "chart-deco-studio.validateDispatchRole" -}}
-{{- if not .Values.worker.enabled }}
-{{- fail "chart-deco-studio: worker.enabled=true is required because the main Deployment runs API-only containers behind nginx; otherwise no pod dequeues the run queues and runs never dispatch." -}}
-{{- end }}
-{{- $usesPostgresStr := include "chart-deco-studio.usesPostgres" . | trim -}}
-{{- if ne $usesPostgresStr "true" }}
-{{- fail "chart-deco-studio: database.engine=postgresql is required for the split API/worker topology because workers and API pods must share the DBOS run queue. Provide DATABASE_URL via database.url, secret.secretName, or externalSecret." -}}
-{{- end }}
-{{- range $env := .Values.env }}
-{{- $name := get $env "name" | default "" -}}
-{{- if or (eq $name "PORT") (eq $name "MESH_DISPATCH_ROLE") (eq $name "POD_NAME") (eq $name "POD_NAME_BASE") }}
-{{- fail (printf "chart-deco-studio: env contains reserved variable %s; API container PORT, MESH_DISPATCH_ROLE, POD_NAME, and POD_NAME_BASE are managed by the chart." $name) -}}
-{{- end }}
-{{- end }}
-{{- range $env := .Values.worker.env }}
-{{- $name := get $env "name" | default "" -}}
-{{- if or (eq $name "PORT") (eq $name "MESH_DISPATCH_ROLE") }}
-{{- fail (printf "chart-deco-studio: worker.env contains reserved variable %s; worker PORT and MESH_DISPATCH_ROLE are managed by the chart." $name) -}}
-{{- end }}
+{{- if and (eq .Values.dispatchRole "api") (not .Values.worker.enabled) }}
+{{- fail "chart-deco-studio: dispatchRole=api requires worker.enabled=true — otherwise no pod dequeues the run queues and runs never dispatch. Set worker.enabled=true first, confirm workers dequeue, then switch dispatchRole to api." -}}
 {{- end }}
 {{- end }}
 
@@ -179,8 +164,8 @@ Determines the deployment strategy based on database and storage configuration.
 Uses RollingUpdate if PostgreSQL or distributed storage, otherwise Recreate.
 */}}
 {{- define "chart-deco-studio.deploymentStrategy" -}}
-{{- $distributed := eq (include "chart-deco-studio.isDistributedStorage" . | trim) "true" -}}
-{{- $usesPostgres := eq (include "chart-deco-studio.usesPostgres" . | trim) "true" -}}
+{{- $distributed := eq (include "chart-deco-studio.isDistributedStorage" .) "true" -}}
+{{- $usesPostgres := eq (include "chart-deco-studio.usesPostgres" .) "true" -}}
 {{- if and .Values.strategy .Values.strategy.type -}}
 {{- .Values.strategy.type | trim -}}
 {{- else if or $distributed $usesPostgres -}}
