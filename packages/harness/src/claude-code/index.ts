@@ -51,6 +51,30 @@ import type {
   HarnessStreamInput,
 } from "../types";
 
+export function buildClaudeCodeModelOptions(
+  input: HarnessStreamInput,
+  cwd: string | undefined,
+  systemPrompt: ReturnType<typeof buildClaudeCodeSystemPrompt>,
+): Parameters<typeof createClaudeCodeModel>[1] {
+  return {
+    mcpServers: {
+      // Server name kept as `cms` for parity with the inline call
+      // site (stream-core.ts:892). Changing this would alter the
+      // qualified tool names the CLI emits.
+      cms: {
+        type: "http",
+        url: input.mcp.url,
+        headers: input.mcp.headers,
+      },
+    },
+    toolApprovalLevel: input.toolApprovalLevel,
+    isPlanMode: input.mode === "plan",
+    resume: input.harness.sessionId,
+    cwd,
+    systemPrompt,
+  };
+}
+
 export function buildClaudeCodeSystemPrompt(input: {
   workspace?: HarnessStreamInput["workspace"];
   agentInstructions?: string;
@@ -108,23 +132,10 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
           workspace: input.workspace,
           agentInstructions: input.agent.instructions,
         });
-        const languageModel = createClaudeCodeModel(sdkModelId, {
-          mcpServers: {
-            // Server name kept as `cms` for parity with the inline call
-            // site (stream-core.ts:892). Changing this would alter the
-            // qualified tool names the CLI emits.
-            cms: {
-              type: "http",
-              url: input.mcp.url,
-              headers: input.mcp.headers,
-            },
-          },
-          toolApprovalLevel: input.toolApprovalLevel,
-          isPlanMode: input.mode === "plan",
-          resume: input.harness.sessionId,
-          cwd,
-          systemPrompt,
-        });
+        const languageModel = createClaudeCodeModel(
+          sdkModelId,
+          buildClaudeCodeModelOptions(input, cwd, systemPrompt),
+        );
 
         // 4. Convert UIMessages to ModelMessages. The AI SDK's
         //    `streamText` validates the prompt via Zod in
