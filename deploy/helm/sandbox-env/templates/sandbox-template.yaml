@@ -216,12 +216,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.decoCache.secretName }}
-                  key: {{ .Values.decoCache.accessKeyIdKey | default "accessKeyId" }}
+                  key: {{ .Values.decoCache.accessKeyIdRef | default "accessKeyId" }}
             - name: DECO_CACHE_S3_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.decoCache.secretName }}
-                  key: {{ .Values.decoCache.secretAccessKeyKey | default "secretAccessKey" }}
+                  key: {{ .Values.decoCache.secretAccessKeyRef | default "secretAccessKey" }}
             {{- if .Values.decoCache.region }}
             - name: DECO_CACHE_S3_REGION
               value: {{ .Values.decoCache.region | quote }}

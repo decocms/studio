@@ -238,8 +238,8 @@ readOnlyRootFilesystem: true
 # starts with a cold cache.
 #
 # secretName:           K8s Secret holding the S3 credentials (required).
-# accessKeyIdKey /
-#   secretAccessKeyKey: keys inside the Secret
+# accessKeyIdRef /
+#   secretAccessKeyRef: keys inside the Secret
 #                       (defaults: "accessKeyId" / "secretAccessKey").
 # region:               S3 region (required).
 # bucket:               S3 bucket name (required).
@@ -247,8 +247,8 @@ readOnlyRootFilesystem: true
 #                       Defaults to AWS virtual-hosted URL when omitted.
 decoCache:
   secretName: ""
-  accessKeyIdKey: "accessKeyId"
-  secretAccessKeyKey: "secretAccessKey"
+  accessKeyIdRef: "accessKeyId"
+  secretAccessKeyRef: "secretAccessKey"
   region: ""
   bucket: ""
   endpoint: ""
