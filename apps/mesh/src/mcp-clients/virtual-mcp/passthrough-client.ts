@@ -139,7 +139,6 @@ export class PassthroughClient extends GatewayClient {
     const base = withKnowledge(
       this.options.virtualMcp.metadata?.instructions ?? undefined,
       this.options.virtualMcp.metadata?.knowledge,
-      this.ctx.organization?.slug ?? "",
     );
     // Append the pre-rendered <available-skills> catalog (built async in the
     // factory). Same seam, same both-paths guarantee as the knowledge block.

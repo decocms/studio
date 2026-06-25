@@ -31,11 +31,12 @@ Need something more specific? You can create custom roles tailored to your team'
 
 To create a custom role:
 
-1. Go to **Members** in your organization
-2. Click **Manage Roles**
-3. Click **Create Role**
-4. Give it a name (like "Developer" or "Support Team")
-5. Select which actions this role should be allowed to perform
+1. Go to **Settings → Roles**
+2. Click **Create Role**
+3. Give it a name (like "Developer" or "Support Team")
+4. Select which actions this role should be allowed to perform
+
+Then assign the role to people from the **Members** page.
 
 <Callout type="tip">
   **Tip**: Start with the least amount of access needed and add more permissions as needed. It's easier to grant more access later than to deal with accidental changes or deletions.
@@ -56,7 +57,8 @@ API keys let external tools or automated systems access your organization withou
 
 You'll work with these settings in a few different places:
 
-- **Members page**: Invite teammates, assign roles, and create custom roles
+- **Members page**: Invite teammates and assign roles
+- **Roles page** (**Settings → Roles**): Create and edit custom roles
 - **API Keys**: Managed via MCP management tools or the API (see [API Keys](/en/studio/api-keys))
 - **Agents page**: Control which tools and connections each agent can access (useful for limiting what AI assistants or automation can do)
 
@@ -81,8 +83,8 @@ Use the management MCP tools or API to create a key with read-only connection pe
 
 **When**: You have team members who need to see configurations but shouldn't change anything
 
-1. Go to **Members** → **Manage Roles**
+1. Go to **Settings → Roles**
 2. Click **Create Role**
 3. Name it "Read-Only Analyst"
 4. Select only viewing permissions (no create, update, or delete)
-5. Assign this role to the appropriate team members
+5. From the **Members** page, assign this role to the appropriate team members

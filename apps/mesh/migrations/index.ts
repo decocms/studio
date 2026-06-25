@@ -120,6 +120,7 @@ import * as migration118organizationdomainsmultiverify from "./118-organization-
 import * as migration119organizationjoinrequests from "./119-organization-join-requests.ts";
 import * as migration120orgfsreadpublic from "./120-org-fs-read-public.ts";
 import * as migration121orgfssharepassword from "./121-org-fs-share-password.ts";
+import * as migration122splitwebresearchtier from "./122-split-web-research-tier.ts";
 
 /**
  * Core migrations for the Mesh application.
@@ -265,6 +266,7 @@ const migrations: Record<string, Migration> = {
   "119-organization-join-requests": migration119organizationjoinrequests,
   "120-org-fs-read-public": migration120orgfsreadpublic,
   "121-org-fs-share-password": migration121orgfssharepassword,
+  "122-split-web-research-tier": migration122splitwebresearchtier,
 };
 
 export default migrations;

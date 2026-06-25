@@ -60,7 +60,8 @@ const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
     smart: null,
     thinking: null,
     image: null,
-    web_research: null,
+    web_search: null,
+    deep_research: null,
   },
 };
 
@@ -190,7 +191,8 @@ function normalizeSimpleMode(cfg: SimpleModeConfig | null): SimpleModeConfig {
       smart: cfg.tiers.smart ?? null,
       thinking: cfg.tiers.thinking ?? null,
       image: cfg.tiers.image ?? null,
-      web_research: cfg.tiers.web_research ?? null,
+      web_search: cfg.tiers.web_search ?? null,
+      deep_research: cfg.tiers.deep_research ?? null,
     },
   };
 }

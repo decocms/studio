@@ -23,6 +23,7 @@ const mockProvider = { thinkingModel: {} as never } as never;
 const mockParams: BuiltinToolParams = {
   provider: mockProvider,
   imageProvider: mockProvider,
+  webSearchProvider: mockProvider,
   deepResearchProvider: mockProvider,
   organization: { id: "org_test" } as never,
   models: {

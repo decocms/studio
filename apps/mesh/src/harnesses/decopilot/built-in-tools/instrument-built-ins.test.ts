@@ -16,6 +16,7 @@ import { instrumentBuiltIns, type BuiltinToolParams } from "./index";
 const mockParams: BuiltinToolParams = {
   provider: null,
   imageProvider: null,
+  webSearchProvider: null,
   deepResearchProvider: null,
   organization: { id: "org_test" } as never,
   models: { connectionId: "conn_test", thinking: { id: "m" } } as never,

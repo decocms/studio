@@ -81,6 +81,7 @@ export function checkModelPermission(
 export function filterToolTiersByPermission<
   M extends {
     image?: { credentialId: string; id: string } | undefined;
+    webSearch?: { credentialId: string; id: string } | undefined;
     deepResearch?: { credentialId: string; id: string } | undefined;
   },
 >(allowedModels: string[] | undefined, models: M): M {
@@ -91,6 +92,17 @@ export function filterToolTiersByPermission<
     !checkModelPermission(allowedModels, next.image.credentialId, next.image.id)
   ) {
     const { image: _image, ...rest } = next;
+    next = rest as M;
+  }
+  if (
+    next.webSearch &&
+    !checkModelPermission(
+      allowedModels,
+      next.webSearch.credentialId,
+      next.webSearch.id,
+    )
+  ) {
+    const { webSearch: _webSearch, ...rest } = next;
     next = rest as M;
   }
   if (

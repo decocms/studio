@@ -63,6 +63,7 @@ export interface DecopilotModelSources {
   fast?: DecopilotModelSource;
   smart?: DecopilotModelSource;
   image?: DecopilotModelSource;
+  webSearch?: DecopilotModelSource;
   deepResearch?: DecopilotModelSource;
 }
 

@@ -8,28 +8,36 @@ import Callout from "../../../../../components/ui/Callout.astro";
 
 ## O que é o Decopilot?
 
-O **Decopilot** é o assistente de IA integrado ao deco Studio. Ele consegue atuar em todas as suas ferramentas conectadas — Shopify, bancos de dados, e-mail, plataformas de atendimento ao cliente e muito mais — a partir de um único chat.
+O **Decopilot** é o assistente de IA integrado ao deco Studio — o **pilot da org**. É o chat que aparece na Home e que tem visibilidade sobre toda a sua organização: cada agent, cada connection, cada tool. Não é um chatbot pregado de lado; é roteador e executor ao mesmo tempo.
 
-Você inicia uma conversa e o Decopilot trabalha em segundo plano. Quando precisa do seu input, ele pergunta. Caso contrário, segue em frente, coordenando múltiplos serviços em seu nome.
+Você inicia uma conversa e o Decopilot trabalha em segundo plano. Quando precisa do seu input, ele pergunta. Caso contrário, segue em frente — respondendo ali mesmo, alcançando suas tools conectadas ou passando um trabalho focado para um [agent](/pt-br/studio/agents) especialista. Cada conversa fica salva em **Decopilot** na sidebar.
 
 ## Como funciona
 
-O Decopilot segue um ciclo simples: entender a tarefa → executar uma ação → verificar o resultado → repetir. Ele lê dos seus serviços conectados, chama as ferramentas certas e se adapta com base no que aprende.
+O Decopilot segue um ciclo simples: entender a tarefa → executar uma ação → verificar o resultado → repetir. Ele lê dos seus serviços conectados, chama as tools certas e se adapta com base no que aprende.
 
 O que o diferencia de um chat de IA comum é que ele consegue alcançar os apps onde seu trabalho realmente acontece — não está limitado a responder perguntas. Ele pode consultar pedidos, atualizar registros, enviar notificações e coordenar workflows em múltiplos serviços de uma só vez.
+
+## Ele pode operar a plataforma por você
+
+O Decopilot não serve só para usar suas tools — ele pode **configurar o Studio por você**, direto do chat. Peça em linguagem natural e ele cuida da configuração que um power user normalmente clicaria à mão:
+
+- **Criar e configurar agents** — "crie um agent que faz a triagem do e-mail de suporte"
+- **Montar automations** — "rode isso todo dia útil às 9h"
+- **Conectar novas tools** — "conecte nossa loja Shopify"; se faltar uma connection no meio da tarefa, o Decopilot mostra um prompt ali mesmo para adicioná-la e continua assim que você aprovar
+- **Navegar e instalar a partir da [Store](/pt-br/studio/store)** — encontre e adicione MCP servers do catálogo
+- **Gerenciar sua organização** — convidar membros, ajustar configurações
+
+Por baixo dos panos, o Decopilot delega cada uma dessas tarefas a um **manager agent** built-in — um para agents, um para automations, connections, a Store, brand e usage — mas, do seu lado, isso simplesmente acontece na conversa. É isso que torna o Studio acessível: um usuário novo e não técnico consegue realizar trabalho de verdade só perguntando, sem precisar aprender onde fica cada configuração.
 
 ## Escopo: onde você está trabalhando determina o que está disponível
 
 O Decopilot se adapta ao lugar onde você está no Studio:
 
-- **Escopo de organização** — você está na tela inicial sem nenhum agente aberto. O Decopilot tem acesso às ferramentas built-in de toda a organização (gerenciar conexões, agentes, membros) e ao seu catálogo completo de agentes.
-- **Escopo de agente** — você abriu um agente específico. O Decopilot passa a usar as ferramentas e instruções *daquele agente*, com o histórico de threads do agente como contexto.
+- **Escopo de organização** — você está na tela inicial sem nenhum agent aberto. O Decopilot tem acesso às tools built-in de toda a org (gerenciar connections, agents, membros) e ao seu catálogo completo de agents.
+- **Escopo de agent** — você abriu um agent específico. O Decopilot passa a usar as tools e instruções *daquele agent*, com o histórico de thread do agent como contexto.
 
-Para trocar, basta abrir ou fechar um agente pela barra lateral. Não há nada extra para configurar.
-
-<Callout type="info">
-  Um terceiro nível — escopo de projeto — está planejado. Ele ficará entre organização e agente e agrupará ferramentas/contexto para um time ou cliente. Veja [Projetos](/pt-br/studio/projects).
-</Callout>
+Para trocar, basta abrir ou fechar um agent pela sidebar. Não há nada extra para configurar.
 
 ## Modos de chat
 
@@ -37,8 +45,8 @@ A entrada de chat tem um seletor de modo que define como o Decopilot aborda uma 
 
 | Modo | O que muda |
 |---|---|
-| **Padrão** | Chat normal — o Decopilot escolhe as ferramentas por conta própria. |
-| **Plan** | O Decopilot deve encerrar a rodada com uma chamada `propose_plan`. Ferramentas destrutivas são bloqueadas até você aprovar um plano; apenas ferramentas somente leitura podem ser habilitadas. Útil antes de fazer algo arriscado. |
+| **Padrão** | Chat normal — o Decopilot escolhe as tools por conta própria. |
+| **Plan** | O Decopilot deve encerrar a rodada com uma chamada `propose_plan`. Tools destrutivas são bloqueadas até você aprovar um plano; apenas tools somente leitura podem ser habilitadas. Útil antes de fazer algo arriscado. |
 | **Web search** | O primeiro passo é forçado a chamar `web_search`, que transmite uma pesquisa profunda diretamente para você. Requer um modelo de pesquisa web em [AI Providers](/pt-br/studio/ai-providers). |
 | **Gen image** | O primeiro passo é forçado a chamar `generate_image`. Requer um modelo de imagem. |
 
@@ -46,27 +54,39 @@ A entrada de chat tem um seletor de modo que define como o Decopilot aborda uma 
 
 O Decopilot funciona com múltiplos provedores de IA — Anthropic, Google, OpenRouter, o Deco AI Gateway e modelos self-hosted. Escolha um modelo mais robusto para tarefas complexas e um mais rápido para operações simples. Veja [AI Providers](/pt-br/studio/ai-providers).
 
-## Agentes e subtarefas
+## Agents e subtasks
 
-Quando uma tarefa precisa de um trabalho focado — uma pergunta de atendimento ao cliente, uma pesquisa aprofundada, uma análise de dados — o Decopilot pode delegá-la a um [agente](/pt-br/studio/agents) especialista em uma **subtarefa**. A subtarefa roda de forma independente com seu próprio contexto limpo, e então reporta um resumo de volta. Sua conversa principal permanece limpa.
+Quando uma tarefa precisa de um trabalho focado — uma pergunta de atendimento ao cliente, uma pesquisa aprofundada, uma análise de dados — o Decopilot pode delegá-la a um [agent](/pt-br/studio/agents) especialista em uma **subtask**. A subtask roda de forma independente com seu próprio contexto limpo, e então reporta um resumo de volta. Sua conversa principal permanece limpa.
 
-## Ferramentas built-in
+## Tools built-in
 
-O Decopilot vem com ferramentas para coordenar trabalho em qualquer escopo:
+O Decopilot vem com tools para coordenar trabalho em qualquer escopo:
 
-| Ferramenta | O que faz |
+| Tool | O que faz |
 |---|---|
-| `subtask` | Delega trabalho a um agente especialista |
+| `subtask` | Delega trabalho a um agent especialista |
 | `user_ask` | Faz uma pergunta a você quando precisa de esclarecimento |
-| `enable_tool` | Ativa uma ferramenta de escopo para uso nos próximos passos |
+| `enable_tool` | Ativa uma scope tool para uso nos próximos passos |
 | `read_resource` | Lê documentação ou diretrizes disponíveis no escopo |
 | `read_prompt` | Lê um template de prompt reutilizável |
-| `read_tool_output` | Relê um resultado anterior de ferramenta que foi descarregado para armazenamento |
+| `read_tool_output` | Relê um resultado anterior de tool que foi descarregado para armazenamento |
 | `web_search` | Executa uma pesquisa web profunda e transmite o resultado |
 | `generate_image` | Cria uma imagem com o modelo de imagem configurado |
-| `propose_plan` | Propõe um plano para sua aprovação (somente no modo plan) |
+| `propose_plan` | Propõe um plano para sua aprovação (somente no plan mode) |
 
-Quando um agente é apoiado por um sandbox (um repositório do GitHub vinculado), o Decopilot também recebe seis **VM tools** — `bash`, `read`, `write`, `edit`, `grep`, `glob` — para que possa executar e modificar código nesse sandbox.
+Quando um agent é apoiado por um sandbox (um repo do GitHub vinculado), o Decopilot também recebe seis **VM tools** — `bash`, `read`, `write`, `edit`, `grep`, `glob` — para que possa executar e modificar código nesse sandbox.
+
+Sandboxes também montam o **filesystem da organização** em `org/`: uma pasta com o nome da sua organização (ex.: `org/acme/`) é a home compartilhada da org — editável, livre, compartilhada entre todos os membros, agents e runs, onde os agents registram conhecimento durável e checam contexto antes de começar a trabalhar; `org/upload` guarda os arquivos anexados à conversa atual (anexos do chat caem ali automaticamente — sem etapa de cópia); `org/output` é a pasta de saída compartilhada da run atual; e `org/public/<set>` expõe skill sets somente leitura e curados, sincronizados a partir de repos versionados. Arquivos escritos na pasta home e em `org/output` sincronizam com o cloud storage da sua organização e ficam visíveis para todos os membros e agents; mudanças externas aparecem dentro do sandbox em cerca de um segundo.
+
+<Callout type="info">
+  **Links de desktop no macOS:** quando um sandbox roda na sua máquina (`deco link`),
+  as pastas `org/` são volumes de rede, e o macOS pede uma vez por app
+  permissão para acessá-las. Aprove o prompt de "acessar arquivos em um volume de
+  rede" para o seu terminal ou editor — ou habilite manualmente em **System
+  Settings → Privacy & Security → Files & Folders → _seu app_ → Network
+  Volumes**. Sem essa permissão, leituras e escritas em `org/` falham com
+  "Operation not permitted".
+</Callout>
 
 Para a referência completa, veja [Tools](/pt-br/studio/decopilot/tools).
 
@@ -74,6 +94,6 @@ Para a referência completa, veja [Tools](/pt-br/studio/decopilot/tools).
 
 ## Saiba mais
 
-**[Contexto e tarefas](/pt-br/studio/decopilot/context-and-tasks)** — como a memória funciona e como usar subtarefas para trabalhos pesados
+**[Contexto e tarefas](/pt-br/studio/decopilot/context-and-tasks)** — como a memória funciona e como usar subtasks para trabalhos pesados
 
-**[Tools](/pt-br/studio/decopilot/tools)** — referência completa de ferramentas built-in e de escopo
+**[Tools](/pt-br/studio/decopilot/tools)** — referência completa de tools built-in e de escopo

@@ -62,5 +62,5 @@ create-from-template --template list.template.html \
 - Use `--strict` while developing a template to catch typos in key names;
   drop it when optional keys are intentional.
 - Templates are plain text files — author your own anywhere (the org home
-  folder under `org/<slug>/templates/` is a good durable place for
+  folder under `org/home/templates/` is a good durable place for
   organization-wide templates).

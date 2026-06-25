@@ -22,7 +22,7 @@
  * Studio's /deck-runtime/v1/deck-viewer.js.
  *
  * Built on the `templating` skill's mustache engine — see
- * /mnt/skills/public/templating/SKILL.md for the template syntax.
+ * org/public/core/templating/SKILL.md for the template syntax.
  */
 
 import {
@@ -53,7 +53,7 @@ function usage() {
       "         [--theme <name>] [--templates-dir <dir>] [-f]",
       "",
       "  --data           Deck description: inline JSON or @path/to/deck.json",
-      "  --output         Path to write the deck HTML (e.g. org/<slug>/decks/launch.html)",
+      "  --output         Path to write the deck HTML (e.g. org/home/decks/launch.html)",
       "  --theme          Built-in theme name OR path to a custom theme .html",
       '                   (overrides the data\'s "theme" field)',
       "  --templates-dir  Extra directory to resolve slide templates from (checked first)",
@@ -151,7 +151,7 @@ function resolveSlideTemplate(name, templatesDir) {
  * `--theme` (or the data's "theme" field) accepts either a built-in name
  * (`ink-dark`) or a path to a custom theme shell file — a complete deck
  * HTML with a `{{{slides}}}` insertion point. Org brand themes live in
- * org-fs (e.g. `org/<slug>/templates/slides/brand-theme.html`) and inject
+ * org-fs (e.g. `org/home/templates/slides/brand-theme.html`) and inject
  * the same way slide templates do via --templates-dir.
  */
 function resolveThemePath(value) {
@@ -198,10 +198,28 @@ function main() {
   }
 
   const theme = readFileSync(themePath, "utf8");
-  const html = Mustache.render(theme, {
-    title: deck.title,
-    slides: sections.join("\n\n"),
-  });
+  const slidesHtml = sections.join("\n\n");
+  // A theme is either a Mustache shell with a `{{{slides}}}` slot, or a
+  // "deck-as-theme": a complete deck whose <deck-viewer> body is example
+  // slides. For the latter, fill {{title}} then swap the deck-viewer body for
+  // the rendered sections — so the same file is both an editable sample deck
+  // and the generation shell (brand themes can be edited like any deck).
+  let html;
+  if (theme.includes("{{{slides}}}")) {
+    html = Mustache.render(theme, { title: deck.title, slides: slidesHtml });
+  } else {
+    const titled = Mustache.render(theme, { title: deck.title });
+    html = titled.replace(
+      /(<deck-viewer[^>]*>)[\s\S]*?(<\/deck-viewer>)/i,
+      (_m, open, close) => `${open}\n${slidesHtml}\n${close}`,
+    );
+    if (html === titled) {
+      fail(
+        "theme has neither a {{{slides}}} slot nor a <deck-viewer> to fill — " +
+          "pass a built-in theme, a shell with {{{slides}}}, or a deck file",
+      );
+    }
+  }
 
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, html);

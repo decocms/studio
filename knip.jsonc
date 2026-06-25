@@ -54,7 +54,12 @@
         "daemon/entry.ts",
         "daemon/org-fs/sidecar-main.ts",
         "image/skills/*/*.mjs"
-      ]
+      ],
+      // Skill example assets (tokens.css, brand.md, deck.json, …) are runtime
+      // reference files COPY'd into the image and read by agents via `cat`
+      // (and synced to org/public/core), never imported — so knip's
+      // unused-files check would flag the analyzable ones (e.g. .css).
+      "ignore": ["image/skills/*/examples/**"]
     },
     "packages/typegen": {}
   },

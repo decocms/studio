@@ -69,8 +69,10 @@ function pickSlotForTier(
       return defaults.chat.thinking;
     case "image":
       return defaults.image;
-    case "web_research":
-      return defaults.webResearch;
+    case "web_search":
+      return defaults.webSearch;
+    case "deep_research":
+      return defaults.deepResearch;
   }
 }
 

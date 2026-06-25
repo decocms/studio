@@ -8,29 +8,37 @@ import Callout from "../../../../../components/ui/Callout.astro";
 
 ## 1) Executar o deco Studio
 
-Escolha uma opção:
+Escolha uma opção. O Studio usa **PostgreSQL** como banco de dados; as opções locais abaixo já provisionam um para você.
 
 ### Opção A: setup local com um comando
 
 ```bash
-bunx decostudio
+bunx -p decocms deco
 ```
+
+Sobe uma instância local com um embedded PostgreSQL — totalmente privada, tudo permanece na sua máquina. O pacote é publicado como `decocms`; o binário que ele inclui chama-se `deco`.
 
 ### Opção B: setup local com Docker Compose
 
+Os arquivos de compose ficam no repositório, em `deploy/docker-compose/`. A variante `docker-compose.postgres.yml` já inclui o PostgreSQL, então funciona por conta própria:
+
 ```bash
-# 1. Configurar variáveis de ambiente
-# Edite .env e configure BETTER_AUTH_SECRET (obrigatório)
-# Gere um secret: openssl rand -base64 32
-cp conf-examples/env.example .env
+# 1. Clone o repositório e entre no diretório do compose
+git clone https://github.com/decocms/studio.git
+cd studio/deploy/docker-compose
 
-# 2. Configurar autenticação
-cp conf-examples/auth-config.json.example auth-config.json
+# 2. Crie um .env com um auth secret gerado + credenciais do Postgres
+cat > .env << EOF
+BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+POSTGRES_USER=studio_user
+POSTGRES_PASSWORD=$(openssl rand -base64 24)
+POSTGRES_DB=studio_db
+EOF
 
-# 3. Iniciar a aplicação
-docker compose up -d
+# 3. Inicie o Studio + PostgreSQL
+docker compose -f docker-compose.postgres.yml up -d
 
-# 4. Acessar
+# 4. Acesse
 open http://localhost:3000
 ```
 
@@ -47,63 +55,67 @@ bun run dev
 
 ### Opção D: deploy no Kubernetes (Helm)
 
+O chart fica no repositório, em `deploy/helm/studio`. Execute a partir desse diretório:
+
 ```bash
-# 1. Gerar um secret seguro para autenticação
+# 1. Gere um secret seguro para autenticação
 SECRET=$(openssl rand -base64 32)
 
-# 2. Instalar o chart com o secret gerado
-helm install deco-mcp-mesh . \
-  --namespace deco-mcp-mesh \
+# 2. Instale o chart com o secret gerado
+helm install deco-studio . \
+  --namespace deco-studio \
   --create-namespace \
   --set secret.BETTER_AUTH_SECRET="$SECRET"
 
-# 3. Aguardar os pods estarem prontos
+# 3. Aguarde os pods ficarem prontos
 kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/instance=deco-mcp-mesh \
-  -n deco-mcp-mesh \
+  -l app.kubernetes.io/instance=deco-studio \
+  -n deco-studio \
   --timeout=300s
 
-# 4. Acessar via port-forward
-kubectl port-forward svc/deco-mcp-mesh 8080:80 -n deco-mcp-mesh
+# 4. Acesse via port-forward
+kubectl port-forward svc/deco-studio 8080:80 -n deco-studio
 ```
 
 A aplicação estará disponível em `http://localhost:8080`.
 
-**Mais detalhes:** [Kubernetes: Helm Chart](/pt-br/studio/self-hosting/deploy/kubernetes)
+<Callout type="warning">
+  Os valores padrão do chart são apenas para avaliação (uma única replica). Para qualquer uso real, aponte-o para um banco **PostgreSQL** (`database.engine: postgresql`, `database.url`) e escale a partir daí. Veja [Kubernetes: Helm Chart](/pt-br/studio/self-hosting/deploy/kubernetes).
+</Callout>
 
-## 2) Criar uma Conexão
+## 2) Criar uma Connection
 
 Ao abrir uma nova organização, o deco Studio vai solicitar que você:
 
 - **Navegue pela Store** ou
-- **Crie uma Conexão** diretamente - forneça a URL do MCP (endpoint HTTP) e quaisquer credenciais necessárias
+- **Crie uma Connection** diretamente - forneça a URL do MCP (endpoint HTTP) e quaisquer credenciais necessárias
 
-A **Store** é um catálogo de Conexões que você pode conectar. Por padrão, a Store aponta para o **registro oficial de MCPs**.
+A **Store** é um catálogo de Connections às quais você pode se conectar. Por padrão, a Store aponta para o **MCP Registry oficial**.
 
 ## 3) Criar uma organização e convidar membros
 
-- Vá para **Membros**
+- Vá para **Members**
 - Convide colegas de equipe
-- Atribua funções (Admin/Usuário) conforme necessário
+- Atribua roles (Admin/User) conforme necessário
 
-## 4) Criar um Agente (servidor virtual)
+## 4) Criar um Agent (servidor virtual)
 
-- Vá para **Agentes**
-- Clique em **Criar Agente**
-- Escolha **Incluir** (apenas conexões/ferramentas selecionadas) ou **Excluir** (tudo exceto as exclusões)
+- Vá para **Agents**
+- Clique em **Create Agent**
+- Escolha **Include** (apenas connections/tools selecionadas) ou **Exclude** (tudo exceto as exclusões)
 
-## 5) Gerar uma chave de API para um cliente
+## 5) Gerar uma API key para um client
 
-Crie uma chave de API com as permissões mínimas de ferramentas necessárias (veja [Chaves de API](/pt-br/studio/api-keys)).
+Crie uma API key com as permissões mínimas de tools necessárias (veja [API Keys](/pt-br/studio/api-keys)).
 
 ## 6) Verificar monitoramento
 
-Use o **Monitoramento** para confirmar:
+Use o **Monitoring** para confirmar:
 
-- invocações de ferramentas estão sendo registradas
+- invocações de tools estão sendo registradas
 - latência + taxas de erro aparecem
-- filtros (intervalo de tempo, nome da ferramenta, conexão, agente) funcionam como esperado
+- filtros (intervalo de tempo, nome da tool, connection, agent) funcionam como esperado
 
 <Callout type="tip">
-  O teste de fumaça mais rápido é chamar uma ferramenta através de um endpoint de agente (assim você exercita agregação + proxy + monitoramento).
+  O teste de fumaça mais rápido é chamar uma tool através de um endpoint de agent (assim você exercita agregação + proxy + monitoring).
 </Callout>

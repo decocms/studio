@@ -331,14 +331,41 @@ const getDevPort = (): number | null =>
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
   portSniffer.current() ?? store.read()?.application?.port ?? null;
 const { appRoot, repoDir } = bootConfig;
+let fileChangedDebounce: ReturnType<typeof setTimeout> | null = null;
+let pendingPaths = new Set<string>();
+
+const FILE_CHANGED_DEBOUNCE_MS = 300;
+
+function emitFileChanged(filePath: string) {
+  pendingPaths.add(filePath);
+  if (fileChangedDebounce) clearTimeout(fileChangedDebounce);
+  fileChangedDebounce = setTimeout(() => {
+    fileChangedDebounce = null;
+    const paths = pendingPaths;
+    pendingPaths = new Set();
+    for (const p of paths) {
+      broadcaster.emit("file-changed", { path: p });
+    }
+  }, FILE_CHANGED_DEBOUNCE_MS);
+}
+
+// Filesystem watcher callback — fires for any repo file change (editor, build
+// tool, agent write, etc.) detected by BranchStatusMonitor's recursive
+// fs.watch. Shares the same debounce as onWorkingTreeWrite so rapid edits
+// (save + HMR rewrite) coalesce into one SSE burst.
+branchStatus.onFileChanged = (filePath: string) => {
+  emitFileChanged(filePath);
+};
+
 const fsDeps = {
   appRoot,
   repoDir,
-  onWorkingTreeWrite: () => {
+  onWorkingTreeWrite: (filePath: string) => {
     if (process.env.DEBUG_SAVE_CHANGES === "1") {
       console.log("[branch-status] fs write/edit → refresh", { repoDir });
     }
     branchStatus.refresh();
+    emitFileChanged(filePath);
   },
 };
 const readH = makeReadHandler(fsDeps);
@@ -489,6 +516,7 @@ const configReadH = makeConfigReadHandler({
     ready: isReady(),
   }),
   getTasks: () => phaseManager.recent(20),
+  repoDir: bootConfig.repoDir,
 });
 // Closure mutates `bootConfig.daemonToken` in place so the
 // `requireToken(req, bootConfig.daemonToken)` calls below — which read the

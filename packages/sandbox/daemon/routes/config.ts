@@ -30,6 +30,8 @@ export interface ConfigDeps {
   getState?: () => DaemonState;
   /** Recent setup phases for LLM context. */
   getTasks?: () => Phase[];
+  /** Local repo directory path (exposed so the frontend can offer "Open in IDE"). */
+  repoDir?: string;
 }
 
 /** Wire-only — never persisted to TenantConfig. Stripped before `store.apply`. */
@@ -60,6 +62,7 @@ export function makeConfigReadHandler(deps: ConfigDeps) {
       orchestrator: state?.orchestrator,
       ready: state?.ready ?? false,
       tasks: deps.getTasks?.(),
+      repoDir: deps.repoDir ?? null,
     });
   };
 }

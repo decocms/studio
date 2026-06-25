@@ -23,6 +23,8 @@ export interface OrgFsEntry {
   contentHash?: string | null;
   /** Dir follows the Claude Code skill format (contains SKILL.md). */
   hasSkill?: boolean;
+  /** Dir is a brand folder (contains tokens.css or brand.md). */
+  hasBrand?: boolean;
   /** This entry's own public flag (served to anyone with the link). */
   readPublic?: boolean;
   /** Public via own flag OR a published ancestor folder (inherited). What the

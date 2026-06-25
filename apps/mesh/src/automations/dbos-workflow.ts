@@ -241,12 +241,13 @@ async function prepareFireStep(
   // web_search) light up the same way they do in interactive chat. Without
   // these, the automation agent reports "I don't have a web_search tool"
   // even when the org has Perplexity/Gemini Deep Research configured.
-  const [resolved, image, webResearch] = await Promise.all([
+  const [resolved, image, webSearch, deepResearch] = await Promise.all([
     pinned
       ? resolveSpecificModel(meshCtx, pinned.credentialId, pinned.modelId)
       : resolveTier(meshCtx, tier),
     tryResolveTier(meshCtx, "image"),
-    tryResolveTier(meshCtx, "web_research"),
+    tryResolveTier(meshCtx, "web_search"),
+    tryResolveTier(meshCtx, "deep_research"),
   ]);
   const toModel = (r: Awaited<ReturnType<typeof resolveTier>>) => ({
     id: r.modelId,
@@ -266,11 +267,19 @@ async function prepareFireStep(
     ...(image
       ? { image: { ...toModel(image), credentialId: image.credentialId } }
       : {}),
-    ...(webResearch
+    ...(webSearch
+      ? {
+          webSearch: {
+            ...toModel(webSearch),
+            credentialId: webSearch.credentialId,
+          },
+        }
+      : {}),
+    ...(deepResearch
       ? {
           deepResearch: {
-            ...toModel(webResearch),
-            credentialId: webResearch.credentialId,
+            ...toModel(deepResearch),
+            credentialId: deepResearch.credentialId,
           },
         }
       : {}),
@@ -471,6 +480,9 @@ async function fireAutomationWorkflowFn(
   return { taskId };
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 export const fireAutomationWorkflow = DBOS.registerWorkflow(
   fireAutomationWorkflowFn,
   { name: "fireAutomationWorkflow" },
@@ -491,6 +503,9 @@ async function cronEntryWorkflowFn(
   })(ctx);
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 export const cronEntryWorkflow = DBOS.registerWorkflow(cronEntryWorkflowFn, {
   name: "cronEntryWorkflow",
 });
@@ -565,6 +580,9 @@ async function automationsGcWorkflowFn(
   });
 }
 
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 const automationsGcWorkflow = DBOS.registerWorkflow(automationsGcWorkflowFn, {
   name: "automationsGcWorkflow",
 });

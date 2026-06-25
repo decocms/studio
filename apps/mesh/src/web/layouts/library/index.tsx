@@ -20,10 +20,12 @@ import {
   Eye,
   Globe01,
   Home01,
+  Palette,
   Plus,
   RefreshCw01,
   Stars01,
   Upload01,
+  Zap,
 } from "@untitledui/icons";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -47,7 +49,7 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
-import { homeMountPath } from "@/file-storage/home-mount";
+import { homeDisplayName } from "@/file-storage/home-mount";
 import { ErrorBoundary } from "@/web/components/error-boundary";
 import { FileTypeIcon } from "@/web/components/file-type-icon";
 import { Toolbar } from "@/web/layouts/agent-shell-layout/toolbar";
@@ -64,6 +66,7 @@ import {
   useOrgFsUsage,
 } from "@/web/hooks/use-org-fs";
 import {
+  BrandCard,
   FileCard,
   FolderCard,
   type PublicState,
@@ -82,10 +85,11 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/web/components/resizable";
+import { BrandPreviewDialog, BrandPreviewPanel } from "./brand-preview";
 import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
 import { LibraryPreviewPanel } from "./preview-panel";
-import { SkillPreviewDialog } from "./skill-preview-dialog";
+import { SkillPreviewDialog, SkillPreviewPanel } from "./skill-preview";
 
 /** Absolute proxy link to copy when sharing a file. */
 function publicFileUrl(path: string): string {
@@ -292,12 +296,12 @@ function RootView({
             <VolumeFolderCard
               key={v.id}
               volume={v.id}
-              // The home volume presents as the org itself — through the same
-              // helper provisioning uses, so the label always matches the
-              // sandbox mount (incl. the reserved-slug fallback to "home",
-              // which avoids two cards both named e.g. "public").
+              // The home volume presents as the org itself: its display label is
+              // the org slug (with a reserved-slug fallback to "home" so two
+              // cards aren't both named e.g. "public"). The agent-facing mount
+              // path is always `org/home/` regardless of this label.
               displayName={
-                v.id === "home" ? homeMountPath(org.slug) : undefined
+                v.id === "home" ? homeDisplayName(org.slug) : undefined
               }
               description={v.description}
               glyph={v.glyph}
@@ -371,6 +375,7 @@ function VolumeView({
   onOpenDir,
   onOpenFile,
   onOpenSkill,
+  onOpenBrand,
   onShare,
   onDelete,
 }: {
@@ -378,6 +383,7 @@ function VolumeView({
   onOpenDir: (path: string) => void;
   onOpenFile: (previewPath: string) => void;
   onOpenSkill: (skillPath: string) => void;
+  onOpenBrand: (brandPath: string) => void;
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
@@ -398,7 +404,13 @@ function VolumeView({
 
   const entries = listing.data ?? [];
   const skills = entries.filter((e) => e.kind === "dir" && e.hasSkill);
-  const dirs = entries.filter((e) => e.kind === "dir" && !e.hasSkill);
+  // Skill wins over brand if a dir somehow carries both markers.
+  const brands = entries.filter(
+    (e) => e.kind === "dir" && e.hasBrand && !e.hasSkill,
+  );
+  const dirs = entries.filter(
+    (e) => e.kind === "dir" && !e.hasSkill && !e.hasBrand,
+  );
   const files = entries.filter((e) => e.kind === "file");
 
   if (entries.length === 0) {
@@ -449,6 +461,24 @@ function VolumeView({
                 onOpen={() => onOpenSkill(browsePathFor(location, e.path))}
                 onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
                 onShare={shareFor(e)}
+                onDelete={deleteFor(e)}
+              />
+            ))}
+          </CardsGrid>
+        </div>
+      )}
+      {brands.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <SectionLabel>Brands</SectionLabel>
+          <CardsGrid>
+            {brands.map((e) => (
+              <BrandCard
+                key={e.path}
+                dirName={basename(e.path)}
+                updatedAt={e.updatedAt}
+                tokensUrl={fileUrl(volume, `${e.path}/tokens.css`)}
+                onOpen={() => onOpenBrand(browsePathFor(location, e.path))}
+                onBrowse={() => onOpenDir(browsePathFor(location, e.path))}
                 onDelete={deleteFor(e)}
               />
             ))}
@@ -506,13 +536,14 @@ function LibraryPage() {
     path?: string;
     preview?: string;
     skill?: string;
+    brand?: string;
   };
   const browsePath = search.path ?? "";
   const location = parseLibraryPath(browsePath);
   const isRoot = location.segments.length === 0;
 
   const setSearchParam = (
-    key: "path" | "preview" | "skill",
+    key: "path" | "preview" | "skill" | "brand",
     value: string | null,
   ) =>
     navigate({
@@ -523,9 +554,24 @@ function LibraryPage() {
       }),
     });
   const onOpenDir = (path: string) => setSearchParam("path", path);
+  // preview/skill/brand share the single right panel, so opening one clears
+  // the others — otherwise a second one just queues behind the precedence
+  // order (preview › skill › brand) and only shows once the first is closed.
+  const openPreview = (kind: "preview" | "skill" | "brand", value: string) =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        preview: undefined,
+        skill: undefined,
+        brand: undefined,
+        [kind]: value,
+      }),
+    });
   const onOpenFile = (previewPath: string) =>
-    setSearchParam("preview", previewPath);
-  const onOpenSkill = (skillPath: string) => setSearchParam("skill", skillPath);
+    openPreview("preview", previewPath);
+  const onOpenSkill = (skillPath: string) => openPreview("skill", skillPath);
+  const onOpenBrand = (brandPath: string) => openPreview("brand", brandPath);
 
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
     null,
@@ -534,6 +580,9 @@ function LibraryPage() {
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  // Depth counter so dragenter/leave bubbling from child cards doesn't flicker.
+  const dragDepth = useRef(0);
 
   // Root uploads land in the uploads volume root — visible org-wide, outside
   // any thread folder (those belong to chat-attachment flows).
@@ -559,6 +608,41 @@ function LibraryPage() {
       toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  // Drag-and-drop upload — same destination as the Upload button: the current
+  // folder, or the uploads volume at root. Off in read-only locations.
+  const canDrop = uploadVolume !== null;
+  const dropLabel = isRoot
+    ? "uploads"
+    : (location.segments.at(-1) ?? "this folder");
+
+  function dragHasFiles(e: React.DragEvent) {
+    return e.dataTransfer.types.includes("Files");
+  }
+  function handleDragEnter(e: React.DragEvent) {
+    if (!canDrop || !dragHasFiles(e)) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setIsDragging(true);
+  }
+  function handleDragOver(e: React.DragEvent) {
+    if (!canDrop || !dragHasFiles(e)) return;
+    e.preventDefault(); // required so the drop event fires
+  }
+  function handleDragLeave() {
+    if (!canDrop) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setIsDragging(false);
+  }
+  function handleDrop(e: React.DragEvent) {
+    if (!canDrop) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      void handleUpload(e.dataTransfer.files);
     }
   }
 
@@ -606,100 +690,127 @@ function LibraryPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[900px] flex-col gap-10 px-6 py-10 lg:px-10">
-        <div className="flex flex-col gap-2">
-          {!isRoot && (
-            <Breadcrumbs segments={location.segments} onNavigate={onOpenDir} />
-          )}
-          <div className="flex items-center gap-2">
-            <h1 className="min-w-0 flex-1 truncate text-xl font-medium text-foreground">
-              {isRoot ? "Library" : (location.segments.at(-1) ?? "Library")}
-            </h1>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={refresh}
-              aria-label="Refresh"
-            >
-              <RefreshCw01 size={14} />
-            </Button>
-            {!isRoot && uploadVolume && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setNewFolderOpen(true)}
-              >
-                <Plus size={14} />
-                New folder
-              </Button>
-            )}
-            {location.readOnly ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Eye size={12} />
-                Read-only
-              </span>
-            ) : (
-              <Button
-                size="sm"
-                disabled={upload.isPending}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload01 size={14} />
-                {upload.isPending ? "Uploading…" : "Upload file"}
-              </Button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => void handleUpload(e.target.files)}
-            />
+    <div
+      className="relative h-full"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary px-10 py-8 text-center">
+            <Upload01 size={28} className="text-primary" />
+            <p className="text-sm font-medium text-foreground">
+              Drop to upload to {dropLabel}
+            </p>
           </div>
         </div>
+      )}
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-10 px-6 py-10 lg:px-10">
+          <div className="flex flex-col gap-2">
+            {!isRoot && (
+              <Breadcrumbs
+                segments={location.segments}
+                onNavigate={onOpenDir}
+              />
+            )}
+            <div className="flex items-center gap-2">
+              <h1 className="min-w-0 flex-1 truncate text-xl font-medium text-foreground">
+                {isRoot ? "Library" : (location.segments.at(-1) ?? "Library")}
+              </h1>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={refresh}
+                aria-label="Refresh"
+              >
+                <RefreshCw01 size={14} />
+              </Button>
+              {!isRoot && uploadVolume && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setNewFolderOpen(true)}
+                >
+                  <Plus size={14} />
+                  New folder
+                </Button>
+              )}
+              {location.readOnly ? (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Eye size={12} />
+                  Read-only
+                </span>
+              ) : (
+                <Button
+                  size="sm"
+                  disabled={upload.isPending}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload01 size={14} />
+                  {upload.isPending ? "Uploading…" : "Upload file"}
+                </Button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => void handleUpload(e.target.files)}
+              />
+            </div>
+          </div>
 
-        {isRoot ? (
-          <RootView
-            onOpenDir={onOpenDir}
-            onOpenFile={onOpenFile}
-            onShare={setShareTarget}
-            onDelete={setPendingDelete}
-          />
-        ) : location.volume === null ? (
-          <PublicSetsView onOpenDir={onOpenDir} />
-        ) : (
-          <VolumeView
-            // remount on volume switch so list state never bleeds across
-            key={location.volume}
-            location={location}
-            onOpenDir={onOpenDir}
-            onOpenFile={onOpenFile}
-            onOpenSkill={onOpenSkill}
-            onShare={setShareTarget}
-            onDelete={setPendingDelete}
-          />
-        )}
+          {isRoot ? (
+            <RootView
+              onOpenDir={onOpenDir}
+              onOpenFile={onOpenFile}
+              onShare={setShareTarget}
+              onDelete={setPendingDelete}
+            />
+          ) : location.volume === null ? (
+            <PublicSetsView onOpenDir={onOpenDir} />
+          ) : (
+            <VolumeView
+              // remount on volume switch so list state never bleeds across
+              key={location.volume}
+              location={location}
+              onOpenDir={onOpenDir}
+              onOpenFile={onOpenFile}
+              onOpenSkill={onOpenSkill}
+              onOpenBrand={onOpenBrand}
+              onShare={setShareTarget}
+              onDelete={setPendingDelete}
+            />
+          )}
+        </div>
       </div>
 
-      {/* Preview wins over skill: opening a bundled file hides the skill
-          dialog; closing it falls back to the still-set ?skill=. On desktop
-          the preview renders as a side panel (in the outer Library), so only
-          mobile uses the dialog here. */}
-      {search.preview ? (
-        isMobile && (
+      {/* Preview/skill/brand each render as a right-side panel on desktop
+          (in the outer Library), so only mobile uses these dialogs.
+          Precedence — preview, then skill, then brand — mirrors the panel
+          selection in the outer Library. */}
+      {isMobile &&
+        (search.preview ? (
           <LibraryPreviewDialog
             previewPath={search.preview}
             onClose={() => setSearchParam("preview", null)}
           />
-        )
-      ) : search.skill ? (
-        <SkillPreviewDialog
-          key={search.skill}
-          skillPath={search.skill}
-          onClose={() => setSearchParam("skill", null)}
-        />
-      ) : null}
+        ) : search.skill ? (
+          <SkillPreviewDialog
+            key={search.skill}
+            skillPath={search.skill}
+            onClose={() => setSearchParam("skill", null)}
+          />
+        ) : search.brand ? (
+          <BrandPreviewDialog
+            key={search.brand}
+            brandPath={search.brand}
+            onClose={() => setSearchParam("brand", null)}
+          />
+        ) : null)}
 
       <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
         <DialogContent>
@@ -771,17 +882,60 @@ function LibraryPage() {
 export default function Library() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { preview?: string };
-  const previewPath = search.preview;
-  const previewName = previewPath ? basename(previewPath) : "";
-  const closePreview = () =>
+  const search = useSearch({ strict: false }) as {
+    preview?: string;
+    skill?: string;
+    brand?: string;
+  };
+  const clearParam = (key: "preview" | "skill" | "brand") =>
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        preview: undefined,
+        [key]: undefined,
       }),
     });
+
+  // One right-side panel at a time; preview wins, then skill, then brand —
+  // matching the dialog precedence in LibraryPage.
+  const right = search.preview
+    ? {
+        key: "preview" as const,
+        path: search.preview,
+        panel: (
+          <LibraryPreviewPanel
+            previewPath={search.preview}
+            onClose={() => clearParam("preview")}
+          />
+        ),
+      }
+    : search.skill
+      ? {
+          key: "skill" as const,
+          path: search.skill,
+          panel: (
+            // Keyed per skill so switching entries remounts (no stale state).
+            <SkillPreviewPanel
+              key={search.skill}
+              skillPath={search.skill}
+              onClose={() => clearParam("skill")}
+            />
+          ),
+        }
+      : search.brand
+        ? {
+            key: "brand" as const,
+            path: search.brand,
+            panel: (
+              // Keyed per brand so switching entries remounts the editor.
+              <BrandPreviewPanel
+                key={search.brand}
+                brandPath={search.brand}
+                onClose={() => clearParam("brand")}
+              />
+            ),
+          }
+        : null;
 
   if (isMobile) {
     return (
@@ -809,33 +963,33 @@ export default function Library() {
           </div>
         </div>
       </ResizablePanel>
-      {previewPath && (
+      {right && (
         <>
-          {/* Mirror the chat: an open file surfaces as a pill in the shared
-              top-right tab slot; clicking it closes the preview. */}
+          {/* Mirror the chat: the open preview surfaces as a pill in the
+              shared top-right tab slot; clicking it closes the panel. */}
           <Toolbar.Tabs>
             <HeaderTabButton
-              title={previewName}
+              title={basename(right.path)}
               icon={{
                 kind: "component",
-                Component: (props) => (
-                  <FileTypeIcon filename={previewName} {...props} />
-                ),
+                Component: (props) =>
+                  right.key === "preview" ? (
+                    <FileTypeIcon filename={basename(right.path)} {...props} />
+                  ) : right.key === "skill" ? (
+                    <Zap {...props} />
+                  ) : (
+                    <Palette {...props} />
+                  ),
               }}
               active
-              onClick={closePreview}
+              onClick={() => clearParam(right.key)}
             />
           </Toolbar.Tabs>
           <ResizableHandle className="bg-sidebar" />
           <ResizablePanel order={2} minSize={25} defaultSize={45}>
             <div className="h-full p-0.5 pt-0.25">
               <div className="card-shadow flex h-full flex-col overflow-hidden rounded-[0.75rem] bg-background">
-                <ErrorBoundary>
-                  <LibraryPreviewPanel
-                    previewPath={previewPath}
-                    onClose={closePreview}
-                  />
-                </ErrorBoundary>
+                <ErrorBoundary>{right.panel}</ErrorBoundary>
               </div>
             </div>
           </ResizablePanel>

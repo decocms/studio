@@ -133,15 +133,16 @@ function toModelInfo(
   };
 }
 
-/** Re-resolve the org's chat ("smart") + image + web_research tiers into a
- *  `ModelsConfig`, same as the interactive chat path. */
+/** Re-resolve the org's chat ("smart") + image + web_search + deep_research
+ *  tiers into a `ModelsConfig`, same as the interactive chat path. */
 async function resolveReactionModels(
   meshCtx: StudioContext,
 ): Promise<ModelsConfig> {
-  const [chat, image, webResearch] = await Promise.all([
+  const [chat, image, webSearch, deepResearch] = await Promise.all([
     resolveTier(meshCtx, "smart"),
     tryResolveTier(meshCtx, "image"),
-    tryResolveTier(meshCtx, "web_research"),
+    tryResolveTier(meshCtx, "web_search"),
+    tryResolveTier(meshCtx, "deep_research"),
   ]);
   return {
     credentialId: chat.credentialId,
@@ -149,11 +150,19 @@ async function resolveReactionModels(
     ...(image
       ? { image: { ...toModelInfo(image), credentialId: image.credentialId } }
       : {}),
-    ...(webResearch
+    ...(webSearch
+      ? {
+          webSearch: {
+            ...toModelInfo(webSearch),
+            credentialId: webSearch.credentialId,
+          },
+        }
+      : {}),
+    ...(deepResearch
       ? {
           deepResearch: {
-            ...toModelInfo(webResearch),
-            credentialId: webResearch.credentialId,
+            ...toModelInfo(deepResearch),
+            credentialId: deepResearch.credentialId,
           },
         }
       : {}),
@@ -357,6 +366,7 @@ async function runSubtaskStep(
   const harnessModels = {
     thinking: { ...models.thinking, credentialId: models.credentialId },
     ...(models.image ? { image: models.image } : {}),
+    ...(models.webSearch ? { webSearch: models.webSearch } : {}),
     ...(models.deepResearch ? { deepResearch: models.deepResearch } : {}),
   };
   const { mcpClient, targetRef } = await resolveSubagent(
@@ -372,9 +382,13 @@ async function runSubtaskStep(
   // or generate images. Providers + sandbox identity are rebuilt here since this
   // runs detached on a workflow step, not on the parent's turn.
   const imageInfo = harnessModels.image;
+  const webSearchInfo = harnessModels.webSearch;
   const deepInfo = harnessModels.deepResearch;
   const imageProvider = imageInfo?.credentialId
     ? await meshCtx.aiProviders.activate(imageInfo.credentialId, ctx.orgId)
+    : null;
+  const webSearchProvider = webSearchInfo?.credentialId
+    ? await meshCtx.aiProviders.activate(webSearchInfo.credentialId, ctx.orgId)
     : null;
   const deepResearchProvider = deepInfo?.credentialId
     ? await meshCtx.aiProviders.activate(deepInfo.credentialId, ctx.orgId)
@@ -382,6 +396,7 @@ async function runSubtaskStep(
   const subagentBuiltInParams = {
     provider,
     imageProvider,
+    webSearchProvider,
     deepResearchProvider,
     organization,
     models: harnessModels,
@@ -683,6 +698,9 @@ async function backgroundToolWorkflowFn(
 
 // Registered at import time so the executor can dequeue (and recover) it; we
 // enqueue by name via DBOSClient, so the returned handle isn't needed here.
+// ⚠️ Durable DBOS workflow. Changing its STEP SEQUENCE (add/remove/reorder a
+// step, or change a step's recorded I/O) requires bumping DBOS_WORKFLOW_VERSION
+// — see apps/mesh/src/dbos/workflow-version.ts.
 DBOS.registerWorkflow(backgroundToolWorkflowFn, {
   name: "backgroundToolWorkflow",
 });

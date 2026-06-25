@@ -1,6 +1,6 @@
 ---
 title: Context and tasks
-description: How decopilot manages memory and how to use subtasks for heavy work
+description: How Decopilot manages memory and how to use subtasks for heavy work
 icon: Layers
 ---
 
@@ -10,7 +10,7 @@ Decopilot organizes work as **tasks** (your conversations) and **subtasks** (foc
 
 ## What is a task?
 
-A **task** is your conversation with decopilot — where you chat, decopilot uses tools, and work gets done. Every task runs in a scope (organization or agent — see [Overview](/en/studio/decopilot/overview)) that determines which instructions and tools are loaded.
+A **task** is your conversation with Decopilot — where you chat, Decopilot uses tools, and work gets done. Every task runs in a scope (organization or agent — see [Overview](/en/studio/decopilot/overview)) that determines which instructions and tools are loaded.
 
 Every task has one of four states:
 
@@ -27,20 +27,20 @@ Tasks time out after **30 minutes of inactivity**. If you're working on somethin
 
 Every AI model has a limit on how much it can hold in memory at once — your instructions, the tools available, and the full conversation history all count toward that limit. The more you've discussed, the more memory it takes up.
 
-When a task starts, decopilot loads:
+When a task starts, Decopilot loads:
 
 - Its core instructions and behavior
 - Guidelines from your current scope
 - The tools available in that scope
 - Your conversation history so far
 
-As the conversation grows, the history takes up more space. When it gets too full, decopilot automatically summarizes older parts and keeps the summary instead — freeing up space without losing the important context.
+As the conversation grows, the history takes up more space. When it gets too full, Decopilot automatically summarizes older parts and keeps the summary instead — freeing up space without losing the important context.
 
 ### The 40/80 rule
 
 - **Below 40% full** — plenty of room, no action needed
 - **40–80% full** — still working fine, but worth wrapping up the current phase
-- **Above 80% full** — decopilot automatically compacts the conversation history
+- **Above 80% full** — Decopilot automatically compacts the conversation history
 
 You can trigger this manually with the `/compact` command — useful before starting a new phase of complex work.
 
@@ -91,7 +91,7 @@ You can run a subtask with a specific [agent](/en/studio/agents) — one configu
 
 **Use subtasks for heavy work** — research, data analysis, code reviews, and anything that generates long outputs should happen in subtasks. Keep summaries in your main conversation.
 
-**Be selective with tools** — decopilot loads tools into memory. Don't enable tools you don't need for the current task.
+**Be selective with tools** — Decopilot loads tools into memory. Don't enable tools you don't need for the current task.
 
 **Run things in parallel** — if two subtasks don't depend on each other, start them at the same time.
 
