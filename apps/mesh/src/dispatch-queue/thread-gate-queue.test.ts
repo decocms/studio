@@ -53,10 +53,10 @@ describe("gateStatusToQueueItem", () => {
         source: "user-message",
       },
     ],
-  } as never;
+  };
 
   it("maps an ENQUEUED gate to a queued item with parsed messageId + text", () => {
-    const item = gateStatusToQueueItem(base, threadId);
+    const item = gateStatusToQueueItem(base as never, threadId);
     expect(item).toEqual({
       workflowId: `thread-run:${threadId}:msg-7`,
       messageId: "msg-7",
