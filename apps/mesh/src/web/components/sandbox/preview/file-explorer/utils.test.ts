@@ -30,9 +30,7 @@ describe("file-explorer utils", () => {
     expect(validateExplorerEntryName("ok.ts")).toBeNull();
     expect(validateExplorerEntryName("../evil")).toMatch(/cannot contain/);
     expect(validateExplorerEntryName("a/b")).toMatch(/cannot contain/);
-    expect(validateExplorerEntryName(".env")).toMatch(
-      /cannot start with a dot/,
-    );
+    expect(validateExplorerEntryName(".env")).toBeNull();
     expect(validateExplorerEntryName("")).toMatch(/required/i);
   });
 

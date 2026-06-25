@@ -797,11 +797,6 @@ function walkRepoWithinMaxDepth(
 function isGlobPathAllowed(rel: string): boolean {
   for (const seg of rel.split("/")) {
     if (GLOB_EXCLUDE_DIRS.has(seg)) return false;
-    // Surface `.deco/**` and explorer `.gitkeep` folder markers without
-    // exposing other dotfiles (`.env`, `.npmrc`, …).
-    if (seg.startsWith(".") && seg !== ".deco" && seg !== ".gitkeep") {
-      return false;
-    }
   }
   return true;
 }
