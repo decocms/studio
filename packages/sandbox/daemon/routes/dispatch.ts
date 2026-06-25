@@ -30,6 +30,7 @@ import {
   dispatchSSEEventSchema,
   harnessStreamInputSchema,
   type DispatchSSEEvent,
+  type HarnessStreamInputWire,
 } from "../../dispatch/index";
 import type { LinkErrorCode } from "../../dispatch/error-codes";
 import { requireToken } from "../auth";
@@ -65,6 +66,25 @@ export interface DispatchDeps {
 export interface CancelDeps {
   /** See `DispatchDeps.daemonToken`. */
   daemonToken: string;
+}
+
+type RebasedHarnessInput = Omit<HarnessStreamInputWire, "workspace"> & {
+  workspace: Omit<HarnessStreamInputWire["workspace"], "cwd"> & {
+    cwd: string | null;
+  };
+  signal?: AbortSignal;
+};
+
+function rebaseHarnessInput(
+  input: HarnessStreamInputWire,
+): RebasedHarnessInput {
+  return {
+    ...input,
+    workspace: {
+      ...input.workspace,
+      cwd: rebaseWorkspaceCwd(input.workspace.cwd, daemonAppRoot()),
+    },
+  };
 }
 
 const TOMBSTONE_MS = 60_000;
@@ -108,17 +128,6 @@ function writeDispatchAcceptedPrelude(
     controller.enqueue(encoder.encode(DISPATCH_ACCEPTED_SSE_COMMENT));
   } catch {
     state.closed = true;
-  }
-}
-
-function rebaseInputWorkspace(input: {
-  workspace: { cwd: string };
-  codingWorkspace?: { cwd?: string | null };
-}): void {
-  const cwd = rebaseWorkspaceCwd(input.workspace.cwd, daemonAppRoot());
-  input.workspace = { cwd };
-  if (input.codingWorkspace?.cwd != null) {
-    input.codingWorkspace = { ...input.codingWorkspace, cwd };
   }
 }
 
@@ -289,11 +298,9 @@ export async function handleDispatchRequest(
         }
         const input = inputParse.data;
 
-        // Rebase the symbolic workspace cwd fields onto this daemon's sandbox
-        // root (spec: "Harness Input Contract" Q4 — containment by
-        // construction).
-        rebaseInputWorkspace(input);
-        const rebasedInput = input;
+        // Rebase the symbolic workspace.cwd onto this daemon's sandbox root
+        // (spec: "Harness Input Contract" Q4 — containment by construction).
+        const rebasedInput = rebaseHarnessInput(input);
 
         // 3. Tombstone check — a cancel may have landed first. Surface it as a
         //    terminal error rather than starting a doomed harness.
@@ -375,8 +382,7 @@ export async function handleDispatchRequest(
 
   // Rebase the symbolic workspace cwd fields onto this daemon's sandbox root
   // (spec: "Harness Input Contract" Q4 — containment by construction).
-  rebaseInputWorkspace(input);
-  const rebasedInput = input;
+  const rebasedInput = rebaseHarnessInput(input);
 
   // Tombstone check — a cancel landed before this dispatch did. Decline
   // and let the cluster surface a clear cancellation instead of starting
