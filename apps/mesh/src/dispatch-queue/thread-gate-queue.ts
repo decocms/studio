@@ -1,4 +1,5 @@
 // apps/mesh/src/dispatch-queue/thread-gate-queue.ts
+import { DBOS } from "@dbos-inc/dbos-sdk";
 import type { WorkflowStatus } from "@dbos-inc/dbos-sdk";
 import type { ChatMessage } from "@/api/routes/decopilot/types";
 import type { ThreadGateContext } from "./thread-gate-workflow";
@@ -53,4 +54,54 @@ export function gateStatusToQueueItem(
     status: status.status === "PENDING" ? "running" : "queued",
     enqueuedAt: status.createdAt,
   };
+}
+
+/**
+ * List a thread's pending gate workflows (PENDING head + ENQUEUED tail) as
+ * UI queue items, oldest first. Reads `workflow_status` via DBOS.listWorkflows
+ * (the queue lives there — `workflow_queue` is unused in this DBOS version).
+ */
+export async function listThreadGateQueue(
+  threadId: string,
+): Promise<ThreadQueueItem[]> {
+  const rows = await DBOS.listWorkflows({
+    workflow_id_prefix: `thread-run:${threadId}:`,
+    status: ["PENDING", "ENQUEUED"],
+    loadInput: true,
+    loadOutput: false,
+  });
+  return rows
+    .map((r) => gateStatusToQueueItem(r, threadId))
+    .filter((i): i is ThreadQueueItem => i !== null)
+    .sort((a, b) => a.enqueuedAt - b.enqueuedAt);
+}
+
+/**
+ * Cancel one gate workflow, guarded by the thread prefix (the tenant authz —
+ * the caller has already verified thread ownership). Returns false when the id
+ * is not scoped to this thread (caller should 404).
+ */
+export async function cancelThreadGateWorkflow(
+  threadId: string,
+  workflowId: string,
+): Promise<boolean> {
+  if (!workflowId.startsWith(`thread-run:${threadId}:`)) return false;
+  await DBOS.cancelWorkflows([workflowId]);
+  return true;
+}
+
+/**
+ * Cancel the thread's PENDING gate(s) — the slot holder(s). Used by the stop
+ * button so "stop" frees a stuck/wedged head; ENQUEUED items are left intact so
+ * the queue continues (Codex semantics). No-op when nothing is PENDING.
+ */
+export async function cancelThreadGateHead(threadId: string): Promise<void> {
+  const pending = await DBOS.listWorkflows({
+    workflow_id_prefix: `thread-run:${threadId}:`,
+    status: ["PENDING"],
+    loadInput: false,
+    loadOutput: false,
+  });
+  if (pending.length === 0) return;
+  await DBOS.cancelWorkflows(pending.map((w) => w.workflowID));
 }
