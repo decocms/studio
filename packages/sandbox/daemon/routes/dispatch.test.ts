@@ -359,6 +359,33 @@ describe("POST /_sandbox/dispatch", () => {
     expect(capturedInput?.codingWorkspace?.cwd).toBe(rebasedCwd);
   });
 
+  it("passes null workspace.cwd through to the harness", async () => {
+    const runId = "run-cwd-null";
+    let capturedInput: { workspace?: { cwd: string | null } } | undefined;
+
+    const deps = makeDeps({
+      lookupHarness: (_id, input) => {
+        capturedInput = input as { workspace?: { cwd: string | null } };
+        return makeFakeHarness();
+      },
+    });
+
+    const body = JSON.stringify({
+      runId,
+      harnessId: "fake",
+      input: {
+        ...fixtures.FIXTURE_MINIMAL_INPUT,
+        threadId: "thread-cwd-null",
+        workspace: { cwd: null },
+      },
+    });
+    const res = await handleDispatchRequest(authedDispatch(body), deps);
+    expect(res.status).toBe(200);
+    await readSSE(res);
+
+    expect(capturedInput?.workspace?.cwd).toBeNull();
+  });
+
   it("wraps harness errors as an error SSE event followed by done", async () => {
     const harnessId = "throws";
     const body = JSON.stringify({

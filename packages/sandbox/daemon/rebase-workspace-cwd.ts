@@ -12,6 +12,7 @@ export function rebaseWorkspaceCwd(
   appRoot: string,
 ): string | null {
   if (cwd === null) return null;
+  if (cwd !== "/repo") return null;
   const root = resolve(appRoot);
   const rebased = resolve(root, "." + sep + cwd.replace(/^[/\\]+/, ""));
   if (rebased !== root && !rebased.startsWith(root + sep)) {
