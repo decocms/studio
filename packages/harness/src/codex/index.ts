@@ -31,9 +31,8 @@
  *
  * The harness yields raw `UIMessageChunk` — including the
  * `finish-step.providerMetadata["codex-app-server"]` block. The shared
- * stream layer (Task 12) is responsible for inspecting those chunks if
- * it needs to surface any codex-specific metadata (e.g., for analytics);
- * Codex does NOT use it for resume.
+ * stream layer extracts the Codex thread id from that metadata and feeds
+ * it back as `input.harness.sessionId` on the next turn.
  */
 
 import { streamText, type UIMessageChunk } from "ai";
@@ -55,6 +54,30 @@ import type {
   HarnessFactory,
   HarnessStreamInput,
 } from "../types";
+
+export function buildCodexModelOptions(
+  input: HarnessStreamInput,
+  cwd: string | undefined,
+  developerInstructions: string | undefined,
+): Parameters<typeof createCodexModel>[1] {
+  return {
+    mcpServers: {
+      // Server name kept as `cms` for parity with the inline call
+      // site (stream-core.ts:925). Changing this would alter the
+      // qualified tool names the CLI emits.
+      cms: {
+        transport: "http",
+        url: input.mcp.url,
+        headers: input.mcp.headers,
+      },
+    },
+    toolApprovalLevel: input.toolApprovalLevel,
+    isPlanMode: input.mode === "plan",
+    cwd,
+    developerInstructions,
+    resume: input.harness.sessionId,
+  };
+}
 
 export function buildCodexDeveloperInstructions(input: {
   workspace?: HarnessStreamInput["workspace"];
@@ -114,23 +137,10 @@ export const codexHarnessFactory: HarnessFactory = {
         //    `apps/mesh/src/ai-providers/coding-agents/codex/index.ts`
         //    line 18, where http servers are normalized to the codex
         //    SDK's `httpHeaders` shape internally.
-        const { model, provider } = createCodexModel(sdkModelId, {
-          mcpServers: {
-            // Server name kept as `cms` for parity with the inline call
-            // site (stream-core.ts:925). Changing this would alter the
-            // qualified tool names the CLI emits.
-            cms: {
-              transport: "http",
-              url: input.mcp.url,
-              headers: input.mcp.headers,
-            },
-          },
-          toolApprovalLevel: input.toolApprovalLevel,
-          isPlanMode: input.mode === "plan",
-          cwd,
-          developerInstructions,
-          resume: input.harness.sessionId,
-        });
+        const { model, provider } = createCodexModel(
+          sdkModelId,
+          buildCodexModelOptions(input, cwd, developerInstructions),
+        );
 
         try {
           // 3. Convert UIMessages to ModelMessages. The AI SDK's
@@ -198,11 +208,8 @@ export const codexHarnessFactory: HarnessFactory = {
           // 5. Pipe UIMessageChunk through. We surface
           //    `codingAgentSessionId` / `codingAgentProvider` at the top
           //    of the message metadata so the shared layer persists them
-          //    onto the response message's metadata. Codex doesn't use
-          //    these for resume (per the comment at the top of this
-          //    file), but the inline original at stream-core.ts:1411–
-          //    1417 + 1549–1550 wrote them anyway for parity with
-          //    Claude Code — so we keep the same shape.
+          //    onto the response message's metadata. Subsequent turns read
+          //    those fields back to recover `input.harness.sessionId`.
           //
           //    We also forward cumulative `usage` (with cache token
           //    breakdown + OpenRouter cost) on both `finish-step` and

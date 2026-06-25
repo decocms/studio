@@ -1,41 +1,12 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
+import { prepCliMessages } from "../cli-message-prep";
 import type { HarnessContext, HarnessStreamInput } from "../types";
-
-const claudeCodeModelCalls: Array<{
-  modelId: string;
-  options: unknown;
-}> = [];
-let streamTextConfig: unknown;
-
-mock.module("ai", () => ({
-  convertToModelMessages: async (
-    messages: Array<{ role: string; parts: unknown[] }>,
-  ) =>
-    messages.map((message) => ({
-      role: message.role,
-      content: message.parts,
-    })),
-  generateObject: async () => ({ object: { title: null } }),
-  streamText: (config: unknown) => {
-    streamTextConfig = config;
-    return {
-      toUIMessageStream: () =>
-        (async function* () {
-          // Empty stream; tests only inspect the options passed to streamText.
-        })(),
-    };
-  },
-}));
-
-mock.module("./model", () => ({
-  createClaudeCodeModel: (modelId: string, options: unknown) => {
-    claudeCodeModelCalls.push({ modelId, options });
-    return { provider: "claude-code-test-model" };
-  },
-  resolveClaudeCodeModelId: (modelId: string) =>
-    modelId === "claude-code:sonnet" ? "sonnet" : modelId,
-}));
+import {
+  buildClaudeCodeModelOptions,
+  buildClaudeCodeSystemPrompt,
+  claudeCodeHarnessFactory,
+} from "./index";
 
 function makeInput(
   overrides: Partial<HarnessStreamInput> = {},
@@ -80,27 +51,20 @@ function makeInput(
  * Exercising the actual streamText loop requires a working `claude` CLI
  * subprocess (the harness spawns it via `ai-sdk-provider-claude-code`),
  * so that path is left to end-to-end / resilience tests. The unit tests
- * here verify only the factory shape — id, create() return type, and
- * stream() being a function. Task 12 will own the integration coverage
- * via the shared dispatcher.
+ * here verify factory shape and pure input/model-option preparation.
  */
 describe("claudeCodeHarnessFactory", () => {
-  test("has id 'claude-code'", async () => {
-    const { claudeCodeHarnessFactory } = await import("./index");
+  test("has id 'claude-code'", () => {
     expect(claudeCodeHarnessFactory.id).toBe("claude-code");
   });
 
-  test("create() returns a Harness with id 'claude-code' and a stream() method", async () => {
-    const { claudeCodeHarnessFactory } = await import("./index");
+  test("create() returns a Harness with id 'claude-code' and a stream() method", () => {
     const harness = claudeCodeHarnessFactory.create({} as HarnessContext);
     expect(harness.id).toBe("claude-code");
     expect(typeof harness.stream).toBe("function");
   });
 
   test("uses single userMessage and harness session id", async () => {
-    claudeCodeModelCalls.length = 0;
-    streamTextConfig = undefined;
-    const { claudeCodeHarnessFactory } = await import("./index");
     const input = makeInput({
       userMessage: {
         id: "msg-1",
@@ -114,28 +78,20 @@ describe("claudeCodeHarnessFactory", () => {
     expect(input.harness.sessionId).toBe("session-1");
     expect(input.userMessage.parts[0]).toEqual({ type: "text", text: "hello" });
 
-    const harness = claudeCodeHarnessFactory.create({} as HarnessContext);
-    for await (const _chunk of harness.stream(input)) {
-      // Exhaust the stream so the harness reaches streamText.
-    }
-
-    expect(claudeCodeModelCalls[0]?.options).toMatchObject({
+    const options = buildClaudeCodeModelOptions(input, undefined, undefined);
+    expect(options).toMatchObject({
       resume: "session-1",
       cwd: undefined,
     });
-    expect(streamTextConfig).toMatchObject({
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "hello" }],
-        },
-      ],
-    });
+
+    const messages = await prepCliMessages([input.userMessage]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.role).toBe("user");
+    expect(messages[0]!.content).toEqual([{ type: "text", text: "hello" }]);
   });
 });
 
-test("buildClaudeCodeSystemPrompt appends coding workspace and agent instructions to Claude Code preset", async () => {
-  const { buildClaudeCodeSystemPrompt } = await import("./index");
+test("buildClaudeCodeSystemPrompt appends coding workspace and agent instructions to Claude Code preset", () => {
   const prompt = buildClaudeCodeSystemPrompt({
     workspace: {
       repo: {
