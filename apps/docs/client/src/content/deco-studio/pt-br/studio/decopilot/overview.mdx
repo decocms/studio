@@ -47,7 +47,8 @@ A entrada de chat tem um seletor de modo que define como o Decopilot aborda uma 
 |---|---|
 | **Padrão** | Chat normal — o Decopilot escolhe as tools por conta própria. |
 | **Plan** | O Decopilot deve encerrar a rodada com uma chamada `propose_plan`. Tools destrutivas são bloqueadas até você aprovar um plano; apenas tools somente leitura podem ser habilitadas. Útil antes de fazer algo arriscado. |
-| **Web search** | O primeiro passo é forçado a chamar `web_search`, que transmite uma pesquisa profunda diretamente para você. Requer um modelo de pesquisa web em [AI Providers](/pt-br/studio/ai-providers). |
+| **Web search** | O primeiro passo é forçado a chamar `web_search`, que transmite um resultado de busca rápida diretamente para você. Requer um modelo de web search em [AI Providers](/pt-br/studio/ai-providers). |
+| **Deep research** | O primeiro passo é forçado a chamar `deep_research`, que executa uma pesquisa assíncrona e multi-fonte aprofundada. Requer um modelo de deep research em [AI Providers](/pt-br/studio/ai-providers). |
 | **Gen image** | O primeiro passo é forçado a chamar `generate_image`. Requer um modelo de imagem. |
 
 ## Modelos
@@ -70,13 +71,14 @@ O Decopilot vem com tools para coordenar trabalho em qualquer escopo:
 | `read_resource` | Lê documentação ou diretrizes disponíveis no escopo |
 | `read_prompt` | Lê um template de prompt reutilizável |
 | `read_tool_output` | Relê um resultado anterior de tool que foi descarregado para armazenamento |
-| `web_search` | Executa uma pesquisa web profunda e transmite o resultado |
+| `web_search` | Executa uma busca web rápida e streaming e transmite o resultado |
+| `deep_research` | Executa uma pesquisa assíncrona e multi-fonte aprofundada e retorna um relatório sintetizado |
 | `generate_image` | Cria uma imagem com o modelo de imagem configurado |
 | `propose_plan` | Propõe um plano para sua aprovação (somente no plan mode) |
 
 Quando um agent é apoiado por um sandbox (um repo do GitHub vinculado), o Decopilot também recebe seis **VM tools** — `bash`, `read`, `write`, `edit`, `grep`, `glob` — para que possa executar e modificar código nesse sandbox.
 
-Sandboxes também montam o **filesystem da organização** em `org/`: uma pasta com o nome da sua organização (ex.: `org/acme/`) é a home compartilhada da org — editável, livre, compartilhada entre todos os membros, agents e runs, onde os agents registram conhecimento durável e checam contexto antes de começar a trabalhar; `org/upload` guarda os arquivos anexados à conversa atual (anexos do chat caem ali automaticamente — sem etapa de cópia); `org/output` é a pasta de saída compartilhada da run atual; e `org/public/<set>` expõe skill sets somente leitura e curados, sincronizados a partir de repos versionados. Arquivos escritos na pasta home e em `org/output` sincronizam com o cloud storage da sua organização e ficam visíveis para todos os membros e agents; mudanças externas aparecem dentro do sandbox em cerca de um segundo.
+Sandboxes também montam o **filesystem da organização** em `org/`: `org/home/` é a home compartilhada da org — editável, livre, compartilhada entre todos os membros, agents e runs, onde os agents registram conhecimento durável e checam contexto antes de começar a trabalhar; `org/upload` guarda os arquivos anexados à conversa atual (anexos do chat caem ali automaticamente — sem etapa de cópia); `org/output` é a pasta de saída compartilhada da run atual; e `org/public/<set>` expõe skill sets somente leitura e curados, sincronizados a partir de repos versionados. Arquivos escritos na pasta home e em `org/output` sincronizam com o cloud storage da sua organização e ficam visíveis para todos os membros e agents; mudanças externas aparecem dentro do sandbox em cerca de um segundo.
 
 <Callout type="info">
   **Links de desktop no macOS:** quando um sandbox roda na sua máquina (`deco link`),
