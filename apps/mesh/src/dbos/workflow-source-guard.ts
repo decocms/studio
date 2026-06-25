@@ -38,7 +38,9 @@ export function computeWorkflowSourceHashes(
 /**
  * Conservative, file-level drift check. Over-triggers on unrelated edits inside
  * a workflow file (safe — it only forces a deliberate decision); never silently
- * misses a workflow source change.
+ * misses a workflow source change for the standard `DBOS.registerWorkflow` call
+ * form. A future aliased or destructured registration (e.g.
+ * `const { registerWorkflow } = DBOS`) would evade the marker and go undetected.
  */
 export function compareToSnapshot(
   current: Record<string, string>,

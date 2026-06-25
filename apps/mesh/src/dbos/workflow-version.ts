@@ -6,6 +6,11 @@
  * recover them, so they strand (the thread-gate "accepted and queued" wedge).
  * See docs/superpowers/specs/2026-06-25-dbos-app-version-pinning-design.md.
  *
+ * NOTE: under DBOS Cloud (process.env.DBOS__CLOUD === "true") the SDK ignores
+ * applicationVersion and uses its own env-supplied version instead. This repo
+ * self-hosts and sets neither DBOS__CLOUD nor DBOS__APPVERSION, so the pin
+ * takes full effect — but be aware of this if the deploy target ever changes.
+ *
  * GLOBAL: one value for ALL registered workflows in the process. Fed to
  * DBOS.setConfig({ applicationVersion }) via buildDbosConfig().
  *
