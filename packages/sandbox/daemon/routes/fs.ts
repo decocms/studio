@@ -28,7 +28,7 @@ export interface FsDeps {
    * checkout or remote change). Lets the daemon refresh branch dirty state
    * without waiting for the `.git/` watcher poll.
    */
-  onWorkingTreeWrite?: () => void;
+  onWorkingTreeWrite?: (path: string) => void;
 }
 
 function spawnOpts(
@@ -198,7 +198,7 @@ export function makeWriteHandler(deps: FsDeps) {
     if (!filePath) return jsonResponse({ error: "Path escapes app root" }, 400);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, body.content, "utf-8");
-    deps.onWorkingTreeWrite?.();
+    deps.onWorkingTreeWrite?.(body.path ?? "");
     return jsonResponse({
       ok: true,
       bytesWritten: Buffer.byteLength(body.content, "utf-8"),
@@ -253,7 +253,7 @@ export function makeUnlinkHandler(deps: FsDeps) {
         return jsonResponse({ error: (err as Error).message }, 500);
       }
     }
-    if (existed) deps.onWorkingTreeWrite?.();
+    if (existed) deps.onWorkingTreeWrite?.(body.path ?? "");
     return jsonResponse({ ok: true, existed });
   };
 }
@@ -279,7 +279,7 @@ export function makeMkdirHandler(deps: FsDeps) {
     } catch (err) {
       return jsonResponse({ error: (err as Error).message }, 500);
     }
-    deps.onWorkingTreeWrite?.();
+    deps.onWorkingTreeWrite?.(body.path);
     return jsonResponse({ ok: true });
   };
 }
@@ -330,7 +330,7 @@ export function makeRenameHandler(deps: FsDeps) {
     } catch (err) {
       return jsonResponse({ error: (err as Error).message }, 500);
     }
-    deps.onWorkingTreeWrite?.();
+    deps.onWorkingTreeWrite?.(body.to!);
     return jsonResponse({ ok: true });
   };
 }
@@ -381,7 +381,7 @@ export function makeEditHandler(deps: FsDeps) {
       ? content.replaceAll(body.old_string, body.new_string)
       : content.replace(body.old_string, body.new_string);
     fs.writeFileSync(filePath, updated, "utf-8");
-    deps.onWorkingTreeWrite?.();
+    deps.onWorkingTreeWrite?.(body.path ?? "");
     return jsonResponse({
       ok: true,
       replacements: replaceAll ? count : 1,
