@@ -147,17 +147,38 @@ atomic and gives a pointer to the right install command.
 {{- end }}
 
 {{/*
-Validate decoCache: if secretName is set, region and bucket are required —
-the daemon silently skips cache warm-up when either is missing.
+Effective K8s Secret name for decoCache credentials.
+When externalSecret is enabled the ExternalSecret materialises a Secret
+whose name is derived from the sandbox name; otherwise falls back to the
+explicit secretName value.
+*/}}
+{{- define "sandbox-env.decoCacheSecretName" -}}
+{{- if .Values.decoCache.externalSecret.enabled -}}
+{{- printf "%s-deco-cache" (include "sandbox-env.sandboxName" .) -}}
+{{- else -}}
+{{- .Values.decoCache.secretName -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Validate decoCache configuration.
 */}}
 {{- define "sandbox-env.validateDecoCache" -}}
-{{- if .Values.decoCache.secretName }}
-{{- if not .Values.decoCache.region }}
-{{- fail "sandbox-env: decoCache.secretName is set but decoCache.region is empty — region is required for S3 request signing" -}}
-{{- end }}
-{{- if not .Values.decoCache.bucket }}
-{{- fail "sandbox-env: decoCache.secretName is set but decoCache.bucket is empty — bucket is required to locate the cache object" -}}
-{{- end }}
+{{- $es := .Values.decoCache.externalSecret }}
+{{- if $es.enabled }}
+  {{- if not $es.secretPath }}
+    {{- fail "sandbox-env: decoCache.externalSecret.enabled=true requires decoCache.externalSecret.secretPath" -}}
+  {{- end }}
+  {{- if not $es.provider.aws.region }}
+    {{- fail "sandbox-env: decoCache.externalSecret.enabled=true requires decoCache.externalSecret.provider.aws.region" -}}
+  {{- end }}
+{{- else if .Values.decoCache.secretName }}
+  {{- if not .Values.decoCache.region }}
+    {{- fail "sandbox-env: decoCache.secretName is set but decoCache.region is empty — region is required for S3 request signing" -}}
+  {{- end }}
+  {{- if not .Values.decoCache.bucket }}
+    {{- fail "sandbox-env: decoCache.secretName is set but decoCache.bucket is empty — bucket is required to locate the cache object" -}}
+  {{- end }}
 {{- end }}
 {{- end }}
 

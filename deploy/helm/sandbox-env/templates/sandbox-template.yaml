@@ -207,7 +207,8 @@ spec:
             - name: ORGFS_SIDECAR_STATUS_PATH
               value: "/run/orgfs/status.json"
             {{- end }}
-            {{- if .Values.decoCache.secretName }}
+            {{- $decoCacheSecret := include "sandbox-env.decoCacheSecretName" . }}
+            {{- if $decoCacheSecret }}
             # Optional: pre-populate $DENO_DIR from any S3-compatible storage
             # before running `deno task dev`. Supports AWS S3, GCS, R2, MinIO.
             # Non-fatal: missing object or download failure is logged and the
@@ -215,12 +216,12 @@ spec:
             - name: DECO_CACHE_S3_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.decoCache.secretName }}
+                  name: {{ $decoCacheSecret }}
                   key: {{ .Values.decoCache.accessKeyIdRef | default "accessKeyId" }}
             - name: DECO_CACHE_S3_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.decoCache.secretName }}
+                  name: {{ $decoCacheSecret }}
                   key: {{ .Values.decoCache.secretAccessKeyRef | default "secretAccessKey" }}
             {{- if .Values.decoCache.region }}
             - name: DECO_CACHE_S3_REGION
