@@ -277,6 +277,7 @@ export async function handleDispatchRequest(
           return;
         }
         const input = inputParse.data;
+        const runId = input.threadId;
 
         // Rebase the symbolic workspace cwd fields onto this daemon's sandbox
         // root (spec: "Harness Input Contract" Q4 — containment by
@@ -285,16 +286,16 @@ export async function handleDispatchRequest(
 
         // 3. Tombstone check — a cancel may have landed first. Surface it as a
         //    terminal error rather than starting a doomed harness.
-        const tombstoneExpiry = tombstones.get(input.runId);
+        const tombstoneExpiry = tombstones.get(runId);
         if (tombstoneExpiry && tombstoneExpiry > Date.now()) {
           const code: LinkErrorCode = "tombstoned";
-          fail(code, `runId ${input.runId} was cancelled`);
+          fail(code, `runId ${runId} was cancelled`);
           return;
         } else if (tombstoneExpiry) {
-          tombstones.delete(input.runId);
+          tombstones.delete(runId);
         }
 
-        activeRuns.set(input.runId, ctrl);
+        activeRuns.set(runId, ctrl);
 
         // Re-inject the per-run AbortSignal. `HarnessStreamInput.signal` is an
         // AbortSignal and therefore NOT JSON-serializable, so it never survives
@@ -307,7 +308,7 @@ export async function handleDispatchRequest(
         (input as { signal?: AbortSignal }).signal = ctrl.signal;
 
         console.log(
-          `[dispatch] received (offload) harness=${harnessId} runId=${input.runId} threadId=${input.threadId} bytes=${messagesRef.bytes}`,
+          `[dispatch] received (offload) harness=${harnessId} runId=${runId} threadId=${input.threadId} bytes=${messagesRef.bytes}`,
         );
 
         // 4. Look up + run.
@@ -315,9 +316,9 @@ export async function handleDispatchRequest(
         try {
           harness = deps.lookupHarness(harnessId, input);
         } catch (err) {
-          activeRuns.delete(input.runId);
+          activeRuns.delete(runId);
           console.error(
-            `[dispatch] lookupHarness failed harness=${harnessId} runId=${input.runId}:`,
+            `[dispatch] lookupHarness failed harness=${harnessId} runId=${runId}:`,
             err,
           );
           const code: LinkErrorCode = "unknown_harness";
@@ -331,7 +332,7 @@ export async function handleDispatchRequest(
           harness,
           ctrl,
           harnessId,
-          input.runId,
+          runId,
           streamState,
         );
       },
@@ -360,6 +361,7 @@ export async function handleDispatchRequest(
     );
   }
   const input = inputParse.data;
+  const runId = input.threadId;
 
   // Rebase the symbolic workspace cwd fields onto this daemon's sandbox root
   // (spec: "Harness Input Contract" Q4 — containment by construction).
@@ -368,7 +370,7 @@ export async function handleDispatchRequest(
   // Tombstone check — a cancel landed before this dispatch did. Decline
   // and let the cluster surface a clear cancellation instead of starting
   // a CLI process that will be immediately torn down.
-  const tombstoneExpiry = tombstones.get(input.runId);
+  const tombstoneExpiry = tombstones.get(runId);
   if (tombstoneExpiry && tombstoneExpiry > Date.now()) {
     return new Response(JSON.stringify({ error: "tombstoned" }), {
       status: 410,
@@ -376,11 +378,11 @@ export async function handleDispatchRequest(
     });
   } else if (tombstoneExpiry) {
     // Expired entry — clean up opportunistically.
-    tombstones.delete(input.runId);
+    tombstones.delete(runId);
   }
 
   const ctrl = new AbortController();
-  activeRuns.set(input.runId, ctrl);
+  activeRuns.set(runId, ctrl);
 
   // Re-inject the per-run AbortSignal — see the offload path above for the full
   // rationale. The wire input never carries `signal` (not serializable), so the
@@ -388,16 +390,16 @@ export async function handleDispatchRequest(
   (input as { signal?: AbortSignal }).signal = ctrl.signal;
 
   console.log(
-    `[dispatch] received harness=${harnessId} runId=${input.runId} threadId=${input.threadId}`,
+    `[dispatch] received harness=${harnessId} runId=${runId} threadId=${input.threadId}`,
   );
 
   let harness: DispatchHarness;
   try {
     harness = deps.lookupHarness(harnessId, input);
   } catch (err) {
-    activeRuns.delete(input.runId);
+    activeRuns.delete(runId);
     console.error(
-      `[dispatch] lookupHarness failed harness=${harnessId} runId=${input.runId}:`,
+      `[dispatch] lookupHarness failed harness=${harnessId} runId=${runId}:`,
       err,
     );
     return new Response(
@@ -438,7 +440,7 @@ export async function handleDispatchRequest(
         harness,
         ctrl,
         harnessId,
-        input.runId,
+        runId,
         streamState,
       );
     },
