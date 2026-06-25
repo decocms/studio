@@ -356,26 +356,33 @@ export function SandboxEventsProvider({
             const { path: filePath } =
               payload as DaemonEventPayload<"file-changed">;
             const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
-            if (filePath.startsWith(".deco/")) {
-              void queryClient.invalidateQueries({
-                queryKey: KEYS.decofile(cacheKey),
-              });
-            } else {
-              // liveMeta keys include previewUrl as suffix
-              // (e.g. ["live-meta", "org/vmcp/branch/https://..."])
-              // — use predicate to match all liveMeta entries for
-              // this sandbox regardless of previewUrl.
-              void queryClient.invalidateQueries({
-                predicate: (query) => {
-                  const key = query.queryKey;
-                  return (
-                    key[0] === "live-meta" &&
-                    typeof key[1] === "string" &&
-                    key[1].startsWith(`${cacheKey}/`)
-                  );
-                },
-              });
-            }
+            // Wait for the dev server to finish recompiling before
+            // refetching — hitting it too early returns a socket error
+            // because the server is restarting.
+            const invalidateAfterDelay = () =>
+              setTimeout(() => {
+                if (filePath.startsWith(".deco/")) {
+                  void queryClient.invalidateQueries({
+                    queryKey: KEYS.decofile(cacheKey),
+                  });
+                } else {
+                  // liveMeta keys include previewUrl as suffix
+                  // (e.g. ["live-meta", "org/vmcp/branch/https://..."])
+                  // — use predicate to match all liveMeta entries for
+                  // this sandbox regardless of previewUrl.
+                  void queryClient.invalidateQueries({
+                    predicate: (query) => {
+                      const key = query.queryKey;
+                      return (
+                        key[0] === "live-meta" &&
+                        typeof key[1] === "string" &&
+                        key[1].startsWith(`${cacheKey}/`)
+                      );
+                    },
+                  });
+                }
+              }, 1000);
+            invalidateAfterDelay();
             return;
           }
         }
