@@ -172,13 +172,6 @@ Validate decoCache configuration.
   {{- if not $es.provider.aws.region }}
     {{- fail "sandbox-env: decoCache.externalSecret.enabled=true requires decoCache.externalSecret.provider.aws.region" -}}
   {{- end }}
-{{- else if .Values.decoCache.secretName }}
-  {{- if not .Values.decoCache.region }}
-    {{- fail "sandbox-env: decoCache.secretName is set but decoCache.region is empty — region is required for S3 request signing" -}}
-  {{- end }}
-  {{- if not .Values.decoCache.bucket }}
-    {{- fail "sandbox-env: decoCache.secretName is set but decoCache.bucket is empty — bucket is required to locate the cache object" -}}
-  {{- end }}
 {{- end }}
 {{- end }}
 
