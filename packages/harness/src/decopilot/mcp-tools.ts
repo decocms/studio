@@ -293,9 +293,9 @@ export async function toolsFromMCP(
     ];
   });
 
-  // Return the raw listing too: callers (desktop-runtime's connections-block)
-  // otherwise re-call client.listTools(), doubling the list+parse pass over the
-  // full tool surface every run — costly at high tool counts (100s of tools).
+  // Return the raw listing too: callers otherwise re-call client.listTools(),
+  // doubling the list+parse pass over the full tool surface every run — costly
+  // at high tool counts (100s of tools).
   return {
     tools: Object.fromEntries(toolEntries),
     nameMap,
