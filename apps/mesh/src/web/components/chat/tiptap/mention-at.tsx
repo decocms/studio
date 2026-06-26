@@ -19,6 +19,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { BaseItem, insertMention, OnSelectProps, Suggestion } from "./mention";
 import { track } from "@/web/lib/posthog-client";
+import { getDevAgentIds } from "@/web/lib/agent-capabilities";
 
 interface AtMentionProps {
   editor: Editor;
@@ -57,6 +58,8 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
   const queryClient = useQueryClient();
   const { org } = useProjectContext();
   const agents = useVirtualMCPs();
+  // Dev agents are reached via the Develop/Live toggle, not @-mentioned.
+  const devAgentIds = getDevAgentIds(agents);
   const client = useMCPClient({
     connectionId: virtualMcpId,
     orgId: org.id,
@@ -140,6 +143,7 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
           (agent) =>
             agent.status === "active" &&
             (!agent.id || !isDecopilot(agent.id)) &&
+            !devAgentIds.has(agent.id) &&
             agent.id !== virtualMcpId &&
             (agent.title.toLowerCase().includes(lq) ||
               agent.description?.toLowerCase().includes(lq)),
@@ -188,6 +192,7 @@ export const AtMention = ({ editor, virtualMcpId }: AtMentionProps) => {
         (agent) =>
           agent.status === "active" &&
           (!agent.id || !isDecopilot(agent.id)) &&
+          !devAgentIds.has(agent.id) &&
           agent.id !== virtualMcpId,
       );
       if (query.trim()) {

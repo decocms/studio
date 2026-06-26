@@ -26,7 +26,10 @@ import type {
 import { monitorLlmCall } from "@/monitoring/emit-llm-call";
 import { recordLlmCallMetrics } from "@/monitoring/record-llm-call-metrics";
 import type { VirtualMCPEntity } from "@/tools/virtual/schema";
+import type { ConnectionEntity } from "@/tools/connection/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
+import { resolveDevConnection } from "@/api/routes/dev-connection";
+import { readSandboxMap } from "@/tools/sandbox/sandbox-map";
 import type { SideChannelWriter } from "@decocms/harness/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
@@ -145,17 +148,41 @@ export function buildClusterEnvironmentTools(args: {
         // client over the run's resolved Virtual MCP. superUser/listTimeout
         // come from the caller (assembleDecopilotTools). The daemon/desktop
         // factory supplies an HTTP-backed impl at the agent's mcp.url.
-        mcpForAgent: (_agentId, opts) =>
-          createVirtualClientFrom(
-            // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
-            // the transport type widens the field to a loose bag so the
-            // daemon can ship without the cluster's storage types.
-            streamInput.virtualMcp as VirtualMCPEntity,
+        mcpForAgent: async (_agentId, opts) => {
+          // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
+          // the transport type widens the field to a loose bag so the
+          // daemon can ship without the cluster's storage types.
+          const vm = streamInput.virtualMcp as VirtualMCPEntity;
+          // Surface the dev sandbox's tools when the user has a running sandbox
+          // for this agent. Cheap local pre-filter ("does the user have a
+          // sandbox entry?"), no repo/pairing flag — agents without a sandbox
+          // skip the resolver. resolveDevConnection then confirms the dev server
+          // actually speaks MCP (probe).
+          let devConnection: ConnectionEntity | null = null;
+          if (
+            vm.id &&
+            streamInput.user.id &&
+            readSandboxMap(vm.metadata)[streamInput.user.id]
+          ) {
+            devConnection = await resolveDevConnection(
+              ctx,
+              vm.id,
+              streamInput.user.id,
+              streamInput.branch ?? undefined,
+            ).catch(() => null);
+          }
+          return createVirtualClientFrom(
+            vm,
             ctx,
             "passthrough",
             opts?.superUser ?? false,
-            { listTimeoutMs: opts?.listTimeoutMs, includeSkillsCatalog: true },
-          ),
+            {
+              listTimeoutMs: opts?.listTimeoutMs,
+              includeSkillsCatalog: true,
+              additionalConnections: devConnection ? [devConnection] : [],
+            },
+          );
+        },
         provider: modelRuntime.thinking.provider,
         imageProvider:
           modelRuntime.image?.provider ?? modelRuntime.thinking.provider,

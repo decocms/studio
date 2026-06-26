@@ -18,9 +18,12 @@ import { createServerFromClient, getDecopilotId } from "@decocms/mesh-sdk";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
-import type { StudioContext } from "../../core/studio-context";
+import { getUserId, type StudioContext } from "../../core/studio-context";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
 import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
+import { resolveDevConnection } from "./dev-connection";
+import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
+import type { ConnectionEntity } from "../../tools/connection/schema";
 import type { Env } from "../hono-env";
 import { serveMcpRequest } from "../utils/serve-mcp";
 
@@ -139,6 +142,27 @@ export async function handleVirtualMcpRequest(
       };
     }
 
+    // Surface the dev sandbox's tools when the acting user has a running sandbox
+    // for this agent. The cheap local pre-filter is just "does the user have a
+    // sandbox entry?" (no repo/pairing flag) — agents without a sandbox skip the
+    // resolver entirely. resolveDevConnection then confirms the dev server
+    // actually speaks MCP (probe). Safe on this legacy route's looser org
+    // binding: it only resolves a sandbox the acting user themselves started.
+    const actingUserId = getUserId(ctx);
+    let devConnection: ConnectionEntity | null = null;
+    if (
+      virtualMcp.id &&
+      actingUserId &&
+      readSandboxMap(virtualMcp.metadata)[actingUserId]
+    ) {
+      devConnection = await resolveDevConnection(
+        ctx,
+        virtualMcp.id,
+        actingUserId,
+        c.req.query("branch") ?? undefined,
+      ).catch(() => null);
+    }
+
     // Create client from entity (always passthrough)
     const client = await ctx.tracer.startActiveSpan(
       "studio.virtual_mcp.create_client",
@@ -152,7 +176,10 @@ export async function handleVirtualMcpRequest(
             false,
             // Serves the agent's MCP (incl. the desktop daemon); surface the
             // skill catalog in the instructions it reads.
-            { includeSkillsCatalog: true },
+            {
+              includeSkillsCatalog: true,
+              additionalConnections: devConnection ? [devConnection] : [],
+            },
           );
           span.setStatus({ code: SpanStatusCode.OK });
           return result;

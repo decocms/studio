@@ -583,6 +583,13 @@ export const VirtualMCPEntitySchema = z.object({
         .describe(
           "Allowlist of Virtual MCP (agent) IDs this agent may delegate to via subtask. null/absent = all active org agents; empty array = itself only (no cross-agent delegation).",
         ),
+      liveAgentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
+        ),
       ui: VirtualMcpUISchema.nullable()
         .optional()
         .describe("UI customization settings"),
@@ -653,6 +660,13 @@ export const VirtualMCPCreateDataSchema = z.object({
         .describe(
           "Allowlist of Virtual MCP (agent) IDs this agent may delegate to via subtask. null/absent = all active org agents; empty array = itself only (no cross-agent delegation).",
         ),
+      liveAgentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
+        ),
       ui: VirtualMcpUISchema.nullable()
         .optional()
         .describe("UI customization settings"),
@@ -718,6 +732,13 @@ export const VirtualMCPUpdateDataSchema = z.object({
         .optional()
         .describe(
           "Allowlist of Virtual MCP (agent) IDs this agent may delegate to via subtask. null/absent = all active org agents; empty array = itself only (no cross-agent delegation).",
+        ),
+      liveAgentId: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "ID of the live agent this (dev) agent develops. Set only on dev agents; powers the Develop/Live toggle. A dev agent is hidden from the sidebar (reached via the toggle on its live counterpart).",
         ),
       ui: VirtualMcpUISchema.nullable()
         .optional()

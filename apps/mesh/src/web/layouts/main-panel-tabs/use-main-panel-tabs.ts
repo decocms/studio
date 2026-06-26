@@ -15,10 +15,15 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement, useSyncExternalStore } from "react";
 import {
+  getDevConnectionId,
   useConnections,
+  useMCPClientOptional,
+  useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
 } from "@decocms/mesh-sdk";
+import { getUIResourceUri } from "@/mcp-apps/types";
+import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import {
@@ -171,7 +176,11 @@ export function useMainPanelTabs(ctx: {
 
   const entityLayout = entityUI?.layout ?? null;
   const layoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
-  const pinnedViews = entityUI?.pinnedViews ?? [];
+
+  // The ephemeral dev connection (`dev_<id>`) the agent's sandbox dev server is
+  // served through. Its views are auto-detected from the dev server's own MCP
+  // app below — no pairing / live-partner config involved.
+  const devConnId = entity?.id ? getDevConnectionId(entity.id) : null;
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   const hasClonableSource = agentHasClonableSource(entity?.metadata);
@@ -184,6 +193,39 @@ export function useMainPanelTabs(ctx: {
   // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
   const vmEvents = useSandboxEvents();
   const devServerReady = vmEvents.lifecycle.phase === "running";
+
+  // Auto-detect the dev MCP app's views straight from its sandbox dev server:
+  // every tool that declares a `ui://` resource is a view, rendered against the
+  // ephemeral dev connection (`dev_<id>`). No pairing / curated pinnedViews
+  // needed — the dev server describes itself. Only queried once the dev server
+  // is up (its `/api/mcp` serves tools); when present, these override the live
+  // agent's own pinned views below.
+  const devClient = useMCPClientOptional({
+    connectionId: devConnId ?? undefined,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const { data: devToolsResult } = useMCPToolsListQuery({
+    client: devClient as NonNullable<typeof devClient>,
+    enabled: !!devClient && devServerReady,
+  });
+  const devViews =
+    devConnId && devServerReady
+      ? (devToolsResult?.tools ?? [])
+          .filter((t) => !!getUIResourceUri(t._meta))
+          .map((t) => ({
+            connectionId: devConnId,
+            toolName: t.name,
+            label: toTitleCase(t.name),
+            icon: null as string | null,
+          }))
+      : [];
+  const firstDevView = devViews[0];
+  const pinnedViews = firstDevView ? devViews : (entityUI?.pinnedViews ?? []);
+  const effectiveDefaultMainView =
+    firstDevView && devConnId
+      ? { type: "ext-apps", id: devConnId, toolName: firstDevView.toolName }
+      : (entityLayout?.defaultMainView ?? null);
   const decofileFetchParams =
     hasClonableSource && entity?.id && currentBranch
       ? { orgSlug: org.slug, virtualMcpId: entity.id, branch: currentBranch }
@@ -201,23 +243,25 @@ export function useMainPanelTabs(ctx: {
   const { activeTab: rawActiveTab, mainOpen: rawMainOpen } =
     resolveActiveTabAndOpen({
       mainParam: search.main,
-      metadata: entityLayout
-        ? {
-            defaultMainView: entityLayout.defaultMainView ?? null,
-            tabs: layoutTabs.map((t) => ({ id: t.id })),
-          }
-        : null,
+      metadata:
+        effectiveDefaultMainView || entityLayout
+          ? {
+              defaultMainView: effectiveDefaultMainView,
+              tabs: layoutTabs.map((t) => ({ id: t.id })),
+            }
+          : null,
     });
 
   const gitTabVisible =
     hasActiveGithubRepo &&
     (hasOpenPr || (prQuery.isPending && rawActiveTab === "git"));
-  const layoutForDefault = entityLayout
-    ? {
-        defaultMainView: entityLayout.defaultMainView ?? null,
-        tabs: layoutTabs.map((t) => ({ id: t.id })),
-      }
-    : null;
+  const layoutForDefault =
+    effectiveDefaultMainView || entityLayout
+      ? {
+          defaultMainView: effectiveDefaultMainView,
+          tabs: layoutTabs.map((t) => ({ id: t.id })),
+        }
+      : null;
   const activeTab =
     rawActiveTab === "git" && !gitTabVisible && !prQuery.isPending
       ? resolveDefaultTabId(layoutForDefault)

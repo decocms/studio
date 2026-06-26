@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Plus } from "@untitledui/icons";
+import { ChevronDown, ChevronRight, Code02, Plus } from "@untitledui/icons";
 import { useState } from "react";
 import type { DraggableAttributes } from "@dnd-kit/core";
 import type { SyntheticListenerMap } from "@dnd-kit/core/dist/hooks/utilities";
@@ -37,6 +37,12 @@ export interface TaskGroupProps {
   onToggleOrgPin?: (virtualMcpId: string, pinned: boolean) => void;
   /** Precomputed visible count for this group (avoids O(T) scan per hook). */
   groupVisibleCount?: number;
+  /** When this live group is paired with a dev agent, the dev agent's id. Its
+   *  threads (carried in `threads`, keyed by this id) render in a "Develop"
+   *  sub-section instead of a standalone sidebar group. */
+  devPartnerId?: string | null;
+  /** Precomputed visible count for the dev partner's threads. */
+  devGroupVisibleCount?: number;
   filters: SidebarFilters;
   /** When set, the group header is draggable for reordering. */
   sortable?: {
@@ -60,11 +66,26 @@ export function TaskGroup({
   onToggleOrgPin,
   filters,
   groupVisibleCount,
+  devPartnerId = null,
+  devGroupVisibleCount,
   sortable,
 }: TaskGroupProps) {
   const [expanded, setExpanded] = useGroupExpanded(virtualMcpId, false);
   const isToolCallRuns = virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
   const isDragging = sortable?.isDragging ?? false;
+
+  // Threads carry both the live agent's and (folded-in) dev agent's threads,
+  // keyed by virtual_mcp_id. Split so the dev ones render in a "Develop"
+  // sub-section with their own pagination (keyed by the dev agent id).
+  const devThreads = devPartnerId
+    ? threads.filter((t) => t.virtual_mcp_id === devPartnerId)
+    : [];
+  const liveThreads = devPartnerId
+    ? threads.filter((t) => t.virtual_mcp_id !== devPartnerId)
+    : threads;
+  const showDevSection =
+    !!devPartnerId &&
+    (devThreads.length > 0 || (devGroupVisibleCount ?? 0) > 0);
 
   function handleToggleExpanded() {
     const next = !expanded;
@@ -162,16 +183,36 @@ export function TaskGroup({
               />
             ))
           ) : (
-            <AgentExpandedBody
-              virtualMcpId={virtualMcpId}
-              threads={threads}
-              activeTaskId={activeTaskId}
-              onSelectTask={onSelectTask}
-              onArchiveTask={onArchiveTask}
-              onNewTaskInGroup={onNewTaskInGroup}
-              filters={filters}
-              groupVisibleCount={groupVisibleCount}
-            />
+            <>
+              <AgentExpandedBody
+                virtualMcpId={virtualMcpId}
+                threads={liveThreads}
+                activeTaskId={activeTaskId}
+                onSelectTask={onSelectTask}
+                onArchiveTask={onArchiveTask}
+                onNewTaskInGroup={onNewTaskInGroup}
+                filters={filters}
+                groupVisibleCount={groupVisibleCount}
+              />
+              {showDevSection && devPartnerId && (
+                <div className="flex flex-col gap-0.5 mt-1.5">
+                  <div className="flex items-center gap-1.5 px-2 pb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80">
+                    <Code02 size={11} />
+                    Develop
+                  </div>
+                  <AgentExpandedBody
+                    virtualMcpId={devPartnerId}
+                    threads={devThreads}
+                    activeTaskId={activeTaskId}
+                    onSelectTask={onSelectTask}
+                    onArchiveTask={onArchiveTask}
+                    onNewTaskInGroup={onNewTaskInGroup}
+                    filters={filters}
+                    groupVisibleCount={devGroupVisibleCount}
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

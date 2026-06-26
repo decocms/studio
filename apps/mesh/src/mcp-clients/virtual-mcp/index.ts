@@ -70,7 +70,16 @@ export async function createVirtualClientFrom(
   ctx: StudioContext,
   _strategy: "passthrough",
   superUser = false,
-  options?: { listTimeoutMs?: number; includeSkillsCatalog?: boolean },
+  options?: {
+    listTimeoutMs?: number;
+    includeSkillsCatalog?: boolean;
+    /**
+     * Pre-resolved connections to prepend to the aggregated set — e.g. the
+     * ephemeral per-user dev-server connection (`dev_<id>`). Prepended so they
+     * shadow same-named virtual-mcp tools (the aggregator dedups first-wins).
+     */
+    additionalConnections?: ConnectionEntity[];
+  },
 ): Promise<PassthroughClient> {
   // Inclusion mode: use only the connections specified in virtual MCP
   const connectionIds = virtualMcp.connections.map((c) => c.connection_id);
@@ -113,6 +122,13 @@ export async function createVirtualClientFrom(
       conn.status === "active" &&
       !isSelfReferencingVirtual(conn, virtualMcp.id),
   );
+
+  // Prepend caller-provided connections (e.g. the ephemeral dev-server
+  // connection for a dev-capable agent). Prepended so their tools win the
+  // aggregator's first-occurrence-wins dedup over any same-named tool.
+  if (options?.additionalConnections?.length) {
+    loadedConnections.unshift(...options.additionalConnections);
+  }
 
   // Agent runtimes opt into the skill catalog: enumerate the org's skills now
   // (async — the sync getInstructions() can't) and stash the rendered block so

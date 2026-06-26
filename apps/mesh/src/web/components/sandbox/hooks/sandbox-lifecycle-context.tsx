@@ -14,25 +14,20 @@
 import type { PreviewState } from "@/web/components/sandbox/preview/preview-state";
 import type { DrawerStatus } from "@/web/components/sandbox/preview/drawer/status-pill";
 import type { SandboxProviderKind } from "@decocms/sandbox/provider";
+import {
+  selectVmEntry,
+  type BranchMapEntryLike,
+} from "@/tools/sandbox/select-vm-entry";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-testable)
 // ---------------------------------------------------------------------------
 
-export interface BranchMapEntryLike {
-  sandboxHandle: string;
-  previewUrl: string | null;
-  sandboxProviderKind: string;
-}
-
-export function selectVmEntry<T extends BranchMapEntryLike>(
-  branchMap: Record<string, T>,
-): T | null {
-  const entries = Object.values(branchMap);
-  const [first] = entries;
-  if (!first) return null;
-  return entries.find((e) => e.sandboxProviderKind !== "user-desktop") ?? first;
-}
+// `selectVmEntry` + `BranchMapEntryLike` moved to a server-safe module
+// (@/tools/sandbox/select-vm-entry) so the dev-connection resolver reuses the
+// exact same selection rule. Re-exported here for existing importers and the
+// co-located unit tests.
+export { selectVmEntry, type BranchMapEntryLike };
 
 export interface ShouldAutoStartArgs {
   hasActiveGithubRepo: boolean;

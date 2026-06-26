@@ -106,3 +106,54 @@ export function groupThreadsByVirtualMcp(
   }
   return result;
 }
+
+/**
+ * Fold each dev agent's thread group into its live counterpart so the sidebar
+ * shows a single entry per live/dev pair. Dev threads keep their own
+ * `virtual_mcp_id` (the renderer splits them into a "Develop" sub-section).
+ * `devToLive` maps a dev agent id → its live agent id.
+ */
+export function foldDevGroupsIntoLive(
+  groups: TaskGroupData[],
+  devToLive: Map<string, string>,
+): TaskGroupData[] {
+  if (devToLive.size === 0) return groups;
+  const out: TaskGroupData[] = [];
+  const byLiveId = new Map<string, TaskGroupData>();
+  for (const g of groups) {
+    const liveId = devToLive.get(g.virtualMcpId);
+    if (liveId) {
+      // dev group → fold into its live group
+      const live = byLiveId.get(liveId);
+      if (live) {
+        live.threads = [...live.threads, ...g.threads];
+        if (g.latestUpdatedAt > live.latestUpdatedAt) {
+          live.latestUpdatedAt = g.latestUpdatedAt;
+        }
+      } else {
+        // live group not seen yet → placeholder at the dev group's position;
+        // real live threads (if any) prepend when its own group is reached.
+        const placeholder: TaskGroupData = {
+          virtualMcpId: liveId,
+          threads: [...g.threads],
+          latestUpdatedAt: g.latestUpdatedAt,
+        };
+        byLiveId.set(liveId, placeholder);
+        out.push(placeholder);
+      }
+      continue;
+    }
+    const existing = byLiveId.get(g.virtualMcpId);
+    if (existing) {
+      existing.threads = [...g.threads, ...existing.threads];
+      if (g.latestUpdatedAt > existing.latestUpdatedAt) {
+        existing.latestUpdatedAt = g.latestUpdatedAt;
+      }
+    } else {
+      const clone: TaskGroupData = { ...g, threads: [...g.threads] };
+      byLiveId.set(g.virtualMcpId, clone);
+      out.push(clone);
+    }
+  }
+  return out;
+}

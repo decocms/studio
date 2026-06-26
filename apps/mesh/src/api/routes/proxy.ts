@@ -16,7 +16,7 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Context, Hono } from "hono";
 import { endTime, startTime } from "hono/timing";
-import type { StudioContext } from "../../core/studio-context";
+import { getUserId, type StudioContext } from "../../core/studio-context";
 import { managementContextStore, managementMCP } from "../../tools";
 import { serveMcpRequest } from "../utils/serve-mcp";
 import { handleAuthError } from "./oauth-proxy";
@@ -34,6 +34,9 @@ import { getConnectionCircuitStore } from "@/mcp-clients/connection-circuit-stor
 import { CONNECTION_ERROR_REPROBE_COOLDOWN_MS } from "@/core/constants";
 import { peekRpcMethod, probeDecision } from "./proxy-handshake";
 import { handleVirtualMcpRequest } from "./virtual-mcp";
+import { resolveDevConnection } from "./dev-connection";
+import { parseDevConnectionId } from "@decocms/mesh-sdk";
+import type { ConnectionEntity } from "../../tools/connection/schema";
 export { toServerClient, type MCPProxyClient } from "./mcp-proxy-factory";
 
 // Define Hono variables type
@@ -102,12 +105,28 @@ export const createProxyRoutes = () => {
       return c.json({ error: "Organization context is required" }, 403);
     }
 
-    const connection = await ctx.storage.connections.findById(
-      connectionId,
-      ctx.organization.id,
-    );
-    if (!connection || connection.organization_id !== ctx.organization.id) {
-      return c.json({ error: "Connection not found" }, 404);
+    const devAgentId = parseDevConnectionId(connectionId);
+    let connection: ConnectionEntity | null;
+    if (devAgentId) {
+      const userId = getUserId(ctx);
+      if (!userId) return c.json({ error: "Authentication required" }, 401);
+      connection = await resolveDevConnection(
+        ctx,
+        devAgentId,
+        userId,
+        c.req.query("branch") ?? undefined,
+      );
+      if (!connection) {
+        return c.json({ error: "Dev server not running" }, 503);
+      }
+    } else {
+      connection = await ctx.storage.connections.findById(
+        connectionId,
+        ctx.organization.id,
+      );
+      if (!connection || connection.organization_id !== ctx.organization.id) {
+        return c.json({ error: "Connection not found" }, 404);
+      }
     }
 
     const client = createLazyClient(
@@ -188,6 +207,42 @@ export const createProxyRoutes = () => {
           c.req.raw,
           `mcp:self:${connectionId}`,
         ),
+      );
+    }
+
+    // Dev connections (`dev_<agentId>`) resolve to the acting user's running
+    // sandbox dev server — synthetic, per-user, never persisted. Bypass
+    // findById and the handshake-probe/circuit machinery below: it keys off a
+    // persisted id and logs `connection.url` in a span, which would leak the
+    // dev token; dev servers also 5xx transiently on hot-reload.
+    const devAgentId = parseDevConnectionId(connectionId);
+    if (devAgentId) {
+      if (!ctx.organization?.id) {
+        return c.json({ error: "Organization context is required" }, 403);
+      }
+      const userId = getUserId(ctx);
+      if (!userId) return c.json({ error: "Authentication required" }, 401);
+      const connection = await resolveDevConnection(
+        ctx,
+        devAgentId,
+        userId,
+        c.req.query("branch") ?? undefined,
+      );
+      if (!connection) {
+        return c.json({ error: "Dev server not running" }, 503);
+      }
+      const server = serverFromConnection(connection, ctx, false);
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        enableJsonResponse:
+          c.req.raw.headers.get("Accept")?.includes("application/json") ??
+          false,
+      });
+      await server.connect(transport);
+      return serveMcpRequest(
+        server,
+        transport,
+        c.req.raw,
+        `mcp:dev:${connectionId}`,
       );
     }
 
