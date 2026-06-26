@@ -483,7 +483,6 @@ async function provisionSandbox(
   // *before* it can start install/dev. Daemon deep-merges, so resuming an
   // already-claimed sandbox stays idempotent.
   const envEntries = (metadata as RuntimeConfigMeta).runtime?.env ?? null;
-
   await resolveAndPushEnv({
     ctx,
     runner,
