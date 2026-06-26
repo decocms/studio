@@ -187,6 +187,107 @@ export function blogBlockFilePath(key: string): string {
   return `.deco/blocks/${encodeURIComponent(key)}.json`;
 }
 
+// ------------------ Post metadata + category mutation ------------------
+
+/** A single category reference, denormalized on a post payload. */
+export interface CategoryRef {
+  name: string;
+  slug: string;
+}
+
+/** Compact metadata for a post, used by the posts list filters/sort. */
+export interface PostMeta {
+  /** Decofile key (block id). */
+  key: string;
+  title: string;
+  slug: string;
+  /** Raw `date` string from the payload (ISO date, possibly empty). */
+  date: string;
+  /** Slugs of the post's categories (denormalized). */
+  categorySlugs: string[];
+  /** Emails of the post's authors (denormalized). */
+  authorEmails: string[];
+}
+
+function toArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+/**
+ * A category on a post can be a plain slug string or a `{ name, slug }`
+ * object (deco denormalizes the latter). Tolerate both.
+ */
+function categorySlugOf(item: unknown): string {
+  if (typeof item === "string") return item;
+  const rec = asRecord(item);
+  return rec ? str(rec.slug) : "";
+}
+
+/** Authors are denormalized as `{ name, email }`; tolerate plain strings. */
+function authorEmailOf(item: unknown): string {
+  if (typeof item === "string") return item;
+  const rec = asRecord(item);
+  return rec ? str(rec.email) : "";
+}
+
+/**
+ * All posts paired with the metadata the posts list filters and sorts on.
+ * Reads the denormalized `categories`/`authors` arrays, tolerating either
+ * strings or `{slug}`/`{email}` objects.
+ */
+export function listPostsWithMeta(
+  decofile: Record<string, unknown>,
+): PostMeta[] {
+  return listBlogPayloads(decofile, "posts").map(({ key, payload }) => ({
+    key,
+    title: str(payload.title) || "Untitled post",
+    slug: str(payload.slug),
+    date: str(payload.date),
+    categorySlugs: toArray(payload.categories)
+      .map(categorySlugOf)
+      .filter(Boolean),
+    authorEmails: toArray(payload.authors).map(authorEmailOf).filter(Boolean),
+  }));
+}
+
+/**
+ * Append a category to a post payload, keyed by slug. Idempotent — a slug
+ * already present yields an equivalent payload (no duplicate). Pure: returns
+ * a new payload, never mutates the input.
+ */
+export function addCategoryToPost(
+  payload: Record<string, unknown>,
+  category: CategoryRef,
+): Record<string, unknown> {
+  const categories = toArray(payload.categories);
+  if (categories.some((c) => categorySlugOf(c) === category.slug)) {
+    return payload;
+  }
+  return {
+    ...payload,
+    categories: [...categories, { name: category.name, slug: category.slug }],
+  };
+}
+
+/**
+ * Replace a post's categories with exactly the given one. Pure: returns a new
+ * payload, never mutates the input. Used by the bulk "replace" mode to migrate
+ * posts to a single category in one step.
+ */
+export function replaceCategoryOnPost(
+  payload: Record<string, unknown>,
+  category: CategoryRef,
+): Record<string, unknown> {
+  const current = toArray(payload.categories);
+  if (current.length === 1 && categorySlugOf(current[0]) === category.slug) {
+    return payload;
+  }
+  return {
+    ...payload,
+    categories: [{ name: category.name, slug: category.slug }],
+  };
+}
+
 function randomHex(length: number): string {
   const bytes = new Uint8Array(Math.ceil(length / 2));
   crypto.getRandomValues(bytes);

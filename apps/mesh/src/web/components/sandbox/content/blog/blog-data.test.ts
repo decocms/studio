@@ -1,6 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { blockComponentName, discoverBlogBlockTypes } from "./blog-data";
+import {
+  addCategoryToPost,
+  blockComponentName,
+  buildBlogBlock,
+  discoverBlogBlockTypes,
+  listPostsWithMeta,
+  replaceCategoryOnPost,
+} from "./blog-data";
 import type { LiveMeta } from "@/web/components/sections-editor/resolve-schema";
+
+/** Build a decofile keyed by post block id, from `{ slug → payload }`. */
+function decofileWithPosts(
+  posts: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, payload] of Object.entries(posts)) {
+    out[key] = buildBlogBlock(key, "posts", payload);
+  }
+  return out;
+}
 
 function metaWith(resolveTypes: string[]): LiveMeta {
   const group: Record<string, { $ref?: string }> = {};
@@ -187,5 +205,133 @@ describe("discoverBlogBlockTypes", () => {
     )[0]!;
     expect(block.iconName).toBe("Star01");
     expect(block.iconUrl).toBeUndefined();
+  });
+});
+
+describe("listPostsWithMeta", () => {
+  test("extracts title, slug, date, category slugs and author emails", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        title: "Hello",
+        slug: "hello",
+        date: "2024-01-02",
+        categories: [{ name: "News", slug: "news" }],
+        authors: [{ name: "Ada", email: "ada@x.com" }],
+      },
+    });
+    expect(listPostsWithMeta(decofile)).toEqual([
+      {
+        key: "collections/blog/posts/a",
+        title: "Hello",
+        slug: "hello",
+        date: "2024-01-02",
+        categorySlugs: ["news"],
+        authorEmails: ["ada@x.com"],
+      },
+    ]);
+  });
+
+  test("tolerates plain-string categories/authors and falls back to Untitled", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        categories: ["news", "tips"],
+        authors: ["ada@x.com"],
+      },
+    });
+    const [meta] = listPostsWithMeta(decofile);
+    expect(meta!.title).toBe("Untitled post");
+    expect(meta!.categorySlugs).toEqual(["news", "tips"]);
+    expect(meta!.authorEmails).toEqual(["ada@x.com"]);
+  });
+
+  test("drops malformed refs without slug/email", () => {
+    const decofile = decofileWithPosts({
+      "collections/blog/posts/a": {
+        title: "P",
+        categories: [{ name: "No slug" }, { name: "News", slug: "news" }],
+        authors: [{ name: "No email" }],
+      },
+    });
+    const [meta] = listPostsWithMeta(decofile);
+    expect(meta!.categorySlugs).toEqual(["news"]);
+    expect(meta!.authorEmails).toEqual([]);
+  });
+
+  test("ignores non-post blocks", () => {
+    const decofile = {
+      ...decofileWithPosts({
+        "collections/blog/posts/a": { title: "P", slug: "p" },
+      }),
+      "collections/blog/categories/c": buildBlogBlock(
+        "collections/blog/categories/c",
+        "categories",
+        { name: "News", slug: "news" },
+      ),
+    };
+    expect(listPostsWithMeta(decofile).map((p) => p.key)).toEqual([
+      "collections/blog/posts/a",
+    ]);
+  });
+});
+
+describe("addCategoryToPost", () => {
+  test("appends a new category and keeps existing ones", () => {
+    const payload = { categories: [{ name: "News", slug: "news" }] };
+    const next = addCategoryToPost(payload, { name: "Tips", slug: "tips" });
+    expect(next.categories).toEqual([
+      { name: "News", slug: "news" },
+      { name: "Tips", slug: "tips" },
+    ]);
+  });
+
+  test("initializes categories when the post has none", () => {
+    const next = addCategoryToPost(
+      { title: "P" },
+      { name: "News", slug: "news" },
+    );
+    expect(next).toEqual({
+      title: "P",
+      categories: [{ name: "News", slug: "news" }],
+    });
+  });
+
+  test("is idempotent — adding a present slug does not duplicate", () => {
+    const payload = { categories: [{ name: "News", slug: "news" }] };
+    const next = addCategoryToPost(payload, { name: "News", slug: "news" });
+    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
+  });
+
+  test("does not mutate the input payload", () => {
+    const payload = { categories: [{ name: "News", slug: "news" }] };
+    addCategoryToPost(payload, { name: "Tips", slug: "tips" });
+    expect(payload.categories).toEqual([{ name: "News", slug: "news" }]);
+  });
+});
+
+describe("replaceCategoryOnPost", () => {
+  test("replaces all categories with the chosen one", () => {
+    const payload = {
+      categories: [
+        { name: "News", slug: "news" },
+        { name: "Tips", slug: "tips" },
+      ],
+    };
+    const next = replaceCategoryOnPost(payload, {
+      name: "Guides",
+      slug: "guides",
+    });
+    expect(next.categories).toEqual([{ name: "Guides", slug: "guides" }]);
+  });
+
+  test("sets the category when the post had none", () => {
+    const next = replaceCategoryOnPost({}, { name: "News", slug: "news" });
+    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
+  });
+
+  test("is a no-op when it already has exactly that category", () => {
+    const payload = { categories: [{ name: "News", slug: "news" }] };
+    expect(replaceCategoryOnPost(payload, { name: "News", slug: "news" })).toBe(
+      payload,
+    );
   });
 });

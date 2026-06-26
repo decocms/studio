@@ -1,8 +1,9 @@
-import { Suspense, lazy, useState } from "react";
+import { Suspense, forwardRef, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
   BookOpen01,
+  ChevronDown,
   Code01,
   Copy01,
   DotsHorizontal,
@@ -16,10 +17,12 @@ import {
   Plus,
   SearchLg,
   Settings01,
+  SwitchVertical01,
   Tag01,
   CreditCardSearch,
   Trash01,
   Users01,
+  X,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -33,13 +36,37 @@ import {
   AlertDialogTitle,
 } from "@deco/ui/components/alert-dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
+import { Checkbox } from "@deco/ui/components/checkbox.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import { Label } from "@deco/ui/components/label.tsx";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@deco/ui/components/radio-group.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@deco/ui/components/select.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
 import {
   Tooltip,
@@ -102,6 +129,8 @@ import { SectionRenameDialog } from "./section-rename-dialog";
 import {
   type BlogEntry,
   type BlogKind,
+  type CategoryRef,
+  addCategoryToPost,
   BLOG_KINDS,
   BLOG_SINGULAR,
   buildBlogBlock,
@@ -109,6 +138,9 @@ import {
   generateBlogKey,
   getBlogPayload,
   isBlogKind,
+  listBlogPayloads,
+  listPostsWithMeta,
+  replaceCategoryOnPost,
   scanBlogEntries,
 } from "./blog/blog-data";
 import {
@@ -173,7 +205,10 @@ type DeleteTarget =
   | { kind: "page"; key: string; label: string }
   | { kind: "section"; key: string; label: string }
   | { kind: "blog"; blogKind: BlogKind; key: string; label: string }
+  | { kind: "blog-bulk"; keys: string[]; count: number }
   | null;
+
+type PostSort = "date-desc" | "date-asc" | "az" | "za";
 
 export function ContentBrowser() {
   const inset = useInsetContext();
@@ -287,11 +322,25 @@ function ContentBrowserReady({
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  // Reset search when switching collections (derived-state sync pattern)
+  // Posts-only filter/sort + bulk selection state.
+  const [postCategoryFilter, setPostCategoryFilter] = useState<string | null>(
+    null,
+  );
+  const [postAuthorFilter, setPostAuthorFilter] = useState<string | null>(null);
+  const [postSort, setPostSort] = useState<PostSort>("date-desc");
+  const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  // Reset search + post filters/selection when switching collections
+  // (derived-state sync pattern).
   const [prevCollection, setPrevCollection] = useState(activeCollection);
   if (prevCollection !== activeCollection) {
     setPrevCollection(activeCollection);
     setSearchQuery("");
+    setPostCategoryFilter(null);
+    setPostAuthorFilter(null);
+    setPostSort("date-desc");
+    setSelectedPostKeys(new Set());
   }
 
   const {
@@ -362,6 +411,10 @@ function ContentBrowserReady({
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
+  // "Update category" bulk dialog — holds the count of posts it will act on.
+  const [categoryDialog, setCategoryDialog] = useState<{
+    count: number;
+  } | null>(null);
 
   if (decofileLoading || metaLoading) {
     return (
@@ -385,6 +438,19 @@ function ContentBrowserReady({
   const blogEntries = isBlogKind(activeCollection)
     ? allBlogEntries[activeCollection]
     : [];
+
+  // Category choices for the bulk "Update category" dialog (parent scope, since
+  // the dialog renders here rather than inside ItemList).
+  const bulkCategoryChoices: CategoryRef[] = (
+    showBlog ? listBlogPayloads(decofile, "categories") : []
+  )
+    .map(({ key, payload }) => {
+      const slug = typeof payload.slug === "string" ? payload.slug : "";
+      const name = typeof payload.name === "string" ? payload.name : "";
+      return { slug: slug || key, name: name || slug || key };
+    })
+    .filter((c) => c.slug)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   if (!hasEditableDecoContent(decofile, meta) && !showBlog) {
     return (
@@ -631,11 +697,105 @@ function ContentBrowserReady({
     }
   };
 
+  // ------------------ Posts: filter jump + bulk actions ------------------
+  const togglePostSelection = (key: string) => {
+    setSelectedPostKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // Land on the posts list pre-filtered by a category (from the category
+  // editor). Sync `prevCollection` here so the collection-change reset
+  // above doesn't immediately clear the filter we're setting.
+  const handleManagePosts = (slug: string) => {
+    setActiveCollection("posts");
+    setPrevCollection("posts");
+    setSelection(null);
+    setOpenPageSeoKey(null);
+    setSearchQuery("");
+    setPostCategoryFilter(slug);
+    setPostAuthorFilter(null);
+    setPostSort("date-desc");
+    setSelectedPostKeys(new Set());
+  };
+
+  // Apply a pure category mutation to every selected post and persist
+  // sequentially — each mutation's optimistic onMutate patches the shared
+  // decofile cache key, so sequential writes avoid lost updates. The mutation
+  // helpers return the SAME payload object on a no-op, so reference equality
+  // tells us which posts actually changed. Returns the changed count.
+  const applyBulkCategory = async (
+    mode: "add" | "replace",
+    category: CategoryRef,
+  ): Promise<number> => {
+    const keys = [...selectedPostKeys];
+    let changed = 0;
+    for (const key of keys) {
+      const block = decofile[key] as Record<string, unknown> | undefined;
+      const payload = getBlogPayload(block, "posts");
+      const next =
+        mode === "add"
+          ? addCategoryToPost(payload, category)
+          : replaceCategoryOnPost(payload, category);
+      if (next === payload) continue;
+      await saveBlogBlock.mutateAsync({
+        blockKey: key,
+        data: buildBlogBlock(key, "posts", next),
+      });
+      changed += 1;
+    }
+    return changed;
+  };
+
+  // Driven by the "Update category" dialog: applies the chosen mode, reports
+  // the outcome, then closes the dialog and clears the selection.
+  const runBulkCategoryUpdate = async (
+    mode: "add" | "replace",
+    category: CategoryRef,
+  ) => {
+    const total = selectedPostKeys.size;
+    try {
+      const changed = await applyBulkCategory(mode, category);
+      const verb = mode === "add" ? "Added to" : "Moved";
+      const unchanged = total - changed;
+      toast.success(
+        `${verb} ${changed} ${changed === 1 ? "post" : "posts"}` +
+          (unchanged > 0 ? ` (${unchanged} already set)` : ""),
+      );
+      setSelectedPostKeys(new Set());
+      setCategoryDialog(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bulk update failed");
+    }
+  };
+
   // ------------------ Delete ------------------
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    const { kind, key, label } = deleteTarget;
     try {
+      if (deleteTarget.kind === "blog-bulk") {
+        for (const key of deleteTarget.keys) {
+          await deleteBlogBlock.mutateAsync({ blockKey: key });
+        }
+        toast.success(
+          `Deleted ${deleteTarget.count} ${
+            deleteTarget.count === 1 ? "post" : "posts"
+          }`,
+        );
+        if (selection && deleteTarget.keys.includes(selection.key)) {
+          setSelection(null);
+        }
+        setSelectedPostKeys(new Set());
+        setDeleteTarget(null);
+        return;
+      }
+      const { kind, key, label } = deleteTarget;
       if (kind === "blog") {
         await deleteBlogBlock.mutateAsync({ blockKey: key });
       } else {
@@ -656,7 +816,9 @@ function ContentBrowserReady({
   const deleteNoun =
     deleteTarget?.kind === "blog"
       ? BLOG_SINGULAR[deleteTarget.blogKind]
-      : (deleteTarget?.kind ?? "item");
+      : deleteTarget?.kind === "blog-bulk"
+        ? `${deleteTarget.count} ${deleteTarget.count === 1 ? "post" : "posts"}`
+        : (deleteTarget?.kind ?? "item");
   return (
     <div className="flex h-full w-full">
       <CollectionsSidebar
@@ -680,6 +842,32 @@ function ContentBrowserReady({
           decofile={decofile}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          postCategoryFilter={postCategoryFilter}
+          postAuthorFilter={postAuthorFilter}
+          postSort={postSort}
+          onPostCategoryFilterChange={(slug) => {
+            setPostCategoryFilter(slug);
+            setSelectedPostKeys(new Set());
+          }}
+          onPostAuthorFilterChange={(email) => {
+            setPostAuthorFilter(email);
+            setSelectedPostKeys(new Set());
+          }}
+          onPostSortChange={setPostSort}
+          selectedPostKeys={selectedPostKeys}
+          onTogglePostSelect={togglePostSelection}
+          onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
+          onClearPostSelection={() => setSelectedPostKeys(new Set())}
+          onBulkUpdateCategory={() =>
+            setCategoryDialog({ count: selectedPostKeys.size })
+          }
+          onBulkDeletePosts={() =>
+            setDeleteTarget({
+              kind: "blog-bulk",
+              keys: [...selectedPostKeys],
+              count: selectedPostKeys.size,
+            })
+          }
           selection={selection}
           onSelect={(next) => {
             setSelection(next);
@@ -813,7 +1001,9 @@ function ContentBrowserReady({
                 branch={branch}
                 blockKey={selection.key}
                 block={decofile[selection.key] as Record<string, unknown>}
+                decofile={decofile}
                 meta={meta}
+                onManagePosts={handleManagePosts}
               />
             ) : selection.collection === "authors" ? (
               <RecordEditor
@@ -937,6 +1127,21 @@ function ContentBrowserReady({
         />
       )}
 
+      {/* Bulk "Update category" dialog */}
+      {categoryDialog && (
+        <BulkCategoryDialog
+          count={categoryDialog.count}
+          categories={bulkCategoryChoices}
+          isPending={saveBlogBlock.isPending}
+          onApply={(mode, category) =>
+            void runBulkCategoryUpdate(mode, category)
+          }
+          onOpenChange={(open) => {
+            if (!open && !saveBlogBlock.isPending) setCategoryDialog(null);
+          }}
+        />
+      )}
+
       {/* Delete confirmation */}
       <AlertDialog
         open={!!deleteTarget}
@@ -950,9 +1155,13 @@ function ContentBrowserReady({
             <AlertDialogDescription>
               {deleteTarget?.kind === "section"
                 ? `"${deleteTarget.label}" will be removed. Pages that still reference it will lose this section.`
-                : deleteTarget
-                  ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
-                  : null}
+                : deleteTarget?.kind === "blog-bulk"
+                  ? `${deleteTarget.count} ${
+                      deleteTarget.count === 1 ? "post" : "posts"
+                    } will be removed permanently. This can't be undone.`
+                  : deleteTarget
+                    ? `"${deleteTarget.label}" will be removed permanently. This can't be undone.`
+                    : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1129,6 +1338,18 @@ function ItemList({
   previewUrl,
   searchQuery,
   onSearchChange,
+  postCategoryFilter,
+  postAuthorFilter,
+  postSort,
+  onPostCategoryFilterChange,
+  onPostAuthorFilterChange,
+  onPostSortChange,
+  selectedPostKeys,
+  onTogglePostSelect,
+  onSelectAllPosts,
+  onClearPostSelection,
+  onBulkUpdateCategory,
+  onBulkDeletePosts,
   selection,
   onSelect,
   onCreate,
@@ -1154,6 +1375,18 @@ function ItemList({
   previewUrl: string | null;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  postCategoryFilter: string | null;
+  postAuthorFilter: string | null;
+  postSort: PostSort;
+  onPostCategoryFilterChange: (slug: string | null) => void;
+  onPostAuthorFilterChange: (email: string | null) => void;
+  onPostSortChange: (sort: PostSort) => void;
+  selectedPostKeys: Set<string>;
+  onTogglePostSelect: (key: string) => void;
+  onSelectAllPosts: (keys: string[]) => void;
+  onClearPostSelection: () => void;
+  onBulkUpdateCategory: () => void;
+  onBulkDeletePosts: () => void;
   selection: Selection;
   onSelect: (next: Selection) => void;
   onCreate: () => void;
@@ -1197,6 +1430,83 @@ function ItemList({
       e.label.toLowerCase().includes(q) ||
       e.subtitle.toLowerCase().includes(q),
   );
+
+  // Posts get their own filter/sort pipeline driven by denormalized
+  // category/author metadata, so the plain `blogEntries` path is skipped.
+  const isPostsCollection = activeCollection === "posts";
+  const asStr = (v: unknown) => (typeof v === "string" ? v : "");
+  const postsWithMeta = isPostsCollection ? listPostsWithMeta(decofile) : [];
+
+  // Live counts per category/author so the filter dropdowns can show how
+  // many posts each option matches (and hide the ones that match none).
+  const categoryCounts = new Map<string, number>();
+  const authorCounts = new Map<string, number>();
+  for (const p of postsWithMeta) {
+    for (const slug of p.categorySlugs) {
+      categoryCounts.set(slug, (categoryCounts.get(slug) ?? 0) + 1);
+    }
+    for (const email of p.authorEmails) {
+      authorCounts.set(email, (authorCounts.get(email) ?? 0) + 1);
+    }
+  }
+  const categoryOptions = (
+    isPostsCollection ? listBlogPayloads(decofile, "categories") : []
+  )
+    .map(({ key, payload }) => {
+      const slug = asStr(payload.slug) || key;
+      return {
+        slug,
+        name: asStr(payload.name) || asStr(payload.slug) || key,
+        count: categoryCounts.get(slug) ?? 0,
+      };
+    })
+    .filter((c) => c.slug);
+  const authorOptions = (
+    isPostsCollection ? listBlogPayloads(decofile, "authors") : []
+  )
+    .map(({ key, payload }) => {
+      const email = asStr(payload.email);
+      return {
+        email,
+        name: asStr(payload.name) || asStr(payload.email) || key,
+        count: authorCounts.get(email) ?? 0,
+      };
+    })
+    .filter((a) => a.email);
+  const sortedPosts = postsWithMeta
+    .filter(
+      (p) =>
+        !q ||
+        p.title.toLowerCase().includes(q) ||
+        p.slug.toLowerCase().includes(q),
+    )
+    .filter(
+      (p) =>
+        !postCategoryFilter || p.categorySlugs.includes(postCategoryFilter),
+    )
+    .filter(
+      (p) => !postAuthorFilter || p.authorEmails.includes(postAuthorFilter),
+    )
+    .sort((a, b) => {
+      if (postSort === "az") return a.title.localeCompare(b.title);
+      if (postSort === "za") return b.title.localeCompare(a.title);
+      // ISO date strings sort lexically; empty dates sink to the bottom.
+      const cmp = a.date.localeCompare(b.date);
+      return postSort === "date-asc" ? cmp : -cmp;
+    });
+  const selectionCount = selectedPostKeys.size;
+  const visiblePostKeys = sortedPosts.map((p) => p.key);
+  const allVisibleSelected =
+    visiblePostKeys.length > 0 &&
+    visiblePostKeys.every((k) => selectedPostKeys.has(k));
+  const selectionActive = selectionCount > 0;
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      onClearPostSelection();
+    } else {
+      onSelectAllPosts(visiblePostKeys);
+    }
+  };
 
   const placeholder = `Search ${activeCollection}…`;
   const createTooltip = isBlogKind(activeCollection)
@@ -1249,6 +1559,31 @@ function ItemList({
           </Tooltip>
         )}
       </div>
+      {isPostsCollection &&
+        (selectionActive ? (
+          <PostSelectionToolbar
+            count={selectionCount}
+            allSelected={allVisibleSelected}
+            onToggleSelectAll={toggleSelectAll}
+            onUpdateCategory={onBulkUpdateCategory}
+            onDelete={onBulkDeletePosts}
+            onClear={onClearPostSelection}
+          />
+        ) : (
+          <PostFilterBar
+            categories={categoryOptions}
+            authors={authorOptions}
+            categoryFilter={postCategoryFilter}
+            authorFilter={postAuthorFilter}
+            sort={postSort}
+            hasPosts={postsWithMeta.length > 0}
+            allSelected={allVisibleSelected}
+            onToggleSelectAll={toggleSelectAll}
+            onCategoryFilterChange={onPostCategoryFilterChange}
+            onAuthorFilterChange={onPostAuthorFilterChange}
+            onSortChange={onPostSortChange}
+          />
+        ))}
       {/* Force Radix's inner `display:table` content wrapper back to block so
           long titles truncate instead of widening the viewport. */}
       <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
@@ -1380,6 +1715,48 @@ function ItemList({
                 );
               })
             )
+          ) : isPostsCollection ? (
+            sortedPosts.length === 0 ? (
+              <ListEmpty
+                hasItems={postsWithMeta.length > 0}
+                emptyLabel="No posts yet."
+                emptyHint='Click "+" to create your first post.'
+              />
+            ) : (
+              sortedPosts.map((post) => {
+                const entry: BlogEntry = {
+                  key: post.key,
+                  kind: "posts",
+                  label: post.title,
+                  subtitle: post.slug,
+                };
+                return (
+                  <ItemRow
+                    key={post.key}
+                    icon={File02}
+                    title={post.title}
+                    subtitle={post.slug}
+                    active={
+                      selection?.collection === "posts" &&
+                      selection.key === post.key
+                    }
+                    selectable
+                    selectionActive={selectionActive}
+                    selected={selectedPostKeys.has(post.key)}
+                    onToggleSelect={() => onTogglePostSelect(post.key)}
+                    onClick={() =>
+                      onSelect({ collection: "posts", key: post.key })
+                    }
+                    menu={
+                      <ItemActions
+                        onDuplicate={() => onDuplicateBlog(entry)}
+                        onDelete={() => onDeleteBlog(entry)}
+                      />
+                    }
+                  />
+                );
+              })
+            )
           ) : filteredBlog.length === 0 ? (
             <ListEmpty
               hasItems={blogEntries.length > 0}
@@ -1427,6 +1804,432 @@ function ItemList({
   );
 }
 
+// Sentinel for the "no filter" radio option (Radix forbids empty values).
+const ALL_FILTER = "__all__";
+
+const POST_SORT_LABELS: Record<PostSort, string> = {
+  "date-desc": "Newest first",
+  "date-asc": "Oldest first",
+  az: "Title A–Z",
+  za: "Title Z–A",
+};
+
+const POST_SORT_SHORT: Record<PostSort, string> = {
+  "date-desc": "Newest",
+  "date-asc": "Oldest",
+  az: "A–Z",
+  za: "Z–A",
+};
+
+type CategoryOption = { slug: string; name: string; count: number };
+type AuthorOption = { email: string; name: string; count: number };
+
+/**
+ * Compact, icon-led filter trigger: just the icon when no filter is applied,
+ * icon + highlighted value once one is. Forwards props/ref so it can be used
+ * directly as a `DropdownMenuTrigger asChild` child.
+ */
+const FilterChipTrigger = forwardRef<
+  HTMLButtonElement,
+  {
+    icon: React.ComponentType<{ size?: number; className?: string }>;
+    active: boolean;
+    value?: string;
+  } & React.ComponentProps<typeof Button>
+>(function FilterChipTrigger(
+  { icon: Icon, active, value, className, ...props },
+  ref,
+) {
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      variant="ghost"
+      size="sm"
+      className={cn(
+        "h-7 gap-1 px-1.5 text-xs",
+        active ? "text-foreground" : "text-muted-foreground",
+        className,
+      )}
+      {...props}
+    >
+      <Icon size={14} className="shrink-0" />
+      {value && <span className="min-w-0 flex-1 truncate">{value}</span>}
+      <ChevronDown size={12} className="shrink-0 opacity-60" />
+    </Button>
+  );
+});
+
+function OptionCount({ count }: { count: number }) {
+  return (
+    <span className="ml-auto pl-3 text-xs text-muted-foreground tabular-nums">
+      {count}
+    </span>
+  );
+}
+
+function PostFilterBar({
+  categories,
+  authors,
+  categoryFilter,
+  authorFilter,
+  sort,
+  hasPosts,
+  allSelected,
+  onToggleSelectAll,
+  onCategoryFilterChange,
+  onAuthorFilterChange,
+  onSortChange,
+}: {
+  categories: CategoryOption[];
+  authors: AuthorOption[];
+  categoryFilter: string | null;
+  authorFilter: string | null;
+  sort: PostSort;
+  hasPosts: boolean;
+  allSelected: boolean;
+  onToggleSelectAll: () => void;
+  onCategoryFilterChange: (slug: string | null) => void;
+  onAuthorFilterChange: (email: string | null) => void;
+  onSortChange: (sort: PostSort) => void;
+}) {
+  const activeCategory = categories.find((c) => c.slug === categoryFilter);
+  const activeAuthor = authors.find((a) => a.email === authorFilter);
+
+  return (
+    <div className="flex min-w-0 items-center gap-0.5 overflow-hidden border-b px-2 py-1.5">
+      <SelectAllControl
+        checked={allSelected}
+        disabled={!hasPosts}
+        onToggle={onToggleSelectAll}
+      />
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <FilterChipTrigger
+            icon={Tag01}
+            active={!!categoryFilter}
+            value={activeCategory?.name}
+            className="min-w-0 shrink"
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          className="max-h-80 w-56 overflow-y-auto"
+        >
+          <DropdownMenuLabel>Filter by category</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={categoryFilter ?? ALL_FILTER}
+            onValueChange={(v) =>
+              onCategoryFilterChange(v === ALL_FILTER ? null : v)
+            }
+          >
+            <DropdownMenuRadioItem value={ALL_FILTER}>
+              All categories
+            </DropdownMenuRadioItem>
+            {categories.map((c) => (
+              <DropdownMenuRadioItem key={c.slug} value={c.slug}>
+                <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                <OptionCount count={c.count} />
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <FilterChipTrigger
+            icon={Users01}
+            active={!!authorFilter}
+            value={activeAuthor?.name}
+            className="min-w-0 shrink"
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          className="max-h-80 w-56 overflow-y-auto"
+        >
+          <DropdownMenuLabel>Filter by author</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={authorFilter ?? ALL_FILTER}
+            onValueChange={(v) =>
+              onAuthorFilterChange(v === ALL_FILTER ? null : v)
+            }
+          >
+            <DropdownMenuRadioItem value={ALL_FILTER}>
+              All authors
+            </DropdownMenuRadioItem>
+            {authors.map((a) => (
+              <DropdownMenuRadioItem key={a.email} value={a.email}>
+                <span className="min-w-0 flex-1 truncate">{a.name}</span>
+                <OptionCount count={a.count} />
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <FilterChipTrigger
+            icon={SwitchVertical01}
+            active
+            value={POST_SORT_SHORT[sort]}
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={sort}
+            onValueChange={(v) => onSortChange(v as PostSort)}
+          >
+            {(Object.keys(POST_SORT_LABELS) as PostSort[]).map((value) => (
+              <DropdownMenuRadioItem key={value} value={value}>
+                {POST_SORT_LABELS[value]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/** Tooltip-wrapped "select all" checkbox shared by the filter bar + toolbar. */
+function SelectAllControl({
+  checked,
+  disabled,
+  onToggle,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="flex shrink-0 items-center px-1.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={checked}
+            disabled={disabled}
+            onCheckedChange={() => onToggle()}
+            aria-label={checked ? "Deselect all posts" : "Select all posts"}
+          />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {checked ? "Deselect all" : "Select all"}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function PostSelectionToolbar({
+  count,
+  allSelected,
+  onToggleSelectAll,
+  onUpdateCategory,
+  onDelete,
+  onClear,
+}: {
+  count: number;
+  allSelected: boolean;
+  onToggleSelectAll: () => void;
+  onUpdateCategory: () => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 border-b bg-accent/40 px-2 py-1.5">
+      <SelectAllControl checked={allSelected} onToggle={onToggleSelectAll} />
+      <span className="text-xs font-medium tabular-nums">{count} selected</span>
+      <div className="ml-auto flex items-center gap-0.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={onUpdateCategory}
+              aria-label="Update category for selected posts"
+            >
+              <Tag01 size={14} />
+              Category
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Update category</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive hover:text-destructive"
+              onClick={onDelete}
+              aria-label="Delete selected posts"
+            >
+              <Trash01 size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Delete selected</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onClear}
+              aria-label="Clear selection"
+            >
+              <X size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Clear selection</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Dialog for the bulk "Update category" action: pick a category, then choose
+ * whether to add it (keeping existing categories) or replace all categories
+ * with it (a one-step migration). Holds its own selection/mode state so the
+ * parent only deals with the final apply.
+ */
+function BulkCategoryDialog({
+  count,
+  categories,
+  isPending,
+  onApply,
+  onOpenChange,
+}: {
+  count: number;
+  categories: CategoryRef[];
+  isPending: boolean;
+  onApply: (mode: "add" | "replace", category: CategoryRef) => void;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [slug, setSlug] = useState<string>(categories[0]?.slug ?? "");
+  const [mode, setMode] = useState<"add" | "replace">("add");
+  const selected = categories.find((c) => c.slug === slug);
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Update category</DialogTitle>
+          <DialogDescription>
+            Choose a category to apply to {count}{" "}
+            {count === 1 ? "post" : "posts"}.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Category</Label>
+            {categories.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No categories yet — create one in the Categories collection.
+              </p>
+            ) : (
+              <Select value={slug} onValueChange={setSlug}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((c) => (
+                    <SelectItem key={c.slug} value={c.slug}>
+                      <span className="truncate">{c.name}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <RadioGroup
+            value={mode}
+            onValueChange={(v) => setMode(v as "add" | "replace")}
+            className="gap-2"
+          >
+            <Label
+              htmlFor="cat-mode-add"
+              className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3"
+            >
+              <RadioGroupItem
+                value="add"
+                id="cat-mode-add"
+                className="mt-0.5"
+              />
+              <span className="space-y-0.5">
+                <span className="block text-sm font-medium">Add category</span>
+                <span className="block text-xs text-muted-foreground">
+                  Keep existing categories and add this one.
+                </span>
+              </span>
+            </Label>
+            <Label
+              htmlFor="cat-mode-replace"
+              className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3"
+            >
+              <RadioGroupItem
+                value="replace"
+                id="cat-mode-replace"
+                className="mt-0.5"
+              />
+              <span className="space-y-0.5">
+                <span className="block text-sm font-medium">
+                  Replace category
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Remove all current categories and set only this one.
+                </span>
+              </span>
+            </Label>
+          </RadioGroup>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={!selected || isPending}
+            onClick={() =>
+              selected &&
+              onApply(mode, { name: selected.name, slug: selected.slug })
+            }
+          >
+            {isPending ? (
+              <>
+                <Loading01 size={14} className="animate-spin" />
+                Updating…
+              </>
+            ) : (
+              "Apply"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ItemRow({
   icon: Icon,
   logoUrl,
@@ -1435,6 +2238,10 @@ function ItemRow({
   active,
   variantCount,
   trailing,
+  selectable,
+  selectionActive,
+  selected,
+  onToggleSelect,
   onClick,
   menu,
 }: {
@@ -1449,6 +2256,10 @@ function ItemRow({
   active: boolean;
   variantCount?: number;
   trailing?: React.ReactNode;
+  selectable?: boolean;
+  selectionActive?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   onClick: () => void;
   menu?: React.ReactNode;
 }) {
@@ -1491,6 +2302,23 @@ function ItemRow({
         active ? "bg-accent text-accent-foreground" : "hover:bg-muted",
       )}
     >
+      {selectable && (
+        <span
+          className={cn(
+            "flex shrink-0 items-center pl-2.5 transition-opacity",
+            selected || selectionActive
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={selected}
+            onCheckedChange={() => onToggleSelect?.()}
+            aria-label={`Select ${title}`}
+          />
+        </span>
+      )}
       <button
         type="button"
         onClick={onClick}
