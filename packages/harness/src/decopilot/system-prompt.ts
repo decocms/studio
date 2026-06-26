@@ -18,7 +18,10 @@
  * markers propagate through OpenRouter routes too.
  */
 
+import { buildCurrentContextPrompt } from "../current-context-prompt";
 import { EPHEMERAL_5M } from "./cache-instrumentation";
+
+export { buildCurrentContextPrompt } from "../current-context-prompt";
 
 export interface SystemMessage {
   role: "system";
@@ -28,21 +31,6 @@ export interface SystemMessage {
       cacheControl?: { type: "ephemeral"; ttl?: "5m" | "1h" };
     };
   };
-}
-
-/**
- * Per-request, non-cached system prompt content.
- *
- * Anything that varies between requests but is needed in the system layer
- * lives here — kept outside the cached prefix so it doesn't invalidate
- * Anthropic cache breakpoints or OpenAI/Gemini automatic prefix caches.
- */
-export function buildCurrentContextPrompt(now: Date): string {
-  const iso = now.toISOString();
-  return `<current-context>
-Current date: ${iso.slice(0, 10)}
-Current time: ${iso.slice(11, 16)} UTC
-</current-context>`;
 }
 
 const EPHEMERAL_5M_PROVIDER_OPTIONS = {

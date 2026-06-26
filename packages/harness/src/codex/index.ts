@@ -46,8 +46,8 @@ import {
   isStaleSessionError,
 } from "../cli-session-error";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
-import { buildCurrentContextPrompt } from "../decopilot/system-prompt";
-import { genTitle } from "../decopilot/title-generator";
+import { buildCurrentContextPrompt } from "../current-context-prompt";
+import { genTitle } from "../title-generator";
 import type {
   Harness,
   HarnessContext,

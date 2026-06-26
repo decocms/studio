@@ -13,7 +13,7 @@ import type { LanguageModelV3 } from "@ai-sdk/provider";
 import type { ProviderV3 } from "@ai-sdk/provider";
 import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
 import type { ModelCapability, ProviderId } from "@decocms/mesh-sdk";
-import { isCreditError } from "./stream-error";
+import { isCreditError } from "../stream-error";
 import { withThoughtSignatureCodec } from "./thought-signature";
 
 export interface ProviderInfo {

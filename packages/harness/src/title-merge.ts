@@ -22,8 +22,8 @@
  */
 import type { UIMessageChunk } from "ai";
 import { makeTitleResultChunk } from "./title-chunk";
-import { DEFAULT_THREAD_TITLE } from "./decopilot/prompt-constants";
-import { stringifyError } from "./decopilot/stream-error";
+import { stringifyError } from "./stream-error";
+import { DEFAULT_THREAD_TITLE } from "./thread-title";
 
 /**
  * Producer-side auto-title gate (decision D13). Auto-title only an *unrenamed*
