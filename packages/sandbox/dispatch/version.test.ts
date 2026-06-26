@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   isVersionAcceptable,
   LINK_PROTOCOL_VERSION,
+  LINK_PROTOCOL_UPGRADE_MESSAGE,
   MIN_SUPPORTED_LINK_PROTOCOL,
 } from "./version";
 
@@ -29,13 +30,21 @@ describe("link protocol version", () => {
   it("rejects 0", () => {
     expect(isVersionAcceptable(0)).toBe(false);
   });
+
+  it("exposes a user-actionable upgrade message", () => {
+    expect(LINK_PROTOCOL_UPGRADE_MESSAGE).toContain(
+      "Your desktop link is out of date.",
+    );
+    expect(LINK_PROTOCOL_UPGRADE_MESSAGE).toContain("bunx decocms@latest link");
+  });
 });
 
-describe("link protocol v2 hard break", () => {
-  it("pins version 2 and refuses v1 daemons", () => {
-    expect(LINK_PROTOCOL_VERSION).toBe(2);
-    expect(MIN_SUPPORTED_LINK_PROTOCOL).toBe(2);
+describe("link protocol v3 hard break", () => {
+  it("pins version 3 and refuses v2 daemons", () => {
+    expect(LINK_PROTOCOL_VERSION).toBe(3);
+    expect(MIN_SUPPORTED_LINK_PROTOCOL).toBe(3);
     expect(isVersionAcceptable(1)).toBe(false);
-    expect(isVersionAcceptable(2)).toBe(true);
+    expect(isVersionAcceptable(2)).toBe(false);
+    expect(isVersionAcceptable(3)).toBe(true);
   });
 });
