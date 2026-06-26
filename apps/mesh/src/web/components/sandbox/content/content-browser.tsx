@@ -843,7 +843,11 @@ function ContentBrowserReady({
             deleteTarget.count === 1 ? "post" : "posts"
           }`,
         );
-        if (selection && deleteTarget.keys.includes(selection.key)) {
+        if (
+          selection &&
+          selection.collection !== "available-section" &&
+          deleteTarget.keys.includes(selection.key)
+        ) {
           setSelection(null);
         }
         setSelectedPostKeys(new Set());
