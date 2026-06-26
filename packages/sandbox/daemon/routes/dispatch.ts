@@ -111,6 +111,17 @@ function writeDispatchAcceptedPrelude(
   }
 }
 
+function rebaseInputWorkspace(input: {
+  workspace: { cwd: string };
+  codingWorkspace?: { cwd?: string | null };
+}): void {
+  const cwd = rebaseWorkspaceCwd(input.workspace.cwd, daemonAppRoot());
+  input.workspace = { cwd };
+  if (input.codingWorkspace?.cwd != null) {
+    input.codingWorkspace = { ...input.codingWorkspace, cwd };
+  }
+}
+
 /** Drive a harness's stream into an SSE controller. Reused verbatim by both
  *  paths so chunk relaying / abort handling / error wrapping / `done` framing
  *  stay identical. Always emits `done` and closes the controller; never hangs.
@@ -267,11 +278,10 @@ export async function handleDispatchRequest(
         }
         const input = inputParse.data;
 
-        // Rebase the symbolic workspace.cwd onto this daemon's sandbox root
-        // (spec: "Harness Input Contract" Q4 — containment by construction).
-        input.workspace = {
-          cwd: rebaseWorkspaceCwd(input.workspace.cwd, daemonAppRoot()),
-        };
+        // Rebase the symbolic workspace cwd fields onto this daemon's sandbox
+        // root (spec: "Harness Input Contract" Q4 — containment by
+        // construction).
+        rebaseInputWorkspace(input);
 
         // 3. Tombstone check — a cancel may have landed first. Surface it as a
         //    terminal error rather than starting a doomed harness.
@@ -351,11 +361,9 @@ export async function handleDispatchRequest(
   }
   const input = inputParse.data;
 
-  // Rebase the symbolic workspace.cwd onto this daemon's sandbox root
+  // Rebase the symbolic workspace cwd fields onto this daemon's sandbox root
   // (spec: "Harness Input Contract" Q4 — containment by construction).
-  input.workspace = {
-    cwd: rebaseWorkspaceCwd(input.workspace.cwd, daemonAppRoot()),
-  };
+  rebaseInputWorkspace(input);
 
   // Tombstone check — a cancel landed before this dispatch did. Decline
   // and let the cluster surface a clear cancellation instead of starting
