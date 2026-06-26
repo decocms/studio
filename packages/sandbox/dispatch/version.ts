@@ -10,22 +10,28 @@
  * symbolic `workspace.cwd`, removal of the singular `modelSource` and the
  * `primary`/`title`/`coding` slots.
  *
+ * v3 (hard break): single-message `userMessage` contract, explicit
+ * `harness.sessionId`, and no shared message-array/offload protocol.
+ *
  * The daemon advertises this version on tunnel session registration via the
  * `x-link-protocol` header.
  */
-export const LINK_PROTOCOL_VERSION = 2;
+export const LINK_PROTOCOL_VERSION = 3;
 
 /**
  * Cluster rejects daemons below this with 426 `protocol_mismatch`. Links MUST
  * upgrade. Bumped when an older version becomes too costly to support —
- * v2 refuses v1 daemons outright (the v2 input contract is unintelligible
+ * v3 refuses v2 daemons outright (the v3 input contract is unintelligible
  * to them). Any rejection surfaced to a stale daemon MUST include the
  * remediation: re-run `bunx decocms@latest link`.
  *
  * Enforced by the link session route before a daemon can mint a presence claim
  * and receive work items it may not be able to parse.
  */
-export const MIN_SUPPORTED_LINK_PROTOCOL = 2;
+export const MIN_SUPPORTED_LINK_PROTOCOL = 3;
+
+export const LINK_PROTOCOL_UPGRADE_MESSAGE =
+  "Your desktop link is out of date. Run `bunx decocms@latest link` and try again.";
 
 /**
  * Header the daemon uses to report its protocol version on daemon-facing
