@@ -94,11 +94,6 @@ import {
   shouldSkipStudioContext,
   SYSTEM_PATHS,
 } from "./utils/paths";
-import {
-  mountPluginRoutes,
-  initializePluginStorage,
-  runPluginStartupHooks,
-} from "../core/plugin-loader";
 import { CredentialVault } from "../encryption/credential-vault";
 import type { CancelBroadcast } from "./routes/decopilot/cancel-broadcast";
 import {
@@ -1407,27 +1402,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   ContextFactory.set(factory);
 
-  // Initialize plugin storage before running plugin startup hooks, which need
-  // storage to be ready.
+  // Credential vault — shared by the Private Registry public routes (mounted
+  // below).
   const vault = new CredentialVault(getSettings().encryptionKey);
-  initializePluginStorage(database.db, vault);
-
-  // Run plugin startup hooks (e.g., recover stuck executions).
-  // Random jitter (0-2s) prevents all pods from hitting the DB simultaneously
-  // after a deployment causes simultaneous restarts.
-  const startupJitterMs = Math.random() * 2000;
-  new Promise((r) => setTimeout(r, startupJitterMs))
-    .then(() => {
-      // db is typed as `any` to avoid Kysely version mismatch issues between packages
-      return runPluginStartupHooks({
-        db: database.db as any,
-        // Event bus removed — publishing follow-up events is a no-op.
-        publish: async () => {},
-      });
-    })
-    .catch((error) => {
-      console.error("[PluginStartup] Error during startup:", error);
-    });
 
   // Public skill sets: synced by a DBOS scheduled workflow (one pod per tick
   // instead of every pod racing its own loop). This only stashes deps — the
@@ -2120,19 +2097,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     getNatsConnection: () => natsProvider?.getConnection() ?? null,
   });
   app.route("/api/:org", orgScopedApi);
-
-  // ============================================================================
-  // Server Plugin Routes
-  // ============================================================================
-
-  // Mount routes from registered server plugins
-  // - Public routes are mounted at root level (e.g., /connect/:sessionId)
-  // - Authenticated routes are mounted at /api/plugins/:pluginId/*
-  // Note: vault and initializePluginStorage are called earlier (before plugin
-  // startup hooks) to avoid race conditions with plugin onStartup hooks.
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mountPluginRoutes(app, { db: database.db as any, vault });
 
   // ============================================================================
   // 404 Handler

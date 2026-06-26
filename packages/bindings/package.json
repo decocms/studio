@@ -9,14 +9,8 @@
   "dependencies": {
     "@decocms/mcp-utils": "^1.0.5",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@tanstack/react-router": "1.169.2",
-    "react": "^19.2.6",
     "zod": "^4.0.0",
     "zod-from-json-schema": "^0.5.2"
-  },
-  "devDependencies": {
-    "hono": "^4.7.10",
-    "kysely": "^0.28.12"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -28,10 +22,7 @@
     "./mcp": "./src/well-known/mcp.ts",
     "./assistant": "./src/well-known/assistant.ts",
     "./prompt": "./src/well-known/prompt.ts",
-    "./plugins": "./src/core/plugins.ts",
-    "./plugin-router": "./src/core/plugin-router.tsx",
     "./ai-gateway": "./src/well-known/ai-gateway.ts",
-    "./server-plugin": "./src/core/server-plugin.ts",
     "./trigger": "./src/well-known/trigger.ts",
     "./brand": "./src/well-known/brand.ts"
   },

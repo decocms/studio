@@ -143,9 +143,10 @@ type OrgSettingsUpdateInput = Partial<
 /**
  * Core mutation hook. Accepts any subset of updatable org-settings fields.
  * On success, writes the full returned row into the shared cache entry so
- * every consumer sees fresh data without a refetch.
+ * every consumer sees fresh data without a refetch. Module-local — consumed by
+ * the field-specific hooks below.
  */
-export function useUpdateOrganizationSettings(): UseMutationResult<
+function useUpdateOrganizationSettings(): UseMutationResult<
   OrganizationSettings,
   Error,
   OrgSettingsUpdateInput

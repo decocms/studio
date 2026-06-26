@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import type { ServerPluginContext } from "@decocms/bindings/server-plugin";
+import type { RegistryRouteContext } from "./route-context";
 import { withRuntime } from "@decocms/runtime";
 import { createTool } from "@decocms/runtime/tools";
 import { z } from "zod";
@@ -151,7 +151,7 @@ function createPublicMCPTools(storage: RegistryItemStorage, orgId: string) {
  * inner MCP path, since the legacy and new prefixes differ.
  */
 export function createPublicMCPHandler(
-  ctx: ServerPluginContext,
+  ctx: RegistryRouteContext,
 ): (c: Context) => Promise<Response> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = ctx.db as any;

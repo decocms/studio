@@ -30,7 +30,7 @@ interface MCPCreationSpec {
 
 /**
  * Get default MCP connections to create for new organizations.
- * This is a function (not a constant) to defer evaluation of ALL_TOOLS
+ * This is a function (not a constant) to defer evaluation of CORE_TOOLS
  * until after all modules have finished initializing.
  */
 function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
@@ -42,10 +42,10 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
       // FIXME (@mcandeia) Tools are not being updated when new tools are added to the system
       // so once installed tools remains static, should have a way to update them.
       getTools: async () => {
-        // Dynamically import ALL_TOOLS at call time to avoid circular dependency
+        // Dynamically import CORE_TOOLS at call time to avoid circular dependency
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { ALL_TOOLS } = await import("@/tools");
-        return ALL_TOOLS.map(
+        const { CORE_TOOLS } = await import("@/tools");
+        return CORE_TOOLS.map(
           (tool: {
             name: string;
             inputSchema: unknown;

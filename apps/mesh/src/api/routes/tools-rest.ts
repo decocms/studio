@@ -14,7 +14,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
-import { getFilteredTools } from "../../tools";
+import { TOOL_BY_NAME } from "../../tools";
 import { getToolRegistration } from "../../tools/management-registration";
 import type { Env } from "../hono-env";
 
@@ -31,10 +31,8 @@ export const createToolsRestRoutes = () => {
   const app = new Hono<Env>();
 
   // GET /api/:org/tools — MCP `listTools` parity (tool metadata, not a call).
-  app.get("/", async (c) => {
-    const ctx = c.get("meshContext");
-    const tools = await getFilteredTools(ctx);
-    const list = [...tools.values()].map((tool) => {
+  app.get("/", (c) => {
+    const list = [...TOOL_BY_NAME.values()].map((tool) => {
       const { config } = getToolRegistration(tool);
       return {
         name: tool.name,
@@ -53,10 +51,9 @@ export const createToolsRestRoutes = () => {
     const ctx = c.get("meshContext");
     const toolName = c.req.param("toolName");
 
-    // Manual tool-identifier check: 404 if the name isn't part of this org's
-    // visible tool surface (unknown name, or a disabled plugin tool).
-    const tools = await getFilteredTools(ctx);
-    const tool = tools.get(toolName);
+    // Manual tool-identifier check: 404 if the name isn't part of the builtin
+    // tool surface.
+    const tool = TOOL_BY_NAME.get(toolName);
     if (!tool) {
       return c.json({ error: `Unknown tool: ${toolName}` }, 404);
     }

@@ -5,21 +5,19 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { ALL_TOOLS } from "./index";
+import { CORE_TOOLS } from "./index";
 import { MANAGEMENT_TOOLS } from "./registry-metadata";
 
 describe("Tool Registry Sync", () => {
-  it("should have MANAGEMENT_TOOLS entries for all core tools in ALL_TOOLS", () => {
-    // Filter to only core tools (not plugin tools) for registry sync check
-    // Plugin tools are dynamically added and don't need registry entries
-    const allToolNames = ALL_TOOLS.map((t) => t.name);
+  it("should have MANAGEMENT_TOOLS entries for all tools in CORE_TOOLS", () => {
+    const coreToolNames: string[] = CORE_TOOLS.map((t) => t.name);
     const registryToolNames = MANAGEMENT_TOOLS.map((t) => t.name);
 
-    // Check MANAGEMENT_TOOLS → ALL_TOOLS (registry entries must exist in ALL_TOOLS)
+    // Check MANAGEMENT_TOOLS → CORE_TOOLS (registry entries must exist in CORE_TOOLS)
     for (const toolName of registryToolNames) {
       expect(
-        allToolNames,
-        `Extra "${toolName}" in MANAGEMENT_TOOLS (registry.ts) not in ALL_TOOLS (index.ts). Remove it!`,
+        coreToolNames,
+        `Extra "${toolName}" in MANAGEMENT_TOOLS (registry.ts) not in CORE_TOOLS (index.ts). Remove it!`,
       ).toContain(toolName as string);
     }
   });

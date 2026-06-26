@@ -5,7 +5,8 @@
  */
 
 import { formatBytes } from "@/web/lib/format-bytes";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useConnections, useProjectContext } from "@decocms/mesh-sdk";
+import { getConnectionSlug } from "@/shared/utils/connection-slug";
 import { Badge } from "@deco/ui/components/badge.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
@@ -343,6 +344,10 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
   const [copiedOutput, setCopiedOutput] = useState(false);
   const navigate = useNavigate();
   const { org } = useProjectContext();
+  // Reads from the same cache the monitoring page already populated, so this
+  // doesn't trigger an extra fetch — we just need the connection's slug
+  // (the tool detail route keys off $appSlug, not the connection id).
+  const connections = useConnections();
 
   // Process JSON for display (React 19 compiler handles optimization)
   const inputJson = truncateJsonForDisplay(log.input);
@@ -381,16 +386,23 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
   };
 
   const handleReplay = () => {
+    // The tool detail route resolves connections by slug ($appSlug), not by id,
+    // so map this log's connectionId to its slug before navigating.
+    const connection = connections.find((c) => c.id === log.connectionId);
+    if (!connection) {
+      toast.error("Could not find the connection for this tool call");
+      return;
+    }
     // Generate unique replay ID
     const replayId = crypto.randomUUID();
     // Store input in sessionStorage
     sessionStorage.setItem(`replay-${replayId}`, JSON.stringify(log.input));
     // Navigate to tool page with replayId
     navigate({
-      to: "/$org/settings/connections/$connectionId/$collectionName/$itemId",
+      to: "/$org/settings/connections/$appSlug/$collectionName/$itemId",
       params: {
         org: org.slug,
-        connectionId: log.connectionId,
+        appSlug: getConnectionSlug(connection),
         collectionName: "tools",
         itemId: encodeURIComponent(log.toolName),
       },

@@ -53,7 +53,6 @@ import { useCapabilities, type CapabilityId } from "@/web/hooks/use-capability";
 import { usePendingJoinRequests } from "@/web/hooks/use-join-requests";
 import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Suspense } from "react";
-import { pluginSettingsSidebarItems } from "@/web/index";
 import { useStatusSounds } from "../hooks/use-status-sounds";
 import { authClient } from "@/web/lib/auth-client";
 import { track } from "@/web/lib/posthog-client";
@@ -84,14 +83,8 @@ interface SettingsNavGroup {
 }
 
 function useSettingsSidebarGroups(): SettingsNavGroup[] {
-  const currentProject = useProjectContext().project;
-  const enabledPlugins = currentProject.enabledPlugins ?? [];
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
   const joinRequestCount = usePendingJoinRequests().length;
-
-  const enabledSettingsItems = pluginSettingsSidebarItems
-    .filter((item) => enabledPlugins.includes(item.pluginId))
-    .map(({ key, label, icon, to }) => ({ key, label, icon, to }));
 
   const groups: SettingsNavGroup[] = [
     {
@@ -200,19 +193,6 @@ function useSettingsSidebarGroups(): SettingsNavGroup[] {
           to: "/$org/settings/sso",
           requires: "org:manage",
         },
-      ],
-    },
-    {
-      label: "Extensions",
-      items: [
-        {
-          key: "features",
-          label: "Plugins",
-          icon: <Zap size={14} />,
-          to: "/$org/settings/features",
-          requires: "org:manage",
-        },
-        ...enabledSettingsItems,
       ],
     },
     {

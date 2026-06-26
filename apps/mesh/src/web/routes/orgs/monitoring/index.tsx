@@ -552,7 +552,9 @@ function FiltersPopover({
 // ============================================================================
 
 interface MonitoringDashboardContentProps {
-  tab: "overview" | "audit" | "threads" | "automations";
+  // Mirror the route's tab union (includes "dashboards"); unknown tabs fall
+  // through to the overview branch below.
+  tab: NonNullable<MonitoringSearchParams["tab"]>;
   dateRange: DateRange;
   displayDateRange: DateRange;
   connectionIds: string[];
