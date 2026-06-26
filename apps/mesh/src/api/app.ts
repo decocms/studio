@@ -2080,12 +2080,12 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Registry catalog (the MCP store) — global REST, not org-scoped. Mounted
   // before the `/api/:org` sub-app so `registry` isn't read as an org slug.
-  // Ships dark until REGISTRY_CATALOG_URL is configured.
+  // Serves the first-party catalog by default (REGISTRY_CATALOG_URL overrides).
   const { listCatalogItemsHandler, getCatalogItemHandler, getCatalog } =
     await import("@/registry-catalog");
   app.get("/api/registry/items", listCatalogItemsHandler);
   app.get("/api/registry/items/:id", getCatalogItemHandler);
-  // Eager warm-up (no-op when unconfigured).
+  // Eager warm-up (fail-soft — a fetch failure leaves the cache empty).
   void getCatalog().warm();
 
   // New canonical org-scoped API surface — all routes that depend on org context

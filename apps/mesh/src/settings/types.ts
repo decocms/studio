@@ -69,8 +69,8 @@ export interface Settings {
   aiGatewayUrl: string;
 
   // Registry catalog (the MCP store). URL of the first-party `registry.json`
-  // flat catalog (decocms/mcps). Unset → the store catalog is empty (the
-  // module ships dark until the cross-repo catalog is live).
+  // flat catalog. Defaults to the decocms/mcps catalog (see resolve-config);
+  // set to an empty string to disable the store catalog.
   registryCatalogUrl: string | undefined;
 
   // Feature Flags

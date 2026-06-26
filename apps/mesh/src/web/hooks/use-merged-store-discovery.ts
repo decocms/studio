@@ -11,7 +11,7 @@
  */
 
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
-import { useProjectContext } from "@decocms/mesh-sdk";
+import { useProjectContext, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import { KEYS } from "@/web/lib/query-keys";
 import type { RegistryItem } from "@/web/components/store/types";
 
@@ -71,7 +71,16 @@ export function useMergedStoreDiscovery(
       placeholderData: keepPreviousData,
     });
 
-  const items: RegistryItem[] = (data?.pages ?? []).flatMap((p) => p.items);
+  // Stamp every item with the well-known Deco Store source id so the consumers'
+  // existing `_registryId` filter + source badges keep working under the single
+  // catalog (the per-registry filter UI is removed properly in a later phase).
+  const sourceId = WellKnownOrgMCPId.REGISTRY(org.id);
+  const items: RegistryItem[] = (data?.pages ?? []).flatMap((p) =>
+    p.items.map((item) => ({
+      ...item,
+      _registryId: item._registryId ?? sourceId,
+    })),
+  );
 
   return {
     items,
