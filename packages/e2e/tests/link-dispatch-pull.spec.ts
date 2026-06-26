@@ -209,6 +209,93 @@ async function createPullThread(
 // ---------------------------------------------------------------------------
 
 test.describe("pull-transport round-trip", () => {
+  test("work item carries one Claude Code userMessage with image file parts", async ({
+    authedPage,
+  }) => {
+    test.setTimeout(120_000);
+
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
+
+    try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
+      const orgId = await orgIdForSlug(db, orgSlug);
+      const { agentId, threadId } = await createPullThread(
+        api,
+        db,
+        orgSlug,
+        orgId,
+      );
+
+      const imageDataUrl =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+      const dispatchRes = await api.post(
+        `/api/${orgSlug}/decopilot/threads/${threadId}/messages`,
+        {
+          data: {
+            messages: [
+              {
+                role: "user",
+                parts: [
+                  { type: "text", text: "Describe this image briefly." },
+                  {
+                    type: "file",
+                    mediaType: "image/png",
+                    filename: "fixture.png",
+                    url: imageDataUrl,
+                  },
+                ],
+              },
+            ],
+            agent: { id: agentId },
+            branch: "ephemeral",
+            temperature: 0.5,
+            harnessId: "claude-code",
+            sandboxProviderKind: "user-desktop",
+          },
+          headers: { "content-type": "application/json" },
+        },
+      );
+
+      expect(dispatchRes.status()).toBe(202);
+      const { taskId: runId } = (await dispatchRes.json()) as {
+        taskId: string;
+      };
+      const workItem = await daemon.nextWorkItem(runId);
+
+      expect(workItem.harnessInput).not.toHaveProperty("messages");
+      const userMessage = workItem.harnessInput.userMessage as {
+        role?: string;
+        parts?: Array<Record<string, unknown>>;
+      };
+      expect(userMessage.role).toBe("user");
+      expect(Array.isArray(userMessage.parts)).toBe(true);
+      const imagePart = userMessage.parts?.find(
+        (part) => part.type === "file" && part.mediaType === "image/png",
+      );
+      expect(imagePart).toBeTruthy();
+      expect(typeof imagePart?.url).toBe("string");
+      expect((imagePart?.url as string).length).toBeGreaterThan(0);
+
+      const messageId = `msg_pull_image_e2e_${Date.now()}`;
+      const relayBody = buildRelayBody(messageId, "image received");
+      await publishRelayBody({
+        runId,
+        fenceToken: workItem.runFenceToken,
+        body: relayBody,
+      });
+
+      await expect(async () => {
+        expect(await fetchThreadStatus(db, threadId)).toBe("completed");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
+    } finally {
+      await daemon?.close();
+      await db.end();
+    }
+  });
+
   test("work item is served over tunnel and ingest commits parts + releases gate", async ({
     authedPage,
   }) => {
