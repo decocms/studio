@@ -196,14 +196,12 @@ interface WorkItem {
   userId: string;
   runFenceToken: string;
   harnessInput: Record<string, unknown>;
-  messagesRef?: { url: string; bytes: number; sha256: string };
 }
 
 /**
  * Trigger a dispatch by POSTing a user message, then wait for the tunnel daemon
  * to receive the matching work item. Returns the runId + the work item (whose
- * runFenceToken the relay POST presents). `messageText` may be large (offload
- * case).
+ * runFenceToken the relay POST presents).
  */
 async function dispatchAndClaimWorkItem(
   api: APIRequestContext,
@@ -674,13 +672,13 @@ test.describe("harness conformance — relay driver", () => {
     }
   });
 
-  test("claude-code session id round-trips into the next turn's resumeSessionRef", async ({
+  test("claude-code session id round-trips into the next turn's harness.sessionId", async ({
     authedPage,
   }) => {
-    // Task 7 fix: a finish-anchor's codingAgentSessionId must survive the v2
-    // parts read path so the NEXT turn's dispatch carries it as
-    // harnessInput.resumeSessionRef. Drive TWO turns on one thread and assert
-    // the second work item's harnessInput.resumeSessionRef === the first turn's
+    // A finish-anchor's codingAgentSessionId must survive the parts read path
+    // so the NEXT turn's dispatch carries it as
+    // harnessInput.harness.sessionId. Drive TWO turns on one thread and assert
+    // the second work item's harnessInput.harness.sessionId === the first turn's
     // relayed session id.
     test.setTimeout(CASE_TIMEOUT_MS * 2);
     const { page, orgSlug, user } = authedPage;
@@ -737,7 +735,9 @@ test.describe("harness conformance — relay driver", () => {
         daemon,
         "second turn",
       );
-      expect(t2.workItem.harnessInput.resumeSessionRef).toBe(sessionId);
+      expect(
+        (t2.workItem.harnessInput.harness as { sessionId?: string }).sessionId,
+      ).toBe(sessionId);
     } finally {
       await daemon?.close();
       await db.end();
@@ -928,23 +928,15 @@ test.describe("harness conformance — relay endpoint rejections", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Offload conformance — the pull seam's body-offload happy path.
+// Oversized-payload conformance — v3 has no message-array offload path.
 //
-// Carry-forward from the deleted link-dispatch-offload.spec.ts (Task 11). A
-// conversation whose encoded harnessInput exceeds NATS MAX_PUBLISH_BYTES
-// (768 KiB) is offloaded cluster-side in pullDispatch: messages are PUT to
-// object storage, `harnessInput.messages` becomes `[]` inline, and a
-// `messagesRef` is carried on the work item. The e2e workflow boots MinIO +
-// sets S3_* so ctx.objectStorage is the real S3Service path.
-//
-// Depth: this asserts the CLUSTER-SIDE offload decision (work item shape: ref
-// present + messages emptied + ref fetchable). The daemon-side re-inflate
-// (parseMessagesRef + splice back into input.messages, with SSRF allowlist) is
-// unit-covered in offload-messages.test.ts / handle-local-dispatch.test.ts.
+// V3 sends a single `userMessage` and intentionally does not reuse the old
+// `messagesRef` array protocol. Oversized desktop payloads fail before publish
+// and settle the run as failed instead of delivering a work item.
 // ---------------------------------------------------------------------------
 
-test.describe("harness conformance — pull-seam body offload", () => {
-  test("a large message offloads → work item carries messagesRef + empty inline messages, ref is fetchable, then chunks relay + parts persist", async ({
+test.describe("harness conformance — oversized v3 link payload", () => {
+  test("a large message fails terminally instead of using messagesRef offload", async ({
     authedPage,
   }) => {
     test.setTimeout(CASE_TIMEOUT_MS);
@@ -966,50 +958,30 @@ test.describe("harness conformance — pull-seam body offload", () => {
       // text is comfortably over the budget even after the rest of the wire
       // input adds overhead.
       const bigText = "x".repeat(1_024 * 1_024);
-      const { runId, workItem } = await dispatchAndClaimWorkItem(
-        api,
-        orgSlug,
-        agentId,
-        threadId,
-        daemon,
-        bigText,
+      const dispatchRes = await api.post(
+        `/api/${orgSlug}/decopilot/threads/${threadId}/messages`,
+        {
+          data: {
+            messages: [
+              { role: "user", parts: [{ type: "text", text: bigText }] },
+            ],
+            agent: { id: agentId },
+            branch: "ephemeral",
+            temperature: 0.5,
+            harnessId: "claude-code",
+            sandboxProviderKind: "user-desktop",
+          },
+          headers: { "content-type": "application/json" },
+        },
       );
+      expect(dispatchRes.status()).toBe(202);
+      const { taskId: runId } = (await dispatchRes.json()) as {
+        taskId: string;
+      };
+      expect(runId).toBeTruthy();
 
-      // The cluster-side offload decision: messagesRef present, inline messages
-      // emptied. (When object storage is unavailable the offload falls through
-      // and the work item would never publish — so a delivered work item with
-      // a ref proves the production S3 path ran.)
-      expect(
-        workItem.messagesRef,
-        "work item carries messagesRef for an over-budget conversation",
-      ).toBeTruthy();
-      expect(workItem.messagesRef!.url).toMatch(/^https?:\/\//);
-      expect(workItem.messagesRef!.bytes).toBeGreaterThan(768 * 1024);
-      expect(typeof workItem.messagesRef!.sha256).toBe("string");
-      // Inline messages are emptied — the real messages live at the ref.
-      expect(workItem.harnessInput.messages).toEqual([]);
-
-      // The ref is fetchable (presigned GET) and matches the advertised size.
-      const refRes = await api.get(workItem.messagesRef!.url);
-      expect(refRes.status()).toBe(200);
-      const refBytes = (await refRes.body()).byteLength;
-      expect(refBytes).toBe(workItem.messagesRef!.bytes);
-
-      // The return path still works: relay a normal turn → parts persist +
-      // run completes. (The daemon re-inflate of the ref is unit-covered; here
-      // we only prove the ref doesn't break the cluster-side relay/commit.)
-      const { body } = buildTurnRelayBody({
-        messageId: `msg_conf_offload_${Date.now()}`,
-        text: "offloaded-turn-answer",
-      });
-      await relay(runId, workItem.runFenceToken, body);
-      // Parts + terminal status are written by the async durable projector, so
-      // poll until the run projects and completes.
       await expect(async () => {
-        const kinds = (await fetchParts(db, runId)).map((p) => p.kind);
-        expect(kinds).toContain("text");
-        expect(kinds).toContain("finish");
-        expect(await fetchThreadStatus(db, runId)).toBe("completed");
+        expect(await fetchThreadStatus(db, runId)).toBe("failed");
       }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
       await daemon?.close();
