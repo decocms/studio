@@ -29,4 +29,10 @@ describe("harness registration", () => {
   test("codex is registered", () => {
     expect(getHarnessFactory("codex")?.id).toBe("codex");
   });
+
+  test("cluster harness registration does not register desktop Decopilot builder", async () => {
+    const source = await Bun.file("apps/mesh/src/harnesses/index.ts").text();
+    expect(source).not.toContain("registerDesktopEnvironmentBuilder");
+    expect(source).not.toContain("buildDesktopEnvironmentTools");
+  });
 });

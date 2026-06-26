@@ -1,22 +1,13 @@
 /**
  * CLUSTER Decopilot environment-deps assembler (spec §5.2/§9 — "ONE factory").
  *
- * The Decopilot harness runs ONE orchestration loop (`runDecopilotCore`); the
- * only difference between the cluster and the desktop daemon is which
- * `DecopilotToolRuntime` + `telemetry` the environment builds. The single
- * `decopilotHarnessFactory` (`./index.ts`) selects between this StudioContext-
- * backed assembler and the desktop one by inspecting the injected context shape:
+ * The Decopilot harness runs ONE orchestration loop (`runDecopilotCore`). The
+ * package factory gets its StudioContext-backed `DecopilotToolRuntime` +
+ * `telemetry` through this registered cluster assembler:
  *
- *   - `buildClusterEnvironmentTools` (here) — the StudioContext-backed branch:
- *     the in-process virtual-MCP passthrough client + the full cluster tool set
+ *   - the in-process virtual-MCP passthrough client + the full cluster tool set
  *     (web_search / update_interests / Browserless built-ins) + the per-run
  *     HTML-artifact buffer/watcher, plus the ctx-coupled `runAgentLoop` engine.
- *   - `buildDesktopEnvironmentTools` (`./desktop-runtime.ts`) — the import-
- *     isolated daemon branch: an HTTP MCP passthrough client + the local-OK
- *     built-ins + the portable `runNativeAgentLoopCore` engine with a
- *     cluster-storage-free system prompt. It lives in its own `@/`-free module
- *     so the desktop daemon factory (`./desktop-factory.ts`) can pull it WITHOUT
- *     dragging this file's cluster `@/*` imports into the daemon bundle.
  */
 
 import type {

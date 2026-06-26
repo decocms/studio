@@ -40,29 +40,14 @@ import {
   makeConfigUpdateHandler,
 } from "./routes/config";
 import { handleCancelRequest, handleDispatchRequest } from "./routes/dispatch";
-// Import harness factories from their subpaths (rather than the barrel
-// `apps/mesh/src/harnesses/index.ts`) to avoid pulling in the cluster-only
-// unified `decopilotHarnessFactory` (`harnesses/decopilot/index.ts`) and its
-// dependency tree (which references cluster modules that cause a TS stack
-// overflow in the daemon bundle).
-//
-// `decopilotDesktopHarnessFactory` is the IMPORT-ISOLATED daemon entrypoint into
-// the shared desktop tool-runtime (`harnesses/decopilot/desktop-factory.ts` →
-// `desktop-runtime.ts`): it activates its provider from the injected
-// `modelSources.thinking`, reaches cluster-coupled tools via `mcp.url`, and
-// imports only portable, `@/`-free leaves — so it bundles here without dragging
-// in StudioContext / storage / vault. See `desktop-factory.ts` for the
-// isolation contract (it deliberately never references the cluster branch in
-// `harness-deps.ts`).
+// Import harness factories from their subpaths (rather than the mesh barrel).
+// The daemon runs desktop CLI harnesses only; Decopilot remains cluster-side.
 import { claudeCodeHarnessFactory } from "@decocms/harness/claude-code/index";
 import { codexHarnessFactory } from "@decocms/harness/codex/index";
-import { decopilotDesktopHarnessFactory } from "@decocms/harness/decopilot/desktop-factory";
 import {
   getHarnessFactory,
   registerHarnessFactory,
 } from "@decocms/harness/registry";
-import { registerDesktopSandboxFsBuilder } from "@decocms/harness/decopilot/desktop-sandbox-fs-registry";
-import { buildDesktopSandboxFs } from "../dispatch/desktop-sandbox-fs";
 import type {
   HarnessContext,
   HarnessId,
@@ -453,24 +438,15 @@ const proxyH = makeProxyHandler({ broadcaster, getDevPort });
 // loopback when it pulls a work item; the daemon spawns the named factory's
 // CLI in-process and streams `UIMessageChunk` back as SSE.
 //
-// The CLI factories plus the import-isolated desktop decopilot factory live in
-// the daemon. The cluster `decopilotHarnessFactory` (RunRegistry, run-stream
-// internals, StudioContext) is NOT here — desktop decopilot runs via
-// `decopilotDesktopHarnessFactory`, which activates from `modelSources.thinking`
-// and reaches cluster-coupled tools through `mcp.url`.
+// The CLI factories live in the daemon. The cluster `decopilotHarnessFactory`
+// (RunRegistry, run-stream internals, StudioContext) is NOT here.
 // Register the daemon's harness factories into the shared @decocms/harness
 // registry (the same registry the cluster barrel uses, but a separate
 // module-singleton in the daemon process). Keys are the factory ids
-// (claude-code / codex / decopilot — the desktop factory shares the decopilot
-// id). Lookup goes through `getHarnessFactory` so the daemon and the cluster
-// share one registry abstraction.
+// (claude-code / codex). Lookup goes through `getHarnessFactory` so the daemon
+// and the cluster share one registry abstraction.
 registerHarnessFactory(claudeCodeHarnessFactory);
 registerHarnessFactory(codexHarnessFactory);
-registerHarnessFactory(decopilotDesktopHarnessFactory);
-// The desktop runtime (decopilot) builds its VM fs hooks via the registered
-// sandbox-fs builder — kept in @decocms/sandbox so @decocms/harness stays
-// sandbox-free. Register it before any decopilot dispatch.
-registerDesktopSandboxFsBuilder(buildDesktopSandboxFs);
 const dispatchTracer = trace.getTracer("link-daemon");
 const dispatchMeter = metrics.getMeter("link-daemon");
 const lookupDispatchHarness = (id: string, input: unknown) => {
