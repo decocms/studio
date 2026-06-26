@@ -10,11 +10,11 @@ import { spawnSetupStep } from "./spawn-step";
  * org. Returns null for any other owner or when the fields are absent.
  */
 function resolveDecoCachePath(config: Config): string | null {
-  const { owner, repoName } = config.git?.repository ?? {};
-  if (!owner || owner !== "deco-sites") return null;
+  const { githubOwner, repoName } = config.git?.repository ?? {};
+  if (!githubOwner || githubOwner !== "deco-sites") return null;
   // repoName is "owner/repo" from displayName; strip the owner prefix.
-  const repo = repoName?.startsWith(`${owner}/`)
-    ? repoName.slice(owner.length + 1)
+  const repo = repoName?.startsWith(`${githubOwner}/`)
+    ? repoName.slice(githubOwner.length + 1)
     : repoName;
   if (!repo) return null;
   return `${owner}/${repo}/cache.tar.zst`;

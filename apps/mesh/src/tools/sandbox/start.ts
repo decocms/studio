@@ -376,7 +376,7 @@ async function provisionSandbox(
       userEmail: gitUserEmail,
       branch,
       displayName: `${githubRepo.owner}/${githubRepo.name}`,
-      owner: githubRepo.owner,
+      githubOwner: githubRepo.owner,
     };
   }
 
