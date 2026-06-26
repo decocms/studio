@@ -301,22 +301,17 @@ describe("POST /_sandbox/dispatch", () => {
     await reader.cancel();
   });
 
-  it("rebases symbolic workspace.cwd and codingWorkspace.cwd onto the daemon's sandbox root before the harness sees it", async () => {
+  it("rebases symbolic workspace.cwd onto the daemon's sandbox root before the harness sees it", async () => {
     // The wire carries the symbolic value "/repo"; the daemon must rebase it
     // onto its own sandbox root (daemonAppRoot()) before handing the input to
     // the harness. The harness MUST receive the rebased absolute path, not the
     // wire symbol — so `effectiveCwd(input.workspace.cwd)` yields a real path.
     const runId = "run-cwd-rebase";
-    let capturedInput:
-      | { workspace?: { cwd: string }; codingWorkspace?: { cwd?: string } }
-      | undefined;
+    let capturedInput: { workspace?: { cwd: string | null } } | undefined;
 
     const deps = makeDeps({
       lookupHarness: (_id, input) => {
-        capturedInput = input as {
-          workspace?: { cwd: string };
-          codingWorkspace?: { cwd?: string };
-        };
+        capturedInput = input as { workspace?: { cwd: string | null } };
         return makeFakeHarness();
       },
     });
@@ -336,12 +331,6 @@ describe("POST /_sandbox/dispatch", () => {
           },
           branch: "main",
         },
-        codingWorkspace: {
-          repo: { owner: "deco", name: "site", connectedGithub: true },
-          branch: "main",
-          cwd: "/repo",
-          workspaceKind: "github",
-        },
       },
     });
     const res = await handleDispatchRequest(authedDispatch(body), deps);
@@ -356,7 +345,6 @@ describe("POST /_sandbox/dispatch", () => {
     expect(rebasedCwd).not.toBe("/repo");
     // Must end with /repo (rebased to the daemon's sandbox root)
     expect(rebasedCwd?.endsWith("/repo")).toBe(true);
-    expect(capturedInput?.codingWorkspace?.cwd).toBe(rebasedCwd);
   });
 
   it("passes null workspace.cwd through to the harness", async () => {
