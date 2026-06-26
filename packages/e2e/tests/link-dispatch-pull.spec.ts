@@ -255,6 +255,15 @@ test.describe("pull-transport round-trip", () => {
             agent: { id: agentId },
             branch: "ephemeral",
             temperature: 0.5,
+            models: {
+              credentialId: "desktop:claude-code",
+              thinking: {
+                id: "claude-code:sonnet",
+                title: "Sonnet 4.6",
+                provider: "claude-code",
+                capabilities: { vision: true },
+              },
+            },
             harnessId: "claude-code",
             sandboxProviderKind: "user-desktop",
           },
