@@ -146,34 +146,6 @@ atomic and gives a pointer to the right install command.
 {{- end }}
 {{- end }}
 
-{{/*
-Effective K8s Secret name for decoCache credentials.
-When externalSecret is enabled the ExternalSecret materialises a Secret
-whose name is derived from the sandbox name; otherwise falls back to the
-explicit secretName value.
-*/}}
-{{- define "sandbox-env.decoCacheSecretName" -}}
-{{- if .Values.decoCache.externalSecret.enabled -}}
-{{- printf "%s-deco-cache" (include "sandbox-env.sandboxName" .) -}}
-{{- else -}}
-{{- .Values.decoCache.secretName -}}
-{{- end -}}
-{{- end }}
-
-{{/*
-Validate decoCache ExternalSecret configuration.
-*/}}
-{{- define "sandbox-env.validateDecoCache" -}}
-{{- $es := .Values.decoCache.externalSecret }}
-{{- if $es.enabled }}
-  {{- if not $es.secretPath }}
-    {{- fail "sandbox-env: decoCache.externalSecret.enabled=true requires decoCache.externalSecret.secretPath" -}}
-  {{- end }}
-  {{- if not $es.provider.aws.region }}
-    {{- fail "sandbox-env: decoCache.externalSecret.enabled=true requires decoCache.externalSecret.provider.aws.region" -}}
-  {{- end }}
-{{- end }}
-{{- end }}
 
 {{- define "sandbox-env.housekeeperName" -}}
 {{- printf "sandbox-housekeeper-%s" (include "sandbox-env.envName" .) -}}

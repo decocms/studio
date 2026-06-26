@@ -38,7 +38,7 @@
     },
     "apps/mesh": {
       "name": "decocms",
-      "version": "3.53.0",
+      "version": "3.57.0",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -211,7 +211,7 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "dependencies": {
         "@decocms/harness": "workspace:*",
         "@decocms/sandbox": "workspace:*",
@@ -311,8 +311,9 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.3.1",
+      "version": "1.3.2",
       "dependencies": {
+        "@aws-sdk/client-s3": "^3.1013.0",
         "@decocms/harness": "workspace:*",
         "@decocms/std": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",

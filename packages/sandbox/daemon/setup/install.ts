@@ -1,14 +1,15 @@
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { existsSync } from "node:fs";
+import { createWriteStream } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { PACKAGE_MANAGER_DAEMON_CONFIG } from "../constants";
 import { resolvePmRoot } from "../paths";
 import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
-/**
- * Derives the S3 cache object key for repos under the `deco-sites` GitHub
- * org. Returns null for any other owner or when required fields are absent.
- */
 function resolveDecoCachePath(config: Config): string | null {
   const { owner, name } = config.git?.repository ?? {};
   if (!owner || owner !== "deco-sites" || !name) return null;
@@ -16,33 +17,25 @@ function resolveDecoCachePath(config: Config): string | null {
 }
 
 /**
- * For Deno projects, tries to pre-populate $DENO_DIR from any S3-compatible
- * storage so the first `deno task dev` skips remote import fetching.
+ * For Deno projects, tries to pre-populate $DENO_DIR from S3 so the first
+ * `deno task dev` skips remote import fetching.
+ *
+ * Credentials are provided via Pod Identity (EKS) or the standard AWS
+ * credential chain — no static keys needed in env vars.
  *
  * Required env vars:
- *   DECO_CACHE_S3_ACCESS_KEY_ID
- *   DECO_CACHE_S3_SECRET_ACCESS_KEY
  *   DECO_CACHE_S3_REGION
  *   DECO_CACHE_S3_BUCKET
  *
  * Optional env vars:
- *   DECO_CACHE_S3_ENDPOINT — S3-compatible endpoint (e.g. MinIO, R2, GCS)
- *                            defaults to AWS S3 virtual-hosted URL
+ *   DECO_CACHE_S3_ENDPOINT — S3-compatible endpoint (e.g. MinIO, R2)
  *
- * Non-fatal: any failure (missing creds, object not found, network error)
+ * Non-fatal: any failure (object not found, network error, auth error)
  * is logged and the sandbox continues to start normally.
  */
-export function tryWarmDenoCache(deps: InstallDeps): Promise<number> | null {
+export function tryWarmDenoCache(deps: InstallDeps): Promise<void> | null {
   const { config } = deps;
   if (config.application?.packageManager?.name !== "deno") return null;
-
-  // Only attempt if S3 credentials are present — avoids spawning a shell
-  // and showing misleading output when the env vars aren't configured.
-  if (
-    !process.env.DECO_CACHE_S3_ACCESS_KEY_ID ||
-    !process.env.DECO_CACHE_S3_SECRET_ACCESS_KEY
-  )
-    return null;
 
   const region = process.env.DECO_CACHE_S3_REGION;
   const bucket = process.env.DECO_CACHE_S3_BUCKET;
@@ -51,36 +44,53 @@ export function tryWarmDenoCache(deps: InstallDeps): Promise<number> | null {
   const cachePath = resolveDecoCachePath(config);
   if (!cachePath) return null;
 
-  const endpoint = process.env.DECO_CACHE_S3_ENDPOINT;
-  const baseUrl = endpoint
-    ? `${endpoint}/${bucket}`
-    : `https://${bucket}.s3.${region}.amazonaws.com`;
+  return (async () => {
+    deps.onChunk(
+      "setup",
+      `\r\n[deno cache] fetching from s3 (${cachePath})...\r\n`,
+    );
 
-  // Credentials are referenced as shell variables so they never appear in
-  // the command string or in process listings.
-  const cmd = [
-    `DECO_CACHE_TMP=$(mktemp)`,
-    `DECO_CACHE_DIR=\${DENO_DIR:-$HOME/.deno}`,
-    `mkdir -p "$DECO_CACHE_DIR"`,
-    `if curl -sf --aws-sigv4 "aws:amz:${region}:s3" \\`,
-    `    --user "$DECO_CACHE_S3_ACCESS_KEY_ID:$DECO_CACHE_S3_SECRET_ACCESS_KEY" \\`,
-    `    "${baseUrl}/${cachePath}" -o "$DECO_CACHE_TMP"; then`,
-    `  zstd -d "$DECO_CACHE_TMP" --stdout | tar xf - -C "$DECO_CACHE_DIR" --no-same-permissions --no-same-owner`,
-    `  echo "[deno cache] restored from s3 (${cachePath})"`,
-    `else`,
-    `  echo "[deno cache] not available (${cachePath}) — deno will fetch deps on first run"`,
-    `fi`,
-    `rm -f "$DECO_CACHE_TMP"`,
-  ].join("\n");
+    const endpoint = process.env.DECO_CACHE_S3_ENDPOINT;
+    const s3 = new S3Client({
+      region,
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
+    });
 
-  deps.onChunk(
-    "setup",
-    `\r\n[deno cache] fetching from s3 (${cachePath})...\r\n`,
-  );
-  return spawnSetupStep(cmd, deps.onChunk, {
-    dropPrivileges: deps.dropPrivileges,
-    env: deps.env,
-  });
+    let tmpDir: string | null = null;
+    try {
+      const res = await s3.send(
+        new GetObjectCommand({ Bucket: bucket, Key: cachePath }),
+      );
+      if (!res.Body) throw new Error("empty response body");
+
+      tmpDir = await mkdtemp(join(tmpdir(), "deco-cache-"));
+      const tmpFile = join(tmpDir, "cache.tar.zst");
+      await pipeline(
+        res.Body as NodeJS.ReadableStream,
+        createWriteStream(tmpFile),
+      );
+
+      const denoDir =
+        deps.env?.DENO_DIR ?? process.env.DENO_DIR ?? join(homedir(), ".deno");
+      const cmd = [
+        `mkdir -p "${denoDir}"`,
+        `zstd -d "${tmpFile}" --stdout | tar xf - -C "${denoDir}" --no-same-permissions --no-same-owner`,
+        `echo "[deno cache] restored from s3 (${cachePath})"`,
+      ].join(" && ");
+
+      await spawnSetupStep(cmd, deps.onChunk, {
+        dropPrivileges: deps.dropPrivileges,
+        env: deps.env,
+      });
+    } catch {
+      deps.onChunk(
+        "setup",
+        `[deno cache] not available (${cachePath}) — deno will fetch deps on first run\r\n`,
+      );
+    } finally {
+      if (tmpDir) await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  })();
 }
 
 export interface InstallDeps {

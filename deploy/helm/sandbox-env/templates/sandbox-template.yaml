@@ -207,18 +207,6 @@ spec:
             - name: ORGFS_SIDECAR_STATUS_PATH
               value: "/run/orgfs/status.json"
             {{- end }}
-            {{- $decoCacheSecret := include "sandbox-env.decoCacheSecretName" . }}
-            {{- if $decoCacheSecret }}
-            - name: DECO_CACHE_S3_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $decoCacheSecret }}
-                  key: {{ .Values.decoCache.accessKeyIdRef | default "accessKeyId" }}
-            - name: DECO_CACHE_S3_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $decoCacheSecret }}
-                  key: {{ .Values.decoCache.secretAccessKeyRef | default "secretAccessKey" }}
             {{- if .Values.decoCache.region }}
             - name: DECO_CACHE_S3_REGION
               value: {{ .Values.decoCache.region | quote }}
@@ -230,7 +218,6 @@ spec:
             {{- if .Values.decoCache.endpoint }}
             - name: DECO_CACHE_S3_ENDPOINT
               value: {{ .Values.decoCache.endpoint | quote }}
-            {{- end }}
             {{- end }}
           ports:
             - name: daemon
