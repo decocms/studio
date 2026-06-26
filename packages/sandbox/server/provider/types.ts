@@ -72,6 +72,8 @@ export interface EnsureOptions {
     displayName?: string;
     /** GitHub org or user that owns the repo (e.g. "deco-sites"). */
     owner?: string;
+    /** Repository name without owner (e.g. "my-site"). */
+    name?: string;
   };
   /** Image override. Non-image runners MUST ignore. */
   image?: string;
