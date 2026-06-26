@@ -21,7 +21,6 @@ import {
   useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
-  useVirtualMCPs,
 } from "@decocms/mesh-sdk";
 import { getUIResourceUri } from "@/mcp-apps/types";
 import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
@@ -30,7 +29,6 @@ import { useStudioTools } from "@/web/lib/studio-tools";
 import {
   agentHasClonableSource,
   agentHasConnectedGithub,
-  findDevPartner,
 } from "@/web/lib/agent-capabilities";
 import { useChatTask } from "@/web/components/chat/index";
 import { useThreadManager } from "@/web/components/chat/store/hooks";
@@ -138,7 +136,6 @@ export function useMainPanelTabs(ctx: {
     main?: string;
   };
   const entity = useVirtualMCP(ctx.virtualMcpId);
-  const allAgents = useVirtualMCPs();
   const metadata = useTaskMetadata(ctx.taskId);
   const { org } = useProjectContext();
   const { currentBranch } = useChatTask();
@@ -179,48 +176,10 @@ export function useMainPanelTabs(ctx: {
   const entityLayout = entityUI?.layout ?? null;
   const layoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
 
-  // Fallback view source for a dev agent: inherit the LIVE partner's pinned
-  // views (rewritten to the dev connection) when paired. Superseded below by
-  // auto-detection from the dev server's own MCP app when its sandbox is up —
-  // so an unpaired, freshly-imported MCP app still surfaces its views.
-  const devPartner = findDevPartner(entity ?? null, allAgents);
-  const livePartner =
-    devPartner?.mode === "dev"
-      ? ((allAgents ?? []).find((a) => a.id === devPartner.targetId) ?? null)
-      : null;
-  const liveUI =
-    (
-      livePartner?.metadata as {
-        ui?: {
-          pinnedViews?: Array<{
-            connectionId: string;
-            toolName: string;
-            label: string;
-            icon?: string | null;
-          }> | null;
-          layout?: {
-            defaultMainView?: {
-              type: string;
-              id?: string;
-              toolName?: string;
-            } | null;
-          };
-        };
-      } | null
-    )?.ui ?? null;
+  // The ephemeral dev connection (`dev_<id>`) the agent's sandbox dev server is
+  // served through. Its views are auto-detected from the dev server's own MCP
+  // app below — no pairing / live-partner config involved.
   const devConnId = entity?.id ? getDevConnectionId(entity.id) : null;
-  const livePinned = liveUI?.pinnedViews ?? [];
-  const inheritsLiveViews =
-    !!livePartner && !!devConnId && livePinned.length > 0;
-
-  const basePinnedViews =
-    inheritsLiveViews && devConnId
-      ? livePinned.map((v) => ({ ...v, connectionId: devConnId }))
-      : (entityUI?.pinnedViews ?? []);
-  const baseDefaultMainView =
-    inheritsLiveViews && devConnId && liveUI?.layout?.defaultMainView
-      ? { ...liveUI.layout.defaultMainView, id: devConnId }
-      : (entityLayout?.defaultMainView ?? null);
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
   const hasActiveGithubRepo = agentHasConnectedGithub(entity);
   const hasClonableSource = agentHasClonableSource(entity?.metadata);
@@ -238,7 +197,8 @@ export function useMainPanelTabs(ctx: {
   // every tool that declares a `ui://` resource is a view, rendered against the
   // ephemeral dev connection (`dev_<id>`). No pairing / curated pinnedViews
   // needed — the dev server describes itself. Only queried once the dev server
-  // is up (its `/api/mcp` serves tools); supersedes the inherited-live fallback.
+  // is up (its `/api/mcp` serves tools); when present, these override the live
+  // agent's own pinned views below.
   const devClient = useMCPClientOptional({
     connectionId: devConnId ?? undefined,
     orgId: org.id,
@@ -260,11 +220,11 @@ export function useMainPanelTabs(ctx: {
           }))
       : [];
   const firstDevView = devViews[0];
-  const pinnedViews = firstDevView ? devViews : basePinnedViews;
+  const pinnedViews = firstDevView ? devViews : (entityUI?.pinnedViews ?? []);
   const effectiveDefaultMainView =
     firstDevView && devConnId
       ? { type: "ext-apps", id: devConnId, toolName: firstDevView.toolName }
-      : baseDefaultMainView;
+      : (entityLayout?.defaultMainView ?? null);
   const decofileFetchParams =
     hasClonableSource && entity?.id && currentBranch
       ? { orgSlug: org.slug, virtualMcpId: entity.id, branch: currentBranch }
