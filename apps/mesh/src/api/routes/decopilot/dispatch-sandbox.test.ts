@@ -24,7 +24,7 @@ mock.module("@/tools/sandbox/start", () => ({
 }));
 
 const {
-  buildCodingWorkspaceInput,
+  buildHarnessWorkspaceInput,
   computeDesktopSandboxHandle,
   resolveEffectiveVirtualMcpForHarness,
 } = await import("./dispatch-run");
@@ -82,9 +82,9 @@ describe("computeDesktopSandboxHandle", () => {
   });
 });
 
-describe("buildCodingWorkspaceInput", () => {
+describe("buildHarnessWorkspaceInput", () => {
   it("returns repo, branch, cwd, and connected GitHub state for repo-backed workspaces", () => {
-    const result = buildCodingWorkspaceInput({
+    const result = buildHarnessWorkspaceInput({
       virtualMcp: {
         metadata: {
           githubRepo: {
@@ -95,23 +95,21 @@ describe("buildCodingWorkspaceInput", () => {
         },
       },
       branch: "feature-branch",
-      workspace: { cwd: "/repo" },
     });
 
     expect(result).toEqual({
+      cwd: "/repo",
       repo: {
         owner: "deco",
         name: "site",
         connectedGithub: true,
       },
       branch: "feature-branch",
-      cwd: "/repo",
-      workspaceKind: "github",
     });
   });
 
   it("marks public clone repo workspaces as not connected to GitHub", () => {
-    const result = buildCodingWorkspaceInput({
+    const result = buildHarnessWorkspaceInput({
       virtualMcp: {
         metadata: {
           githubRepo: {
@@ -121,32 +119,27 @@ describe("buildCodingWorkspaceInput", () => {
         },
       },
       branch: "main",
-      workspace: { cwd: "/repo" },
     });
 
     expect(result).toEqual({
+      cwd: "/repo",
       repo: {
         owner: "deco",
         name: "public-site",
         connectedGithub: false,
       },
       branch: "main",
-      cwd: "/repo",
-      workspaceKind: "github",
     });
   });
 
-  it("marks default non-repo workspaces as unknown without inventing GitHub metadata", () => {
-    const result = buildCodingWorkspaceInput({
+  it("returns null cwd for non-repo workspaces", () => {
+    const result = buildHarnessWorkspaceInput({
       virtualMcp: { metadata: {} },
       branch: null,
-      workspace: { cwd: "default" },
     });
 
     expect(result).toEqual({
-      branch: null,
-      cwd: "default",
-      workspaceKind: "unknown",
+      cwd: null,
     });
   });
 });
