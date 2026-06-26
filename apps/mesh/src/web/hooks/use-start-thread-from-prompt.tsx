@@ -37,7 +37,7 @@ export interface UseStartThreadFromPromptResult {
    * Start a fresh thread with `agentId` without seeding a prompt — used by the
    * fallback cards for default home agents that expose no prompts.
    */
-  startBlank: () => Promise<void>;
+  startBlank: (opts?: { main?: string }) => Promise<void>;
   /** Render this in your component to mount the args dialog. */
   dialog: ReactNode;
   /** Exposed for tests / loading states. */
@@ -140,7 +140,7 @@ export function useStartThreadFromPrompt({
     await loadAndStart(prompt, values);
   };
 
-  const startBlank = async () => {
+  const startBlank = async (opts?: { main?: string }) => {
     if (inFlightRef.current) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- in-flight guard for duplicate-click prevention
     inFlightRef.current = true;
@@ -148,7 +148,7 @@ export function useStartThreadFromPrompt({
     try {
       const newId = crypto.randomUUID();
       await create({ id: newId, virtual_mcp_id: agentId });
-      setTaskId(newId, agentId);
+      setTaskId(newId, agentId, opts?.main ? { main: opts.main } : undefined);
     } catch (error) {
       console.error("[start-thread-from-prompt] startBlank failed", error);
       toast.error("Failed to start thread. Please try again.");

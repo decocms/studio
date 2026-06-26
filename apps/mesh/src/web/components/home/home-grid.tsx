@@ -8,17 +8,21 @@ import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { Suspense } from "react";
 import {
   getHomeTiles,
+  mcpClientQueryOptions,
   useMCPClient,
+  useMCPToolsListQuery,
   useProjectContext,
 } from "@decocms/mesh-sdk";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@deco/ui/components/skeleton.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { ArrowRight } from "@untitledui/icons";
 import { toast } from "sonner";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer.tsx";
+import { getUIResourceUri } from "@/mcp-apps/types.ts";
 import { AgentAvatar } from "@/web/components/agent-icon";
 import { ErrorBoundary } from "@/web/components/error-boundary";
+import { formatPinnedViewTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import {
   type HomePromptEntry,
   type HomeTileEntry,
@@ -74,6 +78,41 @@ function entryToPrompt(entry: HomePromptEntry): Prompt {
     arguments: entry.arguments,
     _meta: entry._meta,
   };
+}
+
+/** Resolves the main-panel tab id for a home tile so "Open chat" can
+ *  open chat + the tile's UI side-by-side. Uses the non-suspending MCP
+ *  client / tools-list queries so the tile chrome renders immediately
+ *  (the queries piggy-back on TileAppPanel's cache). */
+function useTileMainTab(tile: HomeTileEntry): string | undefined {
+  const { org } = useProjectContext();
+
+  // Non-suspending — shares the same cache key as TileAppPanel's
+  // useMCPClient, so the client is typically already cached by the
+  // time the user sees the tile.
+  const { data: client } = useQuery(
+    mcpClientQueryOptions({
+      connectionId: tile.connectionId,
+      orgId: org.id,
+      orgSlug: org.slug,
+    }),
+  );
+
+  // Resolve tool name from the connection's tools when not explicitly set.
+  const { data: toolsResult } = useMCPToolsListQuery({
+    client: client!,
+    enabled: !!client && !tile.toolName,
+  });
+
+  const toolName =
+    tile.toolName ??
+    toolsResult?.tools.find(
+      (t) => getUIResourceUri(t._meta) === tile.resourceUri,
+    )?.name;
+
+  return toolName
+    ? formatPinnedViewTabId(tile.connectionId, toolName)
+    : undefined;
 }
 
 /** Bundles the prompt/blank thread launch for every surface that needs
@@ -193,12 +232,16 @@ function AgentUITile({
   // Drop the blank-fallback card — clicking the header already covers it.
   const promptChips = prompts.filter((p) => !!p.promptName);
 
+  const mainTab = useTileMainTab(tile);
+
   return (
     <div className="relative flex h-full w-full flex-col p-3">
       {!isEditMode && (
         <button
           type="button"
-          onClick={() => void startBlank()}
+          onClick={() =>
+            void startBlank(mainTab ? { main: mainTab } : undefined)
+          }
           disabled={starting}
           aria-busy={starting}
           className="mb-1 self-start rounded-md px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-progress disabled:opacity-60"
@@ -325,12 +368,13 @@ function TileErrorFallback({
     tile.agentId,
   );
   const chips = prompts.filter((p) => !!p.promptName);
+  const mainTab = useTileMainTab(tile);
 
   return (
     <div className="flex h-full w-full flex-col gap-3 p-4">
       <button
         type="button"
-        onClick={() => void startBlank()}
+        onClick={() => void startBlank(mainTab ? { main: mainTab } : undefined)}
         disabled={starting || isEditMode}
         className="mb-1 self-start rounded-md px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-progress disabled:opacity-60"
       >

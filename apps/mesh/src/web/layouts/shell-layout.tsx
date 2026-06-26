@@ -115,7 +115,7 @@ export function usePanelActions() {
   const setTaskId = (
     id: string,
     virtualMcpId?: string,
-    opts?: { autosend?: boolean },
+    opts?: { autosend?: boolean; main?: string },
   ) =>
     navWith(
       id,
@@ -123,17 +123,22 @@ export function usePanelActions() {
         const next: Record<string, unknown> = { chat: 1 };
         if (virtualMcpId) next.virtualmcpid = virtualMcpId;
         else if (prev.virtualmcpid) next.virtualmcpid = prev.virtualmcpid;
-        // Preserve system-level panel tabs (git, preview, settings, …) across
-        // thread switches, but drop per-thread tabs (expanded tool views,
-        // web-page previews, automation details) that are specific to the
-        // previous task.
-        const prevMain = prev.main;
-        if (
-          prevMain &&
-          typeof prevMain === "string" &&
-          !isPerThreadTab(prevMain)
-        ) {
-          next.main = prevMain;
+        // Explicit main tab takes priority (e.g. home tile → pinned view).
+        if (opts?.main) {
+          next.main = opts.main;
+        } else {
+          // Preserve system-level panel tabs (git, preview, settings, …) across
+          // thread switches, but drop per-thread tabs (expanded tool views,
+          // web-page previews, automation details) that are specific to the
+          // previous task.
+          const prevMain = prev.main;
+          if (
+            prevMain &&
+            typeof prevMain === "string" &&
+            !isPerThreadTab(prevMain)
+          ) {
+            next.main = prevMain;
+          }
         }
         if (opts?.autosend) next.autosend = AUTOSEND_QUERY_VALUE;
         return next;
