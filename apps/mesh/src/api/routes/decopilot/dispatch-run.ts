@@ -77,7 +77,7 @@ import { isCliHarness } from "@decocms/harness/cli-harness";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { synthesizedErrorMessageId } from "./message-ids";
-import { loadAndMergeMessages } from "./conversation";
+import { loadDecopilotContext } from "@/harnesses/decopilot/context-loader";
 import { PartEmitter } from "./part-emitter";
 import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
@@ -1142,17 +1142,6 @@ async function prepareRun(
 
     const pendingOps: Promise<void>[] = [];
 
-    // Pre-load conversation (no system messages — those are built separately)
-    // When resuming, requestMessage is undefined — conversation loads entirely
-    // from DB via createMemory / loadAndMergeMessages.
-    const allMessages = await loadAndMergeMessages(
-      mem,
-      materializedRequestMessage,
-      systemMessages,
-      windowSize,
-      input.isSubagent === true,
-    );
-
     // CLI-harness delta + resume only holds on the long-lived desktop daemon:
     // the on-disk session survives between turns *only* on user-desktop. On any
     // other sandbox kind there is no persistent rollout to resume, so fall back
@@ -1161,8 +1150,11 @@ async function prepareRun(
     const cliResumable =
       isCliHarness(harnessId) && target.sandboxProviderKind === "user-desktop";
 
+    const cliHistory = cliResumable
+      ? ((await mem.loadHistory(windowSize)) as ChatMessage[])
+      : undefined;
     const resumeSessionRef = cliResumable
-      ? resolveCliSessionRef(allMessages, harnessId)
+      ? resolveCliSessionRef(cliHistory ?? [], harnessId)
       : undefined;
 
     const organization = ctx.organization!;
@@ -1185,7 +1177,7 @@ async function prepareRun(
       ? (await resolveStorageRefs([materializedRequestMessage], ctx))[0]
       : undefined;
 
-    if (!wireUserMessage) {
+    if (!wireUserMessage || !materializedRequestMessage) {
       throw new PermanentRunError(
         "empty_request",
         "No user message found in input — expected at least one non-system message",
@@ -1195,7 +1187,14 @@ async function prepareRun(
     ensureModelCompatibility(input.models, [wireUserMessage]);
     const decopilotMessages =
       harnessId === "decopilot"
-        ? await resolveStorageRefs(allMessages, ctx)
+        ? await loadDecopilotContext({
+            ctx,
+            threadId: mem.thread.id,
+            userMessage: materializedRequestMessage,
+            windowSize,
+            isSubagent: input.isSubagent === true,
+            systemMessages,
+          })
         : undefined;
 
     // Build the MCP endpoint for CLI harnesses. Hosted decopilot uses an
