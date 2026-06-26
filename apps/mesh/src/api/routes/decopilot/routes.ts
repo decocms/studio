@@ -228,6 +228,7 @@ async function resolvePerRequestModels(
         id: entry.modelId,
         title: entry.label,
         provider: harnessId,
+        capabilities: { vision: true, text: true },
       },
     };
   }
