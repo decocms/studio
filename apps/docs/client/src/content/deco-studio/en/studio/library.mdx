@@ -53,6 +53,26 @@ To create a brand from scratch, ask any agent: *"Create a brand for [name]"* —
   The `slides-theme.html` file in a brand folder acts as both the generation shell and an editable sample deck. Modifying it directly changes the starting point for every deck the slides skill generates under that brand.
 </Callout>
 
+## Sharing
+
+Files and folders in the Home volume can be shared outside your organization. Each node has a **share mode**, set from its context menu or the share icon on its card:
+
+| Mode | Who can access |
+|---|---|
+| **Org only** | Organization members only (default) |
+| **Public** | Anyone with the link — no sign-in required |
+| **Password** | Anyone with the link who enters the correct password |
+
+A badge on the card reflects the current share mode. For password-protected nodes, the shared link opens an interstitial password form before serving content; one successful unlock covers the node and its entire subtree (for folders) for the browser session.
+
+<Callout type="tip">
+  A password is set at the folder level and covers everything inside it. Files inside a password-protected folder inherit the parent's password — you cannot override it with a different password on a child node.
+</Callout>
+
+<Callout type="warning">
+  Files that inherit sharing from a parent show a read-only "shared via a parent folder" indicator instead of the share controls. Change the parent's share mode to affect them.
+</Callout>
+
 ## How it maps to the sandbox
 
 The Library and the agent sandbox are two views of the same filesystem. Inside a sandbox these volumes are mounted under `org/`:
