@@ -37,7 +37,7 @@ export interface GitRepository {
   readonly branch?: string;
   readonly repoName?: string;
   /** GitHub org or user that owns the repo (e.g. "deco-sites"). */
-  readonly githubOwner?: string;
+  readonly owner?: string;
 }
 
 export interface GitConfig {
