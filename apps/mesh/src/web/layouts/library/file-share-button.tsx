@@ -242,7 +242,7 @@ function ShareControls({
         </form>
       )}
 
-      {effective && copyRow}
+      {copyRow}
     </div>
   );
 }

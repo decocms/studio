@@ -25,8 +25,6 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
-  Check,
-  Copy01,
   Download01,
   Edit03,
   File06,
@@ -35,7 +33,7 @@ import {
   Printer,
   RefreshCw01,
 } from "@untitledui/icons";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import type { DeckEditor } from "./use-deck-editor";
 
 export function DeckToolbar({
@@ -51,14 +49,7 @@ export function DeckToolbar({
   /** Host-specific actions appended after the shared ones. */
   trailing?: ReactNode;
 }) {
-  const [copied, setCopied] = useState(false);
   const absoluteUrl = new URL(readUrl, window.location.origin).toString();
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(absoluteUrl);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
-  };
 
   return (
     <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
@@ -173,22 +164,6 @@ export function DeckToolbar({
           <TooltipContent side="bottom">Download</TooltipContent>
         </Tooltip>
       )}
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Copy URL"
-            onClick={handleCopy}
-          >
-            {copied ? <Check size={14} /> : <Copy01 size={14} />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {copied ? "Copied" : "Copy URL"}
-        </TooltipContent>
-      </Tooltip>
 
       <Tooltip>
         <TooltipTrigger asChild>
