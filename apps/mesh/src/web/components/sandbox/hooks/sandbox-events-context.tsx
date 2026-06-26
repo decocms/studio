@@ -362,8 +362,8 @@ export function SandboxEventsProvider({
                 queryKey: KEYS.decofile(cacheKey),
               });
             } else {
-              // Debounce liveMeta invalidation by 2s so the dev server has
-              // time to rebuild before we hit /live/_meta. Rapid successive
+              // Debounce liveMeta invalidation so the dev server has time to
+              // rebuild before we hit /live/_meta. Rapid successive
               // file-changed events reset the timer.
               if (liveMetaDebounceTimer) clearTimeout(liveMetaDebounceTimer);
               liveMetaDebounceTimer = setTimeout(() => {
@@ -378,7 +378,7 @@ export function SandboxEventsProvider({
                     );
                   },
                 });
-              }, 2_000);
+              }, 1_000);
             }
             return;
           }

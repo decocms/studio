@@ -354,7 +354,7 @@ function ContentBrowserReady({
   branch: string;
   previewUrl: string | null;
 }) {
-  const fetchParams = { orgSlug, virtualMcpId, branch };
+  const fetchParams = { orgSlug, virtualMcpId, branch, previewUrl };
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(fetchParams);
 

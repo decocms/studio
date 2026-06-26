@@ -444,7 +444,7 @@ export function SectionsEditor({
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
-  /** When false, waits for the sandbox dev server before preview-fetch. */
+  /** When false, waits for the sandbox dev server before fetching metadata. */
   previewReady?: boolean;
   /** Sandbox preview base URL used for section gallery previews. */
   previewUrl?: string;
@@ -471,7 +471,7 @@ export function SectionsEditor({
   onViewJsonFile?: (pageKey: string) => void;
 }) {
   const previewFetchParams = previewReady
-    ? { orgSlug, virtualMcpId, branch }
+    ? { orgSlug, virtualMcpId, branch, previewUrl }
     : null;
   const { data: decofile, isLoading: decofileLoading } =
     useDecofile(previewFetchParams);
