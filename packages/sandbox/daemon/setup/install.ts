@@ -11,13 +11,16 @@ import { spawnSetupStep } from "./spawn-step";
  */
 function resolveDecoCachePath(config: Config): string | null {
   const cloneUrl = config.git?.repository?.cloneUrl;
-  const match = cloneUrl?.match(
-    /github\.com\/([^/@]+)\/([^/.]+?)(?:\.git)?(?:[?#]|$)/,
-  );
-  if (!match) return null;
-  const [, owner, repo] = match;
-  if (owner !== "deco-sites") return null;
-  return `${owner}/${repo}/cache.tar.zst`;
+  if (!cloneUrl) return null;
+  try {
+    const { pathname } = new URL(cloneUrl);
+    const [, owner, repoWithExt] = pathname.split("/");
+    const repo = repoWithExt?.replace(/\.git$/, "");
+    if (!owner || !repo || owner !== "deco-sites") return null;
+    return `${owner}/${repo}/cache.tar.zst`;
+  } catch {
+    return null;
+  }
 }
 
 /**
