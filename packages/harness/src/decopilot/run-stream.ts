@@ -54,6 +54,7 @@ import type {
   HarnessAssembledTools,
   RunEngine,
 } from "./engine";
+import type { DecopilotRunContext } from "./run-context";
 import { sanitizeStreamError, stringifyError } from "./stream-error";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import {
@@ -135,7 +136,7 @@ export interface DecopilotTelemetry {
  * paths, or the `toUIMessageStream({ messageMetadata })` decorator).
  */
 export interface RunDecopilotStreamExtras {
-  /** Provider reconstructed from `input.modelSources.thinking` (thinking slot). */
+  /** Provider reconstructed from DecopilotRunContext.modelSources.thinking. */
   provider: MeshProvider;
 
   /** Provider/model used only for title generation. Lets Decopilot use the org
@@ -196,6 +197,7 @@ export interface RunDecopilotStreamExtras {
    *  includes child tokens (Task 17 roll-up). Omitted by callers that don't
    *  delegate; defaults to a fresh accumulator. */
   usageAccumulator?: UsageAccumulator;
+  runContext?: DecopilotRunContext;
 }
 
 export interface RunDecopilotStreamArgs {
@@ -276,6 +278,7 @@ export async function* runDecopilotStream(
   args: RunDecopilotStreamArgs,
 ): AsyncGenerator<UIMessageChunk> {
   const { input, tools, runEngine, extras } = args;
+  const runContext = extras.runContext;
   const {
     provider,
     titleProvider,
@@ -358,8 +361,10 @@ export async function* runDecopilotStream(
   // sees only the always-on built-ins (the "light toolset" bug). Give a subagent
   // its full toolset up front instead: every passthrough tool active from step 1.
   // `extras.kind === "subtask"` is the reliable signal on the desktop subagent
-  // path (it runs through this loop); `input.isSubagent` covers the cluster one.
-  const isDelegatedSubagent = extras.kind === "subtask" || input.isSubagent;
+  // path (it runs through this loop); DecopilotRunContext carries the cluster
+  // top-level subagent flag without widening HarnessStreamInput.
+  const isDelegatedSubagent =
+    extras.kind === "subtask" || runContext?.isSubagent === true;
   const enabledTools = isDelegatedSubagent
     ? new Set(passthroughToolNames)
     : reconstructEnabledTools(originalMessages, passthroughToolNames);
@@ -414,11 +419,22 @@ export async function* runDecopilotStream(
   //   - `extraTools`         → built-ins + enable_tool (state-dependent)
   //   - `prepareStep`        → image injection + plan-mode filter
   //   - `additionalSystemMessages` → per-request inline <system> blocks
-  const vmMetadata = input.virtualMcp.metadata as {
-    githubRepo?: import("@decocms/mesh-sdk").GithubRepo | null;
-  };
+  const vmMetadata = runContext?.virtualMcp.metadata as
+    | {
+        githubRepo?: import("@decocms/mesh-sdk").GithubRepo | null;
+      }
+    | undefined;
+  const codingWorkspace =
+    input.workspace.cwd === "/repo"
+      ? {
+          repo: input.workspace.repo,
+          branch: input.workspace.branch,
+          cwd: input.workspace.cwd,
+          workspaceKind: "github" as const,
+        }
+      : undefined;
   const handle: AssembledEngineHandle = await runEngine({
-    kind: input.isSubagent ? "subagent" : "agent",
+    kind: runContext?.isSubagent ? "subagent" : "agent",
     virtualMcp: {
       id: input.agent.id,
       repo: vmMetadata?.githubRepo ?? undefined,
@@ -431,11 +447,11 @@ export async function* runDecopilotStream(
     temperature: input.temperature,
     planMode: modeConfig.isPlanMode,
     isDecopilot: isDecopilot(input.agent.id) !== null,
-    codingWorkspace: input.codingWorkspace,
+    codingWorkspace,
     systemAgentInstructions: tools.serverInstructions,
     currentThreadId: threadId,
     user: { id: input.user.id, email: input.user.email },
-    userContext: input.userContext,
+    userContext: runContext?.userContext,
     writer,
     prepareStep: parentPrepareStep,
     onStepFinish: extras.onStepFinish,
@@ -711,10 +727,12 @@ export async function* runDecopilotStream(
           // Set for a backgrounded subtask run: correlates this message to the
           // originating `subtask` tool call (== its `jobId`) so the UI nests it
           // inside that card instead of rendering it top-level.
-          ...(input.subtaskJobId ? { subtaskJobId: input.subtaskJobId } : {}),
+          ...(runContext?.subtaskJobId
+            ? { subtaskJobId: runContext.subtaskJobId }
+            : {}),
           // Set when this turn resumes the agent after a backgrounded tool
           // completed — the UI shows a "resumed" indicator on the message.
-          ...(input.resumedFromBackground
+          ...(runContext?.resumedFromBackground
             ? { resumedFromBackground: true }
             : {}),
         };

@@ -23,6 +23,7 @@ import { createProviderFromSecret } from "./provider-from-secret";
 import { createSideChannelWriter } from "../side-channel-writer";
 import { registerDesktopSandboxFsBuilder } from "./desktop-sandbox-fs-registry";
 import type { HarnessStreamInput } from "../types";
+import { requireDecopilotRunContext } from "./run-context";
 
 // The parity fixtures only inspect the assembled tool KEYS (nothing executes),
 // so register a no-op desktop sandbox-fs builder — the real one lives in the
@@ -60,8 +61,9 @@ function createFakeMcpClient(): OpenedMcpSource {
 async function buildDesktopToolKeys(
   input: HarnessStreamInput,
 ): Promise<string[]> {
+  const runContext = requireDecopilotRunContext(input);
   const modelRuntime = buildModelRuntimeFromSources(
-    { models: input.models, modelSources: input.modelSources },
+    { models: input.models, modelSources: runContext.modelSources },
     createProviderFromSecret,
   );
   const sideChannel = createSideChannelWriter();

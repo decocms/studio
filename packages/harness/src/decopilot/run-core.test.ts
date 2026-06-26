@@ -16,6 +16,7 @@ import {
   SUBTASK_MAX_CONCURRENT,
   type RunDecopilotCoreDeps,
 } from "./run-core";
+import { setDecopilotRunContext } from "./run-context";
 import type {
   AssembledEngineHandle,
   HarnessAssembledTools,
@@ -115,9 +116,13 @@ function makeToolRuntime(opts: {
 
 const baseInput = {
   threadId: "t1",
-  runId: "run1",
-  messages: [],
-  workspace: { cwd: "default" },
+  userMessage: {
+    id: "m1",
+    role: "user",
+    parts: [{ type: "text", text: "hi" }],
+  },
+  harness: {},
+  workspace: { cwd: null },
   models: {
     thinking: { id: "m1", credentialId: "c1", limits: {} },
   },
@@ -127,11 +132,14 @@ const baseInput = {
   toolApprovalLevel: "auto",
   user: { id: "u1", email: "u@x.com" },
   organizationId: "org1",
-  virtualMcp: { id: "vir_1", metadata: {} },
   agent: { id: "vir_1" },
   currentThreadTitle: "Some existing title",
   signal: new AbortController().signal,
 } as RunDecopilotCoreDeps["input"];
+
+setDecopilotRunContext(baseInput, {
+  virtualMcp: { id: "vir_1", metadata: {} },
+});
 
 const modelRuntime = {
   thinking: {
@@ -256,6 +264,47 @@ describe("SUBTASK_MAX_CONCURRENT", () => {
   });
 });
 
+describe("runDecopilotCore conversation input", () => {
+  test("uses DecopilotRunContext messages so hosted runs keep thread history", async () => {
+    const input: RunDecopilotCoreDeps["input"] = {
+      ...baseInput,
+      signal: new AbortController().signal,
+      userMessage: {
+        id: "current",
+        role: "user",
+        parts: [{ type: "text", text: "current" }],
+      },
+    };
+    setDecopilotRunContext(input, {
+      virtualMcp: { id: "vir_1", metadata: {} },
+      messages: [
+        {
+          id: "previous",
+          role: "user",
+          parts: [{ type: "text", text: "previous" }],
+        },
+        input.userMessage,
+      ],
+    });
+    const captured: { args?: RunEngineArgs } = {};
+
+    for await (const _ of runDecopilotCore({
+      input,
+      modelRuntime,
+      toolRuntime: makeToolRuntime({
+        chunks: [{ type: "finish" } as UIMessageChunk],
+        totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        captured,
+      }),
+      kind: "main",
+    })) {
+      // drain
+    }
+
+    expect(captured.args?.messages).toHaveLength(2);
+  });
+});
+
 describe("usage roll-up (parent final metadata includes child tokens)", () => {
   test("a main run folds onChildUsage into the parent's final finish usage", async () => {
     // Holder the test fills from buildEnvironmentTools' onChildUsage. A main
@@ -335,9 +384,11 @@ describe("usage roll-up (parent final metadata includes child tokens)", () => {
       input: {
         ...baseInput,
         signal: new AbortController().signal,
-        messages: [
-          { id: "u-1", role: "user", parts: [{ type: "text", text: "hi" }] },
-        ] as never,
+        userMessage: {
+          id: "u-1",
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+        },
       },
       modelRuntime,
       toolRuntime: toolRuntime as never,
@@ -371,13 +422,11 @@ describe("runDecopilotCore main-run subtask policy", () => {
       input: {
         ...baseInput,
         signal: new AbortController().signal,
-        messages: [
-          {
-            id: "u-1",
-            role: "user",
-            parts: [{ type: "text", text: "hello" }],
-          },
-        ] as never,
+        userMessage: {
+          id: "u-1",
+          role: "user",
+          parts: [{ type: "text", text: "hello" }],
+        },
       },
       modelRuntime,
       toolRuntime: makeToolRuntime({

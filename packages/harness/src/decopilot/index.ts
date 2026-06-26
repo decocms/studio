@@ -43,6 +43,7 @@ import {
   type DecopilotToolRuntime,
   type ModelRuntime,
 } from "./run-core";
+import { requireDecopilotRunContext } from "./run-context";
 import type { DecopilotTelemetry } from "./run-stream";
 
 /** True when the injected context is a full cluster context (it carries
@@ -106,10 +107,11 @@ export const decopilotHarnessFactory: HarnessFactory = {
     return {
       id: "decopilot",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
+        const runContext = requireDecopilotRunContext(input);
         // ── Model runtime: providers from resolved secret sources (both
         //    environments use the same secret→provider factory). ────────────
         const modelRuntime = buildModelRuntimeFromSources(
-          { models: input.models, modelSources: input.modelSources },
+          { models: input.models, modelSources: runContext.modelSources },
           createProviderFromSecret,
         );
 

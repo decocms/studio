@@ -29,7 +29,10 @@ import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import type { UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
-import type { MessagesRef } from "@decocms/harness/offload-messages";
+import {
+  shouldOffload,
+  type MessagesRef,
+} from "@decocms/harness/offload-messages";
 import {
   findStudioPackAgentByMcpId,
   resolveStudioPackRuntime,
@@ -58,6 +61,7 @@ import type {
   ModelsConfig,
 } from "@/harnesses";
 import { createSecretModelSource } from "@/harnesses";
+import { setDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
 import type {
   DecopilotHttpMcpSource,
   DecopilotObjectStorageSource,
@@ -1187,6 +1191,10 @@ async function prepareRun(
     }
 
     ensureModelCompatibility(input.models, [wireUserMessage]);
+    const decopilotMessages =
+      harnessId === "decopilot"
+        ? await resolveStorageRefs(allMessages, ctx)
+        : undefined;
 
     // Build the MCP endpoint for CLI harnesses. Hosted decopilot uses an
     // in-process passthrough client (no HTTP MCP connection needed), so we
@@ -1255,12 +1263,13 @@ async function prepareRun(
       subtaskJobId: input.subtaskJobId,
       resumedFromBackground: input.resumedFromBackground,
       virtualMcp: effectiveVirtualMcp,
+      branch: input.branch,
+      messages: decopilotMessages,
       modelSources,
       mcpSource,
       objectStorageSource,
       userContext,
     };
-    void decopilotRunContext;
 
     const wireHarnessInput: WireHarnessInput = {
       harnessId,
@@ -1283,7 +1292,6 @@ async function prepareRun(
       currentThreadTitle: mem.thread.title,
       runFenceToken,
     };
-
     // ── LAZY harness dispatch ───────────────────────────────────────────────
     // This generator's body — local harness dispatch — runs only when the
     // kernel pulls the first chunk, which (via `lazyStream` below) happens only
@@ -1321,6 +1329,9 @@ async function prepareRun(
           ...wireHarnessInput,
           signal: registrySignal,
         };
+        if (harnessId === "decopilot") {
+          setDecopilotRunContext(harnessInput, decopilotRunContext);
+        }
 
         // User-desktop runs are routed by the gate to the link work publisher,
         // which never consumes this lazy stream. Reaching this generator for a
@@ -1775,9 +1786,34 @@ export async function prepareLinkWorkDispatch(
         deps,
         _rootSpan,
       );
+      const failPreparedRun = async (message: string): Promise<never> => {
+        await deps.runRegistry.execute({
+          type: "FINISH",
+          taskId,
+          threadStatus: "failed",
+        });
+        throw new Error(message);
+      };
+
+      if (wireHarnessInput.harnessId === "decopilot") {
+        await failPreparedRun(
+          "prepareLinkWorkDispatch: decopilot desktop dispatch needs a " +
+            "private DecopilotRunContext transport outside harnessInput",
+        );
+      }
 
       const effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
       const messagesRef: MessagesRef | null = null;
+      const inputByteLength = Buffer.byteLength(
+        JSON.stringify(wireHarnessInput),
+        "utf8",
+      );
+      if (shouldOffload(inputByteLength)) {
+        await failPreparedRun(
+          "prepareLinkWorkDispatch: harnessInput exceeds the link payload " +
+            "limit and v3 userMessage offload is not implemented",
+        );
+      }
 
       // Resolve the sandbox handle for the desktop work item.
       // Pure derivation — no ensure round-trip. The daemon self-ensures

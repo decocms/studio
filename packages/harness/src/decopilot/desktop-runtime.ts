@@ -89,6 +89,11 @@ import {
   type SideChannelWriter,
 } from "../side-channel-writer";
 import { swapVirtualMcpAgent } from "./swap-virtual-mcp-agent";
+import {
+  getDecopilotRunContext,
+  requireDecopilotRunContext,
+  setDecopilotRunContext,
+} from "./run-context";
 
 function isDesktopToolVisible(tool: {
   name: string;
@@ -106,9 +111,10 @@ export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
   modelSource: DecopilotSecretModelSource;
   mcpSource: DecopilotHttpMcpSource;
 } {
+  const runContext = requireDecopilotRunContext(input);
   const modelSource =
-    input.modelSources?.thinking?.kind === "secret"
-      ? input.modelSources.thinking
+    runContext.modelSources?.thinking?.kind === "secret"
+      ? runContext.modelSources.thinking
       : null;
   if (!modelSource) {
     throw new Error(
@@ -119,8 +125,8 @@ export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
   }
 
   const mcpSource =
-    input.mcpSource?.kind === "http"
-      ? input.mcpSource
+    runContext.mcpSource?.kind === "http"
+      ? runContext.mcpSource
       : {
           kind: "http" as const,
           url: input.mcp.url,
@@ -132,10 +138,16 @@ export function resolveDesktopRuntimeSources(input: HarnessStreamInput): {
 }
 
 export function resolveDesktopSubtaskCodingWorkspace(
-  input: Pick<HarnessStreamInput, "codingWorkspace">,
+  input: Pick<HarnessStreamInput, "workspace">,
   targetAgentId: string | undefined,
-): HarnessStreamInput["codingWorkspace"] {
-  return targetAgentId ? undefined : input.codingWorkspace;
+) {
+  if (targetAgentId || input.workspace.cwd !== "/repo") return undefined;
+  return {
+    repo: input.workspace.repo,
+    branch: input.workspace.branch,
+    cwd: input.workspace.cwd,
+    workspaceKind: "github" as const,
+  };
 }
 
 /**
@@ -149,10 +161,12 @@ export function resolveDesktopSubtaskCodingWorkspace(
 function buildSelfMcpSource(
   input: HarnessStreamInput,
 ): DecopilotHttpMcpSource | null {
-  const objectStorageBase = input.objectStorageSource?.baseUrl ?? "";
+  const runContext = getDecopilotRunContext(input);
+  const objectStorageSource = runContext?.objectStorageSource;
+  const objectStorageBase = objectStorageSource?.baseUrl ?? "";
   const apiBase = objectStorageBase.replace(/\/object-storage\/?$/, "");
   if (
-    !input.objectStorageSource ||
+    !objectStorageSource ||
     !input.runFenceToken ||
     apiBase === objectStorageBase
   ) {
@@ -161,17 +175,18 @@ function buildSelfMcpSource(
   return {
     kind: "http",
     url: `${apiBase}/mcp/self`,
-    headers: input.objectStorageSource.headers,
-    expiresAt: input.objectStorageSource.expiresAt,
+    headers: objectStorageSource.headers,
+    expiresAt: objectStorageSource.expiresAt,
   };
 }
 
 function snapshotOf(input: HarnessStreamInput) {
+  const runContext = getDecopilotRunContext(input);
   return {
     agentId: input.agent.id,
     temperature: input.temperature,
     toolApprovalLevel: input.toolApprovalLevel,
-    branch: input.branch ?? null,
+    branch: runContext?.branch ?? null,
   };
 }
 
@@ -251,7 +266,7 @@ function runDesktopEngine(
     connectionTitleMap: args.connectionsData.connectionTitleMap,
     agentInstructions: args.systemAgentInstructions,
     planPrompt: modeConfig.planPrompt,
-    codingWorkspace: input.codingWorkspace,
+    codingWorkspace: args.codingWorkspace,
     webSearchPrompt: modeConfig.webSearchInstructionPrompt,
   });
   // Append the per-request inline <system> blocks + enabled-tools tail the
@@ -350,6 +365,7 @@ function createDesktopToolRuntime(args: {
   openHttp?: OpenMcpSourceOptions["openHttp"];
 }): DecopilotToolRuntime {
   const { input, mcpSource, modelRuntime, sideChannel, cleanup } = args;
+  const runContext = requireDecopilotRunContext(input);
   const imageProvider =
     modelRuntime.image?.provider ?? modelRuntime.thinking.provider;
   // The agent the desktop tools + prompt scope to. The parent uses the run's
@@ -421,12 +437,12 @@ function createDesktopToolRuntime(args: {
         }
 
         // 4. LOCAL-OK built-in tools.
-        const objectStorage = await openObjectStorageSource(
-          streamInput.objectStorageSource,
-        );
-        const orgSlug = streamInput.organizationSlug ?? streamInput.projectSlug;
-        const baseUrl = streamInput.objectStorageSource
-          ? new URL(streamInput.objectStorageSource.baseUrl).origin
+        const objectStorageSource = runContext.objectStorageSource;
+        const objectStorage =
+          await openObjectStorageSource(objectStorageSource);
+        const orgSlug = streamInput.organizationSlug;
+        const baseUrl = objectStorageSource
+          ? new URL(objectStorageSource.baseUrl).origin
           : "";
         const toolCtx: DesktopToolCtx = {
           objectStorage,
@@ -438,7 +454,7 @@ function createDesktopToolRuntime(args: {
         // `@decocms/sandbox` provider) so buildLocalTools stays sandbox-free.
         const fs = getDesktopSandboxFsBuilder()({
           virtualMcpId: targetAgentId,
-          branch: streamInput.branch,
+          branch: runContext.branch ?? null,
           userId: streamInput.user.id,
         });
         // Backgroundable built-ins (generate_image, subtask): enqueue on the
@@ -569,17 +585,19 @@ export function buildDesktopEnvironmentTools(args: {
     };
     const subSideChannel = createSideChannelWriter();
     const subCleanup: { close?: () => Promise<void> } = {};
+    const parentRunContext = requireDecopilotRunContext(input);
     const targetInput: HarnessStreamInput = targetAgentId
       ? {
           ...input,
           agent: { id: targetAgentId },
-          virtualMcp: { ...input.virtualMcp, id: targetAgentId },
-          codingWorkspace: resolveDesktopSubtaskCodingWorkspace(
-            input,
-            targetAgentId,
-          ),
         }
       : input;
+    if (targetAgentId) {
+      setDecopilotRunContext(targetInput, {
+        ...parentRunContext,
+        virtualMcp: { ...parentRunContext.virtualMcp, id: targetAgentId },
+      });
+    }
     const targetToolRuntime = createDesktopToolRuntime({
       input: targetInput,
       mcpSource: targetMcpSource,

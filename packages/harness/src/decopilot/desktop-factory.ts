@@ -40,6 +40,7 @@ import {
   type ModelRuntime,
 } from "./run-core";
 import { buildDesktopEnvironmentTools } from "./desktop-runtime";
+import { requireDecopilotRunContext } from "./run-context";
 
 export const decopilotDesktopHarnessFactory: HarnessFactory = {
   id: "decopilot",
@@ -48,17 +49,18 @@ export const decopilotDesktopHarnessFactory: HarnessFactory = {
       id: "decopilot",
       async *stream(input: HarnessStreamInput): AsyncIterable<UIMessageChunk> {
         const { mcp } = input;
+        const runContext = requireDecopilotRunContext(input);
 
         // ── Model runtime: providers from the resolved secret sources. Never
         //    log a modelSource — each carries a provider API key. ───────────
         const modelRuntime: ModelRuntime = buildModelRuntimeFromSources(
-          { models: input.models, modelSources: input.modelSources },
+          { models: input.models, modelSources: runContext.modelSources },
           createProviderFromSecret,
         );
 
         // Diagnostics (provider id only, never the key). On the desktop this
         // runs inside the spawned daemon, so it surfaces in the link terminal.
-        const thinkingSource = input.modelSources?.thinking;
+        const thinkingSource = runContext.modelSources?.thinking;
         const providerId =
           thinkingSource?.kind === "secret" ? thinkingSource.providerId : "?";
         console.log(
