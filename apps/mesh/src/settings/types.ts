@@ -68,6 +68,11 @@ export interface Settings {
   aiGatewayEnabled: boolean;
   aiGatewayUrl: string;
 
+  // Registry catalog (the MCP store). URL of the first-party `registry.json`
+  // flat catalog (decocms/mcps). Unset → the store catalog is empty (the
+  // module ships dark until the cross-repo catalog is live).
+  registryCatalogUrl: string | undefined;
+
   // Feature Flags
   enableDecoImport: boolean;
   /** MCP read/list caching. On by default in production, off in development;

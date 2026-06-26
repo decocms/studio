@@ -2078,6 +2078,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   app.post("/api/:org/registry/publish-request", publishRequestHandler);
   app.all("/api/:org/registry/*", publicMCPHandler);
 
+  // Registry catalog (the MCP store) — global REST, not org-scoped. Mounted
+  // before the `/api/:org` sub-app so `registry` isn't read as an org slug.
+  // Ships dark until REGISTRY_CATALOG_URL is configured.
+  const { listCatalogItemsHandler, getCatalogItemHandler, getCatalog } =
+    await import("@/registry-catalog");
+  app.get("/api/registry/items", listCatalogItemsHandler);
+  app.get("/api/registry/items/:id", getCatalogItemHandler);
+  // Eager warm-up (no-op when unconfigured).
+  void getCatalog().warm();
+
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup
   // PR removes them after the deprecation window.
