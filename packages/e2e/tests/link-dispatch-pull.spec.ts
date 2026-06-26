@@ -220,7 +220,10 @@ test.describe("pull-transport round-trip", () => {
     let daemon: TunnelLinkDaemon | null = null;
 
     try {
-      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
+      daemon = await createTunnelLinkDaemon(api, user.userId, [
+        "body-offload",
+        "claude-code",
+      ]);
       const orgId = await orgIdForSlug(db, orgSlug);
       const { agentId, threadId } = await createPullThread(
         api,
