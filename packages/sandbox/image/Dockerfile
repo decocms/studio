@@ -9,7 +9,7 @@ ARG DENO_VERSION=v1.46.3
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        bash ca-certificates curl git gnupg locales python3 python3-pip \
-       ripgrep unzip \
+       ripgrep unzip zstd \
   && sed -i 's/^#\s*en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
   && locale-gen \
   && curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \

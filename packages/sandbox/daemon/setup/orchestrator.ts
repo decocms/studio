@@ -27,7 +27,7 @@ import type { Application, Config } from "../types";
 import { autodetectApplication } from "./autodetect";
 import { spawnClone } from "./clone";
 import { configureGitIdentity } from "./identity";
-import { spawnInstall } from "./install";
+import { spawnInstall, tryWarmDenoCache } from "./install";
 import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
@@ -323,6 +323,17 @@ export class SetupOrchestrator {
     // present yet). Treat as success so the caller proceeds to start; mark
     // the install fingerprint so resume doesn't retry on every boot.
     if (!installPromise) {
+      // For deno, opportunistically pre-populate the cache from S3.
+      // Non-fatal: failure just means a cold first run.
+      const cachePromise = tryWarmDenoCache({
+        config,
+        env: config.env,
+        onChunk: (_src, data) => {
+          this.rawChunk(data);
+          installTee.write(data);
+        },
+      });
+      if (cachePromise) await cachePromise;
       installTee.close();
       this.markInstallSucceeded(config);
       return true;

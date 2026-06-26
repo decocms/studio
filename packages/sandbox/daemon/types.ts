@@ -36,6 +36,10 @@ export interface GitRepository {
   readonly cloneUrl: string;
   readonly branch?: string;
   readonly repoName?: string;
+  /** GitHub org or user that owns the repo (e.g. "deco-sites"). */
+  readonly owner?: string;
+  /** Repository name without owner (e.g. "my-site"). */
+  readonly name?: string;
 }
 
 export interface GitConfig {

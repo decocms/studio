@@ -297,6 +297,8 @@ async function provisionSandbox(
         userEmail: string;
         branch: string;
         displayName: string;
+        owner?: string;
+        name?: string;
       }
     | undefined;
 
@@ -376,6 +378,8 @@ async function provisionSandbox(
       userEmail: gitUserEmail,
       branch,
       displayName: `${githubRepo.owner}/${githubRepo.name}`,
+      owner: githubRepo.owner,
+      name: githubRepo.name,
     };
   }
 
