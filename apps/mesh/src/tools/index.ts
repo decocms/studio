@@ -218,20 +218,12 @@ export type CoreTools = typeof CORE_TOOLS;
 
 /**
  * Static name→tool map over the (static) tool set, built once at module load.
- * The widening to `CombinedTool` lives here — the single boundary that needs it.
+ * Shared by the REST dispatch/list endpoints and the MCP server. The widening to
+ * `CombinedTool` lives here — the single boundary that needs it.
  */
-const TOOL_BY_NAME: Map<string, CombinedTool> = new Map(
+export const TOOL_BY_NAME: Map<string, CombinedTool> = new Map(
   (CORE_TOOLS as unknown as CombinedTool[]).map((tool) => [tool.name, tool]),
 );
-
-/**
- * Tools visible to an org as a name→tool map. The set is static, so this is just
- * the full registry — kept async + exported so the REST dispatch/list endpoints
- * and the MCP server share one accessor.
- */
-export function getFilteredTools(): Promise<Map<string, CombinedTool>> {
-  return Promise.resolve(TOOL_BY_NAME);
-}
 
 export const managementMCP = async (ctx: StudioContext) => {
   // Create MCP server directly
