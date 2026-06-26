@@ -54,6 +54,9 @@ spec:
         # undefined. Warm-pool pods end up without the role label;
         # dashboards filter by absence-of-handle instead.
     spec:
+      {{- if .Values.serviceAccountName }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      {{- end }}
       automountServiceAccountToken: false
       {{- with .Values.nodeSelector }}
       nodeSelector:

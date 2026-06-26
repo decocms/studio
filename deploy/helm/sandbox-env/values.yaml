@@ -245,6 +245,14 @@ decoCache:
   bucket: ""
   endpoint: ""
 
+# ── Pod Identity service account ────────────────────────────────────────
+# Name of the Kubernetes ServiceAccount to assign to sandbox pods.
+# Used with EKS Pod Identity to grant pods IAM permissions (e.g. S3 access
+# for deco cache) without static credentials. The SA must exist in
+# agent-sandbox-system and have a Pod Identity Association configured.
+# Leave empty to run pods without a named service account.
+serviceAccountName: ""
+
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
   # Optional: supply an explicit token so CI can pass the same value to
