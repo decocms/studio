@@ -599,6 +599,66 @@ async function resolveAndCacheRole(
   return role;
 }
 
+/**
+ * Resolve the on-behalf-of user for a self/loopback call.
+ *
+ * When mesh calls its own management server (the `<org>_self` connection — e.g.
+ * a Studio Pack agent invoking COLLECTION_VIRTUAL_MCP_CREATE), the outbound
+ * request authenticates with that connection's API key (owned by the org
+ * creator) but ALSO forwards the REAL acting user in an `x-mesh-token` JWT (see
+ * `buildRequestHeaders`). Without honoring it, every write routed through a
+ * Studio Pack agent is attributed to the org creator instead of the user who
+ * actually acted (wrong `created_by`/`updated_by`).
+ *
+ * `x-mesh-token` is only ever set by mesh's own outbound header builder, so an
+ * inbound API-key request carrying one is always a self/loopback call. We use
+ * the forwarded user for IDENTITY/attribution; the API key's permissions remain
+ * the authorizing capability (the caller keeps `permissions`/`apiKeyId`).
+ */
+async function resolveOnBehalfOfUser(
+  req: Request,
+  db: Kysely<Database>,
+  timings: NonNullable<FactoryOptions["timings"]>,
+  apiKeyOrgId: string | undefined,
+  memberRoleCache?: MemberRoleCache,
+): Promise<AuthenticatedUser | undefined> {
+  const meshToken = req.headers.get("x-mesh-token");
+  if (!meshToken) return undefined;
+
+  const payload = await timings.measure("auth_verify_onbehalf_mesh_jwt", () =>
+    verifyMeshToken(meshToken),
+  );
+  if (!payload?.sub) return undefined;
+
+  // Defensive: only honor a forwarded user scoped to the SAME org the API key
+  // authorizes. A cross-org token (never expected for self calls) is ignored.
+  const tokenOrgId = payload.metadata?.organizationId;
+  if (apiKeyOrgId && tokenOrgId && tokenOrgId !== apiKeyOrgId) {
+    return undefined;
+  }
+
+  // Re-resolve the actor's role for the org (authoritative + cached) rather
+  // than trusting the JWT's snapshot. Authorization is unaffected either way —
+  // it's decided by the API key's stored permissions, not this role — so an
+  // undefined role (e.g. non-member) is harmless.
+  const role = apiKeyOrgId
+    ? await resolveAndCacheRole(
+        db,
+        timings,
+        payload.sub,
+        apiKeyOrgId,
+        memberRoleCache,
+      )
+    : (payload.user?.role ?? undefined);
+
+  return {
+    id: payload.sub,
+    email: payload.user?.email,
+    name: payload.user?.name,
+    role,
+  };
+}
+
 async function authenticateRequest(
   req: Request,
   auth: BetterAuthInstance,
@@ -845,10 +905,24 @@ async function authenticateRequest(
           );
         }
 
+        // On-behalf-of: a self/loopback call authenticates with the
+        // connection's API key but forwards the real acting user in
+        // `x-mesh-token`. Credit that user (attribution) while keeping the API
+        // key's permissions as the authorizing capability.
+        const onBehalfOf = await resolveOnBehalfOfUser(
+          req,
+          db,
+          timings,
+          orgMetadata?.id,
+          memberRoleCache,
+        );
+
         return {
           apiKeyId: result.key.id,
-          user: { id: result.key.userId, role }, // Include userId and role from membership
-          role,
+          // On-behalf-of fully replaces the principal (id + role) so user/role
+          // stay consistent; the actor never inherits the key owner's role.
+          user: onBehalfOf ?? { id: result.key.userId, role },
+          role: onBehalfOf ? onBehalfOf.role : role,
           permissions, // Store the API key's permissions
           organization: orgMetadata
             ? {
