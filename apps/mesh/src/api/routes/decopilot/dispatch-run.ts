@@ -29,12 +29,7 @@ import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
 import type { UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
-import {
-  offloadKey,
-  sha256Hex,
-  shouldOffload,
-  type MessagesRef,
-} from "@decocms/harness/offload-messages";
+import type { MessagesRef } from "@decocms/harness/offload-messages";
 import {
   findStudioPackAgentByMcpId,
   resolveStudioPackRuntime,
@@ -63,8 +58,12 @@ import type {
   ModelsConfig,
 } from "@/harnesses";
 import { createSecretModelSource } from "@/harnesses";
+import type {
+  DecopilotHttpMcpSource,
+  DecopilotObjectStorageSource,
+  HarnessWorkspace,
+} from "@decocms/harness/types";
 import { WORKSPACE_CWD_REPO } from "@decocms/harness/workspace-cwd";
-import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
 import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
 import {
   classifyStreamError,
@@ -105,7 +104,7 @@ import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
-import { computeCliDelta, resolveCliSessionRef } from "./cli-session-messages";
+import { resolveCliSessionRef } from "./cli-session-messages";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
 import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
@@ -304,26 +303,10 @@ export function resolveHarnessId(providerId: string | undefined): HarnessId {
   return "decopilot";
 }
 
-/** Symbolic cwd: "/repo" for repo-backed sandbox dispatch (the daemon rebases
- *  onto its sandbox root); null otherwise (harness uses its SDK default). */
-function resolveWorkspaceCwd(
-  virtualMcp: { metadata?: unknown } | null,
-  sandboxProviderKind: DispatchTarget["sandboxProviderKind"],
-): { cwd: "/repo" | null } {
-  const hasRepo = !!(
-    virtualMcp?.metadata as { githubRepo?: unknown } | undefined
-  )?.githubRepo;
-  if (sandboxProviderKind === "user-desktop" && hasRepo) {
-    return { cwd: WORKSPACE_CWD_REPO };
-  }
-  return { cwd: null };
-}
-
-export function buildCodingWorkspaceInput(input: {
+export function buildHarnessWorkspaceInput(input: {
   virtualMcp: { metadata?: unknown } | null;
   branch?: string | null;
-  workspace: { cwd: string | null };
-}): CodingWorkspacePromptInput {
+}): HarnessWorkspace {
   const githubRepo = (
     input.virtualMcp?.metadata as { githubRepo?: unknown } | undefined
   )?.githubRepo;
@@ -340,11 +323,12 @@ export function buildCodingWorkspaceInput(input: {
         }
       : undefined;
 
+  if (!repo) return { cwd: null };
+
   return {
-    ...(repo ? { repo } : {}),
+    cwd: WORKSPACE_CWD_REPO,
+    repo,
     branch: input.branch ?? null,
-    cwd: input.workspace.cwd,
-    workspaceKind: repo ? "github" : "unknown",
   };
 }
 
@@ -629,7 +613,7 @@ export async function dispatchRunAndWait(
  * `signal` field. This is exactly what the desktop daemon validates against
  * `harnessStreamInputSchema` and what the link work item carries.
  *
- * Built eagerly in `prepareRun`'s main body (mcp mint + message
+ * Built eagerly in `prepareRun`'s main body (mcp mint + userMessage
  * materialization + field assembly) so it's available without consuming
  * `uiStream`. The hosted dispatch path layers the signal on top inside the
  * lazy harness chunk source:
@@ -651,7 +635,7 @@ interface PreparedRun {
   /** Minted by prepareRun for link-dispatched threads. */
   runFenceToken: string;
   /**
-   * Fully-assembled wire harness input (mcp minted, messages materialized,
+   * Fully-assembled wire harness input (mcp minted, userMessage materialized,
    * fence token attached). `dispatchRunAndWait` ignores this (it consumes
    * `uiStream`); `prepareLinkWorkDispatch` returns it so the gate can publish
    * it as the link work item's `harnessInput`.
@@ -1186,7 +1170,7 @@ async function prepareRun(
 
     // ── Build the wire HarnessStreamInput EAGERLY ───────────────────────────
     // Everything the daemon's `harnessStreamInputSchema` needs (mcp endpoint,
-    // materialized messages, virtualMcp, fence token, …) is assembled here,
+    // materialized userMessage, workspace, fence token, …) is assembled here,
     // before the lazy harness chunk source runs. Two consumers read it:
     //   - hosted dispatch (`dispatchHarnessChunks` below) layers the
     //     non-serializable `signal` on top:
@@ -1194,38 +1178,21 @@ async function prepareRun(
     //   - `prepareLinkWorkDispatch` returns it verbatim so the thread gate can
     //     publish it as the link work item's `harnessInput`.
 
-    // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
-    // Also handles legacy data: URLs from threads predating this pipeline.
-    // `processConversation` (which depends on the harness-owned tool set for
-    // `toModelOutput` handlers) runs inside the decopilot harness itself; we
-    // forward materialized UIMessages so each harness decides how to convert
-    // them.
-    // CLI harnesses (codex, claude-code) resume an on-disk session and only
-    // need the new user message(s); decopilot — and any CLI harness not on
-    // user-desktop — still gets the full transcript (see `cliResumable`).
-    const messagesForHarness = cliResumable
-      ? computeCliDelta(allMessages, harnessId)
-      : allMessages;
+    // Resolve mesh-storage: URIs to fresh presigned URLs for the current user
+    // message only. The v3 harness contract carries one wire-ready userMessage;
+    // long-lived CLI context is represented separately by harness.sessionId.
+    const wireUserMessage = materializedRequestMessage
+      ? (await resolveStorageRefs([materializedRequestMessage], ctx))[0]
+      : undefined;
 
-    // A resumable CLI turn must carry at least the new user message(s). An empty
-    // delta means a resumed turn whose history tail is already a completed
-    // assistant anchor — there is no new user input to forward. Sending zero
-    // messages would drive an empty CLI turn (or a downstream "empty prompt"
-    // crash the stale-session guard would not catch), so surface a defined
-    // permanent error instead of silently degrading.
-    if (cliResumable && messagesForHarness.length === 0) {
+    if (!wireUserMessage) {
       throw new PermanentRunError(
         "empty_request",
-        "No new user message to send to the CLI harness (resumed turn with empty delta).",
+        "No user message found in input — expected at least one non-system message",
       );
     }
 
-    const materializedMessages = await resolveStorageRefs(
-      messagesForHarness,
-      ctx,
-    );
-
-    ensureModelCompatibility(input.models, materializedMessages);
+    ensureModelCompatibility(input.models, [wireUserMessage]);
 
     // Build the MCP endpoint for CLI harnesses. Hosted decopilot uses an
     // in-process passthrough client (no HTTP MCP connection needed), so we
@@ -1260,7 +1227,7 @@ async function prepareRun(
     // Never log `modelSources` (any slot) or `mcp.headers` values.
 
     const mcp: HarnessStreamInput["mcp"] = mcpBase;
-    const mcpSource: HarnessStreamInput["mcpSource"] =
+    const mcpSource: DecopilotHttpMcpSource | undefined =
       mcp.expiresAt > 0
         ? {
             kind: "http",
@@ -1269,7 +1236,7 @@ async function prepareRun(
             expiresAt: mcp.expiresAt,
           }
         : undefined;
-    const objectStorageSource: HarnessStreamInput["objectStorageSource"] =
+    const objectStorageSource: DecopilotObjectStorageSource | undefined =
       target.sandboxProviderKind === "user-desktop" && organization.slug
         ? {
             kind: "http",
@@ -1278,49 +1245,49 @@ async function prepareRun(
             expiresAt: mcp.expiresAt,
           }
         : undefined;
-    const workspace = resolveWorkspaceCwd(
-      effectiveVirtualMcp,
-      target.sandboxProviderKind,
-    );
-    const codingWorkspace = buildCodingWorkspaceInput({
+    const workspace = buildHarnessWorkspaceInput({
       virtualMcp: effectiveVirtualMcp,
       branch: input.branch,
-      workspace,
     });
+    const agentInstructions =
+      typeof (effectiveVirtualMcp.metadata as { instructions?: unknown })
+        ?.instructions === "string"
+        ? (effectiveVirtualMcp.metadata as { instructions: string })
+            .instructions
+        : undefined;
+    const decopilotRunContext = {
+      taskId: input.taskId,
+      isSubagent: input.isSubagent,
+      subtaskJobId: input.subtaskJobId,
+      resumedFromBackground: input.resumedFromBackground,
+      virtualMcp: effectiveVirtualMcp,
+      modelSources,
+      mcpSource,
+      objectStorageSource,
+      userContext,
+    };
+    void decopilotRunContext;
 
     const wireHarnessInput: WireHarnessInput = {
       harnessId,
       threadId: mem.thread.id,
-      runId: mem.thread.id, // RunRegistry keys runs by taskId today
-      resumeSessionRef,
-      messages: materializedMessages,
+      userMessage: wireUserMessage,
+      harness: { sessionId: resumeSessionRef },
       workspace,
-      codingWorkspace,
       models,
-      modelSources,
-      mcpSource,
-      objectStorageSource,
       mcp,
       mode: input.mode,
       temperature: input.temperature,
       toolApprovalLevel: input.toolApprovalLevel,
       toolAllowlist: input.toolAllowlist ?? null,
       maxAgentSteps: input.maxAgentSteps,
-      isSubagent: input.isSubagent,
-      subtaskJobId: input.subtaskJobId,
-      resumedFromBackground: input.resumedFromBackground,
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
       organizationSlug: organization.slug,
-      projectSlug: organization.slug,
-      virtualMcp: effectiveVirtualMcp,
-      agent: { id: input.agent.id },
-      branch: input.branch,
-      taskId: input.taskId,
+      agent: { id: input.agent.id, instructions: agentInstructions },
       triggerId: input.triggerId,
       currentThreadTitle: mem.thread.title,
       runFenceToken,
-      userContext,
     };
 
     // ── LAZY harness dispatch ───────────────────────────────────────────────
@@ -1354,7 +1321,7 @@ async function prepareRun(
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
         // Layer the non-serializable `signal` onto the eagerly-built wire
-        // input. Everything else (mcp, materialized messages, fence token, …)
+        // input. Everything else (mcp, materialized userMessage, fence token, …)
         // was assembled above and is shared verbatim with the desktop work item.
         const harnessInput: HarnessStreamInput = {
           ...wireHarnessInput,
@@ -1783,8 +1750,8 @@ async function resolveLinkSandboxConfig(
  * fires FINISH.
  *
  * The work item's `harnessInput` is the complete `wireHarnessInput` that
- * prepareRun builds eagerly (mcp endpoint minted, messages materialized,
- * virtualMcp + fence token attached), exactly the shape the daemon validates
+ * prepareRun builds eagerly (mcp endpoint minted, userMessage materialized,
+ * workspace + fence token attached), exactly the shape the daemon validates
  * against `harnessStreamInputSchema`. The non-serializable `signal` member is
  * intentionally absent; it only exists for the hosted dispatch path.
  *
@@ -1815,69 +1782,8 @@ export async function prepareLinkWorkDispatch(
         _rootSpan,
       );
 
-      // ── Message offload ─────────────────────────────────────────────────
-      // The work item is published through the tunnel as a NATS request; NATS
-      // rejects payloads exceeding MAX_PUBLISH_BYTES. The conversation
-      // `messages` array is the dominant large part — when the encoded
-      // harnessInput exceeds the budget, offload it to object storage (via the
-      // shared `offload-messages` helpers), then carry the ref on the work item
-      // so the daemon can forward it to the sandbox daemon's /_sandbox/dispatch
-      // (which re-inflates from messagesRef).
-      let effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
-      let messagesRef: MessagesRef | null = null;
-      // `messages` dominates the payload — serialize it once and reuse the same
-      // bytes for both the offload size-gate and the object-storage body,
-      // instead of stringifying the whole input and then the messages array
-      // again on the offload path.
-      const messagesBytes = new TextEncoder().encode(
-        JSON.stringify(wireHarnessInput.messages),
-      );
-      const inputByteLength =
-        messagesBytes.byteLength +
-        Buffer.byteLength(
-          JSON.stringify({ ...wireHarnessInput, messages: undefined }),
-          "utf8",
-        );
-      if (shouldOffload(inputByteLength)) {
-        if (ctx.objectStorage) {
-          try {
-            const reqId = crypto.randomUUID();
-            const key = offloadKey(reqId);
-            await ctx.objectStorage.put(key, messagesBytes, {
-              contentType: "application/json",
-            });
-            const url = await ctx.objectStorage.presignedGetUrl(key, 600, {
-              requireFetchable: true,
-            });
-            messagesRef = {
-              url,
-              bytes: messagesBytes.byteLength,
-              sha256: await sha256Hex(messagesBytes),
-            };
-            // Replace messages inline with [] — the real messages live at the ref.
-            effectiveHarnessInput = { ...wireHarnessInput, messages: [] };
-            console.log(
-              `[prepareLinkWorkDispatch] offloaded messages to object storage key=${key} bytes=${messagesBytes.byteLength} runId=${taskId}`,
-            );
-          } catch (err) {
-            // Offload failed — fall through with the full payload and let
-            // NATS reject it with MAX_PAYLOAD_EXCEEDED rather than silently
-            // dropping the ref. The publish will throw and the gate will
-            // surface the error.
-            console.error(
-              `[prepareLinkWorkDispatch] message offload failed, work item may exceed NATS limit runId=${taskId}:`,
-              err instanceof Error ? err.message : String(err),
-            );
-          }
-        } else {
-          // No object storage — fall through with the full payload. Same
-          // "fail loudly at publish time" approach: better a clear NATS
-          // MAX_PAYLOAD_EXCEEDED than a silent truncation.
-          console.warn(
-            `[prepareLinkWorkDispatch] harnessInput exceeds NATS limit but no object storage configured — work item may be rejected runId=${taskId}`,
-          );
-        }
-      }
+      const effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
+      const messagesRef: MessagesRef | null = null;
 
       // Resolve the sandbox handle for the desktop work item.
       // Pure derivation — no ensure round-trip. The daemon self-ensures
