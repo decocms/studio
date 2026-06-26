@@ -48,6 +48,7 @@ import type {
 import { runAgentLoop } from "./run-agent-loop";
 import type { DecopilotTelemetry } from "@decocms/harness/decopilot/run-stream";
 import { createBackgroundToolDispatcher } from "./background-tool-workflow";
+import { requireDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
 
 /**
  * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled
@@ -130,6 +131,7 @@ export function buildClusterEnvironmentTools(args: {
 
   const toolRuntime: DecopilotToolRuntime = {
     buildEnvironmentTools: async ({ input: streamInput, onChildUsage }) => {
+      const runContext = requireDecopilotRunContext(streamInput);
       const toolOutputMap = new Map<string, string>();
       const pendingImages: PendingImage[] = [];
       const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(ctx);
@@ -152,7 +154,7 @@ export function buildClusterEnvironmentTools(args: {
           // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
           // the transport type widens the field to a loose bag so the
           // daemon can ship without the cluster's storage types.
-          const vm = streamInput.virtualMcp as VirtualMCPEntity;
+          const vm = runContext.virtualMcp as VirtualMCPEntity;
           // Surface the dev sandbox's tools when the user has a running sandbox
           // for this agent. Cheap local pre-filter ("does the user have a
           // sandbox entry?"), no repo/pairing flag — agents without a sandbox
@@ -200,7 +202,7 @@ export function buildClusterEnvironmentTools(args: {
           agentId: streamInput.agent.id,
           temperature: streamInput.temperature,
           toolApprovalLevel: streamInput.toolApprovalLevel,
-          branch: streamInput.branch ?? null,
+          branch: runContext.branch ?? null,
         }),
         htmlArtifactBuffer,
         // Roll subtask child usage into the parent run's accumulator

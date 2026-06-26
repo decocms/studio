@@ -4,13 +4,34 @@ import {
   buildDesktopToolKeysViaExistingAdapter,
   buildDesktopToolKeysViaUnifiedFactory,
 } from "./desktop-parity.fixtures";
+import { setDecopilotRunContext } from "./run-context";
 
 const input = {
   threadId: "t1",
-  runId: "r1",
-  messages: [],
-  workspace: { cwd: "default" },
+  userMessage: {
+    id: "m1",
+    role: "user",
+    parts: [{ type: "text", text: "hi" }],
+  },
+  harness: {},
+  workspace: { cwd: null },
   models: { thinking: { id: "gpt-4.1", title: "GPT", credentialId: "c1" } },
+  mcp: {
+    url: "https://studio.example/mcp/agent-1",
+    headers: {},
+    expiresAt: 9999999999000,
+  },
+  mode: "default",
+  temperature: 0.5,
+  toolApprovalLevel: "auto",
+  user: { id: "u1", email: "u@e.com" },
+  organizationId: "org-1",
+  agent: { id: "agent-1" },
+  signal: new AbortController().signal,
+} satisfies HarnessStreamInput;
+
+setDecopilotRunContext(input, {
+  virtualMcp: { id: "agent-1", metadata: {} },
   modelSources: {
     thinking: {
       kind: "secret",
@@ -25,20 +46,7 @@ const input = {
     headers: { Authorization: "Bearer x" },
     expiresAt: 9999999999000,
   },
-  mcp: {
-    url: "https://studio.example/mcp/agent-1",
-    headers: {},
-    expiresAt: 9999999999000,
-  },
-  mode: "default",
-  temperature: 0.5,
-  toolApprovalLevel: "auto",
-  user: { id: "u1", email: "u@e.com" },
-  organizationId: "org-1",
-  virtualMcp: { id: "agent-1", metadata: {} },
-  agent: { id: "agent-1" },
-  signal: new AbortController().signal,
-} satisfies HarnessStreamInput;
+});
 
 // The sorted desktop tool-key baseline captured at the unification cutover.
 // The desktop fork is deleted, so this is now a REGRESSION LOCK: any drift in
