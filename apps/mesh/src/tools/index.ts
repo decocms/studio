@@ -5,7 +5,6 @@
  * Types are inferred from CORE_TOOLS — this is the source of truth.
  */
 
-import type { ToolAnnotations } from "@/core/define-tool";
 import { StudioContext } from "@/core/studio-context";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -28,7 +27,10 @@ import * as SecretsTools from "./secrets";
 import * as FileConfigTools from "./file-configs";
 import { ORG_FS_PUBLIC_SETS_SYNC } from "./org-fs/sync-public-sets";
 import { getPrompts, getResources } from "./guides";
-import { getToolRegistration } from "./management-registration";
+import {
+  getToolRegistration,
+  type RegistrableTool,
+} from "./management-registration";
 export { managementContextStore } from "./management-registration";
 import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
@@ -190,26 +192,8 @@ export const CORE_TOOLS = [
 ] as const satisfies { name: ToolName }[];
 
 /**
- * Widened runtime view of a tool. `CORE_TOOLS` is the single source of truth and
- * keeps each tool's precise Zod types (see `./io-types`), but the name→tool map
- * and the MCP/REST dispatch iterate one uniform type and call
- * `execute(unknown, ctx)` generically — which the concrete per-tool tuple types
- * (a union of functions with incompatible parameters) can't express.
- */
-export interface CombinedTool {
-  name: string;
-  description: string;
-  inputSchema: unknown;
-  outputSchema: unknown;
-  annotations?: ToolAnnotations;
-  _meta?: Record<string, unknown>;
-  modelSummary?: (result: unknown) => string;
-  execute: (input: unknown, ctx: StudioContext) => Promise<unknown>;
-}
-
-/**
  * Tuple type of the core tools, preserving each tool's concrete Zod
- * input/output schema types (unlike the widened `CombinedTool`). Type-only
+ * input/output schema types (unlike the widened `RegistrableTool`). Type-only
  * consumers derive per-tool input/output types from this — see `./io-types`.
  * Import as `import type` only; importing as a value would pull the entire
  * server tool graph into a bundle.
@@ -218,11 +202,15 @@ export type CoreTools = typeof CORE_TOOLS;
 
 /**
  * Static name→tool map over the (static) tool set, built once at module load.
- * Shared by the REST dispatch/list endpoints and the MCP server. The widening to
- * `CombinedTool` lives here — the single boundary that needs it.
+ * Shared by the REST dispatch/list endpoints and the MCP server.
+ *
+ * Values are widened to `RegistrableTool` (a uniform shape with
+ * `execute(unknown, ctx)`) — the concrete per-tool tuple types form a union of
+ * functions with incompatible parameters that can't be called generically. This
+ * map is the single boundary where that widening happens.
  */
-export const TOOL_BY_NAME: Map<string, CombinedTool> = new Map(
-  (CORE_TOOLS as unknown as CombinedTool[]).map((tool) => [tool.name, tool]),
+export const TOOL_BY_NAME: Map<string, RegistrableTool> = new Map(
+  (CORE_TOOLS as unknown as RegistrableTool[]).map((tool) => [tool.name, tool]),
 );
 
 export const managementMCP = async (ctx: StudioContext) => {
