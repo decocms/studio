@@ -310,6 +310,7 @@ export function resolveHarnessId(providerId: string | undefined): HarnessId {
 export function buildHarnessWorkspaceInput(input: {
   virtualMcp: { metadata?: unknown } | null;
   branch?: string | null;
+  cwd?: "/repo" | null;
 }): HarnessWorkspace {
   const githubRepo = (
     input.virtualMcp?.metadata as { githubRepo?: unknown } | undefined
@@ -328,6 +329,7 @@ export function buildHarnessWorkspaceInput(input: {
       : undefined;
 
   if (!repo) return { cwd: null };
+  if (input.cwd !== WORKSPACE_CWD_REPO) return { cwd: null };
 
   return {
     cwd: WORKSPACE_CWD_REPO,
@@ -1250,6 +1252,10 @@ async function prepareRun(
     const workspace = buildHarnessWorkspaceInput({
       virtualMcp: effectiveVirtualMcp,
       branch: input.branch,
+      cwd:
+        target.sandboxProviderKind === "user-desktop"
+          ? WORKSPACE_CWD_REPO
+          : null,
     });
     const agentInstructions =
       typeof (effectiveVirtualMcp.metadata as { instructions?: unknown })
@@ -1867,8 +1873,9 @@ export async function prepareLinkWorkDispatch(
           .executeTakeFirst();
         orgSlug = orgRow?.slug ?? null;
       }
-      if (!orgSlug) {
-        throw new Error(
+      const resolvedOrgSlug = orgSlug;
+      if (!resolvedOrgSlug) {
+        return await failPreparedRun(
           `prepareLinkWorkDispatch: could not resolve org slug for organization ${input.organizationId}`,
         );
       }
@@ -1879,7 +1886,7 @@ export async function prepareLinkWorkDispatch(
         harnessInput: effectiveHarnessInput,
         messagesRef,
         sandboxConfig,
-        orgSlug,
+        orgSlug: resolvedOrgSlug,
       };
     },
     dispatchRunSpanAttrs(input),
