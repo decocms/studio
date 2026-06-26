@@ -7,17 +7,12 @@ import { spawnSetupStep } from "./spawn-step";
 
 /**
  * Derives the S3 cache object key for repos under the `deco-sites` GitHub
- * org. Returns null for any other owner or when the fields are absent.
+ * org. Returns null for any other owner or when required fields are absent.
  */
 function resolveDecoCachePath(config: Config): string | null {
   const { githubOwner, repoName } = config.git?.repository ?? {};
-  if (!githubOwner || githubOwner !== "deco-sites") return null;
-  // repoName is "owner/repo" from displayName; strip the owner prefix.
-  const repo = repoName?.startsWith(`${githubOwner}/`)
-    ? repoName.slice(githubOwner.length + 1)
-    : repoName;
-  if (!repo) return null;
-  return `${owner}/${repo}/cache.tar.zst`;
+  if (!githubOwner || githubOwner !== "deco-sites" || !repoName) return null;
+  return `${repoName}/cache.tar.zst`;
 }
 
 /**
