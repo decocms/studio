@@ -3,7 +3,9 @@ import {
   buildNatsConnectOptions,
   connectNats,
   connectToClusterTunnel,
+  createNatsAuthenticator,
   createTunnelCommandFetch,
+  createTunnelSessionSource,
   fetchLinkSession,
   isRetriableSessionError,
   LinkSessionRequestError,
@@ -300,6 +302,120 @@ describe("connectNats", () => {
     });
 
     expect(calls).toEqual(["tcp"]);
+  });
+});
+
+describe("createNatsAuthenticator (dynamic)", () => {
+  const sessionWithToken = (token: string): LinkSessionResponse => ({
+    connection: { urls: ["nats://127.0.0.1:4222"], token },
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    tunnelHostname: "user-test.link",
+  });
+  const sessionWithCreds: LinkSessionResponse = {
+    connection: { urls: ["nats://127.0.0.1:4222"], credentials: "creds-blob" },
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    tunnelHostname: "user-test.link",
+  };
+
+  it("returns undefined when the session has neither creds nor token", () => {
+    expect(createNatsAuthenticator(() => sessionWithoutAuth)).toBeUndefined();
+  });
+
+  it("builds a creds authenticator function when credentials are present", () => {
+    expect(typeof createNatsAuthenticator(() => sessionWithCreds)).toBe(
+      "function",
+    );
+  });
+
+  it("re-reads the latest session on EVERY call (token reflects re-mint)", () => {
+    let current = sessionWithToken("T1");
+    const auth = createNatsAuthenticator(() => current);
+    expect((auth as (nonce?: string) => { auth_token?: string })?.()).toEqual({
+      auth_token: "T1",
+    });
+    // Simulate a background re-mint swapping the held session.
+    current = sessionWithToken("T2");
+    expect((auth as (nonce?: string) => { auth_token?: string })?.()).toEqual({
+      auth_token: "T2",
+    });
+  });
+});
+
+describe("createTunnelSessionSource", () => {
+  const sessionExpiringAt = (
+    expiresAtMs: number,
+    creds: string,
+  ): LinkSessionResponse => ({
+    connection: { urls: ["nats://127.0.0.1:4222"], credentials: creds },
+    expiresAt: new Date(expiresAtMs).toISOString(),
+    tunnelHostname: "user-test.link",
+  });
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("dedupes concurrent refreshes (single-flight) and swaps current()", async () => {
+    let calls = 0;
+    const next = sessionExpiringAt(200_000, "creds-2");
+    const source = createTunnelSessionSource({
+      initial: sessionExpiringAt(100_000, "creds-1"),
+      fetchSession: async () => {
+        calls += 1;
+        return next;
+      },
+      now: () => 0,
+    });
+
+    expect(source.current().connection.credentials).toBe("creds-1");
+    await Promise.all([source.refresh(), source.refresh(), source.refresh()]);
+    expect(calls).toBe(1);
+    expect(source.current().connection.credentials).toBe("creds-2");
+  });
+
+  it("getForAuth re-mints only within the refresh margin", async () => {
+    let calls = 0;
+    let nowMs = 0;
+    const expiresAtMs = 100_000;
+    const source = createTunnelSessionSource({
+      initial: sessionExpiringAt(expiresAtMs, "c1"),
+      fetchSession: async () => {
+        calls += 1;
+        return sessionExpiringAt(expiresAtMs + 100_000, "c2");
+      },
+      now: () => nowMs,
+      refreshMarginMs: 30_000,
+    });
+
+    // Far from expiry → no re-mint.
+    nowMs = 0;
+    source.getForAuth();
+    await flush();
+    expect(calls).toBe(0);
+
+    // Inside the 30s margin → kicks a re-mint (fire-and-forget).
+    nowMs = expiresAtMs - 10_000;
+    source.getForAuth();
+    await flush();
+    expect(calls).toBe(1);
+  });
+
+  it("getForAuth returns the current creds even when the re-mint fails, and a later call retries", async () => {
+    let calls = 0;
+    const source = createTunnelSessionSource({
+      initial: sessionExpiringAt(100_000, "c1"),
+      fetchSession: async () => {
+        calls += 1;
+        throw new Error("mint failed");
+      },
+      now: () => 200_000, // past expiry → always stale
+    });
+
+    const first = source.getForAuth();
+    expect(first.connection.credentials).toBe("c1");
+    await flush();
+    expect(calls).toBe(1);
+    // inFlight cleared on failure → a later call retries rather than wedging.
+    expect(() => source.getForAuth()).not.toThrow();
+    await flush();
+    expect(calls).toBe(2);
   });
 });
 

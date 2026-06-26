@@ -1,7 +1,9 @@
+import { ArrowRight, File02 } from "@untitledui/icons";
+import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
-import { buildBlogBlock, getBlogPayload } from "./blog-data";
+import { buildBlogBlock, getBlogPayload, listPostsWithMeta } from "./blog-data";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -20,14 +22,18 @@ export function CategoryEditor({
   branch,
   blockKey,
   block,
+  decofile,
   meta,
+  onManagePosts,
 }: {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
   blockKey: string;
   block: Record<string, unknown> | undefined;
+  decofile: Record<string, unknown>;
   meta: LiveMeta;
+  onManagePosts: (slug: string) => void;
 }) {
   const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
@@ -41,6 +47,12 @@ export function CategoryEditor({
 
   const setField = (key: string, value: unknown) =>
     setCategory({ ...category, [key]: value });
+
+  const slug = str(category.slug);
+  const postCount = slug
+    ? listPostsWithMeta(decofile).filter((p) => p.categorySlugs.includes(slug))
+        .length
+    : 0;
 
   return (
     <BlogSandboxProvider
@@ -85,6 +97,31 @@ export function CategoryEditor({
                 placeholder="Short description for this category"
                 className="h-10"
               />
+            </div>
+
+            <div className="mt-6 flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <File02 size={16} className="shrink-0 text-muted-foreground" />
+                <span className="text-sm">
+                  {postCount} {postCount === 1 ? "post" : "posts"} in this
+                  category
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!slug}
+                title={
+                  slug
+                    ? "Jump to the posts list filtered by this category"
+                    : "Set a slug to manage this category's posts"
+                }
+                onClick={() => onManagePosts(slug)}
+              >
+                Manage posts
+                <ArrowRight size={14} />
+              </Button>
             </div>
 
             <div className="mt-6 border-t" />

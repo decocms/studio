@@ -23,6 +23,56 @@ A Library é organizada em volumes:
 
 Um feed de **Recently added** que cruza todos os volumes fica no topo, para você voltar rapidamente a qualquer coisa que você (ou seus agents) tocou por último. Navegue pelos breadcrumbs; a localização atual é refletida na URL da página, então você pode mandar para um colega o link direto de uma pasta.
 
+Você pode arrastar e soltar arquivos diretamente em qualquer volume editável para fazer upload.
+
+## Brands
+
+A Library tem suporte nativo para **org brands** — uma pasta de identidade estruturada que seus agents e a skill de slides usam para produzir outputs on-brand.
+
+Uma brand fica em `org/home/brands/<nome>/` e contém quatro arquivos:
+
+| Arquivo | Propósito |
+|---|---|
+| `tokens.css` | Variáveis CSS para cores, tipografia, espaçamento, raio e sombra |
+| `brand.md` | Diretrizes escritas da marca: voz, tom e notas de identidade visual |
+| `logo` | Arquivo de logo (SVG, PNG ou similar) |
+| `slides-theme.html` | Um deck de exemplo que também serve como shell de geração para a skill de slides |
+
+### Criando e editando uma brand
+
+Brands aparecem como cards diretamente na Library. Clique em um card de brand para abrir o **editor no painel lateral**, que permite:
+
+- Editar paletas de cores (primária, secundária, neutros) com preview em bandas em tempo real
+- Ajustar tipografia, espaçamento, raio e sombra
+- Escrever ou refinar as diretrizes de voz e tom da marca
+- Visualizar a brand aplicada a um deck de exemplo e componentes de UI em tempo real
+
+Para criar uma brand do zero, peça para qualquer agent: *"Crie uma brand para [nome]"* — agents com acesso à skill `core/brand` vão montar toda a estrutura de pastas e populá-la com valores iniciais sensatos.
+
+<Callout type="tip">
+  O arquivo `slides-theme.html` dentro de uma pasta de brand funciona ao mesmo tempo como shell de geração e deck de exemplo editável. Modificá-lo diretamente muda o ponto de partida de todos os decks que a skill de slides gera com essa brand.
+</Callout>
+
+## Sharing
+
+Arquivos e pastas no volume Home podem ser compartilhados fora da sua organização. Cada nó tem um **modo de compartilhamento**, definido pelo menu de contexto ou pelo ícone de compartilhamento no seu card:
+
+| Modo | Quem pode acessar |
+|---|---|
+| **Org only** | Apenas membros da organização (padrão) |
+| **Public** | Qualquer pessoa com o link — sem necessidade de login |
+| **Password** | Qualquer pessoa com o link que inserir a senha correta |
+
+Um badge no card reflete o modo de compartilhamento atual. Para nós protegidos por senha, o link compartilhado abre um formulário de senha antes de servir o conteúdo; um desbloqueio bem-sucedido cobre o nó e toda a sua subárvore (para pastas) durante a sessão do navegador.
+
+<Callout type="tip">
+  Uma senha é definida no nível da pasta e cobre tudo dentro dela. Arquivos dentro de uma pasta protegida por senha herdam a senha da pasta pai — não é possível sobrescrever com uma senha diferente em um nó filho.
+</Callout>
+
+<Callout type="warning">
+  Arquivos que herdam o compartilhamento de um pai mostram um indicador somente leitura "shared via a parent folder" em vez dos controles de compartilhamento. Altere o modo de compartilhamento do pai para afetá-los.
+</Callout>
+
 ## Como ela mapeia para o sandbox
 
 A Library e o sandbox do agent são duas visões do mesmo filesystem. Dentro de um sandbox, esses volumes são montados em `org/`:

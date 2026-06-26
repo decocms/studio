@@ -48,7 +48,7 @@ export function groupThreadsByStatus(threads: Task[]): StatusGroupData[] {
  * order in `useSidebarGroupOrder` / `computeDisplayGroups`.
  *
  * Ordering (before user order is applied):
- *  - Decopilot first when it has threads.
+ *  - Decopilot always first (pinned even with no threads).
  *  - Other active groups by max(updated_at) desc.
  *  - Threads without virtual_mcp_id under TOOL_CALL_RUNS_GROUP_KEY last.
  */
@@ -90,7 +90,16 @@ export function groupThreadsByVirtualMcp(
   );
 
   const result: TaskGroupData[] = [];
-  if (decopilot && decopilot.threads.length > 0) result.push(decopilot);
+  // Decopilot is always pinned at the top, even with no threads.
+  if (decopilotVirtualMcpId) {
+    result.push(
+      decopilot ?? {
+        virtualMcpId: decopilotVirtualMcpId,
+        threads: [],
+        latestUpdatedAt: "",
+      },
+    );
+  }
   result.push(...remaining);
   if (toolCallRuns && toolCallRuns.threads.length > 0) {
     result.push(toolCallRuns);
