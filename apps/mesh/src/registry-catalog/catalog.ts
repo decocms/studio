@@ -157,8 +157,3 @@ export function getCatalog(): Catalog {
   singleton ??= createCatalog(buildSourcesFromSettings());
   return singleton;
 }
-
-/** Test seam: reset the process-wide singleton. */
-export function __resetCatalogForTests(): void {
-  singleton = null;
-}
