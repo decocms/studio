@@ -95,6 +95,7 @@ describe("buildHarnessWorkspaceInput", () => {
         },
       },
       branch: "feature-branch",
+      cwd: "/repo",
     });
 
     expect(result).toEqual({
@@ -119,6 +120,7 @@ describe("buildHarnessWorkspaceInput", () => {
         },
       },
       branch: "main",
+      cwd: "/repo",
     });
 
     expect(result).toEqual({
@@ -136,6 +138,26 @@ describe("buildHarnessWorkspaceInput", () => {
     const result = buildHarnessWorkspaceInput({
       virtualMcp: { metadata: {} },
       branch: null,
+    });
+
+    expect(result).toEqual({
+      cwd: null,
+    });
+  });
+
+  it("returns null cwd for repo metadata when no repo checkout is available", () => {
+    const result = buildHarnessWorkspaceInput({
+      virtualMcp: {
+        metadata: {
+          githubRepo: {
+            owner: "deco",
+            name: "site",
+            connectionId: "conn-1",
+          },
+        },
+      },
+      branch: "feature-branch",
+      cwd: null,
     });
 
     expect(result).toEqual({
