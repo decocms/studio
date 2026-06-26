@@ -77,11 +77,7 @@ async function tryGenerateDecoCachePresignedUrl(
   const region = getSettings().decoCacheS3Region;
   if (!bucket || !region) return undefined;
   try {
-    const endpoint = getSettings().decoCacheS3Endpoint;
-    const s3 = new S3Client({
-      region,
-      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
-    });
+    const s3 = new S3Client({ region });
     return await getSignedUrl(
       s3,
       new GetObjectCommand({

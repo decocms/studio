@@ -142,7 +142,6 @@ export interface Settings {
   // deco S3 cache — pre-signed URL generation for deco-sites sandbox warm-up.
   decoCacheS3Bucket: string | undefined;
   decoCacheS3Region: string | undefined;
-  decoCacheS3Endpoint: string | undefined;
 }
 
 export interface CliFlags {

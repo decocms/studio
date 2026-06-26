@@ -231,7 +231,6 @@ export function resolveConfig(
 
     decoCacheS3Bucket: envVars.DECO_CACHE_S3_BUCKET,
     decoCacheS3Region: envVars.DECO_CACHE_S3_REGION,
-    decoCacheS3Endpoint: envVars.DECO_CACHE_S3_ENDPOINT,
   };
 
   return {
