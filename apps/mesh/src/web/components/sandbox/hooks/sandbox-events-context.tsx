@@ -228,6 +228,7 @@ export function SandboxEventsProvider({
     let disposed = false;
     let reconnectAttempt = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let liveMetaDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let studioEs: EventSource | null = null;
     let directEs: EventSource | null = null;
 
@@ -361,20 +362,23 @@ export function SandboxEventsProvider({
                 queryKey: KEYS.decofile(cacheKey),
               });
             } else {
-              // liveMeta keys include previewUrl as suffix
-              // (e.g. ["live-meta", "org/vmcp/branch/https://..."])
-              // — use predicate to match all liveMeta entries for
-              // this sandbox regardless of previewUrl.
-              void queryClient.invalidateQueries({
-                predicate: (query) => {
-                  const key = query.queryKey;
-                  return (
-                    key[0] === "live-meta" &&
-                    typeof key[1] === "string" &&
-                    key[1].startsWith(`${cacheKey}/`)
-                  );
-                },
-              });
+              // Debounce liveMeta invalidation by 2s so the dev server has
+              // time to rebuild before we hit /live/_meta. Rapid successive
+              // file-changed events reset the timer.
+              if (liveMetaDebounceTimer) clearTimeout(liveMetaDebounceTimer);
+              liveMetaDebounceTimer = setTimeout(() => {
+                liveMetaDebounceTimer = null;
+                void queryClient.invalidateQueries({
+                  predicate: (query) => {
+                    const key = query.queryKey;
+                    return (
+                      key[0] === "live-meta" &&
+                      typeof key[1] === "string" &&
+                      key[1].startsWith(`${cacheKey}/`)
+                    );
+                  },
+                });
+              }, 2_000);
             }
             return;
           }
@@ -496,6 +500,7 @@ export function SandboxEventsProvider({
       studioEs?.close();
       directEs?.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (liveMetaDebounceTimer) clearTimeout(liveMetaDebounceTimer);
     };
   }, [
     virtualMcpId,
