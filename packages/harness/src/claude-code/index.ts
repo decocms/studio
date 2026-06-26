@@ -36,10 +36,10 @@ import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
 import { buildCodingWorkspacePrompt } from "../coding-workspace-prompt";
-import { buildCurrentContextPrompt } from "../decopilot/system-prompt";
+import { buildCurrentContextPrompt } from "../current-context-prompt";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
-import { genTitle } from "../decopilot/title-generator";
-import { stringifyError } from "../decopilot/stream-error";
+import { genTitle } from "../title-generator";
+import { stringifyError } from "../stream-error";
 import {
   CliSessionExpiredError,
   isStaleSessionError,

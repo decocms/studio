@@ -72,7 +72,7 @@ import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-fr
 import {
   classifyStreamError,
   stringifyError,
-} from "@decocms/harness/decopilot/stream-error";
+} from "@decocms/harness/stream-error";
 import { isCliHarness } from "@decocms/harness/cli-harness";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";

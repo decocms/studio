@@ -47,7 +47,7 @@ import { resolveModeConfig } from "./mode-config";
 import { makeTitleResultChunk } from "../title-chunk";
 import { shouldGenerateTitle } from "../title-merge";
 import { createLanguageModel } from "./mesh-provider";
-import { genTitle } from "./title-generator";
+import { genTitle } from "../title-generator";
 import type { ChatMessage, HarnessStreamInput, ModelSelection } from "../types";
 import type {
   AssembledEngineHandle,
@@ -55,7 +55,7 @@ import type {
   RunEngine,
 } from "./engine";
 import type { DecopilotRunContext } from "./run-context";
-import { sanitizeStreamError, stringifyError } from "./stream-error";
+import { sanitizeStreamError, stringifyError } from "../stream-error";
 import { isDecopilot } from "@decocms/mesh-sdk";
 import {
   createAgentPrepareStep,
