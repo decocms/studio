@@ -17,10 +17,14 @@ import { createElement, useSyncExternalStore } from "react";
 import {
   getDevConnectionId,
   useConnections,
+  useMCPClientOptional,
+  useMCPToolsListQuery,
   useProjectContext,
   useVirtualMCP,
   useVirtualMCPs,
 } from "@decocms/mesh-sdk";
+import { getUIResourceUri } from "@/mcp-apps/types";
+import { toTitleCase } from "@/web/components/chat/message/parts/tool-call-part/utils";
 import { KEYS } from "@/web/lib/query-keys";
 import { useStudioTools } from "@/web/lib/studio-tools";
 import {
@@ -175,11 +179,10 @@ export function useMainPanelTabs(ctx: {
   const entityLayout = entityUI?.layout ?? null;
   const layoutTabs = (entityLayout?.tabs ?? []) as AgentTabDef[];
 
-  // A dev agent (the dev side of a dev/live pair) inherits its LIVE partner's
-  // pinned views + default view, rewritten to render against its own ephemeral
-  // dev-server connection (`dev_<id>`). So in Develop mode you see the same
-  // views as prod, hitting the running dev server instead of the deployed app.
-  // Falls back to the agent's own pinned views otherwise.
+  // Fallback view source for a dev agent: inherit the LIVE partner's pinned
+  // views (rewritten to the dev connection) when paired. Superseded below by
+  // auto-detection from the dev server's own MCP app when its sandbox is up —
+  // so an unpaired, freshly-imported MCP app still surfaces its views.
   const devPartner = findDevPartner(entity ?? null, allAgents);
   const livePartner =
     devPartner?.mode === "dev"
@@ -210,11 +213,11 @@ export function useMainPanelTabs(ctx: {
   const inheritsLiveViews =
     !!livePartner && !!devConnId && livePinned.length > 0;
 
-  const pinnedViews =
+  const basePinnedViews =
     inheritsLiveViews && devConnId
       ? livePinned.map((v) => ({ ...v, connectionId: devConnId }))
       : (entityUI?.pinnedViews ?? []);
-  const effectiveDefaultMainView =
+  const baseDefaultMainView =
     inheritsLiveViews && devConnId && liveUI?.layout?.defaultMainView
       ? { ...liveUI.layout.defaultMainView, id: devConnId }
       : (entityLayout?.defaultMainView ?? null);
@@ -230,6 +233,38 @@ export function useMainPanelTabs(ctx: {
   // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
   const vmEvents = useSandboxEvents();
   const devServerReady = vmEvents.lifecycle.phase === "running";
+
+  // Auto-detect the dev MCP app's views straight from its sandbox dev server:
+  // every tool that declares a `ui://` resource is a view, rendered against the
+  // ephemeral dev connection (`dev_<id>`). No pairing / curated pinnedViews
+  // needed — the dev server describes itself. Only queried once the dev server
+  // is up (its `/api/mcp` serves tools); supersedes the inherited-live fallback.
+  const devClient = useMCPClientOptional({
+    connectionId: devConnId ?? undefined,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const { data: devToolsResult } = useMCPToolsListQuery({
+    client: devClient as NonNullable<typeof devClient>,
+    enabled: !!devClient && devServerReady,
+  });
+  const devViews =
+    devConnId && devServerReady
+      ? (devToolsResult?.tools ?? [])
+          .filter((t) => !!getUIResourceUri(t._meta))
+          .map((t) => ({
+            connectionId: devConnId,
+            toolName: t.name,
+            label: toTitleCase(t.name),
+            icon: null as string | null,
+          }))
+      : [];
+  const firstDevView = devViews[0];
+  const pinnedViews = firstDevView ? devViews : basePinnedViews;
+  const effectiveDefaultMainView =
+    firstDevView && devConnId
+      ? { type: "ext-apps", id: devConnId, toolName: firstDevView.toolName }
+      : baseDefaultMainView;
   const decofileFetchParams =
     hasClonableSource && entity?.id && currentBranch
       ? { orgSlug: org.slug, virtualMcpId: entity.id, branch: currentBranch }

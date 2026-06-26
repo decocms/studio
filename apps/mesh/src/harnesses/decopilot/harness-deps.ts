@@ -29,6 +29,7 @@ import type { VirtualMCPEntity } from "@/tools/virtual/schema";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { createVirtualClientFrom } from "@/mcp-clients/virtual-mcp";
 import { resolveDevConnection } from "@/api/routes/dev-connection";
+import { readSandboxMap } from "@/tools/sandbox/sandbox-map";
 import type { SideChannelWriter } from "@decocms/harness/side-channel-writer";
 import { assembleDecopilotTools } from "./tools";
 import { buildClusterMcpToolHooks } from "@/api/routes/decopilot/cluster-mcp-tool-hooks";
@@ -152,13 +153,17 @@ export function buildClusterEnvironmentTools(args: {
           // the transport type widens the field to a loose bag so the
           // daemon can ship without the cluster's storage types.
           const vm = streamInput.virtualMcp as VirtualMCPEntity;
-          // Surface the dev sandbox's tools when this agent is a dev agent
-          // (develops a live counterpart) and the user has a sandbox up. The
-          // pairing ref lives on the dev agent itself (`metadata.liveAgentId`),
-          // so this gate is a free local field check — non-dev agents skip the
-          // resolver entirely. resolveDevConnection re-checks it + the sandbox.
+          // Surface the dev sandbox's tools when the user has a running sandbox
+          // for this agent. Cheap local pre-filter ("does the user have a
+          // sandbox entry?"), no repo/pairing flag — agents without a sandbox
+          // skip the resolver. resolveDevConnection then confirms the dev server
+          // actually speaks MCP (probe).
           let devConnection: ConnectionEntity | null = null;
-          if (vm.id && vm.metadata?.liveAgentId && streamInput.user.id) {
+          if (
+            vm.id &&
+            streamInput.user.id &&
+            readSandboxMap(vm.metadata)[streamInput.user.id]
+          ) {
             devConnection = await resolveDevConnection(
               ctx,
               vm.id,
