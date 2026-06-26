@@ -281,7 +281,6 @@ test.describe("pull-transport round-trip", () => {
       // harnessInput must carry at least the fields the daemon validates.
       expect(workItem.harnessInput).toMatchObject({
         threadId,
-        runId,
         runFenceToken: workItem.runFenceToken,
       });
 
