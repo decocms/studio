@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { posthog } from "@/posthog";
-import type { ServerPluginContext } from "@decocms/bindings/server-plugin";
+import type { RegistryRouteContext } from "./route-context";
 import { WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
@@ -274,7 +274,7 @@ async function findRegistryItemConflict(
  * resolveOrgFromPath (this is a public endpoint; auth is optional).
  */
 export function createPublishRequestHandler(
-  ctx: ServerPluginContext,
+  ctx: RegistryRouteContext,
 ): (c: Context) => Promise<Response> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = ctx.db as any;

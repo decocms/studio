@@ -1,18 +1,12 @@
 /**
  * Tool Registry
  *
- * Central export for all MCP Mesh management tools
- * Types are inferred from ALL_TOOLS - this is the source of truth.
- *
- * Plugin tools are collected at startup and combined with core tools.
+ * Central export for all MCP Mesh management tools.
+ * Types are inferred from ALL_TOOLS — this is the source of truth.
  */
 
 import type { ToolAnnotations } from "@/core/define-tool";
 import { StudioContext } from "@/core/studio-context";
-import {
-  collectPluginTools,
-  filterToolsByEnabledPlugins,
-} from "@/core/plugin-loader";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -195,10 +189,8 @@ export const CORE_TOOLS = [
   SearchTools.GLOBAL_SEARCH,
 ] as const satisfies { name: ToolName }[];
 
-// Plugin tools - collected at startup, gated by org settings at runtime
-const PLUGIN_TOOLS = collectPluginTools();
-
-// Tool type for combined core + plugin tools
+// Runtime tool shape — widened from the concrete `CORE_TOOLS` tuple so the
+// name→tool map and MCP registration can iterate a single uniform type.
 export interface CombinedTool {
   name: string;
   description: string;
@@ -210,11 +202,9 @@ export interface CombinedTool {
   execute: (input: unknown, ctx: StudioContext) => Promise<unknown>;
 }
 
-// All available tools — core + plugin tools
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// All available tools. The set is static — the dynamic plugin system was removed.
 export const ALL_TOOLS: CombinedTool[] = [
   ...(CORE_TOOLS as unknown as CombinedTool[]),
-  ...(PLUGIN_TOOLS as unknown as CombinedTool[]),
 ];
 
 export type MCPMeshTools = typeof ALL_TOOLS;
@@ -237,50 +227,15 @@ const TOOL_BY_NAME: Map<string, CombinedTool> = new Map(
 );
 
 /**
- * Plugins enabled for an org, merged from org settings + virtual MCPs (null
- * when none). Skips the storage reads when no plugin tools exist — transitional,
- * since the plugin system is being retired.
+ * Tools visible to an org as a name→tool map. The set is static, so this is just
+ * the full registry — kept async + exported so the REST dispatch/list endpoints
+ * and the MCP server share one accessor.
  */
-async function computeEnabledPlugins(
-  ctx: StudioContext,
-): Promise<string[] | null> {
-  if (PLUGIN_TOOLS.length === 0 || !ctx.organization) return null;
-  const settings = await ctx.storage.organizationSettings.get(
-    ctx.organization.id,
-  );
-  const virtualMcpPlugins = await ctx.storage.virtualMcps.listEnabledPlugins(
-    ctx.organization.id,
-  );
-  const merged = new Set<string>(settings?.enabled_plugins ?? []);
-  for (const pluginId of virtualMcpPlugins) {
-    merged.add(pluginId);
-  }
-  return merged.size > 0 ? [...merged] : null;
-}
-
-/**
- * Tools visible to an org as a name→tool map — core always, plugin tools only
- * when enabled. Mirrors the MCP server's surface for the REST dispatch + list
- * endpoints, so REST and MCP stay in lockstep on plugin gating.
- */
-export async function getFilteredTools(
-  ctx: StudioContext,
-): Promise<Map<string, CombinedTool>> {
-  if (PLUGIN_TOOLS.length === 0) return TOOL_BY_NAME;
-  const enabledPlugins = await computeEnabledPlugins(ctx);
-  return new Map(
-    filterToolsByEnabledPlugins(ALL_TOOLS, enabledPlugins).map((tool) => [
-      tool.name,
-      tool,
-    ]),
-  );
+export function getFilteredTools(): Promise<Map<string, CombinedTool>> {
+  return Promise.resolve(TOOL_BY_NAME);
 }
 
 export const managementMCP = async (ctx: StudioContext) => {
-  // Filter tools based on enabled plugins: core always, plugin tools when on.
-  const enabledPlugins = await computeEnabledPlugins(ctx);
-  const filteredTools = filterToolsByEnabledPlugins(ALL_TOOLS, enabledPlugins);
-
   // Create MCP server directly
   const server = new McpServer(
     { name: "mcp-cms-management", version: "1.0.0" },
@@ -293,7 +248,7 @@ export const managementMCP = async (ctx: StudioContext) => {
   // Register each tool from its shared, prebuilt registration (config carries
   // the prebuilt Zod schemas; the handler reads ctx from the ALS store at call
   // time rather than capturing it). Only the map insertion is per-request.
-  for (const tool of filteredTools) {
+  for (const tool of ALL_TOOLS) {
     const { config, handler } = getToolRegistration(tool);
     server.registerTool(tool.name, config, handler);
   }

@@ -32,8 +32,7 @@ export const createToolsRestRoutes = () => {
 
   // GET /api/:org/tools — MCP `listTools` parity (tool metadata, not a call).
   app.get("/", async (c) => {
-    const ctx = c.get("meshContext");
-    const tools = await getFilteredTools(ctx);
+    const tools = await getFilteredTools();
     const list = [...tools.values()].map((tool) => {
       const { config } = getToolRegistration(tool);
       return {
@@ -53,9 +52,9 @@ export const createToolsRestRoutes = () => {
     const ctx = c.get("meshContext");
     const toolName = c.req.param("toolName");
 
-    // Manual tool-identifier check: 404 if the name isn't part of this org's
-    // visible tool surface (unknown name, or a disabled plugin tool).
-    const tools = await getFilteredTools(ctx);
+    // Manual tool-identifier check: 404 if the name isn't part of the builtin
+    // tool surface.
+    const tools = await getFilteredTools();
     const tool = tools.get(toolName);
     if (!tool) {
       return c.json({ error: `Unknown tool: ${toolName}` }, 404);

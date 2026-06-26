@@ -9,12 +9,10 @@ import {
   Outlet,
   RouterProvider,
   redirect,
-  type AnyRoute,
 } from "@tanstack/react-router";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { ChunkErrorBoundary } from "@/web/components/error-boundary";
 import * as z from "zod";
-import type { ReactNode } from "react";
 
 import "../../index.css";
 
@@ -22,12 +20,6 @@ import { listOrganizationsCached } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { readLastLocation, saveLastLocation } from "@/web/lib/last-location";
 import { initPwaInstallCapture } from "@/web/lib/pwa-install";
-
-import { sourcePlugins } from "./plugins.ts";
-import type {
-  AnyClientPlugin,
-  PluginSetupContext,
-} from "@decocms/bindings/plugins";
 
 const rootRoute = createRootRoute({
   component: () => (
@@ -373,7 +365,7 @@ const monitoringRoute = createRoute({
   validateSearch: z.lazy(() =>
     z.object({
       tab: z
-        .enum(["overview", "audit", "threads", "automations"])
+        .enum(["overview", "audit", "dashboards", "threads", "automations"])
         .default("overview"),
       from: z.string().default("now-30m"),
       to: z.string().default("now"),
@@ -396,14 +388,6 @@ const settingsGeneralRoute = createRoute({
   path: "/general",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/general.tsx"),
-  ),
-});
-
-const settingsFeaturesRoute = createRoute({
-  getParentRoute: () => settingsLayout,
-  path: "/features",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/features.tsx"),
   ),
 });
 
@@ -506,15 +490,6 @@ const settingsStoreRegistryRoute = createRoute({
   ),
 });
 
-// Org-level plugin route (for org-admin)
-const orgPluginRoute = createRoute({
-  getParentRoute: () => agentShellLayout,
-  path: "/plugins/$pluginId",
-  component: lazyRouteComponent(
-    () => import("./layouts/org-plugin-layout.tsx"),
-  ),
-});
-
 // ============================================
 // UNIFIED CHAT SUB-ROUTES
 // ============================================
@@ -534,71 +509,6 @@ const settingsAutomationsRoute = createRoute({
   ),
 });
 
-// Plugin sub-route under unified chat
-const unifiedPluginRoute = createRoute({
-  getParentRoute: () => unifiedChatRoute,
-  path: "/$pluginId",
-  component: lazyRouteComponent(
-    () => import("./layouts/dynamic-plugin-layout.tsx"),
-  ),
-});
-
-// ============================================
-// PLUGIN ROUTES
-// ============================================
-
-// Plugin setup (same as before)
-export const pluginRootSidebarItems: {
-  pluginId: string;
-  icon: ReactNode;
-  label: string;
-}[] = [];
-
-export const pluginSidebarGroups: {
-  pluginId: string;
-  id: string;
-  label: string;
-  items: { icon: ReactNode; label: string }[];
-  defaultExpanded?: boolean;
-}[] = [];
-
-export const pluginSettingsSidebarItems: {
-  pluginId: string;
-  key: string;
-  icon: ReactNode;
-  label: string;
-  to: string;
-}[] = [];
-
-const pluginRoutes: AnyRoute[] = [];
-
-sourcePlugins.forEach((plugin: AnyClientPlugin) => {
-  // Only invoke setup if the plugin provides it
-  if (!plugin.setup) return;
-
-  const context: PluginSetupContext = {
-    parentRoute: unifiedPluginRoute as AnyRoute,
-    routing: {
-      createRoute: createRoute,
-      lazyRouteComponent: lazyRouteComponent,
-    },
-    registerRootSidebarItem: (item) =>
-      pluginRootSidebarItems.push({ pluginId: plugin.id, ...item }),
-    registerSidebarGroup: (group) =>
-      pluginSidebarGroups.push({ pluginId: plugin.id, ...group }),
-    registerSettingsSidebarItem: (item) =>
-      pluginSettingsSidebarItems.push({ pluginId: plugin.id, ...item }),
-    registerPluginRoutes: (routes) => {
-      pluginRoutes.push(...routes);
-    },
-  };
-
-  plugin.setup(context);
-});
-
-// Add all plugin routes as children of the unified plugin route
-const unifiedPluginWithChildren = unifiedPluginRoute.addChildren(pluginRoutes);
-
 // ============================================
 // ROUTE TREE
 // ============================================
@@ -612,7 +522,6 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsAutomationsRoute,
   monitoringRoute,
   settingsGeneralRoute,
-  settingsFeaturesRoute,
   settingsBrandContextRoute,
   settingsAiProvidersRoute,
   settingsSecretsRoute,
@@ -627,14 +536,7 @@ const settingsWithChildren = settingsLayout.addChildren([
   settingsRegistryRoute,
 ]);
 
-const unifiedChatWithChildren = unifiedChatRoute.addChildren([
-  unifiedPluginWithChildren,
-]);
-
-const agentShellWithChildren = agentShellLayout.addChildren([
-  unifiedChatWithChildren,
-  orgPluginRoute,
-]);
+const agentShellWithChildren = agentShellLayout.addChildren([unifiedChatRoute]);
 
 const orgShellWithChildren = orgShellLayout.addChildren([
   orgIndexRoute,

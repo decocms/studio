@@ -1,24 +1,25 @@
 /**
  * Database Migration Runner
  *
- * Runs migrations in three phases:
+ * Runs migrations in two phases:
  * 1. Better Auth migrations (if not skipped)
  * 2. Core Kysely migrations (numbered 001-xxx)
- * 3. Plugin migrations (separate tracking table, runs after core)
  *
- * Plugin migrations use a separate `plugin_migrations` table to avoid
- * ordering conflicts with Kysely's strict alphabetical ordering.
+ * Before the core migrator runs, legacy plugin-migration rows are swept out of
+ * `kysely_migration` into a standalone `plugin_migrations` table. The plugin
+ * system itself was removed; this sweep only keeps Kysely's strict
+ * missing-migration check from choking on databases that were provisioned while
+ * the plugin system was still live.
  */
 
 import { Migrator, sql, type Kysely } from "kysely";
 import migrations from "../../migrations";
 import { migrateBetterAuth } from "../auth/migrate";
-import { collectPluginMigrations } from "../core/plugin-loader";
 import { closeDatabase, getDb, type StudioDatabase } from "./index";
 import type { Database } from "../storage/types";
 
 // ============================================================================
-// Plugin Migration System
+// Legacy Plugin Migration Cleanup
 // ============================================================================
 
 /**
@@ -137,78 +138,6 @@ async function migrateExistingPluginRecords(
   }
 }
 
-/**
- * Run pending plugin migrations.
- *
- * Each plugin's migrations are tracked independently in the plugin_migrations table.
- * Migrations are run in order within each plugin (sorted by name).
- */
-async function runPluginMigrations(db: Kysely<Database>): Promise<number> {
-  const pluginMigrations = collectPluginMigrations();
-
-  if (pluginMigrations.length === 0) {
-    return 0;
-  }
-
-  // Note: plugin_migrations table and old record migration are handled
-  // in runKyselyMigrations() before Kysely's migrator runs
-
-  // Get already executed migrations
-  const executed = await sql<{ plugin_id: string; name: string }>`
-    SELECT plugin_id, name FROM plugin_migrations
-  `.execute(db);
-  const executedSet = new Set(
-    executed.rows.map((r) => `${r.plugin_id}/${r.name}`),
-  );
-
-  // Group migrations by plugin
-  const migrationsByPlugin = new Map<
-    string,
-    Array<{
-      name: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      up: (db: any) => Promise<void>;
-    }>
-  >();
-
-  for (const { pluginId, migration } of pluginMigrations) {
-    if (!migrationsByPlugin.has(pluginId)) {
-      migrationsByPlugin.set(pluginId, []);
-    }
-    migrationsByPlugin.get(pluginId)!.push({
-      name: migration.name,
-      up: migration.up,
-    });
-  }
-
-  // Run pending migrations for each plugin
-  let totalPending = 0;
-
-  for (const [pluginId, pluginMigrationList] of migrationsByPlugin) {
-    // Sort by name to ensure consistent order
-    pluginMigrationList.sort((a, b) => a.name.localeCompare(b.name));
-
-    for (const migration of pluginMigrationList) {
-      const key = `${pluginId}/${migration.name}`;
-      if (executedSet.has(key)) {
-        continue; // Already executed
-      }
-
-      totalPending++;
-      await migration.up(db);
-
-      // Record as executed
-      const timestamp = new Date().toISOString();
-      await sql`
-        INSERT INTO plugin_migrations (plugin_id, name, timestamp)
-        VALUES (${pluginId}, ${migration.name}, ${timestamp})
-      `.execute(db);
-    }
-  }
-
-  return totalPending;
-}
-
 // ============================================================================
 // Core Migration System
 // ============================================================================
@@ -283,7 +212,6 @@ export async function runKyselyMigrations(
 export interface MigrateResult {
   betterAuth: string;
   kysely: number;
-  plugins: number;
 }
 
 /**
@@ -318,12 +246,11 @@ export async function migrateToLatest(
 
   try {
     const kysely = await runKyselyMigrations(database.db);
-    const plugins = await runPluginMigrations(database.db);
 
     // Close database on success if needed
     await maybeCloseDatabase();
 
-    return { betterAuth, kysely, plugins };
+    return { betterAuth, kysely };
   } catch (error) {
     // Ensure database is closed on failure
     await maybeCloseDatabase();
