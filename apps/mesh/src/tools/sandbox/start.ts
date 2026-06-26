@@ -9,6 +9,7 @@
  */
 
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { AssumeRoleCommand, STSClient } from "@aws-sdk/client-sts";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/mesh-sdk";
@@ -73,11 +74,35 @@ async function tryGenerateDecoCachePresignedUrl(
   repo: string,
 ): Promise<string | undefined> {
   if (owner !== "deco-sites") return undefined;
-  const bucket = getSettings().decoCacheS3Bucket;
-  const region = getSettings().decoCacheS3Region;
-  if (!bucket || !region) return undefined;
+  const settings = getSettings();
+  const bucket = settings.decoCacheS3Bucket;
+  const region = settings.decoCacheS3Region;
+  const roleArn = settings.awsS3TenantRoleArn;
+  if (!bucket || !region || !roleArn) return undefined;
   try {
-    const s3 = new S3Client({ region });
+    const accessKeyId = settings.awsS3TenantProvisionerAccessKeyId;
+    const secretAccessKey = settings.awsS3TenantProvisionerSecretAccessKey;
+    const sts = new STSClient({
+      region,
+      ...(accessKeyId && secretAccessKey
+        ? { credentials: { accessKeyId, secretAccessKey } }
+        : {}),
+    });
+    const { Credentials: creds } = await sts.send(
+      new AssumeRoleCommand({
+        RoleArn: roleArn,
+        RoleSessionName: "deco-cache-presign",
+      }),
+    );
+    if (!creds?.AccessKeyId || !creds.SecretAccessKey) return undefined;
+    const s3 = new S3Client({
+      region,
+      credentials: {
+        accessKeyId: creds.AccessKeyId,
+        secretAccessKey: creds.SecretAccessKey,
+        sessionToken: creds.SessionToken,
+      },
+    });
     return await getSignedUrl(
       s3,
       new GetObjectCommand({
