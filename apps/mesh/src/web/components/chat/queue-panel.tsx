@@ -1,17 +1,18 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { X } from "@untitledui/icons";
+import { selectWaitingQueueItems } from "./queue-items";
 import { useCancelQueuedMessage, useThreadQueue } from "./use-thread-queue";
 
 /**
  * Pending-message queue above the composer. Lists only the messages *waiting*
- * behind the active run — the running head is excluded here because it's
- * already rendered in the chat body. Each row cancels its own gate workflow.
- * Hidden when nothing is queued.
+ * behind the active run — the message currently being processed (the oldest
+ * non-terminal gate workflow) is excluded because it's already rendered in the
+ * chat body. Each row cancels its own gate workflow. Hidden when nothing waits.
  */
 export function ThreadQueuePanel({ taskId }: { taskId: string }) {
   const { items } = useThreadQueue(taskId);
   const cancel = useCancelQueuedMessage(taskId);
-  const queued = items.filter((i) => i.status === "queued");
+  const queued = selectWaitingQueueItems(items);
   if (queued.length === 0) return null;
 
   return (
