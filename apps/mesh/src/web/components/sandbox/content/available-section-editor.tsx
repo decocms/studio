@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronRight, Save01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -17,24 +17,17 @@ import {
 } from "@/web/components/sections-editor/resolve-schema";
 import { validateBlockId } from "@/web/components/sections-editor/page-sections";
 import { MakeReusableModal } from "@/web/components/sections-editor/make-reusable-modal";
-import { SectionPreviewPane } from "./section-preview-pane";
-
-/** Debounce before reloading the preview after a form edit. */
-const PREVIEW_DEBOUNCE_MS = 600;
 
 /**
  * Editor for an "available" (raw manifest) section that has NOT been saved as a
  * global block yet. Edits live in local state and only persist when the user
- * names and saves the section. The side panel previews the in-progress data
- * (auto-reloads, debounced) and offers an editable JSON view of the same data.
+ * names and saves the section.
  */
 export function AvailableSectionEditor({
   orgSlug,
   virtualMcpId,
   branch,
   previewUrl,
-  livePageResolveType,
-  siteTheme,
   meta,
   decofile,
   resolveType,
@@ -48,8 +41,6 @@ export function AvailableSectionEditor({
   virtualMcpId: string;
   branch: string;
   previewUrl: string | null;
-  livePageResolveType: string;
-  siteTheme?: Record<string, unknown>;
   meta: LiveMeta;
   decofile: Record<string, unknown>;
   resolveType: string;
@@ -71,17 +62,7 @@ export function AvailableSectionEditor({
   const [formValue, setFormValue] = useState<Record<string, unknown>>({});
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
   const [formResetKey, setFormResetKey] = useState(0);
-  const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [saveOpen, setSaveOpen] = useState(false);
-  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Cancel a pending debounced reload when the editor unmounts.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — timer lifecycle cleanup
-  useEffect(() => {
-    return () => {
-      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-    };
-  }, []);
 
   const schema = resolveSchema(resolveType, meta);
   const typeLabel =
@@ -102,19 +83,6 @@ export function AvailableSectionEditor({
   const handleBreadcrumbClick = (index: number) => {
     setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index));
     setFormResetKey((key) => key + 1);
-  };
-
-  const schedulePreviewReload = () => {
-    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
-    reloadTimerRef.current = setTimeout(() => {
-      setPreviewReloadKey((k) => k + 1);
-    }, PREVIEW_DEBOUNCE_MS);
-  };
-
-  const handleFormChange = (next: Record<string, unknown>) => {
-    setFormValue(next);
-    // Keep the preview in sync with what the user is typing (debounced).
-    schedulePreviewReload();
   };
 
   const handleSubmit = async (blockId: string) => {
@@ -195,9 +163,7 @@ export function AvailableSectionEditor({
                   key={formResetKey}
                   schema={schema}
                   value={formValue}
-                  onChange={(v) =>
-                    handleFormChange(v as Record<string, unknown>)
-                  }
+                  onChange={(v) => setFormValue(v as Record<string, unknown>)}
                   basePath=""
                   breadcrumbPath={fieldBreadcrumbs}
                   onBreadcrumbChange={setFieldBreadcrumbs}
@@ -215,16 +181,6 @@ export function AvailableSectionEditor({
           </div>
         </ScrollArea>
       </div>
-
-      <SectionPreviewPane
-        previewUrl={previewUrl}
-        livePageResolveType={livePageResolveType}
-        target={{ kind: "inline", resolveType, data: formValue }}
-        theme={siteTheme}
-        reloadKey={previewReloadKey}
-        onRefresh={() => setPreviewReloadKey((k) => k + 1)}
-        initialOpen={false}
-      />
 
       <MakeReusableModal
         open={saveOpen}

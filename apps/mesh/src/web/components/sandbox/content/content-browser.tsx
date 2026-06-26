@@ -105,18 +105,10 @@ import {
   getPageVariantCount,
   getPageVariantSectionsAt,
 } from "@/web/components/sections-editor/page-variants";
-import {
-  extractSectionCatalog,
-  findLivePageResolveType,
-  findSiteThemeBlock,
-} from "@/web/components/sections-editor/section-catalog";
+import { extractSectionCatalog } from "@/web/components/sections-editor/section-catalog";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/section-types";
 import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
-import {
-  SectionPreviewPane,
-  type SectionPreviewTarget,
-} from "./section-preview-pane";
 import { AvailableSectionEditor } from "./available-section-editor";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
@@ -189,10 +181,6 @@ const SeoEditor = lazy(() =>
 );
 
 const VARIANT_GREEN = "oklch(0.65 0.15 160)";
-
-/** Delay before reloading the section preview after an autosave, so the dev
- * server has picked up the block write. */
-const PREVIEW_SETTLE_MS = 500;
 
 type CollectionId = "pages" | "sections" | "apps" | "site" | "seo" | BlogKind;
 
@@ -464,8 +452,6 @@ function ContentBrowserReady({
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
-  // Reload signal for the saved-section side panel (bumped after autosaves).
-  const [previewReloadKey, setPreviewReloadKey] = useState(0);
   // "Update category" bulk dialog — holds the count of posts it will act on.
   const [categoryDialog, setCategoryDialog] = useState<{
     count: number;
@@ -497,8 +483,6 @@ function ContentBrowserReady({
       title: entry.title,
       description: entry.description,
     }));
-  const livePageResolveType = findLivePageResolveType(meta);
-  const siteTheme = findSiteThemeBlock(decofile);
   const siteApp = findSiteAppEntry(decofile, meta);
   const allBlogEntries = scanBlogEntries(decofile);
   const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
@@ -1042,19 +1026,8 @@ function ContentBrowserReady({
               virtualMcpId={virtualMcpId}
               branch={branch}
               previewUrl={previewUrl}
-              livePageResolveType={livePageResolveType}
-              siteTheme={siteTheme}
               meta={meta}
               decofile={decofile}
-              reloadKey={previewReloadKey}
-              onSaved={() => {
-                // Give the dev server a moment to pick up the block write
-                // before reloading the preview (mirrors Preview's settle).
-                setTimeout(
-                  () => setPreviewReloadKey((k) => k + 1),
-                  PREVIEW_SETTLE_MS,
-                );
-              }}
               isCreating={saveBlock.isPending}
               onCreateAvailable={handleCreateAvailableSection}
               onSaveReferencedBlock={saveReferencedBlock}
@@ -1278,9 +1251,8 @@ function ContentBrowserReady({
 
 /**
  * Right pane for the Sections collection. A saved (global) section opens the
- * full section editor with a toggleable live preview; an available (raw
- * manifest) section opens a local editor that previews in-progress data and
- * persists only when named and saved.
+ * full section editor; an available (raw manifest) section opens a local
+ * editor that persists only when named and saved.
  */
 function SectionsRightPane({
   selection,
@@ -1288,12 +1260,8 @@ function SectionsRightPane({
   virtualMcpId,
   branch,
   previewUrl,
-  livePageResolveType,
-  siteTheme,
   meta,
   decofile,
-  reloadKey,
-  onSaved,
   isCreating,
   onCreateAvailable,
   onSaveReferencedBlock,
@@ -1310,12 +1278,8 @@ function SectionsRightPane({
   virtualMcpId: string;
   branch: string;
   previewUrl: string | null;
-  livePageResolveType: string;
-  siteTheme?: Record<string, unknown>;
   meta: LiveMeta;
   decofile: Record<string, unknown>;
-  reloadKey: number;
-  onSaved: () => void;
   isCreating: boolean;
   onCreateAvailable: (
     resolveType: string,
@@ -1344,8 +1308,6 @@ function SectionsRightPane({
         virtualMcpId={virtualMcpId}
         branch={branch}
         previewUrl={previewUrl}
-        livePageResolveType={livePageResolveType}
-        siteTheme={siteTheme}
         meta={meta}
         decofile={decofile}
         resolveType={selection.resolveType}
@@ -1360,37 +1322,18 @@ function SectionsRightPane({
     );
   }
 
-  const previewTarget: SectionPreviewTarget = {
-    kind: "saved",
-    blockKey: selection.key,
-  };
-
   return (
-    <div className="flex h-full w-full min-w-0">
-      <div className="min-w-0 flex-1">
-        <SectionsEditor
-          key={`section:${selection.key}`}
-          orgSlug={orgSlug}
-          virtualMcpId={virtualMcpId}
-          branch={branch}
-          previewReady
-          previewUrl={previewUrl ?? undefined}
-          currentPath="/"
-          activePageBlockKey={null}
-          activeGlobalBlockKey={selection.key}
-          onSaved={onSaved}
-        />
-      </div>
-      <SectionPreviewPane
-        key={`panel:${selection.key}`}
-        previewUrl={previewUrl}
-        livePageResolveType={livePageResolveType}
-        target={previewTarget}
-        theme={siteTheme}
-        reloadKey={reloadKey}
-        initialOpen
-      />
-    </div>
+    <SectionsEditor
+      key={`section:${selection.key}`}
+      orgSlug={orgSlug}
+      virtualMcpId={virtualMcpId}
+      branch={branch}
+      previewReady
+      previewUrl={previewUrl ?? undefined}
+      currentPath="/"
+      activePageBlockKey={null}
+      activeGlobalBlockKey={selection.key}
+    />
   );
 }
 
