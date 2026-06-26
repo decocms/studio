@@ -70,6 +70,8 @@ export interface EnsureOptions {
     branch?: string;
     /** Human-readable label for logs/UI; no functional effect. */
     displayName?: string;
+    /** GitHub/GitLab org or user that owns the repo (e.g. "deco-sites"). */
+    owner?: string;
   };
   /** Image override. Non-image runners MUST ignore. */
   image?: string;
