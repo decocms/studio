@@ -161,7 +161,7 @@ export function buildClusterEnvironmentTools(args: {
               ctx,
               vm.id,
               streamInput.user.id,
-              streamInput.branch ?? undefined,
+              runContext.branch ?? undefined,
             ).catch(() => null);
           }
           return createVirtualClientFrom(
