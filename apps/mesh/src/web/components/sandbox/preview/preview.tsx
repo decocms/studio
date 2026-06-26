@@ -250,12 +250,16 @@ export function PreviewContent() {
   const devServerReady = lifecyclePhase === "running";
 
   const isDesktopSandbox = vmEntry?.sandboxProviderKind === "user-desktop";
-  const repoDir = useSandboxRepoDir({
+  const rawRepoDir = useSandboxRepoDir({
     orgSlug: org.slug,
     virtualMcpId: virtualMcpId ?? "",
     branch: branch ?? "",
     enabled: isDesktopSandbox && devServerReady && !!virtualMcpId && !!branch,
   });
+  // Guard the value, not just the query: React Query's staleTime=Infinity cache
+  // can retain a stale repoDir after the provider kind changes from desktop to
+  // agent-sandbox, whose daemon reports a container-internal path ("/app/repo").
+  const repoDir = isDesktopSandbox ? rawRepoDir : null;
 
   // Decofile pages for the URL bar dropdown — fetch only after dev server is up.
   const decofileParams =
