@@ -84,7 +84,7 @@ describe("groupThreadsByVirtualMcp", () => {
     expect(result[0]?.threads.map((th) => th.id)).toEqual(["a", "b", "c"]);
   });
 
-  it("does not insert decopilot when it has no threads", () => {
+  it("always pins decopilot first even when it has no threads", () => {
     const result = groupThreadsByVirtualMcp(
       [
         t({
@@ -95,7 +95,11 @@ describe("groupThreadsByVirtualMcp", () => {
       ],
       "vm-decopilot",
     );
-    expect(result.map((g) => g.virtualMcpId)).toEqual(["vm-other"]);
+    expect(result.map((g) => g.virtualMcpId)).toEqual([
+      "vm-decopilot",
+      "vm-other",
+    ]);
+    expect(result[0]!.threads).toEqual([]);
   });
 
   it("buckets threads without virtual_mcp_id under a synthetic 'tool-call-runs' group at the end", () => {
@@ -123,9 +127,11 @@ describe("groupThreadsByVirtualMcp", () => {
     expect(result).toEqual([]);
   });
 
-  it("returns an empty array when no threads even with decopilot id", () => {
+  it("returns decopilot group with no threads when no threads exist", () => {
     const result = groupThreadsByVirtualMcp([], "vm-decopilot");
-    expect(result).toEqual([]);
+    expect(result).toEqual([
+      { virtualMcpId: "vm-decopilot", threads: [], latestUpdatedAt: "" },
+    ]);
   });
 });
 

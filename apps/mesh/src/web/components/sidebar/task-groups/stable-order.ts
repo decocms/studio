@@ -5,8 +5,9 @@
  * - Org-pinned agents (`connections.pinned` + `sidebar.org-pinned-order.<orgId>`)
  * - Personal agents (`sidebar.group-order.<orgId>.<userId>`)
  *
- * Agents with tasks but not in either list do not appear. Decopilot and
- * tool-call runs still render when they have threads (fixed groups).
+ * Agents with tasks but not in either list do not appear. Decopilot is
+ * always pinned (even with no threads); tool-call runs render when they
+ * have threads. Both are fixed (non-reorderable) groups.
  */
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
 import { TOOL_CALL_RUNS_GROUP_KEY, type TaskGroupData } from "./group-threads";

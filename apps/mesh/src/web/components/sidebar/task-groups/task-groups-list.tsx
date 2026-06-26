@@ -259,7 +259,7 @@ export function TaskGroupsList({
     const isNonAgentGroup =
       virtualMcpId === decopilotId || virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY;
     return {
-      isOrgPinned: orgPinnedSet.has(virtualMcpId),
+      isOrgPinned: isNonAgentGroup || orgPinnedSet.has(virtualMcpId),
       canManageOrgPin: isNonAgentGroup ? false : canManageOrgPin,
       onToggleOrgPin: isNonAgentGroup ? undefined : handleToggleOrgPin,
     };
