@@ -389,6 +389,17 @@ export class ThreadConnection {
     }
   }
 
+  /**
+   * Queue a user message behind the active run: POST it to the thread gate
+   * WITHOUT the optimistic local render or any run-status change. The message
+   * surfaces in the frontend message queue and renders in the body only when
+   * its turn dequeues and streams. Throws if the POST is rejected so the
+   * caller can skip the optimistic enqueue.
+   */
+  async enqueue(message: UIMessage, opts: RequestOptions): Promise<void> {
+    await this.post(message, opts, undefined, true);
+  }
+
   stop(): void {
     this.inflightPost?.abort();
     const s = this.status.get();
@@ -616,6 +627,7 @@ export class ThreadConnection {
     message: UIMessage,
     opts: RequestOptions,
     signal?: AbortSignal,
+    quiet = false,
   ): Promise<void> {
     const { system, ...rest } = opts;
     // Attach the system prompt only on a user turn. Tool-output / approval
@@ -661,7 +673,8 @@ export class ThreadConnection {
       const text = await resp.text().catch(() => "");
       throw new Error(text || `POST /messages failed (${resp.status})`);
     }
-    if (this.runStatusStage.get() !== null) {
+    // A queued (quiet) POST must not touch the running turn's status display.
+    if (!quiet && this.runStatusStage.get() !== null) {
       this.setRunStatusStage("received");
     }
   }

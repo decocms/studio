@@ -1,7 +1,7 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { X } from "@untitledui/icons";
 import { selectWaitingQueueItems } from "./queue-items";
-import { useCancelQueuedMessage, useThreadQueue } from "./use-thread-queue";
+import { useMessageQueue, useMessageQueueActions } from "./use-message-queue";
 
 /**
  * Pending-message queue above the composer. Lists only the messages *waiting*
@@ -10,8 +10,8 @@ import { useCancelQueuedMessage, useThreadQueue } from "./use-thread-queue";
  * chat body. Each row cancels its own gate workflow. Hidden when nothing waits.
  */
 export function ThreadQueuePanel({ taskId }: { taskId: string }) {
-  const { items } = useThreadQueue(taskId);
-  const cancel = useCancelQueuedMessage(taskId);
+  const items = useMessageQueue(taskId);
+  const { cancel } = useMessageQueueActions();
   const queued = selectWaitingQueueItems(items);
   if (queued.length === 0) return null;
 
@@ -38,7 +38,7 @@ export function ThreadQueuePanel({ taskId }: { taskId: string }) {
               size="icon"
               className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
               title="Remove from queue"
-              onClick={() => cancel(item.workflowId)}
+              onClick={() => cancel(taskId, item.messageId)}
             >
               <X size={14} />
             </Button>

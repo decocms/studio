@@ -94,6 +94,18 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
   return s.kind;
 }
 
+/** Concatenate the text parts of a message for the queue-row display. */
+function queueItemTextFromParts(parts: ChatMessage["parts"]): string {
+  return parts
+    .map((p) =>
+      p && typeof p === "object" && (p as { type?: string }).type === "text"
+        ? ((p as { text?: string }).text ?? "")
+        : "",
+    )
+    .join("")
+    .trim();
+}
+
 import { useChatNavigation } from "./hooks/use-chat-navigation";
 import { useThreadActions, useThreadManager } from "./store/hooks";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
@@ -105,6 +117,7 @@ import type { RunStatusStage } from "./run-status";
 import { useLocalStorage } from "../../hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "../../lib/localstorage-keys";
 import { KEYS } from "../../lib/query-keys";
+import { enqueueMessage, refreshMessageQueue } from "./message-queue-store";
 import { formatDeckTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import { useSimpleMode } from "../../hooks/use-organization-settings";
 
@@ -937,6 +950,9 @@ export function ActiveTaskProvider({
       },
       onFinish: (message, _messages, finishReason) => {
         const cb = cbRef.current;
+        // Terminal event: the gate advanced — re-sync the queue so the
+        // dequeued message drops and the next one surfaces.
+        if (cb.taskId) void refreshMessageQueue(cb.orgSlug, cb.taskId);
         if (cb.taskId) {
           cb.manager.patchThread({
             id: cb.taskId,
@@ -1000,11 +1016,15 @@ export function ActiveTaskProvider({
     };
     conn.observer = observer;
 
-    // Refresh the pending-message queue on every SSE run start/end edge. A
-    // gate dequeue flips conn.status idle→active (the next queued message
-    // began streaming); a finish flips active→idle (the slot freed). This is
-    // the SSE-driven replacement for the old 3s poll — the queue panel updates
-    // exactly when the thread gate advances, off the same stream the chat uses.
+    // Seed the frontend message queue from the gate on (re)mount so a reload
+    // or thread switch still shows what's queued.
+    void refreshMessageQueue(cbRef.current.orgSlug, cbRef.current.taskId);
+
+    // Re-sync the queue on every SSE run start/end edge. A gate dequeue flips
+    // conn.status idle→active (the next queued message began streaming); a
+    // finish flips active→idle (the slot freed). This is the SSE-driven
+    // refresh — the queue panel updates exactly when the thread gate advances,
+    // off the same stream the chat uses.
     const isActiveStatus = (k: ConnStatus["kind"]) =>
       k === "submitted" || k === "streaming";
     let prevActive = isActiveStatus(conn.status.get().kind);
@@ -1013,9 +1033,7 @@ export function ActiveTaskProvider({
       if (active === prevActive) return;
       prevActive = active;
       const cb = cbRef.current;
-      cb.queryClient.invalidateQueries({
-        queryKey: KEYS.threadQueue(cb.taskId),
-      });
+      void refreshMessageQueue(cb.orgSlug, cb.taskId);
     });
 
     return () => {
@@ -1100,35 +1118,60 @@ export function ActiveTaskProvider({
       metadata: messageMetadata,
     };
 
-    await conn.submit(
-      { kind: "message", message: userMessage },
-      {
-        tier: activeTier,
-        mode: modeToSend,
-        toolApprovalLevel:
-          preferences.toolApprovalLevel ?? readToolApprovalLevel(),
-        system: system || undefined,
-        agent: { id: capturedVirtualMcpId },
-        thread_id: capturedTaskId,
-        ...resolveSubmitSettings({
-          thread: activeTask
-            ? {
-                harness_id: activeTask.harness_id ?? null,
-                sandbox_provider_kind: activeTask.sandbox_provider_kind ?? null,
-                branch: activeTask.branch ?? null,
-              }
-            : null,
-          globals: {
-            harnessId: pendingHarnessId ?? undefined,
-            sandboxProviderKind: pendingSandboxProviderKind ?? undefined,
-            branch: currentBranch,
-          },
-        }),
-      },
-    );
-    queryClient.invalidateQueries({
-      queryKey: KEYS.threadQueue(capturedTaskId),
-    });
+    const requestOptions = {
+      tier: activeTier,
+      mode: modeToSend,
+      toolApprovalLevel:
+        preferences.toolApprovalLevel ?? readToolApprovalLevel(),
+      system: system || undefined,
+      agent: { id: capturedVirtualMcpId },
+      thread_id: capturedTaskId,
+      ...resolveSubmitSettings({
+        thread: activeTask
+          ? {
+              harness_id: activeTask.harness_id ?? null,
+              sandbox_provider_kind: activeTask.sandbox_provider_kind ?? null,
+              branch: activeTask.branch ?? null,
+            }
+          : null,
+        globals: {
+          harnessId: pendingHarnessId ?? undefined,
+          sandboxProviderKind: pendingSandboxProviderKind ?? undefined,
+          branch: currentBranch,
+        },
+      }),
+    };
+
+    // A run is already streaming (this thread) or in progress (hosted): the
+    // message can't be the current turn, so queue it behind the running one.
+    // POST it to the gate WITHOUT an optimistic body row, then mirror it into
+    // the frontend message queue (it renders in the body when its turn
+    // dequeues and streams). Otherwise this is the current turn — submit
+    // normally so it renders in the body and streams immediately.
+    if (isStreaming || isRunInProgress) {
+      try {
+        await conn.enqueue(userMessage, requestOptions);
+        enqueueMessage(capturedTaskId, {
+          workflowId: `thread-run:${capturedTaskId}:${userMessage.id}`,
+          messageId: userMessage.id,
+          text: queueItemTextFromParts(parts),
+          status: "queued",
+          enqueuedAt: Date.now(),
+        });
+      } catch (err) {
+        setChatError(err instanceof Error ? err : new Error(String(err)));
+        toast.error(
+          err instanceof Error ? err.message : "Failed to queue message",
+        );
+      }
+      // Reconcile the optimistic row against the gate's authoritative list.
+      void refreshMessageQueue(org.slug, capturedTaskId);
+    } else {
+      await conn.submit(
+        { kind: "message", message: userMessage },
+        requestOptions,
+      );
+    }
   }
 
   // Cancel run

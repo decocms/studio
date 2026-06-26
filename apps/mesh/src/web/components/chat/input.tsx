@@ -534,7 +534,7 @@ export function ChatInput({
                     {/* Left Actions (+, Tools, active tool pills, stats) */}
                     <div className="flex items-center gap-1.5 min-w-0">
                       <ToolsPopover
-                        disabled={isStreaming}
+                        disabled={false}
                         onOpenConnections={() => {
                           track("connections_dialog_opened", {
                             source: "tools_popover",
@@ -576,7 +576,6 @@ export function ChatInput({
                       {chatMode === "gen-image" && imageModel && (
                         <button
                           type="button"
-                          disabled={isStreaming}
                           onClick={() => {
                             playSwitchSound();
                             track("chat_mode_changed", {
@@ -603,7 +602,6 @@ export function ChatInput({
                       {chatMode === "web-search" && webSearchModel && (
                         <button
                           type="button"
-                          disabled={isStreaming}
                           onClick={() => {
                             playSwitchSound();
                             track("chat_mode_changed", {
@@ -630,7 +628,6 @@ export function ChatInput({
                       {chatMode === "deep-research" && deepResearchModel && (
                         <button
                           type="button"
-                          disabled={isStreaming}
                           onClick={() => {
                             playSwitchSound();
                             track("chat_mode_changed", {
@@ -674,14 +671,14 @@ export function ChatInput({
                       )}
                       <TierTrigger />
 
-                      {/* Microphone button — kept mounted (and disabled)
-                          during streaming/run to avoid layout shift when
-                          the send button morphs into stop/cancel. */}
+                      {/* Microphone button — always enabled; the composer has
+                          no disabled state, only a streaming state reflected by
+                          the send/stop button. */}
                       {voice.isSupported && (
                         <Button
                           type="button"
                           onClick={handleVoiceStart}
-                          disabled={isStreaming || isRunInProgress}
+                          disabled={false}
                           variant="ghost"
                           size="icon"
                           className={cn(
