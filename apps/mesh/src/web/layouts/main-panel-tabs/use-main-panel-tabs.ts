@@ -38,6 +38,7 @@ import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
+import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useCapability } from "@/web/hooks/use-capability";
 import type {
   ThreadExpandedTool,
@@ -192,7 +193,20 @@ export function useMainPanelTabs(ctx: {
   // server is up (shared query keys with Preview / Content). Requires
   // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
   const vmEvents = useSandboxEvents();
+  const sandboxLifecycle = useSandboxLifecycle();
   const devServerReady = vmEvents.lifecycle.phase === "running";
+
+  // A user-desktop sandbox serves its dev server on a loopback previewUrl
+  // (`http://<handle>.localhost`), which the cloud proxy cannot reach — so the
+  // `dev_<id>` route resolves to a connection the pod can't fetch. The browser
+  // IS co-located with the daemon, so point the dev MCP client straight at the
+  // previewUrl (CORS on the deco dev server is `*`). For agent-sandbox the
+  // previewUrl is public, so leave mcpUrl undefined and keep the cloud route.
+  const devMcpUrl =
+    sandboxLifecycle.vmEntry?.sandboxProviderKind === "user-desktop" &&
+    sandboxLifecycle.previewUrl
+      ? `${sandboxLifecycle.previewUrl.replace(/\/+$/, "")}/api/mcp`
+      : undefined;
 
   // Auto-detect the dev MCP app's views straight from its sandbox dev server:
   // every tool that declares a `ui://` resource is a view, rendered against the
@@ -204,6 +218,7 @@ export function useMainPanelTabs(ctx: {
     connectionId: devConnId ?? undefined,
     orgId: org.id,
     orgSlug: org.slug,
+    mcpUrl: devMcpUrl,
   });
   const { data: devToolsResult } = useMCPToolsListQuery({
     client: devClient as NonNullable<typeof devClient>,
