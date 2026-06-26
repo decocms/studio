@@ -21,6 +21,7 @@ import {
   useOrgFsDownloadUrl,
   useOrgFsStat,
 } from "@/web/hooks/use-org-fs";
+import { FileShareButton } from "@/web/layouts/library/file-share-button";
 
 const HOME_VOLUME = "home";
 
@@ -57,6 +58,15 @@ export function DeckTab({ path }: { path: string }) {
       marker={entryMarker(stat.data)}
       title={path}
       savePath={path}
+      trailing={
+        <FileShareButton
+          volume={HOME_VOLUME}
+          path={path}
+          shareMode={stat.data.shareMode ?? "private"}
+          effectivePublic={stat.data.effectivePublic ?? false}
+          url={window.location.origin + readUrl}
+        />
+      }
     />
   );
 }
