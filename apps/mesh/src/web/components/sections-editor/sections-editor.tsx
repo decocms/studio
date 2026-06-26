@@ -76,6 +76,7 @@ import {
   buildPageSectionsFromVariants,
   countSavedMatcherBlockReferences,
   getLastVariantIndex,
+  isMultivariateArrayWrapper,
   parsePageVariants,
   type PageVariant,
 } from "./page-variants";
@@ -94,12 +95,18 @@ import {
   hideSection,
   parseSectionFlagVariants,
   rebuildSectionWithMultivariate,
+  reorderMultivariateSectionVariant,
   showSection,
   toggleSectionLazyRender,
   unwrapVariantSectionValue,
   updateMultivariateSectionVariantRule,
   updateMultivariateSectionVariantValue,
 } from "./section-variants";
+import {
+  buildPageVariantOverrideParams,
+  buildSectionVariantOverrideParams,
+  type PageVariantInfo,
+} from "./variant-matcher-override";
 import { PageJsonDialog } from "./page-json-dialog";
 import { createReferencedBlockSaver } from "./save-referenced-block";
 
@@ -440,6 +447,7 @@ export function SectionsEditor({
   initialEditSeo = false,
   onExitSeo,
   onViewJsonFile,
+  onVariantPreviewOverride,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -469,6 +477,13 @@ export function SectionsEditor({
    * Hosts without a file surface (Content tab) omit this and get the modal.
    */
   onViewJsonFile?: (pageKey: string) => void;
+  /**
+   * Called when the selected section variant changes so the host can force the
+   * preview iframe to render that variant via `x-deco-matchers-override`.
+   * Passes `null` when no variant override should be applied (non-multivariate
+   * section, or nothing selected).
+   */
+  onVariantPreviewOverride?: (params: string[] | null) => void;
 }) {
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch }
@@ -725,6 +740,9 @@ export function SectionsEditor({
   const activeVariant = pageVariants[safeVariantIndex];
   const rawSections: RawSection[] = activeVariant?.sections ?? [];
   const parsedSections = parseSections(rawSections, decofile);
+  // Page is page-level multivariate when `sections` is a multivariate wrapper.
+  const pageIsMultivariate =
+    !isGlobalBlockMode && isMultivariateArrayWrapper(pageData?.sections);
 
   // Global blocks open directly into the section form (single saved block).
   if (
@@ -765,10 +783,78 @@ export function SectionsEditor({
     selectedSectionIndex,
   };
 
+  // Force the preview iframe to render the selected variant via the deco
+  // runtime's `x-deco-matchers-override`. `null` clears any prior override.
+  const currentPageVariantInfo = (): PageVariantInfo => ({
+    multivariate: pageIsMultivariate,
+    index: safeVariantIndex,
+    variants: pageVariants.map((v) => ({ rule: v.rule })),
+  });
+
+  // Force the preview to render a specific *page* variant. Pass the target
+  // index/variants explicitly so callers can drive the override before the
+  // render-scope `safeVariantIndex` reflects a pending state change.
+  const emitPageVariantOverride = (
+    variants: Array<{ rule?: Record<string, unknown> }>,
+    index: number,
+  ) => {
+    if (!onVariantPreviewOverride) return;
+    if (!activePageKey || !pageIsMultivariate || variants.length <= 1) {
+      onVariantPreviewOverride(null);
+      return;
+    }
+    const params = buildPageVariantOverrideParams(
+      activePageKey,
+      { multivariate: true, index, variants },
+      decofile,
+      meta,
+    );
+    onVariantPreviewOverride(params.length > 0 ? params : null);
+  };
+
+  const syncVariantPreviewOverride = (
+    mvObj: Record<string, unknown> | null,
+    sectionIndex: number,
+    variantIndex: number,
+  ) => {
+    if (!onVariantPreviewOverride) return;
+    if (!activePageKey) {
+      onVariantPreviewOverride(null);
+      return;
+    }
+    const pageInfo = currentPageVariantInfo();
+    const pageParams = buildPageVariantOverrideParams(
+      activePageKey,
+      pageInfo,
+      decofile,
+      meta,
+    );
+    if (!mvObj || sectionIndex < 0) {
+      onVariantPreviewOverride(pageParams.length > 0 ? pageParams : null);
+      return;
+    }
+    const sectionParams = buildSectionVariantOverrideParams({
+      pageKey: activePageKey,
+      page: pageInfo,
+      sectionIndex,
+      sectionLazy: parsedSections[sectionIndex]?.isLazy ?? false,
+      mvObj,
+      selectedVariantIndex: variantIndex,
+      decofile,
+      meta,
+    });
+    const params = [...pageParams, ...sectionParams];
+    onVariantPreviewOverride(params.length > 0 ? params : null);
+  };
+
   const applySectionVariant = (
     rawSection: RawSection,
     parsed: ParsedSection,
     variantIndex: number,
+    sectionIndex: number = selectedSectionIndex ?? -1,
+    // Only force the preview to this variant on an explicit variant-row click.
+    // Merely entering/auto-selecting a section must not re-navigate the iframe.
+    syncPreview = false,
   ) => {
     const mvObj = getMultivariateSectionObject(rawSection, parsed);
     if (!mvObj) {
@@ -776,6 +862,8 @@ export function SectionsEditor({
       setActiveResolveType(null);
       setSectionRuleResolveType(null);
       setSectionRuleFormValue(null);
+      if (syncPreview)
+        syncVariantPreviewOverride(null, sectionIndex, variantIndex);
       return;
     }
 
@@ -786,6 +874,8 @@ export function SectionsEditor({
       setActiveResolveType(null);
       setSectionRuleResolveType(null);
       setSectionRuleFormValue(null);
+      if (syncPreview)
+        syncVariantPreviewOverride(null, sectionIndex, variantIndex);
       return;
     }
 
@@ -800,6 +890,8 @@ export function SectionsEditor({
     );
     setSectionRuleResolveType(resolveType);
     setSectionRuleFormValue(formValue);
+    if (syncPreview)
+      syncVariantPreviewOverride(mvObj, sectionIndex, variantIndex);
   };
 
   // Auto-select section when parent signals a click-through from the preview.
@@ -817,7 +909,7 @@ export function SectionsEditor({
         setFieldBreadcrumbs([]);
         setFormResetKey((key) => key + 1);
         if (parsed.isMultivariate) {
-          applySectionVariant(rawSection, parsed, 0);
+          applySectionVariant(rawSection, parsed, 0, externalSelectedIndex);
         } else {
           const unwrapped = unwrapSection(rawSection, parsed, decofile);
           if (!unwrapped) {
@@ -1007,7 +1099,7 @@ export function SectionsEditor({
     if (!rawSection || !parsed) return;
 
     if (parsed.isMultivariate) {
-      applySectionVariant(rawSection, parsed, 0);
+      applySectionVariant(rawSection, parsed, 0, index);
       return;
     }
 
@@ -1017,6 +1109,7 @@ export function SectionsEditor({
       setActiveResolveType(null);
       setSectionRuleResolveType(null);
       setSectionRuleFormValue(null);
+      syncVariantPreviewOverride(null, index, 0);
       return;
     }
 
@@ -1024,6 +1117,7 @@ export function SectionsEditor({
     setActiveResolveType(unwrapped.resolveType);
     setSectionRuleResolveType(null);
     setSectionRuleFormValue(null);
+    syncVariantPreviewOverride(null, index, 0);
   };
 
   const handleFormChange = (val: unknown) => {
@@ -1242,7 +1336,13 @@ export function SectionsEditor({
     setActiveSectionVariantIndex(variantIndex);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
-    applySectionVariant(rawSection, parsed, variantIndex);
+    applySectionVariant(
+      rawSection,
+      parsed,
+      variantIndex,
+      selectedSectionIndex,
+      true,
+    );
   };
 
   const handleDeleteSectionVariant = (variantIndex: number) => {
@@ -1318,6 +1418,54 @@ export function SectionsEditor({
     savePageSections(updatedSections);
   };
 
+  const handleReorderSectionVariant = (fromIndex: number, toIndex: number) => {
+    if (selectedSectionIndex === null || !activePageKey) return;
+    if (fromIndex === toIndex) return;
+    const rawSection = rawSections[selectedSectionIndex];
+    const parsed = parsedSections[selectedSectionIndex];
+    if (!rawSection || !parsed?.isMultivariate) return;
+
+    const mvObj = getMultivariateSectionObject(rawSection, parsed);
+    if (!mvObj) return;
+
+    const updatedMvObj = reorderMultivariateSectionVariant(
+      mvObj,
+      fromIndex,
+      toIndex,
+    );
+
+    const updatedSections = [...rawSections];
+    updatedSections[selectedSectionIndex] = rebuildSectionWithMultivariate(
+      rawSection,
+      parsed,
+      updatedMvObj,
+    );
+
+    // Keep the selected variant pointing at the same variant after the move.
+    let nextIndex = activeSectionVariantIndex;
+    if (activeSectionVariantIndex === fromIndex) {
+      nextIndex = toIndex;
+    } else if (
+      fromIndex < activeSectionVariantIndex &&
+      toIndex >= activeSectionVariantIndex
+    ) {
+      nextIndex = activeSectionVariantIndex - 1;
+    } else if (
+      fromIndex > activeSectionVariantIndex &&
+      toIndex <= activeSectionVariantIndex
+    ) {
+      nextIndex = activeSectionVariantIndex + 1;
+    }
+
+    setActiveSectionVariantIndex(nextIndex);
+    applySectionVariant(
+      updatedSections[selectedSectionIndex],
+      parsed,
+      nextIndex,
+    );
+    savePageSections(updatedSections);
+  };
+
   const handleAddSectionVariant = (index?: number) => {
     const sectionIndex = index ?? selectedSectionIndex;
     if (sectionIndex === null || !activePageKey) return;
@@ -1344,7 +1492,12 @@ export function SectionsEditor({
     setActiveSectionVariantIndex(result.newVariantIndex);
     setFieldBreadcrumbs([]);
     setFormResetKey((key) => key + 1);
-    applySectionVariant(result.section, nextParsed, result.newVariantIndex);
+    applySectionVariant(
+      result.section,
+      nextParsed,
+      result.newVariantIndex,
+      sectionIndex,
+    );
     savePageSections(updatedSections);
   };
 
@@ -1386,6 +1539,7 @@ export function SectionsEditor({
       setActiveResolveType(unwrapped.resolveType);
     }
 
+    syncVariantPreviewOverride(null, selectedSectionIndex, 0);
     savePageSections(updatedSections);
   };
 
@@ -1835,18 +1989,32 @@ export function SectionsEditor({
     );
     setRuleResolveType(resolveType);
     setRuleFormValue(formValue);
+    emitPageVariantOverride(
+      pageVariants.map((v) => ({ rule: v.rule })),
+      index,
+    );
   };
 
   const handleReorderPageVariants = (fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return;
 
+    let nextIndex = safeVariantIndex;
     if (safeVariantIndex === fromIndex) {
-      setActiveVariantIndex(toIndex);
+      nextIndex = toIndex;
     } else if (fromIndex < safeVariantIndex && toIndex >= safeVariantIndex) {
-      setActiveVariantIndex(safeVariantIndex - 1);
+      nextIndex = safeVariantIndex - 1;
     } else if (fromIndex > safeVariantIndex && toIndex <= safeVariantIndex) {
-      setActiveVariantIndex(safeVariantIndex + 1);
+      nextIndex = safeVariantIndex + 1;
     }
+    setActiveVariantIndex(nextIndex);
+
+    // Keep the preview override pointing at the same variant after the move.
+    const reorderedRules = arrayMove(
+      pageVariants.map((v) => ({ rule: v.rule })),
+      fromIndex,
+      toIndex,
+    );
+    emitPageVariantOverride(reorderedRules, nextIndex);
 
     mutatePageVariants((variants) => arrayMove(variants, fromIndex, toIndex));
   };
@@ -2286,6 +2454,7 @@ export function SectionsEditor({
           {isEditingMultivariateSection && sectionFlagVariants.length > 0 && (
             <>
               <SectionVariantList
+                listKey={`${activePageKey ?? ""}:${selectedSectionIndex ?? ""}`}
                 variants={sectionFlagVariants.map((variant, index) => ({
                   index,
                   label: variant.label,
@@ -2295,6 +2464,7 @@ export function SectionsEditor({
                 onDuplicate={handleDuplicateSectionVariant}
                 onDelete={handleDeleteSectionVariant}
                 onRemoveAll={handleRemoveAllSectionVariants}
+                onReorder={handleReorderSectionVariant}
                 onAdd={() => handleAddSectionVariant()}
               />
               {isEditingMultivariateSection && (

@@ -341,6 +341,30 @@ export function duplicateMultivariateSectionVariant(
   return { ...mvObj, variants };
 }
 
+export function reorderMultivariateSectionVariant(
+  mvObj: Record<string, unknown>,
+  fromIndex: number,
+  toIndex: number,
+): Record<string, unknown> {
+  const variants = [
+    ...((mvObj.variants as Array<Record<string, unknown>>) ?? []),
+  ];
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= variants.length ||
+    toIndex >= variants.length
+  ) {
+    return mvObj;
+  }
+
+  const [moved] = variants.splice(fromIndex, 1);
+  if (!moved) return mvObj;
+  variants.splice(toIndex, 0, moved);
+  return { ...mvObj, variants };
+}
+
 export function deleteMultivariateSectionVariant(
   mvObj: Record<string, unknown>,
   variantIndex: number,

@@ -10,6 +10,7 @@ import {
   isDefaultVariantRule,
   parseSectionFlagVariants,
   pickVariantToKeepIndex,
+  reorderMultivariateSectionVariant,
   showSection,
   toggleSectionLazyRender,
   unwrapVariantSectionValue,
@@ -173,6 +174,26 @@ describe("section-variants", () => {
     expect(updated.variants).toHaveLength(1);
     expect(updated.variants[0]?.value.title).toBe("A");
     expect(deleteMultivariateSectionVariant(updated, 0)).toBeNull();
+  });
+
+  it("reorderMultivariateSectionVariant moves a variant and preserves the rest", () => {
+    const mvObj = {
+      __resolveType: "website/flags/multivariate/section.ts",
+      variants: [
+        { value: { title: "A" } },
+        { value: { title: "B" } },
+        { value: { title: "C" } },
+      ],
+    };
+
+    const moved = reorderMultivariateSectionVariant(mvObj, 0, 2) as {
+      variants: Array<{ value: { title: string } }>;
+    };
+    expect(moved.variants.map((v) => v.value.title)).toEqual(["B", "C", "A"]);
+
+    // out-of-range / no-op returns the original object
+    expect(reorderMultivariateSectionVariant(mvObj, 1, 1)).toBe(mvObj);
+    expect(reorderMultivariateSectionVariant(mvObj, 0, 9)).toBe(mvObj);
   });
 
   it("isDefaultVariantRule treats always matchers as default", () => {
