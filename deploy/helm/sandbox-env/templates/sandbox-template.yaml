@@ -54,9 +54,6 @@ spec:
         # undefined. Warm-pool pods end up without the role label;
         # dashboards filter by absence-of-handle instead.
     spec:
-      {{- if .Values.serviceAccountName }}
-      serviceAccountName: {{ .Values.serviceAccountName }}
-      {{- end }}
       automountServiceAccountToken: false
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -209,18 +206,6 @@ spec:
               value: "/run/orgfs/config.json"
             - name: ORGFS_SIDECAR_STATUS_PATH
               value: "/run/orgfs/status.json"
-            {{- end }}
-            {{- if .Values.decoCache.region }}
-            - name: DECO_CACHE_S3_REGION
-              value: {{ .Values.decoCache.region | quote }}
-            {{- end }}
-            {{- if .Values.decoCache.bucket }}
-            - name: DECO_CACHE_S3_BUCKET
-              value: {{ .Values.decoCache.bucket | quote }}
-            {{- end }}
-            {{- if .Values.decoCache.endpoint }}
-            - name: DECO_CACHE_S3_ENDPOINT
-              value: {{ .Values.decoCache.endpoint | quote }}
             {{- end }}
           ports:
             - name: daemon

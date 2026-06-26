@@ -8,6 +8,8 @@
  * (user, branch) key — no stale-sandbox teardown is needed on kind change.
  */
 
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/mesh-sdk";
 import {
@@ -65,6 +67,33 @@ const sandboxProviderKindInputSchema = z.enum([
   "user-desktop",
   "cluster",
 ]);
+
+async function tryGenerateDecoCachePresignedUrl(
+  owner: string,
+  repo: string,
+): Promise<string | undefined> {
+  if (owner !== "deco-sites") return undefined;
+  const bucket = getSettings().decoCacheS3Bucket;
+  const region = getSettings().decoCacheS3Region;
+  if (!bucket || !region) return undefined;
+  try {
+    const endpoint = getSettings().decoCacheS3Endpoint;
+    const s3 = new S3Client({
+      region,
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
+    });
+    return await getSignedUrl(
+      s3,
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: `${owner}/${repo}/cache.tar.zst`,
+      }),
+      { expiresIn: 900 },
+    );
+  } catch {
+    return undefined;
+  }
+}
 
 export const SANDBOX_START = defineTool({
   name: "SANDBOX_START",
@@ -299,6 +328,7 @@ async function provisionSandbox(
         displayName: string;
         owner?: string;
         name?: string;
+        denoCachePresignedUrl?: string;
       }
     | undefined;
 
@@ -380,6 +410,10 @@ async function provisionSandbox(
       displayName: `${githubRepo.owner}/${githubRepo.name}`,
       owner: githubRepo.owner,
       name: githubRepo.name,
+      denoCachePresignedUrl: await tryGenerateDecoCachePresignedUrl(
+        githubRepo.owner,
+        githubRepo.name,
+      ),
     };
   }
 

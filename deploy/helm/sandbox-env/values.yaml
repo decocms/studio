@@ -230,29 +230,6 @@ orgFs:
 # dev server start) on staging before merging an override.
 readOnlyRootFilesystem: true
 
-# ── deco S3 cache ──────────────────────────────────────────────────────
-# When configured, the sandbox daemon automatically pre-populates the Deno
-# module cache from S3 before the first `deno task dev` for repos under the
-# deco-sites GitHub org. Credentials are provided via EKS Pod Identity —
-# no static keys needed. Non-fatal: missing object or download failure is
-# logged and the sandbox starts with a cold cache.
-#
-# region:   S3 region (required).
-# bucket:   S3 bucket name (required).
-# endpoint: S3-compatible endpoint override for MinIO, R2, GCS, etc.
-decoCache:
-  region: ""
-  bucket: ""
-  endpoint: ""
-
-# ── Pod Identity service account ────────────────────────────────────────
-# Name of the Kubernetes ServiceAccount to assign to sandbox pods.
-# Used with EKS Pod Identity to grant pods IAM permissions (e.g. S3 access
-# for deco cache) without static credentials. The SA must exist in
-# agent-sandbox-system and have a Pod Identity Association configured.
-# Leave empty to run pods without a named service account.
-serviceAccountName: ""
-
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:
   # Optional: supply an explicit token so CI can pass the same value to

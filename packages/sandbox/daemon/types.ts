@@ -71,6 +71,7 @@ export interface TenantConfig {
   readonly operator?: OperatorIdentity;
   readonly application?: Application;
   readonly env?: Readonly<Record<string, string>>;
+  readonly denoCache?: { readonly presignedUrl: string };
 }
 
 /** In-memory enriched view: TenantConfig + derivations. */

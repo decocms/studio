@@ -72,6 +72,8 @@ export interface EnsureOptions {
     displayName?: string;
     /** GitHub org or user that owns the repo (e.g. "deco-sites"). */
     owner?: string;
+    /** Pre-signed URL to download the Deno module cache from S3. */
+    denoCachePresignedUrl?: string;
     /** Repository name without owner (e.g. "my-site"). */
     name?: string;
   };

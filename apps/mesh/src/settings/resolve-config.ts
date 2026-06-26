@@ -228,6 +228,10 @@ export function resolveConfig(
       envVars.AWS_S3_TENANT_PROVISIONER_ACCESS_KEY_ID,
     awsS3TenantProvisionerSecretAccessKey:
       envVars.AWS_S3_TENANT_PROVISIONER_SECRET_ACCESS_KEY,
+
+    decoCacheS3Bucket: envVars.DECO_CACHE_S3_BUCKET,
+    decoCacheS3Region: envVars.DECO_CACHE_S3_REGION,
+    decoCacheS3Endpoint: envVars.DECO_CACHE_S3_ENDPOINT,
   };
 
   return {

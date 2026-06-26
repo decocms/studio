@@ -23,7 +23,6 @@
     "./proxy/websocket": "./proxy/websocket.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1013.0",
     "@decocms/harness": "workspace:*",
     "@decocms/std": "workspace:*",
     "@kubernetes/client-node": "^1.4.0",

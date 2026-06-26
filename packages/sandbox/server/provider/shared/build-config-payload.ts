@@ -13,6 +13,7 @@ export function buildConfigPayload(args: {
   port?: number;
   repo: NonNullable<EnsureOptions["repo"]> | null;
   tenant?: EnsureOptions["tenant"];
+  denoCachePresignedUrl?: string;
 }): Partial<TenantConfig> | null {
   const repo = args.repo;
   const git = repo
@@ -53,11 +54,16 @@ export function buildConfigPayload(args: {
       }
     : undefined;
 
-  if (!git && !application && !operator) return null;
+  const denoCache = args.denoCachePresignedUrl
+    ? { presignedUrl: args.denoCachePresignedUrl }
+    : undefined;
+
+  if (!git && !application && !operator && !denoCache) return null;
   return {
     ...(git ? { git } : {}),
     ...(operator ? { operator } : {}),
     ...(application ? { application } : {}),
+    ...(denoCache ? { denoCache } : {}),
   };
 }
 

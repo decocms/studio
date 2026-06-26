@@ -138,6 +138,11 @@ export interface Settings {
   awsS3TenantRoleArn: string | undefined;
   awsS3TenantProvisionerAccessKeyId: string | undefined;
   awsS3TenantProvisionerSecretAccessKey: string | undefined;
+
+  // deco S3 cache — pre-signed URL generation for deco-sites sandbox warm-up.
+  decoCacheS3Bucket: string | undefined;
+  decoCacheS3Region: string | undefined;
+  decoCacheS3Endpoint: string | undefined;
 }
 
 export interface CliFlags {

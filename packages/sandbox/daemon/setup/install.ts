@@ -1,4 +1,3 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { existsSync } from "node:fs";
 import { createWriteStream } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -10,72 +9,44 @@ import { resolvePmRoot } from "../paths";
 import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
-function resolveDecoCachePath(config: Config): string | null {
-  const { owner, name } = config.git?.repository ?? {};
-  if (!owner || owner !== "deco-sites" || !name) return null;
-  return `${owner}/${name}/cache.tar.zst`;
-}
-
 /**
- * For Deno projects, tries to pre-populate $DENO_DIR from S3 so the first
- * `deno task dev` skips remote import fetching.
+ * For Deno projects, tries to pre-populate $DENO_DIR from a pre-signed S3 URL
+ * provided by mesh. The URL is scoped to exactly one object (owner/repo/cache.tar.zst)
+ * and expires in 15 minutes — no AWS credentials needed in the sandbox pod.
  *
- * Credentials are provided via Pod Identity (EKS) or the standard AWS
- * credential chain — no static keys needed in env vars.
- *
- * Required env vars:
- *   DECO_CACHE_S3_REGION
- *   DECO_CACHE_S3_BUCKET
- *
- * Optional env vars:
- *   DECO_CACHE_S3_ENDPOINT — S3-compatible endpoint (e.g. MinIO, R2)
- *
- * Non-fatal: any failure (object not found, network error, auth error)
- * is logged and the sandbox continues to start normally.
+ * Non-fatal: any failure (URL expired, object not found, network error) is logged
+ * and the sandbox continues to start normally.
  */
 export function tryWarmDenoCache(deps: InstallDeps): Promise<void> | null {
   const { config } = deps;
   if (config.application?.packageManager?.name !== "deno") return null;
 
-  const region = process.env.DECO_CACHE_S3_REGION;
-  const bucket = process.env.DECO_CACHE_S3_BUCKET;
-  if (!region || !bucket) return null;
-
-  const cachePath = resolveDecoCachePath(config);
-  if (!cachePath) return null;
+  const presignedUrl = config.denoCache?.presignedUrl;
+  if (!presignedUrl) return null;
 
   return (async () => {
     deps.onChunk(
       "setup",
-      `\r\n[deno cache] fetching from s3 (${cachePath})...\r\n`,
+      "\r\n[deno cache] fetching from pre-signed URL...\r\n",
     );
-
-    const endpoint = process.env.DECO_CACHE_S3_ENDPOINT;
-    const s3 = new S3Client({
-      region,
-      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
-    });
 
     let tmpDir: string | null = null;
     try {
-      const res = await s3.send(
-        new GetObjectCommand({ Bucket: bucket, Key: cachePath }),
-      );
-      if (!res.Body) throw new Error("empty response body");
+      const res = await fetch(presignedUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.body) throw new Error("empty response body");
 
       tmpDir = await mkdtemp(join(tmpdir(), "deco-cache-"));
       const tmpFile = join(tmpDir, "cache.tar.zst");
-      await pipeline(
-        res.Body as NodeJS.ReadableStream,
-        createWriteStream(tmpFile),
-      );
+      const ws = createWriteStream(tmpFile);
+      await pipeline(res.body as unknown as NodeJS.ReadableStream, ws);
 
       const denoDir =
         deps.env?.DENO_DIR ?? process.env.DENO_DIR ?? join(homedir(), ".deno");
       const cmd = [
         `mkdir -p "${denoDir}"`,
         `zstd -d "${tmpFile}" --stdout | tar xf - -C "${denoDir}" --no-same-permissions --no-same-owner`,
-        `echo "[deno cache] restored from s3 (${cachePath})"`,
+        `echo "[deno cache] restored from S3"`,
       ].join(" && ");
 
       await spawnSetupStep(cmd, deps.onChunk, {
@@ -85,10 +56,11 @@ export function tryWarmDenoCache(deps: InstallDeps): Promise<void> | null {
     } catch {
       deps.onChunk(
         "setup",
-        `[deno cache] not available (${cachePath}) — deno will fetch deps on first run\r\n`,
+        "[deno cache] not available — deno will fetch deps on first run\r\n",
       );
     } finally {
-      if (tmpDir) await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      if (tmpDir)
+        await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   })();
 }
