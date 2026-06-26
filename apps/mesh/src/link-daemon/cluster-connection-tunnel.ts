@@ -413,27 +413,51 @@ export function createTunnelCommandFetch(input: {
   };
 }
 
-function createNatsAuthenticator(
-  session: LinkSessionResponse,
+/**
+ * Build a NATS authenticator that re-reads the LATEST session on every
+ * (re)connect via `getSession`, instead of capturing one static credentials
+ * blob. The NATS client invokes the authenticator on each connection attempt
+ * (`maxReconnectAttempts: -1`), so when the session has been re-minted in the
+ * background, an auto-reconnect after a credentials-expiry kick presents the
+ * FRESH JWT and self-heals — rather than looping forever on the dead creds
+ * (the field failure: a tunnel-relay run died on `ClosedConnectionError` after
+ * `UserAuthenticationExpiredError` because the static authenticator could only
+ * ever re-present the already-expired token). The factory (creds vs token) is
+ * chosen once from the initial session — the cluster never switches auth modes
+ * within a daemon's lifetime — but the VALUE is read live on each call.
+ */
+export function createNatsAuthenticator(
+  getSession: () => LinkSessionResponse,
 ):
   | ReturnType<typeof credsAuthenticator>
   | ReturnType<typeof tokenAuthenticator>
   | undefined {
-  if (session.connection.credentials) {
-    return credsAuthenticator(
-      new TextEncoder().encode(session.connection.credentials),
+  const initial = getSession();
+  if (initial.connection.credentials) {
+    const encoder = new TextEncoder();
+    return credsAuthenticator(() =>
+      encoder.encode(getSession().connection.credentials ?? ""),
     );
   }
-  if (session.connection.token) {
-    return tokenAuthenticator(session.connection.token);
+  if (initial.connection.token) {
+    return tokenAuthenticator(() => getSession().connection.token ?? "");
   }
   return undefined;
 }
 
 export function buildNatsConnectOptions(
   session: LinkSessionResponse,
+  /**
+   * Live view of the current session for the authenticator. Defaults to the
+   * static `session` (back-compat); production passes a
+   * {@link TunnelSessionSource}'s `getForAuth` so reconnects use re-minted
+   * creds. Connection-level fields (urls, inbox prefix) come from `session` and
+   * are stable across re-mints (same hostname/URLs) — only the credentials
+   * rotate.
+   */
+  getSession: () => LinkSessionResponse = () => session,
 ): ConnectionOptions {
-  const authenticator = createNatsAuthenticator(session);
+  const authenticator = createNatsAuthenticator(getSession);
   return {
     servers: session.connection.urls,
     ...(authenticator ? { authenticator } : {}),
@@ -472,9 +496,11 @@ const defaultWebSocketConnect: NatsConnector = (options) => wsconnect(options);
 export async function connectNats(
   session: LinkSessionResponse,
   deps: ConnectNatsDeps = {},
+  /** Live session view for the authenticator (see buildNatsConnectOptions). */
+  getSession: () => LinkSessionResponse = () => session,
 ): Promise<NatsConnection> {
   const useWebSocket = isWebSocketSession(session);
-  const options = buildNatsConnectOptions(session);
+  const options = buildNatsConnectOptions(session, getSession);
   if (useWebSocket) {
     options.ignoreClusterUpdates = true;
   }
@@ -482,6 +508,79 @@ export async function connectNats(
     ? (deps.connectWebSocket ?? defaultWebSocketConnect)
     : (deps.connectTcp ?? connectTcp);
   return await connector(options);
+}
+
+/**
+ * Default lead time before a session's hard expiry at which the authenticator
+ * proactively re-mints, so a NATS (re)connect is never handed an already-expired
+ * JWT. Sits comfortably inside the daemon-side 60s renewal skew but is checked
+ * lazily on each auth call, so it also covers the case the renewal timer missed
+ * (laptop sleep / wall-clock jump) — exactly when self-healing matters.
+ */
+const SESSION_REFRESH_MARGIN_MS = 30_000;
+
+/**
+ * A live, refreshable view of the tunnel session credentials shared with the
+ * NATS authenticator. `current()` is the latest minted session; `getForAuth()`
+ * is the synchronous accessor the authenticator calls on every (re)connect —
+ * it returns the current session and, when the creds are within the refresh
+ * margin of expiry, kicks a single-flight background re-mint so the NEXT
+ * connection attempt presents fresh creds. `refresh()` forces a re-mint now.
+ */
+export interface TunnelSessionSource {
+  current(): LinkSessionResponse;
+  refresh(): Promise<void>;
+  getForAuth(): LinkSessionResponse;
+}
+
+export function createTunnelSessionSource(opts: {
+  initial: LinkSessionResponse;
+  /** Re-mints a fresh session (creds + expiry). Typically the retrying fetch. */
+  fetchSession: () => Promise<LinkSessionResponse>;
+  now?: () => number;
+  refreshMarginMs?: number;
+}): TunnelSessionSource {
+  const now = opts.now ?? (() => Date.now());
+  const marginMs = opts.refreshMarginMs ?? SESSION_REFRESH_MARGIN_MS;
+  let session = opts.initial;
+  // Single-flight: concurrent auth calls + the timer must not stampede the mint
+  // endpoint. While one re-mint is in flight, every caller awaits the same one.
+  let inFlight: Promise<void> | null = null;
+
+  const refresh = (): Promise<void> => {
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      try {
+        session = await opts.fetchSession();
+      } catch (err) {
+        // A re-mint failure must never reject the synchronous auth path; keep
+        // the current creds (a still-live connection is unaffected) and let a
+        // later call retry once `inFlight` is cleared.
+        console.warn(
+          "[cluster-connection-tunnel] session refresh failed; keeping current creds",
+          err,
+        );
+      } finally {
+        inFlight = null;
+      }
+    })();
+    return inFlight;
+  };
+
+  const isStale = (): boolean => {
+    const expiresAtMs = Date.parse(session.expiresAt);
+    if (!Number.isFinite(expiresAtMs)) return false;
+    return now() >= expiresAtMs - marginMs;
+  };
+
+  return {
+    current: () => session,
+    refresh,
+    getForAuth: () => {
+      if (isStale()) void refresh();
+      return session;
+    },
+  };
 }
 
 export function sessionRenewDelayMs(
@@ -545,7 +644,21 @@ export async function connectToClusterTunnel(
 
   const startActive = async (): Promise<ActiveTunnelConnection> => {
     const session = await fetchSessionWithRetry();
-    const nc = await (deps.connectNats ?? connectNats)(session);
+    // Live credentials view for the authenticator: a NATS auto-reconnect that
+    // fires after the JWT expires (e.g. the daemon-side renewal timer was paused
+    // by laptop sleep, so the server kicks the connection with
+    // UserAuthenticationExpiredError) re-presents FRESH creds re-minted in the
+    // background, instead of looping forever on the dead token.
+    const sessionSource = createTunnelSessionSource({
+      initial: session,
+      fetchSession: fetchSessionWithRetry,
+      now: () => now().getTime(),
+    });
+    const nc = await (deps.connectNats ?? connectNats)(
+      session,
+      undefined,
+      sessionSource.getForAuth,
+    );
     liveNc = nc;
     monitorNatsStatus(nc, session.tunnelHostname, now);
     const ac = new AbortController();
