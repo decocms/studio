@@ -17,7 +17,7 @@ import {
 } from "@/web/components/sections-editor/resolve-schema";
 import { validateBlockId } from "@/web/components/sections-editor/page-sections";
 import { MakeReusableModal } from "@/web/components/sections-editor/make-reusable-modal";
-import { SectionSidePanel } from "./section-side-panel";
+import { SectionPreviewPane } from "./section-preview-pane";
 
 /** Debounce before reloading the preview after a form edit. */
 const PREVIEW_DEBOUNCE_MS = 600;
@@ -115,13 +115,6 @@ export function AvailableSectionEditor({
     setFormValue(next);
     // Keep the preview in sync with what the user is typing (debounced).
     schedulePreviewReload();
-  };
-
-  // Apply edits made directly in the JSON tab back to the form state.
-  const handleApplyJson = (data: Record<string, unknown>) => {
-    setFormValue(data);
-    setFormResetKey((key) => key + 1);
-    setPreviewReloadKey((k) => k + 1);
   };
 
   const handleSubmit = async (blockId: string) => {
@@ -223,15 +216,14 @@ export function AvailableSectionEditor({
         </ScrollArea>
       </div>
 
-      <SectionSidePanel
+      <SectionPreviewPane
         previewUrl={previewUrl}
         livePageResolveType={livePageResolveType}
-        previewTarget={{ kind: "inline", resolveType, data: formValue }}
+        target={{ kind: "inline", resolveType, data: formValue }}
         theme={siteTheme}
         reloadKey={previewReloadKey}
-        onRefreshPreview={() => setPreviewReloadKey((k) => k + 1)}
-        jsonValue={JSON.stringify(formValue, null, 2)}
-        onApplyJson={handleApplyJson}
+        onRefresh={() => setPreviewReloadKey((k) => k + 1)}
+        initialOpen={false}
       />
 
       <MakeReusableModal

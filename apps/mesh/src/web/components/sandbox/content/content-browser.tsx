@@ -87,9 +87,9 @@ import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/sect
 import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
 import {
-  SectionSidePanel,
+  SectionPreviewPane,
   type SectionPreviewTarget,
-} from "./section-side-panel";
+} from "./section-preview-pane";
 import { AvailableSectionEditor } from "./available-section-editor";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
@@ -626,24 +626,6 @@ function ContentBrowserReady({
     saveBlock.mutate({ blockKey, data }),
   );
 
-  // Persist edits made in the saved-section JSON tab, then reload the preview.
-  const handleApplySavedJson = (
-    blockKey: string,
-    data: Record<string, unknown>,
-  ) => {
-    saveBlock.mutate(
-      { blockKey, data },
-      {
-        onSuccess: () =>
-          setTimeout(
-            () => setPreviewReloadKey((k) => k + 1),
-            PREVIEW_SETTLE_MS,
-          ),
-        onError: (err) => toast.error(`Save failed: ${err.message}`),
-      },
-    );
-  };
-
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
     const source = decofile[section.key] as Record<string, unknown> | undefined;
     if (!source) {
@@ -887,7 +869,6 @@ function ContentBrowserReady({
               }}
               isCreating={saveBlock.isPending}
               onCreateAvailable={handleCreateAvailableSection}
-              onApplySavedJson={handleApplySavedJson}
               onSaveReferencedBlock={saveReferencedBlock}
             />
           ) : selection && selection.collection !== "available-section" ? (
@@ -1106,7 +1087,6 @@ function SectionsRightPane({
   onSaved,
   isCreating,
   onCreateAvailable,
-  onApplySavedJson,
   onSaveReferencedBlock,
 }: {
   selection:
@@ -1133,7 +1113,6 @@ function SectionsRightPane({
     blockId: string,
     data: Record<string, unknown>,
   ) => Promise<void>;
-  onApplySavedJson: (blockKey: string, data: Record<string, unknown>) => void;
   onSaveReferencedBlock: (
     blockKey: string,
     data: Record<string, unknown>,
@@ -1176,7 +1155,6 @@ function SectionsRightPane({
     kind: "saved",
     blockKey: selection.key,
   };
-  const savedBlock = decofile[selection.key];
 
   return (
     <div className="flex h-full w-full min-w-0">
@@ -1194,16 +1172,14 @@ function SectionsRightPane({
           onSaved={onSaved}
         />
       </div>
-      <SectionSidePanel
+      <SectionPreviewPane
         key={`panel:${selection.key}`}
         previewUrl={previewUrl}
         livePageResolveType={livePageResolveType}
-        previewTarget={previewTarget}
+        target={previewTarget}
         theme={siteTheme}
         reloadKey={reloadKey}
-        jsonValue={JSON.stringify(savedBlock ?? {}, null, 2)}
-        onApplyJson={(data) => onApplySavedJson(selection.key, data)}
-        initialTab="preview"
+        initialOpen
       />
     </div>
   );
