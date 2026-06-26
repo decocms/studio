@@ -2,7 +2,7 @@
  * Tool Registry
  *
  * Central export for all MCP Mesh management tools.
- * Types are inferred from ALL_TOOLS — this is the source of truth.
+ * Types are inferred from CORE_TOOLS — this is the source of truth.
  */
 
 import type { ToolAnnotations } from "@/core/define-tool";
@@ -189,8 +189,13 @@ export const CORE_TOOLS = [
   SearchTools.GLOBAL_SEARCH,
 ] as const satisfies { name: ToolName }[];
 
-// Runtime tool shape — widened from the concrete `CORE_TOOLS` tuple so the
-// name→tool map and MCP registration can iterate a single uniform type.
+/**
+ * Widened runtime view of a tool. `CORE_TOOLS` is the single source of truth and
+ * keeps each tool's precise Zod types (see `./io-types`), but the name→tool map
+ * and the MCP/REST dispatch iterate one uniform type and call
+ * `execute(unknown, ctx)` generically — which the concrete per-tool tuple types
+ * (a union of functions with incompatible parameters) can't express.
+ */
 export interface CombinedTool {
   name: string;
   description: string;
@@ -202,28 +207,21 @@ export interface CombinedTool {
   execute: (input: unknown, ctx: StudioContext) => Promise<unknown>;
 }
 
-// All available tools. The set is static — the dynamic plugin system was removed.
-export const ALL_TOOLS: CombinedTool[] = [
-  ...(CORE_TOOLS as unknown as CombinedTool[]),
-];
-
-export type MCPMeshTools = typeof ALL_TOOLS;
-
-// Derive tool name type from ALL_TOOLS
-export type ToolNameFromTools = (typeof ALL_TOOLS)[number]["name"];
-
 /**
  * Tuple type of the core tools, preserving each tool's concrete Zod
- * input/output schema types (unlike the widened `ALL_TOOLS: CombinedTool[]`).
- * Type-only consumers derive per-tool input/output types from this — see
- * `./io-types`. Import as `import type` only; importing as a value would pull
- * the entire server tool graph into a bundle.
+ * input/output schema types (unlike the widened `CombinedTool`). Type-only
+ * consumers derive per-tool input/output types from this — see `./io-types`.
+ * Import as `import type` only; importing as a value would pull the entire
+ * server tool graph into a bundle.
  */
 export type CoreTools = typeof CORE_TOOLS;
 
-/** Static name→tool map over ALL_TOOLS, built once at module load. */
+/**
+ * Static name→tool map over the (static) tool set, built once at module load.
+ * The widening to `CombinedTool` lives here — the single boundary that needs it.
+ */
 const TOOL_BY_NAME: Map<string, CombinedTool> = new Map(
-  ALL_TOOLS.map((tool) => [tool.name, tool]),
+  (CORE_TOOLS as unknown as CombinedTool[]).map((tool) => [tool.name, tool]),
 );
 
 /**
@@ -248,7 +246,7 @@ export const managementMCP = async (ctx: StudioContext) => {
   // Register each tool from its shared, prebuilt registration (config carries
   // the prebuilt Zod schemas; the handler reads ctx from the ALS store at call
   // time rather than capturing it). Only the map insertion is per-request.
-  for (const tool of ALL_TOOLS) {
+  for (const tool of TOOL_BY_NAME.values()) {
     const { config, handler } = getToolRegistration(tool);
     server.registerTool(tool.name, config, handler);
   }

@@ -10,7 +10,7 @@
  * NOTE: This file is imported by frontend code. Do NOT import runtime values
  * from ./index (only type imports are safe, but they cause circular issues).
  *
- * Keep ALL_TOOL_NAMES in sync with ALL_TOOLS in index.ts manually.
+ * Keep ALL_TOOL_NAMES in sync with CORE_TOOLS in index.ts manually.
  * A test can verify they match.
  */
 
@@ -40,7 +40,7 @@ export type ToolCategory =
   | "Search";
 
 /**
- * All tool names - keep in sync with ALL_TOOLS in index.ts
+ * All tool names - keep in sync with CORE_TOOLS in index.ts
  */
 const ALL_TOOL_NAMES = [
   // Organization tools

@@ -11,7 +11,7 @@ const DEFAULT_CLIENT_INFO = {
 };
 
 export interface CreateMcpClientOptions {
-  /** Connection ID - use SELF_MCP_ALIAS_ID for the self/management MCP (ALL_TOOLS), or any connectionId for other MCPs */
+  /** Connection ID - use SELF_MCP_ALIAS_ID for the self/management MCP (builtin tools), or any connectionId for other MCPs */
   connectionId: string | null;
   /** Organization ID - required for query-key scoping */
   orgId: string;

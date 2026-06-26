@@ -32,7 +32,7 @@ export const WellKnownOrgMCPId = {
 
 /**
  * Frontend connection ID for the self/management MCP endpoint.
- * Use this constant when calling management tools (ALL_TOOLS) from the frontend.
+ * Use this constant when calling the builtin management tools from the frontend.
  * The endpoint is exposed at /mcp/self.
  */
 export const SELF_MCP_ALIAS_ID = "self";
