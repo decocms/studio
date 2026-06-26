@@ -38,8 +38,6 @@ export interface GitRepository {
   readonly repoName?: string;
   /** GitHub org or user that owns the repo (e.g. "deco-sites"). */
   readonly owner?: string;
-  /** Repository name without owner (e.g. "my-site"). */
-  readonly name?: string;
 }
 
 export interface GitConfig {
