@@ -97,6 +97,17 @@ export class JetStreamKVMcpListCache implements McpListCache {
 // Module-level revalidation tracking (prevents thundering herd)
 const revalidating = new Set<string>();
 
+// In-flight background list revalidations (sampled at scrape time). Sits
+// alongside the mcp_list_cache.fetches counter: a count that stays high means
+// upstream list calls aren't keeping up with staleness — refresh load worth
+// watching next to hit/miss/stale rates.
+meter
+  .createObservableGauge("mcp_list_cache.pending_revalidations", {
+    description: "In-flight background MCP list revalidations on this pod",
+    unit: "{revalidations}",
+  })
+  .addCallback((r) => r.observe(revalidating.size));
+
 // Per-(type,connection) timestamp of the last revalidation we scheduled, used to
 // throttle background revalidation. Without it, every cache hit reconnects
 // downstream — so a UI polling tools/list every few seconds hammers the upstream

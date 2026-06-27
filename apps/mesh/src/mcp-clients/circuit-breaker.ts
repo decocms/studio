@@ -15,6 +15,7 @@ import {
   CIRCUIT_BREAKER_FAILURE_THRESHOLD,
   CIRCUIT_BREAKER_MAX_ENTRIES,
 } from "../core/constants";
+import { meter } from "../observability";
 
 type CircuitState = "CLOSED" | "OPEN" | "HALF_OPEN";
 
@@ -26,6 +27,26 @@ interface CircuitEntry {
 }
 
 const circuits = new Map<string, CircuitEntry>();
+
+// Live circuit counts by state (sampled at scrape time). A rising `open` count
+// means downstream MCP servers are unreachable and requests are failing fast —
+// the signal an operator wants when proxied tools start erroring. O(n) over the
+// map (n ≤ CIRCUIT_BREAKER_MAX_ENTRIES) per scrape.
+meter
+  .createObservableGauge("mcp_circuit_breaker.circuits", {
+    description: "MCP connection circuits by state (open, half_open)",
+    unit: "{circuits}",
+  })
+  .addCallback((r) => {
+    let open = 0;
+    let halfOpen = 0;
+    for (const c of circuits.values()) {
+      if (c.state === "OPEN") open++;
+      else if (c.state === "HALF_OPEN") halfOpen++;
+    }
+    r.observe(open, { state: "open" });
+    r.observe(halfOpen, { state: "half_open" });
+  });
 
 export class CircuitOpenError extends Error {
   readonly cooldownRemainingMs: number;
