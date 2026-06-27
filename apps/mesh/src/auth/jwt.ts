@@ -120,10 +120,12 @@ export async function verifyMeshToken(
  * only need the user identity, not the full proxy-token metadata.
  *
  * @param userId - The authenticated user's ID
+ * @param email - The authenticated user's email (forwarded to Stripe checkout)
  * @param expiresIn - Expiration time in seconds (default: 1 hour)
  */
 export async function mintGatewayJwt(
   userId: string,
+  email?: string,
   expiresIn = 3600,
 ): Promise<string> {
   const settings = getSettings();
@@ -134,7 +136,11 @@ export async function mintGatewayJwt(
     );
   }
   const secret = new TextEncoder().encode(gwSecret);
-  return await new SignJWT({ iss: "mesh", sub: userId })
+  return await new SignJWT({
+    iss: "mesh",
+    sub: userId,
+    ...(email && { email }),
+  })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuedAt()
     .setExpirationTime(Math.floor(Date.now() / 1000) + expiresIn)
