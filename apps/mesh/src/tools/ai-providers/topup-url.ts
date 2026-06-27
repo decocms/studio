@@ -45,7 +45,7 @@ export const AI_PROVIDER_TOPUP_URL = defineTool({
       );
     }
 
-    const meshJwt = await mintGatewayJwt(userId);
+    const meshJwt = await mintGatewayJwt(userId, ctx.auth.user?.email);
 
     const url = await adapter.getTopUpUrl(
       meshJwt,
