@@ -475,4 +475,34 @@ describe("InMemoryMcpReadCache", () => {
     expect(toolBg).toBe(true); // stale → revalidated
     expect(resBg).toBe(false); // still fresh → not revalidated
   });
+
+  test("stats() tracks entry count and bytes, decremented on eviction", async () => {
+    // maxEntries=1 forces an eviction so bytes can't only ever grow.
+    const { cache } = newCache({ maxEntries: 1 });
+    expect(cache.stats()).toEqual({ entries: 0, bytes: 0 });
+
+    await cache.fetch({
+      type: TOOL,
+      connectionId: CONN,
+      scope: ORG,
+      params: { a: 1 },
+      fetchLive: async () => ({ value: "first" }),
+    });
+    const afterFirst = cache.stats();
+    expect(afterFirst.entries).toBe(1);
+    expect(afterFirst.bytes).toBeGreaterThan(0);
+
+    // Second distinct key evicts the first (LRU) — entries stays at 1, bytes
+    // reflect only the surviving entry (proves the running sum is decremented).
+    await cache.fetch({
+      type: TOOL,
+      connectionId: CONN,
+      scope: ORG,
+      params: { b: 22222 },
+      fetchLive: async () => ({ value: "second" }),
+    });
+    const afterSecond = cache.stats();
+    expect(afterSecond.entries).toBe(1);
+    expect(afterSecond.bytes).toBe(JSON.stringify({ value: "second" }).length);
+  });
 });

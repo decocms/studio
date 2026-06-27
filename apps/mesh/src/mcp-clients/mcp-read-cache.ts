@@ -133,6 +133,11 @@ export class InMemoryMcpReadCache {
     private readonly maxTotalBytes: number = READ_CACHE_MAX_TOTAL_BYTES,
   ) {}
 
+  /** Current size snapshot for observability (cheap O(1) reads). */
+  stats(): { entries: number; bytes: number } {
+    return { entries: this.store.size, bytes: this.totalBytes };
+  }
+
   /** Delete a key and keep the byte accounting in sync. */
   private deleteKey(key: string): void {
     const e = this.store.get(key);
@@ -274,6 +279,22 @@ export class InMemoryMcpReadCache {
 
 // Per-pod singleton — pure in-memory, no external deps.
 const readCache = new InMemoryMcpReadCache();
+
+// Cache-size gauges (sampled at collection time). The cache OOM'd pods before,
+// so its live entry count and byte footprint are the signals a Grafana
+// dashboard charts against the READ_CACHE_MAX_ENTRIES / _TOTAL_BYTES caps.
+meter
+  .createObservableGauge("mcp_read_cache.entries", {
+    description: "Current entry count in the per-pod MCP read cache",
+    unit: "{entries}",
+  })
+  .addCallback((r) => r.observe(readCache.stats().entries));
+meter
+  .createObservableGauge("mcp_read_cache.bytes", {
+    description: "Approximate total bytes held in the per-pod MCP read cache",
+    unit: "By",
+  })
+  .addCallback((r) => r.observe(readCache.stats().bytes));
 
 /**
  * MCP read/list caching. On by default in production, off in development;
