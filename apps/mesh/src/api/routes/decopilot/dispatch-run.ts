@@ -1308,22 +1308,19 @@ async function prepareRun(
     // once a consumer pulls `uiStream`. `prepareLinkWorkDispatch` never consumes the
     // stream, so link-transport runs never start a cluster-side harness.
     //
-    // claude-code cwd resolution: with the `host` runner gone, hosted execution
-    // never has a local on-disk workdir to point the CLI at, so the harness
-    // falls back to its own ambient cwd. The agent-sandbox runner doesn't
-    // surface a local FS to mesh.
-    //
     // When a streamBuffer is wired, its JetStream pump consumes `uiStream`
     // directly after prepareRun returns and publishes every chunk into the
     // per-task subject — that's what /stream tails.
     //
-    // This generator only ever runs CLUSTER-hosted loops via `localDispatch`:
-    // decopilot (any sandbox kind) plus CLI on agent-sandbox/legacy targets.
-    // A CLI run on a user-desktop target resolves to the "sandbox" site
-    // (`resolveHarnessExecutionSite`) and goes through the link transport
-    // (`prepareLinkWorkDispatch` + tunnel work publisher), which never consumes
-    // this stream — so a (CLI, user-desktop) target reaching here is a hard bug
-    // (the guard below throws). The push `remoteDispatch` path is deleted.
+    // Only decopilot runs a cluster-hosted loop here. A CLI harness
+    // (claude-code, codex) never reaches a successful dispatch on this path: on
+    // user-desktop it resolves to the "sandbox" site (`resolveHarnessExecutionSite`)
+    // and goes through the link transport (`prepareLinkWorkDispatch` + tunnel
+    // work publisher); on agent-sandbox it is rejected up front by the gate
+    // (cloud-CLI is a planned follow-up). The only way a CLI harness lands here
+    // is a link-incapable runtime trying to run a desktop CLI loop locally — a
+    // hard misconfiguration the invariant below rejects. The push
+    // `remoteDispatch` path is deleted.
     if (shouldPublishRunStatus) {
       await publishRunStatusStage(
         streamBuffer,
@@ -1333,6 +1330,15 @@ async function prepareRun(
     }
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
+        // Cluster-hosted dispatch is decopilot-only. Anything else reaching here
+        // means the gate routing diverged (e.g. a link-incapable runtime tried
+        // to run a CLI desktop loop locally) — fail loud rather than run a CLI
+        // harness in the cluster.
+        if (harnessId !== "decopilot") {
+          throw new Error(
+            `dispatchRunAndWait runs cluster-hosted decopilot only; got "${harnessId}" — CLI harnesses use the link transport or are rejected at the gate`,
+          );
+        }
         // Layer the non-serializable `signal` onto the eagerly-built wire
         // input. Everything else (mcp, materialized userMessage, fence token, …)
         // was assembled above and is shared verbatim with the desktop work item.
@@ -1340,27 +1346,12 @@ async function prepareRun(
           ...wireHarnessInput,
           signal: registrySignal,
         };
-        if (harnessId === "decopilot") {
-          setDecopilotRunContext(harnessInput, decopilotRunContext);
-        }
+        setDecopilotRunContext(harnessInput, decopilotRunContext);
 
-        // CLI harnesses (claude-code, codex) on user-desktop are routed by the
-        // gate to the link work publisher, which never consumes this lazy
-        // stream. Reaching this generator for a CLI user-desktop target means
-        // the gate routing diverged — a hard bug. Decopilot always runs here
-        // (cluster-hosted) regardless of sandbox provider kind.
-        if (
-          target.sandboxProviderKind === "user-desktop" &&
-          harnessId !== "decopilot"
-        ) {
-          throw new Error(
-            "user-desktop CLI runs use the link transport — dispatchRunAndWait must not run a local harness for them",
-          );
-        }
-        // hosted / agent-sandbox only. Step 1a: the in-process SandboxClient
-        // wraps the prior `localDispatch(harnessId, harnessInput, ctx)` path
-        // UNCHANGED — same AsyncIterable<UIMessageChunk>, same throw on unknown
-        // id, same ctx forwarding. consumeHarnessStream consumes it verbatim.
+        // Step 1a: the in-process SandboxClient wraps the prior
+        // `localDispatch(harnessId, harnessInput, ctx)` path UNCHANGED — same
+        // AsyncIterable<UIMessageChunk>, same throw on unknown id, same ctx
+        // forwarding. consumeHarnessStream consumes it verbatim.
         if (shouldPublishRunStatus) {
           await publishRunStatusStage(
             streamBuffer,
