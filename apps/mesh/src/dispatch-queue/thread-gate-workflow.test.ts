@@ -64,11 +64,33 @@ describe("resolveHarnessExecutionSite (topology tuple → site)", () => {
     ).toBe("cluster");
   });
 
-  it("runs an agent-sandbox target on the cluster (cloud-CLI is a follow-up)", () => {
+  it("runs a legacy/undefined-harness agent-sandbox target on the cluster", () => {
     expect(
       resolveHarnessExecutionSite({
         isLinkCapable: true,
         sandboxProviderKind: "agent-sandbox",
+      }),
+    ).toBe("cluster");
+  });
+
+  it("throws for a CLI harness on an agent-sandbox (cloud-CLI not implemented)", () => {
+    for (const harnessId of ["claude-code", "codex"]) {
+      expect(() =>
+        resolveHarnessExecutionSite({
+          isLinkCapable: true,
+          sandboxProviderKind: "agent-sandbox",
+          harnessId,
+        }),
+      ).toThrow(/not implemented/);
+    }
+  });
+
+  it("keeps decopilot on an agent-sandbox on the cluster", () => {
+    expect(
+      resolveHarnessExecutionSite({
+        isLinkCapable: true,
+        sandboxProviderKind: "agent-sandbox",
+        harnessId: "decopilot",
       }),
     ).toBe("cluster");
   });

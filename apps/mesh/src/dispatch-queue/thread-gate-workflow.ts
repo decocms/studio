@@ -121,11 +121,12 @@ export type HarnessExecutionSite = "cluster" | "sandbox";
  *                                               tunnel
  *   (codex,       user-desktop)  → "sandbox"  — idem
  *
- * The `(CLI, agent-sandbox)` cloud-CLI corner is not wired yet: it falls back
- * to "cluster" today and is a planned follow-up. `isLinkCapable` gates the only
- * "sandbox" site that needs out-of-cluster transport (the desktop link) — when
- * the work publisher + prepare fn aren't wired, even a desktop-CLI run resolves
- * to "cluster".
+ * The `(CLI, agent-sandbox)` cloud-CLI corner is not wired yet: it **throws**
+ * `not implemented` rather than silently running the CLI loop in the cluster
+ * (which would ignore the requested sandbox). It is a planned follow-up.
+ * `isLinkCapable` gates the only "sandbox" site that needs out-of-cluster
+ * transport (the desktop link) — when the work publisher + prepare fn aren't
+ * wired, even a desktop-CLI run resolves to "cluster".
  *
  * The target is resolved once at POST time (routes.ts `resolveDispatchTarget`)
  * and forwarded on `request.target`; the gate keys off it here rather than
@@ -144,6 +145,17 @@ export function resolveHarnessExecutionSite(input: {
   // sandbox is reachable (via the link tunnel); cloud-CLI is a follow-up.
   if (input.isLinkCapable && input.sandboxProviderKind === "user-desktop") {
     return "sandbox";
+  }
+  // A CLI harness targeting a cluster agent-sandbox (cloud-CLI) has no host
+  // yet. Fail loudly instead of falling through to "cluster" — running the CLI
+  // loop in the cluster would silently ignore the requested sandbox.
+  if (
+    (input.harnessId === "claude-code" || input.harnessId === "codex") &&
+    input.sandboxProviderKind === "agent-sandbox"
+  ) {
+    throw new Error(
+      `not implemented: CLI harness "${input.harnessId}" on an agent-sandbox (cloud-CLI is a planned follow-up)`,
+    );
   }
   return "cluster";
 }
@@ -292,8 +304,10 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
   });
 
   if (executionSite === "cluster") {
-    // ── Cluster (hosted local-dispatch) path — decopilot (any sandbox),
-    //    CLI + agent-sandbox, and legacy/undefined targets ──
+    // ── Cluster (hosted local-dispatch) path — decopilot (any sandbox) and
+    //    legacy/undefined targets. (CLI + agent-sandbox throws upstream in
+    //    resolveHarnessExecutionSite; CLI + user-desktop takes the sandbox
+    //    path below.) ──
     // Abort timer is opt-in. Automations supply a 5-min cap so a runaway
     // cron can't pin a thread slot forever; user messages leave it unset
     // because tool-using agent loops (Claude Code, deep research,
