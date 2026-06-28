@@ -30,6 +30,7 @@ import {
   dispatchSSEEventSchema,
   harnessStreamInputSchema,
   type DispatchSSEEvent,
+  type HarnessStreamInputWire,
 } from "../../dispatch/index";
 import type { LinkErrorCode } from "../../dispatch/error-codes";
 import { requireToken } from "../auth";
@@ -65,6 +66,25 @@ export interface DispatchDeps {
 export interface CancelDeps {
   /** See `DispatchDeps.daemonToken`. */
   daemonToken: string;
+}
+
+type RebasedHarnessInput = Omit<HarnessStreamInputWire, "workspace"> & {
+  workspace: Omit<HarnessStreamInputWire["workspace"], "cwd"> & {
+    cwd: string | null;
+  };
+  signal?: AbortSignal;
+};
+
+function rebaseHarnessInput(
+  input: HarnessStreamInputWire,
+): RebasedHarnessInput {
+  return {
+    ...input,
+    workspace: {
+      ...input.workspace,
+      cwd: rebaseWorkspaceCwd(input.workspace.cwd, daemonAppRoot()),
+    },
+  };
 }
 
 const TOMBSTONE_MS = 60_000;
@@ -108,17 +128,6 @@ function writeDispatchAcceptedPrelude(
     controller.enqueue(encoder.encode(DISPATCH_ACCEPTED_SSE_COMMENT));
   } catch {
     state.closed = true;
-  }
-}
-
-function rebaseInputWorkspace(input: {
-  workspace: { cwd: string };
-  codingWorkspace?: { cwd?: string | null };
-}): void {
-  const cwd = rebaseWorkspaceCwd(input.workspace.cwd, daemonAppRoot());
-  input.workspace = { cwd };
-  if (input.codingWorkspace?.cwd != null) {
-    input.codingWorkspace = { ...input.codingWorkspace, cwd };
   }
 }
 
@@ -180,9 +189,13 @@ export async function handleDispatchRequest(
 
   const body = await req.text();
 
-  let parsed: { harnessId: unknown; input: unknown };
+  let parsed: { runId?: unknown; harnessId?: unknown; input?: unknown };
   try {
-    parsed = JSON.parse(body) as { harnessId: unknown; input: unknown };
+    parsed = JSON.parse(body) as {
+      runId?: unknown;
+      harnessId?: unknown;
+      input?: unknown;
+    };
   } catch {
     return new Response(JSON.stringify({ error: "bad_json" }), {
       status: 400,
@@ -195,7 +208,14 @@ export async function handleDispatchRequest(
       headers: { "content-type": "application/json" },
     });
   }
+  if (typeof parsed.runId !== "string") {
+    return new Response(JSON.stringify({ error: "missing_run_id" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
   const harnessId = parsed.harnessId;
+  const runId = parsed.runId;
 
   const encoder = new TextEncoder();
 
@@ -278,23 +298,22 @@ export async function handleDispatchRequest(
         }
         const input = inputParse.data;
 
-        // Rebase the symbolic workspace cwd fields onto this daemon's sandbox
-        // root (spec: "Harness Input Contract" Q4 — containment by
-        // construction).
-        rebaseInputWorkspace(input);
+        // Rebase the symbolic workspace.cwd onto this daemon's sandbox root
+        // (spec: "Harness Input Contract" Q4 — containment by construction).
+        const rebasedInput = rebaseHarnessInput(input);
 
         // 3. Tombstone check — a cancel may have landed first. Surface it as a
         //    terminal error rather than starting a doomed harness.
-        const tombstoneExpiry = tombstones.get(input.runId);
+        const tombstoneExpiry = tombstones.get(runId);
         if (tombstoneExpiry && tombstoneExpiry > Date.now()) {
           const code: LinkErrorCode = "tombstoned";
-          fail(code, `runId ${input.runId} was cancelled`);
+          fail(code, `runId ${runId} was cancelled`);
           return;
         } else if (tombstoneExpiry) {
-          tombstones.delete(input.runId);
+          tombstones.delete(runId);
         }
 
-        activeRuns.set(input.runId, ctrl);
+        activeRuns.set(runId, ctrl);
 
         // Re-inject the per-run AbortSignal. `HarnessStreamInput.signal` is an
         // AbortSignal and therefore NOT JSON-serializable, so it never survives
@@ -304,20 +323,20 @@ export async function handleDispatchRequest(
         // `genTitle({ abortSignal })` receive a real signal instead of
         // `undefined` (which crashes genTitle's `addEventListener`) — and so a
         // DELETE /_sandbox/runs/:id actually aborts the in-flight model call.
-        (input as { signal?: AbortSignal }).signal = ctrl.signal;
+        (rebasedInput as { signal?: AbortSignal }).signal = ctrl.signal;
 
         console.log(
-          `[dispatch] received (offload) harness=${harnessId} runId=${input.runId} threadId=${input.threadId} bytes=${messagesRef.bytes}`,
+          `[dispatch] received (offload) harness=${harnessId} runId=${runId} threadId=${rebasedInput.threadId} bytes=${messagesRef.bytes}`,
         );
 
         // 4. Look up + run.
         let harness: DispatchHarness;
         try {
-          harness = deps.lookupHarness(harnessId, input);
+          harness = deps.lookupHarness(harnessId, rebasedInput);
         } catch (err) {
-          activeRuns.delete(input.runId);
+          activeRuns.delete(runId);
           console.error(
-            `[dispatch] lookupHarness failed harness=${harnessId} runId=${input.runId}:`,
+            `[dispatch] lookupHarness failed harness=${harnessId} runId=${runId}:`,
             err,
           );
           const code: LinkErrorCode = "unknown_harness";
@@ -331,7 +350,7 @@ export async function handleDispatchRequest(
           harness,
           ctrl,
           harnessId,
-          input.runId,
+          runId,
           streamState,
         );
       },
@@ -363,12 +382,12 @@ export async function handleDispatchRequest(
 
   // Rebase the symbolic workspace cwd fields onto this daemon's sandbox root
   // (spec: "Harness Input Contract" Q4 — containment by construction).
-  rebaseInputWorkspace(input);
+  const rebasedInput = rebaseHarnessInput(input);
 
   // Tombstone check — a cancel landed before this dispatch did. Decline
   // and let the cluster surface a clear cancellation instead of starting
   // a CLI process that will be immediately torn down.
-  const tombstoneExpiry = tombstones.get(input.runId);
+  const tombstoneExpiry = tombstones.get(runId);
   if (tombstoneExpiry && tombstoneExpiry > Date.now()) {
     return new Response(JSON.stringify({ error: "tombstoned" }), {
       status: 410,
@@ -376,28 +395,28 @@ export async function handleDispatchRequest(
     });
   } else if (tombstoneExpiry) {
     // Expired entry — clean up opportunistically.
-    tombstones.delete(input.runId);
+    tombstones.delete(runId);
   }
 
   const ctrl = new AbortController();
-  activeRuns.set(input.runId, ctrl);
+  activeRuns.set(runId, ctrl);
 
   // Re-inject the per-run AbortSignal — see the offload path above for the full
   // rationale. The wire input never carries `signal` (not serializable), so the
   // harness would otherwise see `input.signal === undefined`.
-  (input as { signal?: AbortSignal }).signal = ctrl.signal;
+  (rebasedInput as { signal?: AbortSignal }).signal = ctrl.signal;
 
   console.log(
-    `[dispatch] received harness=${harnessId} runId=${input.runId} threadId=${input.threadId}`,
+    `[dispatch] received harness=${harnessId} runId=${runId} threadId=${rebasedInput.threadId}`,
   );
 
   let harness: DispatchHarness;
   try {
-    harness = deps.lookupHarness(harnessId, input);
+    harness = deps.lookupHarness(harnessId, rebasedInput);
   } catch (err) {
-    activeRuns.delete(input.runId);
+    activeRuns.delete(runId);
     console.error(
-      `[dispatch] lookupHarness failed harness=${harnessId} runId=${input.runId}:`,
+      `[dispatch] lookupHarness failed harness=${harnessId} runId=${runId}:`,
       err,
     );
     return new Response(
@@ -438,7 +457,7 @@ export async function handleDispatchRequest(
         harness,
         ctrl,
         harnessId,
-        input.runId,
+        runId,
         streamState,
       );
     },

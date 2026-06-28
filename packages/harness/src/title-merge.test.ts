@@ -6,7 +6,7 @@ import {
   type TitleHandle,
 } from "./title-merge";
 import { isTitleResultChunk } from "./title-chunk";
-import { DEFAULT_THREAD_TITLE } from "./decopilot/prompt-constants";
+import { DEFAULT_THREAD_TITLE } from "./thread-title";
 
 /** Build an async stream from a fixed list of chunks. */
 async function* streamOf(

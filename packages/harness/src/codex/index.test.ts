@@ -1,7 +1,49 @@
 import { describe, expect, test } from "bun:test";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
-import type { HarnessContext } from "../types";
-import { buildCodexDeveloperInstructions, codexHarnessFactory } from "./index";
+import { prepCliMessages } from "../cli-message-prep";
+import type { HarnessContext, HarnessStreamInput } from "../types";
+import {
+  buildCodexDeveloperInstructions,
+  buildCodexModelOptions,
+  codexHarnessFactory,
+} from "./index";
+
+function makeInput(
+  overrides: Partial<HarnessStreamInput> = {},
+): HarnessStreamInput {
+  return {
+    threadId: "thread-2",
+    userMessage: {
+      id: "msg-default",
+      role: "user",
+      parts: [{ type: "text", text: "default message" }],
+    },
+    harness: {},
+    workspace: { cwd: null },
+    models: {
+      thinking: {
+        id: "codex:gpt-5.4",
+        title: "GPT 5.4",
+        provider: "openai",
+        credentialId: "cred-2",
+      },
+    },
+    mcp: {
+      url: "https://mcp.example.com",
+      headers: { authorization: "Bearer token" },
+      expiresAt: Date.now() + 60_000,
+    },
+    mode: "default",
+    temperature: 0,
+    toolApprovalLevel: "readonly",
+    user: { id: "user-2", email: "user@example.com" },
+    organizationId: "org-2",
+    agent: { id: "agent-2", instructions: "Prefer tests first." },
+    currentThreadTitle: "Renamed thread",
+    signal: new AbortController().signal,
+    ...overrides,
+  };
+}
 
 /**
  * Contract tests for the Codex harness factory.
@@ -9,9 +51,8 @@ import { buildCodexDeveloperInstructions, codexHarnessFactory } from "./index";
  * Exercising the actual streamText loop requires a working `codex`
  * app-server subprocess (the harness spawns it via
  * `ai-sdk-provider-codex-cli`), so that path is left to end-to-end /
- * resilience tests. The unit tests here verify only the factory shape —
- * id, create() return type, and stream() being a function. Task 12 will
- * own the integration coverage via the shared dispatcher.
+ * resilience tests. The unit tests here verify factory shape and pure
+ * input/model-option preparation.
  *
  * Provider-cleanup correctness (the try/finally around `provider.close()`)
  * is verified by code review of `index.ts` — exercising the close path
@@ -28,11 +69,37 @@ describe("codexHarnessFactory", () => {
     expect(harness.id).toBe("codex");
     expect(typeof harness.stream).toBe("function");
   });
+
+  test("uses single userMessage and harness session id", async () => {
+    const input = makeInput({
+      userMessage: {
+        id: "msg-1",
+        role: "user",
+        parts: [{ type: "text", text: "hello" }],
+      },
+      harness: { sessionId: "session-1" },
+      workspace: { cwd: null },
+    });
+
+    expect(input.harness.sessionId).toBe("session-1");
+    expect(input.userMessage.parts[0]).toEqual({ type: "text", text: "hello" });
+
+    const options = buildCodexModelOptions(input, undefined, undefined);
+    expect(options).toMatchObject({
+      resume: "session-1",
+      cwd: undefined,
+    });
+
+    const messages = await prepCliMessages([input.userMessage]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.role).toBe("user");
+    expect(messages[0]!.content).toEqual([{ type: "text", text: "hello" }]);
+  });
 });
 
 test("buildCodexDeveloperInstructions includes coding workspace and agent instructions only", () => {
   const instructions = buildCodexDeveloperInstructions({
-    codingWorkspace: {
+    workspace: {
       repo: {
         owner: "deco",
         name: "site",
@@ -40,7 +107,6 @@ test("buildCodexDeveloperInstructions includes coding workspace and agent instru
       },
       branch: "main",
       cwd: "/repo",
-      workspaceKind: "template",
     },
     agentInstructions: "Prefer tests before implementation.",
     now: new Date("2026-06-18T12:34:00.000Z"),

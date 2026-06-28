@@ -37,6 +37,7 @@ import {
   type ToolCallAnalytics,
 } from "@decocms/harness/decopilot/mcp-tools";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@decocms/harness/decopilot/harness-constants";
+import { requireDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
 import type { HarnessStreamInput } from "@decocms/harness/types";
 
 /** Raw MCP tool entries returned by `passthroughClient.listTools()`. */
@@ -215,6 +216,7 @@ export async function assembleDecopilotTools(
   ctx: StudioContext,
   extras: AssembleDecopilotToolsExtras,
 ): Promise<AssembledTools> {
+  const runContext = requireDecopilotRunContext(input);
   const organization = ctx.organization!;
   const isPlanMode = input.mode === "plan";
   // Per-run tool allowlist (model-facing names). Empty array is treated as
@@ -281,7 +283,7 @@ export async function assembleDecopilotTools(
     //   Tradeoff: concurrent threads share /app, /home/sandbox, /tmp —
     //   parallel writes to overlapping filenames can race. Fine for
     //   reads and scoped outputs; revisit if it bites.
-    const vmMetadata = input.virtualMcp.metadata as {
+    const vmMetadata = runContext.virtualMcp.metadata as {
       githubRepo?: GithubRepo | null;
     };
     const isEphemeralAgent = !vmMetadata.githubRepo;
@@ -290,7 +292,7 @@ export async function assembleDecopilotTools(
           virtualMcpId: input.agent.id,
           branch: isEphemeralAgent
             ? "ephemeral"
-            : (input.branch ?? `thread:${extras.threadId}`),
+            : (runContext.branch ?? `thread:${extras.threadId}`),
           userId: input.user.id,
           // Used by share_with_user to scope artifacts under
           // model-outputs/<threadId>/. Cannot be derived from the

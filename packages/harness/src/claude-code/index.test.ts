@@ -1,12 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { buildClaudeCodeSystemPrompt, claudeCodeHarnessFactory } from "./index";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
+import { prepCliMessages } from "../cli-message-prep";
 import type { HarnessContext, HarnessStreamInput } from "../types";
+import {
+  buildClaudeCodeModelOptions,
+  buildClaudeCodeSystemPrompt,
+  claudeCodeHarnessFactory,
+} from "./index";
 
-function makeInput(): HarnessStreamInput {
+function makeInput(
+  overrides: Partial<HarnessStreamInput> = {},
+): HarnessStreamInput {
   return {
-    agent: { id: "agent-1" },
-    workspace: { cwd: "default" },
+    threadId: "thread-1",
+    userMessage: {
+      id: "msg-default",
+      role: "user",
+      parts: [{ type: "text", text: "default message" }],
+    },
+    harness: {},
+    workspace: { cwd: null },
     models: {
       thinking: {
         id: "claude-code:sonnet",
@@ -15,8 +28,21 @@ function makeInput(): HarnessStreamInput {
         credentialId: "cred-1",
       },
     },
-    threadId: "thread-1",
-  } as unknown as HarnessStreamInput;
+    mcp: {
+      url: "https://mcp.example.com",
+      headers: { authorization: "Bearer token" },
+      expiresAt: Date.now() + 60_000,
+    },
+    mode: "default",
+    temperature: 0,
+    toolApprovalLevel: "readonly",
+    user: { id: "user-1", email: "user@example.com" },
+    organizationId: "org-1",
+    agent: { id: "agent-1", instructions: "Prefer small focused patches." },
+    currentThreadTitle: "Renamed thread",
+    signal: new AbortController().signal,
+    ...overrides,
+  };
 }
 
 /**
@@ -25,9 +51,7 @@ function makeInput(): HarnessStreamInput {
  * Exercising the actual streamText loop requires a working `claude` CLI
  * subprocess (the harness spawns it via `ai-sdk-provider-claude-code`),
  * so that path is left to end-to-end / resilience tests. The unit tests
- * here verify only the factory shape — id, create() return type, and
- * stream() being a function. Task 12 will own the integration coverage
- * via the shared dispatcher.
+ * here verify factory shape and pure input/model-option preparation.
  */
 describe("claudeCodeHarnessFactory", () => {
   test("has id 'claude-code'", () => {
@@ -39,11 +63,37 @@ describe("claudeCodeHarnessFactory", () => {
     expect(harness.id).toBe("claude-code");
     expect(typeof harness.stream).toBe("function");
   });
+
+  test("uses single userMessage and harness session id", async () => {
+    const input = makeInput({
+      userMessage: {
+        id: "msg-1",
+        role: "user",
+        parts: [{ type: "text", text: "hello" }],
+      },
+      harness: { sessionId: "session-1" },
+      workspace: { cwd: null },
+    });
+
+    expect(input.harness.sessionId).toBe("session-1");
+    expect(input.userMessage.parts[0]).toEqual({ type: "text", text: "hello" });
+
+    const options = buildClaudeCodeModelOptions(input, undefined, undefined);
+    expect(options).toMatchObject({
+      resume: "session-1",
+      cwd: undefined,
+    });
+
+    const messages = await prepCliMessages([input.userMessage]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]!.role).toBe("user");
+    expect(messages[0]!.content).toEqual([{ type: "text", text: "hello" }]);
+  });
 });
 
 test("buildClaudeCodeSystemPrompt appends coding workspace and agent instructions to Claude Code preset", () => {
   const prompt = buildClaudeCodeSystemPrompt({
-    codingWorkspace: {
+    workspace: {
       repo: {
         owner: "deco",
         name: "site",
@@ -51,7 +101,6 @@ test("buildClaudeCodeSystemPrompt appends coding workspace and agent instruction
       },
       branch: "main",
       cwd: "/repo",
-      workspaceKind: "github",
     },
     agentInstructions: "Prefer small focused patches.",
     now: new Date("2026-06-18T12:34:00.000Z"),

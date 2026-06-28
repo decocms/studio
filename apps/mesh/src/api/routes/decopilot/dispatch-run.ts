@@ -30,8 +30,6 @@ import { posthog } from "@/posthog";
 import type { UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
 import {
-  offloadKey,
-  sha256Hex,
   shouldOffload,
   type MessagesRef,
 } from "@decocms/harness/offload-messages";
@@ -63,21 +61,23 @@ import type {
   ModelsConfig,
 } from "@/harnesses";
 import { createSecretModelSource } from "@/harnesses";
-import {
-  WORKSPACE_CWD_DEFAULT,
-  WORKSPACE_CWD_REPO,
-} from "@decocms/harness/workspace-cwd";
-import type { CodingWorkspacePromptInput } from "@decocms/harness/coding-workspace-prompt";
+import { setDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
+import type {
+  DecopilotHttpMcpSource,
+  DecopilotObjectStorageSource,
+  HarnessWorkspace,
+} from "@decocms/harness/types";
+import { WORKSPACE_CWD_REPO } from "@decocms/harness/workspace-cwd";
 import { createProviderFromSecret } from "@decocms/harness/decopilot/provider-from-secret";
 import {
   classifyStreamError,
   stringifyError,
-} from "@decocms/harness/decopilot/stream-error";
+} from "@decocms/harness/stream-error";
 import { isCliHarness } from "@decocms/harness/cli-harness";
 import { DEFAULT_WINDOW_SIZE, generateMessageId } from "./constants";
 import { mintRunFenceToken } from "./dispatch-fence";
 import { synthesizedErrorMessageId } from "./message-ids";
-import { loadAndMergeMessages } from "./conversation";
+import { loadDecopilotContext } from "@/harnesses/decopilot/context-loader";
 import { PartEmitter } from "./part-emitter";
 import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
@@ -108,7 +108,7 @@ import { resolveThreadStatus } from "./status";
 import type { StreamBuffer } from "./stream-buffer";
 import type { ChatMessage, ModelsConfig as ClientModelsConfig } from "./types";
 import type { CancelBroadcast } from "./cancel-broadcast";
-import { computeCliDelta, resolveCliSessionRef } from "./cli-session-messages";
+import { resolveCliSessionRef } from "./cli-session-messages";
 import { getInternalUrl, getPublicUrl } from "@/core/server-constants";
 import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
 import { meter, traced } from "@/observability";
@@ -307,27 +307,11 @@ export function resolveHarnessId(providerId: string | undefined): HarnessId {
   return "decopilot";
 }
 
-/** Symbolic cwd: "/repo" for repo-backed sandbox dispatch (the daemon rebases
- *  onto its sandbox root); "default" otherwise (harness uses its SDK default,
- *  never fails). Hosted/in-pod runs always get "default". */
-function resolveWorkspaceCwd(
-  virtualMcp: { metadata?: unknown } | null,
-  sandboxProviderKind: DispatchTarget["sandboxProviderKind"],
-): { cwd: string } {
-  const hasRepo = !!(
-    virtualMcp?.metadata as { githubRepo?: unknown } | undefined
-  )?.githubRepo;
-  if (sandboxProviderKind === "user-desktop" && hasRepo) {
-    return { cwd: WORKSPACE_CWD_REPO };
-  }
-  return { cwd: WORKSPACE_CWD_DEFAULT };
-}
-
-export function buildCodingWorkspaceInput(input: {
+export function buildHarnessWorkspaceInput(input: {
   virtualMcp: { metadata?: unknown } | null;
   branch?: string | null;
-  workspace: { cwd: string };
-}): CodingWorkspacePromptInput {
+  cwd?: "/repo" | null;
+}): HarnessWorkspace {
   const githubRepo = (
     input.virtualMcp?.metadata as { githubRepo?: unknown } | undefined
   )?.githubRepo;
@@ -344,11 +328,13 @@ export function buildCodingWorkspaceInput(input: {
         }
       : undefined;
 
+  if (!repo) return { cwd: null };
+  if (input.cwd !== WORKSPACE_CWD_REPO) return { cwd: null };
+
   return {
-    ...(repo ? { repo } : {}),
+    cwd: WORKSPACE_CWD_REPO,
+    repo,
     branch: input.branch ?? null,
-    cwd: input.workspace.cwd,
-    workspaceKind: repo ? "github" : "unknown",
   };
 }
 
@@ -633,7 +619,7 @@ export async function dispatchRunAndWait(
  * `signal` field. This is exactly what the desktop daemon validates against
  * `harnessStreamInputSchema` and what the link work item carries.
  *
- * Built eagerly in `prepareRun`'s main body (mcp mint + message
+ * Built eagerly in `prepareRun`'s main body (mcp mint + userMessage
  * materialization + field assembly) so it's available without consuming
  * `uiStream`. The hosted dispatch path layers the signal on top inside the
  * lazy harness chunk source:
@@ -655,7 +641,7 @@ interface PreparedRun {
   /** Minted by prepareRun for link-dispatched threads. */
   runFenceToken: string;
   /**
-   * Fully-assembled wire harness input (mcp minted, messages materialized,
+   * Fully-assembled wire harness input (mcp minted, userMessage materialized,
    * fence token attached). `dispatchRunAndWait` ignores this (it consumes
    * `uiStream`); `prepareLinkWorkDispatch` returns it so the gate can publish
    * it as the link work item's `harnessInput`.
@@ -914,10 +900,10 @@ async function prepareRun(
         defaultWindowSize: windowSize,
       }),
       // Pre-resolve threads/interests/sibling-agents agent-side so the portable
-      // prompt builder renders them without any `ctx.storage` reach-in. Only
-      // hosted decopilot runs need it; desktop runs leave it absent so the
-      // corresponding prompt blocks skip.
-      harnessId === "decopilot" && target.sandboxProviderKind !== "user-desktop"
+      // prompt builder renders them without any `ctx.storage` reach-in. All
+      // decopilot runs (cloud and desktop) get the full context — the agent
+      // loop always runs in the cluster regardless of sandbox provider kind.
+      harnessId === "decopilot"
         ? resolveUserContext(
             ctx,
             input.organizationId,
@@ -1162,17 +1148,6 @@ async function prepareRun(
 
     const pendingOps: Promise<void>[] = [];
 
-    // Pre-load conversation (no system messages — those are built separately)
-    // When resuming, requestMessage is undefined — conversation loads entirely
-    // from DB via createMemory / loadAndMergeMessages.
-    const allMessages = await loadAndMergeMessages(
-      mem,
-      materializedRequestMessage,
-      systemMessages,
-      windowSize,
-      input.isSubagent === true,
-    );
-
     // CLI-harness delta + resume only holds on the long-lived desktop daemon:
     // the on-disk session survives between turns *only* on user-desktop. On any
     // other sandbox kind there is no persistent rollout to resume, so fall back
@@ -1181,8 +1156,11 @@ async function prepareRun(
     const cliResumable =
       isCliHarness(harnessId) && target.sandboxProviderKind === "user-desktop";
 
+    const cliHistory = cliResumable
+      ? ((await mem.loadHistory(windowSize)) as ChatMessage[])
+      : undefined;
     const resumeSessionRef = cliResumable
-      ? resolveCliSessionRef(allMessages, harnessId)
+      ? resolveCliSessionRef(cliHistory ?? [], harnessId)
       : undefined;
 
     const organization = ctx.organization!;
@@ -1190,7 +1168,7 @@ async function prepareRun(
 
     // ── Build the wire HarnessStreamInput EAGERLY ───────────────────────────
     // Everything the daemon's `harnessStreamInputSchema` needs (mcp endpoint,
-    // materialized messages, virtualMcp, fence token, …) is assembled here,
+    // materialized userMessage, workspace, fence token, …) is assembled here,
     // before the lazy harness chunk source runs. Two consumers read it:
     //   - hosted dispatch (`dispatchHarnessChunks` below) layers the
     //     non-serializable `signal` on top:
@@ -1198,45 +1176,39 @@ async function prepareRun(
     //   - `prepareLinkWorkDispatch` returns it verbatim so the thread gate can
     //     publish it as the link work item's `harnessInput`.
 
-    // Resolve mesh-storage: URIs to fresh presigned URLs every turn.
-    // Also handles legacy data: URLs from threads predating this pipeline.
-    // `processConversation` (which depends on the harness-owned tool set for
-    // `toModelOutput` handlers) runs inside the decopilot harness itself; we
-    // forward materialized UIMessages so each harness decides how to convert
-    // them.
-    // CLI harnesses (codex, claude-code) resume an on-disk session and only
-    // need the new user message(s); decopilot — and any CLI harness not on
-    // user-desktop — still gets the full transcript (see `cliResumable`).
-    const messagesForHarness = cliResumable
-      ? computeCliDelta(allMessages, harnessId)
-      : allMessages;
+    // Resolve mesh-storage: URIs to fresh presigned URLs for the current user
+    // message only. The v3 harness contract carries one wire-ready userMessage;
+    // long-lived CLI context is represented separately by harness.sessionId.
+    const wireUserMessage = materializedRequestMessage
+      ? (await resolveStorageRefs([materializedRequestMessage], ctx))[0]
+      : undefined;
 
-    // A resumable CLI turn must carry at least the new user message(s). An empty
-    // delta means a resumed turn whose history tail is already a completed
-    // assistant anchor — there is no new user input to forward. Sending zero
-    // messages would drive an empty CLI turn (or a downstream "empty prompt"
-    // crash the stale-session guard would not catch), so surface a defined
-    // permanent error instead of silently degrading.
-    if (cliResumable && messagesForHarness.length === 0) {
+    if (!wireUserMessage || !materializedRequestMessage) {
       throw new PermanentRunError(
         "empty_request",
-        "No new user message to send to the CLI harness (resumed turn with empty delta).",
+        "No user message found in input — expected at least one non-system message",
       );
     }
 
-    const materializedMessages = await resolveStorageRefs(
-      messagesForHarness,
-      ctx,
-    );
+    ensureModelCompatibility(input.models, [wireUserMessage]);
+    const decopilotMessages =
+      harnessId === "decopilot"
+        ? await loadDecopilotContext({
+            ctx,
+            threadId: mem.thread.id,
+            userMessage: materializedRequestMessage,
+            windowSize,
+            isSubagent: input.isSubagent === true,
+            systemMessages,
+          })
+        : undefined;
 
-    ensureModelCompatibility(input.models, materializedMessages);
-
-    // Build the MCP endpoint for CLI harnesses. Hosted decopilot uses an
-    // in-process passthrough client (no HTTP MCP connection needed), so we
-    // use a sentinel for that path. Desktop decopilot requires a real endpoint
-    // so the daemon can reach cluster-side MCP tools.
+    // Decopilot always uses an in-process virtual MCP passthrough (the agent
+    // loop runs in the cluster for both cloud and desktop). CLI harnesses
+    // (claude-code, codex) mint a real HTTP endpoint so the daemon can reach
+    // cluster-side MCP tools.
     const mcpBase =
-      harnessId === "decopilot" && target.sandboxProviderKind !== "user-desktop"
+      harnessId === "decopilot"
         ? {
             url: "",
             headers: {} as Record<string, string>,
@@ -1251,20 +1223,14 @@ async function prepareRun(
             organization,
             harnessId === "claude-code"
               ? "claude-code-session"
-              : harnessId === "decopilot"
-                ? "decopilot-session"
-                : "codex-session",
+              : "codex-session",
             target.sandboxProviderKind,
           );
 
-    // ⚠️ SECURITY: Decopilot receives resolved model secret sources, never
-    // activated provider objects. For hosted cluster execution these stay
-    // in-process; for user-desktop execution they transit to the daemon over
-    // the link transport so the same harness contract works in both places.
-    // Never log `modelSources` (any slot) or `mcp.headers` values.
+    // ⚠️ SECURITY: Never log `modelSources` (any slot) or `mcp.headers` values.
 
     const mcp: HarnessStreamInput["mcp"] = mcpBase;
-    const mcpSource: HarnessStreamInput["mcpSource"] =
+    const mcpSource: DecopilotHttpMcpSource | undefined =
       mcp.expiresAt > 0
         ? {
             kind: "http",
@@ -1273,8 +1239,13 @@ async function prepareRun(
             expiresAt: mcp.expiresAt,
           }
         : undefined;
-    const objectStorageSource: HarnessStreamInput["objectStorageSource"] =
-      target.sandboxProviderKind === "user-desktop" && organization.slug
+    // Decopilot runs in-process (cluster), so it never needs an HTTP object
+    // storage source. CLI harnesses running on a desktop sandbox get a real
+    // HTTP endpoint so they can offload large artifacts.
+    const objectStorageSource: DecopilotObjectStorageSource | undefined =
+      harnessId !== "decopilot" &&
+      target.sandboxProviderKind === "user-desktop" &&
+      organization.slug
         ? {
             kind: "http",
             baseUrl: `${getPublicUrl()}/api/${encodeURIComponent(organization.slug)}/object-storage`,
@@ -1282,72 +1253,74 @@ async function prepareRun(
             expiresAt: mcp.expiresAt,
           }
         : undefined;
-    const workspace = resolveWorkspaceCwd(
-      effectiveVirtualMcp,
-      target.sandboxProviderKind,
-    );
-    const codingWorkspace = buildCodingWorkspaceInput({
+    const workspace = buildHarnessWorkspaceInput({
       virtualMcp: effectiveVirtualMcp,
       branch: input.branch,
-      workspace,
+      cwd:
+        target.sandboxProviderKind === "user-desktop"
+          ? WORKSPACE_CWD_REPO
+          : null,
     });
+    const agentInstructions =
+      typeof (effectiveVirtualMcp.metadata as { instructions?: unknown })
+        ?.instructions === "string"
+        ? (effectiveVirtualMcp.metadata as { instructions: string })
+            .instructions
+        : undefined;
+    const decopilotRunContext = {
+      taskId: input.taskId,
+      isSubagent: input.isSubagent,
+      subtaskJobId: input.subtaskJobId,
+      resumedFromBackground: input.resumedFromBackground,
+      virtualMcp: effectiveVirtualMcp,
+      branch: input.branch,
+      messages: decopilotMessages,
+      modelSources,
+      mcpSource,
+      objectStorageSource,
+      userContext,
+    };
 
     const wireHarnessInput: WireHarnessInput = {
       harnessId,
       threadId: mem.thread.id,
-      runId: mem.thread.id, // RunRegistry keys runs by taskId today
-      resumeSessionRef,
-      messages: materializedMessages,
+      userMessage: wireUserMessage,
+      harness: { sessionId: resumeSessionRef },
       workspace,
-      codingWorkspace,
       models,
-      modelSources,
-      mcpSource,
-      objectStorageSource,
       mcp,
       mode: input.mode,
       temperature: input.temperature,
       toolApprovalLevel: input.toolApprovalLevel,
       toolAllowlist: input.toolAllowlist ?? null,
       maxAgentSteps: input.maxAgentSteps,
-      isSubagent: input.isSubagent,
-      subtaskJobId: input.subtaskJobId,
-      resumedFromBackground: input.resumedFromBackground,
       user: { id: input.userId, email: ctx.auth.user?.email ?? "" },
       organizationId: input.organizationId,
       organizationSlug: organization.slug,
-      projectSlug: organization.slug,
-      virtualMcp: effectiveVirtualMcp,
-      agent: { id: input.agent.id },
-      branch: input.branch,
-      taskId: input.taskId,
+      agent: { id: input.agent.id, instructions: agentInstructions },
       triggerId: input.triggerId,
       currentThreadTitle: mem.thread.title,
       runFenceToken,
-      userContext,
     };
-
     // ── LAZY harness dispatch ───────────────────────────────────────────────
     // This generator's body — local harness dispatch — runs only when the
     // kernel pulls the first chunk, which (via `lazyStream` below) happens only
     // once a consumer pulls `uiStream`. `prepareLinkWorkDispatch` never consumes the
     // stream, so link-transport runs never start a cluster-side harness.
     //
-    // claude-code cwd resolution: with the `host` runner gone, hosted execution
-    // never has a local on-disk workdir to point the CLI at, so the harness
-    // falls back to its own ambient cwd. The agent-sandbox runner doesn't
-    // surface a local FS to mesh.
-    //
     // When a streamBuffer is wired, its JetStream pump consumes `uiStream`
     // directly after prepareRun returns and publishes every chunk into the
     // per-task subject — that's what /stream tails.
     //
-    // Transport Convergence: this generator only ever runs HOSTED
-    // (agent-sandbox / legacy) harnesses via `localDispatch`. EVERY user-desktop
-    // run goes through the link transport (`prepareLinkWorkDispatch` + tunnel
-    // work publisher), which never consumes this stream — so a user-desktop target reaching here is a
-    // hard bug (the guard below throws). The push `remoteDispatch` path is
-    // deleted.
+    // Only decopilot runs a cluster-hosted loop here. A CLI harness
+    // (claude-code, codex) never reaches a successful dispatch on this path: on
+    // user-desktop it resolves to the "sandbox" site (`resolveHarnessExecutionSite`)
+    // and goes through the link transport (`prepareLinkWorkDispatch` + tunnel
+    // work publisher); on agent-sandbox it is rejected up front by the gate
+    // (cloud-CLI is a planned follow-up). The only way a CLI harness lands here
+    // is a link-incapable runtime trying to run a desktop CLI loop locally — a
+    // hard misconfiguration the invariant below rejects. The push
+    // `remoteDispatch` path is deleted.
     if (shouldPublishRunStatus) {
       await publishRunStatusStage(
         streamBuffer,
@@ -1357,27 +1330,28 @@ async function prepareRun(
     }
     const dispatchHarnessChunks =
       async function* (): AsyncIterable<UIMessageChunk> {
+        // Cluster-hosted dispatch is decopilot-only. Anything else reaching here
+        // means the gate routing diverged (e.g. a link-incapable runtime tried
+        // to run a CLI desktop loop locally) — fail loud rather than run a CLI
+        // harness in the cluster.
+        if (harnessId !== "decopilot") {
+          throw new Error(
+            `dispatchRunAndWait runs cluster-hosted decopilot only; got "${harnessId}" — CLI harnesses use the link transport or are rejected at the gate`,
+          );
+        }
         // Layer the non-serializable `signal` onto the eagerly-built wire
-        // input. Everything else (mcp, materialized messages, fence token, …)
+        // input. Everything else (mcp, materialized userMessage, fence token, …)
         // was assembled above and is shared verbatim with the desktop work item.
         const harnessInput: HarnessStreamInput = {
           ...wireHarnessInput,
           signal: registrySignal,
         };
+        setDecopilotRunContext(harnessInput, decopilotRunContext);
 
-        // User-desktop runs are routed by the gate to the link work publisher,
-        // which never consumes this lazy stream. Reaching this generator for a
-        // user-desktop target means the gate routing diverged from the dispatch
-        // path — a hard bug.
-        if (target.sandboxProviderKind === "user-desktop") {
-          throw new Error(
-            "user-desktop runs use the link transport — dispatchRunAndWait must not run a local harness for them",
-          );
-        }
-        // hosted / agent-sandbox only. Step 1a: the in-process SandboxClient
-        // wraps the prior `localDispatch(harnessId, harnessInput, ctx)` path
-        // UNCHANGED — same AsyncIterable<UIMessageChunk>, same throw on unknown
-        // id, same ctx forwarding. consumeHarnessStream consumes it verbatim.
+        // Step 1a: the in-process SandboxClient wraps the prior
+        // `localDispatch(harnessId, harnessInput, ctx)` path UNCHANGED — same
+        // AsyncIterable<UIMessageChunk>, same throw on unknown id, same ctx
+        // forwarding. consumeHarnessStream consumes it verbatim.
         if (shouldPublishRunStatus) {
           await publishRunStatusStage(
             streamBuffer,
@@ -1625,11 +1599,11 @@ async function prepareRun(
  * Resolve the sandbox provisioning config for a link-transport work item.
  *
  * Mirrors the logic in `provisionSandbox` but returns the resolved config
- * instead of calling `runner.ensure`. Called from `prepareLinkWorkDispatch` for EVERY
- * harness (decopilot, claude-code, codex) targeting user-desktop so the daemon
+ * instead of calling `runner.ensure`. Called from `prepareLinkWorkDispatch` for
+ * the CLI harnesses (claude-code, codex) on a user-desktop target so the daemon
  * can spawn the sandbox cold without a prior WS-path ensure call. Decopilot
- * desktop ALSO runs in a sandbox (Transport Convergence), so the repo/workload
- * derivation applies to it identically.
+ * never reaches this path — its loop runs cluster-hosted, so it has no
+ * link work item to provision.
  *
  * Returns `null` when no sandbox config can be derived (non-user-desktop
  * target, or unresolvable metadata).
@@ -1774,7 +1748,10 @@ async function resolveLinkSandboxConfig(
 }
 
 /**
- * Prepare a user-desktop run for downstream link execution.
+ * Prepare a CLI run (claude-code, codex) on a user-desktop target for
+ * downstream link execution. This is the "sandbox" execution site — decopilot
+ * never reaches it (its loop is cluster-hosted; see
+ * `resolveHarnessExecutionSite`).
  *
  * Claims the run and mints the fence (via prepareRun), then returns the fence
  * token, task id, and fully assembled wire `HarnessStreamInput` for the gate
@@ -1787,8 +1764,8 @@ async function resolveLinkSandboxConfig(
  * fires FINISH.
  *
  * The work item's `harnessInput` is the complete `wireHarnessInput` that
- * prepareRun builds eagerly (mcp endpoint minted, messages materialized,
- * virtualMcp + fence token attached), exactly the shape the daemon validates
+ * prepareRun builds eagerly (mcp endpoint minted, userMessage materialized,
+ * workspace + fence token attached), exactly the shape the daemon validates
  * against `harnessStreamInputSchema`. The non-serializable `signal` member is
  * intentionally absent; it only exists for the hosted dispatch path.
  *
@@ -1818,69 +1795,26 @@ export async function prepareLinkWorkDispatch(
         deps,
         _rootSpan,
       );
+      const failPreparedRun = async (message: string): Promise<never> => {
+        await deps.runRegistry.execute({
+          type: "FINISH",
+          taskId,
+          threadStatus: "failed",
+        });
+        throw new Error(message);
+      };
 
-      // ── Message offload ─────────────────────────────────────────────────
-      // The work item is published through the tunnel as a NATS request; NATS
-      // rejects payloads exceeding MAX_PUBLISH_BYTES. The conversation
-      // `messages` array is the dominant large part — when the encoded
-      // harnessInput exceeds the budget, offload it to object storage (via the
-      // shared `offload-messages` helpers), then carry the ref on the work item
-      // so the daemon can forward it to the sandbox daemon's /_sandbox/dispatch
-      // (which re-inflates from messagesRef).
-      let effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
-      let messagesRef: MessagesRef | null = null;
-      // `messages` dominates the payload — serialize it once and reuse the same
-      // bytes for both the offload size-gate and the object-storage body,
-      // instead of stringifying the whole input and then the messages array
-      // again on the offload path.
-      const messagesBytes = new TextEncoder().encode(
-        JSON.stringify(wireHarnessInput.messages),
+      const effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
+      const messagesRef: MessagesRef | null = null;
+      const inputByteLength = Buffer.byteLength(
+        JSON.stringify(wireHarnessInput),
+        "utf8",
       );
-      const inputByteLength =
-        messagesBytes.byteLength +
-        Buffer.byteLength(
-          JSON.stringify({ ...wireHarnessInput, messages: undefined }),
-          "utf8",
-        );
       if (shouldOffload(inputByteLength)) {
-        if (ctx.objectStorage) {
-          try {
-            const reqId = crypto.randomUUID();
-            const key = offloadKey(reqId);
-            await ctx.objectStorage.put(key, messagesBytes, {
-              contentType: "application/json",
-            });
-            const url = await ctx.objectStorage.presignedGetUrl(key, 600, {
-              requireFetchable: true,
-            });
-            messagesRef = {
-              url,
-              bytes: messagesBytes.byteLength,
-              sha256: await sha256Hex(messagesBytes),
-            };
-            // Replace messages inline with [] — the real messages live at the ref.
-            effectiveHarnessInput = { ...wireHarnessInput, messages: [] };
-            console.log(
-              `[prepareLinkWorkDispatch] offloaded messages to object storage key=${key} bytes=${messagesBytes.byteLength} runId=${taskId}`,
-            );
-          } catch (err) {
-            // Offload failed — fall through with the full payload and let
-            // NATS reject it with MAX_PAYLOAD_EXCEEDED rather than silently
-            // dropping the ref. The publish will throw and the gate will
-            // surface the error.
-            console.error(
-              `[prepareLinkWorkDispatch] message offload failed, work item may exceed NATS limit runId=${taskId}:`,
-              err instanceof Error ? err.message : String(err),
-            );
-          }
-        } else {
-          // No object storage — fall through with the full payload. Same
-          // "fail loudly at publish time" approach: better a clear NATS
-          // MAX_PAYLOAD_EXCEEDED than a silent truncation.
-          console.warn(
-            `[prepareLinkWorkDispatch] harnessInput exceeds NATS limit but no object storage configured — work item may be rejected runId=${taskId}`,
-          );
-        }
+        await failPreparedRun(
+          "prepareLinkWorkDispatch: harnessInput exceeds the link payload " +
+            "limit and v3 userMessage offload is not implemented",
+        );
       }
 
       // Resolve the sandbox handle for the desktop work item.
@@ -1890,10 +1824,10 @@ export async function prepareLinkWorkDispatch(
       // so no cluster-side warm-ensure is needed (the push ensure helper was
       // deleted with the push path). The handle formula is identical to what
       // `ensureSandbox`/`provisionSandbox` would compute. See `computeDesktopSandboxHandle`.
-      // Compute the sandbox config for EVERY user-desktop run (all harnesses,
-      // incl. decopilot — Transport Convergence). Decopilot desktop runs in a
-      // sandbox too; `resolveLinkSandboxConfig` derives the same repo/workload
-      // config for it as for the CLI harnesses.
+      // Compute the sandbox config for the CLI work item. Only CLI harnesses
+      // on a user-desktop target reach `prepareLinkWorkDispatch`; decopilot is
+      // cluster-hosted and never gets here. `resolveLinkSandboxConfig` derives
+      // the repo/workload config the daemon needs to cold-spawn the sandbox.
       let sandboxConfig: WorkItemSandbox | null = null;
       if (input.target?.sandboxProviderKind === "user-desktop") {
         try {
@@ -1935,8 +1869,9 @@ export async function prepareLinkWorkDispatch(
           .executeTakeFirst();
         orgSlug = orgRow?.slug ?? null;
       }
-      if (!orgSlug) {
-        throw new Error(
+      const resolvedOrgSlug = orgSlug;
+      if (!resolvedOrgSlug) {
+        return await failPreparedRun(
           `prepareLinkWorkDispatch: could not resolve org slug for organization ${input.organizationId}`,
         );
       }
@@ -1947,7 +1882,7 @@ export async function prepareLinkWorkDispatch(
         harnessInput: effectiveHarnessInput,
         messagesRef,
         sandboxConfig,
-        orgSlug,
+        orgSlug: resolvedOrgSlug,
       };
     },
     dispatchRunSpanAttrs(input),

@@ -94,29 +94,70 @@ export async function pollUntilTerminal(
 export const THREAD_GATE_PARTITION_CONCURRENCY = 1;
 
 /**
- * Pure decision for the thread-gate's desktop-vs-hosted routing.
+ * Where a run's harness agent loop executes.
  *
- * Desktop dispatch fires when BOTH of:
- *   1. the runtime has a desktop work publisher + prepareLinkWorkFn wired;
- *   2. the dispatch target's `sandboxProviderKind === 'user-desktop'` — i.e.
- *      POST-time `resolveDispatchTarget` found a LIVE desktop link (the gate
- *      trusts the pre-resolved target and never re-probes the link, which
- *      would drift on replay if the link went offline).
- *
- * EVERY user-desktop run goes through the desktop downstream command publisher
- * over tunnel. Decopilot desktop also runs in a sandbox, and the work item
- * carries its sandbox config (see `resolveLinkSandboxConfig`). The v1
- * generation is handled by `consumeRelayedRun`'s v1 whole-message branch
- * (built in Task 10), so a v1 user-desktop thread persists correctly.
- *
- * Hosted agent-sandbox threads and undefined targets (legacy paths) all yield
- * `false` → hosted local dispatch.
+ *   "cluster" — the loop runs in the cluster worker. Hosted local dispatch.
+ *   "sandbox" — the loop runs on the sandbox itself (today: the desktop
+ *               daemon, reached over the link tunnel).
  */
-export function decideLinkDispatch(input: {
+export type HarnessExecutionSite = "cluster" | "sandbox";
+
+/**
+ * Pure decision: resolve the execution site from the run's
+ * `(harnessId, sandboxProviderKind)` topology tuple.
+ *
+ * The agent loop runs where the harness family dictates — the sandbox kind
+ * only changes how tools/the loop reach that sandbox, not whether the loop is
+ * hosted:
+ *
+ *   (decopilot,   user-desktop)  → "cluster"  — loop in the cluster; fs/bash
+ *                                               tool calls RPC to the desktop
+ *                                               daemon over the NATS downlink
+ *                                               (virtual MCP passthrough)
+ *   (decopilot,   agent-sandbox) → "cluster"  — loop in the cluster; tool calls
+ *                                               RPC to the hosted cloud sandbox
+ *   (claude-code, user-desktop)  → "sandbox"  — CLI loop runs on the desktop
+ *                                               daemon, reached over the link
+ *                                               tunnel
+ *   (codex,       user-desktop)  → "sandbox"  — idem
+ *
+ * The `(CLI, agent-sandbox)` cloud-CLI corner is not wired yet: it **throws**
+ * `not implemented` rather than silently running the CLI loop in the cluster
+ * (which would ignore the requested sandbox). It is a planned follow-up.
+ * `isLinkCapable` gates the only "sandbox" site that needs out-of-cluster
+ * transport (the desktop link) — when the work publisher + prepare fn aren't
+ * wired, even a desktop-CLI run resolves to "cluster".
+ *
+ * The target is resolved once at POST time (routes.ts `resolveDispatchTarget`)
+ * and forwarded on `request.target`; the gate keys off it here rather than
+ * re-probing, so a link that goes offline between enqueue and dispatch can't
+ * drift the routing across a DBOS replay.
+ */
+export function resolveHarnessExecutionSite(input: {
   isLinkCapable: boolean;
   sandboxProviderKind?: DispatchTarget["sandboxProviderKind"];
-}): boolean {
-  return input.isLinkCapable && input.sandboxProviderKind === "user-desktop";
+  harnessId?: string | null;
+}): HarnessExecutionSite {
+  // Decopilot's agent loop always runs in the cluster, regardless of sandbox
+  // kind; only its tool calls travel to the sandbox.
+  if (input.harnessId === "decopilot") return "cluster";
+  // CLI harnesses run their loop on the sandbox. Today only the desktop
+  // sandbox is reachable (via the link tunnel); cloud-CLI is a follow-up.
+  if (input.isLinkCapable && input.sandboxProviderKind === "user-desktop") {
+    return "sandbox";
+  }
+  // A CLI harness targeting a cluster agent-sandbox (cloud-CLI) has no host
+  // yet. Fail loudly instead of falling through to "cluster" — running the CLI
+  // loop in the cluster would silently ignore the requested sandbox.
+  if (
+    (input.harnessId === "claude-code" || input.harnessId === "codex") &&
+    input.sandboxProviderKind === "agent-sandbox"
+  ) {
+    throw new Error(
+      `not implemented: CLI harness "${input.harnessId}" on an agent-sandbox (cloud-CLI is a planned follow-up)`,
+    );
+  }
+  return "cluster";
 }
 
 /**
@@ -178,10 +219,11 @@ export interface ThreadGateRuntime {
    */
   runTimeoutMs?: number;
   /**
-   * Desktop downstream dependencies. When present and the dispatch target's
-   * `sandboxProviderKind === 'user-desktop'`, the gate uses these instead of
-   * dispatchRunFn — for every user-desktop run (all harnesses, both storage
-   * generations). In production this is the tunnel work publisher.
+   * Desktop downstream dependencies. Used instead of `dispatchRunFn` when
+   * `resolveHarnessExecutionSite` resolves to "sandbox" — i.e. a CLI harness
+   * (claude-code, codex) on a `user-desktop` target. Decopilot never takes
+   * this path (its loop is always cluster-hosted). In production this is the
+   * tunnel work publisher.
    */
   prepareLinkWorkFn?: (
     input: DispatchRunInput,
@@ -247,27 +289,25 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     throw new Error("user membership lost mid-dispatch");
   }
 
-  // Resolve whether this thread should use a desktop downstream transport.
-  //
-  // TRANSPORT CONVERGENCE: EVERY user-desktop run goes through the desktop
-  // command publisher — all harnesses (decopilot, claude-code, codex) and both
-  // storage generations (v1, v2). The target was resolved once at POST time
-  // (routes.ts
-  // `resolveDispatchTarget`) and forwarded on `request.target`; we key off it
-  // here instead of re-probing the resolved target — re-resolving at replay
-  // time would drift if the link went offline between enqueue and dispatch.
-  // Hosted agent-sandbox threads (no desktop daemon) yield
-  // `sandboxProviderKind === "agent-sandbox"` → hosted local dispatch; an
-  // undefined target (legacy paths) also falls back.
+  // Resolve where this run's harness agent loop executes, from its
+  // (harnessId, sandboxProviderKind) topology tuple. "cluster" → hosted local
+  // dispatch in this worker; "sandbox" → run the loop on the desktop daemon
+  // over the link tunnel. See `resolveHarnessExecutionSite` for the full
+  // tuple → site table (decopilot is always "cluster"; CLI + user-desktop is
+  // "sandbox").
   const workPublisher = rt.workPublisher;
   const isLinkCapable = rt.prepareLinkWorkFn != null && workPublisher != null;
-  const useLink = decideLinkDispatch({
+  const executionSite = resolveHarnessExecutionSite({
     isLinkCapable,
     sandboxProviderKind: request.target?.sandboxProviderKind,
+    harnessId: request.harnessId,
   });
 
-  if (!useLink) {
-    // ── Hosted local-dispatch path (agent-sandbox / legacy) — unchanged ──
+  if (executionSite === "cluster") {
+    // ── Cluster (hosted local-dispatch) path — decopilot (any sandbox) and
+    //    legacy/undefined targets. (CLI + agent-sandbox throws upstream in
+    //    resolveHarnessExecutionSite; CLI + user-desktop takes the sandbox
+    //    path below.) ──
     // Abort timer is opt-in. Automations supply a 5-min cap so a runaway
     // cron can't pin a thread slot forever; user messages leave it unset
     // because tool-using agent loops (Claude Code, deep research,
@@ -296,7 +336,7 @@ async function dispatchRunAndWaitStep(ctx: ThreadGateContext): Promise<void> {
     return;
   }
 
-  // ── Link path ─────────────────────────────────────────────────────────
+  // ── Sandbox path (CLI on user-desktop, over the link tunnel) ────────────
   // 1. Claim the run and mint the fence token.
   const timeoutMs = ctx.timeoutMs ?? rt.runTimeoutMs;
   const abortController = new AbortController();

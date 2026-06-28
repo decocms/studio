@@ -32,9 +32,6 @@ export type DispatchSSEEvent = z.infer<typeof dispatchSSEEventSchema>;
 
 const chatMessageSchema = z.record(z.string(), z.unknown()); // opaque to link-protocol
 
-// v2 contract: per-slot credentialId (no root credential), no `coding`/`title`
-// slots, and `.strict()` objects so old-shape inputs are rejected rather than
-// silently accepted.
 const modelSelectionSchema = z
   .object({
     id: z.string(),
@@ -67,77 +64,31 @@ const modelsConfigSchema = z
   })
   .strict();
 
-const secretModelSourceSchema = z.object({
-  kind: z.literal("secret"),
-  providerId: z.string(),
-  apiKey: z.string(),
-  modelId: z.string(),
-  baseUrl: z.string().optional(),
-  extraHeaders: z.record(z.string(), z.string()).optional(),
-});
-
-const modelSourcesSchema = z
-  .object({
-    thinking: secretModelSourceSchema,
-    fast: secretModelSourceSchema.optional(),
-    smart: secretModelSourceSchema.optional(),
-    image: secretModelSourceSchema.optional(),
-    deepResearch: secretModelSourceSchema.optional(),
-  })
-  .strict();
-
-const httpMcpSourceSchema = z.object({
-  kind: z.literal("http"),
-  url: z.string().url(),
-  headers: z.record(z.string(), z.string()),
-  expiresAt: z.number().int().positive(),
-});
-
-const objectStorageSourceSchema = z.object({
-  kind: z.literal("http"),
-  baseUrl: z.string().url(),
-  headers: z.record(z.string(), z.string()),
-  expiresAt: z.number().int().positive(),
-});
-
-const codingWorkspaceSchema = z
-  .object({
-    repo: z
-      .object({
-        owner: z.string(),
-        name: z.string(),
-        connectedGithub: z.boolean(),
-      })
-      .strict()
-      .optional(),
-    branch: z.string().nullable().optional(),
-    cwd: z.string().nullable().optional(),
-    workspaceKind: z
-      .enum(["github", "template", "local", "unknown"])
-      .optional(),
-  })
-  .strict();
+const harnessWorkspaceSchema = z.discriminatedUnion("cwd", [
+  z
+    .object({
+      cwd: z.literal("/repo"),
+      repo: z
+        .object({
+          owner: z.string(),
+          name: z.string(),
+          connectedGithub: z.boolean(),
+        })
+        .strict(),
+      branch: z.string().nullable(),
+    })
+    .strict(),
+  z.object({ cwd: z.null() }).strict(),
+]);
 
 export const harnessStreamInputSchema = z
   .object({
-    /** First-class harness id on the wire (v2). */
     harnessId: z.enum(["decopilot", "claude-code", "codex"]).optional(),
     threadId: z.string(),
-    runId: z.string(),
-    taskId: z.string(),
-    resumeSessionRef: z.string().optional(),
-    messages: z.array(chatMessageSchema),
-    /** Symbolic, logically-resolved cwd (see harnesses/workspace-cwd.ts).
-     *  Required — its absence rejects pre-v2 inputs. */
-    workspace: z.object({ cwd: z.string().min(1) }).strict(),
-    codingWorkspace: codingWorkspaceSchema.optional(),
+    userMessage: chatMessageSchema,
+    harness: z.object({ sessionId: z.string().optional() }).strict(),
+    workspace: harnessWorkspaceSchema,
     models: modelsConfigSchema,
-    modelSources: modelSourcesSchema.optional(),
-    mcpSource: httpMcpSourceSchema.optional(),
-    objectStorageSource: objectStorageSourceSchema.optional(),
-    // Wire input is intentionally HTTP-only. In-process MCP clients are allowed
-    // only inside local cluster dispatch and must be normalized to this shape
-    // before remote dispatch to the link daemon.
     mcp: z
       .object({
         url: z.string().url(),
@@ -152,12 +103,12 @@ export const harnessStreamInputSchema = z
     toolAllowlist: z.array(z.string()).nullable().optional(),
     // Per-run parent agent-loop step cap. absent = PARENT_STEP_LIMIT default.
     maxAgentSteps: z.number().int().optional(),
-    user: z.object({ id: z.string(), email: z.string() }),
+    user: z.object({ id: z.string(), email: z.string() }).strict(),
     organizationId: z.string(),
     organizationSlug: z.string().optional(),
-    virtualMcp: z.record(z.string(), z.unknown()),
-    agent: z.object({ id: z.string() }),
-    branch: z.string().nullable().optional(),
+    agent: z
+      .object({ id: z.string(), instructions: z.string().optional() })
+      .strict(),
     triggerId: z.string().optional(),
     currentThreadTitle: z.string().optional(),
     traceparent: z.string().optional(),
@@ -168,6 +119,6 @@ export const harnessStreamInputSchema = z
      */
     runFenceToken: z.string().optional(),
   })
-  .strip();
+  .strict();
 
 export type HarnessStreamInputWire = z.infer<typeof harnessStreamInputSchema>;
