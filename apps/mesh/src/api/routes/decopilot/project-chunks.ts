@@ -79,6 +79,14 @@ export interface ProjectChunksResult {
    */
   finishReason?: string;
   usage: Pick<HarnessUsage, "inputTokens" | "outputTokens" | "totalTokens">;
+  /**
+   * The parts of the LAST assistant message the fold produced, taken directly
+   * from the onFinish callback's responseMessage. Used by the workflow's
+   * terminal branch to call resolveThreadStatus(finishReason, finalParts) so
+   * it can distinguish requires_action (tool-approval pause / question ending)
+   * from completed without a round-trip back to the DB.
+   */
+  finalParts: Array<{ type: string; text?: string; state?: string }>;
 }
 
 /**
@@ -129,6 +137,7 @@ export async function projectChunks(
     outputTokens: 0,
     totalTokens: 0,
   };
+  let capturedFinalParts: ProjectChunksResult["finalParts"] = [];
   let persistenceError: unknown = null;
   const recordPersistenceError = (error: unknown) => {
     if (persistenceError === null) persistenceError = error;
@@ -195,8 +204,19 @@ export async function projectChunks(
         // We use sourceThrew to disambiguate at return time.
         inBandErrorSeen = true;
       },
-      onFinish: (_message, finishReason) => {
+      onFinish: (message, finishReason) => {
         capturedFinishReason = finishReason;
+        // Capture the parts of the last assistant message so the workflow's
+        // terminal branch can call resolveThreadStatus(finishReason, finalParts)
+        // without a round-trip back to the DB. Filter to well-formed parts only
+        // (non-null objects with a "type" property) so malformed entries can't
+        // reach resolveThreadStatus — UIMessage.parts is unknown[].
+        capturedFinalParts = Array.isArray(message.parts)
+          ? (message.parts as unknown[]).filter(
+              (p): p is ProjectChunksResult["finalParts"][number] =>
+                p != null && typeof p === "object" && "type" in p,
+            )
+          : [];
       },
     },
   });
@@ -213,5 +233,6 @@ export async function projectChunks(
     failed,
     finishReason: capturedFinishReason,
     usage: capturedUsage,
+    finalParts: capturedFinalParts,
   };
 }

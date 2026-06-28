@@ -44,7 +44,7 @@ import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { resolveHarnessId } from "./dispatch-run";
 import { stringifyError } from "@decocms/harness/stream-error";
-import { enqueueThreadRun } from "@/dispatch-queue";
+import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
@@ -740,6 +740,25 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         err,
       });
     });
+
+    // Tear down the hosted-harness child workflow (Task 7b). The in-memory cancel
+    // below (cancelBroadcast + run-registry CANCEL → AbortController) already
+    // stops the running harness loop; this additionally tells DBOS to stop
+    // recovering / retrying the child on pod recycles. Keyed by
+    // `decopilot-hosted:<runId>:<fenceToken>` — read the current fence from the
+    // thread row. Best-effort: cancelling an already-finished/unknown workflow
+    // (e.g. desktop runs, which have no hosted child) must not fail the cancel.
+    try {
+      const fenceToken = await ctx.storage.threads.getRunFence(taskId);
+      if (fenceToken) {
+        await cancelHostedHarness(taskId, fenceToken);
+      }
+    } catch (err) {
+      console.error("[decopilot:cancel] failed to cancel hosted harness", {
+        taskId,
+        err,
+      });
+    }
 
     // Abort in-flight background work on this pod now, and fan the cancel out
     // to every pod over NATS. Always broadcast: a background job runs on

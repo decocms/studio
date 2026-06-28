@@ -301,13 +301,13 @@ export class NatsStreamBuffer implements StreamBuffer {
     const encoder = this.encoder;
 
     // This legacy sentinel is UNFENCED (`{done:true}`, no msgId/finalSeq) and
-    // exists only so JetStream tails close. The projector handoff uses the
+    // exists only so JetStream tails close. The consume step uses the
     // awaited public publishDone(runId, fenceToken, finalSeq) so the durable
-    // consumer gets a fence-scoped marker. The DeliverPolicy.All consumer also
-    // sees THIS unfenced sentinel, but consumeProjectorMessages ignores any
-    // `{done}` that isn't a proper DoneEnvelope (finalSeq present) — otherwise
-    // its bare-runId accumulator key would be empty and it would poison the
-    // just-completed run (status=failed). See projector-consumer.ts.
+    // workflow gets a fence-scoped marker. The DeliverPolicy.All consumer also
+    // sees THIS unfenced sentinel, but the consume step's message processor
+    // ignores any `{done}` that isn't a proper DoneEnvelope (finalSeq present)
+    // — otherwise its bare-runId accumulator key would be empty and it would
+    // poison the just-completed run (status=failed).
     let terminated = false;
     const publishDone = () => {
       if (terminated) return;

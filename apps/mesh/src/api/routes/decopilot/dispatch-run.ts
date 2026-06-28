@@ -487,6 +487,20 @@ export interface DispatchRunInput {
    * their `credentialId` is the sentinel `desktop:<harness>`.
    */
   harnessId?: HarnessId | null;
+  /**
+   * Gate-minted single-writer fence token for this run (Task 7a). The
+   * thread-gate (`dispatchRunAndWaitStep`) now mints the fence and writes it
+   * via `setRunFence` BEFORE dispatching the producer — uniformly for both the
+   * hosted and desktop topologies — then threads it down here so `prepareRun`
+   * USES it instead of minting its own. This hoists the run-claim to the
+   * dispatch gate so `run_fence_token` is in the DB before any harness code
+   * runs (a prerequisite for the async hosted-child + consume-step in 7b).
+   *
+   * When omitted (legacy/direct callers, tests that exercise `prepareRun`
+   * standalone), `prepareRun` falls back to minting + `setRunFence` itself,
+   * preserving the prior behavior.
+   */
+  runFenceToken?: string;
 }
 
 export interface DispatchRunDeps {
@@ -1060,19 +1074,33 @@ async function prepareRun(
     // same place the fence is minted/overwritten.
     await ctx.storage.threads.clearCancelRequested(mem.thread.id);
 
-    // Mint the single-writer fence token for this run. The token is
-    // included in HarnessStreamInput so the daemon presents it on every
-    // ingest append. Minting after START ensures the run is claimed before
-    // the token exists; clearing on FINISH is the gate's responsibility.
+    // Single-writer fence token for this run. The token is included in
+    // HarnessStreamInput so the daemon presents it on every ingest append.
     // It is fresh PER TURN (runId == threadId is stable across turns) so the
     // fence-scoped JetStream dedup key (`runId:fenceToken:seq`) and the
     // projector's per-(runId, fenceToken) accumulator never collide two turns.
-    // On DBOS replay this re-mints a new token while a queued work item carries the old one —
+    //
+    // Task 7a: the thread-gate (`dispatchRunAndWaitStep`) now mints the fence
+    // and writes it via `setRunFence` BEFORE dispatching the producer, then
+    // threads it down on `input.runFenceToken` — uniformly for both the hosted
+    // and desktop topologies. When present we USE that value and skip the write
+    // (the gate already performed it, so `run_fence_token` is already in the DB
+    // before any harness code runs). When absent (legacy/direct callers, or
+    // `prepareRun` standalone tests) we mint + write here, preserving the prior
+    // behavior. Either way the same value flows into the wire harness input,
+    // the NATS msg ids, and the projector/consume fence checks.
+    //
+    // On DBOS replay the gate re-mints a new token while a queued work item carries the old one —
     // reconcile when Phase D wires the publish off the persisted column.
     // Note: a failed link run leaves run_fence_token set until Task 7 clears it
     // (harmless: next run overwrites; ws/cloud never read it).
-    const runFenceToken = mintRunFenceToken();
-    await ctx.storage.threads.setRunFence(mem.thread.id, runFenceToken);
+    let runFenceToken: string;
+    if (input.runFenceToken) {
+      runFenceToken = input.runFenceToken;
+    } else {
+      runFenceToken = mintRunFenceToken();
+      await ctx.storage.threads.setRunFence(mem.thread.id, runFenceToken);
+    }
 
     const registrySignal = runRegistry.getAbortSignal(mem.thread.id);
     if (!registrySignal) {

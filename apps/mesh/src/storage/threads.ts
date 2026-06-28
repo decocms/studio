@@ -95,6 +95,10 @@ export class OrgScopedThreadStorage {
     return this.inner.markRunFailed(id, this.requireOrg(), reason, kind);
   }
 
+  requiresActionIfInProgress(id: string): Promise<Thread | null> {
+    return this.inner.requiresActionIfInProgress(id, this.requireOrg());
+  }
+
   forceFailIfInProgress(id: string): Promise<boolean> {
     return this.inner.forceFailIfInProgress(id, this.requireOrg());
   }
@@ -459,6 +463,29 @@ export class SqlThreadStorage implements ThreadStoragePort {
         failure_reason: reason,
         failure_kind: kind,
         run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .returningAll()
+      .execute();
+
+    const row = rows[0];
+    return row ? this.threadFromDbRow(row) : null;
+  }
+
+  async requiresActionIfInProgress(
+    id: string,
+    organizationId: string,
+  ): Promise<Thread | null> {
+    const rows = await this.db
+      .updateTable("threads")
+      .set({
+        status: "requires_action",
+        // run_owner_pod kept set: requires_action is a pause, not terminal state — run resumes after tool approval
         run_config: null,
         run_started_at: null,
         updated_at: new Date().toISOString(),

@@ -7,6 +7,6 @@
  * here — a side-effect-free module safe to import before `setConfig`.
  */
 export const THREAD_GATE_QUEUE = "thread-gate";
+export const HOSTED_HARNESS_QUEUE = "decopilot-hosted-harness";
 export const AUTOMATIONS_QUEUE = "automations";
-export const PROJECTOR_QUEUE = "decopilot-projector";
 export const BACKGROUND_TOOLS_QUEUE = "background-tools";
