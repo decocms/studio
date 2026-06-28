@@ -91,6 +91,16 @@ export interface BoundAuthClient {
     options?: { organizationId?: string; role?: string },
   ): Promise<boolean>;
 
+  /**
+   * True when the principal authenticated with an API key. Such a principal is
+   * authorized SOLELY by the key's stored allowlist — it must NOT inherit the
+   * owner's admin/owner role. Both `hasPermission` here and the role bypass in
+   * `AccessControl.checkResource` read this single flag so every call site
+   * (REST + MCP) agrees. Absent/false for browser sessions, MCP OAuth, and mesh
+   * JWTs, which keep the role-based behavior.
+   */
+  isApiKeyPrincipal?: boolean;
+
   // Organization APIs (bound with headers)
   organization: {
     create(data: {

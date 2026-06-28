@@ -181,55 +181,6 @@ type HasPermissionAPI = (params: {
 }) => Promise<{ success?: boolean; error?: unknown } | null>;
 
 /**
- * Check if API key permissions grant access to the requested permission
- * API key permissions are a simple { resource: [tools] } map
- */
-function checkApiKeyPermission(
-  apiKeyPermissions: Permission,
-  requestedPermission: Permission,
-): boolean {
-  for (const [resource, tools] of Object.entries(requestedPermission)) {
-    // Check if the API key has permission for this resource
-    const grantedTools = apiKeyPermissions[resource];
-
-    // No permission for this resource at all
-    if (!grantedTools || grantedTools.length === 0) {
-      // Also check wildcard resource "*"
-      const wildcardTools = apiKeyPermissions["*"];
-      if (!wildcardTools || wildcardTools.length === 0) {
-        return false;
-      }
-      // Check if wildcard grants the tools
-      if (wildcardTools.includes("*")) {
-        continue; // Wildcard grants all tools
-      }
-      const wildcardSet = new Set(wildcardTools);
-      for (const tool of tools) {
-        if (!wildcardSet.has(tool)) {
-          return false;
-        }
-      }
-      continue;
-    }
-
-    // Wildcard grants all tools for this resource
-    if (grantedTools.includes("*")) {
-      continue;
-    }
-
-    // Check each requested tool
-    const grantedSet = new Set(grantedTools);
-    for (const tool of tools) {
-      if (!grantedSet.has(tool)) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-/**
  * Auth context needed to create a bound auth client
  *
  * Two permission flows:
@@ -242,6 +193,7 @@ export interface AuthContext {
   role?: string; // User's role (for built-in role bypass)
   permissions?: Permission; // Permissions from API key or custom role (MCP OAuth)
   userId?: string; // User ID for server-side API key operations
+  apiKeyId?: string; // Set when the principal authenticated with an API key
 }
 
 /**
@@ -253,17 +205,32 @@ export interface AuthContext {
  * 2. Browser sessions → delegate to Better Auth's hasPermission API
  */
 export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
-  const { auth, headers, role, permissions, userId } = ctx;
+  const { auth, headers, role, permissions, userId, apiKeyId } = ctx;
+
+  // An API key is authorized SOLELY by its own stored allowlist — the owner's
+  // admin/owner role never widens it, or a "read-only" key minted by an admin
+  // would silently act with full org power. A full-access key carries an
+  // explicit wildcard. Only genuine API keys (apiKeyId present) are gated this
+  // way; browser sessions, MCP OAuth, and mesh JWTs keep the role-based path.
+  const isApiKeyPrincipal = !!apiKeyId;
 
   // Get hasPermission from Better Auth's organization plugin (for browser sessions)
   const hasPermissionApi = (auth.api as { hasPermission?: HasPermissionAPI })
     .hasPermission;
 
   return {
+    isApiKeyPrincipal,
     hasPermission: async (
       requestedPermission: Permission,
       options?: { organizationId?: string; role?: string },
     ): Promise<boolean> => {
+      // API key → its allowlist IS the authorization. Checked before the role
+      // bypass so the owner's role can never widen it. No allowlist → grants
+      // nothing (fail-closed).
+      if (isApiKeyPrincipal) {
+        return checkApiKeyPermission(permissions ?? {}, requestedPermission);
+      }
+
       // Only owner/admin bypass all permission checks (full org access). The
       // built-in `user` role is enforced like any member: it gets basic-usage
       // (granted out-of-band in AccessControl) plus its explicit Better Auth /
@@ -476,6 +443,7 @@ export function createBoundAuthClient(ctx: AuthContext): BoundAuthClient {
 import { createMCPProxy } from "@/api/routes/mcp-proxy-factory";
 import { ConnectionEntity } from "@/tools/connection/schema";
 import { ADMIN_ROLES, BUILTIN_ROLES } from "../auth/roles";
+import { checkApiKeyPermission } from "../auth/api-key-permissions";
 import {
   getCachedBuiltinRoleStatements,
   resolveBuiltinRolePermission,
@@ -1407,6 +1375,7 @@ export async function createStudioContextFactory(
       role: authResult.role,
       permissions: authResult.permissions,
       userId: authResult.user?.id, // For server-side API key operations
+      apiKeyId: authResult.apiKeyId, // Enables scoped-key enforcement
     });
 
     // Build auth object for StudioContext

@@ -397,6 +397,12 @@ async function mintMcpEndpoint(
 }> {
   const apiKey = await ctx.boundAuth.apiKey.create({
     name: apiKeyName,
+    // The per-run key is the agent's own callback credential — it proxies to
+    // `/mcp/virtual-mcp/<agentId>` (a `vir_*` resource) and acts on behalf of
+    // the user for the duration of the run, so it needs full access. With no
+    // implicit default (auth/index.ts), the scope must be explicit; wildcard
+    // matches the prior behavior (full access via the admin bypass).
+    permissions: { "*": ["*"] },
     expiresIn: MCP_KEY_TTL_SECONDS,
     metadata: {
       organization: {

@@ -311,20 +311,10 @@ const plugins = [
       }
       return null;
     },
-    permissions: {
-      defaultPermissions: {
-        self: [
-          "ORGANIZATION_LIST",
-          "ORGANIZATION_GET", // Organization read access
-          "ORGANIZATION_MEMBER_LIST", // Member read access
-          "COLLECTION_CONNECTIONS_LIST",
-          "COLLECTION_CONNECTIONS_GET", // Connection read access
-          "API_KEY_CREATE", // API key creation
-          "API_KEY_LIST", // API key listing (metadata only)
-          // Note: API_KEY_UPDATE and API_KEY_DELETE are not default - users must explicitly request
-        ],
-      },
-    },
+    // No `defaultPermissions`: every key is created with an explicit scope (the
+    // API_KEY_CREATE tool requires `permissions`, and the internal minters pass
+    // their own). A key is authorized solely by its allowlist — see
+    // auth/api-key-permissions.ts. A key with no allowlist grants nothing.
     rateLimit: {
       enabled: false,
     },
