@@ -912,11 +912,30 @@ export class SqlThreadStorage implements ThreadStoragePort {
    * new fence epoch always starts with a clean floor — preventing a prior
    * turn's ack high-water mark from causing `RelaySessionImpl.push()` to drop
    * the new turn's early chunks (cross-turn chunk loss bug).
+   *
+   * When CLAIMING a turn (token non-null), also resets `status` to
+   * `in_progress`. `runId === threadId`, so the run row is shared across every
+   * turn of a thread, and the consume step is the SOLE terminal-status writer
+   * whose entry guard returns early on a terminal status. Without this reset a
+   * second turn inherits the PRIOR turn's terminal status (`completed` /
+   * `requires_action`), so its consume step short-circuits and the turn renders
+   * "No response was generated". Resetting here — atomically with the new fence
+   * — re-arms the run for this turn (mirrors the per-turn `(runId,fenceToken)`
+   * message-id namespacing: turn-stable runId needs an explicit per-turn reset).
+   * Clearing the fence (token null, teardown) leaves status untouched.
    */
   async setRunFence(threadId: string, token: string | null): Promise<void> {
     await this.db
       .updateTable("threads")
-      .set({ run_fence_token: token, run_acked_seq: null })
+      .set(
+        token === null
+          ? { run_fence_token: null, run_acked_seq: null }
+          : {
+              run_fence_token: token,
+              run_acked_seq: null,
+              status: "in_progress",
+            },
+      )
       .where("id", "=", threadId)
       .execute();
   }

@@ -290,6 +290,99 @@ test.describe("direct-NATS chunk relay ingest", () => {
     }
   });
 
+  test("second sequential turn projects (not dropped by prior turn's terminal status)", async ({
+    authedPage,
+  }) => {
+    // Regression: `runId === threadId`, so the run row (status) is shared across
+    // every turn of a thread. The consume step's entry guard returns early on a
+    // terminal status. Before the turn-start status reset in `setRunFence`, a
+    // SECOND turn inherited the FIRST turn's `completed` status, so its consume
+    // step short-circuited and the turn rendered "No response was generated".
+    // Two real dispatch+relay turns on one thread must BOTH land their assistant
+    // text — the second turn's marker is the assertion that catches the drop.
+    test.setTimeout(CASE_TIMEOUT_MS);
+    const { page, user, orgSlug } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
+    try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
+      const orgId = await orgIdForSlug(db, orgSlug);
+      const { agentId, threadId } = await createPullThread(
+        api,
+        db,
+        orgSlug,
+        orgId,
+      );
+
+      const hasTextMarker = (
+        parts: Array<{ kind: string; payload: unknown }>,
+        marker: string,
+      ): boolean =>
+        parts.some(
+          (p) =>
+            p.kind === "text" && JSON.stringify(p.payload).includes(marker),
+        );
+
+      // ── Turn 1 ──────────────────────────────────────────────────────────
+      const turn1 = await dispatchAndClaimWorkItem(
+        api,
+        orgSlug,
+        agentId,
+        threadId,
+        daemon,
+        "First turn.",
+      );
+      const marker1 = `turn-1-marker-${Date.now()}`;
+      await relay(
+        turn1.runId,
+        turn1.workItem.runFenceToken,
+        buildRelayBody(`msg_turn1_${Date.now()}`, marker1),
+      );
+      await expect(async () => {
+        expect(hasTextMarker(await fetchParts(db, turn1.runId), marker1)).toBe(
+          true,
+        );
+        expect(await fetchThreadStatus(db, threadId)).toBe("completed");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
+
+      // ── Turn 2 (same thread; prior status is now `completed`) ────────────
+      const turn2 = await dispatchAndClaimWorkItem(
+        api,
+        orgSlug,
+        agentId,
+        threadId,
+        daemon,
+        "Second turn.",
+      );
+      // The gate must have minted a FRESH fence and re-armed the run to
+      // `in_progress` (otherwise the consume entry guard drops this turn).
+      expect(turn2.workItem.runFenceToken).not.toBe(
+        turn1.workItem.runFenceToken,
+      );
+      const marker2 = `turn-2-marker-${Date.now()}`;
+      await relay(
+        turn2.runId,
+        turn2.workItem.runFenceToken,
+        buildRelayBody(`msg_turn2_${Date.now()}`, marker2),
+      );
+      // The bug-catching assertion: the SECOND turn's assistant text lands.
+      await expect(async () => {
+        const parts = await fetchParts(db, turn2.runId);
+        expect(hasTextMarker(parts, marker2)).toBe(true);
+        expect(await fetchThreadStatus(db, threadId)).toBe("completed");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
+
+      // Both turns' markers persist (no cross-turn clobber).
+      const finalParts = await fetchParts(db, turn2.runId);
+      expect(hasTextMarker(finalParts, marker1)).toBe(true);
+      expect(hasTextMarker(finalParts, marker2)).toBe(true);
+    } finally {
+      await daemon?.close();
+      await db.end();
+    }
+  });
+
   test("mismatched fence → projector skips, zero parts land", async ({
     authedPage,
   }) => {
