@@ -900,10 +900,10 @@ async function prepareRun(
         defaultWindowSize: windowSize,
       }),
       // Pre-resolve threads/interests/sibling-agents agent-side so the portable
-      // prompt builder renders them without any `ctx.storage` reach-in. Only
-      // hosted decopilot runs need it; desktop runs leave it absent so the
-      // corresponding prompt blocks skip.
-      harnessId === "decopilot" && target.sandboxProviderKind !== "user-desktop"
+      // prompt builder renders them without any `ctx.storage` reach-in. All
+      // decopilot runs (cloud and desktop) get the full context — the agent
+      // loop always runs in the cluster regardless of sandbox provider kind.
+      harnessId === "decopilot"
         ? resolveUserContext(
             ctx,
             input.organizationId,
@@ -1203,12 +1203,12 @@ async function prepareRun(
           })
         : undefined;
 
-    // Build the MCP endpoint for CLI harnesses. Hosted decopilot uses an
-    // in-process passthrough client (no HTTP MCP connection needed), so we
-    // use a sentinel for that path. Desktop decopilot requires a real endpoint
-    // so the daemon can reach cluster-side MCP tools.
+    // Decopilot always uses an in-process virtual MCP passthrough (the agent
+    // loop runs in the cluster for both cloud and desktop). CLI harnesses
+    // (claude-code, codex) mint a real HTTP endpoint so the daemon can reach
+    // cluster-side MCP tools.
     const mcpBase =
-      harnessId === "decopilot" && target.sandboxProviderKind !== "user-desktop"
+      harnessId === "decopilot"
         ? {
             url: "",
             headers: {} as Record<string, string>,
@@ -1223,17 +1223,11 @@ async function prepareRun(
             organization,
             harnessId === "claude-code"
               ? "claude-code-session"
-              : harnessId === "decopilot"
-                ? "decopilot-session"
-                : "codex-session",
+              : "codex-session",
             target.sandboxProviderKind,
           );
 
-    // ⚠️ SECURITY: Decopilot receives resolved model secret sources, never
-    // activated provider objects. For hosted cluster execution these stay
-    // in-process; for user-desktop execution they transit to the daemon over
-    // the link transport so the same harness contract works in both places.
-    // Never log `modelSources` (any slot) or `mcp.headers` values.
+    // ⚠️ SECURITY: Never log `modelSources` (any slot) or `mcp.headers` values.
 
     const mcp: HarnessStreamInput["mcp"] = mcpBase;
     const mcpSource: DecopilotHttpMcpSource | undefined =
@@ -1245,8 +1239,13 @@ async function prepareRun(
             expiresAt: mcp.expiresAt,
           }
         : undefined;
+    // Decopilot runs in-process (cluster), so it never needs an HTTP object
+    // storage source. CLI harnesses running on a desktop sandbox get a real
+    // HTTP endpoint so they can offload large artifacts.
     const objectStorageSource: DecopilotObjectStorageSource | undefined =
-      target.sandboxProviderKind === "user-desktop" && organization.slug
+      harnessId !== "decopilot" &&
+      target.sandboxProviderKind === "user-desktop" &&
+      organization.slug
         ? {
             kind: "http",
             baseUrl: `${getPublicUrl()}/api/${encodeURIComponent(organization.slug)}/object-storage`,
@@ -1318,12 +1317,13 @@ async function prepareRun(
     // directly after prepareRun returns and publishes every chunk into the
     // per-task subject — that's what /stream tails.
     //
-    // Transport Convergence: this generator only ever runs HOSTED
-    // (agent-sandbox / legacy) harnesses via `localDispatch`. EVERY user-desktop
-    // run goes through the link transport (`prepareLinkWorkDispatch` + tunnel
-    // work publisher), which never consumes this stream — so a user-desktop target reaching here is a
-    // hard bug (the guard below throws). The push `remoteDispatch` path is
-    // deleted.
+    // This generator only ever runs CLUSTER-hosted loops via `localDispatch`:
+    // decopilot (any sandbox kind) plus CLI on agent-sandbox/legacy targets.
+    // A CLI run on a user-desktop target resolves to the "sandbox" site
+    // (`resolveHarnessExecutionSite`) and goes through the link transport
+    // (`prepareLinkWorkDispatch` + tunnel work publisher), which never consumes
+    // this stream — so a (CLI, user-desktop) target reaching here is a hard bug
+    // (the guard below throws). The push `remoteDispatch` path is deleted.
     if (shouldPublishRunStatus) {
       await publishRunStatusStage(
         streamBuffer,
@@ -1344,13 +1344,17 @@ async function prepareRun(
           setDecopilotRunContext(harnessInput, decopilotRunContext);
         }
 
-        // User-desktop runs are routed by the gate to the link work publisher,
-        // which never consumes this lazy stream. Reaching this generator for a
-        // user-desktop target means the gate routing diverged from the dispatch
-        // path — a hard bug.
-        if (target.sandboxProviderKind === "user-desktop") {
+        // CLI harnesses (claude-code, codex) on user-desktop are routed by the
+        // gate to the link work publisher, which never consumes this lazy
+        // stream. Reaching this generator for a CLI user-desktop target means
+        // the gate routing diverged — a hard bug. Decopilot always runs here
+        // (cluster-hosted) regardless of sandbox provider kind.
+        if (
+          target.sandboxProviderKind === "user-desktop" &&
+          harnessId !== "decopilot"
+        ) {
           throw new Error(
-            "user-desktop runs use the link transport — dispatchRunAndWait must not run a local harness for them",
+            "user-desktop CLI runs use the link transport — dispatchRunAndWait must not run a local harness for them",
           );
         }
         // hosted / agent-sandbox only. Step 1a: the in-process SandboxClient
@@ -1604,11 +1608,11 @@ async function prepareRun(
  * Resolve the sandbox provisioning config for a link-transport work item.
  *
  * Mirrors the logic in `provisionSandbox` but returns the resolved config
- * instead of calling `runner.ensure`. Called from `prepareLinkWorkDispatch` for EVERY
- * harness (decopilot, claude-code, codex) targeting user-desktop so the daemon
+ * instead of calling `runner.ensure`. Called from `prepareLinkWorkDispatch` for
+ * the CLI harnesses (claude-code, codex) on a user-desktop target so the daemon
  * can spawn the sandbox cold without a prior WS-path ensure call. Decopilot
- * desktop ALSO runs in a sandbox (Transport Convergence), so the repo/workload
- * derivation applies to it identically.
+ * never reaches this path — its loop runs cluster-hosted, so it has no
+ * link work item to provision.
  *
  * Returns `null` when no sandbox config can be derived (non-user-desktop
  * target, or unresolvable metadata).
@@ -1753,7 +1757,10 @@ async function resolveLinkSandboxConfig(
 }
 
 /**
- * Prepare a user-desktop run for downstream link execution.
+ * Prepare a CLI run (claude-code, codex) on a user-desktop target for
+ * downstream link execution. This is the "sandbox" execution site — decopilot
+ * never reaches it (its loop is cluster-hosted; see
+ * `resolveHarnessExecutionSite`).
  *
  * Claims the run and mints the fence (via prepareRun), then returns the fence
  * token, task id, and fully assembled wire `HarnessStreamInput` for the gate
@@ -1806,13 +1813,6 @@ export async function prepareLinkWorkDispatch(
         throw new Error(message);
       };
 
-      if (wireHarnessInput.harnessId === "decopilot") {
-        await failPreparedRun(
-          "prepareLinkWorkDispatch: decopilot desktop dispatch needs a " +
-            "private DecopilotRunContext transport outside harnessInput",
-        );
-      }
-
       const effectiveHarnessInput: WireHarnessInput = wireHarnessInput;
       const messagesRef: MessagesRef | null = null;
       const inputByteLength = Buffer.byteLength(
@@ -1833,10 +1833,10 @@ export async function prepareLinkWorkDispatch(
       // so no cluster-side warm-ensure is needed (the push ensure helper was
       // deleted with the push path). The handle formula is identical to what
       // `ensureSandbox`/`provisionSandbox` would compute. See `computeDesktopSandboxHandle`.
-      // Compute the sandbox config for EVERY user-desktop run (all harnesses,
-      // incl. decopilot — Transport Convergence). Decopilot desktop runs in a
-      // sandbox too; `resolveLinkSandboxConfig` derives the same repo/workload
-      // config for it as for the CLI harnesses.
+      // Compute the sandbox config for the CLI work item. Only CLI harnesses
+      // on a user-desktop target reach `prepareLinkWorkDispatch`; decopilot is
+      // cluster-hosted and never gets here. `resolveLinkSandboxConfig` derives
+      // the repo/workload config the daemon needs to cold-spawn the sandbox.
       let sandboxConfig: WorkItemSandbox | null = null;
       if (input.target?.sandboxProviderKind === "user-desktop") {
         try {
