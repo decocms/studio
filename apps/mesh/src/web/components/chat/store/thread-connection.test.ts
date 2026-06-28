@@ -1723,3 +1723,160 @@ describe("reconnect refetch", () => {
     expect(conn.messages.get().map((m) => m.id)).toEqual(["m-1", "m-2"]);
   });
 });
+
+// ─── stuck-spinner reconcile (fast-run + missed live tail) ───────────────────
+
+describe("stuck spinner reconcile", () => {
+  /** MCP client whose COLLECTION_THREAD_MESSAGES_LIST returns a mutable
+   *  "persisted page" — set it at test time to simulate the server having
+   *  durably written the run's reply. Tolerates any number of refetch calls
+   *  (reconnect refetch + the reconcile poll both hit it). */
+  function makeMutableClient() {
+    let items: unknown[] = [];
+    const calls: Array<{ name: string; arguments: unknown }> = [];
+    return {
+      setItems: (next: unknown[]) => {
+        items = next;
+      },
+      calls,
+      client: {
+        callTool: async (req: { name: string; arguments: unknown }) => {
+          calls.push(req);
+          return { structuredContent: { items, hasMore: false } };
+        },
+      },
+    };
+  }
+
+  test("a refetch that surfaces the persisted reply clears the 'received' spinner without a reload", async () => {
+    let streamSlot = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => streamSlot.response,
+      messages: () => new Response("ok", { status: 200 }),
+    }) as unknown as typeof globalThis.fetch;
+
+    const harness = makeMutableClient();
+    const conn = getOrOpenStream("acme", "thread-stuck-clear", {
+      client: harness.client as never,
+    });
+    await new Promise((r) => setTimeout(r, 20)); // bootstrap (empty page)
+
+    // Submit a user turn. The POST 202 sets the "received" spinner; NO stream
+    // chunks ever arrive — the fast-run + purged-JetStream-subject race.
+    await conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "u-1",
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+        },
+      },
+      baseOpts,
+    );
+    expect(conn.runStatusStage.get()).toBe("received");
+    expect(conn.status.get().kind).toBe("submitted");
+
+    // The run completed server-side: the reply is persisted even though the
+    // live tail delivered nothing.
+    harness.setItems([
+      {
+        id: "u-1",
+        role: "user",
+        parts: [{ type: "text", text: "hi" }],
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "a-1",
+        role: "assistant",
+        parts: [{ type: "text", text: "hello" }],
+        created_at: "2026-01-01T00:00:01Z",
+      },
+    ]);
+
+    // Force an SSE reconnect → refetchLatestPage surfaces the persisted reply.
+    streamSlot.close();
+    streamSlot = controllableStream();
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Spinner cleared, run no longer "in flight", reply rendered — no reload.
+    expect(conn.runStatusStage.get()).toBeNull();
+    expect(conn.status.get().kind).toBe("ready");
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["u-1", "a-1"]);
+  });
+
+  test("the reconcile poll clears the spinner when no reconnect ever happens", async () => {
+    // The headline case: the /stream tail stays open (no reconnect) but
+    // delivers 0 chunks. Only the post-POST reconcile poll can surface the
+    // persisted answer. (First poll delay is 1.5s — wait past it.)
+    const stream = controllableStream();
+    globalThis.fetch = makeFetchMock({
+      stream: () => stream.response,
+      messages: () => new Response("ok", { status: 200 }),
+    }) as unknown as typeof globalThis.fetch;
+
+    const harness = makeMutableClient();
+    const conn = getOrOpenStream("acme", "thread-poll-clear", {
+      client: harness.client as never,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    await conn.submit(
+      {
+        kind: "message",
+        message: {
+          id: "u-1",
+          role: "user",
+          parts: [{ type: "text", text: "hi" }],
+        },
+      },
+      baseOpts,
+    );
+    expect(conn.status.get().kind).toBe("submitted");
+
+    harness.setItems([
+      {
+        id: "u-1",
+        role: "user",
+        parts: [{ type: "text", text: "hi" }],
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "a-1",
+        role: "assistant",
+        parts: [{ type: "text", text: "hello" }],
+        created_at: "2026-01-01T00:00:01Z",
+      },
+    ]);
+
+    // The live tail never reconnects; the poll's first tick (~1.5s) reconciles.
+    await new Promise((r) => setTimeout(r, 2500));
+
+    expect(conn.runStatusStage.get()).toBeNull();
+    expect(conn.status.get().kind).toBe("ready");
+    expect(conn.messages.get().map((m) => m.id)).toEqual(["u-1", "a-1"]);
+  });
+
+  test("204 on /stream is transient — keeps refetching instead of dying permanently", async () => {
+    globalThis.fetch = makeFetchMock({
+      stream: () => new Response(null, { status: 204 }),
+    }) as unknown as typeof globalThis.fetch;
+
+    const harness = makeMutableClient();
+    const conn = getOrOpenStream("acme", "thread-204-transient", {
+      client: harness.client as never,
+    });
+
+    // Let the loop run a few 204 → refetch → backoff cycles.
+    await new Promise((r) => setTimeout(r, 400));
+    const callsEarly = harness.calls.length;
+    await new Promise((r) => setTimeout(r, 2200));
+    const callsLate = harness.calls.length;
+
+    // Old behavior: the first 204 `return`ed permanently, so only the initial
+    // loadInitialPage call ever fired (count frozen). The fix retries, so the
+    // refetch count keeps growing — and the loop never routed to error.
+    expect(callsLate).toBeGreaterThan(callsEarly);
+    expect(conn.status.get().kind).not.toBe("error");
+  });
+});
