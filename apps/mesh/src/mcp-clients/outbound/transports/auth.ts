@@ -152,15 +152,9 @@ export class AuthTransport extends WrapperTransport {
       );
     }
 
-    // Create getToolMeta callback for AccessControl
-    const getToolMeta = async () => {
-      const toolsMap = await this.ensureToolsMap();
-      const tool = toolsMap.get(toolName);
-      return tool?._meta as Record<string, unknown> | undefined;
-    };
-
     // Create AccessControl with connectionId set
     // This checks: does user have permission for this TOOL on this CONNECTION?
+    // (Public tools were already short-circuited by `isPublicTool` above.)
     //
     // Prefer the path-resolved org+role (set by resolveOrgFromPath) over the
     // session-derived ones. The session's active-org role may not match the
@@ -172,7 +166,6 @@ export class AuthTransport extends WrapperTransport {
       ctx.boundAuth, // Bound auth client (encapsulates headers)
       ctx.organization?.role ?? ctx.auth.user?.role, // Role for built-in role bypass
       connection.id, // Connection ID for permission check
-      getToolMeta, // Callback for public tool check
       ctx.organization?.id, // Path-resolved org for permission checks
     );
 

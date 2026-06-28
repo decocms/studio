@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from "bun:test";
-import {
-  AccessControl,
-  ForbiddenError,
-  UnauthorizedError,
-} from "./access-control";
+import { AccessControl, ForbiddenError } from "./access-control";
 import type { BoundAuthClient } from "./studio-context";
 import type { Permission } from "../storage/types";
 import { BASIC_USAGE_TOOLS } from "../tools/registry-metadata";
@@ -45,13 +41,21 @@ const createMockBoundAuth = (permissions: Permission): BoundAuthClient => {
 describe("AccessControl", () => {
   describe("grant", () => {
     it("should grant access unconditionally", () => {
-      const ac = new AccessControl();
+      const ac = new AccessControl(
+        undefined,
+        undefined,
+        createMockBoundAuth({}),
+      );
       ac.grant();
       expect(ac.granted()).toBe(true);
     });
 
     it("should allow multiple grant calls", () => {
-      const ac = new AccessControl();
+      const ac = new AccessControl(
+        undefined,
+        undefined,
+        createMockBoundAuth({}),
+      );
       ac.grant();
       ac.grant();
       expect(ac.granted()).toBe(true);
@@ -214,15 +218,18 @@ describe("AccessControl", () => {
       );
     });
 
-    it("should deny access when no userId or permissions", async () => {
+    it("should deny an unauthenticated principal (no userId, no role)", async () => {
+      // boundAuth is always present (built per-request); an anonymous caller has
+      // no userId/role and is denied by the permission check (403). The 401 for
+      // truly-unauthenticated requests is enforced upstream by requireAuth.
       const ac = new AccessControl(
         undefined, // No user
         "TEST_TOOL",
-        undefined, // No boundAuth
-        undefined,
+        createMockBoundAuth({}), // present, but grants nothing
+        undefined, // No role
       );
 
-      await expect(ac.check()).rejects.toThrow(UnauthorizedError);
+      await expect(ac.check()).rejects.toThrow(ForbiddenError);
     });
   });
 
@@ -293,12 +300,20 @@ describe("AccessControl", () => {
 
   describe("granted", () => {
     it("should return false initially", () => {
-      const ac = new AccessControl();
+      const ac = new AccessControl(
+        undefined,
+        undefined,
+        createMockBoundAuth({}),
+      );
       expect(ac.granted()).toBe(false);
     });
 
     it("should return true after grant", () => {
-      const ac = new AccessControl();
+      const ac = new AccessControl(
+        undefined,
+        undefined,
+        createMockBoundAuth({}),
+      );
       ac.grant();
       expect(ac.granted()).toBe(true);
     });
@@ -381,17 +396,6 @@ describe("AccessControl", () => {
 
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
       expect(ac.granted()).toBe(false);
-    });
-
-    it("should deny access when no BoundAuthClient provided", async () => {
-      const ac = new AccessControl(
-        "user_1",
-        "TEST_TOOL",
-        undefined, // No bound auth
-        "user",
-      );
-
-      await expect(ac.check()).rejects.toThrow(ForbiddenError);
     });
   });
 });

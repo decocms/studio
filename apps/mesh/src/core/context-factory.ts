@@ -1406,7 +1406,6 @@ export async function createStudioContextFactory(
       boundAuth, // Bound auth client for permission checks
       authResult.role, // Role from session (for built-in role bypass)
       "self", // Default connectionId for management APIs (matches permission resource key)
-      undefined, // getToolMeta set later by defineTool
       organization?.id, // Path-resolved/auth-resolved org for permission checks
     );
 
