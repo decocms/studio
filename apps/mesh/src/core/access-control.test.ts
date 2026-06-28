@@ -143,6 +143,51 @@ describe("AccessControl", () => {
       expect(ac.granted()).toBe(true);
     });
 
+    it("does NOT bypass the admin role for an API-key principal", async () => {
+      // A key scoped to ORGANIZATION_GET is authorized solely by that allowlist —
+      // the owner's admin/owner role must not widen it. The flag lives on
+      // boundAuth, which enforces the key's permissions.
+      const keyBoundAuth = {
+        ...createMockBoundAuth({ self: ["ORGANIZATION_GET"] }),
+        isApiKeyPrincipal: true,
+      } as BoundAuthClient;
+
+      const allowed = new AccessControl(
+        "user_1",
+        "ORGANIZATION_GET",
+        keyBoundAuth,
+        "admin", // owner is an admin — must NOT grant beyond the allowlist
+      );
+      await allowed.check();
+      expect(allowed.granted()).toBe(true);
+
+      const denied = new AccessControl(
+        "user_1",
+        "API_KEY_CREATE", // out of scope — the exact escalation we are blocking
+        keyBoundAuth,
+        "admin",
+      );
+      await expect(denied.check()).rejects.toThrow(ForbiddenError);
+      expect(denied.granted()).toBe(false);
+    });
+
+    it("still bypasses the admin role for a non-API-key principal (session)", async () => {
+      // isApiKeyPrincipal unset (browser session / MCP OAuth) → admin bypass.
+      const boundAuth = {
+        ...createMockBoundAuth({ self: ["ORGANIZATION_GET"] }),
+        isApiKeyPrincipal: false,
+      } as BoundAuthClient;
+
+      const ac = new AccessControl(
+        "user_1",
+        "API_KEY_CREATE",
+        boundAuth,
+        "owner",
+      );
+      await ac.check();
+      expect(ac.granted()).toBe(true);
+    });
+
     it("should check connection-specific permissions", async () => {
       const ac = new AccessControl(
         "user_1",
@@ -225,6 +270,21 @@ describe("AccessControl", () => {
         createMockBoundAuth({}),
         undefined, // not a member of this org → no role
       );
+
+      await expect(ac.check()).rejects.toThrow(ForbiddenError);
+      expect(ac.granted()).toBe(false);
+    });
+
+    it("does NOT grant basic-usage to an API-key principal (allowlist only)", async () => {
+      // An API key is a capability, not a member — it takes the api-key codepath
+      // and is decided solely by its allowlist, so a basic-usage tool NOT in the
+      // key's scope is denied even though the owner is an admin.
+      const keyBoundAuth = {
+        ...createMockBoundAuth({}), // key grants nothing
+        isApiKeyPrincipal: true,
+      } as BoundAuthClient;
+
+      const ac = new AccessControl("user_1", tool, keyBoundAuth, "admin");
 
       await expect(ac.check()).rejects.toThrow(ForbiddenError);
       expect(ac.granted()).toBe(false);

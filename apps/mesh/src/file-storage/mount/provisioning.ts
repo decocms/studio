@@ -109,6 +109,7 @@ export async function mintOrgFsConfigJson(
       apiKey: {
         create(data: {
           name: string;
+          permissions?: Record<string, string[]>;
           expiresIn?: number;
           metadata?: Record<string, unknown>;
         }): Promise<{ key: string }>;
@@ -120,6 +121,10 @@ export async function mintOrgFsConfigJson(
   try {
     const apiKey = await ctx.boundAuth.apiKey.create({
       name: `orgfs-${opts.orgSlug}`,
+      // The mount only needs management/self tools; the actual file ops
+      // (ORG_FS_READ/WRITE) are granted to every member via basic-usage. With
+      // no implicit default (auth/index.ts), the scope must be explicit.
+      permissions: { self: ["*"] },
       expiresIn: ORG_FS_KEY_TTL_SECONDS,
       metadata: { organization: { id: opts.orgId, slug: opts.orgSlug } },
     });
