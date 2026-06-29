@@ -30,7 +30,6 @@ import {
   type HarnessStreamPersistence,
   type HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
-import { assistantMessageIdGenerator } from "./message-ids";
 import { buildChunkMsgId } from "./projector-stream-messages";
 import { CHECKPOINT_DEBOUNCE_MS } from "./nats-stream-buffer";
 import type { StreamBuffer } from "./stream-buffer";
@@ -174,14 +173,6 @@ export async function ingestRun(
     }
   }
 
-  // Deterministic assistant-message ids, IDENTICAL to the durable projector's
-  // scheme (`${runId}:${fenceToken}:msg:${n}` in fold order — see
-  // message-ids.ts). The live ingest persistence and the projector both fold the
-  // same chunk stream under the same fence, so matching ids mean their part rows
-  // collide on `ON CONFLICT (id) DO NOTHING` instead of duplicating. The fence
-  // also keeps DISTINCT turns of the same thread (runId == threadId) disjoint.
-  const generateMessageId = assistantMessageIdGenerator(runId, fenceToken);
-
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: dedupedChunks(),
     title: {
@@ -189,7 +180,6 @@ export async function ingestRun(
       persistTitle: async () => {},
     },
     persistence: deps.persistence ?? NOOP_PERSISTENCE,
-    generateMessageId,
     hooks: deps.hooks,
     errorMessageId: input.errorMessageId,
   });

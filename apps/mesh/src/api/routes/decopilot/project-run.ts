@@ -1,10 +1,7 @@
 import type { UIMessage, UIMessageChunk } from "ai";
 import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
 import type { HarnessStreamPersistence } from "./consume-harness-stream";
-import {
-  assistantMessageIdGenerator,
-  synthesizedErrorMessageId,
-} from "./message-ids";
+import { synthesizedErrorMessageId } from "./message-ids";
 import {
   projectChunks,
   type ProjectChunksResult,
@@ -76,17 +73,6 @@ export async function projectRun(
   let lastError: unknown = null;
   for (let attempt = 0; attempt < PROJECT_RUN_MAX_ATTEMPTS; attempt++) {
     try {
-      // Deterministic assistant-message ids in fold order, namespaced per turn
-      // by (runId, fenceToken). Every projection of this turn (terminal,
-      // checkpoint, and reconnect-replay redelivery) folds the same chunks in
-      // the same order, so the Nth message gets the SAME id each time →
-      // identical part row ids (`${runId}:${messageId}:${seq}`) → ON CONFLICT DO
-      // NOTHING dedupes instead of duplicating parts. The fence keeps DISTINCT
-      // turns of the same thread disjoint (see message-ids.ts).
-      const generateMessageId = assistantMessageIdGenerator(
-        options.runId,
-        options.fenceToken,
-      );
       const outcome = await projectChunks({
         chunks: (async function* () {
           yield* options.chunks;
@@ -100,7 +86,6 @@ export async function projectRun(
           options.runId,
           options.fenceToken,
         ),
-        generateMessageId,
         title: options.title,
         originalMessages: options.originalMessages,
       });

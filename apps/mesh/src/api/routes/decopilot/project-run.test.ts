@@ -130,10 +130,10 @@ describe("projectRun", () => {
   test("two turns of one thread (same runId, different fence) persist DISJOINT message ids", async () => {
     // Regression for the cross-turn collision that dropped a fully-generated
     // 2nd-turn response ("No response was generated"). runId == threadId is
-    // STABLE across turns; only the per-turn fence differs. Under the old
-    // `${runId}:msg:${n}` scheme both turns emitted "thread_1:msg:0", so turn
-    // 2's part rows collided with turn 1's and ON CONFLICT DO NOTHING dropped
-    // them. The fence namespace makes the two turns disjoint.
+    // STABLE across turns; only the per-turn fence differs. Message ids now come
+    // from the harness (via the replayed start chunk's messageId), so each run
+    // naturally produces distinct ids — verified here so the ON CONFLICT DO
+    // NOTHING dedupe never drops turn 2's rows against turn 1's.
     const capture = () => {
       const ids: string[] = [];
       const persistence: HarnessStreamPersistence = {
@@ -170,12 +170,6 @@ describe("projectRun", () => {
 
     expect(turn1.ids.length).toBeGreaterThan(0);
     expect(turn2.ids.length).toBeGreaterThan(0);
-    expect(turn1.ids.every((id) => id.startsWith("thread_1:fence_a:"))).toBe(
-      true,
-    );
-    expect(turn2.ids.every((id) => id.startsWith("thread_1:fence_b:"))).toBe(
-      true,
-    );
     // No message id appears in BOTH turns → ON CONFLICT DO NOTHING can never
     // drop turn 2's rows against turn 1's.
     expect(turn1.ids.some((id) => turn2.ids.includes(id))).toBe(false);

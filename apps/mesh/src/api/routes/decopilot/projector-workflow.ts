@@ -333,10 +333,14 @@ export async function projectCheckpointFromJetStreamStep(
     idleTimeoutMs: 5000,
   });
   if (!range.ok || range.chunks.length === 0) return { projected: false };
+  const originalMessages = (
+    await rt.messageParts.loadWindow(input.runId, { limit: 500 })
+  ).messages.map(foldedToUIMessage);
   const result = await projectRun({
     runId: input.runId,
     fenceToken: input.fenceToken,
     chunks: range.chunks,
+    originalMessages,
     // Non-terminal persistence: writes step parts but skips the finish anchor.
     persistence: await checkpointPersistenceFor(
       input.runId,
