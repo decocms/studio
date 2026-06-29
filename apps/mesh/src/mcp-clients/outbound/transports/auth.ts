@@ -160,14 +160,14 @@ export class AuthTransport extends WrapperTransport {
     // session-derived ones. The session's active-org role may not match the
     // org in the URL — e.g. owner of /api/foo with no/different active org
     // would otherwise lose the admin/owner bypass and 403 on every tool call.
-    const connectionAccessControl = new AccessControl(
-      ctx.auth.user?.id ?? ctx.auth.apiKey?.userId,
-      toolName, // Tool being called
-      ctx.boundAuth, // Bound auth client (encapsulates headers)
-      ctx.organization?.role ?? ctx.auth.user?.role, // Role for built-in role bypass
-      connection.id, // Connection ID for permission check
-      ctx.organization?.id, // Path-resolved org for permission checks
-    );
+    const connectionAccessControl = new AccessControl({
+      userId: ctx.auth.user?.id ?? ctx.auth.apiKey?.userId,
+      toolName, // tool being called
+      boundAuth: ctx.boundAuth, // encapsulates headers
+      role: ctx.organization?.role ?? ctx.auth.user?.role, // built-in role bypass
+      connectionId: connection.id, // permission resource key
+      organizationId: ctx.organization?.id, // path-resolved org
+    });
 
     await connectionAccessControl.check(toolName);
   }

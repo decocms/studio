@@ -82,13 +82,12 @@ export function createAutomationContextFactory(
       permissions,
       userId,
     });
-    ctx.access = new AccessControl(
+    ctx.access = new AccessControl({
       userId,
-      undefined, // toolName set later by defineTool
-      ctx.boundAuth,
-      membership.role,
-      "self",
-    );
+      // toolName set later by defineTool; connectionId defaults to "self"
+      boundAuth: ctx.boundAuth,
+      role: membership.role,
+    });
 
     // The base context was built without `req`, so every org-scoped facet
     // (thread storage, object storage, org-fs, asset hoisters) was created

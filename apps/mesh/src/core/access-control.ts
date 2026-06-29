@@ -50,22 +50,45 @@ export class ForbiddenError extends Error {
  * Delegates all permission checks to Better Auth's Organization plugin
  * via the BoundAuthClient (which encapsulates HTTP headers)
  */
-export class AccessControl {
-  private _granted: boolean = false;
+export interface AccessControlOptions {
+  /** Authenticated principal id; undefined for an anonymous caller. */
+  userId?: string;
+  /** Tool being checked. May be unset here and supplied later via setToolName(). */
+  toolName?: string;
+  /**
+   * Bound auth client. Built by the context factory for EVERY request (even
+   * anonymous), so it's a required dependency — an anonymous principal just has
+   * no role/perms and is denied by the permission check, not by a missing client.
+   */
+  boundAuth: BoundAuthClient;
+  /** Caller's role for the effective org (drives the built-in admin/owner bypass). */
+  role?: string;
+  /**
+   * Permission resource key: "self" for management tools, "conn_<id>" for a
+   * specific connection. Defaults to "self".
+   */
+  connectionId?: string;
+  /** Path-resolved org id (overrides the session's active org). */
+  organizationId?: string;
+}
 
-  constructor(
-    // userId/toolName may be undefined (anonymous principal; tool name set later
-    // via setToolName) but are passed positionally, so they're required params.
-    private userId: string | undefined,
-    private toolName: string | undefined,
-    // Always built by the context factory for EVERY request (even anonymous), so
-    // it's a required dependency — an anonymous principal just has no role/perms
-    // and is denied by the permission check, not by a missing client.
-    private boundAuth: BoundAuthClient,
-    private role?: string, // From user session (for built-in role bypass)
-    private connectionId: string = "self", // For connection-specific checks (matches permission resource key)
-    private organizationId?: string, // Path-resolved org (overrides session active org)
-  ) {}
+export class AccessControl {
+  private _granted = false;
+  private userId?: string;
+  private toolName?: string;
+  private boundAuth: BoundAuthClient;
+  private role?: string;
+  private connectionId: string;
+  private organizationId?: string;
+
+  constructor(opts: AccessControlOptions) {
+    this.userId = opts.userId;
+    this.toolName = opts.toolName;
+    this.boundAuth = opts.boundAuth;
+    this.role = opts.role;
+    this.connectionId = opts.connectionId ?? "self";
+    this.organizationId = opts.organizationId;
+  }
 
   setToolName(toolName: string): void {
     this.toolName = toolName;

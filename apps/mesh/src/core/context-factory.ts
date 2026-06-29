@@ -1400,14 +1400,13 @@ export async function createStudioContextFactory(
       : getBaseUrl();
 
     // Create AccessControl instance with bound auth client
-    const access = new AccessControl(
-      meshAuth.user?.id,
-      undefined, // toolName set later by defineTool
-      boundAuth, // Bound auth client for permission checks
-      authResult.role, // Role from session (for built-in role bypass)
-      "self", // Default connectionId for management APIs (matches permission resource key)
-      organization?.id, // Path-resolved/auth-resolved org for permission checks
-    );
+    const access = new AccessControl({
+      userId: meshAuth.user?.id,
+      // toolName set later by defineTool; connectionId defaults to "self"
+      boundAuth, // bound auth client for permission checks
+      role: authResult.role, // from session (built-in role bypass)
+      organizationId: organization?.id, // path-resolved/auth-resolved org
+    });
 
     const storage = {
       ...baseStorage,
