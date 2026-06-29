@@ -1,13 +1,10 @@
 import type { JetStreamClient, JetStreamManager } from "@nats-io/jetstream";
 import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
-import type { HarnessStreamPersistence } from "./consume-harness-stream";
 import type { ProjectChunksResult } from "./project-chunks";
 import { projectChunks } from "./project-chunks";
-import { projectRun } from "./project-run";
 import { createProjectorChunkStream } from "./projector-chunk-stream";
 import { createRunPersistence } from "./run-persistence";
 import { recordPoison } from "./projector-metrics";
-import { readProjectorRunRange } from "./projector-run-log";
 import { resolveThreadStatus } from "./status";
 import { synthesizedErrorMessageId } from "./message-ids";
 import { foldedToUIMessage } from "./projector-seed";
@@ -30,14 +27,6 @@ export interface ProjectorWorkflowInput {
   runId: string;
   fenceToken: string;
   finalSeq?: number;
-}
-
-/** Input to a non-terminal incremental checkpoint projection pass. */
-export interface ProjectorCheckpointInput {
-  runId: string;
-  fenceToken: string;
-  headSeq: number;
-  orgId: string;
 }
 
 export interface ProjectorRunRow {
@@ -87,12 +76,6 @@ export interface ProjectorWorkflowRuntime {
     kind: "harness" | "projection";
   }): Promise<void>;
   purgeRun(runId: string, fenceToken: string): Promise<void>;
-  advanceProjectedSeq(
-    runId: string,
-    orgId: string,
-    fenceToken: string,
-    newSeq: number,
-  ): Promise<number>;
 }
 
 let runtime: ProjectorWorkflowRuntime | null = null;
@@ -114,22 +97,6 @@ function requireRuntime(): ProjectorWorkflowRuntime {
 
 export function getProjectorWorkflowRuntime(): ProjectorWorkflowRuntime {
   return requireRuntime();
-}
-
-/**
- * Non-terminal persistence for checkpoint passes: writes step parts but
- * intentionally skips the finish anchor and error anchor. The terminal done
- * pass writes the finish anchor, so checkpoint writes are strictly additive.
- * Uses the SAME canonical base as the terminal pass — a checkpoint that inserts
- * a row first must not stamp a wall-clock `created_at` that diverges from the
- * terminal pass and re-orders the message.
- */
-function checkpointPersistenceFor(
-  runId: string,
-  orgId: string,
-  messageParts: SqlThreadMessagePartStorage,
-): Promise<HarnessStreamPersistence> {
-  return createRunPersistence({ messageParts, orgId, runId, terminal: false });
 }
 
 export async function projectFromJetStreamStep(
@@ -313,62 +280,4 @@ async function resolveRunStepWithRuntime(
   }
   if (row.version !== 2) return { skip: "legacy-v1" as const, row };
   return { row };
-}
-
-export async function projectCheckpointFromJetStreamStep(
-  input: ProjectorCheckpointInput,
-  currentThreadTitle: string | null,
-): Promise<{ projected: boolean }> {
-  const rt = requireRuntime();
-  const js = rt.getJetStream();
-  if (!js) throw new Error("JetStream unavailable");
-  // Full fold from seq 1 to headSeq. fromSeq:0 so reconstructProjectorRunRange
-  // starts its loop at s=1 (it iterates fromSeq+1..toSeq).
-  const range = await readProjectorRunRange({
-    js,
-    runId: input.runId,
-    fenceToken: input.fenceToken,
-    fromSeq: 0,
-    toSeq: input.headSeq,
-    idleTimeoutMs: 5000,
-  });
-  if (!range.ok || range.chunks.length === 0) return { projected: false };
-  const originalMessages = (
-    await rt.messageParts.loadWindow(input.runId, { limit: 500 })
-  ).messages.map(foldedToUIMessage);
-  const result = await projectRun({
-    runId: input.runId,
-    fenceToken: input.fenceToken,
-    chunks: range.chunks,
-    originalMessages,
-    // Non-terminal persistence: writes step parts but skips the finish anchor.
-    persistence: await checkpointPersistenceFor(
-      input.runId,
-      input.orgId,
-      rt.messageParts,
-    ),
-    onDlq: async (_runId, error) => {
-      throw error instanceof Error ? error : new Error(String(error));
-    },
-    title: {
-      threadId: input.runId,
-      currentThreadTitle,
-      persistTitle: async (_threadId, title) => {
-        await rt.persistTitle(input.runId, input.orgId, title);
-        await rt.onTitleUpdated({
-          runId: input.runId,
-          orgId: input.orgId,
-          title,
-        });
-      },
-    },
-  });
-  if (!result.ok) return { projected: false };
-  await rt.advanceProjectedSeq(
-    input.runId,
-    input.orgId,
-    input.fenceToken,
-    range.lastContiguousSeq,
-  );
-  return { projected: true };
 }

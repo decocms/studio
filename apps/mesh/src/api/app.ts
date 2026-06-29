@@ -1540,13 +1540,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     purgeRun: async (runId) => {
       streamBuffer.purge(runId);
     },
-    advanceProjectedSeq: (runId, orgId, fenceToken, newSeq) =>
-      projectorThreadStorage.advanceProjectedSeq(
-        runId,
-        orgId,
-        fenceToken,
-        newSeq,
-      ),
   });
 
   // Background-tool jobs reuse the same mesh-context factory to rebuild the

@@ -131,7 +131,6 @@ function makeRuntime(): { rt: ProjectorWorkflowRuntime; calls: FakeCall[] } {
     purgeRun: async (runId, fenceToken) => {
       calls.push({ kind: "purge", runId, fenceToken });
     },
-    advanceProjectedSeq: async () => 0,
   };
 
   return { rt, calls };
@@ -529,9 +528,7 @@ describe("ProjectorWorkflowRuntime hooks", () => {
       onTitleUpdated: async () => {},
     };
 
-    // Simulate projectCheckpointFromJetStreamStep returning { projected: true }
-    // and the projectCheckpointWorkflowFn body calling bumpProgress afterward.
-    // Since bumpProgress is wired in the DBOS workflow function, we verify here
+    // bumpProgress is wired in the DBOS workflow function; verify here
     // that the runtime has the hook and it can be invoked with the right shape.
     await rt.bumpProgress({ runId, orgId });
 
