@@ -1,23 +1,7 @@
 // apps/mesh/src/api/routes/decopilot/nats-chunk-source.ts
 import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/std";
-import {
-  concat,
-  decodeStream,
-  FRAG_INDEX_HEADER,
-  FRAG_TOTAL_HEADER,
-  reassembleFragments,
-  type DecodedEvent,
-  type RawMsg,
-} from "@decocms/harness/run-stream-codec";
-
-// Re-export decode-side types and helpers so existing importers continue to
-// work without change. After Task 2 each symbol has exactly one definition
-// (in the codec) and these are the forwarding aliases.
-export type { RawMsg, DecodedEvent };
-export { concat, reassembleFragments, FRAG_INDEX_HEADER, FRAG_TOTAL_HEADER };
-/** Back-compat alias: unwrapPayload() === decodeStream(). */
-export { decodeStream as unwrapPayload };
+import type { DecodedEvent, RawMsg } from "@decocms/harness/run-stream-codec";
 
 export const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
 

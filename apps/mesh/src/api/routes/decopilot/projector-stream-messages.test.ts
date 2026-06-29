@@ -2,11 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   buildChunkMsgId,
   buildDoneMsgId,
-  isDoneEnvelope,
   parseRunStreamMsgId,
-  runIdFromSubject,
   streamSubject,
-} from "./projector-stream-messages";
+} from "@decocms/harness/run-stream-codec";
+import { isDoneEnvelope, runIdFromSubject } from "./projector-stream-messages";
 
 describe("projector stream message helpers", () => {
   test("builds and parses chunk msg ids", () => {

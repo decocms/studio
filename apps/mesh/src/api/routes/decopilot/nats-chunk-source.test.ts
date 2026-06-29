@@ -3,15 +3,17 @@ import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
 import {
   natsChunkSource,
-  concat,
-  reassembleFragments,
-  unwrapPayload,
   fenceFilter,
   assertContiguousAndDedup,
   projectorChunkStream,
-  type RawMsg,
-  type DecodedEvent,
 } from "./nats-chunk-source";
+import {
+  concat,
+  decodeStream,
+  reassembleFragments,
+  type DecodedEvent,
+  type RawMsg,
+} from "@decocms/harness/run-stream-codec";
 
 const enc = new TextEncoder();
 
@@ -162,10 +164,10 @@ describe("concat", () => {
 });
 
 async function unwrapAll(input: RawMsg[]): Promise<DecodedEvent[]> {
-  return pipeThrough<RawMsg, DecodedEvent>(input, unwrapPayload());
+  return pipeThrough<RawMsg, DecodedEvent>(input, decodeStream());
 }
 
-describe("unwrapPayload", () => {
+describe("decodeStream", () => {
   test("classifies a fenced chunk with seq + fence from the msgId", async () => {
     const [ev] = await unwrapAll([
       rawJson("run_1:fence_a:2", {
@@ -249,7 +251,7 @@ async function pipe2(
   return readAll(
     src
       .pipeThrough(reassembleFragments())
-      .pipeThrough(unwrapPayload())
+      .pipeThrough(decodeStream())
       .pipeThrough(fenceFilter(runId, fence)),
   );
 }
@@ -284,7 +286,7 @@ async function pipe3(
   return readAll(
     src
       .pipeThrough(reassembleFragments())
-      .pipeThrough(unwrapPayload())
+      .pipeThrough(decodeStream())
       .pipeThrough(fenceFilter(runId, fence))
       .pipeThrough(assertContiguousAndDedup()),
   );
@@ -328,7 +330,7 @@ function projectorPipeline(
   const src = natsChunkSource({ messages: input, onCancel });
   const events = src
     .pipeThrough(reassembleFragments())
-    .pipeThrough(unwrapPayload())
+    .pipeThrough(decodeStream())
     .pipeThrough(fenceFilter(runId, fence))
     .pipeThrough(assertContiguousAndDedup());
   return projectorChunkStream(events);
@@ -411,7 +413,7 @@ describe("projectorChunkStream", () => {
     });
     const events = src
       .pipeThrough(reassembleFragments())
-      .pipeThrough(unwrapPayload())
+      .pipeThrough(decodeStream())
       .pipeThrough(fenceFilter("run_1", "fence_a"))
       .pipeThrough(assertContiguousAndDedup());
     const out = await readAll(projectorChunkStream(events));
@@ -446,7 +448,7 @@ describe("projectorChunkStream", () => {
     });
     const events = src
       .pipeThrough(reassembleFragments())
-      .pipeThrough(unwrapPayload())
+      .pipeThrough(decodeStream())
       .pipeThrough(fenceFilter("run_1", "fence_a"))
       .pipeThrough(assertContiguousAndDedup());
     await expect(readAll(projectorChunkStream(events))).rejects.toThrow(

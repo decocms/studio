@@ -23,15 +23,6 @@ import {
   serializeDone,
 } from "@decocms/harness/run-stream-codec";
 
-// --- Stream subject + msgId scheme (re-exported from codec) ------------------
-
-export {
-  streamSubject,
-  buildChunkMsgId,
-  buildDoneMsgId,
-  DECOPILOT_STREAM_SUBJECT_PREFIX,
-} from "@decocms/harness/run-stream-codec";
-
 /** Debounce between incremental outbox-truncation reports. Rolling truncation
  *  keeps the durable outbox from accumulating the entire run in memory; without
  *  mid-stream reports the cap becomes a hard per-run limit instead of a backstop. */
@@ -82,7 +73,12 @@ export function createDirectNatsPublisher(input: {
           dedup: { fenceToken, seq: line.seq },
         });
         hooks?.onChunkEncoded?.(performance.now() - t0);
-        if (msgs.length === 0) return "published";
+        if (msgs.length === 0) {
+          console.warn(
+            `[relay-publisher] dropping oversized ui-message-chunk for run ${runId}: exceeds MAX_CHUNKED_BYTES cap`,
+          );
+          return "published";
+        }
         hooks?.onChunkPublished?.();
         for (const m of msgs) {
           await input.js.publish(m.subject, m.data, {
@@ -98,6 +94,12 @@ export function createDirectNatsPublisher(input: {
           { type: "error", errorText },
           { runId, dedup: { fenceToken, seq: line.seq } },
         );
+        if (msgs.length === 0) {
+          console.warn(
+            `[relay-publisher] dropping oversized error chunk for run ${runId}: exceeds MAX_CHUNKED_BYTES cap`,
+          );
+          return "published";
+        }
         for (const m of msgs) {
           await input.js.publish(m.subject, m.data, {
             ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),

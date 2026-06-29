@@ -1,19 +1,19 @@
 import type { UIMessageChunk } from "ai";
 import { DeliverPolicy, type JetStreamClient } from "@nats-io/jetstream";
-import {
-  DECOPILOT_STREAM_NAME,
-  streamSubject,
-} from "./projector-stream-messages";
+import { DECOPILOT_STREAM_NAME } from "./projector-stream-messages";
 import {
   assertContiguousAndDedup,
   DEFAULT_IDLE_TIMEOUT_MS,
   fenceFilter,
   natsChunkSource,
   projectorChunkStream,
-  type RawMsg,
-  reassembleFragments,
-  unwrapPayload,
 } from "./nats-chunk-source";
+import {
+  decodeStream,
+  reassembleFragments,
+  streamSubject,
+  type RawMsg,
+} from "@decocms/harness/run-stream-codec";
 
 /** Back-compat alias — the shared `RawMsg` is the old `ProjectorStreamMessage`. */
 export type ProjectorStreamMessage = RawMsg;
@@ -54,7 +54,7 @@ export function createProjectorChunkStreamFromMessages(
   });
   const events = source
     .pipeThrough(reassembleFragments())
-    .pipeThrough(unwrapPayload())
+    .pipeThrough(decodeStream())
     .pipeThrough(fenceFilter(options.runId, options.fenceToken))
     .pipeThrough(assertContiguousAndDedup());
   return projectorChunkStream(events);

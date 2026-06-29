@@ -28,22 +28,18 @@ import {
   type MsgHdrs,
   type NatsConnection,
 } from "@nats-io/nats-core";
-import {
-  DECOPILOT_STREAM_NAME,
-  DECOPILOT_STREAM_SUBJECT_PREFIX,
-  streamSubject,
-} from "./projector-stream-messages";
+import { DECOPILOT_STREAM_NAME } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
+import { natsChunkSource } from "./nats-chunk-source";
 import {
-  natsChunkSource,
+  decodeStream,
+  DECOPILOT_STREAM_SUBJECT_PREFIX,
   reassembleFragments,
-  unwrapPayload,
-  type RawMsg,
-} from "./nats-chunk-source";
-import {
   serializeChunk,
   serializeDone,
   serializeUnfencedDone,
+  streamSubject,
+  type RawMsg,
 } from "@decocms/harness/run-stream-codec";
 import { meter } from "@/observability";
 import { encodeMsHistogram, publishedChunksCounter } from "./stream-metrics";
@@ -501,7 +497,7 @@ export class NatsStreamBuffer implements StreamBuffer {
 
     const events = source
       .pipeThrough(reassembleFragments())
-      .pipeThrough(unwrapPayload());
+      .pipeThrough(decodeStream());
 
     const reader = events.getReader();
     let released = false;
