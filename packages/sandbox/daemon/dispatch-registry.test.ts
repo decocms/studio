@@ -11,8 +11,8 @@ import {
 // @decocms/harness registry and looks them up by id. The registry keys ARE the
 // factory ids, so a factory.id that drifts from the dispatch protocol's harness
 // id would silently 404 "unknown harness". Lock the id↔registry-key invariant
-// for the package-side CLI factories. (decopilotDesktopHarnessFactory.id =
-// "decopilot" lives in apps/mesh — asserted by the desktop-factory definition.)
+// for the package-side CLI factories. Decopilot is cluster-only and is not
+// registered in the desktop daemon.
 describe("daemon harness registry (id ↔ key)", () => {
   it("resolves the CLI harness factories by their dispatch id", () => {
     resetRegistryForTests();

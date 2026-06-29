@@ -1,22 +1,13 @@
 /**
  * CLUSTER Decopilot environment-deps assembler (spec §5.2/§9 — "ONE factory").
  *
- * The Decopilot harness runs ONE orchestration loop (`runDecopilotCore`); the
- * only difference between the cluster and the desktop daemon is which
- * `DecopilotToolRuntime` + `telemetry` the environment builds. The single
- * `decopilotHarnessFactory` (`./index.ts`) selects between this StudioContext-
- * backed assembler and the desktop one by inspecting the injected context shape:
+ * The Decopilot harness runs ONE orchestration loop (`runDecopilotCore`). The
+ * package factory gets its StudioContext-backed `DecopilotToolRuntime` +
+ * `telemetry` through this registered cluster assembler:
  *
- *   - `buildClusterEnvironmentTools` (here) — the StudioContext-backed branch:
- *     the in-process virtual-MCP passthrough client + the full cluster tool set
+ *   - the in-process virtual-MCP passthrough client + the full cluster tool set
  *     (web_search / update_interests / Browserless built-ins) + the per-run
  *     HTML-artifact buffer/watcher, plus the ctx-coupled `runAgentLoop` engine.
- *   - `buildDesktopEnvironmentTools` (`./desktop-runtime.ts`) — the import-
- *     isolated daemon branch: an HTTP MCP passthrough client + the local-OK
- *     built-ins + the portable `runNativeAgentLoopCore` engine with a
- *     cluster-storage-free system prompt. It lives in its own `@/`-free module
- *     so the desktop daemon factory (`./desktop-factory.ts`) can pull it WITHOUT
- *     dragging this file's cluster `@/*` imports into the daemon bundle.
  */
 
 import type {
@@ -48,6 +39,7 @@ import type {
 import { runAgentLoop } from "./run-agent-loop";
 import type { DecopilotTelemetry } from "@decocms/harness/decopilot/run-stream";
 import { createBackgroundToolDispatcher } from "./background-tool-workflow";
+import { requireDecopilotRunContext } from "@decocms/harness/decopilot/run-context";
 
 /**
  * Cluster engine adapter: maps the portable `RunEngineArgs` onto the ctx-coupled
@@ -130,6 +122,7 @@ export function buildClusterEnvironmentTools(args: {
 
   const toolRuntime: DecopilotToolRuntime = {
     buildEnvironmentTools: async ({ input: streamInput, onChildUsage }) => {
+      const runContext = requireDecopilotRunContext(streamInput);
       const toolOutputMap = new Map<string, string>();
       const pendingImages: PendingImage[] = [];
       const { resolveArgs, onToolCalled } = buildClusterMcpToolHooks(ctx);
@@ -152,7 +145,7 @@ export function buildClusterEnvironmentTools(args: {
           // Cluster-side: `virtualMcp` is the real `VirtualMCPEntity`;
           // the transport type widens the field to a loose bag so the
           // daemon can ship without the cluster's storage types.
-          const vm = streamInput.virtualMcp as VirtualMCPEntity;
+          const vm = runContext.virtualMcp as VirtualMCPEntity;
           // Surface the dev sandbox's tools when the user has a running sandbox
           // for this agent. Cheap local pre-filter ("does the user have a
           // sandbox entry?"), no repo/pairing flag — agents without a sandbox
@@ -168,7 +161,7 @@ export function buildClusterEnvironmentTools(args: {
               ctx,
               vm.id,
               streamInput.user.id,
-              streamInput.branch ?? undefined,
+              runContext.branch ?? undefined,
             ).catch(() => null);
           }
           return createVirtualClientFrom(
@@ -200,7 +193,7 @@ export function buildClusterEnvironmentTools(args: {
           agentId: streamInput.agent.id,
           temperature: streamInput.temperature,
           toolApprovalLevel: streamInput.toolApprovalLevel,
-          branch: streamInput.branch ?? null,
+          branch: runContext.branch ?? null,
         }),
         htmlArtifactBuffer,
         // Roll subtask child usage into the parent run's accumulator

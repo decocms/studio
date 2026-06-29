@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
-import { buildPreviewFetchUrl } from "./preview-fetch-url";
 
 interface UseDecofileParams {
   orgSlug: string;
   virtualMcpId: string;
   branch: string;
+  previewUrl?: string | null;
 }
 
 export function useDecofile(
@@ -16,12 +16,12 @@ export function useDecofile(
     ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`
     : "";
   const fetchEnabled = options?.fetchEnabled ?? true;
+  const previewUrl = params?.previewUrl;
   return useQuery({
     queryKey: KEYS.decofile(key),
     queryFn: async () => {
-      const res = await fetch(
-        buildPreviewFetchUrl({ ...params!, path: "/.decofile" }),
-      );
+      const url = new URL("/.decofile", previewUrl!).href;
+      const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) {
         const err = new Error(`Failed to fetch decofile: ${res.status}`);
         (err as { status?: number }).status = res.status;
@@ -29,7 +29,7 @@ export function useDecofile(
       }
       return (await res.json()) as Record<string, unknown>;
     },
-    enabled: !!params && fetchEnabled,
+    enabled: !!params && !!previewUrl && fetchEnabled,
     staleTime: 30_000,
     // 502 = preview unreachable (sandbox starting or down). The SSE lifecycle
     // re-enables this query when the preview is back, so retrying just hammers

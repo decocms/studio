@@ -33,7 +33,7 @@ export interface MemoryConfig {
  * - Message history loading
  * - Pruning for context window management
  */
-export class Memory {
+class Memory {
   readonly thread: Thread;
   readonly organization_id: string;
 

@@ -33,6 +33,7 @@
 
 import type { UIMessageChunk } from "ai";
 import type {
+  DecopilotSecretModelSources,
   DecopilotSecretModelSource,
   HarnessStreamInput,
   ModelSelection,
@@ -52,6 +53,7 @@ import { processConversation } from "./conversation";
 import { DEFAULT_WINDOW_SIZE, SUBAGENT_STEP_LIMIT } from "./prompt-constants";
 import { createUsageAccumulator } from "../usage-accumulator";
 import { createSemaphore } from "../semaphore";
+import { getDecopilotRunContext, setDecopilotRunContext } from "./run-context";
 
 export type { DecopilotTelemetry } from "./run-stream";
 
@@ -88,7 +90,7 @@ export interface ModelRuntime {
  */
 export interface ModelRuntimeSources {
   models: HarnessStreamInput["models"];
-  modelSources: HarnessStreamInput["modelSources"];
+  modelSources?: DecopilotSecretModelSources;
 }
 
 /**
@@ -214,6 +216,7 @@ export async function* runDecopilotCore(
   deps: RunDecopilotCoreDeps,
 ): AsyncIterable<UIMessageChunk> {
   const { input, modelRuntime, toolRuntime, telemetry } = deps;
+  const runContext = getDecopilotRunContext(input);
   const isSubtask = deps.kind === "subtask";
 
   // The core owns the cumulative-usage accumulator so a MAIN run's `subtask`
@@ -243,7 +246,7 @@ export async function* runDecopilotCore(
     systemMessages: processedSystemMessages,
     messages: processedMessages,
     originalMessages,
-  } = await processConversation(input.messages, {
+  } = await processConversation(runContext?.messages ?? [input.userMessage], {
     windowSize: DEFAULT_WINDOW_SIZE,
     models: input.models,
     tools: tools.tools,
@@ -288,6 +291,7 @@ export async function* runDecopilotCore(
       // Shared so the subtask tool's child-usage roll-up lands in the same
       // accumulator that builds the final `message-metadata.usage`.
       usageAccumulator,
+      runContext,
     },
   });
 }
@@ -380,15 +384,20 @@ async function runSubtaskCore(
   // Chain the parent tool-call signal into the child core run.
   const subtaskInput: HarnessStreamInput = {
     ...deps.input,
-    messages: [
-      {
-        id: "subtask-prompt",
-        role: "user",
-        parts: [{ type: "text", text: prompt }],
-      },
-    ],
+    userMessage: {
+      id: "subtask-prompt",
+      role: "user",
+      parts: [{ type: "text", text: prompt }],
+    },
     signal,
   };
+  const runContext = getDecopilotRunContext(deps.input);
+  if (runContext) {
+    setDecopilotRunContext(subtaskInput, {
+      ...runContext,
+      messages: [subtaskInput.userMessage],
+    });
+  }
 
   try {
     for await (const chunk of runDecopilotCore({

@@ -14,9 +14,13 @@ import { localDispatch } from "./local-dispatch";
 
 const makeInput = (): HarnessStreamInput => ({
   threadId: "t1",
-  runId: "r1",
-  messages: [],
-  workspace: { cwd: "default" },
+  userMessage: {
+    id: "m1",
+    role: "user",
+    parts: [{ type: "text", text: "hi" }],
+  },
+  harness: {},
+  workspace: { cwd: null },
   models: {
     thinking: { id: "m-thinking", title: "Thinking", credentialId: "cred-1" },
   } as unknown as HarnessStreamInput["models"],
@@ -26,7 +30,6 @@ const makeInput = (): HarnessStreamInput => ({
   toolApprovalLevel: "auto",
   user: { id: "u1", email: "u1@example.com" },
   organizationId: "org-1",
-  virtualMcp: { id: "agent-1" } as HarnessStreamInput["virtualMcp"],
   agent: { id: "agent-1" },
   signal: new AbortController().signal,
 });

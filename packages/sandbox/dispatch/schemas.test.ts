@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, test } from "bun:test";
 import {
   capabilitySchema,
   capabilitiesArraySchema,
@@ -6,6 +6,7 @@ import {
   harnessStreamInputSchema,
   type HarnessStreamInputWire,
 } from "./schemas";
+import { FIXTURE_MINIMAL_INPUT } from "./fixtures";
 
 describe("dispatchSSEEventSchema", () => {
   it("accepts ui-message-chunk", () => {
@@ -31,35 +32,89 @@ describe("dispatchSSEEventSchema", () => {
   });
 });
 
-describe("harnessStreamInputSchema (v2)", () => {
-  const minimalV2: HarnessStreamInputWire = {
-    threadId: "t1",
-    runId: "t1",
-    taskId: "t1",
-    messages: [],
-    workspace: { cwd: "/repo" },
-    models: { thinking: { id: "m1", title: "M1", credentialId: "cred1" } },
-    mcp: {
-      url: "https://x.test/mcp",
-      headers: {},
-      expiresAt: 1,
-    },
-    mode: "default",
-    temperature: 1,
-    toolApprovalLevel: "auto",
-    user: { id: "u1", email: "u@x.test" },
-    organizationId: "o1",
-    virtualMcp: { id: "vm1" },
-    agent: { id: "vm1" },
-  };
+describe("harnessStreamInputSchema (v3)", () => {
+  test("accepts v3 single-message harness input", () => {
+    const result = harnessStreamInputSchema.safeParse({
+      harnessId: "claude-code",
+      threadId: "thread-1",
+      userMessage: {
+        id: "msg-1",
+        role: "user",
+        parts: [{ type: "text", text: "diagnose" }],
+      },
+      harness: { sessionId: "cli-session-1" },
+      workspace: {
+        cwd: "/repo",
+        repo: { owner: "deco", name: "site", connectedGithub: true },
+        branch: "main",
+      },
+      models: {
+        thinking: {
+          id: "claude-code:opus",
+          title: "Opus",
+          credentialId: "cred-1",
+        },
+      },
+      mcp: {
+        url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
+        headers: { Authorization: "Bearer token" },
+        expiresAt: 9999999999000,
+      },
+      mode: "default",
+      temperature: 0.7,
+      toolApprovalLevel: "auto",
+      user: { id: "user-1", email: "u@example.com" },
+      organizationId: "org-1",
+      organizationSlug: "acme",
+      agent: { id: "agent-1", instructions: "Help carefully." },
+    });
 
-  it("accepts a minimal v2 input", () => {
-    const result = harnessStreamInputSchema.safeParse(minimalV2);
+    expect(result.success).toBe(true);
+  });
+
+  test.each([
+    ["runId", "run-1"],
+    ["taskId", "task-1"],
+    ["resumeSessionRef", "old-session"],
+    ["messages", []],
+    [
+      "codingWorkspace",
+      { cwd: "/repo", branch: "main", workspaceKind: "github" },
+    ],
+    ["projectSlug", "legacy"],
+    ["virtualMcp", { id: "agent-1" }],
+  ] as const)("rejects removed shared harness field %s", (field, value) => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...FIXTURE_MINIMAL_INPUT,
+      [field]: value,
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  test.each([
+    ["user", { id: "user-fixture", email: "fixture@example.com", admin: true }],
+    ["agent", { id: "agent-fixture", metadata: {} }],
+  ] as const)("rejects unknown nested keys on %s", (field, value) => {
+    const result = harnessStreamInputSchema.safeParse({
+      ...FIXTURE_MINIMAL_INPUT,
+      [field]: value,
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  const minimalV3: HarnessStreamInputWire = FIXTURE_MINIMAL_INPUT;
+
+  it("accepts a minimal v3 input", () => {
+    const result = harnessStreamInputSchema.safeParse(minimalV3);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.threadId).toBe("t1");
-      expect(result.data.workspace).toEqual({ cwd: "/repo" });
-      expect(result.data.models.thinking.credentialId).toBe("cred1");
+      expect(result.data.threadId).toBe("thr-fixture");
+      expect(result.data.userMessage.id).toBe("msg-fixture");
+      expect(result.data.harness).toEqual({});
+      expect(result.data.workspace).toEqual({ cwd: null });
+      expect(result.data.models.thinking.credentialId).toBe("cred-fixture");
     }
   });
 
@@ -100,7 +155,7 @@ describe("harnessStreamInputSchema (v2)", () => {
 
   it("round-trips all five model slots with per-slot credentialId and harnessId", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       harnessId: "decopilot",
       models: {
         thinking: {
@@ -178,7 +233,7 @@ describe("harnessStreamInputSchema (v2)", () => {
 
   it("rejects a slot without credentialId", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       models: { thinking: { id: "m1", title: "M1" } },
     });
 
@@ -187,9 +242,9 @@ describe("harnessStreamInputSchema (v2)", () => {
 
   it("rejects a title slot inside models (strict object)", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       models: {
-        ...minimalV2.models,
+        ...minimalV3.models,
         title: { id: "gpt-4.1-mini", title: "Mini", credentialId: "cred1" },
       },
     });
@@ -199,9 +254,9 @@ describe("harnessStreamInputSchema (v2)", () => {
 
   it("rejects a coding slot inside models (strict object)", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       models: {
-        ...minimalV2.models,
+        ...minimalV3.models,
         coding: { id: "gpt-5-codex", title: "Codex", credentialId: "cred1" },
       },
     });
@@ -209,52 +264,62 @@ describe("harnessStreamInputSchema (v2)", () => {
     expect(result.success).toBe(false);
   });
 
-  it("requires workspace with a non-empty cwd", () => {
-    const { workspace: _workspace, ...withoutWorkspace } = minimalV2;
+  it("requires workspace as null cwd or repo facts", () => {
+    const { workspace: _workspace, ...withoutWorkspace } = minimalV3;
     expect(harnessStreamInputSchema.safeParse(withoutWorkspace).success).toBe(
       false,
     );
     expect(
       harnessStreamInputSchema.safeParse({
-        ...minimalV2,
+        ...minimalV3,
         workspace: { cwd: "" },
+      }).success,
+    ).toBe(false);
+    expect(
+      harnessStreamInputSchema.safeParse({
+        ...minimalV3,
+        workspace: { cwd: "/tmp" },
+      }).success,
+    ).toBe(false);
+    expect(
+      harnessStreamInputSchema.safeParse({
+        ...minimalV3,
+        workspace: { cwd: "/repo", branch: "main" },
       }).success,
     ).toBe(false);
   });
 
-  it("round-trips coding workspace facts for desktop harnesses", () => {
+  it("round-trips repo workspace facts", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
-      codingWorkspace: {
+      ...minimalV3,
+      workspace: {
+        cwd: "/repo",
         repo: {
           owner: "deco",
           name: "site",
           connectedGithub: false,
         },
         branch: "main",
-        cwd: "/repo",
-        workspaceKind: "github",
       },
     });
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.codingWorkspace).toEqual({
+      expect(result.data.workspace).toEqual({
+        cwd: "/repo",
         repo: {
           owner: "deco",
           name: "site",
           connectedGithub: false,
         },
         branch: "main",
-        cwd: "/repo",
-        workspaceKind: "github",
       });
     }
   });
 
   it("rejects unknown harness ids", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       harnessId: "made-up",
     });
 
@@ -263,7 +328,7 @@ describe("harnessStreamInputSchema (v2)", () => {
 
   it("rejects unknown harness modes", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       mode: "made-up",
     });
 
@@ -272,16 +337,16 @@ describe("harnessStreamInputSchema (v2)", () => {
 
   it("rejects unknown tool approval levels", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       toolApprovalLevel: "danger",
     });
 
     expect(result.success).toBe(false);
   });
 
-  it("strips signal and the removed singular modelSource", () => {
+  it("rejects signal and the removed singular modelSource", () => {
     const withExtras = {
-      ...minimalV2,
+      ...minimalV3,
       signal: { aborted: false },
       modelSource: {
         kind: "secret",
@@ -291,16 +356,12 @@ describe("harnessStreamInputSchema (v2)", () => {
       },
     };
     const result = harnessStreamInputSchema.safeParse(withExtras);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect("signal" in result.data).toBe(false);
-      expect("modelSource" in result.data).toBe(false);
-    }
+    expect(result.success).toBe(false);
   });
 
   it("rejects in-process MCP sources at the wire boundary", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       mcpSource: {
         kind: "in-process",
         client: {},
@@ -310,9 +371,9 @@ describe("harnessStreamInputSchema (v2)", () => {
     expect(result.success).toBe(false);
   });
 
-  it("round-trips an HTTP MCP source", () => {
+  it("rejects an HTTP MCP source outside the v3 contract", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       mcpSource: {
         kind: "http",
         url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
@@ -321,20 +382,12 @@ describe("harnessStreamInputSchema (v2)", () => {
       },
     });
 
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.mcpSource).toEqual({
-        kind: "http",
-        url: "https://mesh.example.com/mcp/virtual-mcp/agent-1",
-        headers: { Authorization: "Bearer fixture" },
-        expiresAt: 9999999999000,
-      });
-    }
+    expect(result.success).toBe(false);
   });
 
-  it("round-trips an HTTP object-storage source", () => {
+  it("rejects an HTTP object-storage source outside the v3 contract", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       objectStorageSource: {
         kind: "http",
         baseUrl: "https://mesh.example.com/api/acme/object-storage",
@@ -343,20 +396,12 @@ describe("harnessStreamInputSchema (v2)", () => {
       },
     });
 
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.objectStorageSource).toEqual({
-        kind: "http",
-        baseUrl: "https://mesh.example.com/api/acme/object-storage",
-        headers: { Authorization: "Bearer fixture" },
-        expiresAt: 9999999999000,
-      });
-    }
+    expect(result.success).toBe(false);
   });
 
-  it("round-trips slot-keyed resolved Decopilot model sources", () => {
+  it("rejects slot-keyed resolved Decopilot model sources outside the v3 contract", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       modelSources: {
         thinking: {
           kind: "secret",
@@ -392,21 +437,12 @@ describe("harnessStreamInputSchema (v2)", () => {
       },
     });
 
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.modelSources?.thinking.providerId).toBe("anthropic");
-      expect(result.data.modelSources?.fast?.baseUrl).toBe(
-        "https://litellm.example.com/v1",
-      );
-      expect(result.data.modelSources?.smart?.providerId).toBe("anthropic");
-      expect(result.data.modelSources?.image?.providerId).toBe("openrouter");
-      expect(result.data.modelSources?.deepResearch?.providerId).toBe("google");
-    }
+    expect(result.success).toBe(false);
   });
 
   it("rejects a primary slot inside modelSources (strict object)", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       modelSources: {
         thinking: {
           kind: "secret",
@@ -428,7 +464,7 @@ describe("harnessStreamInputSchema (v2)", () => {
 
   it("rejects in-process model sources at the wire boundary", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       modelSources: {
         thinking: {
           kind: "in-process",
@@ -443,9 +479,9 @@ describe("harnessStreamInputSchema (v2)", () => {
 
   it("rejects legacy nested mcp model secrets", () => {
     const result = harnessStreamInputSchema.safeParse({
-      ...minimalV2,
+      ...minimalV3,
       mcp: {
-        ...minimalV2.mcp,
+        ...minimalV3.mcp,
         modelSecret: {
           providerId: "anthropic",
           apiKey: "sk-ant",

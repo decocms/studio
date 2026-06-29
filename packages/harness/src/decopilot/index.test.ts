@@ -1,13 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import { decopilotHarnessFactory } from "./index";
 import type { HarnessStreamInput } from "../types";
+import { setDecopilotRunContext } from "./run-context";
 
 function makeInput(overrides: Partial<HarnessStreamInput>): HarnessStreamInput {
-  return {
+  const input: HarnessStreamInput = {
     threadId: "thread-1",
-    runId: "run-1",
-    messages: [],
-    workspace: { cwd: "default" },
+    userMessage: {
+      id: "m1",
+      role: "user",
+      parts: [{ type: "text", text: "hi" }],
+    },
+    harness: {},
+    workspace: { cwd: null },
     models: {
       thinking: {
         id: "claude-sonnet-4",
@@ -25,12 +30,15 @@ function makeInput(overrides: Partial<HarnessStreamInput>): HarnessStreamInput {
     toolApprovalLevel: "auto",
     user: { id: "user-1", email: "user@example.com" },
     organizationId: "org-1",
-    virtualMcp: { id: "agent-1", metadata: {}, connections: [] },
     agent: { id: "agent-1" },
     signal: new AbortController().signal,
-    taskId: "thread-1",
     ...overrides,
   };
+  setDecopilotRunContext(input, {
+    taskId: "thread-1",
+    virtualMcp: { id: "agent-1", metadata: {} },
+  });
+  return input;
 }
 
 describe("decopilotHarnessFactory", () => {

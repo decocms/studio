@@ -5,8 +5,6 @@
  */
 
 import type { ChatMessage } from "./types";
-import type { Memory } from "./memory";
-import type { ThreadMessage } from "@/storage/types";
 export {
   denyPendingApprovals,
   processConversation,
@@ -24,46 +22,4 @@ export function splitRequestMessages(messages: ChatMessage[]): {
   const systemMessages = messages.filter((m) => m.role === "system");
   const requestMessage = messages.find((m) => m.role !== "system")!;
   return { systemMessages, requestMessage };
-}
-
-async function loadMemory(memory: Memory, windowSize: number) {
-  const threadMessages = await memory.loadHistory(windowSize);
-  return threadMessages;
-}
-
-function mergeMessages(
-  threadMessages: ThreadMessage[],
-  requestMessage?: ChatMessage,
-): ChatMessage[] {
-  // Filter out messages with empty parts to prevent bricked threads
-  // (e.g. assistant messages saved after an LLM error before any content was generated)
-  const validMessages = threadMessages.filter(
-    (m) => m.parts && m.parts.length > 0,
-  );
-  if (!requestMessage) {
-    return validMessages as ChatMessage[];
-  }
-  const matchIndex = validMessages.findIndex((m) => m.id === requestMessage.id);
-  const conversation =
-    matchIndex >= 0
-      ? [...validMessages.slice(0, matchIndex), requestMessage]
-      : [...validMessages, requestMessage];
-  return conversation;
-}
-
-export async function loadAndMergeMessages(
-  memory: Memory,
-  requestMessage: ChatMessage | undefined,
-  systemMessages: ChatMessage[],
-  windowSize: number,
-  /** Subagent runs start FRESH: skip the thread's history and send only the
-   *  system prompt + the request (the subtask prompt). */
-  skipHistory = false,
-): Promise<ChatMessage[]> {
-  const threadMessages = skipHistory
-    ? []
-    : await loadMemory(memory, windowSize);
-  const conversation = mergeMessages(threadMessages, requestMessage);
-  const allMessages: ChatMessage[] = [...systemMessages, ...conversation];
-  return allMessages;
 }

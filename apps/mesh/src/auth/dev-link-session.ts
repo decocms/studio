@@ -115,6 +115,9 @@ export async function bootstrapDevLinkSession(
       body: {
         name: "dev-link (auto-minted by bun run dev)",
         userId: user.id,
+        // Dev loopback acting as the user — full access. With no implicit
+        // default (auth/index.ts), the scope must be explicit.
+        permissions: { "*": ["*"] },
         // 30 days — re-minted on file deletion, far longer than any
         // single dev session.
         expiresIn: 60 * 60 * 24 * 30,

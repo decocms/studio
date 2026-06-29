@@ -56,8 +56,12 @@ async function readSSE(res: Response): Promise<string[]> {
 describe("POST /_sandbox/dispatch", () => {
   it("emits the harness's UIMessageChunks as SSE", async () => {
     const body = JSON.stringify({
+      runId: "run-dispatch-1",
       harnessId: "fake",
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId: "run-dispatch-1" },
+      input: {
+        ...fixtures.FIXTURE_MINIMAL_INPUT,
+        threadId: "thread-dispatch-1",
+      },
     });
     const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
     expect(res.status).toBe(200);
@@ -85,8 +89,9 @@ describe("POST /_sandbox/dispatch", () => {
       }),
     });
     const body = JSON.stringify({
+      runId: "run-prelude",
       harnessId: "fake",
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId: "run-prelude" },
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: "thread-prelude" },
     });
 
     const res = await handleDispatchRequest(authedDispatch(body), deps);
@@ -122,8 +127,9 @@ describe("POST /_sandbox/dispatch", () => {
 
   it("rejects a bearer token that does not match", async () => {
     const body = JSON.stringify({
+      runId: "run-token-2",
       harnessId: "fake",
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId: "run-token-2" },
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: "thread-token-2" },
     });
     const res = await handleDispatchRequest(
       authedDispatch(body, "wrong-token"),
@@ -133,7 +139,20 @@ describe("POST /_sandbox/dispatch", () => {
   });
 
   it("returns 400 on invalid input shape", async () => {
-    const body = JSON.stringify({ harnessId: "fake", input: { bogus: true } });
+    const body = JSON.stringify({
+      runId: "run-invalid-input",
+      harnessId: "fake",
+      input: { bogus: true },
+    });
+    const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when the dispatch envelope has no runId", async () => {
+    const body = JSON.stringify({
+      harnessId: "fake",
+      input: fixtures.FIXTURE_MINIMAL_INPUT,
+    });
     const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
     expect(res.status).toBe(400);
   });
@@ -148,8 +167,12 @@ describe("POST /_sandbox/dispatch", () => {
 
     // Subsequent dispatch with the same runId should be rejected.
     const body = JSON.stringify({
+      runId,
       harnessId: "fake",
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId },
+      input: {
+        ...fixtures.FIXTURE_MINIMAL_INPUT,
+        threadId: "thread-tombstone-1",
+      },
     });
     const res = await handleDispatchRequest(authedDispatch(body), makeDeps());
     expect(res.status).toBe(410);
@@ -196,10 +219,11 @@ describe("POST /_sandbox/dispatch", () => {
       });
 
       const body = JSON.stringify({
+        runId: "run-cancel-midstream",
         harnessId: "fake",
         input: {
           ...fixtures.FIXTURE_MINIMAL_INPUT,
-          runId: "run-cancel-midstream",
+          threadId: "thread-cancel-midstream",
         },
       });
       const res = await handleDispatchRequest(authedDispatch(body), deps);
@@ -251,8 +275,12 @@ describe("POST /_sandbox/dispatch", () => {
     });
 
     const body = JSON.stringify({
+      runId,
       harnessId: "fake",
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId },
+      input: {
+        ...fixtures.FIXTURE_MINIMAL_INPUT,
+        threadId: "thread-signal-inject",
+      },
     });
     const res = await handleDispatchRequest(authedDispatch(body), deps);
     expect(res.status).toBe(200);
@@ -273,37 +301,35 @@ describe("POST /_sandbox/dispatch", () => {
     await reader.cancel();
   });
 
-  it("rebases symbolic workspace.cwd and codingWorkspace.cwd onto the daemon's sandbox root before the harness sees it", async () => {
+  it("rebases symbolic workspace.cwd onto the daemon's sandbox root before the harness sees it", async () => {
     // The wire carries the symbolic value "/repo"; the daemon must rebase it
     // onto its own sandbox root (daemonAppRoot()) before handing the input to
     // the harness. The harness MUST receive the rebased absolute path, not the
     // wire symbol — so `effectiveCwd(input.workspace.cwd)` yields a real path.
     const runId = "run-cwd-rebase";
-    let capturedInput:
-      | { workspace?: { cwd: string }; codingWorkspace?: { cwd?: string } }
-      | undefined;
+    let capturedInput: { workspace?: { cwd: string | null } } | undefined;
 
     const deps = makeDeps({
       lookupHarness: (_id, input) => {
-        capturedInput = input as {
-          workspace?: { cwd: string };
-          codingWorkspace?: { cwd?: string };
-        };
+        capturedInput = input as { workspace?: { cwd: string | null } };
         return makeFakeHarness();
       },
     });
 
     const body = JSON.stringify({
+      runId,
       harnessId: "fake",
       input: {
         ...fixtures.FIXTURE_MINIMAL_INPUT,
-        runId,
-        workspace: { cwd: "/repo" },
-        codingWorkspace: {
-          repo: { owner: "deco", name: "site", connectedGithub: true },
-          branch: "main",
+        threadId: "thread-cwd-rebase",
+        workspace: {
           cwd: "/repo",
-          workspaceKind: "github",
+          repo: {
+            owner: "deco",
+            name: "studio",
+            connectedGithub: true,
+          },
+          branch: "main",
         },
       },
     });
@@ -319,14 +345,41 @@ describe("POST /_sandbox/dispatch", () => {
     expect(rebasedCwd).not.toBe("/repo");
     // Must end with /repo (rebased to the daemon's sandbox root)
     expect(rebasedCwd?.endsWith("/repo")).toBe(true);
-    expect(capturedInput?.codingWorkspace?.cwd).toBe(rebasedCwd);
+  });
+
+  it("passes null workspace.cwd through to the harness", async () => {
+    const runId = "run-cwd-null";
+    let capturedInput: { workspace?: { cwd: string | null } } | undefined;
+
+    const deps = makeDeps({
+      lookupHarness: (_id, input) => {
+        capturedInput = input as { workspace?: { cwd: string | null } };
+        return makeFakeHarness();
+      },
+    });
+
+    const body = JSON.stringify({
+      runId,
+      harnessId: "fake",
+      input: {
+        ...fixtures.FIXTURE_MINIMAL_INPUT,
+        threadId: "thread-cwd-null",
+        workspace: { cwd: null },
+      },
+    });
+    const res = await handleDispatchRequest(authedDispatch(body), deps);
+    expect(res.status).toBe(200);
+    await readSSE(res);
+
+    expect(capturedInput?.workspace?.cwd).toBeNull();
   });
 
   it("wraps harness errors as an error SSE event followed by done", async () => {
     const harnessId = "throws";
     const body = JSON.stringify({
+      runId: "run-error-1",
       harnessId,
-      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, runId: "run-error-1" },
+      input: { ...fixtures.FIXTURE_MINIMAL_INPUT, threadId: "thread-error-1" },
     });
     const deps = makeDeps({
       lookupHarness: () => ({

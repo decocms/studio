@@ -43,7 +43,7 @@ import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { resolveHarnessId } from "./dispatch-run";
-import { stringifyError } from "@decocms/harness/decopilot/stream-error";
+import { stringifyError } from "@decocms/harness/stream-error";
 import { enqueueThreadRun } from "@/dispatch-queue";
 import {
   publishRunStatusStage,
@@ -228,6 +228,7 @@ async function resolvePerRequestModels(
         id: entry.modelId,
         title: entry.label,
         provider: harnessId,
+        capabilities: { vision: true, text: true },
       },
     };
   }

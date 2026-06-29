@@ -15,7 +15,6 @@
     "./registry": "./src/registry.ts",
     "./claude-code": "./src/claude-code/index.ts",
     "./codex": "./src/codex/index.ts",
-    "./decopilot": "./src/decopilot/index.ts",
     "./sources": "./src/sources.ts",
     "./*": [
       "./src/*.ts",

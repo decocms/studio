@@ -553,6 +553,7 @@ describe("handleLocalDispatch", () => {
   it("forwards messagesRef to the sandbox dispatch when present on the work item", async () => {
     const fp = fakePublisher();
     let capturedDispatchBody: {
+      runId: string;
       harnessId: string;
       input: Record<string, unknown>;
       messagesRef?: unknown;
@@ -564,6 +565,7 @@ describe("handleLocalDispatch", () => {
     ): Promise<Response> => {
       if (url.includes("/_sandbox/dispatch")) {
         capturedDispatchBody = JSON.parse(init?.body as string) as {
+          runId: string;
           harnessId: string;
           input: Record<string, unknown>;
           messagesRef?: unknown;
@@ -604,6 +606,7 @@ describe("handleLocalDispatch", () => {
     // The dispatch body must carry messagesRef so the sandbox daemon can
     // re-inflate messages from object storage (same shape the WS path sends).
     expect(capturedDispatchBody).not.toBeNull();
+    expect(capturedDispatchBody!.runId).toBe(workWithRef.runId);
     expect(capturedDispatchBody!.messagesRef).toEqual(messagesRef);
     // messages should be the stripped [] (the real ones are at the ref)
     expect(capturedDispatchBody!.input.messages).toEqual([]);
@@ -612,6 +615,7 @@ describe("handleLocalDispatch", () => {
   it("does not include messagesRef in sandbox dispatch when absent on the work item", async () => {
     const fp = fakePublisher();
     let capturedDispatchBody: {
+      runId: string;
       harnessId: string;
       input: Record<string, unknown>;
       messagesRef?: unknown;
@@ -623,6 +627,7 @@ describe("handleLocalDispatch", () => {
     ): Promise<Response> => {
       if (url.includes("/_sandbox/dispatch")) {
         capturedDispatchBody = JSON.parse(init?.body as string) as {
+          runId: string;
           harnessId: string;
           input: Record<string, unknown>;
           messagesRef?: unknown;
@@ -648,6 +653,7 @@ describe("handleLocalDispatch", () => {
     await handleLocalDispatch(validWorkItem, deps);
 
     expect(capturedDispatchBody).not.toBeNull();
+    expect(capturedDispatchBody!.runId).toBe(validWorkItem.runId);
     expect(capturedDispatchBody!.messagesRef).toBeUndefined();
   });
 

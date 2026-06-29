@@ -193,7 +193,7 @@ export function useMainPanelTabs(ctx: {
   // server is up (shared query keys with Preview / Content). Requires
   // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
   const vmEvents = useSandboxEvents();
-  const sandboxLifecycle = useSandboxLifecycle();
+  const { vmEntry, previewUrl } = useSandboxLifecycle();
   const devServerReady = vmEvents.lifecycle.phase === "running";
 
   // A user-desktop sandbox serves its dev server on a loopback previewUrl
@@ -203,9 +203,8 @@ export function useMainPanelTabs(ctx: {
   // previewUrl (CORS on the deco dev server is `*`). For agent-sandbox the
   // previewUrl is public, so leave mcpUrl undefined and keep the cloud route.
   const devMcpUrl =
-    sandboxLifecycle.vmEntry?.sandboxProviderKind === "user-desktop" &&
-    sandboxLifecycle.previewUrl
-      ? `${sandboxLifecycle.previewUrl.replace(/\/+$/, "")}/api/mcp`
+    vmEntry?.sandboxProviderKind === "user-desktop" && previewUrl
+      ? `${previewUrl.replace(/\/+$/, "")}/api/mcp`
       : undefined;
 
   // Auto-detect the dev MCP app's views straight from its sandbox dev server:
@@ -243,7 +242,12 @@ export function useMainPanelTabs(ctx: {
       : (entityLayout?.defaultMainView ?? null);
   const decofileFetchParams =
     hasClonableSource && entity?.id && currentBranch
-      ? { orgSlug: org.slug, virtualMcpId: entity.id, branch: currentBranch }
+      ? {
+          orgSlug: org.slug,
+          virtualMcpId: entity.id,
+          branch: currentBranch,
+          previewUrl,
+        }
       : null;
   // Subscribe to the same query keys as Preview; only fetch after the dev
   // server is running, but still re-render when Preview warms the cache.

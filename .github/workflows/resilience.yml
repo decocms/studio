@@ -34,7 +34,23 @@ jobs:
         run: bun install
 
       - name: Start infrastructure
-        run: docker compose -f tests/resilience/docker-compose.yml up -d --build --wait
+        # `up --build --wait` pulls base images (postgres, nats, toxiproxy) from
+        # Docker Hub, which intermittently times out ("registry-1.docker.io:
+        # context deadline exceeded") and fails the whole job before any test
+        # runs. Retry the startup a few times, tearing down between attempts so
+        # each retry starts clean.
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f tests/resilience/docker-compose.yml up -d --build --wait; then
+              echo "Infrastructure started (attempt $attempt)"
+              exit 0
+            fi
+            echo "::warning::Infrastructure startup failed (attempt $attempt); tearing down and retrying in 15s..."
+            docker compose -f tests/resilience/docker-compose.yml down -v || true
+            sleep 15
+          done
+          echo "::error::Infrastructure failed to start after 3 attempts"
+          exit 1
 
       - name: Run resilience tests
         run: bun test tests/resilience/scenarios/ --serial --timeout 900000

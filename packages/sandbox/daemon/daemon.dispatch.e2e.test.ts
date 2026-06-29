@@ -61,11 +61,27 @@ describe("daemon e2e: dispatch", () => {
     );
   });
 
-  it("POST /dispatch with a malformed input envelope → 400 bad_input", async () => {
+  it("POST /dispatch without runId → 400 missing_run_id", async () => {
     const res = await fetch(url(d, "/_sandbox/dispatch"), {
       method: "POST",
       headers: jsonAuthHeaders(),
       body: toBody({ harnessId: "claude-code", input: {} }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "missing_run_id",
+    );
+  });
+
+  it("POST /dispatch with a malformed input envelope → 400 bad_input", async () => {
+    const res = await fetch(url(d, "/_sandbox/dispatch"), {
+      method: "POST",
+      headers: jsonAuthHeaders(),
+      body: toBody({
+        runId: "run-bad-input",
+        harnessId: "claude-code",
+        input: {},
+      }),
     });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toBe("bad_input");

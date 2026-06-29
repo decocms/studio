@@ -17,6 +17,8 @@
  * - Pluggable broadcast: strategy handles cross-process replication
  */
 
+import { meter } from "../observability";
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -234,3 +236,13 @@ function matchesAnyPattern(eventType: string, patterns: string[]): boolean {
 
 /** Global SSE hub instance */
 export const sseHub = new SSEHub();
+
+// Live SSE connection count (sampled at scrape time). Bounded by
+// MAX_TOTAL_CONNECTIONS — chart against that cap to spot saturation, and watch
+// for a count that never drops (a listener-cleanup leak).
+meter
+  .createObservableGauge("sse_hub.connections", {
+    description: "Active SSE listeners held by this pod",
+    unit: "{connections}",
+  })
+  .addCallback((r) => r.observe(sseHub.count));

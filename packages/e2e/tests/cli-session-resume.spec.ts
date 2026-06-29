@@ -6,12 +6,10 @@
  *       `codingAgentProvider: "codex"` lands on the persisted assistant message
  *       metadata so the NEXT dispatch can read it back.
  *   (b) A second turn's dispatch work item carries
- *       `harnessInput.resumeSessionRef` equal to the first turn's session id
- *       AND `harnessInput.messages` is the DELTA only (user messages after the
- *       session anchor, not the full transcript). Both together prove the
- *       codex resume round-trip: `resolveCliSessionRef` finds the session id
- *       and `computeCliDelta` strips prior history so the CLI doesn't receive
- *       messages it already knows about (which would cause "ran out of room").
+ *       `harnessInput.harness.sessionId` equal to the first turn's session id
+ *       AND a single `harnessInput.userMessage` for the current turn. Both
+ *       together prove the codex resume round-trip: `resolveCliSessionRef`
+ *       finds the session id and v3 sends only the new user message.
  *   (c) A "stale session" error relay (what the daemon sends when the codex
  *       harness throws `CliSessionExpiredError`) persists an error part whose
  *       message matches /session expired/i and transitions the run to "failed".
@@ -173,7 +171,6 @@ interface WorkItem {
   userId: string;
   runFenceToken: string;
   harnessInput: Record<string, unknown>;
-  messagesRef?: { url: string; bytes: number; sha256: string };
 }
 
 /**
@@ -291,16 +288,16 @@ test.describe("CLI session resume (codex, desktop-link relay)", () => {
     }
   });
 
-  test("second turn: dispatch work item carries resumeSessionRef AND only the delta (not full history)", async ({
+  test("second turn: dispatch work item carries harness.sessionId AND only the new user message", async ({
     authedPage,
   }) => {
     // Drives TWO turns on one codex-pinned thread and asserts the second
-    // work item's harnessInput.resumeSessionRef equals the first turn's
-    // relayed session id AND harnessInput.messages is the delta only (the
-    // new user message after the session anchor, not the full transcript).
+    // work item's harnessInput.harness.sessionId equals the first turn's
+    // relayed session id AND harnessInput.userMessage is the current turn
+    // only, not the full transcript.
     // Together these prove the codex resume round-trip:
     //   - resolveCliSessionRef → correct session id on the work item
-    //   - computeCliDelta → CLI receives only what it doesn't already know
+    //   - v3 userMessage → CLI receives only what it doesn't already know
     test.setTimeout(CASE_TIMEOUT_MS * 2);
     const { page, orgSlug, user } = authedPage;
     const api = page.context().request;
@@ -361,21 +358,19 @@ test.describe("CLI session resume (codex, desktop-link relay)", () => {
         turn2UserText,
       );
 
-      // (b) resumeSessionRef round-trip
-      expect(t2.workItem.harnessInput.resumeSessionRef).toBe(sessionId);
-
-      // (b2) delta: only the new user message, not turn 1's text
-      const wireMessages = t2.workItem.harnessInput.messages as Array<{
-        role: string;
-      }>;
-      const userMessages = wireMessages.filter((m) => m.role === "user");
+      // (b) session id round-trip
       expect(
-        userMessages.length,
-        "delta must contain exactly one user message (turn 2 only)",
-      ).toBe(1);
+        (t2.workItem.harnessInput.harness as { sessionId?: string }).sessionId,
+      ).toBe(sessionId);
+
+      // (b2) v3 carries exactly the new user message, not turn 1's text.
+      const userMessage = t2.workItem.harnessInput.userMessage as {
+        role: string;
+      };
+      expect(userMessage.role).toBe("user");
       // Materialized UIMessages carry text in `parts`, not a `content` field —
       // stringify the whole message so the assertion is shape-agnostic.
-      const contentStr = JSON.stringify(userMessages[0]);
+      const contentStr = JSON.stringify(userMessage);
       expect(contentStr).toContain(turn2UserText);
       expect(contentStr).not.toContain(turn1UserText);
     } finally {

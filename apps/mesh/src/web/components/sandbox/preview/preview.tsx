@@ -264,7 +264,7 @@ export function PreviewContent() {
   // Decofile pages for the URL bar dropdown — fetch only after dev server is up.
   const decofileParams =
     virtualMcpId && branch && devServerReady
-      ? { orgSlug: org.slug, virtualMcpId, branch }
+      ? { orgSlug: org.slug, virtualMcpId, branch, previewUrl }
       : null;
   const { data: decofile } = useDecofile(decofileParams, {
     fetchEnabled: devServerReady,
