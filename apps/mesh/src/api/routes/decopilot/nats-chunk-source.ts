@@ -134,6 +134,18 @@ export function unwrapPayload(): TransformStream<RawMsg, DecodedEvent> {
   });
 }
 
+export function fenceFilter(
+  runId: string,
+  fenceToken: string,
+): TransformStream<DecodedEvent, DecodedEvent> {
+  return new TransformStream<DecodedEvent, DecodedEvent>({
+    transform(ev, controller) {
+      if (ev.runId !== runId || ev.fenceToken !== fenceToken) return; // drop
+      controller.enqueue(ev);
+    },
+  });
+}
+
 function iteratorFor<T>(
   source: AsyncIterable<T> | Iterable<T>,
 ): AsyncIterator<T> {

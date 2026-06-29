@@ -6,6 +6,7 @@ import {
   concat,
   reassembleFragments,
   unwrapPayload,
+  fenceFilter,
   type RawMsg,
   type DecodedEvent,
 } from "./nats-chunk-source";
@@ -234,6 +235,41 @@ describe("unwrapPayload", () => {
         e.kind === "chunk" ? (e.chunk as { type: string }).type : e.kind,
       ),
     ).toEqual(["start", "finish"]);
+  });
+});
+
+async function pipe2(
+  input: RawMsg[],
+  runId: string,
+  fence: string,
+): Promise<DecodedEvent[]> {
+  const src = natsChunkSource({ messages: input });
+  return readAll(
+    src
+      .pipeThrough(reassembleFragments())
+      .pipeThrough(unwrapPayload())
+      .pipeThrough(fenceFilter(runId, fence)),
+  );
+}
+
+describe("fenceFilter", () => {
+  test("keeps matching run+fence, drops other fence, drops unfenced done", async () => {
+    const out = await pipe2(
+      [
+        rawJson("run_1:fence_a:1", { p: { type: "start" } }),
+        rawJson("run_1:other:1", { p: { type: "start" } }), // wrong fence
+        rawJson(null, { done: true }), // unfenced sentinel
+        rawJson("run_1:fence_a:done:1", { done: true, finalSeq: 1 }),
+      ],
+      "run_1",
+      "fence_a",
+    );
+    expect(out.map((e) => e.kind)).toEqual(["chunk", "done"]);
+    expect(out[1]).toMatchObject({
+      kind: "done",
+      fenceToken: "fence_a",
+      envelopeFinalSeq: 1,
+    });
   });
 });
 
