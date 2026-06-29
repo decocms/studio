@@ -28,4 +28,4 @@
  * Bumping deliberately strands whatever is mid-flight on the prior version (a
  * one-time cost) — correct, because those instances ARE incompatible.
  */
-export const DBOS_WORKFLOW_VERSION = "2";
+export const DBOS_WORKFLOW_VERSION = "3";

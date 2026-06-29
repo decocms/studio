@@ -87,6 +87,75 @@ describe("SqlThreadMessagePartStorage", () => {
     expect(Number(rows[0]!.n)).toBe(1);
   });
 
+  it("R9: replaceMessageParts replaces one message snapshot and preserves its order base", async () => {
+    await parts.appendParts([
+      mk({
+        id: "r_replace:m_replace:0",
+        seq: 0,
+        run_id: "r_replace",
+        message_id: "m_replace",
+        payload: { type: "text", text: "approval needed" },
+        created_at: "2026-01-01T00:00:05.000Z",
+      }),
+      mk({
+        id: "r_replace:m_replace:1",
+        seq: 1,
+        run_id: "r_replace",
+        message_id: "m_replace",
+        kind: "finish",
+        payload: {},
+        created_at: "2026-01-01T00:00:06.000Z",
+      }),
+    ]);
+
+    await parts.replaceMessageParts(threadId, "m_replace", [
+      mk({
+        id: "r_replace:m_replace:0",
+        seq: 0,
+        run_id: "r_replace",
+        message_id: "m_replace",
+        payload: { type: "text", text: "approval needed" },
+        created_at: "2099-01-01T00:00:00.000Z",
+      }),
+      mk({
+        id: "r_replace:m_replace:1",
+        seq: 1,
+        run_id: "r_replace",
+        message_id: "m_replace",
+        kind: "tool_call",
+        payload: {
+          type: "tool-bash",
+          state: "approval-responded",
+          approval: { id: "ap_1", approved: true },
+        },
+        created_at: "2099-01-01T00:00:01.000Z",
+      }),
+      mk({
+        id: "r_replace:m_replace:2",
+        seq: 2,
+        run_id: "r_replace",
+        message_id: "m_replace",
+        kind: "finish",
+        payload: {},
+        created_at: "2099-01-01T00:00:02.000Z",
+      }),
+    ]);
+
+    const { messages } = await parts.loadWindow(threadId, { limit: 50 });
+    const message = messages.find((m) => m.id === "m_replace")!;
+    expect(message.created_at).toBe("2026-01-01T00:00:05.000Z");
+    expect(message.parts).toMatchObject([
+      { type: "text", text: "approval needed" },
+      { type: "tool-bash", state: "approval-responded" },
+    ]);
+
+    const { rows } = await sql<{ n: string }>`
+      SELECT count(*) AS n FROM thread_message_parts WHERE message_id='m_replace'`.execute(
+      database.db,
+    );
+    expect(Number(rows[0]!.n)).toBe(3);
+  });
+
   it("C1: a finished message is durably complete after append", async () => {
     await parts.appendParts([
       mk({

@@ -42,7 +42,7 @@ import {
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
-import { resolveHarnessId } from "./dispatch-run";
+import { buildDurableDispatchInput, resolveHarnessId } from "./dispatch-run";
 import { stringifyError } from "@decocms/harness/stream-error";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
@@ -59,6 +59,9 @@ import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
+import { PartEmitter } from "./part-emitter";
+import { uploadFileParts } from "./file-materializer";
+import { mintRunFenceToken } from "./dispatch-fence";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -112,6 +115,32 @@ export function computeIdempotencyKey(
   if (!lastMsg) return undefined;
   if (lastMsg.role === "user" && lastMsg.id) return lastMsg.id;
   return createHash("sha1").update(canonicalStringify(lastMsg)).digest("hex");
+}
+
+export function planSubmitRunFence(input: {
+  alreadyPersisted: boolean;
+  existingFenceToken: string | null;
+  mintFenceToken: () => string;
+}): { runFenceToken: string; shouldWriteFence: boolean } {
+  if (input.alreadyPersisted && input.existingFenceToken) {
+    return {
+      runFenceToken: input.existingFenceToken,
+      shouldWriteFence: false,
+    };
+  }
+
+  return {
+    runFenceToken: input.mintFenceToken(),
+    shouldWriteFence: true,
+  };
+}
+
+export function shouldPersistRequestMessage(input: {
+  alreadyPersisted: boolean;
+  role: ChatMessage["role"];
+}): boolean {
+  if (!input.alreadyPersisted) return true;
+  return input.role === "assistant";
 }
 
 // ============================================================================
@@ -606,6 +635,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       let pinnedHarness = (existingThread?.harness_id ??
         null) as HarnessId | null;
+      let messageStorageVersion = existingThread?.message_storage_version ?? 2;
 
       if (!pinnedKind || !pinnedHarness) {
         pinnedKind =
@@ -651,6 +681,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               branch,
               ...(pinV2 ? { message_storage_version: 2 } : {}),
             });
+            if (pinV2) messageStorageVersion = 2;
           } catch (err) {
             console.warn(
               "[decopilot:messages] failed to persist thread pins",
@@ -658,6 +689,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             );
           }
         }
+      }
+
+      if (messageStorageVersion !== 2) {
+        throw new HTTPException(409, {
+          message:
+            "Thread uses legacy message storage and cannot accept new messages",
+        });
       }
 
       // `resolveDispatchTarget` only needs the resolved `sandboxProviderKind`
@@ -671,14 +709,71 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // provider).
       const target = resolveDispatchTarget({ sandboxProviderKind: pinnedKind });
 
-      const { abortSignal: _ignored, ...rest } = input;
-      const serializableRequest = {
-        ...rest,
-        target,
-        harnessId: pinnedHarness,
+      const requestMessage = input.messages.find((m) => m.role !== "system");
+      if (!requestMessage) {
+        throw new HTTPException(400, {
+          message: "No user message found in input",
+        });
+      }
+      const materializedRequestMessage = (
+        await uploadFileParts([requestMessage], ctx, {
+          threadId: taskId,
+        })
+      ).find((m) => m.role !== "system");
+      if (!materializedRequestMessage) {
+        throw new HTTPException(400, {
+          message: "No user message found after file materialization",
+        });
+      }
+      const messageId = materializedRequestMessage.id ?? crypto.randomUUID();
+      const persistedRequestMessage = {
+        ...materializedRequestMessage,
+        id: messageId,
       };
-      const lastMsg = input.messages[input.messages.length - 1];
-      const idempotencyKey = computeIdempotencyKey(lastMsg);
+      const alreadyPersisted = Boolean(
+        await ctx.db
+          .selectFrom("thread_message_parts")
+          .select("id")
+          .where("thread_id", "=", taskId)
+          .where("message_id", "=", messageId)
+          .executeTakeFirst(),
+      );
+      const existingFenceToken = alreadyPersisted
+        ? await ctx.storage.threads.getRunFence(taskId)
+        : null;
+      const { runFenceToken, shouldWriteFence } = planSubmitRunFence({
+        alreadyPersisted,
+        existingFenceToken,
+        mintFenceToken: mintRunFenceToken,
+      });
+      if (shouldWriteFence) {
+        await ctx.storage.threads.setRunFence(taskId, runFenceToken);
+      }
+
+      const emitter = new PartEmitter({
+        storage: ctx.storage.threads.messageParts(),
+        orgId: input.organizationId,
+        threadId: taskId,
+        runId: taskId,
+      });
+      if (
+        shouldPersistRequestMessage({
+          alreadyPersisted,
+          role: persistedRequestMessage.role,
+        })
+      ) {
+        await emitter.emitRequestMessage(persistedRequestMessage);
+      }
+
+      const serializableRequest = buildDurableDispatchInput(input, {
+        messageId,
+        runFenceToken,
+        branch,
+        sandboxProviderKind: pinnedKind,
+        harnessId: pinnedHarness,
+        target,
+      });
+      const idempotencyKey = computeIdempotencyKey(persistedRequestMessage);
       const workflowID = idempotencyKey
         ? `thread-run:${taskId}:${idempotencyKey}`
         : undefined;

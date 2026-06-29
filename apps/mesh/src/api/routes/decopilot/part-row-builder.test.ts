@@ -125,6 +125,62 @@ describe("PartRowBuilder", () => {
     ]);
   });
 
+  it("persists requires-action tool states on terminal projection", () => {
+    const builder = new PartRowBuilder({
+      orgId: "org_1",
+      threadId: "thread_1",
+      runId: "thread_1",
+      baseTimeMs: 1_700_000_000_000,
+    });
+
+    const rows = builder.emitFinal({
+      id: "assistant_1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-bash",
+          state: "approval-requested",
+          toolCallId: "tc_1",
+          input: { command: "echo ok" },
+        },
+        {
+          type: "tool-user_ask",
+          state: "input-available",
+          toolCallId: "tc_2",
+          input: { question: "continue?" },
+        },
+        {
+          type: "tool-search",
+          state: "input-available",
+          toolCallId: "tc_3",
+          input: { query: "still running" },
+        },
+      ],
+    });
+
+    expect(rows.map((row) => [row.kind, row.payload])).toEqual([
+      [
+        "tool_call",
+        {
+          type: "tool-bash",
+          state: "approval-requested",
+          toolCallId: "tc_1",
+          input: { command: "echo ok" },
+        },
+      ],
+      [
+        "tool_call",
+        {
+          type: "tool-user_ask",
+          state: "input-available",
+          toolCallId: "tc_2",
+          input: { question: "continue?" },
+        },
+      ],
+      ["finish", {}],
+    ]);
+  });
+
   it("builds an error part and closes the assistant message", () => {
     const builder = new PartRowBuilder({
       orgId: "org_1",

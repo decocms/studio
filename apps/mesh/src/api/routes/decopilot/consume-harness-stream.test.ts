@@ -15,6 +15,15 @@ async function drain(stream: ReadableStream) {
   }
 }
 
+function chunkStream(chunks: unknown[]): ReadableStream {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+}
+
 function textChunks(): AsyncIterable<UIMessageChunk> {
   return (async function* () {
     yield { type: "start" } as UIMessageChunk;
@@ -77,6 +86,35 @@ function textChunksWithRichUsage(): AsyncIterable<UIMessageChunk> {
 }
 
 describe("consumeHarnessStream", () => {
+  test("accepts a ReadableStream of UIMessageChunks directly", async () => {
+    const finals: unknown[] = [];
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunkStream: chunkStream([
+        { type: "start" },
+        { type: "text-start", id: "t" },
+        { type: "text-delta", id: "t", delta: "hi" },
+        { type: "text-end", id: "t" },
+        { type: "finish", finishReason: "stop" },
+      ]),
+      title: {
+        currentThreadTitle: "New chat",
+        threadId: "thread_1",
+        persistTitle: async () => {},
+      },
+      persistence: {
+        emitStepParts: async () => {},
+        emitFinal: async (message) => {
+          finals.push(message);
+        },
+        emitError: async () => {},
+      },
+    });
+
+    await drain(uiStream);
+    await whenComplete;
+
+    expect(finals).toHaveLength(1);
+  });
   test("persists final assistant message after consuming chunks", async () => {
     const finals: Array<{ id: string; parts?: unknown[] }> = [];
     const { uiStream, whenComplete } = consumeHarnessStream({

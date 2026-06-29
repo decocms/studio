@@ -83,6 +83,7 @@ import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import type { ToolApprovalLevel } from "./helpers";
 import { type ChatMode } from "./mode-config";
+import type { SandboxProviderKind } from "@decocms/sandbox/provider";
 
 export type { ChatMode } from "./mode-config";
 import { createMemory } from "./memory";
@@ -467,6 +468,8 @@ export interface DispatchRunInput {
   isResume?: boolean;
   /** Persisted to the thread row on first-message creation. */
   branch?: string | null;
+  /** Request-time sandbox provider pin before it is normalized into target. */
+  sandboxProviderKind?: SandboxProviderKind | null;
   /**
    * Pre-resolved dispatch target. Set by POST /messages before enqueuing
    * onto the per-thread gate so the workflow body never has to call
@@ -488,19 +491,122 @@ export interface DispatchRunInput {
    */
   harnessId?: HarnessId | null;
   /**
-   * Gate-minted single-writer fence token for this run (Task 7a). The
-   * thread-gate (`dispatchRunAndWaitStep`) now mints the fence and writes it
-   * via `setRunFence` BEFORE dispatching the producer — uniformly for both the
-   * hosted and desktop topologies — then threads it down here so `prepareRun`
-   * USES it instead of minting its own. This hoists the run-claim to the
-   * dispatch gate so `run_fence_token` is in the DB before any harness code
-   * runs (a prerequisite for the async hosted-child + consume-step in 7b).
-   *
-   * When omitted (legacy/direct callers, tests that exercise `prepareRun`
-   * standalone), `prepareRun` falls back to minting + `setRunFence` itself,
-   * preserving the prior behavior.
+   * Single-writer fence token for this run. Durable submit callers mint and
+   * persist it before starting DBOS, then thread it down here so `prepareRun`
+   * uses the submit-time value. When omitted (legacy/direct callers, tests that
+   * exercise `prepareRun` standalone), `prepareRun` falls back to minting +
+   * `setRunFence` itself, preserving the prior behavior.
    */
   runFenceToken?: string;
+}
+
+export interface FrozenRunSnapshot {
+  models: ClientModelsConfig;
+  agent: AgentConfig;
+  temperature: number;
+  toolApprovalLevel: ToolApprovalLevel;
+  toolAllowlist?: string[] | null;
+  maxAgentSteps?: number;
+  isSubagent?: boolean;
+  subtaskJobId?: string;
+  resumedFromBackground?: boolean;
+  mode: ChatMode;
+  windowSize?: number;
+  triggerId?: string;
+  branch?: string | null;
+  sandboxProviderKind?: SandboxProviderKind | null;
+  harnessId?: HarnessId | null;
+  target?: DispatchTarget;
+}
+
+export interface DurableDispatchRunInput extends FrozenRunSnapshot {
+  organizationId: string;
+  userId: string;
+  taskId: string;
+  messageId: string;
+  runFenceToken: string;
+  abortSignal?: AbortSignal;
+  isResume?: boolean;
+}
+
+export type DispatchRunRuntimeInput =
+  | DispatchRunInput
+  | DurableDispatchRunInput;
+
+export function isDurableDispatchRunInput(
+  input: DispatchRunRuntimeInput,
+): input is DurableDispatchRunInput {
+  return !("messages" in input);
+}
+
+export function buildDurableDispatchInput(
+  input: DispatchRunInput,
+  options: {
+    messageId: string;
+    runFenceToken: string;
+    branch?: string | null;
+    sandboxProviderKind?: SandboxProviderKind | null;
+    harnessId?: HarnessId | null;
+    target?: DispatchTarget;
+  },
+): DurableDispatchRunInput {
+  if (!input.taskId) {
+    throw new Error("buildDurableDispatchInput: taskId is required");
+  }
+
+  return {
+    models: input.models,
+    agent: input.agent,
+    temperature: input.temperature,
+    toolApprovalLevel: input.toolApprovalLevel,
+    ...(input.toolAllowlist !== undefined
+      ? { toolAllowlist: input.toolAllowlist }
+      : {}),
+    ...(input.maxAgentSteps !== undefined
+      ? { maxAgentSteps: input.maxAgentSteps }
+      : {}),
+    ...(input.isSubagent !== undefined ? { isSubagent: input.isSubagent } : {}),
+    ...(input.subtaskJobId !== undefined
+      ? { subtaskJobId: input.subtaskJobId }
+      : {}),
+    ...(input.resumedFromBackground !== undefined
+      ? { resumedFromBackground: input.resumedFromBackground }
+      : {}),
+    mode: input.mode,
+    ...(input.windowSize !== undefined ? { windowSize: input.windowSize } : {}),
+    ...(input.triggerId !== undefined ? { triggerId: input.triggerId } : {}),
+    branch: options.branch ?? input.branch ?? null,
+    sandboxProviderKind:
+      options.sandboxProviderKind ?? input.sandboxProviderKind ?? null,
+    harnessId: options.harnessId ?? input.harnessId ?? null,
+    ...(options.target ? { target: options.target } : {}),
+    organizationId: input.organizationId,
+    userId: input.userId,
+    taskId: input.taskId,
+    messageId: options.messageId,
+    runFenceToken: options.runFenceToken,
+    ...(input.isResume !== undefined ? { isResume: input.isResume } : {}),
+  };
+}
+
+export function assertSinglePersistedRequestMessage(
+  messages: ChatMessage[],
+  messageId: string,
+): ChatMessage {
+  const message = messages.find((m) => m.id === messageId);
+  if (!message) {
+    throw new PermanentRunError(
+      "empty_request",
+      `Persisted request message missing for messageId=${messageId}`,
+    );
+  }
+  if (message.role === "system") {
+    throw new PermanentRunError(
+      "empty_request",
+      `Persisted message ${messageId} has role=system; expected non-system request message`,
+    );
+  }
+  return message;
 }
 
 export interface DispatchRunDeps {
@@ -522,7 +628,9 @@ export interface DispatchRunResult {
 // Core Logic
 // ============================================================================
 
-function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
+function dispatchRunSpanAttrs(
+  input: DispatchRunRuntimeInput,
+): Record<string, string> {
   const clientModels = input.models;
   return {
     "decopilot.agent.id": input.agent.id,
@@ -552,7 +660,7 @@ function dispatchRunSpanAttrs(input: DispatchRunInput): Record<string, string> {
  * completes.
  */
 export async function dispatchRunAndWait(
-  input: DispatchRunInput,
+  input: DispatchRunRuntimeInput,
   ctx: StudioContext,
   deps: DispatchRunDeps,
 ): Promise<DispatchRunResult> {
@@ -765,20 +873,23 @@ export async function resolveEffectiveVirtualMcpForHarness({
  * consumer.
  */
 async function prepareRun(
-  input: DispatchRunInput,
+  input: DispatchRunRuntimeInput,
   ctx: StudioContext,
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
 ): Promise<PreparedRun> {
   const { runRegistry, streamBuffer } = deps;
 
-  // Normalize: ensure every message has an id (runtime callers may omit it)
-  input = {
-    ...input,
-    messages: input.messages.map((m) =>
-      m.id ? m : { ...m, id: generateMessageId() },
-    ),
-  };
+  // Legacy/direct callers may still provide raw messages. Durable workflow
+  // callers pass only a messageId and reload the already-persisted user turn.
+  if (!isDurableDispatchRunInput(input)) {
+    input = {
+      ...input,
+      messages: input.messages.map((m) =>
+        m.id ? m : { ...m, id: generateMessageId() },
+      ),
+    };
+  }
 
   let runStarted = false;
   let taskId: string | undefined;
@@ -1080,18 +1191,12 @@ async function prepareRun(
     // fence-scoped JetStream dedup key (`runId:fenceToken:seq`) and the
     // projector's per-(runId, fenceToken) accumulator never collide two turns.
     //
-    // Task 7a: the thread-gate (`dispatchRunAndWaitStep`) now mints the fence
-    // and writes it via `setRunFence` BEFORE dispatching the producer, then
-    // threads it down on `input.runFenceToken` — uniformly for both the hosted
-    // and desktop topologies. When present we USE that value and skip the write
-    // (the gate already performed it, so `run_fence_token` is already in the DB
-    // before any harness code runs). When absent (legacy/direct callers, or
-    // `prepareRun` standalone tests) we mint + write here, preserving the prior
-    // behavior. Either way the same value flows into the wire harness input,
-    // the NATS msg ids, and the projector/consume fence checks.
-    //
-    // On DBOS replay the gate re-mints a new token while a queued work item carries the old one —
-    // reconcile when Phase D wires the publish off the persisted column.
+    // Durable submit callers pass the route-minted fence on
+    // `input.runFenceToken`, so we USE that value and skip the write (the route
+    // already persisted it before starting DBOS). Legacy/direct callers that
+    // omit it still mint + write here. Either way the same value flows into the
+    // wire harness input, the NATS msg ids, and the projector/consume fence
+    // checks.
     // Note: a failed link run leaves run_fence_token set until Task 7 clears it
     // (harmless: next run overwrites; ws/cloud never read it).
     let runFenceToken: string;
@@ -1137,40 +1242,51 @@ async function prepareRun(
     // Purge stale buffered chunks from any previous run on this thread
     streamBuffer?.purge(mem.thread.id);
 
-    // Split system messages from user message
-    const systemMessages = input.messages.filter((m) => m.role === "system");
-    const requestMessage = input.messages.find((m) => m.role !== "system");
+    let systemMessages: ChatMessage[] = [];
+    let materializedRequestMessage: ChatMessage | undefined;
+    let durableHistory: ChatMessage[] | undefined;
 
-    // Upload file parts before saving so the thread stores stable
-    // mesh-storage: URIs instead of base64 data: blobs. threadId routes the
-    // bytes into the org-fs uploads volume (org/upload in the sandbox).
-    const materializedRequestMessage = requestMessage
-      ? ((
-          await uploadFileParts([requestMessage], ctx, {
-            threadId: mem.thread.id,
-          })
-        ).find((m) => m.role !== "system") as typeof requestMessage)
-      : undefined;
+    if (isDurableDispatchRunInput(input)) {
+      durableHistory = (await mem.loadHistory(windowSize)) as ChatMessage[];
+      materializedRequestMessage = assertSinglePersistedRequestMessage(
+        durableHistory,
+        input.messageId,
+      );
+    } else {
+      // Split system messages from user message.
+      systemMessages = input.messages.filter((m) => m.role === "system");
+      const requestMessage = input.messages.find((m) => m.role !== "system");
 
-    if (!input.isResume) {
-      if (!materializedRequestMessage) {
-        throw new PermanentRunError(
-          "empty_request",
-          "No user message found in input — expected at least one non-system message",
-        );
-      }
-      if (partEmitter) {
-        // v2: persist the user message's parts + a finish anchor so the
-        // message is immediately complete in the parts read path. (v1 threads
-        // are deprecated read-only legacy — no write path; partEmitter is null.)
-        await partEmitter
-          .emitUserMessage(materializedRequestMessage)
-          .catch((error) => {
-            console.error(
-              "[decopilot:stream] v2 user-message emit failed",
-              error,
-            );
-          });
+      // Legacy/direct producer path: upload and persist here. POST /messages
+      // no longer reaches this branch; it persists the user turn before DBOS.
+      materializedRequestMessage = requestMessage
+        ? ((
+            await uploadFileParts([requestMessage], ctx, {
+              threadId: mem.thread.id,
+            })
+          ).find((m) => m.role !== "system") as typeof requestMessage)
+        : undefined;
+
+      if (!input.isResume) {
+        if (!materializedRequestMessage) {
+          throw new PermanentRunError(
+            "empty_request",
+            "No user message found in input — expected at least one non-system message",
+          );
+        }
+        if (partEmitter) {
+          // v2: persist the user message's parts + a finish anchor so the
+          // message is immediately complete in the parts read path. (v1 threads
+          // are deprecated read-only legacy — no write path; partEmitter is null.)
+          await partEmitter
+            .emitUserMessage(materializedRequestMessage)
+            .catch((error) => {
+              console.error(
+                "[decopilot:stream] v2 user-message emit failed",
+                error,
+              );
+            });
+        }
       }
     }
 
@@ -1185,7 +1301,8 @@ async function prepareRun(
       isCliHarness(harnessId) && target.sandboxProviderKind === "user-desktop";
 
     const cliHistory = cliResumable
-      ? ((await mem.loadHistory(windowSize)) as ChatMessage[])
+      ? (durableHistory ??
+        ((await mem.loadHistory(windowSize)) as ChatMessage[]))
       : undefined;
     const resumeSessionRef = cliResumable
       ? resolveCliSessionRef(cliHistory ?? [], harnessId)
@@ -1637,7 +1754,7 @@ async function prepareRun(
  * target, or unresolvable metadata).
  */
 async function resolveLinkSandboxConfig(
-  input: DispatchRunInput,
+  input: DispatchRunRuntimeInput,
   ctx: StudioContext,
   sandboxHandle: string,
 ): Promise<WorkItemSandbox | null> {
@@ -1781,9 +1898,9 @@ async function resolveLinkSandboxConfig(
  * never reaches it (its loop is cluster-hosted; see
  * `resolveHarnessExecutionSite`).
  *
- * Claims the run and mints the fence (via prepareRun), then returns the fence
- * token, task id, and fully assembled wire `HarnessStreamInput` for the gate
- * step to publish as a tunnel work item.
+ * Claims the run and returns the fence token, task id, and fully assembled
+ * wire `HarnessStreamInput` for the gate step to publish as a tunnel work
+ * item.
  *
  * IMPORTANT: `uiStream` from prepareRun is never consumed here. Since
  * prepareRun's stream is lazy (harness dispatch happens on first pull), the
@@ -1803,7 +1920,7 @@ async function resolveLinkSandboxConfig(
  * construct the URL without a DB lookup.
  */
 export async function prepareLinkWorkDispatch(
-  input: DispatchRunInput,
+  input: DispatchRunRuntimeInput,
   ctx: StudioContext,
   deps: DispatchRunDeps,
 ): Promise<{

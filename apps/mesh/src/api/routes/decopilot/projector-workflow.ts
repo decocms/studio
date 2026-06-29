@@ -2,14 +2,61 @@ import type { JetStreamClient, JetStreamManager } from "@nats-io/jetstream";
 import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
 import type { HarnessStreamPersistence } from "./consume-harness-stream";
 import type { ProjectChunksResult } from "./project-chunks";
+import { projectChunks } from "./project-chunks";
 import { projectRun } from "./project-run";
+import { createProjectorChunkStream } from "./projector-chunk-stream";
 import { createRunPersistence } from "./run-persistence";
 import { recordPoison } from "./projector-metrics";
-import {
-  readProjectorRunLog,
-  readProjectorRunRange,
-} from "./projector-run-log";
+import { readProjectorRunRange } from "./projector-run-log";
 import { resolveThreadStatus } from "./status";
+import {
+  assistantMessageIdGenerator,
+  synthesizedErrorMessageId,
+} from "./message-ids";
+import { foldedToUIMessage } from "./projector-seed";
+
+function continuationAssistantMessageId(seed: {
+  role: string;
+  id: string;
+  parts: Array<{ type?: string; state?: string }>;
+}): string | null {
+  if (seed.role !== "assistant") return null;
+  return seed.parts.some(
+    (part) =>
+      part.type?.startsWith("tool-") && part.state === "approval-responded",
+  )
+    ? seed.id
+    : null;
+}
+
+function projectionMessageIdGenerator(input: {
+  runId: string;
+  fenceToken: string;
+  originalMessages: ReturnType<typeof foldedToUIMessage>[];
+}): () => string {
+  const fallback = assistantMessageIdGenerator(input.runId, input.fenceToken);
+  const continuationId = [...input.originalMessages]
+    .reverse()
+    .map((message) =>
+      continuationAssistantMessageId(
+        message as {
+          role: string;
+          id: string;
+          parts: Array<{ type?: string; state?: string }>;
+        },
+      ),
+    )
+    .find((id): id is string => id !== null);
+  if (!continuationId) return fallback;
+  let usedContinuation = false;
+  return () => {
+    if (!usedContinuation) {
+      usedContinuation = true;
+      return continuationId;
+    }
+    return fallback();
+  };
+}
 
 export function shouldSkipProjection(input: {
   status: string;
@@ -28,7 +75,7 @@ export function shouldSkipProjection(input: {
 export interface ProjectorWorkflowInput {
   runId: string;
   fenceToken: string;
-  finalSeq: number;
+  finalSeq?: number;
 }
 
 /** Input to a non-terminal incremental checkpoint projection pass. */
@@ -115,16 +162,6 @@ export function getProjectorWorkflowRuntime(): ProjectorWorkflowRuntime {
   return requireRuntime();
 }
 
-function persistenceFor(
-  runId: string,
-  orgId: string,
-  messageParts: SqlThreadMessagePartStorage,
-): Promise<HarnessStreamPersistence> {
-  // Terminal projection: writes step parts + the finish/error anchor, seeded on
-  // the canonical `max(existing created_at) + 1` base (see run-persistence.ts).
-  return createRunPersistence({ messageParts, orgId, runId });
-}
-
 /**
  * Non-terminal persistence for checkpoint passes: writes step parts but
  * intentionally skips the finish anchor and error anchor. The terminal done
@@ -149,23 +186,28 @@ export async function projectFromJetStreamStep(
   const rt = requireRuntime();
   const js = rt.getJetStream();
   if (!js) throw new Error("JetStream unavailable");
-  const reconstructed = await readProjectorRunLog({
-    js,
-    runId: input.runId,
-    fenceToken: input.fenceToken,
-    finalSeq: input.finalSeq,
-  });
-  if (!reconstructed.ok) {
-    throw new Error(`projector log incomplete: ${reconstructed.error}`);
-  }
-  const result = await projectRun({
-    runId: input.runId,
-    fenceToken: input.fenceToken,
-    chunks: reconstructed.chunks,
-    persistence: await persistenceFor(input.runId, orgId, rt.messageParts),
-    onDlq: async (_runId, error) => {
-      throw error instanceof Error ? error : new Error(String(error));
-    },
+  const originalMessages = (
+    await rt.messageParts.loadWindow(input.runId, { limit: 500 })
+  ).messages.map(foldedToUIMessage);
+  const result = await projectChunks({
+    chunkStream: await createProjectorChunkStream({
+      js,
+      runId: input.runId,
+      fenceToken: input.fenceToken,
+    }),
+    persistence: await createRunPersistence({
+      messageParts: rt.messageParts,
+      orgId,
+      runId: input.runId,
+      replaceFinal: true,
+    }),
+    originalMessages,
+    errorMessageId: synthesizedErrorMessageId(input.runId, input.fenceToken),
+    generateMessageId: projectionMessageIdGenerator({
+      runId: input.runId,
+      fenceToken: input.fenceToken,
+      originalMessages,
+    }),
     title: {
       threadId: input.runId,
       // The thread's REAL current title gates the auto-title persist — a
@@ -177,13 +219,10 @@ export async function projectFromJetStreamStep(
       },
     },
   });
-  if (!result.ok) {
-    throw new Error(`projector failed after ${result.attempts} attempts`);
-  }
   return {
-    chunkCount: reconstructed.chunkCount,
-    attempts: result.attempts,
-    outcome: result.outcome,
+    chunkCount: 0,
+    attempts: 1,
+    outcome: result,
   };
 }
 

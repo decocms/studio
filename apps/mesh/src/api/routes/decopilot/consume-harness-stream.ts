@@ -1,5 +1,8 @@
 import { type UIMessage, type UIMessageChunk, createUIMessageStream } from "ai";
-import { interceptTitleChunks } from "./title-interceptor";
+import {
+  interceptTitleChunks,
+  interceptTitleChunkStream,
+} from "./title-interceptor";
 
 export interface HarnessStreamPersistence {
   emitStepParts(message: {
@@ -51,7 +54,8 @@ export interface HarnessStreamTitleOptions {
 }
 
 export interface ConsumeHarnessStreamOptions {
-  chunks: AsyncIterable<UIMessageChunk>;
+  chunks?: AsyncIterable<UIMessageChunk>;
+  chunkStream?: ReadableStream<UIMessageChunk>;
   originalMessages?: UIMessage[];
   title: HarnessStreamTitleOptions;
   persistence: HarnessStreamPersistence;
@@ -108,6 +112,40 @@ function asReadableStream<T>(source: AsyncIterable<T>): ReadableStream<T> {
   });
 }
 
+function guardReadableStream<T>(
+  source: ReadableStream<T>,
+  onError: () => void,
+): ReadableStream<T> {
+  const reader = source.getReader();
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    reader.releaseLock();
+  };
+  return new ReadableStream<T>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          release();
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (err) {
+        onError();
+        release();
+        controller.error(err);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+      release();
+    },
+  });
+}
+
 function extractUsage(message: { metadata?: unknown }): HarnessUsage | null {
   const usage = (message.metadata as { usage?: unknown } | undefined)?.usage;
   if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
@@ -143,14 +181,25 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
     resolveComplete = resolve;
   });
 
-  const guardedChunks = (async function* () {
-    try {
-      yield* options.chunks;
-    } catch (e) {
-      sourceThrew = true;
-      throw e;
-    }
-  })();
+  if (!options.chunks && !options.chunkStream) {
+    throw new Error("consumeHarnessStream requires chunks or chunkStream");
+  }
+
+  const guardedChunks = options.chunks
+    ? (async function* () {
+        try {
+          yield* options.chunks!;
+        } catch (e) {
+          sourceThrew = true;
+          throw e;
+        }
+      })()
+    : null;
+  const guardedChunkStream = options.chunkStream
+    ? guardReadableStream(options.chunkStream, () => {
+        sourceThrew = true;
+      })
+    : null;
 
   // Map each SDK-assigned (random, per-fold) message id to a DETERMINISTIC id in
   // fold order, so re-projections of the same run reassemble identical message +
@@ -175,7 +224,7 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
   const uiStream = createUIMessageStream({
     originalMessages: options.originalMessages,
     execute: ({ writer }) => {
-      const intercepted = interceptTitleChunks(guardedChunks, {
+      const titleDeps = {
         ctx: null as never,
         isStreamFinished: () => streamFinished,
         currentThreadTitle: options.title.currentThreadTitle,
@@ -183,7 +232,17 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
         writer,
         onTitleUpdated: options.title.onTitleUpdated,
         persistTitle: options.title.persistTitle,
-      });
+      };
+      if (guardedChunkStream) {
+        writer.merge(
+          interceptTitleChunkStream(
+            guardedChunkStream,
+            titleDeps,
+          ) as Parameters<typeof writer.merge>[0],
+        );
+        return;
+      }
+      const intercepted = interceptTitleChunks(guardedChunks!, titleDeps);
       writer.merge(
         asReadableStream(intercepted) as Parameters<typeof writer.merge>[0],
       );

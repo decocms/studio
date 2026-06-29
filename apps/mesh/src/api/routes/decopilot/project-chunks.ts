@@ -27,7 +27,8 @@ export interface ProjectTitleOptions {
 }
 
 export interface ProjectChunksOptions {
-  chunks: AsyncIterable<UIMessageChunk>;
+  chunks?: AsyncIterable<UIMessageChunk>;
+  chunkStream?: ReadableStream<UIMessageChunk>;
   persistence: HarnessStreamPersistence;
   /** Mirrors consumeHarnessStream: shapes the synthesized error part text. */
   sanitizeErrorText?: (error: unknown) => string;
@@ -61,6 +62,40 @@ async function drain(stream: ReadableStream): Promise<void> {
   } finally {
     reader.releaseLock();
   }
+}
+
+function guardChunkStream<T>(
+  source: ReadableStream<T>,
+  onError: (error: unknown) => void,
+): ReadableStream<T> {
+  const reader = source.getReader();
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    reader.releaseLock();
+  };
+  return new ReadableStream<T>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          release();
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        onError(error);
+        release();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+      release();
+    },
+  });
 }
 
 /** Outcome produced by a clean reconstruction of the chunk stream. */
@@ -124,6 +159,9 @@ export interface ProjectChunksResult {
 export async function projectChunks(
   options: ProjectChunksOptions,
 ): Promise<ProjectChunksResult> {
+  if (!options.chunks && !options.chunkStream) {
+    throw new Error("projectChunks requires chunks or chunkStream");
+  }
   // sourceThrew: captures the exception if the source AsyncIterable itself
   // threw (infra/redelivery signal — distinct from an in-band error chunk).
   let sourceThrew: unknown = null;
@@ -145,17 +183,31 @@ export async function projectChunks(
   };
   // Wrap the source so we can detect a thrown exception at the generator level.
   // An in-band {type:"error"} chunk does NOT cause the generator to throw.
-  const wrappedChunks: AsyncIterable<UIMessageChunk> = (async function* () {
-    try {
-      for await (const chunk of options.chunks) {
-        if (isRunStatusControlChunk(chunk)) continue;
-        yield chunk;
-      }
-    } catch (e) {
-      sourceThrew = e;
-      throw e;
-    }
-  })();
+  const wrappedChunks: AsyncIterable<UIMessageChunk> | undefined =
+    options.chunks
+      ? (async function* () {
+          try {
+            for await (const chunk of options.chunks!) {
+              if (isRunStatusControlChunk(chunk)) continue;
+              yield chunk;
+            }
+          } catch (e) {
+            sourceThrew = e;
+            throw e;
+          }
+        })()
+      : undefined;
+  const wrappedChunkStream = options.chunkStream
+    ? guardChunkStream(options.chunkStream, (error) => {
+        sourceThrew = error;
+      }).pipeThrough(
+        new TransformStream<UIMessageChunk, UIMessageChunk>({
+          transform(chunk, controller) {
+            if (!isRunStatusControlChunk(chunk)) controller.enqueue(chunk);
+          },
+        }),
+      )
+    : undefined;
   // Wrap persistence so a swallowed write failure is still captured here. The
   // re-thrown rejection flows back into consumeHarnessStream's internal
   // `.catch(console.error)`, so its completion semantics are unchanged.
@@ -169,6 +221,7 @@ export async function projectChunks(
   };
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: wrappedChunks,
+    chunkStream: wrappedChunkStream,
     originalMessages: options.originalMessages ?? [],
     // When a title writer is wired, the projector is the sole `threads.title`
     // writer. Pass the thread's REAL current title through to the interceptor's

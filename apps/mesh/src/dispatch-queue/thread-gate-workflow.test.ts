@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import {
+  claimRunFenceForDispatch,
   resolveHarnessExecutionSite,
   setThreadGateRuntime,
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
   type ThreadGateRuntime,
 } from "./thread-gate-workflow";
+import type { SerializableDispatchRunInput } from "./thread-gate-workflow";
 
 describe("threadGateWorkflow plumbing", () => {
   it("exposes the queue name and per-thread concurrency cap", () => {
@@ -25,6 +27,46 @@ describe("threadGateWorkflow plumbing", () => {
       },
     };
     expect(() => setThreadGateRuntime(rt)).not.toThrow();
+  });
+});
+
+describe("claimRunFenceForDispatch", () => {
+  const request = {
+    taskId: "thread-1",
+    messageId: "msg-1",
+    runFenceToken: "submit-fence",
+    organizationId: "org-1",
+    userId: "user-1",
+    models: {
+      credentialId: "cred-1",
+      thinking: { id: "model-1" },
+    },
+    agent: { id: "agent-1" },
+    temperature: 0,
+    toolApprovalLevel: "auto",
+    mode: "default",
+    target: { sandboxProviderKind: "agent-sandbox" },
+    harnessId: "decopilot",
+  } as SerializableDispatchRunInput;
+
+  it("preserves the submit-time run fence token", () => {
+    const claim = claimRunFenceForDispatch(request, () => "new-fence");
+
+    expect(claim.runFenceToken).toBe("submit-fence");
+    expect(claim.claimedRequest).toBe(request);
+    expect(claim.shouldPersistFence).toBe(false);
+  });
+
+  it("mints and marks legacy requests for persistence when no submit fence exists", () => {
+    const { runFenceToken: _ignored, ...legacyRequest } = request;
+    const claim = claimRunFenceForDispatch(
+      legacyRequest as SerializableDispatchRunInput,
+      () => "legacy-fence",
+    );
+
+    expect(claim.runFenceToken).toBe("legacy-fence");
+    expect(claim.claimedRequest.runFenceToken).toBe("legacy-fence");
+    expect(claim.shouldPersistFence).toBe(true);
   });
 });
 

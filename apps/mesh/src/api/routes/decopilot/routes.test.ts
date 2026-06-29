@@ -10,7 +10,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { applyThreadLock, computeIdempotencyKey } from "./routes";
+import {
+  applyThreadLock,
+  computeIdempotencyKey,
+  planSubmitRunFence,
+  shouldPersistRequestMessage,
+} from "./routes";
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage } from "./types";
 import type { Thread } from "@/storage/types";
@@ -152,6 +157,64 @@ describe("StreamRequestSchema", () => {
     });
 
     expect(result.sandboxProviderKind).toBe("agent-sandbox");
+  });
+});
+
+describe("planSubmitRunFence", () => {
+  test("reuses an existing fence for an already-persisted retry", () => {
+    const plan = planSubmitRunFence({
+      alreadyPersisted: true,
+      existingFenceToken: "fence-existing",
+      mintFenceToken: () => "fence-new",
+    });
+
+    expect(plan.runFenceToken).toBe("fence-existing");
+    expect(plan.shouldWriteFence).toBe(false);
+  });
+
+  test("recovers an already-persisted retry with a missing fence by minting one", () => {
+    const plan = planSubmitRunFence({
+      alreadyPersisted: true,
+      existingFenceToken: null,
+      mintFenceToken: () => "fence-recovered",
+    });
+
+    expect(plan.runFenceToken).toBe("fence-recovered");
+    expect(plan.shouldWriteFence).toBe(true);
+  });
+
+  test("fresh messages mint a fence before user parts are emitted", () => {
+    const plan = planSubmitRunFence({
+      alreadyPersisted: false,
+      existingFenceToken: null,
+      mintFenceToken: () => "fence-fresh",
+    });
+
+    expect(plan.runFenceToken).toBe("fence-fresh");
+    expect(plan.shouldWriteFence).toBe(true);
+  });
+});
+
+describe("shouldPersistRequestMessage", () => {
+  test("persists fresh user requests", () => {
+    expect(
+      shouldPersistRequestMessage({ alreadyPersisted: false, role: "user" }),
+    ).toBe(true);
+  });
+
+  test("keeps the first persisted user request on retry", () => {
+    expect(
+      shouldPersistRequestMessage({ alreadyPersisted: true, role: "user" }),
+    ).toBe(false);
+  });
+
+  test("replaces assistant continuation snapshots", () => {
+    expect(
+      shouldPersistRequestMessage({
+        alreadyPersisted: true,
+        role: "assistant",
+      }),
+    ).toBe(true);
   });
 });
 

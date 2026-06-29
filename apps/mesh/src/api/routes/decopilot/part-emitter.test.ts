@@ -16,7 +16,7 @@ describe("isFinalPart", () => {
     expect(isFinalPart({ type: "reasoning", state: "done" })).toBe(true);
   });
 
-  it("tool parts: only terminal output states are final", () => {
+  it("tool parts: terminal output and requires-action states are final", () => {
     expect(isFinalPart({ type: "tool-foo", state: "input-streaming" })).toBe(
       false,
     );
@@ -24,8 +24,11 @@ describe("isFinalPart", () => {
       false,
     );
     expect(isFinalPart({ type: "tool-foo", state: "approval-requested" })).toBe(
-      false,
+      true,
     );
+    expect(
+      isFinalPart({ type: "tool-user_ask", state: "input-available" }),
+    ).toBe(true);
     expect(isFinalPart({ type: "tool-foo", state: "output-available" })).toBe(
       true,
     );
@@ -70,6 +73,20 @@ function makeCollector() {
         if (!rows.some((r) => r.id === p.id)) rows.push(p);
       }
     },
+    replaceMessageParts: async (
+      threadId: string,
+      messageId: string,
+      parts: ThreadMessagePart[],
+    ) => {
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const row = rows[i]!;
+        if (row.thread_id === threadId && row.message_id === messageId) {
+          rows.splice(i, 1);
+        }
+      }
+      rows.push(...parts);
+      return parts;
+    },
   } as unknown as SqlThreadMessagePartStorage;
   return { rows, storage };
 }
@@ -104,6 +121,65 @@ describe("PartEmitter", () => {
     // created_at derived from base + seq (monotonic), not Date.now()
     expect(rows[0]!.created_at).toBe(new Date(1_000).toISOString());
     expect(rows[1]!.created_at).toBe(new Date(1_001).toISOString());
+  });
+
+  it("request message: persists assistant approval responses for durable reload", async () => {
+    const { rows, emitter } = newEmitter();
+    const approvalResponse = {
+      type: "tool-bash",
+      state: "approval-responded",
+      approval: { id: "ap_1", approved: true },
+    };
+
+    expect(isFinalPart(approvalResponse)).toBe(false);
+
+    await emitter.emitRequestMessage({
+      id: "msg_assistant",
+      role: "assistant",
+      parts: [approvalResponse],
+    });
+
+    expect(rows.map((r) => [r.id, r.role, r.kind])).toEqual([
+      ["run1:msg_assistant:0", "assistant", "tool_call"],
+      ["run1:msg_assistant:1", "assistant", "finish"],
+    ]);
+    expect(rows[0]!.payload).toEqual(approvalResponse);
+  });
+
+  it("request message: replaces the previous same-id assistant snapshot", async () => {
+    const { rows, emitter } = newEmitter();
+
+    await emitter.emitRequestMessage({
+      id: "msg_assistant",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "I need approval", state: "done" },
+        {
+          type: "tool-bash",
+          state: "approval-requested",
+          approval: { id: "ap_1" },
+        },
+      ],
+    });
+    await emitter.emitRequestMessage({
+      id: "msg_assistant",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "I need approval", state: "done" },
+        {
+          type: "tool-bash",
+          state: "approval-responded",
+          approval: { id: "ap_1", approved: true },
+        },
+      ],
+    });
+
+    expect(rows.map((r) => [r.id, r.kind])).toEqual([
+      ["run1:msg_assistant:0", "text"],
+      ["run1:msg_assistant:1", "tool_call"],
+      ["run1:msg_assistant:2", "finish"],
+    ]);
+    expect(rows[1]!.payload).toMatchObject({ state: "approval-responded" });
   });
 
   it("payload is the exact source part element (read path folds it back)", async () => {

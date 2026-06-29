@@ -22,8 +22,10 @@
 
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type {
+  DispatchRunRuntimeInput,
   DispatchRunDeps,
   DispatchRunInput,
+  DurableDispatchRunInput,
   WireHarnessInput,
 } from "@/api/routes/decopilot/dispatch-run";
 import type { StudioContext } from "@/core/studio-context";
@@ -125,10 +127,9 @@ export function resolveHarnessExecutionSite(input: {
  * non-serializable field; the workflow step constructs its own from a
  * timeout when one is provided.
  */
-export type SerializableDispatchRunInput = Omit<
-  DispatchRunInput,
-  "abortSignal"
->;
+export type SerializableDispatchRunInput =
+  | Omit<DispatchRunInput, "abortSignal">
+  | Omit<DurableDispatchRunInput, "abortSignal">;
 
 export interface ThreadGateContext {
   /** Stable thread identifier — also used as the queue partition key. */
@@ -179,7 +180,7 @@ export interface ThreadGateRuntime {
    * tunnel work publisher.
    */
   prepareLinkWorkFn?: (
-    input: DispatchRunInput,
+    input: DispatchRunRuntimeInput,
     ctx: StudioContext,
     deps: DispatchRunDeps,
   ) => Promise<{
@@ -223,7 +224,37 @@ type HostedEnqueueDescriptor = Parameters<typeof enqueueHostedHarness>[0];
  *   `enqueueHostedHarness` with this descriptor (DBOS step restriction).
  * - `null`: desktop path taken (work item published) — no hosted enqueue needed.
  */
-type DispatchStepResult = { hostedEnqueue: HostedEnqueueDescriptor } | null;
+type DispatchStepResult = {
+  runFenceToken: string;
+  hostedEnqueue?: HostedEnqueueDescriptor;
+};
+
+export function claimRunFenceForDispatch(
+  request: SerializableDispatchRunInput,
+  mint: () => string = mintRunFenceToken,
+): {
+  runFenceToken: string;
+  claimedRequest: SerializableDispatchRunInput;
+  shouldPersistFence: boolean;
+} {
+  const submitFenceToken = request.runFenceToken;
+  if (submitFenceToken) {
+    return {
+      runFenceToken: submitFenceToken,
+      claimedRequest: request,
+      shouldPersistFence: false,
+    };
+  }
+  const runFenceToken = mint();
+  return {
+    runFenceToken,
+    claimedRequest: {
+      ...request,
+      runFenceToken,
+    },
+    shouldPersistFence: true,
+  };
+}
 
 async function dispatchRunAndWaitStep(
   ctx: ThreadGateContext,
@@ -265,26 +296,17 @@ async function dispatchRunAndWaitStep(
     harnessId: request.harnessId,
   });
 
-  // ── Run-claim (Task 7a) ─────────────────────────────────────────────────
-  // Mint the single-writer fence token and write it to the thread row BEFORE
-  // dispatching the producer — uniformly for BOTH topologies (hosted local
-  // dispatch and desktop link). This hoists the claim to the gate so
-  // `run_fence_token` is in the DB before any harness code runs (the
-  // prerequisite for the async hosted-child + consume-step in 7b). The fence is
-  // fresh PER TURN (runId == threadId is stable across turns). The thread row
-  // already exists at this point — `COLLECTION_THREADS_CREATE` (user messages)
-  // and `createRunThreadStep` (automations) create it before the run is
-  // enqueued/dispatched — so this UPDATE lands. The producer (`prepareRun` via
-  // either branch) receives this token on `request.runFenceToken` and USES it
-  // instead of minting its own, so the SAME value reaches the wire harness
-  // input, the NATS msg ids, and the projector/consume fence checks.
+  // User-message submits now mint and persist the run fence before enqueuing
+  // this workflow. Preserve that token so the producer, hosted child workflow,
+  // JetStream dedup keys, and projector all agree. Legacy/direct callers that
+  // still enter with raw messages have no submit fence, so retain the old
+  // fallback and mint here until those callers are migrated.
   const fenceThreadId = request.taskId ?? ctx.threadId;
-  const runFenceToken = mintRunFenceToken();
-  await meshCtx.storage.threads.setRunFence(fenceThreadId, runFenceToken);
-  const claimedRequest: SerializableDispatchRunInput = {
-    ...request,
-    runFenceToken,
-  };
+  const { runFenceToken, claimedRequest, shouldPersistFence } =
+    claimRunFenceForDispatch(request);
+  if (shouldPersistFence) {
+    await meshCtx.storage.threads.setRunFence(fenceThreadId, runFenceToken);
+  }
 
   if (executionSite === "cluster") {
     // ── Cluster (hosted) dispatch path — decopilot on any sandbox, plus
@@ -299,10 +321,11 @@ async function dispatchRunAndWaitStep(
     // across DBOS replays). The child workflow runs the in-process agent loop
     // (streaming to NATS + publishing {done}); the gate no longer blocks on the
     // loop — completion flows through the consume step in `runDispatchSteps`.
-    // The gate-minted fence (Task 7a) keys the child workflow ID
+    // The submit-time fence keys the child workflow ID
     // (`decopilot-hosted:<runId>:<fenceToken>`) so a redelivery collapses onto
     // the existing child rather than spawning a second loop.
     return {
+      runFenceToken,
       hostedEnqueue: {
         runId: taskId,
         fenceToken: runFenceToken,
@@ -314,12 +337,11 @@ async function dispatchRunAndWaitStep(
   }
 
   // ── Sandbox path (CLI on user-desktop, over the link tunnel) ────────────
-  // The run is already claimed: the gate minted the fence and wrote it via
-  // `setRunFence` above (Task 7a), and `claimedRequest` carries it on
-  // `runFenceToken`. `prepareLinkWorkDispatch` → `prepareRun` USES that token
-  // (no second mint/write) and echoes it back, so the value the daemon receives
-  // on the wire harness input and the value we publish on the work item are the
-  // gate-minted token — identical to before, just minted one frame earlier.
+  // The run is already claimed: durable submits wrote the fence before DBOS
+  // start, and `claimedRequest` carries it on `runFenceToken`.
+  // `prepareLinkWorkDispatch` → `prepareRun` USES that token (no second
+  // mint/write) and echoes it back, so the value the daemon receives on the
+  // wire harness input and the value we publish on the work item are identical.
   const timeoutMs = ctx.timeoutMs ?? rt.runTimeoutMs;
   const abortController = new AbortController();
   const timeoutHandle =
@@ -340,6 +362,11 @@ async function dispatchRunAndWaitStep(
       meshCtx,
       rt.deps,
     );
+    if (linkFenceToken !== runFenceToken) {
+      throw new Error(
+        `prepareLinkWorkFn returned fence ${linkFenceToken}; expected ${runFenceToken}`,
+      );
+    }
 
     // 2. Publish the work item idempotently (L1: keyed by the per-attempt
     //    runFenceToken, NOT runId — runId aliases the threadId, so sequential
@@ -364,9 +391,9 @@ async function dispatchRunAndWaitStep(
       threadId: request.taskId ?? ctx.threadId,
       orgId: request.organizationId,
       userId: request.userId,
-      // The gate-minted token, echoed back by prepareRun. Asserted equal to the
-      // gate's `runFenceToken` (defensive — Task 7a invariant: producer uses the
-      // gate's fence verbatim).
+      // The submit-time token, echoed back by prepareRun. Asserted equal to the
+      // request's `runFenceToken` (defensive invariant: producer uses the
+      // submit fence verbatim).
       runFenceToken: linkFenceToken,
       harnessInput: harnessInput as Record<string, unknown>,
       ...(sandboxConfig ? { sandbox: sandboxConfig } : {}),
@@ -391,7 +418,7 @@ async function dispatchRunAndWaitStep(
         err,
       );
       await meshCtx.storage.threads.forceFailIfInProgress(taskId);
-      return null;
+      return { runFenceToken };
     }
 
     // The work item is published; the daemon runs the harness remotely and
@@ -403,7 +430,7 @@ async function dispatchRunAndWaitStep(
     if (timeoutHandle !== null) clearTimeout(timeoutHandle);
   }
   // Desktop path completed (work item published or self-failed). No hosted enqueue needed.
-  return null;
+  return { runFenceToken };
 }
 
 /**
@@ -486,6 +513,7 @@ export async function runDispatchSteps(
   await DBOS.runStep(() => trackMessageStartedStep(ctx), {
     name: "trackMessageStarted",
   });
+  let dispatchResult: DispatchStepResult;
   try {
     // Retriable EXCEPT for `user-desktop` runs. A user-desktop run dispatches to
     // a daemon on the user's laptop that keeps running after the pod dies; a DBOS
@@ -499,16 +527,17 @@ export async function runDispatchSteps(
     // dispatch per thread.
     const retriable =
       ctx.request.target?.sandboxProviderKind !== "user-desktop";
-    const dispatchResult = await DBOS.runStep(
-      () => dispatchRunAndWaitStep(ctx),
-      { name: "dispatchRunAndWait", retriesAllowed: retriable },
-    );
-    // Hosted: start the child workflow from the WORKFLOW BODY (DBOS forbids
-    // DBOS.startWorkflow from within a step). The descriptor is the memoized
-    // step return — serializable, replay-stable. The body call is legal workflow
-    // context. Idempotent on replay — the child workflow ID is keyed by
-    // (runId, fenceToken).
-    if (dispatchResult?.hostedEnqueue) {
+    dispatchResult = await DBOS.runStep(() => dispatchRunAndWaitStep(ctx), {
+      name: "dispatchRunAndWait",
+      retriesAllowed: retriable,
+    });
+    // Hosted: start and await the child workflow from the WORKFLOW BODY (DBOS
+    // forbids DBOS.startWorkflow from within a step). The descriptor is the
+    // memoized step return — serializable, replay-stable. The body call is
+    // legal workflow context. Idempotent on replay — the child workflow ID is
+    // keyed by (runId, fenceToken). Awaiting it prevents the projector step
+    // below from racing an empty retained stream.
+    if (dispatchResult.hostedEnqueue) {
       await enqueueHostedHarness(dispatchResult.hostedEnqueue);
     }
   } catch (err) {
@@ -528,16 +557,21 @@ export async function runDispatchSteps(
 
   // Consume step (Task 7b): the sole terminal-status writer for BOTH topologies.
   // `dispatchRunAndWait` above only STARTS the run (hosted: returns descriptor →
-  // workflow body enqueues the child loop; desktop: publish the work item). The actual
+  // workflow body runs the child loop; desktop: publish the work item). The actual
   // completion — draining the run's durable JetStream consumer, projecting the
   // final parts/title, and writing terminal status — happens here. Both
   // topologies funnel through `runDispatchSteps`, so wiring it once covers both.
   // Recovery-safe: `consumeRunProjection` has an entry guard that returns early
   // on a terminal status (the run already finished).
   const runId = ctx.request.taskId ?? ctx.threadId;
-  await DBOS.runStep(() => consumeRunProjection({ runId }), {
-    name: "consumeRunProjection",
-  });
+  await DBOS.runStep(
+    () =>
+      consumeRunProjection({
+        runId,
+        fenceToken: dispatchResult.runFenceToken,
+      }),
+    { name: "consumeRunProjection" },
+  );
 
   return { taskId: ctx.request.taskId ?? ctx.threadId };
 }
@@ -570,7 +604,7 @@ const threadGateWorkflow = DBOS.registerWorkflow(threadGateWorkflowFn, {
  * ULID on POST /messages) — a redelivered request collapses onto the
  * existing workflow handle instead of duplicating the run.
  *
- * Fire-and-forget: returns the workflowID without awaiting completion.
+ * Fire-and-forget: returns the workflowID without awaiting workflow completion.
  */
 export async function enqueueThreadRun(
   ctx: ThreadGateContext,

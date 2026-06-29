@@ -67,6 +67,12 @@ export interface RunPersistenceArgs extends AssistantEmitterArgs {
    * are strictly additive.
    */
   terminal?: boolean;
+  /**
+   * Terminal projection may need to overwrite an already-persisted assistant
+   * snapshot for the same message id (approval response → final tool output).
+   * Keep non-terminal/checkpoint passes append-only.
+   */
+  replaceFinal?: boolean;
 }
 
 /**
@@ -78,6 +84,11 @@ export async function createRunPersistence(
 ): Promise<HarnessStreamPersistence> {
   const emitter = await createAssistantEmitter(args);
   const terminal = args.terminal ?? true;
+  const emitTerminalFinal = args.replaceFinal
+    ? (message: Parameters<HarnessStreamPersistence["emitFinal"]>[0]) =>
+        emitter.replaceFinal(message)
+    : (message: Parameters<HarnessStreamPersistence["emitFinal"]>[0]) =>
+        emitter.emitFinal(message);
   return {
     emitStepParts: (message) => emitter.emitStepParts(message),
     // Non-terminal (checkpoint) pass: persist the message's FINAL parts (text
@@ -91,7 +102,7 @@ export async function createRunPersistence(
     // (`${runId}:${messageId}:${seq}` + ON CONFLICT DO NOTHING); the trailing
     // in-flight part stays unpersisted until a later fold finalizes it.
     emitFinal: terminal
-      ? (message) => emitter.emitFinal(message)
+      ? emitTerminalFinal
       : (message) => emitter.emitStepParts(message),
     emitError: terminal
       ? (messageId, errorText) => emitter.emitError(messageId, errorText)

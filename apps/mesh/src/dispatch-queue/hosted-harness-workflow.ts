@@ -29,7 +29,9 @@
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import type {
   DispatchRunDeps,
+  DispatchRunRuntimeInput,
   DispatchRunInput,
+  DurableDispatchRunInput,
 } from "@/api/routes/decopilot/dispatch-run";
 import type { StudioContext } from "@/core/studio-context";
 
@@ -45,13 +47,12 @@ import { HOSTED_HARNESS_QUEUE } from "./queue-names";
  * Serializable subset of `DispatchRunInput`. The abort signal is the only
  * non-serializable field; the run constructs its own from an optional timeout.
  */
-export type SerializableDispatchRunInput = Omit<
-  DispatchRunInput,
-  "abortSignal"
->;
+export type SerializableDispatchRunInput =
+  | Omit<DispatchRunInput, "abortSignal">
+  | Omit<DurableDispatchRunInput, "abortSignal">;
 
 export type DispatchRunAndWaitFn = (
-  input: DispatchRunInput,
+  input: DispatchRunRuntimeInput,
   ctx: StudioContext,
   deps: DispatchRunDeps,
 ) => Promise<{ taskId: string }>;
@@ -211,7 +212,10 @@ const hostedHarnessWorkflow = DBOS.registerWorkflow(hostedHarnessWorkflowFn, {
  * by `(runId, fenceToken)` so a redelivered enqueue collapses onto the existing
  * workflow handle instead of duplicating the run.
  *
- * Fire-and-forget: returns the workflowID without awaiting completion.
+ * Returns after the hosted harness child workflow completes. The thread-gate
+ * workflow calls this before its projector step; projecting before the hosted
+ * child has produced any retained JetStream messages can race an empty consumer
+ * and leave the thread stuck in_progress.
  */
 function hostedHarnessWorkflowId(runId: string, fenceToken: string): string {
   return `decopilot-hosted:${runId}:${fenceToken}`;
@@ -225,6 +229,7 @@ export async function enqueueHostedHarness(
     queueName: HOSTED_HARNESS_QUEUE,
     enqueueOptions: { queuePartitionKey: input.threadId },
   })(input);
+  await handle.getResult();
   return { workflowID: handle.workflowID };
 }
 

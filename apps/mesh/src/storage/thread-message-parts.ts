@@ -9,9 +9,23 @@ import type { Database, ThreadMessage } from "./types";
 export class SqlThreadMessagePartStorage {
   constructor(private db: Kysely<Database>) {}
 
-  /** Idempotent append; rows are immutable (ON CONFLICT (id) DO NOTHING). */
-  async appendParts(parts: ThreadMessagePart[]): Promise<ThreadMessagePart[]> {
-    if (parts.length === 0) return [];
+  private serializeParts(parts: ThreadMessagePart[]): {
+    rows: Array<{
+      id: string;
+      seq: number;
+      org_id: string;
+      thread_id: string;
+      run_id: string;
+      message_id: string;
+      role: ThreadMessagePart["role"];
+      kind: ThreadMessagePart["kind"];
+      payload: string;
+      payload_ref: string | null;
+      metadata: string | null;
+      created_at: string;
+    }>;
+    partsById: Map<string, ThreadMessagePart>;
+  } {
     const seen = new Set<string>();
     const rows: Array<{
       id: string;
@@ -47,6 +61,13 @@ export class SqlThreadMessagePartStorage {
         created_at: p.created_at,
       });
     }
+    return { rows, partsById };
+  }
+
+  /** Idempotent append; rows are immutable (ON CONFLICT (id) DO NOTHING). */
+  async appendParts(parts: ThreadMessagePart[]): Promise<ThreadMessagePart[]> {
+    if (parts.length === 0) return [];
+    const { rows, partsById } = this.serializeParts(parts);
     const inserted = await this.db
       .insertInto("thread_message_parts")
       .values(rows)
@@ -56,6 +77,51 @@ export class SqlThreadMessagePartStorage {
     return inserted
       .map((row) => partsById.get(row.id))
       .filter((part): part is ThreadMessagePart => part !== undefined);
+  }
+
+  /**
+   * Replace one folded message snapshot. Used only by the `/messages` request
+   * boundary, where an assistant approval/tool continuation re-posts the same
+   * message id with newer request-state parts. Projection writes remain
+   * append-only via `appendParts`.
+   */
+  async replaceMessageParts(
+    threadId: string,
+    messageId: string,
+    parts: ThreadMessagePart[],
+  ): Promise<ThreadMessagePart[]> {
+    const { rows } = this.serializeParts(parts);
+    await this.db.transaction().execute(async (trx) => {
+      const existing = await trx
+        .selectFrom("thread_message_parts")
+        .select((eb) => eb.fn.min("created_at").as("created_at"))
+        .where("thread_id", "=", threadId)
+        .where("message_id", "=", messageId)
+        .executeTakeFirst();
+      const existingBase =
+        existing?.created_at != null
+          ? new Date(existing.created_at as unknown as string).getTime()
+          : null;
+      const rowsToInsert =
+        existingBase != null && Number.isFinite(existingBase)
+          ? rows.map((row) => ({
+              ...row,
+              created_at: new Date(existingBase + row.seq).toISOString(),
+            }))
+          : rows;
+      await trx
+        .deleteFrom("thread_message_parts")
+        .where("thread_id", "=", threadId)
+        .where("message_id", "=", messageId)
+        .execute();
+      if (rowsToInsert.length > 0) {
+        await trx
+          .insertInto("thread_message_parts")
+          .values(rowsToInsert)
+          .execute();
+      }
+    });
+    return parts;
   }
 
   /**
