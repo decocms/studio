@@ -10,8 +10,6 @@
  *     a thin adapter that injects OpenTelemetry metrics via `hooks`), and
  *   - the e2e "fake daemon" relay (packages/e2e/fixtures/relay-nats.ts).
  *
- * This file re-exports the helpers so all existing importers compile unchanged.
- *
  * It is metrics-agnostic on purpose — observability is injected via optional
  * `hooks` so a test (no OTel meter wired) can drive it directly.
  */

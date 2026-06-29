@@ -283,7 +283,7 @@ const decoder = new TextDecoder();
 /**
  * Decode a single raw NATS message into a DecodedEvent, or null if it should
  * be skipped (malformed JSON, foreign payload shape, etc.).
- * Behavior is byte-identical to the unwrapPayload() transform's per-message logic.
+ * This is the per-message core of `decodeStream()`'s transform.
  */
 export function decodeMessage(msg: RawMsg): DecodedEvent | null {
   const parsed = parseRunStreamMsgId(
