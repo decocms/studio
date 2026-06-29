@@ -572,9 +572,20 @@ export class NatsStreamBuffer implements StreamBuffer {
     const release = () => {
       if (released) return;
       released = true;
-      reader.releaseLock();
+      try {
+        reader.releaseLock();
+      } catch {
+        // Per the WHATWG spec, releaseLock() throws if a read is pending — and
+        // cleanup() can fire from the abort handler while pull() is suspended on
+        // reader.read(). That pending read settles via the cancel() above, so
+        // the throw is benign (Bun tolerates it; this guard keeps stricter
+        // runtimes from surfacing an uncaught TypeError).
+      }
     };
+    let cleaned = false;
     const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       sub.stop();
       reader.cancel().catch(() => {});
       release();
