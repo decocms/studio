@@ -9,54 +9,8 @@ import { createRunPersistence } from "./run-persistence";
 import { recordPoison } from "./projector-metrics";
 import { readProjectorRunRange } from "./projector-run-log";
 import { resolveThreadStatus } from "./status";
-import {
-  assistantMessageIdGenerator,
-  synthesizedErrorMessageId,
-} from "./message-ids";
+import { synthesizedErrorMessageId } from "./message-ids";
 import { foldedToUIMessage } from "./projector-seed";
-
-function continuationAssistantMessageId(seed: {
-  role: string;
-  id: string;
-  parts: Array<{ type?: string; state?: string }>;
-}): string | null {
-  if (seed.role !== "assistant") return null;
-  return seed.parts.some(
-    (part) =>
-      part.type?.startsWith("tool-") && part.state === "approval-responded",
-  )
-    ? seed.id
-    : null;
-}
-
-function projectionMessageIdGenerator(input: {
-  runId: string;
-  fenceToken: string;
-  originalMessages: ReturnType<typeof foldedToUIMessage>[];
-}): () => string {
-  const fallback = assistantMessageIdGenerator(input.runId, input.fenceToken);
-  const continuationId = [...input.originalMessages]
-    .reverse()
-    .map((message) =>
-      continuationAssistantMessageId(
-        message as {
-          role: string;
-          id: string;
-          parts: Array<{ type?: string; state?: string }>;
-        },
-      ),
-    )
-    .find((id): id is string => id !== null);
-  if (!continuationId) return fallback;
-  let usedContinuation = false;
-  return () => {
-    if (!usedContinuation) {
-      usedContinuation = true;
-      return continuationId;
-    }
-    return fallback();
-  };
-}
 
 export function shouldSkipProjection(input: {
   status: string;
@@ -203,11 +157,6 @@ export async function projectFromJetStreamStep(
     }),
     originalMessages,
     errorMessageId: synthesizedErrorMessageId(input.runId, input.fenceToken),
-    generateMessageId: projectionMessageIdGenerator({
-      runId: input.runId,
-      fenceToken: input.fenceToken,
-      originalMessages,
-    }),
     title: {
       threadId: input.runId,
       // The thread's REAL current title gates the auto-title persist — a
