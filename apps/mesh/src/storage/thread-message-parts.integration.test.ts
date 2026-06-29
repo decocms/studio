@@ -419,7 +419,7 @@ describe("SqlThreadMessagePartStorage", () => {
         { type: "finish", finishReason: "stop" } as UIMessageChunk,
       ];
 
-      await projectRun({
+      const result = await projectRun({
         runId,
         fenceToken: "fence_cont",
         chunks: continuationChunks,
@@ -430,6 +430,11 @@ describe("SqlThreadMessagePartStorage", () => {
         },
         backoffMs: () => 0,
       });
+
+      // 1. Projection must succeed — directly catches a total projection failure
+      // (e.g. onDlq path exhausted) that would otherwise let every assertion
+      // below pass vacuously because M1 was already seeded complete.
+      expect(result.ok).toBe(true);
 
       // Step 4: assert duplication is gone.
       const { messages: afterMessages } = await parts.loadWindow(runId, {
@@ -449,12 +454,30 @@ describe("SqlThreadMessagePartStorage", () => {
       expect(assistantMessages).toHaveLength(1);
       expect(assistantMessages[0]!.id).toBe(PROPOSAL_MSG);
 
-      // The reasoning part appears at most once (reported symptom: duplicate
-      // "Thought" when M2 was persisted alongside M1 instead of merged).
-      const reasoningParts = (assistantMessages[0]!.parts ?? []).filter(
+      const m1Parts = assistantMessages[0]!.parts ?? [];
+
+      // 2. The continuation's text content actually landed on M1 — proving the
+      // merge happened (not just "no orphan"). Without this the test passes
+      // vacuously when the projection fails entirely (M1 was seeded complete).
+      const textParts = m1Parts.filter(
+        (p) => (p as { type?: string }).type === "text",
+      );
+      const hasContText = textParts.some(
+        (p) => (p as { text?: string }).text === "Command output: done",
+      );
+      expect(hasContText).toBe(true);
+
+      // 3. The reasoning part appears exactly once (reported symptom: duplicate
+      // "Thought" when M2 was persisted alongside M1 instead of merged), and
+      // its text equals the continuation's reasoning delta — pinning the
+      // assembled reasoning state, not just the count.
+      const reasoningParts = m1Parts.filter(
         (p) => (p as { type?: string }).type === "reasoning",
       );
-      expect(reasoningParts.length).toBeLessThanOrEqual(1);
+      expect(reasoningParts).toHaveLength(1);
+      expect((reasoningParts[0] as { text?: string }).text).toBe(
+        "Thinking about the output...",
+      );
     });
   });
 });
