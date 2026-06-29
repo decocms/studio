@@ -31,6 +31,7 @@
  */
 
 import { streamText, type UIMessageChunk } from "ai";
+import { generateMessageId } from "../message-id";
 import { createClaudeCodeModel, resolveClaudeCodeModelId } from "./model";
 import { effectiveCwd } from "../workspace-cwd";
 import { extractUserText, prepCliMessages } from "../cli-message-prep";
@@ -217,6 +218,7 @@ export const claudeCodeHarnessFactory: HarnessFactory = {
               : undefined,
         });
         const uiStream = result.toUIMessageStream({
+          generateMessageId,
           messageMetadata: cliMetadata,
         });
 

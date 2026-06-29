@@ -36,6 +36,7 @@
  */
 
 import { streamText, type UIMessageChunk } from "ai";
+import { generateMessageId } from "../message-id";
 import { createCodexModel, resolveCodexModelId } from "./model";
 import { buildCodingWorkspacePrompt } from "../coding-workspace-prompt";
 import { effectiveCwd } from "../workspace-cwd";
@@ -229,6 +230,7 @@ export const codexHarnessFactory: HarnessFactory = {
                 : undefined,
           });
           const uiStream = result.toUIMessageStream({
+            generateMessageId,
             messageMetadata: cliMetadata,
           });
 
