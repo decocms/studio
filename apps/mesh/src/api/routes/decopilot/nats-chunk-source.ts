@@ -46,6 +46,37 @@ export function concat(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
+export function reassembleFragments(): TransformStream<RawMsg, RawMsg> {
+  let frag: { total: number; received: number; parts: Uint8Array[] } | null =
+    null;
+  return new TransformStream<RawMsg, RawMsg>({
+    transform(msg, controller) {
+      const totalStr = msg.headers?.get(FRAG_TOTAL_HEADER);
+      if (!totalStr) {
+        controller.enqueue(msg); // not a fragment
+        return;
+      }
+      const total = Number(totalStr);
+      const index = Number(msg.headers?.get(FRAG_INDEX_HEADER) ?? "0");
+      if (index === 0) {
+        frag = { total, received: 0, parts: new Array(total) };
+      } else if (!frag || frag.total !== total) {
+        return; // stray fragment — no matching in-flight set
+      }
+      if (!frag.parts[index]) frag.received++;
+      frag.parts[index] = msg.data;
+      if (frag.received < frag.total) return; // need more
+      const merged = concat(frag.parts);
+      frag = null;
+      controller.enqueue({
+        subject: msg.subject,
+        data: merged,
+        headers: msg.headers,
+      });
+    },
+  });
+}
+
 function iteratorFor<T>(
   source: AsyncIterable<T> | Iterable<T>,
 ): AsyncIterator<T> {

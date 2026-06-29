@@ -1,7 +1,12 @@
 // apps/mesh/src/api/routes/decopilot/nats-chunk-source.test.ts
 import { describe, expect, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
-import { natsChunkSource, concat, type RawMsg } from "./nats-chunk-source";
+import {
+  natsChunkSource,
+  concat,
+  reassembleFragments,
+  type RawMsg,
+} from "./nats-chunk-source";
 
 const enc = new TextEncoder();
 
@@ -41,6 +46,101 @@ async function readAll<T>(stream: ReadableStream<T>): Promise<T[]> {
   }
   return out;
 }
+
+function fragments(
+  seqMsgIdBase: string | null,
+  body: string,
+  parts: number,
+): RawMsg[] {
+  const bytes = enc.encode(body);
+  const slice = Math.ceil(bytes.length / parts);
+  const out: RawMsg[] = [];
+  for (let i = 0; i < parts; i++) {
+    out.push(
+      raw(seqMsgIdBase === null ? null : `${seqMsgIdBase}:frag:${i}`, "", {
+        [FRAG_TOTAL_HEADER_NAME]: String(parts),
+        [FRAG_INDEX_HEADER_NAME]: String(i),
+      }),
+    );
+    out[i].data = bytes.slice(i * slice, (i + 1) * slice);
+  }
+  return out;
+}
+
+async function pipeThrough<I, O>(
+  input: RawMsg[],
+  t: TransformStream<I, O>,
+): Promise<O[]> {
+  const src = natsChunkSource({ messages: input as unknown as RawMsg[] });
+  return readAll((src as ReadableStream<I>).pipeThrough(t));
+}
+
+const FRAG_TOTAL_HEADER_NAME = "Dp-Frag-Total";
+const FRAG_INDEX_HEADER_NAME = "Dp-Frag-Idx";
+
+describe("reassembleFragments", () => {
+  test("passes a non-fragment message through unchanged", async () => {
+    const input = [rawJson("run_1:fence_a:1", { p: { type: "start" } })];
+    const out = await pipeThrough<RawMsg, RawMsg>(input, reassembleFragments());
+    expect(out.map((m) => new TextDecoder().decode(m.data))).toEqual([
+      JSON.stringify({ p: { type: "start" } }),
+    ]);
+  });
+
+  test("stitches an in-order fragment set into one message", async () => {
+    const body = JSON.stringify({
+      p: { type: "text-delta", id: "t", delta: "hello-world" },
+    });
+    const out = await pipeThrough<RawMsg, RawMsg>(
+      fragments("run_1:fence_a:1", body, 3),
+      reassembleFragments(),
+    );
+    expect(out.map((m) => new TextDecoder().decode(m.data))).toEqual([body]);
+  });
+
+  test("keeps consecutive same-total fragment sets separate", async () => {
+    const a = JSON.stringify({ p: "A".repeat(40) });
+    const b = JSON.stringify({ p: "B".repeat(40) });
+    const out = await pipeThrough<RawMsg, RawMsg>(
+      [
+        ...fragments("run_1:fence_a:1", a, 3),
+        ...fragments("run_1:fence_a:2", b, 3),
+      ],
+      reassembleFragments(),
+    );
+    expect(out.map((m) => new TextDecoder().decode(m.data))).toEqual([a, b]);
+  });
+
+  test("drops a stray mid-sequence fragment (no index-0 anchor)", async () => {
+    const stray = fragments(
+      "run_1:fence_a:1",
+      JSON.stringify({ p: "X".repeat(40) }),
+      3,
+    ).slice(1); // idx 1,2
+    const good = JSON.stringify({ p: "good" });
+    const out = await pipeThrough<RawMsg, RawMsg>(
+      [...stray, ...fragments("run_1:fence_a:2", good, 3)],
+      reassembleFragments(),
+    );
+    expect(out.map((m) => new TextDecoder().decode(m.data))).toEqual([good]);
+  });
+
+  test("drops an incomplete set (lost middle fragment) and recovers on the next", async () => {
+    const lost = fragments(
+      "run_1:fence_a:1",
+      JSON.stringify({ p: "Y".repeat(40) }),
+      3,
+    );
+    const recovered = JSON.stringify({ p: "recovered" });
+    const out = await pipeThrough<RawMsg, RawMsg>(
+      [lost[0], lost[2], ...fragments("run_1:fence_a:2", recovered, 3)], // idx 1 missing
+      reassembleFragments(),
+    );
+    expect(out.map((m) => new TextDecoder().decode(m.data))).toEqual([
+      recovered,
+    ]);
+  });
+});
 
 describe("concat", () => {
   test("joins byte slices in order", () => {
