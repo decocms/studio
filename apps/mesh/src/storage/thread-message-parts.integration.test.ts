@@ -12,7 +12,7 @@ import { SqlThreadMessagePartStorage } from "./thread-message-parts";
 import type { ThreadMessagePart } from "./fold-parts";
 import { foldedToUIMessage } from "@/api/routes/decopilot/projector-seed";
 import { createRunPersistence } from "@/api/routes/decopilot/run-persistence";
-import { projectRun } from "@/api/routes/decopilot/project-run";
+import { projectChunks } from "@/api/routes/decopilot/project-chunks";
 
 const ORG = "org_1";
 
@@ -419,22 +419,18 @@ describe("SqlThreadMessagePartStorage", () => {
         { type: "finish", finishReason: "stop" } as UIMessageChunk,
       ];
 
-      const result = await projectRun({
-        runId,
-        fenceToken: "fence_cont",
-        chunks: continuationChunks,
+      const result = await projectChunks({
+        chunks: (async function* () {
+          yield* continuationChunks;
+        })(),
         persistence: runPersistence,
         originalMessages,
-        onDlq: async (_runId, error) => {
-          throw error instanceof Error ? error : new Error(String(error));
-        },
-        backoffMs: () => 0,
       });
 
       // 1. Projection must succeed — directly catches a total projection failure
-      // (e.g. onDlq path exhausted) that would otherwise let every assertion
-      // below pass vacuously because M1 was already seeded complete.
-      expect(result.ok).toBe(true);
+      // that would otherwise let every assertion below pass vacuously because
+      // M1 was already seeded complete.
+      expect(result.failed).toBe(false);
 
       // Step 4: assert duplication is gone.
       const { messages: afterMessages } = await parts.loadWindow(runId, {

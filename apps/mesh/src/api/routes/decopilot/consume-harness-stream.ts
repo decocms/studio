@@ -74,10 +74,10 @@ export interface ConsumeHarnessStreamOptions {
    * MUST be deterministic per turn (`error-${runId}:${fenceToken}`, see
    * message-ids.ts) so the SAME error message dedupes across re-projection
    * attempts, DBOS step retries, daemon full-prefix resends, and the
-   * live/projector double-write — the deterministic-id idempotency `projectRun`
-   * relies on — while DISTINCT turns of the same thread never collide. Defaults
-   * to a random UUID only for callers with no run identity (none persist on
-   * retry).
+   * live/projector double-write — the deterministic-id idempotency the
+   * projector relies on — while DISTINCT turns of the same thread never
+   * collide. Defaults to a random UUID only for callers with no run identity
+   * (none persist on retry).
    */
   errorMessageId?: string;
   /**
