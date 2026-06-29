@@ -39,6 +39,12 @@ import {
   streamSubject,
 } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
+import {
+  natsChunkSource,
+  reassembleFragments,
+  unwrapPayload,
+  type RawMsg,
+} from "./nats-chunk-source";
 import { meter } from "@/observability";
 import { encodeMsHistogram, publishedChunksCounter } from "./stream-metrics";
 
@@ -539,95 +545,67 @@ export class NatsStreamBuffer implements StreamBuffer {
       return null;
     }
 
-    const decoder = new TextDecoder();
+    const source = natsChunkSource({
+      messages: (async function* () {
+        try {
+          for await (const msg of sub) {
+            yield {
+              subject: msg.subject,
+              data: msg.data,
+              headers: msg.headers,
+            } as RawMsg;
+          }
+        } finally {
+          sub.stop();
+        }
+      })(),
+      // no idle timeout: the tail stays open across silent gaps and spans runs
+      onCancel: () => sub.stop(),
+    });
 
-    // Reassembly buffer for chunks the producer split across fragment
-    // messages (see `publishChunk`). A fresh accumulator is anchored on the
-    // index-0 fragment; any fragment arriving without a live, matching
-    // accumulator (a lost fragment, or a `deliverPolicy: "new"` subscriber
-    // that joined mid-sequence) is dropped so it can't poison the next chunk.
-    let frag: { total: number; received: number; parts: Uint8Array[] } | null =
-      null;
-    const reassembleFragment = (msg: {
-      headers?: MsgHdrs;
-      data: Uint8Array;
-    }): Uint8Array | null => {
-      const totalStr = msg.headers?.get(FRAG_TOTAL_HEADER);
-      if (!totalStr) return null; // not a fragment — caller handles as JSON
-      const total = Number(totalStr);
-      const index = Number(msg.headers?.get(FRAG_INDEX_HEADER) ?? "0");
-      if (index === 0) {
-        frag = { total, received: 0, parts: new Array(total) };
-      } else if (!frag || frag.total !== total) {
-        return null; // stray fragment — no matching in-flight chunk
-      }
-      if (!frag.parts[index]) frag.received++;
-      frag.parts[index] = msg.data;
-      if (frag.received < frag.total) return null; // need more fragments
-      const size = frag.parts.reduce((sum, p) => sum + (p?.length ?? 0), 0);
-      const merged = new Uint8Array(size);
-      let offset = 0;
-      for (const part of frag.parts) {
-        merged.set(part, offset);
-        offset += part.length;
-      }
-      frag = null;
-      return merged;
+    const events = source
+      .pipeThrough(reassembleFragments())
+      .pipeThrough(unwrapPayload());
+
+    const reader = events.getReader();
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      reader.releaseLock();
     };
-
-    // Use explicit iterator so pull() maintains position across invocations
-    const iter = (async function* () {
-      for await (const msg of sub) {
-        yield msg;
-      }
-    })();
-
-    let cleaned = false;
     const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
       sub.stop();
-      iter.return(undefined).catch(() => {});
+      reader.cancel().catch(() => {});
+      release();
     };
-
     signal?.addEventListener("abort", cleanup, { once: true });
 
     return new ReadableStream({
       async pull(controller) {
-        while (true) {
-          const result = await iter.next();
-          if (result.done) {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) {
             cleanup();
             controller.close();
             return;
           }
-          const msg = result.value;
-          // Stitch fragmented chunks back together before decoding. A
-          // fragment that doesn't complete the set yields null → read more.
-          const reassembled = reassembleFragment(msg);
-          if (msg.headers?.get(FRAG_TOTAL_HEADER) && !reassembled) continue;
-          const payload = reassembled ?? msg.data;
-          try {
-            const data = JSON.parse(decoder.decode(payload));
-            if (data.done) {
-              if (closeOnDone) {
-                cleanup();
-                controller.close();
-                return;
-              }
-              // A run ended, but the subscription stays open for the next
-              // run on this thread. Clients detect run boundaries from the
-              // AI-SDK `{type: "finish"}` chunk in the data stream, not
-              // from the JetStream sentinel — so we swallow it here.
-              continue;
-            }
-            if (data.p) {
-              controller.enqueue(data.p);
+          const ev = value;
+          if (ev.kind === "done") {
+            if (closeOnDone) {
+              cleanup();
+              controller.close();
               return;
             }
-          } catch {
-            // skip malformed, continue to next message
+            // A run ended, but the subscription stays open for the next run on
+            // this thread. Clients detect run boundaries from the AI-SDK
+            // `{type:"finish"}` chunk in the data stream, not the JetStream
+            // sentinel — so we swallow it here.
+            continue;
           }
+          if (ev.kind === "checkpoint") continue; // not part of the UI data stream
+          controller.enqueue(ev.chunk);
+          return;
         }
       },
       cancel() {
