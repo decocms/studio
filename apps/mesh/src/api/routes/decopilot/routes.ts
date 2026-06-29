@@ -44,7 +44,11 @@ import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
 import { buildDurableDispatchInput, resolveHarnessId } from "./dispatch-run";
 import { stringifyError } from "@decocms/harness/stream-error";
-import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
+import {
+  cancelHostedHarness,
+  enqueueThreadRun,
+  threadRunExists,
+} from "@/dispatch-queue";
 import {
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
@@ -117,12 +121,31 @@ export function computeIdempotencyKey(
   return createHash("sha1").update(canonicalStringify(lastMsg)).digest("hex");
 }
 
+/**
+ * Decide the run fence token for a POST.
+ *
+ * The fence MUST be fresh per TURN (see `mintRunFenceToken`): it scopes the
+ * JetStream dedup key and the projector accumulator, AND keys the hosted-harness
+ * child workflow id `decopilot-hosted:<runId>:<fenceToken>`. A fresh user
+ * message and an approval/tool-output CONTINUATION are each a new turn, so each
+ * MUST mint a fresh fence. Reusing one — e.g. a continuation inheriting the
+ * proposal's fence — collides the child id with the prior turn's already-
+ * finished child, so DBOS dedupe silently drops the resume and the turn hangs
+ * forever (and the reused fence also merges two turns into one stream/projector
+ * accumulator).
+ *
+ * Only a genuine network REDELIVERY (the gate workflow id already exists) reuses
+ * the in-flight fence — minting there would clobber the live turn's fence and
+ * strand its projection. `isRedelivery` is derived from gate-workflow existence,
+ * NOT from "is the message already persisted" (which is ALSO true for a
+ * continuation re-POSTing the proposal's assistant message — the bug this fixes).
+ */
 export function planSubmitRunFence(input: {
-  alreadyPersisted: boolean;
+  isRedelivery: boolean;
   existingFenceToken: string | null;
   mintFenceToken: () => string;
 }): { runFenceToken: string; shouldWriteFence: boolean } {
-  if (input.alreadyPersisted && input.existingFenceToken) {
+  if (input.isRedelivery && input.existingFenceToken) {
     return {
       runFenceToken: input.existingFenceToken,
       shouldWriteFence: false,
@@ -738,11 +761,25 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
           .where("message_id", "=", messageId)
           .executeTakeFirst(),
       );
-      const existingFenceToken = alreadyPersisted
+      // Idempotency / fence decision. The gate workflow id is keyed by the
+      // turn's idempotency key, so a fresh user message AND an approval/
+      // tool-output continuation (whose re-POSTed assistant message hashes
+      // differently) each map to a NEW workflow id; only a network redelivery of
+      // the same POST collapses onto an existing one. The fence reuse keys off
+      // THIS redelivery — NOT `alreadyPersisted`, which is also true for a
+      // continuation that is nonetheless a new turn needing a fresh fence.
+      const idempotencyKey = computeIdempotencyKey(persistedRequestMessage);
+      const workflowID = idempotencyKey
+        ? `thread-run:${taskId}:${idempotencyKey}`
+        : undefined;
+      const isRedelivery = workflowID
+        ? await threadRunExists(workflowID)
+        : false;
+      const existingFenceToken = isRedelivery
         ? await ctx.storage.threads.getRunFence(taskId)
         : null;
       const { runFenceToken, shouldWriteFence } = planSubmitRunFence({
-        alreadyPersisted,
+        isRedelivery,
         existingFenceToken,
         mintFenceToken: mintRunFenceToken,
       });
@@ -773,11 +810,6 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         harnessId: pinnedHarness,
         target,
       });
-      const idempotencyKey = computeIdempotencyKey(persistedRequestMessage);
-      const workflowID = idempotencyKey
-        ? `thread-run:${taskId}:${idempotencyKey}`
-        : undefined;
-
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.

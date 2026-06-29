@@ -617,3 +617,24 @@ export async function enqueueThreadRun(
   })(ctx);
   return { workflowID: handle.workflowID };
 }
+
+/**
+ * Whether a thread-run gate workflow with this exact id already exists (any
+ * status). POST /messages uses this to tell a genuine network REDELIVERY
+ * (collapse onto the existing run → reuse its in-flight fence) from a NEW turn —
+ * a fresh user message OR an approval/tool-output continuation, whose re-POSTed
+ * assistant message hashes to a DIFFERENT idempotency key and so keys a new gate
+ * workflow id. A new turn MUST mint a fresh fence: a reused fence collides the
+ * hosted-harness child id `decopilot-hosted:<runId>:<fenceToken>` with the prior
+ * turn's already-finished child, so DBOS dedupe would silently drop the resume
+ * and the turn would hang. The `workflow_id_prefix` filter narrows the scan; the
+ * exact-id check guards against a longer id that merely shares the prefix.
+ */
+export async function threadRunExists(workflowID: string): Promise<boolean> {
+  const rows = await DBOS.listWorkflows({
+    workflow_id_prefix: workflowID,
+    loadInput: false,
+    loadOutput: false,
+  });
+  return rows.some((w) => w.workflowID === workflowID);
+}
