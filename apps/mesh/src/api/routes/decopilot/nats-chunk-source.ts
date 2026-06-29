@@ -1,6 +1,7 @@
 // apps/mesh/src/api/routes/decopilot/nats-chunk-source.ts
 import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/std";
+import { parseRunStreamMsgId } from "./projector-stream-messages";
 
 export const FRAG_INDEX_HEADER = "Dp-Frag-Idx";
 export const FRAG_TOTAL_HEADER = "Dp-Frag-Total";
@@ -73,6 +74,62 @@ export function reassembleFragments(): TransformStream<RawMsg, RawMsg> {
         data: merged,
         headers: msg.headers,
       });
+    },
+  });
+}
+
+function isPositiveInt(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v > 0;
+}
+
+export function unwrapPayload(): TransformStream<RawMsg, DecodedEvent> {
+  const decoder = new TextDecoder();
+  return new TransformStream<RawMsg, DecodedEvent>({
+    transform(msg, controller) {
+      const parsed = parseRunStreamMsgId(
+        msg.headers?.get("Nats-Msg-Id") || undefined,
+      );
+      let payload: unknown;
+      try {
+        payload = JSON.parse(decoder.decode(msg.data));
+      } catch {
+        return; // skip malformed
+      }
+      if (!payload || typeof payload !== "object") return;
+      const record = payload as Record<string, unknown>;
+
+      if (record.done === true) {
+        controller.enqueue({
+          kind: "done",
+          runId: parsed?.kind === "done" ? parsed.runId : null,
+          fenceToken: parsed?.kind === "done" ? parsed.fenceToken : null,
+          envelopeFinalSeq: isPositiveInt(record.finalSeq)
+            ? record.finalSeq
+            : null,
+          msgIdFinalSeq: parsed?.kind === "done" ? parsed.finalSeq : null,
+        });
+        return;
+      }
+      if (record.checkpoint === true && parsed?.kind === "checkpoint") {
+        controller.enqueue({
+          kind: "checkpoint",
+          runId: parsed.runId,
+          fenceToken: parsed.fenceToken,
+          headSeq: parsed.headSeq,
+        });
+        return;
+      }
+      if ("p" in record) {
+        controller.enqueue({
+          kind: "chunk",
+          seq: parsed?.kind === "chunk" ? parsed.seq : null,
+          runId: parsed?.kind === "chunk" ? parsed.runId : null,
+          fenceToken: parsed?.kind === "chunk" ? parsed.fenceToken : null,
+          chunk: record.p as UIMessageChunk,
+        });
+        return;
+      }
+      // anything else (checkpoint without msgId, foreign shape) → skip
     },
   });
 }

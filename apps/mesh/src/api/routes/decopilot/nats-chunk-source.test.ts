@@ -5,7 +5,9 @@ import {
   natsChunkSource,
   concat,
   reassembleFragments,
+  unwrapPayload,
   type RawMsg,
+  type DecodedEvent,
 } from "./nats-chunk-source";
 
 const enc = new TextEncoder();
@@ -150,6 +152,88 @@ describe("concat", () => {
       enc.encode("de"),
     ]);
     expect(new TextDecoder().decode(merged)).toBe("abcde");
+  });
+});
+
+async function unwrapAll(input: RawMsg[]): Promise<DecodedEvent[]> {
+  return pipeThrough<RawMsg, DecodedEvent>(input, unwrapPayload());
+}
+
+describe("unwrapPayload", () => {
+  test("classifies a fenced chunk with seq + fence from the msgId", async () => {
+    const [ev] = await unwrapAll([
+      rawJson("run_1:fence_a:2", {
+        p: { type: "text-delta", id: "t", delta: "x" },
+      }),
+    ]);
+    expect(ev).toEqual({
+      kind: "chunk",
+      seq: 2,
+      runId: "run_1",
+      fenceToken: "fence_a",
+      chunk: { type: "text-delta", id: "t", delta: "x" },
+    });
+  });
+
+  test("classifies a chunk with no msgId (tail fragment) with null seq/fence", async () => {
+    const [ev] = await unwrapAll([rawJson(null, { p: "chunk-1" })]);
+    expect(ev).toEqual({
+      kind: "chunk",
+      seq: null,
+      runId: null,
+      fenceToken: null,
+      chunk: "chunk-1" as unknown as UIMessageChunk,
+    });
+  });
+
+  test("classifies a fenced done envelope", async () => {
+    const [ev] = await unwrapAll([
+      rawJson("run_1:fence_a:done:5", { done: true, finalSeq: 5 }),
+    ]);
+    expect(ev).toEqual({
+      kind: "done",
+      runId: "run_1",
+      fenceToken: "fence_a",
+      envelopeFinalSeq: 5,
+      msgIdFinalSeq: 5,
+    });
+  });
+
+  test("classifies an unfenced done sentinel with null fence + null finalSeq", async () => {
+    const [ev] = await unwrapAll([rawJson(null, { done: true })]);
+    expect(ev).toEqual({
+      kind: "done",
+      runId: null,
+      fenceToken: null,
+      envelopeFinalSeq: null,
+      msgIdFinalSeq: null,
+    });
+  });
+
+  test("classifies a checkpoint envelope", async () => {
+    const [ev] = await unwrapAll([
+      rawJson("run_1:fence_a:ckpt:7", { checkpoint: true, headSeq: 7 }),
+    ]);
+    expect(ev).toEqual({
+      kind: "checkpoint",
+      runId: "run_1",
+      fenceToken: "fence_a",
+      headSeq: 7,
+    });
+  });
+
+  test("skips malformed JSON and a chunk-shaped msgId lacking a payload `p`", async () => {
+    const out = await unwrapAll([
+      rawJson("run_1:fence_a:1", { p: { type: "start" } }),
+      raw("run_1:fence_a:2", "not-json{{{"),
+      rawJson("run_1:fence_a:3", { notP: true }),
+      rawJson("run_1:fence_a:4", { p: { type: "finish" } }),
+    ]);
+    expect(
+      out.map((e) =>
+        e.kind === "chunk" ? (e.chunk as { type: string }).type : e.kind,
+      ),
+    ).toEqual(["start", "finish"]);
   });
 });
 
