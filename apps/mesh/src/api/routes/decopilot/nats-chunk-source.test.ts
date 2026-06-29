@@ -7,6 +7,7 @@ import {
   reassembleFragments,
   unwrapPayload,
   fenceFilter,
+  assertContiguousAndDedup,
   type RawMsg,
   type DecodedEvent,
 } from "./nats-chunk-source";
@@ -270,6 +271,51 @@ describe("fenceFilter", () => {
       fenceToken: "fence_a",
       envelopeFinalSeq: 1,
     });
+  });
+});
+
+async function pipe3(
+  input: RawMsg[],
+  runId: string,
+  fence: string,
+): Promise<DecodedEvent[]> {
+  const src = natsChunkSource({ messages: input });
+  return readAll(
+    src
+      .pipeThrough(reassembleFragments())
+      .pipeThrough(unwrapPayload())
+      .pipeThrough(fenceFilter(runId, fence))
+      .pipeThrough(assertContiguousAndDedup()),
+  );
+}
+
+describe("assertContiguousAndDedup", () => {
+  test("passes in-order chunks, dedups a replay, drops checkpoints, passes done", async () => {
+    const out = await pipe3(
+      [
+        rawJson("run_1:fence_a:1", { p: { type: "start" } }),
+        rawJson("run_1:fence_a:1", { p: { type: "start" } }), // replay → dedup
+        rawJson("run_1:fence_a:ckpt:1", { checkpoint: true, headSeq: 1 }), // dropped
+        rawJson("run_1:fence_a:2", { p: { type: "finish" } }),
+        rawJson("run_1:fence_a:done:2", { done: true, finalSeq: 2 }),
+      ],
+      "run_1",
+      "fence_a",
+    );
+    expect(out.map((e) => e.kind)).toEqual(["chunk", "chunk", "done"]);
+  });
+
+  test("errors on a forward gap", async () => {
+    await expect(
+      pipe3(
+        [
+          rawJson("run_1:fence_a:1", { p: { type: "start" } }),
+          rawJson("run_1:fence_a:3", { p: { type: "finish" } }),
+        ],
+        "run_1",
+        "fence_a",
+      ),
+    ).rejects.toThrow("missing seq 2");
   });
 });
 

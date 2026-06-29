@@ -146,6 +146,33 @@ export function fenceFilter(
   });
 }
 
+export function assertContiguousAndDedup(): TransformStream<
+  DecodedEvent,
+  DecodedEvent
+> {
+  let nextSeq = 1;
+  return new TransformStream<DecodedEvent, DecodedEvent>({
+    transform(ev, controller) {
+      if (ev.kind === "done") {
+        controller.enqueue(ev);
+        return;
+      }
+      if (ev.kind === "checkpoint") return; // projector ignores checkpoints in the terminal fold
+      if (ev.seq === null) {
+        controller.error(new Error("projector chunk missing seq"));
+        return;
+      }
+      if (ev.seq < nextSeq) return; // dedup replay (resend past the dedup window)
+      if (ev.seq > nextSeq) {
+        controller.error(new Error(`missing seq ${nextSeq}`));
+        return;
+      }
+      nextSeq++;
+      controller.enqueue(ev);
+    },
+  });
+}
+
 function iteratorFor<T>(
   source: AsyncIterable<T> | Iterable<T>,
 ): AsyncIterator<T> {
