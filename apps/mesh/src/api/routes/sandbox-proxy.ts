@@ -402,10 +402,6 @@ async function fetchDaemonJson<T>(
   return JSON.parse(text) as T;
 }
 
-// ---- Preview fetch ----------------------------------------------------------
-
-const ALLOWED_PATHS = new Set(["/.decofile", "/live/_meta"]);
-
 // ---- Setup validation -------------------------------------------------------
 
 const SETUP_STEPS = ["clone", "install", "start"] as const;
@@ -711,53 +707,6 @@ export const createSandboxRoutes = () => {
       }
     },
   );
-
-  // -- Preview fetch (CORS proxy) -------------------------------------------
-  app.get("/:virtualMcpId/:branch/preview-fetch", async (c) => {
-    const runner = requireRunner(c);
-    if (runner instanceof Response) return runner;
-
-    const { claimName } = c.get("vmClaim");
-    const path = c.req.query("path");
-    if (!path) {
-      return c.json({ error: "path query parameter is required" }, 400);
-    }
-    if (!ALLOWED_PATHS.has(path)) {
-      return c.json({ error: "Path not allowed" }, 403);
-    }
-
-    let previewUrl: string | null;
-    try {
-      previewUrl = await runner.getPreviewUrl(claimName);
-    } catch {
-      return c.json({ error: "Preview not available" }, 502);
-    }
-    if (!previewUrl) {
-      return c.json({ error: "Preview not available" }, 502);
-    }
-
-    const base = previewUrl.replace(/\/+$/, "");
-    let upstream: Response;
-    try {
-      upstream = await fetch(`${base}${path}`);
-    } catch {
-      return c.json({ error: "Preview unreachable" }, 502);
-    }
-
-    let text: string;
-    try {
-      text = await upstream.text();
-    } catch {
-      return c.json({ error: "Preview unreachable" }, 502);
-    }
-    return new Response(text, {
-      status: upstream.status,
-      headers: {
-        "content-type":
-          upstream.headers.get("content-type") ?? "application/json",
-      },
-    });
-  });
 
   // -- Preview invoke (loader/action resolution) ------------------------------
   app.post(

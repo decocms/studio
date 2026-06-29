@@ -1,6 +1,5 @@
 import { type Query, useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/web/lib/query-keys";
-import { buildPreviewFetchUrl } from "./preview-fetch-url";
 import type { LiveMeta } from "./resolve-schema";
 
 interface UseLiveMetaParams {
@@ -24,12 +23,12 @@ export function useLiveMeta(
     ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}/${params.previewUrl ?? ""}`
     : "";
   const fetchEnabled = options?.fetchEnabled ?? true;
+  const previewUrl = params?.previewUrl;
   return useQuery({
     queryKey: KEYS.liveMeta(key),
     queryFn: async () => {
-      const res = await fetch(
-        buildPreviewFetchUrl({ ...params!, path: "/live/_meta" }),
-      );
+      const url = new URL("/live/_meta", previewUrl!).href;
+      const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) {
         const err = new Error(`Failed to fetch live meta: ${res.status}`);
         (err as { status?: number }).status = res.status;
@@ -37,7 +36,7 @@ export function useLiveMeta(
       }
       return (await res.json()) as LiveMeta;
     },
-    enabled: !!params && fetchEnabled,
+    enabled: !!params && !!previewUrl && fetchEnabled,
     refetchInterval: options?.refetchInterval,
     refetchIntervalInBackground: false,
     staleTime: 300_000,

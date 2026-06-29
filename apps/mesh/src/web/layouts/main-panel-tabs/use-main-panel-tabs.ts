@@ -38,6 +38,7 @@ import { useDecofile } from "@/web/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import { hasEditableDecoContent } from "@/web/components/sections-editor/page-list";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
+import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useCapability } from "@/web/hooks/use-capability";
 import type {
   ThreadExpandedTool,
@@ -192,6 +193,7 @@ export function useMainPanelTabs(ctx: {
   // server is up (shared query keys with Preview / Content). Requires
   // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
   const vmEvents = useSandboxEvents();
+  const { previewUrl } = useSandboxLifecycle();
   const devServerReady = vmEvents.lifecycle.phase === "running";
 
   // Auto-detect the dev MCP app's views straight from its sandbox dev server:
@@ -228,7 +230,12 @@ export function useMainPanelTabs(ctx: {
       : (entityLayout?.defaultMainView ?? null);
   const decofileFetchParams =
     hasClonableSource && entity?.id && currentBranch
-      ? { orgSlug: org.slug, virtualMcpId: entity.id, branch: currentBranch }
+      ? {
+          orgSlug: org.slug,
+          virtualMcpId: entity.id,
+          branch: currentBranch,
+          previewUrl,
+        }
       : null;
   // Subscribe to the same query keys as Preview; only fetch after the dev
   // server is running, but still re-render when Preview warms the cache.
