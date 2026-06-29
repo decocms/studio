@@ -16,11 +16,11 @@
  * `hooks` so a test (no OTel meter wired) can drive it directly.
  */
 import type { JetStreamClient } from "@nats-io/jetstream";
+import { headers as natsHeaders, type MsgHdrs } from "@nats-io/nats-core";
 import { relayLineSchema, type RelayLine } from "./relay";
 import {
-  streamSubject,
-  buildChunkMsgId,
-  buildDoneMsgId,
+  serializeChunk,
+  serializeDone,
 } from "@decocms/harness/run-stream-codec";
 
 // --- Stream subject + msgId scheme (re-exported from codec) ------------------
@@ -60,41 +60,57 @@ export interface DirectNatsPublisher {
   }): Promise<void>;
 }
 
+function toMsgHdrs(rec: Record<string, string>): MsgHdrs {
+  const hdrs = natsHeaders();
+  for (const [k, v] of Object.entries(rec)) {
+    hdrs.set(k, v);
+  }
+  return hdrs;
+}
+
 export function createDirectNatsPublisher(input: {
   js: Pick<JetStreamClient, "publish">;
   hooks?: PublisherHooks;
 }): DirectNatsPublisher {
-  const encoder = new TextEncoder();
   const hooks = input.hooks;
   return {
     async publishLine({ runId, fenceToken, line }) {
       if (line.event.type === "ui-message-chunk") {
         const t0 = performance.now();
-        const bytes = encoder.encode(JSON.stringify({ p: line.event.chunk }));
-        hooks?.onChunkEncoded?.(performance.now() - t0);
-        hooks?.onChunkPublished?.();
-        await input.js.publish(streamSubject(runId), bytes, {
-          msgID: buildChunkMsgId({ runId, fenceToken, seq: line.seq }),
+        const msgs = serializeChunk(line.event.chunk, {
+          runId,
+          dedup: { fenceToken, seq: line.seq },
         });
+        hooks?.onChunkEncoded?.(performance.now() - t0);
+        if (msgs.length === 0) return "published";
+        hooks?.onChunkPublished?.();
+        for (const m of msgs) {
+          await input.js.publish(m.subject, m.data, {
+            ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),
+            ...(m.msgId ? { msgID: m.msgId } : {}),
+          });
+        }
         return "published";
       }
       if (line.event.type === "error") {
         const errorText = `${line.event.code}: ${line.event.message}`;
-        await input.js.publish(
-          streamSubject(runId),
-          encoder.encode(JSON.stringify({ p: { type: "error", errorText } })),
-          { msgID: buildChunkMsgId({ runId, fenceToken, seq: line.seq }) },
+        const msgs = serializeChunk(
+          { type: "error", errorText },
+          { runId, dedup: { fenceToken, seq: line.seq } },
         );
+        for (const m of msgs) {
+          await input.js.publish(m.subject, m.data, {
+            ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),
+            ...(m.msgId ? { msgID: m.msgId } : {}),
+          });
+        }
         return "published";
       }
       return "terminal";
     },
     async publishDone({ runId, fenceToken, finalSeq }) {
-      await input.js.publish(
-        streamSubject(runId),
-        encoder.encode(JSON.stringify({ done: true, finalSeq })),
-        { msgID: buildDoneMsgId({ runId, fenceToken, finalSeq }) },
-      );
+      const m = serializeDone({ runId, fenceToken, finalSeq });
+      await input.js.publish(m.subject, m.data, { msgID: m.msgId });
     },
   };
 }

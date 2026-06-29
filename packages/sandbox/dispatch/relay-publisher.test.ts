@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { JetStreamClient } from "@nats-io/jetstream";
+import { MAX_PUBLISH_BYTES } from "@decocms/harness/offload-messages";
+import {
+  FRAG_INDEX_HEADER,
+  FRAG_TOTAL_HEADER,
+} from "@decocms/harness/run-stream-codec";
 import {
   createDirectNatsPublisher,
   publishRelayBodyToNats,
@@ -27,6 +32,30 @@ function makeFakeJs(): {
     },
   } as Pick<JetStreamClient, "publish">;
   return { js, published };
+}
+
+type RawPublishRecord = {
+  subject: string;
+  data: Uint8Array;
+  opts?: { msgID?: string; headers?: { get(name: string): string } };
+};
+
+function makeFakeJsRaw(): {
+  js: Pick<JetStreamClient, "publish">;
+  records: RawPublishRecord[];
+} {
+  const records: RawPublishRecord[] = [];
+  const js = {
+    publish: async (
+      subject: string,
+      data: Uint8Array,
+      opts?: { msgID?: string; headers?: { get(name: string): string } },
+    ) => {
+      records.push({ subject, data, opts });
+      return {} as never;
+    },
+  } as Pick<JetStreamClient, "publish">;
+  return { js, records };
 }
 
 describe("createDirectNatsPublisher", () => {
@@ -100,6 +129,56 @@ describe("createDirectNatsPublisher", () => {
 
     expect(result).toBe("terminal");
     expect(published).toEqual([]);
+  });
+
+  test("ui-message-chunk exceeding MAX_PUBLISH_BYTES is fragmented into multiple publishes", async () => {
+    const { js, records } = makeFakeJsRaw();
+    const publisher = createDirectNatsPublisher({ js });
+
+    // Build a chunk whose {p:chunk} JSON exceeds MAX_PUBLISH_BYTES
+    const delta = "x".repeat(MAX_PUBLISH_BYTES);
+    await publisher.publishLine({
+      runId: "run_frag",
+      fenceToken: "fence_f",
+      line: {
+        seq: 1,
+        event: {
+          type: "ui-message-chunk",
+          chunk: { type: "text-delta", id: "1", delta },
+        },
+      },
+    });
+
+    expect(records.length).toBeGreaterThan(1);
+    const total = records.length;
+    for (let i = 0; i < total; i++) {
+      const rec = records[i];
+      expect(rec.subject).toBe("decopilot.stream.run_frag");
+      expect(rec.opts?.headers?.get(FRAG_INDEX_HEADER)).toBe(String(i));
+      expect(rec.opts?.headers?.get(FRAG_TOTAL_HEADER)).toBe(String(total));
+      expect(rec.opts?.msgID).toBe(`run_frag:fence_f:1:frag:${i}`);
+    }
+  });
+
+  test("small ui-message-chunk produces exactly one publish with no frag headers", async () => {
+    const { js, records } = makeFakeJsRaw();
+    const publisher = createDirectNatsPublisher({ js });
+
+    await publisher.publishLine({
+      runId: "run_small",
+      fenceToken: "fence_s",
+      line: {
+        seq: 2,
+        event: {
+          type: "ui-message-chunk",
+          chunk: { type: "text-delta", id: "1", delta: "hello" },
+        },
+      },
+    });
+
+    expect(records.length).toBe(1);
+    expect(records[0].opts?.msgID).toBe("run_small:fence_s:2");
+    expect(records[0].opts?.headers).toBeUndefined();
   });
 });
 
