@@ -1,4 +1,3 @@
-// apps/mesh/src/api/routes/decopilot/projector-chunk-stream.ts
 import type { UIMessageChunk } from "ai";
 import { DeliverPolicy, type JetStreamClient } from "@nats-io/jetstream";
 import {
@@ -26,6 +25,15 @@ export interface ProjectorChunkStreamOptions {
   runId: string;
   fenceToken: string;
   idleTimeoutMs?: number;
+  /**
+   * Cleanup callback wired as the source's `onCancel`. Fires once when the
+   * stream finalizes — on a clean terminal close (done/finish) AND on external
+   * cancel — because the terminal close cancels the source through the
+   * pipeThrough chain. Must be idempotent (the production caller passes the
+   * idempotent `sub.stop`). This is a deliberate widening over the pre-refactor
+   * behavior, where `onDone` fired only on terminal close and an early cancel
+   * could leak the subscription.
+   */
   onDone?: () => void;
 }
 
