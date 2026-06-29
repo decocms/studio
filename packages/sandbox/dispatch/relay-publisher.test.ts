@@ -103,7 +103,7 @@ describe("createDirectNatsPublisher", () => {
   });
 });
 
-test("publishRelayBodyToNats flushes onPublished at terminal (drives outbox truncation)", async () => {
+test("publishRelayBodyToNats reports onPublished at the debounce cadence (drives outbox truncation)", async () => {
   const published: number[] = [];
   const publisher = {
     publishLine: async ({ line }: { line: { event: { type: string } } }) =>
@@ -112,6 +112,15 @@ test("publishRelayBodyToNats flushes onPublished at terminal (drives outbox trun
         : ("terminal" as const),
     publishDone: async () => {},
   };
+  // Fake clock: advance 4s per call so each content line crosses the 3s debounce.
+  // The implementation calls now() once at init (lastReportAt = now())
+  // then twice per content line: once to check (now() - lastReportAt >= debounceMs)
+  // and once to update (lastReportAt = now()).
+  // Call sequence: init=0, check_1=4000, update_1=8000, check_2=12000, update_2=16000
+  // check_1: 4000 - 0 = 4000 >= 3000 → report seq 1; check_2: 12000 - 8000 = 4000 >= 3000 → report seq 2
+  let callCount = 0;
+  const times = [0, 4000, 8000, 12000, 16000];
+  const now = () => times[callCount++] ?? 16000;
   const chunk = (seq: number) =>
     JSON.stringify({
       seq,
@@ -126,10 +135,46 @@ test("publishRelayBodyToNats flushes onPublished at terminal (drives outbox trun
     runId: "run_1",
     fenceToken: "fence_1",
     publisher,
+    now,
+    reportDebounceMs: 3000,
     onPublished: (seq) => published.push(seq),
   });
-  // The terminal flush reports the durable high-water mark once so the relay
-  // can drop the confirmed prefix from the outbox.
+  // Mid-stream report at each debounce crossing; terminal flush is a no-op since
+  // seq 2 was already reported. Rolling truncation keeps the outbox from
+  // accumulating the entire run and hitting the 512 MiB cap.
+  expect(published).toEqual([1, 2]);
+});
+
+test("publishRelayBodyToNats flushes onPublished at terminal (drives outbox truncation)", async () => {
+  const published: number[] = [];
+  const publisher = {
+    publishLine: async ({ line }: { line: { event: { type: string } } }) =>
+      line.event.type === "ui-message-chunk"
+        ? ("published" as const)
+        : ("terminal" as const),
+    publishDone: async () => {},
+  };
+  const now = () => 1000; // never advances → never crosses 3s debounce
+  const chunk = (seq: number) =>
+    JSON.stringify({
+      seq,
+      event: {
+        type: "ui-message-chunk",
+        chunk: { type: "text-delta", id: "1", delta: "x" },
+      },
+    });
+  const body = `${chunk(1)}\n${chunk(2)}\n${JSON.stringify({ seq: 3, event: { type: "done" } })}\n`;
+  await publishRelayBodyToNats({
+    body,
+    runId: "run_1",
+    fenceToken: "fence_1",
+    publisher,
+    now,
+    reportDebounceMs: 3000,
+    onPublished: (seq) => published.push(seq),
+  });
+  // No debounce crossed, but the terminal flush still reports the durable
+  // high-water mark so the outbox prefix is dropped before terminal ack.
   expect(published).toEqual([2]);
 });
 

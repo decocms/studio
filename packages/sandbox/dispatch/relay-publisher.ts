@@ -20,6 +20,11 @@ import { relayLineSchema, type RelayLine } from "./relay";
 
 export const DECOPILOT_STREAM_SUBJECT_PREFIX = "decopilot.stream";
 
+/** Debounce between incremental outbox-truncation reports. Rolling truncation
+ *  keeps the durable outbox from accumulating the entire run in memory; without
+ *  mid-stream reports the cap becomes a hard per-run limit instead of a backstop. */
+const OUTBOX_REPORT_DEBOUNCE_MS = 3000;
+
 function assertSafeSubjectToken(id: string): void {
   if (/[.*>\s]/.test(id)) throw new Error("Invalid NATS subject token");
 }
@@ -174,15 +179,23 @@ export async function publishRelayBodyToNats(input: {
   runId: string;
   fenceToken: string;
   publisher: DirectNatsPublisher;
+  now?: () => number;
+  reportDebounceMs?: number;
   /**
-   * Reports the highest CONTENT seq durably published (called once after `done`
-   * is published). The relay uses it to drop the confirmed prefix from the outbox.
+   * Reports the highest CONTENT seq durably published so far (each `publishLine`
+   * awaits its JetStream PubAck before `finalSeq` advances, so everything up to
+   * this value is durable). The relay uses it to drop the confirmed prefix from
+   * the outbox. Throttled to the report cadence (+ a final terminal report) so
+   * it drives rolling truncation rather than triggering a truncation per line.
    */
   onPublished?: (seq: number) => void;
 }): Promise<PublishRelayBodyResult> {
+  const now = input.now ?? Date.now;
+  const debounceMs = input.reportDebounceMs ?? OUTBOX_REPORT_DEBOUNCE_MS;
   let maxWireSeq = 0;
   let finalSeq = 0; // highest CONTENT seq (chunks + converted error), for done
   let reportedSeq = 0;
+  let lastReportAt = now(); // first report fires one debounce window in
   const reportPublished = (): void => {
     if (input.onPublished && finalSeq > reportedSeq) {
       reportedSeq = finalSeq;
@@ -201,6 +214,10 @@ export async function publishRelayBodyToNats(input: {
     });
     if (result === "published") {
       finalSeq = Math.max(finalSeq, line.seq);
+      if (now() - lastReportAt >= debounceMs) {
+        lastReportAt = now();
+        reportPublished();
+      }
     }
   }
   if (finalSeq > 0) {
