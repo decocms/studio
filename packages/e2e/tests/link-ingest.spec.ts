@@ -40,7 +40,7 @@ import {
   createTunnelLinkDaemon,
   type TunnelLinkDaemon,
 } from "../fixtures/links-presence";
-import { publishRelayBody } from "../fixtures/relay-nats";
+import { publishRelayBody, publishRelayManual } from "../fixtures/relay-nats";
 import { DEFAULT_THREAD_TITLE } from "@decocms/harness/decopilot/prompt-constants";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -377,6 +377,87 @@ test.describe("direct-NATS chunk relay ingest", () => {
       const finalParts = await fetchParts(db, turn2.runId);
       expect(hasTextMarker(finalParts, marker1)).toBe(true);
       expect(hasTextMarker(finalParts, marker2)).toBe(true);
+    } finally {
+      await daemon?.close();
+      await db.end();
+    }
+  });
+
+  test("checkpoint persists final parts before {done} (single-step CLI shape)", async ({
+    authedPage,
+  }) => {
+    // Regression: CLI harnesses (codex/claude-code) relay the whole turn as ONE
+    // step, so the AI SDK's `onStepFinish` never fires mid-turn — only
+    // `onFinish` does, calling the checkpoint pass's `emitFinal`. That `emitFinal`
+    // was a no-op, so a long single-step turn persisted ZERO parts until the
+    // terminal `{done}`. A checkpoint over a stream that has a FINAL part
+    // (text reached `text-end` → state done) but NO `finish-step` must persist
+    // that part. We relay the single-step chunks + a checkpoint WITHOUT a done,
+    // then assert the part lands while the run is still in progress.
+    test.setTimeout(CASE_TIMEOUT_MS);
+    const { page, user, orgSlug } = authedPage;
+    const api = page.context().request;
+    const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
+    try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
+      const orgId = await orgIdForSlug(db, orgSlug);
+      const { agentId, threadId } = await createPullThread(
+        api,
+        db,
+        orgSlug,
+        orgId,
+      );
+      const { runId, workItem } = await dispatchAndClaimWorkItem(
+        api,
+        orgSlug,
+        agentId,
+        threadId,
+        daemon,
+        "checkpoint visibility test",
+      );
+
+      const marker = `ckpt-marker-${Date.now()}`;
+      const textId = `txt-${Date.now()}`;
+      // Single-step shape: start → start-step → text(start/delta/end). Crucially
+      // NO `finish-step` and NO `done` — exactly what a mid-turn checkpoint sees
+      // for a CLI harness that hasn't closed its single step yet.
+      await publishRelayManual({
+        runId,
+        fenceToken: workItem.runFenceToken,
+        chunks: [
+          { seq: 1, chunk: { type: "start", messageId: `m-${Date.now()}` } },
+          { seq: 2, chunk: { type: "start-step" } },
+          { seq: 3, chunk: { type: "text-start", id: textId } },
+          { seq: 4, chunk: { type: "text-delta", id: textId, delta: marker } },
+          { seq: 5, chunk: { type: "text-end", id: textId } },
+        ],
+        checkpointHeadSeq: 5,
+      });
+
+      // THE FIX: the checkpoint pass must persist the final text part — and the
+      // run must still be NON-terminal (no `done` published yet). Pre-fix the
+      // checkpoint's `emitFinal` was a no-op, so this never lands.
+      await expect(async () => {
+        const parts = await fetchParts(db, runId);
+        const hasMarker = parts.some(
+          (p) =>
+            p.kind === "text" && JSON.stringify(p.payload).includes(marker),
+        );
+        expect(hasMarker).toBe(true);
+        expect(await fetchThreadStatus(db, threadId)).not.toBe("completed");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
+
+      // Terminal `done` → the run completes (terminal pass writes the anchor).
+      await publishRelayManual({
+        runId,
+        fenceToken: workItem.runFenceToken,
+        chunks: [],
+        doneFinalSeq: 5,
+      });
+      await expect(async () => {
+        expect(await fetchThreadStatus(db, threadId)).toBe("completed");
+      }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
       await daemon?.close();
       await db.end();

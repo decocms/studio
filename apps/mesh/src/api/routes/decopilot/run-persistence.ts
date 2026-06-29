@@ -80,9 +80,19 @@ export async function createRunPersistence(
   const terminal = args.terminal ?? true;
   return {
     emitStepParts: (message) => emitter.emitStepParts(message),
+    // Non-terminal (checkpoint) pass: persist the message's FINAL parts (text
+    // done, tool output-available, …) but DON'T close it with a finish anchor —
+    // the terminal pass owns that. `emitStepParts` is exactly that (final parts,
+    // no anchor). Critically, CLI harnesses (codex/claude-code) relay the whole
+    // turn as ONE step, so `onStepFinish` never fires mid-turn; only `onFinish`
+    // does, calling THIS `emitFinal`. A no-op here discarded every final part a
+    // checkpoint fold had already assembled, so a long turn persisted nothing
+    // until `{done}`. Re-folds dedupe on the deterministic part-row ids
+    // (`${runId}:${messageId}:${seq}` + ON CONFLICT DO NOTHING); the trailing
+    // in-flight part stays unpersisted until a later fold finalizes it.
     emitFinal: terminal
       ? (message) => emitter.emitFinal(message)
-      : async () => {},
+      : (message) => emitter.emitStepParts(message),
     emitError: terminal
       ? (messageId, errorText) => emitter.emitError(messageId, errorText)
       : async () => {},
