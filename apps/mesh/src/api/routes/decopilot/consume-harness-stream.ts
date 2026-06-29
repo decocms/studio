@@ -216,6 +216,15 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
   //     message (the re-POSTed proposal), the FIRST folded message adopts that
   //     trailing id so the continuation merges onto the proposal row instead of
   //     creating a second one. Subsequent messages keep their own harness ids.
+  //
+  //     This is idempotent across re-folds ONLY because a decopilot turn is a
+  //     SINGLE UI message (one `toUIMessageStream` => one message): the trailing
+  //     originalMessage stays the proposal and the first chunk-log id stays the
+  //     same, so the first->proposal remap is stable on every re-fold. If a
+  //     continuation ever emits MULTIPLE messages, a re-fold would see
+  //     `originalMessages` ending in the LAST persisted message (not the
+  //     proposal) and adopt the wrong id — guard that (match the proposal id
+  //     explicitly) before multi-message continuations become reachable.
   const trailingOriginal = options.originalMessages?.at(-1);
   const continuationMessageId =
     !options.generateMessageId && trailingOriginal?.role === "assistant"
