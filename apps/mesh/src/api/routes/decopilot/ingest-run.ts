@@ -31,7 +31,6 @@ import {
   type HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
 import { buildChunkMsgId } from "./projector-stream-messages";
-import { CHECKPOINT_DEBOUNCE_MS } from "./nats-stream-buffer";
 import type { StreamBuffer } from "./stream-buffer";
 
 export interface IngestRunInput {
@@ -75,16 +74,6 @@ export interface IngestRunDeps {
    * ids → ON CONFLICT DO NOTHING).
    */
   persistence?: HarnessStreamPersistence;
-  /**
-   * When set, the ingest side publishes debounced checkpoint markers after
-   * each confirmed `ackSeq` advance. The projector consumer reacts to these
-   * by enqueuing a partial projection pass (Tasks 8-9). Omitted in runs
-   * where incremental projection is disabled.
-   */
-  checkpointPublisher?: (
-    fenceToken: string,
-    headSeq: number,
-  ) => Promise<boolean>;
 }
 
 /** Default persistence: write nothing — the durable projector is the sole
@@ -120,7 +109,6 @@ export async function ingestRun(
   // collide in JetStream dedup, silently dropping the run's tail).
   let ackSeq = input.initialAckSeq ?? 0;
   const pending = new Set<number>();
-  let lastCheckpointAt = 0;
   // Captures a throw from the source stream (or the publish leg). The kernel
   // turns it into a wire error chunk and closes cleanly, so it never surfaces
   // as a rejection on its own — we re-raise it after `whenComplete` to (a) keep
@@ -157,13 +145,6 @@ export async function ingestRun(
         // the filled contiguous boundary when the gap is closed.
         if (ackSeq > prevAckSeq) {
           input.onPublished?.(ackSeq);
-          if (
-            deps.checkpointPublisher &&
-            Date.now() - lastCheckpointAt >= CHECKPOINT_DEBOUNCE_MS
-          ) {
-            lastCheckpointAt = Date.now();
-            deps.checkpointPublisher(fenceToken, ackSeq).catch(() => {});
-          }
         }
         yield chunk;
       }

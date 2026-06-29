@@ -216,9 +216,11 @@ describe("unwrapPayload", () => {
     });
   });
 
-  test("skips a checkpoint envelope (no longer a recognized kind)", async () => {
+  test("skips a message with an unrecognized msgId format", async () => {
+    // An unknown msgId format (e.g. a leftover marker from a removed protocol
+    // feature) must be silently skipped rather than misclassified.
     const out = await unwrapAll([
-      rawJson("run_1:fence_a:ckpt:7", { checkpoint: true, headSeq: 7 }),
+      rawJson("run_1:fence_a:unknown:7", { some: "payload" }),
     ]);
     expect(out).toEqual([]);
   });
@@ -289,12 +291,11 @@ async function pipe3(
 }
 
 describe("assertContiguousAndDedup", () => {
-  test("passes in-order chunks, dedups a replay, drops checkpoints, passes done", async () => {
+  test("passes in-order chunks, dedups a replay, passes done", async () => {
     const out = await pipe3(
       [
         rawJson("run_1:fence_a:1", { p: { type: "start" } }),
         rawJson("run_1:fence_a:1", { p: { type: "start" } }), // replay → dedup
-        rawJson("run_1:fence_a:ckpt:1", { checkpoint: true, headSeq: 1 }), // dropped
         rawJson("run_1:fence_a:2", { p: { type: "finish" } }),
         rawJson("run_1:fence_a:done:2", { done: true, finalSeq: 2 }),
       ],

@@ -232,12 +232,6 @@ export interface AgentSandboxUiStreamInput {
   /** Deterministic id for a synthesized error message (`error-${runId}`) so
    *  projector-only persistence dedupes retries. */
   errorMessageId?: string;
-  /** Publishes debounced checkpoint markers so the projector materializes
-   *  parts + title incrementally. Omitted → no incremental projection. */
-  checkpointPublisher?: (
-    fenceToken: string,
-    headSeq: number,
-  ) => Promise<boolean>;
 }
 
 /**
@@ -280,7 +274,6 @@ export function buildAgentSandboxUiStream(
             streamBuffer: input.streamBuffer,
             hooks: input.hooks,
             title: input.title,
-            checkpointPublisher: input.checkpointPublisher,
           },
         );
         controller.close();
@@ -1536,14 +1529,6 @@ async function prepareRun(
             publishRawChunk: async () => false,
             publishDone: async () => false,
           },
-          checkpointPublisher: streamBuffer
-            ? (fenceToken, headSeq) =>
-                streamBuffer.publishCheckpoint(
-                  mem.thread.id,
-                  fenceToken,
-                  headSeq,
-                )
-            : undefined,
           chunks: dispatchHarnessChunks(),
           // Deterministic per turn (runId + fence) so a synthesized error
           // message dedupes across the live write + projector retries while

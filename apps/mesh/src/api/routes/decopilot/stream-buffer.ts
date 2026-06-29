@@ -68,22 +68,6 @@ export interface StreamBuffer {
   ): Promise<boolean>;
 
   /**
-   * Publish a non-terminal checkpoint sentinel for one run (fire-and-forget).
-   * Used by the incremental projector to flush already-published chunks to DB
-   * without waiting for the done fence. `headSeq` is the highest contiguous
-   * JetStream-acked seq at publish time.
-   *
-   * Returns false when JetStream is unavailable; the caller's debounce timer
-   * is NOT reset so the next chunk attempt will retry. Best-effort: a missed
-   * checkpoint is eventually covered by the terminal `done` projection.
-   */
-  publishCheckpoint(
-    taskId: string,
-    fenceToken: string,
-    headSeq: number,
-  ): Promise<boolean>;
-
-  /**
    * Subscribe to the per-task subject and stream chunks as a ReadableStream.
    * Returns null when JetStream is unavailable.
    *

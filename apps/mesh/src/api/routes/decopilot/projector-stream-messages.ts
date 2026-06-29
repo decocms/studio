@@ -1,23 +1,18 @@
 import {
   buildChunkMsgId,
-  buildCheckpointMsgId,
   buildDoneMsgId,
-  CHECKPOINT_DEBOUNCE_MS,
   DECOPILOT_STREAM_SUBJECT_PREFIX,
   streamSubject,
 } from "@decocms/sandbox/dispatch/relay-publisher";
 
 export const DECOPILOT_STREAM_NAME = "DECOPILOT_STREAMS";
 
-// The producer-side wire helpers (subject + msgId builders + checkpoint
-// debounce) live in the shared package — the single source of truth, also used
-// by the e2e fake-daemon relay. Re-exported here so the projector + ingest code
-// keep their one import site.
+// The producer-side wire helpers (subject + msgId builders) live in the shared
+// package — the single source of truth, also used by the e2e fake-daemon relay.
+// Re-exported here so the projector + ingest code keep their one import site.
 export {
   buildChunkMsgId,
-  buildCheckpointMsgId,
   buildDoneMsgId,
-  CHECKPOINT_DEBOUNCE_MS,
   DECOPILOT_STREAM_SUBJECT_PREFIX,
   streamSubject,
 };
@@ -35,12 +30,6 @@ export type ParsedRunStreamMsgId =
       runId: string;
       fenceToken: string;
       finalSeq: number;
-    }
-  | {
-      kind: "checkpoint";
-      runId: string;
-      fenceToken: string;
-      headSeq: number;
     };
 
 export interface DoneEnvelope {
@@ -81,10 +70,10 @@ export function parseRunStreamMsgId(
       : null;
   }
   if (third === "ckpt") {
-    const headSeq = positiveInt(fourth);
-    return parts.length === 4 && headSeq !== null
-      ? { kind: "checkpoint", runId, fenceToken, headSeq }
-      : null;
+    // Leftover checkpoint markers from in-flight runs must parse to null so
+    // they are not misclassified. Checkpoint publication was removed; this
+    // branch exists solely as a transition-safety guard.
+    return null;
   }
   const seq = positiveInt(third);
   if (seq === null) return null;
@@ -107,22 +96,5 @@ export function isDoneEnvelope(value: unknown): value is DoneEnvelope {
     record.done === true &&
     Number.isInteger(record.finalSeq) &&
     (record.finalSeq as number) > 0
-  );
-}
-
-export interface CheckpointEnvelope {
-  checkpoint: true;
-  headSeq: number;
-}
-
-export function isCheckpointEnvelope(
-  value: unknown,
-): value is CheckpointEnvelope {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
-  return (
-    record.checkpoint === true &&
-    Number.isInteger(record.headSeq) &&
-    (record.headSeq as number) > 0
   );
 }

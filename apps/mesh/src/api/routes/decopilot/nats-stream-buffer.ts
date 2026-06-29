@@ -7,11 +7,11 @@
  * pump is decoupled from any consumer, so an HTTP cancel never stalls the
  * producer or drops chunks.
  *
- * - Per-subject message limit (20K chunks per thread) prevents one thread
+ * - Per-subject message limit (500K msgs/subject) prevents one thread
  *   from starving others.
  * - Per-thread publish error tracking with sampled logging.
  * - `purge()` is called on terminal events from the run reactor to drop
- *   completed runs early; the 5-minute `max_age` is the upper bound.
+ *   completed runs early; the 24h `max_age` is the upper bound.
  */
 
 import {
@@ -30,7 +30,6 @@ import {
 } from "@nats-io/nats-core";
 import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
 import {
-  buildCheckpointMsgId,
   buildChunkMsgId,
   buildDoneMsgId,
   DECOPILOT_STREAM_NAME,
@@ -84,7 +83,6 @@ const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long de
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
 const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
 const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop streams
-export { CHECKPOINT_DEBOUNCE_MS } from "./projector-stream-messages";
 
 /**
  * Pure stream config for `DECOPILOT_STREAMS`. File-backed so the run-scratch
@@ -483,23 +481,6 @@ export class NatsStreamBuffer implements StreamBuffer {
       this.encoder.encode(JSON.stringify({ done: true, finalSeq })),
       { msgID: buildDoneMsgId({ runId: taskId, fenceToken, finalSeq }) },
     );
-    return true;
-  }
-
-  async publishCheckpoint(
-    taskId: string,
-    fenceToken: string,
-    headSeq: number,
-  ): Promise<boolean> {
-    const js = this.js;
-    if (!js) return false;
-    js.publish(
-      streamSubject(taskId),
-      this.encoder.encode(JSON.stringify({ checkpoint: true, headSeq })),
-      {
-        msgID: buildCheckpointMsgId({ runId: taskId, fenceToken, headSeq }),
-      },
-    ).catch(() => {});
     return true;
   }
 

@@ -1,16 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
-  buildCheckpointMsgId,
   buildChunkMsgId,
   buildDoneMsgId,
-  CHECKPOINT_DEBOUNCE_MS,
-  isCheckpointEnvelope,
   isDoneEnvelope,
   parseRunStreamMsgId,
   runIdFromSubject,
   streamSubject,
 } from "./projector-stream-messages";
-import { CHECKPOINT_DEBOUNCE_MS as REEXPORTED } from "./nats-stream-buffer";
 
 describe("projector stream message helpers", () => {
   test("builds and parses chunk msg ids", () => {
@@ -85,46 +81,11 @@ describe("projector stream message helpers", () => {
   });
 });
 
-// --- checkpoint build/parse ---
-test("buildCheckpointMsgId produces the expected format", () => {
-  expect(
-    buildCheckpointMsgId({ runId: "r1", fenceToken: "f1", headSeq: 42 }),
-  ).toBe("r1:f1:ckpt:42");
-});
-
-test("parseRunStreamMsgId round-trips a checkpoint msgId", () => {
-  const id = buildCheckpointMsgId({
-    runId: "r1",
-    fenceToken: "f1",
-    headSeq: 42,
-  });
-  expect(parseRunStreamMsgId(id)).toEqual({
-    kind: "checkpoint",
-    runId: "r1",
-    fenceToken: "f1",
-    headSeq: 42,
-  });
-});
-
-test("parseRunStreamMsgId returns null for malformed checkpoint (non-positive)", () => {
-  expect(parseRunStreamMsgId("r1:f1:ckpt:0")).toBeNull();
-  expect(parseRunStreamMsgId("r1:f1:ckpt:-1")).toBeNull();
-  expect(parseRunStreamMsgId("r1:f1:ckpt:notanumber")).toBeNull();
-});
-
-// --- isCheckpointEnvelope ---
-test("isCheckpointEnvelope accepts valid checkpoint envelope", () => {
-  expect(isCheckpointEnvelope({ checkpoint: true, headSeq: 5 })).toBe(true);
-});
-
-test("isCheckpointEnvelope rejects done envelope", () => {
-  expect(isCheckpointEnvelope({ done: true, finalSeq: 5 })).toBe(false);
-});
-
-test("isCheckpointEnvelope rejects partial objects", () => {
-  expect(isCheckpointEnvelope({ checkpoint: true })).toBe(false);
-  expect(isCheckpointEnvelope({ headSeq: 5 })).toBe(false);
-  expect(isCheckpointEnvelope(null)).toBe(false);
+// --- transition-safety: leftover checkpoint markers from in-flight runs ---
+test("parseRunStreamMsgId returns null for a leftover checkpoint marker (transition safety)", () => {
+  // A ckpt msgId from a run that was in-flight when checkpoint publication was
+  // removed must parse to null — not misclassify as chunk or done.
+  expect(parseRunStreamMsgId("run_1:fence_a:ckpt:7")).toBeNull();
 });
 
 // --- existing tests: chunk + done still parse ---
@@ -144,13 +105,5 @@ test("parseRunStreamMsgId still handles done msgId", () => {
     runId: "r1",
     fenceToken: "f1",
     finalSeq: 10,
-  });
-});
-
-describe("CHECKPOINT_DEBOUNCE_MS", () => {
-  test("is 3000ms and shared (single source of truth)", () => {
-    expect(CHECKPOINT_DEBOUNCE_MS).toBe(3000);
-    expect(REEXPORTED).toBe(3000);
-    expect(REEXPORTED).toBe(CHECKPOINT_DEBOUNCE_MS);
   });
 });

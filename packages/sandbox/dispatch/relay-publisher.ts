@@ -5,7 +5,7 @@
  * `decopilot.stream.<runId>`; the always-on durable projector consumes it.
  *
  * This is the single source of truth for the wire format (subject + msgId
- * scheme + checkpoint debounce + envelope shapes), shared by:
+ * scheme + envelope shapes), shared by:
  *   - the app's live producer (apps/mesh/src/link-daemon/direct-nats-publisher.ts,
  *     a thin adapter that injects OpenTelemetry metrics via `hooks`), and
  *   - the e2e "fake daemon" relay (packages/e2e/fixtures/relay-nats.ts).
@@ -19,10 +19,6 @@ import { relayLineSchema, type RelayLine } from "./relay";
 // --- Stream subject + msgId scheme -------------------------------------------
 
 export const DECOPILOT_STREAM_SUBJECT_PREFIX = "decopilot.stream";
-
-/** Debounce between incremental checkpoint markers, shared by BOTH producers
- *  (hosted ingest + desktop daemon relay). Single source of truth. */
-export const CHECKPOINT_DEBOUNCE_MS = 3000;
 
 function assertSafeSubjectToken(id: string): void {
   if (/[.*>\s]/.test(id)) throw new Error("Invalid NATS subject token");
@@ -53,14 +49,6 @@ export function buildDoneMsgId(input: {
   return `${input.runId}:${input.fenceToken}:done:${input.finalSeq}`;
 }
 
-export function buildCheckpointMsgId(input: {
-  runId: string;
-  fenceToken: string;
-  headSeq: number;
-}): string {
-  return `${input.runId}:${input.fenceToken}:ckpt:${input.headSeq}`;
-}
-
 // --- Publisher ----------------------------------------------------------------
 
 /** Observability injected by the app's live producer; omitted by tests. */
@@ -81,11 +69,6 @@ export interface DirectNatsPublisher {
     runId: string;
     fenceToken: string;
     finalSeq: number;
-  }): Promise<void>;
-  publishCheckpoint(input: {
-    runId: string;
-    fenceToken: string;
-    headSeq: number;
   }): Promise<void>;
 }
 
@@ -123,13 +106,6 @@ export function createDirectNatsPublisher(input: {
         streamSubject(runId),
         encoder.encode(JSON.stringify({ done: true, finalSeq })),
         { msgID: buildDoneMsgId({ runId, fenceToken, finalSeq }) },
-      );
-    },
-    async publishCheckpoint({ runId, fenceToken, headSeq }) {
-      await input.js.publish(
-        streamSubject(runId),
-        encoder.encode(JSON.stringify({ checkpoint: true, headSeq })),
-        { msgID: buildCheckpointMsgId({ runId, fenceToken, headSeq }) },
       );
     },
   };
@@ -198,23 +174,15 @@ export async function publishRelayBodyToNats(input: {
   runId: string;
   fenceToken: string;
   publisher: DirectNatsPublisher;
-  now?: () => number;
-  checkpointDebounceMs?: number;
   /**
-   * Reports the highest CONTENT seq durably published so far (each `publishLine`
-   * awaits its JetStream PubAck before `finalSeq` advances, so everything up to
-   * this value is durable). The relay uses it to drop the confirmed prefix from
-   * the outbox. Throttled to the checkpoint cadence (+ a final report) so it
-   * does not trigger a truncation per line.
+   * Reports the highest CONTENT seq durably published (called once after `done`
+   * is published). The relay uses it to drop the confirmed prefix from the outbox.
    */
   onPublished?: (seq: number) => void;
 }): Promise<PublishRelayBodyResult> {
-  const now = input.now ?? Date.now;
-  const debounceMs = input.checkpointDebounceMs ?? CHECKPOINT_DEBOUNCE_MS;
   let maxWireSeq = 0;
   let finalSeq = 0; // highest CONTENT seq (chunks + converted error), for done
   let reportedSeq = 0;
-  let lastCheckpointAt = now(); // first checkpoint fires one debounce window in
   const reportPublished = (): void => {
     if (input.onPublished && finalSeq > reportedSeq) {
       reportedSeq = finalSeq;
@@ -233,15 +201,6 @@ export async function publishRelayBodyToNats(input: {
     });
     if (result === "published") {
       finalSeq = Math.max(finalSeq, line.seq);
-      if (now() - lastCheckpointAt >= debounceMs) {
-        lastCheckpointAt = now();
-        await input.publisher.publishCheckpoint({
-          runId: input.runId,
-          fenceToken: input.fenceToken,
-          headSeq: finalSeq,
-        });
-        reportPublished();
-      }
     }
   }
   if (finalSeq > 0) {
