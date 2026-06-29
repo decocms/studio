@@ -31,8 +31,29 @@ API keys let external systems connect to deco Studio without needing a user to l
 API keys are managed through the management MCP tools or the API. When creating an API key, you specify:
 
 1. A descriptive name (like "My Automation Script")
-2. Direct permissions in the format `{ resource: [actions...] }` — where the resource is either `"self"` for management tools or `"conn_<UUID>"` for connection-specific access
+2. An explicit `permissions` object — **required** (see format below)
 3. **Copy the key immediately** — it is only shown once
+
+<Callout type="warning">
+  The `permissions` field is **required**. Creating a key without it will fail with a `400` error.
+</Callout>
+
+### Permission format
+
+Permissions follow the structure `{ resource: [actions...] }`:
+
+| Value | Description |
+|-------|-------------|
+| `{ "self": ["*"] }` | Full access to all management tools |
+| `{ "conn_<UUID>": ["read"] }` | Read-only access to one specific connection |
+| `{ "*": ["*"] }` | Wildcard — full access to everything |
+| `{ "self": ["LIST", "GET"] }` | Only the `LIST` and `GET` actions on management tools |
+
+The resource is either `"self"` for management tools, `"conn_<UUID>"` for a specific connection, or `"*"` to match all resources.
+
+<Callout type="warning">
+  An API key is authorized **strictly by its `permissions` allowlist**. The owner's role does not widen a key's access — a key owned by an admin but scoped to `AUTOMATION_LIST` cannot call any other tool, even tools the admin can use. A key is exactly its allowlist, nothing more.
+</Callout>
 
 <Callout type="error">
   You can only see the API key once. Store it somewhere safe like a password manager.
@@ -64,7 +85,7 @@ Replace `your-org-slug` with your organization's slug and `your-agent-id` with t
   Treat API keys like passwords. Never share them or commit them to code repositories.
 </Callout>
 
-**Give minimum permissions**: Only grant what's actually needed.
+**Give minimum permissions**: Only grant what's actually needed. Keys are capped to exactly their allowlist — no implicit elevation from the key owner's role.
 
 **Create separate keys**: Use one key per tool or script—easier to manage if something goes wrong.
 
@@ -77,4 +98,3 @@ Replace `your-org-slug` with your organization's slug and `your-agent-id` with t
 <Callout type="tip">
   Combine API keys with [Agents](/en/studio/agents) to control exactly which tools your scripts can access.
 </Callout>
-
