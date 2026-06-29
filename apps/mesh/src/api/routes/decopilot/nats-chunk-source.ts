@@ -1,123 +1,25 @@
 // apps/mesh/src/api/routes/decopilot/nats-chunk-source.ts
 import type { UIMessageChunk } from "ai";
 import { sleep } from "@decocms/std";
-import { parseRunStreamMsgId } from "./projector-stream-messages";
+import {
+  concat,
+  decodeStream,
+  FRAG_INDEX_HEADER,
+  FRAG_TOTAL_HEADER,
+  reassembleFragments,
+  type DecodedEvent,
+  type RawMsg,
+} from "@decocms/harness/run-stream-codec";
 
-export const FRAG_INDEX_HEADER = "Dp-Frag-Idx";
-export const FRAG_TOTAL_HEADER = "Dp-Frag-Total";
+// Re-export decode-side types and helpers so existing importers continue to
+// work without change. After Task 2 each symbol has exactly one definition
+// (in the codec) and these are the forwarding aliases.
+export type { RawMsg, DecodedEvent };
+export { concat, reassembleFragments, FRAG_INDEX_HEADER, FRAG_TOTAL_HEADER };
+/** Back-compat alias: unwrapPayload() === decodeStream(). */
+export { decodeStream as unwrapPayload };
+
 export const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
-
-export interface RawMsg {
-  subject: string;
-  data: Uint8Array;
-  headers?: { get(name: string): string | undefined };
-}
-
-export type DecodedEvent =
-  | {
-      kind: "chunk";
-      seq: number | null;
-      runId: string | null;
-      fenceToken: string | null;
-      chunk: UIMessageChunk;
-    }
-  | {
-      kind: "done";
-      runId: string | null;
-      fenceToken: string | null;
-      envelopeFinalSeq: number | null;
-      msgIdFinalSeq: number | null;
-    };
-
-export function concat(parts: Uint8Array[]): Uint8Array {
-  const size = parts.reduce((sum, p) => sum + (p?.length ?? 0), 0);
-  const out = new Uint8Array(size);
-  let offset = 0;
-  for (const part of parts) {
-    if (!part) continue;
-    out.set(part, offset);
-    offset += part.length;
-  }
-  return out;
-}
-
-export function reassembleFragments(): TransformStream<RawMsg, RawMsg> {
-  let frag: { total: number; received: number; parts: Uint8Array[] } | null =
-    null;
-  return new TransformStream<RawMsg, RawMsg>({
-    transform(msg, controller) {
-      const totalStr = msg.headers?.get(FRAG_TOTAL_HEADER);
-      if (!totalStr) {
-        controller.enqueue(msg); // not a fragment
-        return;
-      }
-      const total = Number(totalStr);
-      const index = Number(msg.headers?.get(FRAG_INDEX_HEADER) ?? "0");
-      if (index === 0) {
-        frag = { total, received: 0, parts: new Array(total) };
-      } else if (!frag || frag.total !== total) {
-        return; // stray fragment — no matching in-flight set
-      }
-      if (!frag.parts[index]) frag.received++;
-      frag.parts[index] = msg.data;
-      if (frag.received < frag.total) return; // need more
-      const merged = concat(frag.parts);
-      frag = null;
-      controller.enqueue({
-        subject: msg.subject,
-        data: merged,
-        headers: msg.headers,
-      });
-    },
-  });
-}
-
-function isPositiveInt(v: unknown): v is number {
-  return typeof v === "number" && Number.isInteger(v) && v > 0;
-}
-
-export function unwrapPayload(): TransformStream<RawMsg, DecodedEvent> {
-  const decoder = new TextDecoder();
-  return new TransformStream<RawMsg, DecodedEvent>({
-    transform(msg, controller) {
-      const parsed = parseRunStreamMsgId(
-        msg.headers?.get("Nats-Msg-Id") || undefined,
-      );
-      let payload: unknown;
-      try {
-        payload = JSON.parse(decoder.decode(msg.data));
-      } catch {
-        return; // skip malformed
-      }
-      if (!payload || typeof payload !== "object") return;
-      const record = payload as Record<string, unknown>;
-
-      if (record.done === true) {
-        controller.enqueue({
-          kind: "done",
-          runId: parsed?.kind === "done" ? parsed.runId : null,
-          fenceToken: parsed?.kind === "done" ? parsed.fenceToken : null,
-          envelopeFinalSeq: isPositiveInt(record.finalSeq)
-            ? record.finalSeq
-            : null,
-          msgIdFinalSeq: parsed?.kind === "done" ? parsed.finalSeq : null,
-        });
-        return;
-      }
-      if ("p" in record) {
-        controller.enqueue({
-          kind: "chunk",
-          seq: parsed?.kind === "chunk" ? parsed.seq : null,
-          runId: parsed?.kind === "chunk" ? parsed.runId : null,
-          fenceToken: parsed?.kind === "chunk" ? parsed.fenceToken : null,
-          chunk: record.p as UIMessageChunk,
-        });
-        return;
-      }
-      // anything else (foreign shape) → skip
-    },
-  });
-}
 
 export function fenceFilter(
   runId: string,

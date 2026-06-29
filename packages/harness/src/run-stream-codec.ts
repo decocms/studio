@@ -206,3 +206,129 @@ export function serializeUnfencedDone(runId: string): WireMessage {
     data: encoder.encode(JSON.stringify({ done: true })),
   };
 }
+
+// --- Decode ------------------------------------------------------------------
+
+export interface RawMsg {
+  subject: string;
+  data: Uint8Array;
+  headers?: { get(name: string): string | undefined };
+}
+
+export type DecodedEvent =
+  | {
+      kind: "chunk";
+      seq: number | null;
+      runId: string | null;
+      fenceToken: string | null;
+      chunk: UIMessageChunk;
+    }
+  | {
+      kind: "done";
+      runId: string | null;
+      fenceToken: string | null;
+      envelopeFinalSeq: number | null;
+      msgIdFinalSeq: number | null;
+    };
+
+export function concat(parts: Uint8Array[]): Uint8Array {
+  const size = parts.reduce((sum, p) => sum + (p?.length ?? 0), 0);
+  const out = new Uint8Array(size);
+  let offset = 0;
+  for (const part of parts) {
+    if (!part) continue;
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
+}
+
+export function reassembleFragments(): TransformStream<RawMsg, RawMsg> {
+  let frag: { total: number; received: number; parts: Uint8Array[] } | null =
+    null;
+  return new TransformStream<RawMsg, RawMsg>({
+    transform(msg, controller) {
+      const totalStr = msg.headers?.get(FRAG_TOTAL_HEADER);
+      if (!totalStr) {
+        controller.enqueue(msg); // not a fragment
+        return;
+      }
+      const total = Number(totalStr);
+      const index = Number(msg.headers?.get(FRAG_INDEX_HEADER) ?? "0");
+      if (index === 0) {
+        frag = { total, received: 0, parts: new Array(total) };
+      } else if (!frag || frag.total !== total) {
+        return; // stray fragment — no matching in-flight set
+      }
+      if (!frag.parts[index]) frag.received++;
+      frag.parts[index] = msg.data;
+      if (frag.received < frag.total) return; // need more
+      const merged = concat(frag.parts);
+      frag = null;
+      controller.enqueue({
+        subject: msg.subject,
+        data: merged,
+        headers: msg.headers,
+      });
+    },
+  });
+}
+
+function isPositiveInt(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v > 0;
+}
+
+const decoder = new TextDecoder();
+
+/**
+ * Decode a single raw NATS message into a DecodedEvent, or null if it should
+ * be skipped (malformed JSON, foreign payload shape, etc.).
+ * Behavior is byte-identical to the unwrapPayload() transform's per-message logic.
+ */
+export function decodeMessage(msg: RawMsg): DecodedEvent | null {
+  const parsed = parseRunStreamMsgId(
+    msg.headers?.get("Nats-Msg-Id") || undefined,
+  );
+  let payload: unknown;
+  try {
+    payload = JSON.parse(decoder.decode(msg.data));
+  } catch {
+    return null; // skip malformed
+  }
+  if (!payload || typeof payload !== "object") return null;
+  const record = payload as Record<string, unknown>;
+
+  if (record.done === true) {
+    return {
+      kind: "done",
+      runId: parsed?.kind === "done" ? parsed.runId : null,
+      fenceToken: parsed?.kind === "done" ? parsed.fenceToken : null,
+      envelopeFinalSeq: isPositiveInt(record.finalSeq) ? record.finalSeq : null,
+      msgIdFinalSeq: parsed?.kind === "done" ? parsed.finalSeq : null,
+    };
+  }
+  if ("p" in record) {
+    return {
+      kind: "chunk",
+      seq: parsed?.kind === "chunk" ? parsed.seq : null,
+      runId: parsed?.kind === "chunk" ? parsed.runId : null,
+      fenceToken: parsed?.kind === "chunk" ? parsed.fenceToken : null,
+      chunk: record.p as UIMessageChunk,
+    };
+  }
+  // anything else (foreign shape) → null
+  return null;
+}
+
+/**
+ * Transform stream that decodes raw NATS messages into DecodedEvents,
+ * dropping nulls (malformed / foreign messages).
+ */
+export function decodeStream(): TransformStream<RawMsg, DecodedEvent> {
+  return new TransformStream<RawMsg, DecodedEvent>({
+    transform(msg, controller) {
+      const ev = decodeMessage(msg);
+      if (ev) controller.enqueue(ev);
+    },
+  });
+}
