@@ -193,8 +193,19 @@ export function useMainPanelTabs(ctx: {
   // server is up (shared query keys with Preview / Content). Requires
   // SandboxEventsProvider (desktop tabs bar lives inside VmEventsBridge).
   const vmEvents = useSandboxEvents();
-  const { previewUrl } = useSandboxLifecycle();
+  const { vmEntry, previewUrl } = useSandboxLifecycle();
   const devServerReady = vmEvents.lifecycle.phase === "running";
+
+  // A user-desktop sandbox serves its dev server on a loopback previewUrl
+  // (`http://<handle>.localhost`), which the cloud proxy cannot reach — so the
+  // `dev_<id>` route resolves to a connection the pod can't fetch. The browser
+  // IS co-located with the daemon, so point the dev MCP client straight at the
+  // previewUrl (CORS on the deco dev server is `*`). For agent-sandbox the
+  // previewUrl is public, so leave mcpUrl undefined and keep the cloud route.
+  const devMcpUrl =
+    vmEntry?.sandboxProviderKind === "user-desktop" && previewUrl
+      ? `${previewUrl.replace(/\/+$/, "")}/api/mcp`
+      : undefined;
 
   // Auto-detect the dev MCP app's views straight from its sandbox dev server:
   // every tool that declares a `ui://` resource is a view, rendered against the
@@ -206,6 +217,7 @@ export function useMainPanelTabs(ctx: {
     connectionId: devConnId ?? undefined,
     orgId: org.id,
     orgSlug: org.slug,
+    mcpUrl: devMcpUrl,
   });
   const { data: devToolsResult } = useMCPToolsListQuery({
     client: devClient as NonNullable<typeof devClient>,

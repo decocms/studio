@@ -8,7 +8,9 @@ import {
   useMCPClient,
   useMCPToolsList,
   useMCPToolCall,
+  parseDevConnectionId,
 } from "@decocms/mesh-sdk";
+import { useSandboxLifecycle } from "@/web/components/sandbox/hooks/sandbox-lifecycle-context";
 import type {
   McpUiDisplayMode,
   McpUiMessageRequest,
@@ -111,10 +113,23 @@ export function AppViewContent({
   args?: Record<string, unknown>;
 }) {
   const { org } = useProjectContext();
+  const lifecycle = useSandboxLifecycle();
+  // A dev view (`dev_<id>`) against a user-desktop sandbox renders against the
+  // loopback dev server, which the cloud proxy can't reach. The browser is
+  // co-located with the daemon, so connect directly to the previewUrl (deco dev
+  // server CORS is `*`). Gated on a dev connection id, so regular connection UIs
+  // and agent-sandbox dev views (public previewUrl) keep the cloud route.
+  const devMcpUrl =
+    parseDevConnectionId(connectionId) &&
+    lifecycle.vmEntry?.sandboxProviderKind === "user-desktop" &&
+    lifecycle.previewUrl
+      ? `${lifecycle.previewUrl.replace(/\/+$/, "")}/api/mcp`
+      : undefined;
   const client = useMCPClient({
     connectionId,
     orgId: org.id,
     orgSlug: org.slug,
+    mcpUrl: devMcpUrl,
   });
   const { data: toolsResult } = useMCPToolsList({ client });
 
