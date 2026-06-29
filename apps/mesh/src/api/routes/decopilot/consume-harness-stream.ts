@@ -81,15 +81,14 @@ export interface ConsumeHarnessStreamOptions {
    */
   errorMessageId?: string;
   /**
-   * Id generator for the reassembled assistant message(s). The projector passes
-   * a DETERMINISTIC generator (`${runId}:${fenceToken}:msg:${n}`, see
-   * message-ids.ts) so every re-fold of the same turn — terminal projection,
-   * checkpoint passes, and reconnect-replay redelivery — reassembles the SAME
-   * message id and therefore the SAME part row ids
-   * (`${runId}:${messageId}:${seq}`), which `ON CONFLICT (id) DO NOTHING`
-   * dedupes. The fence token namespaces each turn so distinct turns of the same
-   * thread (runId == threadId is stable) never collide. Omitted on the live
-   * path → the SDK's default random id (no persistence-idempotency there).
+   * Optional override id scheme for the reassembled message(s). Only the
+   * `background-tool-workflow` caller passes this — it imposes its own
+   * `${jobId}:msg:${n}` ids. The decopilot projection paths DO NOT pass it: they
+   * keep the harness `start.messageId` verbatim (every harness stamps one via the
+   * shared generateMessageId; createUIMessageStream preserves it), and the
+   * continuation merge is derived from `originalMessages` instead (the first
+   * folded message adopts a trailing assistant message's id). See the
+   * id-resolution block below and message-id-unification-design.md.
    */
   generateMessageId?: () => string;
 }
@@ -201,25 +200,47 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
       })
     : null;
 
-  // Map each SDK-assigned (random, per-fold) message id to a DETERMINISTIC id in
-  // fold order, so re-projections of the same run reassemble identical message +
-  // part ids → ON CONFLICT (id) DO NOTHING dedupes on reconnect-replay. The SDK
-  // doesn't expose a hook to set the reassembled id, so we remap it just before
-  // persistence. No-op on the live path (no generator).
+  // The message id authority is the harness's `start.messageId`. Every harness
+  // stamps a stable `msg_…` id into each message's `start` chunk (shared
+  // generateMessageId), and createUIMessageStream preserves it through the fold,
+  // so the reassembled message.id IS that harness id — stable across every
+  // re-fold because it lives in the replayed chunk log (`${runId}:${messageId}:
+  // ${seq}` row ids then dedupe on ON CONFLICT). We keep it verbatim, with two
+  // exceptions:
+  //
+  //   - `generateMessageId` set: a caller (background-tool-workflow) imposes its
+  //     OWN id scheme; remap each SDK message id through it in fold order, memoized
+  //     so repeated onStepFinish passes for the same message stay stable.
+  //   - CONTINUATION merge (decopilot approval / tool-output rounds): when no
+  //     generateMessageId is passed and `originalMessages` ends with an assistant
+  //     message (the re-POSTed proposal), the FIRST folded message adopts that
+  //     trailing id so the continuation merges onto the proposal row instead of
+  //     creating a second one. Subsequent messages keep their own harness ids.
+  const trailingOriginal = options.originalMessages?.at(-1);
+  const continuationMessageId =
+    !options.generateMessageId && trailingOriginal?.role === "assistant"
+      ? trailingOriginal.id
+      : undefined;
   const messageIdRemap = new Map<string, string>();
-  const stableMessageId = (sdkId: string): string => {
-    if (!options.generateMessageId) return sdkId;
-    let id = messageIdRemap.get(sdkId);
-    if (id === undefined) {
-      id = options.generateMessageId();
-      messageIdRemap.set(sdkId, id);
+  let firstSdkId: string | null = null;
+  const resolveMessageId = (sdkId: string): string => {
+    if (options.generateMessageId) {
+      let id = messageIdRemap.get(sdkId);
+      if (id === undefined) {
+        id = options.generateMessageId();
+        messageIdRemap.set(sdkId, id);
+      }
+      return id;
     }
-    return id;
+    if (firstSdkId === null) firstSdkId = sdkId;
+    return continuationMessageId && sdkId === firstSdkId
+      ? continuationMessageId
+      : sdkId;
   };
-  const withStableId = <M extends { id: string }>(message: M): M =>
-    options.generateMessageId
-      ? { ...message, id: stableMessageId(message.id) }
-      : message;
+  const withStableId = <M extends { id: string }>(message: M): M => ({
+    ...message,
+    id: resolveMessageId(message.id),
+  });
 
   const uiStream = createUIMessageStream({
     originalMessages: options.originalMessages,

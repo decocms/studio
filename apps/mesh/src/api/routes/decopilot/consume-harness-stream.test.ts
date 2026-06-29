@@ -398,6 +398,101 @@ describe("consumeHarnessStream", () => {
     expect(emitted).toEqual(["raw provider failure"]);
   });
 
+  function captureFinalIds(): {
+    ids: string[];
+    persistence: {
+      emitStepParts: (m: { id: string }) => Promise<void>;
+      emitFinal: (m: { id: string }) => Promise<void>;
+      emitError: () => Promise<void>;
+    };
+  } {
+    const ids: string[] = [];
+    return {
+      ids,
+      persistence: {
+        emitStepParts: async () => {},
+        emitFinal: async (m) => {
+          ids.push(m.id);
+        },
+        emitError: async () => {},
+      },
+    };
+  }
+
+  const TITLE = {
+    currentThreadTitle: "New chat",
+    threadId: "thread_1",
+    persistTitle: async () => {},
+  };
+
+  function harnessChunks(messageId: string): AsyncIterable<UIMessageChunk> {
+    return (async function* () {
+      yield { type: "start", messageId } as UIMessageChunk;
+      yield { type: "text-start", id: "t" } as UIMessageChunk;
+      yield { type: "text-delta", id: "t", delta: "hi" } as UIMessageChunk;
+      yield { type: "text-end", id: "t" } as UIMessageChunk;
+      yield { type: "finish", finishReason: "stop" } as UIMessageChunk;
+    })();
+  }
+
+  test("preserves the harness start.messageId when no generateMessageId", async () => {
+    const { ids, persistence } = captureFinalIds();
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: harnessChunks("msg_harness_1"),
+      title: TITLE,
+      persistence,
+    });
+    await drain(uiStream);
+    await whenComplete;
+    expect(ids).toEqual(["msg_harness_1"]);
+  });
+
+  test("continuation: first message adopts the trailing assistant id", async () => {
+    const { ids, persistence } = captureFinalIds();
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: harnessChunks("msg_continuation_2"),
+      originalMessages: [
+        { id: "msg_user_0", role: "user", parts: [] },
+        { id: "msg_proposal_1", role: "assistant", parts: [] },
+      ] as never,
+      title: TITLE,
+      persistence,
+    });
+    await drain(uiStream);
+    await whenComplete;
+    expect(ids).toEqual(["msg_proposal_1"]);
+    expect(ids).not.toContain("msg_continuation_2");
+  });
+
+  test("fresh turn (trailing user message): keeps the harness id", async () => {
+    const { ids, persistence } = captureFinalIds();
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: harnessChunks("msg_harness_3"),
+      originalMessages: [
+        { id: "msg_user_0", role: "user", parts: [] },
+      ] as never,
+      title: TITLE,
+      persistence,
+    });
+    await drain(uiStream);
+    await whenComplete;
+    expect(ids).toEqual(["msg_harness_3"]);
+  });
+
+  test("generateMessageId still remaps deterministically (background-tool path)", async () => {
+    const { ids, persistence } = captureFinalIds();
+    let n = 0;
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: harnessChunks("msg_harness_ignored"),
+      title: TITLE,
+      persistence,
+      generateMessageId: () => `job_1:msg:${n++}`,
+    });
+    await drain(uiStream);
+    await whenComplete;
+    expect(ids).toEqual(["job_1:msg:0"]);
+  });
+
   test("uses the provided errorMessageId so the error message is stable across retries", async () => {
     const seenIds: string[] = [];
     // Two independent consumptions of the same erroring run (e.g. a projector
