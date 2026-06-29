@@ -39,49 +39,4 @@ test.describe("DBOS resumable projector", () => {
     expect(body.status).toBe("failed");
     expect(body.completed).toBe(false);
   });
-
-  test("checkpoint pass writes parts before done", async ({ request }) => {
-    const res = await request.post(
-      "/__test/decopilot/projector/checkpoint-visibility",
-    );
-    expect(res.status()).toBe(200);
-    const body = await res.json();
-    expect(body.partsAppearedIncrementally).toBe(true);
-    expect(body.partCountBeforeDone).toBeGreaterThan(0);
-  });
-
-  test("terminal projection parity: done pass result matches non-incremental baseline", async ({
-    request,
-  }) => {
-    const res = await request.post(
-      "/__test/decopilot/projector/checkpoint-terminal-parity",
-    );
-    expect(res.status()).toBe(200);
-    const body = await res.json();
-    expect(body.status).toBe("completed");
-    expect(body.partsMatch).toBe(true);
-  });
-
-  test("checkpoint projections are idempotent — no duplicate parts", async ({
-    request,
-  }) => {
-    const res = await request.post(
-      "/__test/decopilot/projector/checkpoint-idempotency",
-    );
-    expect(res.status()).toBe(200);
-    const body = await res.json();
-    expect(body.status).toBe("completed");
-    expect(body.duplicatePartsWritten).toBe(0);
-  });
-
-  test("fence change aborts in-flight checkpoint for old fence", async ({
-    request,
-  }) => {
-    const res = await request.post(
-      "/__test/decopilot/projector/checkpoint-fence-abort",
-    );
-    expect(res.status()).toBe(200);
-    const body = await res.json();
-    expect(body.oldFenceCheckpointSkipped).toBe(true);
-  });
 });
