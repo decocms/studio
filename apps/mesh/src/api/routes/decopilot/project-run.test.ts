@@ -11,9 +11,9 @@ function okPersistence(): HarnessStreamPersistence {
   };
 }
 
-function helloChunks(): UIMessageChunk[] {
+function helloChunks(messageId?: string): UIMessageChunk[] {
   return [
-    { type: "start" } as UIMessageChunk,
+    { type: "start", ...(messageId ? { messageId } : {}) } as UIMessageChunk,
     { type: "text-start", id: "t" } as UIMessageChunk,
     { type: "text-delta", id: "t", delta: "hi" } as UIMessageChunk,
     { type: "text-end", id: "t" } as UIMessageChunk,
@@ -128,12 +128,12 @@ describe("projectRun", () => {
   });
 
   test("two turns of one thread (same runId, different fence) persist DISJOINT message ids", async () => {
-    // Regression for the cross-turn collision that dropped a fully-generated
-    // 2nd-turn response ("No response was generated"). runId == threadId is
-    // STABLE across turns; only the per-turn fence differs. Message ids now come
-    // from the harness (via the replayed start chunk's messageId), so each run
-    // naturally produces distinct ids — verified here so the ON CONFLICT DO
-    // NOTHING dedupe never drops turn 2's rows against turn 1's.
+    // Regression #4044: cross-turn collision dropped a fully-generated 2nd-turn
+    // response ("No response was generated"). runId == threadId is STABLE across
+    // turns; only the per-turn harness start.messageId differs. The fold passes
+    // that harness-stamped id verbatim to every persisted message for that turn,
+    // so turns carrying distinct harness ids produce distinct persisted ids →
+    // ON CONFLICT DO NOTHING never drops turn 2's rows against turn 1's.
     const capture = () => {
       const ids: string[] = [];
       const persistence: HarnessStreamPersistence = {
@@ -152,7 +152,7 @@ describe("projectRun", () => {
     await projectRun({
       runId: "thread_1",
       fenceToken: "fence_a",
-      chunks: helloChunks(),
+      chunks: helloChunks("m_a"),
       persistence: turn1.persistence,
       onDlq: async () => {},
       backoffMs: () => 0,
@@ -162,16 +162,23 @@ describe("projectRun", () => {
     await projectRun({
       runId: "thread_1",
       fenceToken: "fence_b",
-      chunks: helloChunks(),
+      chunks: helloChunks("m_b"),
       persistence: turn2.persistence,
       onDlq: async () => {},
       backoffMs: () => 0,
     });
 
+    // Every persisted id for turn 1 must equal the harness-stamped id "m_a"
+    // (verbatim flow-through: start.messageId → fold → persistence).
     expect(turn1.ids.length).toBeGreaterThan(0);
+    expect(turn1.ids.every((id) => id === "m_a")).toBe(true);
+
+    // Every persisted id for turn 2 must equal the harness-stamped id "m_b".
     expect(turn2.ids.length).toBeGreaterThan(0);
-    // No message id appears in BOTH turns → ON CONFLICT DO NOTHING can never
-    // drop turn 2's rows against turn 1's.
+    expect(turn2.ids.every((id) => id === "m_b")).toBe(true);
+
+    // Disjointness follows from distinct harness ids, not from RNG:
+    // no id from turn 1 appears in turn 2 → ON CONFLICT DO NOTHING is safe.
     expect(turn1.ids.some((id) => turn2.ids.includes(id))).toBe(false);
   });
 
