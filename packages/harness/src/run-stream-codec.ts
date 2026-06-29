@@ -1,12 +1,11 @@
 /**
- * Codec for the UIMessageChunk ⇄ JetStream wire format (serialize side).
+ * Codec for the UIMessageChunk ⇄ JetStream wire format.
  *
  * This is the single source of truth for:
  *   - Wire message format (envelopes and subject scheme)
  *   - Message ID scheme (chunk, fragment, done)
- *   - Serialization: chunk → WireMessage[]
- *
- * The decode side (parse path) will be consolidated here in Task 2.
+ *   - Serialize: chunk → WireMessage[] (serializeChunk/serializeDone)
+ *   - Decode: RawMsg → DecodedEvent (decodeMessage/decodeStream/reassembleFragments)
  *
  * Wire format (frozen byte-for-byte):
  *   chunk:         {"p":<UIMessageChunk>}
