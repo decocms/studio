@@ -4,55 +4,38 @@
  * seq-numbered RelayLine straight to the JetStream subject
  * `decopilot.stream.<runId>`; the always-on durable projector consumes it.
  *
- * This is the single source of truth for the wire format (subject + msgId
- * scheme + envelope shapes), shared by:
+ * Wire format (subject + msgId scheme + envelope shapes) is now owned by
+ * `@decocms/harness/run-stream-codec` — the single source of truth shared by
  *   - the app's live producer (apps/mesh/src/link-daemon/direct-nats-publisher.ts,
  *     a thin adapter that injects OpenTelemetry metrics via `hooks`), and
  *   - the e2e "fake daemon" relay (packages/e2e/fixtures/relay-nats.ts).
+ *
+ * This file re-exports the helpers so all existing importers compile unchanged.
  *
  * It is metrics-agnostic on purpose — observability is injected via optional
  * `hooks` so a test (no OTel meter wired) can drive it directly.
  */
 import type { JetStreamClient } from "@nats-io/jetstream";
 import { relayLineSchema, type RelayLine } from "./relay";
+import {
+  streamSubject,
+  buildChunkMsgId,
+  buildDoneMsgId,
+} from "@decocms/harness/run-stream-codec";
 
-// --- Stream subject + msgId scheme -------------------------------------------
+// --- Stream subject + msgId scheme (re-exported from codec) ------------------
 
-export const DECOPILOT_STREAM_SUBJECT_PREFIX = "decopilot.stream";
+export {
+  streamSubject,
+  buildChunkMsgId,
+  buildDoneMsgId,
+  DECOPILOT_STREAM_SUBJECT_PREFIX,
+} from "@decocms/harness/run-stream-codec";
 
 /** Debounce between incremental outbox-truncation reports. Rolling truncation
  *  keeps the durable outbox from accumulating the entire run in memory; without
  *  mid-stream reports the cap becomes a hard per-run limit instead of a backstop. */
 const OUTBOX_REPORT_DEBOUNCE_MS = 3000;
-
-function assertSafeSubjectToken(id: string): void {
-  if (/[.*>\s]/.test(id)) throw new Error("Invalid NATS subject token");
-}
-
-export function streamSubject(runId: string): string {
-  assertSafeSubjectToken(runId);
-  return `${DECOPILOT_STREAM_SUBJECT_PREFIX}.${runId}`;
-}
-
-export function buildChunkMsgId(input: {
-  runId: string;
-  fenceToken: string;
-  seq: number;
-  fragmentIndex?: number;
-}): string {
-  const base = `${input.runId}:${input.fenceToken}:${input.seq}`;
-  return input.fragmentIndex === undefined
-    ? base
-    : `${base}:frag:${input.fragmentIndex}`;
-}
-
-export function buildDoneMsgId(input: {
-  runId: string;
-  fenceToken: string;
-  finalSeq: number;
-}): string {
-  return `${input.runId}:${input.fenceToken}:done:${input.finalSeq}`;
-}
 
 // --- Publisher ----------------------------------------------------------------
 
