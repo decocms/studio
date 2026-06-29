@@ -83,7 +83,7 @@
  *   (gated on E2E_ANTHROPIC_KEY) plus the documented SKIPPED future cases.
  *
  * - `decopilot-projector-dbos.spec.ts` covers DBOS-level recovery cases (crash
- *   before ack, crash mid-projection, checkpoint idempotency) behind the
+ *   before ack, crash mid-projection, retention loss) behind the
  *   `DECOPILOT_PROJECTOR_DBOS_E2E=1` gate. Cases 4-5 here would follow the same
  *   pattern once the multi-pod test controls exist.
  */

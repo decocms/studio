@@ -47,11 +47,11 @@ export interface ProjectChunksOptions {
    */
   title?: ProjectTitleOptions;
   /**
-   * Prior completed messages to seed createUIMessageStream. Supplied by BOTH
-   * persisting projector folds — terminal and checkpoint — so a continuation
-   * merges onto a trailing assistant proposal and the fold resumes from the
-   * projection cursor (see consumeHarnessStream). Omitted / empty array → fresh
-   * fold from seq 1 (live ingest / non-persisting callers).
+   * Prior completed messages to seed createUIMessageStream. Supplied by the
+   * persisting projector fold so a continuation merges onto a trailing assistant
+   * proposal and the fold resumes from the projection cursor (see
+   * consumeHarnessStream). Omitted / empty array → fresh fold from seq 1 (live
+   * ingest / non-persisting callers).
    */
   originalMessages?: UIMessage[];
 }

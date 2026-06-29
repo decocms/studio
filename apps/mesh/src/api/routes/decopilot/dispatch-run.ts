@@ -1053,26 +1053,6 @@ async function prepareRun(
       ? createProviderFromSecret(thinkingSource)
       : null;
 
-    // Diagnostic (resume only): record whether the model secret resolved and
-    // whether the optional model slots are present. Paired with the log in
-    // routes.ts:/attach orphan-resume; together they pinpoint whether tool
-    // dropout on resume is a persistence-side or model-resolution issue.
-    // Drop once the resume-tool-dropout issue is root-caused.
-    if (input.isResume) {
-      console.log("[decopilot:stream] resume — resolved source state", {
-        taskId: input.taskId,
-        harnessId,
-        thinkingSourceResolved: !!thinkingSource,
-        imageSourceResolved: !!imageSource,
-        webSearchSourceResolved: !!webSearchSource,
-        deepResearchSourceResolved: !!deepResearchSource,
-        thinkingModelId: models.thinking.id,
-        hasImage: !!models.image,
-        hasWebSearch: !!models.webSearch,
-        hasDeepResearch: !!models.deepResearch,
-      });
-    }
-
     taskId = mem.thread.id;
     ctx.metadata.threadId = mem.thread.id;
     rootSpan.setAttribute("decopilot.thread.id", mem.thread.id);
