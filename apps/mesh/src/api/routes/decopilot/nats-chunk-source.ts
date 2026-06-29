@@ -246,7 +246,7 @@ function iteratorFor<T>(
  * pull-based `ReadableStream<RawMsg>`. `idleTimeoutMs` (projector only) errors
  * the stream when a pull produces no message within the window; omit it for the
  * live tail, which stays open across silent gaps. `onCancel` (e.g. `sub.stop`)
- * fires once on cancel or natural source exhaustion.
+ * fires once on cancel.
  */
 export function natsChunkSource(opts: {
   messages: AsyncIterable<RawMsg> | Iterable<RawMsg>;
@@ -267,7 +267,6 @@ export function natsChunkSource(opts: {
       if (idleTimeoutMs === undefined) {
         const { done, value } = await iterator.next();
         if (done) {
-          doCancel();
           controller.close();
           return;
         }
@@ -291,7 +290,6 @@ export function natsChunkSource(opts: {
       }
       if (result === "cancelled") return; // idle lost the race; loop again on next pull
       if (result.done) {
-        doCancel();
         controller.close();
         return;
       }

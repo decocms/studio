@@ -391,22 +391,33 @@ describe("projectorChunkStream", () => {
     ).rejects.toThrow("missing seq 3");
   });
 
-  test("cancels the source (→ sub.stop) when it closes on a terminal", async () => {
+  test("cancels the source (→ onCancel/sub.stop) via the cascade when it closes on a terminal", async () => {
+    // Infinite source: yields the terminal then blocks forever, mimicking a live
+    // NATS subscription. onCancel can ONLY fire if projectorChunkStream's
+    // reader.cancel() cascades up the pipeThrough chain to natsChunkSource —
+    // the real production mechanism (verified: Bun cascades through 4 stages).
+    async function* infiniteAfter(msgs: RawMsg[]): AsyncIterable<RawMsg> {
+      for (const m of msgs) yield m;
+      await new Promise<void>(() => {}); // block forever
+    }
     let cancelled = false;
-    await readAll(
-      projectorPipeline(
-        [
-          rawJson("run_1:fence_a:1", { p: { type: "finish" } }),
-          rawJson("run_1:fence_a:done:1", { done: true, finalSeq: 1 }),
-        ],
-        "run_1",
-        "fence_a",
-        () => {
-          cancelled = true;
-        },
-      ),
-    );
-    // microtask flush for the propagated cancel
+    const src = natsChunkSource({
+      messages: infiniteAfter([
+        rawJson("run_1:fence_a:1", { p: { type: "finish" } }),
+        rawJson("run_1:fence_a:done:1", { done: true, finalSeq: 1 }),
+      ]),
+      onCancel: () => {
+        cancelled = true;
+      },
+    });
+    const events = src
+      .pipeThrough(reassembleFragments())
+      .pipeThrough(unwrapPayload())
+      .pipeThrough(fenceFilter("run_1", "fence_a"))
+      .pipeThrough(assertContiguousAndDedup());
+    const out = await readAll(projectorChunkStream(events));
+    expect(out.map((c) => c.type)).toEqual(["finish"]);
+    // let the propagated cancel settle
     await new Promise((r) => setTimeout(r, 0));
     expect(cancelled).toBe(true);
   });
