@@ -110,6 +110,7 @@ import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/sect
 import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
 import { AvailableSectionEditor } from "./available-section-editor";
+import { CurlyBracesIcon, SectionJsonPanel } from "./section-json-panel";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
   sandboxUserStop,
@@ -668,7 +669,7 @@ function ContentBrowserReady({
   ) => {
     await saveBlock.mutateAsync({
       blockKey: blockId,
-      data: { __resolveType: resolveType, name: blockId, ...formValue },
+      data: { __resolveType: resolveType, ...formValue },
     });
     toast.success(`Created section "${blockId}"`);
     setSelection({ collection: "sections", key: blockId });
@@ -678,6 +679,17 @@ function ContentBrowserReady({
   const saveReferencedBlock = createReferencedBlockSaver((blockKey, data) =>
     saveBlock.mutate({ blockKey, data }),
   );
+
+  // Persist edits made directly in a saved block's JSON editor.
+  const handleApplySavedJson = (
+    blockKey: string,
+    data: Record<string, unknown>,
+  ) => {
+    saveBlock.mutate(
+      { blockKey, data },
+      { onError: (err) => toast.error(`Save failed: ${err.message}`) },
+    );
+  };
 
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
     const source = decofile[section.key] as Record<string, unknown> | undefined;
@@ -1037,6 +1049,7 @@ function ContentBrowserReady({
               decofile={decofile}
               isCreating={saveBlock.isPending}
               onCreateAvailable={handleCreateAvailableSection}
+              onApplySavedJson={handleApplySavedJson}
               onSaveReferencedBlock={saveReferencedBlock}
             />
           ) : selection && selection.collection !== "available-section" ? (
@@ -1271,6 +1284,7 @@ function SectionsRightPane({
   decofile,
   isCreating,
   onCreateAvailable,
+  onApplySavedJson,
   onSaveReferencedBlock,
 }: {
   selection:
@@ -1293,11 +1307,15 @@ function SectionsRightPane({
     blockId: string,
     data: Record<string, unknown>,
   ) => Promise<void>;
+  onApplySavedJson: (blockKey: string, data: Record<string, unknown>) => void;
   onSaveReferencedBlock: (
     blockKey: string,
     data: Record<string, unknown>,
   ) => void;
 }) {
+  // JSON editor is available for saved blocks only.
+  const [jsonOpen, setJsonOpen] = useState(false);
+
   if (!selection) {
     return (
       <EmptyMessage
@@ -1329,18 +1347,55 @@ function SectionsRightPane({
     );
   }
 
+  // The JSON editor fully replaces the form (rather than splitting beside it):
+  // you edit one OR the other, never both at once. Swapping unmounts the hidden
+  // editor, so each one re-seeds from the freshest decofile on open — that's how
+  // JSON edits reflect in the form and vice versa (decofile is the source of
+  // truth, kept current by each editor's autosave).
+  if (jsonOpen) {
+    return (
+      <SectionJsonPanel
+        key={`json:${selection.key}`}
+        blockKey={selection.key}
+        data={decofile[selection.key]}
+        onApply={(data) => onApplySavedJson(selection.key, data)}
+        onClose={() => setJsonOpen(false)}
+      />
+    );
+  }
+
   return (
-    <SectionsEditor
-      key={`section:${selection.key}`}
-      orgSlug={orgSlug}
-      virtualMcpId={virtualMcpId}
-      branch={branch}
-      previewReady
-      previewUrl={previewUrl ?? undefined}
-      currentPath="/"
-      activePageBlockKey={null}
-      activeGlobalBlockKey={selection.key}
-    />
+    <div className="flex h-full w-full min-w-0">
+      <div className="min-w-0 flex-1">
+        <SectionsEditor
+          key={`section:${selection.key}`}
+          orgSlug={orgSlug}
+          virtualMcpId={virtualMcpId}
+          branch={branch}
+          previewReady
+          previewUrl={previewUrl ?? undefined}
+          currentPath="/"
+          activePageBlockKey={null}
+          activeGlobalBlockKey={selection.key}
+        />
+      </div>
+      <div className="flex w-9 shrink-0 items-start justify-center border-l pt-1.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              onClick={() => setJsonOpen(true)}
+              aria-label="Edit JSON"
+            >
+              <CurlyBracesIcon size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">Edit JSON</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
   );
 }
 
