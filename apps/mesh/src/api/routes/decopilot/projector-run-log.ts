@@ -7,9 +7,7 @@ import {
   runIdFromSubject,
   streamSubject,
 } from "./projector-stream-messages";
-
-const FRAG_INDEX_HEADER = "Dp-Frag-Idx";
-const FRAG_TOTAL_HEADER = "Dp-Frag-Total";
+import { FRAG_INDEX_HEADER, FRAG_TOTAL_HEADER } from "./nats-chunk-source";
 
 export interface ProjectorRetainedMessage {
   subject: string;

@@ -40,6 +40,8 @@ import {
 } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 import {
+  FRAG_INDEX_HEADER,
+  FRAG_TOTAL_HEADER,
   natsChunkSource,
   reassembleFragments,
   unwrapPayload,
@@ -108,8 +110,6 @@ export function decopilotStreamConfig() {
 // Splitting it would hold tens of MB in memory on reassembly, so we drop it
 // loudly instead.
 const MAX_CHUNKED_BYTES = 32 * 1024 * 1024;
-const FRAG_INDEX_HEADER = "Dp-Frag-Idx";
-const FRAG_TOTAL_HEADER = "Dp-Frag-Total";
 
 // Canary-gated profiler: is per-chunk JSON.stringify+encode the dominant
 // event-loop occupant? Sums encode time across every active pump on the pod
