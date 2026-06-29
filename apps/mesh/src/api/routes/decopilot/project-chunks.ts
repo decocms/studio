@@ -35,9 +35,11 @@ export interface ProjectChunksOptions {
   /** Deterministic id for a synthesized error message (`error-${runId}`) so
    *  re-projection attempts dedupe it. See consumeHarnessStream. */
   errorMessageId?: string;
-  /** Deterministic assistant-message id generator (`${runId}:msg:${n}`) so a
-   *  re-fold of the same run yields the same message + part ids → ON CONFLICT
-   *  dedupe. See consumeHarnessStream.generateMessageId. */
+  /** Optional override id scheme for the reassembled message(s). Only
+   *  background-tool-workflow passes this — its own `${jobId}:msg:${n}` ids. The
+   *  decopilot projection paths DO NOT pass it: they keep the harness
+   *  `start.messageId` (`msg_…`) verbatim, so a re-fold reads the same id →
+   *  identical row ids → ON CONFLICT dedupe. See consumeHarnessStream.generateMessageId. */
   generateMessageId?: () => string;
   /**
    * When set, the projector persists the harness title chunk via this writer
@@ -45,9 +47,11 @@ export interface ProjectChunksOptions {
    */
   title?: ProjectTitleOptions;
   /**
-   * Prior completed messages to seed createUIMessageStream. Supplied by the
-   * checkpoint workflow (Task 9) to resume a fold from the projection cursor.
-   * Omitted / empty array → fresh fold from seq 1 (existing terminal behaviour).
+   * Prior completed messages to seed createUIMessageStream. Supplied by BOTH
+   * persisting projector folds — terminal and checkpoint — so a continuation
+   * merges onto a trailing assistant proposal and the fold resumes from the
+   * projection cursor (see consumeHarnessStream). Omitted / empty array → fresh
+   * fold from seq 1 (live ingest / non-persisting callers).
    */
   originalMessages?: UIMessage[];
 }

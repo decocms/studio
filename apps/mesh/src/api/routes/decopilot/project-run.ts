@@ -16,12 +16,12 @@ const BACKOFF_CAP_MS = 5000;
 
 export interface ProjectRunOptions {
   runId: string;
-  /** Per-turn run fence token. Namespaces the assistant/error message ids so
+  /** Per-turn run fence token. Namespaces the synthesized error message id so
    *  distinct turns of the same thread (runId == threadId is stable) never
    *  collide while the same turn's re-folds stay idempotent. See message-ids.ts. */
   fenceToken: string;
   /** Materialized chunks for this run (replayed identically on each attempt;
-   *  PartEmitter deterministic ids make re-projection idempotent). */
+   *  PartEmitter stable ids make re-projection idempotent). */
   chunks: UIMessageChunk[];
   persistence: HarnessStreamPersistence;
   /** Surface the poison run: DLQ + mark the run errored. Must not throw. */

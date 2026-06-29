@@ -71,7 +71,7 @@ export interface IngestRunDeps {
    * no-op (the durable projector is the sole writer for the desktop/relay
    * path). The hosted background-job caller passes its PartEmitter so the
    * message lands in the DB before the stream closes; the projector still
-   * re-projects from JetStream as an idempotent backstop (deterministic row
+   * re-projects from JetStream as an idempotent backstop (stable row
    * ids → ON CONFLICT DO NOTHING).
    */
   persistence?: HarnessStreamPersistence;

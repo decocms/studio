@@ -98,7 +98,7 @@ export async function createRunPersistence(
     // turn as ONE step, so `onStepFinish` never fires mid-turn; only `onFinish`
     // does, calling THIS `emitFinal`. A no-op here discarded every final part a
     // checkpoint fold had already assembled, so a long turn persisted nothing
-    // until `{done}`. Re-folds dedupe on the deterministic part-row ids
+    // until `{done}`. Re-folds dedupe on the stable part-row ids
     // (`${runId}:${messageId}:${seq}` + ON CONFLICT DO NOTHING); the trailing
     // in-flight part stays unpersisted until a later fold finalizes it.
     emitFinal: terminal
