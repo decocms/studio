@@ -31,8 +31,29 @@ API keys permitem que sistemas externos se conectem ao deco Studio sem precisar 
 API keys são gerenciadas através das ferramentas MCP de gerenciamento ou da API. Ao criar uma API key, você especifica:
 
 1. Um nome descritivo (como "Meu Script de Automação")
-2. Permissões diretas no formato `{ resource: [actions...] }` — onde o recurso é `"self"` para ferramentas de gerenciamento ou `"conn_<UUID>"` para acesso específico a conexões
+2. Um objeto `permissions` explícito — **obrigatório** (veja o formato abaixo)
 3. **Copie a chave imediatamente** — ela só é exibida uma vez
+
+<Callout type="warning">
+  O campo `permissions` é **obrigatório**. Criar uma chave sem ele falhará com erro `400`.
+</Callout>
+
+### Formato das permissões
+
+As permissões seguem a estrutura `{ recurso: [ações...] }`:
+
+| Valor | Descrição |
+|-------|----------|
+| `{ "self": ["*"] }` | Acesso completo a todas as ferramentas de gerenciamento |
+| `{ "conn_<UUID>": ["read"] }` | Acesso somente leitura a uma conexão específica |
+| `{ "*": ["*"] }` | Curinga — acesso completo a tudo |
+| `{ "self": ["LIST", "GET"] }` | Apenas as ações `LIST` e `GET` nas ferramentas de gerenciamento |
+
+O recurso pode ser `"self"` para ferramentas de gerenciamento, `"conn_<UUID>"` para uma conexão específica, ou `"*"` para corresponder a todos os recursos.
+
+<Callout type="warning">
+  Uma API key é autorizada **estritamente pela sua lista de permissões (`permissions`)**. A função do proprietário não amplia o acesso de uma chave — uma chave pertencente a um admin, mas escopada para `AUTOMATION_LIST`, não pode chamar nenhuma outra ferramenta, mesmo as que o admin pode usar. Uma chave equivale exatamente à sua lista de permissões, nada mais.
+</Callout>
 
 <Callout type="error">
   Você só pode ver a API key uma vez. Armazene em um lugar seguro como um gerenciador de senhas.
@@ -64,7 +85,7 @@ Substitua `your-org-slug` pelo slug da sua organização e `your-agent-id` pelo 
   Trate API keys como senhas. Nunca compartilhe ou faça commit em repositórios de código.
 </Callout>
 
-**Conceda permissões mínimas**: Dê apenas o que é realmente necessário.
+**Conceda permissões mínimas**: Dê apenas o que é realmente necessário. As chaves são limitadas exatamente à sua lista de permissões — sem elevação implícita pelo papel (role) do proprietário da chave.
 
 **Crie chaves separadas**: Use uma chave por ferramenta ou script — mais fácil de gerenciar se algo der errado.
 
