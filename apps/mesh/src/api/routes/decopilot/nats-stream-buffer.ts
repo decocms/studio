@@ -28,24 +28,23 @@ import {
   type MsgHdrs,
   type NatsConnection,
 } from "@nats-io/nats-core";
-import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
 import {
-  buildChunkMsgId,
-  buildDoneMsgId,
   DECOPILOT_STREAM_NAME,
   DECOPILOT_STREAM_SUBJECT_PREFIX,
-  parseRunStreamMsgId,
   streamSubject,
 } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 import {
-  FRAG_INDEX_HEADER,
-  FRAG_TOTAL_HEADER,
   natsChunkSource,
   reassembleFragments,
   unwrapPayload,
   type RawMsg,
 } from "./nats-chunk-source";
+import {
+  serializeChunk,
+  serializeDone,
+  serializeUnfencedDone,
+} from "@decocms/harness/run-stream-codec";
 import { meter } from "@/observability";
 import { encodeMsHistogram, publishedChunksCounter } from "./stream-metrics";
 
@@ -103,11 +102,6 @@ export function decopilotStreamConfig() {
     num_replicas: 1,
   };
 }
-
-// Above this a single chunk is pathological (not a normal UI stream part).
-// Splitting it would hold tens of MB in memory on reassembly, so we drop it
-// loudly instead.
-const MAX_CHUNKED_BYTES = 32 * 1024 * 1024;
 
 // Canary-gated profiler: is per-chunk JSON.stringify+encode the dominant
 // event-loop occupant? Sums encode time across every active pump on the pod
@@ -169,15 +163,12 @@ const streamEncodeProfiler = STREAM_ENCODE_TRACE
   ? new StreamEncodeProfiler()
   : null;
 
-function fragmentMsgId(
-  msgID: string | undefined,
-  index: number,
-): string | undefined {
-  if (!msgID) return undefined;
-  const parsed = parseRunStreamMsgId(msgID);
-  return parsed?.kind === "chunk"
-    ? buildChunkMsgId({ ...parsed, fragmentIndex: index })
-    : undefined;
+function toMsgHdrs(rec: Record<string, string>): MsgHdrs {
+  const hdrs = natsHeaders();
+  for (const [k, v] of Object.entries(rec)) {
+    hdrs.set(k, v);
+  }
+  return hdrs;
 }
 
 function createPublishTracker(taskId: string, orgId?: string) {
@@ -227,7 +218,6 @@ export interface NatsStreamBufferOptions {
 export class NatsStreamBuffer implements StreamBuffer {
   private js: JetStreamClient | null = null;
   private jsm: JetStreamManager | null = null;
-  private readonly encoder = new TextEncoder();
 
   constructor(private readonly options: NatsStreamBufferOptions) {}
 
@@ -300,9 +290,7 @@ export class NatsStreamBuffer implements StreamBuffer {
       return;
     }
 
-    const subj = streamSubject(taskId);
     const tracker = createPublishTracker(taskId, orgId);
-    const encoder = this.encoder;
 
     // This legacy sentinel is UNFENCED (`{done:true}`, no msgId/finalSeq) and
     // exists only so JetStream tails close. The consume step uses the
@@ -316,9 +304,8 @@ export class NatsStreamBuffer implements StreamBuffer {
     const publishDone = () => {
       if (terminated) return;
       terminated = true;
-      js.publish(subj, encoder.encode(JSON.stringify({ done: true }))).catch(
-        () => {},
-      );
+      const m = serializeUnfencedDone(taskId);
+      tracker.publish(js, m.subject, m.data);
     };
 
     // If the run is force-failed mid-stream the reader below may never
@@ -333,35 +320,27 @@ export class NatsStreamBuffer implements StreamBuffer {
     // of the encoded `{ p: value }` JSON, so reassembly is byte-exact.
     const publishChunk = (value: unknown): void => {
       const t0 = performance.now();
-      const bytes = encoder.encode(JSON.stringify({ p: value }));
+      const msgs = serializeChunk(value, { runId: taskId });
       const encodeMs = performance.now() - t0;
       encodeMsHistogram().record(encodeMs);
       publishedChunksCounter().add(1, { "org.id": orgId ?? "unknown" });
-      streamEncodeProfiler?.record(encodeMs, bytes.length);
-      if (bytes.length <= MAX_PUBLISH_BYTES) {
-        tracker.publish(js, subj, bytes);
-        return;
-      }
-      if (bytes.length > MAX_CHUNKED_BYTES) {
+      streamEncodeProfiler?.record(
+        encodeMs,
+        msgs.reduce((n, m) => n + m.data.length, 0),
+      );
+      if (msgs.length === 0) {
         console.warn(
-          `[Decopilot] dropping oversized stream chunk for thread ${taskId}: ${(
-            bytes.length / (1024 * 1024)
-          ).toFixed(
-            1,
-          )} MiB exceeds ${MAX_CHUNKED_BYTES / (1024 * 1024)} MiB cap`,
+          `[Decopilot] dropping oversized stream chunk for thread ${taskId}`,
         );
         return;
       }
-      const total = Math.ceil(bytes.length / MAX_PUBLISH_BYTES);
-      for (let i = 0; i < total; i++) {
-        const slice = bytes.slice(
-          i * MAX_PUBLISH_BYTES,
-          (i + 1) * MAX_PUBLISH_BYTES,
+      for (const m of msgs) {
+        tracker.publish(
+          js,
+          m.subject,
+          m.data,
+          m.headers ? toMsgHdrs(m.headers) : undefined,
         );
-        const hdrs = natsHeaders();
-        hdrs.set(FRAG_INDEX_HEADER, String(i));
-        hdrs.set(FRAG_TOTAL_HEADER, String(total));
-        tracker.publish(js, subj, slice, hdrs);
       }
     };
 
@@ -419,51 +398,30 @@ export class NatsStreamBuffer implements StreamBuffer {
   async publishRawChunk(
     taskId: string,
     chunk: unknown,
-    opts?: { msgId?: string },
+    dedup?: { fenceToken: string; seq: number },
   ): Promise<boolean> {
     const js = this.js;
     if (!js) return false;
-    const subj = streamSubject(taskId);
-    // `msgID` is the NATS dedup header field (Nats-Msg-Id): a seq-keyed id lets
-    // an at-least-once producer re-publish without double-writing.
-    const msgID = opts?.msgId;
-    // `ingestRun` (the durable producer) publishes every UI chunk through here,
-    // not through `pump()` — so the stream throughput/encode metrics must be
-    // recorded on this path or they stay flat zero while streaming works.
     const t0 = performance.now();
-    const bytes = this.encoder.encode(JSON.stringify({ p: chunk }));
-    encodeMsHistogram().record(performance.now() - t0);
-    publishedChunksCounter().add(1);
-    if (bytes.length > MAX_CHUNKED_BYTES) {
+    const msgs = serializeChunk(chunk, { runId: taskId, dedup });
+    if (msgs.length === 0) {
       console.warn(
-        `[Decopilot] dropping oversized raw chunk for thread ${taskId}: ${(
-          bytes.length / (1024 * 1024)
-        ).toFixed(1)} MiB exceeds ${MAX_CHUNKED_BYTES / (1024 * 1024)} MiB cap`,
+        `[Decopilot] dropping oversized raw chunk for thread ${taskId} (> MAX_CHUNKED_BYTES)`,
       );
       // Dropped, but the publish "succeeded" as far as the ack cursor is
       // concerned — refusing to advance would wedge the run on a pathological
       // chunk (loud-fail is the daemon-outbox cap's job, not ingest's).
       return true;
     }
-    if (bytes.length <= MAX_PUBLISH_BYTES) {
-      await js.publish(subj, bytes, msgID ? { msgID } : undefined);
-      return true;
-    }
-    const total = Math.ceil(bytes.length / MAX_PUBLISH_BYTES);
-    for (let i = 0; i < total; i++) {
-      const slice = bytes.slice(
-        i * MAX_PUBLISH_BYTES,
-        (i + 1) * MAX_PUBLISH_BYTES,
-      );
-      const hdrs = natsHeaders();
-      hdrs.set(FRAG_INDEX_HEADER, String(i));
-      hdrs.set(FRAG_TOTAL_HEADER, String(total));
-      // Per-fragment dedup id keeps re-publishes of a fragmented chunk from
-      // doubling up; the fragment index disambiguates the set.
-      const fragmentId = fragmentMsgId(msgID, i);
-      await js.publish(subj, slice, {
-        headers: hdrs,
-        ...(fragmentId ? { msgID: fragmentId } : {}),
+    // `ingestRun` (the durable producer) publishes every UI chunk through here,
+    // not through `pump()` — so the stream throughput/encode metrics must be
+    // recorded on this path or they stay flat zero while streaming works.
+    encodeMsHistogram().record(performance.now() - t0);
+    publishedChunksCounter().add(1);
+    for (const m of msgs) {
+      await js.publish(m.subject, m.data, {
+        ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),
+        ...(m.msgId ? { msgID: m.msgId } : {}),
       });
     }
     return true;
@@ -476,11 +434,8 @@ export class NatsStreamBuffer implements StreamBuffer {
   ): Promise<boolean> {
     const js = this.js;
     if (!js) return false;
-    await js.publish(
-      streamSubject(taskId),
-      this.encoder.encode(JSON.stringify({ done: true, finalSeq })),
-      { msgID: buildDoneMsgId({ runId: taskId, fenceToken, finalSeq }) },
-    );
+    const m = serializeDone({ runId: taskId, fenceToken, finalSeq });
+    await js.publish(m.subject, m.data, { msgID: m.msgId });
     return true;
   }
 

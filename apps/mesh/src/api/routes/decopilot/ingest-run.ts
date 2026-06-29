@@ -30,7 +30,6 @@ import {
   type HarnessStreamPersistence,
   type HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
-import { buildChunkMsgId } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
 
 export interface IngestRunInput {
@@ -126,7 +125,8 @@ export async function ingestRun(
         if (seq <= ackSeq || pending.has(seq)) continue;
         if (
           !(await deps.streamBuffer.publishRawChunk(runId, chunk, {
-            msgId: buildChunkMsgId({ runId, fenceToken, seq }),
+            fenceToken,
+            seq,
           }))
         ) {
           throw new Error("publishRawChunk failed");

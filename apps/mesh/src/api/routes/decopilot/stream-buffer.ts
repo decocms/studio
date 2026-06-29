@@ -45,14 +45,14 @@ export interface StreamBuffer {
    * advances its ack cursor only after this resolves `true`. Returns `false`
    * when JetStream is unavailable (caller must not advance the cursor).
    *
-   * `opts.msgId` sets the JetStream `Nats-Msg-Id` for time-based dedup: a
+   * `dedup` sets the JetStream `Nats-Msg-Id` for time-based dedup: a
    * seq-keyed id (`${runId}:${fenceToken}:${seq}`) lets an at-least-once
    * producer (outbox retry) re-publish the same chunk without double-writing.
    */
   publishRawChunk(
     taskId: string,
     chunk: unknown,
-    opts?: { msgId?: string },
+    dedup?: { fenceToken: string; seq: number },
   ): Promise<boolean>;
 
   /**

@@ -48,11 +48,16 @@ function makeDeps() {
     persistedTitles,
     streamBuffer: {
       publishRawChunk: async (
-        _taskId: string,
+        taskId: string,
         chunk: unknown,
-        opts?: { msgId?: string },
+        dedup?: { fenceToken: string; seq: number },
       ) => {
-        publishedRaw.push({ chunk, msgId: opts?.msgId });
+        publishedRaw.push({
+          chunk,
+          msgId: dedup
+            ? `${taskId}:${dedup.fenceToken}:${dedup.seq}`
+            : undefined,
+        });
         return true;
       },
       publishDone: async (
