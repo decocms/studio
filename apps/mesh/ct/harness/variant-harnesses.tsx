@@ -35,12 +35,14 @@ export function SectionVariantListHarness({
   return (
     <div data-testid="harness">
       <SectionVariantList
+        listKey="ct"
         variants={variants}
         selectedIndex={selectedIndex}
         onSelect={(index) => push({ type: "select", index })}
         onDuplicate={(index) => push({ type: "duplicate", index })}
         onDelete={(index) => push({ type: "delete", index })}
         onRemoveAll={() => push({ type: "removeAll" })}
+        onReorder={(from, to) => push({ type: "reorder", from, to })}
         onAdd={() => push({ type: "add" })}
       />
       <EventLog events={events} />

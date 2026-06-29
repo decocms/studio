@@ -24,6 +24,45 @@ export const CMS_EDITOR_SCRIPT = `(function() {
   if (window.__cmsEditorActive) return;
   window.__cmsEditorActive = true;
 
+  // Preserve scroll across variant-override navigations and save-reloads.
+  // Selecting a variant rebuilds the iframe src (new x-deco-matchers-override)
+  // or reloads it, which would otherwise jump to the top. We persist the scroll
+  // offset to sessionStorage (survives reload, same-origin) keyed by pathname
+  // (the override only changes the query, so the key is stable), then restore it
+  // on the next load — retried for ~1s so it outlasts re-hydration and lazy
+  // sections that grow the page after load. The recency guard avoids restoring a
+  // stale offset on a genuinely fresh visit.
+  var SCROLL_KEY = "__cms_preview_scroll:" + location.pathname;
+  var saveScroll = function() {
+    try {
+      sessionStorage.setItem(SCROLL_KEY, JSON.stringify({
+        x: window.scrollX, y: window.scrollY, t: Date.now()
+      }));
+    } catch (_) {}
+  };
+  var saveScrollPending = false;
+  window.addEventListener("scroll", function() {
+    if (saveScrollPending) return;
+    saveScrollPending = true;
+    requestAnimationFrame(function() { saveScrollPending = false; saveScroll(); });
+  }, { passive: true });
+  (function restoreScroll() {
+    var raw = null;
+    try { raw = sessionStorage.getItem(SCROLL_KEY); } catch (_) {}
+    if (!raw) return;
+    var saved = null;
+    try { saved = JSON.parse(raw); } catch (_) { return; }
+    if (!saved || (Date.now() - saved.t) > 10000) return;
+    if (!saved.x && !saved.y) return;
+    var attempts = 0;
+    var apply = function() {
+      attempts++;
+      window.scrollTo(saved.x || 0, saved.y || 0);
+      if (attempts < 8) setTimeout(apply, 120);
+    };
+    apply();
+  })();
+
   var highlight = document.createElement("div");
   highlight.style.cssText = "position:absolute;pointer-events:none;outline:2px solid #06b6d4;background:rgba(6,182,212,0.06);border-radius:2px;z-index:2147483647;display:none;";
   document.body.appendChild(highlight);

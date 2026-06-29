@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
 import { useDecofile } from "@/web/components/sections-editor/use-decofile";
+import { withVariantMatcherOverride } from "@/web/components/sections-editor/variant-matcher-override";
 import { parseSections } from "@/web/components/sections-editor/parse-sections";
 import { getPageVariantSectionsAt } from "@/web/components/sections-editor/page-variants";
 import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
@@ -209,6 +210,11 @@ export function PreviewContent() {
   const [cmsSelectedSectionIndex, setCmsSelectedSectionIndex] = useState<
     number | null
   >(null);
+  // `x-deco-matchers-override` params forcing the preview to render the section
+  // variant currently selected in the sections editor (CMS mode only).
+  const [variantOverrideParams, setVariantOverrideParams] = useState<
+    string[] | null
+  >(null);
   const [panelWidth, setPanelWidth] = useState(384);
   const isResizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
@@ -358,10 +364,13 @@ export function PreviewContent() {
 
   const iframeSrc =
     previewState.kind === "iframe"
-      ? withDeviceHint(
-          directPreviewUrl ??
-            new URL(currentPath, previewState.previewUrl).href,
-          previewDeviceSize,
+      ? withVariantMatcherOverride(
+          withDeviceHint(
+            directPreviewUrl ??
+              new URL(currentPath, previewState.previewUrl).href,
+            previewDeviceSize,
+          ),
+          sectionsOpen && variantOverrideParams ? variantOverrideParams : [],
         )
       : null;
 
@@ -533,7 +542,10 @@ export function PreviewContent() {
     // Leaving code mode clears the "View JSON" deep-link so re-entering code
     // mode later opens the file tree, not the previously-viewed page JSON.
     if (mode !== "code") setCodeFilePath(null);
-    if (mode !== "cms") setCmsSelectedSectionIndex(null);
+    if (mode !== "cms") {
+      setCmsSelectedSectionIndex(null);
+      setVariantOverrideParams(null);
+    }
     if (prev === "visual") deactivateVisualEditor();
     if (prev === "cms") deactivateCmsEditor();
     if (mode === "visual") injectVisualEditor();
@@ -546,6 +558,40 @@ export function PreviewContent() {
     // biome-ignore lint/correctness/noSelfAssign: reloads the iframe
     // oxlint-disable-next-line no-self-assign
     iframe.src = iframeSrc;
+  };
+
+  // Selecting/reordering a variant changes `iframeSrc` (override params), which
+  // re-navigates the iframe. Scroll position is preserved entirely inside the
+  // injected CMS script (it persists scroll to sessionStorage and restores it
+  // after the reload, surviving re-hydration), so nothing to capture here.
+  const handleVariantPreviewOverride = (params: string[] | null) => {
+    setVariantOverrideParams(params);
+  };
+
+  // Reload the preview after a save while preventing the iframe from stealing
+  // focus. Scroll is restored by the injected CMS script (see above).
+  const reloadPreviewPreservingScroll = () => {
+    const iframe = previewIframeRef.current;
+    if (!iframe) return;
+    const focused = document.activeElement as HTMLElement | null;
+    const prevTabIndex = iframe.tabIndex;
+    iframe.tabIndex = -1;
+    iframe.style.pointerEvents = "none";
+    iframe.blur();
+    try {
+      iframe.contentWindow?.location.reload();
+    } catch {
+      const src = iframeSrcRef.current;
+      if (src) iframe.src = src;
+    }
+    const restore = () => {
+      iframe.tabIndex = prevTabIndex;
+      iframe.style.pointerEvents = "";
+      focused?.focus();
+      iframe.removeEventListener("load", restore);
+    };
+    iframe.addEventListener("load", restore);
+    setTimeout(restore, 3000);
   };
 
   const handleHardReload = () => {
@@ -1084,31 +1130,10 @@ export function PreviewContent() {
                     activeGlobalSection ? null : cmsSelectedSectionIndex
                   }
                   onSaved={() => {
-                    setTimeout(() => {
-                      const iframe = previewIframeRef.current;
-                      if (!iframe) return;
-                      // Prevent iframe from stealing focus during reload
-                      const focused =
-                        document.activeElement as HTMLElement | null;
-                      const prevTabIndex = iframe.tabIndex;
-                      iframe.tabIndex = -1;
-                      iframe.style.pointerEvents = "none";
-                      iframe.blur();
-                      try {
-                        iframe.contentWindow?.location.reload();
-                      } catch {
-                        const src = iframeSrcRef.current;
-                        if (src) iframe.src = src;
-                      }
-                      const restore = () => {
-                        iframe.tabIndex = prevTabIndex;
-                        iframe.style.pointerEvents = "";
-                        focused?.focus();
-                        iframe.removeEventListener("load", restore);
-                      };
-                      iframe.addEventListener("load", restore);
-                      setTimeout(restore, 3000);
-                    }, DEV_SERVER_SETTLE_MS);
+                    setTimeout(
+                      reloadPreviewPreservingScroll,
+                      DEV_SERVER_SETTLE_MS,
+                    );
                   }}
                   initialEditSeo={cmsInitialEditSeo}
                   onExitSeo={() => setCmsInitialEditSeo(false)}
@@ -1120,6 +1145,7 @@ export function PreviewContent() {
                       toast.error("Invalid page block key");
                     }
                   }}
+                  onVariantPreviewOverride={handleVariantPreviewOverride}
                 />
               </Suspense>
             </div>
