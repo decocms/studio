@@ -305,7 +305,7 @@ export class NatsStreamBuffer implements StreamBuffer {
       if (terminated) return;
       terminated = true;
       const m = serializeUnfencedDone(taskId);
-      tracker.publish(js, m.subject, m.data);
+      js.publish(m.subject, m.data).catch(() => {});
     };
 
     // If the run is force-failed mid-stream the reader below may never
@@ -404,6 +404,11 @@ export class NatsStreamBuffer implements StreamBuffer {
     if (!js) return false;
     const t0 = performance.now();
     const msgs = serializeChunk(chunk, { runId: taskId, dedup });
+    // `ingestRun` (the durable producer) publishes every UI chunk through here,
+    // not through `pump()` — so the stream throughput/encode metrics must be
+    // recorded on this path or they stay flat zero while streaming works.
+    encodeMsHistogram().record(performance.now() - t0);
+    publishedChunksCounter().add(1);
     if (msgs.length === 0) {
       console.warn(
         `[Decopilot] dropping oversized raw chunk for thread ${taskId} (> MAX_CHUNKED_BYTES)`,
@@ -413,11 +418,6 @@ export class NatsStreamBuffer implements StreamBuffer {
       // chunk (loud-fail is the daemon-outbox cap's job, not ingest's).
       return true;
     }
-    // `ingestRun` (the durable producer) publishes every UI chunk through here,
-    // not through `pump()` — so the stream throughput/encode metrics must be
-    // recorded on this path or they stay flat zero while streaming works.
-    encodeMsHistogram().record(performance.now() - t0);
-    publishedChunksCounter().add(1);
     for (const m of msgs) {
       await js.publish(m.subject, m.data, {
         ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),
