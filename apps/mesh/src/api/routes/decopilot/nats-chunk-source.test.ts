@@ -216,16 +216,11 @@ describe("unwrapPayload", () => {
     });
   });
 
-  test("classifies a checkpoint envelope", async () => {
-    const [ev] = await unwrapAll([
+  test("skips a checkpoint envelope (no longer a recognized kind)", async () => {
+    const out = await unwrapAll([
       rawJson("run_1:fence_a:ckpt:7", { checkpoint: true, headSeq: 7 }),
     ]);
-    expect(ev).toEqual({
-      kind: "checkpoint",
-      runId: "run_1",
-      fenceToken: "fence_a",
-      headSeq: 7,
-    });
+    expect(out).toEqual([]);
   });
 
   test("skips malformed JSON and a chunk-shaped msgId lacking a payload `p`", async () => {

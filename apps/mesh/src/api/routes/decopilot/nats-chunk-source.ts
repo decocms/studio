@@ -27,12 +27,6 @@ export type DecodedEvent =
       fenceToken: string | null;
       envelopeFinalSeq: number | null;
       msgIdFinalSeq: number | null;
-    }
-  | {
-      kind: "checkpoint";
-      runId: string | null;
-      fenceToken: string | null;
-      headSeq: number;
     };
 
 export function concat(parts: Uint8Array[]): Uint8Array {
@@ -110,15 +104,6 @@ export function unwrapPayload(): TransformStream<RawMsg, DecodedEvent> {
         });
         return;
       }
-      if (record.checkpoint === true && parsed?.kind === "checkpoint") {
-        controller.enqueue({
-          kind: "checkpoint",
-          runId: parsed.runId,
-          fenceToken: parsed.fenceToken,
-          headSeq: parsed.headSeq,
-        });
-        return;
-      }
       if ("p" in record) {
         controller.enqueue({
           kind: "chunk",
@@ -129,7 +114,7 @@ export function unwrapPayload(): TransformStream<RawMsg, DecodedEvent> {
         });
         return;
       }
-      // anything else (checkpoint without msgId, foreign shape) → skip
+      // anything else (foreign shape) → skip
     },
   });
 }
@@ -157,7 +142,6 @@ export function assertContiguousAndDedup(): TransformStream<
         controller.enqueue(ev);
         return;
       }
-      if (ev.kind === "checkpoint") return; // projector ignores checkpoints in the terminal fold
       if (ev.seq === null) {
         controller.error(new Error("projector chunk missing seq"));
         return;
@@ -211,7 +195,6 @@ export function projectorChunkStream(
           controller.close();
           return;
         }
-        if (ev.kind === "checkpoint") continue;
         lastSeq = ev.seq ?? lastSeq;
         controller.enqueue(ev.chunk);
         if (ev.chunk.type === "finish") {

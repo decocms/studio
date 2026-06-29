@@ -614,7 +614,6 @@ export class NatsStreamBuffer implements StreamBuffer {
             // sentinel — so we swallow it here.
             continue;
           }
-          if (ev.kind === "checkpoint") continue; // not part of the UI data stream
           controller.enqueue(ev.chunk);
           return;
         }
