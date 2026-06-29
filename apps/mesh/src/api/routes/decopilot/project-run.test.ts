@@ -182,6 +182,38 @@ describe("projectRun", () => {
     expect(turn1.ids.some((id) => turn2.ids.includes(id))).toBe(false);
   });
 
+  test("approval continuation merges the continuation onto the proposal id via originalMessages", async () => {
+    // Regression: approval/tool-output continuations carry a NEW harness id
+    // (M2) but must merge onto the already-persisted proposal id (M1). The fix:
+    // when originalMessages ends with an assistant message, consumeHarnessStream
+    // remaps the first folded message's id to that trailing id (M1), so the
+    // continuation writes one row under M1 instead of creating an orphan M2.
+    const finalIds: string[] = [];
+    const persistence: HarnessStreamPersistence = {
+      emitStepParts: async () => {},
+      emitFinal: async (m) => {
+        finalIds.push(m.id);
+      },
+      emitError: async () => {},
+    };
+    await projectRun({
+      runId: "thread_42",
+      fenceToken: "fence_cont",
+      chunks: helloChunks("msg_continuation_M2"),
+      persistence,
+      originalMessages: [
+        { id: "user_U0", role: "user", parts: [] },
+        { id: "msg_proposal_M1", role: "assistant", parts: [] },
+      ] as never,
+      onDlq: async () => {},
+      backoffMs: () => 0,
+    });
+    // The continuation's harness id (M2) is remapped onto the trailing assistant
+    // proposal id (M1): one merged message, no orphan M2.
+    expect(finalIds).toEqual(["msg_proposal_M1"]);
+    expect(finalIds).not.toContain("msg_continuation_M2");
+  });
+
   test("a transient failure that recovers before exhaustion succeeds without DLQ", async () => {
     let calls = 0;
     const dlq: unknown[] = [];
