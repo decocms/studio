@@ -61,13 +61,16 @@ function fragments(
   const slice = Math.ceil(bytes.length / parts);
   const out: RawMsg[] = [];
   for (let i = 0; i < parts; i++) {
-    out.push(
-      raw(seqMsgIdBase === null ? null : `${seqMsgIdBase}:frag:${i}`, "", {
+    const m = raw(
+      seqMsgIdBase === null ? null : `${seqMsgIdBase}:frag:${i}`,
+      "",
+      {
         [FRAG_TOTAL_HEADER_NAME]: String(parts),
         [FRAG_INDEX_HEADER_NAME]: String(i),
-      }),
+      },
     );
-    out[i].data = bytes.slice(i * slice, (i + 1) * slice);
+    m.data = bytes.slice(i * slice, (i + 1) * slice);
+    out.push(m);
   }
   return out;
 }
@@ -138,7 +141,7 @@ describe("reassembleFragments", () => {
     );
     const recovered = JSON.stringify({ p: "recovered" });
     const out = await pipeThrough<RawMsg, RawMsg>(
-      [lost[0], lost[2], ...fragments("run_1:fence_a:2", recovered, 3)], // idx 1 missing
+      [lost[0]!, lost[2]!, ...fragments("run_1:fence_a:2", recovered, 3)], // idx 1 missing
       reassembleFragments(),
     );
     expect(out.map((m) => new TextDecoder().decode(m.data))).toEqual([
