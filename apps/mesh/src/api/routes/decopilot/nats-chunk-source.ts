@@ -173,6 +173,60 @@ export function assertContiguousAndDedup(): TransformStream<
   });
 }
 
+export function projectorChunkStream(
+  events: ReadableStream<DecodedEvent>,
+): ReadableStream<UIMessageChunk> {
+  const reader = events.getReader();
+  let released = false;
+  let lastSeq = 0;
+  const release = () => {
+    if (released) return;
+    released = true;
+    reader.releaseLock();
+  };
+  return new ReadableStream<UIMessageChunk>({
+    async pull(controller) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          release();
+          controller.error(new Error("reader stopped before done"));
+          return;
+        }
+        const ev = value;
+        if (ev.kind === "done") {
+          const valid =
+            ev.envelopeFinalSeq != null &&
+            ev.envelopeFinalSeq === ev.msgIdFinalSeq;
+          if (!valid) continue; // ignore an invalid/partial done; keep reading
+          if (ev.envelopeFinalSeq !== lastSeq) {
+            release();
+            controller.error(new Error(`missing seq ${lastSeq + 1}`));
+            return;
+          }
+          await reader.cancel();
+          release();
+          controller.close();
+          return;
+        }
+        if (ev.kind === "checkpoint") continue;
+        lastSeq = ev.seq ?? lastSeq;
+        controller.enqueue(ev.chunk);
+        if (ev.chunk.type === "finish") {
+          await reader.cancel();
+          release();
+          controller.close();
+        }
+        return;
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+      release();
+    },
+  });
+}
+
 function iteratorFor<T>(
   source: AsyncIterable<T> | Iterable<T>,
 ): AsyncIterator<T> {
@@ -192,7 +246,7 @@ function iteratorFor<T>(
  * pull-based `ReadableStream<RawMsg>`. `idleTimeoutMs` (projector only) errors
  * the stream when a pull produces no message within the window; omit it for the
  * live tail, which stays open across silent gaps. `onCancel` (e.g. `sub.stop`)
- * fires once on cancel.
+ * fires once on cancel or natural source exhaustion.
  */
 export function natsChunkSource(opts: {
   messages: AsyncIterable<RawMsg> | Iterable<RawMsg>;
@@ -213,6 +267,7 @@ export function natsChunkSource(opts: {
       if (idleTimeoutMs === undefined) {
         const { done, value } = await iterator.next();
         if (done) {
+          doCancel();
           controller.close();
           return;
         }
@@ -236,6 +291,7 @@ export function natsChunkSource(opts: {
       }
       if (result === "cancelled") return; // idle lost the race; loop again on next pull
       if (result.done) {
+        doCancel();
         controller.close();
         return;
       }

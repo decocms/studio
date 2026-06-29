@@ -8,6 +8,7 @@ import {
   unwrapPayload,
   fenceFilter,
   assertContiguousAndDedup,
+  projectorChunkStream,
   type RawMsg,
   type DecodedEvent,
 } from "./nats-chunk-source";
@@ -316,6 +317,98 @@ describe("assertContiguousAndDedup", () => {
         "fence_a",
       ),
     ).rejects.toThrow("missing seq 2");
+  });
+});
+
+function projectorPipeline(
+  input: RawMsg[],
+  runId: string,
+  fence: string,
+  onCancel?: () => void,
+) {
+  const src = natsChunkSource({ messages: input, onCancel });
+  const events = src
+    .pipeThrough(reassembleFragments())
+    .pipeThrough(unwrapPayload())
+    .pipeThrough(fenceFilter(runId, fence))
+    .pipeThrough(assertContiguousAndDedup());
+  return projectorChunkStream(events);
+}
+
+describe("projectorChunkStream", () => {
+  test("closes on a matching fenced done and emits the chunks before it", async () => {
+    const out = await readAll(
+      projectorPipeline(
+        [
+          rawJson("run_1:fence_a:1", { p: { type: "start" } }),
+          rawJson("run_1:fence_a:2", {
+            p: { type: "text-delta", id: "t", delta: "hi" },
+          }),
+          rawJson("run_1:fence_a:done:2", { done: true, finalSeq: 2 }),
+          rawJson("run_1:fence_a:3", { p: { type: "finish" } }),
+        ],
+        "run_1",
+        "fence_a",
+      ),
+    );
+    expect(out.map((c) => c.type)).toEqual(["start", "text-delta"]);
+  });
+
+  test("closes on the AI-SDK finish chunk (ignoring a later chunk)", async () => {
+    const out = await readAll(
+      projectorPipeline(
+        [
+          rawJson("run_1:fence_a:1", { p: { type: "start" } }),
+          rawJson("run_1:fence_a:2", {
+            p: { type: "finish", finishReason: "stop" },
+          }),
+          rawJson("run_1:fence_a:3", {
+            p: { type: "text-delta", id: "t", delta: "late" },
+          }),
+        ],
+        "run_1",
+        "fence_a",
+      ),
+    );
+    expect(out.map((c) => c.type)).toEqual(["start", "finish"]);
+  });
+
+  test("errors on a tail gap exposed by finalSeq", async () => {
+    await expect(
+      readAll(
+        projectorPipeline(
+          [
+            rawJson("run_1:fence_a:1", { p: { type: "start" } }),
+            rawJson("run_1:fence_a:2", {
+              p: { type: "text-delta", id: "t", delta: "x" },
+            }),
+            rawJson("run_1:fence_a:done:5", { done: true, finalSeq: 5 }),
+          ],
+          "run_1",
+          "fence_a",
+        ),
+      ),
+    ).rejects.toThrow("missing seq 3");
+  });
+
+  test("cancels the source (→ sub.stop) when it closes on a terminal", async () => {
+    let cancelled = false;
+    await readAll(
+      projectorPipeline(
+        [
+          rawJson("run_1:fence_a:1", { p: { type: "finish" } }),
+          rawJson("run_1:fence_a:done:1", { done: true, finalSeq: 1 }),
+        ],
+        "run_1",
+        "fence_a",
+        () => {
+          cancelled = true;
+        },
+      ),
+    );
+    // microtask flush for the propagated cancel
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cancelled).toBe(true);
   });
 });
 
