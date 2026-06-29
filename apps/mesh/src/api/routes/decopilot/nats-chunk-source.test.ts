@@ -424,6 +424,41 @@ describe("projectorChunkStream", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(cancelled).toBe(true);
   });
+
+  test("cancels the source (→ onCancel/sub.stop) when it errors on a gap before done", async () => {
+    // The ERROR exits must stop the subscription too, not just the success
+    // exits — otherwise a projection error leaks the live NATS sub. Infinite
+    // source so onCancel can ONLY fire via the reader.cancel() cascade up the
+    // pipeThrough chain, never via natural exhaustion. The done's finalSeq (5)
+    // exceeds the last delivered chunk seq (2) → the gap-before-done error exit.
+    async function* infiniteAfter(msgs: RawMsg[]): AsyncIterable<RawMsg> {
+      for (const m of msgs) yield m;
+      await new Promise<void>(() => {}); // block forever
+    }
+    let cancelled = false;
+    const src = natsChunkSource({
+      messages: infiniteAfter([
+        rawJson("run_1:fence_a:1", { p: { type: "start" } }),
+        rawJson("run_1:fence_a:2", {
+          p: { type: "text-delta", id: "t", delta: "x" },
+        }),
+        rawJson("run_1:fence_a:done:5", { done: true, finalSeq: 5 }),
+      ]),
+      onCancel: () => {
+        cancelled = true;
+      },
+    });
+    const events = src
+      .pipeThrough(reassembleFragments())
+      .pipeThrough(unwrapPayload())
+      .pipeThrough(fenceFilter("run_1", "fence_a"))
+      .pipeThrough(assertContiguousAndDedup());
+    await expect(readAll(projectorChunkStream(events))).rejects.toThrow(
+      "missing seq 3",
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    expect(cancelled).toBe(true);
+  });
 });
 
 describe("natsChunkSource", () => {

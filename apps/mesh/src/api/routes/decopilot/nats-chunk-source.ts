@@ -189,6 +189,7 @@ export function projectorChunkStream(
       for (;;) {
         const { done, value } = await reader.read();
         if (done) {
+          await reader.cancel();
           release();
           controller.error(new Error("reader stopped before done"));
           return;
@@ -200,6 +201,7 @@ export function projectorChunkStream(
             ev.envelopeFinalSeq === ev.msgIdFinalSeq;
           if (!valid) continue; // ignore an invalid/partial done; keep reading
           if (ev.envelopeFinalSeq !== lastSeq) {
+            await reader.cancel();
             release();
             controller.error(new Error(`missing seq ${lastSeq + 1}`));
             return;
