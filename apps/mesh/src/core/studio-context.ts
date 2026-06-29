@@ -92,14 +92,16 @@ export interface BoundAuthClient {
   ): Promise<boolean>;
 
   /**
-   * True when the principal authenticated with an API key. Such a principal is
+   * Whether the principal authenticated with an API key. An API-key principal is
    * authorized SOLELY by the key's stored allowlist — it must NOT inherit the
    * owner's admin/owner role. Both `hasPermission` here and the role bypass in
    * `AccessControl.checkResource` read this single flag so every call site
-   * (REST + MCP) agrees. Absent/false for browser sessions, MCP OAuth, and mesh
-   * JWTs, which keep the role-based behavior.
+   * (REST + MCP) agrees. `false` for browser sessions, MCP OAuth, and mesh JWTs.
+   *
+   * Required: `createBoundAuthClient` (the sole producer) always sets it, so the
+   * invariant "every bound client knows its principal kind" is in the type.
    */
-  isApiKeyPrincipal?: boolean;
+  isApiKeyPrincipal: boolean;
 
   // Organization APIs (bound with headers)
   organization: {
