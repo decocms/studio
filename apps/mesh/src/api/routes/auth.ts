@@ -16,6 +16,7 @@ import {
   resetPasswordEnabled,
 } from "../../auth";
 import { getDb } from "../../database";
+import { ensureUserOrganization } from "../../auth/ensure-user-organization";
 import { extractBrandFromDomain } from "../../auth/extract-brand";
 import {
   createEmailSender,
@@ -1047,6 +1048,82 @@ app.post("/domain-request-join", async (c) => {
     posthog.captureException(error, session.user.id);
     console.error("[Auth] Domain request-join failed:", error);
     return c.json({ success: false, error: "Failed to request access" }, 500);
+  }
+});
+
+/**
+ * Ensure Organization Endpoint (authenticated)
+ *
+ * Route-local recovery for authenticated users who have no organization.
+ * Returns JSON only so callers can decide the next route without being
+ * redirected to onboarding.
+ *
+ * Route: POST /api/auth/custom/ensure-organization
+ */
+app.post("/ensure-organization", async (c) => {
+  const session = (await auth.api.getSession({
+    headers: c.req.raw.headers,
+  })) as {
+    user?: {
+      id: string;
+      email: string;
+      name?: string | null;
+      emailVerified: boolean;
+    };
+  } | null;
+  if (!session?.user) {
+    return c.json({ success: false, error: "Authentication required" }, 401);
+  }
+
+  try {
+    const result = await ensureUserOrganization({
+      db: getDb().db,
+      authApi: auth.api,
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name ?? null,
+        emailVerified: !!session.user.emailVerified,
+      },
+      allowCreate: true,
+      createdVia: "commerce_onboarding_recovery",
+    });
+
+    if (result.status === "ambiguous") {
+      return c.json({
+        success: false,
+        status: result.status,
+        domain: result.domain,
+        organizations: result.organizations,
+      });
+    }
+
+    if (result.status === "skipped") {
+      return c.json(
+        {
+          success: false,
+          status: result.status,
+          reason: result.reason,
+          domain: result.domain,
+          error: "Organization creation is not available.",
+        },
+        409,
+      );
+    }
+
+    return c.json({
+      success: true,
+      status: result.status,
+      organization: result.organization,
+      domain: result.domain,
+    });
+  } catch (error) {
+    posthog.captureException(error, session.user.id);
+    console.error("[Auth] ensure organization failed:", error);
+    return c.json(
+      { success: false, error: "Failed to ensure organization" },
+      500,
+    );
   }
 });
 
