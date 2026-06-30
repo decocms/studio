@@ -13,6 +13,12 @@ const ORG_A_SLUG = `e2e-commerce-a-${RUN_ID}`;
 const ORG_B_SLUG = `e2e-commerce-b-${RUN_ID}`;
 const ORG_A_NAME = `Commerce E2E A ${RUN_ID}`;
 const ORG_B_NAME = `Commerce E2E B ${RUN_ID}`;
+const SEEDED_ORG_IDS = [
+  ORG_A_ID,
+  ORG_B_ID,
+  `e2e_commerce_join_${RUN_ID}`,
+  `e2e_commerce_archived_${RUN_ID}`,
+];
 const PASSWORD = "Playwright123!";
 
 function uniqueEmail(prefix: string, domain = "playwright.local") {
@@ -149,16 +155,12 @@ test.describe("Commerce onboarding route isolation", () => {
     ]);
     await db.query(
       `DELETE FROM "member"
-       WHERE "organizationId" IN (
-         SELECT id FROM "organization"
-         WHERE id IN ($1, $2) OR slug LIKE $3
-       )`,
-      [ORG_A_ID, ORG_B_ID, `commerce-e2e-${RUN_ID}%`],
+       WHERE "organizationId" = ANY($1::text[])`,
+      [SEEDED_ORG_IDS],
     );
-    await db.query(
-      `DELETE FROM "organization" WHERE id IN ($1, $2) OR slug LIKE $3`,
-      [ORG_A_ID, ORG_B_ID, `commerce-e2e-${RUN_ID}%`],
-    );
+    await db.query(`DELETE FROM "organization" WHERE id = ANY($1::text[])`, [
+      SEEDED_ORG_IDS,
+    ]);
     await db.end();
   });
 
