@@ -7,11 +7,11 @@
  * pump is decoupled from any consumer, so an HTTP cancel never stalls the
  * producer or drops chunks.
  *
- * - Per-subject message limit (20K chunks per thread) prevents one thread
+ * - Per-subject message limit (500K msgs/subject) prevents one thread
  *   from starving others.
  * - Per-thread publish error tracking with sampled logging.
  * - `purge()` is called on terminal events from the run reactor to drop
- *   completed runs early; the 5-minute `max_age` is the upper bound.
+ *   completed runs early; the 24h `max_age` is the upper bound.
  */
 
 import {
@@ -28,17 +28,19 @@ import {
   type MsgHdrs,
   type NatsConnection,
 } from "@nats-io/nats-core";
-import { MAX_PUBLISH_BYTES } from "@/nats/payload-chunking";
-import {
-  buildCheckpointMsgId,
-  buildChunkMsgId,
-  buildDoneMsgId,
-  DECOPILOT_STREAM_NAME,
-  DECOPILOT_STREAM_SUBJECT_PREFIX,
-  parseRunStreamMsgId,
-  streamSubject,
-} from "./projector-stream-messages";
+import { DECOPILOT_STREAM_NAME } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
+import { natsChunkSource } from "./nats-chunk-source";
+import {
+  decodeStream,
+  DECOPILOT_STREAM_SUBJECT_PREFIX,
+  reassembleFragments,
+  serializeChunk,
+  serializeDone,
+  serializeUnfencedDone,
+  streamSubject,
+  type RawMsg,
+} from "@decocms/harness/run-stream-codec";
 import { meter } from "@/observability";
 import { encodeMsHistogram, publishedChunksCounter } from "./stream-metrics";
 
@@ -76,7 +78,6 @@ const MAX_AGE_NS = 24 * 60 * 60 * 1_000_000_000; // 24h — outlasts day-long de
 const DUPLICATE_WINDOW_NS = 2 * 60 * 1_000_000_000; // 2 min
 const MAX_BYTES = 4 * 1024 * 1024 * 1024; // 4GB stream cap
 const MAX_MSGS_PER_SUBJECT = 500_000; // headroom for multi-hour non-stop streams
-export { CHECKPOINT_DEBOUNCE_MS } from "./projector-stream-messages";
 
 /**
  * Pure stream config for `DECOPILOT_STREAMS`. File-backed so the run-scratch
@@ -97,13 +98,6 @@ export function decopilotStreamConfig() {
     num_replicas: 1,
   };
 }
-
-// Above this a single chunk is pathological (not a normal UI stream part).
-// Splitting it would hold tens of MB in memory on reassembly, so we drop it
-// loudly instead.
-const MAX_CHUNKED_BYTES = 32 * 1024 * 1024;
-const FRAG_INDEX_HEADER = "Dp-Frag-Idx";
-const FRAG_TOTAL_HEADER = "Dp-Frag-Total";
 
 // Canary-gated profiler: is per-chunk JSON.stringify+encode the dominant
 // event-loop occupant? Sums encode time across every active pump on the pod
@@ -165,15 +159,12 @@ const streamEncodeProfiler = STREAM_ENCODE_TRACE
   ? new StreamEncodeProfiler()
   : null;
 
-function fragmentMsgId(
-  msgID: string | undefined,
-  index: number,
-): string | undefined {
-  if (!msgID) return undefined;
-  const parsed = parseRunStreamMsgId(msgID);
-  return parsed?.kind === "chunk"
-    ? buildChunkMsgId({ ...parsed, fragmentIndex: index })
-    : undefined;
+function toMsgHdrs(rec: Record<string, string>): MsgHdrs {
+  const hdrs = natsHeaders();
+  for (const [k, v] of Object.entries(rec)) {
+    hdrs.set(k, v);
+  }
+  return hdrs;
 }
 
 function createPublishTracker(taskId: string, orgId?: string) {
@@ -223,7 +214,6 @@ export interface NatsStreamBufferOptions {
 export class NatsStreamBuffer implements StreamBuffer {
   private js: JetStreamClient | null = null;
   private jsm: JetStreamManager | null = null;
-  private readonly encoder = new TextEncoder();
 
   constructor(private readonly options: NatsStreamBufferOptions) {}
 
@@ -296,25 +286,22 @@ export class NatsStreamBuffer implements StreamBuffer {
       return;
     }
 
-    const subj = streamSubject(taskId);
     const tracker = createPublishTracker(taskId, orgId);
-    const encoder = this.encoder;
 
     // This legacy sentinel is UNFENCED (`{done:true}`, no msgId/finalSeq) and
-    // exists only so JetStream tails close. The projector handoff uses the
+    // exists only so JetStream tails close. The consume step uses the
     // awaited public publishDone(runId, fenceToken, finalSeq) so the durable
-    // consumer gets a fence-scoped marker. The DeliverPolicy.All consumer also
-    // sees THIS unfenced sentinel, but consumeProjectorMessages ignores any
-    // `{done}` that isn't a proper DoneEnvelope (finalSeq present) — otherwise
-    // its bare-runId accumulator key would be empty and it would poison the
-    // just-completed run (status=failed). See projector-consumer.ts.
+    // workflow gets a fence-scoped marker. The DeliverPolicy.All consumer also
+    // sees THIS unfenced sentinel, but the consume step's message processor
+    // ignores any `{done}` that isn't a proper DoneEnvelope (finalSeq present)
+    // — otherwise its bare-runId accumulator key would be empty and it would
+    // poison the just-completed run (status=failed).
     let terminated = false;
     const publishDone = () => {
       if (terminated) return;
       terminated = true;
-      js.publish(subj, encoder.encode(JSON.stringify({ done: true }))).catch(
-        () => {},
-      );
+      const m = serializeUnfencedDone(taskId);
+      js.publish(m.subject, m.data).catch(() => {});
     };
 
     // If the run is force-failed mid-stream the reader below may never
@@ -329,35 +316,27 @@ export class NatsStreamBuffer implements StreamBuffer {
     // of the encoded `{ p: value }` JSON, so reassembly is byte-exact.
     const publishChunk = (value: unknown): void => {
       const t0 = performance.now();
-      const bytes = encoder.encode(JSON.stringify({ p: value }));
+      const msgs = serializeChunk(value, { runId: taskId });
       const encodeMs = performance.now() - t0;
       encodeMsHistogram().record(encodeMs);
       publishedChunksCounter().add(1, { "org.id": orgId ?? "unknown" });
-      streamEncodeProfiler?.record(encodeMs, bytes.length);
-      if (bytes.length <= MAX_PUBLISH_BYTES) {
-        tracker.publish(js, subj, bytes);
-        return;
-      }
-      if (bytes.length > MAX_CHUNKED_BYTES) {
+      streamEncodeProfiler?.record(
+        encodeMs,
+        msgs.reduce((n, m) => n + m.data.length, 0),
+      );
+      if (msgs.length === 0) {
         console.warn(
-          `[Decopilot] dropping oversized stream chunk for thread ${taskId}: ${(
-            bytes.length / (1024 * 1024)
-          ).toFixed(
-            1,
-          )} MiB exceeds ${MAX_CHUNKED_BYTES / (1024 * 1024)} MiB cap`,
+          `[Decopilot] dropping oversized stream chunk for thread ${taskId}`,
         );
         return;
       }
-      const total = Math.ceil(bytes.length / MAX_PUBLISH_BYTES);
-      for (let i = 0; i < total; i++) {
-        const slice = bytes.slice(
-          i * MAX_PUBLISH_BYTES,
-          (i + 1) * MAX_PUBLISH_BYTES,
+      for (const m of msgs) {
+        tracker.publish(
+          js,
+          m.subject,
+          m.data,
+          m.headers ? toMsgHdrs(m.headers) : undefined,
         );
-        const hdrs = natsHeaders();
-        hdrs.set(FRAG_INDEX_HEADER, String(i));
-        hdrs.set(FRAG_TOTAL_HEADER, String(total));
-        tracker.publish(js, subj, slice, hdrs);
       }
     };
 
@@ -415,51 +394,30 @@ export class NatsStreamBuffer implements StreamBuffer {
   async publishRawChunk(
     taskId: string,
     chunk: unknown,
-    opts?: { msgId?: string },
+    dedup?: { fenceToken: string; seq: number },
   ): Promise<boolean> {
     const js = this.js;
     if (!js) return false;
-    const subj = streamSubject(taskId);
-    // `msgID` is the NATS dedup header field (Nats-Msg-Id): a seq-keyed id lets
-    // an at-least-once producer re-publish without double-writing.
-    const msgID = opts?.msgId;
+    const t0 = performance.now();
+    const msgs = serializeChunk(chunk, { runId: taskId, dedup });
     // `ingestRun` (the durable producer) publishes every UI chunk through here,
     // not through `pump()` — so the stream throughput/encode metrics must be
     // recorded on this path or they stay flat zero while streaming works.
-    const t0 = performance.now();
-    const bytes = this.encoder.encode(JSON.stringify({ p: chunk }));
     encodeMsHistogram().record(performance.now() - t0);
     publishedChunksCounter().add(1);
-    if (bytes.length > MAX_CHUNKED_BYTES) {
+    if (msgs.length === 0) {
       console.warn(
-        `[Decopilot] dropping oversized raw chunk for thread ${taskId}: ${(
-          bytes.length / (1024 * 1024)
-        ).toFixed(1)} MiB exceeds ${MAX_CHUNKED_BYTES / (1024 * 1024)} MiB cap`,
+        `[Decopilot] dropping oversized raw chunk for thread ${taskId} (> MAX_CHUNKED_BYTES)`,
       );
       // Dropped, but the publish "succeeded" as far as the ack cursor is
       // concerned — refusing to advance would wedge the run on a pathological
       // chunk (loud-fail is the daemon-outbox cap's job, not ingest's).
       return true;
     }
-    if (bytes.length <= MAX_PUBLISH_BYTES) {
-      await js.publish(subj, bytes, msgID ? { msgID } : undefined);
-      return true;
-    }
-    const total = Math.ceil(bytes.length / MAX_PUBLISH_BYTES);
-    for (let i = 0; i < total; i++) {
-      const slice = bytes.slice(
-        i * MAX_PUBLISH_BYTES,
-        (i + 1) * MAX_PUBLISH_BYTES,
-      );
-      const hdrs = natsHeaders();
-      hdrs.set(FRAG_INDEX_HEADER, String(i));
-      hdrs.set(FRAG_TOTAL_HEADER, String(total));
-      // Per-fragment dedup id keeps re-publishes of a fragmented chunk from
-      // doubling up; the fragment index disambiguates the set.
-      const fragmentId = fragmentMsgId(msgID, i);
-      await js.publish(subj, slice, {
-        headers: hdrs,
-        ...(fragmentId ? { msgID: fragmentId } : {}),
+    for (const m of msgs) {
+      await js.publish(m.subject, m.data, {
+        ...(m.headers ? { headers: toMsgHdrs(m.headers) } : {}),
+        ...(m.msgId ? { msgID: m.msgId } : {}),
       });
     }
     return true;
@@ -472,28 +430,8 @@ export class NatsStreamBuffer implements StreamBuffer {
   ): Promise<boolean> {
     const js = this.js;
     if (!js) return false;
-    await js.publish(
-      streamSubject(taskId),
-      this.encoder.encode(JSON.stringify({ done: true, finalSeq })),
-      { msgID: buildDoneMsgId({ runId: taskId, fenceToken, finalSeq }) },
-    );
-    return true;
-  }
-
-  async publishCheckpoint(
-    taskId: string,
-    fenceToken: string,
-    headSeq: number,
-  ): Promise<boolean> {
-    const js = this.js;
-    if (!js) return false;
-    js.publish(
-      streamSubject(taskId),
-      this.encoder.encode(JSON.stringify({ checkpoint: true, headSeq })),
-      {
-        msgID: buildCheckpointMsgId({ runId: taskId, fenceToken, headSeq }),
-      },
-    ).catch(() => {});
+    const m = serializeDone({ runId: taskId, fenceToken, finalSeq });
+    await js.publish(m.subject, m.data, { msgID: m.msgId });
     return true;
   }
 
@@ -539,95 +477,82 @@ export class NatsStreamBuffer implements StreamBuffer {
       return null;
     }
 
-    const decoder = new TextDecoder();
+    const source = natsChunkSource({
+      messages: (async function* () {
+        try {
+          for await (const msg of sub) {
+            yield {
+              subject: msg.subject,
+              data: msg.data,
+              headers: msg.headers,
+            } as RawMsg;
+          }
+        } finally {
+          sub.stop();
+        }
+      })(),
+      // no idle timeout: the tail stays open across silent gaps and spans runs
+      onCancel: () => sub.stop(),
+    });
 
-    // Reassembly buffer for chunks the producer split across fragment
-    // messages (see `publishChunk`). A fresh accumulator is anchored on the
-    // index-0 fragment; any fragment arriving without a live, matching
-    // accumulator (a lost fragment, or a `deliverPolicy: "new"` subscriber
-    // that joined mid-sequence) is dropped so it can't poison the next chunk.
-    let frag: { total: number; received: number; parts: Uint8Array[] } | null =
-      null;
-    const reassembleFragment = (msg: {
-      headers?: MsgHdrs;
-      data: Uint8Array;
-    }): Uint8Array | null => {
-      const totalStr = msg.headers?.get(FRAG_TOTAL_HEADER);
-      if (!totalStr) return null; // not a fragment — caller handles as JSON
-      const total = Number(totalStr);
-      const index = Number(msg.headers?.get(FRAG_INDEX_HEADER) ?? "0");
-      if (index === 0) {
-        frag = { total, received: 0, parts: new Array(total) };
-      } else if (!frag || frag.total !== total) {
-        return null; // stray fragment — no matching in-flight chunk
+    // Pure pass-through: NATS log → reassemble fragments → decode to
+    // UIMessageChunks. NO server-side fence-filter or reassembly — the tail
+    // forwards every run's chunks verbatim and the client (useChat) is the sole
+    // reassembler. A continuation run's tool-output reconciles because the
+    // client seeds the reassembler from the proposal (see thread-connection.ts).
+    const decoded = source
+      .pipeThrough(reassembleFragments())
+      .pipeThrough(decodeStream());
+
+    const reader = decoded.getReader();
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      try {
+        reader.releaseLock();
+      } catch {
+        // Per the WHATWG spec, releaseLock() throws if a read is pending — and
+        // cleanup() can fire from the abort handler while pull() is suspended on
+        // reader.read(). That pending read settles via the cancel() above, so
+        // the throw is benign (Bun tolerates it; this guard keeps stricter
+        // runtimes from surfacing an uncaught TypeError).
       }
-      if (!frag.parts[index]) frag.received++;
-      frag.parts[index] = msg.data;
-      if (frag.received < frag.total) return null; // need more fragments
-      const size = frag.parts.reduce((sum, p) => sum + (p?.length ?? 0), 0);
-      const merged = new Uint8Array(size);
-      let offset = 0;
-      for (const part of frag.parts) {
-        merged.set(part, offset);
-        offset += part.length;
-      }
-      frag = null;
-      return merged;
     };
-
-    // Use explicit iterator so pull() maintains position across invocations
-    const iter = (async function* () {
-      for await (const msg of sub) {
-        yield msg;
-      }
-    })();
-
     let cleaned = false;
     const cleanup = () => {
       if (cleaned) return;
       cleaned = true;
       sub.stop();
-      iter.return(undefined).catch(() => {});
+      reader.cancel().catch(() => {});
+      release();
     };
-
     signal?.addEventListener("abort", cleanup, { once: true });
 
     return new ReadableStream({
       async pull(controller) {
-        while (true) {
-          const result = await iter.next();
-          if (result.done) {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) {
             cleanup();
             controller.close();
             return;
           }
-          const msg = result.value;
-          // Stitch fragmented chunks back together before decoding. A
-          // fragment that doesn't complete the set yields null → read more.
-          const reassembled = reassembleFragment(msg);
-          if (msg.headers?.get(FRAG_TOTAL_HEADER) && !reassembled) continue;
-          const payload = reassembled ?? msg.data;
-          try {
-            const data = JSON.parse(decoder.decode(payload));
-            if (data.done) {
-              if (closeOnDone) {
-                cleanup();
-                controller.close();
-                return;
-              }
-              // A run ended, but the subscription stays open for the next
-              // run on this thread. Clients detect run boundaries from the
-              // AI-SDK `{type: "finish"}` chunk in the data stream, not
-              // from the JetStream sentinel — so we swallow it here.
-              continue;
-            }
-            if (data.p) {
-              controller.enqueue(data.p);
+          const ev = value;
+          if (ev.kind === "done") {
+            if (closeOnDone) {
+              cleanup();
+              controller.close();
               return;
             }
-          } catch {
-            // skip malformed, continue to next message
+            // A run ended, but the subscription stays open for the next run on
+            // this thread. Clients detect run boundaries from the AI-SDK
+            // `{type:"finish"}` chunk in the data stream, not the JetStream
+            // sentinel — so we swallow it here.
+            continue;
           }
+          controller.enqueue(ev.chunk);
+          return;
         }
       },
       cancel() {

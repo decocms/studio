@@ -40,6 +40,11 @@ export const KEYS = {
   connection: (locator: ProjectLocator, id: string) =>
     [locator, "connection", id] as const,
 
+  commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
+    ["commerce-discovery", "connection", orgId, connectionId] as const,
+  commerceDiscoveryVirtualMcp: (orgId: string, virtualMcpId: string) =>
+    ["commerce-discovery", "virtual-mcp", orgId, virtualMcpId] as const,
+
   connectionActivity: (
     connectionId: string,
     timeframe: string,

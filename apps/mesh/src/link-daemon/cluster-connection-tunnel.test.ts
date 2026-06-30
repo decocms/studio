@@ -1022,7 +1022,6 @@ test("work dispatch is bound to runLifetimeSignal, not the per-session signal", 
         | "terminal";
     },
     publishDone: async () => {},
-    publishCheckpoint: async () => {},
   };
 
   const validWorkItem = {
@@ -1152,7 +1151,6 @@ test("work dispatch receives the active NATS connection via getNatsConnection", 
   const fakeRelayPublisher = {
     publishLine: async () => "published" as const,
     publishDone: async () => {},
-    publishCheckpoint: async () => {},
   };
 
   const handle = await connectToClusterTunnel(

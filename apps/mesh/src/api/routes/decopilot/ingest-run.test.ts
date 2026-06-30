@@ -44,8 +44,13 @@ describe("ingestRun", () => {
       },
       {
         streamBuffer: {
-          publishRawChunk: async (_id, chunk, opts) => {
-            published.push({ chunk, msgId: opts?.msgId });
+          publishRawChunk: async (runId, chunk, dedup) => {
+            published.push({
+              chunk,
+              msgId: dedup
+                ? `${runId}:${dedup.fenceToken}:${dedup.seq}`
+                : undefined,
+            });
             return true;
           },
           publishDone: async () => true,
@@ -85,8 +90,14 @@ describe("ingestRun", () => {
       },
       {
         streamBuffer: {
-          publishRawChunk: async (runId, chunk, opts) => {
-            published.push({ runId, chunk, msgId: opts?.msgId });
+          publishRawChunk: async (runId, chunk, dedup) => {
+            published.push({
+              runId,
+              chunk,
+              msgId: dedup
+                ? `${runId}:${dedup.fenceToken}:${dedup.seq}`
+                : undefined,
+            });
             return true;
           },
           publishDone: async (runId, fenceToken, finalSeq) => {
@@ -165,9 +176,15 @@ function deps() {
         publishRawChunk: async (
           runId: string,
           chunk: unknown,
-          opts?: { msgId?: string },
+          dedup?: { fenceToken: string; seq: number },
         ) => {
-          published.push({ runId, chunk, msgId: opts?.msgId });
+          published.push({
+            runId,
+            chunk,
+            msgId: dedup
+              ? `${runId}:${dedup.fenceToken}:${dedup.seq}`
+              : undefined,
+          });
           return true;
         },
         publishDone: async (

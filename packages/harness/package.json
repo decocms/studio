@@ -1,6 +1,6 @@
 {
   "name": "@decocms/harness",
-  "version": "1.9.3",
+  "version": "1.10.0",
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.ts",
@@ -25,6 +25,7 @@
     "ai": ">=6.0.0"
   },
   "dependencies": {
+    "ai": "^6.0.208",
     "@ai-sdk/anthropic": "^3.0.85",
     "@ai-sdk/google": "^3.0.83",
     "@ai-sdk/openai": "^3.0.73",

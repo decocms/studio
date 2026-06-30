@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 describe("DBOS worker queue selection", () => {
-  test("worker role listens to all run queues, including the durable projector", async () => {
+  test("worker role listens to all run queues, including the hosted-harness child workflow", async () => {
     const source = await Bun.file(
       new URL("./index.ts", import.meta.url),
     ).text();
@@ -13,10 +13,11 @@ describe("DBOS worker queue selection", () => {
     for (const queue of [
       "AUTOMATIONS_QUEUE",
       "THREAD_GATE_QUEUE",
-      "PROJECTOR_QUEUE",
+      "HOSTED_HARNESS_QUEUE",
       "BACKGROUND_TOOLS_QUEUE",
     ]) {
       expect(runQueues).toContain(queue);
     }
+    expect(runQueues).not.toContain("PROJECTOR_QUEUE");
   });
 });

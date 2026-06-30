@@ -262,6 +262,7 @@ import type { BetterAuthInstance } from "@/auth";
 import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { OrgScopedAsyncResearchJobStorage } from "@/storage/async-research-jobs";
 import type { ConnectionStorage } from "../storage/connection";
+import type { ConnectionCredentialVaultStorage } from "../storage/connection-credential-vault";
 import type {
   MonitoringStorage,
   VirtualMcpPluginConfigStoragePort,
@@ -308,6 +309,7 @@ import type { BoundObjectStorage } from "../object-storage/bound-object-storage"
  */
 export interface MeshStorage {
   connections: ConnectionStorage;
+  connectionCredentialVault: ConnectionCredentialVaultStorage;
   organizationSettings: OrganizationSettingsStorage;
   monitoring: MonitoringStorage;
   virtualMcps: VirtualMCPStorage;

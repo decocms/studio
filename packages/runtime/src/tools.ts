@@ -17,7 +17,11 @@ import { BindingRegistry, injectBindingSchemas } from "./bindings.ts";
 import { Event, type EventHandlers } from "./events.ts";
 import type { DefaultEnv, User } from "./index.ts";
 import { State } from "./state.ts";
-import { type InstallContext, makeCreateAgent } from "./agents.ts";
+import {
+  type InstallContext,
+  type StudioVaultBootstrap,
+  makeCreateAgent,
+} from "./agents.ts";
 
 // Re-export EventHandlers type and SELF constant for external use
 export { SELF } from "./events.ts";
@@ -25,6 +29,7 @@ export type { EventHandlers } from "./events.ts";
 export { AGENT_SCOPES } from "./agents.ts";
 export type {
   InstallContext,
+  StudioVaultBootstrap,
   CreateAgentInput,
   CreateAgentResult,
   CreatedAutomation,
@@ -356,8 +361,72 @@ export interface Integration {
 
 export interface OnChangeCallback<TState> {
   state: TState;
-  scopes: string[];
+  scopes: ConfigurationScope[];
+  vault?: StudioVaultBootstrap;
 }
+
+/**
+ * Canonical scope value for reading a refreshable OAuth access token from
+ * Studio's credential vault for a configured binding.
+ *
+ * Use it in configuration scopes as `${STATE_KEY}::credential:access-token:read`,
+ * where `STATE_KEY` points at a `BindingOf(...)` value in configuration state.
+ * This scope is intentionally narrower than static secret access: Studio should
+ * return only the current access token and keep refresh tokens/client secrets
+ * inside the vault.
+ *
+ * @example
+ * ```ts
+ * const scopes = ["github::credential:access-token:read"] satisfies ConfigurationScope[];
+ * ```
+ */
+export const CREDENTIAL_ACCESS_TOKEN_READ_SCOPE =
+  "credential:access-token:read" as const;
+
+/**
+ * Canonical scope value for reading saved MCP configuration state from
+ * Studio's credential vault for a configured binding.
+ *
+ * Use it in configuration scopes as
+ * `${STATE_KEY}::credential:configuration:read`, where `STATE_KEY` points at a
+ * `BindingOf(...)` value in configuration state. This scope is intentionally
+ * separate from OAuth access-token reads because some MCPs store provider
+ * settings or credentials in configuration state instead of OAuth.
+ *
+ * The runtime vault client returns Studio's already-saved configuration state;
+ * it does not call the target MCP's `MCP_CONFIGURATION` discovery tool.
+ *
+ * @example
+ * ```ts
+ * const scopes = ["github::credential:configuration:read"] satisfies ConfigurationScope[];
+ * ```
+ */
+export const CREDENTIAL_CONFIGURATION_READ_SCOPE =
+  "credential:configuration:read" as const;
+
+export type CredentialAccessTokenReadScope =
+  typeof CREDENTIAL_ACCESS_TOKEN_READ_SCOPE;
+export type CredentialConfigurationReadScope =
+  typeof CREDENTIAL_CONFIGURATION_READ_SCOPE;
+
+export type BindingCredentialAccessTokenReadScope<
+  TStateKey extends string = string,
+> = `${TStateKey}::${CredentialAccessTokenReadScope}`;
+export type BindingCredentialConfigurationReadScope<
+  TStateKey extends string = string,
+> = `${TStateKey}::${CredentialConfigurationReadScope}`;
+
+/**
+ * Configuration scopes use `STATE_KEY::SCOPE`, where `STATE_KEY` points at a
+ * value in the MCP configuration state. Most scopes are MCP-specific tool or
+ * capability names. `credential:access-token:read` leases a downstream OAuth
+ * access token for direct API calls, and `credential:configuration:read` reads
+ * the target connection's saved MCP configuration state.
+ */
+export type ConfigurationScope =
+  | BindingCredentialAccessTokenReadScope
+  | BindingCredentialConfigurationReadScope
+  | string;
 
 /**
  * OAuth 2.0 Token Exchange Parameters
@@ -487,7 +556,7 @@ export interface CreateMCPServerOptions<
      */
     onInstall?: (env: TEnv, ctx: InstallContext) => Promise<void>;
     state?: TSchema;
-    scopes?: string[];
+    scopes?: ConfigurationScope[];
   };
   tools?:
     | Array<
@@ -580,14 +649,25 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 .describe(
                   "True on the first configuration save for this connection — fires onInstall.",
                 ),
+              vault: z
+                .object({
+                  baseUrl: z.string(),
+                  org: z.string(),
+                  subjectConnectionId: z.string(),
+                  token: z.string(),
+                })
+                .optional(),
             }),
             outputSchema: z.object({}),
             execute: async (input) => {
               const state = (input.context as { state: unknown })
                 .state as z.infer<TSchema>;
+              const vault = (input.context as { vault?: StudioVaultBootstrap })
+                .vault;
               await onChange?.(input.runtimeContext.env, {
                 state,
                 scopes: (input.context as { scopes: string[] }).scopes,
+                vault,
               });
 
               if (
@@ -597,6 +677,7 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 const { meshUrl, token, connectionId } = getMeshCtx(input);
                 await onInstall(input.runtimeContext.env, {
                   createAgent: makeCreateAgent(meshUrl, token, connectionId),
+                  vault,
                 });
               }
 

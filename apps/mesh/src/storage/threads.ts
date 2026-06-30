@@ -95,6 +95,10 @@ export class OrgScopedThreadStorage {
     return this.inner.markRunFailed(id, this.requireOrg(), reason, kind);
   }
 
+  requiresActionIfInProgress(id: string): Promise<Thread | null> {
+    return this.inner.requiresActionIfInProgress(id, this.requireOrg());
+  }
+
   forceFailIfInProgress(id: string): Promise<boolean> {
     return this.inner.forceFailIfInProgress(id, this.requireOrg());
   }
@@ -233,32 +237,6 @@ export class OrgScopedThreadStorage {
    */
   getAckedSeq(id: string): Promise<number> {
     return this.inner.getAckedSeq(id, this.requireOrg());
-  }
-
-  /**
-   * Read the current incremental-projection cursor for a thread.
-   * Returns 0 when the column is null (nothing projected yet).
-   */
-  getProjectedSeq(id: string): Promise<number> {
-    return this.inner.getProjectedSeq(id, this.requireOrg());
-  }
-
-  /**
-   * Advance the incremental-projection cursor using a fence + monotonic CAS.
-   * Only writes when `run_fence_token` matches AND `newSeq > projected_seq`.
-   * Returns the resulting `projected_seq` (unchanged if the guard failed).
-   */
-  advanceProjectedSeq(
-    id: string,
-    fenceToken: string,
-    newSeq: number,
-  ): Promise<number> {
-    return this.inner.advanceProjectedSeq(
-      id,
-      this.requireOrg(),
-      fenceToken,
-      newSeq,
-    );
   }
 }
 
@@ -459,6 +437,29 @@ export class SqlThreadStorage implements ThreadStoragePort {
         failure_reason: reason,
         failure_kind: kind,
         run_owner_pod: null,
+        run_config: null,
+        run_started_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("status", "=", "in_progress")
+      .returningAll()
+      .execute();
+
+    const row = rows[0];
+    return row ? this.threadFromDbRow(row) : null;
+  }
+
+  async requiresActionIfInProgress(
+    id: string,
+    organizationId: string,
+  ): Promise<Thread | null> {
+    const rows = await this.db
+      .updateTable("threads")
+      .set({
+        status: "requires_action",
+        // run_owner_pod kept set: requires_action is a pause, not terminal state — run resumes after tool approval
         run_config: null,
         run_started_at: null,
         updated_at: new Date().toISOString(),
@@ -885,11 +886,30 @@ export class SqlThreadStorage implements ThreadStoragePort {
    * new fence epoch always starts with a clean floor — preventing a prior
    * turn's ack high-water mark from causing `RelaySessionImpl.push()` to drop
    * the new turn's early chunks (cross-turn chunk loss bug).
+   *
+   * When CLAIMING a turn (token non-null), also resets `status` to
+   * `in_progress`. `runId === threadId`, so the run row is shared across every
+   * turn of a thread, and the consume step is the SOLE terminal-status writer
+   * whose entry guard returns early on a terminal status. Without this reset a
+   * second turn inherits the PRIOR turn's terminal status (`completed` /
+   * `requires_action`), so its consume step short-circuits and the turn renders
+   * "No response was generated". Resetting here — atomically with the new fence
+   * — re-arms the run for this turn (mirrors the per-turn `(runId,fenceToken)`
+   * message-id namespacing: turn-stable runId needs an explicit per-turn reset).
+   * Clearing the fence (token null, teardown) leaves status untouched.
    */
   async setRunFence(threadId: string, token: string | null): Promise<void> {
     await this.db
       .updateTable("threads")
-      .set({ run_fence_token: token, run_acked_seq: null })
+      .set(
+        token === null
+          ? { run_fence_token: null, run_acked_seq: null }
+          : {
+              run_fence_token: token,
+              run_acked_seq: null,
+              status: "in_progress",
+            },
+      )
       .where("id", "=", threadId)
       .execute();
   }
@@ -978,48 +998,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return row?.run_acked_seq ?? 0;
   }
 
-  /**
-   * Read the current incremental-projection cursor for a thread.
-   * Returns 0 when the column is null (nothing projected yet).
-   */
-  async getProjectedSeq(id: string, organizationId: string): Promise<number> {
-    const row = await this.db
-      .selectFrom("threads")
-      .select("projected_seq")
-      .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
-      .executeTakeFirst();
-    return row?.projected_seq ?? 0;
-  }
-
-  /**
-   * Advance the incremental-projection cursor using a fence + monotonic CAS.
-   *
-   * Sets `projected_seq = newSeq` only when:
-   *   - `id` + `organization_id` match the row
-   *   - `run_fence_token = fenceToken` (guards against stale runs)
-   *   - `projected_seq < newSeq` (monotonic — never regresses)
-   *
-   * Returns the resulting `projected_seq` after the attempt (re-read via
-   * `getProjectedSeq`), so the caller can detect when the guard fired.
-   */
-  async advanceProjectedSeq(
-    id: string,
-    organizationId: string,
-    fenceToken: string,
-    newSeq: number,
-  ): Promise<number> {
-    await this.db
-      .updateTable("threads")
-      .set({ projected_seq: newSeq, updated_at: new Date().toISOString() })
-      .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
-      .where("run_fence_token", "=", fenceToken)
-      .where("projected_seq", "<", newSeq)
-      .execute();
-    return this.getProjectedSeq(id, organizationId);
-  }
-
   // ==========================================================================
   // Private Helper Methods
   // ==========================================================================
@@ -1047,7 +1025,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     hidden: boolean | number | null;
     message_storage_version?: number | null;
     link_transport?: string | null;
-    projected_seq?: number | null;
   }): Thread {
     let metadata: ThreadMetadata = {};
     if (row.metadata != null) {
@@ -1093,8 +1070,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
       // threads keep reading from `thread_messages`.
       message_storage_version: row.message_storage_version ?? 1,
       link_transport: row.link_transport ?? null,
-      // Defaults to 0 for pre-migration rows (column absent/null).
-      projected_seq: row.projected_seq ?? 0,
     };
   }
 

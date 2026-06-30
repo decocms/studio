@@ -27,16 +27,19 @@ export interface ProjectTitleOptions {
 }
 
 export interface ProjectChunksOptions {
-  chunks: AsyncIterable<UIMessageChunk>;
+  chunks?: AsyncIterable<UIMessageChunk>;
+  chunkStream?: ReadableStream<UIMessageChunk>;
   persistence: HarnessStreamPersistence;
   /** Mirrors consumeHarnessStream: shapes the synthesized error part text. */
   sanitizeErrorText?: (error: unknown) => string;
   /** Deterministic id for a synthesized error message (`error-${runId}`) so
    *  re-projection attempts dedupe it. See consumeHarnessStream. */
   errorMessageId?: string;
-  /** Deterministic assistant-message id generator (`${runId}:msg:${n}`) so a
-   *  re-fold of the same run yields the same message + part ids → ON CONFLICT
-   *  dedupe. See consumeHarnessStream.generateMessageId. */
+  /** Optional override id scheme for the reassembled message(s). Only
+   *  background-tool-workflow passes this — its own `${jobId}:msg:${n}` ids. The
+   *  decopilot projection paths DO NOT pass it: they keep the harness
+   *  `start.messageId` (`msg_…`) verbatim, so a re-fold reads the same id →
+   *  identical row ids → ON CONFLICT dedupe. See consumeHarnessStream.generateMessageId. */
   generateMessageId?: () => string;
   /**
    * When set, the projector persists the harness title chunk via this writer
@@ -45,8 +48,10 @@ export interface ProjectChunksOptions {
   title?: ProjectTitleOptions;
   /**
    * Prior completed messages to seed createUIMessageStream. Supplied by the
-   * checkpoint workflow (Task 9) to resume a fold from the projection cursor.
-   * Omitted / empty array → fresh fold from seq 1 (existing terminal behaviour).
+   * persisting projector fold so a continuation merges onto a trailing assistant
+   * proposal and the fold resumes from the projection cursor (see
+   * consumeHarnessStream). Omitted / empty array → fresh fold from seq 1 (live
+   * ingest / non-persisting callers).
    */
   originalMessages?: UIMessage[];
 }
@@ -61,6 +66,40 @@ async function drain(stream: ReadableStream): Promise<void> {
   } finally {
     reader.releaseLock();
   }
+}
+
+function guardChunkStream<T>(
+  source: ReadableStream<T>,
+  onError: (error: unknown) => void,
+): ReadableStream<T> {
+  const reader = source.getReader();
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    reader.releaseLock();
+  };
+  return new ReadableStream<T>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          release();
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        onError(error);
+        release();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+      release();
+    },
+  });
 }
 
 /** Outcome produced by a clean reconstruction of the chunk stream. */
@@ -79,6 +118,14 @@ export interface ProjectChunksResult {
    */
   finishReason?: string;
   usage: Pick<HarnessUsage, "inputTokens" | "outputTokens" | "totalTokens">;
+  /**
+   * The parts of the LAST assistant message the fold produced, taken directly
+   * from the onFinish callback's responseMessage. Used by the workflow's
+   * terminal branch to call resolveThreadStatus(finishReason, finalParts) so
+   * it can distinguish requires_action (tool-approval pause / question ending)
+   * from completed without a round-trip back to the DB.
+   */
+  finalParts: Array<{ type: string; text?: string; state?: string }>;
 }
 
 /**
@@ -116,6 +163,9 @@ export interface ProjectChunksResult {
 export async function projectChunks(
   options: ProjectChunksOptions,
 ): Promise<ProjectChunksResult> {
+  if (!options.chunks && !options.chunkStream) {
+    throw new Error("projectChunks requires chunks or chunkStream");
+  }
   // sourceThrew: captures the exception if the source AsyncIterable itself
   // threw (infra/redelivery signal — distinct from an in-band error chunk).
   let sourceThrew: unknown = null;
@@ -129,6 +179,7 @@ export async function projectChunks(
     outputTokens: 0,
     totalTokens: 0,
   };
+  let capturedFinalParts: ProjectChunksResult["finalParts"] = [];
   let persistenceError: unknown = null;
   const recordPersistenceError = (error: unknown) => {
     if (persistenceError === null) persistenceError = error;
@@ -136,17 +187,31 @@ export async function projectChunks(
   };
   // Wrap the source so we can detect a thrown exception at the generator level.
   // An in-band {type:"error"} chunk does NOT cause the generator to throw.
-  const wrappedChunks: AsyncIterable<UIMessageChunk> = (async function* () {
-    try {
-      for await (const chunk of options.chunks) {
-        if (isRunStatusControlChunk(chunk)) continue;
-        yield chunk;
-      }
-    } catch (e) {
-      sourceThrew = e;
-      throw e;
-    }
-  })();
+  const wrappedChunks: AsyncIterable<UIMessageChunk> | undefined =
+    options.chunks
+      ? (async function* () {
+          try {
+            for await (const chunk of options.chunks!) {
+              if (isRunStatusControlChunk(chunk)) continue;
+              yield chunk;
+            }
+          } catch (e) {
+            sourceThrew = e;
+            throw e;
+          }
+        })()
+      : undefined;
+  const wrappedChunkStream = options.chunkStream
+    ? guardChunkStream(options.chunkStream, (error) => {
+        sourceThrew = error;
+      }).pipeThrough(
+        new TransformStream<UIMessageChunk, UIMessageChunk>({
+          transform(chunk, controller) {
+            if (!isRunStatusControlChunk(chunk)) controller.enqueue(chunk);
+          },
+        }),
+      )
+    : undefined;
   // Wrap persistence so a swallowed write failure is still captured here. The
   // re-thrown rejection flows back into consumeHarnessStream's internal
   // `.catch(console.error)`, so its completion semantics are unchanged.
@@ -160,6 +225,7 @@ export async function projectChunks(
   };
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: wrappedChunks,
+    chunkStream: wrappedChunkStream,
     originalMessages: options.originalMessages ?? [],
     // When a title writer is wired, the projector is the sole `threads.title`
     // writer. Pass the thread's REAL current title through to the interceptor's
@@ -195,8 +261,19 @@ export async function projectChunks(
         // We use sourceThrew to disambiguate at return time.
         inBandErrorSeen = true;
       },
-      onFinish: (_message, finishReason) => {
+      onFinish: (message, finishReason) => {
         capturedFinishReason = finishReason;
+        // Capture the parts of the last assistant message so the workflow's
+        // terminal branch can call resolveThreadStatus(finishReason, finalParts)
+        // without a round-trip back to the DB. Filter to well-formed parts only
+        // (non-null objects with a "type" property) so malformed entries can't
+        // reach resolveThreadStatus — UIMessage.parts is unknown[].
+        capturedFinalParts = Array.isArray(message.parts)
+          ? (message.parts as unknown[]).filter(
+              (p): p is ProjectChunksResult["finalParts"][number] =>
+                p != null && typeof p === "object" && "type" in p,
+            )
+          : [];
       },
     },
   });
@@ -213,5 +290,6 @@ export async function projectChunks(
     failed,
     finishReason: capturedFinishReason,
     usage: capturedUsage,
+    finalParts: capturedFinalParts,
   };
 }

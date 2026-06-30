@@ -15,11 +15,7 @@ import {
 import { resolveAgentTier } from "@/ai-providers/agent-tiers";
 import type { ChatTier, SimpleModeTier } from "@/tools/organization/schema";
 import { posthog } from "@/posthog";
-import {
-  consumeStream,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-} from "ai";
+import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -42,9 +38,13 @@ import {
 import { StreamRequestSchema } from "./schemas";
 import type { ChatMessage, ModelsConfig } from "./types";
 import type { DispatchRunInput } from "./dispatch-run";
-import { resolveHarnessId } from "./dispatch-run";
+import { buildDurableDispatchInput, resolveHarnessId } from "./dispatch-run";
 import { stringifyError } from "@decocms/harness/stream-error";
-import { enqueueThreadRun } from "@/dispatch-queue";
+import {
+  cancelHostedHarness,
+  enqueueThreadRun,
+  threadRunExists,
+} from "@/dispatch-queue";
 import {
   publishRunStatusStage,
   shouldPublishClusterRunStatus,
@@ -59,6 +59,9 @@ import type { HarnessId } from "@/harnesses";
 import type { Thread } from "@/storage/types";
 import { cancelThreadBackgroundJobs } from "@/harnesses/decopilot/background-tool-workflow";
 import { abortBackgroundJobs } from "@/harnesses/decopilot/background-abort-registry";
+import { PartEmitter } from "./part-emitter";
+import { uploadFileParts } from "./file-materializer";
+import { mintRunFenceToken } from "./dispatch-fence";
 
 // Per-connection /stream tail diagnostics. Flip to "1" in an environment where
 // the live stream intermittently delivers no chunks — logs the resolved
@@ -112,6 +115,51 @@ export function computeIdempotencyKey(
   if (!lastMsg) return undefined;
   if (lastMsg.role === "user" && lastMsg.id) return lastMsg.id;
   return createHash("sha1").update(canonicalStringify(lastMsg)).digest("hex");
+}
+
+/**
+ * Decide the run fence token for a POST.
+ *
+ * The fence MUST be fresh per TURN (see `mintRunFenceToken`): it scopes the
+ * JetStream dedup key and the projector accumulator, AND keys the hosted-harness
+ * child workflow id `decopilot-hosted:<runId>:<fenceToken>`. A fresh user
+ * message and an approval/tool-output CONTINUATION are each a new turn, so each
+ * MUST mint a fresh fence. Reusing one — e.g. a continuation inheriting the
+ * proposal's fence — collides the child id with the prior turn's already-
+ * finished child, so DBOS dedupe silently drops the resume and the turn hangs
+ * forever (and the reused fence also merges two turns into one stream/projector
+ * accumulator).
+ *
+ * Only a genuine network REDELIVERY (the gate workflow id already exists) reuses
+ * the in-flight fence — minting there would clobber the live turn's fence and
+ * strand its projection. `isRedelivery` is derived from gate-workflow existence,
+ * NOT from "is the message already persisted" (which is ALSO true for a
+ * continuation re-POSTing the proposal's assistant message — the bug this fixes).
+ */
+export function planSubmitRunFence(input: {
+  isRedelivery: boolean;
+  existingFenceToken: string | null;
+  mintFenceToken: () => string;
+}): { runFenceToken: string; shouldWriteFence: boolean } {
+  if (input.isRedelivery && input.existingFenceToken) {
+    return {
+      runFenceToken: input.existingFenceToken,
+      shouldWriteFence: false,
+    };
+  }
+
+  return {
+    runFenceToken: input.mintFenceToken(),
+    shouldWriteFence: true,
+  };
+}
+
+export function shouldPersistRequestMessage(input: {
+  alreadyPersisted: boolean;
+  role: ChatMessage["role"];
+}): boolean {
+  if (!input.alreadyPersisted) return true;
+  return input.role === "assistant";
 }
 
 // ============================================================================
@@ -606,6 +654,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
       let pinnedHarness = (existingThread?.harness_id ??
         null) as HarnessId | null;
+      let messageStorageVersion = existingThread?.message_storage_version ?? 2;
 
       if (!pinnedKind || !pinnedHarness) {
         pinnedKind =
@@ -651,6 +700,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
               branch,
               ...(pinV2 ? { message_storage_version: 2 } : {}),
             });
+            if (pinV2) messageStorageVersion = 2;
           } catch (err) {
             console.warn(
               "[decopilot:messages] failed to persist thread pins",
@@ -658,6 +708,13 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
             );
           }
         }
+      }
+
+      if (messageStorageVersion !== 2) {
+        throw new HTTPException(409, {
+          message:
+            "Thread uses legacy message storage and cannot accept new messages",
+        });
       }
 
       // `resolveDispatchTarget` only needs the resolved `sandboxProviderKind`
@@ -671,18 +728,84 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // provider).
       const target = resolveDispatchTarget({ sandboxProviderKind: pinnedKind });
 
-      const { abortSignal: _ignored, ...rest } = input;
-      const serializableRequest = {
-        ...rest,
-        target,
-        harnessId: pinnedHarness,
+      const requestMessage = input.messages.find((m) => m.role !== "system");
+      if (!requestMessage) {
+        throw new HTTPException(400, {
+          message: "No user message found in input",
+        });
+      }
+      const materializedRequestMessage = (
+        await uploadFileParts([requestMessage], ctx, {
+          threadId: taskId,
+        })
+      ).find((m) => m.role !== "system");
+      if (!materializedRequestMessage) {
+        throw new HTTPException(400, {
+          message: "No user message found after file materialization",
+        });
+      }
+      const messageId = materializedRequestMessage.id ?? crypto.randomUUID();
+      const persistedRequestMessage = {
+        ...materializedRequestMessage,
+        id: messageId,
       };
-      const lastMsg = input.messages[input.messages.length - 1];
-      const idempotencyKey = computeIdempotencyKey(lastMsg);
+      const alreadyPersisted = Boolean(
+        await ctx.db
+          .selectFrom("thread_message_parts")
+          .select("id")
+          .where("thread_id", "=", taskId)
+          .where("message_id", "=", messageId)
+          .executeTakeFirst(),
+      );
+      // Idempotency / fence decision. The gate workflow id is keyed by the
+      // turn's idempotency key, so a fresh user message AND an approval/
+      // tool-output continuation (whose re-POSTed assistant message hashes
+      // differently) each map to a NEW workflow id; only a network redelivery of
+      // the same POST collapses onto an existing one. The fence reuse keys off
+      // THIS redelivery — NOT `alreadyPersisted`, which is also true for a
+      // continuation that is nonetheless a new turn needing a fresh fence.
+      const idempotencyKey = computeIdempotencyKey(persistedRequestMessage);
       const workflowID = idempotencyKey
         ? `thread-run:${taskId}:${idempotencyKey}`
         : undefined;
+      const isRedelivery = workflowID
+        ? await threadRunExists(workflowID)
+        : false;
+      const existingFenceToken = isRedelivery
+        ? await ctx.storage.threads.getRunFence(taskId)
+        : null;
+      const { runFenceToken, shouldWriteFence } = planSubmitRunFence({
+        isRedelivery,
+        existingFenceToken,
+        mintFenceToken: mintRunFenceToken,
+      });
+      if (shouldWriteFence) {
+        await ctx.storage.threads.setRunFence(taskId, runFenceToken);
+      }
 
+      const emitter = new PartEmitter({
+        storage: ctx.storage.threads.messageParts(),
+        orgId: input.organizationId,
+        threadId: taskId,
+        runId: taskId,
+      });
+      if (
+        shouldPersistRequestMessage({
+          alreadyPersisted,
+          role: persistedRequestMessage.role,
+        })
+      ) {
+        await emitter.emitRequestMessage(persistedRequestMessage);
+      }
+
+      const serializableRequest = buildDurableDispatchInput(input, {
+        messageId,
+        runFenceToken,
+        branch,
+        sandboxProviderKind: pinnedKind,
+        harnessId: pinnedHarness,
+        target,
+      });
       // The workflow body emits `chat_message_started` inside a DBOS step,
       // so idempotent retries that collapse onto an existing workflowID
       // don't double-count in PostHog. Don't add a duplicate emit here.
@@ -740,6 +863,25 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         err,
       });
     });
+
+    // Tear down the hosted-harness child workflow (Task 7b). The in-memory cancel
+    // below (cancelBroadcast + run-registry CANCEL → AbortController) already
+    // stops the running harness loop; this additionally tells DBOS to stop
+    // recovering / retrying the child on pod recycles. Keyed by
+    // `decopilot-hosted:<runId>:<fenceToken>` — read the current fence from the
+    // thread row. Best-effort: cancelling an already-finished/unknown workflow
+    // (e.g. desktop runs, which have no hosted child) must not fail the cancel.
+    try {
+      const fenceToken = await ctx.storage.threads.getRunFence(taskId);
+      if (fenceToken) {
+        await cancelHostedHarness(taskId, fenceToken);
+      }
+    } catch (err) {
+      console.error("[decopilot:cancel] failed to cancel hosted harness", {
+        taskId,
+        err,
+      });
+    }
 
     // Abort in-flight background work on this pod now, and fan the cancel out
     // to every pod over NATS. Always broadcast: a background job runs on
@@ -823,10 +965,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // to a non-owner pod (any multi-pod deployment, including mid-deploy
       // and after a DBOS replay rehome) needs `"all"` to catch chunks the
       // owning pod has already pumped to the shared JetStream subject.
-      // The buffer is purged when a run reaches a durable terminal state (the
-      // projector workflow's success path for completed runs; the run-reactor
-      // for failed runs), so `"all"` only ever replays the current in-flight
-      // run.
+      // `"all"` replays the whole per-thread subject (catch-up to the in-flight
+      // run); `"new"` when the thread is idle so a just-completed run's tail
+      // isn't replayed. No fence-filter — the tail forwards EVERY run's chunks
+      // and the client reassembler folds them per run (a continuation's
+      // tool-output reconciles against the proposal it seeds from).
       const deliverPolicy = thread.status === "in_progress" ? "all" : "new";
       const runStartedAgoMs = thread.run_started_at
         ? Date.now() - new Date(thread.run_started_at).getTime()
@@ -865,49 +1008,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         );
       }
 
-      let deliveredChunks = 0;
-      const openedAt = Date.now();
-      const tailStream = createUIMessageStream({
-        execute: async ({ writer }) => {
-          const reader = tailChunkStream.getReader();
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              deliveredChunks++;
-              writer.write(value);
-            }
-          } finally {
-            reader.releaseLock();
-            if (STREAM_TAIL_TRACE) {
-              console.warn(
-                JSON.stringify({
-                  msg: "decopilot-stream-diag",
-                  event: "tail-closed",
-                  taskId,
-                  threadStatus: thread.status,
-                  deliverPolicy,
-                  runStartedAgoMs,
-                  deliveredChunks,
-                  // openMs = how long the tail stayed open; aborted = the client
-                  // (or proxy) closed the request vs. the JetStream subscription
-                  // ending server-side. Short openMs + aborted:true = client
-                  // reconnect churn; aborted:false = server-side close.
-                  openMs: Date.now() - openedAt,
-                  aborted: c.req.raw.signal.aborted,
-                }),
-              );
-            }
-          }
-        },
-      });
-
-      const baseResponse = createUIMessageStreamResponse({
-        stream: tailStream,
-        consumeSseStream: consumeStream,
-      });
-
-      return wrapWithSseKeepalive(baseResponse);
+      // Pure pass-through: `createTailStream` decoded the NATS log into
+      // UIMessageChunks; hand them straight to the SSE serializer. The client
+      // (useChat) is the only reassembler — a server-side `createUIMessageStream`
+      // layer added nothing to the wire and any stateful reassembly here would
+      // choke on a replayed run's chunks.
+      return wrapWithSseKeepalive(
+        createUIMessageStreamResponse({
+          stream: tailChunkStream,
+          consumeSseStream: consumeStream,
+        }),
+      );
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       console.error("[decopilot:stream] Error", stringifyError(err));
@@ -940,24 +1051,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       );
       if (!tailChunkStream) return c.body(null, 204);
 
-      const tailStream = createUIMessageStream({
-        execute: async ({ writer }) => {
-          const reader = tailChunkStream.getReader();
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              writer.write(value);
-            }
-          } finally {
-            reader.releaseLock();
-          }
-        },
-      });
-
+      // Pure pass-through (the subtask subject is already per-job/single-run).
       return wrapWithSseKeepalive(
         createUIMessageStreamResponse({
-          stream: tailStream,
+          stream: tailChunkStream,
           consumeSseStream: consumeStream,
         }),
       );

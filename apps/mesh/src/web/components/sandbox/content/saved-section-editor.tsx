@@ -33,10 +33,10 @@ function seedFromBlock(
   blockKey: string,
   decofile: Record<string, unknown>,
 ): { data: Record<string, unknown>; resolveType: string } | null {
-  const rawSections: RawSection[] = [{ __resolveType: blockKey } as RawSection];
-  const parsed = parseSections(rawSections, decofile)[0];
+  const rawSection = { __resolveType: blockKey } as RawSection;
+  const parsed = parseSections([rawSection], decofile)[0];
   if (!parsed) return null;
-  return unwrapSection(rawSections[0], parsed, decofile);
+  return unwrapSection(rawSection, parsed, decofile);
 }
 
 /**

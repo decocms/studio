@@ -20,7 +20,7 @@
  *     write each part once, when it first becomes final.
  *   - `emitFinal(responseMessage)` at `onFinish`: persist any remaining final
  *     parts, then a single `finish` marker for the assistant message.
- *   - `emitUserMessage(message)` at the initial user-message save.
+ *   - `emitRequestMessage(message)` at the `/messages` durable request save.
  *   - `emitError(messageId, role, parts)` at `onError`: an `error` part + finish.
  *
  * **Deterministic, idempotent ids.** Row id = `${runId}:${messageId}:${seq}`.
@@ -80,12 +80,24 @@ export class PartEmitter {
     this.builder.acknowledge(rows);
   }
 
-  /**
-   * Initial user-message save: persist the user's parts + a `finish` anchor so
-   * the message is immediately complete in the v2 read path.
-   */
+  /** @deprecated Use `emitRequestMessage` for the `/messages` request boundary. */
   async emitUserMessage(message: AnyMessage): Promise<void> {
     await this.appendBuiltRows(this.builder.emitUserMessage(message));
+  }
+
+  /**
+   * Durable request save: replace the submitted message snapshot with every
+   * request part plus a `finish` anchor so dispatch can reload exactly what the
+   * client posted. Projection paths still use final-only append methods below.
+   */
+  async emitRequestMessage(message: AnyMessage): Promise<void> {
+    const rows = this.builder.emitRequestMessage(message);
+    await this.ctx.storage.replaceMessageParts(
+      this.ctx.threadId,
+      message.id,
+      rows,
+    );
+    this.builder.acknowledge(rows);
   }
 
   /**
@@ -102,6 +114,27 @@ export class PartEmitter {
    */
   async emitFinal(message: AnyMessage): Promise<void> {
     await this.appendBuiltRows(this.builder.emitFinal(message));
+  }
+
+  /**
+   * Terminal projector write: replace the folded assistant snapshot. This is
+   * needed for approval continuations, where `/messages` has already persisted
+   * the same assistant message id with an `approval-responded` tool part and
+   * the terminal projection must rewrite it as `output-available` + final text.
+   *
+   * Uses `emitFinalSnapshot` (the COMPLETE message, dedup-set-ignoring) rather
+   * than `emitFinal` (the not-yet-acknowledged delta): `replaceMessageParts`
+   * deletes the whole message first, so inserting only the delta would drop any
+   * content an earlier `emitStepParts` already persisted in this same pass.
+   */
+  async replaceFinal(message: AnyMessage): Promise<void> {
+    const rows = this.builder.emitFinalSnapshot(message);
+    await this.ctx.storage.replaceMessageParts(
+      this.ctx.threadId,
+      message.id,
+      rows,
+    );
+    this.builder.acknowledge(rows);
   }
 
   /**

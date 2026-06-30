@@ -509,7 +509,7 @@ describe("NatsStreamBuffer", () => {
       await buffer.publishRawChunk(
         "run1",
         { type: "text-delta", delta: "x" },
-        { msgId: "run1:fenceA:3" },
+        { fenceToken: "fenceA", seq: 3 },
       );
       expect(published[0]?.opts).toMatchObject({ msgID: "run1:fenceA:3" });
     });

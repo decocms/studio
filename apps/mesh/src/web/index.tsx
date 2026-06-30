@@ -182,6 +182,20 @@ const onboardingRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/onboarding.tsx")),
 });
 
+const commerceOnboardingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/commerce-onboarding",
+  component: lazyRouteComponent(
+    () => import("./routes/commerce-onboarding.tsx"),
+  ),
+  validateSearch: z.lazy(() =>
+    z.object({
+      org: z.string().optional(),
+      siteUrl: z.string().optional(),
+    }),
+  ),
+});
+
 // ============================================
 // ORG LAYOUT
 // ============================================
@@ -558,6 +572,7 @@ const shellRouteTree = shellLayout.addChildren([
 const routeTree = rootRoute.addChildren([
   shellRouteTree,
   onboardingRoute,
+  commerceOnboardingRoute,
   loginRoute,
   cliAuthSuccessRoute,
   resetPasswordRoute,

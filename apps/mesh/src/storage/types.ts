@@ -494,6 +494,30 @@ export interface DownstreamTokenTable {
   tokenEndpoint: string | null;
 }
 
+export interface ConnectionWorkloadTokenTable {
+  id: string;
+  organization_id: string;
+  subject_connection_id: string;
+  token_hash: string;
+  token_prefix: string;
+  name: string;
+  revoked_at: ColumnType<Date, Date | string, Date | string> | null;
+  last_used_at: ColumnType<Date, Date | string, Date | string> | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface ConnectionCredentialGrantTable {
+  id: string;
+  organization_id: string;
+  subject_connection_id: string;
+  target_connection_id: string;
+  scope: string;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 // ============================================================================
 // OAuth Runtime Entity Types
 // ============================================================================
@@ -980,12 +1004,6 @@ export interface ThreadTable {
    * run resets the floor at the call site (fence epoch change).
    */
   run_acked_seq: number | null;
-  /**
-   * Per-run projection cursor: how far through the JetStream chunk log the
-   * projector has durably written parts. Advances monotonically; never
-   * regresses. Defaults to 0 for new rows and pre-migration rows.
-   */
-  projected_seq: ColumnType<number, number | undefined, number>;
 }
 
 export interface ThreadExpandedTool {
@@ -1038,12 +1056,6 @@ export interface Thread {
    * writes it. New code MUST NOT depend on it.
    */
   link_transport: string | null;
-  /**
-   * Per-run projection cursor: how far through the JetStream chunk log the
-   * projector has durably written parts. Advances monotonically; never
-   * regresses. Defaults to 0 for new rows and pre-migration rows.
-   */
-  projected_seq: number;
 }
 
 /**
@@ -1541,6 +1553,8 @@ export interface Database {
   oauth_authorization_codes: OAuthAuthorizationCodeTable;
   oauth_refresh_tokens: OAuthRefreshTokenTable;
   downstream_tokens: DownstreamTokenTable;
+  connection_workload_tokens: ConnectionWorkloadTokenTable;
+  connection_credential_grants: ConnectionCredentialGrantTable;
 
   // Better Auth organization tables (managed by Better Auth plugin)
   organization: BetterAuthOrganizationTable;

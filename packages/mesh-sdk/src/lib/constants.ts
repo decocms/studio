@@ -9,7 +9,10 @@ import type {
   ConnectionCreateData,
   ConnectionEntity,
 } from "../types/connection";
-import type { VirtualMCPEntity } from "../types/virtual-mcp";
+import type {
+  VirtualMCPCreateData,
+  VirtualMCPEntity,
+} from "../types/virtual-mcp";
 
 /**
  * Well-known MCP connection ID generators (org-scoped)
@@ -28,7 +31,15 @@ export const WellKnownOrgMCPId = {
   DEV_ASSETS: (org: string) => `${org}_dev-assets`,
   /** Site Diagnostics agent (note: prefix-first format, not org-first) */
   SITE_DIAGNOSTICS: (org: string) => `site-diagnostics_${org}`,
+  /** Commerce Discovery MCP */
+  COMMERCE_DISCOVERY: (org: string) => `${org}_commerce-discovery`,
 };
+
+export const COMMERCE_DISCOVERY_MCP_URL =
+  "https://commerce-skills.deco-cx.workers.dev/api/mcp";
+export const COMMERCE_DISCOVERY_REPORT_TOOL_NAME = "DISPLAY_REPORT";
+export const COMMERCE_DISCOVERY_ICON =
+  "https://api.iconify.design/lucide:chart-no-axes-combined.svg?color=%23171717";
 
 /**
  * Frontend connection ID for the self/management MCP endpoint.
@@ -320,6 +331,81 @@ export function getWellKnownBrandContextSetupVirtualMCP(
 const siteDiagnosticsPrefix = createWellKnownAgentPrefix("site-diagnostics_");
 export const isSiteDiagnostics = siteDiagnosticsPrefix.is;
 export const getSiteDiagnosticsId = siteDiagnosticsPrefix.get;
+
+// ---- Commerce Discovery ----
+const commerceDiscoveryPrefix = createWellKnownAgentPrefix(
+  "commerce-discovery_",
+);
+export const isCommerceDiscoveryAgentId = commerceDiscoveryPrefix.is;
+export const getCommerceDiscoveryAgentId = commerceDiscoveryPrefix.get;
+
+export function getWellKnownCommerceDiscoveryConnection(
+  orgId: string,
+  authorizationToken: string,
+): ConnectionCreateData {
+  return {
+    id: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
+    title: "Commerce Discovery",
+    description: "Commerce Discovery report and commerce diagnostics.",
+    connection_type: "HTTP",
+    connection_url: COMMERCE_DISCOVERY_MCP_URL,
+    icon: COMMERCE_DISCOVERY_ICON,
+    app_name: "commerce-discovery",
+    app_id: null,
+    connection_token: authorizationToken,
+    connection_headers: null,
+    oauth_config: null,
+    configuration_state: null,
+    configuration_scopes: null,
+    metadata: {
+      isDefault: false,
+      type: "commerce-discovery",
+    },
+  };
+}
+
+export function getWellKnownCommerceDiscoveryVirtualMCP(
+  orgId: string,
+  connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
+): VirtualMCPCreateData {
+  return {
+    title: "Commerce Discovery",
+    description: "Commerce Discovery report workspace.",
+    icon: COMMERCE_DISCOVERY_ICON,
+    status: "active",
+    pinned: false,
+    metadata: {
+      type: "commerce-discovery",
+      isDefault: false,
+      ui: {
+        pinnedViews: [
+          {
+            connectionId,
+            toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+            label: "Commerce Discovery",
+            icon: COMMERCE_DISCOVERY_ICON,
+          },
+        ],
+        layout: {
+          defaultMainView: {
+            type: "ext-apps",
+            id: connectionId,
+            toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+          },
+          chatDefaultOpen: false,
+        },
+      },
+    },
+    connections: [
+      {
+        connection_id: connectionId,
+        selected_tools: [COMMERCE_DISCOVERY_REPORT_TOOL_NAME],
+        selected_resources: null,
+        selected_prompts: null,
+      },
+    ],
+  };
+}
 
 /**
  * Studio Pack agent ID generators (org-scoped)

@@ -42,9 +42,13 @@ export function isFinalPart(part: AnyPart): boolean {
   }
 
   if (type.startsWith("tool-") || type === "dynamic-tool") {
-    // Final only at a terminal output state. Anything earlier
-    // (input-streaming/input-available/approval-*) is still in flight.
+    // Persist terminal output states and terminal "requires action" pauses.
+    // Generic input-available tools are still in-flight, but user_ask
+    // input-available and approval-requested are the durable state the UI needs
+    // after reload to let the user continue the run.
     return (
+      part.state === "approval-requested" ||
+      (type === "tool-user_ask" && part.state === "input-available") ||
       part.state === "output-available" ||
       part.state === "output-error" ||
       part.state === "output-denied"
@@ -165,6 +169,32 @@ export class PartRowBuilder {
     return rows;
   }
 
+  /**
+   * Emit the submitted request snapshot exactly enough for durable reload.
+   * Unlike assistant projection, this stores approval/input states because they
+   * are user/assistant request data for the next model step, not final output.
+   */
+  private emitRequestMessageParts(message: AnyMessage): ThreadMessagePart[] {
+    const parts = (message.parts ?? []) as AnyPart[];
+    const rows: ThreadMessagePart[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      const key = `${message.id}#${i}`;
+
+      const seq = this.seqFor(key);
+      const row = this.row(
+        message.id,
+        message.role,
+        seq,
+        kindForPart(part),
+        part,
+      );
+      this.partKeyByRowId.set(row.id, key);
+      rows.push(row);
+    }
+    return rows;
+  }
+
   /** Return the single `finish` anchor for a message until it is acknowledged. */
   private markFinished(
     messageId: string,
@@ -172,6 +202,17 @@ export class PartRowBuilder {
     metadata: unknown | null = null,
   ): ThreadMessagePart[] {
     if (this.finished.has(messageId)) return [];
+    const seq = this.seqFor(`${messageId}#finish`);
+    const row = this.row(messageId, role, seq, "finish", {}, metadata);
+    this.finishMessageIdByRowId.set(row.id, messageId);
+    return [row];
+  }
+
+  private markRequestFinished(
+    messageId: string,
+    role: AnyMessage["role"],
+    metadata: unknown | null = null,
+  ): ThreadMessagePart[] {
     const seq = this.seqFor(`${messageId}#finish`);
     const row = this.row(messageId, role, seq, "finish", {}, metadata);
     this.finishMessageIdByRowId.set(row.id, messageId);
@@ -201,6 +242,17 @@ export class PartRowBuilder {
     return [
       ...this.emitMessageParts(message),
       ...this.markFinished(
+        message.id,
+        message.role,
+        (message as { metadata?: unknown }).metadata ?? null,
+      ),
+    ];
+  }
+
+  emitRequestMessage(message: AnyMessage): ThreadMessagePart[] {
+    return [
+      ...this.emitRequestMessageParts(message),
+      ...this.markRequestFinished(
         message.id,
         message.role,
         (message as { metadata?: unknown }).metadata ?? null,
@@ -239,6 +291,58 @@ export class PartRowBuilder {
         (message as { metadata?: unknown }).metadata ?? null,
       ),
     ];
+  }
+
+  /**
+   * Build the COMPLETE final snapshot of a message — every final part (in its
+   * current terminal state) plus the `finish` anchor — IGNORING this builder's
+   * `emitted`/`finished` dedup sets.
+   *
+   * `PartEmitter.replaceFinal` deletes the whole message before re-inserting, so
+   * it MUST insert the FULL snapshot, not the not-yet-acknowledged delta that
+   * {@link emitFinal} returns. If an earlier `emitStepParts` in the same pass
+   * already appended (and acknowledged) the content, `emitFinal` would return
+   * only the finish anchor and the delete-then-insert would silently WIPE that
+   * content — leaving a content-less assistant bubble. Re-deriving the full
+   * snapshot here (stable seqs via `seqFor`, so ids stay idempotent) keeps the
+   * replace complete, and also upgrades any part whose state advanced since it
+   * was first emitted (e.g. a tool `input-available` → `output-available`).
+   */
+  emitFinalSnapshot(message: AnyMessage): ThreadMessagePart[] {
+    const parts = (message.parts ?? []) as AnyPart[];
+    const rows: ThreadMessagePart[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      if (!isFinalPart(part)) continue;
+      const key = `${message.id}#${i}`;
+      const seq = this.seqFor(key);
+      const row = this.row(
+        message.id,
+        message.role,
+        seq,
+        kindForPart(part),
+        part,
+      );
+      this.partKeyByRowId.set(row.id, key);
+      rows.push(row);
+    }
+    // Same blank-bubble guard as emitFinal: a finish anchor with no content
+    // folds to an empty assistant bubble. Skip it when there is genuinely no
+    // renderable part (in this snapshot or acknowledged earlier in this pass).
+    if (rows.length === 0 && !this.hasEmittedContentFor(message.id)) {
+      return rows;
+    }
+    const finishSeq = this.seqFor(`${message.id}#finish`);
+    const finishRow = this.row(
+      message.id,
+      message.role,
+      finishSeq,
+      "finish",
+      {},
+      (message as { metadata?: unknown }).metadata ?? null,
+    );
+    this.finishMessageIdByRowId.set(finishRow.id, message.id);
+    return [...rows, finishRow];
   }
 
   /**

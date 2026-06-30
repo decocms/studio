@@ -3,6 +3,7 @@ import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
   BookOpen01,
+  Calendar,
   ChevronDown,
   Code01,
   Copy01,
@@ -88,6 +89,8 @@ import { useLiveMeta } from "@/web/components/sections-editor/use-live-meta";
 import { hasEditableAppEditorSchema } from "./app-editor-schema";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { useSaveBlock } from "@/web/components/sections-editor/use-save-block";
+import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
+import { SavedSectionEditor } from "./saved-section-editor";
 import { useDeleteBlock } from "@/web/components/sections-editor/use-delete-block";
 import {
   extractGlobalSections,
@@ -105,12 +108,7 @@ import {
   getPageVariantCount,
   getPageVariantSectionsAt,
 } from "@/web/components/sections-editor/page-variants";
-import { listAvailableSections } from "@/web/components/sections-editor/section-catalog";
-import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/section-types";
-import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
-import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
-import { AvailableSectionEditor } from "./available-section-editor";
-import { SavedSectionEditor } from "./saved-section-editor";
+import type { SectionCatalogEntry } from "@/web/components/sections-editor/section-catalog";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
   sandboxUserStop,
@@ -128,6 +126,7 @@ import {
   nextUniqueName,
   nextUniquePagePath,
 } from "./content-mutations";
+import { buildSectionBlockFromCatalogEntry } from "./section-create";
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
 import {
@@ -181,61 +180,35 @@ const SeoEditor = lazy(() =>
   })),
 );
 
+const AddSectionModal = lazy(() =>
+  import("@/web/components/sections-editor/add-section-modal").then((m) => ({
+    default: m.AddSectionModal,
+  })),
+);
+
+const VariantCalendar = lazy(() =>
+  import("./variant-calendar/variant-calendar").then((m) => ({
+    default: m.VariantCalendar,
+  })),
+);
+
 const VARIANT_GREEN = "oklch(0.65 0.15 160)";
 
-type CollectionId = "pages" | "sections" | "apps" | "site" | "seo" | BlogKind;
+type CollectionId =
+  | "pages"
+  | "sections"
+  | "apps"
+  | "site"
+  | "seo"
+  | "calendar"
+  | BlogKind;
 
 type Selection =
   | { collection: "pages"; key: string; path: string }
   | { collection: "sections"; key: string }
-  | {
-      collection: "available-section";
-      resolveType: string;
-      title: string;
-    }
   | { collection: "apps"; key: string }
   | { collection: BlogKind; key: string }
   | null;
-
-/** A raw manifest section the user can customize and save as a global block. */
-export interface AvailableSectionEntry {
-  resolveType: string;
-  title: string;
-  description?: string;
-}
-
-interface SavedSectionGroup {
-  label: string;
-  sections: GlobalSectionEntry[];
-}
-
-/** Short label for a section's underlying component resolveType. */
-function sectionTypeLabel(resolveType: string): string {
-  return (
-    resolveType
-      .split("/")
-      .pop()
-      ?.replace(/\.tsx?$/, "") ||
-    resolveType ||
-    "Section"
-  );
-}
-
-/** Group saved sections by their underlying `resolveType`, sorted by label. */
-function groupSavedSectionsByResolveType(
-  sections: GlobalSectionEntry[],
-): SavedSectionGroup[] {
-  const byLabel = new Map<string, GlobalSectionEntry[]>();
-  for (const section of sections) {
-    const label = sectionTypeLabel(section.resolveType);
-    const bucket = byLabel.get(label);
-    if (bucket) bucket.push(section);
-    else byLabel.set(label, [section]);
-  }
-  return [...byLabel.entries()]
-    .map(([label, groupSections]) => ({ label, sections: groupSections }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-}
 
 type PageDialogState = {
   mode: PageFormMode;
@@ -443,6 +416,10 @@ function ContentBrowserReady({
     });
 
   const saveBlock = useSaveBlock(fetchParams);
+  // Persist nested saved-block references created from within a section form.
+  const saveReferencedBlock = createReferencedBlockSaver((blockKey, data) =>
+    saveBlock.mutate({ blockKey, data }),
+  );
   const deleteBlock = useDeleteBlock(fetchParams);
   const saveBlogBlock = useSaveBlogBlock(fetchParams);
   const deleteBlogBlock = useDeleteBlogBlock(fetchParams);
@@ -450,6 +427,7 @@ function ContentBrowserReady({
   // Dialog state
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
   const [pageDialogError, setPageDialogError] = useState<string | undefined>();
+  const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
@@ -474,11 +452,6 @@ function ContentBrowserReady({
     a.name.localeCompare(b.name),
   );
   const globalSections = extractGlobalSections(decofile, meta);
-  // Only the Sections tab needs the raw catalog. Use the cheap lister (labels
-  // only, no per-section schema resolution) — resolving every section's schema
-  // here froze the tab on sites with many sections.
-  const availableSections: AvailableSectionEntry[] =
-    activeCollection === "sections" ? listAvailableSections(meta) : [];
   const siteApp = findSiteAppEntry(decofile, meta);
   const allBlogEntries = scanBlogEntries(decofile);
   const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
@@ -651,26 +624,22 @@ function ContentBrowserReady({
   };
 
   // ------------------ Section CRUD ------------------
-  // Persist an edited available (raw manifest) section as a new global block.
-  // `blockId` becomes both the decofile key and the `name`; the form data is
-  // merged in. Throws on failure so the editor keeps its name dialog open.
-  const handleCreateAvailableSection = async (
-    resolveType: string,
-    blockId: string,
-    formValue: Record<string, unknown>,
-  ) => {
-    await saveBlock.mutateAsync({
-      blockKey: blockId,
-      data: { __resolveType: resolveType, ...formValue },
-    });
-    toast.success(`Created section "${blockId}"`);
-    setSelection({ collection: "sections", key: blockId });
+  const handleCreateSection = async (entry: SectionCatalogEntry) => {
+    const { blockKey: newKey, data } = buildSectionBlockFromCatalogEntry(
+      entry,
+      decofile,
+    );
+    try {
+      await saveBlock.mutateAsync({ blockKey: newKey, data });
+      toast.success(`Created section "${newKey}"`);
+      setAddSectionOpen(false);
+      setSelection({ collection: "sections", key: newKey });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not create section",
+      );
+    }
   };
-
-  // Persist nested saved-block references created from within the section form.
-  const saveReferencedBlock = createReferencedBlockSaver((blockKey, data) =>
-    saveBlock.mutate({ blockKey, data }),
-  );
 
   const handleDuplicateSection = async (section: GlobalSectionEntry) => {
     const source = decofile[section.key] as Record<string, unknown> | undefined;
@@ -839,11 +808,7 @@ function ContentBrowserReady({
             deleteTarget.count === 1 ? "post" : "posts"
           }`,
         );
-        if (
-          selection &&
-          selection.collection !== "available-section" &&
-          deleteTarget.keys.includes(selection.key)
-        ) {
+        if (selection && deleteTarget.keys.includes(selection.key)) {
           setSelection(null);
         }
         setSelectedPostKeys(new Set());
@@ -857,11 +822,7 @@ function ContentBrowserReady({
         await deleteBlock.mutateAsync({ blockKey: key });
       }
       toast.success(`Deleted "${label}"`);
-      if (
-        selection &&
-        selection.collection !== "available-section" &&
-        selection.key === key
-      ) {
+      if (selection && selection.key === key) {
         setSelection(null);
       }
       setDeleteTarget(null);
@@ -890,87 +851,93 @@ function ContentBrowserReady({
           setOpenPageSeoKey(null);
         }}
       />
-      {activeCollection !== "seo" && activeCollection !== "site" && (
-        <ItemList
-          activeCollection={activeCollection}
-          pages={pages}
-          sections={globalSections}
-          availableSections={availableSections}
-          appCatalog={appCatalog}
-          appCatalogLoading={appCatalogLoading}
-          blogEntries={blogEntries}
-          decofile={decofile}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          postCategoryFilter={postCategoryFilter}
-          postAuthorFilter={postAuthorFilter}
-          postSort={postSort}
-          onPostCategoryFilterChange={(slug) => {
-            setPostCategoryFilter(slug);
-            setSelectedPostKeys(new Set());
-          }}
-          onPostAuthorFilterChange={(email) => {
-            setPostAuthorFilter(email);
-            setSelectedPostKeys(new Set());
-          }}
-          onPostSortChange={setPostSort}
-          selectedPostKeys={selectedPostKeys}
-          onTogglePostSelect={togglePostSelection}
-          onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
-          onClearPostSelection={() => setSelectedPostKeys(new Set())}
-          onBulkUpdateCategory={() =>
-            setCategoryDialog({ count: selectedPostKeys.size })
-          }
-          onBulkDeletePosts={() =>
-            setDeleteTarget({
-              kind: "blog-bulk",
-              keys: [...selectedPostKeys],
-              count: selectedPostKeys.size,
-            })
-          }
-          selection={selection}
-          onSelect={(next) => {
-            setSelection(next);
-            setOpenPageSeoKey(null);
-          }}
-          onCreate={() => {
-            if (activeCollection === "pages") {
-              openCreatePage();
-            } else if (isBlogKind(activeCollection)) {
-              void handleCreateBlog(activeCollection);
+      {activeCollection !== "seo" &&
+        activeCollection !== "site" &&
+        activeCollection !== "calendar" && (
+          <ItemList
+            activeCollection={activeCollection}
+            pages={pages}
+            sections={globalSections}
+            appCatalog={appCatalog}
+            appCatalogLoading={appCatalogLoading}
+            blogEntries={blogEntries}
+            decofile={decofile}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            postCategoryFilter={postCategoryFilter}
+            postAuthorFilter={postAuthorFilter}
+            postSort={postSort}
+            onPostCategoryFilterChange={(slug) => {
+              setPostCategoryFilter(slug);
+              setSelectedPostKeys(new Set());
+            }}
+            onPostAuthorFilterChange={(email) => {
+              setPostAuthorFilter(email);
+              setSelectedPostKeys(new Set());
+            }}
+            onPostSortChange={setPostSort}
+            selectedPostKeys={selectedPostKeys}
+            onTogglePostSelect={togglePostSelection}
+            onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
+            onClearPostSelection={() => setSelectedPostKeys(new Set())}
+            onBulkUpdateCategory={() =>
+              setCategoryDialog({ count: selectedPostKeys.size })
             }
-          }}
-          onDuplicatePage={openDuplicatePage}
-          onRenamePage={openRenamePage}
-          onAddPageVariant={handleAddPageVariant}
-          onDeletePage={(page) =>
-            setDeleteTarget({ kind: "page", key: page.key, label: page.name })
-          }
-          onEditPageSeo={(page) => {
-            setSelection({
-              collection: "pages",
-              key: page.key,
-              path: page.path,
-            });
-            setOpenPageSeoKey(page.key);
-          }}
-          onViewPageJson={(page) => setJsonPageKey(page.key)}
-          onDuplicateSection={handleDuplicateSection}
-          onRenameSection={(s) => setRenameSectionKey(s.key)}
-          onDeleteSection={(s) =>
-            setDeleteTarget({ kind: "section", key: s.key, label: s.name })
-          }
-          onDuplicateBlog={handleDuplicateBlog}
-          onDeleteBlog={(e) =>
-            setDeleteTarget({
-              kind: "blog",
-              blogKind: e.kind,
-              key: e.key,
-              label: e.label,
-            })
-          }
-        />
-      )}
+            onBulkDeletePosts={() =>
+              setDeleteTarget({
+                kind: "blog-bulk",
+                keys: [...selectedPostKeys],
+                count: selectedPostKeys.size,
+              })
+            }
+            selection={selection}
+            onSelect={(next) => {
+              setSelection(next);
+              setOpenPageSeoKey(null);
+            }}
+            previewUrl={previewUrl}
+            onCreate={() => {
+              if (activeCollection === "pages") {
+                openCreatePage();
+              } else if (isBlogKind(activeCollection)) {
+                void handleCreateBlog(activeCollection);
+              } else if (!previewUrl) {
+                toast.error("Start the preview dev server to add sections.");
+              } else {
+                setAddSectionOpen(true);
+              }
+            }}
+            onDuplicatePage={openDuplicatePage}
+            onRenamePage={openRenamePage}
+            onAddPageVariant={handleAddPageVariant}
+            onDeletePage={(page) =>
+              setDeleteTarget({ kind: "page", key: page.key, label: page.name })
+            }
+            onEditPageSeo={(page) => {
+              setSelection({
+                collection: "pages",
+                key: page.key,
+                path: page.path,
+              });
+              setOpenPageSeoKey(page.key);
+            }}
+            onViewPageJson={(page) => setJsonPageKey(page.key)}
+            onDuplicateSection={handleDuplicateSection}
+            onRenameSection={(s) => setRenameSectionKey(s.key)}
+            onDeleteSection={(s) =>
+              setDeleteTarget({ kind: "section", key: s.key, label: s.name })
+            }
+            onDuplicateBlog={handleDuplicateBlog}
+            onDeleteBlog={(e) =>
+              setDeleteTarget({
+                kind: "blog",
+                blogKind: e.kind,
+                key: e.key,
+                label: e.label,
+              })
+            }
+          />
+        )}
       <div className="flex-1 min-w-0">
         <Suspense
           fallback={
@@ -982,7 +949,9 @@ function ContentBrowserReady({
             </div>
           }
         >
-          {activeCollection === "site" ? (
+          {activeCollection === "calendar" ? (
+            <VariantCalendar decofile={decofile} />
+          ) : activeCollection === "site" ? (
             siteApp ? (
               <AppEditor
                 key={`site:${siteApp.key}`}
@@ -1014,25 +983,7 @@ function ContentBrowserReady({
               target={{ kind: "site" }}
               previewBaseUrl={previewUrl}
             />
-          ) : activeCollection === "sections" ? (
-            <SectionsRightPane
-              selection={
-                selection?.collection === "sections" ||
-                selection?.collection === "available-section"
-                  ? selection
-                  : null
-              }
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              previewUrl={previewUrl}
-              meta={meta}
-              decofile={decofile}
-              isCreating={saveBlock.isPending}
-              onCreateAvailable={handleCreateAvailableSection}
-              onSaveReferencedBlock={saveReferencedBlock}
-            />
-          ) : selection && selection.collection !== "available-section" ? (
+          ) : selection ? (
             selection.collection === "apps" ? (
               <AppEditor
                 key={`app:${selection.key}`}
@@ -1088,13 +1039,21 @@ function ContentBrowserReady({
                 blockKey={selection.key}
                 block={decofile[selection.key] as Record<string, unknown>}
               />
+            ) : selection.collection === "sections" ? (
+              <SavedSectionEditor
+                key={`saved:${selection.key}`}
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                previewUrl={previewUrl}
+                meta={meta}
+                decofile={decofile}
+                blockKey={selection.key}
+                onSaveReferencedBlock={saveReferencedBlock}
+              />
             ) : (
               <SectionsEditor
-                key={
-                  selection.collection === "pages"
-                    ? `page:${selection.key}`
-                    : `section:${selection.key}`
-                }
+                key={`page:${selection.key}`}
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
@@ -1106,9 +1065,7 @@ function ContentBrowserReady({
                 activePageBlockKey={
                   selection.collection === "pages" ? selection.key : null
                 }
-                activeGlobalBlockKey={
-                  selection.collection === "sections" ? selection.key : null
-                }
+                activeGlobalBlockKey={null}
                 initialEditSeo={
                   selection.collection === "pages" &&
                   openPageSeoKey === selection.key
@@ -1172,6 +1129,20 @@ function ContentBrowserReady({
             if (!next) setRenameSectionKey(null);
           }}
         />
+      )}
+
+      {/* Create global section — reuses the section gallery */}
+      {addSectionOpen && previewUrl && (
+        <Suspense fallback={null}>
+          <AddSectionModal
+            open={addSectionOpen}
+            onOpenChange={setAddSectionOpen}
+            meta={meta}
+            decofile={decofile}
+            previewBaseUrl={previewUrl}
+            onSelect={handleCreateSection}
+          />
+        </Suspense>
       )}
 
       {/* Page JSON dialog */}
@@ -1249,116 +1220,6 @@ function ContentBrowserReady({
   );
 }
 
-/**
- * Right pane for the Sections collection. A saved (global) section opens the
- * full section editor; an available (raw manifest) section opens a local
- * editor that persists only when named and saved.
- */
-function SectionsRightPane({
-  selection,
-  orgSlug,
-  virtualMcpId,
-  branch,
-  previewUrl,
-  meta,
-  decofile,
-  isCreating,
-  onCreateAvailable,
-  onSaveReferencedBlock,
-}: {
-  selection:
-    | { collection: "sections"; key: string }
-    | {
-        collection: "available-section";
-        resolveType: string;
-        title: string;
-      }
-    | null;
-  orgSlug: string;
-  virtualMcpId: string;
-  branch: string;
-  previewUrl: string | null;
-  meta: LiveMeta;
-  decofile: Record<string, unknown>;
-  isCreating: boolean;
-  onCreateAvailable: (
-    resolveType: string,
-    blockId: string,
-    data: Record<string, unknown>,
-  ) => Promise<void>;
-  onSaveReferencedBlock: (
-    blockKey: string,
-    data: Record<string, unknown>,
-  ) => void;
-}) {
-  if (!selection) {
-    return (
-      <EmptyMessage
-        title="Select a section to edit"
-        description="Pick a saved section to edit it, or an available one to customize and save as global."
-      />
-    );
-  }
-
-  if (selection.collection === "available-section") {
-    return (
-      <AvailableSectionEditor
-        key={`available:${selection.resolveType}`}
-        orgSlug={orgSlug}
-        virtualMcpId={virtualMcpId}
-        branch={branch}
-        previewUrl={previewUrl}
-        meta={meta}
-        decofile={decofile}
-        resolveType={selection.resolveType}
-        title={selection.title}
-        defaultBlockId={suggestBlockId(selection.title)}
-        isCreating={isCreating}
-        onCreate={(blockId, data) =>
-          onCreateAvailable(selection.resolveType, blockId, data)
-        }
-        onSaveReferencedBlock={onSaveReferencedBlock}
-      />
-    );
-  }
-
-  return (
-    <SavedSectionEditor
-      key={`saved:${selection.key}`}
-      orgSlug={orgSlug}
-      virtualMcpId={virtualMcpId}
-      branch={branch}
-      previewUrl={previewUrl}
-      meta={meta}
-      decofile={decofile}
-      blockKey={selection.key}
-      onSaveReferencedBlock={onSaveReferencedBlock}
-    />
-  );
-}
-
-function GroupHeader({
-  icon: Icon,
-  label,
-  className,
-}: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70",
-        className,
-      )}
-    >
-      <Icon size={13} className="shrink-0" />
-      {label}
-    </div>
-  );
-}
-
 function CollectionsSidebar({
   active,
   counts,
@@ -1401,6 +1262,13 @@ function CollectionsSidebar({
           label="Apps"
           count={counts.apps}
           active={active === "apps"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="calendar"
+          icon={Calendar}
+          label="Calendar"
+          active={active === "calendar"}
           onSelect={onSelect}
         />
         {showBlog && (
@@ -1500,11 +1368,11 @@ function ItemList({
   activeCollection,
   pages,
   sections,
-  availableSections,
   appCatalog,
   appCatalogLoading,
   blogEntries,
   decofile,
+  previewUrl,
   searchQuery,
   onSearchChange,
   postCategoryFilter,
@@ -1537,11 +1405,11 @@ function ItemList({
   activeCollection: CollectionId;
   pages: PageEntry[];
   sections: GlobalSectionEntry[];
-  availableSections: AvailableSectionEntry[];
   appCatalog: AppCatalogEntry[];
   appCatalogLoading: boolean;
   blogEntries: BlogEntry[];
   decofile: Record<string, unknown>;
+  previewUrl: string | null;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   postCategoryFilter: string | null;
@@ -1585,16 +1453,6 @@ function ItemList({
       s.key.toLowerCase().includes(q) ||
       s.resolveType.toLowerCase().includes(q),
   );
-  const filteredAvailableSections = availableSections.filter(
-    (s) =>
-      !q ||
-      s.title.toLowerCase().includes(q) ||
-      s.resolveType.toLowerCase().includes(q) ||
-      (s.description?.toLowerCase().includes(q) ?? false),
-  );
-  // Group saved sections by their underlying resolveType (the section's
-  // component), so the list reads as families of the same kind.
-  const savedSectionGroups = groupSavedSectionsByResolveType(filteredSections);
   const filteredApps = appCatalog.filter(
     (entry) =>
       !q ||
@@ -1690,10 +1548,15 @@ function ItemList({
   const placeholder = `Search ${activeCollection}…`;
   const createTooltip = isBlogKind(activeCollection)
     ? `Create new ${BLOG_SINGULAR[activeCollection]}`
-    : "Create new page";
-  // Sections are created by saving an available section, not via the "+".
-  const showCreateButton =
-    activeCollection !== "apps" && activeCollection !== "sections";
+    : activeCollection === "pages"
+      ? "Create new page"
+      : "Create new section";
+  const sectionCreateBlocked = activeCollection === "sections" && !previewUrl;
+  const showCreateButton = activeCollection !== "apps";
+  const createDisabled = sectionCreateBlocked;
+  const createDisabledReason = sectionCreateBlocked
+    ? "Start the preview dev server to add sections"
+    : undefined;
 
   return (
     <div className="w-[300px] shrink-0 border-r flex flex-col min-h-0">
@@ -1720,12 +1583,16 @@ function ItemList({
                 variant="ghost"
                 size="icon"
                 onClick={onCreate}
+                disabled={createDisabled}
                 aria-label={createTooltip}
+                aria-disabled={createDisabled}
               >
                 <Plus size={14} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">{createTooltip}</TooltipContent>
+            <TooltipContent side="bottom">
+              {createDisabledReason ?? createTooltip}
+            </TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -1801,92 +1668,41 @@ function ItemList({
               })
             )
           ) : activeCollection === "sections" ? (
-            filteredSections.length === 0 &&
-            filteredAvailableSections.length === 0 ? (
+            filteredSections.length === 0 ? (
               <ListEmpty
-                hasItems={sections.length > 0 || availableSections.length > 0}
-                emptyLabel="No sections yet."
-                emptyHint="Save a section from a page, or start the preview dev server."
+                hasItems={sections.length > 0}
+                emptyLabel="No saved sections yet."
+                emptyHint='Click "+" to create one, or save a section from a page.'
               />
             ) : (
-              <>
-                {savedSectionGroups.length > 0 && (
-                  <>
-                    <GroupHeader icon={Globe02} label="Saved sections" />
-                    {savedSectionGroups.map((group) => (
-                      <div key={group.label} className="flex flex-col gap-1">
-                        <div className="px-2.5 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
-                          {group.label}
-                        </div>
-                        {group.sections.map((section) => {
-                          const isActive =
-                            selection?.collection === "sections" &&
-                            selection.key === section.key;
-                          return (
-                            <ItemRow
-                              key={section.key}
-                              icon={Globe02}
-                              accent="global"
-                              title={section.name}
-                              subtitle={group.label}
-                              active={isActive}
-                              onClick={() =>
-                                onSelect({
-                                  collection: "sections",
-                                  key: section.key,
-                                })
-                              }
-                              menu={
-                                <ItemActions
-                                  onDuplicate={() =>
-                                    onDuplicateSection(section)
-                                  }
-                                  onRename={() => onRenameSection(section)}
-                                  onDelete={() => onDeleteSection(section)}
-                                />
-                              }
-                            />
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </>
-                )}
-                {filteredAvailableSections.length > 0 && (
-                  <>
-                    <GroupHeader
-                      icon={LayoutAlt01}
-                      label="Available sections"
-                      className={cn(savedSectionGroups.length > 0 && "mt-3")}
-                    />
-                    {filteredAvailableSections.map((section) => {
-                      const isActive =
-                        selection?.collection === "available-section" &&
-                        selection.resolveType === section.resolveType;
-                      const typeLabel = section.resolveType
-                        .split("/")
-                        .pop()
-                        ?.replace(/\.tsx?$/, "");
-                      return (
-                        <ItemRow
-                          key={section.resolveType}
-                          icon={LayoutAlt01}
-                          title={section.title}
-                          subtitle={typeLabel ?? section.resolveType}
-                          active={isActive}
-                          onClick={() =>
-                            onSelect({
-                              collection: "available-section",
-                              resolveType: section.resolveType,
-                              title: section.title,
-                            })
-                          }
-                        />
-                      );
-                    })}
-                  </>
-                )}
-              </>
+              filteredSections.map((section) => {
+                const isActive =
+                  selection?.collection === "sections" &&
+                  selection.key === section.key;
+                const typeLabel = section.resolveType
+                  .split("/")
+                  .pop()
+                  ?.replace(/\.tsx?$/, "");
+                return (
+                  <ItemRow
+                    key={section.key}
+                    icon={Globe02}
+                    title={section.name}
+                    subtitle={typeLabel ?? section.resolveType}
+                    active={isActive}
+                    onClick={() =>
+                      onSelect({ collection: "sections", key: section.key })
+                    }
+                    menu={
+                      <ItemActions
+                        onDuplicate={() => onDuplicateSection(section)}
+                        onRename={() => onRenameSection(section)}
+                        onDelete={() => onDeleteSection(section)}
+                      />
+                    }
+                  />
+                );
+              })
             )
           ) : activeCollection === "apps" ? (
             appCatalogLoading ? (
@@ -2457,7 +2273,6 @@ function ItemRow({
   title,
   subtitle,
   active,
-  accent,
   variantCount,
   trailing,
   selectable,
@@ -2476,8 +2291,6 @@ function ItemRow({
   title: string;
   subtitle: string;
   active: boolean;
-  /** "global" tints the row purple to mark a saved/global section. */
-  accent?: "global";
   variantCount?: number;
   trailing?: React.ReactNode;
   selectable?: boolean;
@@ -2487,7 +2300,6 @@ function ItemRow({
   onClick: () => void;
   menu?: React.ReactNode;
 }) {
-  const isGlobal = accent === "global";
   const rowIcon =
     variantCount && variantCount > 1 ? (
       <span className="flex size-8 shrink-0 items-center justify-center">
@@ -2509,20 +2321,13 @@ function ItemRow({
         className="size-8 shrink-0 rounded-lg object-cover bg-muted"
       />
     ) : (
-      <span
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-lg",
-          isGlobal ? "bg-global-section/15" : "bg-muted",
-        )}
-      >
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
         <Icon
           size={16}
           className={cn(
             "shrink-0",
-            !isGlobal &&
-              (active ? "text-accent-foreground" : "text-muted-foreground"),
+            active ? "text-accent-foreground" : "text-muted-foreground",
           )}
-          style={isGlobal ? { color: GLOBAL_SECTION_ICON_COLOR } : undefined}
         />
       </span>
     );
@@ -2531,13 +2336,7 @@ function ItemRow({
     <div
       className={cn(
         "group relative flex min-w-0 items-center rounded-md transition-colors",
-        active
-          ? isGlobal
-            ? "bg-global-section/15 text-global-section-fg dark:text-global-section-fg-dark"
-            : "bg-accent text-accent-foreground"
-          : isGlobal
-            ? "hover:bg-global-section/10"
-            : "hover:bg-muted",
+        active ? "bg-accent text-accent-foreground" : "hover:bg-muted",
       )}
     >
       {selectable && (

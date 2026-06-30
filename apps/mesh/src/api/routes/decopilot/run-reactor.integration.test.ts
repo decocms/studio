@@ -233,7 +233,7 @@ describe("reactAll (real Postgres)", () => {
   });
 
   describe("RUN_COMPLETED", () => {
-    it("sets status=completed, clears run_* columns, does NOT purge, emits 2 events", async () => {
+    it("does NOT write status to DB (consume step owns it), does NOT purge, emits 2 SSE events", async () => {
       const { deps, sseEvents, purged } = makeReactor();
       const thread = await createThread();
       await setInProgress(thread.id);
@@ -243,21 +243,23 @@ describe("reactAll (real Postgres)", () => {
         deps,
       );
 
+      // The live reactor no longer writes status=completed — the consume step
+      // (consume-run-projection.ts) is the sole terminal-status writer. The row
+      // should still be in_progress (as set by setInProgress above).
       const row = await storage.get(thread.id, ORG);
-      expect(row?.status).toBe("completed");
-      expect(row?.run_owner_pod).toBeNull();
-      expect(row?.run_config).toBeNull();
-      expect(row?.run_started_at).toBeNull();
-      // Purge ownership moved to the durable projector workflow's success path
-      // (projector-workflow.ts cleanupRunStep). The reactor MUST NOT purge on
-      // the live finish event — it would race the workflow's JetStream read.
+      expect(row?.status).toBe("in_progress");
+      // run_* columns are also untouched — the consume step clears them.
+      expect(row?.run_config).not.toBeNull();
+      expect(row?.run_started_at).not.toBeNull();
+      // Purge ownership is the projector workflow's job (cleanupRunStep).
       expect(purged).toHaveLength(0);
+      // SSE is still emitted for instant UX.
       expect(sseEvents).toHaveLength(2);
     });
   });
 
   describe("RUN_REQUIRES_ACTION", () => {
-    it("sets status=requires_action, clears run_* columns, does NOT purge, emits 2 events", async () => {
+    it("does NOT write status to DB (consume step owns it), does NOT purge, emits 2 SSE events", async () => {
       const { deps, sseEvents, purged } = makeReactor();
       const thread = await createThread();
       await setInProgress(thread.id);
@@ -272,13 +274,16 @@ describe("reactAll (real Postgres)", () => {
         deps,
       );
 
+      // Same ownership model as RUN_COMPLETED: the consume step owns the terminal
+      // DB write; the row stays in_progress here.
       const row = await storage.get(thread.id, ORG);
-      expect(row?.status).toBe("requires_action");
-      expect(row?.run_owner_pod).toBeNull();
-      expect(row?.run_config).toBeNull();
-      expect(row?.run_started_at).toBeNull();
-      // See RUN_COMPLETED above: purge is the projector workflow's job now.
+      expect(row?.status).toBe("in_progress");
+      // run_* columns also stay — the consume step clears them.
+      expect(row?.run_config).not.toBeNull();
+      expect(row?.run_started_at).not.toBeNull();
+      // Purge is the projector workflow's job.
       expect(purged).toHaveLength(0);
+      // SSE is still emitted for instant UX.
       expect(sseEvents).toHaveLength(2);
     });
   });

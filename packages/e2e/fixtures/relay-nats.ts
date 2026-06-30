@@ -59,3 +59,41 @@ export async function publishRelayBody(opts: {
     await nc.drain();
   }
 }
+
+/**
+ * Lower-level relay: publish explicit chunks, then optionally a done marker —
+ * exactly as the daemon's direct-NATS publisher does, but with manual control
+ * over WHEN the done lands. Used to drive partial projection tests (chunks only,
+ * no done yet) so a test can assert on in-flight state.
+ */
+export async function publishRelayManual(opts: {
+  runId: string;
+  fenceToken: string;
+  /** Each entry becomes a `ui-message-chunk` RelayLine at the given seq. */
+  chunks: Array<{ seq: number; chunk: unknown }>;
+  /** Publish a `{done, finalSeq}` marker after the chunks. */
+  doneFinalSeq?: number;
+}): Promise<void> {
+  const nc = await openNats();
+  try {
+    const js = jetstream(nc);
+    const publisher = createDirectNatsPublisher({ js });
+    for (const { seq, chunk } of opts.chunks) {
+      await publisher.publishLine({
+        runId: opts.runId,
+        fenceToken: opts.fenceToken,
+        line: { seq, event: { type: "ui-message-chunk", chunk } },
+      });
+    }
+    if (opts.doneFinalSeq != null) {
+      await publisher.publishDone({
+        runId: opts.runId,
+        fenceToken: opts.fenceToken,
+        finalSeq: opts.doneFinalSeq,
+      });
+    }
+    await nc.flush();
+  } finally {
+    await nc.drain();
+  }
+}

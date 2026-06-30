@@ -125,8 +125,8 @@ describe("projectChunks", () => {
     // The durable DB-writer's contract is "persist or fail loudly".
     // consumeHarnessStream swallows persistence errors (logs them) so the live
     // UI path survives a DB hiccup; the projector must NOT — a swallowed write
-    // would silently lose a part. projectChunks re-throws it so projectRun can
-    // retry/DLQ.
+    // would silently lose a part. projectChunks re-throws it so the projector
+    // consumer can retry or DLQ the run.
     const persistence: HarnessStreamPersistence = {
       emitStepParts: async () => {},
       emitFinal: async () => {

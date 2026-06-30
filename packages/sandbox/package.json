@@ -1,6 +1,6 @@
 {
   "name": "@decocms/sandbox",
-  "version": "1.6.2",
+  "version": "1.7.0",
   "type": "module",
   "description": "Sandbox runner for isolated per-user containerised tool execution",
   "scripts": {
@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@nats-io/jetstream": "3.4.0",
+    "@nats-io/nats-core": "3.4.0",
     "@types/bun": "latest",
     "typescript": "^5.8.3"
   }

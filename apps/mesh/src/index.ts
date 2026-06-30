@@ -12,7 +12,7 @@ import { sleep } from "@decocms/std";
 import {
   AUTOMATIONS_QUEUE,
   BACKGROUND_TOOLS_QUEUE,
-  PROJECTOR_QUEUE,
+  HOSTED_HARNESS_QUEUE,
   THREAD_GATE_QUEUE,
 } from "./dispatch-queue/queue-names";
 import { buildDbosConfig } from "./dbos/config";
@@ -71,7 +71,7 @@ function withSslmode(url: string, ssl: boolean): string {
 const RUN_QUEUES = [
   AUTOMATIONS_QUEUE,
   THREAD_GATE_QUEUE,
-  PROJECTOR_QUEUE,
+  HOSTED_HARNESS_QUEUE,
   // Heavy backgroundable built-ins (generate_image) are worker load, so
   // "worker"-role pods must dequeue them too — otherwise a split deployment
   // enqueues the job but never runs it.

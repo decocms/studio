@@ -1,23 +1,11 @@
 /**
  * Operational signals for the durable projector (spec §5.4 red-team):
- *  - `decopilot.projector.lag_ms`: histogram of how stale each message was when
- *    the projector processed it (now − JetStream publish time). This is the
- *    projector-lag SLA the stream's `max_age` is sized against.
  *  - `decopilot.projector.poison_runs`: counter of runs that exhausted retries
  *    and hit the DLQ (so alerting fires without log scraping).
  *
  * Instrument style mirrors `nats-stream-buffer.ts`'s `publishErrorsCounter`.
  */
 import { meter } from "@/observability";
-
-const projectorLagHistogram = meter.createHistogram(
-  "decopilot.projector.lag_ms",
-  {
-    description:
-      "Milliseconds between a decopilot stream message's publish time and when the projector processed it",
-    unit: "ms",
-  },
-);
 
 const poisonRunsCounter = meter.createCounter(
   "decopilot.projector.poison_runs",
@@ -34,11 +22,6 @@ const poisonRunsCounter = meter.createCounter(
  */
 export function computeLagMs(publishedAtMs: number, nowMs: number): number {
   return Math.max(0, nowMs - publishedAtMs);
-}
-
-/** Record one message's projector lag (ms). */
-export function recordLag(ms: number): void {
-  projectorLagHistogram.record(ms);
 }
 
 /**

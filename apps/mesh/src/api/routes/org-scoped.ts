@@ -14,6 +14,7 @@ import type { Env } from "../hono-env";
 import { createAutomationWebhookRoutes } from "./automation-webhooks";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
 import { createDevAssetsRoutes } from "./dev-assets";
+import { createCredentialVaultRoutes } from "./credential-vault";
 import { createDownstreamTokenRoutes } from "./downstream-token";
 import { createFileUploadRoutes } from "./file-uploads";
 import { createKVRoutes } from "./kv";
@@ -83,6 +84,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
 
   // --- Routes that don't need extra middleware ---
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
+  app.route("/", createCredentialVaultRoutes()); // /api/:org/vault/connections/:connectionId/access-token
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/tools", createToolsRestRoutes()); // /api/:org/tools[/:toolName] — REST builtin-tool dispatch
   app.route("/", createObjectStorageRoutes()); // /api/:org/object-storage/*
