@@ -15,11 +15,7 @@ import {
 import { resolveAgentTier } from "@/ai-providers/agent-tiers";
 import type { ChatTier, SimpleModeTier } from "@/tools/organization/schema";
 import { posthog } from "@/posthog";
-import {
-  consumeStream,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-} from "ai";
+import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -963,16 +959,21 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
-      const { taskId, thread } = await validateThreadAccess(c);
+      const { taskId, thread, ctx } = await validateThreadAccess(c);
+      // Current run's fence — fence-filters the tail to the in-flight run (see
+      // createTailStream opts). Written synchronously by POST /messages before
+      // its 202, so a client opening /stream after that always reads it.
+      const runFenceToken = await ctx.storage.threads.getRunFence(taskId);
 
       // Use the DB's view, not pod-local registry state. A client attached
       // to a non-owner pod (any multi-pod deployment, including mid-deploy
       // and after a DBOS replay rehome) needs `"all"` to catch chunks the
       // owning pod has already pumped to the shared JetStream subject.
-      // The buffer is purged when a run reaches a durable terminal state (the
-      // projector workflow's success path for completed runs; the run-reactor
-      // for failed runs), so `"all"` only ever replays the current in-flight
-      // run.
+      // `"all"` replays the whole per-thread subject (every run until purge/
+      // age-out), so we fence-filter the tail below to the current run's
+      // `run_fence_token` — the replay then only ever yields the in-flight run,
+      // never a prior run's chunks (which could include an orphan tool-output
+      // whose tool-input lived in an earlier, since-purged run).
       const deliverPolicy = thread.status === "in_progress" ? "all" : "new";
       const runStartedAgoMs = thread.run_started_at
         ? Date.now() - new Date(thread.run_started_at).getTime()
@@ -980,7 +981,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const tailChunkStream = await streamBuffer.createTailStream(
         taskId,
         c.req.raw.signal,
-        { deliverPolicy },
+        { deliverPolicy, fenceToken: runFenceToken ?? undefined },
       );
       if (!tailChunkStream) {
         // A null tail means the JetStream buffer is degraded on this pod
@@ -1011,49 +1012,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         );
       }
 
-      let deliveredChunks = 0;
-      const openedAt = Date.now();
-      const tailStream = createUIMessageStream({
-        execute: async ({ writer }) => {
-          const reader = tailChunkStream.getReader();
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              deliveredChunks++;
-              writer.write(value);
-            }
-          } finally {
-            reader.releaseLock();
-            if (STREAM_TAIL_TRACE) {
-              console.warn(
-                JSON.stringify({
-                  msg: "decopilot-stream-diag",
-                  event: "tail-closed",
-                  taskId,
-                  threadStatus: thread.status,
-                  deliverPolicy,
-                  runStartedAgoMs,
-                  deliveredChunks,
-                  // openMs = how long the tail stayed open; aborted = the client
-                  // (or proxy) closed the request vs. the JetStream subscription
-                  // ending server-side. Short openMs + aborted:true = client
-                  // reconnect churn; aborted:false = server-side close.
-                  openMs: Date.now() - openedAt,
-                  aborted: c.req.raw.signal.aborted,
-                }),
-              );
-            }
-          }
-        },
-      });
-
-      const baseResponse = createUIMessageStreamResponse({
-        stream: tailStream,
-        consumeSseStream: consumeStream,
-      });
-
-      return wrapWithSseKeepalive(baseResponse);
+      // Pure pass-through. `createTailStream` already decoded the NATS log into
+      // UIMessageChunks and fence-filtered to this run, so hand them straight to
+      // the SSE serializer — the client (useChat) is the only reassembler. A
+      // server-side `createUIMessageStream` layer added nothing to the wire, and
+      // any stateful reassembly here would choke on a replayed run's chunks.
+      return wrapWithSseKeepalive(
+        createUIMessageStreamResponse({
+          stream: tailChunkStream,
+          consumeSseStream: consumeStream,
+        }),
+      );
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       console.error("[decopilot:stream] Error", stringifyError(err));
@@ -1086,24 +1055,10 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       );
       if (!tailChunkStream) return c.body(null, 204);
 
-      const tailStream = createUIMessageStream({
-        execute: async ({ writer }) => {
-          const reader = tailChunkStream.getReader();
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              writer.write(value);
-            }
-          } finally {
-            reader.releaseLock();
-          }
-        },
-      });
-
+      // Pure pass-through (the subtask subject is already per-job/single-run).
       return wrapWithSseKeepalive(
         createUIMessageStreamResponse({
-          stream: tailStream,
+          stream: tailChunkStream,
           consumeSseStream: consumeStream,
         }),
       );

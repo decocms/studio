@@ -93,6 +93,13 @@ export interface StreamBuffer {
     opts?: {
       deliverPolicy?: "all" | "new";
       closeOnDone?: boolean;
+      /**
+       * When set, emit ONLY this run's events (matching `(taskId, fenceToken)`),
+       * like the durable projector. The `/stream` tail passes the thread's
+       * current `run_fence_token` so a `deliverPolicy:"all"` replay of the
+       * per-thread subject yields only the in-flight run.
+       */
+      fenceToken?: string;
     },
   ): Promise<ReadableStream | null>;
 
