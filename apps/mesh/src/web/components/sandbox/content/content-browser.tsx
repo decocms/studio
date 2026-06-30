@@ -3,6 +3,7 @@ import { type Query } from "@tanstack/react-query";
 import {
   AlertCircle,
   BookOpen01,
+  Calendar,
   ChevronDown,
   Code01,
   Copy01,
@@ -183,9 +184,22 @@ const AddSectionModal = lazy(() =>
   })),
 );
 
+const VariantCalendar = lazy(() =>
+  import("./variant-calendar/variant-calendar").then((m) => ({
+    default: m.VariantCalendar,
+  })),
+);
+
 const VARIANT_GREEN = "oklch(0.65 0.15 160)";
 
-type CollectionId = "pages" | "sections" | "apps" | "site" | "seo" | BlogKind;
+type CollectionId =
+  | "pages"
+  | "sections"
+  | "apps"
+  | "site"
+  | "seo"
+  | "calendar"
+  | BlogKind;
 
 type Selection =
   | { collection: "pages"; key: string; path: string }
@@ -831,91 +845,93 @@ function ContentBrowserReady({
           setOpenPageSeoKey(null);
         }}
       />
-      {activeCollection !== "seo" && activeCollection !== "site" && (
-        <ItemList
-          activeCollection={activeCollection}
-          pages={pages}
-          sections={globalSections}
-          appCatalog={appCatalog}
-          appCatalogLoading={appCatalogLoading}
-          blogEntries={blogEntries}
-          decofile={decofile}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          postCategoryFilter={postCategoryFilter}
-          postAuthorFilter={postAuthorFilter}
-          postSort={postSort}
-          onPostCategoryFilterChange={(slug) => {
-            setPostCategoryFilter(slug);
-            setSelectedPostKeys(new Set());
-          }}
-          onPostAuthorFilterChange={(email) => {
-            setPostAuthorFilter(email);
-            setSelectedPostKeys(new Set());
-          }}
-          onPostSortChange={setPostSort}
-          selectedPostKeys={selectedPostKeys}
-          onTogglePostSelect={togglePostSelection}
-          onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
-          onClearPostSelection={() => setSelectedPostKeys(new Set())}
-          onBulkUpdateCategory={() =>
-            setCategoryDialog({ count: selectedPostKeys.size })
-          }
-          onBulkDeletePosts={() =>
-            setDeleteTarget({
-              kind: "blog-bulk",
-              keys: [...selectedPostKeys],
-              count: selectedPostKeys.size,
-            })
-          }
-          selection={selection}
-          onSelect={(next) => {
-            setSelection(next);
-            setOpenPageSeoKey(null);
-          }}
-          previewUrl={previewUrl}
-          onCreate={() => {
-            if (activeCollection === "pages") {
-              openCreatePage();
-            } else if (isBlogKind(activeCollection)) {
-              void handleCreateBlog(activeCollection);
-            } else if (!previewUrl) {
-              toast.error("Start the preview dev server to add sections.");
-            } else {
-              setAddSectionOpen(true);
+      {activeCollection !== "seo" &&
+        activeCollection !== "site" &&
+        activeCollection !== "calendar" && (
+          <ItemList
+            activeCollection={activeCollection}
+            pages={pages}
+            sections={globalSections}
+            appCatalog={appCatalog}
+            appCatalogLoading={appCatalogLoading}
+            blogEntries={blogEntries}
+            decofile={decofile}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            postCategoryFilter={postCategoryFilter}
+            postAuthorFilter={postAuthorFilter}
+            postSort={postSort}
+            onPostCategoryFilterChange={(slug) => {
+              setPostCategoryFilter(slug);
+              setSelectedPostKeys(new Set());
+            }}
+            onPostAuthorFilterChange={(email) => {
+              setPostAuthorFilter(email);
+              setSelectedPostKeys(new Set());
+            }}
+            onPostSortChange={setPostSort}
+            selectedPostKeys={selectedPostKeys}
+            onTogglePostSelect={togglePostSelection}
+            onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
+            onClearPostSelection={() => setSelectedPostKeys(new Set())}
+            onBulkUpdateCategory={() =>
+              setCategoryDialog({ count: selectedPostKeys.size })
             }
-          }}
-          onDuplicatePage={openDuplicatePage}
-          onRenamePage={openRenamePage}
-          onAddPageVariant={handleAddPageVariant}
-          onDeletePage={(page) =>
-            setDeleteTarget({ kind: "page", key: page.key, label: page.name })
-          }
-          onEditPageSeo={(page) => {
-            setSelection({
-              collection: "pages",
-              key: page.key,
-              path: page.path,
-            });
-            setOpenPageSeoKey(page.key);
-          }}
-          onViewPageJson={(page) => setJsonPageKey(page.key)}
-          onDuplicateSection={handleDuplicateSection}
-          onRenameSection={(s) => setRenameSectionKey(s.key)}
-          onDeleteSection={(s) =>
-            setDeleteTarget({ kind: "section", key: s.key, label: s.name })
-          }
-          onDuplicateBlog={handleDuplicateBlog}
-          onDeleteBlog={(e) =>
-            setDeleteTarget({
-              kind: "blog",
-              blogKind: e.kind,
-              key: e.key,
-              label: e.label,
-            })
-          }
-        />
-      )}
+            onBulkDeletePosts={() =>
+              setDeleteTarget({
+                kind: "blog-bulk",
+                keys: [...selectedPostKeys],
+                count: selectedPostKeys.size,
+              })
+            }
+            selection={selection}
+            onSelect={(next) => {
+              setSelection(next);
+              setOpenPageSeoKey(null);
+            }}
+            previewUrl={previewUrl}
+            onCreate={() => {
+              if (activeCollection === "pages") {
+                openCreatePage();
+              } else if (isBlogKind(activeCollection)) {
+                void handleCreateBlog(activeCollection);
+              } else if (!previewUrl) {
+                toast.error("Start the preview dev server to add sections.");
+              } else {
+                setAddSectionOpen(true);
+              }
+            }}
+            onDuplicatePage={openDuplicatePage}
+            onRenamePage={openRenamePage}
+            onAddPageVariant={handleAddPageVariant}
+            onDeletePage={(page) =>
+              setDeleteTarget({ kind: "page", key: page.key, label: page.name })
+            }
+            onEditPageSeo={(page) => {
+              setSelection({
+                collection: "pages",
+                key: page.key,
+                path: page.path,
+              });
+              setOpenPageSeoKey(page.key);
+            }}
+            onViewPageJson={(page) => setJsonPageKey(page.key)}
+            onDuplicateSection={handleDuplicateSection}
+            onRenameSection={(s) => setRenameSectionKey(s.key)}
+            onDeleteSection={(s) =>
+              setDeleteTarget({ kind: "section", key: s.key, label: s.name })
+            }
+            onDuplicateBlog={handleDuplicateBlog}
+            onDeleteBlog={(e) =>
+              setDeleteTarget({
+                kind: "blog",
+                blogKind: e.kind,
+                key: e.key,
+                label: e.label,
+              })
+            }
+          />
+        )}
       <div className="flex-1 min-w-0">
         <Suspense
           fallback={
@@ -927,7 +943,9 @@ function ContentBrowserReady({
             </div>
           }
         >
-          {activeCollection === "site" ? (
+          {activeCollection === "calendar" ? (
+            <VariantCalendar decofile={decofile} />
+          ) : activeCollection === "site" ? (
             siteApp ? (
               <AppEditor
                 key={`site:${siteApp.key}`}
@@ -1232,6 +1250,13 @@ function CollectionsSidebar({
           label="Apps"
           count={counts.apps}
           active={active === "apps"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="calendar"
+          icon={Calendar}
+          label="Calendar"
+          active={active === "calendar"}
           onSelect={onSelect}
         />
         {showBlog && (
