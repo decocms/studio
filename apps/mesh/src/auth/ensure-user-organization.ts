@@ -114,6 +114,13 @@ export async function ensureUserOrganization(
       user.id,
     );
     if (existingOrganization) {
+      await repairMissingDomainClaimForExistingOrganization(
+        trx,
+        user,
+        domain,
+        existingOrganization,
+      );
+
       return {
         status: "already_has_organization",
         organization: existingOrganization,
@@ -242,6 +249,34 @@ async function ensureUserOrganizationInTransaction(options: {
   }
 
   return { status: "created", organization, domain, createdVia };
+}
+
+async function repairMissingDomainClaimForExistingOrganization(
+  db: Transaction<Database>,
+  user: AssuredUser,
+  domain: string | null,
+  organization: EnsuredOrganization,
+): Promise<void> {
+  if (!domain || !isVerifiedCorporateUser(user)) {
+    return;
+  }
+
+  if (organization.slug !== domainToOrgSlug(domain)) {
+    return;
+  }
+
+  const domainStorage = new OrganizationDomainStorage(db);
+  const existingDomainRecords = await domainStorage.getAllByDomain(domain);
+  if (existingDomainRecords.length > 0) {
+    return;
+  }
+
+  // Repairs retries after org creation succeeded but adding the domain claim failed.
+  await domainStorage.add(organization.id, domain, {
+    joinMode: "auto",
+    verificationStatus: "verified",
+    verificationMethod: "email",
+  });
 }
 
 async function getExistingUserOrganization(
