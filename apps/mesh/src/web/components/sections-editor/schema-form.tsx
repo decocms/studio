@@ -10,8 +10,7 @@ import { AnyOfField } from "./fields/any-of-field";
 import { DynamicOptionsField } from "./fields/dynamic-options-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
-import { MultivariateImageField } from "./fields/multivariate-image-field";
-import { MultivariateStringField } from "./fields/multivariate-string-field";
+import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
   isMultivariateArrayWrapper,
@@ -29,17 +28,33 @@ import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
 
-function multivariateMediaKind(
+/**
+ * Resolve the variant value schema from a multivariate flag block-ref.
+ *
+ * Dynamically inspects the anyOfRef schema to find the variant `value`
+ * property type — no hardcoded resolve-type list needed. This allows
+ * user-defined multivariate flags (e.g. `MultivariateProps<MyCustomType>`)
+ * to be rendered with the correct inner field automatically.
+ *
+ * Returns `{ resolveType, valueSchema }` when the schema is a single-option
+ * block-ref whose wrapper has a `variants[].value` property. Returns null
+ * for non-multivariate or multi-option block-refs.
+ */
+function resolveMultivariateValueSchema(
   schema: SchemaProperty,
-): "image" | "file" | "string" | null {
+): { resolveType: string; valueSchema: SchemaProperty } | null {
   if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return null;
   if (schema.anyOfRefs.length !== 1) return null;
-  const rt = schema.anyOfRefs[0]!.resolveType;
-  if (rt.endsWith("/multivariate/image.ts")) return "image";
-  if (rt.endsWith("/multivariate/video.ts")) return "file";
-  if (rt.endsWith("/multivariate/file.ts")) return "file";
-  if (rt.endsWith("/multivariate/message.ts")) return "string";
-  return null;
+  const ref = schema.anyOfRefs[0]!;
+  const wrapperSchema = ref.schema;
+  if (!wrapperSchema?.properties?.variants) return null;
+  const variantsSchema = wrapperSchema.properties.variants;
+  const variantItemSchema = variantsSchema.items;
+  if (!variantItemSchema?.properties?.value) return null;
+  return {
+    resolveType: ref.resolveType,
+    valueSchema: variantItemSchema.properties.value,
+  };
 }
 
 /** Infer section array items from a page-multivariate block-ref stub (site `global`). */
@@ -161,28 +176,23 @@ export function renderField(props: FieldProps) {
       typeof (value as Record<string, unknown>).__resolveType === "string" &&
       schema.anyOfRefs)
   ) {
-    // Deco wraps ImageWidget/VideoWidget in a multivariate flag loader by
-    // default. When the only option is the multivariate media loader,
-    // render the underlying media picker instead of a variant selector.
-    const mediaKind = multivariateMediaKind(schema);
-    if (mediaKind === "image") {
+    // Deco wraps widget types (ImageWidget, Message, custom types) in a
+    // multivariate flag loader. When the only option is a multivariate
+    // wrapper, detect the variant value type from the schema and render
+    // the appropriate inner field with variant management UI.
+    const multivariate = resolveMultivariateValueSchema(schema);
+    if (multivariate) {
+      const { resolveType, valueSchema } = multivariate;
+      const innerRenderer = (fieldProps: FieldProps) =>
+        renderField({ ...fieldProps, schema: valueSchema });
       return (
-        <MultivariateImageField
+        <MultivariateFieldWrapper
           key={props.path}
           {...props}
-          multivariateResolveType={schema.anyOfRefs![0]!.resolveType}
-        />
-      );
-    }
-    if (mediaKind === "file") {
-      return <FileField key={props.path} {...props} />;
-    }
-    if (mediaKind === "string") {
-      return (
-        <MultivariateStringField
-          key={props.path}
-          {...props}
-          multivariateResolveType={schema.anyOfRefs![0]!.resolveType}
+          multivariateResolveType={resolveType}
+          extractValue={(v) => v}
+          renderPlainField={innerRenderer}
+          renderVariantField={innerRenderer}
         />
       );
     }

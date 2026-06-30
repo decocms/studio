@@ -1,83 +1,80 @@
 import { defaultVariantRule } from "../section-types";
 import { isDefaultVariantRule } from "../section-variants";
 
-export interface MediaVariant {
+export interface MultivariateVariant {
   rule: Record<string, unknown>;
-  value: string;
+  value: unknown;
 }
 
-export interface MediaMultivariateWrapper {
+export interface MultivariateWrapper {
   __resolveType: string;
-  variants: MediaVariant[];
+  variants: MultivariateVariant[];
 }
 
-/** Type guard for the multivariate media wrapper shape. */
-export function isMediaMultivariateWrapper(
+/** Type guard for the multivariate wrapper shape. */
+export function isMultivariateWrapper(
   value: unknown,
-): value is MediaMultivariateWrapper {
+): value is MultivariateWrapper {
   if (!value || typeof value !== "object") return false;
   const obj = value as Record<string, unknown>;
   return typeof obj.__resolveType === "string" && Array.isArray(obj.variants);
 }
 
 /** Extract the variants array from a multivariate wrapper. */
-export function parseMediaVariants(
-  value: MediaMultivariateWrapper,
-): MediaVariant[] {
+export function parseMultivariateVariants(
+  value: MultivariateWrapper,
+): MultivariateVariant[] {
   return value.variants.map((v) => ({
     rule: (v.rule as Record<string, unknown>) ?? defaultVariantRule(),
-    value: typeof v.value === "string" ? v.value : "",
+    value: v.value,
   }));
 }
 
-/** Convert a plain URL string into a multivariate wrapper with two "always" variants. */
-export function wrapAsMediaMultivariate(
-  url: string,
+/** Convert a plain value into a multivariate wrapper with two "always" variants. */
+export function wrapAsMultivariate(
+  value: unknown,
   resolveType: string,
-): MediaMultivariateWrapper {
+): MultivariateWrapper {
   return {
     __resolveType: resolveType,
     variants: [
-      { rule: defaultVariantRule(), value: url },
-      { rule: defaultVariantRule(), value: url },
+      { rule: defaultVariantRule(), value: structuredClone(value) },
+      { rule: defaultVariantRule(), value: structuredClone(value) },
     ],
   };
 }
 
-/** Pick the "always" variant URL (or last), return plain string. */
-export function flattenMediaMultivariate(
-  wrapper: MediaMultivariateWrapper,
-): string {
+/** Pick the "always" variant value (or last). */
+export function flattenMultivariate(wrapper: MultivariateWrapper): unknown {
   const variants = wrapper.variants;
-  if (variants.length === 0) return "";
+  if (variants.length === 0) return undefined;
 
   const always = variants.find((v) =>
     isDefaultVariantRule(v.rule as Record<string, unknown> | undefined),
   );
-  if (always) return typeof always.value === "string" ? always.value : "";
+  if (always) return always.value;
 
-  const last = variants[variants.length - 1];
-  return typeof last?.value === "string" ? last.value : "";
+  return variants[variants.length - 1]?.value;
 }
 
 /** Add a variant cloned from last. */
-export function appendMediaVariant(
-  wrapper: MediaMultivariateWrapper,
-): MediaMultivariateWrapper {
+export function appendVariant(
+  wrapper: MultivariateWrapper,
+): MultivariateWrapper {
   const variants = [...wrapper.variants];
   const last = variants[variants.length - 1];
-  const newVariant: MediaVariant = {
+  const newVariant: MultivariateVariant = {
     rule: defaultVariantRule(),
-    value: last ? (typeof last.value === "string" ? last.value : "") : "",
+    value: last ? structuredClone(last.value) : undefined,
   };
   return { ...wrapper, variants: [...variants, newVariant] };
 }
 
 /** Remove variant at index. Returns null if only 1 variant remains (can't delete). */
-export function deleteMediaVariant(
-  wrapper: MediaMultivariateWrapper,
+export function deleteVariant(
+  wrapper: MultivariateWrapper,
   index: number,
-): MediaMultivariateWrapper | null {
+): MultivariateWrapper | null {
   if (wrapper.variants.length <= 1) return null;
   const variants = [...wrapper.variants];
   variants.splice(index, 1);
@@ -85,10 +82,10 @@ export function deleteMediaVariant(
 }
 
 /** Clone variant at index, inserting the clone right after. */
-export function duplicateMediaVariant(
-  wrapper: MediaMultivariateWrapper,
+export function duplicateVariant(
+  wrapper: MultivariateWrapper,
   index: number,
-): MediaMultivariateWrapper {
+): MultivariateWrapper {
   const variants = [...wrapper.variants];
   const source = variants[index];
   if (!source) return wrapper;
@@ -97,11 +94,11 @@ export function duplicateMediaVariant(
 }
 
 /** Reorder variants by moving from one index to another. */
-export function reorderMediaVariant(
-  wrapper: MediaMultivariateWrapper,
+export function reorderVariant(
+  wrapper: MultivariateWrapper,
   from: number,
   to: number,
-): MediaMultivariateWrapper {
+): MultivariateWrapper {
   const variants = [...wrapper.variants];
   if (
     from === to ||
@@ -118,28 +115,41 @@ export function reorderMediaVariant(
   return { ...wrapper, variants };
 }
 
-/** Update the URL at a given variant index. */
-export function updateMediaVariantValue(
-  wrapper: MediaMultivariateWrapper,
+/** Update the value at a given variant index. */
+export function updateVariantValue(
+  wrapper: MultivariateWrapper,
   index: number,
-  url: string,
-): MediaMultivariateWrapper {
+  value: unknown,
+): MultivariateWrapper {
   const variants = [...wrapper.variants];
   const current = variants[index];
   if (!current) return wrapper;
-  variants[index] = { ...current, value: url };
+  variants[index] = { ...current, value };
   return { ...wrapper, variants };
 }
 
 /** Update the matcher rule at a given variant index. */
-export function updateMediaVariantRule(
-  wrapper: MediaMultivariateWrapper,
+export function updateVariantRule(
+  wrapper: MultivariateWrapper,
   index: number,
   rule: Record<string, unknown>,
-): MediaMultivariateWrapper {
+): MultivariateWrapper {
   const variants = [...wrapper.variants];
   const current = variants[index];
   if (!current) return wrapper;
   variants[index] = { ...current, rule };
   return { ...wrapper, variants };
 }
+
+// Legacy aliases for backward compatibility with existing imports
+export type MediaVariant = MultivariateVariant;
+export type MediaMultivariateWrapper = MultivariateWrapper;
+export const isMediaMultivariateWrapper = isMultivariateWrapper;
+export const wrapAsMediaMultivariate = wrapAsMultivariate;
+export const flattenMediaMultivariate = flattenMultivariate;
+export const appendMediaVariant = appendVariant;
+export const deleteMediaVariant = deleteVariant;
+export const duplicateMediaVariant = duplicateVariant;
+export const reorderMediaVariant = reorderVariant;
+export const updateMediaVariantValue = updateVariantValue;
+export const updateMediaVariantRule = updateVariantRule;

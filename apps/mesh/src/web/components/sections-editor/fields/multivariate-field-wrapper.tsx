@@ -17,23 +17,23 @@ import { resolveSchema } from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
 import {
-  appendMediaVariant,
-  deleteMediaVariant,
-  duplicateMediaVariant,
-  flattenMediaMultivariate,
-  isMediaMultivariateWrapper,
-  reorderMediaVariant,
-  updateMediaVariantRule,
-  updateMediaVariantValue,
-  wrapAsMediaMultivariate,
-  type MediaMultivariateWrapper,
+  appendVariant,
+  deleteVariant,
+  duplicateVariant,
+  flattenMultivariate,
+  isMultivariateWrapper,
+  reorderVariant,
+  updateVariantRule,
+  updateVariantValue,
+  wrapAsMultivariate,
+  type MultivariateWrapper,
 } from "./media-variants";
 import type { FieldProps } from "./field-props";
 
 export interface MultivariateFieldWrapperProps extends FieldProps {
   multivariateResolveType: string;
-  /** Extract a plain string from the current (possibly wrapped) value. */
-  extractValue: (value: unknown) => string;
+  /** Extract the plain value from the current (possibly wrapped) value. */
+  extractValue: (value: unknown) => unknown;
   /** Render the plain (non-multivariate) field. */
   renderPlainField: (props: FieldProps) => ReactNode;
   /** Render the inner field for a single variant value. */
@@ -50,7 +50,7 @@ export function MultivariateFieldWrapper({
   const { value, onChange, meta, path } = props;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  if (!isMediaMultivariateWrapper(value)) {
+  if (!isMultivariateWrapper(value)) {
     const plainValue = extractValue(value);
     return (
       <div className="relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
@@ -64,7 +64,7 @@ export function MultivariateFieldWrapper({
               aria-label="Add variant"
               onClick={() => {
                 onChange(
-                  wrapAsMediaMultivariate(plainValue, multivariateResolveType),
+                  wrapAsMultivariate(plainValue, multivariateResolveType),
                 );
                 setSelectedIndex(0);
               }}
@@ -79,7 +79,7 @@ export function MultivariateFieldWrapper({
     );
   }
 
-  const wrapper = value as MediaMultivariateWrapper;
+  const wrapper = value as MultivariateWrapper;
   const variants = wrapper.variants;
   const safeIndex = Math.min(selectedIndex, variants.length - 1);
 
@@ -93,8 +93,7 @@ export function MultivariateFieldWrapper({
   const currentVariant = variants[safeIndex];
   const currentRule = (currentVariant?.rule ?? {}) as Record<string, unknown>;
   const currentRt = (currentRule.__resolveType as string) ?? "";
-  const currentValue =
-    typeof currentVariant?.value === "string" ? currentVariant.value : "";
+  const currentValue = currentVariant?.value;
 
   const matchers = meta ? extractMatchers(meta) : [];
 
@@ -102,18 +101,18 @@ export function MultivariateFieldWrapper({
   const { __resolveType: _, ...ruleFormValue } = currentRule;
 
   const handleFlatten = () => {
-    onChange(flattenMediaMultivariate(wrapper));
+    onChange(flattenMultivariate(wrapper));
     setSelectedIndex(0);
   };
 
   const handleAdd = () => {
-    const next = appendMediaVariant(wrapper);
+    const next = appendVariant(wrapper);
     onChange(next);
     setSelectedIndex(next.variants.length - 1);
   };
 
   const handleDelete = (index: number) => {
-    const next = deleteMediaVariant(wrapper, index);
+    const next = deleteVariant(wrapper, index);
     if (!next) return;
     onChange(next);
     if (safeIndex >= next.variants.length) {
@@ -122,13 +121,13 @@ export function MultivariateFieldWrapper({
   };
 
   const handleDuplicate = (index: number) => {
-    const next = duplicateMediaVariant(wrapper, index);
+    const next = duplicateVariant(wrapper, index);
     onChange(next);
     setSelectedIndex(index + 1);
   };
 
   const handleReorder = (from: number, to: number) => {
-    const next = reorderMediaVariant(wrapper, from, to);
+    const next = reorderVariant(wrapper, from, to);
     onChange(next);
     if (safeIndex === from) {
       setSelectedIndex(to);
@@ -139,7 +138,7 @@ export function MultivariateFieldWrapper({
     const rule = resolveType
       ? { __resolveType: resolveType }
       : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
-    onChange(updateMediaVariantRule(wrapper, safeIndex, rule));
+    onChange(updateVariantRule(wrapper, safeIndex, rule));
   };
 
   const handleRuleFormChange = (val: unknown) => {
@@ -147,13 +146,11 @@ export function MultivariateFieldWrapper({
     const newRule: Record<string, unknown> = currentRt
       ? { __resolveType: currentRt, ...next }
       : { ...next };
-    onChange(updateMediaVariantRule(wrapper, safeIndex, newRule));
+    onChange(updateVariantRule(wrapper, safeIndex, newRule));
   };
 
   const handleValueChange = (nextValue: unknown) => {
-    const str =
-      typeof nextValue === "string" ? nextValue : extractValue(nextValue);
-    onChange(updateMediaVariantValue(wrapper, safeIndex, str));
+    onChange(updateVariantValue(wrapper, safeIndex, nextValue));
   };
 
   const listKey = `${path}-${wrapper.__resolveType}`;
