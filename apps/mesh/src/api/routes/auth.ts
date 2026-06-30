@@ -1061,9 +1061,7 @@ app.post("/domain-request-join", async (c) => {
  * Route: POST /api/auth/custom/ensure-organization
  */
 app.post("/ensure-organization", async (c) => {
-  const session = (await auth.api.getSession({
-    headers: c.req.raw.headers,
-  })) as {
+  type EnsureOrganizationSession = {
     user?: {
       id: string;
       email: string;
@@ -1071,11 +1069,16 @@ app.post("/ensure-organization", async (c) => {
       emailVerified: boolean;
     };
   } | null;
-  if (!session?.user) {
-    return c.json({ success: false, error: "Authentication required" }, 401);
-  }
+  let session: EnsureOrganizationSession = null;
 
   try {
+    session = (await auth.api.getSession({
+      headers: c.req.raw.headers,
+    })) as EnsureOrganizationSession;
+    if (!session?.user) {
+      return c.json({ success: false, error: "Authentication required" }, 401);
+    }
+
     const result = await ensureUserOrganization({
       db: getDb().db,
       authApi: auth.api,
@@ -1118,7 +1121,10 @@ app.post("/ensure-organization", async (c) => {
       domain: result.domain,
     });
   } catch (error) {
-    posthog.captureException(error, session.user.id);
+    const userId = session?.user?.id;
+    if (userId) {
+      posthog.captureException(error, userId);
+    }
     console.error("[Auth] ensure organization failed:", error);
     return c.json(
       { success: false, error: "Failed to ensure organization" },
