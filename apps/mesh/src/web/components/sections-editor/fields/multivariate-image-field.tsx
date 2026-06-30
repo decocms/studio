@@ -13,6 +13,8 @@ import {
 } from "../section-variant-list";
 import { MatcherPicker, extractMatchers } from "../matcher-picker";
 import { formatMatcher } from "../format-matcher";
+import { resolveSchema } from "../resolve-schema";
+import { SchemaForm } from "../schema-form";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
 import { ImageField } from "./image-field";
 import {
@@ -123,11 +125,22 @@ export function MultivariateImageField({
     }
   };
 
+  const ruleSchema = currentRt && meta ? resolveSchema(currentRt, meta) : null;
+  const { __resolveType: _, ...ruleFormValue } = currentRule;
+
   const handleRuleChange = (resolveType: string) => {
     const rule = resolveType
       ? { __resolveType: resolveType }
       : { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
     onChange(updateMediaVariantRule(wrapper, safeIndex, rule));
+  };
+
+  const handleRuleFormChange = (val: unknown) => {
+    const next = val as Record<string, unknown>;
+    const newRule: Record<string, unknown> = currentRt
+      ? { __resolveType: currentRt, ...next }
+      : { ...next };
+    onChange(updateMediaVariantRule(wrapper, safeIndex, newRule));
   };
 
   const handleValueChange = (nextValue: unknown) => {
@@ -161,6 +174,16 @@ export function MultivariateImageField({
             matchers={matchers}
             onSelect={handleRuleChange}
           />
+          {ruleSchema && (
+            <div className="pt-1">
+              <SchemaForm
+                schema={ruleSchema}
+                value={ruleFormValue}
+                onChange={handleRuleFormChange}
+                basePath=""
+              />
+            </div>
+          )}
         </div>
 
         <ImageField
