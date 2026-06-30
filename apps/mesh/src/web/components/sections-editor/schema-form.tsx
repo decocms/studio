@@ -39,9 +39,32 @@ function isMultivariateBlockRef(schema: SchemaProperty): boolean {
   if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return false;
   if (schema.anyOfRefs.length !== 1) return false;
   const wrapperSchema = schema.anyOfRefs[0]!.schema;
-  if (!wrapperSchema?.properties?.variants) return false;
+  if (!wrapperSchema?.properties?.variants) {
+    // DEBUG — remove after confirming fix
+    console.warn("[multivariate-debug] no variants prop", {
+      type: schema.type,
+      refsLen: schema.anyOfRefs.length,
+      rt: schema.anyOfRefs[0]!.resolveType,
+      hasSchema: !!wrapperSchema,
+      propKeys: wrapperSchema?.properties
+        ? Object.keys(wrapperSchema.properties)
+        : null,
+    });
+    return false;
+  }
   const variantItemSchema = wrapperSchema.properties.variants.items;
-  return !!variantItemSchema?.properties?.value;
+  if (!variantItemSchema?.properties?.value) {
+    // DEBUG — remove after confirming fix
+    console.warn("[multivariate-debug] no value in variant items", {
+      rt: schema.anyOfRefs[0]!.resolveType,
+      hasItems: !!variantItemSchema,
+      itemPropKeys: variantItemSchema?.properties
+        ? Object.keys(variantItemSchema.properties)
+        : null,
+    });
+    return false;
+  }
+  return true;
 }
 
 /** Infer section array items from a page-multivariate block-ref stub (site `global`). */
