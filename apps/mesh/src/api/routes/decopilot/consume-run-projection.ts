@@ -2,17 +2,8 @@ import {
   getProjectorWorkflowRuntime,
   projectFromJetStreamStep,
   runProjectorWorkflowBody,
+  shouldSkipProjection,
 } from "./projector-workflow";
-
-/** Statuses on which the consume step's entry guard returns — consume is the
- *  sole writer of these, so a terminal status means projection already finished. */
-export function isTerminalStatus(status: string): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "requires_action"
-  );
-}
 
 export interface ConsumeRunProjectionOptions {
   runId: string;
@@ -36,7 +27,24 @@ export async function consumeRunProjection(
   const row = await rt.resolveRun(runId);
   const fenceToken = opts.fenceToken ?? row?.runFenceToken;
   if (!row || row.version !== 2 || fenceToken == null) return;
-  if (isTerminalStatus(row.status)) return; // recovery: we already finished this run
+  // Skip ONLY when a newer fence has superseded this attempt — the same
+  // per-fence check the projector body uses. A terminal status is NOT a skip
+  // signal: `runId === threadId`, so the thread's status is shared across turns,
+  // and a hosted onFinish (or a prior turn) can leave it terminal while THIS
+  // fence's `{done}` is still unprojected. Gating on thread status here stranded
+  // such turns ("No response was generated") and leaked the done sentinel; the
+  // live-fence check projects the run while it still needs it and skips only
+  // genuinely-stale attempts. (Recovery is handled by DBOS step memoization —
+  // a completed consume step is not re-run.)
+  if (
+    shouldSkipProjection({
+      status: row.status,
+      runFenceToken: row.runFenceToken,
+      fenceToken,
+    })
+  ) {
+    return;
+  }
 
   const js = rt.getJetStream();
   if (!js) throw new Error("JetStream unavailable for consume step");
