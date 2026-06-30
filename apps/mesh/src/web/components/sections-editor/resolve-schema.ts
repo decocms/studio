@@ -46,6 +46,14 @@ export interface SchemaProperty {
   discriminatorKey?: string;
   /** When true, the field should not be rendered in the form. */
   hidden?: boolean;
+  /**
+   * For block-ref fields with loader branches: the resolved schema of the
+   * non-loader branch (e.g. the plain `{ type: "string", format: "image-uri" }`
+   * for an ImageWidget union). Used by multivariate field rendering to avoid
+   * circular detection when the variant value schema points back to the same
+   * anyOf union.
+   */
+  plainSchema?: SchemaProperty;
 }
 
 export type SchemaAnyOfRef = NonNullable<SchemaProperty["anyOfRefs"]>[number];
@@ -521,6 +529,18 @@ export function resolveSchema(
                   : undefined,
             };
           });
+
+          // Preserve the non-loader (plain data) branch so multivariate
+          // field rendering can use it instead of the circular block-ref.
+          const nonLoaderBranches = nonNull.filter(
+            (a) => !loaderBranches.includes(a),
+          );
+          const plainSchema =
+            nonLoaderBranches.length === 1 &&
+            depth + 1 < MAX_BUILD_PROPERTY_DEPTH
+              ? buildProperty(nonLoaderBranches[0]!, depth + 1)
+              : undefined;
+
           return {
             type: "block-ref",
             title:
@@ -530,6 +550,7 @@ export function resolveSchema(
                 ? resolved.description
                 : undefined,
             anyOfRefs,
+            plainSchema,
             hidden:
               isSchemaHidden(resolved) || isSchemaHidden(v) ? true : undefined,
           };

@@ -29,32 +29,19 @@ import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
 
 /**
- * Resolve the variant value schema from a multivariate flag block-ref.
+ * Detect whether a block-ref schema is a multivariate flag wrapper.
  *
- * Dynamically inspects the anyOfRef schema to find the variant `value`
- * property type — no hardcoded resolve-type list needed. This allows
- * user-defined multivariate flags (e.g. `MultivariateProps<MyCustomType>`)
- * to be rendered with the correct inner field automatically.
- *
- * Returns `{ resolveType, valueSchema }` when the schema is a single-option
- * block-ref whose wrapper has a `variants[].value` property. Returns null
- * for non-multivariate or multi-option block-refs.
+ * Returns `true` when the schema is a single-option block-ref whose
+ * wrapper has a `variants[].value` property — i.e., it follows the
+ * `MultivariateProps<T>` pattern regardless of the resolve type path.
  */
-function resolveMultivariateValueSchema(
-  schema: SchemaProperty,
-): { resolveType: string; valueSchema: SchemaProperty } | null {
-  if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return null;
-  if (schema.anyOfRefs.length !== 1) return null;
-  const ref = schema.anyOfRefs[0]!;
-  const wrapperSchema = ref.schema;
-  if (!wrapperSchema?.properties?.variants) return null;
-  const variantsSchema = wrapperSchema.properties.variants;
-  const variantItemSchema = variantsSchema.items;
-  if (!variantItemSchema?.properties?.value) return null;
-  return {
-    resolveType: ref.resolveType,
-    valueSchema: variantItemSchema.properties.value,
-  };
+function isMultivariateBlockRef(schema: SchemaProperty): boolean {
+  if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return false;
+  if (schema.anyOfRefs.length !== 1) return false;
+  const wrapperSchema = schema.anyOfRefs[0]!.schema;
+  if (!wrapperSchema?.properties?.variants) return false;
+  const variantItemSchema = wrapperSchema.properties.variants.items;
+  return !!variantItemSchema?.properties?.value;
 }
 
 /** Infer section array items from a page-multivariate block-ref stub (site `global`). */
@@ -180,16 +167,28 @@ export function renderField(props: FieldProps) {
     // multivariate flag loader. When the only option is a multivariate
     // wrapper, detect the variant value type from the schema and render
     // the appropriate inner field with variant management UI.
-    const multivariate = resolveMultivariateValueSchema(schema);
-    if (multivariate) {
-      const { resolveType, valueSchema } = multivariate;
+    if (isMultivariateBlockRef(schema)) {
+      const ref = schema.anyOfRefs![0]!;
+      const variantValueSchema =
+        ref.schema!.properties!.variants.items!.properties!.value;
+      // The variant value schema may itself be a block-ref pointing back
+      // to the same widget type (e.g. ImageWidget = anyOf[string,
+      // multivariateWrapper]). When that happens, use the `plainSchema`
+      // (the non-loader branch, e.g. { type: "string", format: "image-uri" })
+      // to prevent infinite nesting — the variant value is always the plain
+      // type, never a nested wrapper.
+      const innerSchema =
+        isMultivariateBlockRef(variantValueSchema) &&
+        variantValueSchema.plainSchema
+          ? variantValueSchema.plainSchema
+          : variantValueSchema;
       const innerRenderer = (fieldProps: FieldProps) =>
-        renderField({ ...fieldProps, schema: valueSchema });
+        renderField({ ...fieldProps, schema: innerSchema });
       return (
         <MultivariateFieldWrapper
           key={props.path}
           {...props}
-          multivariateResolveType={resolveType}
+          multivariateResolveType={ref.resolveType}
           extractValue={(v) => v}
           renderPlainField={innerRenderer}
           renderVariantField={innerRenderer}
