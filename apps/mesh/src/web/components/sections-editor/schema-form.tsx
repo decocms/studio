@@ -10,6 +10,7 @@ import { AnyOfField } from "./fields/any-of-field";
 import { DynamicOptionsField } from "./fields/dynamic-options-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
+import { MultivariateImageField } from "./fields/multivariate-image-field";
 import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
   isMultivariateArrayWrapper,
@@ -163,7 +164,13 @@ export function renderField(props: FieldProps) {
     // render the underlying media picker instead of a variant selector.
     const mediaKind = multivariateMediaKind(schema);
     if (mediaKind === "image") {
-      return <ImageField key={props.path} {...props} />;
+      return (
+        <MultivariateImageField
+          key={props.path}
+          {...props}
+          multivariateResolveType={schema.anyOfRefs![0]!.resolveType}
+        />
+      );
     }
     if (mediaKind === "file") {
       return <FileField key={props.path} {...props} />;
