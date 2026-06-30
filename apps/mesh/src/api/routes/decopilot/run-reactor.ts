@@ -47,17 +47,10 @@ async function handleTerminalStatus(
   const { storage, sseHub } = deps;
   const thread = await storage.get(taskId, orgId);
 
-  await storage.update(taskId, orgId, {
-    status,
-    run_config: null,
-    run_started_at: null,
-  });
-  // Purge ownership moved to the durable projector workflow's success path
-  // (`cleanupRunStep` in projector-workflow.ts, after the run is reconstructed
-  // from JetStream + completed). Purging here on the live finish event would
-  // race the workflow's JetStream read and poison the projection — the exact
-  // bug this plan fixes. Failed runs are NOT projected, so RUN_FAILED still
-  // purges below as explicit abandoned-state cleanup.
+  // DB status write intentionally removed: the consume step (consume-run-projection.ts)
+  // is now the sole writer for completed/requires_action. The live reactor only emits
+  // SSE for instant UX — the durable projector workflow owns the terminal DB transition.
+  // (RUN_FAILED is exempt: failed runs skip the projector path and keep their write below.)
   sseHub.emit(
     orgId,
     createDecopilotThreadStatusEvent(taskId, status, {

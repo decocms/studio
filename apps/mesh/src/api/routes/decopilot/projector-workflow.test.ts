@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectChunksResult } from "./project-chunks";
 import {
-  checkpointWorkflowId,
-  PROJECTOR_PARTITION_CONCURRENCY,
-  PROJECTOR_QUEUE,
-  projectorWorkflowId,
   runProjectorWorkflowBody,
   shouldSkipProjection,
 } from "./projector-workflow";
@@ -14,21 +10,6 @@ import type {
 } from "./projector-workflow";
 
 describe("projector workflow helpers", () => {
-  test("builds deterministic workflow ids on a single partitioned queue", () => {
-    expect(projectorWorkflowId("run_1", "fence_a")).toBe(
-      "decopilot-project:run_1:fence_a",
-    );
-    // Checkpoint passes get a per-headSeq id so each incremental pass is a
-    // distinct durable workflow (idempotent on replay of the same headSeq).
-    expect(checkpointWorkflowId("run_1", "fence_a", 7)).toBe(
-      "decopilot-checkpoint:run_1:fence_a:7",
-    );
-    // Single partitioned queue (partitioned by orgId at enqueue time), NOT a
-    // per-org queue — mirrors AUTOMATIONS_QUEUE/THREAD_GATE_QUEUE.
-    expect(PROJECTOR_QUEUE).toBe("decopilot-projector");
-    expect(PROJECTOR_PARTITION_CONCURRENCY).toBe(10);
-  });
-
   test("does not skip terminal runs for the same fence", () => {
     expect(
       shouldSkipProjection({
@@ -86,7 +67,13 @@ describe("projector workflow helpers", () => {
 // ---------------------------------------------------------------------------
 
 interface FakeCall {
-  kind: "complete" | "fail" | "record-complete" | "record-fail" | "purge";
+  kind:
+    | "complete"
+    | "requires-action"
+    | "fail"
+    | "record-complete"
+    | "record-fail"
+    | "purge";
   runId?: string;
   orgId?: string;
   distinctId?: string;
@@ -113,9 +100,17 @@ function makeRuntime(): { rt: ProjectorWorkflowRuntime; calls: FakeCall[] } {
     messageParts: null as never,
     completeRunIfNotCompleted: async (runId, orgId) => {
       calls.push({ kind: "complete", runId, orgId });
+      // Return a truthy "flipped" row — analytics are gated on this
+      return { status: "completed" };
+    },
+    markRunRequiresAction: async (runId, orgId) => {
+      calls.push({ kind: "requires-action", runId, orgId });
+      return { status: "requires_action" };
     },
     markRunFailed: async (runId, orgId, reason, kind) => {
       calls.push({ kind: "fail", runId, orgId, reason, failKind: kind });
+      // Return a truthy "flipped" row — analytics are gated on this
+      return { status: "failed" };
     },
     persistTitle: async () => {},
     onTitleUpdated: async () => {},
@@ -136,7 +131,6 @@ function makeRuntime(): { rt: ProjectorWorkflowRuntime; calls: FakeCall[] } {
     purgeRun: async (runId, fenceToken) => {
       calls.push({ kind: "purge", runId, fenceToken });
     },
-    advanceProjectedSeq: async () => 0,
   };
 
   return { rt, calls };
@@ -171,6 +165,7 @@ describe("runProjectorWorkflowBody", () => {
         failed: true,
         finishReason: undefined,
         usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finalParts: [],
       },
     });
 
@@ -201,6 +196,7 @@ describe("runProjectorWorkflowBody", () => {
         failed: true,
         finishReason: "error",
         usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finalParts: [],
       },
     });
 
@@ -218,6 +214,7 @@ describe("runProjectorWorkflowBody", () => {
         failed: false,
         finishReason: "stop",
         usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+        finalParts: [],
       },
     });
 
@@ -242,6 +239,27 @@ describe("runProjectorWorkflowBody", () => {
     expect(calls.find((c) => c.kind === "record-complete")?.orgId).toBe(
       "org_1",
     );
+  });
+
+  test("clean outcome with ABSENT finishReason (desktop/relay {done}, no finish chunk) → completed, NOT failed", async () => {
+    // Regression: the desktop/relay path ends on a `{done}` marker with no
+    // AI-SDK finish chunk, so finishReason is undefined. resolveThreadStatus
+    // maps undefined → "failed"; the mapping must short-circuit absent
+    // finishReason to "completed" (matching the pre-unification projector).
+    const { rt, calls } = makeRuntime();
+    const projectFn = makeProjectFn({
+      outcome: {
+        failed: false,
+        finishReason: undefined,
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+        finalParts: [],
+      },
+    });
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(calls.filter((c) => c.kind === "complete")).toHaveLength(1);
+    expect(calls.filter((c) => c.kind === "fail")).toHaveLength(0);
   });
 
   test("undefined outcome → completeRunIfNotCompleted called (treated as clean)", async () => {
@@ -286,7 +304,90 @@ describe("runProjectorWorkflowBody", () => {
     expect(recordFailCall?.distinctId).toBe("user_1");
   });
 
-  test("purge (cleanup) runs on BOTH completed and harness-failed terminal paths", async () => {
+  test("tool-calls + approval-requested → requires_action, no recordCompleted", async () => {
+    const { rt, calls } = makeRuntime();
+    const projectFn = makeProjectFn({
+      outcome: {
+        failed: false,
+        finishReason: "tool-calls",
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finalParts: [{ type: "tool-invocation", state: "approval-requested" }],
+      },
+    });
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(calls.filter((c) => c.kind === "requires-action")).toHaveLength(1);
+    expect(calls.find((c) => c.kind === "requires-action")?.runId).toBe(
+      "run_1",
+    );
+    expect(calls.find((c) => c.kind === "requires-action")?.orgId).toBe(
+      "org_1",
+    );
+    expect(calls.filter((c) => c.kind === "complete")).toHaveLength(0);
+    expect(calls.filter((c) => c.kind === "fail")).toHaveLength(0);
+    expect(calls.filter((c) => c.kind === "record-complete")).toHaveLength(0);
+    expect(calls.filter((c) => c.kind === "record-fail")).toHaveLength(0);
+  });
+
+  test("tool-calls + user_ask input-available → requires_action, no analytics", async () => {
+    const { rt, calls } = makeRuntime();
+    const projectFn = makeProjectFn({
+      outcome: {
+        failed: false,
+        finishReason: "tool-calls",
+        usage: { inputTokens: 5, outputTokens: 5, totalTokens: 10 },
+        finalParts: [{ type: "tool-user_ask", state: "input-available" }],
+      },
+    });
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(calls.filter((c) => c.kind === "requires-action")).toHaveLength(1);
+    expect(calls.filter((c) => c.kind === "complete")).toHaveLength(0);
+    expect(calls.filter((c) => c.kind === "record-complete")).toHaveLength(0);
+  });
+
+  test("normal stop (no question) → completed + recordCompleted", async () => {
+    const { rt, calls } = makeRuntime();
+    const projectFn = makeProjectFn({
+      outcome: {
+        failed: false,
+        finishReason: "stop",
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+        finalParts: [{ type: "text", text: "Done." }],
+      },
+    });
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(calls.filter((c) => c.kind === "complete")).toHaveLength(1);
+    expect(calls.filter((c) => c.kind === "record-complete")).toHaveLength(1);
+    expect(calls.filter((c) => c.kind === "requires-action")).toHaveLength(0);
+    expect(calls.filter((c) => c.kind === "fail")).toHaveLength(0);
+  });
+
+  test("in-band harness error → failed, gated recordFailed fires", async () => {
+    const { rt, calls } = makeRuntime();
+    const projectFn = makeProjectFn({
+      outcome: {
+        failed: true,
+        finishReason: undefined,
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finalParts: [],
+      },
+    });
+
+    await runProjectorWorkflowBody(input, rt, projectFn);
+
+    expect(calls.filter((c) => c.kind === "fail")).toHaveLength(1);
+    expect(calls.filter((c) => c.kind === "record-fail")).toHaveLength(1);
+    expect(calls.filter((c) => c.kind === "complete")).toHaveLength(0);
+    expect(calls.filter((c) => c.kind === "record-complete")).toHaveLength(0);
+    expect(calls.filter((c) => c.kind === "requires-action")).toHaveLength(0);
+  });
+
+  test("purge (cleanup) runs on ALL terminal paths (completed, harness-failed, requires_action)", async () => {
     // completed path
     const { rt: rt1, calls: calls1 } = makeRuntime();
     await runProjectorWorkflowBody(
@@ -297,6 +398,7 @@ describe("runProjectorWorkflowBody", () => {
           failed: false,
           finishReason: "stop",
           usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finalParts: [],
         },
       }),
     );
@@ -311,10 +413,29 @@ describe("runProjectorWorkflowBody", () => {
         outcome: {
           failed: true,
           usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finalParts: [],
         },
       }),
     );
     expect(calls2.filter((c) => c.kind === "purge")).toHaveLength(1);
+
+    // requires_action path (tool-calls + approval-requested)
+    const { rt: rt3, calls: calls3 } = makeRuntime();
+    await runProjectorWorkflowBody(
+      input,
+      rt3,
+      makeProjectFn({
+        outcome: {
+          failed: false,
+          finishReason: "tool-calls",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finalParts: [
+            { type: "tool-invocation", state: "approval-requested" },
+          ],
+        },
+      }),
+    );
+    expect(calls3.filter((c) => c.kind === "purge")).toHaveLength(1);
   });
 
   test("purge does NOT run on projection-throw path (catch branch re-throws)", async () => {
@@ -383,6 +504,7 @@ describe("ProjectorWorkflowRuntime hooks", () => {
           failed: false as const,
           finishReason: "stop" as const,
           usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finalParts: [],
         },
       };
     };
@@ -406,9 +528,7 @@ describe("ProjectorWorkflowRuntime hooks", () => {
       onTitleUpdated: async () => {},
     };
 
-    // Simulate projectCheckpointFromJetStreamStep returning { projected: true }
-    // and the projectCheckpointWorkflowFn body calling bumpProgress afterward.
-    // Since bumpProgress is wired in the DBOS workflow function, we verify here
+    // bumpProgress is wired in the DBOS workflow function; verify here
     // that the runtime has the hook and it can be invoked with the right shape.
     await rt.bumpProgress({ runId, orgId });
 

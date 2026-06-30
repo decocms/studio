@@ -1,5 +1,8 @@
 import { type UIMessage, type UIMessageChunk, createUIMessageStream } from "ai";
-import { interceptTitleChunks } from "./title-interceptor";
+import {
+  interceptTitleChunks,
+  interceptTitleChunkStream,
+} from "./title-interceptor";
 
 export interface HarnessStreamPersistence {
   emitStepParts(message: {
@@ -51,7 +54,8 @@ export interface HarnessStreamTitleOptions {
 }
 
 export interface ConsumeHarnessStreamOptions {
-  chunks: AsyncIterable<UIMessageChunk>;
+  chunks?: AsyncIterable<UIMessageChunk>;
+  chunkStream?: ReadableStream<UIMessageChunk>;
   originalMessages?: UIMessage[];
   title: HarnessStreamTitleOptions;
   persistence: HarnessStreamPersistence;
@@ -70,22 +74,21 @@ export interface ConsumeHarnessStreamOptions {
    * MUST be deterministic per turn (`error-${runId}:${fenceToken}`, see
    * message-ids.ts) so the SAME error message dedupes across re-projection
    * attempts, DBOS step retries, daemon full-prefix resends, and the
-   * live/projector double-write — the deterministic-id idempotency `projectRun`
-   * relies on — while DISTINCT turns of the same thread never collide. Defaults
-   * to a random UUID only for callers with no run identity (none persist on
-   * retry).
+   * live/projector double-write — the deterministic-id idempotency the
+   * projector relies on — while DISTINCT turns of the same thread never
+   * collide. Defaults to a random UUID only for callers with no run identity
+   * (none persist on retry).
    */
   errorMessageId?: string;
   /**
-   * Id generator for the reassembled assistant message(s). The projector passes
-   * a DETERMINISTIC generator (`${runId}:${fenceToken}:msg:${n}`, see
-   * message-ids.ts) so every re-fold of the same turn — terminal projection,
-   * checkpoint passes, and reconnect-replay redelivery — reassembles the SAME
-   * message id and therefore the SAME part row ids
-   * (`${runId}:${messageId}:${seq}`), which `ON CONFLICT (id) DO NOTHING`
-   * dedupes. The fence token namespaces each turn so distinct turns of the same
-   * thread (runId == threadId is stable) never collide. Omitted on the live
-   * path → the SDK's default random id (no persistence-idempotency there).
+   * Optional override id scheme for the reassembled message(s). Only the
+   * `background-tool-workflow` caller passes this — it imposes its own
+   * `${jobId}:msg:${n}` ids. The decopilot projection paths DO NOT pass it: they
+   * keep the harness `start.messageId` verbatim (every harness stamps one via the
+   * shared generateMessageId; createUIMessageStream preserves it), and the
+   * continuation merge is derived from `originalMessages` instead (the first
+   * folded message adopts a trailing assistant message's id). See the
+   * id-resolution block below and message-id-unification-design.md.
    */
   generateMessageId?: () => string;
 }
@@ -104,6 +107,40 @@ function asReadableStream<T>(source: AsyncIterable<T>): ReadableStream<T> {
     },
     async cancel(reason) {
       await iter.return?.(reason);
+    },
+  });
+}
+
+function guardReadableStream<T>(
+  source: ReadableStream<T>,
+  onError: () => void,
+): ReadableStream<T> {
+  const reader = source.getReader();
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    reader.releaseLock();
+  };
+  return new ReadableStream<T>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          release();
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (err) {
+        onError();
+        release();
+        controller.error(err);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+      release();
     },
   });
 }
@@ -143,39 +180,81 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
     resolveComplete = resolve;
   });
 
-  const guardedChunks = (async function* () {
-    try {
-      yield* options.chunks;
-    } catch (e) {
-      sourceThrew = true;
-      throw e;
-    }
-  })();
+  if (!options.chunks && !options.chunkStream) {
+    throw new Error("consumeHarnessStream requires chunks or chunkStream");
+  }
 
-  // Map each SDK-assigned (random, per-fold) message id to a DETERMINISTIC id in
-  // fold order, so re-projections of the same run reassemble identical message +
-  // part ids → ON CONFLICT (id) DO NOTHING dedupes on reconnect-replay. The SDK
-  // doesn't expose a hook to set the reassembled id, so we remap it just before
-  // persistence. No-op on the live path (no generator).
+  const guardedChunks = options.chunks
+    ? (async function* () {
+        try {
+          yield* options.chunks!;
+        } catch (e) {
+          sourceThrew = true;
+          throw e;
+        }
+      })()
+    : null;
+  const guardedChunkStream = options.chunkStream
+    ? guardReadableStream(options.chunkStream, () => {
+        sourceThrew = true;
+      })
+    : null;
+
+  // The message id authority is the harness's `start.messageId`. Every harness
+  // stamps a stable `msg_…` id into each message's `start` chunk (shared
+  // generateMessageId), and createUIMessageStream preserves it through the fold,
+  // so the reassembled message.id IS that harness id — stable across every
+  // re-fold because it lives in the replayed chunk log (`${runId}:${messageId}:
+  // ${seq}` row ids then dedupe on ON CONFLICT). We keep it verbatim, with two
+  // exceptions:
+  //
+  //   - `generateMessageId` set: a caller (background-tool-workflow) imposes its
+  //     OWN id scheme; remap each SDK message id through it in fold order, memoized
+  //     so repeated onStepFinish passes for the same message stay stable.
+  //   - CONTINUATION merge (decopilot approval / tool-output rounds): when no
+  //     generateMessageId is passed and `originalMessages` ends with an assistant
+  //     message (the re-POSTed proposal), the FIRST folded message adopts that
+  //     trailing id so the continuation merges onto the proposal row instead of
+  //     creating a second one. Subsequent messages keep their own harness ids.
+  //
+  //     This is idempotent across re-folds ONLY because a decopilot turn is a
+  //     SINGLE UI message (one `toUIMessageStream` => one message): the trailing
+  //     originalMessage stays the proposal and the first chunk-log id stays the
+  //     same, so the first->proposal remap is stable on every re-fold. If a
+  //     continuation ever emits MULTIPLE messages, a re-fold would see
+  //     `originalMessages` ending in the LAST persisted message (not the
+  //     proposal) and adopt the wrong id — guard that (match the proposal id
+  //     explicitly) before multi-message continuations become reachable.
+  const trailingOriginal = options.originalMessages?.at(-1);
+  const continuationMessageId =
+    !options.generateMessageId && trailingOriginal?.role === "assistant"
+      ? trailingOriginal.id
+      : undefined;
   const messageIdRemap = new Map<string, string>();
-  const stableMessageId = (sdkId: string): string => {
-    if (!options.generateMessageId) return sdkId;
-    let id = messageIdRemap.get(sdkId);
-    if (id === undefined) {
-      id = options.generateMessageId();
-      messageIdRemap.set(sdkId, id);
+  let firstSdkId: string | null = null;
+  const resolveMessageId = (sdkId: string): string => {
+    if (options.generateMessageId) {
+      let id = messageIdRemap.get(sdkId);
+      if (id === undefined) {
+        id = options.generateMessageId();
+        messageIdRemap.set(sdkId, id);
+      }
+      return id;
     }
-    return id;
+    if (firstSdkId === null) firstSdkId = sdkId;
+    return continuationMessageId && sdkId === firstSdkId
+      ? continuationMessageId
+      : sdkId;
   };
-  const withStableId = <M extends { id: string }>(message: M): M =>
-    options.generateMessageId
-      ? { ...message, id: stableMessageId(message.id) }
-      : message;
+  const withStableId = <M extends { id: string }>(message: M): M => ({
+    ...message,
+    id: resolveMessageId(message.id),
+  });
 
   const uiStream = createUIMessageStream({
     originalMessages: options.originalMessages,
     execute: ({ writer }) => {
-      const intercepted = interceptTitleChunks(guardedChunks, {
+      const titleDeps = {
         ctx: null as never,
         isStreamFinished: () => streamFinished,
         currentThreadTitle: options.title.currentThreadTitle,
@@ -183,7 +262,17 @@ export function consumeHarnessStream(options: ConsumeHarnessStreamOptions): {
         writer,
         onTitleUpdated: options.title.onTitleUpdated,
         persistTitle: options.title.persistTitle,
-      });
+      };
+      if (guardedChunkStream) {
+        writer.merge(
+          interceptTitleChunkStream(
+            guardedChunkStream,
+            titleDeps,
+          ) as Parameters<typeof writer.merge>[0],
+        );
+        return;
+      }
+      const intercepted = interceptTitleChunks(guardedChunks!, titleDeps);
       writer.merge(
         asReadableStream(intercepted) as Parameters<typeof writer.merge>[0],
       );

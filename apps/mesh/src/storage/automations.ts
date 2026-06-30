@@ -597,6 +597,11 @@ class KyselyAutomationsStorage implements AutomationsStorage {
         trigger_id: triggerId,
         virtual_mcp_id: automation.virtual_mcp_id,
         hidden: false,
+        // Pin v2 (the only write path). Automation runs don't go through the
+        // routes.ts first-message site that pins user-message threads v2, so
+        // without this they default to v1 — and the consume step (sole terminal
+        // writer now) skips v1 runs, so the automation would never complete.
+        message_storage_version: 2,
         created_at: now,
         updated_at: now,
         created_by: automation.created_by,

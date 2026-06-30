@@ -1,38 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import {
-  assistantMessageIdGenerator,
-  synthesizedErrorMessageId,
-} from "./message-ids";
+import { synthesizedErrorMessageId } from "./message-ids";
 
-describe("projector/live message ids", () => {
-  test("distinct turns of one thread never collide", () => {
+describe("synthesizedErrorMessageId", () => {
+  test("distinct turns of one thread produce distinct error ids", () => {
     // runId == threadId is reused on EVERY turn; only the per-turn fence token
-    // differs. Under the old `${runId}:msg:${n}` scheme both turns produced
-    // "thread-1:msg:0", so turn 2's parts collided with turn 1's and were
-    // silently dropped by ON CONFLICT (id) DO NOTHING ("No response generated").
-    const turn1 = assistantMessageIdGenerator("thread-1", "fence-a");
-    const turn2 = assistantMessageIdGenerator("thread-1", "fence-b");
-    expect(turn1()).not.toBe(turn2());
+    // differs. The fence namespace ensures turn 1 and turn 2 never collide.
     expect(synthesizedErrorMessageId("thread-1", "fence-a")).not.toBe(
       synthesizedErrorMessageId("thread-1", "fence-b"),
     );
   });
 
-  test("re-folding the SAME turn yields identical ids (idempotent dedupe preserved)", () => {
-    // Terminal projection, checkpoint passes, and the live+projector double
-    // write all re-fold the same (runId, fenceToken) → identical ids → the
-    // ON CONFLICT (id) DO NOTHING dedupe relied on by #4044 still holds.
-    const a = assistantMessageIdGenerator("thread-1", "fence-a");
-    const b = assistantMessageIdGenerator("thread-1", "fence-a");
-    expect([a(), a(), a()]).toEqual([b(), b(), b()]);
+  test("same args always produce the same id (idempotent dedupe preserved)", () => {
+    // The live path and the durable projector both call synthesizedErrorMessageId
+    // with the same (runId, fenceToken) → identical ids → ON CONFLICT DO NOTHING
+    // dedupes instead of duplicating.
     expect(synthesizedErrorMessageId("t", "f")).toBe(
       synthesizedErrorMessageId("t", "f"),
     );
   });
 
-  test("ids increment in fold order and carry the fence namespace", () => {
-    const gen = assistantMessageIdGenerator("t", "f");
-    expect([gen(), gen()]).toEqual(["t:f:msg:0", "t:f:msg:1"]);
+  test("id format is error-<runId>:<fenceToken>", () => {
     expect(synthesizedErrorMessageId("t", "f")).toBe("error-t:f");
   });
 });

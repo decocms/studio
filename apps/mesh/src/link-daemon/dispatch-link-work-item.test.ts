@@ -28,7 +28,6 @@ function fakePublisher() {
     publishDone: async (i: RecordedDone) => {
       dones.push(i);
     },
-    publishCheckpoint: async () => {},
   };
   return { publisher, lines, dones };
 }

@@ -812,64 +812,62 @@ test.describe("harness conformance — relay driver", () => {
 //
 // These overlap link-ingest.spec.ts but are kept in the conformance suite as
 // the relay-driver's "rejection" cases so the case list is self-contained.
-// They seed the thread row directly (no dispatch needed) and assert the
-// projector's gates (fence mismatch skipped, unknown run never projected)
-// at the DB level — the old HTTP route's 409/404 responses are gone.
+// The fence-mismatch case drives a REAL dispatch (so the per-run consume step
+// actually runs) and relays a STALE fence; the unknown-run case relays a
+// stream for a runId that was never dispatched. Both assert the consume step's
+// gates (fence mismatch skipped, never-dispatched run never projected) at the
+// DB level — the old HTTP route's 409/404 responses are gone.
 // ---------------------------------------------------------------------------
-
-async function seedV2Thread(
-  db: Db,
-  {
-    orgId,
-    userId,
-    runFenceToken,
-  }: { orgId: string; userId: string; runFenceToken: string | null },
-): Promise<string> {
-  const threadId = `thrd_conf_neg_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const now = new Date().toISOString();
-  await db.query(
-    `INSERT INTO threads
-       (id, organization_id, title, status, virtual_mcp_id,
-        message_storage_version, run_fence_token, created_at, updated_at, created_by)
-     VALUES ($1, $2, $3, 'in_progress', '', 2, $4, $5, $5, $6)`,
-    [
-      threadId,
-      orgId,
-      "Conformance negative thread",
-      runFenceToken,
-      now,
-      userId,
-    ],
-  );
-  return threadId;
-}
 
 test.describe("harness conformance — relay endpoint rejections", () => {
   test("mismatched fence stream is skipped and no parts land", async ({
     authedPage,
   }) => {
-    // Fence enforcement moved from the (deleted) HTTP route to the projector:
+    // Fence enforcement lives in the consume step the dispatch workflow runs:
     // `shouldSkipProjection` skips a stream whose fence differs from the run's
-    // current run_fence_token, so a stale-fence relay commits nothing.
-    const { user, orgSlug } = authedPage;
+    // gate-minted run_fence_token, so a stale-fence relay commits nothing.
+    //
+    // We drive a REAL dispatch (so the consume step actually runs), then relay
+    // with a DIFFERENT (stale) fence — otherwise "zero parts" would be true
+    // trivially (no consume step → nothing ever projects).
+    test.setTimeout(CASE_TIMEOUT_MS);
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
-      const runId = await seedV2Thread(db, {
+      const { agentId, threadId } = await createPullThread(
+        api,
+        db,
+        orgSlug,
         orgId,
-        userId: user.userId,
-        runFenceToken: `fence_real_${Date.now()}`,
-      });
+      );
+      const { runId } = await dispatchAndClaimWorkItem(
+        api,
+        orgSlug,
+        agentId,
+        threadId,
+        daemon,
+        "What number?",
+      );
       const { body } = buildTurnRelayBody({
         messageId: `msg_conf_stale_${Date.now()}`,
         text: "should not land",
       });
+      // Relay with a stale fence (NOT workItem.runFenceToken): the consume
+      // step's shouldSkipProjection must drop the whole stream.
       await relay(runId, `fence_stale_${Date.now()}`, body);
-      // Give the projector a window to observe + skip the mismatched stream,
-      // then assert nothing was committed.
+      // Give the consume step a window to observe + skip the mismatched stream,
+      // then assert no ASSISTANT/relay parts were committed. The user's own
+      // message parts persist on dispatch; only the stale-fence relay must be
+      // dropped by shouldSkipProjection.
       await sleep(4_000);
-      expect(await fetchParts(db, runId)).toHaveLength(0);
+      const parts = await fetchParts(db, runId);
+      expect(parts.filter((p) => p.role !== "user")).toHaveLength(0);
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });
@@ -877,8 +875,9 @@ test.describe("harness conformance — relay endpoint rejections", () => {
   test("relayed stream for an unknown run persists nothing", async () => {
     // There is no cluster HTTP route to 404 a foreign/missing run anymore;
     // authz is enforced at the NATS publish layer (the daemon's scoped creds).
-    // A stream for a runId with no thread row can't resolve an org, so the
-    // projector consumer never schedules a projection — nothing is persisted.
+    // A run with no thread row was never dispatched, so no consume step ever
+    // binds its stream — nothing is persisted. (This case has no dispatch by
+    // construction: it asserts a never-dispatched stream stays inert.)
     const db = await connectDevDb();
     try {
       const runId = `thrd_does_not_exist_${Date.now()}`;
@@ -899,29 +898,50 @@ test.describe("harness conformance — relay endpoint rejections", () => {
   }) => {
     // The old route parked an in-memory session and 410'd a resume that found
     // none. The direct-NATS path has no session affinity: a full-prefix relay
-    // is always idempotent (JetStream `Nats-Msg-Id` dedup) and the projector
+    // is always idempotent (JetStream `Nats-Msg-Id` dedup) and the consume step
     // materializes it from seq 1.
-    const { user, orgSlug } = authedPage;
+    //
+    // We drive a REAL dispatch (so the consume step runs) and relay the full
+    // prefix TWICE with the gate-minted fence: the second publish must dedupe,
+    // so the run still lands exactly once.
+    test.setTimeout(CASE_TIMEOUT_MS);
+    const { page, orgSlug, user } = authedPage;
+    const api = page.context().request;
     const db = await connectDevDb();
+    let daemon: TunnelLinkDaemon | null = null;
     try {
+      daemon = await createTunnelLinkDaemon(api, user.userId, ["claude-code"]);
       const orgId = await orgIdForSlug(db, orgSlug);
-      const fenceToken = `fence_lost_${Date.now()}`;
-      const runId = await seedV2Thread(db, {
+      const { agentId, threadId } = await createPullThread(
+        api,
+        db,
+        orgSlug,
         orgId,
-        userId: user.userId,
-        runFenceToken: fenceToken,
-      });
+      );
+      const { runId, workItem } = await dispatchAndClaimWorkItem(
+        api,
+        orgSlug,
+        agentId,
+        threadId,
+        daemon,
+        "Reply 'ok'.",
+      );
       const { body } = buildTurnRelayBody({
         messageId: `msg_conf_lost_${Date.now()}`,
         text: "resumed turn lands",
       });
-      await relay(runId, fenceToken, body);
-      // Parts are written by the async durable projector, so poll until the
-      // relay's lines land.
+      // Relay the full prefix twice with the same fence — the second is a
+      // JetStream-deduped no-op (idempotent resend).
+      await relay(runId, workItem.runFenceToken, body);
+      await relay(runId, workItem.runFenceToken, body);
+      // Parts are written by the async consume step, so poll until the relay's
+      // lines land + the run reaches a terminal status.
       await expect(async () => {
         expect((await fetchParts(db, runId)).length).toBeGreaterThan(0);
+        expect(await fetchThreadStatus(db, runId)).toBe("completed");
       }).toPass({ timeout: 20_000, intervals: [250, 500, 1000, 2000] });
     } finally {
+      await daemon?.close();
       await db.end();
     }
   });

@@ -952,12 +952,32 @@ export class ThreadConnection {
     sub: ReadableStream<UIMessageChunk>,
   ): Promise<void> {
     const prev = this.messages.get();
-    const seed =
-      !this.freshRunSubstream &&
-      prev.length > 0 &&
-      prev.at(-1)?.role === "assistant"
-        ? prev.at(-1)
+    const lastMsg = prev.at(-1);
+    // A tool-approval CONTINUATION run streams the approved/denied tool's
+    // output (+ the assistant's follow-up) under a FRESH harness message id,
+    // while the pending tool part still lives on the trailing assistant
+    // "proposal". Seed the reassembler with that proposal so the `tool-output`
+    // chunk reconciles (no "No tool invocation found" throw) and PIN the folded
+    // id back to the proposal id so the run merges onto the proposal instead of
+    // creating a duplicate — mirroring the projector's `continuationMessageId`.
+    // We clone the seed because `readUIMessageStream` mutates `message` in place.
+    const isApprovalContinuation =
+      this.freshRunSubstream &&
+      lastMsg?.role === "assistant" &&
+      (lastMsg.parts ?? []).some(
+        (p) =>
+          "state" in p &&
+          (p.state === "approval-requested" ||
+            p.state === "approval-responded"),
+      );
+    const seed = isApprovalContinuation
+      ? (structuredClone(lastMsg) as UIMessage)
+      : !this.freshRunSubstream &&
+          prev.length > 0 &&
+          lastMsg?.role === "assistant"
+        ? lastMsg
         : undefined;
+    const pinnedMessageId = isApprovalContinuation ? lastMsg?.id : undefined;
     this.freshRunSubstream = false;
     const iter = readUIMessageStream({
       message: seed,
@@ -981,7 +1001,13 @@ export class ThreadConnection {
     const commit = () => {
       rafHandle = null;
       if (!pending) return;
-      const msg = pending;
+      // Pin a continuation's folded id back to the proposal id so it upserts
+      // onto the proposal row rather than appending a duplicate (the fresh
+      // harness `start.messageId` would otherwise become a second message).
+      const msg =
+        pinnedMessageId && pending.id !== pinnedMessageId
+          ? ({ ...pending, id: pinnedMessageId } as UIMessage)
+          : pending;
       pending = null;
       this.messages.update((curr) =>
         mergeAndSort(dropRedundantStubs(upsertById(curr, msg)), []),
@@ -1022,7 +1048,8 @@ export class ThreadConnection {
       // timestamp when present, else stamp finish time. Mirrors the cancel-path
       // anchor; a later persisted refetch (which carries the DB `created_at`)
       // overwrites this via upsert. No-op once a top-level `created_at` exists.
-      const anchorId = last.id;
+      // A pinned continuation commits under the proposal id, not `last.id`.
+      const anchorId = pinnedMessageId ?? last.id;
       this.messages.update((msgs) => {
         const i = msgs.findIndex((m) => m.id === anchorId);
         if (i === -1) return msgs;

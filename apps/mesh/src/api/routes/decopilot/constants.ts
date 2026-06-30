@@ -3,7 +3,7 @@ export {
   DEFAULT_WINDOW_SIZE,
   buildTodoWritePrompt,
 } from "@decocms/harness/decopilot/prompt-constants";
-export { generateMessageId } from "@decocms/harness/decopilot/harness-constants";
+export { generateMessageId } from "@decocms/harness/message-id";
 
 /**
  * Teaches the org filesystem layout. Skill discovery now lives in the

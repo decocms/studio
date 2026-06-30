@@ -3,10 +3,10 @@
  * ceiling. NATS rejects any single message larger than the server's
  * `max_payload` (default 1 MiB) with MAX_PAYLOAD_EXCEEDED, thrown synchronously
  * by the client. Kept under 1 MiB to leave headroom for the subject + protocol
- * framing. This is the CANONICAL definition; the mesh NATS layer
- * (`apps/mesh/src/nats/payload-chunking.ts`) re-exports it so the offload gate
- * and the chunking/work-queue share one source of truth (a mismatch is a
- * transport bug).
+ * framing. This is the CANONICAL definition; the run-stream codec
+ * (`run-stream-codec.ts`) fragments wire payloads against it so the offload
+ * gate and the chunking share one source of truth (a mismatch is a transport
+ * bug).
  */
 export const MAX_PUBLISH_BYTES = 768 * 1024;
 

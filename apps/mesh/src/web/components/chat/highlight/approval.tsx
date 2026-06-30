@@ -46,9 +46,20 @@ function ApprovalLevelSelect({
 
   const handleLevelChange = (value: string) => {
     const newLevel = value as ToolApprovalLevel;
+    // Capture the level the pending approval was REQUESTED at before persisting
+    // the new one. The continuation that carries this approval response must run
+    // at the request-time level so the SDK still resolves the tool as needing
+    // approval and HONORS the response. Responding at the freshly-selected
+    // "auto" would make `needsApproval` false on the continuation; the SDK then
+    // re-classifies the just-approved tool call as a fabricated approval and
+    // DENIES it (validate-tool-approvals.ts), persisting an invalid
+    // `output-denied` + `approved: true` part that bricks every later turn's
+    // `validateUIMessages`. The new level still applies to subsequent turns via
+    // the persisted preference.
+    const requestTimeLevel = preferences.toolApprovalLevel ?? "readonly";
     setPreferences({ ...preferences, toolApprovalLevel: newLevel });
     if (newLevel === "auto") {
-      onYolo(newLevel);
+      onYolo(requestTimeLevel);
     }
   };
 

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { JetStreamClient } from "@nats-io/jetstream";
+import { MAX_PUBLISH_BYTES } from "@decocms/harness/offload-messages";
+import {
+  FRAG_INDEX_HEADER,
+  FRAG_TOTAL_HEADER,
+} from "@decocms/harness/run-stream-codec";
 import {
   createDirectNatsPublisher,
   publishRelayBodyToNats,
@@ -27,6 +32,30 @@ function makeFakeJs(): {
     },
   } as Pick<JetStreamClient, "publish">;
   return { js, published };
+}
+
+type RawPublishRecord = {
+  subject: string;
+  data: Uint8Array;
+  opts?: { msgID?: string; headers?: { get(name: string): string } };
+};
+
+function makeFakeJsRaw(): {
+  js: Pick<JetStreamClient, "publish">;
+  records: RawPublishRecord[];
+} {
+  const records: RawPublishRecord[] = [];
+  const js = {
+    publish: async (
+      subject: string,
+      data: Uint8Array,
+      opts?: { msgID?: string; headers?: { get(name: string): string } },
+    ) => {
+      records.push({ subject, data, opts });
+      return {} as never;
+    },
+  } as Pick<JetStreamClient, "publish">;
+  return { js, records };
 }
 
 describe("createDirectNatsPublisher", () => {
@@ -101,127 +130,59 @@ describe("createDirectNatsPublisher", () => {
     expect(result).toBe("terminal");
     expect(published).toEqual([]);
   });
-});
 
-test("publishCheckpoint emits a checkpoint envelope with the ckpt msgId", async () => {
-  const published: Array<{
-    subject: string;
-    payload: unknown;
-    msgID?: string;
-  }> = [];
-  const js = {
-    publish: async (
-      subject: string,
-      data: Uint8Array,
-      opts?: { msgID?: string },
-    ) => {
-      published.push({
-        subject,
-        payload: JSON.parse(new TextDecoder().decode(data)),
-        msgID: opts?.msgID,
-      });
-      return {} as never;
-    },
-  };
-  const publisher = createDirectNatsPublisher({ js });
-  await publisher.publishCheckpoint({
-    runId: "run_1",
-    fenceToken: "fence_1",
-    headSeq: 4,
-  });
-  expect(published).toEqual([
-    {
-      subject: "decopilot.stream.run_1",
-      payload: { checkpoint: true, headSeq: 4 },
-      msgID: "run_1:fence_1:ckpt:4",
-    },
-  ]);
-});
+  test("ui-message-chunk exceeding MAX_PUBLISH_BYTES is fragmented into multiple publishes", async () => {
+    const { js, records } = makeFakeJsRaw();
+    const publisher = createDirectNatsPublisher({ js });
 
-test("publishRelayBodyToNats emits debounced checkpoints at the contiguous headSeq", async () => {
-  const checkpoints: number[] = [];
-  const publisher = {
-    publishLine: async ({
-      line,
-    }: {
-      line: { seq: number; event: { type: string } };
-    }) =>
-      line.event.type === "ui-message-chunk"
-        ? ("published" as const)
-        : ("terminal" as const),
-    publishDone: async () => {},
-    publishCheckpoint: async ({ headSeq }: { headSeq: number }) => {
-      checkpoints.push(headSeq);
-    },
-  };
-  // Fake clock: advance 4s per call so each content line crosses the 3s debounce.
-  // The implementation calls now() once at init (lastCheckpointAt = now())
-  // then twice per content line: once to check (now() - lastCheckpointAt >= debounceMs)
-  // and once to update (lastCheckpointAt = now()).
-  // Call sequence: init=0, check_1=4000, update_1=8000, check_2=12000, update_2=16000
-  // check_1: 4000 - 0 = 4000 >= 3000 → emit; check_2: 12000 - 8000 = 4000 >= 3000 → emit
-  let callCount = 0;
-  const times = [0, 4000, 8000, 12000, 16000];
-  const now = () => times[callCount++] ?? 16000;
-  const chunk = (seq: number) =>
-    JSON.stringify({
-      seq,
-      event: {
-        type: "ui-message-chunk",
-        chunk: { type: "text-delta", id: "1", delta: "x" },
+    // Build a chunk whose {p:chunk} JSON exceeds MAX_PUBLISH_BYTES
+    const delta = "x".repeat(MAX_PUBLISH_BYTES);
+    await publisher.publishLine({
+      runId: "run_frag",
+      fenceToken: "fence_f",
+      line: {
+        seq: 1,
+        event: {
+          type: "ui-message-chunk",
+          chunk: { type: "text-delta", id: "1", delta },
+        },
       },
     });
-  const body = `${chunk(1)}\n${chunk(2)}\n${JSON.stringify({ seq: 3, event: { type: "done" } })}\n`;
-  await publishRelayBodyToNats({
-    body,
-    runId: "run_1",
-    fenceToken: "fence_1",
-    publisher,
-    now,
-    checkpointDebounceMs: 3000,
-  });
-  // A checkpoint per content line that crossed the debounce window (headSeq = contiguous content seq).
-  expect(checkpoints).toEqual([1, 2]);
-});
 
-test("publishRelayBodyToNats emits no checkpoint when under the debounce", async () => {
-  const checkpoints: number[] = [];
-  const publisher = {
-    publishLine: async ({
-      line,
-    }: {
-      line: { seq: number; event: { type: string } };
-    }) =>
-      line.event.type === "ui-message-chunk"
-        ? ("published" as const)
-        : ("terminal" as const),
-    publishDone: async () => {},
-    publishCheckpoint: async ({ headSeq }: { headSeq: number }) => {
-      checkpoints.push(headSeq);
-    },
-  };
-  const now = () => 1000; // never advances → never crosses 3s
-  const chunk = (seq: number) =>
-    JSON.stringify({
-      seq,
-      event: {
-        type: "ui-message-chunk",
-        chunk: { type: "text-delta", id: "1", delta: "x" },
+    expect(records.length).toBeGreaterThan(1);
+    const total = records.length;
+    for (let i = 0; i < total; i++) {
+      const rec = records[i];
+      expect(rec.subject).toBe("decopilot.stream.run_frag");
+      expect(rec.opts?.headers?.get(FRAG_INDEX_HEADER)).toBe(String(i));
+      expect(rec.opts?.headers?.get(FRAG_TOTAL_HEADER)).toBe(String(total));
+      expect(rec.opts?.msgID).toBe(`run_frag:fence_f:1:frag:${i}`);
+    }
+  });
+
+  test("small ui-message-chunk produces exactly one publish with no frag headers", async () => {
+    const { js, records } = makeFakeJsRaw();
+    const publisher = createDirectNatsPublisher({ js });
+
+    await publisher.publishLine({
+      runId: "run_small",
+      fenceToken: "fence_s",
+      line: {
+        seq: 2,
+        event: {
+          type: "ui-message-chunk",
+          chunk: { type: "text-delta", id: "1", delta: "hello" },
+        },
       },
     });
-  const body = `${chunk(1)}\n${chunk(2)}\n${JSON.stringify({ seq: 3, event: { type: "done" } })}\n`;
-  await publishRelayBodyToNats({
-    body,
-    runId: "run_1",
-    fenceToken: "fence_1",
-    publisher,
-    now,
-    checkpointDebounceMs: 3000,
+
+    expect(records.length).toBe(1);
+    expect(records[0].opts?.msgID).toBe("run_small:fence_s:2");
+    expect(records[0].opts?.headers).toBeUndefined();
   });
-  expect(checkpoints).toEqual([]);
 });
 
-test("publishRelayBodyToNats reports onPublished at the checkpoint cadence (drives outbox truncation)", async () => {
+test("publishRelayBodyToNats reports onPublished at the debounce cadence (drives outbox truncation)", async () => {
   const published: number[] = [];
   const publisher = {
     publishLine: async ({ line }: { line: { event: { type: string } } }) =>
@@ -229,8 +190,13 @@ test("publishRelayBodyToNats reports onPublished at the checkpoint cadence (driv
         ? ("published" as const)
         : ("terminal" as const),
     publishDone: async () => {},
-    publishCheckpoint: async () => {},
   };
+  // Fake clock: advance 4s per call so each content line crosses the 3s debounce.
+  // The implementation calls now() once at init (lastReportAt = now())
+  // then twice per content line: once to check (now() - lastReportAt >= debounceMs)
+  // and once to update (lastReportAt = now()).
+  // Call sequence: init=0, check_1=4000, update_1=8000, check_2=12000, update_2=16000
+  // check_1: 4000 - 0 = 4000 >= 3000 → report seq 1; check_2: 12000 - 8000 = 4000 >= 3000 → report seq 2
   let callCount = 0;
   const times = [0, 4000, 8000, 12000, 16000];
   const now = () => times[callCount++] ?? 16000;
@@ -249,15 +215,16 @@ test("publishRelayBodyToNats reports onPublished at the checkpoint cadence (driv
     fenceToken: "fence_1",
     publisher,
     now,
-    checkpointDebounceMs: 3000,
+    reportDebounceMs: 3000,
     onPublished: (seq) => published.push(seq),
   });
-  // Reported the durable high-water mark at each debounce crossing; the terminal
-  // flush is a no-op since seq 2 was already reported.
+  // Mid-stream report at each debounce crossing; terminal flush is a no-op since
+  // seq 2 was already reported. Rolling truncation keeps the outbox from
+  // accumulating the entire run and hitting the 512 MiB cap.
   expect(published).toEqual([1, 2]);
 });
 
-test("publishRelayBodyToNats flushes a final onPublished even when no checkpoint fires", async () => {
+test("publishRelayBodyToNats flushes onPublished at terminal (drives outbox truncation)", async () => {
   const published: number[] = [];
   const publisher = {
     publishLine: async ({ line }: { line: { event: { type: string } } }) =>
@@ -265,9 +232,8 @@ test("publishRelayBodyToNats flushes a final onPublished even when no checkpoint
         ? ("published" as const)
         : ("terminal" as const),
     publishDone: async () => {},
-    publishCheckpoint: async () => {},
   };
-  const now = () => 1000; // never crosses the debounce window
+  const now = () => 1000; // never advances → never crosses 3s debounce
   const chunk = (seq: number) =>
     JSON.stringify({
       seq,
@@ -283,10 +249,10 @@ test("publishRelayBodyToNats flushes a final onPublished even when no checkpoint
     fenceToken: "fence_1",
     publisher,
     now,
-    checkpointDebounceMs: 3000,
+    reportDebounceMs: 3000,
     onPublished: (seq) => published.push(seq),
   });
-  // No checkpoint crossed, but the terminal flush still reports the durable
+  // No debounce crossed, but the terminal flush still reports the durable
   // high-water mark so the outbox prefix is dropped before terminal ack.
   expect(published).toEqual([2]);
 });

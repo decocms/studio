@@ -2,10 +2,9 @@
  * Canonical run-message persistence factory.
  *
  * Every path that writes an assistant message to `thread_message_parts` — the
- * hosted live path (`dispatch-run`), the relay live path (`link-ingest`), the
- * durable projector's terminal pass, and the projector's incremental checkpoint
- * pass — MUST agree on two things or the same logical message lands twice (or
- * sorts wrong):
+ * hosted live path (`dispatch-run`), the relay live path (`link-ingest`), and
+ * the durable projector's terminal pass — MUST agree on two things or the same
+ * logical message lands twice (or sorts wrong):
  *
  *   1. **Row ids / dedup.** Row id is `${runId}:${messageId}:${seq}` with `seq`
  *      a per-message counter that restarts at 0. A fresh {@link PartEmitter}
@@ -23,9 +22,9 @@
  *      message.
  *
  * Before this helper each site re-derived the base inline and they had already
- * drifted (the checkpoint pass omitted it entirely, defaulting to `Date.now()`
- * and re-opening the ordering bug for late checkpoints). Routing everyone
- * through here makes that drift unrepresentable.
+ * drifted (one omitted it entirely, defaulting to `Date.now()` and re-opening
+ * the ordering bug for late writes). Routing everyone through here makes that
+ * drift unrepresentable.
  */
 
 import type { SqlThreadMessagePartStorage } from "@/storage/thread-message-parts";
@@ -61,30 +60,30 @@ async function createAssistantEmitter(
 
 export interface RunPersistenceArgs extends AssistantEmitterArgs {
   /**
-   * `true` (default) → terminal pass: writes step parts AND closes the message
-   * with a finish/error anchor. `false` → checkpoint pass: writes step parts
-   * only, leaving the finish anchor to the terminal pass so checkpoint writes
-   * are strictly additive.
+   * Terminal projection may need to overwrite an already-persisted assistant
+   * snapshot for the same message id (approval response → final tool output).
    */
-  terminal?: boolean;
+  replaceFinal?: boolean;
 }
 
 /**
- * {@link HarnessStreamPersistence} over the canonical assistant emitter. Use
- * `terminal: false` for non-terminal (checkpoint) projection passes.
+ * {@link HarnessStreamPersistence} over the canonical assistant emitter. The
+ * durable projector folds a run once, at the terminal `{done}`: each pass writes
+ * the step parts and closes the message with a finish/error anchor.
  */
 export async function createRunPersistence(
   args: RunPersistenceArgs,
 ): Promise<HarnessStreamPersistence> {
   const emitter = await createAssistantEmitter(args);
-  const terminal = args.terminal ?? true;
+  const emitFinal = args.replaceFinal
+    ? (message: Parameters<HarnessStreamPersistence["emitFinal"]>[0]) =>
+        emitter.replaceFinal(message)
+    : (message: Parameters<HarnessStreamPersistence["emitFinal"]>[0]) =>
+        emitter.emitFinal(message);
   return {
     emitStepParts: (message) => emitter.emitStepParts(message),
-    emitFinal: terminal
-      ? (message) => emitter.emitFinal(message)
-      : async () => {},
-    emitError: terminal
-      ? (messageId, errorText) => emitter.emitError(messageId, errorText)
-      : async () => {},
+    emitFinal,
+    emitError: (messageId, errorText) =>
+      emitter.emitError(messageId, errorText),
   };
 }

@@ -23,16 +23,13 @@
  * Pure: the stream buffer, hooks, title options, and `fenceOk` are injected, so
  * this is a unit (no StudioContext, no NATS, no DB).
  */
-import type { UIMessageChunk } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 import {
   consumeHarnessStream,
   type HarnessStreamConsumerHooks,
   type HarnessStreamPersistence,
   type HarnessStreamTitleOptions,
 } from "./consume-harness-stream";
-import { assistantMessageIdGenerator } from "./message-ids";
-import { buildChunkMsgId } from "./projector-stream-messages";
-import { CHECKPOINT_DEBOUNCE_MS } from "./nats-stream-buffer";
 import type { StreamBuffer } from "./stream-buffer";
 
 export interface IngestRunInput {
@@ -58,6 +55,18 @@ export interface IngestRunInput {
   /** Deterministic id for a synthesized error message (`error-${runId}`) so
    *  projector-only persistence dedupes retries. See consumeHarnessStream. */
   errorMessageId?: string;
+  /**
+   * Trailing window of prior persisted messages, used ONLY to SEED the hook
+   * reassembly (`consumeHarnessStream`). For a tool-approval CONTINUATION run
+   * the trailing message is the assistant "proposal" still holding the pending
+   * tool part; seeding it lets the continuation's `tool-output` chunk reconcile
+   * (and adopt the proposal id via `continuationMessageId`) instead of throwing
+   * `No tool invocation found`. Mirrors the durable projector, which seeds the
+   * same way from `loadWindow`. Undefined/empty for fresh turns (the trailing
+   * message is the user's, so no continuation merge happens). Only `.at(-1)` is
+   * consulted — a single-message window suffices.
+   */
+  originalMessages?: UIMessage[];
 }
 
 export interface IngestRunDeps {
@@ -72,20 +81,10 @@ export interface IngestRunDeps {
    * no-op (the durable projector is the sole writer for the desktop/relay
    * path). The hosted background-job caller passes its PartEmitter so the
    * message lands in the DB before the stream closes; the projector still
-   * re-projects from JetStream as an idempotent backstop (deterministic row
+   * re-projects from JetStream as an idempotent backstop (stable row
    * ids → ON CONFLICT DO NOTHING).
    */
   persistence?: HarnessStreamPersistence;
-  /**
-   * When set, the ingest side publishes debounced checkpoint markers after
-   * each confirmed `ackSeq` advance. The projector consumer reacts to these
-   * by enqueuing a partial projection pass (Tasks 8-9). Omitted in runs
-   * where incremental projection is disabled.
-   */
-  checkpointPublisher?: (
-    fenceToken: string,
-    headSeq: number,
-  ) => Promise<boolean>;
 }
 
 /** Default persistence: write nothing — the durable projector is the sole
@@ -121,7 +120,6 @@ export async function ingestRun(
   // collide in JetStream dedup, silently dropping the run's tail).
   let ackSeq = input.initialAckSeq ?? 0;
   const pending = new Set<number>();
-  let lastCheckpointAt = 0;
   // Captures a throw from the source stream (or the publish leg). The kernel
   // turns it into a wire error chunk and closes cleanly, so it never surfaces
   // as a rejection on its own — we re-raise it after `whenComplete` to (a) keep
@@ -139,7 +137,8 @@ export async function ingestRun(
         if (seq <= ackSeq || pending.has(seq)) continue;
         if (
           !(await deps.streamBuffer.publishRawChunk(runId, chunk, {
-            msgId: buildChunkMsgId({ runId, fenceToken, seq }),
+            fenceToken,
+            seq,
           }))
         ) {
           throw new Error("publishRawChunk failed");
@@ -158,13 +157,6 @@ export async function ingestRun(
         // the filled contiguous boundary when the gap is closed.
         if (ackSeq > prevAckSeq) {
           input.onPublished?.(ackSeq);
-          if (
-            deps.checkpointPublisher &&
-            Date.now() - lastCheckpointAt >= CHECKPOINT_DEBOUNCE_MS
-          ) {
-            lastCheckpointAt = Date.now();
-            deps.checkpointPublisher(fenceToken, ackSeq).catch(() => {});
-          }
         }
         yield chunk;
       }
@@ -174,22 +166,14 @@ export async function ingestRun(
     }
   }
 
-  // Deterministic assistant-message ids, IDENTICAL to the durable projector's
-  // scheme (`${runId}:${fenceToken}:msg:${n}` in fold order — see
-  // message-ids.ts). The live ingest persistence and the projector both fold the
-  // same chunk stream under the same fence, so matching ids mean their part rows
-  // collide on `ON CONFLICT (id) DO NOTHING` instead of duplicating. The fence
-  // also keeps DISTINCT turns of the same thread (runId == threadId) disjoint.
-  const generateMessageId = assistantMessageIdGenerator(runId, fenceToken);
-
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: dedupedChunks(),
+    originalMessages: input.originalMessages,
     title: {
       ...deps.title,
       persistTitle: async () => {},
     },
     persistence: deps.persistence ?? NOOP_PERSISTENCE,
-    generateMessageId,
     hooks: deps.hooks,
     errorMessageId: input.errorMessageId,
   });

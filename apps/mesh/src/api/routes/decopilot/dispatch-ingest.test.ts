@@ -48,11 +48,16 @@ function makeDeps() {
     persistedTitles,
     streamBuffer: {
       publishRawChunk: async (
-        _taskId: string,
+        taskId: string,
         chunk: unknown,
-        opts?: { msgId?: string },
+        dedup?: { fenceToken: string; seq: number },
       ) => {
-        publishedRaw.push({ chunk, msgId: opts?.msgId });
+        publishedRaw.push({
+          chunk,
+          msgId: dedup
+            ? `${taskId}:${dedup.fenceToken}:${dedup.seq}`
+            : undefined,
+        });
         return true;
       },
       publishDone: async (
@@ -101,33 +106,6 @@ describe("buildAgentSandboxUiStream", () => {
     expect(finishCount).toBe(1);
     // Authoritative {done} marker fires once, fence-scoped to the last seq.
     expect(d.publishedDone).toEqual([{ fenceToken: "f", finalSeq: 3 }]);
-  });
-
-  it("forwards checkpointPublisher to ingestRun — it is called on ackSeq advance", async () => {
-    // Verify that a checkpointPublisher passed to buildAgentSandboxUiStream is
-    // forwarded into the ingestRun deps and invoked when the contiguous ackSeq
-    // floor advances. lastCheckpointAt starts at 0, so the FIRST advance always
-    // passes the CHECKPOINT_DEBOUNCE_MS gate.
-    const d = makeDeps();
-    const checkpoints: Array<{ fenceToken: string; headSeq: number }> = [];
-    const stream = buildAgentSandboxUiStream({
-      runId: "r",
-      fenceToken: "f",
-      chunks: harnessChunks(),
-      streamBuffer: d.streamBuffer,
-      title: d.title,
-      hooks: {},
-      checkpointPublisher: async (fenceToken, headSeq) => {
-        checkpoints.push({ fenceToken, headSeq });
-        return true;
-      },
-    });
-    await drain(stream);
-
-    // At least one checkpoint must have been published during the run.
-    expect(checkpoints.length).toBeGreaterThan(0);
-    // Every published checkpoint carries the correct fenceToken.
-    expect(checkpoints.every((c) => c.fenceToken === "f")).toBe(true);
   });
 
   it("title passed to buildAgentSandboxUiStream should not have onTitleUpdated (call-site contract)", async () => {

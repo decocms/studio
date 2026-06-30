@@ -164,15 +164,14 @@ import {
   setAutomationRuntime,
 } from "../automations";
 import {
+  HOSTED_HARNESS_PARTITION_CONCURRENCY,
+  HOSTED_HARNESS_QUEUE,
+  setHostedHarnessRuntime,
   setThreadGateRuntime,
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import {
-  PROJECTOR_PARTITION_CONCURRENCY,
-  PROJECTOR_QUEUE,
-  setProjectorWorkflowRuntime,
-} from "./routes/decopilot/projector-workflow";
+import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import {
@@ -183,8 +182,6 @@ import { createAutomationsStorage } from "../storage/automations";
 import { KyselyKVStorage } from "../storage/kv";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { createAutomationContextFactory } from "./routes/decopilot/automation-context";
-import type { DurableProjectorConsumerHandle } from "./routes/decopilot/projector-consumer";
-
 import type { Pool, PoolClient } from "pg";
 
 const HEALTH_CHECK_TIMEOUT_MS = 5_000;
@@ -845,10 +842,6 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   let mcpListCache: McpListCache | null;
   let connectionCircuitStore: ConnectionCircuitStore;
-  // Durable projector consumer handle + once-per-pod start guard. Started in the
-  // natsProvider.onReady handler, stopped in currentDecopilotCleanup.
-  let projectorHandle: DurableProjectorConsumerHandle | null = null;
-  let projectorStarted = false;
   // Model lists are public, low-stakes metadata cached per-replica with a TTL —
   // no NATS needed, so this is shared across the test and production branches.
   const modelListCache: ModelListCache = new InMemoryModelListCache();
@@ -909,7 +902,6 @@ export async function createApp(options: CreateAppOptions = {}) {
       // "unavailable" (false) — the caller must not treat the run as handed
       // off to the projector.
       publishDone: async () => false,
-      publishCheckpoint: async () => false,
       createTailStream: async () => null,
       purge: () => {},
       teardown: () => {},
@@ -1005,56 +997,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       // Subscribe to cross-replica MCP read/result cache invalidations.
       startMcpCacheInvalidation(() => natsProvider!.getConnection());
       // `streamBuffer.init()` CREATES the DECOPILOT_STREAMS JetStream stream.
-      // The durable projector consumer (below) binds to that stream, so it must
-      // start ONLY after init resolves — on a fresh NATS (e2e / first boot)
-      // binding the consumer in the same tick races stream creation and fails
-      // with StreamNotFoundError, leaving the projector dead and parts/status
-      // never materialized. Chaining serializes create-then-bind.
-      streamBuffer
-        .init()
-        .then(() => {
-          // Durable explicit-ack projector consumer (spec §5.4) — the SOLE DB
-          // writer post-cutover (parts + title + terminal status). Every pod
-          // runs it: JetStream's durable pull consumer distributes each done
-          // marker to exactly one pod (competing consumers), and the DBOS
-          // workflow ID keyed by (runId, fenceToken) dedups any redelivery
-          // overlap — so no leader election is needed. Guarded so a NATS
-          // reconnect's repeated onReady fires don't bind a second consume()
-          // loop on this pod.
-          if (projectorStarted) return;
-          projectorStarted = true;
-          return (async () => {
-            const nc = natsProvider!.getConnection();
-            const js = natsProvider!.getJetStream();
-            if (!nc || !js) {
-              projectorStarted = false;
-              return;
-            }
-            const jsm = await jetstreamManager(nc);
-            const { startDurableProjector } = await import(
-              "./routes/decopilot/start-durable-projector"
-            );
-            projectorHandle = await startDurableProjector({
-              jsm,
-              js,
-              resolveOrgId: async (runId: string) => {
-                const row = await database.db
-                  .selectFrom("threads")
-                  .select(["organization_id"])
-                  .where("id", "=", runId)
-                  .executeTakeFirst();
-                return row?.organization_id ?? null;
-              },
-            });
-          })();
-        })
-        .catch((err: unknown) => {
-          projectorStarted = false;
-          console.warn(
-            "[Decopilot] StreamBuffer/projector init failed (late-join + projection disabled):",
-            err,
-          );
-        });
+      streamBuffer.init().catch((err: unknown) => {
+        console.warn(
+          "[Decopilot] StreamBuffer init failed (late-join disabled):",
+          err,
+        );
+      });
     });
   }
 
@@ -1117,9 +1065,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   currentDecopilotCleanup = async () => {
-    // Stop the durable projector consumer (aborts consume()); JetStream
-    // redelivers any unacked done marker to another pod's consumer.
-    await projectorHandle?.stop();
     await runRegistry.stopAll();
     runRegistry.dispose();
     asyncResearchJobSweeper.dispose();
@@ -1433,11 +1378,12 @@ export async function createApp(options: CreateAppOptions = {}) {
     meshContextFactory: automationContextFactory,
   });
 
-  // Same deps shape as automations — the per-thread gate calls
-  // `dispatchRunAndWait` once the queue lets a message through. Wiring
-  // happens before `DBOS.launch()` for the same reasons.
+  // The per-thread gate now STARTS the run (hosted: fire-and-forget enqueue of
+  // the hosted-harness child; desktop: publish the work item) and lets the
+  // consume step write terminal status. It no longer runs the agent loop itself,
+  // so it no longer needs a `dispatchRunFn` or a status-poll cap. Wiring happens
+  // before `DBOS.launch()` for the same reasons as automations.
   setThreadGateRuntime({
-    dispatchRunFn: dispatchRunAndWait,
     meshContextFactory: automationContextFactory,
     deps: {
       runRegistry,
@@ -1450,26 +1396,30 @@ export async function createApp(options: CreateAppOptions = {}) {
     // hosted path instead of trying to publish desktop work.
     prepareLinkWorkFn: prepareLinkWorkDispatch,
     workPublisher: linkWorkPublisher,
-    // Phase 2: remove the ~1 h wall-clock poll cap so a healthy long run holds
-    // its per-thread slot for as long as it genuinely runs. Dead runs are bounded
-    // by the cross-pod reaper (LINK_DURABLE_REAPER) — so the uncapped wait only
-    // engages when the reaper is ALSO enabled. This makes the dependency
-    // safe-by-construction: enabling LINK_GATE_UNCAPPED_WAIT alone is a no-op (the
-    // 1 200-attempt default still applies), so a run can never hold a slot forever
-    // without the reaper present to release a dead one. When either flag is off,
-    // leave undefined so the default cap applies.
-    gatePollMaxAttempts:
-      process.env.LINK_GATE_UNCAPPED_WAIT === "1" &&
-      process.env.LINK_DURABLE_REAPER === "1"
-        ? Number.POSITIVE_INFINITY
-        : undefined,
+  });
+
+  // Hosted (in-process) agent-loop runtime — the thread gate's
+  // `dispatchRunAndWaitStep` now enqueues `hostedHarnessWorkflow` fire-and-forget
+  // onto HOSTED_HARNESS_QUEUE instead of running inline. Wired here before
+  // `DBOS.launch()` (it only sets a module-level pointer, no DBOS API calls),
+  // mirroring the thread-gate runtime. The gate immediately proceeds to its
+  // consume step, which writes terminal status for both hosted and desktop runs.
+  setHostedHarnessRuntime({
+    dispatchRunFn: dispatchRunAndWait,
+    meshContextFactory: automationContextFactory,
+    deps: {
+      runRegistry,
+      cancelBroadcast,
+      streamBuffer,
+      sseHub,
+    },
   });
 
   // Durable projector workflow runtime — the SOLE v2 DB writer (parts + title +
-  // terminal status). The DBOS `projectRunWorkflow` (keyed by runId+fenceToken)
-  // reconstructs the run from file-backed JetStream and writes durably; the
-  // consumer is now just a scheduler. Wired before `DBOS.launch()` for the same
-  // reason as automations/thread-gate: it only sets a module-level pointer.
+  // terminal status). Consumed by the consume-run-projection step which
+  // reconstructs the run from file-backed JetStream and writes durably to the
+  // database. Wired before `DBOS.launch()` for the same reason as
+  // automations/thread-gate: it only sets a module-level pointer.
   const projectorThreadStorage = new SqlThreadStorage(database.db);
   setProjectorWorkflowRuntime({
     getJetStream: () => natsProvider?.getJetStream() ?? null,
@@ -1511,6 +1461,14 @@ export async function createApp(options: CreateAppOptions = {}) {
       // live. user-desktop runs finalize here (not via the run-reactor), so
       // without this the chip stays "running" until a refetch. `flipped` is
       // null on a no-op (already terminal) → no double-publish.
+      emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
+      return flipped;
+    },
+    markRunRequiresAction: async (runId, orgId) => {
+      const flipped = await projectorThreadStorage.requiresActionIfInProgress(
+        runId,
+        orgId,
+      );
       emitTerminalThreadStatus(sseHub, orgId, runId, flipped);
       return flipped;
     },
@@ -1581,13 +1539,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     purgeRun: async (runId) => {
       streamBuffer.purge(runId);
     },
-    advanceProjectedSeq: (runId, orgId, fenceToken, newSeq) =>
-      projectorThreadStorage.advanceProjectedSeq(
-        runId,
-        orgId,
-        fenceToken,
-        newSeq,
-      ),
   });
 
   // Background-tool jobs reuse the same mesh-context factory to rebuild the
@@ -2183,13 +2134,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       partitionQueue: true,
       concurrency: THREAD_GATE_PARTITION_CONCURRENCY,
     });
-    // Durable projector runs on ONE partitioned queue, partitioned by orgId
-    // (same rationale as AUTOMATIONS_QUEUE/THREAD_GATE_QUEUE above: per-org
-    // fairness without a dequeue loop per org). Left at the default 1s poll
-    // interval because it projects live agent runs (interactive latency).
-    await DBOS.registerQueue(PROJECTOR_QUEUE, {
+    // Hosted-harness child workflow queue. Partition key = threadId, concurrency 1
+    // (mirrors THREAD_GATE_QUEUE: one active run per thread, different threads
+    // progress in parallel). Worker pods dequeue this alongside the parent gate.
+    await DBOS.registerQueue(HOSTED_HARNESS_QUEUE, {
       partitionQueue: true,
-      concurrency: PROJECTOR_PARTITION_CONCURRENCY,
+      concurrency: HOSTED_HARNESS_PARTITION_CONCURRENCY,
     });
     // Slow backgroundable built-ins (generate_image) run here, partitioned by
     // orgId for per-org fairness. The reaction turn hops to the thread-gate.

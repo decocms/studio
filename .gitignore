@@ -91,6 +91,8 @@ studio-demo/
 apps/mesh/test-results/
 apps/mesh/playwright-report/
 apps/mesh/screenshots/
+packages/e2e/test-results/
+packages/e2e/playwright-report/
 
 # Generated docs (root-level only, not apps/docs/). Use /docs/* not /docs
 # so we can un-ignore specific subdirs below — git won't traverse into an

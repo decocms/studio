@@ -1004,12 +1004,6 @@ export interface ThreadTable {
    * run resets the floor at the call site (fence epoch change).
    */
   run_acked_seq: number | null;
-  /**
-   * Per-run projection cursor: how far through the JetStream chunk log the
-   * projector has durably written parts. Advances monotonically; never
-   * regresses. Defaults to 0 for new rows and pre-migration rows.
-   */
-  projected_seq: ColumnType<number, number | undefined, number>;
 }
 
 export interface ThreadExpandedTool {
@@ -1062,12 +1056,6 @@ export interface Thread {
    * writes it. New code MUST NOT depend on it.
    */
   link_transport: string | null;
-  /**
-   * Per-run projection cursor: how far through the JetStream chunk log the
-   * projector has durably written parts. Advances monotonically; never
-   * regresses. Defaults to 0 for new rows and pre-migration rows.
-   */
-  projected_seq: number;
 }
 
 /**

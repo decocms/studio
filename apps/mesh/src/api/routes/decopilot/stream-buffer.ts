@@ -45,14 +45,14 @@ export interface StreamBuffer {
    * advances its ack cursor only after this resolves `true`. Returns `false`
    * when JetStream is unavailable (caller must not advance the cursor).
    *
-   * `opts.msgId` sets the JetStream `Nats-Msg-Id` for time-based dedup: a
+   * `dedup` sets the JetStream `Nats-Msg-Id` for time-based dedup: a
    * seq-keyed id (`${runId}:${fenceToken}:${seq}`) lets an at-least-once
    * producer (outbox retry) re-publish the same chunk without double-writing.
    */
   publishRawChunk(
     taskId: string,
     chunk: unknown,
-    opts?: { msgId?: string },
+    dedup?: { fenceToken: string; seq: number },
   ): Promise<boolean>;
 
   /**
@@ -65,22 +65,6 @@ export interface StreamBuffer {
     taskId: string,
     fenceToken: string,
     finalSeq: number,
-  ): Promise<boolean>;
-
-  /**
-   * Publish a non-terminal checkpoint sentinel for one run (fire-and-forget).
-   * Used by the incremental projector to flush already-published chunks to DB
-   * without waiting for the done fence. `headSeq` is the highest contiguous
-   * JetStream-acked seq at publish time.
-   *
-   * Returns false when JetStream is unavailable; the caller's debounce timer
-   * is NOT reset so the next chunk attempt will retry. Best-effort: a missed
-   * checkpoint is eventually covered by the terminal `done` projection.
-   */
-  publishCheckpoint(
-    taskId: string,
-    fenceToken: string,
-    headSeq: number,
   ): Promise<boolean>;
 
   /**

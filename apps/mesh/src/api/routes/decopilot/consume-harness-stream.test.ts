@@ -15,6 +15,15 @@ async function drain(stream: ReadableStream) {
   }
 }
 
+function chunkStream(chunks: unknown[]): ReadableStream {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+}
+
 function textChunks(): AsyncIterable<UIMessageChunk> {
   return (async function* () {
     yield { type: "start" } as UIMessageChunk;
@@ -77,6 +86,35 @@ function textChunksWithRichUsage(): AsyncIterable<UIMessageChunk> {
 }
 
 describe("consumeHarnessStream", () => {
+  test("accepts a ReadableStream of UIMessageChunks directly", async () => {
+    const finals: unknown[] = [];
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunkStream: chunkStream([
+        { type: "start" },
+        { type: "text-start", id: "t" },
+        { type: "text-delta", id: "t", delta: "hi" },
+        { type: "text-end", id: "t" },
+        { type: "finish", finishReason: "stop" },
+      ]),
+      title: {
+        currentThreadTitle: "New chat",
+        threadId: "thread_1",
+        persistTitle: async () => {},
+      },
+      persistence: {
+        emitStepParts: async () => {},
+        emitFinal: async (message) => {
+          finals.push(message);
+        },
+        emitError: async () => {},
+      },
+    });
+
+    await drain(uiStream);
+    await whenComplete;
+
+    expect(finals).toHaveLength(1);
+  });
   test("persists final assistant message after consuming chunks", async () => {
     const finals: Array<{ id: string; parts?: unknown[] }> = [];
     const { uiStream, whenComplete } = consumeHarnessStream({
@@ -358,6 +396,101 @@ describe("consumeHarnessStream", () => {
       | undefined;
     expect(errorChunk?.errorText).toBe("[SANITIZED] raw provider failure");
     expect(emitted).toEqual(["raw provider failure"]);
+  });
+
+  function captureFinalIds(): {
+    ids: string[];
+    persistence: {
+      emitStepParts: (m: { id: string }) => Promise<void>;
+      emitFinal: (m: { id: string }) => Promise<void>;
+      emitError: () => Promise<void>;
+    };
+  } {
+    const ids: string[] = [];
+    return {
+      ids,
+      persistence: {
+        emitStepParts: async () => {},
+        emitFinal: async (m) => {
+          ids.push(m.id);
+        },
+        emitError: async () => {},
+      },
+    };
+  }
+
+  const TITLE = {
+    currentThreadTitle: "New chat",
+    threadId: "thread_1",
+    persistTitle: async () => {},
+  };
+
+  function harnessChunks(messageId: string): AsyncIterable<UIMessageChunk> {
+    return (async function* () {
+      yield { type: "start", messageId } as UIMessageChunk;
+      yield { type: "text-start", id: "t" } as UIMessageChunk;
+      yield { type: "text-delta", id: "t", delta: "hi" } as UIMessageChunk;
+      yield { type: "text-end", id: "t" } as UIMessageChunk;
+      yield { type: "finish", finishReason: "stop" } as UIMessageChunk;
+    })();
+  }
+
+  test("preserves the harness start.messageId when no generateMessageId", async () => {
+    const { ids, persistence } = captureFinalIds();
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: harnessChunks("msg_harness_1"),
+      title: TITLE,
+      persistence,
+    });
+    await drain(uiStream);
+    await whenComplete;
+    expect(ids).toEqual(["msg_harness_1"]);
+  });
+
+  test("continuation: first message adopts the trailing assistant id", async () => {
+    const { ids, persistence } = captureFinalIds();
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: harnessChunks("msg_continuation_2"),
+      originalMessages: [
+        { id: "msg_user_0", role: "user", parts: [] },
+        { id: "msg_proposal_1", role: "assistant", parts: [] },
+      ] as never,
+      title: TITLE,
+      persistence,
+    });
+    await drain(uiStream);
+    await whenComplete;
+    expect(ids).toEqual(["msg_proposal_1"]);
+    expect(ids).not.toContain("msg_continuation_2");
+  });
+
+  test("fresh turn (trailing user message): keeps the harness id", async () => {
+    const { ids, persistence } = captureFinalIds();
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: harnessChunks("msg_harness_3"),
+      originalMessages: [
+        { id: "msg_user_0", role: "user", parts: [] },
+      ] as never,
+      title: TITLE,
+      persistence,
+    });
+    await drain(uiStream);
+    await whenComplete;
+    expect(ids).toEqual(["msg_harness_3"]);
+  });
+
+  test("generateMessageId still remaps deterministically (background-tool path)", async () => {
+    const { ids, persistence } = captureFinalIds();
+    let n = 0;
+    const { uiStream, whenComplete } = consumeHarnessStream({
+      chunks: harnessChunks("msg_harness_ignored"),
+      title: TITLE,
+      persistence,
+      generateMessageId: () => `job_1:msg:${n++}`,
+    });
+    await drain(uiStream);
+    await whenComplete;
+    expect(ids).toEqual(["job_1:msg:0"]);
   });
 
   test("uses the provided errorMessageId so the error message is stable across retries", async () => {

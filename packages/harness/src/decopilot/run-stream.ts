@@ -42,7 +42,7 @@ import {
   createUsageAccumulator,
   type UsageAccumulator,
 } from "../usage-accumulator";
-import { generateMessageId } from "./harness-constants";
+import { generateMessageId } from "../message-id";
 import { resolveModeConfig } from "./mode-config";
 import { makeTitleResultChunk } from "../title-chunk";
 import { shouldGenerateTitle } from "../title-merge";
