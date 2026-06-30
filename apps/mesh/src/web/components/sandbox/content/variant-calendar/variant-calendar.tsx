@@ -157,7 +157,13 @@ export function VariantCalendar({
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
 
   const variants = extractScheduledVariants(decofile);
-  const blockKeys = Array.from(new Set(variants.map((v) => v.blockKey)));
+  const blocks: Array<{ key: string; label: string }> = [];
+  const seenBlockKeys = new Set<string>();
+  for (const v of variants) {
+    if (seenBlockKeys.has(v.blockKey)) continue;
+    seenBlockKeys.add(v.blockKey);
+    blocks.push({ key: v.blockKey, label: v.blockLabel });
+  }
 
   const goToday = () => setCursor(startOfMonth(new Date()));
   const goPrev = () =>
@@ -197,7 +203,7 @@ export function VariantCalendar({
           </h2>
         </div>
         <div className="flex items-center gap-3">
-          <BlockLegend blockKeys={blockKeys} />
+          <BlockLegend blocks={blocks} />
           <div className="flex rounded-md border bg-muted p-0.5">
             <button
               type="button"
@@ -250,13 +256,17 @@ function EmptyState() {
   );
 }
 
-function BlockLegend({ blockKeys }: { blockKeys: string[] }) {
-  if (blockKeys.length === 0) return null;
-  const visible = blockKeys.slice(0, 4);
-  const hidden = blockKeys.length - visible.length;
+function BlockLegend({
+  blocks,
+}: {
+  blocks: Array<{ key: string; label: string }>;
+}) {
+  if (blocks.length === 0) return null;
+  const visible = blocks.slice(0, 4);
+  const hidden = blocks.length - visible.length;
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      {visible.map((key) => {
+      {visible.map(({ key, label }) => {
         const c = colorForBlock(key);
         return (
           <span key={key} className="flex items-center gap-1.5">
@@ -264,7 +274,7 @@ function BlockLegend({ blockKeys }: { blockKeys: string[] }) {
               className="inline-block h-2.5 w-5 rounded-sm"
               style={{ background: c.bg }}
             />
-            <span className="truncate max-w-[120px]">{key}</span>
+            <span className="truncate max-w-[120px]">{label}</span>
           </span>
         );
       })}
@@ -360,22 +370,32 @@ function CalendarView({
                         }}
                       >
                         <span className="truncate">
-                          {seg.variant.blockKey}
-                          <span className="opacity-70">
-                            {" · "}
-                            {seg.variant.label}
-                          </span>
+                          {seg.variant.blockLabel}
+                          {seg.variant.label !== seg.variant.blockLabel && (
+                            <span className="opacity-70">
+                              {" · "}
+                              {seg.variant.label}
+                            </span>
+                          )}
                         </span>
                       </div>
                     </TooltipTrigger>
                     <TooltipContent>
                       <div className="text-xs">
                         <div className="font-semibold">
-                          {seg.variant.blockKey}
+                          {seg.variant.blockLabel}
                         </div>
-                        <div className="text-muted-foreground">
-                          {seg.variant.label}
-                        </div>
+                        {seg.variant.innerPath && (
+                          <div className="text-muted-foreground">
+                            {seg.variant.innerPath}
+                          </div>
+                        )}
+                        {seg.variant.label !== seg.variant.blockLabel &&
+                          seg.variant.label !== seg.variant.innerPath && (
+                            <div className="text-muted-foreground">
+                              {seg.variant.label}
+                            </div>
+                          )}
                         <div className="mt-1">
                           {formatRangeForTooltip(seg.variant)}
                         </div>
@@ -477,6 +497,7 @@ function TimelineView({
         )}
         {sortedBlocks.map(([blockKey, blockVariants]) => {
           const color = colorForBlock(blockKey);
+          const blockLabel = blockVariants[0]?.blockLabel ?? blockKey;
           return (
             <div key={blockKey}>
               <div
@@ -487,7 +508,7 @@ function TimelineView({
                   className="px-3 truncate"
                   style={{ width: ROW_LABEL_WIDTH }}
                 >
-                  {blockKey}
+                  {blockLabel}
                 </div>
               </div>
               {blockVariants.map((v, i) => (
@@ -554,10 +575,20 @@ function TimelineView({
                           </TooltipTrigger>
                           <TooltipContent>
                             <div className="text-xs">
-                              <div className="font-semibold">{v.blockKey}</div>
-                              <div className="text-muted-foreground">
-                                {v.label}
+                              <div className="font-semibold">
+                                {v.blockLabel}
                               </div>
+                              {v.innerPath && (
+                                <div className="text-muted-foreground">
+                                  {v.innerPath}
+                                </div>
+                              )}
+                              {v.label !== v.blockLabel &&
+                                v.label !== v.innerPath && (
+                                  <div className="text-muted-foreground">
+                                    {v.label}
+                                  </div>
+                                )}
                               <div className="mt-1">
                                 {formatRangeForTooltip(v)}
                               </div>
