@@ -6,10 +6,10 @@ import {
   useActiveOrganizations,
 } from "@/web/lib/auth-client";
 import { Button } from "@deco/ui/components/button.tsx";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Loading01 } from "@untitledui/icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 interface CommerceOrganization {
   id: string;
@@ -49,6 +49,8 @@ function CommerceOnboardingPage() {
   const [selectedOrg, setSelectedOrg] = useState<CommerceOrganization | null>(
     null,
   );
+  const [settledEnsureResult, setSettledEnsureResult] =
+    useState<EnsureOrganizationResponse | null>(null);
 
   const activeOrganizations: CommerceOrganization[] =
     organizationsQuery.data?.map((org: CommerceOrganization) => ({
@@ -58,9 +60,8 @@ function CommerceOnboardingPage() {
       logo: org.logo ?? null,
     })) ?? [];
 
-  const ensureOrganizationQuery = useQuery<EnsureOrganizationResponse>({
-    queryKey: ["commerce-onboarding", "ensure-organization"],
-    queryFn: async () => {
+  const ensureOrganizationMutation = useMutation({
+    mutationFn: async (): Promise<EnsureOrganizationResponse> => {
       const res = await fetch("/api/auth/custom/ensure-organization", {
         method: "POST",
         credentials: "include",
@@ -78,11 +79,10 @@ function CommerceOnboardingPage() {
       }
       return data;
     },
-    enabled:
-      !organizationsQuery.isPending &&
-      !organizationsQuery.error &&
-      activeOrganizations.length === 0,
     retry: false,
+    onSuccess: (data) => {
+      setSettledEnsureResult(data);
+    },
   });
 
   if (organizationsQuery.isPending) {
@@ -138,26 +138,19 @@ function CommerceOnboardingPage() {
     );
   }
 
-  if (ensureOrganizationQuery.isPending) {
+  if (!settledEnsureResult) {
     return (
-      <AuthSplitLayout>
-        <LoadingState label="Preparing your commerce workspace..." />
-      </AuthSplitLayout>
-    );
-  }
-
-  if (ensureOrganizationQuery.error) {
-    return (
-      <CommerceErrorState
-        title="Commerce onboarding is unavailable"
-        description="We could not prepare an organization for commerce setup. Retry from this page or contact support."
-        actionLabel="Retry"
-        onRetry={() => ensureOrganizationQuery.refetch()}
+      <EnsureOrganizationRecovery
+        mutation={ensureOrganizationMutation}
+        onRetry={() => {
+          ensureOrganizationMutation.reset();
+          ensureOrganizationMutation.mutate();
+        }}
       />
     );
   }
 
-  const ensureResult = ensureOrganizationQuery.data;
+  const ensureResult = settledEnsureResult;
 
   if (
     ensureResult?.success &&
@@ -206,8 +199,47 @@ function CommerceOnboardingPage() {
         "We could not determine a commerce organization for this account."
       }
       actionLabel="Try again"
-      onRetry={() => ensureOrganizationQuery.refetch()}
+      onRetry={() => {
+        setSettledEnsureResult(null);
+        ensureOrganizationMutation.reset();
+        ensureOrganizationMutation.mutate();
+      }}
     />
+  );
+}
+
+function EnsureOrganizationRecovery({
+  mutation,
+  onRetry,
+}: {
+  mutation: ReturnType<typeof useMutation<EnsureOrganizationResponse, Error>>;
+  onRetry: () => void;
+}) {
+  const startedRef = useRef(false);
+
+  const triggerRecovery = (node: HTMLDivElement | null) => {
+    if (!node || startedRef.current) return;
+    startedRef.current = true;
+    mutation.mutate();
+  };
+
+  if (mutation.error) {
+    return (
+      <CommerceErrorState
+        title="Commerce onboarding is unavailable"
+        description="We could not prepare an organization for commerce setup. Retry from this page or contact support."
+        actionLabel="Retry"
+        onRetry={onRetry}
+      />
+    );
+  }
+
+  return (
+    <AuthSplitLayout>
+      <div ref={triggerRecovery}>
+        <LoadingState label="Preparing your commerce workspace..." />
+      </div>
+    </AuthSplitLayout>
   );
 }
 
@@ -242,7 +274,11 @@ function CommerceHeader({
 
 function LoadingState({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 py-4">
+    <div
+      className="flex items-center gap-2 py-4"
+      role="status"
+      aria-live="polite"
+    >
       <Loading01 size={14} className="animate-spin text-muted-foreground" />
       <span className="text-sm text-muted-foreground">{label}</span>
     </div>
