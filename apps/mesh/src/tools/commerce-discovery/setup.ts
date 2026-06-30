@@ -18,6 +18,7 @@ import {
 } from "../../core/studio-context";
 import { ConnectionEntitySchema } from "../connection/schema";
 import { VirtualMCPEntitySchema } from "../virtual/schema";
+import { fetchCommerceDiscoveryAuth } from "./auth-client";
 
 const REPORT_TOOL_NAME =
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "DISPLAY_REPORT";
@@ -42,18 +43,6 @@ const CommerceDiscoverySetupOutputSchema = z.object({
 
 function isMissingToken(connection: ConnectionEntity): boolean {
   return !connection.connection_token;
-}
-
-interface CommerceDiscoveryAuthInput {
-  siteUrl: string;
-  orgId: string;
-}
-
-async function fetchCommerceDiscoveryAuth(input: CommerceDiscoveryAuthInput) {
-  // TODO: @tlgimenes replace with the real commerce-skills auth API call.
-  console.log("[commerce-discovery] TODO: @tlgimenes fetch auth token", input);
-
-  return { authorizationToken: "" };
 }
 
 async function rereadConnectionOrThrow(
@@ -130,6 +119,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       const auth = await fetchCommerceDiscoveryAuth({
         siteUrl: normalized.value,
         orgId: organization.id,
+        orgName: organization.name,
       });
       if (auth.authorizationToken) {
         console.log("[commerce-discovery] repairing missing auth token", {
@@ -147,6 +137,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       const auth = await fetchCommerceDiscoveryAuth({
         siteUrl: normalized.value,
         orgId: organization.id,
+        orgName: organization.name,
       });
 
       console.log("[commerce-discovery] creating connection", {

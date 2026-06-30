@@ -213,6 +213,10 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
+    commerceDiscoveryInternalApiUrl:
+      envVars.COMMERCE_DISCOVERY_INTERNAL_API_URL,
+    commerceDiscoveryInternalApiKey:
+      envVars.COMMERCE_DISCOVERY_INTERNAL_API_KEY,
 
     // Managed asset storage (shared deco tenant bucket). Defaults match the
     // legacy admin platform so an existing deployment works without new env.
