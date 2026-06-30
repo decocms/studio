@@ -47,51 +47,7 @@ import { ADMIN_ROLES } from "./roles";
 import { getBuiltinRoleStatements } from "./builtin-role-permission";
 import { createSSOConfig } from "./sso";
 import { GENERIC_EMAIL_DOMAINS } from "./org-assurance-policy";
-
-/**
- * Convert a string to a URL-friendly slug
- * Removes special characters, converts to lowercase, and replaces spaces with hyphens
- */
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s_-]+/g, "")
-    .replace(/[\s_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-/**
- * Random words to use as suffix when organization name already exists
- */
-const ORG_NAME_TECH_SUFFIXES = [
-  "labs",
-  "agent",
-  "studio",
-  "workspace",
-  "systems",
-  "core",
-  "cloud",
-  "works",
-];
-
-const ORG_NAME_BR_SUFFIXES = [
-  "capybara",
-  "guarana",
-  "deco",
-  "samba",
-  "feijoada",
-  "capoeira",
-  "carnival",
-];
-
-function getRandomSuffix(): string {
-  const brIndex = Math.floor(Math.random() * ORG_NAME_BR_SUFFIXES.length);
-  const techIndex = Math.floor(Math.random() * ORG_NAME_TECH_SUFFIXES.length);
-  const brSuffix = ORG_NAME_BR_SUFFIXES[brIndex] ?? "deco";
-  const techSuffix = ORG_NAME_TECH_SUFFIXES[techIndex] ?? "studio";
-  return `${brSuffix}-${techSuffix}`;
-}
+import { ensureUserOrganization } from "./ensure-user-organization";
 
 const allTools = Object.values(getToolsByCategory())
   .map((tool) => tool.map((t) => t.name))
@@ -518,84 +474,64 @@ export const auth = betterAuth({
             },
           });
 
-          // Domain-based handling for verified corporate emails (OAuth, magic link, OTP).
-          // Email/password signups have emailVerified=false at hook time and fall through
-          // to default org creation — there's no verification path to gate on.
-          // All verified corporate users go to /onboarding regardless of auto-join status
-          // so the user can explicitly choose to join an existing org or create a new one.
-          if (user.emailVerified) {
-            const emailDomain = user.email?.split("@")[1]?.toLowerCase();
-            if (emailDomain && !GENERIC_EMAIL_DOMAINS.has(emailDomain)) {
-              return;
-            }
-          }
+          const allowCreate =
+            getConfig().autoCreateOrganizationOnSignup !== false;
 
-          // Check if auto-creation is enabled (default: true)
-          if (getConfig().autoCreateOrganizationOnSignup === false) {
-            return;
-          }
+          try {
+            const result = await ensureUserOrganization({
+              db: getDb().db,
+              authApi: auth.api,
+              user: {
+                id: user.id,
+                email: user.email,
+                name: user.name ?? null,
+                emailVerified: !!user.emailVerified,
+              },
+              allowCreate,
+              createdVia: "signup",
+            });
 
-          const firstName = user.name
-            ? user.name.split(" ")[0]
-            : user.email.split("@")[0];
-
-          const maxAttempts = 5;
-          for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            const orgName = `${firstName} ${getRandomSuffix()}`;
-            // After the first collision, append entropy so retries don't keep
-            // redrawing from the same small suffix pool and exhaust attempts.
-            const orgSlug =
-              attempt === 0
-                ? slugify(orgName)
-                : slugify(`${orgName} ${Math.floor(Math.random() * 1e6)}`);
-
-            try {
-              const created = await auth.api.createOrganization({
-                body: {
-                  name: orgName,
-                  slug: orgSlug,
-                  userId: user.id,
+            if (result.status === "created") {
+              posthog.groupIdentify({
+                groupType: "organization",
+                groupKey: result.organization.id,
+                properties: {
+                  name: result.organization.name,
+                  slug: result.organization.slug,
+                  created_at: new Date().toISOString(),
+                  created_via: result.createdVia,
+                  email_domain: result.domain,
                 },
               });
-
-              // Group identify for team-level analytics.
-              const orgId =
-                (created as { id?: string } | null)?.id ?? undefined;
-              if (orgId) {
-                posthog.groupIdentify({
-                  groupType: "organization",
-                  groupKey: orgId,
-                  properties: {
-                    name: orgName,
-                    slug: orgSlug,
-                    created_at: new Date().toISOString(),
-                    created_via: "signup_default",
-                  },
-                });
-                posthog.capture({
-                  distinctId: user.id,
-                  event: "organization_created",
-                  groups: { organization: orgId },
-                  properties: {
-                    organization_id: orgId,
-                    organization_slug: orgSlug,
-                    created_via: "signup_default",
-                  },
-                });
-              }
-              return;
-            } catch (error) {
-              const isConflictError =
-                error instanceof Error &&
-                "body" in error &&
-                (error as { body?: { code?: string } }).body?.code ===
-                  "ORGANIZATION_ALREADY_EXISTS";
-
-              if (!isConflictError || attempt === maxAttempts - 1) {
-                console.error("Failed to create default organization:", error);
-                return;
-              }
+              posthog.capture({
+                distinctId: user.id,
+                event: "organization_created",
+                groups: { organization: result.organization.id },
+                properties: {
+                  organization_id: result.organization.id,
+                  organization_slug: result.organization.slug,
+                  created_via: result.createdVia,
+                  email_domain: result.domain,
+                },
+              });
             }
+
+            if (result.status === "joined") {
+              posthog.capture({
+                distinctId: user.id,
+                event: "organization_domain_joined",
+                groups: { organization: result.organization.id },
+                properties: {
+                  organization_id: result.organization.id,
+                  organization_slug: result.organization.slug,
+                  email_domain: result.domain,
+                  joined_via: result.createdVia,
+                },
+              });
+            }
+          } catch (error) {
+            posthog.captureException(error, user.id);
+            console.error("Failed to ensure organization on signup:", error);
           }
         },
       },
