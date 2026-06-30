@@ -451,9 +451,15 @@ export default withRuntime({
       const { github } = env.MESH_REQUEST_CONTEXT.state;
       const client = createStudioVaultClient(vault);
       const configuration = await client.getConfiguration(github);
+      const apiKey = configuration.state.apiKey;
 
-      console.log(configuration.state);
-      console.log(configuration.scopes);
+      if (typeof apiKey !== "string") {
+        throw new Error("GitHub configuration is missing apiKey");
+      }
+
+      await fetch("https://api.github.com/user", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
     },
   },
 });

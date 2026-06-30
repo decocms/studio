@@ -131,6 +131,20 @@ describe("Credential Vault Routes", () => {
           updated_at: now,
         },
         {
+          id: "conn_invalid_configuration_target",
+          organization_id: "org_1",
+          created_by: "user_1",
+          title: "Invalid Configuration Target",
+          connection_type: "HTTP",
+          connection_url: "https://invalid-configuration.example.test/mcp",
+          configuration_state: "not-valid-ciphertext",
+          configuration_scopes: JSON.stringify(["self::TOOL"]),
+          status: "active",
+          pinned: false,
+          created_at: now,
+          updated_at: now,
+        },
+        {
           id: "conn_inactive_granted",
           organization_id: "org_1",
           created_by: "user_1",
@@ -179,6 +193,10 @@ describe("Credential Vault Routes", () => {
         },
         {
           targetConnectionId: "conn_empty_configuration_target",
+          scope: CREDENTIAL_CONFIGURATION_READ_SCOPE,
+        },
+        {
+          targetConnectionId: "conn_invalid_configuration_target",
           scope: CREDENTIAL_CONFIGURATION_READ_SCOPE,
         },
       ],
@@ -341,6 +359,23 @@ describe("Credential Vault Routes", () => {
     );
 
     expect(res.status).toBe(404);
+  });
+
+  it("does not return empty configuration when saved configuration cannot be decrypted", async () => {
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/vault/connections/conn_invalid_configuration_target/configuration",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${workloadToken}` },
+        },
+      ),
+    );
+
+    expect(res.status).toBe(424);
+    await expect(res.json()).resolves.toEqual({
+      error: "MCP configuration could not be decrypted",
+    });
   });
 
   it("rejects access when the subject lacks a grant to the target", async () => {

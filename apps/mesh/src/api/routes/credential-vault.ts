@@ -22,6 +22,22 @@ function serializeExpiresAt(value: Date | string | null): string | null {
   return value instanceof Date ? value.toISOString() : value;
 }
 
+function parseConfigurationScopes(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.filter((scope): scope is string => typeof scope === "string");
+  }
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((scope): scope is string => typeof scope === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 async function authorizeVaultRequest(
   c: Context<{ Variables: Variables }>,
   targetConnectionId: string,
@@ -137,20 +153,45 @@ export const createCredentialVaultRoutes = () => {
     }
 
     const { ctx, organizationId } = authz;
-    const target = await ctx.storage.connections.findById(
-      targetConnectionId,
-      organizationId,
-    );
+    const target = await ctx.db
+      .selectFrom("connections")
+      .select(["status", "configuration_state", "configuration_scopes"])
+      .where("id", "=", targetConnectionId)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
     if (!target || target.status !== "active") {
       return c.json({ error: "Connection not found" }, 404);
+    }
+
+    let configurationState: Record<string, unknown> = {};
+    if (target.configuration_state) {
+      try {
+        const decryptedJson = await ctx.vault.decrypt(
+          target.configuration_state,
+        );
+        const parsed = JSON.parse(decryptedJson) as unknown;
+        if (
+          typeof parsed !== "object" ||
+          parsed === null ||
+          Array.isArray(parsed)
+        ) {
+          throw new Error("MCP configuration state is not an object");
+        }
+        configurationState = parsed as Record<string, unknown>;
+      } catch {
+        return c.json(
+          { error: "MCP configuration could not be decrypted" },
+          424,
+        );
+      }
     }
 
     c.header("Cache-Control", "no-store");
     c.header("Pragma", "no-cache");
     return c.json({
       type: "mcp_configuration",
-      state: target.configuration_state ?? {},
-      scopes: target.configuration_scopes ?? [],
+      state: configurationState,
+      scopes: parseConfigurationScopes(target.configuration_scopes),
     });
   });
 
