@@ -30,7 +30,7 @@ interface DomainJoinResult {
 }
 
 interface DomainRequestJoinResult extends DomainJoinResult {
-  alreadyMember?: boolean;
+  alreadyMember: boolean;
 }
 
 export function OrganizationChoice({
@@ -48,11 +48,8 @@ export function OrganizationChoice({
   );
 
   const markRequested = (slug: string) => {
-    if (onRequestedSlug) {
-      onRequestedSlug(slug);
-      return;
-    }
     setLocalRequestedSlugs((prev) => new Set(prev).add(slug));
+    onRequestedSlug?.(slug);
   };
 
   const joinOrgMutation = useMutation({
@@ -86,10 +83,14 @@ export function OrganizationChoice({
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Failed to request access");
       }
-      return { organization, slug: data.slug };
+      return {
+        organization,
+        slug: data.slug,
+        alreadyMember: data.alreadyMember,
+      };
     },
-    onSuccess: ({ organization, slug }) => {
-      if (slug) {
+    onSuccess: ({ organization, slug, alreadyMember }) => {
+      if (alreadyMember && slug) {
         onJoined?.(organization, slug);
         return;
       }
@@ -98,7 +99,10 @@ export function OrganizationChoice({
     },
   });
 
-  const effectiveRequestedSlugs = requestedSlugs ?? localRequestedSlugs;
+  const effectiveRequestedSlugs = new Set([
+    ...(requestedSlugs ?? []),
+    ...localRequestedSlugs,
+  ]);
   const pendingJoinSlug = joinOrgMutation.variables?.slug ?? null;
   const pendingRequestSlug = requestJoinMutation.variables?.slug ?? null;
 
@@ -181,14 +185,14 @@ export function OrganizationChoice({
         );
       })}
       {joinOrgMutation.error && (
-        <p className="text-xs text-destructive">
+        <p className="text-xs text-destructive" role="alert">
           {joinOrgMutation.error instanceof Error
             ? joinOrgMutation.error.message
             : "Failed to join organization"}
         </p>
       )}
       {requestJoinMutation.error && (
-        <p className="text-xs text-destructive">
+        <p className="text-xs text-destructive" role="alert">
           {requestJoinMutation.error instanceof Error
             ? requestJoinMutation.error.message
             : "Failed to request access"}
