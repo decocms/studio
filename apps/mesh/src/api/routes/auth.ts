@@ -18,12 +18,14 @@ import {
 import { getDb } from "../../database";
 import { ensureUserOrganization } from "../../auth/ensure-user-organization";
 import { extractBrandFromDomain } from "../../auth/extract-brand";
+import { isDiscoverableDomainRecord } from "../../auth/org-assurance-policy";
 import {
   createEmailSender,
   findEmailProvider,
 } from "../../auth/email-providers";
 import { emailButton, emailTemplate } from "../../auth/email-template";
 import { ADMIN_ROLES } from "../../auth/roles";
+import { isOrgArchived } from "../../core/org-archived";
 import { getBaseUrl } from "../../core/server-constants";
 import { BrandContextStorage } from "../../storage/brand-context";
 import { OrganizationDomainStorage } from "../../storage/organization-domains";
@@ -318,7 +320,7 @@ app.get("/domain-lookup", async (c) => {
     // claims aren't proven, and verified "off" domains are intentionally not
     // discoverable (matches /org-access-status and /domain-join).
     const records = (await domainStorage.getAllByDomain(domain)).filter(
-      (r) => r.verificationStatus === "verified" && r.joinMode !== "off",
+      isDiscoverableDomainRecord,
     );
 
     if (records.length === 0) {
@@ -327,7 +329,7 @@ app.get("/domain-lookup", async (c) => {
 
     const orgs = await getDb()
       .db.selectFrom("organization")
-      .select(["id", "name", "slug", "logo"])
+      .select(["id", "name", "slug", "logo", "metadata"])
       .where(
         "id",
         "in",
@@ -340,6 +342,7 @@ app.get("/domain-lookup", async (c) => {
       .map((r) => {
         const org = orgById.get(r.organizationId);
         if (!org) return null;
+        if (isOrgArchived(org)) return null;
         return {
           id: org.id,
           name: org.name,
@@ -408,9 +411,37 @@ app.post("/domain-join", async (c) => {
     const db = getDb().db;
     const domainStorage = new OrganizationDomainStorage(db);
     const domainRecords = await domainStorage.getAllByDomain(emailDomain);
-    const eligible = domainRecords.filter(
+    const eligibleRecords = domainRecords.filter(
       (r) => r.verificationStatus === "verified" && r.joinMode === "auto",
     );
+    if (eligibleRecords.length === 0) {
+      return c.json(
+        {
+          success: false,
+          error: "Auto-join is not available for this domain",
+        },
+        403,
+      );
+    }
+
+    const eligibleOrgs = await db
+      .selectFrom("organization")
+      .select(["id", "slug", "metadata"])
+      .where(
+        "id",
+        "in",
+        eligibleRecords.map((r) => r.organizationId),
+      )
+      .execute();
+    const eligibleOrgById = new Map(
+      eligibleOrgs
+        .filter((org) => !isOrgArchived(org))
+        .map((org) => [org.id, { id: org.id, slug: org.slug }]),
+    );
+    const eligible = eligibleRecords.flatMap((record) => {
+      const org = eligibleOrgById.get(record.organizationId);
+      return org ? [org] : [];
+    });
     if (eligible.length === 0) {
       return c.json(
         {
@@ -426,15 +457,8 @@ app.post("/domain-join", async (c) => {
     // exactly one match exists so we never silently pick for the user.
     let org: { id: string; slug: string } | undefined;
     if (targetSlug) {
-      const candidate = await db
-        .selectFrom("organization")
-        .select(["id", "slug"])
-        .where("slug", "=", targetSlug)
-        .executeTakeFirst();
-      if (
-        !candidate ||
-        !eligible.some((r) => r.organizationId === candidate.id)
-      ) {
+      const candidate = eligible.find((org) => org.slug === targetSlug);
+      if (!candidate) {
         return c.json(
           {
             success: false,
@@ -446,15 +470,7 @@ app.post("/domain-join", async (c) => {
       }
       org = candidate;
     } else if (eligible.length === 1) {
-      const only = await db
-        .selectFrom("organization")
-        .select(["id", "slug"])
-        .where("id", "=", eligible[0]!.organizationId)
-        .executeTakeFirst();
-      if (!only) {
-        return c.json({ success: false, error: "Organization not found" }, 404);
-      }
-      org = only;
+      org = eligible[0]!;
     } else {
       return c.json(
         {

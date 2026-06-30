@@ -13,11 +13,17 @@ const ORG_A_SLUG = `e2e-commerce-a-${RUN_ID}`;
 const ORG_B_SLUG = `e2e-commerce-b-${RUN_ID}`;
 const ORG_A_NAME = `Commerce E2E A ${RUN_ID}`;
 const ORG_B_NAME = `Commerce E2E B ${RUN_ID}`;
+const MIXED_AUTO_ORG_ID = `e2e_commerce_mixed_auto_${RUN_ID}`;
+const MIXED_REQUEST_ORG_ID = `e2e_commerce_mixed_request_${RUN_ID}`;
+const ONBOARDING_ARCHIVED_ORG_ID = `e2e_commerce_onboarding_archived_${RUN_ID}`;
 const SEEDED_ORG_IDS = [
   ORG_A_ID,
   ORG_B_ID,
   `e2e_commerce_join_${RUN_ID}`,
   `e2e_commerce_archived_${RUN_ID}`,
+  MIXED_AUTO_ORG_ID,
+  MIXED_REQUEST_ORG_ID,
+  ONBOARDING_ARCHIVED_ORG_ID,
 ];
 const PASSWORD = "Playwright123!";
 
@@ -88,6 +94,7 @@ async function seedDomainOrg(
     name: string;
     slug: string;
     domain: string;
+    joinMode?: "auto" | "request";
     archived?: boolean;
   },
 ) {
@@ -109,12 +116,12 @@ async function seedDomainOrg(
        (id, organization_id, domain, join_mode, verification_status,
         verification_method, verified_at, created_at, updated_at)
      VALUES
-       (gen_random_uuid()::text, $1, $2, 'auto', 'verified', 'email', $3, $3, $3)
+       (gen_random_uuid()::text, $1, $2, $4, 'verified', 'email', $3, $3, $3)
      ON CONFLICT (organization_id, domain) DO UPDATE
        SET join_mode = EXCLUDED.join_mode,
            verification_status = EXCLUDED.verification_status,
            updated_at = EXCLUDED.updated_at`,
-    [input.id, input.domain, now],
+    [input.id, input.domain, now, input.joinMode ?? "auto"],
   );
 }
 
@@ -269,6 +276,45 @@ test.describe("Commerce onboarding route isolation", () => {
     expect(memberRow.rows).toHaveLength(1);
   });
 
+  test("keeps mixed auto and request domain candidates ambiguous during commerce recovery", async ({
+    page,
+  }) => {
+    const domain = `commerce-e2e-${RUN_ID}-mixed.test`;
+    const autoOrg = {
+      id: MIXED_AUTO_ORG_ID,
+      name: `Commerce E2E Mixed Auto ${RUN_ID}`,
+      slug: `commerce-e2e-${RUN_ID}-mixed-auto`,
+      domain,
+      joinMode: "auto" as const,
+    };
+    const requestOrg = {
+      id: MIXED_REQUEST_ORG_ID,
+      name: `Commerce E2E Mixed Request ${RUN_ID}`,
+      slug: `commerce-e2e-${RUN_ID}-mixed-request`,
+      domain,
+      joinMode: "request" as const,
+    };
+    await seedDomainOrg(db, autoOrg);
+    await seedDomainOrg(db, requestOrg);
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-mixed", domain),
+      name: `Commerce Mixed ${RUN_ID}`,
+    });
+    await verifyUserAndClearMembership(db, user.userId);
+
+    await page.goto("/commerce-onboarding");
+
+    await expect(page.getByText(autoOrg.name)).toBeVisible();
+    await expect(page.getByText(requestOrg.name)).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
+
+    const autoMemberRow = await db.query<{ id: string }>(
+      `SELECT id FROM "member" WHERE "userId" = $1 AND "organizationId" = $2`,
+      [user.userId, autoOrg.id],
+    );
+    expect(autoMemberRow.rows).toHaveLength(0);
+  });
+
   test("does not auto-join archived domain orgs during commerce recovery", async ({
     page,
   }) => {
@@ -307,6 +353,36 @@ test.describe("Commerce onboarding route isolation", () => {
       [user.userId, createdOrgId],
     );
     expect(createdMemberRow.rows).toHaveLength(1);
+  });
+
+  test("does not offer archived domain orgs during general onboarding", async ({
+    page,
+  }) => {
+    const domain = `commerce-e2e-${RUN_ID}-onboarding-archived.test`;
+    const archivedOrg = {
+      id: ONBOARDING_ARCHIVED_ORG_ID,
+      name: `Commerce E2E Onboarding Archived ${RUN_ID}`,
+      slug: `commerce-e2e-${RUN_ID}-onboarding-archived`,
+      domain,
+      archived: true,
+    };
+    await seedDomainOrg(db, archivedOrg);
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-onboarding-archived", domain),
+      name: `Commerce Onboarding Archived ${RUN_ID}`,
+    });
+    await verifyUserAndClearMembership(db, user.userId);
+
+    await page.goto("/onboarding");
+
+    await expect(page.getByText("Welcome to deco")).toBeVisible();
+    await expect(page.getByText(archivedOrg.name)).toHaveCount(0);
+
+    const archivedMemberRow = await db.query<{ id: string }>(
+      `SELECT id FROM "member" WHERE "userId" = $1 AND "organizationId" = $2`,
+      [user.userId, archivedOrg.id],
+    );
+    expect(archivedMemberRow.rows).toHaveLength(0);
   });
 
   test("keeps the general onboarding route isolated from commerce onboarding", async ({

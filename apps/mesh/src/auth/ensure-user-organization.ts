@@ -158,12 +158,9 @@ async function ensureUserOrganizationInTransaction(options: {
       db,
       domainRecords,
     );
-    const autoCandidates = candidates.filter(
-      (candidate) => candidate.joinMode === "auto",
-    );
 
-    if (autoCandidates.length === 1) {
-      const organization = autoCandidates[0]!;
+    if (candidates.length === 1 && candidates[0]?.joinMode === "auto") {
+      const organization = candidates[0]!;
       await addMemberIdempotent(authApi, user.id, organization.id);
 
       return { status: "joined", organization, domain, createdVia };
@@ -188,12 +185,12 @@ async function ensureUserOrganizationInTransaction(options: {
       db,
       lockedDomainRecords,
     );
-    const lockedAutoCandidates = lockedCandidates.filter(
-      (candidate) => candidate.joinMode === "auto",
-    );
 
-    if (lockedAutoCandidates.length === 1) {
-      const organization = lockedAutoCandidates[0]!;
+    if (
+      lockedCandidates.length === 1 &&
+      lockedCandidates[0]?.joinMode === "auto"
+    ) {
+      const organization = lockedCandidates[0]!;
       await addMemberIdempotent(authApi, user.id, organization.id);
 
       return { status: "joined", organization, domain, createdVia };
