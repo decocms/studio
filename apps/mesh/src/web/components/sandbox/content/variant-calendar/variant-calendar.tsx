@@ -157,13 +157,6 @@ export function VariantCalendar({
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
 
   const variants = extractScheduledVariants(decofile);
-  const blocks: Array<{ key: string; label: string }> = [];
-  const seenBlockKeys = new Set<string>();
-  for (const v of variants) {
-    if (seenBlockKeys.has(v.blockKey)) continue;
-    seenBlockKeys.add(v.blockKey);
-    blocks.push({ key: v.blockKey, label: v.blockLabel });
-  }
 
   const goToday = () => setCursor(startOfMonth(new Date()));
   const goPrev = () =>
@@ -203,7 +196,6 @@ export function VariantCalendar({
           </h2>
         </div>
         <div className="flex items-center gap-3">
-          <BlockLegend blocks={blocks} />
           <div className="flex rounded-md border bg-muted p-0.5">
             <button
               type="button"
@@ -252,33 +244,6 @@ function EmptyState() {
       <div className="text-xs text-muted-foreground/80">
         Variants gated by a date matcher appear here.
       </div>
-    </div>
-  );
-}
-
-function BlockLegend({
-  blocks,
-}: {
-  blocks: Array<{ key: string; label: string }>;
-}) {
-  if (blocks.length === 0) return null;
-  const visible = blocks.slice(0, 4);
-  const hidden = blocks.length - visible.length;
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      {visible.map(({ key, label }) => {
-        const c = colorForBlock(key);
-        return (
-          <span key={key} className="flex items-center gap-1.5">
-            <span
-              className="inline-block h-2.5 w-5 rounded-sm"
-              style={{ background: c.bg }}
-            />
-            <span className="truncate max-w-[120px]">{label}</span>
-          </span>
-        );
-      })}
-      {hidden > 0 && <span>+{hidden}</span>}
     </div>
   );
 }
