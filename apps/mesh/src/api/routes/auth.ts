@@ -1079,6 +1079,31 @@ app.post("/ensure-organization", async (c) => {
       return c.json({ success: false, error: "Authentication required" }, 401);
     }
 
+    const existing = await getDb()
+      .db.selectFrom("member")
+      .innerJoin("organization", "organization.id", "member.organizationId")
+      .select([
+        "member.organizationId as organizationId",
+        "organization.name as name",
+        "organization.slug as slug",
+        "organization.logo as logo",
+      ])
+      .where("member.userId", "=", session.user.id)
+      .executeTakeFirst();
+    if (existing) {
+      return c.json({
+        success: true,
+        status: "already_has_organization" as const,
+        organization: {
+          id: existing.organizationId,
+          name: existing.name,
+          slug: existing.slug,
+          logo: existing.logo,
+        },
+        domain: null,
+      });
+    }
+
     const result = await ensureUserOrganization({
       db: getDb().db,
       authApi: auth.api,
