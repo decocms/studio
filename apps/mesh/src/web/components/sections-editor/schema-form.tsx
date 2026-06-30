@@ -11,6 +11,7 @@ import { DynamicOptionsField } from "./fields/dynamic-options-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
 import { MultivariateImageField } from "./fields/multivariate-image-field";
+import { MultivariateStringField } from "./fields/multivariate-string-field";
 import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
   isMultivariateArrayWrapper,
@@ -30,13 +31,14 @@ const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
 
 function multivariateMediaKind(
   schema: SchemaProperty,
-): "image" | "file" | null {
+): "image" | "file" | "string" | null {
   if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return null;
   if (schema.anyOfRefs.length !== 1) return null;
   const rt = schema.anyOfRefs[0]!.resolveType;
   if (rt.endsWith("/multivariate/image.ts")) return "image";
   if (rt.endsWith("/multivariate/video.ts")) return "file";
   if (rt.endsWith("/multivariate/file.ts")) return "file";
+  if (rt.endsWith("/multivariate/message.ts")) return "string";
   return null;
 }
 
@@ -174,6 +176,15 @@ export function renderField(props: FieldProps) {
     }
     if (mediaKind === "file") {
       return <FileField key={props.path} {...props} />;
+    }
+    if (mediaKind === "string") {
+      return (
+        <MultivariateStringField
+          key={props.path}
+          {...props}
+          multivariateResolveType={schema.anyOfRefs![0]!.resolveType}
+        />
+      );
     }
     // For now render as object if we have properties, otherwise skip
     if (schema.anyOfRefs) {
