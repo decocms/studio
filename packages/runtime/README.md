@@ -369,7 +369,9 @@ export default withRuntime({
 });
 ```
 
-### Studio Vault Access Tokens
+### Studio Vault Reads
+
+#### Access Token Reads
 
 Background workers can request current downstream OAuth access tokens from
 Studio during `configuration.onInstall`. Add
@@ -381,7 +383,6 @@ refresh tokens and client secrets stay in Studio's vault.
 import {
   BindingOf,
   CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
-  CREDENTIAL_CONFIGURATION_READ_SCOPE,
   createStudioVaultClient,
   withRuntime,
   type ConfigurationScope,
@@ -397,7 +398,6 @@ export default withRuntime({
     state: stateSchema,
     scopes: [
       `github::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
-      `github::${CREDENTIAL_CONFIGURATION_READ_SCOPE}`,
     ] satisfies ConfigurationScope[],
     onInstall: async (env, { vault }) => {
       if (!vault) return;
@@ -414,17 +414,47 @@ export default withRuntime({
 });
 ```
 
+#### Configuration Reads
+
 Use `credential:configuration:read` when the target MCP stores provider
 credentials or provider settings in its saved MCP configuration instead of
-OAuth. This returns the decrypted configuration state Studio has already saved
-for that target connection; it does not call the target MCP's
+OAuth. Add `credential:configuration:read` for the configured binding key. This
+returns the decrypted configuration state Studio has already saved for that
+target connection; it does not call the target MCP's
 `MCP_CONFIGURATION` discovery tool.
 
 ```typescript
-const configuration = await client.getConfiguration(github);
+import {
+  BindingOf,
+  CREDENTIAL_CONFIGURATION_READ_SCOPE,
+  createStudioVaultClient,
+  withRuntime,
+  type ConfigurationScope,
+} from "@decocms/runtime";
+import { z } from "zod";
 
-console.log(configuration.state);
-console.log(configuration.scopes);
+const stateSchema = z.object({
+  github: BindingOf<Registry, "@deco/github">("@deco/github"),
+});
+
+export default withRuntime({
+  configuration: {
+    state: stateSchema,
+    scopes: [
+      `github::${CREDENTIAL_CONFIGURATION_READ_SCOPE}`,
+    ] satisfies ConfigurationScope[],
+    onInstall: async (env, { vault }) => {
+      if (!vault) return;
+
+      const { github } = env.MESH_REQUEST_CONTEXT.state;
+      const client = createStudioVaultClient(vault);
+      const configuration = await client.getConfiguration(github);
+
+      console.log(configuration.state);
+      console.log(configuration.scopes);
+    },
+  },
+});
 ```
 
 Returned configuration:
