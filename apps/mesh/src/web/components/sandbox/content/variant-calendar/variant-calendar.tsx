@@ -6,7 +6,12 @@
  * device, etc.) intentionally don't appear.
  */
 import { useState } from "react";
-import { Calendar, ChevronLeft, ChevronRight } from "@untitledui/icons";
+import {
+  Activity,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+} from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
@@ -15,6 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import { ViewModeToggle } from "@deco/ui/components/view-mode-toggle.tsx";
 import {
   type BlockColor,
   buildBlockColorMap,
@@ -22,132 +28,85 @@ import {
   extractScheduledVariants,
   type ScheduledVariant,
 } from "./extract-variants";
+import {
+  addMonths,
+  buildMonthWeeks,
+  MONTHS,
+  placeWeekSegments,
+  startOfDay,
+  startOfMonth,
+  WEEKDAYS,
+} from "./date-utils";
 
 type ViewMode = "calendar" | "timeline";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function startOfDay(d: Date): Date {
-  const out = new Date(d);
-  out.setHours(0, 0, 0, 0);
-  return out;
-}
-
-function startOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1);
-}
-
-function addMonths(d: Date, n: number): Date {
-  return new Date(d.getFullYear(), d.getMonth() + n, 1);
-}
-
-function addDays(d: Date, n: number): Date {
-  const out = new Date(d);
-  out.setDate(out.getDate() + n);
-  return out;
-}
-
-function diffInDays(a: Date, b: Date): number {
-  return Math.round(
-    (startOfDay(a).getTime() - startOfDay(b).getTime()) / DAY_MS,
-  );
-}
-
-function buildMonthWeeks(monthStart: Date): Date[][] {
-  // 6-week grid starting on Sunday (matches the screenshot mockup).
-  const gridStart = addDays(monthStart, -monthStart.getDay());
-  const weeks: Date[][] = [];
-  for (let w = 0; w < 6; w++) {
-    const days: Date[] = [];
-    for (let d = 0; d < 7; d++) {
-      days.push(addDays(gridStart, w * 7 + d));
-    }
-    weeks.push(days);
-  }
-  // Drop the trailing week if it falls entirely in the next month.
-  while (
-    weeks.length > 0 &&
-    weeks[weeks.length - 1]!.every(
-      (day) => day.getMonth() !== monthStart.getMonth(),
-    )
-  ) {
-    weeks.pop();
-  }
-  return weeks;
-}
-
-interface PlacedSegment {
-  variant: ScheduledVariant;
-  startCol: number; // 0-indexed column (0=Sunday)
-  span: number; // 1..7
-  lane: number;
-}
-
-function placeWeekSegments(
-  weekDays: Date[],
-  variants: ScheduledVariant[],
-): PlacedSegment[] {
-  const weekStart = startOfDay(weekDays[0]!);
-  const weekEndExclusive = addDays(weekStart, 7);
-  const segments: Array<Omit<PlacedSegment, "lane">> = [];
-  for (const variant of variants) {
-    const vStart = startOfDay(variant.start);
-    const vEnd = startOfDay(variant.end);
-    if (vEnd.getTime() < weekStart.getTime()) continue;
-    if (vStart.getTime() >= weekEndExclusive.getTime()) continue;
-    const segStart =
-      vStart.getTime() < weekStart.getTime() ? weekStart : vStart;
-    const segEnd =
-      vEnd.getTime() >= weekEndExclusive.getTime()
-        ? addDays(weekEndExclusive, -1)
-        : vEnd;
-    const startCol = diffInDays(segStart, weekStart);
-    const span = diffInDays(segEnd, segStart) + 1;
-    if (span <= 0) continue;
-    segments.push({ variant, startCol, span });
-  }
-  // Sort by start, then by span desc — long bars take lower lanes.
-  segments.sort(
-    (a, b) =>
-      a.startCol - b.startCol ||
-      b.span - a.span ||
-      a.variant.blockKey.localeCompare(b.variant.blockKey),
-  );
-  const laneEnds: number[] = []; // exclusive end column for each lane
-  const placed: PlacedSegment[] = [];
-  for (const seg of segments) {
-    let lane = laneEnds.findIndex((end) => end <= seg.startCol);
-    if (lane === -1) {
-      lane = laneEnds.length;
-      laneEnds.push(0);
-    }
-    laneEnds[lane] = seg.startCol + seg.span;
-    placed.push({ ...seg, lane });
-  }
-  return placed;
-}
+const RANGE_FORMAT = new Intl.DateTimeFormat("en", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 function formatRangeForTooltip(v: ScheduledVariant): string {
-  const fmt = new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-  return `${fmt.format(v.start)} → ${fmt.format(v.end)}`;
+  return `${RANGE_FORMAT.format(v.start)} → ${RANGE_FORMAT.format(v.end)}`;
+}
+
+/**
+ * The Radix tooltip body shown by both calendar and timeline bars. Pulls
+ * `blockLabel` / `innerPath` / `label` / formatted range; suppresses
+ * duplicate lines when the variant has no nested path or the label
+ * coincides with the block name.
+ */
+function VariantTooltipBody({ variant }: { variant: ScheduledVariant }) {
+  return (
+    <TooltipContent>
+      <div className="text-xs">
+        <div className="font-semibold">{variant.blockLabel}</div>
+        {variant.innerPath && (
+          <div className="text-muted-foreground">{variant.innerPath}</div>
+        )}
+        {variant.label !== variant.blockLabel &&
+          variant.label !== variant.innerPath && (
+            <div className="text-muted-foreground">{variant.label}</div>
+          )}
+        <div className="mt-1">{formatRangeForTooltip(variant)}</div>
+      </div>
+    </TooltipContent>
+  );
+}
+
+/**
+ * One colored bar with its hover tooltip. The caller owns positioning via
+ * `style` (top/left/width/height or %-based equivalents) and what shows
+ * inside the bar via `children`.
+ */
+function VariantBar({
+  variant,
+  color,
+  style,
+  children,
+}: {
+  variant: ScheduledVariant;
+  color: BlockColor;
+  style: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className="absolute flex items-center px-2 text-[11px] font-medium truncate cursor-default"
+          style={{
+            background: color.bg,
+            color: color.text,
+            borderRadius: 4,
+            ...style,
+          }}
+        >
+          <span className="truncate">{children}</span>
+        </div>
+      </TooltipTrigger>
+      <VariantTooltipBody variant={variant} />
+    </Tooltip>
+  );
 }
 
 export function VariantCalendar({
@@ -198,34 +157,22 @@ export function VariantCalendar({
             {MONTHS[cursor.getMonth()]} {cursor.getFullYear()}
           </h2>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex rounded-md border bg-muted p-0.5">
-            <button
-              type="button"
-              onClick={() => setView("calendar")}
-              className={cn(
-                "px-3 py-1 text-xs font-medium rounded-sm transition-colors cursor-pointer",
-                view === "calendar"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Calendar
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("timeline")}
-              className={cn(
-                "px-3 py-1 text-xs font-medium rounded-sm transition-colors cursor-pointer",
-                view === "timeline"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Timeline
-            </button>
-          </div>
-        </div>
+        <ViewModeToggle<ViewMode>
+          value={view}
+          onValueChange={setView}
+          options={[
+            {
+              value: "calendar",
+              icon: <Calendar />,
+              label: "Calendar",
+            },
+            {
+              value: "timeline",
+              icon: <Activity />,
+              label: "Timeline",
+            },
+          ]}
+        />
       </div>
 
       {variants.length === 0 ? (
@@ -333,53 +280,25 @@ function CalendarView({
                 const leftPct = (seg.startCol / 7) * 100;
                 const widthPct = (seg.span / 7) * 100;
                 return (
-                  <Tooltip key={`${wi}-${idx}`}>
-                    <TooltipTrigger asChild>
-                      <div
-                        className="absolute flex items-center px-2 text-[11px] font-medium truncate cursor-default"
-                        style={{
-                          top,
-                          left: `calc(${leftPct}% + 2px)`,
-                          width: `calc(${widthPct}% - 4px)`,
-                          height: LANE_HEIGHT,
-                          background: color.bg,
-                          color: color.text,
-                          borderRadius: 4,
-                        }}
-                      >
-                        <span className="truncate">
-                          {seg.variant.blockLabel}
-                          {seg.variant.label !== seg.variant.blockLabel && (
-                            <span className="opacity-70">
-                              {" · "}
-                              {seg.variant.label}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <div className="text-xs">
-                        <div className="font-semibold">
-                          {seg.variant.blockLabel}
-                        </div>
-                        {seg.variant.innerPath && (
-                          <div className="text-muted-foreground">
-                            {seg.variant.innerPath}
-                          </div>
-                        )}
-                        {seg.variant.label !== seg.variant.blockLabel &&
-                          seg.variant.label !== seg.variant.innerPath && (
-                            <div className="text-muted-foreground">
-                              {seg.variant.label}
-                            </div>
-                          )}
-                        <div className="mt-1">
-                          {formatRangeForTooltip(seg.variant)}
-                        </div>
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
+                  <VariantBar
+                    key={`${wi}-${idx}`}
+                    variant={seg.variant}
+                    color={color}
+                    style={{
+                      top,
+                      left: `calc(${leftPct}% + 2px)`,
+                      width: `calc(${widthPct}% - 4px)`,
+                      height: LANE_HEIGHT,
+                    }}
+                  >
+                    {seg.variant.blockLabel}
+                    {seg.variant.label !== seg.variant.blockLabel && (
+                      <span className="opacity-70">
+                        {" · "}
+                        {seg.variant.label}
+                      </span>
+                    )}
+                  </VariantBar>
                 );
               })}
             </div>
@@ -537,44 +456,19 @@ function TimelineView({
                       const left = pctOf(new Date(segStart));
                       const width = pctOf(new Date(segEnd)) - left;
                       return (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div
-                              className="absolute top-1/2 -translate-y-1/2 flex items-center px-2 text-[11px] font-medium truncate cursor-default"
-                              style={{
-                                left: `${left}%`,
-                                width: `calc(${width}% - 2px)`,
-                                height: 22,
-                                background: color.bg,
-                                color: color.text,
-                                borderRadius: 4,
-                              }}
-                            >
-                              <span className="truncate">{v.label}</span>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <div className="text-xs">
-                              <div className="font-semibold">
-                                {v.blockLabel}
-                              </div>
-                              {v.innerPath && (
-                                <div className="text-muted-foreground">
-                                  {v.innerPath}
-                                </div>
-                              )}
-                              {v.label !== v.blockLabel &&
-                                v.label !== v.innerPath && (
-                                  <div className="text-muted-foreground">
-                                    {v.label}
-                                  </div>
-                                )}
-                              <div className="mt-1">
-                                {formatRangeForTooltip(v)}
-                              </div>
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
+                        <VariantBar
+                          variant={v}
+                          color={color}
+                          style={{
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            left: `${left}%`,
+                            width: `calc(${width}% - 2px)`,
+                            height: 22,
+                          }}
+                        >
+                          {v.label}
+                        </VariantBar>
                       );
                     })()}
                   </div>

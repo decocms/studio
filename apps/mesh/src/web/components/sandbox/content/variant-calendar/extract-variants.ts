@@ -24,6 +24,10 @@ const MULTI_MATCHER_TYPES = new Set([
   "$live/matchers/MatchMulti.ts",
 ]);
 
+// Non-anchored on purpose: matches `<scope>/flags/multivariate/<x>.ts` for
+// any scope, so `website/flags/multivariate/section.ts`,
+// `site/flags/multivariate/etcMediaKitContent.ts`, and the legacy
+// `$live/flags/multivariate/section.ts` all match.
 const MULTIVARIATE_FLAG_PATTERN = /\/flags\/multivariate\/[^/]+\.ts$/;
 
 export interface ScheduledVariant {
