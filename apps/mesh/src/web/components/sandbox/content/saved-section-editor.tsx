@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronRight, Code01, X } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
@@ -37,29 +37,6 @@ function seedFromBlock(
   const parsed = parseSections([rawSection], decofile)[0];
   if (!parsed) return null;
   return unwrapSection(rawSection, parsed, decofile);
-}
-
-/**
- * Pick the string to feed Monaco. When the last text Monaco emitted still
- * normalizes to the current `formValue`, return that exact text so the cursor
- * isn't reset (no echo loop). When the form changed `formValue` from under it,
- * return the freshly-derived JSON so Monaco reflects the form edit.
- */
-function pickMonacoCode(
-  formValue: Record<string, unknown>,
-  lastEmitted: string | null,
-): string {
-  const derived = JSON.stringify(formValue, null, 2);
-  if (lastEmitted !== null) {
-    try {
-      if (JSON.stringify(JSON.parse(lastEmitted), null, 2) === derived) {
-        return lastEmitted;
-      }
-    } catch {
-      // fall through to derived
-    }
-  }
-  return derived;
 }
 
 /**
@@ -102,12 +79,13 @@ export function SavedSectionEditor({
   );
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<string[]>([]);
   const [formResetKey, setFormResetKey] = useState(0);
-  const [jsonOpen, setJsonOpen] = useState(false);
   const [jsonError, setJsonError] = useState(false);
-
-  // The exact text Monaco last produced — used to suppress cursor-resetting
-  // echoes when our derived JSON matches what Monaco already shows.
-  const lastEmittedJsonRef = useRef<string | null>(null);
+  // The text Monaco renders. `null` means the JSON view is closed. Seeded from
+  // `formValue` on open; Monaco owns it afterwards (we don't echo edits back
+  // into it, so the cursor never jumps). Because the JSON view covers the form,
+  // form edits can't happen while it's open — so reseeding on open is enough.
+  const [jsonCode, setJsonCode] = useState<string | null>(null);
+  const jsonOpen = jsonCode !== null;
 
   const { save, flush } = useDebouncedSaveBlock({
     orgSlug,
@@ -136,9 +114,17 @@ export function SavedSectionEditor({
     save(blockKey, next);
   };
 
+  const toggleJson = () => {
+    if (jsonOpen) {
+      setJsonCode(null);
+      setJsonError(false);
+    } else {
+      setJsonCode(JSON.stringify(formValue, null, 2));
+    }
+  };
+
   const handleJsonChange = (value: string | undefined) => {
     const text = value ?? "";
-    lastEmittedJsonRef.current = text;
     try {
       const parsed = JSON.parse(text);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -206,7 +192,7 @@ export function SavedSectionEditor({
                   variant={jsonOpen ? "default" : "ghost"}
                   size="icon"
                   className="size-8 shrink-0"
-                  onClick={() => setJsonOpen((open) => !open)}
+                  onClick={toggleJson}
                   aria-label={jsonOpen ? "Close JSON editor" : "Edit as JSON"}
                   aria-pressed={jsonOpen}
                 >
@@ -253,7 +239,7 @@ export function SavedSectionEditor({
 
           {/* JSON view covers the form. Monaco mounts only while open so it is
               disposed (no leaks) when toggled off or the editor unmounts. */}
-          {jsonOpen && (
+          {jsonCode !== null && (
             <div className="absolute inset-0 flex flex-col bg-background">
               {jsonError && (
                 <div className="shrink-0 border-b bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
@@ -264,7 +250,7 @@ export function SavedSectionEditor({
                 <MonacoCodeEditor
                   language="json"
                   height="100%"
-                  code={pickMonacoCode(formValue, lastEmittedJsonRef.current)}
+                  code={jsonCode}
                   onChange={handleJsonChange}
                   onSave={(value) => {
                     handleJsonChange(value);
