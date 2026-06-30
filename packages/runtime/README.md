@@ -381,6 +381,7 @@ refresh tokens and client secrets stay in Studio's vault.
 import {
   BindingOf,
   CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+  CREDENTIAL_CONFIGURATION_READ_SCOPE,
   createStudioVaultClient,
   withRuntime,
   type ConfigurationScope,
@@ -396,6 +397,7 @@ export default withRuntime({
     state: stateSchema,
     scopes: [
       `github::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
+      `github::${CREDENTIAL_CONFIGURATION_READ_SCOPE}`,
     ] satisfies ConfigurationScope[],
     onInstall: async (env, { vault }) => {
       if (!vault) return;
@@ -410,6 +412,29 @@ export default withRuntime({
     },
   },
 });
+```
+
+Use `credential:configuration:read` when the target MCP stores provider
+credentials or provider settings in its saved MCP configuration instead of
+OAuth. This returns the decrypted configuration state Studio has already saved
+for that target connection; it does not call the target MCP's
+`MCP_CONFIGURATION` discovery tool.
+
+```typescript
+const configuration = await client.getConfiguration(github);
+
+console.log(configuration.state);
+console.log(configuration.scopes);
+```
+
+Returned configuration:
+
+```typescript
+type StudioMcpConfiguration = {
+  type: "mcp_configuration";
+  state: Record<string, unknown>;
+  scopes: string[];
+};
 ```
 
 ## Event Handlers
