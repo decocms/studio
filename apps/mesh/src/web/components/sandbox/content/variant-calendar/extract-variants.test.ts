@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { colorForBlock, extractScheduledVariants } from "./extract-variants";
+import {
+  buildBlockColorMap,
+  colorFromMap,
+  extractScheduledVariants,
+} from "./extract-variants";
 
 describe("extractScheduledVariants", () => {
   it("emits one entry per date matcher and sorts by start", () => {
@@ -145,13 +149,25 @@ describe("extractScheduledVariants", () => {
   });
 });
 
-describe("colorForBlock", () => {
-  it("is stable for the same key", () => {
-    expect(colorForBlock("Alerta")).toEqual(colorForBlock("Alerta"));
+describe("buildBlockColorMap", () => {
+  it("assigns the same color to the same key", () => {
+    const map = buildBlockColorMap(["Alerta", "Other"]);
+    expect(colorFromMap(map, "Alerta")).toEqual(colorFromMap(map, "Alerta"));
   });
-  it("differs across keys", () => {
-    expect(colorForBlock("Alerta").bg).not.toBe(
-      colorForBlock("Category Banner - 01").bg,
-    );
+  it("gives every distinct key a distinct color", () => {
+    const keys = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
+    const map = buildBlockColorMap(keys);
+    const bgs = keys.map((k) => colorFromMap(map, k).bg);
+    expect(new Set(bgs).size).toBe(keys.length);
+  });
+  it("is stable across input ordering", () => {
+    const a = buildBlockColorMap(["A", "B", "C"]);
+    const b = buildBlockColorMap(["C", "A", "B"]);
+    expect(colorFromMap(a, "A")).toEqual(colorFromMap(b, "A"));
+    expect(colorFromMap(a, "B")).toEqual(colorFromMap(b, "B"));
+  });
+  it("falls back when the key is unknown", () => {
+    const map = buildBlockColorMap(["A"]);
+    expect(colorFromMap(map, "missing").bg).toBeDefined();
   });
 });

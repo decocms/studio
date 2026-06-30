@@ -16,7 +16,9 @@ import {
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
 import {
-  colorForBlock,
+  type BlockColor,
+  buildBlockColorMap,
+  colorFromMap,
   extractScheduledVariants,
   type ScheduledVariant,
 } from "./extract-variants";
@@ -157,6 +159,7 @@ export function VariantCalendar({
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
 
   const variants = extractScheduledVariants(decofile);
+  const colorMap = buildBlockColorMap(variants.map((v) => v.blockKey));
 
   const goToday = () => setCursor(startOfMonth(new Date()));
   const goPrev = () =>
@@ -228,9 +231,17 @@ export function VariantCalendar({
       {variants.length === 0 ? (
         <EmptyState />
       ) : view === "calendar" ? (
-        <CalendarView monthStart={cursor} variants={variants} />
+        <CalendarView
+          monthStart={cursor}
+          variants={variants}
+          colorMap={colorMap}
+        />
       ) : (
-        <TimelineView monthStart={cursor} variants={variants} />
+        <TimelineView
+          monthStart={cursor}
+          variants={variants}
+          colorMap={colorMap}
+        />
       )}
     </div>
   );
@@ -255,9 +266,11 @@ const HEADER_HEIGHT = 28;
 function CalendarView({
   monthStart,
   variants,
+  colorMap,
 }: {
   monthStart: Date;
   variants: ScheduledVariant[];
+  colorMap: Map<string, BlockColor>;
 }) {
   const weeks = buildMonthWeeks(monthStart);
   const today = startOfDay(new Date());
@@ -315,7 +328,7 @@ function CalendarView({
                 );
               })}
               {segments.map((seg, idx) => {
-                const color = colorForBlock(seg.variant.blockKey);
+                const color = colorFromMap(colorMap, seg.variant.blockKey);
                 const top = HEADER_HEIGHT + seg.lane * (LANE_HEIGHT + LANE_GAP);
                 const leftPct = (seg.startCol / 7) * 100;
                 const widthPct = (seg.span / 7) * 100;
@@ -384,9 +397,11 @@ const ROW_LABEL_WIDTH = 240;
 function TimelineView({
   monthStart,
   variants,
+  colorMap,
 }: {
   monthStart: Date;
   variants: ScheduledVariant[];
+  colorMap: Map<string, BlockColor>;
 }) {
   const rangeStart = monthStart;
   const rangeEnd = addMonths(monthStart, TIMELINE_MONTHS);
@@ -461,7 +476,7 @@ function TimelineView({
           </div>
         )}
         {sortedBlocks.map(([blockKey, blockVariants]) => {
-          const color = colorForBlock(blockKey);
+          const color = colorFromMap(colorMap, blockKey);
           const blockLabel = blockVariants[0]?.blockLabel ?? blockKey;
           return (
             <div key={blockKey}>

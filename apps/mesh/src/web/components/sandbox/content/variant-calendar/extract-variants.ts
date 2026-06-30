@@ -247,24 +247,49 @@ export function extractScheduledVariants(
   return out.sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
-/**
- * Deterministic, repo-wide-stable color per block key. Variants from the
- * same block share a color so the calendar reads as "this campaign across
- * its blocks" rather than per-row noise.
- */
-export function colorForBlock(blockKey: string): {
+export interface BlockColor {
   bg: string;
   text: string;
   border: string;
-} {
-  let hash = 0;
-  for (let i = 0; i < blockKey.length; i++) {
-    hash = (hash * 31 + blockKey.charCodeAt(i)) | 0;
-  }
-  const hue = ((hash % 360) + 360) % 360;
-  return {
-    bg: `oklch(0.62 0.14 ${hue})`,
-    text: "white",
-    border: `oklch(0.50 0.14 ${hue})`,
-  };
+}
+
+/**
+ * Builds a stable per-block color map. Block keys are sorted and assigned
+ * hues using the golden-angle sequence (137.508°), which maximizes visual
+ * separation regardless of how many distinct blocks we have. Hashing the
+ * key directly into a hue (the previous approach) was prone to collisions
+ * — different blocks could land on nearby or identical hues.
+ *
+ * Same blockKey always gets the same color **for the same set of inputs**;
+ * adding a new block re-sorts and may shift colors. Stability across
+ * renders comes from the input being derived deterministically from the
+ * decofile, not from the key in isolation.
+ */
+export function buildBlockColorMap(
+  blockKeys: Iterable<string>,
+): Map<string, BlockColor> {
+  const sorted = [...new Set(blockKeys)].sort();
+  const map = new Map<string, BlockColor>();
+  sorted.forEach((key, i) => {
+    const hue = (i * 137.508) % 360;
+    map.set(key, {
+      bg: `oklch(0.62 0.14 ${hue})`,
+      text: "white",
+      border: `oklch(0.50 0.14 ${hue})`,
+    });
+  });
+  return map;
+}
+
+const FALLBACK_COLOR: BlockColor = {
+  bg: "oklch(0.62 0.14 0)",
+  text: "white",
+  border: "oklch(0.50 0.14 0)",
+};
+
+export function colorFromMap(
+  map: Map<string, BlockColor>,
+  blockKey: string,
+): BlockColor {
+  return map.get(blockKey) ?? FALLBACK_COLOR;
 }
