@@ -4,6 +4,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { useInsetContext } from "@/web/layouts/agent-shell-layout";
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronUp,
   Code01,
@@ -106,6 +107,95 @@ import {
 import { PageJsonDialog } from "./page-json-dialog";
 import { createReferencedBlockSaver } from "./save-referenced-block";
 import { formatMatcher } from "./format-matcher";
+
+/**
+ * Editor for a variant's matcher rule (e.g. Include/Exclude Locations).
+ * Owns its own breadcrumb state so users can drill into array items inside
+ * the rule without affecting the section editor's breadcrumb. Caller is
+ * expected to remount via `key` when the variant or rule resolveType changes.
+ */
+function VariantRuleForm({
+  schema,
+  value,
+  onChange,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
+  sandbox,
+}: {
+  schema: SchemaProperty;
+  value: Record<string, unknown>;
+  onChange: (v: unknown) => void;
+  meta?: LiveMeta;
+  decofile?: Record<string, unknown>;
+  onSaveReferencedBlock?: (
+    blockKey: string,
+    data: Record<string, unknown>,
+  ) => void;
+  sandbox?: SandboxConfig | null;
+}) {
+  const [breadcrumbPath, setBreadcrumbPath] = useState<string[]>([]);
+
+  return (
+    <div className="space-y-2">
+      {breadcrumbPath.length > 0 && (
+        <nav
+          aria-label="Variant rule breadcrumb"
+          className="flex min-w-0 items-center gap-1 overflow-hidden text-xs"
+        >
+          <button
+            type="button"
+            onClick={() => setBreadcrumbPath([])}
+            className="flex shrink-0 items-center gap-0.5 rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            title="Back to rule"
+          >
+            <ChevronLeft className="size-3.5" />
+          </button>
+          {breadcrumbPath.map((crumb, index) => {
+            const isLast = index === breadcrumbPath.length - 1;
+            return (
+              <span
+                key={`${crumb}-${index}`}
+                className="flex min-w-0 items-center gap-1 overflow-hidden"
+              >
+                {index > 0 && (
+                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
+                )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setBreadcrumbPath(breadcrumbPath.slice(0, index + 1))
+                  }
+                  title={crumb}
+                  className={cn(
+                    "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
+                    isLast
+                      ? "font-medium text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {crumb}
+                </button>
+              </span>
+            );
+          })}
+        </nav>
+      )}
+      <SchemaForm
+        schema={schema}
+        value={value}
+        onChange={onChange}
+        basePath=""
+        breadcrumbPath={breadcrumbPath}
+        onBreadcrumbChange={setBreadcrumbPath}
+        meta={meta}
+        decofile={decofile}
+        onSaveReferencedBlock={onSaveReferencedBlock}
+        sandbox={sandbox}
+      />
+    </div>
+  );
+}
 
 function SchemaFormPanel({
   activeSchema,
@@ -2319,11 +2409,15 @@ export function SectionsEditor({
                   />
                   {sectionRuleSchema && sectionRuleFormValue && (
                     <div className="pt-1">
-                      <SchemaForm
+                      <VariantRuleForm
+                        key={`${selectedSectionIndex ?? "none"}:${safeSectionVariantIndex}:${sectionRuleResolveType ?? ""}`}
                         schema={sectionRuleSchema}
                         value={sectionRuleFormValue}
                         onChange={handleSectionRuleFormChange}
-                        basePath=""
+                        meta={meta ?? undefined}
+                        decofile={decofile}
+                        onSaveReferencedBlock={saveReferencedBlock}
+                        sandbox={sandbox}
                       />
                     </div>
                   )}
@@ -2406,11 +2500,15 @@ export function SectionsEditor({
                   />
                   {ruleSchema && ruleFormValue && (
                     <div className="space-y-3">
-                      <SchemaForm
+                      <VariantRuleForm
+                        key={`${safeVariantIndex}:${ruleResolveType ?? ""}`}
                         schema={ruleSchema}
                         value={ruleFormValue}
                         onChange={handleRuleFormChange}
-                        basePath=""
+                        meta={meta ?? undefined}
+                        decofile={decofile}
+                        onSaveReferencedBlock={saveReferencedBlock}
+                        sandbox={sandbox}
                       />
                     </div>
                   )}
