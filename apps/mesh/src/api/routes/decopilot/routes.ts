@@ -959,21 +959,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
 
   app.get("/:org/decopilot/threads/:threadId/stream", async (c) => {
     try {
-      const { taskId, thread, ctx } = await validateThreadAccess(c);
-      // Current run's fence — fence-filters the tail to the in-flight run (see
-      // createTailStream opts). Written synchronously by POST /messages before
-      // its 202, so a client opening /stream after that always reads it.
-      const runFenceToken = await ctx.storage.threads.getRunFence(taskId);
+      const { taskId, thread } = await validateThreadAccess(c);
 
       // Use the DB's view, not pod-local registry state. A client attached
       // to a non-owner pod (any multi-pod deployment, including mid-deploy
       // and after a DBOS replay rehome) needs `"all"` to catch chunks the
       // owning pod has already pumped to the shared JetStream subject.
-      // `"all"` replays the whole per-thread subject (every run until purge/
-      // age-out), so we fence-filter the tail below to the current run's
-      // `run_fence_token` — the replay then only ever yields the in-flight run,
-      // never a prior run's chunks (which could include an orphan tool-output
-      // whose tool-input lived in an earlier, since-purged run).
+      // `"all"` replays the whole per-thread subject (catch-up to the in-flight
+      // run); `"new"` when the thread is idle so a just-completed run's tail
+      // isn't replayed. No fence-filter — the tail forwards EVERY run's chunks
+      // and the client reassembler folds them per run (a continuation's
+      // tool-output reconciles against the proposal it seeds from).
       const deliverPolicy = thread.status === "in_progress" ? "all" : "new";
       const runStartedAgoMs = thread.run_started_at
         ? Date.now() - new Date(thread.run_started_at).getTime()
@@ -981,7 +977,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       const tailChunkStream = await streamBuffer.createTailStream(
         taskId,
         c.req.raw.signal,
-        { deliverPolicy, fenceToken: runFenceToken ?? undefined },
+        { deliverPolicy },
       );
       if (!tailChunkStream) {
         // A null tail means the JetStream buffer is degraded on this pod
@@ -1012,11 +1008,11 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         );
       }
 
-      // Pure pass-through. `createTailStream` already decoded the NATS log into
-      // UIMessageChunks and fence-filtered to this run, so hand them straight to
-      // the SSE serializer — the client (useChat) is the only reassembler. A
-      // server-side `createUIMessageStream` layer added nothing to the wire, and
-      // any stateful reassembly here would choke on a replayed run's chunks.
+      // Pure pass-through: `createTailStream` decoded the NATS log into
+      // UIMessageChunks; hand them straight to the SSE serializer. The client
+      // (useChat) is the only reassembler — a server-side `createUIMessageStream`
+      // layer added nothing to the wire and any stateful reassembly here would
+      // choke on a replayed run's chunks.
       return wrapWithSseKeepalive(
         createUIMessageStreamResponse({
           stream: tailChunkStream,

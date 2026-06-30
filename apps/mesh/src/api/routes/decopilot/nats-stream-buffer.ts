@@ -30,7 +30,7 @@ import {
 } from "@nats-io/nats-core";
 import { DECOPILOT_STREAM_NAME } from "./projector-stream-messages";
 import type { StreamBuffer } from "./stream-buffer";
-import { fenceFilter, natsChunkSource } from "./nats-chunk-source";
+import { natsChunkSource } from "./nats-chunk-source";
 import {
   decodeStream,
   DECOPILOT_STREAM_SUBJECT_PREFIX,
@@ -441,16 +441,6 @@ export class NatsStreamBuffer implements StreamBuffer {
     opts?: {
       deliverPolicy?: "all" | "new";
       closeOnDone?: boolean;
-      /**
-       * When set, emit ONLY this run's events (matching `(taskId, fenceToken)`),
-       * exactly like the durable projector's `fenceFilter`. The per-thread
-       * subject accumulates every run until purge/age-out, so a `deliverPolicy:
-       * "all"` replay would otherwise surface a prior run's chunks — including an
-       * orphan tool-output whose `tool-input-start` lived in an earlier,
-       * since-purged run — and choke the client's stateful reassembler. The
-       * `/stream` tail passes the thread's current `run_fence_token`.
-       */
-      fenceToken?: string;
     },
   ): Promise<ReadableStream | null> {
     const js = this.js;
@@ -505,16 +495,16 @@ export class NatsStreamBuffer implements StreamBuffer {
       onCancel: () => sub.stop(),
     });
 
+    // Pure pass-through: NATS log → reassemble fragments → decode to
+    // UIMessageChunks. NO server-side fence-filter or reassembly — the tail
+    // forwards every run's chunks verbatim and the client (useChat) is the sole
+    // reassembler. A continuation run's tool-output reconciles because the
+    // client seeds the reassembler from the proposal (see thread-connection.ts).
     const decoded = source
       .pipeThrough(reassembleFragments())
       .pipeThrough(decodeStream());
-    // Fence-filter to a single run when asked (the /stream tail), so a
-    // per-thread-subject replay only ever yields the current run's chunks.
-    const events = opts?.fenceToken
-      ? decoded.pipeThrough(fenceFilter(taskId, opts.fenceToken))
-      : decoded;
 
-    const reader = events.getReader();
+    const reader = decoded.getReader();
     let released = false;
     const release = () => {
       if (released) return;
