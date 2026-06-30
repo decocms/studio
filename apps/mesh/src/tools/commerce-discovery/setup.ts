@@ -20,7 +20,7 @@ import { ConnectionEntitySchema } from "../connection/schema";
 import { VirtualMCPEntitySchema } from "../virtual/schema";
 
 const REPORT_TOOL_NAME =
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "DISPLAY_REPORT";
+  COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "get_my_diagnostic";
 
 const CommerceDiscoverySetupInputSchema = z.object({
   siteUrl: z.string().min(1).describe("Website URL to configure."),
