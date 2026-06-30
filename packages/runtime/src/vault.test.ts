@@ -96,4 +96,70 @@ describe("createStudioVaultClient", () => {
       "Studio vault token request failed: 403",
     );
   });
+
+  it("requests and returns MCP configuration for a connection binding", async () => {
+    let requestUrl: string | URL | Request | undefined;
+    let requestInit: RequestInit | undefined;
+    const fetch = Object.assign(
+      async (
+        input: Parameters<typeof globalThis.fetch>[0],
+        init: Parameters<typeof globalThis.fetch>[1],
+      ) => {
+        requestUrl = input;
+        requestInit = init;
+
+        return Response.json({
+          type: "mcp_configuration",
+          state: { apiKey: "secret", accountId: "acct_123" },
+          scopes: ["self::TOOL"],
+        });
+      },
+      { preconnect: globalThis.fetch.preconnect },
+    ) satisfies typeof globalThis.fetch;
+
+    const client = createStudioVaultClient({
+      baseUrl: "https://studio.test",
+      org: "acme",
+      token: "stv_prefix_secret",
+      fetch,
+    });
+
+    const configuration = await client.getConfiguration({
+      __type: "@deco/github",
+      value: "conn_github",
+    });
+
+    expect(requestUrl).toBe(
+      "https://studio.test/api/acme/vault/connections/conn_github/configuration",
+    );
+    expect(requestInit?.method).toBe("POST");
+    expect(requestInit?.headers).toEqual({
+      Authorization: "Bearer stv_prefix_secret",
+      "Content-Type": "application/json",
+    });
+    expect(requestInit?.body).toBe("{}");
+    expect(configuration).toEqual({
+      type: "mcp_configuration",
+      state: { apiKey: "secret", accountId: "acct_123" },
+      scopes: ["self::TOOL"],
+    });
+  });
+
+  it("throws when Studio rejects the configuration request", async () => {
+    const fetch = Object.assign(
+      async () => new Response(null, { status: 403 }),
+      { preconnect: globalThis.fetch.preconnect },
+    ) satisfies typeof globalThis.fetch;
+
+    const client = createStudioVaultClient({
+      baseUrl: "https://studio.test",
+      org: "acme",
+      token: "stv_prefix_secret",
+      fetch,
+    });
+
+    expect(client.getConfiguration("conn_github")).rejects.toThrow(
+      "Studio vault configuration request failed: 403",
+    );
+  });
 });

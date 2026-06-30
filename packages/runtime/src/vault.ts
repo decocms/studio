@@ -15,37 +15,61 @@ export interface StudioAccessToken {
   scope: string | null;
 }
 
+export interface StudioMcpConfiguration {
+  type: "mcp_configuration";
+  state: Record<string, unknown>;
+  scopes: string[];
+}
+
 export const createStudioVaultClient = (
   options: StudioVaultClientOptions,
 ): {
   getAccessToken: (connection: string | Binding) => Promise<StudioAccessToken>;
+  getConfiguration: (
+    connection: string | Binding,
+  ) => Promise<StudioMcpConfiguration>;
 } => {
   const baseUrl = options.baseUrl.replace(/\/$/, "");
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  return {
-    getAccessToken: async (connection) => {
-      const connectionId =
-        typeof connection === "string" ? connection : connection.value;
-      const response = await fetchImpl(
-        `${baseUrl}/api/${encodeURIComponent(options.org)}/vault/connections/${encodeURIComponent(connectionId)}/access-token`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${options.token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({}),
+  const connectionIdFor = (connection: string | Binding): string =>
+    typeof connection === "string" ? connection : connection.value;
+
+  const postVaultRequest = async <T>(
+    connection: string | Binding,
+    suffix: "access-token" | "configuration",
+    errorLabel: "token" | "configuration",
+  ): Promise<T> => {
+    const connectionId = connectionIdFor(connection);
+    const response = await fetchImpl(
+      `${baseUrl}/api/${encodeURIComponent(options.org)}/vault/connections/${encodeURIComponent(connectionId)}/${suffix}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${options.token}`,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({}),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Studio vault ${errorLabel} request failed: ${response.status}`,
       );
+    }
 
-      if (!response.ok) {
-        throw new Error(
-          `Studio vault token request failed: ${response.status}`,
-        );
-      }
+    return (await response.json()) as T;
+  };
 
-      return (await response.json()) as StudioAccessToken;
-    },
+  return {
+    getAccessToken: async (connection) =>
+      postVaultRequest<StudioAccessToken>(connection, "access-token", "token"),
+    getConfiguration: async (connection) =>
+      postVaultRequest<StudioMcpConfiguration>(
+        connection,
+        "configuration",
+        "configuration",
+      ),
   };
 };

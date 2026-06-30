@@ -46,6 +46,7 @@ export {
 export {
   createStudioVaultClient,
   type StudioAccessToken,
+  type StudioMcpConfiguration,
   type StudioVaultClientOptions,
 } from "./vault.ts";
 
