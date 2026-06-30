@@ -30,6 +30,11 @@ export interface EmailUserLike {
   name?: string | null;
 }
 
+export interface DomainRecordLike {
+  joinMode: "off" | "auto" | "request";
+  verificationStatus: "pending" | "verified";
+}
+
 export function emailDomainOf(email: string): string | null {
   const [localPart, domain, ...extraParts] = email.trim().split("@");
 
@@ -85,6 +90,10 @@ export function defaultOrgNameForUser(user: EmailUserLike): string {
   const [localPart] = user.email.trim().split("@");
 
   return localPart || "Workspace";
+}
+
+export function isDiscoverableDomainRecord(record: DomainRecordLike): boolean {
+  return record.verificationStatus === "verified" && record.joinMode !== "off";
 }
 
 export { GENERIC_EMAIL_DOMAINS };

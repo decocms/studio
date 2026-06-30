@@ -5,6 +5,7 @@ import {
   domainToOrgSlug,
   emailDomainOf,
   isCorporateEmailDomain,
+  isDiscoverableDomainRecord,
   isVerifiedCorporateUser,
 } from "./org-assurance-policy";
 
@@ -68,5 +69,32 @@ describe("org assurance policy", () => {
         name: null,
       }),
     ).toBe("no-name");
+  });
+
+  test("only treats verified auto and request domain records as discoverable", () => {
+    expect(
+      isDiscoverableDomainRecord({
+        verificationStatus: "verified",
+        joinMode: "auto",
+      }),
+    ).toBe(true);
+    expect(
+      isDiscoverableDomainRecord({
+        verificationStatus: "verified",
+        joinMode: "request",
+      }),
+    ).toBe(true);
+    expect(
+      isDiscoverableDomainRecord({
+        verificationStatus: "verified",
+        joinMode: "off",
+      }),
+    ).toBe(false);
+    expect(
+      isDiscoverableDomainRecord({
+        verificationStatus: "pending",
+        joinMode: "auto",
+      }),
+    ).toBe(false);
   });
 });

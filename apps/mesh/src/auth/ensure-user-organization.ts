@@ -1,4 +1,5 @@
 import { sql, type Kysely, type Transaction } from "kysely";
+import { isOrgArchived } from "../core/org-archived";
 import { OrganizationDomainStorage } from "../storage/organization-domains";
 import type { Database, OrganizationDomain } from "../storage/types";
 import {
@@ -6,6 +7,7 @@ import {
   domainDisplayName,
   domainToOrgSlug,
   emailDomainOf,
+  isDiscoverableDomainRecord,
   isVerifiedCorporateUser,
 } from "./org-assurance-policy";
 
@@ -171,10 +173,6 @@ async function ensureUserOrganizationInTransaction(options: {
       return { status: "ambiguous", domain, organizations: candidates };
     }
 
-    if (domainRecords.length > 0) {
-      return { status: "skipped", reason: "no-safe-domain-action", domain };
-    }
-
     if (!allowCreate) {
       return { status: "skipped", reason: "auto-create-disabled", domain };
     }
@@ -207,10 +205,6 @@ async function ensureUserOrganizationInTransaction(options: {
         domain,
         organizations: lockedCandidates,
       };
-    }
-
-    if (lockedDomainRecords.length > 0) {
-      return { status: "skipped", reason: "no-safe-domain-action", domain };
     }
 
     const created = await createOrganizationWithRetries(authApi, {
@@ -291,11 +285,21 @@ async function getExistingUserOrganization(
       "organization.name as name",
       "organization.slug as slug",
       "organization.logo as logo",
+      "organization.metadata as metadata",
     ])
     .where("member.userId", "=", userId)
-    .executeTakeFirst();
+    .orderBy("member.createdAt", "asc")
+    .execute();
 
-  return existing ?? null;
+  const activeOrganization = existing.find(
+    (organization) => !isOrgArchived(organization),
+  );
+  if (!activeOrganization) {
+    return null;
+  }
+
+  const { metadata: _metadata, ...organization } = activeOrganization;
+  return organization;
 }
 
 function slugify(value: string): string {
@@ -354,7 +358,7 @@ async function getOrganizationsForDomainRecords(
 ): Promise<DomainOrganizationCandidate[]> {
   const visibleRecords = records.filter(
     (record): record is OrganizationDomain & { joinMode: "auto" | "request" } =>
-      record.verificationStatus === "verified" && record.joinMode !== "off",
+      isDiscoverableDomainRecord(record),
   );
 
   if (visibleRecords.length === 0) {
