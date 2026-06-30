@@ -2,6 +2,8 @@ import { nanoid } from "nanoid";
 
 type IdPrefixes =
   | "conn"
+  | "cwt"
+  | "ccg"
   | "audit"
   | "log"
   | "vir"

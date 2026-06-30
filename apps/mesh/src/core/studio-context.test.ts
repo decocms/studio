@@ -19,6 +19,7 @@ const createMockContext = (
   auth: {},
   storage: {
     connections: null as never,
+    connectionCredentialVault: null as never,
     organizationSettings: null as never,
     monitoring: null as never,
     virtualMcps: null as never,

@@ -16,6 +16,7 @@ import {
   MCPServer,
 } from "./tools.ts";
 export {
+  CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
   createPrompt,
   createPublicPrompt,
   type Prompt,
@@ -30,6 +31,9 @@ export {
   type ResourceContents,
   type CreatedResource,
   ensureAuthenticated,
+  type BindingCredentialAccessTokenReadScope,
+  type ConfigurationScope,
+  type CredentialAccessTokenReadScope,
 } from "./tools.ts";
 import type { Binding } from "./wrangler.ts";
 export { proxyConnectionForId, BindingOf, AgentOf } from "./bindings.ts";
@@ -39,6 +43,11 @@ export {
   type CreateStubAPIOptions,
   type ToolBinder,
 } from "./mcp.ts";
+export {
+  createStudioVaultClient,
+  type StudioAccessToken,
+  type StudioVaultClientOptions,
+} from "./vault.ts";
 
 export type { BindingRegistry } from "./bindings.ts";
 

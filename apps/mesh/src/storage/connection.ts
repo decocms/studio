@@ -231,6 +231,43 @@ export class ConnectionStorage implements ConnectionStoragePort {
     return connection;
   }
 
+  async createNew(data: Partial<ConnectionEntity>): Promise<ConnectionEntity> {
+    const id = data.id ?? generatePrefixedId("conn");
+    const now = new Date().toISOString();
+    const slug = getConnectionSlug(data);
+    const serialized = await this.serializeConnection({
+      ...data,
+      id,
+      slug,
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    });
+
+    try {
+      await this.db
+        .insertInto("connections")
+        .values(serialized as Insertable<Database["connections"]>)
+        .execute();
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message.includes("duplicate key") ||
+          error.message.includes("unique constraint"))
+      ) {
+        throw new Error("Connection ID already exists");
+      }
+      throw error;
+    }
+
+    const connection = await this.findById(id);
+    if (!connection) {
+      throw new Error(`Failed to create connection with id: ${id}`);
+    }
+
+    return connection;
+  }
+
   async findById(
     id: string,
     organizationId?: string,

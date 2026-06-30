@@ -16,6 +16,7 @@ import { CredentialVault } from "../encryption/credential-vault";
 import { getSettings } from "../settings";
 import { getBaseUrl } from "./server-constants";
 import { ConnectionStorage } from "../storage/connection";
+import { ConnectionCredentialVaultStorage } from "../storage/connection-credential-vault";
 import {
   createRequestCachedVirtualMcps,
   VirtualMCPStorage,
@@ -1272,6 +1273,7 @@ export async function createStudioContextFactory(
   const kvStorage = new KyselyKVStorage(config.db);
   const baseStorage = {
     connections: new ConnectionStorage(config.db, vault),
+    connectionCredentialVault: new ConnectionCredentialVaultStorage(config.db),
     organizationSettings: new OrganizationSettingsStorage(config.db),
     monitoring: new SqlMonitoringStorage(
       monitoringEngine,

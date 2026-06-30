@@ -218,9 +218,9 @@ async function hoistConnectionData<
 }
 
 /**
- * Decorate a ConnectionStoragePort so create/update hoist inline `data:` media
- * (in `icon` and `metadata`) before persisting. Other methods pass through
- * untouched.
+ * Decorate a ConnectionStoragePort so create/createNew/update hoist inline
+ * `data:` media (in `icon` and `metadata`) before persisting. Other methods
+ * pass through untouched.
  */
 function withConnectionAssetHoisting<T extends ConnectionStoragePort>(
   base: T,
@@ -232,6 +232,11 @@ function withConnectionAssetHoisting<T extends ConnectionStoragePort>(
       if (prop === "create") {
         return async (data: Parameters<ConnectionStoragePort["create"]>[0]) =>
           target.create(await hoistConnectionData(data, hoist));
+      }
+      if (prop === "createNew") {
+        return async (
+          data: Parameters<ConnectionStoragePort["createNew"]>[0],
+        ) => target.createNew(await hoistConnectionData(data, hoist));
       }
       if (prop === "update") {
         return async (
