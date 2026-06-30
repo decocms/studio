@@ -27,7 +27,7 @@
 import type { StudioContext } from "@/core/studio-context";
 import { PermanentRunError } from "@/core/dispatch-errors";
 import { posthog } from "@/posthog";
-import type { UIMessageChunk } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 import { InProcessSandboxClient } from "@/harnesses/in-process-sandbox-client";
 import {
   shouldOffload,
@@ -79,6 +79,7 @@ import { mintRunFenceToken } from "./dispatch-fence";
 import { synthesizedErrorMessageId } from "./message-ids";
 import { loadDecopilotContext } from "@/harnesses/decopilot/context-loader";
 import { PartEmitter } from "./part-emitter";
+import { foldedToUIMessage } from "./projector-seed";
 import { ProgressBumpThrottle } from "./progress-bump";
 import { uploadFileParts, resolveStorageRefs } from "./file-materializer";
 import type { ToolApprovalLevel } from "./helpers";
@@ -232,6 +233,14 @@ export interface AgentSandboxUiStreamInput {
   /** Deterministic id for a synthesized error message (`error-${runId}`) so
    *  projector-only persistence dedupes retries. */
   errorMessageId?: string;
+  /**
+   * LAZY loader for the trailing persisted message, used to seed `ingestRun`'s
+   * hook reassembly so a tool-approval CONTINUATION run reconciles its
+   * `tool-output` against the proposal (see `IngestRunInput.originalMessages`).
+   * Resolved INSIDE the stream `start()` — kept lazy so a never-consumed link
+   * run (relay to user-desktop) does not pay the DB read.
+   */
+  loadOriginalMessages?: () => Promise<UIMessage[] | undefined>;
 }
 
 /**
@@ -263,12 +272,14 @@ export function buildAgentSandboxUiStream(
   return new ReadableStream({
     async start(controller) {
       try {
+        const originalMessages = await input.loadOriginalMessages?.();
         await ingestRun(
           {
             runId: input.runId,
             fenceToken: input.fenceToken,
             chunks: seqChunks(),
             errorMessageId: input.errorMessageId,
+            originalMessages,
           },
           {
             streamBuffer: input.streamBuffer,
@@ -1517,6 +1528,19 @@ async function prepareRun(
             mem.thread.id,
             runFenceToken,
           ),
+          // Seed the hook reassembly with the trailing persisted message so a
+          // tool-approval CONTINUATION reconciles its tool-output against the
+          // proposal (and adopts its id) instead of throwing. Mirrors the
+          // projector's `loadWindow` seed. Lazy + only `.at(-1)` is used, so a
+          // single-row window is enough; V1 threads (no part storage) skip it.
+          loadOriginalMessages: partEmitter
+            ? async () =>
+                (
+                  await ctx.storage.threads
+                    .messageParts()
+                    .loadWindow(mem.thread.id, { limit: 1 })
+                ).messages.map(foldedToUIMessage)
+            : undefined,
           title: {
             currentThreadTitle: mem.thread.title,
             threadId: mem.thread.id,

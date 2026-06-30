@@ -23,7 +23,7 @@
  * Pure: the stream buffer, hooks, title options, and `fenceOk` are injected, so
  * this is a unit (no StudioContext, no NATS, no DB).
  */
-import type { UIMessageChunk } from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 import {
   consumeHarnessStream,
   type HarnessStreamConsumerHooks,
@@ -55,6 +55,18 @@ export interface IngestRunInput {
   /** Deterministic id for a synthesized error message (`error-${runId}`) so
    *  projector-only persistence dedupes retries. See consumeHarnessStream. */
   errorMessageId?: string;
+  /**
+   * Trailing window of prior persisted messages, used ONLY to SEED the hook
+   * reassembly (`consumeHarnessStream`). For a tool-approval CONTINUATION run
+   * the trailing message is the assistant "proposal" still holding the pending
+   * tool part; seeding it lets the continuation's `tool-output` chunk reconcile
+   * (and adopt the proposal id via `continuationMessageId`) instead of throwing
+   * `No tool invocation found`. Mirrors the durable projector, which seeds the
+   * same way from `loadWindow`. Undefined/empty for fresh turns (the trailing
+   * message is the user's, so no continuation merge happens). Only `.at(-1)` is
+   * consulted — a single-message window suffices.
+   */
+  originalMessages?: UIMessage[];
 }
 
 export interface IngestRunDeps {
@@ -156,6 +168,7 @@ export async function ingestRun(
 
   const { uiStream, whenComplete } = consumeHarnessStream({
     chunks: dedupedChunks(),
+    originalMessages: input.originalMessages,
     title: {
       ...deps.title,
       persistTitle: async () => {},
