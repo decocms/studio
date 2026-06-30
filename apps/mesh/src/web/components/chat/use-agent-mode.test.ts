@@ -43,9 +43,9 @@ describe("resolveTierSubtitle", () => {
         "Haiku 4.5",
       );
     });
-    it("smart → Sonnet 4.6", () => {
+    it("smart → Sonnet 5", () => {
       expect(resolveTierSubtitle("local-claude-code", "smart")).toBe(
-        "Sonnet 4.6",
+        "Sonnet 5",
       );
     });
     it("thinking → Opus 4.8 1M", () => {

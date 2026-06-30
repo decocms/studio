@@ -103,13 +103,14 @@ export function createClaudeCodeModel(
  * NOTE: The ai-sdk-provider-claude-code SDK only recognises the short aliases
  * "opus", "sonnet", and "haiku". Any other string is passed straight through to
  * the CLI's --model flag. For models not covered by a short alias (Fable 5,
- * Opus 4.8 1M) we therefore use the full CLI model ID so the CLI can resolve
- * it correctly. For example, Opus 4.8 with 1M context uses `opus[1m]`.
+ * Sonnet 5, Opus 4.8 1M) we therefore use the full CLI model ID so the CLI can
+ * resolve it correctly. For example, Sonnet 5 uses `claude-sonnet-5`, while
+ * Opus 4.8 with 1M context uses `opus[1m]`.
  */
 const CLAUDE_CODE_SDK_MODELS: Record<string, string> = {
   "claude-code:opus": "opus",
   "claude-code:opus-1m": "opus[1m]",
-  "claude-code:sonnet": "sonnet",
+  "claude-code:sonnet": "claude-sonnet-5",
   "claude-code:haiku": "haiku",
   "claude-code:fable": "claude-fable-5",
 };
