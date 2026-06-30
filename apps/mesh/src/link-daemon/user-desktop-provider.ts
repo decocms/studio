@@ -6,9 +6,11 @@
  * eviction.
  *
  * Idle sandboxes are evicted when the population exceeds `maxSandboxes`
- * (default 20). Sandboxes with active dispatches are pinned — eviction
- * skips them and we tolerate going temporarily over the cap. The daemon's
- * proxy hits call `provider.recordHit`, keeping warm sandboxes warm.
+ * (default 20). Sandboxes with active dispatches are pinned — both LRU
+ * eviction AND explicit `deleteSandbox` skip them (a reap mid-run would
+ * close the SSE pump and fail the dispatch), and we tolerate going
+ * temporarily over the cap. The daemon's proxy hits call
+ * `provider.recordHit`, keeping warm sandboxes warm.
  *
  * The actual process spawn / config-post / health-probe are passed in
  * as deps so the production wiring (apps/mesh/src/link-daemon/index.ts)
@@ -635,6 +637,19 @@ export function createDesktopSandboxProvider(
       if (!s) {
         console.log(
           `[user-desktop] delete handle=${handle} (not found, no-op)`,
+        );
+        return;
+      }
+      // Never reap a sandbox with a run in flight. The cluster's FS hook reaps
+      // on `DaemonUnreachable` (e.g. a git-status poll that timed out against a
+      // busy-but-alive daemon); honoring that mid-dispatch SIGTERMs the sandbox,
+      // closes its SSE pump, and the run dies with "missing seq" at projection.
+      // The dispatch pin already shields LRU eviction — this extends it to the
+      // explicit delete path. The cluster's follow-up `ensureSandbox` cache-hits
+      // the still-alive sandbox, so a transient timeout self-heals via retry.
+      if (s.activeDispatchCount > 0) {
+        console.warn(
+          `[user-desktop] delete handle=${handle} port=${s.port} REFUSED — ${s.activeDispatchCount} active dispatch(es) in flight`,
         );
         return;
       }

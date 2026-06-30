@@ -248,6 +248,46 @@ describe("desktop sandbox provider", () => {
     }
   });
 
+  it("refuses to delete a sandbox while a dispatch is in flight (a reap must not kill a live run)", async () => {
+    const dataDir = tmpDataDir();
+    try {
+      let killed = 0;
+      let portCounter = 30000;
+      const provider = createDesktopSandboxProvider({
+        dataDir,
+        spawnDaemon: () => ({
+          port: 12345,
+          kill: () => {
+            killed++;
+          },
+        }),
+        postConfig: async () => {},
+        waitForHealth: async () => {},
+        pickPort: () => portCounter++,
+      });
+      await provider.ensureSandbox({ handle: "abc", repo: undefined });
+
+      // A run is streaming on the sandbox — the work item holds the dispatch.
+      const release = provider.acquireDispatch("abc");
+
+      // A transient FS-op timeout reaps the handle (DELETE /api/sandboxes/abc)
+      // mid-dispatch. The live sandbox MUST survive: killing it closes the SSE
+      // pump and the run dies with "missing seq" at projection.
+      await provider.deleteSandbox("abc");
+      expect(killed).toBe(0);
+      expect(provider.hasHandle("abc")).toBe(true);
+      expect(provider.proxyPort("abc")).toBe(30000);
+
+      // Once the dispatch settles and releases the pin, delete proceeds.
+      release();
+      await provider.deleteSandbox("abc");
+      expect(killed).toBe(1);
+      expect(provider.hasHandle("abc")).toBe(false);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not create registry rows when deleting an unknown handle", async () => {
     const dataDir = tmpDataDir();
     try {
