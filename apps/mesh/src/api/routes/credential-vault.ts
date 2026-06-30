@@ -1,7 +1,10 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { StudioContext } from "@/core/studio-context";
 import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
-import { CREDENTIAL_ACCESS_TOKEN_READ_SCOPE } from "@/storage/connection-credential-vault";
+import {
+  CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+  CREDENTIAL_CONFIGURATION_READ_SCOPE,
+} from "@/storage/connection-credential-vault";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 
 type Variables = {
@@ -19,48 +22,72 @@ function serializeExpiresAt(value: Date | string | null): string | null {
   return value instanceof Date ? value.toISOString() : value;
 }
 
+async function authorizeVaultRequest(
+  c: Context<{ Variables: Variables }>,
+  targetConnectionId: string,
+  scope: string,
+): Promise<
+  | { ok: true; ctx: StudioContext; organizationId: string }
+  | { ok: false; response: Response }
+> {
+  const token = bearerToken(c.req.header("authorization"));
+  if (!token) {
+    return { ok: false, response: c.json({ error: "Unauthorized" }, 401) };
+  }
+
+  const ctx = c.get("meshContext");
+  const organizationId = ctx.organization?.id;
+  if (!organizationId) {
+    return {
+      ok: false,
+      response: c.json({ error: "Organization context required" }, 403),
+    };
+  }
+
+  const workloadToken =
+    await ctx.storage.connectionCredentialVault.authenticateWorkloadToken(
+      token,
+    );
+  if (!workloadToken || workloadToken.organizationId !== organizationId) {
+    return { ok: false, response: c.json({ error: "Unauthorized" }, 401) };
+  }
+
+  const subject = await ctx.storage.connections.findById(
+    workloadToken.subjectConnectionId,
+    organizationId,
+  );
+  if (!subject || subject.status !== "active") {
+    return { ok: false, response: c.json({ error: "Unauthorized" }, 401) };
+  }
+
+  const hasGrant = await ctx.storage.connectionCredentialVault.hasGrant({
+    organizationId,
+    subjectConnectionId: workloadToken.subjectConnectionId,
+    targetConnectionId,
+    scope,
+  });
+  if (!hasGrant) {
+    return { ok: false, response: c.json({ error: "Forbidden" }, 403) };
+  }
+
+  return { ok: true, ctx, organizationId };
+}
+
 export const createCredentialVaultRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
 
   app.post("/vault/connections/:connectionId/access-token", async (c) => {
-    const token = bearerToken(c.req.header("authorization"));
-    if (!token) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    const ctx = c.get("meshContext");
-    const organizationId = ctx.organization?.id;
-    if (!organizationId) {
-      return c.json({ error: "Organization context required" }, 403);
-    }
-
-    const workloadToken =
-      await ctx.storage.connectionCredentialVault.authenticateWorkloadToken(
-        token,
-      );
-    if (!workloadToken || workloadToken.organizationId !== organizationId) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
-    const subject = await ctx.storage.connections.findById(
-      workloadToken.subjectConnectionId,
-      organizationId,
-    );
-    if (!subject || subject.status !== "active") {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-
     const targetConnectionId = c.req.param("connectionId");
-    const hasGrant = await ctx.storage.connectionCredentialVault.hasGrant({
-      organizationId,
-      subjectConnectionId: workloadToken.subjectConnectionId,
+    const authz = await authorizeVaultRequest(
+      c,
       targetConnectionId,
-      scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
-    });
-    if (!hasGrant) {
-      return c.json({ error: "Forbidden" }, 403);
+      CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+    );
+    if (!authz.ok) {
+      return authz.response;
     }
 
+    const { ctx, organizationId } = authz;
     const target = await ctx.storage.connections.findById(
       targetConnectionId,
       organizationId,
@@ -95,6 +122,35 @@ export const createCredentialVaultRoutes = () => {
       accessToken: result.accessToken,
       expiresAt: serializeExpiresAt(downstreamToken?.expiresAt ?? null),
       scope: downstreamToken?.scope ?? null,
+    });
+  });
+
+  app.post("/vault/connections/:connectionId/configuration", async (c) => {
+    const targetConnectionId = c.req.param("connectionId");
+    const authz = await authorizeVaultRequest(
+      c,
+      targetConnectionId,
+      CREDENTIAL_CONFIGURATION_READ_SCOPE,
+    );
+    if (!authz.ok) {
+      return authz.response;
+    }
+
+    const { ctx, organizationId } = authz;
+    const target = await ctx.storage.connections.findById(
+      targetConnectionId,
+      organizationId,
+    );
+    if (!target || target.status !== "active") {
+      return c.json({ error: "Connection not found" }, 404);
+    }
+
+    c.header("Cache-Control", "no-store");
+    c.header("Pragma", "no-cache");
+    return c.json({
+      type: "mcp_configuration",
+      state: target.configuration_state ?? {},
+      scopes: target.configuration_scopes ?? [],
     });
   });
 

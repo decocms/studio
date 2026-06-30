@@ -16,6 +16,7 @@ import { CredentialVault } from "../../encryption/credential-vault";
 import { setGlobalSettings, getSettings } from "../../settings";
 import {
   CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+  CREDENTIAL_CONFIGURATION_READ_SCOPE,
   ConnectionCredentialVaultStorage,
 } from "../../storage/connection-credential-vault";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
@@ -97,6 +98,39 @@ describe("Credential Vault Routes", () => {
           updated_at: now,
         },
         {
+          id: "conn_configuration_target",
+          organization_id: "org_1",
+          created_by: "user_1",
+          title: "Configuration Target",
+          connection_type: "HTTP",
+          connection_url: "https://configuration.example.test/mcp",
+          configuration_state: await new CredentialVault(
+            getSettings().encryptionKey,
+          ).encrypt(
+            JSON.stringify({
+              apiKey: "configuration-secret",
+              accountId: "acct_123",
+            }),
+          ),
+          configuration_scopes: JSON.stringify(["self::TOOL"]),
+          status: "active",
+          pinned: false,
+          created_at: now,
+          updated_at: now,
+        },
+        {
+          id: "conn_empty_configuration_target",
+          organization_id: "org_1",
+          created_by: "user_1",
+          title: "Empty Configuration Target",
+          connection_type: "HTTP",
+          connection_url: "https://empty-configuration.example.test/mcp",
+          status: "active",
+          pinned: false,
+          created_at: now,
+          updated_at: now,
+        },
+        {
           id: "conn_inactive_granted",
           organization_id: "org_1",
           created_by: "user_1",
@@ -134,6 +168,14 @@ describe("Credential Vault Routes", () => {
         {
           targetConnectionId: "conn_inactive_granted",
           scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+        },
+        {
+          targetConnectionId: "conn_configuration_target",
+          scope: CREDENTIAL_CONFIGURATION_READ_SCOPE,
+        },
+        {
+          targetConnectionId: "conn_empty_configuration_target",
+          scope: CREDENTIAL_CONFIGURATION_READ_SCOPE,
         },
       ],
     });
@@ -205,6 +247,82 @@ describe("Credential Vault Routes", () => {
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
     );
     expect(body.scope).toBe("read write");
+  });
+
+  it("exchanges a workload token for a granted downstream MCP configuration", async () => {
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/vault/connections/conn_configuration_target/configuration",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${workloadToken}` },
+        },
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(res.headers.get("Pragma")).toBe("no-cache");
+    const body = (await res.json()) as {
+      type: string;
+      state: Record<string, unknown>;
+      scopes: string[];
+    };
+    expect(body).toEqual({
+      type: "mcp_configuration",
+      state: {
+        apiKey: "configuration-secret",
+        accountId: "acct_123",
+      },
+      scopes: ["self::TOOL"],
+    });
+  });
+
+  it("returns empty configuration state and scopes for granted targets without saved configuration", async () => {
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/vault/connections/conn_empty_configuration_target/configuration",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${workloadToken}` },
+        },
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      type: "mcp_configuration",
+      state: {},
+      scopes: [],
+    });
+  });
+
+  it("does not allow an access-token grant to read configuration", async () => {
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/vault/connections/conn_target/configuration",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${workloadToken}` },
+        },
+      ),
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  it("does not allow a configuration grant to read an access token", async () => {
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/vault/connections/conn_configuration_target/access-token",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${workloadToken}` },
+        },
+      ),
+    );
+
+    expect(res.status).toBe(403);
   });
 
   it("rejects access when the subject lacks a grant to the target", async () => {
