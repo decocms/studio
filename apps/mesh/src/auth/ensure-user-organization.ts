@@ -69,6 +69,11 @@ export type EnsureOrganizationResult =
       createdVia: string;
     }
   | {
+      status: "already_has_organization";
+      organization: EnsuredOrganization;
+      domain: string | null;
+    }
+  | {
       status: "joined";
       organization: EnsuredOrganization;
       domain: string;
@@ -98,6 +103,44 @@ export async function ensureUserOrganization(
 ): Promise<EnsureOrganizationResult> {
   const { db, authApi, user, allowCreate, createdVia } = options;
   const domain = emailDomainOf(user.email);
+
+  return db.transaction().execute(async (trx) => {
+    await sql`select pg_advisory_xact_lock(hashtext(${`user-org:${user.id}`})::bigint)`.execute(
+      trx,
+    );
+
+    const existingOrganization = await getExistingUserOrganization(
+      trx,
+      user.id,
+    );
+    if (existingOrganization) {
+      return {
+        status: "already_has_organization",
+        organization: existingOrganization,
+        domain,
+      };
+    }
+
+    return ensureUserOrganizationInTransaction({
+      db: trx,
+      authApi,
+      user,
+      allowCreate,
+      createdVia,
+      domain,
+    });
+  });
+}
+
+async function ensureUserOrganizationInTransaction(options: {
+  db: Transaction<Database>;
+  authApi: AuthOrganizationApi;
+  user: AssuredUser;
+  allowCreate: boolean;
+  createdVia: string;
+  domain: string | null;
+}): Promise<EnsureOrganizationResult> {
+  const { db, authApi, user, allowCreate, createdVia, domain } = options;
 
   if (isVerifiedCorporateUser(user) && domain) {
     const domainStorage = new OrganizationDomainStorage(db);
@@ -129,60 +172,58 @@ export async function ensureUserOrganization(
       return { status: "skipped", reason: "auto-create-disabled", domain };
     }
 
-    return db.transaction().execute(async (trx) => {
-      await sql`select pg_advisory_xact_lock(hashtext(${domain})::bigint)`.execute(
-        trx,
-      );
+    await sql`select pg_advisory_xact_lock(hashtext(${domain})::bigint)`.execute(
+      db,
+    );
 
-      const lockedDomainStorage = new OrganizationDomainStorage(trx);
-      const lockedDomainRecords =
-        await lockedDomainStorage.getAllByDomain(domain);
-      const lockedCandidates = await getOrganizationsForDomainRecords(
-        trx,
-        lockedDomainRecords,
-      );
-      const lockedAutoCandidates = lockedCandidates.filter(
-        (candidate) => candidate.joinMode === "auto",
-      );
+    const lockedDomainStorage = new OrganizationDomainStorage(db);
+    const lockedDomainRecords =
+      await lockedDomainStorage.getAllByDomain(domain);
+    const lockedCandidates = await getOrganizationsForDomainRecords(
+      db,
+      lockedDomainRecords,
+    );
+    const lockedAutoCandidates = lockedCandidates.filter(
+      (candidate) => candidate.joinMode === "auto",
+    );
 
-      if (lockedAutoCandidates.length === 1) {
-        const organization = lockedAutoCandidates[0]!;
-        await addMemberIdempotent(authApi, user.id, organization.id);
+    if (lockedAutoCandidates.length === 1) {
+      const organization = lockedAutoCandidates[0]!;
+      await addMemberIdempotent(authApi, user.id, organization.id);
 
-        return { status: "joined", organization, domain, createdVia };
-      }
+      return { status: "joined", organization, domain, createdVia };
+    }
 
-      if (lockedCandidates.length > 0) {
-        return {
-          status: "ambiguous",
-          domain,
-          organizations: lockedCandidates,
-        };
-      }
+    if (lockedCandidates.length > 0) {
+      return {
+        status: "ambiguous",
+        domain,
+        organizations: lockedCandidates,
+      };
+    }
 
-      if (lockedDomainRecords.length > 0) {
-        return { status: "skipped", reason: "no-safe-domain-action", domain };
-      }
+    if (lockedDomainRecords.length > 0) {
+      return { status: "skipped", reason: "no-safe-domain-action", domain };
+    }
 
-      const created = await createOrganizationWithRetries(authApi, {
-        name: domainDisplayName(domain),
-        baseSlug: domainToOrgSlug(domain),
-        userId: user.id,
-      });
-
-      await lockedDomainStorage.add(created.id, domain, {
-        joinMode: "auto",
-        verificationStatus: "verified",
-        verificationMethod: "email",
-      });
-
-      const organization = await getOrganization(trx, created.id);
-      if (!organization) {
-        throw new Error("Created organization could not be loaded");
-      }
-
-      return { status: "created", organization, domain, createdVia };
+    const created = await createOrganizationWithRetries(authApi, {
+      name: domainDisplayName(domain),
+      baseSlug: domainToOrgSlug(domain),
+      userId: user.id,
     });
+
+    await lockedDomainStorage.add(created.id, domain, {
+      joinMode: "auto",
+      verificationStatus: "verified",
+      verificationMethod: "email",
+    });
+
+    const organization = await getOrganization(db, created.id);
+    if (!organization) {
+      throw new Error("Created organization could not be loaded");
+    }
+
+    return { status: "created", organization, domain, createdVia };
   }
 
   if (!allowCreate) {
@@ -201,6 +242,25 @@ export async function ensureUserOrganization(
   }
 
   return { status: "created", organization, domain, createdVia };
+}
+
+async function getExistingUserOrganization(
+  db: DatabaseExecutor,
+  userId: string,
+): Promise<EnsuredOrganization | null> {
+  const existing = await db
+    .selectFrom("member")
+    .innerJoin("organization", "organization.id", "member.organizationId")
+    .select([
+      "organization.id as id",
+      "organization.name as name",
+      "organization.slug as slug",
+      "organization.logo as logo",
+    ])
+    .where("member.userId", "=", userId)
+    .executeTakeFirst();
+
+  return existing ?? null;
 }
 
 function slugify(value: string): string {
