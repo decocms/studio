@@ -193,9 +193,7 @@ export function renderField(props: FieldProps) {
           key={props.path}
           {...props}
           multivariateResolveType={ref.resolveType}
-          extractValue={(v) => v}
-          renderPlainField={innerRenderer}
-          renderVariantField={innerRenderer}
+          renderInnerField={innerRenderer}
         />
       );
     }

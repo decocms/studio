@@ -5,7 +5,6 @@ import {
   duplicateVariant,
   flattenMultivariate,
   isMultivariateWrapper,
-  parseMultivariateVariants,
   reorderVariant,
   updateVariantRule,
   updateVariantValue,
@@ -113,16 +112,6 @@ describe("flattenMultivariate", () => {
       variants: [],
     };
     expect(flattenMultivariate(wrapper)).toBeUndefined();
-  });
-});
-
-describe("parseMultivariateVariants", () => {
-  test("extracts variants with rules and values", () => {
-    const wrapper = makeWrapper(["a.png", "b.png"]);
-    const variants = parseMultivariateVariants(wrapper);
-    expect(variants).toHaveLength(2);
-    expect(variants[0]!.value).toBe("a.png");
-    expect(variants[1]!.value).toBe("b.png");
   });
 });
 

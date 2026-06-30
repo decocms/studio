@@ -20,16 +20,6 @@ export function isMultivariateWrapper(
   return typeof obj.__resolveType === "string" && Array.isArray(obj.variants);
 }
 
-/** Extract the variants array from a multivariate wrapper. */
-export function parseMultivariateVariants(
-  value: MultivariateWrapper,
-): MultivariateVariant[] {
-  return value.variants.map((v) => ({
-    rule: (v.rule as Record<string, unknown>) ?? defaultVariantRule(),
-    value: v.value,
-  }));
-}
-
 /** Convert a plain value into a multivariate wrapper with two "always" variants. */
 export function wrapAsMultivariate(
   value: unknown,
@@ -140,16 +130,3 @@ export function updateVariantRule(
   variants[index] = { ...current, rule };
   return { ...wrapper, variants };
 }
-
-// Legacy aliases for backward compatibility with existing imports
-export type MediaVariant = MultivariateVariant;
-export type MediaMultivariateWrapper = MultivariateWrapper;
-export const isMediaMultivariateWrapper = isMultivariateWrapper;
-export const wrapAsMediaMultivariate = wrapAsMultivariate;
-export const flattenMediaMultivariate = flattenMultivariate;
-export const appendMediaVariant = appendVariant;
-export const deleteMediaVariant = deleteVariant;
-export const duplicateMediaVariant = duplicateVariant;
-export const reorderMediaVariant = reorderVariant;
-export const updateMediaVariantValue = updateVariantValue;
-export const updateMediaVariantRule = updateVariantRule;

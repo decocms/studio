@@ -627,6 +627,82 @@ describe("resolveSchema – type-discriminated unions", () => {
   });
 });
 
+describe("resolveSchema – plainSchema on block-ref", () => {
+  test("populates plainSchema for single non-loader branch (inline anyOf)", () => {
+    // When the anyOf has inline branches (not $ref), the loader detection
+    // uses `a.properties.__resolveType.enum`. This mirrors the ImageWidget
+    // pattern: anyOf: [{ type: "string", format: "image-uri" }, loaderDef].
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        image: {
+          anyOf: [
+            { type: "string", format: "image-uri" },
+            {
+              type: "object",
+              properties: {
+                __resolveType: {
+                  type: "string",
+                  enum: ["website/flags/multivariate/image.ts"],
+                  default: "website/flags/multivariate/image.ts",
+                },
+                variants: {
+                  type: "array",
+                  items: { type: "object" },
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const image = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.image;
+    expect(image?.type).toBe("block-ref");
+    expect(image?.plainSchema).toBeDefined();
+    expect(image?.plainSchema?.type).toBe("string");
+    expect(image?.plainSchema?.format).toBe("image-uri");
+  });
+
+  test("plainSchema is undefined when all branches are loaders", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        loader: {
+          anyOf: [
+            {
+              type: "object",
+              properties: {
+                __resolveType: {
+                  type: "string",
+                  enum: ["site/loaders/a.ts"],
+                  default: "site/loaders/a.ts",
+                },
+              },
+            },
+            {
+              type: "object",
+              properties: {
+                __resolveType: {
+                  type: "string",
+                  enum: ["site/loaders/b.ts"],
+                  default: "site/loaders/b.ts",
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const loader = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.loader;
+    expect(loader?.type).toBe("block-ref");
+    expect(loader?.plainSchema).toBeUndefined();
+  });
+});
+
 describe("resolveSchema – @hide on block-ref fields", () => {
   // Mirrors @decocms/start ≥6.10: a hidden loader/block-ref prop is emitted as
   // `{ anyOf: [Resolvable, loaderRef], hide: "true" }`. The block-ref return in

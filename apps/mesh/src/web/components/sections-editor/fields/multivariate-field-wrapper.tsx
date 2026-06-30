@@ -11,11 +11,45 @@ import {
   SectionVariantList,
   type SectionVariantEntry,
 } from "../section-variant-list";
-import { MatcherPicker, extractMatchers } from "../matcher-picker";
+import {
+  MatcherPicker,
+  extractMatchers,
+  type MatcherEntry,
+} from "../matcher-picker";
 import { formatMatcher } from "../format-matcher";
-import { resolveSchema } from "../resolve-schema";
+import {
+  resolveSchema,
+  type SchemaProperty,
+  type LiveMeta,
+} from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
+
+// Cache expensive computations that depend on stable inputs.
+// `meta` changes only on page load; `resolveType` changes only on rule picker selection.
+const matchersCache = new WeakMap<LiveMeta, MatcherEntry[]>();
+const schemaCache = new Map<string, SchemaProperty | null>();
+
+function cachedExtractMatchers(meta: LiveMeta): MatcherEntry[] {
+  let result = matchersCache.get(meta);
+  if (!result) {
+    result = extractMatchers(meta);
+    matchersCache.set(meta, result);
+  }
+  return result;
+}
+
+function cachedResolveSchema(
+  resolveType: string,
+  meta: LiveMeta,
+): SchemaProperty | null {
+  let result = schemaCache.get(resolveType);
+  if (result === undefined) {
+    result = resolveSchema(resolveType, meta);
+    schemaCache.set(resolveType, result);
+  }
+  return result;
+}
 import {
   appendVariant,
   deleteVariant,
@@ -32,26 +66,19 @@ import type { FieldProps } from "./field-props";
 
 export interface MultivariateFieldWrapperProps extends FieldProps {
   multivariateResolveType: string;
-  /** Extract the plain value from the current (possibly wrapped) value. */
-  extractValue: (value: unknown) => unknown;
-  /** Render the plain (non-multivariate) field. */
-  renderPlainField: (props: FieldProps) => ReactNode;
-  /** Render the inner field for a single variant value. */
-  renderVariantField: (props: FieldProps) => ReactNode;
+  /** Render the inner field (used for both plain and variant values). */
+  renderInnerField: (props: FieldProps) => ReactNode;
 }
 
 export function MultivariateFieldWrapper({
   multivariateResolveType,
-  extractValue,
-  renderPlainField,
-  renderVariantField,
+  renderInnerField,
   ...props
 }: MultivariateFieldWrapperProps) {
   const { value, onChange, meta, path } = props;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   if (!isMultivariateWrapper(value)) {
-    const plainValue = extractValue(value);
     return (
       <div className="relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
         <Tooltip>
@@ -63,9 +90,7 @@ export function MultivariateFieldWrapper({
               className="absolute right-0 top-0 size-6 text-muted-foreground hover:text-foreground"
               aria-label="Add variant"
               onClick={() => {
-                onChange(
-                  wrapAsMultivariate(plainValue, multivariateResolveType),
-                );
+                onChange(wrapAsMultivariate(value, multivariateResolveType));
                 setSelectedIndex(0);
               }}
             >
@@ -74,7 +99,7 @@ export function MultivariateFieldWrapper({
           </TooltipTrigger>
           <TooltipContent>Add variant</TooltipContent>
         </Tooltip>
-        {renderPlainField(props)}
+        {renderInnerField(props)}
       </div>
     );
   }
@@ -95,9 +120,10 @@ export function MultivariateFieldWrapper({
   const currentRt = (currentRule.__resolveType as string) ?? "";
   const currentValue = currentVariant?.value;
 
-  const matchers = meta ? extractMatchers(meta) : [];
+  const matchers = meta ? cachedExtractMatchers(meta) : [];
 
-  const ruleSchema = currentRt && meta ? resolveSchema(currentRt, meta) : null;
+  const ruleSchema =
+    currentRt && meta ? cachedResolveSchema(currentRt, meta) : null;
   const { __resolveType: _, ...ruleFormValue } = currentRule;
 
   const handleFlatten = () => {
@@ -144,7 +170,7 @@ export function MultivariateFieldWrapper({
   const handleRuleFormChange = (val: unknown) => {
     const next = val as Record<string, unknown>;
     const newRule: Record<string, unknown> = currentRt
-      ? { __resolveType: currentRt, ...next }
+      ? { ...next, __resolveType: currentRt }
       : { ...next };
     onChange(updateVariantRule(wrapper, safeIndex, newRule));
   };
@@ -190,7 +216,7 @@ export function MultivariateFieldWrapper({
           )}
         </div>
 
-        {renderVariantField({
+        {renderInnerField({
           ...props,
           value: currentValue,
           onChange: handleValueChange,

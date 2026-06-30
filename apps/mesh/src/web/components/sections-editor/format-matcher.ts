@@ -3,6 +3,13 @@ import { labelFromResolveType } from "./section-types";
 const capitalize = (s: string) =>
   s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 
+const MAX_FORMAT_DEPTH = 5;
+
+const DATE_FORMATTER = new Intl.DateTimeFormat("en", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 /**
  * Render a `start`/`end` ISO-date pair as a compact range — used by deco's
  * built-in date matcher AND by any custom matcher whose rule happens to
@@ -15,15 +22,11 @@ function formatDateRange(rule: Record<string, unknown>): string | null {
   const startStr = typeof start === "string" ? start : "";
   const endStr = typeof end === "string" ? end : "";
   if (!startStr && !endStr) return null;
-  const fmt = new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
   const tryFormat = (iso: string): string | null => {
     if (!iso) return null;
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return null;
-    return fmt.format(d);
+    return DATE_FORMATTER.format(d);
   };
   const startFmt = tryFormat(startStr);
   const endFmt = tryFormat(endStr);
@@ -35,8 +38,10 @@ function formatDateRange(rule: Record<string, unknown>): string | null {
 
 export function formatMatcher(
   rule: Record<string, unknown> | undefined,
+  depth = 0,
 ): string {
   if (!rule) return "Default";
+  if (depth > MAX_FORMAT_DEPTH) return "...";
   const rt = (rule.__resolveType as string) ?? "";
 
   const alwaysTypes = [
@@ -144,7 +149,10 @@ export function formatMatcher(
         op?: string;
       };
       if (matchers && matchers.length > 0) {
-        return matchers.map(formatMatcher).join(` ${op} `);
+        const safeOp = op === "OR" ? "OR" : "AND";
+        return matchers
+          .map((m) => formatMatcher(m, depth + 1))
+          .join(` ${safeOp} `);
       }
       return labelFromResolveType(rt);
     }
