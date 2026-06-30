@@ -384,7 +384,8 @@ test.describe("Commerce onboarding route isolation", () => {
       (url) =>
         url.pathname.startsWith(`/${user.orgSlug}/`) &&
         url.searchParams.get("virtualmcpid") === virtualMcpId &&
-        url.searchParams.get("main") === `app:${connectionId}:DISPLAY_REPORT` &&
+        url.searchParams.get("main") ===
+          `app:${connectionId}:get_my_diagnostic` &&
         url.searchParams.get("chat") === "0",
       { timeout: 20_000 },
     );

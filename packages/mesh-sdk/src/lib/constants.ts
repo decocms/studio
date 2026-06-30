@@ -37,7 +37,7 @@ export const WellKnownOrgMCPId = {
 
 export const COMMERCE_DISCOVERY_MCP_URL =
   "https://commerce-skills.deco-cx.workers.dev/api/mcp";
-export const COMMERCE_DISCOVERY_REPORT_TOOL_NAME = "DISPLAY_REPORT";
+export const COMMERCE_DISCOVERY_REPORT_TOOL_NAME = "get_my_diagnostic";
 export const COMMERCE_DISCOVERY_ICON =
   "https://api.iconify.design/lucide:chart-no-axes-combined.svg?color=%23171717";
 
