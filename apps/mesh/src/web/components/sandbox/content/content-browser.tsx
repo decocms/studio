@@ -105,7 +105,7 @@ import {
   getPageVariantCount,
   getPageVariantSectionsAt,
 } from "@/web/components/sections-editor/page-variants";
-import { extractSectionCatalog } from "@/web/components/sections-editor/section-catalog";
+import { listAvailableSections } from "@/web/components/sections-editor/section-catalog";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/section-types";
 import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
@@ -473,19 +473,11 @@ function ContentBrowserReady({
     a.name.localeCompare(b.name),
   );
   const globalSections = extractGlobalSections(decofile, meta);
-  // Only the Sections tab consumes the raw catalog, and resolving schema
-  // metadata for every manifest section is the heaviest computation here — so
-  // skip it entirely on the other tabs.
+  // Only the Sections tab needs the raw catalog. Use the cheap lister (labels
+  // only, no per-section schema resolution) — resolving every section's schema
+  // here froze the tab on sites with many sections.
   const availableSections: AvailableSectionEntry[] =
-    activeCollection === "sections"
-      ? extractSectionCatalog(meta, decofile)
-          .filter((entry) => !entry.isSavedBlock)
-          .map((entry) => ({
-            resolveType: entry.resolveType,
-            title: entry.title,
-            description: entry.description,
-          }))
-      : [];
+    activeCollection === "sections" ? listAvailableSections(meta) : [];
   const siteApp = findSiteAppEntry(decofile, meta);
   const allBlogEntries = scanBlogEntries(decofile);
   const showBlog = BLOG_KINDS.some((k) => allBlogEntries[k].length > 0);
