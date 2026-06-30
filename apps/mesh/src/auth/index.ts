@@ -46,6 +46,7 @@ import { identifyAuthenticatedUser } from "./posthog-identify";
 import { ADMIN_ROLES } from "./roles";
 import { getBuiltinRoleStatements } from "./builtin-role-permission";
 import { createSSOConfig } from "./sso";
+import { GENERIC_EMAIL_DOMAINS } from "./org-assurance-policy";
 
 /**
  * Convert a string to a URL-friendly slug
@@ -385,32 +386,6 @@ const plugins = [
       ]
     : []),
 ];
-
-/**
- * Generic email providers that should be skipped for domain-based auto-join.
- */
-const GENERIC_EMAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "yahoo.com",
-  "yahoo.co.uk",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "aol.com",
-  "protonmail.com",
-  "proton.me",
-  "zoho.com",
-  "yandex.com",
-  "mail.com",
-  "gmx.com",
-  "gmx.net",
-  "tutanota.com",
-  "fastmail.com",
-]);
 
 export { GENERIC_EMAIL_DOMAINS };
 
