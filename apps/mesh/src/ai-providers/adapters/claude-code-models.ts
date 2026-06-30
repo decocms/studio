@@ -22,7 +22,7 @@ export const CLAUDE_CODE_MODELS: ModelInfo[] = [
   {
     providerId: "claude-code",
     modelId: "claude-code:sonnet",
-    title: "Claude Code Sonnet",
+    title: "Claude Code Sonnet 5",
     description: "Balanced performance",
     capabilities: ["text", "reasoning"],
     limits: null,

@@ -19,7 +19,7 @@ export type AgentTierMap = Record<ChatTier, AgentTierEntry>;
 
 const CLAUDE_CODE_TIERS: AgentTierMap = {
   fast: { modelId: "claude-code:haiku", label: "Haiku 4.5" },
-  smart: { modelId: "claude-code:sonnet", label: "Sonnet 4.6" },
+  smart: { modelId: "claude-code:sonnet", label: "Sonnet 5" },
   thinking: { modelId: "claude-code:opus-1m", label: "Opus 4.8 1M" },
 };
 

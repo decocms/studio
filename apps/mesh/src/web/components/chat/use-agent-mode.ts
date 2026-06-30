@@ -79,7 +79,7 @@ const DECOPILOT_TIER_DESCRIPTIONS: Record<ChatTier, string> = {
  * hooks, no async I/O.
  *
  * - Local (Claude Code / Codex): returns the harness-mapped model name
- *   with version (e.g. "Sonnet 4.6", "GPT-5.5") from
+ *   with version (e.g. "Sonnet 5", "GPT-5.5") from
  *   `ai-providers/agent-tiers.ts`. Desktop-CLI users are technical and
  *   want to know which model is about to run.
  * - Decopilot (cloud or local): returns a non-technical intent description
