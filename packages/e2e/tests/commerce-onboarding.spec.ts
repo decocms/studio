@@ -1,5 +1,6 @@
 import { type Page } from "@playwright/test";
 import { type Client } from "pg";
+import { signUpViaApi } from "../fixtures/auth-api";
 import { signUp } from "../fixtures/auth";
 import { connectDevDb } from "../fixtures/db";
 import { expect, test } from "../fixtures/test";
@@ -16,6 +17,14 @@ const PASSWORD = "Playwright123!";
 
 function uniqueEmail(prefix: string, domain = "playwright.local") {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}@${domain}`;
+}
+
+function domainToSlug(domain: string) {
+  return domain
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 async function signUpOnCurrentLoginPage(page: Page, email: string) {
@@ -45,6 +54,50 @@ async function findUserId(db: Client, email: string): Promise<string> {
     throw new Error(`Test user ${email} not found in DB after signup`);
   }
   return userId;
+}
+
+async function verifyUserAndClearMembership(db: Client, userId: string) {
+  await db.query(`UPDATE "user" SET "emailVerified" = true WHERE id = $1`, [
+    userId,
+  ]);
+  await db.query(`DELETE FROM "member" WHERE "userId" = $1`, [userId]);
+}
+
+async function orgIdForSlug(db: Client, slug: string): Promise<string> {
+  const orgRow = await db.query<{ id: string }>(
+    `SELECT id FROM "organization" WHERE slug = $1`,
+    [slug],
+  );
+  const orgId = orgRow.rows[0]?.id;
+  if (!orgId) {
+    throw new Error(`Organization ${slug} not found`);
+  }
+  return orgId;
+}
+
+async function seedDomainOrg(
+  db: Client,
+  input: { id: string; name: string; slug: string; domain: string },
+) {
+  const now = new Date().toISOString();
+  await db.query(
+    `INSERT INTO "organization" (id, name, slug, "createdAt")
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (id) DO NOTHING`,
+    [input.id, input.name, input.slug, now],
+  );
+  await db.query(
+    `INSERT INTO organization_domains
+       (id, organization_id, domain, join_mode, verification_status,
+        verification_method, verified_at, created_at, updated_at)
+     VALUES
+       (gen_random_uuid()::text, $1, $2, 'auto', 'verified', 'email', $3, $3, $3)
+     ON CONFLICT (organization_id, domain) DO UPDATE
+       SET join_mode = EXCLUDED.join_mode,
+           verification_status = EXCLUDED.verification_status,
+           updated_at = EXCLUDED.updated_at`,
+    [input.id, input.domain, now],
+  );
 }
 
 test.describe("Commerce onboarding route isolation", () => {
@@ -79,17 +132,21 @@ test.describe("Commerce onboarding route isolation", () => {
   test.afterAll(async () => {
     if (!db) return;
 
-    await db.query(`DELETE FROM organization_domains WHERE domain = $1`, [
-      TEST_DOMAIN,
+    await db.query(`DELETE FROM organization_domains WHERE domain LIKE $1`, [
+      `commerce-e2e-${RUN_ID}%`,
     ]);
-    await db.query(`DELETE FROM "member" WHERE "organizationId" IN ($1, $2)`, [
-      ORG_A_ID,
-      ORG_B_ID,
-    ]);
-    await db.query(`DELETE FROM "organization" WHERE id IN ($1, $2)`, [
-      ORG_A_ID,
-      ORG_B_ID,
-    ]);
+    await db.query(
+      `DELETE FROM "member"
+       WHERE "organizationId" IN (
+         SELECT id FROM "organization"
+         WHERE id IN ($1, $2) OR slug LIKE $3
+       )`,
+      [ORG_A_ID, ORG_B_ID, `commerce-e2e-${RUN_ID}%`],
+    );
+    await db.query(
+      `DELETE FROM "organization" WHERE id IN ($1, $2) OR slug LIKE $3`,
+      [ORG_A_ID, ORG_B_ID, `commerce-e2e-${RUN_ID}%`],
+    );
     await db.end();
   });
 
@@ -120,15 +177,96 @@ test.describe("Commerce onboarding route isolation", () => {
     await signUp(page, { email });
     const userId = await findUserId(db, email);
 
-    await db.query(`UPDATE "user" SET "emailVerified" = true WHERE id = $1`, [
-      userId,
-    ]);
-    await db.query(`DELETE FROM "member" WHERE "userId" = $1`, [userId]);
+    await verifyUserAndClearMembership(db, userId);
 
     await page.goto("/commerce-onboarding");
 
     await expect(page.getByText(ORG_A_NAME)).toBeVisible();
     await expect(page.getByText(ORG_B_NAME)).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
+  });
+
+  test("creates a full-domain org and claim for verified corporate zero-org users", async ({
+    page,
+  }) => {
+    const domain = `commerce-e2e-${RUN_ID}-create.test`;
+    const expectedSlug = domainToSlug(domain);
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-create", domain),
+      name: `Commerce Create ${RUN_ID}`,
+    });
+    await verifyUserAndClearMembership(db, user.userId);
+
+    await page.goto("/commerce-onboarding");
+
+    await expect(page.getByText("Commerce diagnostics")).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
+
+    const orgId = await orgIdForSlug(db, expectedSlug);
+    const memberRow = await db.query<{ id: string }>(
+      `SELECT id FROM "member" WHERE "userId" = $1 AND "organizationId" = $2`,
+      [user.userId, orgId],
+    );
+    expect(memberRow.rows).toHaveLength(1);
+
+    const claimRow = await db.query<{
+      join_mode: string;
+      verification_status: string;
+      verification_method: string | null;
+    }>(
+      `SELECT join_mode, verification_status, verification_method
+       FROM organization_domains
+       WHERE organization_id = $1 AND domain = $2`,
+      [orgId, domain],
+    );
+    expect(claimRow.rows[0]).toEqual({
+      join_mode: "auto",
+      verification_status: "verified",
+      verification_method: "email",
+    });
+  });
+
+  test("auto-joins a future verified corporate user to an unambiguous domain org", async ({
+    page,
+  }) => {
+    const domain = `commerce-e2e-${RUN_ID}-join.test`;
+    const org = {
+      id: `e2e_commerce_join_${RUN_ID}`,
+      name: `Commerce E2E Join ${RUN_ID}`,
+      slug: `commerce-e2e-${RUN_ID}-join`,
+      domain,
+    };
+    await seedDomainOrg(db, org);
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-join", domain),
+      name: `Commerce Join ${RUN_ID}`,
+    });
+    await verifyUserAndClearMembership(db, user.userId);
+
+    await page.goto("/commerce-onboarding");
+
+    await expect(page.getByText("Commerce diagnostics")).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
+
+    const memberRow = await db.query<{ id: string }>(
+      `SELECT id FROM "member" WHERE "userId" = $1 AND "organizationId" = $2`,
+      [user.userId, org.id],
+    );
+    expect(memberRow.rows).toHaveLength(1);
+  });
+
+  test("keeps the general onboarding route isolated from commerce onboarding", async ({
+    page,
+  }) => {
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("general-route"),
+      name: `General Route ${RUN_ID}`,
+    });
+    await verifyUserAndClearMembership(db, user.userId);
+
+    await page.goto("/onboarding");
+
+    await expect(page).toHaveURL((url) => url.pathname === "/onboarding");
+    await expect(page.getByText("Commerce diagnostics")).toHaveCount(0);
   });
 });
