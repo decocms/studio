@@ -202,7 +202,6 @@ function CommerceOnboardingPage() {
       onRetry={() => {
         setSettledEnsureResult(null);
         ensureOrganizationMutation.reset();
-        ensureOrganizationMutation.mutate();
       }}
     />
   );
@@ -219,6 +218,8 @@ function EnsureOrganizationRecovery({
 
   const triggerRecovery = (node: HTMLDivElement | null) => {
     if (!node || startedRef.current) return;
+    // Callback ref keeps the automatic recovery trigger out of render without
+    // using useEffect, which is banned in this React 19 app.
     startedRef.current = true;
     mutation.mutate();
   };
