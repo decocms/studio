@@ -210,11 +210,13 @@ function CommerceOnboardingContent({
             title="Choose an organization"
             description="Select where commerce diagnostics should continue."
           />
-          <OrganizationChoice
-            organizations={activeOrganizations}
-            selectLabel="Continue"
-            onSelected={(organization) => setSelectedOrg(organization)}
-          />
+          <div className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
+            <OrganizationChoice
+              organizations={activeOrganizations}
+              selectLabel="Continue"
+              onSelected={(organization) => setSelectedOrg(organization)}
+            />
+          </div>
         </div>
       </AuthSplitLayout>
     );
@@ -258,18 +260,20 @@ function CommerceOnboardingContent({
             title="Choose an organization"
             description="Your email can access more than one organization. Choose where commerce setup should continue."
           />
-          <OrganizationChoice
-            organizations={ensureResult.organizations}
-            domain={ensureResult.domain ?? undefined}
-            onJoined={(organization, slug) => {
-              invalidateOrganizationListCache();
-              setSelectedOrg({ ...organization, slug });
-              navigate({
-                to: "/commerce-onboarding",
-                search: { org: slug, siteUrl },
-              });
-            }}
-          />
+          <div className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
+            <OrganizationChoice
+              organizations={ensureResult.organizations}
+              domain={ensureResult.domain ?? undefined}
+              onJoined={(organization, slug) => {
+                invalidateOrganizationListCache();
+                setSelectedOrg({ ...organization, slug });
+                navigate({
+                  to: "/commerce-onboarding",
+                  search: { org: slug, siteUrl },
+                });
+              }}
+            />
+          </div>
         </div>
       </AuthSplitLayout>
     );
