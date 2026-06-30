@@ -17,6 +17,7 @@ import {
 } from "./tools.ts";
 export {
   CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+  CREDENTIAL_CONFIGURATION_READ_SCOPE,
   createPrompt,
   createPublicPrompt,
   type Prompt,
@@ -32,8 +33,10 @@ export {
   type CreatedResource,
   ensureAuthenticated,
   type BindingCredentialAccessTokenReadScope,
+  type BindingCredentialConfigurationReadScope,
   type ConfigurationScope,
   type CredentialAccessTokenReadScope,
+  type CredentialConfigurationReadScope,
 } from "./tools.ts";
 import type { Binding } from "./wrangler.ts";
 export { proxyConnectionForId, BindingOf, AgentOf } from "./bindings.ts";
@@ -46,6 +49,8 @@ export {
 export {
   createStudioVaultClient,
   type StudioAccessToken,
+  type StudioVaultClient,
+  type StudioMcpConfiguration,
   type StudioVaultClientOptions,
 } from "./vault.ts";
 

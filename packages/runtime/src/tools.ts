@@ -383,20 +383,50 @@ export interface OnChangeCallback<TState> {
 export const CREDENTIAL_ACCESS_TOKEN_READ_SCOPE =
   "credential:access-token:read" as const;
 
+/**
+ * Canonical scope value for reading saved MCP configuration state from
+ * Studio's credential vault for a configured binding.
+ *
+ * Use it in configuration scopes as
+ * `${STATE_KEY}::credential:configuration:read`, where `STATE_KEY` points at a
+ * `BindingOf(...)` value in configuration state. This scope is intentionally
+ * separate from OAuth access-token reads because some MCPs store provider
+ * settings or credentials in configuration state instead of OAuth.
+ *
+ * The runtime vault client returns Studio's already-saved configuration state;
+ * it does not call the target MCP's `MCP_CONFIGURATION` discovery tool.
+ *
+ * @example
+ * ```ts
+ * const scopes = ["github::credential:configuration:read"] satisfies ConfigurationScope[];
+ * ```
+ */
+export const CREDENTIAL_CONFIGURATION_READ_SCOPE =
+  "credential:configuration:read" as const;
+
 export type CredentialAccessTokenReadScope =
   typeof CREDENTIAL_ACCESS_TOKEN_READ_SCOPE;
+export type CredentialConfigurationReadScope =
+  typeof CREDENTIAL_CONFIGURATION_READ_SCOPE;
 
 export type BindingCredentialAccessTokenReadScope<
   TStateKey extends string = string,
 > = `${TStateKey}::${CredentialAccessTokenReadScope}`;
+export type BindingCredentialConfigurationReadScope<
+  TStateKey extends string = string,
+> = `${TStateKey}::${CredentialConfigurationReadScope}`;
 
 /**
  * Configuration scopes use `STATE_KEY::SCOPE`, where `STATE_KEY` points at a
  * value in the MCP configuration state. Most scopes are MCP-specific tool or
- * capability names. `credential:access-token:read` is the standard Studio Vault
- * scope for leasing a downstream OAuth access token for direct API calls.
+ * capability names. `credential:access-token:read` leases a downstream OAuth
+ * access token for direct API calls, and `credential:configuration:read` reads
+ * the target connection's saved MCP configuration state.
  */
-export type ConfigurationScope = BindingCredentialAccessTokenReadScope | string;
+export type ConfigurationScope =
+  | BindingCredentialAccessTokenReadScope
+  | BindingCredentialConfigurationReadScope
+  | string;
 
 /**
  * OAuth 2.0 Token Exchange Parameters

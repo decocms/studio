@@ -369,7 +369,9 @@ export default withRuntime({
 });
 ```
 
-### Studio Vault Access Tokens
+### Studio Vault Reads
+
+#### Access Token Reads
 
 Background workers can request current downstream OAuth access tokens from
 Studio during `configuration.onInstall`. Add
@@ -383,12 +385,13 @@ import {
   CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
   createStudioVaultClient,
   withRuntime,
+  type BindingRegistry,
   type ConfigurationScope,
 } from "@decocms/runtime";
 import { z } from "zod";
 
 const stateSchema = z.object({
-  github: BindingOf<Registry, "@deco/github">("@deco/github"),
+  github: BindingOf<BindingRegistry, "@deco/github">("@deco/github"),
 });
 
 export default withRuntime({
@@ -410,6 +413,66 @@ export default withRuntime({
     },
   },
 });
+```
+
+#### Configuration Reads
+
+Use `credential:configuration:read` when the target MCP stores provider
+credentials or provider settings in its saved MCP configuration instead of
+OAuth. Add `credential:configuration:read` for the configured binding key. This
+returns the decrypted configuration state Studio has already saved for that
+target connection; it does not call the target MCP's
+`MCP_CONFIGURATION` discovery tool.
+
+```typescript
+import {
+  BindingOf,
+  CREDENTIAL_CONFIGURATION_READ_SCOPE,
+  createStudioVaultClient,
+  withRuntime,
+  type BindingRegistry,
+  type ConfigurationScope,
+} from "@decocms/runtime";
+import { z } from "zod";
+
+const stateSchema = z.object({
+  github: BindingOf<BindingRegistry, "@deco/github">("@deco/github"),
+});
+
+export default withRuntime({
+  configuration: {
+    state: stateSchema,
+    scopes: [
+      `github::${CREDENTIAL_CONFIGURATION_READ_SCOPE}`,
+    ] satisfies ConfigurationScope[],
+    onInstall: async (env, { vault }) => {
+      if (!vault) return;
+
+      const { github } = env.MESH_REQUEST_CONTEXT.state;
+      const client = createStudioVaultClient(vault);
+      const configuration = await client.getConfiguration(github);
+      const apiKey = configuration.state.apiKey;
+
+      if (typeof apiKey !== "string") {
+        throw new Error("GitHub configuration is missing apiKey");
+      }
+
+      await fetch("https://api.github.com/user", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+    },
+  },
+});
+```
+
+Returned configuration:
+
+```typescript
+type StudioMcpConfiguration = {
+  type: "mcp_configuration";
+  state: Record<string, unknown>;
+  scopes: string[];
+};
 ```
 
 ## Event Handlers

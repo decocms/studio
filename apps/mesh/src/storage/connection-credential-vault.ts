@@ -9,6 +9,8 @@ import type { Database } from "./types";
 
 export const CREDENTIAL_ACCESS_TOKEN_READ_SCOPE =
   "credential:access-token:read" as const;
+export const CREDENTIAL_CONFIGURATION_READ_SCOPE =
+  "credential:configuration:read" as const;
 
 type WorkloadTokenRow = Selectable<Database["connection_workload_tokens"]>;
 
