@@ -77,14 +77,26 @@ async function orgIdForSlug(db: Client, slug: string): Promise<string> {
 
 async function seedDomainOrg(
   db: Client,
-  input: { id: string; name: string; slug: string; domain: string },
+  input: {
+    id: string;
+    name: string;
+    slug: string;
+    domain: string;
+    archived?: boolean;
+  },
 ) {
   const now = new Date().toISOString();
   await db.query(
-    `INSERT INTO "organization" (id, name, slug, "createdAt")
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO "organization" (id, name, slug, metadata, "createdAt")
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (id) DO NOTHING`,
-    [input.id, input.name, input.slug, now],
+    [
+      input.id,
+      input.name,
+      input.slug,
+      input.archived ? JSON.stringify({ archived: true }) : null,
+      now,
+    ],
   );
   await db.query(
     `INSERT INTO organization_domains
@@ -253,6 +265,46 @@ test.describe("Commerce onboarding route isolation", () => {
       [user.userId, org.id],
     );
     expect(memberRow.rows).toHaveLength(1);
+  });
+
+  test("does not auto-join archived domain orgs during commerce recovery", async ({
+    page,
+  }) => {
+    const domain = `commerce-e2e-${RUN_ID}-archived.test`;
+    const expectedSlug = domainToSlug(domain);
+    const archivedOrg = {
+      id: `e2e_commerce_archived_${RUN_ID}`,
+      name: `Commerce E2E Archived ${RUN_ID}`,
+      slug: `commerce-e2e-${RUN_ID}-archived`,
+      domain,
+      archived: true,
+    };
+    await seedDomainOrg(db, archivedOrg);
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-archived", domain),
+      name: `Commerce Archived ${RUN_ID}`,
+    });
+    await verifyUserAndClearMembership(db, user.userId);
+
+    await page.goto("/commerce-onboarding");
+
+    await expect(page.getByText("Commerce diagnostics")).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
+
+    const createdOrgId = await orgIdForSlug(db, expectedSlug);
+    expect(createdOrgId).not.toBe(archivedOrg.id);
+
+    const archivedMemberRow = await db.query<{ id: string }>(
+      `SELECT id FROM "member" WHERE "userId" = $1 AND "organizationId" = $2`,
+      [user.userId, archivedOrg.id],
+    );
+    expect(archivedMemberRow.rows).toHaveLength(0);
+
+    const createdMemberRow = await db.query<{ id: string }>(
+      `SELECT id FROM "member" WHERE "userId" = $1 AND "organizationId" = $2`,
+      [user.userId, createdOrgId],
+    );
+    expect(createdMemberRow.rows).toHaveLength(1);
   });
 
   test("keeps the general onboarding route isolated from commerce onboarding", async ({

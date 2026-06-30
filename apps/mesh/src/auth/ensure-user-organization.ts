@@ -367,7 +367,7 @@ async function getOrganizationsForDomainRecords(
 
   const organizations = await db
     .selectFrom("organization")
-    .select(["id", "name", "slug", "logo"])
+    .select(["id", "name", "slug", "logo", "metadata"])
     .where(
       "id",
       "in",
@@ -383,8 +383,12 @@ async function getOrganizationsForDomainRecords(
     if (!organization) {
       return [];
     }
+    if (isOrgArchived(organization)) {
+      return [];
+    }
 
-    return [{ ...organization, joinMode: record.joinMode }];
+    const { metadata: _metadata, ...activeOrganization } = organization;
+    return [{ ...activeOrganization, joinMode: record.joinMode }];
   });
 }
 
