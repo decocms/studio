@@ -127,9 +127,8 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding");
 
-    await expect(page).toHaveURL(/\/commerce-onboarding/);
-    expect(new URL(page.url()).pathname).not.toBe("/onboarding");
     await expect(page.getByText(ORG_A_NAME)).toBeVisible();
     await expect(page.getByText(ORG_B_NAME)).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
   });
 });
