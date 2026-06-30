@@ -43,7 +43,13 @@ function isMultivariateBlockRef(schema: SchemaProperty): boolean {
   if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return false;
   if (schema.anyOfRefs.length !== 1) return false;
   const wrapperSchema = schema.anyOfRefs[0]!.schema;
-  return !!wrapperSchema?.properties?.variants;
+  // When the wrapper schema is fully resolved, check for `variants` property.
+  if (wrapperSchema?.properties?.variants) return true;
+  // When depth limits prevent resolution (schema undefined), fall back to
+  // checking plainSchema: its presence means exactly one non-loader branch
+  // existed alongside the single loader — the multivariate widget pattern.
+  if (!wrapperSchema && schema.plainSchema) return true;
+  return false;
 }
 
 /** Infer section array items from a page-multivariate block-ref stub (site `global`). */
