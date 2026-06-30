@@ -537,7 +537,7 @@ export type DispatchRunRuntimeInput =
   | DispatchRunInput
   | DurableDispatchRunInput;
 
-export function isDurableDispatchRunInput(
+function isDurableDispatchRunInput(
   input: DispatchRunRuntimeInput,
 ): input is DurableDispatchRunInput {
   return !("messages" in input);

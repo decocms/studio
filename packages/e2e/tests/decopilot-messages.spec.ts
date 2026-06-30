@@ -94,11 +94,16 @@ test.describe("POST /messages — optimistic dispatch (no pre-flight gate)", () 
     // The cluster no longer pre-checks link liveness at POST time. It accepts
     // the run and the dispatch fails optimistically if no daemon answers — the
     // frontend gates the compose box on the live /api/links/status probe.
+    // The thread row must exist (the v2 stream-of-record write path persists
+    // the request message part under it); we never stand up a link, so it
+    // stays offline.
+    const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
     const res = await postMessage(
       api,
       orgSlug,
-      "thread_e2e_offline",
+      threadId,
       messageBody({
+        agentId,
         sandboxProviderKind: "user-desktop",
         harnessId: "claude-code",
       }),
@@ -122,11 +127,13 @@ test.describe("POST /messages — optimistic dispatch (no pre-flight gate)", () 
       "decopilot-sandbox",
     ]);
     try {
+      const { agentId, threadId } = await createAgentAndThread(api, orgSlug);
       const res = await postMessage(
         api,
         orgSlug,
-        "thread_e2e_capmiss",
+        threadId,
         messageBody({
+          agentId,
           sandboxProviderKind: "user-desktop",
           harnessId: "claude-code",
         }),
