@@ -510,6 +510,7 @@ export const auth = betterAuth({
                 properties: {
                   organization_id: result.organization.id,
                   organization_slug: result.organization.slug,
+                  name: result.organization.name,
                   created_via: result.createdVia,
                   email_domain: result.domain,
                 },
