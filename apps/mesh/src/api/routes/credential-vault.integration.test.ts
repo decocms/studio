@@ -170,6 +170,10 @@ describe("Credential Vault Routes", () => {
           scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
         },
         {
+          targetConnectionId: "conn_inactive_granted",
+          scope: CREDENTIAL_CONFIGURATION_READ_SCOPE,
+        },
+        {
           targetConnectionId: "conn_configuration_target",
           scope: CREDENTIAL_CONFIGURATION_READ_SCOPE,
         },
@@ -323,6 +327,20 @@ describe("Credential Vault Routes", () => {
     );
 
     expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for inactive configuration targets only after a grant exists", async () => {
+    const res = await app.fetch(
+      new Request(
+        "http://test/api/org_1/vault/connections/conn_inactive_granted/configuration",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${workloadToken}` },
+        },
+      ),
+    );
+
+    expect(res.status).toBe(404);
   });
 
   it("rejects access when the subject lacks a grant to the target", async () => {
