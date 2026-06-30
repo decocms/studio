@@ -385,12 +385,13 @@ import {
   CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
   createStudioVaultClient,
   withRuntime,
+  type BindingRegistry,
   type ConfigurationScope,
 } from "@decocms/runtime";
 import { z } from "zod";
 
 const stateSchema = z.object({
-  github: BindingOf<Registry, "@deco/github">("@deco/github"),
+  github: BindingOf<BindingRegistry, "@deco/github">("@deco/github"),
 });
 
 export default withRuntime({
@@ -429,12 +430,13 @@ import {
   CREDENTIAL_CONFIGURATION_READ_SCOPE,
   createStudioVaultClient,
   withRuntime,
+  type BindingRegistry,
   type ConfigurationScope,
 } from "@decocms/runtime";
 import { z } from "zod";
 
 const stateSchema = z.object({
-  github: BindingOf<Registry, "@deco/github">("@deco/github"),
+  github: BindingOf<BindingRegistry, "@deco/github">("@deco/github"),
 });
 
 export default withRuntime({
