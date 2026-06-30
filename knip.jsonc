@@ -61,7 +61,13 @@
       // unused-files check would flag the analyzable ones (e.g. .css).
       "ignore": ["image/skills/*/examples/**"]
     },
-    "packages/typegen": {}
+    "packages/typegen": {},
+    "packages/e2e": {
+      // Standalone mock servers spawned by Playwright's `webServer` via a
+      // `bun run fixtures/...` command string — knip can't trace a process
+      // launch, so without this entry it flags the file as unused.
+      "entry": ["fixtures/commerce-upgrade-mock.ts"]
+    }
   },
   "ignoreDependencies": ["@types/*"],
   // TODO(@camudo): Remove this config once I fix all unused type exports

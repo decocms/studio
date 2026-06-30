@@ -4,11 +4,19 @@ const serverPort = process.env.PORT || "3000";
 const appPort = process.env.VITE_PORT || "4000";
 const appOrigin = process.env.BASE_URL || `http://localhost:${appPort}`;
 
+// Commerce Discovery setup mints a one-time client token by calling the
+// commerce-skills internal upgrade API. We point the mesh server at a local
+// mock (commerce-upgrade-mock.ts, started as a webServer below) so onboarding
+// specs exercise the real setup path without hitting the production worker.
+const commerceMockPort = process.env.COMMERCE_MOCK_PORT || "4100";
+const commerceMockOrigin = `http://localhost:${commerceMockPort}`;
+const commerceMockKey = "e2e-commerce-key";
+
 // e2e exercises production-like behavior; the MCP read/list cache is on in prod
 // but defaults off under NODE_ENV=development (which `dev:server` sets), so opt
 // it back in here. Without this, cache-dependent specs (e.g. proxy roundtrip's
 // no-re-handshake assertion) fail against the dev server.
-const webServerCommand = `MCP_CACHE_ENABLED=true BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev:servers`;
+const webServerCommand = `MCP_CACHE_ENABLED=true COMMERCE_DISCOVERY_INTERNAL_API_URL=${commerceMockOrigin} COMMERCE_DISCOVERY_INTERNAL_API_KEY=${commerceMockKey} BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} bun run dev:servers`;
 
 export default defineConfig({
   testDir: "./tests",
@@ -38,16 +46,29 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: webServerCommand,
-    // The dev server (dev:servers) is an apps/mesh script — run it from there.
-    // This is the suite's ONLY tie to the app, and it's a process boundary
-    // (spawn + HTTP), not a code import, so the black-box contract holds.
-    cwd: "../../apps/mesh",
-    url: `${appOrigin}/api/config`,
-    reuseExistingServer: true,
-    timeout: 120_000,
-    stdout: "pipe",
-    stderr: "pipe",
-  },
+  webServer: [
+    {
+      // Mock commerce-skills upgrade API. Started before the mesh server so
+      // COMMERCE_DISCOVERY_SETUP can mint a token over HTTP without reaching
+      // the production worker. Standalone process (no app imports).
+      command: `COMMERCE_MOCK_PORT=${commerceMockPort} bun run fixtures/commerce-upgrade-mock.ts`,
+      url: `${commerceMockOrigin}/health`,
+      reuseExistingServer: true,
+      timeout: 30_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      command: webServerCommand,
+      // The dev server (dev:servers) is an apps/mesh script — run it from there.
+      // This is the suite's ONLY tie to the app, and it's a process boundary
+      // (spawn + HTTP), not a code import, so the black-box contract holds.
+      cwd: "../../apps/mesh",
+      url: `${appOrigin}/api/config`,
+      reuseExistingServer: true,
+      timeout: 120_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  ],
 });

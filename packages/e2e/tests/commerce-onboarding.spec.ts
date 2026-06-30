@@ -284,8 +284,9 @@ test.describe("Commerce onboarding route isolation", () => {
       connection_url: string | null;
       connection_type: string;
       title: string;
+      connection_token: string | null;
     }>(
-      `SELECT connection_url, connection_type, title
+      `SELECT connection_url, connection_type, title, connection_token
        FROM connections
        WHERE id = $1`,
       [connectionId],
@@ -295,6 +296,10 @@ test.describe("Commerce onboarding route isolation", () => {
       connection_type: "HTTP",
       title: "Commerce Discovery",
     });
+    // Setup must mint and persist a client token (stored encrypted at rest) —
+    // a non-null token guards against the old stub silently creating a
+    // tokenless connection.
+    expect(concrete.rows[0]?.connection_token).toBeTruthy();
 
     const virtual = await db.query<{
       connection_url: string | null;
