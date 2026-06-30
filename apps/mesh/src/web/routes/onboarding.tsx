@@ -1,5 +1,9 @@
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
+import {
+  OrganizationChoice,
+  type OrganizationChoiceItem,
+} from "@/web/components/organization-choice";
 import { authClient } from "@/web/lib/auth-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { Avatar } from "@deco/ui/components/avatar.tsx";
@@ -176,48 +180,9 @@ function OnboardingContent({
       enabled: isCorporateEmail,
     });
 
-  const joinOrgMutation = useMutation({
-    mutationFn: async (organizationSlug: string) => {
-      const res = await fetch("/api/auth/custom/domain-join", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationSlug }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to join organization");
-      }
-      window.location.href = `/${data.slug}`;
-    },
-  });
-
-  // Track which orgs the user has already requested, per-slug — a single
-  // mutation's `variables` would collapse the "Request sent" state to the
-  // most recent org and let an earlier one be re-requested (duplicate email).
+  // Track which orgs the user has already requested, per-slug, to prevent
+  // duplicate access requests across the shared organization picker.
   const [requestedSlugs, setRequestedSlugs] = useState<Set<string>>(new Set());
-
-  const requestJoinMutation = useMutation({
-    mutationFn: async (organizationSlug: string) => {
-      const res = await fetch("/api/auth/custom/domain-request-join", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationSlug }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to request access");
-      }
-      if (data.alreadyMember && data.slug) {
-        window.location.href = `/${data.slug}`;
-      }
-      return organizationSlug;
-    },
-    onSuccess: (organizationSlug) => {
-      setRequestedSlugs((prev) => new Set(prev).add(organizationSlug));
-    },
-  });
 
   const [creatingNewOrg, setCreatingNewOrg] = useState(false);
 
@@ -237,8 +202,21 @@ function OnboardingContent({
   // domain-lookup only returns verified domains in a discoverable join mode
   // (auto/request) — "off" and unverified claims are filtered server-side.
   const matchingOrgs = domainLookup?.organizations ?? [];
-  const canAutoJoin = matchingOrgs.some((o) => o.joinMode === "auto");
-  const pendingSlug = joinOrgMutation.variables ?? null;
+  const discoverableOrgs: OrganizationChoiceItem[] = matchingOrgs.flatMap(
+    (org) =>
+      org.joinMode === "auto" || org.joinMode === "request"
+        ? [
+            {
+              id: org.id,
+              name: org.name,
+              slug: org.slug,
+              logo: org.logo,
+              joinMode: org.joinMode,
+            },
+          ]
+        : [],
+  );
+  const canAutoJoin = discoverableOrgs.some((o) => o.joinMode === "auto");
 
   if (creatingNewOrg) {
     return (
@@ -256,14 +234,14 @@ function OnboardingContent({
   // One picker over every discoverable org. Auto → one-click Join; request →
   // Request to join (needs admin approval). Both kinds can match the same
   // domain, so they share a single list.
-  if (matchingOrgs.length > 0) {
+  if (discoverableOrgs.length > 0) {
     return (
       <AuthSplitLayout>
         <div className="grid gap-10">
           <OnboardingHeader
             title={
               canAutoJoin
-                ? matchingOrgs.length === 1
+                ? discoverableOrgs.length === 1
                   ? "You have access to an organization"
                   : "You have access to multiple organizations"
                 : "Request access to an organization"
@@ -274,89 +252,17 @@ function OnboardingContent({
                 : "Your email domain matches an organization that requires admin approval to join."
             }
           />
-          <div className="grid gap-2">
-            {matchingOrgs.map((org) => {
-              const isJoining =
-                joinOrgMutation.isPending && pendingSlug === org.slug;
-              const isRequesting =
-                requestJoinMutation.isPending &&
-                requestJoinMutation.variables === org.slug;
-              const hasRequested = requestedSlugs.has(org.slug);
-              return (
-                <div
-                  key={org.id}
-                  className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex items-center gap-4"
-                >
-                  <Avatar
-                    url={
-                      org.logo ??
-                      `https://www.google.com/s2/favicons?domain=${emailDomain}&sz=128`
-                    }
-                    fallback={org.name.charAt(0).toUpperCase()}
-                    shape="square"
-                    size="base"
-                    className="h-10 w-10 shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{org.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      @{emailDomain}
-                    </p>
-                  </div>
-                  {org.joinMode === "auto" ? (
-                    <Button
-                      size="default"
-                      onClick={() => joinOrgMutation.mutate(org.slug)}
-                      disabled={joinOrgMutation.isPending}
-                    >
-                      {isJoining ? (
-                        <span className="flex items-center gap-2">
-                          <Loading01 size={14} className="animate-spin" />{" "}
-                          Joining...
-                        </span>
-                      ) : (
-                        "Join"
-                      )}
-                    </Button>
-                  ) : hasRequested ? (
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      Request sent
-                    </span>
-                  ) : (
-                    <Button
-                      size="default"
-                      variant="outline"
-                      onClick={() => requestJoinMutation.mutate(org.slug)}
-                      disabled={requestJoinMutation.isPending}
-                    >
-                      {isRequesting ? (
-                        <span className="flex items-center gap-2">
-                          <Loading01 size={14} className="animate-spin" />{" "}
-                          Requesting...
-                        </span>
-                      ) : (
-                        "Request to join"
-                      )}
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {joinOrgMutation.error && (
-            <p className="text-xs text-destructive">
-              {joinOrgMutation.error instanceof Error
-                ? joinOrgMutation.error.message
-                : "Failed to join organization"}
-            </p>
-          )}
-          {requestJoinMutation.error && (
-            <p className="text-xs text-destructive">
-              {requestJoinMutation.error instanceof Error
-                ? requestJoinMutation.error.message
-                : "Failed to request access"}
-            </p>
-          )}
+          <OrganizationChoice
+            organizations={discoverableOrgs}
+            domain={emailDomain}
+            requestedSlugs={requestedSlugs}
+            onRequestedSlug={(slug) =>
+              setRequestedSlugs((prev) => new Set(prev).add(slug))
+            }
+            onJoined={(_organization, slug) => {
+              window.location.href = `/${slug}`;
+            }}
+          />
           <button
             type="button"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors text-center"
