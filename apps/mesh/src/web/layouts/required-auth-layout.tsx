@@ -1,10 +1,9 @@
-import { Navigate, useRouterState } from "@tanstack/react-router";
+import { Navigate } from "@tanstack/react-router";
 import { AuthLoading, SignedIn, SignedOut } from "@daveyplate/better-auth-ui";
 import { SplashScreen } from "@/web/components/splash-screen";
 
 function RedirectToLogin() {
-  const routerState = useRouterState();
-  const currentUrl = routerState.location.href;
+  const currentUrl = window.location.pathname + window.location.search;
 
   // Don't set next to /login itself — that creates an infinite redirect loop
   // where each cycle double-encodes the previous next param until the URL

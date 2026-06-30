@@ -78,6 +78,7 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
+  "COMMERCE_DISCOVERY_SETUP",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -424,6 +425,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CONNECTION_TEST",
     description: "Test connections",
+    category: "Connections",
+  },
+  {
+    name: "COMMERCE_DISCOVERY_SETUP",
+    description: "Set up Commerce Discovery",
     category: "Connections",
   },
   {
@@ -1137,6 +1143,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_CONNECTIONS_CREATE",
       "COLLECTION_CONNECTIONS_UPDATE",
       "COLLECTION_CONNECTIONS_DELETE",
+      "COMMERCE_DISCOVERY_SETUP",
     ],
     dangerous: true,
   },

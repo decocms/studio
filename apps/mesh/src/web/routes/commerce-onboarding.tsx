@@ -1,0 +1,803 @@
+import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
+import { AuthEntry } from "@/web/components/auth-entry";
+import { AuthSplitLayout } from "@/web/components/auth-split-layout";
+import { OrganizationChoice } from "@/web/components/organization-choice";
+import { formatPinnedViewTabId } from "@/web/layouts/main-panel-tabs/tab-id";
+import {
+  authClient,
+  invalidateOrganizationListCache,
+  useActiveOrganizations,
+} from "@/web/lib/auth-client";
+import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { KEYS } from "@/web/lib/query-keys";
+import { Button } from "@deco/ui/components/button.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
+import {
+  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+  getCommerceDiscoveryAgentId,
+  SELF_MCP_ALIAS_ID,
+  useMCPClient,
+  WellKnownOrgMCPId,
+} from "@decocms/mesh-sdk";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { ArrowRight, Check, Loading01 } from "@untitledui/icons";
+import { Suspense, useRef, useState } from "react";
+import type { FormEvent } from "react";
+
+interface CommerceOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  logo: string | null;
+  joinMode?: "auto" | "request";
+}
+
+interface EnsureOrganizationResponse {
+  success: boolean;
+  status?:
+    | "created"
+    | "joined"
+    | "already_has_organization"
+    | "ambiguous"
+    | "skipped";
+  organization?: CommerceOrganization;
+  organizations?: CommerceOrganization[];
+  domain?: string | null;
+  reason?: string;
+  error?: string;
+}
+
+interface CollectionGetResult<T = unknown> {
+  item: T | null;
+}
+
+interface CommerceDiscoveryReportApp {
+  connectionId: string;
+  virtualMcpId: string;
+  toolName: typeof COMMERCE_DISCOVERY_REPORT_TOOL_NAME;
+}
+
+interface CommerceDiscoverySetupResult {
+  reportApp?: CommerceDiscoveryReportApp;
+}
+
+interface SelfToolResult {
+  structuredContent?: unknown;
+  isError?: boolean;
+  content?: Array<{ text?: string }>;
+}
+
+export default function CommerceOnboardingRoute() {
+  return <CommerceOnboardingPage />;
+}
+
+function CommerceOnboardingPage() {
+  const search = useSearch({ from: "/commerce-onboarding" });
+  const { org: requestedOrgSlug, siteUrl } = search;
+  const { data: session, isPending: sessionLoading } = authClient.useSession();
+
+  if (sessionLoading) {
+    return (
+      <AuthSplitLayout>
+        <LoadingState label="Preparing commerce onboarding..." />
+      </AuthSplitLayout>
+    );
+  }
+
+  if (!session) {
+    const callbackUrl =
+      typeof window === "undefined"
+        ? "/commerce-onboarding"
+        : `${window.location.pathname}${window.location.search}`;
+
+    return (
+      <AuthSplitLayout>
+        <AuthEntry callbackUrl={callbackUrl} allowAutoLogin={false} />
+      </AuthSplitLayout>
+    );
+  }
+
+  return (
+    <CommerceOnboardingContent
+      requestedOrgSlug={requestedOrgSlug}
+      siteUrl={siteUrl}
+    />
+  );
+}
+
+function CommerceOnboardingContent({
+  requestedOrgSlug,
+  siteUrl,
+}: {
+  requestedOrgSlug?: string;
+  siteUrl?: string;
+}) {
+  const navigate = useNavigate();
+  const organizationsQuery = useActiveOrganizations();
+  const [selectedOrg, setSelectedOrg] = useState<CommerceOrganization | null>(
+    null,
+  );
+  const [settledEnsureResult, setSettledEnsureResult] =
+    useState<EnsureOrganizationResponse | null>(null);
+
+  const activeOrganizations: CommerceOrganization[] =
+    organizationsQuery.data?.map((org: CommerceOrganization) => ({
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      logo: org.logo ?? null,
+    })) ?? [];
+
+  const ensureOrganizationMutation = useMutation({
+    mutationFn: async (): Promise<EnsureOrganizationResponse> => {
+      const res = await fetch("/api/auth/custom/ensure-organization", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = (await res.json()) as EnsureOrganizationResponse;
+      if (
+        data.success &&
+        (data.status === "created" ||
+          data.status === "joined" ||
+          data.status === "already_has_organization") &&
+        data.organization
+      ) {
+        invalidateOrganizationListCache();
+      }
+      return data;
+    },
+    retry: false,
+    onSuccess: (data) => {
+      setSettledEnsureResult(data);
+    },
+  });
+
+  if (organizationsQuery.isPending) {
+    return (
+      <AuthSplitLayout>
+        <LoadingState label="Preparing commerce onboarding..." />
+      </AuthSplitLayout>
+    );
+  }
+
+  if (organizationsQuery.error) {
+    return (
+      <CommerceErrorState
+        title="We could not load your organizations"
+        description="Retry to continue commerce setup from this page."
+        actionLabel="Retry"
+        onRetry={() => organizationsQuery.refetch()}
+      />
+    );
+  }
+
+  const requestedOrg = requestedOrgSlug
+    ? activeOrganizations.find((org) => org.slug === requestedOrgSlug)
+    : null;
+
+  if (requestedOrg) {
+    return <CommerceSetup org={requestedOrg} initialSiteUrl={siteUrl} />;
+  }
+
+  if (requestedOrgSlug) {
+    return (
+      <CommerceErrorState
+        title="Organization not found"
+        description="We could not find that organization for your account."
+        actionLabel="Retry"
+        onRetry={() => organizationsQuery.refetch()}
+      />
+    );
+  }
+
+  if (selectedOrg) {
+    return <CommerceSetup org={selectedOrg} initialSiteUrl={siteUrl} />;
+  }
+
+  if (activeOrganizations.length === 1 && activeOrganizations[0]) {
+    return (
+      <CommerceSetup org={activeOrganizations[0]} initialSiteUrl={siteUrl} />
+    );
+  }
+
+  if (activeOrganizations.length > 1) {
+    return (
+      <AuthSplitLayout>
+        <div className="grid gap-10">
+          <CommerceHeader
+            title="Choose an organization"
+            description="Select where commerce diagnostics should continue."
+          />
+          <OrganizationChoice
+            organizations={activeOrganizations}
+            selectLabel="Continue"
+            onSelected={(organization) => setSelectedOrg(organization)}
+          />
+        </div>
+      </AuthSplitLayout>
+    );
+  }
+
+  if (!settledEnsureResult) {
+    return (
+      <EnsureOrganizationRecovery
+        mutation={ensureOrganizationMutation}
+        onRetry={() => {
+          ensureOrganizationMutation.reset();
+          ensureOrganizationMutation.mutate();
+        }}
+      />
+    );
+  }
+
+  const ensureResult = settledEnsureResult;
+
+  if (
+    ensureResult?.success &&
+    (ensureResult.status === "created" ||
+      ensureResult.status === "joined" ||
+      ensureResult.status === "already_has_organization") &&
+    ensureResult.organization
+  ) {
+    return (
+      <CommerceSetup org={ensureResult.organization} initialSiteUrl={siteUrl} />
+    );
+  }
+
+  if (
+    ensureResult?.status === "ambiguous" &&
+    ensureResult.organizations &&
+    ensureResult.organizations.length > 0
+  ) {
+    return (
+      <AuthSplitLayout>
+        <div className="grid gap-10">
+          <CommerceHeader
+            title="Choose an organization"
+            description="Your email can access more than one organization. Choose where commerce setup should continue."
+          />
+          <OrganizationChoice
+            organizations={ensureResult.organizations}
+            domain={ensureResult.domain ?? undefined}
+            onJoined={(organization, slug) => {
+              invalidateOrganizationListCache();
+              setSelectedOrg({ ...organization, slug });
+              navigate({
+                to: "/commerce-onboarding",
+                search: { org: slug, siteUrl },
+              });
+            }}
+          />
+        </div>
+      </AuthSplitLayout>
+    );
+  }
+
+  return (
+    <CommerceErrorState
+      title="Commerce onboarding needs support"
+      description={
+        ensureResult?.error ??
+        "We could not determine a commerce organization for this account."
+      }
+      actionLabel="Try again"
+      onRetry={() => {
+        setSettledEnsureResult(null);
+        ensureOrganizationMutation.reset();
+      }}
+    />
+  );
+}
+
+function EnsureOrganizationRecovery({
+  mutation,
+  onRetry,
+}: {
+  mutation: ReturnType<typeof useMutation<EnsureOrganizationResponse, Error>>;
+  onRetry: () => void;
+}) {
+  const startedRef = useRef(false);
+
+  const triggerRecovery = (node: HTMLDivElement | null) => {
+    if (!node || startedRef.current) return;
+    // Callback ref keeps the automatic recovery trigger out of render without
+    // using useEffect, which is banned in this React 19 app.
+    startedRef.current = true;
+    mutation.mutate();
+  };
+
+  if (mutation.error) {
+    return (
+      <CommerceErrorState
+        title="Commerce onboarding is unavailable"
+        description="We could not prepare an organization for commerce setup. Retry from this page or contact support."
+        actionLabel="Retry"
+        onRetry={onRetry}
+      />
+    );
+  }
+
+  return (
+    <AuthSplitLayout>
+      <div ref={triggerRecovery}>
+        <LoadingState label="Preparing your commerce workspace..." />
+      </div>
+    </AuthSplitLayout>
+  );
+}
+
+function CommerceHeader({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="grid gap-10">
+      <img
+        src="/logos/deco logo.svg"
+        alt="Deco"
+        className="h-12 w-12 dark:hidden"
+      />
+      <img
+        src="/logos/deco logo negative.svg"
+        alt="Deco"
+        className="h-12 w-12 hidden dark:block"
+      />
+      <div className="space-y-2">
+        <h1 className="text-2xl font-medium leading-8">{title}</h1>
+        <p className="text-base text-muted-foreground leading-6">
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div
+      className="flex items-center gap-2 py-4"
+      role="status"
+      aria-live="polite"
+    >
+      <Loading01 size={14} className="animate-spin text-muted-foreground" />
+      <span className="text-sm text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function CommerceErrorState({
+  title,
+  description,
+  actionLabel,
+  onRetry,
+}: {
+  title: string;
+  description: string;
+  actionLabel: string;
+  onRetry: () => void;
+}) {
+  return (
+    <AuthSplitLayout>
+      <div className="grid gap-10">
+        <CommerceHeader title={title} description={description} />
+        <Button type="button" size="xl" className="w-full" onClick={onRetry}>
+          {actionLabel}
+        </Button>
+      </div>
+    </AuthSplitLayout>
+  );
+}
+
+function getToolErrorMessage(result: SelfToolResult): string {
+  return (
+    result.content?.find((item) => item.text)?.text ??
+    "Commerce Discovery setup failed."
+  );
+}
+
+function parseSelfToolResult<T>(result: unknown): T {
+  const toolResult = result as SelfToolResult;
+  if (toolResult.isError) {
+    throw new Error(getToolErrorMessage(toolResult));
+  }
+  return (toolResult.structuredContent ?? result) as T;
+}
+
+function CommerceSetup({
+  org,
+  initialSiteUrl,
+}: {
+  org: CommerceOrganization;
+  initialSiteUrl?: string;
+}) {
+  return (
+    <AuthSplitLayout>
+      <Suspense fallback={<LoadingState label="Connecting workspace..." />}>
+        <CommerceSetupContent
+          key={`${org.id}:${initialSiteUrl ?? ""}`}
+          org={org}
+          initialSiteUrl={initialSiteUrl}
+        />
+      </Suspense>
+    </AuthSplitLayout>
+  );
+}
+
+function CommerceSetupContent({
+  org,
+  initialSiteUrl,
+}: {
+  org: CommerceOrganization;
+  initialSiteUrl?: string;
+}) {
+  const navigate = useNavigate();
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const [siteUrlInput, setSiteUrlInput] = useState(initialSiteUrl ?? "");
+  const [setupResult, setSetupResult] =
+    useState<CommerceDiscoverySetupResult | null>(null);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+  const autoSetupStartedRef = useRef(false);
+
+  const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
+  const virtualMcpId = getCommerceDiscoveryAgentId(org.id);
+
+  const connectionQuery = useQuery({
+    queryKey: KEYS.commerceDiscoveryConnection(org.id, connectionId),
+    queryFn: async () => {
+      const result = await selfClient.callTool({
+        name: "COLLECTION_CONNECTIONS_GET",
+        arguments: { id: connectionId },
+      });
+      return parseSelfToolResult<CollectionGetResult>(result);
+    },
+    retry: false,
+  });
+
+  const virtualMcpQuery = useQuery({
+    queryKey: KEYS.commerceDiscoveryVirtualMcp(org.id, virtualMcpId),
+    queryFn: async () => {
+      const result = await selfClient.callTool({
+        name: "COLLECTION_VIRTUAL_MCP_GET",
+        arguments: { id: virtualMcpId },
+      });
+      return parseSelfToolResult<CollectionGetResult>(result);
+    },
+    retry: false,
+  });
+
+  const setupMutation = useMutation({
+    mutationFn: async (siteUrl: string) => {
+      const result = await selfClient.callTool({
+        name: "COMMERCE_DISCOVERY_SETUP",
+        arguments: { siteUrl },
+      });
+      return parseSelfToolResult<CommerceDiscoverySetupResult>(result);
+    },
+    retry: false,
+    onSuccess: (result) => {
+      setSetupResult(result);
+      setInlineError(null);
+      void connectionQuery.refetch();
+      void virtualMcpQuery.refetch();
+    },
+    onError: (error) => {
+      setInlineError(
+        error instanceof Error
+          ? error.message
+          : "Commerce Discovery setup failed.",
+      );
+    },
+  });
+
+  const setupQueriesLoading =
+    connectionQuery.isPending || virtualMcpQuery.isPending;
+  const setupQueriesError = connectionQuery.error ?? virtualMcpQuery.error;
+  const setupReady =
+    !!connectionQuery.data?.item && !!virtualMcpQuery.data?.item;
+
+  const runSetup = (rawSiteUrl: string) => {
+    const normalized = normalizeCommerceSiteUrl(rawSiteUrl);
+    if (!normalized.ok) {
+      setInlineError(normalized.error);
+      return;
+    }
+    setInlineError(null);
+    setupMutation.mutate(normalized.value);
+  };
+
+  const triggerInitialSetup = (node: HTMLDivElement | null) => {
+    if (
+      !node ||
+      autoSetupStartedRef.current ||
+      setupQueriesLoading ||
+      setupReady ||
+      !initialSiteUrl
+    ) {
+      return;
+    }
+
+    autoSetupStartedRef.current = true;
+    runSetup(initialSiteUrl);
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    runSetup(siteUrlInput);
+  };
+
+  const reportApp = setupResult?.reportApp ?? {
+    connectionId,
+    virtualMcpId,
+    toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+  };
+
+  const openReport = () => {
+    localStorage.setItem(
+      LOCALSTORAGE_KEYS.sidebarOpen(),
+      JSON.stringify(false),
+    );
+    navigate({
+      to: "/$org/$taskId",
+      params: { org: org.slug, taskId: crypto.randomUUID() },
+      search: {
+        virtualmcpid: reportApp.virtualMcpId,
+        main: formatPinnedViewTabId(reportApp.connectionId, reportApp.toolName),
+        chat: 0,
+      },
+    });
+  };
+
+  if (setupQueriesLoading) {
+    return (
+      <div className="grid gap-10">
+        <CommerceHeader
+          title="Commerce diagnostics"
+          description={`Commerce setup will continue for ${org.name}.`}
+        />
+        <LoadingState label="Checking Commerce Discovery setup..." />
+      </div>
+    );
+  }
+
+  if (setupQueriesError) {
+    const message =
+      setupQueriesError instanceof Error
+        ? setupQueriesError.message
+        : "We could not check Commerce Discovery setup.";
+
+    return (
+      <div className="grid gap-10">
+        <CommerceHeader
+          title="Commerce diagnostics"
+          description={`Commerce setup will continue for ${org.name}.`}
+        />
+        <InlineError message={message} />
+        <Button
+          type="button"
+          size="xl"
+          className="w-full"
+          onClick={() => {
+            void connectionQuery.refetch();
+            void virtualMcpQuery.refetch();
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (setupReady) {
+    return (
+      <CommerceDiscoveryReady
+        org={org}
+        reportApp={reportApp}
+        onOpenReport={openReport}
+      />
+    );
+  }
+
+  if (initialSiteUrl) {
+    const normalized = normalizeCommerceSiteUrl(initialSiteUrl);
+
+    if (!normalized.ok) {
+      return (
+        <div className="grid gap-10">
+          <CommerceHeader
+            title="Commerce diagnostics"
+            description={`Commerce setup will continue for ${org.name}.`}
+          />
+          <InlineError message={normalized.error} />
+          <SiteUrlForm
+            siteUrl={siteUrlInput}
+            error={inlineError}
+            isSubmitting={setupMutation.isPending}
+            onSiteUrlChange={setSiteUrlInput}
+            onSubmit={handleSubmit}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div ref={triggerInitialSetup} className="grid gap-10">
+        <CommerceHeader
+          title="Commerce diagnostics"
+          description={`Commerce Discovery is being prepared for ${normalized.value}.`}
+        />
+        {inlineError ? (
+          <>
+            <InlineError message={inlineError} />
+            <SiteUrlForm
+              siteUrl={siteUrlInput}
+              error={null}
+              isSubmitting={setupMutation.isPending}
+              onSiteUrlChange={setSiteUrlInput}
+              onSubmit={handleSubmit}
+            />
+          </>
+        ) : (
+          <LoadingState label="Setting up Commerce Discovery..." />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-10">
+      <CommerceHeader
+        title="Commerce diagnostics"
+        description={`Commerce setup will continue for ${org.name}.`}
+      />
+      <SiteUrlForm
+        siteUrl={siteUrlInput}
+        error={inlineError}
+        isSubmitting={setupMutation.isPending}
+        onSiteUrlChange={setSiteUrlInput}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  );
+}
+
+function SiteUrlForm({
+  siteUrl,
+  error,
+  isSubmitting,
+  onSiteUrlChange,
+  onSubmit,
+}: {
+  siteUrl: string;
+  error: string | null;
+  isSubmitting: boolean;
+  onSiteUrlChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="grid gap-4" onSubmit={onSubmit}>
+      <div className="grid gap-2">
+        <label className="text-sm font-medium" htmlFor="commerce-site-url">
+          Website URL
+        </label>
+        <Input
+          id="commerce-site-url"
+          type="text"
+          inputMode="url"
+          value={siteUrl}
+          onChange={(event) => onSiteUrlChange(event.target.value)}
+          placeholder="https://example.com"
+          aria-invalid={!!error}
+          disabled={isSubmitting}
+        />
+        {error ? <InlineError message={error} /> : null}
+      </div>
+      <Button
+        type="submit"
+        size="xl"
+        className="w-full"
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? (
+          <>
+            <Loading01 size={14} className="animate-spin" />
+            Setting up
+          </>
+        ) : (
+          <>
+            Continue
+            <ArrowRight size={16} />
+          </>
+        )}
+      </Button>
+    </form>
+  );
+}
+
+function CommerceDiscoveryReady({
+  org,
+  reportApp,
+  onOpenReport,
+}: {
+  org: CommerceOrganization;
+  reportApp: CommerceDiscoveryReportApp;
+  onOpenReport: () => void;
+}) {
+  return (
+    <div className="grid gap-10">
+      <CommerceHeader
+        title="Commerce Discovery"
+        description={`Commerce Discovery is connected for ${org.name}.`}
+      />
+      <div className="grid gap-3">
+        <SetupStatusCard
+          title="Commerce Discovery MCP"
+          description="Report generation and commerce diagnostics are connected."
+        />
+        <SetupStatusCard
+          title="Commerce Discovery agent"
+          description="The report workspace is ready for this organization."
+        />
+        <div className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4">
+          <p className="text-sm font-medium">Companion MCPs</p>
+          <p className="mt-1 text-sm text-muted-foreground leading-5">
+            Commerce Discovery requires platform integrations such as VTEX.
+            These companion MCP requirements will be available soon.
+          </p>
+          {
+            // TODO: @tlgimenes replace placeholder with dynamic companion MCP requirements
+            // read from Commerce Discovery MCP configuration/binding metadata.
+          }
+        </div>
+      </div>
+      <Button
+        type="button"
+        size="xl"
+        className="w-full"
+        onClick={onOpenReport}
+        disabled={!reportApp.virtualMcpId}
+      >
+        See full report
+        <ArrowRight size={16} />
+      </Button>
+    </div>
+  );
+}
+
+function SetupStatusCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex gap-3">
+      <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-success text-success-foreground">
+        <Check size={12} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="mt-1 text-sm text-muted-foreground leading-5">
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function InlineError({ message }: { message: string }) {
+  return (
+    <p className="text-sm leading-5 text-destructive" role="alert">
+      {message}
+    </p>
+  );
+}

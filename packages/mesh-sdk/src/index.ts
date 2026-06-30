@@ -229,15 +229,20 @@ export {
   DEV_ASSETS_MCP_ALIAS_ID,
   // Org-scoped MCP ID generators
   WellKnownOrgMCPId,
+  COMMERCE_DISCOVERY_MCP_URL,
+  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+  COMMERCE_DISCOVERY_ICON,
   // Connection factory functions
   getWellKnownRegistryConnection,
   getWellKnownCommunityRegistryConnection,
   getWellKnownSelfConnection,
   getWellKnownDevAssetsConnection,
   getWellKnownMcpStudioConnection,
+  getWellKnownCommerceDiscoveryConnection,
   // Virtual MCP factory functions
   getWellKnownDecopilotVirtualMCP,
   getWellKnownDecopilotConnection,
+  getWellKnownCommerceDiscoveryVirtualMCP,
   // Decopilot utilities
   isDecopilot,
   getDecopilotId,
@@ -247,6 +252,9 @@ export {
   // Site Diagnostics utilities
   isSiteDiagnostics,
   getSiteDiagnosticsId,
+  // Commerce Discovery utilities
+  isCommerceDiscoveryAgentId,
+  getCommerceDiscoveryAgentId,
   // Brand-Context Setup utilities
   isBrandContextSetup,
   getBrandContextSetupId,
