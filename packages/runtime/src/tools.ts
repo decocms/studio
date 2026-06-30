@@ -382,13 +382,20 @@ export interface OnChangeCallback<TState> {
  */
 export const CREDENTIAL_ACCESS_TOKEN_READ_SCOPE =
   "credential:access-token:read" as const;
+export const CREDENTIAL_CONFIGURATION_READ_SCOPE =
+  "credential:configuration:read" as const;
 
 export type CredentialAccessTokenReadScope =
   typeof CREDENTIAL_ACCESS_TOKEN_READ_SCOPE;
+export type CredentialConfigurationReadScope =
+  typeof CREDENTIAL_CONFIGURATION_READ_SCOPE;
 
 export type BindingCredentialAccessTokenReadScope<
   TStateKey extends string = string,
 > = `${TStateKey}::${CredentialAccessTokenReadScope}`;
+export type BindingCredentialConfigurationReadScope<
+  TStateKey extends string = string,
+> = `${TStateKey}::${CredentialConfigurationReadScope}`;
 
 /**
  * Configuration scopes use `STATE_KEY::SCOPE`, where `STATE_KEY` points at a
@@ -396,7 +403,10 @@ export type BindingCredentialAccessTokenReadScope<
  * capability names. `credential:access-token:read` is the standard Studio Vault
  * scope for leasing a downstream OAuth access token for direct API calls.
  */
-export type ConfigurationScope = BindingCredentialAccessTokenReadScope | string;
+export type ConfigurationScope =
+  | BindingCredentialAccessTokenReadScope
+  | BindingCredentialConfigurationReadScope
+  | string;
 
 /**
  * OAuth 2.0 Token Exchange Parameters
