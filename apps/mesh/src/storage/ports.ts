@@ -256,6 +256,7 @@ export interface AsyncResearchJobStoragePort {
 
 export interface ConnectionStoragePort {
   create(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
+  createNew(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
   findById(id: string): Promise<ConnectionEntity | null>;
   list(
     organizationId: string,

@@ -14,6 +14,12 @@ import {
 } from "../../core/studio-context";
 import { getSettings } from "../../settings";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
+import { clientFromConnection } from "../../mcp-clients";
+import {
+  deriveCredentialGrants,
+  injectSelfSentinel,
+  validateConfiguration,
+} from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
 import {
   buildVirtualUrl,
@@ -71,6 +77,15 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
       created_by: userId,
     };
 
+    if (connectionData.id) {
+      const existing = await ctx.storage.connections.findById(
+        connectionData.id,
+      );
+      if (existing?.organization_id === organization.id) {
+        throw new Error("Connection already exists in organization");
+      }
+    }
+
     // Validate VIRTUAL connections - ensure the referenced Virtual MCP exists
     if (connectionData.connection_type === "VIRTUAL") {
       const virtualMcpId = parseVirtualUrl(connectionData.connection_url);
@@ -119,16 +134,88 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
       connection_headers: connectionData.connection_headers,
     }).catch(() => null);
     const tools = fetchResult?.tools?.length ? fetchResult.tools : null;
-    const configuration_scopes = fetchResult?.scopes?.length
+    const configurationScopes = fetchResult?.scopes?.length
       ? fetchResult.scopes
-      : null;
+      : (connectionData.configuration_scopes ?? null);
+    const configurationState = connectionData.configuration_state ?? null;
 
-    // Create the connection with the fetched tools and scopes
-    const connection = await ctx.storage.connections.create({
+    if (configurationState && configurationScopes?.length) {
+      injectSelfSentinel(
+        configurationState as Record<string, unknown>,
+        configurationScopes,
+        organization.id,
+      );
+      await validateConfiguration(
+        configurationState as Record<string, unknown>,
+        configurationScopes,
+        organization.id,
+        ctx,
+      );
+    }
+
+    // Create the connection with the fetched tools and scopes. This must be
+    // insert-only: ConnectionStorage.create is intentionally upsert-like for
+    // legacy callers, but this tool owns cleanup on bootstrap failure.
+    const connection = await ctx.storage.connections.createNew({
       ...connectionData,
       tools: null,
-      configuration_scopes,
+      configuration_state: configurationState,
+      configuration_scopes: configurationScopes,
     });
+
+    const credentialGrants =
+      configurationState && configurationScopes?.length
+        ? deriveCredentialGrants(
+            configurationState as Record<string, unknown>,
+            configurationScopes,
+          )
+        : [];
+
+    if (credentialGrants.length > 0) {
+      let createdWorkloadTokenId: string | undefined;
+      try {
+        await ctx.storage.connectionCredentialVault.replaceGrantsForSubject({
+          organizationId: organization.id,
+          subjectConnectionId: connection.id,
+          createdBy: userId,
+          grants: credentialGrants,
+        });
+        const { plaintextToken, record } =
+          await ctx.storage.connectionCredentialVault.createOrRotateWorkloadToken(
+            {
+              organizationId: organization.id,
+              subjectConnectionId: connection.id,
+            },
+          );
+        createdWorkloadTokenId = record.id;
+
+        const client = await clientFromConnection(connection, ctx, false);
+        await client.callTool({
+          name: "ON_MCP_CONFIGURATION",
+          arguments: {
+            state: configurationState,
+            scopes: configurationScopes,
+            firstRun: true,
+            vault: {
+              baseUrl: ctx.baseUrl,
+              org: organization.slug ?? organization.id,
+              subjectConnectionId: connection.id,
+              token: plaintextToken,
+            },
+          },
+        });
+      } catch (error) {
+        if (createdWorkloadTokenId) {
+          await ctx.storage.connectionCredentialVault.revokeWorkloadToken({
+            organizationId: organization.id,
+            subjectConnectionId: connection.id,
+            tokenId: createdWorkloadTokenId,
+          });
+        }
+        await ctx.storage.connections.delete(connection.id);
+        throw error;
+      }
+    }
 
     // Eagerly populate NATS KV cache with fetched tools
     if (tools) {

@@ -17,7 +17,11 @@ import { BindingRegistry, injectBindingSchemas } from "./bindings.ts";
 import { Event, type EventHandlers } from "./events.ts";
 import type { DefaultEnv, User } from "./index.ts";
 import { State } from "./state.ts";
-import { type InstallContext, makeCreateAgent } from "./agents.ts";
+import {
+  type InstallContext,
+  type StudioVaultBootstrap,
+  makeCreateAgent,
+} from "./agents.ts";
 
 // Re-export EventHandlers type and SELF constant for external use
 export { SELF } from "./events.ts";
@@ -25,6 +29,7 @@ export type { EventHandlers } from "./events.ts";
 export { AGENT_SCOPES } from "./agents.ts";
 export type {
   InstallContext,
+  StudioVaultBootstrap,
   CreateAgentInput,
   CreateAgentResult,
   CreatedAutomation,
@@ -356,8 +361,42 @@ export interface Integration {
 
 export interface OnChangeCallback<TState> {
   state: TState;
-  scopes: string[];
+  scopes: ConfigurationScope[];
+  vault?: StudioVaultBootstrap;
 }
+
+/**
+ * Canonical scope value for reading a refreshable OAuth access token from
+ * Studio's credential vault for a configured binding.
+ *
+ * Use it in configuration scopes as `${STATE_KEY}::credential:access-token:read`,
+ * where `STATE_KEY` points at a `BindingOf(...)` value in configuration state.
+ * This scope is intentionally narrower than static secret access: Studio should
+ * return only the current access token and keep refresh tokens/client secrets
+ * inside the vault.
+ *
+ * @example
+ * ```ts
+ * const scopes = ["github::credential:access-token:read"] satisfies ConfigurationScope[];
+ * ```
+ */
+export const CREDENTIAL_ACCESS_TOKEN_READ_SCOPE =
+  "credential:access-token:read" as const;
+
+export type CredentialAccessTokenReadScope =
+  typeof CREDENTIAL_ACCESS_TOKEN_READ_SCOPE;
+
+export type BindingCredentialAccessTokenReadScope<
+  TStateKey extends string = string,
+> = `${TStateKey}::${CredentialAccessTokenReadScope}`;
+
+/**
+ * Configuration scopes use `STATE_KEY::SCOPE`, where `STATE_KEY` points at a
+ * value in the MCP configuration state. Most scopes are MCP-specific tool or
+ * capability names. `credential:access-token:read` is the standard Studio Vault
+ * scope for leasing a downstream OAuth access token for direct API calls.
+ */
+export type ConfigurationScope = BindingCredentialAccessTokenReadScope | string;
 
 /**
  * OAuth 2.0 Token Exchange Parameters
@@ -487,7 +526,7 @@ export interface CreateMCPServerOptions<
      */
     onInstall?: (env: TEnv, ctx: InstallContext) => Promise<void>;
     state?: TSchema;
-    scopes?: string[];
+    scopes?: ConfigurationScope[];
   };
   tools?:
     | Array<
@@ -580,14 +619,25 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 .describe(
                   "True on the first configuration save for this connection — fires onInstall.",
                 ),
+              vault: z
+                .object({
+                  baseUrl: z.string(),
+                  org: z.string(),
+                  subjectConnectionId: z.string(),
+                  token: z.string(),
+                })
+                .optional(),
             }),
             outputSchema: z.object({}),
             execute: async (input) => {
               const state = (input.context as { state: unknown })
                 .state as z.infer<TSchema>;
+              const vault = (input.context as { vault?: StudioVaultBootstrap })
+                .vault;
               await onChange?.(input.runtimeContext.env, {
                 state,
                 scopes: (input.context as { scopes: string[] }).scopes,
+                vault,
               });
 
               if (
@@ -597,6 +647,7 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
                 const { meshUrl, token, connectionId } = getMeshCtx(input);
                 await onInstall(input.runtimeContext.env, {
                   createAgent: makeCreateAgent(meshUrl, token, connectionId),
+                  vault,
                 });
               }
 

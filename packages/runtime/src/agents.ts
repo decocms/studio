@@ -90,8 +90,16 @@ export interface CreateAgentResult {
   alreadyExisted: boolean;
 }
 
+export interface StudioVaultBootstrap {
+  baseUrl: string;
+  org: string;
+  subjectConnectionId: string;
+  token: string;
+}
+
 export interface InstallContext {
   createAgent: (input: CreateAgentInput) => Promise<CreateAgentResult>;
+  vault?: StudioVaultBootstrap;
 }
 
 interface VirtualMcpItem {

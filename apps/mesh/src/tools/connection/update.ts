@@ -5,10 +5,6 @@
  * Also handles MCP configuration state and scopes validation.
  */
 
-import {
-  getReferencedConnectionIds,
-  parseScope,
-} from "@/auth/configuration-scopes";
 import { clientFromConnection } from "@/mcp-clients";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
@@ -22,8 +18,12 @@ import {
 import { getSettings } from "../../settings";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
 import { invalidateConnectionCaches } from "../../mcp-clients/mcp-cache-invalidation";
+import {
+  deriveCredentialGrants,
+  injectSelfSentinel,
+  validateConfiguration,
+} from "./credential-grants";
 import { fetchToolsFromMCP } from "./fetch-tools";
-import { prop } from "./json-path";
 import {
   buildVirtualUrl,
   type ConnectionEntity,
@@ -49,79 +49,11 @@ const UpdateOutputSchema = z.object({
   item: ConnectionEntitySchema.describe("The updated connection entity"),
 });
 
-/**
- * Inject the well-known "SELF" sentinel into state when any SELF:: scopes are
- * present and the key hasn't already been set.  The sentinel value resolves to
- * the org's own self-endpoint, bypassing the normal DB-existence check inside
- * validateConfiguration (see the `endsWith("_self")` guard there).
- */
-function injectSelfSentinel(
-  state: Record<string, unknown>,
-  scopes: string[],
-  organizationId: string,
-): void {
-  if (
-    scopes.some((s) => s !== "*" && s.startsWith("SELF::")) &&
-    state["SELF"] === undefined
-  ) {
-    state["SELF"] = { value: `${organizationId}_self` };
-  }
-}
-
-/**
- * Validate configuration state and scopes, checking referenced connections
- */
-async function validateConfiguration(
-  state: Record<string, unknown>,
-  scopes: string[],
-  organizationId: string,
-  ctx: Parameters<typeof COLLECTION_CONNECTIONS_UPDATE.execute>[1],
-): Promise<void> {
-  // Validate scope format and state keys
-  for (const scope of scopes) {
-    // Parse scope format: "KEY::SCOPE" (throws on invalid format)
-    if (scope === "*") {
-      continue;
-    }
-    const [key] = parseScope(scope);
-    const value = prop(key, state);
-
-    // Check if this key exists in state
-
-    if (value === undefined || value === null) {
-      throw new Error(
-        `Scope references key "${key}" but it's not present in state`,
-      );
-    }
-  }
-
-  // Get all referenced connection IDs
-  const referencedConnections = getReferencedConnectionIds(state, scopes);
-
-  // Validate all referenced connections
-  for (const refConnectionId of referencedConnections) {
-    if (refConnectionId.endsWith("_self")) {
-      continue;
-    }
-    // Verify connection exists and belongs to same organization
-    // Use consistent error message to prevent cross-org information disclosure
-    const refConnection =
-      await ctx.storage.connections.findById(refConnectionId);
-    if (!refConnection || refConnection.organization_id !== organizationId) {
-      throw new Error(`Referenced connection not found: ${refConnectionId}`);
-    }
-
-    // Verify user has access to the referenced connection
-    try {
-      await ctx.access.check(refConnectionId);
-    } catch (error) {
-      throw new Error(
-        `Access denied to referenced connection: ${refConnectionId}. ${
-          (error as Error).message
-        }`,
-      );
-    }
-  }
+function stringArraysEqual(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }
 
 export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
@@ -154,6 +86,9 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     }
 
     const { id, data } = input;
+    const configChanged =
+      data.configuration_state !== undefined ||
+      data.configuration_scopes !== undefined;
 
     // First fetch the connection to verify ownership before updating
     const existing = await ctx.storage.connections.findById(id);
@@ -201,10 +136,7 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       data.configuration_scopes ?? existing.configuration_scopes ?? [];
 
     // If configuration fields are being updated, validate them
-    if (
-      data.configuration_state !== undefined ||
-      data.configuration_scopes !== undefined
-    ) {
+    if (configChanged) {
       // Merge state: use provided state, or keep existing
       if (data.configuration_state !== undefined) {
         finalState = data.configuration_state ?? {};
@@ -265,10 +197,12 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     const tools = fetchResult?.tools?.length ? fetchResult.tools : null;
 
     // Auto-populate scopes from MCP_CONFIGURATION when not explicitly provided by the caller
+    let autoScopesChanged = false;
     if (
       data.configuration_scopes === undefined &&
       fetchResult?.scopes?.length
     ) {
+      autoScopesChanged = !stringArraysEqual(finalScopes, fetchResult.scopes);
       finalScopes = fetchResult.scopes;
     }
 
@@ -283,7 +217,61 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       organization.id,
     );
 
-    // Update the connection with the refreshed tools and configuration
+    if (autoScopesChanged && finalScopes.length > 0) {
+      await validateConfiguration(
+        finalState as Record<string, unknown>,
+        finalScopes,
+        organization.id,
+        ctx,
+      );
+    }
+
+    const savedConfigurationChanged = configChanged || autoScopesChanged;
+    const credentialGrants = savedConfigurationChanged
+      ? deriveCredentialGrants(
+          finalState as Record<string, unknown>,
+          finalScopes,
+        )
+      : [];
+    const previousCredentialGrants = savedConfigurationChanged
+      ? deriveCredentialGrants(
+          (existing.configuration_state ?? {}) as Record<string, unknown>,
+          existing.configuration_scopes ?? [],
+        )
+      : [];
+    // firstRun fires the MCP's onInstall hook exactly once: true when the
+    // connection had no prior configuration_state (its first config save).
+    const priorState = existing.configuration_state as Record<
+      string,
+      unknown
+    > | null;
+    const firstRun = priorState == null || Object.keys(priorState).length === 0;
+    let vaultBootstrap:
+      | {
+          baseUrl: string;
+          org: string;
+          subjectConnectionId: string;
+          token: string;
+        }
+      | undefined;
+    let createdWorkloadTokenId: string | undefined;
+
+    const restorePreviousCredentialGrants = async () => {
+      try {
+        await ctx.storage.connectionCredentialVault.replaceGrantsForSubject({
+          organizationId: organization.id,
+          subjectConnectionId: id,
+          createdBy: userId,
+          grants: previousCredentialGrants,
+        });
+      } catch (restoreError) {
+        console.error(
+          "Failed to restore credential grants after credential vault mutation failed",
+          restoreError,
+        );
+      }
+    };
+
     const updatePayload: Partial<ConnectionEntity> = {
       ...data,
       connection_url: finalConnectionUrl,
@@ -292,7 +280,112 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
       configuration_scopes: finalScopes,
       updated_by: userId,
     };
-    const connection = await ctx.storage.connections.update(id, updatePayload);
+    const connectionForCallback = {
+      ...existing,
+      ...updatePayload,
+    } as ConnectionEntity;
+
+    if (savedConfigurationChanged) {
+      try {
+        await ctx.storage.connectionCredentialVault.replaceGrantsForSubject({
+          organizationId: organization.id,
+          subjectConnectionId: id,
+          createdBy: userId,
+          grants: credentialGrants,
+        });
+
+        if (credentialGrants.length > 0) {
+          const activeToken =
+            await ctx.storage.connectionCredentialVault.findActiveWorkloadToken(
+              {
+                organizationId: organization.id,
+                subjectConnectionId: id,
+              },
+            );
+
+          if (!activeToken) {
+            const { plaintextToken, record } =
+              await ctx.storage.connectionCredentialVault.createOrRotateWorkloadToken(
+                {
+                  organizationId: organization.id,
+                  subjectConnectionId: id,
+                },
+              );
+            createdWorkloadTokenId = record.id;
+            vaultBootstrap = {
+              baseUrl: ctx.baseUrl,
+              org: organization.slug ?? organization.id,
+              subjectConnectionId: id,
+              token: plaintextToken,
+            };
+          }
+        }
+      } catch (error) {
+        if (createdWorkloadTokenId) {
+          await ctx.storage.connectionCredentialVault.revokeWorkloadToken({
+            organizationId: organization.id,
+            subjectConnectionId: id,
+            tokenId: createdWorkloadTokenId,
+          });
+        }
+        await restorePreviousCredentialGrants();
+        throw error;
+      }
+    }
+
+    // Invoke ON_MCP_CONFIGURATION callback if configuration was updated
+    // Ignore errors but await for the response before responding
+    if (savedConfigurationChanged && finalState && finalScopes) {
+      try {
+        // Create client - pool manages lifecycle, best-effort call
+        const client = await clientFromConnection(
+          connectionForCallback,
+          ctx,
+          false,
+        );
+
+        await client.callTool({
+          name: "ON_MCP_CONFIGURATION",
+          arguments: {
+            state: finalState,
+            scopes: finalScopes,
+            firstRun,
+            ...(vaultBootstrap ? { vault: vaultBootstrap } : {}),
+          },
+        });
+      } catch (error) {
+        console.error("Failed to invoke ON_MCP_CONFIGURATION callback", error);
+        if (createdWorkloadTokenId) {
+          await ctx.storage.connectionCredentialVault.revokeWorkloadToken({
+            organizationId: organization.id,
+            subjectConnectionId: id,
+            tokenId: createdWorkloadTokenId,
+          });
+          await restorePreviousCredentialGrants();
+          throw error;
+        }
+      }
+    }
+
+    // Update the connection after any required vault bootstrap succeeds. This
+    // keeps mixed updates atomic from the caller's point of view when bootstrap
+    // plaintext would otherwise be lost.
+    let connection: ConnectionEntity;
+    try {
+      connection = await ctx.storage.connections.update(id, updatePayload);
+    } catch (error) {
+      if (savedConfigurationChanged) {
+        if (createdWorkloadTokenId) {
+          await ctx.storage.connectionCredentialVault.revokeWorkloadToken({
+            organizationId: organization.id,
+            subjectConnectionId: id,
+            tokenId: createdWorkloadTokenId,
+          });
+        }
+        await restorePreviousCredentialGrants();
+      }
+      throw error;
+    }
 
     // Eagerly populate NATS KV cache with fetched tools
     if (tools) {
@@ -304,40 +397,6 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     // results across ALL replicas (per-pod caches → NATS broadcast) so stale
     // (possibly now-unauthorized) responses aren't served against the new config.
     invalidateConnectionCaches(id);
-
-    // Invoke ON_MCP_CONFIGURATION callback if configuration was updated
-    // Ignore errors but await for the response before responding
-    if (
-      (data.configuration_state !== undefined ||
-        data.configuration_scopes !== undefined) &&
-      finalState &&
-      finalScopes
-    ) {
-      try {
-        // Create client - pool manages lifecycle, best-effort call
-        const client = await clientFromConnection(connection, ctx, false);
-
-        // firstRun fires the MCP's onInstall hook exactly once: true when the
-        // connection had no prior configuration_state (its first config save).
-        const priorState = existing.configuration_state as Record<
-          string,
-          unknown
-        > | null;
-        const firstRun =
-          priorState == null || Object.keys(priorState).length === 0;
-
-        await client.callTool({
-          name: "ON_MCP_CONFIGURATION",
-          arguments: {
-            state: finalState,
-            scopes: finalScopes,
-            firstRun,
-          },
-        });
-      } catch (error) {
-        console.error("Failed to invoke ON_MCP_CONFIGURATION callback", error);
-      }
-    }
 
     return {
       item: connection,

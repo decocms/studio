@@ -87,6 +87,36 @@ describe("ConnectionStorage", () => {
     });
   });
 
+  describe("createNew", () => {
+    it("should reject existing same-org IDs without updating the row", async () => {
+      const created = await storage.createNew({
+        id: "conn_insert_only_existing",
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "Insert Only Original",
+        connection_type: "HTTP",
+        connection_url: "https://insert-only-original.invalid/mcp",
+      });
+
+      await expect(
+        storage.createNew({
+          id: created.id,
+          organization_id: "org_123",
+          created_by: "user_123",
+          title: "Insert Only Replacement",
+          connection_type: "HTTP",
+          connection_url: "https://insert-only-replacement.invalid/mcp",
+        }),
+      ).rejects.toThrow("Connection ID already exists");
+
+      const preserved = await storage.findById(created.id);
+      expect(preserved?.title).toBe("Insert Only Original");
+      expect(preserved?.connection_url).toBe(
+        "https://insert-only-original.invalid/mcp",
+      );
+    });
+  });
+
   describe("findById", () => {
     it("should find connection by ID", async () => {
       const created = await storage.create({
