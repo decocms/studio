@@ -28,14 +28,17 @@ interface ViewModeToggleProps<T extends string = string> {
 const sizeConfig = {
   sm: {
     button: "size-7",
+    buttonWithLabel: "h-7",
     icon: "size-4",
   },
   md: {
     button: "size-9",
+    buttonWithLabel: "h-9",
     icon: "size-5",
   },
   lg: {
     button: "size-12",
+    buttonWithLabel: "h-12",
     icon: "size-6",
   },
 };
@@ -83,8 +86,11 @@ export function ViewModeToggle<T extends string = string>({
             onClick={() => onValueChange(option.value)}
             className={cn(
               "relative z-10 flex items-center justify-center gap-2 rounded-lg transition-colors [transition-timing-function:var(--ease-out-cubic)] duration-200",
-              fullWidth ? "flex-1 h-12 px-4" : config.button,
-              !fullWidth && option.label ? "px-3" : "",
+              fullWidth
+                ? "flex-1 h-12 px-4"
+                : option.label
+                  ? cn(config.buttonWithLabel, "px-3")
+                  : config.button,
             )}
           >
             <span
