@@ -188,7 +188,7 @@ export function renderField(props: FieldProps) {
       //    during resolution, e.g. { type: "string", format: "image-uri" })
       // 3. plainSchema on the variant value schema (circular block-ref)
       const innerSchema =
-        variantValueSchema && !isMultivariateBlockRef(variantValueSchema)
+        variantValueSchema && variantValueSchema.type !== "block-ref"
           ? variantValueSchema
           : (schema.plainSchema ??
             variantValueSchema?.plainSchema ?? { type: "string" });
