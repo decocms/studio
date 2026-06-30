@@ -6,7 +6,9 @@ import { resolveClaudeCodeModelId } from "./index";
 describe("resolveClaudeCodeModelId", () => {
   it("resolves current Claude Code CLI model IDs to SDK aliases", () => {
     expect(resolveClaudeCodeModelId("claude-code:opus")).toBe("opus");
-    expect(resolveClaudeCodeModelId("claude-code:sonnet")).toBe("sonnet");
+    expect(resolveClaudeCodeModelId("claude-code:sonnet")).toBe(
+      "claude-sonnet-5",
+    );
     expect(resolveClaudeCodeModelId("claude-code:haiku")).toBe("haiku");
     // Fable uses the full CLI model ID because the SDK doesn't have a short alias for it
     expect(resolveClaudeCodeModelId("claude-code:fable")).toBe(
@@ -16,6 +18,7 @@ describe("resolveClaudeCodeModelId", () => {
 
   it("passes through already-resolved aliases / full model IDs unchanged", () => {
     expect(resolveClaudeCodeModelId("sonnet")).toBe("sonnet");
+    expect(resolveClaudeCodeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
     expect(resolveClaudeCodeModelId("claude-fable-5")).toBe("claude-fable-5");
   });
 
@@ -32,5 +35,15 @@ describe("resolveClaudeCodeModelId", () => {
       const resolved = resolveClaudeCodeModelId(entry!.modelId);
       expect(resolved.startsWith("claude-code:")).toBe(false);
     }
+  });
+
+  it("uses Sonnet 5 for the Claude Code smart tier", () => {
+    const entry = resolveAgentTier("claude-code", "smart");
+
+    expect(entry).toEqual({
+      modelId: "claude-code:sonnet",
+      label: "Sonnet 5",
+    });
+    expect(resolveClaudeCodeModelId(entry!.modelId)).toBe("claude-sonnet-5");
   });
 });

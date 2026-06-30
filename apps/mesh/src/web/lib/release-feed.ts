@@ -30,6 +30,30 @@ export interface Release {
  */
 export const RELEASES: Release[] = [
   {
+    id: "claude-sonnet-5",
+    date: "2026-06-30",
+    eyebrow: "Now Available",
+    title: "Claude Sonnet 5 powers the Smart tier",
+    bullets: [
+      {
+        icon: Stars02,
+        title: "More agentic coding",
+        body: "Sonnet 5 is Anthropic's strongest Sonnet model yet, with improved reasoning, tool use, coding, and knowledge work compared with Sonnet 4.6.",
+      },
+      {
+        icon: CheckCircle,
+        title: "Available in Claude Code",
+        body: "The Claude Code harness now pins the Smart tier to the new `claude-sonnet-5` model id so new sessions use Sonnet 5 by default.",
+      },
+      {
+        icon: Zap,
+        title: "Nothing to change",
+        body: "Existing Smart-tier chats and agents pick up Sonnet 5 automatically. Thinking remains on Opus 4.8 1M.",
+      },
+    ],
+    learnMoreHref: "https://www.anthropic.com/news/claude-sonnet-5",
+  },
+  {
     id: "fable-5-suspension",
     date: "2026-06-13",
     eyebrow: "Important Update",

@@ -36,7 +36,7 @@ const CLAUDE_CODE_TIERS: AgentTierMap = {
   },
   smart: {
     modelId: "claude-code:sonnet",
-    label: "Sonnet 4.6",
+    label: "Sonnet 5",
     description: "Balanced quality",
     iconNode: <ClaudeCodeIcon size={16} />,
   },
