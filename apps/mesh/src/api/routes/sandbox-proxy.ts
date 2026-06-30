@@ -708,6 +708,53 @@ export const createSandboxRoutes = () => {
     },
   );
 
+  // -- Preview fetch (CORS proxy for /.decofile) ----------------------------
+  // /live/_meta is fetched directly from the preview URL by the client
+  // (the deco dev server allows CORS `*` for it). /.decofile must go through
+  // this proxy because cloud previews don't expose it cross-origin.
+  app.get("/:virtualMcpId/:branch/preview-fetch", async (c) => {
+    const runner = requireRunner(c);
+    if (runner instanceof Response) return runner;
+
+    const { claimName } = c.get("vmClaim");
+    const path = c.req.query("path");
+    if (path !== "/.decofile") {
+      return c.json({ error: "Path not allowed" }, 403);
+    }
+
+    let previewUrl: string | null;
+    try {
+      previewUrl = await runner.getPreviewUrl(claimName);
+    } catch {
+      return c.json({ error: "Preview not available" }, 502);
+    }
+    if (!previewUrl) {
+      return c.json({ error: "Preview not available" }, 502);
+    }
+
+    const base = previewUrl.replace(/\/+$/, "");
+    let upstream: Response;
+    try {
+      upstream = await fetch(`${base}${path}`);
+    } catch {
+      return c.json({ error: "Preview unreachable" }, 502);
+    }
+
+    let text: string;
+    try {
+      text = await upstream.text();
+    } catch {
+      return c.json({ error: "Preview unreachable" }, 502);
+    }
+    return new Response(text, {
+      status: upstream.status,
+      headers: {
+        "content-type":
+          upstream.headers.get("content-type") ?? "application/json",
+      },
+    });
+  });
+
   // -- Preview invoke (loader/action resolution) ------------------------------
   app.post(
     "/:virtualMcpId/:branch/preview-invoke",
