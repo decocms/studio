@@ -110,6 +110,7 @@ import { GLOBAL_SECTION_ICON_COLOR } from "@/web/components/sections-editor/sect
 import { suggestBlockId } from "@/web/components/sections-editor/page-sections";
 import { createReferencedBlockSaver } from "@/web/components/sections-editor/save-referenced-block";
 import { AvailableSectionEditor } from "./available-section-editor";
+import { SavedSectionEditor } from "./saved-section-editor";
 import { useSandboxEvents } from "@/web/components/sandbox/hooks/use-sandbox-events";
 import {
   sandboxUserStop,
@@ -1322,16 +1323,16 @@ function SectionsRightPane({
   }
 
   return (
-    <SectionsEditor
-      key={`section:${selection.key}`}
+    <SavedSectionEditor
+      key={`saved:${selection.key}`}
       orgSlug={orgSlug}
       virtualMcpId={virtualMcpId}
       branch={branch}
-      previewReady
-      previewUrl={previewUrl ?? undefined}
-      currentPath="/"
-      activePageBlockKey={null}
-      activeGlobalBlockKey={selection.key}
+      previewUrl={previewUrl}
+      meta={meta}
+      decofile={decofile}
+      blockKey={selection.key}
+      onSaveReferencedBlock={onSaveReferencedBlock}
     />
   );
 }
