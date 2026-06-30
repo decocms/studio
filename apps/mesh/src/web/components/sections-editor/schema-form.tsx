@@ -10,6 +10,7 @@ import { AnyOfField } from "./fields/any-of-field";
 import { DynamicOptionsField } from "./fields/dynamic-options-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
+import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
   isMultivariateArrayWrapper,
@@ -27,16 +28,28 @@ import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
 
-function multivariateMediaKind(
-  schema: SchemaProperty,
-): "image" | "file" | null {
-  if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return null;
-  if (schema.anyOfRefs.length !== 1) return null;
-  const rt = schema.anyOfRefs[0]!.resolveType;
-  if (rt.endsWith("/multivariate/image.ts")) return "image";
-  if (rt.endsWith("/multivariate/video.ts")) return "file";
-  if (rt.endsWith("/multivariate/file.ts")) return "file";
-  return null;
+/**
+ * Detect whether a block-ref schema is a multivariate flag wrapper.
+ *
+ * Returns `true` when the schema is a single-option block-ref whose
+ * wrapper has a `variants` property — i.e., it follows the
+ * `MultivariateProps<T>` pattern regardless of the resolve type path.
+ *
+ * The check only requires `properties.variants` to exist on the wrapper
+ * schema; it does NOT require the deep path `variants.items.properties.value`
+ * because schema depth limits may prevent full resolution of nested types.
+ */
+function isMultivariateBlockRef(schema: SchemaProperty): boolean {
+  if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return false;
+  if (schema.anyOfRefs.length !== 1) return false;
+  const wrapperSchema = schema.anyOfRefs[0]!.schema;
+  // When the wrapper schema is fully resolved, check for `variants` property.
+  if (wrapperSchema?.properties?.variants) return true;
+  // When depth limits prevent resolution (schema undefined), fall back to
+  // checking plainSchema: its presence means exactly one non-loader branch
+  // existed alongside the single loader — the multivariate widget pattern.
+  if (!wrapperSchema && schema.plainSchema) return true;
+  return false;
 }
 
 /** Infer section array items from a page-multivariate block-ref stub (site `global`). */
@@ -158,15 +171,37 @@ export function renderField(props: FieldProps) {
       typeof (value as Record<string, unknown>).__resolveType === "string" &&
       schema.anyOfRefs)
   ) {
-    // Deco wraps ImageWidget/VideoWidget in a multivariate flag loader by
-    // default. When the only option is the multivariate media loader,
-    // render the underlying media picker instead of a variant selector.
-    const mediaKind = multivariateMediaKind(schema);
-    if (mediaKind === "image") {
-      return <ImageField key={props.path} {...props} />;
-    }
-    if (mediaKind === "file") {
-      return <FileField key={props.path} {...props} />;
+    // Deco wraps widget types (ImageWidget, Message, custom types) in a
+    // multivariate flag loader. When the only option is a multivariate
+    // wrapper, detect the variant value type from the schema and render
+    // the appropriate inner field with variant management UI.
+    if (isMultivariateBlockRef(schema)) {
+      const ref = schema.anyOfRefs![0]!;
+      // Try to extract the variant value schema from the deep path.
+      // This may be undefined when schema depth limits prevent full
+      // resolution of nested types (variants.items not resolved).
+      const variantValueSchema =
+        ref.schema?.properties?.variants?.items?.properties?.value;
+      // Determine the schema for the inner (plain) field. Priority:
+      // 1. variant value schema (when fully resolved and non-circular)
+      // 2. plainSchema on the outer block-ref (non-loader branch preserved
+      //    during resolution, e.g. { type: "string", format: "image-uri" })
+      // 3. plainSchema on the variant value schema (circular block-ref)
+      const innerSchema =
+        variantValueSchema && variantValueSchema.type !== "block-ref"
+          ? variantValueSchema
+          : (schema.plainSchema ??
+            variantValueSchema?.plainSchema ?? { type: "string" });
+      const innerRenderer = (fieldProps: FieldProps) =>
+        renderField({ ...fieldProps, schema: innerSchema });
+      return (
+        <MultivariateFieldWrapper
+          key={props.path}
+          {...props}
+          multivariateResolveType={ref.resolveType}
+          renderInnerField={innerRenderer}
+        />
+      );
     }
     // For now render as object if we have properties, otherwise skip
     if (schema.anyOfRefs) {
