@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { sql, type Kysely, type Transaction } from "kysely";
 import { OrganizationDomainStorage } from "../storage/organization-domains";
 import type { Database, OrganizationDomain } from "../storage/types";
 import {
@@ -10,6 +10,8 @@ import {
 } from "./org-assurance-policy";
 
 const MAX_CREATE_ATTEMPTS = 5;
+
+type DatabaseExecutor = Kysely<Database> | Transaction<Database>;
 
 const ORG_NAME_TECH_SUFFIXES = [
   "labs",
@@ -119,28 +121,68 @@ export async function ensureUserOrganization(
       return { status: "ambiguous", domain, organizations: candidates };
     }
 
+    if (domainRecords.length > 0) {
+      return { status: "skipped", reason: "no-safe-domain-action", domain };
+    }
+
     if (!allowCreate) {
       return { status: "skipped", reason: "auto-create-disabled", domain };
     }
 
-    const created = await createOrganizationWithRetries(authApi, {
-      name: domainDisplayName(domain),
-      baseSlug: domainToOrgSlug(domain),
-      userId: user.id,
+    return db.transaction().execute(async (trx) => {
+      await sql`select pg_advisory_xact_lock(hashtext(${domain})::bigint)`.execute(
+        trx,
+      );
+
+      const lockedDomainStorage = new OrganizationDomainStorage(trx);
+      const lockedDomainRecords =
+        await lockedDomainStorage.getAllByDomain(domain);
+      const lockedCandidates = await getOrganizationsForDomainRecords(
+        trx,
+        lockedDomainRecords,
+      );
+      const lockedAutoCandidates = lockedCandidates.filter(
+        (candidate) => candidate.joinMode === "auto",
+      );
+
+      if (lockedAutoCandidates.length === 1) {
+        const organization = lockedAutoCandidates[0]!;
+        await addMemberIdempotent(authApi, user.id, organization.id);
+
+        return { status: "joined", organization, domain, createdVia };
+      }
+
+      if (lockedCandidates.length > 0) {
+        return {
+          status: "ambiguous",
+          domain,
+          organizations: lockedCandidates,
+        };
+      }
+
+      if (lockedDomainRecords.length > 0) {
+        return { status: "skipped", reason: "no-safe-domain-action", domain };
+      }
+
+      const created = await createOrganizationWithRetries(authApi, {
+        name: domainDisplayName(domain),
+        baseSlug: domainToOrgSlug(domain),
+        userId: user.id,
+      });
+
+      await lockedDomainStorage.add(created.id, domain, {
+        joinMode: "auto",
+        verificationStatus: "verified",
+        verificationMethod: "email",
+      });
+
+      const organization = await getOrganization(trx, created.id);
+      if (!organization) {
+        throw new Error("Created organization could not be loaded");
+      }
+
+      return { status: "created", organization, domain, createdVia };
     });
-
-    await domainStorage.add(created.id, domain, {
-      joinMode: "auto",
-      verificationStatus: "verified",
-      verificationMethod: "email",
-    });
-
-    const organization = await getOrganization(db, created.id);
-    if (!organization) {
-      throw new Error("Created organization could not be loaded");
-    }
-
-    return { status: "created", organization, domain, createdVia };
   }
 
   if (!allowCreate) {
@@ -199,7 +241,7 @@ function isOrganizationConflict(error: unknown): boolean {
 }
 
 async function getOrganization(
-  db: Kysely<Database>,
+  db: DatabaseExecutor,
   organizationId: string,
 ): Promise<EnsuredOrganization | null> {
   return (
@@ -212,7 +254,7 @@ async function getOrganization(
 }
 
 async function getOrganizationsForDomainRecords(
-  db: Kysely<Database>,
+  db: DatabaseExecutor,
   records: OrganizationDomain[],
 ): Promise<DomainOrganizationCandidate[]> {
   const visibleRecords = records.filter(
