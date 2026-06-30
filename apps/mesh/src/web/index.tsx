@@ -191,6 +191,7 @@ const commerceOnboardingRoute = createRoute({
   validateSearch: z.lazy(() =>
     z.object({
       org: z.string().optional(),
+      siteUrl: z.string().optional(),
     }),
   ),
 });

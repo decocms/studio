@@ -13,6 +13,7 @@ import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
+import * as CommerceDiscoveryTools from "./commerce-discovery";
 import * as ConnectionTools from "./connection";
 import * as DatabaseTools from "./database";
 import * as VirtualMCPTools from "./virtual";
@@ -76,6 +77,7 @@ export const CORE_TOOLS = [
   ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
+  CommerceDiscoveryTools.COMMERCE_DISCOVERY_SETUP,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,

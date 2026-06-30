@@ -4,13 +4,15 @@
 
 Create a dedicated `/commerce-onboarding` flow for commerce customers without changing the existing general `/onboarding` flow. The two routes may share lower-level components and org membership helpers, but they must never redirect users into each other.
 
-This spec covers the authentication, organization selection, organization recovery, and route isolation foundation. The final commerce-specific UI and the exact MCPs installed during commerce setup are intentionally separate follow-up inputs.
+This spec covers the inline authentication entry point, organization selection, organization recovery, and route isolation foundation. The final commerce-specific UI and the exact MCPs installed during commerce setup are intentionally separate follow-up inputs.
 
 ## Current Behavior
 
 Studio already has a general `/onboarding` route. It is used for users with no active organizations and supports corporate-domain discovery, auto-join, request-to-join, and organization creation.
 
 The `/login` route does not create organizations directly. It authenticates the user and redirects using the existing `next` search parameter, for example `/login?next=/commerce-onboarding`.
+
+`/login` already renders the reusable `UnifiedAuthForm`, which calls the Better Auth client APIs. `/commerce-onboarding` should reuse this auth UI and the same client APIs inline instead of sending commerce users to `/login`.
 
 Organization creation currently happens in Better Auth hooks or explicit organization creation endpoints. New organizations run the existing org bootstrap path through `seedOrgDb`, which creates default MCP connections and enqueues the Studio Pack install.
 
@@ -29,15 +31,51 @@ The isolation rule is strict:
 
 ## Authentication Flow
 
-`/commerce-onboarding` requires an authenticated user. If the user is signed out, the route redirects to:
+`/commerce-onboarding` requires an authenticated user, but signed-out users should stay on `/commerce-onboarding`.
+
+If the user is signed out, the route renders an inline auth entry instead of redirecting to `/login`.
+
+The inline auth entry should preserve the current commerce URL as its callback:
 
 ```text
-/login?next=/commerce-onboarding
+/commerce-onboarding?siteUrl=https://example.com
 ```
 
-This uses the app's existing `next` convention. `returnUrl` is not currently read by the login route.
+After login or signup, Better Auth sets the session cookie and returns the user to the same `/commerce-onboarding` URL, preserving query parameters such as `siteUrl`.
 
-After login, the user returns to `/commerce-onboarding`.
+The implementation should share auth UI and behavior with `/login` by extracting a small reusable auth entry component:
+
+```tsx
+<AuthEntry callbackUrl={currentCommerceUrl} allowAutoLogin={false} />
+```
+
+`/login` should use the same component with:
+
+```tsx
+<AuthEntry callbackUrl={next} allowAutoLogin={true} />
+```
+
+This keeps `/login` responsible for local-mode auto-login while `/commerce-onboarding` keeps the commerce user inside the commerce flow. `/commerce-onboarding` does not need to support local-mode auto-login.
+
+The shared auth entry should reuse the existing `UnifiedAuthForm` and Better Auth client calls. It should not introduce commerce-specific auth endpoints.
+
+## Layout Direction
+
+`/commerce-onboarding` should keep the existing auth split layout used by `/login` and the current onboarding screens.
+
+The interaction area stays on the left. This includes:
+
+- inline auth
+- organization selection
+- zero-org recovery
+- site URL input
+- Commerce Discovery setup status
+- companion MCP cards
+- report CTA
+
+The capybara visual stays on the right.
+
+This is a layout invariant for the commerce onboarding flow. The implementation should reuse the existing `AuthSplitLayout` rather than introducing a new page shell or moving the primary interaction surface.
 
 ## Signup Organization Policy
 
@@ -110,15 +148,16 @@ The route should be repeatable. A user who already belongs to an org can visit `
 ## Data Flow
 
 1. User opens `/commerce-onboarding`.
-2. If signed out, route redirects to `/login?next=/commerce-onboarding`.
-3. Login authenticates and returns the user to `/commerce-onboarding`.
-4. Route loads active organizations.
-5. Route resolves the selected organization:
+2. If signed out, route renders the shared inline auth entry on `/commerce-onboarding`.
+3. User logs in or signs up through the shared auth entry.
+4. Auth returns the user to the same `/commerce-onboarding` URL, preserving query parameters.
+5. Route loads active organizations.
+6. Route resolves the selected organization:
    - one org: auto-select
    - multiple orgs: user picks
    - zero orgs: recover locally
-6. Route hands the selected org to the commerce setup phase.
-7. Commerce setup installs or configures the commerce-specific MCPs once those requirements are provided.
+7. Route hands the selected org to the commerce setup phase.
+8. Commerce setup installs or configures the commerce-specific MCPs once those requirements are provided.
 
 ## Error Handling
 
@@ -130,6 +169,8 @@ Failures in default org seeding or Studio Pack installation should not trap the 
 
 If the org list request fails, `/commerce-onboarding` should show a local retryable loading/error state instead of redirecting to the general onboarding flow.
 
+If the shared inline auth entry cannot render because no compatible login method is enabled, `/commerce-onboarding` should show a local auth-unavailable state instead of redirecting to `/login`.
+
 ## Testing Strategy
 
 Unit tests should cover pure helpers:
@@ -140,7 +181,8 @@ Unit tests should cover pure helpers:
 
 E2E coverage should cover route behavior over HTTP/browser boundaries:
 
-- signed-out `/commerce-onboarding` redirects through `/login?next=/commerce-onboarding`
+- signed-out `/commerce-onboarding` renders inline auth and does not navigate to `/login`
+- inline auth preserves `/commerce-onboarding` query parameters such as `siteUrl`
 - new verified corporate signup with no existing domain org creates a domain org and claim
 - future verified corporate signup auto-joins the unambiguous domain org
 - ambiguous domain users stay within `/commerce-onboarding` and see the shared choice/request UI

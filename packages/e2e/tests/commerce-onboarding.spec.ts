@@ -26,6 +26,7 @@ const SEEDED_ORG_IDS = [
   ONBOARDING_ARCHIVED_ORG_ID,
 ];
 const PASSWORD = "Playwright123!";
+const commerceDiscoveryOrgIds = new Set<string>();
 
 function uniqueEmail(prefix: string, domain = "playwright.local") {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}@${domain}`;
@@ -37,6 +38,14 @@ function domainToSlug(domain: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function commerceDiscoveryConnectionId(orgId: string) {
+  return `${orgId}_commerce-discovery`;
+}
+
+function commerceDiscoveryVirtualMcpId(orgId: string) {
+  return `commerce-discovery_${orgId}`;
 }
 
 async function signUpOnCurrentLoginPage(page: Page, email: string) {
@@ -54,6 +63,25 @@ async function signUpOnCurrentLoginPage(page: Page, email: string) {
   await page.getByPlaceholder("you@example.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(PASSWORD);
   await page.getByRole("button", { name: "Continue" }).click();
+}
+
+async function waitForConnection(db: Client, id: string) {
+  await expect
+    .poll(async () => {
+      const row = await db.query<{
+        id: string;
+        connection_url: string | null;
+        connection_type: string;
+        title: string;
+      }>(
+        `SELECT id, connection_url, connection_type, title
+         FROM connections
+         WHERE id = $1`,
+        [id],
+      );
+      return row.rows[0] ?? null;
+    })
+    .not.toBeNull();
 }
 
 async function findUserId(db: Client, email: string): Promise<string> {
@@ -84,6 +112,20 @@ async function orgIdForSlug(db: Client, slug: string): Promise<string> {
   if (!orgId) {
     throw new Error(`Organization ${slug} not found`);
   }
+  return orgId;
+}
+
+async function orgIdsForUser(db: Client, userId: string): Promise<string[]> {
+  const memberRows = await db.query<{ organizationId: string }>(
+    `SELECT "organizationId" FROM "member" WHERE "userId" = $1`,
+    [userId],
+  );
+  return memberRows.rows.map((row) => row.organizationId);
+}
+
+async function trackCommerceDiscoveryOrgForSlug(db: Client, slug: string) {
+  const orgId = await orgIdForSlug(db, slug);
+  commerceDiscoveryOrgIds.add(orgId);
   return orgId;
 }
 
@@ -157,6 +199,25 @@ test.describe("Commerce onboarding route isolation", () => {
   test.afterAll(async () => {
     if (!db) return;
 
+    const commerceDiscoveryConnectionIds = [...commerceDiscoveryOrgIds].flatMap(
+      (orgId) => [
+        commerceDiscoveryConnectionId(orgId),
+        commerceDiscoveryVirtualMcpId(orgId),
+      ],
+    );
+
+    if (commerceDiscoveryConnectionIds.length > 0) {
+      await db.query(
+        `DELETE FROM connection_aggregations
+         WHERE parent_connection_id = ANY($1::text[])
+            OR child_connection_id = ANY($1::text[])`,
+        [commerceDiscoveryConnectionIds],
+      );
+      await db.query(`DELETE FROM connections WHERE id = ANY($1::text[])`, [
+        commerceDiscoveryConnectionIds,
+      ]);
+    }
+
     await db.query(`DELETE FROM organization_domains WHERE domain LIKE $1`, [
       `commerce-e2e-${RUN_ID}%`,
     ]);
@@ -171,24 +232,167 @@ test.describe("Commerce onboarding route isolation", () => {
     await db.end();
   });
 
-  test("returns signed-out users to commerce onboarding after signup", async ({
+  test("keeps signed-out users on commerce onboarding with inline signup", async ({
     page,
   }) => {
-    await page.goto("/commerce-onboarding");
+    const email = uniqueEmail("commerce-inline");
+    await page.goto("/commerce-onboarding?siteUrl=example.com");
 
-    await page.waitForURL(
-      (url) =>
-        url.pathname === "/login" &&
-        url.searchParams.get("next") === "/commerce-onboarding",
-      { timeout: 15_000 },
+    await expect(page).toHaveURL(
+      (url) => url.pathname === "/commerce-onboarding",
     );
+    await expect(page.getByPlaceholder("you@example.com")).toBeVisible();
 
-    await signUpOnCurrentLoginPage(page, uniqueEmail("commerce-return"));
+    await signUpOnCurrentLoginPage(page, email);
 
     await page.waitForURL((url) => url.pathname === "/commerce-onboarding", {
       timeout: 15_000,
     });
-    await expect(page.getByText("Commerce diagnostics")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "See full report" }),
+    ).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const userId = await findUserId(db, email);
+    for (const orgId of await orgIdsForUser(db, userId)) {
+      commerceDiscoveryOrgIds.add(orgId);
+    }
+  });
+
+  test("sets up Commerce Discovery from siteUrl", async ({ page }) => {
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-discovery-setup"),
+      name: `Commerce Discovery ${RUN_ID}`,
+    });
+    const orgId = await trackCommerceDiscoveryOrgForSlug(db, user.orgSlug);
+    const connectionId = commerceDiscoveryConnectionId(orgId);
+    const virtualMcpId = commerceDiscoveryVirtualMcpId(orgId);
+
+    await page.goto("/commerce-onboarding?siteUrl=https://example.com/path");
+
+    await expect(
+      page.getByRole("button", { name: "See full report" }),
+    ).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await waitForConnection(db, connectionId);
+    await waitForConnection(db, virtualMcpId);
+
+    const concrete = await db.query<{
+      connection_url: string | null;
+      connection_type: string;
+      title: string;
+    }>(
+      `SELECT connection_url, connection_type, title
+       FROM connections
+       WHERE id = $1`,
+      [connectionId],
+    );
+    expect(concrete.rows[0]).toMatchObject({
+      connection_url: "https://commerce-skills.deco-cx.workers.dev/api/mcp",
+      connection_type: "HTTP",
+      title: "Commerce Discovery",
+    });
+
+    const virtual = await db.query<{
+      connection_url: string | null;
+      connection_type: string;
+      title: string;
+    }>(
+      `SELECT connection_url, connection_type, title
+       FROM connections
+       WHERE id = $1`,
+      [virtualMcpId],
+    );
+    expect(virtual.rows[0]).toMatchObject({
+      connection_url: `virtual://${virtualMcpId}`,
+      connection_type: "VIRTUAL",
+      title: "Commerce Discovery",
+    });
+  });
+
+  test("skips site URL input when Commerce Discovery is already set up", async ({
+    page,
+  }) => {
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-discovery-ready"),
+      name: `Commerce Discovery Ready ${RUN_ID}`,
+    });
+    await trackCommerceDiscoveryOrgForSlug(db, user.orgSlug);
+
+    await page.goto("/commerce-onboarding?siteUrl=example.com");
+    await expect(
+      page.getByRole("button", { name: "See full report" }),
+    ).toBeVisible({
+      timeout: 20_000,
+    });
+
+    await page.goto("/commerce-onboarding");
+
+    await expect(page.getByLabel("Website URL")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "See full report" }),
+    ).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  test("asks for a site URL when none is provided and rejects invalid URLs", async ({
+    page,
+  }) => {
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-site-url"),
+      name: `Commerce Site URL ${RUN_ID}`,
+    });
+    await trackCommerceDiscoveryOrgForSlug(db, user.orgSlug);
+
+    await page.goto("/commerce-onboarding");
+
+    await expect(page.getByLabel("Website URL")).toBeVisible();
+    await page.getByLabel("Website URL").fill("ftp://example.com");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(
+      page.getByText("Use an HTTP or HTTPS website URL."),
+    ).toBeVisible();
+
+    await page.getByLabel("Website URL").fill("example.com");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(
+      page.getByRole("button", { name: "See full report" }),
+    ).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  test("opens the full Commerce Discovery report with app tab and chat closed", async ({
+    page,
+  }) => {
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-report"),
+      name: `Commerce Report ${RUN_ID}`,
+    });
+    const orgId = await trackCommerceDiscoveryOrgForSlug(db, user.orgSlug);
+    const connectionId = commerceDiscoveryConnectionId(orgId);
+    const virtualMcpId = commerceDiscoveryVirtualMcpId(orgId);
+
+    await page.goto("/commerce-onboarding?siteUrl=example.com");
+    await page.getByRole("button", { name: "See full report" }).click();
+
+    await page.waitForURL(
+      (url) =>
+        url.pathname.startsWith(`/${user.orgSlug}/`) &&
+        url.searchParams.get("virtualmcpid") === virtualMcpId &&
+        url.searchParams.get("main") === `app:${connectionId}:DISPLAY_REPORT` &&
+        url.searchParams.get("chat") === "0",
+      { timeout: 20_000 },
+    );
+
+    const sidebarOpen = await page.evaluate(() =>
+      window.localStorage.getItem("mesh:sidebar-open"),
+    );
+    expect(sidebarOpen).toBe("false");
   });
 
   test("keeps ambiguous domain users in commerce onboarding", async ({
@@ -220,7 +424,7 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding");
 
-    await expect(page.getByText("Commerce diagnostics")).toBeVisible();
+    await expect(page.getByLabel("Website URL")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
 
     const orgId = await orgIdForSlug(db, expectedSlug);
@@ -266,7 +470,7 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding");
 
-    await expect(page.getByText("Commerce diagnostics")).toBeVisible();
+    await expect(page.getByLabel("Website URL")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
 
     const memberRow = await db.query<{ id: string }>(
@@ -336,7 +540,7 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding");
 
-    await expect(page.getByText("Commerce diagnostics")).toBeVisible();
+    await expect(page.getByLabel("Website URL")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
 
     const createdOrgId = await orgIdForSlug(db, expectedSlug);
@@ -397,6 +601,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.goto("/onboarding");
 
     await expect(page).toHaveURL((url) => url.pathname === "/onboarding");
-    await expect(page.getByText("Commerce diagnostics")).toHaveCount(0);
+    await expect(page.getByLabel("Website URL")).toHaveCount(0);
+    await expect(page.getByText("Commerce Discovery")).toHaveCount(0);
   });
 });
