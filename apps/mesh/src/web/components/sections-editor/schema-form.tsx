@@ -12,6 +12,7 @@ import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
 import { InlineUnionField } from "./fields/inline-union-field";
 import { LocationField } from "./fields/location-field";
+import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
@@ -224,6 +225,11 @@ export function renderField(props: FieldProps) {
   // file-uri / video-uri → FileField (filename chip + picker, video preview)
   if (schema.format === "file-uri" || schema.format === "video-uri") {
     return <FileField key={props.path} {...props} />;
+  }
+
+  // map → MapField (Google Maps area selector encoded as "lat,lng,radius")
+  if (schema.format === "map") {
+    return <MapField key={props.path} {...props} />;
   }
 
   // dynamic-options → DynamicOptionsField (select with options from a loader)
