@@ -2,9 +2,17 @@ import {
   getReferencedConnectionIds,
   parseScope,
 } from "@/auth/configuration-scopes";
-import { CREDENTIAL_ACCESS_TOKEN_READ_SCOPE } from "@/storage/connection-credential-vault";
+import {
+  CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+  CREDENTIAL_CONFIGURATION_READ_SCOPE,
+} from "@/storage/connection-credential-vault";
 import type { StudioContext } from "../../core/studio-context";
 import { prop } from "./json-path";
+
+const CREDENTIAL_READ_SCOPES = new Set<string>([
+  CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+  CREDENTIAL_CONFIGURATION_READ_SCOPE,
+]);
 
 /**
  * Inject the well-known "SELF" sentinel into state when any SELF:: scopes are
@@ -40,7 +48,7 @@ export function deriveCredentialGrants(
     }
 
     const [key, scopeName] = parseScope(scope);
-    if (scopeName !== CREDENTIAL_ACCESS_TOKEN_READ_SCOPE) {
+    if (!CREDENTIAL_READ_SCOPES.has(scopeName)) {
       continue;
     }
 
@@ -60,7 +68,7 @@ export function deriveCredentialGrants(
 
     grants.set(`${targetConnectionId}:${scopeName}`, {
       targetConnectionId,
-      scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+      scope: scopeName,
     });
   }
 

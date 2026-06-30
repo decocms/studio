@@ -27,6 +27,7 @@ import { ConnectionStorage } from "../../storage/connection";
 import {
   ConnectionCredentialVaultStorage,
   CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+  CREDENTIAL_CONFIGURATION_READ_SCOPE,
 } from "../../storage/connection-credential-vault";
 import { DownstreamTokenStorage } from "../../storage/downstream-token";
 import * as fetchToolsModule from "./fetch-tools";
@@ -442,6 +443,69 @@ describe("Connection Tools", () => {
   });
 
   describe("COLLECTION_CONNECTIONS_UPDATE (credential vault grants)", () => {
+    it("derives separate grants for downstream access token and configuration scopes", async () => {
+      await ctx.storage.connections.create({
+        id: "conn_vault_configuration_target",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "Vault Configuration Target",
+        connection_type: "HTTP",
+        connection_url: "https://vault-configuration-target.invalid/mcp",
+        status: "active",
+      });
+
+      const subject = await ctx.storage.connections.create({
+        id: "conn_vault_configuration_subject",
+        organization_id: "org_123",
+        created_by: "user_1",
+        title: "Vault Configuration Subject",
+        connection_type: "HTTP",
+        connection_url: "https://vault-configuration-subject.invalid/mcp",
+        status: "active",
+      });
+
+      setMockMcpClient({
+        callTool: vi.fn().mockResolvedValue({}),
+      });
+
+      await COLLECTION_CONNECTIONS_UPDATE.execute(
+        {
+          id: subject.id,
+          data: {
+            configuration_state: {
+              github: {
+                __type: "@deco/github",
+                value: "conn_vault_configuration_target",
+              },
+            },
+            configuration_scopes: [
+              `github::${CREDENTIAL_ACCESS_TOKEN_READ_SCOPE}`,
+              `github::${CREDENTIAL_CONFIGURATION_READ_SCOPE}`,
+            ],
+          },
+        },
+        ctx,
+      );
+
+      await expect(
+        ctx.storage.connectionCredentialVault.hasGrant({
+          organizationId: "org_123",
+          subjectConnectionId: subject.id,
+          targetConnectionId: "conn_vault_configuration_target",
+          scope: CREDENTIAL_ACCESS_TOKEN_READ_SCOPE,
+        }),
+      ).resolves.toBe(true);
+
+      await expect(
+        ctx.storage.connectionCredentialVault.hasGrant({
+          organizationId: "org_123",
+          subjectConnectionId: subject.id,
+          targetConnectionId: "conn_vault_configuration_target",
+          scope: CREDENTIAL_CONFIGURATION_READ_SCOPE,
+        }),
+      ).resolves.toBe(true);
+    });
+
     it("replaces credential grants and creates a workload token from configuration scopes", async () => {
       const subject = await ctx.storage.connections.create({
         id: "conn_vault_subject",
