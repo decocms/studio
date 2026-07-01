@@ -31,7 +31,7 @@ export interface CompanionConfigEntry {
   Renderer: FC<CompanionConfigRendererProps>;
 }
 
-export const COMPANION_CONFIG: Record<string, CompanionConfigEntry> = {
+const COMPANION_CONFIG: Record<string, CompanionConfigEntry> = {
   "google-analytics": {
     bindingType: "google-analytics",
     anchorField: "propertyId",
