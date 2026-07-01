@@ -31,6 +31,10 @@ import { ArrowRight, Loading01 } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
+import {
+  ScheduleMeetingBanner,
+  ScheduleMeetingVisual,
+} from "./commerce-onboarding/schedule-meeting.tsx";
 import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
 
 interface CommerceOrganization {
@@ -480,7 +484,7 @@ function CommerceSetup({
   initialSiteUrl?: string;
 }) {
   return (
-    <AuthSplitLayout>
+    <AuthSplitLayout visual={<ScheduleMeetingVisual />}>
       <QueryErrorResetBoundary>
         {({ reset }) => (
           <ErrorBoundary
@@ -803,6 +807,9 @@ function CommerceDiscoveryReady({
         reportDisabled={!reportApp.virtualMcpId}
         onOpenReport={onOpenReport}
       />
+      {/* The right-side ScheduleMeetingVisual is hidden on mobile, so surface the
+          human escape hatch as a collapsed banner pinned below the connect flow. */}
+      <ScheduleMeetingBanner className="md:hidden" />
     </div>
   );
 }
