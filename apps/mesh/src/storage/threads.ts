@@ -490,30 +490,6 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return (result.numUpdatedRows ?? BigInt(0)) > BigInt(0);
   }
 
-  /**
-   * Cross-org scan for runs stuck `in_progress` past `cutoffIso`. Liveness is
-   * `GREATEST(last_progress_at, run_started_at)`: last_progress_at is NULL until
-   * the first streamed chunk, and can also belong to a previous turn if a row was
-   * written before the RUN_STARTED reset. The newest timestamp is the liveness
-   * floor that keeps a brand-new cold-starting run from being reaped before it
-   * produces output.
-   * Used ONLY by the cross-pod thread-gate reaper (see thread-gate-reaper.ts),
-   * which is why it is not org-scoped — it must sweep every org.
-   */
-  async listStuckRuns(
-    cutoffIso: string,
-  ): Promise<Array<{ id: string; organizationId: string }>> {
-    const rows = await this.db
-      .selectFrom("threads")
-      .select(["id", "organization_id"])
-      .where("status", "=", "in_progress")
-      .where(
-        sql<boolean>`greatest(coalesce(last_progress_at, '-infinity'::timestamptz), coalesce(run_started_at, '-infinity'::timestamptz)) < ${cutoffIso}::timestamptz`,
-      )
-      .execute();
-    return rows.map((r) => ({ id: r.id, organizationId: r.organization_id }));
-  }
-
   async delete(id: string, organizationId: string): Promise<void> {
     await this.db
       .deleteFrom("threads")

@@ -145,10 +145,6 @@ import { SqlThreadStorage } from "../storage/threads";
 import { SqlAsyncResearchJobStorage } from "../storage/async-research-jobs";
 import { AsyncResearchJobSweeper } from "../storage/async-research-jobs-sweeper";
 import { registerMonitoringRetentionWorkflow } from "../monitoring/dbos-retention-workflow";
-import {
-  registerThreadGateReaperWorkflow,
-  setThreadGateReaperRuntime,
-} from "../dispatch-queue/thread-gate-reaper";
 import "../auth/install-studio-pack-workflow";
 import { cleanupOldMonitoringFiles } from "../monitoring/ndjson-retention";
 import { getLogsDir, getTracesDir, getMetricsDir } from "../monitoring/schema";
@@ -1558,19 +1554,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Must run before DBOS.launch() (which fires in index.ts after createApp).
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
-
-  // Cross-pod liveness reaper — the safety net for Phase 2's uncapped gate wait.
-  // Behind a flag so it can be enabled/observed before the cap is removed.
-  // Uses a non-org-scoped SqlThreadStorage because it sweeps every org.
-  if (process.env.LINK_DURABLE_REAPER === "1") {
-    const reaperStorage = new SqlThreadStorage(database.db);
-    setThreadGateReaperRuntime({
-      listStuckRuns: (cutoffIso) => reaperStorage.listStuckRuns(cutoffIso),
-      forceFailIfInProgress: (id, orgId) =>
-        reaperStorage.forceFailIfInProgress(id, orgId),
-    });
-    registerThreadGateReaperWorkflow();
-  }
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
