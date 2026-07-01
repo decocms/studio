@@ -73,6 +73,7 @@ export function PageVariantTabsHarness({
         onSelect={(index) => push({ type: "select", index })}
         onReorder={(from, to) => push({ type: "reorder", from, to })}
         onRename={(index) => push({ type: "rename", index })}
+        onDuplicate={(index) => push({ type: "duplicate", index })}
         onDelete={(index) => push({ type: "delete", index })}
         onAdd={() => push({ type: "add" })}
       />
