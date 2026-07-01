@@ -166,6 +166,10 @@ export interface FireAutomationContext {
   organizationId: string;
   triggerId: string | null;
   contextMessages?: ContextMessage[];
+  /** Trusted per-run metadata (e.g. from a webhook trigger's `run_metadata`),
+   *  forwarded to downstream MCP tool calls as `x-mesh-run-metadata`. Distinct
+   *  from `contextMessages`, which is untrusted payload shown to the model. */
+  runMetadata?: Record<string, string>;
 }
 
 export type FireAutomationOutcome =
@@ -353,6 +357,7 @@ async function buildDispatchRequestStep(
     ctx.triggerId,
     taskId,
     resolvedModel,
+    ctx.runMetadata,
   );
   if (ctx.contextMessages && ctx.contextMessages.length > 0) {
     // The dispatch path (`dispatch-run.ts`) persists and forwards only the

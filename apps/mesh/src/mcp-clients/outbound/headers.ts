@@ -143,6 +143,15 @@ async function _buildRequestHeaders(
     "x-request-id": ctx.metadata.requestId,
   };
 
+  // Forward per-run metadata (e.g. from a webhook trigger) so a downstream MCP
+  // server can read run-scoped context from the request instead of a tool arg.
+  if (
+    ctx.metadata.runMetadata &&
+    Object.keys(ctx.metadata.runMetadata).length > 0
+  ) {
+    headers["x-mesh-run-metadata"] = JSON.stringify(ctx.metadata.runMetadata);
+  }
+
   // Try to get cached token from downstream_tokens first
   // This supports OAuth token refresh for connections that use OAuth
   let accessToken: string | null = null;
