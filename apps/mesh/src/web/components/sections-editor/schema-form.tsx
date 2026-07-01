@@ -10,6 +10,8 @@ import { AnyOfField } from "./fields/any-of-field";
 import { DynamicOptionsField } from "./fields/dynamic-options-field";
 import { FileField } from "./fields/file-field";
 import { ImageField } from "./fields/image-field";
+import { InlineUnionField } from "./fields/inline-union-field";
+import { LocationField } from "./fields/location-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
@@ -210,6 +212,11 @@ export function renderField(props: FieldProps) {
     return null;
   }
 
+  // inline-union → branch selector for plain "A or B" data unions (Location | Map)
+  if (schema.type === "inline-union") {
+    return <InlineUnionField key={props.path} {...props} />;
+  }
+
   // image-uri → ImageField (preview + image-only picker)
   if (schema.format === "image-uri") {
     return <ImageField key={props.path} {...props} />;
@@ -222,6 +229,11 @@ export function renderField(props: FieldProps) {
   // dynamic-options → DynamicOptionsField (select with options from a loader)
   if (schema.format === "dynamic-options" && schema.options) {
     return <DynamicOptionsField key={props.path} {...props} />;
+  }
+
+  // location → LocationField (country → region → city cascade; Brazil gets a map)
+  if (schema.format === "location") {
+    return <LocationField key={props.path} {...props} />;
   }
 
   // Enum (including extracted const enums)
