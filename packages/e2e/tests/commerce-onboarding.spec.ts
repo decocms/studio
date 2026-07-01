@@ -1,4 +1,5 @@
 import { type Page } from "@playwright/test";
+import { sleep } from "@decocms/std";
 import { type Client } from "pg";
 import { signUpViaApi } from "../fixtures/auth-api";
 import { signUp } from "../fixtures/auth";
@@ -351,6 +352,44 @@ test.describe("Commerce onboarding route isolation", () => {
     // connection titles into the onboarding view.
     await expect(page.getByText("Commerce Discovery MCP")).toHaveCount(0);
     await expect(page.getByText("Commerce Discovery agent")).toHaveCount(0);
+  });
+
+  test("keeps the meeting visual stable while ready setup data loads", async ({
+    page,
+  }) => {
+    const user = await signUpViaApi(page.context().request, {
+      email: uniqueEmail("commerce-visual-stable"),
+      name: `Commerce Visual Stable ${RUN_ID}`,
+    });
+    await trackCommerceDiscoveryOrgForSlug(db, user.orgSlug);
+
+    await page.route(
+      "**/api/*/tools/COLLECTION_CONNECTIONS_GET",
+      async (route) => {
+        await sleep(3_000);
+        await route.continue();
+      },
+    );
+
+    await page.goto("/commerce-onboarding?siteUrl=example.com");
+
+    const loading = page
+      .getByRole("status")
+      .filter({ hasText: "Connecting workspace..." });
+    const meetingHeading = page.getByRole("heading", {
+      name: "Rather have us walk you through it?",
+    });
+
+    await expect(loading).toBeVisible();
+    await expect(async () => {
+      await expect(loading).toBeVisible();
+      await expect(meetingHeading).toBeVisible();
+    }, "the Suspense fallback keeps the meeting visual visible").toPass({
+      timeout: 1_000,
+    });
+    await expect(
+      page.getByRole("button", { name: "See full report" }),
+    ).toBeVisible({ timeout: 20_000 });
   });
 
   test("asks for a site URL when none is provided and rejects invalid URLs", async ({

@@ -29,7 +29,7 @@ import {
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
 import {
   buildScheduleMeetingUrl,
@@ -468,12 +468,19 @@ function CommerceSetup({
   org: CommerceOrganization;
   initialSiteUrl?: string;
 }) {
+  const { data: session } = authClient.useSession();
+  const meetingUrl = buildScheduleMeetingUrl({
+    siteUrl: initialSiteUrl,
+    email: session?.user?.email,
+  });
+  const meetingVisual = <ScheduleMeetingVisual href={meetingUrl} />;
+
   return (
     <QueryErrorResetBoundary>
       {({ reset }) => (
         <ErrorBoundary
           fallback={({ error, resetError }) => (
-            <AuthSplitLayout>
+            <AuthSplitLayout visual={meetingVisual}>
               <CommerceSetupErrorState
                 orgName={org.name}
                 message={
@@ -489,11 +496,18 @@ function CommerceSetup({
             </AuthSplitLayout>
           )}
         >
-          <Suspense fallback={<CommerceOnboardingLoading variant="connect" />}>
+          <Suspense
+            fallback={
+              <AuthSplitLayout visual={meetingVisual}>
+                <CommerceOnboardingLoadingIndicator variant="connect" />
+              </AuthSplitLayout>
+            }
+          >
             <CommerceSetupContent
               key={`${org.id}:${initialSiteUrl ?? ""}`}
               org={org}
               initialSiteUrl={initialSiteUrl}
+              sessionEmail={session?.user?.email}
             />
           </Suspense>
         </ErrorBoundary>
@@ -528,9 +542,11 @@ function CommerceSetupErrorState({
 function CommerceSetupContent({
   org,
   initialSiteUrl,
+  sessionEmail,
 }: {
   org: CommerceOrganization;
   initialSiteUrl?: string;
+  sessionEmail?: string | null;
 }) {
   const navigate = useNavigate();
   const selfClient = useMCPClient({
@@ -596,6 +612,14 @@ function CommerceSetupContent({
   });
 
   const setupReady = !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
+  const currentSiteUrl = initialSiteUrl ?? siteUrlInput;
+  const currentMeetingUrl = buildScheduleMeetingUrl({
+    siteUrl: currentSiteUrl,
+    email: sessionEmail,
+  });
+  const currentMeetingVisual = (
+    <ScheduleMeetingVisual href={currentMeetingUrl} />
+  );
 
   const runSetup = (rawSiteUrl: string) => {
     const normalized = normalizeCommerceSiteUrl(rawSiteUrl);
@@ -649,7 +673,8 @@ function CommerceSetupContent({
         org={org}
         reportApp={reportApp}
         onOpenReport={openReport}
-        siteUrl={initialSiteUrl ?? siteUrlInput}
+        meetingUrl={currentMeetingUrl}
+        meetingVisual={currentMeetingVisual}
       />
     );
   }
@@ -659,7 +684,7 @@ function CommerceSetupContent({
 
     if (!normalized.ok) {
       return (
-        <AuthSplitLayout>
+        <AuthSplitLayout visual={currentMeetingVisual}>
           <div className="grid gap-10">
             <CommerceHeader
               title="Commerce diagnostics"
@@ -679,7 +704,7 @@ function CommerceSetupContent({
     }
 
     return (
-      <AuthSplitLayout>
+      <AuthSplitLayout visual={currentMeetingVisual}>
         <div ref={triggerInitialSetup} className="grid gap-10">
           <CommerceHeader
             title="Commerce diagnostics"
@@ -705,7 +730,7 @@ function CommerceSetupContent({
   }
 
   return (
-    <AuthSplitLayout>
+    <AuthSplitLayout visual={currentMeetingVisual}>
       <div className="grid gap-10">
         <CommerceHeader
           title="Commerce diagnostics"
@@ -777,26 +802,17 @@ function CommerceDiscoveryReady({
   org,
   reportApp,
   onOpenReport,
-  siteUrl,
+  meetingUrl,
+  meetingVisual,
 }: {
   org: CommerceOrganization;
   reportApp: CommerceDiscoveryReportApp;
   onOpenReport: () => void;
-  siteUrl?: string;
+  meetingUrl: string;
+  meetingVisual: ReactNode;
 }) {
-  const { data: session } = authClient.useSession();
-  const meetingUrl = buildScheduleMeetingUrl({
-    siteUrl,
-    email: session?.user?.email,
-  });
   return (
-    // The "connect your tools" screen is the only one that swaps the placeholder
-    // visual for the schedule-a-meeting panel (md+); every other setup screen
-    // keeps the default AuthSplitLayout placeholder.
-    <AuthSplitLayout
-      align="fill"
-      visual={<ScheduleMeetingVisual href={meetingUrl} />}
-    >
+    <AuthSplitLayout align="fill" visual={meetingVisual}>
       {/* align="fill" hands us a flex column sized to the visible viewport, so we
           just flex-1 into it — header pinned top, cards scroll in the middle, and
           the footer (report CTA + talk-to-a-human banner) pinned to the bottom.
