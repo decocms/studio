@@ -2,6 +2,7 @@ import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
 import { OrganizationChoice } from "@/web/components/organization-choice";
+import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { formatPinnedViewTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import {
   authClient,
@@ -253,13 +254,13 @@ function CommerceOnboardingContent({
             title="Choose an organization"
             description="Select where commerce diagnostics should continue."
           />
-          <div className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
+          <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
             <OrganizationChoice
               organizations={activeOrganizations}
               selectLabel="Continue"
               onSelected={(organization) => setSelectedOrg(organization)}
             />
-          </div>
+          </ScrollReveal>
         </div>
       </AuthSplitLayout>
     );
@@ -303,7 +304,7 @@ function CommerceOnboardingContent({
             title="Choose an organization"
             description="Your email can access more than one organization. Choose where commerce setup should continue."
           />
-          <div className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
+          <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
             <OrganizationChoice
               organizations={ensureResult.organizations}
               domain={ensureResult.domain ?? undefined}
@@ -316,7 +317,7 @@ function CommerceOnboardingContent({
                 });
               }}
             />
-          </div>
+          </ScrollReveal>
         </div>
       </AuthSplitLayout>
     );
