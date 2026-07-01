@@ -1095,6 +1095,7 @@ function ContentBrowserReady({
                 decofile={decofile}
                 meta={meta}
                 onManagePosts={handleManagePosts}
+                previewBaseUrl={previewUrl}
               />
             ) : selection.collection === "authors" ? (
               <RecordEditor

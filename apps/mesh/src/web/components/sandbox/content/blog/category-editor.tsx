@@ -1,9 +1,10 @@
-import { ArrowRight, File02 } from "@untitledui/icons";
+import { ArrowRight, File02, LinkExternal01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
 import { buildBlogBlock, getBlogPayload, listPostsWithMeta } from "./blog-data";
+import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -25,6 +26,7 @@ export function CategoryEditor({
   decofile,
   meta,
   onManagePosts,
+  previewBaseUrl,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -34,6 +36,7 @@ export function CategoryEditor({
   decofile: Record<string, unknown>;
   meta: LiveMeta;
   onManagePosts: (slug: string) => void;
+  previewBaseUrl?: string | null;
 }) {
   const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
@@ -47,6 +50,14 @@ export function CategoryEditor({
 
   const setField = (key: string, value: unknown) =>
     setCategory({ ...category, [key]: value });
+
+  // Only offer a preview when the blog app has a `categorySlug` route
+  // template configured — otherwise there is no category page to open.
+  const previewUrl = buildBlogCategoryPreviewUrl({
+    decofile,
+    category,
+    previewBaseUrl,
+  });
 
   const slug = str(category.slug);
   const postCount = slug
@@ -65,7 +76,23 @@ export function CategoryEditor({
           <span className="truncate text-sm font-medium">
             {str(category.name) || "Untitled category"}
           </span>
-          <SaveStatus isPending={save.isPending} isError={save.isError} />
+          <div className="flex shrink-0 items-center gap-3">
+            <SaveStatus isPending={save.isPending} isError={save.isError} />
+            {previewUrl && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                title="Open the category preview in a new tab"
+                onClick={() =>
+                  window.open(previewUrl, "_blank", "noopener,noreferrer")
+                }
+              >
+                <LinkExternal01 size={14} />
+                See category preview
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
