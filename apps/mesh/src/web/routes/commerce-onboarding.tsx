@@ -25,6 +25,7 @@ import { ArrowRight, Loading01 } from "@untitledui/icons";
 import { Suspense, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
+import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
 
 interface CommerceOrganization {
   id: string;
@@ -92,9 +93,20 @@ function CommerceOnboardingPage() {
         ? "/commerce-onboarding"
         : `${window.location.pathname}${window.location.search}`;
 
+    const normalizedSite = siteUrl ? normalizeCommerceSiteUrl(siteUrl) : null;
+    const siteHost = normalizedSite?.ok
+      ? new URL(normalizedSite.value).hostname
+      : null;
+
     return (
       <AuthSplitLayout>
-        <AuthEntry callbackUrl={callbackUrl} allowAutoLogin={false} />
+        <AuthEntry
+          callbackUrl={callbackUrl}
+          allowAutoLogin={false}
+          title="Unlock your full diagnostic"
+          subtitle={null}
+          brand={siteHost ? <SiteBadge host={siteHost} /> : undefined}
+        />
       </AuthSplitLayout>
     );
   }

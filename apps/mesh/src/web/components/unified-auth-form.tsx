@@ -19,6 +19,22 @@ interface UnifiedAuthFormProps {
    * Used when redirectUrl is not set. Defaults to "/".
    */
   callbackUrl?: string;
+  /**
+   * Title for the default sign-in/sign-up view. Contextual views
+   * (forgot password, OTP sent) keep their own titles.
+   * Defaults to "Welcome to deco".
+   */
+  title?: string;
+  /**
+   * Subtitle for the default sign-in/sign-up view. `undefined` keeps the
+   * default text; `null` hides the subtitle entirely.
+   * Defaults to "Sign in or create a new account".
+   */
+  subtitle?: string | null;
+  /**
+   * Brand element rendered above the header. Defaults to the deco logo.
+   */
+  brand?: React.ReactNode;
 }
 
 type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
@@ -26,6 +42,9 @@ type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
 export function UnifiedAuthForm({
   redirectUrl,
   callbackUrl = "/",
+  title,
+  subtitle,
+  brand,
 }: UnifiedAuthFormProps) {
   const { emailAndPassword, resetPassword, emailOtp, socialProviders } =
     useAuthConfig();
@@ -294,36 +313,42 @@ export function UnifiedAuthForm({
     ? "Reset your password"
     : isEmailOtp && otpSent
       ? "Enter verification code"
-      : "Welcome to deco";
+      : (title ?? "Welcome to deco");
 
   const headerSubtitle = isForgotPassword
     ? "We'll send you a reset link"
     : isEmailOtp && otpSent
       ? `Code sent to ${email}`
-      : "Sign in or create a new account";
+      : subtitle === undefined
+        ? "Sign in or create a new account"
+        : subtitle;
 
   return (
     <div className="w-full grid gap-10">
-      {/* Logo */}
-      <div>
-        <img
-          src="/logos/deco logo.svg"
-          alt="Deco"
-          className="h-12 w-12 dark:hidden"
-        />
-        <img
-          src="/logos/deco logo negative.svg"
-          alt="Deco"
-          className="h-12 w-12 hidden dark:block"
-        />
-      </div>
+      {/* Brand */}
+      {brand ?? (
+        <div>
+          <img
+            src="/logos/deco logo.svg"
+            alt="Deco"
+            className="h-12 w-12 dark:hidden"
+          />
+          <img
+            src="/logos/deco logo negative.svg"
+            alt="Deco"
+            className="h-12 w-12 hidden dark:block"
+          />
+        </div>
+      )}
 
       {/* Header */}
       <div className="space-y-2">
         <h1 className="text-2xl font-medium leading-8">{headerTitle}</h1>
-        <p className="text-base text-muted-foreground leading-6">
-          {headerSubtitle}
-        </p>
+        {headerSubtitle && (
+          <p className="text-base text-muted-foreground leading-6">
+            {headerSubtitle}
+          </p>
+        )}
       </div>
 
       {/* Error message */}
