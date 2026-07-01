@@ -87,7 +87,7 @@ export default function CommerceOnboardingRoute() {
  */
 const CommerceSiteHostContext = createContext<string | null>(null);
 
-const useCommerceSiteHost = () => useContext(CommerceSiteHostContext);
+export const useCommerceSiteHost = () => useContext(CommerceSiteHostContext);
 
 function siteUrlToHost(siteUrl?: string): string | null {
   if (!siteUrl) return null;

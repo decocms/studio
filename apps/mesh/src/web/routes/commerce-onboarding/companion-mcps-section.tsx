@@ -3,6 +3,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { ArrowRight } from "@untitledui/icons";
+import { useCommerceSiteHost } from "../commerce-onboarding.tsx";
 import { CompanionCard, CompanionCardSkeleton } from "./companion-card.tsx";
 import { useCommerceCompanions } from "./use-commerce-companions.ts";
 import { useConnectCompanion } from "./use-connect-companion.ts";
@@ -25,6 +26,7 @@ export function CompanionMcpsSection({
 }) {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
+  const siteHost = useCommerceSiteHost();
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
@@ -122,6 +124,9 @@ export function CompanionMcpsSection({
                 connecting={connectingFieldKey === card.fieldKey}
                 disabled={busy && connectingFieldKey !== card.fieldKey}
                 onConnect={() => void connect(card)}
+                orgId={org.id}
+                orgSlug={org.slug}
+                siteHost={siteHost}
               />
             ))}
           </div>
