@@ -201,6 +201,7 @@ describe("buildCompanionCards", () => {
     });
     expect(cards[0]!.satisfied).toBe(true);
     expect(cards[0]!.candidateConnectionId).toBeNull();
+    expect(cards[0]!.linkedConnectionId).toBe("linked");
   });
   it("surfaces an unlinked candidate for reuse", () => {
     const cards = buildCompanionCards({
@@ -213,5 +214,6 @@ describe("buildCompanionCards", () => {
     });
     expect(cards[0]!.satisfied).toBe(false);
     expect(cards[0]!.candidateConnectionId).toBe("c_vtex");
+    expect(cards[0]!.linkedConnectionId).toBeNull();
   });
 });
