@@ -40,6 +40,12 @@ const OPEN_END = new Date(8_640_000_000_000_000);
 // `$live/flags/multivariate/section.ts` all match.
 const MULTIVARIATE_FLAG_PATTERN = /\/flags\/multivariate(?:\/[^/]+)?\.ts$/;
 
+// The page-level flag (no `/kind` subpath): `<scope>/flags/multivariate.ts`.
+// It lives at a page's conventional `sections` field and *is* the page's
+// variant, so it carries no meaningful inner path (which would otherwise read
+// as the literal field name "sections").
+const PAGE_LEVEL_FLAG_PATTERN = /\/flags\/multivariate\.ts$/;
+
 export interface ScheduledVariant {
   /** Top-level decofile key the variant lives under (used for grouping/color). */
   blockKey: string;
@@ -212,9 +218,13 @@ function walkAndCollect(
   out: ScheduledVariant[],
 ): void {
   if (isVariantContainer(node)) {
-    const innerPath = formatInnerPath(innerSegments);
     const variants = (node as { variants: unknown[] }).variants;
     const flagResolveType = (node as { __resolveType: string }).__resolveType;
+    // Page-level flags have no meaningful inner path — the label then falls
+    // back to the page name (`blockLabel`) instead of the field name.
+    const innerPath = PAGE_LEVEL_FLAG_PATTERN.test(flagResolveType)
+      ? ""
+      : formatInnerPath(innerSegments);
     variants.forEach((variant, variantIndex) => {
       if (!variant || typeof variant !== "object") return;
       const v = variant as Record<string, unknown>;

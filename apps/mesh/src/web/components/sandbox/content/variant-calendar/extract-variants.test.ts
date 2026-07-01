@@ -98,6 +98,10 @@ describe("extractScheduledVariants", () => {
     expect(out[0]?.blockKey).toBe("pages-Home-000001");
     expect(out[0]?.blockLabel).toBe("Home");
     expect(out[0]?.flagResolveType).toBe("website/flags/multivariate.ts");
+    // Page-level flags carry no inner path, so the label is the page name
+    // rather than the raw "sections" field.
+    expect(out[0]?.innerPath).toBe("");
+    expect(out[0]?.label).toBe("Home");
     expect(out[0]?.start.toISOString()).toBe("2026-06-30T23:00:00.000Z");
     expect(out[0]?.end.toISOString()).toBe("2026-07-03T13:00:00.000Z");
   });
