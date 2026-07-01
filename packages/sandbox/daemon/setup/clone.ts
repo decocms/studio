@@ -96,6 +96,75 @@ async function runNetworkStep(cmd: string, deps: CloneDeps): Promise<number> {
 // through to a fork-from-default fallback.
 const LS_REMOTE_NO_MATCH = 2;
 
+/** Like runNetworkStep but also returns the (merged stdout+stderr) output. */
+async function runNetworkStepCapture(
+  cmd: string,
+  deps: CloneDeps,
+): Promise<{ code: number; output: string }> {
+  let output = "";
+  const tee: CloneDeps = {
+    ...deps,
+    onChunk: (src, data) => {
+      output += data;
+      deps.onChunk(src, data);
+    },
+  };
+  const code = await runNetworkStep(cmd, tee);
+  return { code, output };
+}
+
+/**
+ * After a Case-2 clone (`--branch <branch>` for a branch that already exists on
+ * origin), the shallow single-branch clone brings down only
+ * `origin/<branch>` — `origin/<base>` is absent. `computeBranchDivergence`
+ * then can't compute ahead/behind vs base and the header falsely reports
+ * "Up to date" until a background fetch happens to populate the base ref.
+ *
+ * Fetch the remote's default branch (shallow, matching the Case-1 default
+ * clone) and point `origin/HEAD` at it so divergence-vs-base is computable
+ * from the moment the sandbox comes online. Best-effort: a failure here leaves
+ * the working tree intact and only delays the base ref to the next fetch, so
+ * we warn rather than abort the whole clone.
+ */
+async function fetchBaseBranch(
+  gc: string,
+  dir: string,
+  cloneUrl: string,
+  branchOnRemote: string,
+  deps: CloneDeps,
+): Promise<void> {
+  const { code, output } = await runNetworkStepCapture(
+    `${gc} ls-remote --symref ${cloneUrl} HEAD`,
+    deps,
+  );
+  if (code !== 0) {
+    deps.onChunk(
+      "setup",
+      `\r\n[clone] warning: could not resolve remote default branch; divergence vs base unavailable until next fetch\r\n`,
+    );
+    return;
+  }
+  // "ref: refs/heads/main\tHEAD"
+  const base = output.match(/ref:\s+refs\/heads\/(\S+)\s+HEAD/)?.[1] ?? null;
+  if (!base || base === branchOnRemote) return;
+
+  const fetchCode = await runNetworkStep(
+    `${gc} -C ${dir} fetch --depth 1 origin +refs/heads/${base}:refs/remotes/origin/${base}`,
+    deps,
+  );
+  if (fetchCode !== 0) {
+    deps.onChunk(
+      "setup",
+      `\r\n[clone] warning: failed to fetch base branch '${base}'; divergence vs base unavailable until next fetch\r\n`,
+    );
+    return;
+  }
+  await runStep(
+    `${gc} -C ${dir} symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/${base}`,
+    deps,
+  );
+}
+
 /** Resolves to exit code (0 on success). Emits chunks via `onChunk`. */
 export async function spawnClone(deps: CloneDeps): Promise<number> {
   const { config } = deps;
@@ -186,6 +255,9 @@ export async function spawnClone(deps: CloneDeps): Promise<number> {
         deps,
       );
     }
+    if (branchOnRemote) {
+      await fetchBaseBranch(gc, dir, cloneUrl, branchOnRemote, deps);
+    }
     return 0;
   }
 
@@ -196,6 +268,9 @@ export async function spawnClone(deps: CloneDeps): Promise<number> {
   if (cloneCode !== 0) return cloneCode;
   if (branchToForkLocally) {
     return runStep(`${gc} -C ${dir} checkout -B ${branchToForkLocally}`, deps);
+  }
+  if (branchOnRemote) {
+    await fetchBaseBranch(gc, dir, cloneUrl, branchOnRemote, deps);
   }
   return 0;
 }

@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { computeBranchDivergence } from "../git/branch-divergence";
 import type { Config } from "../types";
 import { spawnClone } from "./clone";
 
@@ -84,6 +85,26 @@ describe("spawnClone", () => {
       expect(currentBranch(repoDir)).toBe("feature/x");
       // The clone landed on feature/x — the file unique to that branch is present.
       expect(existsSync(join(repoDir, "feature.txt"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("fetches the base branch so divergence vs base is computable (case 2)", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = join(root, "workspace");
+      const code = await spawnClone({
+        config: makeConfig(repoDir, url, "feature/x"),
+        onChunk: () => {},
+      });
+      expect(code).toBe(0);
+      // Even though only feature/x was cloned, origin/main must be present with
+      // origin/HEAD pointing at it — otherwise computeBranchDivergence can't
+      // compute ahead/behind vs base and the header falsely shows "Up to date".
+      const div = computeBranchDivergence(repoDir);
+      expect(div.base).toBe("main");
+      expect(div.aheadOfBase).toBeGreaterThan(0);
     } finally {
       cleanup();
     }
