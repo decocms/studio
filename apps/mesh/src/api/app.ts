@@ -1568,6 +1568,11 @@ export async function createApp(options: CreateAppOptions = {}) {
       listStuckRuns: (cutoffIso) => reaperStorage.listStuckRuns(cutoffIso),
       forceFailIfInProgress: (id, orgId) =>
         reaperStorage.forceFailIfInProgress(id, orgId),
+      listOrphanedGateWorkflows: (cutoffMs) =>
+        reaperStorage.listOrphanedGateWorkflows(cutoffMs),
+      cancelGateWorkflow: async (workflowId) => {
+        await DBOS.cancelWorkflows([workflowId]);
+      },
     });
     registerThreadGateReaperWorkflow();
   }

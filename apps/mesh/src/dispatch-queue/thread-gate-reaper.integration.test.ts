@@ -121,6 +121,9 @@ describe("reapStuckRunsSweep (real Postgres)", () => {
       listStuckRuns: (cutoffIso) => storage.listStuckRuns(cutoffIso),
       forceFailIfInProgress: (id, org) =>
         storage.forceFailIfInProgress(id, org),
+      listOrphanedGateWorkflows: (cutoffMs) =>
+        storage.listOrphanedGateWorkflows(cutoffMs),
+      cancelGateWorkflow: async () => {},
     };
   }
 

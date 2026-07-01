@@ -29,6 +29,19 @@ import { meter } from "@/observability";
  */
 const REAPER_STUCK_TIMEOUT_MS = 45 * 60 * 1000;
 
+/**
+ * 5 min. Grace after a gate's `dispatchRunAndWait` step COMPLETES before we
+ * treat a still-`PENDING` gate as orphaned. Once dispatch returns, the only
+ * remaining work is `consumeRunProjection` (reads the retained stream, writes
+ * parts) — seconds, not minutes. A gate still PENDING minutes after its
+ * dispatch completed means the executor driving it died (e.g. a deploy rolled
+ * the worker pod) and DBOS's own recovery never re-adopted it — so it sits
+ * forever, holding the per-thread queue slot and bricking the thread. This
+ * grace is generously larger than any real projection so a live run that just
+ * finished dispatching is never reaped mid-projection.
+ */
+const ORPHAN_GATE_GRACE_MS = 5 * 60 * 1000;
+
 /** Every minute (crontab granularity floor). */
 const REAPER_CRONTAB = "* * * * *";
 
@@ -37,6 +50,17 @@ export interface ThreadGateReaperRuntime {
     cutoffIso: string,
   ): Promise<Array<{ id: string; organizationId: string }>>;
   forceFailIfInProgress(id: string, organizationId: string): Promise<boolean>;
+  /**
+   * Cross-org scan for orphaned gate workflows: `threadGateWorkflow`s still
+   * `PENDING` on the `thread-gate` queue whose `dispatchRunAndWait` step
+   * completed before `dispatchCompletedBeforeMs`. Returns the DBOS workflow
+   * ids to cancel. Reads `dbos.workflow_status` + `dbos.operation_outputs`.
+   */
+  listOrphanedGateWorkflows(
+    dispatchCompletedBeforeMs: number,
+  ): Promise<string[]>;
+  /** Cancel a gate workflow (frees its per-thread queue partition slot). */
+  cancelGateWorkflow(workflowId: string): Promise<void>;
 }
 
 let runtime: ThreadGateReaperRuntime | null = null;
@@ -49,6 +73,15 @@ const reapedCounter = meter.createCounter("decopilot.gate.reaped", {
   description: "Runs force-failed by the cross-pod thread-gate reaper",
   unit: "{runs}",
 });
+
+const orphanedGateReapedCounter = meter.createCounter(
+  "decopilot.gate.orphan_reaped",
+  {
+    description:
+      "Orphaned gate workflows cancelled by the cross-pod reaper (dispatch done, executor dead)",
+    unit: "{workflows}",
+  },
+);
 
 /**
  * One sweep: find stuck runs as of `nowMs`, force-fail each, return how many
@@ -82,6 +115,43 @@ export async function reapStuckRunsSweep(
   return reaped;
 }
 
+/**
+ * One sweep for orphaned gate workflows: cancel every `threadGateWorkflow`
+ * whose `dispatchRunAndWait` completed before `nowMs - graceMs` yet is still
+ * `PENDING`. Cancelling frees the per-thread queue partition slot so the
+ * thread's ENQUEUED turns drain. Pure w.r.t. the injected runtime.
+ *
+ * Distinct from `reapStuckRunsSweep`, which targets the RUN (force-fails a run
+ * whose progress stalled, so a gate WAITING in `dispatchRunAndWait` unblocks).
+ * This one targets the WORKFLOW after `dispatchRunAndWait` already returned —
+ * the run completed but its executor died before projecting, so nothing ever
+ * flips the workflow terminal. The run reaper cannot see this (the run is not
+ * `in_progress`); only a workflow-layer sweep frees the gate.
+ */
+export async function reapOrphanedGatesSweep(
+  rt: ThreadGateReaperRuntime,
+  nowMs: number,
+  graceMs: number = ORPHAN_GATE_GRACE_MS,
+): Promise<number> {
+  const cutoffMs = nowMs - graceMs;
+  const workflowIds = await rt.listOrphanedGateWorkflows(cutoffMs);
+  let reaped = 0;
+  for (const workflowId of workflowIds) {
+    await rt.cancelGateWorkflow(workflowId);
+    reaped++;
+    orphanedGateReapedCounter.add(1);
+    console.warn(
+      JSON.stringify({
+        msg: "thread-gate-reaper",
+        event: "orphaned-gate-reaped",
+        workflowId,
+        cutoffMs,
+      }),
+    );
+  }
+  return reaped;
+}
+
 async function reaperWorkflowFn(
   _scheduledTime: Date,
   currentTime: Date,
@@ -98,6 +168,15 @@ async function reaperWorkflowFn(
       } catch (err) {
         // A sweep failure must never kill the schedule.
         console.error("[thread-gate-reaper] sweep failed", err);
+      }
+      try {
+        const n = await reapOrphanedGatesSweep(rt, currentTime.getTime());
+        if (n > 0) {
+          console.log(`[thread-gate-reaper] cancelled ${n} orphaned gate(s)`);
+        }
+      } catch (err) {
+        // A sweep failure must never kill the schedule.
+        console.error("[thread-gate-reaper] orphaned-gate sweep failed", err);
       }
     },
     { name: "threadGateReaperSweep" },

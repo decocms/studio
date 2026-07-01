@@ -514,6 +514,38 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return rows.map((r) => ({ id: r.id, organizationId: r.organization_id }));
   }
 
+  /**
+   * Cross-org scan for ORPHANED gate workflows: `threadGateWorkflow`s still
+   * `PENDING` on the `thread-gate` queue whose `dispatchRunAndWait` step
+   * completed before `dispatchCompletedBeforeMs`. Such a gate finished its run
+   * but its executor died before projecting (e.g. a deploy rolled the worker),
+   * and DBOS's own recovery never re-adopted it — so it holds the per-thread
+   * partition slot forever. Returns the DBOS workflow ids for the reaper to
+   * cancel. Reads the DBOS system tables (same database, `dbos` schema).
+   * Names are the stable DBOS identifiers from thread-gate-workflow.ts
+   * (`threadGateWorkflow`, step `dispatchRunAndWait`) and queue-names.ts
+   * (`thread-gate`). Used ONLY by the cross-pod reaper — not org-scoped.
+   */
+  async listOrphanedGateWorkflows(
+    dispatchCompletedBeforeMs: number,
+  ): Promise<string[]> {
+    const rows = await sql<{ workflow_uuid: string }>`
+      SELECT ws.workflow_uuid
+      FROM dbos.workflow_status ws
+      WHERE ws.name = 'threadGateWorkflow'
+        AND ws.status = 'PENDING'
+        AND ws.queue_name = 'thread-gate'
+        AND EXISTS (
+          SELECT 1 FROM dbos.operation_outputs oo
+          WHERE oo.workflow_uuid = ws.workflow_uuid
+            AND oo.function_name = 'dispatchRunAndWait'
+            AND oo.completed_at_epoch_ms IS NOT NULL
+            AND oo.completed_at_epoch_ms < ${dispatchCompletedBeforeMs}
+        )
+    `.execute(this.db);
+    return rows.rows.map((r) => r.workflow_uuid);
+  }
+
   async delete(id: string, organizationId: string): Promise<void> {
     await this.db
       .deleteFrom("threads")
