@@ -401,14 +401,22 @@ export function resolveSchema(
      * Build a union branch's nested schema, unless doing so would recurse into
      * a cycle or expand an oversized selector. Returns `undefined` in those
      * cases so the branch is resolved lazily on selection.
+     *
+     * The oversized-union skip only applies when branches are `lazilyResolvable`
+     * — i.e. keyed by a module `__resolveType` that `resolveSchema()` can
+     * re-resolve on selection (section/loader selectors). Type-discriminated
+     * unions (keyed by a `type` discriminator, no module resolveType) have no
+     * lazy fallback, so their branch schemas must stay eager regardless of
+     * count; only the cycle/depth guards apply to them.
      */
     const eagerBranchSchema = (
       branch: RawSchema,
       branchDepth: number,
       branchCount: number,
+      lazilyResolvable = true,
     ): SchemaProperty | undefined =>
       !cyclicUnion &&
-      branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES &&
+      (!lazilyResolvable || branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES) &&
       branchDepth < MAX_BUILD_PROPERTY_DEPTH
         ? buildProperty(branch, branchDepth, unionSeen)
         : undefined;
@@ -621,7 +629,9 @@ export function resolveSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
-              schema: eagerBranchSchema(def, depth + 1, nonNull.length),
+              // Type-discriminated branches have no module resolveType to
+              // re-resolve from, so keep them eager regardless of union size.
+              schema: eagerBranchSchema(def, depth + 1, nonNull.length, false),
             };
           });
           return {

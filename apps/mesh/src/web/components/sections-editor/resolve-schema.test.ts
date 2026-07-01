@@ -808,6 +808,34 @@ describe("resolveSchema – cyclic Section-picker unions (memory blow-up guard)"
     expect(elapsed).toBeLessThan(1000);
   });
 
+  test("large type-discriminated union keeps eager branch schemas", () => {
+    // Type-discriminated branches (distinguished by a `type` field, no module
+    // __resolveType) have no lazy resolver, so their schemas must stay eager
+    // even when the union exceeds the section-selector threshold.
+    const branchCount = 50;
+    const anyOf = Array.from({ length: branchCount }, (_, i) => ({
+      type: "object",
+      properties: {
+        type: { type: "string", const: `variant-${i}` },
+        label: { type: "string", title: "Label" },
+      },
+    }));
+    const meta = metaWithSchema({
+      type: "object",
+      properties: { card: { anyOf } },
+    });
+
+    const card = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.card;
+    expect(card?.type).toBe("block-ref");
+    expect(card?.discriminatorKey).toBe("type");
+    expect(card?.anyOfRefs?.length).toBe(branchCount);
+    // Every branch keeps its nested fields (no lazy fallback exists).
+    expect(
+      card?.anyOfRefs?.every((r) => r.schema?.properties?.label !== undefined),
+    ).toBe(true);
+  });
+
   test("small cyclic union still terminates and cuts the cycle", () => {
     const meta = cyclicSectionMeta(3);
     const resolved = resolveSchema("site/sections/S0.tsx", meta);
