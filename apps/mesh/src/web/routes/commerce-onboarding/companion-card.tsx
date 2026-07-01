@@ -1,8 +1,6 @@
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { Button } from "@deco/ui/components/button.tsx";
 import { CheckCircle, Loading01 } from "@untitledui/icons";
-import { CompanionConfigSection } from "./companion-config-section.tsx";
-import { getCompanionConfig } from "./companion-config-registry.ts";
 import type { CompanionCardModel } from "./companions-core.ts";
 
 /**
@@ -44,19 +42,12 @@ export function CompanionCard({
   connecting,
   disabled,
   onConnect,
-  orgId,
-  orgSlug,
-  siteHost,
 }: {
   card: CompanionCardModel;
   connecting: boolean;
   disabled: boolean;
   onConnect: () => void;
-  orgId: string;
-  orgSlug: string;
-  siteHost: string | null;
 }) {
-  const configEntry = getCompanionConfig(card.bindingType);
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
       <div className="flex items-center gap-2">
@@ -103,15 +94,6 @@ export function CompanionCard({
           </p>
         )}
       </div>
-      {card.satisfied && card.linkedConnectionId && configEntry && (
-        <CompanionConfigSection
-          entry={configEntry}
-          card={{ ...card, linkedConnectionId: card.linkedConnectionId }}
-          orgId={orgId}
-          orgSlug={orgSlug}
-          siteHost={siteHost}
-        />
-      )}
     </div>
   );
 }
