@@ -51,3 +51,21 @@ export function inferInlineUnionIndex(
   }
   return bestIndex;
 }
+
+/**
+ * Fields of the stored value that the active branch does NOT own. The matcher
+ * runtime ANDs whatever fields are present in an entry, so a legacy entry could
+ * combine e.g. `regionCode` with `coordinates`. Preserving the non-active fields
+ * across edits means opening/editing the visible branch never silently drops the
+ * hidden constraint — only an explicit branch switch resets the entry.
+ */
+export function preservedOtherBranchFields(
+  value: unknown,
+  activeBranchKeys: readonly string[],
+): Record<string, unknown> {
+  const obj = asObject(value);
+  const active = new Set(activeBranchKeys);
+  return Object.fromEntries(
+    Object.entries(obj).filter(([k]) => !active.has(k)),
+  );
+}

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { inferInlineUnionIndex } from "./inline-union-value";
+import {
+  inferInlineUnionIndex,
+  preservedOtherBranchFields,
+} from "./inline-union-value";
 
 const locationMap = [
   { propertyKeys: ["city", "regionCode", "country"] },
@@ -62,5 +65,30 @@ describe("inferInlineUnionIndex – const discriminator (cache directives)", () 
     expect(inferInlineUnionIndex({ name: "immutable" }, cacheDirective)).toBe(
       0,
     );
+  });
+});
+
+describe("preservedOtherBranchFields – legacy combined entries", () => {
+  test("keeps the hidden branch's fields when editing the visible one", () => {
+    // Legacy entry combining a Location constraint (regionCode) with a Map one.
+    const combined = { regionCode: "SP", coordinates: "-23,-46,2000" };
+    // Active branch is Location {city, regionCode, country}; coordinates is preserved.
+    expect(
+      preservedOtherBranchFields(combined, ["city", "regionCode", "country"]),
+    ).toEqual({ coordinates: "-23,-46,2000" });
+  });
+
+  test("returns nothing to preserve for a clean single-branch value", () => {
+    expect(
+      preservedOtherBranchFields({ country: "BR" }, [
+        "city",
+        "regionCode",
+        "country",
+      ]),
+    ).toEqual({});
+  });
+
+  test("handles non-object values", () => {
+    expect(preservedOtherBranchFields(null, ["coordinates"])).toEqual({});
   });
 });

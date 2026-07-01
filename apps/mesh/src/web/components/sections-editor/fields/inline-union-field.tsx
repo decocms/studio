@@ -10,7 +10,10 @@ import { Label } from "@deco/ui/components/label.tsx";
 import type { SchemaProperty } from "../resolve-schema";
 import { SchemaForm } from "../schema-form";
 import type { FieldProps } from "./field-props";
-import { inferInlineUnionIndex } from "./inline-union-value";
+import {
+  inferInlineUnionIndex,
+  preservedOtherBranchFields,
+} from "./inline-union-value";
 import { LocationField } from "./location-field";
 import { isLocationShape } from "./location/location-value";
 
@@ -67,6 +70,12 @@ export function InlineUnionField(props: FieldProps) {
   if (branches.length === 0) return null;
 
   const formSchema = activeBranch ? branchFormSchema(activeBranch) : null;
+  // Keep any constraints from the other branch that a legacy combined entry may
+  // carry, so editing the visible branch doesn't drop the hidden side.
+  const preserved = preservedOtherBranchFields(
+    value,
+    Object.keys(activeBranch?.schema?.properties ?? {}),
+  );
 
   return (
     <div className="space-y-3">
@@ -94,6 +103,9 @@ export function InlineUnionField(props: FieldProps) {
           <LocationField
             {...props}
             schema={activeBranch.schema as SchemaProperty}
+            onChange={(loc) =>
+              onChange({ ...preserved, ...(loc as Record<string, unknown>) })
+            }
           />
         ) : formSchema ? (
           <SchemaForm
