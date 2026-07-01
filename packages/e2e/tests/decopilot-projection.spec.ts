@@ -41,15 +41,14 @@
  *    replays from the durable consumer, and reaches a terminal state without
  *    double-writing parts.
  *    TODO: add a `/__test/decopilot/consume/kill-worker-mid-stream` endpoint
- *    (pause + signal + resume) similar to the dbos-recover endpoint in
- *    `decopilot-projector-dbos.spec.ts`.
+ *    (pause + signal + resume) behind a dedicated multi-pod test gate.
  *
  * 5. **Parent recovery after terminal** (SKIPPED) — requires triggering a
  *    second invocation of `consumeRunProjection` for an already-terminal run
  *    and asserting the entry guard short-circuits (`isTerminalStatus(row.status)`
  *    returns immediately). Without a multi-pod DBOS test harness this cannot be
  *    driven from e2e.
- *    TODO: same multi-pod controls as case 4; see `decopilot-projector-dbos.spec.ts`.
+ *    TODO: same multi-pod controls as case 4.
  *
  * 6. **Dead producer / idle-timeout** (SKIPPED) — `consumeRunProjection`
  *    accepts `idleTimeoutMs` but that parameter is only wired at the
@@ -81,11 +80,6 @@
  *   path + entry-guard cases that used to live here are subsumed by that spec
  *   (see case 1 above); this spec now only carries the hosted-path LIVE case
  *   (gated on E2E_ANTHROPIC_KEY) plus the documented SKIPPED future cases.
- *
- * - `decopilot-projector-dbos.spec.ts` covers DBOS-level recovery cases (crash
- *   before ack, crash mid-projection, retention loss) behind the
- *   `DECOPILOT_PROJECTOR_DBOS_E2E=1` gate. Cases 4-5 here would follow the same
- *   pattern once the multi-pod test controls exist.
  */
 
 import { expect, test } from "../fixtures/test";
@@ -270,10 +264,8 @@ test.describe("decopilot projection — parent recovery mid-stream", () => {
       "correct terminal state with no duplicate parts. This requires multi-pod " +
       "DBOS test controls not available from a public HTTP surface. " +
       "TODO: implement a /__test/decopilot/consume/kill-mid-stream endpoint " +
-      "(similar to /__test/decopilot/projector/dbos-recover in " +
-      "decopilot-projector-dbos.spec.ts) that orchestrates: start consume step, " +
-      "pause it mid-drain, restart, assert single terminal write. " +
-      "Gate behind DECOPILOT_PROJECTOR_DBOS_E2E=1.",
+      "that orchestrates: start consume step, pause it mid-drain, restart, " +
+      "assert single terminal write, behind a dedicated test gate.",
   );
 
   test("worker crash mid-stream: run still reaches terminal with no duplicate parts", () => {
@@ -295,8 +287,8 @@ test.describe("decopilot projection — parent recovery after terminal", () => {
       "status or re-projecting parts. Without multi-pod DBOS controls this cannot " +
       "be driven from e2e. See the entry-guard unit test for the same assertion at " +
       "the function level. " +
-      "TODO: same multi-pod endpoint as case 4 above; gate behind " +
-      "DECOPILOT_PROJECTOR_DBOS_E2E=1.",
+      "TODO: same multi-pod endpoint as case 4 above, behind a dedicated " +
+      "test gate.",
   );
 
   test("worker crash after terminal: re-entry returns immediately, no double-write", () => {
