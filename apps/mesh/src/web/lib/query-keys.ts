@@ -53,6 +53,16 @@ export const KEYS = {
     ["commerce-discovery", "companion-connections", orgId] as const,
   commerceDiscoveryCompanionRegistry: (orgId: string, key: string) =>
     ["commerce-discovery", "companion-registry", orgId, key] as const,
+  commerceDiscoveryCompanionOAuthStatus: (
+    orgId: string,
+    connectionId: string,
+  ) =>
+    [
+      "commerce-discovery",
+      "companion-oauth-status",
+      orgId,
+      connectionId,
+    ] as const,
 
   connectionActivity: (
     connectionId: string,

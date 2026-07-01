@@ -196,11 +196,38 @@ describe("buildCompanionCards", () => {
       itemsById: { "deco/vtex": item("deco/vtex", "VTEX") },
       itemsByName: {},
       connections: [{ id: "c_vtex", app_name: "vtex", status: "active" }],
-      configurationState: { VTEX_STORE: { __type: "vtex", value: "linked" } },
+      configurationState: { VTEX_STORE: { __type: "vtex", value: "c_vtex" } },
       curated,
     });
     expect(cards[0]!.satisfied).toBe(true);
     expect(cards[0]!.candidateConnectionId).toBeNull();
+  });
+  it("treats configuration_state links to missing org connections as connectable", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "VTEX_STORE", bindingType: "vtex" }],
+      itemsById: { "deco/vtex": item("deco/vtex", "VTEX") },
+      itemsByName: {},
+      connections: [],
+      configurationState: {
+        VTEX_STORE: { __type: "vtex", value: "deleted_connection" },
+      },
+      curated,
+    });
+    expect(cards[0]!.satisfied).toBe(false);
+    expect(cards[0]!.candidateConnectionId).toBeNull();
+  });
+  it("treats configuration_state links to unready org connections as reusable connect cards", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "VTEX_STORE", bindingType: "vtex" }],
+      itemsById: { "deco/vtex": item("deco/vtex", "VTEX") },
+      itemsByName: {},
+      connections: [{ id: "c_vtex", app_name: "vtex", status: "active" }],
+      connectionReadiness: { c_vtex: false },
+      configurationState: { VTEX_STORE: { __type: "vtex", value: "c_vtex" } },
+      curated,
+    });
+    expect(cards[0]!.satisfied).toBe(false);
+    expect(cards[0]!.candidateConnectionId).toBe("c_vtex");
   });
   it("surfaces an unlinked candidate for reuse", () => {
     const cards = buildCompanionCards({
