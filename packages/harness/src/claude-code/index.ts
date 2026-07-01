@@ -38,6 +38,7 @@ import { extractUserText, prepCliMessages } from "../cli-message-prep";
 import { createCliMessageMetadata } from "../cli-stream-metadata";
 import { buildCodingWorkspacePrompt } from "../coding-workspace-prompt";
 import { buildCurrentContextPrompt } from "../current-context-prompt";
+import { NO_BACKGROUND_TASKS_PROMPT } from "../no-background-tasks-prompt";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
 import { genTitle } from "../title-generator";
 import { stringifyError } from "../stream-error";
@@ -86,6 +87,7 @@ export function buildClaudeCodeSystemPrompt(input: {
     input.agentInstructions?.trim()
       ? `<agent-instructions>\n${input.agentInstructions.trim()}\n</agent-instructions>`
       : null,
+    NO_BACKGROUND_TASKS_PROMPT,
     buildCurrentContextPrompt(input.now ?? new Date()),
   ].filter((part): part is string => Boolean(part?.trim()));
 
