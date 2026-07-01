@@ -1,5 +1,5 @@
 import { KEYS } from "@/web/lib/query-keys";
-import { useMCPClient } from "@decocms/mesh-sdk";
+import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import {
@@ -31,15 +31,24 @@ export function useCompanionConfig({
   siteHost: string | null;
 }) {
   const queryClient = useQueryClient();
-  const client = useMCPClient({ connectionId, orgId, orgSlug });
+  // Two clients: the SELF/management MCP serves the COLLECTION_CONNECTIONS_*
+  // tools (reading/writing the connection row), while the downstream connection
+  // serves its own data tools (get-account-summaries / list_sites). The GA/VTEX
+  // MCP servers do NOT expose the management collection tools.
+  const selfClient = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId,
+    orgSlug,
+  });
+  const downstreamClient = useMCPClient({ connectionId, orgId, orgSlug });
   const [error, setError] = useState<string | null>(null);
   const autoResolvedRef = useRef(false);
 
-  // Downstream connection's own configuration_state.
+  // Downstream connection's own configuration_state (management tool → self).
   const stateQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryCompanionConfig(orgId, connectionId),
     queryFn: async () => {
-      const result = await client.callTool({
+      const result = await selfClient.callTool({
         name: "COLLECTION_CONNECTIONS_GET",
         arguments: { id: connectionId },
       });
@@ -51,12 +60,12 @@ export function useCompanionConfig({
     stateQuery.data?.item?.configuration_state ?? {};
   const configured = isConfigured(currentValue, entry.anchorField);
 
-  // GA: account summaries → grouped options.
+  // GA: account summaries → grouped options (downstream data tool).
   const gaQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryGaSummaries(orgId, connectionId),
     enabled: entry.bindingType === "google-analytics",
     queryFn: async () => {
-      const result = await client.callTool({
+      const result = await downstreamClient.callTool({
         name: "get-account-summaries",
         arguments: {},
       });
@@ -64,23 +73,23 @@ export function useCompanionConfig({
     },
   });
 
-  // GSC: verified sites (for the Edit select + auto-resolve source).
+  // GSC: verified sites for the Edit select + auto-resolve source (downstream).
   const gscQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryGscSites(orgId, connectionId),
     enabled: entry.bindingType === "google-search-console",
     queryFn: async () => {
-      const result = await client.callTool({
+      const result = await downstreamClient.callTool({
         name: "list_sites",
         arguments: {},
       });
-      return parseListSites(unwrapToolResult<{ sites?: unknown }>(result));
+      return parseListSites(unwrapToolResult(result));
     },
   });
 
   const saveMutation = useMutation({
     mutationFn: async (patch: Record<string, unknown>) => {
       const merged = mergeConfigState(currentValue, patch);
-      const result = await client.callTool({
+      const result = await selfClient.callTool({
         name: "COLLECTION_CONNECTIONS_UPDATE",
         arguments: { id: connectionId, data: { configuration_state: merged } },
       });
@@ -96,7 +105,17 @@ export function useCompanionConfig({
       setError(err instanceof Error ? err.message : String(err)),
   });
 
-  const save = (patch: Record<string, unknown>) => saveMutation.mutate(patch);
+  // Returns whether the save succeeded so callers can defer collapsing the
+  // edit form until the write is durably persisted (keeps the form + error
+  // visible on failure).
+  const save = async (patch: Record<string, unknown>): Promise<boolean> => {
+    try {
+      await saveMutation.mutateAsync(patch);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   // One-shot auto-resolve (GSC), fired from a callback ref on the section root
   // (not during render — the .current guard lives inside this function, which
@@ -116,11 +135,11 @@ export function useCompanionConfig({
     autoResolvedRef.current = true;
     void entry
       .autoResolve({
-        client,
+        client: downstreamClient,
         ctx: { siteHost, connectionId, orgId, orgSlug },
       })
       .then((patch) => {
-        if (patch) save(patch);
+        if (patch) void save(patch);
       })
       .catch(() => {
         /* non-blocking: user can still fill via the Edit escape hatch */

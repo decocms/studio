@@ -71,8 +71,11 @@ export function CompanionConfigSection({
           saving={saving}
           error={error}
           onSave={(patch) => {
-            save(patch);
-            setEditing(false);
+            // Collapse the form only after the write is durably persisted;
+            // on failure keep it open so the inline error stays visible.
+            void save(patch).then((ok) => {
+              if (ok) setEditing(false);
+            });
           }}
         />
       )}

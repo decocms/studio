@@ -47,6 +47,26 @@ describe("parseAccountSummaries", () => {
     ]);
   });
 
+  it("accepts the unwrapped top-level accountSummaries shape", () => {
+    expect(
+      parseAccountSummaries({
+        accountSummaries: [
+          {
+            displayName: "Acct One",
+            propertySummaries: [
+              { property: "properties/100", displayName: "Site A" },
+            ],
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        account: "Acct One",
+        options: [{ value: "properties/100", label: "Site A" }],
+      },
+    ]);
+  });
+
   it("returns [] for malformed/empty input", () => {
     expect(parseAccountSummaries(null)).toEqual([]);
     expect(parseAccountSummaries({})).toEqual([]);
@@ -82,6 +102,16 @@ describe("parseListSites", () => {
       { siteUrl: "https://www.bite.com.br/" },
       { siteUrl: "sc-domain:deco.site" },
     ]);
+  });
+
+  it("accepts the raw Search Console siteEntry shape", () => {
+    expect(
+      parseListSites({
+        siteEntry: [
+          { siteUrl: "sc-domain:deco.site", permissionLevel: "siteOwner" },
+        ],
+      }),
+    ).toEqual([{ siteUrl: "sc-domain:deco.site" }]);
   });
 
   it("returns [] for malformed input", () => {
