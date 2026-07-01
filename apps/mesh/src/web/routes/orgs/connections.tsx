@@ -119,10 +119,7 @@ import {
   extractConnectionData,
   getRegistryItemAppName,
 } from "@/web/utils/extract-connection-data";
-import {
-  isConnectionAuthenticated,
-  authenticateMcp,
-} from "@/web/lib/mcp-oauth";
+import { authenticateAndPersistOAuth } from "@/web/lib/authenticate-and-persist-oauth";
 import { KEYS } from "@/web/lib/query-keys";
 import {
   type ConnectionProviderHint,
@@ -823,82 +820,43 @@ function ConnectionResults({
 
       const { id } = await actions.create.mutateAsync(connectionData);
 
-      // Handle OAuth flow
-      const mcpProxyUrl = new URL(
-        `/api/${org.slug}/mcp/${id}`,
-        window.location.origin,
-      );
-      const authStatus = await isConnectionAuthenticated({
-        url: mcpProxyUrl.href,
-        token: null,
+      // Handle OAuth flow (if needed) + persist, via the shared helper.
+      const auth = await authenticateAndPersistOAuth({
+        connectionId: id,
         orgId: org.id,
+        orgSlug: org.slug,
+        persistFallback: (token) =>
+          actions.update
+            .mutateAsync({ id, data: { connection_token: token } })
+            .then(() => undefined),
       });
 
-      if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-        const { token, tokenInfo, error } = await authenticateMcp({
-          connectionId: id,
-          orgSlug: org.slug,
-          scope: "offline_access",
+      if (auth.ran && !auth.ok) {
+        track("connection_oauth_failed", {
+          connection_id: id,
+          flow: "connections_page_connect",
+          error: auth.error ?? "no_token",
         });
-        if (error || !token) {
-          track("connection_oauth_failed", {
-            connection_id: id,
-            flow: "connections_page_connect",
-            error: error ?? "no_token",
-          });
-          toast.error(`Authentication failed: ${error ?? "no token received"}`);
-          return;
-        } else {
-          track("connection_oauth_succeeded", {
-            connection_id: id,
-            flow: "connections_page_connect",
-          });
-          if (tokenInfo) {
-            try {
-              const response = await fetch(
-                `/api/${org.slug}/connections/${id}/oauth-token`,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  credentials: "include",
-                  body: JSON.stringify({
-                    accessToken: tokenInfo.accessToken,
-                    refreshToken: tokenInfo.refreshToken,
-                    expiresIn: tokenInfo.expiresIn,
-                    scope: tokenInfo.scope,
-                    clientId: tokenInfo.clientId,
-                    clientSecret: tokenInfo.clientSecret,
-                    tokenEndpoint: tokenInfo.tokenEndpoint,
-                  }),
-                },
-              );
-              if (!response.ok) {
-                await actions.update.mutateAsync({
-                  id,
-                  data: { connection_token: token },
-                });
-              } else {
-                await actions.update.mutateAsync({ id, data: {} });
-              }
-            } catch {
-              await actions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            }
-          } else {
-            await actions.update.mutateAsync({
-              id,
-              data: { connection_token: token },
-            });
-          }
-          await queryClient.invalidateQueries({
-            queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
-          });
-          toast.success("Authentication successful");
-        }
+        toast.error(
+          `Authentication failed: ${auth.error ?? "no token received"}`,
+        );
+        return;
+      }
+
+      if (auth.ran) {
+        track("connection_oauth_succeeded", {
+          connection_id: id,
+          flow: "connections_page_connect",
+        });
+        const mcpProxyUrl = new URL(
+          `/api/${org.slug}/mcp/${id}`,
+          window.location.origin,
+        );
+        await queryClient.invalidateQueries({
+          queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
+        });
+        invalidateConnections();
+        toast.success("Authentication successful");
       }
 
       toast.success("Connected successfully");
