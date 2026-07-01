@@ -35,10 +35,22 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   }
   const db = ctx.db;
 
+  // Only the vault service-lease resolves the org by id — its machine caller
+  // (commerce-discovery) holds the org id, not the slug. Every other route stays
+  // slug-only so a slug that happens to equal another org's id can never cause
+  // cross-org resolution on an unauthenticated route.
+  const isVaultServicePath =
+    /\/vault\/connections\/[^/]+\/(access-token|configuration)$/.test(
+      c.req.path,
+    );
   const org = await db
     .selectFrom("organization")
     .select(["id", "slug", "name", "metadata"])
-    .where("slug", "=", slug)
+    .where((eb) =>
+      isVaultServicePath
+        ? eb.or([eb("slug", "=", slug), eb("id", "=", slug)])
+        : eb("slug", "=", slug),
+    )
     .executeTakeFirst();
 
   if (!org) {

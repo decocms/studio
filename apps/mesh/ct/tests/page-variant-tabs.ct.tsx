@@ -5,9 +5,9 @@ import type { PageVariant } from "@/web/components/sections-editor/page-variants
 
 /**
  * PageVariantTabs — the horizontal page-variant tab strip. Add a variant,
- * select a tab, or open a tab's actions menu to rename / delete. Delete is
- * disabled when only one variant remains. The DropdownMenu is portaled →
- * queried via `page`.
+ * select a tab, or open a tab's actions menu to rename / duplicate / delete.
+ * Delete is disabled when only one variant remains. The DropdownMenu is
+ * portaled → queried via `page`.
  */
 const TWO: PageVariant[] = [
   { label: "Default", sections: [] },
@@ -56,6 +56,20 @@ test("rename from the tab menu fires onRename", async ({ mount, page }) => {
   await expect
     .poll(() => readEvents(component))
     .toEqual([{ type: "rename", index: 1 }]);
+});
+
+test("duplicate from the tab menu fires onDuplicate", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <PageVariantTabsHarness variants={TWO} activeIndex={0} />,
+  );
+  await component.getByRole("button", { name: "Actions for Mobile" }).click();
+  await page.getByRole("menuitem", { name: "Duplicate" }).click();
+  await expect
+    .poll(() => readEvents(component))
+    .toEqual([{ type: "duplicate", index: 1 }]);
 });
 
 test("delete from the tab menu fires onDelete (multiple variants)", async ({

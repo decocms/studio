@@ -36,7 +36,7 @@ initObservability();
 // via a DBOS data source. The `dbos` schema is auto-created on launch.
 // setConfig must run before any module registers workflows; launch happens
 // after the app graph is loaded so all DBOS.registerWorkflow calls are in.
-const { DBOS } = await import("@dbos-inc/dbos-sdk");
+const { DBOS, DBOSClient } = await import("@dbos-inc/dbos-sdk");
 // DBOS uses its own pg client (separate from mesh's pool), so the `sslmode`
 // must travel in the URL. RDS's pg_hba.conf rejects unencrypted connections
 // with `no pg_hba.conf entry for host ... no encryption` when this is missing.
@@ -310,6 +310,73 @@ if (settings.localMode) {
 
 let shuttingDown = false;
 
+/**
+ * Hand off this executor's in-flight thread-gate gates so a live pod adopts
+ * them, instead of leaving them PENDING on this (dying) executor forever.
+ *
+ * WHY THIS EXISTS. The thread-gate queue is `concurrency=1` per thread
+ * partition; a `threadGateWorkflow` holds that slot the whole time it is
+ * PENDING. When a rolling deploy replaces this pod mid-run, `DBOS.shutdown()`
+ * just stops the executor and walks away — the in-flight gate is left PENDING
+ * on a now-dead `executor_id`. Nothing re-adopts it: self-recovery only covers
+ * an executor's OWN id (new pods have new ids), and the external Conductor is
+ * observed NOT to recover gracefully-deregistered executors (their orphans sit
+ * PENDING indefinitely). That stranded PENDING head blocks the partition, so
+ * every later message on the thread piles up ENQUEUED and never runs — the
+ * thread is bricked until someone cancels the head by hand.
+ *
+ * The fix: on the way out, flip our own in-flight gates PENDING → ENQUEUED
+ * (`resumeWorkflows`, which preserves the DBOS journal and the queue partition
+ * key). A live executor's queue poller then re-dispatches each gate and it
+ * REPLAYS from the journal: the already-recorded `trackMessageStarted` and
+ * `dispatchRunAndWait` steps return their cached outputs, so it resumes right
+ * at `consumeRunProjection` — no work redone, no double dispatch, for the
+ * overwhelming common case where dispatch had already completed. (Edge: if the
+ * pod died mid-`dispatchRunAndWait`, replay re-runs it; the work-item publish
+ * is idempotent on the persisted `runFenceToken`, so a redelivery collapses
+ * rather than opening a second daemon run.)
+ *
+ * Runs AFTER `DBOS.shutdown()` on purpose: once this executor's queue poller is
+ * stopped, a re-enqueued gate can only be claimed by a LIVE executor, so we
+ * can't re-grab (and re-orphan) our own gates in a shutdown race. Uses a
+ * standalone `DBOSClient` (its own sysdb connection) because mesh's DBOS
+ * executor is already torn down at this point.
+ *
+ * Best-effort: any failure is logged and swallowed so shutdown still completes.
+ * Only covers GRACEFUL termination — a hard SIGKILL (OOM, node loss) skips this
+ * handler, and those orphans still need Conductor recovery or a sweep.
+ */
+async function handOffInFlightThreadGates() {
+  let client: Awaited<ReturnType<typeof DBOSClient.create>> | undefined;
+  try {
+    client = await DBOSClient.create({
+      systemDatabaseUrl: withSslmode(
+        settings.databaseUrl,
+        settings.databasePgSsl,
+      ),
+      systemDatabaseSchemaName: "dbos",
+    });
+    const orphaned = await client.listWorkflows({
+      status: "PENDING",
+      queueName: THREAD_GATE_QUEUE,
+      executorId: settings.podName,
+      loadInput: false,
+      loadOutput: false,
+    });
+    if (orphaned.length === 0) return;
+    const ids = orphaned.map((w) => w.workflowID);
+    await client.resumeWorkflows(ids, { queueName: THREAD_GATE_QUEUE });
+    console.log(
+      `[shutdown] re-enqueued ${ids.length} in-flight thread-gate gate(s) for re-adoption by a live executor:`,
+      ids,
+    );
+  } catch (err) {
+    console.error("[shutdown] thread-gate handoff failed:", err);
+  } finally {
+    await client?.destroy().catch(() => {});
+  }
+}
+
 async function gracefulShutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -353,6 +420,11 @@ async function gracefulShutdown(signal: string) {
 
     // Drain DBOS before app.shutdown closes mesh's pg pool — in-flight steps use it.
     await DBOS.shutdown();
+    // Re-enqueue our own in-flight thread-gate gates so a live pod adopts them
+    // instead of stranding them PENDING on this dead executor (which bricks the
+    // thread). Runs after DBOS.shutdown() so our stopped poller can't re-grab
+    // them. See handOffInFlightThreadGates for the full rationale.
+    await handOffInFlightThreadGates();
     await app.shutdown();
   } catch (err) {
     console.error("[shutdown] Error during shutdown:", err);

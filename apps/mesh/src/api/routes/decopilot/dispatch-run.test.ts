@@ -105,4 +105,23 @@ describe("buildDurableDispatchInput", () => {
       target: { sandboxProviderKind: "agent-sandbox" },
     });
   });
+
+  test("carries runMetadata through the frozen snapshot", () => {
+    const durable = buildDurableDispatchInput(
+      {
+        messages: [],
+        models: { credentialId: "cred-1", thinking: { id: "model-1" } },
+        agent: { id: "agent-1" },
+        temperature: 0.2,
+        toolApprovalLevel: "auto",
+        mode: "default",
+        organizationId: "org-1",
+        userId: "user-1",
+        taskId: "thread-1",
+        runMetadata: { org_id: "org-xyz", url: "shop.com" },
+      },
+      { messageId: "msg-1", runFenceToken: "fence-1" },
+    );
+    expect(durable.runMetadata).toEqual({ org_id: "org-xyz", url: "shop.com" });
+  });
 });

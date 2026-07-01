@@ -481,7 +481,13 @@ export function ArrayField({
             value: item,
             onChange: (val) => updateItem(selectedIndex, val),
             path: `${path}.${selectedIndex}`,
-            label: editorSchema.title ?? `Item ${selectedIndex + 1}`,
+            // A mustache `title` (e.g. "{{{city}}} {{{regionCode}}}") is an
+            // item-label template, not a display label — use the resolved item
+            // label so the header reads "SP BR" instead of the raw template.
+            label:
+              editorSchema.title && !editorSchema.title.includes("{{")
+                ? editorSchema.title
+                : itemLabel(item, selectedIndex),
             breadcrumbPath: selection?.innerPath ?? [],
             onBreadcrumbChange: (nextPath) => {
               onBreadcrumbChange?.([...arrayItemPrefix(), ...nextPath]);

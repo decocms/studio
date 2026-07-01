@@ -72,6 +72,7 @@ import {
   appendPageVariantSections,
   buildPageSectionsFromVariants,
   countSavedMatcherBlockReferences,
+  duplicatePageVariantEntry,
   getLastVariantIndex,
   isMultivariateArrayWrapper,
   parsePageVariants,
@@ -1983,6 +1984,22 @@ export function SectionsEditor({
     );
   };
 
+  const handleDuplicatePageVariant = (variantIndex: number) => {
+    mutatePageVariants(
+      (variants) => duplicatePageVariantEntry(variants, variantIndex),
+      () => {
+        // Land the user on the freshly-created clone (inserted right after).
+        setActiveVariantIndex(variantIndex + 1);
+        setSelectedSectionIndex(null);
+        setFormValue(null);
+        setActiveResolveType(null);
+        setFieldBreadcrumbs([]);
+        setRuleFormValue(null);
+        setRuleResolveType(null);
+      },
+    );
+  };
+
   const handleRenamePageVariant = async (
     variantIndex: number,
     nextName: string,
@@ -2344,6 +2361,7 @@ export function SectionsEditor({
           onSelect={selectPageVariant}
           onReorder={handleReorderPageVariants}
           onRename={setRenameVariantIndex}
+          onDuplicate={handleDuplicatePageVariant}
           onDelete={handleDeletePageVariant}
           onAdd={handleAddPageVariant}
         />

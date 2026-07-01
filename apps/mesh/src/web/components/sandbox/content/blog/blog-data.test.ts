@@ -5,6 +5,8 @@ import {
   buildBlogBlock,
   discoverBlogBlockTypes,
   listPostsWithMeta,
+  removeCategoryFromPost,
+  renameCategoryOnPost,
   replaceCategoryOnPost,
 } from "./blog-data";
 import type { LiveMeta } from "@/web/components/sections-editor/resolve-schema";
@@ -333,5 +335,108 @@ describe("replaceCategoryOnPost", () => {
     expect(replaceCategoryOnPost(payload, { name: "News", slug: "news" })).toBe(
       payload,
     );
+  });
+});
+
+describe("renameCategoryOnPost", () => {
+  test("rewrites the matching slug and name, preserving others and order", () => {
+    const payload = {
+      title: "P",
+      categories: [
+        { name: "News", slug: "news" },
+        { name: "Old", slug: "old" },
+        { name: "Tips", slug: "tips" },
+      ],
+    };
+    const next = renameCategoryOnPost(payload, "old", {
+      name: "Fresh",
+      slug: "fresh",
+    });
+    expect(next.categories).toEqual([
+      { name: "News", slug: "news" },
+      { name: "Fresh", slug: "fresh" },
+      { name: "Tips", slug: "tips" },
+    ]);
+  });
+
+  test("tolerates plain-string category references", () => {
+    const payload = { categories: ["old", "tips"] };
+    const next = renameCategoryOnPost(payload, "old", {
+      name: "Fresh",
+      slug: "fresh",
+    });
+    expect(next.categories).toEqual([{ name: "Fresh", slug: "fresh" }, "tips"]);
+  });
+
+  test("collapses the duplicate when the post already had the new slug", () => {
+    const payload = {
+      categories: [
+        { name: "Old", slug: "old" },
+        { name: "Fresh", slug: "fresh" },
+      ],
+    };
+    const next = renameCategoryOnPost(payload, "old", {
+      name: "Fresh",
+      slug: "fresh",
+    });
+    expect(next.categories).toEqual([{ name: "Fresh", slug: "fresh" }]);
+  });
+
+  test("refreshes the denormalized name when the new slug precedes the old", () => {
+    const payload = {
+      categories: [
+        { name: "Stale", slug: "fresh" },
+        { name: "Old", slug: "old" },
+      ],
+    };
+    const next = renameCategoryOnPost(payload, "old", {
+      name: "Fresh",
+      slug: "fresh",
+    });
+    expect(next.categories).toEqual([{ name: "Fresh", slug: "fresh" }]);
+  });
+
+  test("is a no-op (same reference) when the old slug is absent", () => {
+    const payload = { categories: [{ name: "News", slug: "news" }] };
+    expect(
+      renameCategoryOnPost(payload, "old", { name: "Fresh", slug: "fresh" }),
+    ).toBe(payload);
+  });
+
+  test("does not mutate the input payload", () => {
+    const payload = { categories: [{ name: "Old", slug: "old" }] };
+    renameCategoryOnPost(payload, "old", { name: "Fresh", slug: "fresh" });
+    expect(payload.categories).toEqual([{ name: "Old", slug: "old" }]);
+  });
+});
+
+describe("removeCategoryFromPost", () => {
+  test("drops the matching category, keeping the rest", () => {
+    const payload = {
+      title: "P",
+      categories: [
+        { name: "News", slug: "news" },
+        { name: "Old", slug: "old" },
+      ],
+    };
+    const next = removeCategoryFromPost(payload, "old");
+    expect(next.categories).toEqual([{ name: "News", slug: "news" }]);
+  });
+
+  test("tolerates plain-string category references", () => {
+    const payload = { categories: ["news", "old"] };
+    const next = removeCategoryFromPost(payload, "old");
+    expect(next.categories).toEqual(["news"]);
+  });
+
+  test("is a no-op (same reference) when the slug is absent", () => {
+    const payload = { categories: [{ name: "News", slug: "news" }] };
+    expect(removeCategoryFromPost(payload, "old")).toBe(payload);
+  });
+
+  test("does not mutate the input payload", () => {
+    const payload = { categories: [{ name: "Old", slug: "old" }] };
+    removeCategoryFromPost(payload, "old");
+    expect(payload.categories).toEqual([{ name: "Old", slug: "old" }]);
   });
 });

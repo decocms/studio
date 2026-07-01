@@ -59,6 +59,7 @@ export function buildStreamRequest(
   triggerId: string | null,
   taskId: string,
   resolved: ResolvedAutomationModel,
+  runMetadata?: Record<string, string>,
 ): DispatchRunInput {
   const rawMessages = JSON.parse(automation.messages);
   // Generate fresh ids for each run so concurrent automation runs don't
@@ -95,6 +96,7 @@ export function buildStreamRequest(
     organizationId: automation.organization_id,
     userId: automation.created_by,
     triggerId: triggerId ?? undefined,
+    ...(runMetadata ? { runMetadata } : {}),
     taskId,
   };
 

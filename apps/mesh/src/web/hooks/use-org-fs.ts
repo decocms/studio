@@ -168,9 +168,11 @@ export interface OrgFsSkill {
 }
 
 /**
- * Skill folders (dirs containing SKILL.md) across the home volume and the
- * deployment's public skill sets — the attachable-skill set for agent
- * knowledge. Lists each volume's root and keeps the `hasSkill` dirs.
+ * The attachable-skill set for agent knowledge — the SAME catalog the runtime
+ * surfaces in `<available-skills>` (server-side `buildSkillCatalog`: the org's
+ * home root, `home/skills/*`, and the deployment's public sets). Consuming the
+ * shared `/fs/skills` endpoint keeps the picker and the run from ever drifting
+ * on what counts (and where) as a skill.
  */
 export function useOrgFsSkills(opts?: { enabled?: boolean }) {
   const { org } = useProjectContext();
@@ -178,23 +180,13 @@ export function useOrgFsSkills(opts?: { enabled?: boolean }) {
     queryKey: KEYS.orgFsSkills(org.id),
     enabled: opts?.enabled,
     queryFn: async (): Promise<OrgFsSkill[]> => {
-      const setsRes = await fsFetch(
-        `/api/${encodeURIComponent(org.slug)}/fs/public-sets`,
+      const res = await fsFetch(
+        `/api/${encodeURIComponent(org.slug)}/fs/skills`,
       );
-      const { sets } = (await setsRes.json()) as { sets: string[] };
-      const volumes = ["home", ...sets.map((s) => `public-${s}`)];
-      const perVolume = await Promise.all(
-        volumes.map(async (volume) => {
-          const res = await fsFetch(
-            fsUrl(org.slug, volume, "list", { path: "" }),
-          );
-          const { entries } = (await res.json()) as { entries: OrgFsEntry[] };
-          return entries
-            .filter((e) => e.kind === "dir" && e.hasSkill)
-            .map((e) => ({ volume, path: e.path }));
-        }),
-      );
-      return perVolume.flat();
+      const { skills } = (await res.json()) as {
+        skills: Array<{ volume: string; path: string }>;
+      };
+      return skills.map((s) => ({ volume: s.volume, path: s.path }));
     },
   });
 }

@@ -1,9 +1,7 @@
 import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { authClient } from "@/web/lib/auth-client";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
-import { Button } from "@deco/ui/components/button.tsx";
-import { ArrowRight } from "@untitledui/icons";
-import { CompanionCard } from "./companion-card.tsx";
+import { CompanionCard, CompanionCardSkeleton } from "./companion-card.tsx";
 import { useCommerceCompanions } from "./use-commerce-companions.ts";
 import { useConnectCompanion } from "./use-connect-companion.ts";
 
@@ -15,13 +13,9 @@ interface CompanionOrg {
 export function CompanionMcpsSection({
   org,
   cdConnectionId,
-  reportDisabled,
-  onOpenReport,
 }: {
   org: CompanionOrg;
   cdConnectionId: string;
-  reportDisabled: boolean;
-  onOpenReport: () => void;
 }) {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
@@ -47,28 +41,19 @@ export function CompanionMcpsSection({
     cdConnectionId,
   });
 
-  const cta = (
-    <Button
-      type="button"
-      size="xl"
-      className="w-full"
-      onClick={onOpenReport}
-      disabled={reportDisabled}
-    >
-      See full report
-      <ArrowRight size={16} />
-    </Button>
-  );
-
-  // Empty: no requirements survive → just the report CTA (section header hidden).
+  // Empty: nothing to connect → render nothing (the parent footer still shows
+  // the report CTA).
   if (!isLoading && !error && cards.length === 0) {
-    return <div className="grid gap-10">{cta}</div>;
+    return null;
   }
 
   const busy = connectingFieldKey !== null;
 
   return (
-    <div className="grid gap-6">
+    // Mobile: fill the parent's remaining height — the header + intro copy stay
+    // pinned while the card list scrolls. md+: natural block with a capped
+    // scroll area so the right panel stays visible.
+    <div className="flex min-h-0 flex-1 flex-col gap-6 md:block md:flex-none">
       <div className="grid gap-1.5">
         <p className="text-2xl font-medium text-foreground">
           Unlock your full diagnostic
@@ -93,14 +78,14 @@ export function CompanionMcpsSection({
       ) : isLoading ? (
         <div className="grid gap-4">
           {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="h-24 animate-pulse rounded-2xl border border-border bg-muted/40"
-            />
+            <CompanionCardSkeleton key={i} />
           ))}
         </div>
       ) : (
-        <ScrollReveal className="-mx-1 max-h-[45vh] overflow-y-auto px-1">
+        <ScrollReveal
+          wrapperClassName="flex min-h-0 flex-1 flex-col md:block"
+          className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 md:max-h-[45vh] md:flex-none"
+        >
           <div className="grid gap-4">
             {connectError && (
               <p role="alert" className="text-sm text-destructive">
@@ -113,14 +98,14 @@ export function CompanionMcpsSection({
                 card={card}
                 connecting={connectingFieldKey === card.fieldKey}
                 disabled={busy && connectingFieldKey !== card.fieldKey}
+                org={org}
+                selfClient={selfClient}
                 onConnect={() => void connect(card)}
               />
             ))}
           </div>
         </ScrollReveal>
       )}
-
-      {cta}
     </div>
   );
 }

@@ -158,6 +158,12 @@ async function runHostedHarness(
     throw new Error("user membership lost mid-dispatch");
   }
 
+  // Carry per-run metadata (from a webhook trigger's run_metadata) onto the run
+  // context so every downstream MCP tool call forwards it as x-mesh-run-metadata.
+  if (request.runMetadata) {
+    meshCtx.metadata.runMetadata = request.runMetadata;
+  }
+
   // Abort timer is opt-in. Automations supply a cap so a runaway cron can't
   // pin a thread slot forever; user messages leave it unset because tool-using
   // agent loops (Claude Code, deep research, multi-step assistants) routinely

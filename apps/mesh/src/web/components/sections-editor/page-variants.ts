@@ -215,6 +215,22 @@ export function getLastVariantIndex(
   return Array.isArray(variants) ? variants.length - 1 : 1;
 }
 
+/**
+ * Insert a clone of the variant at `variantIndex` immediately after it (rule and
+ * sections included). Returns the next variants array, or null when the source
+ * variant is missing.
+ */
+export function duplicatePageVariantEntry(
+  variants: Array<Record<string, unknown>>,
+  variantIndex: number,
+): Array<Record<string, unknown>> | null {
+  const source = variants[variantIndex];
+  if (!source) return null;
+  const next = [...variants];
+  next.splice(variantIndex + 1, 0, structuredClone(source));
+  return next;
+}
+
 /** Returns true when the variant entry carries a targeting rule. */
 export function variantHasRule(
   variant: Record<string, unknown> | undefined,

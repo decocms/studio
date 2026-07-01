@@ -467,6 +467,9 @@ export interface DispatchRunInput {
   userId: string;
   taskId?: string;
   triggerId?: string;
+  /** Per-run metadata forwarded to downstream MCP tool calls as the
+   *  `x-mesh-run-metadata` header (set from a webhook trigger's `run_metadata`). */
+  runMetadata?: Record<string, string>;
   windowSize?: number;
   abortSignal?: AbortSignal;
   isResume?: boolean;
@@ -517,6 +520,9 @@ export interface FrozenRunSnapshot {
   mode: ChatMode;
   windowSize?: number;
   triggerId?: string;
+  /** Carried through the frozen snapshot so replayed/durable runs keep forwarding
+   *  it to downstream MCP tool calls (see DispatchRunInput.runMetadata). */
+  runMetadata?: Record<string, string>;
   branch?: string | null;
   sandboxProviderKind?: SandboxProviderKind | null;
   harnessId?: HarnessId | null;
@@ -579,6 +585,9 @@ export function buildDurableDispatchInput(
     mode: input.mode,
     ...(input.windowSize !== undefined ? { windowSize: input.windowSize } : {}),
     ...(input.triggerId !== undefined ? { triggerId: input.triggerId } : {}),
+    ...(input.runMetadata !== undefined
+      ? { runMetadata: input.runMetadata }
+      : {}),
     branch: options.branch ?? input.branch ?? null,
     sandboxProviderKind:
       options.sandboxProviderKind ?? input.sandboxProviderKind ?? null,

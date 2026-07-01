@@ -22,25 +22,43 @@ export function useAutosave<T>(
   initial: T,
   save: (value: T) => void,
   delay = AUTOSAVE_DELAY,
-): readonly [T, (next: T) => void] {
+): readonly [T, (next: T) => void, (next: T) => void] {
   const [draft, setDraft] = useState<T>(initial);
   const [seeded, setSeeded] = useState<T>(initial);
+  // `pending` mirrors "a debounced save is scheduled" as state so the re-seed
+  // below can read it during render — the timer id itself stays in a ref
+  // (imperative, never read during render).
+  const [pending, setPending] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Re-seed from an external change to `initial` when no local edit is pending.
   if (initial !== seeded) {
     setSeeded(initial);
-    if (timer.current === null) setDraft(initial);
+    if (!pending) setDraft(initial);
   }
 
   const update = (next: T) => {
     setDraft(next);
+    setPending(true);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
+      setPending(false);
       save(next);
     }, delay);
   };
 
-  return [draft, update] as const;
+  // Update the draft WITHOUT scheduling a save, cancelling any pending one.
+  // For callers that already persisted the value through another path (e.g.
+  // an awaited `mutateAsync`) and only need the local draft to catch up — a
+  // plain `update` here would fire a redundant write, and a stale pending
+  // timer could clobber the just-persisted value.
+  const sync = (next: T) => {
+    setDraft(next);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    setPending(false);
+  };
+
+  return [draft, update, sync] as const;
 }

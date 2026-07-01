@@ -146,6 +146,7 @@ import {
   isBlogKind,
   listBlogPayloads,
   listPostsWithMeta,
+  removeCategoryFromPost,
   replaceCategoryOnPost,
   scanBlogEntries,
 } from "./blog/blog-data";
@@ -872,6 +873,30 @@ function ContentBrowserReady({
       }
       const { kind, key, label } = deleteTarget;
       if (kind === "blog") {
+        // Deleting a category cascades to posts: they carry a denormalized
+        // copy of the category slug, so drop it everywhere first — otherwise
+        // posts keep a reference to a category that no longer exists. Posts
+        // first, then the category, so a failed cascade leaves it recoverable.
+        if (deleteTarget.blogKind === "categories") {
+          const slugValue = getBlogPayload(
+            decofile[key] as Record<string, unknown> | undefined,
+            "categories",
+          ).slug;
+          const slug = typeof slugValue === "string" ? slugValue : "";
+          if (slug) {
+            for (const { key: postKey, payload } of listBlogPayloads(
+              decofile,
+              "posts",
+            )) {
+              const next = removeCategoryFromPost(payload, slug);
+              if (next === payload) continue;
+              await saveBlogBlock.mutateAsync({
+                blockKey: postKey,
+                data: buildBlogBlock(postKey, "posts", next),
+              });
+            }
+          }
+        }
         await deleteBlogBlock.mutateAsync({ blockKey: key });
       } else {
         await deleteBlock.mutateAsync({ blockKey: key });
@@ -891,7 +916,14 @@ function ContentBrowserReady({
   };
 
   // ------------------ Render ------------------
-  const isDeleting = deleteBlock.isPending || deleteBlogBlock.isPending;
+  // `saveBlogBlock.isPending` covers the category-delete cascade (posts are
+  // rewritten via saveBlogBlock BEFORE the category block is unlinked), so the
+  // confirm dialog stays locked for the whole operation instead of only its
+  // final unlink — otherwise it could be re-clicked or dismissed mid-cascade.
+  const isDeleting =
+    deleteBlock.isPending ||
+    deleteBlogBlock.isPending ||
+    saveBlogBlock.isPending;
   const deleteNoun =
     deleteTarget?.kind === "blog"
       ? BLOG_SINGULAR[deleteTarget.blogKind]

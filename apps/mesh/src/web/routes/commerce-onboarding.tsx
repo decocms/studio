@@ -1,5 +1,6 @@
 import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
+import { ErrorBoundary } from "@/web/components/error-boundary";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
 import { OrganizationChoice } from "@/web/components/organization-choice";
 import { ScrollReveal } from "@/web/components/scroll-reveal";
@@ -20,12 +21,22 @@ import {
   useMCPClient,
   WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  QueryErrorResetBoundary,
+  useMutation,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowRight, Loading01 } from "@untitledui/icons";
+import { ArrowRight } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
+import { LoadingIndicator } from "./commerce-onboarding/loading-indicator.tsx";
+import {
+  buildScheduleMeetingUrl,
+  ScheduleMeetingBanner,
+  ScheduleMeetingVisual,
+} from "./commerce-onboarding/schedule-meeting.tsx";
 import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
 
 interface CommerceOrganization {
@@ -418,13 +429,8 @@ function CommerceHeader({
 
 function LoadingState({ label }: { label: string }) {
   return (
-    <div
-      className="flex items-center gap-2 py-4"
-      role="status"
-      aria-live="polite"
-    >
-      <Loading01 size={14} className="animate-spin text-muted-foreground" />
-      <span className="text-sm text-muted-foreground">{label}</span>
+    <div className="py-4" role="status" aria-live="polite">
+      <LoadingIndicator label={label} className="text-muted-foreground" />
     </div>
   );
 }
@@ -475,15 +481,65 @@ function CommerceSetup({
   initialSiteUrl?: string;
 }) {
   return (
-    <AuthSplitLayout>
-      <Suspense fallback={<LoadingState label="Connecting workspace..." />}>
-        <CommerceSetupContent
-          key={`${org.id}:${initialSiteUrl ?? ""}`}
-          org={org}
-          initialSiteUrl={initialSiteUrl}
-        />
-      </Suspense>
-    </AuthSplitLayout>
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ErrorBoundary
+          fallback={({ error, resetError }) => (
+            <AuthSplitLayout>
+              <CommerceSetupErrorState
+                orgName={org.name}
+                message={
+                  error instanceof Error
+                    ? error.message
+                    : "We could not check Commerce Discovery setup."
+                }
+                onRetry={() => {
+                  reset();
+                  resetError();
+                }}
+              />
+            </AuthSplitLayout>
+          )}
+        >
+          <Suspense
+            fallback={
+              <AuthSplitLayout>
+                <LoadingState label="Connecting workspace..." />
+              </AuthSplitLayout>
+            }
+          >
+            <CommerceSetupContent
+              key={`${org.id}:${initialSiteUrl ?? ""}`}
+              org={org}
+              initialSiteUrl={initialSiteUrl}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
+  );
+}
+
+function CommerceSetupErrorState({
+  orgName,
+  message,
+  onRetry,
+}: {
+  orgName: string;
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="grid gap-10">
+      <CommerceHeader
+        title="Commerce diagnostics"
+        description={`Commerce setup will continue for ${orgName}.`}
+      />
+      <InlineError message={message} />
+      <Button type="button" size="xl" className="w-full" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
   );
 }
 
@@ -509,7 +565,7 @@ function CommerceSetupContent({
   const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
   const virtualMcpId = getCommerceDiscoveryAgentId(org.id);
 
-  const connectionQuery = useQuery({
+  const connectionQuery = useSuspenseQuery({
     queryKey: KEYS.commerceDiscoveryConnection(org.id, connectionId),
     queryFn: async () => {
       const result = await selfClient.callTool({
@@ -521,7 +577,7 @@ function CommerceSetupContent({
     retry: false,
   });
 
-  const virtualMcpQuery = useQuery({
+  const virtualMcpQuery = useSuspenseQuery({
     queryKey: KEYS.commerceDiscoveryVirtualMcp(org.id, virtualMcpId),
     queryFn: async () => {
       const result = await selfClient.callTool({
@@ -557,11 +613,7 @@ function CommerceSetupContent({
     },
   });
 
-  const setupQueriesLoading =
-    connectionQuery.isPending || virtualMcpQuery.isPending;
-  const setupQueriesError = connectionQuery.error ?? virtualMcpQuery.error;
-  const setupReady =
-    !!connectionQuery.data?.item && !!virtualMcpQuery.data?.item;
+  const setupReady = !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
 
   const runSetup = (rawSiteUrl: string) => {
     const normalized = normalizeCommerceSiteUrl(rawSiteUrl);
@@ -574,13 +626,7 @@ function CommerceSetupContent({
   };
 
   const triggerInitialSetup = (node: HTMLDivElement | null) => {
-    if (
-      !node ||
-      autoSetupStartedRef.current ||
-      setupQueriesLoading ||
-      setupReady ||
-      !initialSiteUrl
-    ) {
+    if (!node || autoSetupStartedRef.current || setupReady || !initialSiteUrl) {
       return;
     }
 
@@ -615,52 +661,13 @@ function CommerceSetupContent({
     });
   };
 
-  if (setupQueriesLoading) {
-    return (
-      <div className="grid gap-10">
-        <CommerceHeader
-          title="Commerce diagnostics"
-          description={`Commerce setup will continue for ${org.name}.`}
-        />
-        <LoadingState label="Checking Commerce Discovery setup..." />
-      </div>
-    );
-  }
-
-  if (setupQueriesError) {
-    const message =
-      setupQueriesError instanceof Error
-        ? setupQueriesError.message
-        : "We could not check Commerce Discovery setup.";
-
-    return (
-      <div className="grid gap-10">
-        <CommerceHeader
-          title="Commerce diagnostics"
-          description={`Commerce setup will continue for ${org.name}.`}
-        />
-        <InlineError message={message} />
-        <Button
-          type="button"
-          size="xl"
-          className="w-full"
-          onClick={() => {
-            void connectionQuery.refetch();
-            void virtualMcpQuery.refetch();
-          }}
-        >
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
   if (setupReady) {
     return (
       <CommerceDiscoveryReady
         org={org}
         reportApp={reportApp}
         onOpenReport={openReport}
+        siteUrl={initialSiteUrl ?? siteUrlInput}
       />
     );
   }
@@ -670,61 +677,67 @@ function CommerceSetupContent({
 
     if (!normalized.ok) {
       return (
-        <div className="grid gap-10">
-          <CommerceHeader
-            title="Commerce diagnostics"
-            description={`Commerce setup will continue for ${org.name}.`}
-          />
-          <InlineError message={normalized.error} />
-          <SiteUrlForm
-            siteUrl={siteUrlInput}
-            error={inlineError}
-            isSubmitting={setupMutation.isPending}
-            onSiteUrlChange={setSiteUrlInput}
-            onSubmit={handleSubmit}
-          />
-        </div>
-      );
-    }
-
-    return (
-      <div ref={triggerInitialSetup} className="grid gap-10">
-        <CommerceHeader
-          title="Commerce diagnostics"
-          description={`Commerce Discovery is being prepared for ${normalized.value}.`}
-        />
-        {inlineError ? (
-          <>
-            <InlineError message={inlineError} />
+        <AuthSplitLayout>
+          <div className="grid gap-10">
+            <CommerceHeader
+              title="Commerce diagnostics"
+              description={`Commerce setup will continue for ${org.name}.`}
+            />
+            <InlineError message={normalized.error} />
             <SiteUrlForm
               siteUrl={siteUrlInput}
-              error={null}
+              error={inlineError}
               isSubmitting={setupMutation.isPending}
               onSiteUrlChange={setSiteUrlInput}
               onSubmit={handleSubmit}
             />
-          </>
-        ) : (
-          <LoadingState label="Setting up Commerce Discovery..." />
-        )}
-      </div>
+          </div>
+        </AuthSplitLayout>
+      );
+    }
+
+    return (
+      <AuthSplitLayout>
+        <div ref={triggerInitialSetup} className="grid gap-10">
+          <CommerceHeader
+            title="Commerce diagnostics"
+            description={`Commerce Discovery is being prepared for ${normalized.value}.`}
+          />
+          {inlineError ? (
+            <>
+              <InlineError message={inlineError} />
+              <SiteUrlForm
+                siteUrl={siteUrlInput}
+                error={null}
+                isSubmitting={setupMutation.isPending}
+                onSiteUrlChange={setSiteUrlInput}
+                onSubmit={handleSubmit}
+              />
+            </>
+          ) : (
+            <LoadingState label="Setting up Commerce Discovery..." />
+          )}
+        </div>
+      </AuthSplitLayout>
     );
   }
 
   return (
-    <div className="grid gap-10">
-      <CommerceHeader
-        title="Commerce diagnostics"
-        description={`Commerce setup will continue for ${org.name}.`}
-      />
-      <SiteUrlForm
-        siteUrl={siteUrlInput}
-        error={inlineError}
-        isSubmitting={setupMutation.isPending}
-        onSiteUrlChange={setSiteUrlInput}
-        onSubmit={handleSubmit}
-      />
-    </div>
+    <AuthSplitLayout>
+      <div className="grid gap-10">
+        <CommerceHeader
+          title="Commerce diagnostics"
+          description={`Commerce setup will continue for ${org.name}.`}
+        />
+        <SiteUrlForm
+          siteUrl={siteUrlInput}
+          error={inlineError}
+          isSubmitting={setupMutation.isPending}
+          onSiteUrlChange={setSiteUrlInput}
+          onSubmit={handleSubmit}
+        />
+      </div>
+    </AuthSplitLayout>
   );
 }
 
@@ -766,10 +779,7 @@ function SiteUrlForm({
         disabled={isSubmitting}
       >
         {isSubmitting ? (
-          <>
-            <Loading01 size={14} className="animate-spin" />
-            Setting up
-          </>
+          <LoadingIndicator label="Setting up" />
         ) : (
           <>
             Continue
@@ -785,21 +795,53 @@ function CommerceDiscoveryReady({
   org,
   reportApp,
   onOpenReport,
+  siteUrl,
 }: {
   org: CommerceOrganization;
   reportApp: CommerceDiscoveryReportApp;
   onOpenReport: () => void;
+  siteUrl?: string;
 }) {
+  const { data: session } = authClient.useSession();
+  const meetingUrl = buildScheduleMeetingUrl({
+    siteUrl,
+    email: session?.user?.email,
+  });
   return (
-    <div className="grid gap-10">
-      <CommerceHeader />
-      <CompanionMcpsSection
-        org={org}
-        cdConnectionId={reportApp.connectionId}
-        reportDisabled={!reportApp.virtualMcpId}
-        onOpenReport={onOpenReport}
-      />
-    </div>
+    // The "connect your tools" screen is the only one that swaps the placeholder
+    // visual for the schedule-a-meeting panel (md+); every other setup screen
+    // keeps the default AuthSplitLayout placeholder.
+    <AuthSplitLayout
+      align="fill"
+      visual={<ScheduleMeetingVisual href={meetingUrl} />}
+    >
+      {/* align="fill" hands us a flex column sized to the visible viewport, so we
+          just flex-1 into it — header pinned top, cards scroll in the middle, and
+          the footer (report CTA + talk-to-a-human banner) pinned to the bottom.
+          On md+ it collapses back to a natural block (right panel has the card). */}
+      <div className="flex min-h-0 flex-1 flex-col gap-6 md:block">
+        <CommerceHeader />
+        <CompanionMcpsSection
+          org={org}
+          cdConnectionId={reportApp.connectionId}
+        />
+        <div className="flex shrink-0 flex-col gap-3 md:mt-8">
+          {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
+              escape hatch rides in the footer above the report CTA. */}
+          <ScheduleMeetingBanner className="md:hidden" href={meetingUrl} />
+          <Button
+            type="button"
+            size="xl"
+            className="w-full rounded-2xl text-base font-medium"
+            onClick={onOpenReport}
+            disabled={!reportApp.virtualMcpId}
+          >
+            See full report
+            <ArrowRight size={18} />
+          </Button>
+        </div>
+      </div>
+    </AuthSplitLayout>
   );
 }
 

@@ -228,6 +228,16 @@ async function proxyDaemon(
     signal?: AbortSignal;
     /** Map 404 to 410 (sandbox needs re-provision). */
     map404to410?: boolean;
+    /**
+     * Null out `repoDir` in the JSON response unless the resolved runner is
+     * `user-desktop`. Every daemon reports `repoDir` as its own
+     * container-internal path (`/app/repo` on agent-sandbox); only a desktop
+     * link daemon's path exists on the user's machine. The frontend uses this
+     * to build `vscode://file<repoDir>` deep links — surfacing a container path
+     * pops a "Path does not exist" error. Authoritative because it keys off the
+     * resolved runner, immune to a stale/racing frontend provider-kind.
+     */
+    redactRepoDirUnlessDesktop?: boolean;
   },
 ) {
   const runner = requireRunner(c);
@@ -308,7 +318,11 @@ async function proxyDaemon(
       }
     }
 
-    const text = await upstream.text();
+    const rawText = await upstream.text();
+    const text =
+      opts?.redactRepoDirUnlessDesktop && runner.kind !== "user-desktop"
+        ? redactRepoDir(rawText)
+        : rawText;
     const contentType =
       upstream.headers.get("content-type") ?? "application/json";
     return new Response(text, {
@@ -346,6 +360,28 @@ async function proxyDaemon(
     const message = err instanceof Error ? err.message : String(err);
     return c.json({ error: `Daemon unreachable: ${message}` }, 502);
   }
+}
+
+/**
+ * Set `repoDir` to null in a daemon config JSON payload. Returns the input
+ * unchanged if it isn't a JSON object with a `repoDir` key, so a non-JSON or
+ * error body passes through untouched.
+ */
+export function redactRepoDir(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      "repoDir" in parsed
+    ) {
+      return JSON.stringify({ ...parsed, repoDir: null });
+    }
+  } catch {
+    /* not JSON — leave as-is */
+  }
+  return text;
 }
 
 async function fetchDaemonJson<T>(
@@ -475,6 +511,9 @@ export const createSandboxRoutes = () => {
     proxyDaemon(c, "/_sandbox/config", {
       method: "GET",
       map404to410: true,
+      // A container path (`/app/repo`) is never openable on the user's
+      // machine — only surface `repoDir` for the desktop link daemon.
+      redactRepoDirUnlessDesktop: true,
     }),
   );
   app.put("/:virtualMcpId/:branch/config", (c) =>
@@ -482,6 +521,9 @@ export const createSandboxRoutes = () => {
       method: "PUT",
       forwardJsonBody: true,
       map404to410: true,
+      // No `redactRepoDirUnlessDesktop` here: the PUT response echoes the
+      // written TenantConfig (git/operator/application), which carries no
+      // `repoDir` — only the GET read handler surfaces it.
     }),
   );
 

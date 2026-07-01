@@ -14,7 +14,9 @@ import {
 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { Label } from "@deco/ui/components/label.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { Switch } from "@deco/ui/components/switch.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -46,7 +48,9 @@ const RANGE_FORMAT = new Intl.DateTimeFormat("en", {
 });
 
 function formatRangeForTooltip(v: ScheduledVariant): string {
-  return `${RANGE_FORMAT.format(v.start)} → ${RANGE_FORMAT.format(v.end)}`;
+  const startText = v.openStart ? "Always" : RANGE_FORMAT.format(v.start);
+  const endText = v.openEnd ? "Ongoing" : RANGE_FORMAT.format(v.end);
+  return `${startText} → ${endText}`;
 }
 
 /**
@@ -73,22 +77,43 @@ function VariantTooltipBody({ variant }: { variant: ScheduledVariant }) {
   );
 }
 
+// Width of the gradient that fades an open-ended bar's edge into "continues".
+const FADE_WIDTH = 16;
+
+/** CSS mask that fades the given edge(s) of a bar toward transparent. */
+function edgeFadeMask(
+  fadeStart: boolean,
+  fadeEnd: boolean,
+): string | undefined {
+  const start = fadeStart ? "transparent" : `#000 0`;
+  const end = fadeEnd ? "transparent" : `#000 100%`;
+  if (!fadeStart && !fadeEnd) return undefined;
+  return `linear-gradient(to right, ${start}, #000 ${FADE_WIDTH}px, #000 calc(100% - ${FADE_WIDTH}px), ${end})`;
+}
+
 /**
  * One colored bar with its hover tooltip. The caller owns positioning via
  * `style` (top/left/width/height or %-based equivalents) and what shows
- * inside the bar via `children`.
+ * inside the bar via `children`. `fadeStart`/`fadeEnd` render an open-ended
+ * edge as a gradient (and drop that side's rounded corner) to signal the
+ * campaign continues beyond the visible window.
  */
 function VariantBar({
   variant,
   color,
   style,
   children,
+  fadeStart = false,
+  fadeEnd = false,
 }: {
   variant: ScheduledVariant;
   color: BlockColor;
   style: React.CSSProperties;
   children: React.ReactNode;
+  fadeStart?: boolean;
+  fadeEnd?: boolean;
 }) {
+  const mask = edgeFadeMask(fadeStart, fadeEnd);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -98,6 +123,15 @@ function VariantBar({
             background: color.bg,
             color: color.text,
             borderRadius: 4,
+            ...(fadeStart && {
+              borderTopLeftRadius: 0,
+              borderBottomLeftRadius: 0,
+            }),
+            ...(fadeEnd && {
+              borderTopRightRadius: 0,
+              borderBottomRightRadius: 0,
+            }),
+            ...(mask && { maskImage: mask, WebkitMaskImage: mask }),
             ...style,
           }}
         >
@@ -116,8 +150,15 @@ export function VariantCalendar({
 }) {
   const [view, setView] = useState<ViewMode>("calendar");
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
+  // Open-ended ("ongoing") variants fill the grid to the edge everywhere and
+  // add noise, so they're hidden by default behind an opt-in toggle.
+  const [showOngoing, setShowOngoing] = useState(false);
 
-  const variants = extractScheduledVariants(decofile);
+  const allVariants = extractScheduledVariants(decofile);
+  const ongoingCount = allVariants.filter((v) => v.openEnd).length;
+  const variants = showOngoing
+    ? allVariants
+    : allVariants.filter((v) => !v.openEnd);
   const colorMap = buildBlockColorMap(variants.map((v) => v.blockKey));
 
   const goToday = () => setCursor(startOfMonth(new Date()));
@@ -157,26 +198,43 @@ export function VariantCalendar({
             {MONTHS[cursor.getMonth()]} {cursor.getFullYear()}
           </h2>
         </div>
-        <ViewModeToggle<ViewMode>
-          value={view}
-          onValueChange={setView}
-          options={[
-            {
-              value: "calendar",
-              icon: <Calendar />,
-              label: "Calendar",
-            },
-            {
-              value: "timeline",
-              icon: <Activity />,
-              label: "Timeline",
-            },
-          ]}
-        />
+        <div className="flex items-center gap-4">
+          {ongoingCount > 0 && (
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-ongoing"
+                checked={showOngoing}
+                onCheckedChange={setShowOngoing}
+              />
+              <Label
+                htmlFor="show-ongoing"
+                className="text-xs text-muted-foreground cursor-pointer"
+              >
+                Show ongoing ({ongoingCount})
+              </Label>
+            </div>
+          )}
+          <ViewModeToggle<ViewMode>
+            value={view}
+            onValueChange={setView}
+            options={[
+              {
+                value: "calendar",
+                icon: <Calendar />,
+                label: "Calendar",
+              },
+              {
+                value: "timeline",
+                icon: <Activity />,
+                label: "Timeline",
+              },
+            ]}
+          />
+        </div>
       </div>
 
       {variants.length === 0 ? (
-        <EmptyState />
+        <EmptyState hiddenOngoing={showOngoing ? 0 : ongoingCount} />
       ) : view === "calendar" ? (
         <CalendarView
           monthStart={cursor}
@@ -194,14 +252,27 @@ export function VariantCalendar({
   );
 }
 
-function EmptyState() {
+function EmptyState({ hiddenOngoing = 0 }: { hiddenOngoing?: number }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground p-6">
       <Calendar size={24} className="text-muted-foreground/60" />
-      <div>No scheduled variants.</div>
-      <div className="text-xs text-muted-foreground/80">
-        Variants gated by a date matcher appear here.
-      </div>
+      {hiddenOngoing > 0 ? (
+        <>
+          <div>No dated variants in view.</div>
+          <div className="text-xs text-muted-foreground/80">
+            {hiddenOngoing} ongoing{" "}
+            {hiddenOngoing === 1 ? "variant is" : "variants are"} hidden —
+            enable “Show ongoing” to view.
+          </div>
+        </>
+      ) : (
+        <>
+          <div>No scheduled variants.</div>
+          <div className="text-xs text-muted-foreground/80">
+            Variants gated by a date matcher appear here.
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -209,6 +280,9 @@ function EmptyState() {
 const LANE_HEIGHT = 20;
 const LANE_GAP = 2;
 const HEADER_HEIGHT = 28;
+// Floor so a very short (sub-hour) campaign stays visible/clickable even when
+// its fractional width would otherwise round to nothing.
+const MIN_BAR_WIDTH = 6;
 
 function CalendarView({
   monthStart,
@@ -277,17 +351,27 @@ function CalendarView({
               {segments.map((seg, idx) => {
                 const color = colorFromMap(colorMap, seg.variant.blockKey);
                 const top = HEADER_HEIGHT + seg.lane * (LANE_HEIGHT + LANE_GAP);
-                const leftPct = (seg.startCol / 7) * 100;
-                const widthPct = (seg.span / 7) * 100;
+                // Hour-precise: the bar starts/ends where the variant's
+                // timestamps fall within the day, not at whole-day columns.
+                const leftPct = (seg.leftUnits / 7) * 100;
+                const widthPct = (seg.widthUnits / 7) * 100;
+                // Fade only where an open-ended variant meets the edge of the
+                // whole visible grid — the first week's left / last week's
+                // right. Mid-grid week wraps are continuations, not open ends.
+                const fadeStart = seg.variant.openStart && wi === 0;
+                const fadeEnd = seg.variant.openEnd && wi === weeks.length - 1;
                 return (
                   <VariantBar
                     key={`${wi}-${idx}`}
                     variant={seg.variant}
                     color={color}
+                    fadeStart={fadeStart}
+                    fadeEnd={fadeEnd}
                     style={{
                       top,
                       left: `calc(${leftPct}% + 2px)`,
                       width: `calc(${widthPct}% - 4px)`,
+                      minWidth: MIN_BAR_WIDTH,
                       height: LANE_HEIGHT,
                     }}
                   >
@@ -459,6 +543,8 @@ function TimelineView({
                         <VariantBar
                           variant={v}
                           color={color}
+                          fadeStart={v.openStart}
+                          fadeEnd={v.openEnd}
                           style={{
                             top: "50%",
                             transform: "translateY(-50%)",

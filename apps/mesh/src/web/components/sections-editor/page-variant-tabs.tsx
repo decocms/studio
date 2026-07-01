@@ -32,7 +32,13 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DotsHorizontal, Edit01, Plus, Trash01 } from "@untitledui/icons";
+import {
+  Copy01,
+  DotsHorizontal,
+  Edit01,
+  Plus,
+  Trash01,
+} from "@untitledui/icons";
 import { getIconComponent } from "../agent-icon";
 import { resolveEffectiveMatcherRule } from "./matcher-rules";
 import { resolveMatcherIconName } from "./matcher-icons";
@@ -98,6 +104,7 @@ function SortablePageVariantTab({
   matchers,
   onSelect,
   onRename,
+  onDuplicate,
   onDelete,
 }: {
   entry: VariantTabEntry;
@@ -109,6 +116,7 @@ function SortablePageVariantTab({
   matchers: Array<{ resolveType: string; iconName: string }>;
   onSelect: () => void;
   onRename: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
@@ -173,6 +181,10 @@ function SortablePageVariantTab({
             <Edit01 size={14} />
             Rename
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={onDuplicate}>
+            <Copy01 size={14} />
+            Duplicate
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
@@ -228,6 +240,7 @@ export function PageVariantTabs({
   onSelect,
   onReorder,
   onRename,
+  onDuplicate,
   onDelete,
   onAdd,
 }: {
@@ -240,6 +253,7 @@ export function PageVariantTabs({
   onSelect: (index: number) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onRename: (index: number) => void;
+  onDuplicate: (index: number) => void;
   onDelete: (index: number) => void;
   onAdd: () => void;
 }) {
@@ -354,6 +368,7 @@ export function PageVariantTabs({
                 matchers={matchers}
                 onSelect={() => handleSelect(entry.index)}
                 onRename={() => onRename(entry.index)}
+                onDuplicate={() => onDuplicate(entry.index)}
                 onDelete={() => onDelete(entry.index)}
               />
             ))}
