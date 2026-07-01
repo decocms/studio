@@ -1431,6 +1431,20 @@ function CollectionsSidebar({
           onSelect={onSelect}
         />
         <CollectionRow
+          id="site"
+          icon={Settings01}
+          label="Site"
+          active={active === "site"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="seo"
+          icon={CreditCardSearch}
+          label="SEO"
+          active={active === "seo"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
           id="calendar"
           icon={Calendar}
           label="Calendar"
@@ -1469,20 +1483,6 @@ function CollectionsSidebar({
             />
           </>
         )}
-        <CollectionRow
-          id="site"
-          icon={Settings01}
-          label="Site"
-          active={active === "site"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="seo"
-          icon={CreditCardSearch}
-          label="SEO"
-          active={active === "seo"}
-          onSelect={onSelect}
-        />
       </nav>
     </div>
   );
