@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -47,6 +47,7 @@ export function BlockDocument({
   emptyMessage?: string;
 }) {
   const blockTypes = discoverBlogBlockTypes(meta);
+  const labelId = useId();
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
     value.map((blk) => ({ id: uid(), block: blk })),
@@ -109,11 +110,17 @@ export function BlockDocument({
   };
 
   return (
-    <section className="rounded-xl border border-dashed bg-muted/40 px-4 py-4 sm:px-6">
+    <section
+      className="rounded-xl border border-dashed bg-muted/40 px-4 py-4 sm:px-6"
+      aria-labelledby={label ? labelId : undefined}
+    >
       {label && (
-        <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2
+          id={labelId}
+          className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+        >
           {label}
-        </div>
+        </h2>
       )}
       {blocks.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground">
