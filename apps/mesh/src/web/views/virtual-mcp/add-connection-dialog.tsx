@@ -659,6 +659,21 @@ export function AddConnectionDialog({
     });
   };
 
+  // Silent refresh of the connections collection after a successful OAuth
+  // flow (no toast — just keeps cached connection/tool data fresh).
+  const invalidateConnections = () => {
+    queryClient.invalidateQueries({
+      predicate: (query) => {
+        const key = query.queryKey;
+        return (
+          key[1] === org.id &&
+          key[3] === "collection" &&
+          key[4] === "CONNECTIONS"
+        );
+      },
+    });
+  };
+
   // For connected apps: clone existing connection + add to agent
   const handleCloneAndAdd = async (base: ConnectionEntity) => {
     setConnectingItemId(base.app_name ?? base.id);
@@ -716,6 +731,7 @@ export function AddConnectionDialog({
         await queryClient.invalidateQueries({
           queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
         });
+        invalidateConnections();
       }
 
       trackAttach(id, base.app_name ?? null, "clone");
@@ -796,6 +812,7 @@ export function AddConnectionDialog({
         await queryClient.invalidateQueries({
           queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
         });
+        invalidateConnections();
         toast.success("Connected and authenticated");
       } else {
         toast.success("Connected");
@@ -898,6 +915,7 @@ export function AddConnectionDialog({
             await queryClient.invalidateQueries({
               queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
             });
+            invalidateConnections();
           }
 
           // app_name unknown for custom-create; record null and let the

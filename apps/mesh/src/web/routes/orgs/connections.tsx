@@ -855,6 +855,7 @@ function ConnectionResults({
         await queryClient.invalidateQueries({
           queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
         });
+        invalidateConnections();
         toast.success("Authentication successful");
       }
 
