@@ -585,6 +585,9 @@ export function buildDurableDispatchInput(
     mode: input.mode,
     ...(input.windowSize !== undefined ? { windowSize: input.windowSize } : {}),
     ...(input.triggerId !== undefined ? { triggerId: input.triggerId } : {}),
+    ...(input.runMetadata !== undefined
+      ? { runMetadata: input.runMetadata }
+      : {}),
     branch: options.branch ?? input.branch ?? null,
     sandboxProviderKind:
       options.sandboxProviderKind ?? input.sandboxProviderKind ?? null,
