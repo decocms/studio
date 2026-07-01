@@ -107,7 +107,7 @@ export function OrganizationChoice({
   const pendingRequestSlug = requestJoinMutation.variables?.slug ?? null;
 
   return (
-    <div className="grid gap-2">
+    <div className="grid grid-cols-1 gap-2">
       {organizations.map((org) => {
         const isJoining =
           joinOrgMutation.isPending && pendingJoinSlug === org.slug;
