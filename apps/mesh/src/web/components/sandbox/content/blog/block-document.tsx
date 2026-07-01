@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -36,18 +36,14 @@ export function BlockDocument({
   value,
   onChange,
   meta,
-  label,
   emptyMessage = "No content yet. Use ⊕ to add your first block.",
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
   meta: LiveMeta;
-  /** Optional heading rendered above the canvas (e.g. "Content"). */
-  label?: string;
   emptyMessage?: string;
 }) {
   const blockTypes = discoverBlogBlockTypes(meta);
-  const labelId = useId();
 
   const [blockItems, setBlockItems] = useState<BlockItem[]>(() =>
     value.map((blk) => ({ id: uid(), block: blk })),
@@ -110,18 +106,7 @@ export function BlockDocument({
   };
 
   return (
-    <section
-      className="rounded-xl border border-dashed bg-muted/40 px-4 py-4 sm:px-6"
-      aria-labelledby={label ? labelId : undefined}
-    >
-      {label && (
-        <h2
-          id={labelId}
-          className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-        >
-          {label}
-        </h2>
-      )}
+    <div className="mt-2">
       {blocks.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground">
           {emptyMessage}
@@ -156,7 +141,7 @@ export function BlockDocument({
           ))}
         </SortableContext>
       </DndContext>
-    </section>
+    </div>
   );
 }
 

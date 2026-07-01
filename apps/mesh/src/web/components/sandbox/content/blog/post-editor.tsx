@@ -1,16 +1,9 @@
-import { useState } from "react";
-import { ChevronDown, LinkExternal01, Settings01 } from "@untitledui/icons";
+import { LinkExternal01, Pilcrow01, Settings01 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@deco/ui/components/collapsible.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
-import { cn } from "@deco/ui/lib/utils.js";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { StringField } from "@/web/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
@@ -21,6 +14,7 @@ import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
+import { CollapsibleSection } from "./editor-section";
 import {
   AddButton,
   EditableText,
@@ -115,7 +109,7 @@ export function PostEditor({
         </div>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-8 py-8">
+          <div className="mx-auto max-w-4xl px-8 py-8">
             {/* Title — wraps onto multiple lines instead of truncating */}
             <EditableText
               value={str(post.title)}
@@ -124,19 +118,17 @@ export function PostEditor({
               className="py-1 text-3xl font-bold text-foreground"
             />
 
-            {/* Settings */}
+            {/* Settings and body are sibling collapsible panels */}
             <PostSettings post={post} decofile={decofile} onChange={setField} />
 
-            {/* Body — the writing canvas, visually distinct from settings above */}
-            <div className="mt-6">
+            <CollapsibleSection icon={Pilcrow01} title="Content" defaultOpen>
               <BlockDocument
                 value={asBlocks(post.sections)}
                 onChange={(next) => setField("sections", next)}
                 meta={meta}
-                label="Content"
                 emptyMessage="This post has no content yet. Use ⊕ to add your first block."
               />
-            </div>
+            </CollapsibleSection>
           </div>
         </div>
       </div>
@@ -154,24 +146,9 @@ function PostSettings({
   onChange: (key: string, value: unknown) => void;
 }) {
   // Open by default so editors see slug/date/categories without an extra click.
-  const [open, setOpen] = useState(true);
-
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="mt-4">
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
-        >
-          <Settings01 size={15} />
-          <span className="flex-1 text-left">Post settings</span>
-          <ChevronDown
-            size={15}
-            className={cn("transition-transform", open && "rotate-180")}
-          />
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-5 px-2 pt-4">
+    <CollapsibleSection icon={Settings01} title="Post settings" defaultOpen>
+      <div className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor="post-excerpt">Excerpt</Label>
           <Textarea
@@ -229,8 +206,8 @@ function PostSettings({
           value={post.extraProps}
           onChange={(v) => onChange("extraProps", v)}
         />
-      </CollapsibleContent>
-    </Collapsible>
+      </div>
+    </CollapsibleSection>
   );
 }
 

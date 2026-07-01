@@ -1,4 +1,9 @@
-import { ArrowRight, File02, LinkExternal01 } from "@untitledui/icons";
+import {
+  ArrowRight,
+  File02,
+  LinkExternal01,
+  Pilcrow01,
+} from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
@@ -10,6 +15,7 @@ import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
+import { CollapsibleSection } from "./editor-section";
 import { EditableText, str } from "./blocks/primitives";
 
 /**
@@ -99,7 +105,7 @@ export function CategoryEditor({
         </div>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-8 py-8">
+          <div className="mx-auto max-w-4xl px-8 py-8">
             <EditableText
               value={str(category.name)}
               onChange={(v) => setField("name", v)}
@@ -129,16 +135,15 @@ export function CategoryEditor({
               />
             </div>
 
-            {/* Category page content — same canvas as the post body */}
-            <div className="mt-6">
+            {/* Category page content — same collapsible panel as the post body */}
+            <CollapsibleSection icon={Pilcrow01} title="Content" defaultOpen>
               <BlockDocument
                 value={asBlocks(category.sections)}
                 onChange={(next) => setField("sections", next)}
                 meta={meta}
-                label="Content"
                 emptyMessage="This category has no content yet. Use ⊕ to add your first block."
               />
-            </div>
+            </CollapsibleSection>
 
             {/* Posts in this category */}
             <div className="mt-6 overflow-hidden rounded-lg border bg-muted/30">
