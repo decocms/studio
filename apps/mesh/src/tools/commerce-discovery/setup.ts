@@ -200,6 +200,12 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       }
     }
 
+    if (!virtualMcp.pinned) {
+      virtualMcp = await ctx.storage.virtualMcps.update(virtualMcp.id, userId, {
+        pinned: true,
+      });
+    }
+
     return {
       connection,
       virtualMcp,
