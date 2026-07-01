@@ -68,7 +68,7 @@ export function ScrollReveal({
         className={cn(
           // `-bottom-px` (not `bottom-0`) so the fade over-covers the scroller's
           // sub-pixel clip edge instead of stopping a fraction of a pixel short.
-          "pointer-events-none absolute inset-x-0 -bottom-px h-[213px]",
+          "pointer-events-none absolute inset-x-0 -bottom-px h-[72px]",
           // Fade to the sidebar surface these scrollers sit on (AuthSplitLayout)
           // so the solid end blends into the panel instead of showing a lighter
           // `background` band.
@@ -82,7 +82,7 @@ export function ScrollReveal({
           // of the last card to bleed through as a 1px sliver at any DPR. The
           // plateau guarantees the clip line sits inside the solid zone.
           "bg-gradient-to-t from-sidebar from-[6px] to-transparent",
-          "backdrop-blur-[2px] [mask-image:linear-gradient(to_top,black_6px,transparent)]",
+          "backdrop-blur-[1px] [mask-image:linear-gradient(to_top,black_6px,transparent)]",
           "transition-opacity duration-200",
           atBottom ? "opacity-0" : "opacity-100",
         )}
