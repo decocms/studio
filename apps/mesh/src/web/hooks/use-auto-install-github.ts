@@ -108,10 +108,15 @@ export function useAutoInstallGitHub(opts: {
         } catch {
           // Best-effort cleanup
         }
-        // auth.error is "no token received" when the OAuth flow returned no
-        // token; the `?? "No token received from GitHub"` covers the (currently
-        // unreachable) null-error case, matching the prior message.
-        throw new Error(auth.error ?? "No token received from GitHub");
+        // auth.error is the generic sentinel "no token received" when the
+        // OAuth flow returned no token; surface the GitHub-specific message
+        // in that case (and the null-error case), but pass through any real
+        // OAuth error message as-is.
+        throw new Error(
+          auth.error && auth.error !== "no token received"
+            ? auth.error
+            : "No token received from GitHub",
+        );
       }
 
       // Step 3: Invalidate connection queries so picker re-renders
