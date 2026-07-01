@@ -10,12 +10,12 @@ import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
-import { EditableText, str } from "./blocks/primitives";
+import { str } from "./blocks/primitives";
 
 /**
- * Notion-style category editor: large inline name + slug input + inline
- * description + the same block document used by posts. Mirrors PostEditor's
- * layout so authors edit categories with the same affordances.
+ * Category editor: name / slug / description inputs, the same block document
+ * canvas used by posts, and the list of posts in this category. Mirrors
+ * PostEditor's layout so authors edit categories with the same affordances.
  */
 export function CategoryEditor({
   orgSlug,
@@ -99,12 +99,16 @@ export function CategoryEditor({
 
         <div className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-8 py-8">
-            <EditableText
-              value={str(category.name)}
-              onChange={(v) => setField("name", v)}
-              placeholder="Category name"
-              className="py-1 text-3xl font-bold text-foreground"
-            />
+            <div className="space-y-2">
+              <Label htmlFor="category-name">Name</Label>
+              <Input
+                id="category-name"
+                value={str(category.name)}
+                onChange={(e) => setField("name", e.target.value)}
+                placeholder="Category name"
+                className="h-10"
+              />
+            </div>
 
             <div className="mt-4 space-y-2">
               <Label htmlFor="category-slug">Slug</Label>
@@ -128,6 +132,18 @@ export function CategoryEditor({
               />
             </div>
 
+            {/* Category page content — same canvas as the post body */}
+            <div className="mt-6">
+              <BlockDocument
+                value={asBlocks(category.sections)}
+                onChange={(next) => setField("sections", next)}
+                meta={meta}
+                label="Content"
+                emptyMessage="This category has no content yet. Use ⊕ to add your first block."
+              />
+            </div>
+
+            {/* Posts in this category */}
             <div className="mt-6 overflow-hidden rounded-lg border bg-muted/30">
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="flex min-w-0 items-center gap-2">
@@ -146,13 +162,15 @@ export function CategoryEditor({
                   size="sm"
                   disabled={!slug}
                   title={
-                    slug
-                      ? "Jump to the posts list filtered by this category"
-                      : "Set a slug to manage this category's posts"
+                    !slug
+                      ? "Set a slug to manage this category's posts"
+                      : postCount === 0
+                        ? "Go to the posts list to add posts to this category"
+                        : "Jump to the posts list filtered by this category"
                   }
-                  onClick={() => onManagePosts(slug)}
+                  onClick={() => onManagePosts(postCount === 0 ? "" : slug)}
                 >
-                  Manage posts
+                  {postCount === 0 ? "Add posts" : "Manage posts"}
                   <ArrowRight size={14} />
                 </Button>
               </div>
@@ -185,15 +203,6 @@ export function CategoryEditor({
                 </ul>
               )}
             </div>
-
-            <div className="mt-6 border-t" />
-
-            <BlockDocument
-              value={asBlocks(category.sections)}
-              onChange={(next) => setField("sections", next)}
-              meta={meta}
-              emptyMessage="This category has no content yet. Use ⊕ to add your first block."
-            />
           </div>
         </div>
       </div>

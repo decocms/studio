@@ -775,16 +775,18 @@ function ContentBrowserReady({
     });
   };
 
-  // Land on the posts list pre-filtered by a category (from the category
-  // editor). Sync `prevCollection` here so the collection-change reset
-  // above doesn't immediately clear the filter we're setting.
+  // Land on the posts list, optionally pre-filtered by a category (from the
+  // category editor). An empty slug lands on the unfiltered list (all
+  // categories) — used by the "Add posts" action for empty categories. Sync
+  // `prevCollection` here so the collection-change reset above doesn't
+  // immediately clear the filter we're setting.
   const handleManagePosts = (slug: string) => {
     setActiveCollection("posts");
     setPrevCollection("posts");
     setSelection(null);
     setOpenPageSeoKey(null);
     setSearchQuery("");
-    setPostCategoryFilter(slug);
+    setPostCategoryFilter(slug || null);
     setPostAuthorFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
