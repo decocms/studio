@@ -382,6 +382,20 @@ describe("renameCategoryOnPost", () => {
     expect(next.categories).toEqual([{ name: "Fresh", slug: "fresh" }]);
   });
 
+  test("refreshes the denormalized name when the new slug precedes the old", () => {
+    const payload = {
+      categories: [
+        { name: "Stale", slug: "fresh" },
+        { name: "Old", slug: "old" },
+      ],
+    };
+    const next = renameCategoryOnPost(payload, "old", {
+      name: "Fresh",
+      slug: "fresh",
+    });
+    expect(next.categories).toEqual([{ name: "Fresh", slug: "fresh" }]);
+  });
+
   test("is a no-op (same reference) when the old slug is absent", () => {
     const payload = { categories: [{ name: "News", slug: "news" }] };
     expect(

@@ -304,11 +304,16 @@ export function renameCategoryOnPost(
   if (!categories.some((c) => categorySlugOf(c) === oldSlug)) {
     return payload;
   }
-  const mapped = categories.map((c) =>
-    categorySlugOf(c) === oldSlug
+  // Rewrite BOTH the old slug and any pre-existing new-slug entry to the fresh
+  // `{ name, slug }`. Refreshing the pre-existing one matters when it sits
+  // before the old slug: the dedupe below keeps the first occurrence, so
+  // without this the stale denormalized name would win over the rename.
+  const mapped = categories.map((c) => {
+    const slug = categorySlugOf(c);
+    return slug === oldSlug || slug === category.slug
       ? { name: category.name, slug: category.slug }
-      : c,
-  );
+      : c;
+  });
   // A post that listed both the old and the new slug would now name the new
   // slug twice — keep the first occurrence. Only dedupe real slugs so we never
   // silently drop malformed (slug-less) entries.
