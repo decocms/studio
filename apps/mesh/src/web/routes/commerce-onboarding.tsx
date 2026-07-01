@@ -1,5 +1,6 @@
 import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
+import { ErrorBoundary } from "@/web/components/error-boundary";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
 import { OrganizationChoice } from "@/web/components/organization-choice";
 import { ScrollReveal } from "@/web/components/scroll-reveal";
@@ -20,7 +21,11 @@ import {
   useMCPClient,
   WellKnownOrgMCPId,
 } from "@decocms/mesh-sdk";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  QueryErrorResetBoundary,
+  useMutation,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight, Loading01 } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
@@ -476,14 +481,60 @@ function CommerceSetup({
 }) {
   return (
     <AuthSplitLayout>
-      <Suspense fallback={<LoadingState label="Connecting workspace..." />}>
-        <CommerceSetupContent
-          key={`${org.id}:${initialSiteUrl ?? ""}`}
-          org={org}
-          initialSiteUrl={initialSiteUrl}
-        />
-      </Suspense>
+      <QueryErrorResetBoundary>
+        {({ reset }) => (
+          <ErrorBoundary
+            fallback={({ error, resetError }) => (
+              <CommerceSetupErrorState
+                orgName={org.name}
+                message={
+                  error instanceof Error
+                    ? error.message
+                    : "We could not check Commerce Discovery setup."
+                }
+                onRetry={() => {
+                  reset();
+                  resetError();
+                }}
+              />
+            )}
+          >
+            <Suspense
+              fallback={<LoadingState label="Connecting workspace..." />}
+            >
+              <CommerceSetupContent
+                key={`${org.id}:${initialSiteUrl ?? ""}`}
+                org={org}
+                initialSiteUrl={initialSiteUrl}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+      </QueryErrorResetBoundary>
     </AuthSplitLayout>
+  );
+}
+
+function CommerceSetupErrorState({
+  orgName,
+  message,
+  onRetry,
+}: {
+  orgName: string;
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="grid gap-10">
+      <CommerceHeader
+        title="Commerce diagnostics"
+        description={`Commerce setup will continue for ${orgName}.`}
+      />
+      <InlineError message={message} />
+      <Button type="button" size="xl" className="w-full" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
   );
 }
 
@@ -509,7 +560,7 @@ function CommerceSetupContent({
   const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
   const virtualMcpId = getCommerceDiscoveryAgentId(org.id);
 
-  const connectionQuery = useQuery({
+  const connectionQuery = useSuspenseQuery({
     queryKey: KEYS.commerceDiscoveryConnection(org.id, connectionId),
     queryFn: async () => {
       const result = await selfClient.callTool({
@@ -521,7 +572,7 @@ function CommerceSetupContent({
     retry: false,
   });
 
-  const virtualMcpQuery = useQuery({
+  const virtualMcpQuery = useSuspenseQuery({
     queryKey: KEYS.commerceDiscoveryVirtualMcp(org.id, virtualMcpId),
     queryFn: async () => {
       const result = await selfClient.callTool({
@@ -557,11 +608,7 @@ function CommerceSetupContent({
     },
   });
 
-  const setupQueriesLoading =
-    connectionQuery.isPending || virtualMcpQuery.isPending;
-  const setupQueriesError = connectionQuery.error ?? virtualMcpQuery.error;
-  const setupReady =
-    !!connectionQuery.data?.item && !!virtualMcpQuery.data?.item;
+  const setupReady = !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
 
   const runSetup = (rawSiteUrl: string) => {
     const normalized = normalizeCommerceSiteUrl(rawSiteUrl);
@@ -574,13 +621,7 @@ function CommerceSetupContent({
   };
 
   const triggerInitialSetup = (node: HTMLDivElement | null) => {
-    if (
-      !node ||
-      autoSetupStartedRef.current ||
-      setupQueriesLoading ||
-      setupReady ||
-      !initialSiteUrl
-    ) {
+    if (!node || autoSetupStartedRef.current || setupReady || !initialSiteUrl) {
       return;
     }
 
@@ -614,46 +655,6 @@ function CommerceSetupContent({
       },
     });
   };
-
-  if (setupQueriesLoading) {
-    return (
-      <div className="grid gap-10">
-        <CommerceHeader
-          title="Commerce diagnostics"
-          description={`Commerce setup will continue for ${org.name}.`}
-        />
-        <LoadingState label="Checking Commerce Discovery setup..." />
-      </div>
-    );
-  }
-
-  if (setupQueriesError) {
-    const message =
-      setupQueriesError instanceof Error
-        ? setupQueriesError.message
-        : "We could not check Commerce Discovery setup.";
-
-    return (
-      <div className="grid gap-10">
-        <CommerceHeader
-          title="Commerce diagnostics"
-          description={`Commerce setup will continue for ${org.name}.`}
-        />
-        <InlineError message={message} />
-        <Button
-          type="button"
-          size="xl"
-          className="w-full"
-          onClick={() => {
-            void connectionQuery.refetch();
-            void virtualMcpQuery.refetch();
-          }}
-        >
-          Retry
-        </Button>
-      </div>
-    );
-  }
 
   if (setupReady) {
     return (
