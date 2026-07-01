@@ -749,3 +749,81 @@ describe("resolveSchema – @hide on block-ref fields", () => {
     expect(props?.visibleField?.hidden).toBeUndefined();
   });
 });
+
+describe("resolveSchema – cyclic Section-picker unions (memory blow-up guard)", () => {
+  /**
+   * Builds a `__SECTION_REF__`-style "pick any section" union where every
+   * section carries a `menuSection: Section` field pointing back at the same
+   * union. Before the cycle guard this recursed ~exponentially (depth 8 ×
+   * branching 110 × cyclic re-entry) and blew up the browser (multi-GB).
+   */
+  function cyclicSectionMeta(sectionCount: number): LiveMeta {
+    const definitions: Record<string, unknown> = {};
+    const anyOf: Array<{ $ref: string }> = [];
+
+    for (let i = 0; i < sectionCount; i++) {
+      const rt = `site/sections/S${i}.tsx`;
+      const wrapperKey = `W${i}`;
+      const propsKey = `P${i}`;
+      anyOf.push({ $ref: `#/definitions/${wrapperKey}` });
+      definitions[wrapperKey] = {
+        title: rt,
+        allOf: [{ $ref: `#/definitions/${propsKey}` }],
+        properties: { __resolveType: { type: "string", enum: [rt] } },
+      };
+      definitions[propsKey] = {
+        type: "object",
+        properties: {
+          title: { type: "string", title: "Title" },
+          // back-reference to the same union → cycle
+          menuSection: { $ref: "#/definitions/__SECTION_REF__", title: "Menu" },
+        },
+      };
+    }
+    definitions.__SECTION_REF__ = { title: "Section", anyOf };
+
+    return {
+      manifest: {
+        blocks: {
+          sections: { "site/sections/S0.tsx": { $ref: "#/definitions/W0" } },
+        },
+      },
+      schema: { definitions },
+    };
+  }
+
+  test("resolves a large cyclic section union without blowing up", () => {
+    const meta = cyclicSectionMeta(110);
+    const start = Date.now();
+    const resolved = resolveSchema("site/sections/S0.tsx", meta);
+    const elapsed = Date.now() - start;
+
+    const menu = resolved?.properties?.menuSection;
+    expect(menu?.type).toBe("block-ref");
+    // Option list is still emitted (selector works)…
+    expect(menu?.anyOfRefs?.length).toBe(110);
+    // …but oversized unions are lazy: no eager per-branch schema.
+    expect(menu?.anyOfRefs?.every((r) => r.schema === undefined)).toBe(true);
+    // And it completes basically instantly rather than hanging.
+    expect(elapsed).toBeLessThan(1000);
+  });
+
+  test("small cyclic union still terminates and cuts the cycle", () => {
+    const meta = cyclicSectionMeta(3);
+    const resolved = resolveSchema("site/sections/S0.tsx", meta);
+
+    const menu = resolved?.properties?.menuSection;
+    expect(menu?.type).toBe("block-ref");
+    expect(menu?.anyOfRefs?.length).toBe(3);
+    // Under the eager threshold, branch schemas are materialized one level…
+    const branch = menu?.anyOfRefs?.[0]?.schema;
+    expect(branch?.properties?.title?.type).toBe("string");
+    // …but the branch's own menuSection does NOT re-expand its options
+    // (cycle guard), so recursion stays bounded.
+    const nestedMenu = branch?.properties?.menuSection;
+    expect(nestedMenu?.type).toBe("block-ref");
+    expect(nestedMenu?.anyOfRefs?.every((r) => r.schema === undefined)).toBe(
+      true,
+    );
+  });
+});
