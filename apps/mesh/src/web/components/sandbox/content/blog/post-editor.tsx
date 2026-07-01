@@ -3,6 +3,12 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { MultiSelect } from "@deco/ui/components/multi-select.tsx";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@deco/ui/components/tabs.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { ImageField } from "@/web/components/sections-editor/fields/image-field";
 import { StringField } from "@/web/components/sections-editor/fields/string-field";
@@ -14,7 +20,6 @@ import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
-import { CollapsibleSection } from "./editor-section";
 import {
   AddButton,
   EditableText,
@@ -33,10 +38,11 @@ function asExtraProps(value: unknown): ExtraProp[] {
 }
 
 /**
- * Notion-style post editor: a title, a collapsible settings panel, and the
- * post body rendered as a document of inline-editable blocks. Each block
- * renders as its content type (paragraph, heading, list, …); a ⊕ between
- * blocks inserts, and a drag handle reorders. Not a schema form.
+ * Notion-style post editor: a large title, then two tabs — Content (the body
+ * rendered as a document of inline-editable blocks, on a document "sheet")
+ * and Settings (slug/date/authors/categories/…). Each block renders as its
+ * content type (paragraph, heading, list, …); a ⊕ between blocks inserts, and
+ * a drag handle reorders. Not a schema form.
  */
 export function PostEditor({
   orgSlug,
@@ -115,20 +121,43 @@ export function PostEditor({
               value={str(post.title)}
               onChange={(v) => setField("title", v)}
               placeholder="Post title"
-              className="py-1 text-3xl font-bold text-foreground"
+              className="py-1 text-4xl font-bold text-foreground"
             />
 
-            {/* Settings and body are sibling collapsible panels */}
-            <PostSettings post={post} decofile={decofile} onChange={setField} />
+            {/* Content and Settings are sibling tabs; the body is the default */}
+            <Tabs defaultValue="content" className="mt-6 gap-4">
+              <TabsList>
+                <TabsTrigger value="content">
+                  <Pilcrow01 />
+                  Content
+                </TabsTrigger>
+                <TabsTrigger value="settings">
+                  <Settings01 />
+                  Settings
+                </TabsTrigger>
+              </TabsList>
 
-            <CollapsibleSection icon={Pilcrow01} title="Content" defaultOpen>
-              <BlockDocument
-                value={asBlocks(post.sections)}
-                onChange={(next) => setField("sections", next)}
-                meta={meta}
-                emptyMessage="This post has no content yet. Use ⊕ to add your first block."
-              />
-            </CollapsibleSection>
+              <TabsContent value="content">
+                <div className="rounded-xl border bg-card p-8 shadow-sm">
+                  <BlockDocument
+                    value={asBlocks(post.sections)}
+                    onChange={(next) => setField("sections", next)}
+                    meta={meta}
+                    emptyMessage="This post has no content yet. Use ⊕ to add your first block."
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="settings">
+                <div className="rounded-xl border bg-card p-6 shadow-sm">
+                  <PostSettings
+                    post={post}
+                    decofile={decofile}
+                    onChange={setField}
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </div>
@@ -145,69 +174,66 @@ function PostSettings({
   decofile: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
 }) {
-  // Open by default so editors see slug/date/categories without an extra click.
   return (
-    <CollapsibleSection icon={Settings01} title="Post settings" defaultOpen>
-      <div className="space-y-5">
-        <div className="space-y-2">
-          <Label htmlFor="post-excerpt">Excerpt</Label>
-          <Textarea
-            id="post-excerpt"
-            value={str(post.excerpt)}
-            onChange={(e) => onChange("excerpt", e.target.value)}
-            rows={2}
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="post-slug">Slug</Label>
-            <Input
-              id="post-slug"
-              value={str(post.slug)}
-              onChange={(e) => onChange("slug", e.target.value)}
-              placeholder="my-post"
-              className="h-10"
-            />
-          </div>
-          <StringField
-            schema={{ type: "string", format: "date", title: "Date" }}
-            value={str(post.date)}
-            onChange={(v) => onChange("date", v)}
-            path="post-date"
-            label="Date"
-          />
-        </div>
-        <ImageField
-          schema={{ type: "string", format: "image-uri", title: "Cover image" }}
-          value={post.image}
-          onChange={(v) => onChange("image", v)}
-          path="post-image"
-          label="Cover image"
-        />
-        <RelationSelect
-          label="Authors"
-          decofile={decofile}
-          kind="authors"
-          valueField="email"
-          extraFields={["email"]}
-          selected={post.authors}
-          onChange={(v) => onChange("authors", v)}
-        />
-        <RelationSelect
-          label="Categories"
-          decofile={decofile}
-          kind="categories"
-          valueField="slug"
-          extraFields={["slug"]}
-          selected={post.categories}
-          onChange={(v) => onChange("categories", v)}
-        />
-        <ExtraPropsField
-          value={post.extraProps}
-          onChange={(v) => onChange("extraProps", v)}
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <Label htmlFor="post-excerpt">Excerpt</Label>
+        <Textarea
+          id="post-excerpt"
+          value={str(post.excerpt)}
+          onChange={(e) => onChange("excerpt", e.target.value)}
+          rows={2}
         />
       </div>
-    </CollapsibleSection>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="post-slug">Slug</Label>
+          <Input
+            id="post-slug"
+            value={str(post.slug)}
+            onChange={(e) => onChange("slug", e.target.value)}
+            placeholder="my-post"
+            className="h-10"
+          />
+        </div>
+        <StringField
+          schema={{ type: "string", format: "date", title: "Date" }}
+          value={str(post.date)}
+          onChange={(v) => onChange("date", v)}
+          path="post-date"
+          label="Date"
+        />
+      </div>
+      <ImageField
+        schema={{ type: "string", format: "image-uri", title: "Cover image" }}
+        value={post.image}
+        onChange={(v) => onChange("image", v)}
+        path="post-image"
+        label="Cover image"
+      />
+      <RelationSelect
+        label="Authors"
+        decofile={decofile}
+        kind="authors"
+        valueField="email"
+        extraFields={["email"]}
+        selected={post.authors}
+        onChange={(v) => onChange("authors", v)}
+      />
+      <RelationSelect
+        label="Categories"
+        decofile={decofile}
+        kind="categories"
+        valueField="slug"
+        extraFields={["slug"]}
+        selected={post.categories}
+        onChange={(v) => onChange("categories", v)}
+      />
+      <ExtraPropsField
+        value={post.extraProps}
+        onChange={(v) => onChange("extraProps", v)}
+      />
+    </div>
   );
 }
 
