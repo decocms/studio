@@ -48,6 +48,7 @@ import {
 } from "../cli-session-error";
 import { mergeTitleResult, shouldGenerateTitle } from "../title-merge";
 import { buildCurrentContextPrompt } from "../current-context-prompt";
+import { NO_BACKGROUND_TASKS_PROMPT } from "../no-background-tasks-prompt";
 import { genTitle } from "../title-generator";
 import type {
   Harness,
@@ -90,6 +91,7 @@ export function buildCodexDeveloperInstructions(input: {
     input.agentInstructions?.trim()
       ? `<agent-instructions>\n${input.agentInstructions.trim()}\n</agent-instructions>`
       : null,
+    NO_BACKGROUND_TASKS_PROMPT,
     buildCurrentContextPrompt(input.now ?? new Date()),
   ].filter((part): part is string => Boolean(part?.trim()));
 
