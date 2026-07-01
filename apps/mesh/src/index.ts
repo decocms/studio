@@ -345,8 +345,18 @@ let shuttingDown = false;
  * Best-effort: any failure is logged and swallowed so shutdown still completes.
  * Only covers GRACEFUL termination — a hard SIGKILL (OOM, node loss) skips this
  * handler, and those orphans still need Conductor recovery or a sweep.
+ *
+ * `executorId` MUST be the real runtime executor id (`DBOS.executorID`),
+ * captured by the caller BEFORE `DBOS.shutdown()`. Two gotchas make this
+ * non-obvious: (1) when a Conductor is configured (as in prod/stg) DBOS
+ * IGNORES the `executorID` we pass to `setConfig` and substitutes a random
+ * UUID (`dbos.js` "Always use a generated executor ID in Conductor"), so
+ * `settings.podName` never matches the `executor_id` stored on our rows; and
+ * (2) `DBOS.shutdown()` resets `DBOS.executorID` back to `'local'`, so reading
+ * it after shutdown would filter on the wrong id. Filtering on the wrong id
+ * silently matches zero gates and the handoff no-ops (the original bug).
  */
-async function handOffInFlightThreadGates() {
+async function handOffInFlightThreadGates(executorId: string) {
   let client: Awaited<ReturnType<typeof DBOSClient.create>> | undefined;
   try {
     client = await DBOSClient.create({
@@ -359,15 +369,22 @@ async function handOffInFlightThreadGates() {
     const orphaned = await client.listWorkflows({
       status: "PENDING",
       queueName: THREAD_GATE_QUEUE,
-      executorId: settings.podName,
+      executorId,
       loadInput: false,
       loadOutput: false,
     });
-    if (orphaned.length === 0) return;
+    // Always log the count (even 0) so the handoff is observable — a silent
+    // early-return is exactly what hid the executor-id filter bug the first time.
+    if (orphaned.length === 0) {
+      console.log(
+        `[shutdown] no in-flight thread-gate gates to hand off (executor ${executorId})`,
+      );
+      return;
+    }
     const ids = orphaned.map((w) => w.workflowID);
     await client.resumeWorkflows(ids, { queueName: THREAD_GATE_QUEUE });
     console.log(
-      `[shutdown] re-enqueued ${ids.length} in-flight thread-gate gate(s) for re-adoption by a live executor:`,
+      `[shutdown] re-enqueued ${ids.length} in-flight thread-gate gate(s) for re-adoption by a live executor (from ${executorId}):`,
       ids,
     );
   } catch (err) {
@@ -418,13 +435,18 @@ async function gracefulShutdown(signal: string) {
     //    graceful drain indefinitely).
     await server.stop(true);
 
+    // Capture the REAL executor id before DBOS.shutdown() resets it to 'local'.
+    // With a Conductor configured this is a random UUID (NOT settings.podName),
+    // and it's what our workflow rows are stamped with. See
+    // handOffInFlightThreadGates for why this matters.
+    const executorId = DBOS.executorID;
     // Drain DBOS before app.shutdown closes mesh's pg pool — in-flight steps use it.
     await DBOS.shutdown();
     // Re-enqueue our own in-flight thread-gate gates so a live pod adopts them
     // instead of stranding them PENDING on this dead executor (which bricks the
     // thread). Runs after DBOS.shutdown() so our stopped poller can't re-grab
     // them. See handOffInFlightThreadGates for the full rationale.
-    await handOffInFlightThreadGates();
+    await handOffInFlightThreadGates(executorId);
     await app.shutdown();
   } catch (err) {
     console.error("[shutdown] Error during shutdown:", err);
