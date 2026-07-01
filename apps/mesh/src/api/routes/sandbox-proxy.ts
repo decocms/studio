@@ -521,6 +521,9 @@ export const createSandboxRoutes = () => {
       method: "PUT",
       forwardJsonBody: true,
       map404to410: true,
+      // No `redactRepoDirUnlessDesktop` here: the PUT response echoes the
+      // written TenantConfig (git/operator/application), which carries no
+      // `repoDir` — only the GET read handler surfaces it.
     }),
   );
 
