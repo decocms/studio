@@ -819,15 +819,14 @@ function CommerceDiscoveryReady({
     // visual for the schedule-a-meeting panel (md+); every other setup screen
     // keeps the default AuthSplitLayout placeholder.
     <AuthSplitLayout
-      align="top"
+      align="fill"
       visual={<ScheduleMeetingVisual href={meetingUrl} />}
     >
-      {/* Mobile: fill the viewport (minus AuthSplitLayout's pt-4+pb-8 = 3rem) as a
-          flex column — header pinned top, cards scroll in the middle, and the
-          footer (report CTA + talk-to-a-human banner) pinned to the bottom.
-          align="top" avoids the vh/dvh centering that used to clip the footer.
+      {/* align="fill" hands us a flex column sized to the visible viewport, so we
+          just flex-1 into it — header pinned top, cards scroll in the middle, and
+          the footer (report CTA + talk-to-a-human banner) pinned to the bottom.
           On md+ it collapses back to a natural block (right panel has the card). */}
-      <div className="flex h-[calc(100dvh-3rem)] flex-col gap-6 md:block md:h-auto">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 md:block">
         <CommerceHeader />
         <CompanionMcpsSection
           org={org}
