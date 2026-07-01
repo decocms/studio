@@ -4,7 +4,6 @@ import {
   AlertCircle,
   BookOpen01,
   Calendar,
-  CheckSquare,
   ChevronDown,
   Code01,
   Copy01,
@@ -390,13 +389,9 @@ function ContentBrowserReady({
   const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
     () => new Set(),
   );
-  // Multi-select is opt-in: checkboxes and the bulk toolbar only appear once
-  // the user enters selection mode via the "Select" action.
-  const [selectionMode, setSelectionMode] = useState(false);
-  const exitSelection = () => {
-    setSelectionMode(false);
-    setSelectedPostKeys(new Set());
-  };
+  // Multi-select is implicit: selecting the first post (via the hover-revealed
+  // checkbox) enters "selection mode" — clearing the selection leaves it.
+  const clearSelection = () => setSelectedPostKeys(new Set());
   // Reset search + post filters/selection when switching collections
   // (derived-state sync pattern).
   const [prevCollection, setPrevCollection] = useState(activeCollection);
@@ -407,7 +402,6 @@ function ContentBrowserReady({
     setPostAuthorFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
-    setSelectionMode(false);
   }
 
   const {
@@ -845,7 +839,7 @@ function ContentBrowserReady({
         `${verb} ${changed} ${changed === 1 ? "post" : "posts"}` +
           (unchanged > 0 ? ` (${unchanged} already set)` : ""),
       );
-      exitSelection();
+      clearSelection();
       setCategoryDialog(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bulk update failed");
@@ -872,7 +866,7 @@ function ContentBrowserReady({
         ) {
           setSelection(null);
         }
-        exitSelection();
+        clearSelection();
         setDeleteTarget(null);
         return;
       }
@@ -943,9 +937,6 @@ function ContentBrowserReady({
             }}
             onPostSortChange={setPostSort}
             selectedPostKeys={selectedPostKeys}
-            selectionMode={selectionMode}
-            onEnterSelectionMode={() => setSelectionMode(true)}
-            onExitSelection={exitSelection}
             onTogglePostSelect={togglePostSelection}
             onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
             onClearPostSelection={() => setSelectedPostKeys(new Set())}
@@ -1561,9 +1552,6 @@ function ItemList({
   onPostAuthorFilterChange,
   onPostSortChange,
   selectedPostKeys,
-  selectionMode,
-  onEnterSelectionMode,
-  onExitSelection,
   onTogglePostSelect,
   onSelectAllPosts,
   onClearPostSelection,
@@ -1601,9 +1589,6 @@ function ItemList({
   onPostAuthorFilterChange: (email: string | null) => void;
   onPostSortChange: (sort: PostSort) => void;
   selectedPostKeys: Set<string>;
-  selectionMode: boolean;
-  onEnterSelectionMode: () => void;
-  onExitSelection: () => void;
   onTogglePostSelect: (key: string) => void;
   onSelectAllPosts: (keys: string[]) => void;
   onClearPostSelection: () => void;
@@ -1731,6 +1716,9 @@ function ItemList({
   const allVisibleSelected =
     visiblePostKeys.length > 0 &&
     visiblePostKeys.every((k) => selectedPostKeys.has(k));
+  // Selecting the first post enters "selection mode": the toolbar replaces the
+  // filter bar and every row's checkbox becomes visible.
+  const selectionActive = selectionCount > 0;
   const toggleSelectAll = () => {
     if (allVisibleSelected) {
       onClearPostSelection();
@@ -1782,14 +1770,14 @@ function ItemList({
         )}
       </div>
       {isPostsCollection &&
-        (selectionMode ? (
+        (selectionActive ? (
           <PostSelectionToolbar
             count={selectionCount}
             allSelected={allVisibleSelected}
             onToggleSelectAll={toggleSelectAll}
             onUpdateCategory={onBulkUpdateCategory}
             onDelete={onBulkDeletePosts}
-            onExit={onExitSelection}
+            onExit={onClearPostSelection}
           />
         ) : (
           <PostFilterBar
@@ -1798,8 +1786,6 @@ function ItemList({
             categoryFilter={postCategoryFilter}
             authorFilter={postAuthorFilter}
             sort={postSort}
-            hasPosts={postsWithMeta.length > 0}
-            onStartSelection={onEnterSelectionMode}
             onCategoryFilterChange={onPostCategoryFilterChange}
             onAuthorFilterChange={onPostAuthorFilterChange}
             onSortChange={onPostSortChange}
@@ -2013,11 +1999,11 @@ function ItemList({
                       selection.key === post.key
                     }
                     selectable
-                    selectionActive={selectionMode}
+                    selectionActive={selectionActive}
                     selected={selectedPostKeys.has(post.key)}
                     onToggleSelect={() => onTogglePostSelect(post.key)}
                     onClick={() =>
-                      selectionMode
+                      selectionActive
                         ? onTogglePostSelect(post.key)
                         : onSelect({ collection: "posts", key: post.key })
                     }
@@ -2148,8 +2134,6 @@ function PostFilterBar({
   categoryFilter,
   authorFilter,
   sort,
-  hasPosts,
-  onStartSelection,
   onCategoryFilterChange,
   onAuthorFilterChange,
   onSortChange,
@@ -2159,8 +2143,6 @@ function PostFilterBar({
   categoryFilter: string | null;
   authorFilter: string | null;
   sort: PostSort;
-  hasPosts: boolean;
-  onStartSelection: () => void;
   onCategoryFilterChange: (slug: string | null) => void;
   onAuthorFilterChange: (email: string | null) => void;
   onSortChange: (sort: PostSort) => void;
@@ -2249,7 +2231,7 @@ function PostFilterBar({
         <FilterClearButton label="Clear filter" onClick={clearFilter} />
       )}
 
-      <div className="ml-auto flex shrink-0 items-center gap-0.5">
+      <div className="ml-auto shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <FilterChipTrigger
@@ -2272,18 +2254,6 @@ function PostFilterBar({
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 px-2 text-xs"
-          disabled={!hasPosts}
-          onClick={onStartSelection}
-        >
-          <CheckSquare size={14} />
-          Select
-        </Button>
       </div>
     </div>
   );
