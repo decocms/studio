@@ -817,7 +817,7 @@ function CommerceDiscoveryReady({
           just flex-1 into it — header pinned top, cards scroll in the middle, and
           the footer (report CTA + talk-to-a-human banner) pinned to the bottom.
           On md+ it collapses back to a natural block (right panel has the card). */}
-      <div className="flex min-h-0 flex-1 flex-col gap-6 md:block">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:gap-4">
         <CommerceHeader />
         <CompanionMcpsSection
           org={org}

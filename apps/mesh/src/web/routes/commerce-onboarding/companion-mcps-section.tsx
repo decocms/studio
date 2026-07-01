@@ -53,7 +53,7 @@ export function CompanionMcpsSection({
     // Mobile: fill the parent's remaining height — the header + intro copy stay
     // pinned while the card list scrolls. md+: natural block with a capped
     // scroll area so the right panel stays visible.
-    <div className="flex min-h-0 flex-1 flex-col gap-6 md:block md:flex-none">
+    <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:flex-none md:gap-4">
       <div className="grid gap-1.5">
         <p className="text-2xl font-medium text-foreground">
           Unlock your full diagnostic
