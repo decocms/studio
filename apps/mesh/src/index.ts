@@ -310,6 +310,44 @@ if (settings.localMode) {
 
 let shuttingDown = false;
 
+// A workflow this pod is actively executing is PENDING and bound to this pod's
+// executor_id (= podName). When the pod exits, that binding never releases: a
+// new pod's launch recovery only reclaims its OWN executor_id, and the queue
+// poller only dequeues ENQUEUED rows — so a PENDING row owned by a departed pod
+// strands forever (the rollout wedge). The Conductor can't be relied on to
+// recover a gracefully-deregistered executor. So on the way out, flip our own
+// PENDING queued workflows back to ENQUEUED on their original queue (preserving
+// partition concurrency); ENQUEUED has no executor binding, so the next pod's
+// poller inherits them — now, or whenever one comes up. Idempotent: a resumed
+// workflow replays recorded step outputs, same guarantee as crash recovery.
+async function handoffMyPendingWorkflows() {
+  try {
+    const mine = await DBOS.listWorkflows({
+      status: ["PENDING"],
+      executorId: DBOS.executorID,
+    });
+    const byQueue = new Map<string, string[]>();
+    for (const wf of mine) {
+      if (!wf.queueName) continue; // non-queued workflows have no re-enqueue path
+      const ids = byQueue.get(wf.queueName);
+      if (ids) ids.push(wf.workflowID);
+      else byQueue.set(wf.queueName, [wf.workflowID]);
+    }
+    if (byQueue.size === 0) return;
+    let total = 0;
+    for (const [queueName, ids] of byQueue) {
+      await DBOS.resumeWorkflows(ids, { queueName });
+      total += ids.length;
+    }
+    console.log(
+      `[shutdown] re-enqueued ${total} in-flight workflow(s) for pickup by another pod`,
+    );
+  } catch (err) {
+    // Best-effort: a handoff failure must never block the rest of shutdown.
+    console.error("[shutdown] workflow handoff failed:", err);
+  }
+}
+
 async function gracefulShutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -351,8 +389,19 @@ async function gracefulShutdown(signal: string) {
     //    graceful drain indefinitely).
     await server.stop(true);
 
-    // Drain DBOS before app.shutdown closes mesh's pg pool — in-flight steps use it.
-    await DBOS.shutdown();
+    // 4. Hand off whatever we're still executing. The drain above doubles as a
+    //    natural-completion window, so anything still PENDING here is a
+    //    long-running workflow that won't finish in the grace budget. Re-enqueue
+    //    it while DBOS is still launched (listWorkflows/resumeWorkflows need it).
+    await handoffMyPendingWorkflows();
+
+    // 5. Drain DBOS before app.shutdown closes mesh's pg pool — in-flight steps
+    //    use it. Cap the drain: awaitRunningWorkflows() blocks on the very
+    //    workflows we just handed off (resume doesn't cancel the local promise),
+    //    so left unbounded it burns the whole budget and starves app.shutdown.
+    //    We've already re-enqueued the work, so abandoning the local copy is safe.
+    const dbosDrainCapMs = 15_000;
+    await Promise.race([DBOS.shutdown(), sleep(dbosDrainCapMs)]);
     await app.shutdown();
   } catch (err) {
     console.error("[shutdown] Error during shutdown:", err);
