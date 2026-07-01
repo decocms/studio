@@ -121,6 +121,8 @@ export function CompanionMcpsSection({
                 card={card}
                 connecting={connectingFieldKey === card.fieldKey}
                 disabled={busy && connectingFieldKey !== card.fieldKey}
+                org={org}
+                selfClient={selfClient}
                 onConnect={() => void connect(card)}
               />
             ))}

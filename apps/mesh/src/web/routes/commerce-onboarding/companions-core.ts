@@ -12,6 +12,7 @@ export interface CandidateConnection {
   app_id?: string | null;
   connection_token?: string | null;
   oauth_config?: unknown | null;
+  configuration_state?: Record<string, unknown> | null;
   status?: string | null;
   updated_at?: string | null;
 }
@@ -48,6 +49,8 @@ export interface CompanionCardModel {
   bullets: string[];
   satisfied: boolean;
   candidateConnectionId: string | null;
+  linkedConnectionId: string | null;
+  configurationState: Record<string, unknown> | null;
 }
 
 type ComparisonWhere = { field: string[]; operator: "in"; value: string[] };
@@ -123,6 +126,54 @@ export function mergeBindingValue(
   };
 }
 
+function isMeaningfulConfigValue(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number" || typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.some(isMeaningfulConfigValue);
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).some(
+      ([key, entryValue]) =>
+        !key.startsWith("__") && isMeaningfulConfigValue(entryValue),
+    );
+  }
+  return false;
+}
+
+export function hasConfigurationValues(
+  state: Record<string, unknown> | null | undefined,
+): boolean {
+  return isMeaningfulConfigValue(state);
+}
+
+function formatConfigurationKey(key: string): string {
+  return key
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function stringifyConfigurationValue(value: unknown): string | null {
+  if (!isMeaningfulConfigValue(value)) return null;
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+export function getConfigurationSummaryEntries(
+  state: Record<string, unknown> | null | undefined,
+): Array<{ key: string; label: string; value: string }> {
+  if (!state) return [];
+  return Object.entries(state).flatMap(([key, value]) => {
+    if (key.startsWith("__")) return [];
+    const stringValue = stringifyConfigurationValue(value);
+    if (!stringValue) return [];
+    return [{ key, label: formatConfigurationKey(key), value: stringValue }];
+  });
+}
+
 /** Pick an existing org connection satisfying a binding by app identity:
  * app_name === bindingType OR app_id === registryAppId. Prefer active, then most recent. */
 export function resolveCandidate(
@@ -176,7 +227,7 @@ export function buildCompanionCards(args: {
   curated: Record<string, CompanionCopy>;
 }): CompanionCardModel[] {
   const cards: CompanionCardModel[] = [];
-  const connectionsById = new Set(args.connections.map((c) => c.id));
+  const connectionsById = new Map(args.connections.map((c) => [c.id, c]));
   for (const req of args.requirements) {
     const curatedEntry = args.curated[req.bindingType];
     const item = curatedEntry
@@ -186,11 +237,13 @@ export function buildCompanionCards(args: {
     const linked = (
       args.configurationState?.[req.fieldKey] as { value?: string } | undefined
     )?.value;
-    const linkedExists = !!linked && connectionsById.has(linked);
-    const linkedReady = linkedExists
-      ? args.connectionReadiness?.[linked] !== false
+    const linkedConnection = linked ? connectionsById.get(linked) : undefined;
+    const linkedConnectionId: string | null =
+      linked && linkedConnection ? linked : null;
+    const linkedReady = linkedConnectionId
+      ? args.connectionReadiness?.[linkedConnectionId] !== false
       : false;
-    const satisfied = linkedExists && linkedReady;
+    const satisfied = !!linkedConnectionId && linkedReady;
     cards.push({
       fieldKey: req.fieldKey,
       bindingType: req.bindingType,
@@ -206,13 +259,15 @@ export function buildCompanionCards(args: {
       satisfied,
       candidateConnectionId: satisfied
         ? null
-        : linkedExists
-          ? linked
+        : linkedConnectionId
+          ? linkedConnectionId
           : resolveCandidate(
               args.connections,
               req.bindingType,
               curatedEntry?.registryAppId,
             ),
+      linkedConnectionId,
+      configurationState: linkedConnection?.configuration_state ?? null,
     });
   }
   return cards;
