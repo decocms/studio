@@ -24,11 +24,27 @@ const MULTI_MATCHER_TYPES = new Set([
   "$live/matchers/MatchMulti.ts",
 ]);
 
-// Non-anchored on purpose: matches `<scope>/flags/multivariate/<x>.ts` for
-// any scope, so `website/flags/multivariate/section.ts`,
+// Sentinels for open-ended ranges (campaign with only a `start`, or only an
+// `end`). `new Date(±8.64e15)` are the min/max representable Date values, so
+// they clamp cleanly to any visible window and sort to the extremes without
+// special-casing the layout math. Openness is tracked explicitly via the
+// `openStart`/`openEnd` flags so rendering/tooltips never sniff for these.
+const OPEN_START = new Date(-8_640_000_000_000_000);
+const OPEN_END = new Date(8_640_000_000_000_000);
+
+// Non-anchored on purpose: matches `<scope>/flags/multivariate.ts` (the
+// page-level flag) as well as `<scope>/flags/multivariate/<x>.ts` for any
+// scope, so `website/flags/multivariate.ts`,
+// `website/flags/multivariate/section.ts`,
 // `site/flags/multivariate/etcMediaKitContent.ts`, and the legacy
 // `$live/flags/multivariate/section.ts` all match.
-const MULTIVARIATE_FLAG_PATTERN = /\/flags\/multivariate\/[^/]+\.ts$/;
+const MULTIVARIATE_FLAG_PATTERN = /\/flags\/multivariate(?:\/[^/]+)?\.ts$/;
+
+// The page-level flag (no `/kind` subpath): `<scope>/flags/multivariate.ts`.
+// It lives at a page's conventional `sections` field and *is* the page's
+// variant, so it carries no meaningful inner path (which would otherwise read
+// as the literal field name "sections").
+const PAGE_LEVEL_FLAG_PATTERN = /\/flags\/multivariate\.ts$/;
 
 export interface ScheduledVariant {
   /** Top-level decofile key the variant lives under (used for grouping/color). */
@@ -40,6 +56,10 @@ export interface ScheduledVariant {
   variantIndex: number;
   start: Date;
   end: Date;
+  /** True when the variant has no `start` (runs since forever, open on the left). */
+  openStart: boolean;
+  /** True when the variant has no `end` (runs indefinitely, open on the right). */
+  openEnd: boolean;
   /** Best-effort short label from the variant's `value`, or a path-derived fallback. */
   label: string;
   /** The flag's `__resolveType`, e.g. `website/flags/multivariate/image.ts`. */
@@ -67,26 +87,39 @@ function humanizeBlockKey(key: string): string {
   return label;
 }
 
-function readDateRange(rule: unknown): { start: Date; end: Date } | null {
-  if (!rule || typeof rule !== "object") return null;
-  const { start, end } = rule as { start?: unknown; end?: unknown };
-  if (typeof start !== "string" || typeof end !== "string") return null;
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (
-    Number.isNaN(startDate.getTime()) ||
-    Number.isNaN(endDate.getTime()) ||
-    endDate.getTime() <= startDate.getTime()
-  ) {
-    return null;
-  }
-  return { start: startDate, end: endDate };
+interface DateRange {
+  start: Date;
+  end: Date;
+  openStart: boolean;
+  openEnd: boolean;
 }
 
-function collectDateRanges(
-  rule: unknown,
-  out: Array<{ start: Date; end: Date }>,
-): void {
+function readDateRange(rule: unknown): DateRange | null {
+  if (!rule || typeof rule !== "object") return null;
+  const { start, end } = rule as { start?: unknown; end?: unknown };
+  const hasStart = typeof start === "string";
+  const hasEnd = typeof end === "string";
+  // Both sides absent → an always-on variant with no time axis; it belongs
+  // off the calendar (same as audience/device matchers).
+  if (!hasStart && !hasEnd) return null;
+  const startDate = hasStart ? new Date(start) : OPEN_START;
+  const endDate = hasEnd ? new Date(end) : OPEN_END;
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+  // Only enforce ordering when both ends are real dates.
+  if (hasStart && hasEnd && endDate.getTime() <= startDate.getTime()) {
+    return null;
+  }
+  return {
+    start: startDate,
+    end: endDate,
+    openStart: !hasStart,
+    openEnd: !hasEnd,
+  };
+}
+
+function collectDateRanges(rule: unknown, out: DateRange[]): void {
   if (!rule || typeof rule !== "object") return;
   const rt = (rule as { __resolveType?: unknown }).__resolveType;
   if (typeof rt !== "string") return;
@@ -185,13 +218,17 @@ function walkAndCollect(
   out: ScheduledVariant[],
 ): void {
   if (isVariantContainer(node)) {
-    const innerPath = formatInnerPath(innerSegments);
     const variants = (node as { variants: unknown[] }).variants;
     const flagResolveType = (node as { __resolveType: string }).__resolveType;
+    // Page-level flags have no meaningful inner path — the label then falls
+    // back to the page name (`blockLabel`) instead of the field name.
+    const innerPath = PAGE_LEVEL_FLAG_PATTERN.test(flagResolveType)
+      ? ""
+      : formatInnerPath(innerSegments);
     variants.forEach((variant, variantIndex) => {
       if (!variant || typeof variant !== "object") return;
       const v = variant as Record<string, unknown>;
-      const ranges: Array<{ start: Date; end: Date }> = [];
+      const ranges: DateRange[] = [];
       collectDateRanges(v.rule, ranges);
       if (ranges.length === 0) return;
       const valueLabel = readValueLabel(v.value);
@@ -204,6 +241,8 @@ function walkAndCollect(
           variantIndex,
           start: range.start,
           end: range.end,
+          openStart: range.openStart,
+          openEnd: range.openEnd,
           label,
           flagResolveType,
         });
