@@ -53,8 +53,8 @@ type WhereExpr =
   | { operator: "or"; conditions: ComparisonWhere[] };
 
 /** Extract binding requirements from a downstream MCP_CONFIGURATION state schema.
- * A property is a binding field when properties.__type.const is a non-empty string
- * (same predicate as isBindingField in mcp-configuration-form.tsx). Order preserved. */
+ * A property is a binding requirement when properties.__type.const is a non-empty
+ * string — the binding-type source also read by getBindingInfo. Order preserved. */
 export function parseBindingRequirements(
   stateSchema: Record<string, unknown>,
 ): BindingRequirement[] {

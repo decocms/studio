@@ -101,13 +101,16 @@ export function useCommerceCompanions({
     enabled: requirements.length > 0,
     queryFn: async () => {
       const where = buildRegistryWhere(registryAppIds, nameOnly);
-      return callRegistryTool<{ items: RegistryItemLike[] }>(
+      const result = await callRegistryTool<{ items: RegistryItemLike[] }>(
         WellKnownOrgMCPId.REGISTRY(org.id),
         org.id,
         org.slug,
         "COLLECTION_REGISTRY_APP_LIST",
         { ...(where ? { where } : {}), limit: 1000 },
       );
+      // callRegistryTool doesn't throw on isError; surface it here so the
+      // section renders its error state instead of silently gating out.
+      return unwrapToolResult<{ items: RegistryItemLike[] }>(result);
     },
   });
 
