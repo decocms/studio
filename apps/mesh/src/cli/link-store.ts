@@ -4,10 +4,27 @@
  * useSyncExternalStore (no useEffect). Mirrors the cli-store pattern.
  */
 import type { SandboxEvent } from "../link-daemon/user-desktop-provider";
+import type { PendingConfirm } from "./link-confirm";
 import type {
   LinkSandboxRecord,
   LinkSandboxStatus,
+  SandboxInspection,
 } from "./link-sandbox-registry";
+import { orderedHandles, selectionAfterRemoval } from "./link-selection";
+
+/**
+ * Actions the TUI invokes on the running daemon. Supplied via `setLinkActions`
+ * once the daemon has started (the view renders before that, so it stays null
+ * until then and key handlers no-op).
+ */
+export interface LinkActions {
+  stopSandbox(handle: string): Promise<void>;
+  removeSandbox(
+    handle: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }>;
+  inspectSandbox(handle: string): SandboxInspection | null;
+  quit(): Promise<void>;
+}
 
 // Not exported — internal to this store (mirrors cli-store's CliState).
 type ClusterStatus = "connecting" | "linked" | "closed";
@@ -36,6 +53,14 @@ interface LinkState {
   daemonError: string | null;
   /** Absolute path of the combined `deco link` log file (TUI mode only). */
   logPath: string | null;
+  /** Handle of the row the user has selected in the interactive table. */
+  selectedHandle: string | null;
+  /** Non-null while a delete confirmation is awaiting y/n. */
+  pendingConfirm: PendingConfirm | null;
+  /** Transient error from the last interactive action (shown in the footer). */
+  actionError: string | null;
+  /** Daemon actions the TUI invokes; null until the daemon has started. */
+  actions: LinkActions | null;
 }
 
 const DEFAULT_CAP = 20;
@@ -91,6 +116,10 @@ function initialState(): LinkState {
     sandboxes: new Map(),
     daemonError: null,
     logPath: null,
+    selectedHandle: null,
+    pendingConfirm: null,
+    actionError: null,
+    actions: null,
   };
 }
 
@@ -138,6 +167,39 @@ export function setDaemonError(message: string) {
 
 export function setLogPath(path: string) {
   state = { ...state, logPath: path };
+  emit();
+}
+
+export function setSelectedHandle(handle: string | null) {
+  state = { ...state, selectedHandle: handle };
+  emit();
+}
+
+export function setPendingConfirm(confirm: PendingConfirm | null) {
+  state = { ...state, pendingConfirm: confirm };
+  emit();
+}
+
+export function setActionError(message: string | null) {
+  state = { ...state, actionError: message };
+  emit();
+}
+
+export function setLinkActions(actions: LinkActions) {
+  state = { ...state, actions };
+  emit();
+}
+
+export function removeSandboxRow(handle: string) {
+  const handles = orderedHandles(state.sandboxes);
+  const selectedHandle = selectionAfterRemoval(
+    handles,
+    handle,
+    state.selectedHandle,
+  );
+  const sandboxes = new Map(state.sandboxes);
+  sandboxes.delete(handle);
+  state = { ...state, sandboxes, selectedHandle, pendingConfirm: null };
   emit();
 }
 

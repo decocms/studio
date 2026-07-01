@@ -234,6 +234,15 @@ export async function runLinkCommand(
       perSandboxLogs,
       hotReload: opts.hotReload,
     });
+    if (opts.tui) {
+      const { setLinkActions } = await import("../link-store");
+      setLinkActions({
+        stopSandbox: handle.stopSandbox,
+        removeSandbox: handle.removeSandbox,
+        inspectSandbox: handle.inspectSandbox,
+        quit: handle.stop,
+      });
+    }
     return await handle.stopped;
   } catch (err) {
     // Restore BEFORE printing so a fatal error is visible on real stderr,
