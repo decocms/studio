@@ -250,6 +250,14 @@ export interface RequestMetadata {
   /** Custom properties from x-mesh-properties header (string key-value pairs) */
   properties?: Record<string, string>;
   wellKnownForwardableHeaders?: Record<string, string | null>;
+  /**
+   * Per-run metadata forwarded to downstream MCP tool calls as the
+   * `x-mesh-run-metadata` header (JSON). Set from a webhook trigger's
+   * `run_metadata` so a downstream server can read run-scoped context (e.g. the
+   * tenant a scheduled/triggered run acts on) without the agent passing it as a
+   * tool argument.
+   */
+  runMetadata?: Record<string, string>;
 }
 
 // ============================================================================

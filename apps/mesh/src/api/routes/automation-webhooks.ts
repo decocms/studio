@@ -89,6 +89,25 @@ async function verifyWebhookToken(
   return { ok: true, apiKeyId: result.key.id };
 }
 
+/**
+ * Extract `run_metadata` (a flat string map) from a webhook payload. Unlike the
+ * rest of the body — which is forwarded as an untrusted message to the model —
+ * this is treated as TRUSTED run context and forwarded to downstream MCP tool
+ * calls as the `x-mesh-run-metadata` header. Only string values are kept.
+ */
+function extractRunMetadata(
+  payload: unknown,
+): Record<string, string> | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const raw = (payload as { run_metadata?: unknown }).run_metadata;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function truncatedJsonPayload(value: unknown): string {
   let s = JSON.stringify(value, null, 2) ?? "null";
   if (s.length > MAX_PAYLOAD_BYTES) {
@@ -204,6 +223,7 @@ export function createAutomationWebhookRoutes() {
       organizationId: automation.organization_id,
       triggerId: trigger.id,
       contextMessages,
+      runMetadata: extractRunMetadata(payload),
     });
 
     return c.json({ ok: true, trigger_id: trigger.id }, 202);
