@@ -13,10 +13,11 @@ import type {
  */
 export const DEFAULT_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
   {
-    anthropic: ["claude-sonnet-4-6", "claude-sonnet", "claude"],
+    anthropic: ["claude-sonnet-5", "claude-sonnet", "claude"],
     openrouter: [
+      "anthropic/claude-opus-4.8:extended",
       "anthropic/claude-opus-4.8",
-      "anthropic/claude-sonnet-4-6",
+      "anthropic/claude-sonnet-5",
       "anthropic/claude-sonnet",
       "anthropic/claude",
     ],
@@ -66,15 +67,15 @@ export function getFastModel(providerId: ProviderId): string | null {
  * in Simple Model Mode.
  */
 export const SMART_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> = {
-  anthropic: ["claude-sonnet-4-6", "claude-sonnet"],
+  anthropic: ["claude-sonnet-5", "claude-sonnet"],
   openrouter: [
-    "anthropic/claude-sonnet-4.6",
+    "anthropic/claude-sonnet-5",
     "anthropic/claude-sonnet",
     "anthropic/claude-opus-4.8",
     "google/gemini-3-pro",
   ],
   deco: [
-    "anthropic/claude-sonnet-4.6",
+    "anthropic/claude-sonnet-5",
     "anthropic/claude-sonnet",
     "anthropic/claude",
   ],
@@ -91,15 +92,16 @@ export const THINKING_MODEL_PREFERENCES: Partial<Record<ProviderId, string[]>> =
   {
     anthropic: [
       "claude-opus-4-8",
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
       "claude-sonnet",
       // Fable 5 suspended by US government directive (2026-06-13)
       "claude-fable-5",
     ],
     openrouter: [
+      "anthropic/claude-opus-4.8:extended",
       "anthropic/claude-opus-4.8",
-      "anthropic/claude-sonnet-4.6:extended",
-      "anthropic/claude-sonnet-4.6",
+      "anthropic/claude-sonnet-5:extended",
+      "anthropic/claude-sonnet-5",
       "google/gemini-3-pro",
       // Fable 5 suspended by US government directive (2026-06-13)
       "anthropic/claude-fable-5",
