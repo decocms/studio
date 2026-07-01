@@ -275,6 +275,10 @@
   --text-sm: 0.8125rem;
 
   --animate-device-icon-pop: device-icon-pop 150ms var(--ease-out-cubic) both;
+  --animate-connection-travel: connection-travel 2.6s var(--ease-in-out-cubic)
+    infinite;
+  --animate-connection-arrive: connection-arrive 2.6s var(--ease-out-cubic)
+    infinite;
 }
 
 /* Animations */
@@ -313,6 +317,42 @@
   }
 }
 
+/* A dot travelling along the wire from the "you" node to the "deco" node on the
+   commerce onboarding "schedule a meeting" card — reads as a live connection. */
+@keyframes connection-travel {
+  0% {
+    left: 0%;
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+/* A single ring that blooms out of the deco node exactly as the dot lands,
+   completing the "message delivered" beat. Same period keeps it in sync. */
+@keyframes connection-arrive {
+  0%,
+  72% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  84% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   @keyframes device-icon-pop {
     from {
@@ -320,6 +360,21 @@
     }
     to {
       opacity: 1;
+    }
+  }
+
+  /* Park the dot mid-wire and drop the ring instead of animating. */
+  @keyframes connection-travel {
+    0%,
+    100% {
+      left: 50%;
+      opacity: 1;
+    }
+  }
+  @keyframes connection-arrive {
+    0%,
+    100% {
+      opacity: 0;
     }
   }
 }
