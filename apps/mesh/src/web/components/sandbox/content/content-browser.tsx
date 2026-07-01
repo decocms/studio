@@ -2335,17 +2335,19 @@ function PostSelectionToolbar({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               className="h-7 gap-1 px-2 text-xs"
               onClick={onUpdateCategory}
-              aria-label="Update category for selected posts"
+              aria-label="Set the category for the selected posts"
             >
               <Tag01 size={14} />
-              Category
+              Set category
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Update category</TooltipContent>
+          <TooltipContent side="bottom">
+            Set the category for the selected posts
+          </TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
