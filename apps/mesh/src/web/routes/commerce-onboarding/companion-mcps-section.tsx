@@ -80,7 +80,7 @@ export function CompanionMcpsSection({
       {error ? (
         <div
           role="alert"
-          className="rounded-2xl border border-border bg-background/60 p-4"
+          className="rounded-2xl border border-border bg-card p-4"
         >
           <p className="text-sm text-foreground">
             Couldn't load companion integrations.

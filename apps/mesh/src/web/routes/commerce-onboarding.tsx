@@ -337,8 +337,8 @@ function CommerceHeader({
   title,
   description,
 }: {
-  title: string;
-  description: string;
+  title?: string;
+  description?: string;
 }) {
   return (
     <div className="grid gap-10">
@@ -352,12 +352,16 @@ function CommerceHeader({
         alt="Deco"
         className="h-12 w-12 hidden dark:block"
       />
-      <div className="space-y-2">
-        <h1 className="text-2xl font-medium leading-8">{title}</h1>
-        <p className="text-base text-muted-foreground leading-6">
-          {description}
-        </p>
-      </div>
+      {(title || description) && (
+        <div className="space-y-2">
+          {title && <h1 className="text-2xl font-medium leading-8">{title}</h1>}
+          {description && (
+            <p className="text-base text-muted-foreground leading-6">
+              {description}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -738,10 +742,7 @@ function CommerceDiscoveryReady({
 }) {
   return (
     <div className="grid gap-10">
-      <CommerceHeader
-        title="Commerce Discovery"
-        description={`Commerce Discovery is connected for ${org.name}.`}
-      />
+      <CommerceHeader />
       <CompanionMcpsSection
         org={org}
         cdConnectionId={reportApp.connectionId}

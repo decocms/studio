@@ -24,7 +24,7 @@ export function CompanionCard({
   onConnect: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-background/60 p-4">
+    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
       <div className="flex items-center gap-2">
         <IntegrationIcon icon={card.icon} name={card.title} size="md" />
         <p className="flex-1 text-sm text-foreground">{card.title}</p>
