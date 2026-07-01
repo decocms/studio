@@ -2,6 +2,7 @@ import { normalizeCommerceSiteUrl } from "@/commerce-discovery/site-url";
 import { AuthEntry } from "@/web/components/auth-entry";
 import { AuthSplitLayout } from "@/web/components/auth-split-layout";
 import { OrganizationChoice } from "@/web/components/organization-choice";
+import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { formatPinnedViewTabId } from "@/web/layouts/main-panel-tabs/tab-id";
 import {
   authClient,
@@ -22,9 +23,10 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight, Loading01 } from "@untitledui/icons";
-import { Suspense, useRef, useState } from "react";
+import { createContext, Suspense, useContext, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
+import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
 
 interface CommerceOrganization {
   id: string;
@@ -73,10 +75,45 @@ export default function CommerceOnboardingRoute() {
   return <CommerceOnboardingPage />;
 }
 
+/**
+ * Hostname derived from the `siteUrl` query param (e.g. "fila.com.br"),
+ * provided to the whole onboarding experience so every header renders the
+ * deco + site badge. `null` when no valid `siteUrl` is present.
+ */
+const CommerceSiteHostContext = createContext<string | null>(null);
+
+const useCommerceSiteHost = () => useContext(CommerceSiteHostContext);
+
+function siteUrlToHost(siteUrl?: string): string | null {
+  if (!siteUrl) return null;
+  const normalized = normalizeCommerceSiteUrl(siteUrl);
+  return normalized.ok ? new URL(normalized.value).hostname : null;
+}
+
 function CommerceOnboardingPage() {
   const search = useSearch({ from: "/commerce-onboarding" });
   const { org: requestedOrgSlug, siteUrl } = search;
+  const siteHost = siteUrlToHost(siteUrl);
+
+  return (
+    <CommerceSiteHostContext.Provider value={siteHost}>
+      <CommerceOnboardingScreens
+        requestedOrgSlug={requestedOrgSlug}
+        siteUrl={siteUrl}
+      />
+    </CommerceSiteHostContext.Provider>
+  );
+}
+
+function CommerceOnboardingScreens({
+  requestedOrgSlug,
+  siteUrl,
+}: {
+  requestedOrgSlug?: string;
+  siteUrl?: string;
+}) {
   const { data: session, isPending: sessionLoading } = authClient.useSession();
+  const siteHost = useCommerceSiteHost();
 
   if (sessionLoading) {
     return (
@@ -94,7 +131,13 @@ function CommerceOnboardingPage() {
 
     return (
       <AuthSplitLayout>
-        <AuthEntry callbackUrl={callbackUrl} allowAutoLogin={false} />
+        <AuthEntry
+          callbackUrl={callbackUrl}
+          allowAutoLogin={false}
+          title="Unlock your full diagnostic"
+          subtitle={null}
+          brand={siteHost ? <SiteBadge host={siteHost} /> : undefined}
+        />
       </AuthSplitLayout>
     );
   }
@@ -211,13 +254,13 @@ function CommerceOnboardingContent({
             title="Choose an organization"
             description="Select where commerce diagnostics should continue."
           />
-          <div className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
+          <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
             <OrganizationChoice
               organizations={activeOrganizations}
               selectLabel="Continue"
               onSelected={(organization) => setSelectedOrg(organization)}
             />
-          </div>
+          </ScrollReveal>
         </div>
       </AuthSplitLayout>
     );
@@ -261,7 +304,7 @@ function CommerceOnboardingContent({
             title="Choose an organization"
             description="Your email can access more than one organization. Choose where commerce setup should continue."
           />
-          <div className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
+          <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
             <OrganizationChoice
               organizations={ensureResult.organizations}
               domain={ensureResult.domain ?? undefined}
@@ -274,7 +317,7 @@ function CommerceOnboardingContent({
                 });
               }}
             />
-          </div>
+          </ScrollReveal>
         </div>
       </AuthSplitLayout>
     );
@@ -337,27 +380,38 @@ function CommerceHeader({
   title,
   description,
 }: {
-  title: string;
-  description: string;
+  title?: string;
+  description?: string;
 }) {
+  const siteHost = useCommerceSiteHost();
   return (
     <div className="grid gap-10">
-      <img
-        src="/logos/deco logo.svg"
-        alt="Deco"
-        className="h-12 w-12 dark:hidden"
-      />
-      <img
-        src="/logos/deco logo negative.svg"
-        alt="Deco"
-        className="h-12 w-12 hidden dark:block"
-      />
-      <div className="space-y-2">
-        <h1 className="text-2xl font-medium leading-8">{title}</h1>
-        <p className="text-base text-muted-foreground leading-6">
-          {description}
-        </p>
-      </div>
+      {siteHost ? (
+        <SiteBadge host={siteHost} />
+      ) : (
+        <div>
+          <img
+            src="/logos/deco logo.svg"
+            alt="Deco"
+            className="h-12 w-12 dark:hidden"
+          />
+          <img
+            src="/logos/deco logo negative.svg"
+            alt="Deco"
+            className="h-12 w-12 hidden dark:block"
+          />
+        </div>
+      )}
+      {(title || description) && (
+        <div className="space-y-2">
+          {title && <h1 className="text-2xl font-medium leading-8">{title}</h1>}
+          {description && (
+            <p className="text-base text-muted-foreground leading-6">
+              {description}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -738,10 +792,7 @@ function CommerceDiscoveryReady({
 }) {
   return (
     <div className="grid gap-10">
-      <CommerceHeader
-        title="Commerce Discovery"
-        description={`Commerce Discovery is connected for ${org.name}.`}
-      />
+      <CommerceHeader />
       <CompanionMcpsSection
         org={org}
         cdConnectionId={reportApp.connectionId}

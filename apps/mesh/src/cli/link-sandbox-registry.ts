@@ -12,6 +12,14 @@ export type LinkSandboxStatus =
   | "merged"
   | "invalid";
 
+export interface SandboxInspection {
+  handle: string;
+  branch: string | null;
+  sandboxPath: string;
+  dirtyCount: number;
+  merged: boolean | null;
+}
+
 export interface LinkSandboxRecord {
   handle: string;
   status: LinkSandboxStatus;
@@ -69,6 +77,8 @@ export interface LinkSandboxRegistry {
   list(): LinkSandboxRecord[];
   reconcile(): LinkSandboxRecord[];
   prune(options: LinkSandboxPruneOptions): LinkSandboxPruneResult;
+  delete(handle: string): void;
+  inspect(handle: string): SandboxInspection | null;
   close(): void;
 }
 
@@ -353,6 +363,10 @@ export function openLinkSandboxRegistry(opts: {
     WHERE handle = $handle
   `);
 
+  const getStmt = db.query(`
+    SELECT * FROM link_sandboxes WHERE handle = $handle
+  `);
+
   function sandboxPathIsInsideManagedRoot(sandboxPath: string): boolean {
     if (managedSandboxRoot === undefined) {
       return true;
@@ -521,6 +535,36 @@ export function openLinkSandboxRegistry(opts: {
       }
 
       return { removed, skipped };
+    },
+    delete(handle) {
+      deleteStmt.run({ $handle: handle });
+    },
+    inspect(handle) {
+      const row = getStmt.get({ $handle: handle }) as LinkSandboxDbRow | null;
+      if (row === null) return null;
+      const rec = toRecord(row);
+      let dirtyCount = 0;
+      let merged: boolean | null = null;
+      if (
+        existsSync(rec.sandboxPath) &&
+        runGit(rec.sandboxPath, ["rev-parse", "--is-inside-work-tree"]).ok
+      ) {
+        const status = runGit(rec.sandboxPath, ["status", "--porcelain"]);
+        if (status.ok) {
+          const trimmed = status.stdout.trim();
+          dirtyCount = trimmed === "" ? 0 : trimmed.split("\n").length;
+        }
+        if (rec.branch !== null && rec.branch.trim() !== "") {
+          merged = branchIsMergedIntoDefault(rec.sandboxPath, rec.branch);
+        }
+      }
+      return {
+        handle: rec.handle,
+        branch: rec.branch,
+        sandboxPath: rec.sandboxPath,
+        dirtyCount,
+        merged,
+      };
     },
     close() {
       db.close();

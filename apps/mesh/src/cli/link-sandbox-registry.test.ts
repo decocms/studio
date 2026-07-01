@@ -684,3 +684,55 @@ describe("link sandbox registry", () => {
     expect(existsSync(sandboxPath)).toBe(true);
   });
 });
+
+describe("delete", () => {
+  it("removes a single row", () => {
+    const registry = openRegistry(registryPathForDataDir(tempDir()));
+    registry.upsert({
+      handle: "h1",
+      status: "stopped",
+      sandboxPath: "/tmp/h1",
+    });
+    registry.upsert({
+      handle: "h2",
+      status: "stopped",
+      sandboxPath: "/tmp/h2",
+    });
+
+    registry.delete("h1");
+
+    expect(registry.list().map((r) => r.handle)).toEqual(["h2"]);
+  });
+});
+
+describe("inspect", () => {
+  it("returns null for an unknown handle", () => {
+    const registry = openRegistry(registryPathForDataDir(tempDir()));
+    expect(registry.inspect("nope")).toBeNull();
+  });
+
+  it("reports dirty count and merged=false for an unmerged dirty worktree", async () => {
+    const dataDir = tempDir();
+    const work = join(dataDir, "sandboxes", "h1");
+    await initRepo(work, "main");
+    await runGit(work, ["checkout", "-b", "feature"]);
+    writeFileSync(join(work, "b.txt"), "2");
+    await runGit(work, ["add", "."]);
+    await runGit(work, ["commit", "-m", "feat"]);
+    writeFileSync(join(work, "c.txt"), "uncommitted"); // 1 dirty file
+
+    const registry = openRegistry(registryPathForDataDir(dataDir));
+    registry.upsert({
+      handle: "h1",
+      status: "ready",
+      sandboxPath: work,
+      branch: "feature",
+    });
+
+    const info = registry.inspect("h1");
+    expect(info?.branch).toBe("feature");
+    expect(info?.sandboxPath).toBe(work);
+    expect(info?.dirtyCount).toBe(1);
+    expect(info?.merged).toBe(false);
+  });
+});

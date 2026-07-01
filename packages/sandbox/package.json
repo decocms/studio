@@ -1,6 +1,6 @@
 {
   "name": "@decocms/sandbox",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "type": "module",
   "description": "Sandbox runner for isolated per-user containerised tool execution",
   "scripts": {
@@ -17,6 +17,7 @@
     "./provider/desktop": "./server/provider/desktop/index.ts",
     "./daemon-client": "./server/daemon-client.ts",
     "./daemon/routes/dispatch": "./daemon/routes/dispatch.ts",
+    "./org-fs/detach-mount": "./daemon/org-fs/detach-mount.ts",
     "./dispatch": "./dispatch/index.ts",
     "./dispatch/*": "./dispatch/*.ts",
     "./proxy/http": "./proxy/http.ts",

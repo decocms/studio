@@ -30,7 +30,9 @@ import type { Session } from "../cli/lib/session";
 import {
   openLinkSandboxRegistry,
   registryPathForDataDir,
+  type SandboxInspection,
 } from "../cli/link-sandbox-registry";
+import { createSandboxActions } from "./sandbox-actions";
 import {
   createDesktopSandboxProvider,
   type SandboxEvent,
@@ -84,6 +86,11 @@ export interface StartLinkDaemonOptions {
 export interface LinkDaemonHandle {
   stopped: Promise<number>;
   stop: () => Promise<void>;
+  stopSandbox: (handle: string) => Promise<void>;
+  removeSandbox: (
+    handle: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  inspectSandbox: (handle: string) => SandboxInspection | null;
 }
 
 export async function startLinkDaemon(
@@ -363,7 +370,19 @@ export async function startLinkDaemon(
       }
     });
 
-    return { stopped, stop: shutdown };
+    const sandboxActions = createSandboxActions({
+      provider,
+      registry,
+      dataDir: opts.dataDir,
+    });
+
+    return {
+      stopped,
+      stop: shutdown,
+      stopSandbox: sandboxActions.stopSandbox,
+      removeSandbox: sandboxActions.removeSandbox,
+      inspectSandbox: sandboxActions.inspectSandbox,
+    };
   } catch (err) {
     closeRegistry();
     throw err;

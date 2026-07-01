@@ -6,7 +6,7 @@ import type { CompanionCardModel } from "./companions-core.ts";
 function UnlockLine({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 p-1">
-      <CheckCircle size={14} className="shrink-0 text-muted-foreground" />
+      <CheckCircle size={14} className="shrink-0 text-blue-500" />
       <p className="text-sm text-foreground">{children}</p>
     </div>
   );
@@ -24,9 +24,15 @@ export function CompanionCard({
   onConnect: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-background/60 p-4">
+    <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
       <div className="flex items-center gap-2">
-        <IntegrationIcon icon={card.icon} name={card.title} size="md" />
+        <IntegrationIcon
+          icon={card.icon}
+          name={card.title}
+          size="md"
+          fit="contain"
+          className="p-2"
+        />
         <p className="flex-1 text-sm text-foreground">{card.title}</p>
         {card.satisfied ? (
           <div className="flex h-8 items-center gap-2 px-3 text-sm text-muted-foreground">

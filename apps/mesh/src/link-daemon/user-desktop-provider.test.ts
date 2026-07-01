@@ -35,6 +35,8 @@ function fakeRegistry(): {
       list: () => [],
       reconcile: () => [],
       prune: () => ({ removed: [], skipped: [] }),
+      delete: () => {},
+      inspect: () => null,
       close: () => {},
     },
   };

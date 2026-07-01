@@ -1,3 +1,4 @@
+import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { authClient } from "@/web/lib/auth-client";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -80,7 +81,7 @@ export function CompanionMcpsSection({
       {error ? (
         <div
           role="alert"
-          className="rounded-2xl border border-border bg-background/60 p-4"
+          className="rounded-2xl border border-border bg-card p-4"
         >
           <p className="text-sm text-foreground">
             Couldn't load companion integrations.
@@ -99,22 +100,24 @@ export function CompanionMcpsSection({
           ))}
         </div>
       ) : (
-        <div className="grid gap-4">
-          {connectError && (
-            <p role="alert" className="text-sm text-destructive">
-              {connectError}
-            </p>
-          )}
-          {cards.map((card) => (
-            <CompanionCard
-              key={card.fieldKey}
-              card={card}
-              connecting={connectingFieldKey === card.fieldKey}
-              disabled={busy && connectingFieldKey !== card.fieldKey}
-              onConnect={() => void connect(card)}
-            />
-          ))}
-        </div>
+        <ScrollReveal className="-mx-1 max-h-[45vh] overflow-y-auto px-1">
+          <div className="grid gap-4">
+            {connectError && (
+              <p role="alert" className="text-sm text-destructive">
+                {connectError}
+              </p>
+            )}
+            {cards.map((card) => (
+              <CompanionCard
+                key={card.fieldKey}
+                card={card}
+                connecting={connectingFieldKey === card.fieldKey}
+                disabled={busy && connectingFieldKey !== card.fieldKey}
+                onConnect={() => void connect(card)}
+              />
+            ))}
+          </div>
+        </ScrollReveal>
       )}
 
       {cta}

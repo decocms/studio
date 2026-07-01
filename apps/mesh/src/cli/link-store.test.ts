@@ -3,11 +3,36 @@ import {
   applySandboxEvent,
   getLinkState,
   pushSandboxEvent,
+  removeSandboxRow,
   resetLinkStateForTests,
   type SandboxRow,
+  setActionError,
+  setPendingConfirm,
   setPersistedSandboxes,
   setLogPath,
+  setSelectedHandle,
 } from "./link-store";
+
+type LinkRecord = Parameters<typeof setPersistedSandboxes>[0][number];
+
+function record(handle: string, over: Partial<LinkRecord> = {}): LinkRecord {
+  return {
+    handle,
+    status: "stopped",
+    sandboxPath: `/${handle}`,
+    port: null,
+    previewUrl: null,
+    repoCloneUrl: null,
+    branch: null,
+    projectName: null,
+    error: null,
+    createdAt: 0,
+    updatedAt: 0,
+    lastSeenAt: null,
+    missingSince: null,
+    ...over,
+  };
+}
 
 function empty(): Map<string, SandboxRow> {
   return new Map();
@@ -252,5 +277,36 @@ describe("setPersistedSandboxes", () => {
         port: 9999,
       }),
     );
+  });
+});
+
+describe("selection setters", () => {
+  it("stores the selected handle, confirm, and error", () => {
+    setSelectedHandle("h1");
+    expect(getLinkState().selectedHandle).toBe("h1");
+
+    setPendingConfirm({
+      handle: "h1",
+      branch: "b",
+      dirtyCount: 0,
+      merged: true,
+    });
+    expect(getLinkState().pendingConfirm?.handle).toBe("h1");
+
+    setActionError("boom");
+    expect(getLinkState().actionError).toBe("boom");
+  });
+});
+
+describe("removeSandboxRow", () => {
+  it("drops the row and follows selection to the neighbor", () => {
+    setPersistedSandboxes([record("a"), record("b")]);
+    setSelectedHandle("a");
+
+    removeSandboxRow("a");
+
+    expect([...getLinkState().sandboxes.keys()]).toEqual(["b"]);
+    expect(getLinkState().selectedHandle).toBe("b");
+    expect(getLinkState().pendingConfirm).toBeNull();
   });
 });

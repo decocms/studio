@@ -9,6 +9,12 @@ interface IntegrationIconProps {
   size?: Size;
   className?: string;
   fallbackIcon?: ReactNode;
+  /**
+   * How the logo fills the box. "cover" (default) crops to fill edge-to-edge;
+   * "contain" fits the whole logo inside, which pairs with container padding
+   * to give the logo breathing room.
+   */
+  fit?: "cover" | "contain";
 }
 
 const SIZE_CLASSES = {
@@ -56,6 +62,7 @@ export function IntegrationIcon({
   size = "md",
   className,
   fallbackIcon,
+  fit = "cover",
 }: IntegrationIconProps) {
   // Delegate icon:// and URL-with-color to AgentAvatar for colored rendering
   if (icon?.startsWith("icon://") || icon?.includes("#agentcolor=")) {
@@ -79,6 +86,7 @@ export function IntegrationIcon({
       size={size}
       className={className}
       fallbackIcon={fallbackIcon}
+      fit={fit}
     />
   );
 }
@@ -89,6 +97,7 @@ function IntegrationIconStateful({
   size = "md",
   className,
   fallbackIcon,
+  fit = "cover",
 }: IntegrationIconProps) {
   const [loaded, setLoaded] = useState(false);
   const showImage = Boolean(icon) && loaded;
@@ -105,7 +114,11 @@ function IntegrationIconStateful({
       <img
         src={icon || undefined}
         alt={name}
-        className={cn("h-full w-full object-cover", !showImage && "hidden")}
+        className={cn(
+          "h-full w-full",
+          fit === "contain" ? "object-contain" : "object-cover",
+          !showImage && "hidden",
+        )}
         onError={() => setLoaded(false)}
         onLoad={() => setLoaded(true)}
       />
