@@ -791,7 +791,10 @@ function CommerceDiscoveryReady({
   onOpenReport: () => void;
 }) {
   return (
-    <div className="grid gap-10">
+    // On mobile fill the viewport (minus AuthSplitLayout's p-6 = 3rem) as a flex
+    // column so the header pins to the top, the cards fill the middle, and the
+    // "See full report" CTA pins to the bottom. On md+ revert to the centered grid.
+    <div className="flex h-[calc(100dvh-3rem)] flex-col gap-10 md:grid md:h-auto">
       <CommerceHeader />
       <CompanionMcpsSection
         org={org}
