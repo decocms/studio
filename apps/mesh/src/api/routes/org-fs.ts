@@ -57,6 +57,7 @@ import {
   getPublicSets,
   isPublicVolume,
 } from "@/file-storage/public-sets";
+import { buildSkillCatalog } from "@/file-storage/skill-catalog";
 import { detectContentType } from "@/object-storage/key-utils";
 
 type Variables = { meshContext: StudioContext };
@@ -442,6 +443,27 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
       return c.json({
         entries: await ctx.orgFs.recentWithEffectivePublic(limit),
       });
+    } catch (err) {
+      return fsErrorResponse(c, err);
+    }
+  });
+
+  // Attachable skills — the SAME catalog the runtime surfaces in
+  // <available-skills> (buildSkillCatalog: home + home/skills + public sets), so
+  // the agent link picker and the run can never drift on what "a skill" is.
+  // Volume-less; lives above the `/:volume/*` routes. Member-gated read.
+  app.get("/skills", async (c) => {
+    const ctx = c.get("meshContext");
+    if (!ctx.auth?.user?.id) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    if (!ctx.organization?.id) {
+      return c.json({ error: "Organization required" }, 400);
+    }
+    const denied = await checkPermission(c, ctx, "ORG_FS_READ");
+    if (denied) return denied;
+    try {
+      return c.json({ skills: await buildSkillCatalog(ctx, ctx.organization.id) });
     } catch (err) {
       return fsErrorResponse(c, err);
     }

@@ -37,6 +37,10 @@ export interface SkillCatalogEntry {
   source: string;
   /** Sandbox path of the skill folder (e.g. `org/public/core/slides`). */
   sandboxPath: string;
+  /** OrgFs volume the skill lives on (`home` or `public-<set>`). */
+  volume: string;
+  /** Volume-relative dir path (e.g. `skills/foo`) — used to attach as agent knowledge. */
+  path: string;
 }
 
 /** Total SKILL.md reads per build — a backstop against a pathological tree. */
@@ -128,6 +132,8 @@ async function buildPublicEntries(
         description: s.description,
         source: `public:${set}`,
         sandboxPath: orgFsSandboxPath(volume, s.dirPath),
+        volume,
+        path: s.dirPath,
       });
     }
   }
@@ -167,6 +173,8 @@ async function buildHomeEntries(
     description: s.description,
     source: "home",
     sandboxPath: orgFsSandboxPath(HOME_VOLUME, s.dirPath),
+    volume: HOME_VOLUME,
+    path: s.dirPath,
   }));
 }
 
