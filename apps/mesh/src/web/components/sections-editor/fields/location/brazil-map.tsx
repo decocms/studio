@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
 import {
   BRAZIL_MAP_ROOT_TRANSFORM,
@@ -18,9 +19,28 @@ interface BrazilMapProps {
  * `cf-region-code`. Selecting a state emits that code.
  */
 export function BrazilMap({ selected, onSelect }: BrazilMapProps) {
+  // The source geometry sits in a 1080×1080 canvas but only fills a centred
+  // fraction of it, so the default viewBox leaves large margins. Measure the
+  // rendered content once and tighten the viewBox to its bounding box so the map
+  // fills the container.
+  const [viewBox, setViewBox] = useState(BRAZIL_MAP_VIEWBOX);
+  const fitToContent = (svg: SVGSVGElement | null) => {
+    if (!svg) return;
+    try {
+      const box = svg.getBBox();
+      if (!box.width || !box.height) return;
+      const pad = Math.max(box.width, box.height) * 0.04;
+      const next = `${box.x - pad} ${box.y - pad} ${box.width + pad * 2} ${box.height + pad * 2}`;
+      setViewBox((prev) => (prev === next ? prev : next));
+    } catch {
+      // getBBox can throw if the element isn't rendered yet — keep the default.
+    }
+  };
+
   return (
     <svg
-      viewBox={BRAZIL_MAP_VIEWBOX}
+      ref={fitToContent}
+      viewBox={viewBox}
       role="group"
       aria-label="Map of Brazil — select a state"
       className="h-72 w-full rounded-md border border-border/60 bg-muted/20"
