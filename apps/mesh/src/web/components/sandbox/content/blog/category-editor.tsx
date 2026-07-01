@@ -64,7 +64,7 @@ export function CategoryEditor({
   const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
 
-  const [category, setCategory] = useAutosave(initial, (next) => {
+  const [category, setCategory, syncCategory] = useAutosave(initial, (next) => {
     save.mutate({
       blockKey,
       data: buildBlogBlock(blockKey, "categories", next),
@@ -118,8 +118,20 @@ export function CategoryEditor({
         });
         changed += 1;
       }
-      // Sync the draft + persist the category block with its new slug.
-      commitSlug(newSlug);
+      // Persist the category block with its new slug and AWAIT it before
+      // reporting success — routing this through the debounced autosave would
+      // let the toast fire (and the user navigate away) before the write is
+      // even dispatched, leaving posts renamed but the category slug possibly
+      // never persisted. `nextCategory` carries the full current draft, so the
+      // write captures any name/description edits made before the rename.
+      const nextCategory = { ...category, slug: newSlug };
+      await save.mutateAsync({
+        blockKey,
+        data: buildBlogBlock(blockKey, "categories", nextCategory),
+      });
+      // Draft-only catch-up (no extra write): keeps future name/description
+      // edits on the new slug instead of spreading the stale one back in.
+      syncCategory(nextCategory);
       toast.success(
         changed > 0
           ? `Renamed slug and updated ${changed} ${changed === 1 ? "post" : "posts"}`

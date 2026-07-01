@@ -910,7 +910,14 @@ function ContentBrowserReady({
   };
 
   // ------------------ Render ------------------
-  const isDeleting = deleteBlock.isPending || deleteBlogBlock.isPending;
+  // `saveBlogBlock.isPending` covers the category-delete cascade (posts are
+  // rewritten via saveBlogBlock BEFORE the category block is unlinked), so the
+  // confirm dialog stays locked for the whole operation instead of only its
+  // final unlink — otherwise it could be re-clicked or dismissed mid-cascade.
+  const isDeleting =
+    deleteBlock.isPending ||
+    deleteBlogBlock.isPending ||
+    saveBlogBlock.isPending;
   const deleteNoun =
     deleteTarget?.kind === "blog"
       ? BLOG_SINGULAR[deleteTarget.blogKind]
