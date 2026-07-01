@@ -9,7 +9,7 @@ import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
-import { InlineText, str } from "./blocks/primitives";
+import { EditableText, str } from "./blocks/primitives";
 
 /**
  * Notion-style category editor: large inline name + slug input + inline
@@ -70,7 +70,7 @@ export function CategoryEditor({
 
         <div className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-8 py-8">
-            <InlineText
+            <EditableText
               value={str(category.name)}
               onChange={(v) => setField("name", v)}
               placeholder="Category name"

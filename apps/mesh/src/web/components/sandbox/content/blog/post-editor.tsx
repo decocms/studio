@@ -21,7 +21,12 @@ import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
-import { AddButton, InlineText, RemoveButton, str } from "./blocks/primitives";
+import {
+  AddButton,
+  EditableText,
+  RemoveButton,
+  str,
+} from "./blocks/primitives";
 
 type ExtraProp = { key: string; value: string };
 
@@ -112,7 +117,7 @@ export function PostEditor({
         <div className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-8 py-8">
             {/* Title — wraps onto multiple lines instead of truncating */}
-            <InlineText
+            <EditableText
               value={str(post.title)}
               onChange={(v) => setField("title", v)}
               placeholder="Post title"
