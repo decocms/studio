@@ -1838,13 +1838,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   app.route("/api", decopilotRoutes);
 
-  if (process.env.DECOPILOT_PROJECTOR_DBOS_E2E === "1") {
-    const { createProjectorE2ETestRoutes } = await import(
-      "./routes/decopilot/projector-e2e-test-routes"
-    );
-    app.route("/__test/decopilot/projector", createProjectorE2ETestRoutes());
-  }
-
   // Tunnel reverse-proxy DispatchFn. `buildDesktopProvider` injects it as the
   // desktop transport for sandbox lifecycle, vm-events, and vm-tools traffic.
   if (natsProvider != null) {
