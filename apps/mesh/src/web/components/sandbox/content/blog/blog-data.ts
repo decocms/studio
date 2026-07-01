@@ -156,13 +156,19 @@ export function listBlogPayloads(
   }));
 }
 
+// Shared, frozen empty payload so an absent block/payload yields a
+// referentially-stable value across renders — `useAutosave` compares `initial`
+// by reference to detect external changes, so a fresh `{}` each render would
+// loop. Frozen because consumers only ever spread/clone it, never mutate.
+const EMPTY_PAYLOAD: Record<string, unknown> = Object.freeze({});
+
 /** Read the editable payload (the `post`/`author`/`category` object). */
 export function getBlogPayload(
   block: Record<string, unknown> | undefined,
   kind: BlogKind,
 ): Record<string, unknown> {
-  if (!block) return {};
-  return asRecord(block[WRAPPER_KEY[kind]]) ?? {};
+  if (!block) return EMPTY_PAYLOAD;
+  return asRecord(block[WRAPPER_KEY[kind]]) ?? EMPTY_PAYLOAD;
 }
 
 /** Rebuild the full block from an edited payload, preserving id + type. */
