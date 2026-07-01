@@ -26,6 +26,7 @@ export interface RegistryItemLike {
   };
   _meta?: {
     "mcp.mesh"?: {
+      friendlyName?: string | null;
       friendly_name?: string | null;
       short_description?: string | null;
     };
@@ -152,6 +153,7 @@ function cardIcon(item: RegistryItemLike): string | null {
 function cardTitle(item: RegistryItemLike, fallback: string): string {
   const meta = item._meta?.["mcp.mesh"];
   return (
+    meta?.friendlyName ||
     meta?.friendly_name ||
     item.title ||
     item.server?.title ||
