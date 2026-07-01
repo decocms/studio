@@ -57,6 +57,26 @@ export function useConnectCompanion({
           userId,
           { remoteIndex: 0 },
         );
+
+        // Validate connection data based on type (same guard as
+        // use-install-from-registry.ts / add-connection-dialog.tsx /
+        // connections.tsx) — an installable-looking registry item can still
+        // lack a usable remote URL or STDIO command.
+        const isStdioConnection = data.connection_type === "STDIO";
+        const hasUrl = Boolean(data.connection_url);
+        const hasStdioConfig =
+          isStdioConnection &&
+          data.connection_headers &&
+          typeof data.connection_headers === "object" &&
+          "command" in data.connection_headers;
+
+        if (!hasUrl && !hasStdioConfig) {
+          setError(
+            `${card.title} cannot be connected: no connection method available`,
+          );
+          return;
+        }
+
         const created = await selfClient.callTool({
           name: "COLLECTION_CONNECTIONS_CREATE",
           arguments: { data },
