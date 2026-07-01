@@ -17,7 +17,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "fs";
-import { exponentialBackoffWithJitter, sleep } from "@decocms/std";
+import { exponentialBackoffWithJitter, retry, sleep } from "@decocms/std";
 import { chmod, unlink } from "fs/promises";
 import { createRequire } from "module";
 import { createConnection, createServer } from "net";
@@ -980,7 +980,29 @@ async function provisionMinioBucket(endpoint: string): Promise<void> {
   });
 
   try {
-    await client.send(new CreateBucketCommand({ Bucket: MINIO_DEV_BUCKET }));
+    // Right after a MinIO (re)start — e.g. a container restart in the
+    // resilience suite — the health endpoint can report ready a beat before the
+    // S3 API accepts connections, so the first CreateBucket races into
+    // ECONNREFUSED/ECONNRESET and the AWS SDK gives up after its 3 internal
+    // retries. Left unhandled that rejection propagates out of `buildSettings`
+    // and kills studio boot, and under `restart: unless-stopped` it crash-loops
+    // (each ~30s cycle blowing the pod-crash scenario's health-wait budget).
+    // Ride out only transient connect-level failures here; genuine errors
+    // (auth/config, BucketAlreadyOwnedByUs/Exists) are not retriable and fall
+    // through to the handling below unchanged.
+    await retry(
+      () => client.send(new CreateBucketCommand({ Bucket: MINIO_DEV_BUCKET })),
+      {
+        maxAttempts: 5,
+        minTimeout: 200,
+        maxTimeout: 3_000,
+        isRetriable: (err) =>
+          err instanceof Error &&
+          /ECONNREFUSED|ECONNRESET|EPIPE|socket|fetch failed|timed out|network/i.test(
+            `${(err as { name?: string }).name ?? ""} ${err.message}`,
+          ),
+      },
+    );
   } catch (e: unknown) {
     // BucketAlreadyOwnedByUs / BucketAlreadyExists — fine, it's persistent.
     const name =
