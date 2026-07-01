@@ -62,21 +62,15 @@ export function CompanionMcpsSection({
 
   // Empty: no requirements survive → just the report CTA (section header hidden).
   if (!isLoading && !error && cards.length === 0) {
-    // On mobile the parent gives us a full-height flex column, so pin the CTA to
-    // the bottom; on md+ fall back to the natural grid.
-    return (
-      <div className="flex min-h-0 flex-1 flex-col justify-end gap-10 md:grid md:flex-none">
-        {cta}
-      </div>
-    );
+    return <div className="grid gap-8 md:gap-10">{cta}</div>;
   }
 
   const busy = connectingFieldKey !== null;
 
   return (
-    // On mobile this grows to fill the parent's full-height column (header pinned
-    // top, CTA pinned bottom, cards scroll in between); on md+ it's the compact grid.
-    <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:flex-none">
+    // Natural stack — the page scrolls on mobile; on md+ the card list gets its
+    // own capped scroll area (below) while everything else stays put.
+    <div className="grid gap-6">
       <div className="grid gap-1.5">
         <p className="text-2xl font-medium text-foreground">
           Unlock your full diagnostic
@@ -99,15 +93,15 @@ export function CompanionMcpsSection({
           </p>
         </div>
       ) : isLoading ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="grid gap-4">
           {[0, 1, 2].map((i) => (
             <CompanionCardSkeleton key={i} />
           ))}
         </div>
       ) : (
         <ScrollReveal
-          wrapperClassName="flex min-h-0 flex-1 flex-col md:block"
-          className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 md:max-h-[45vh] md:flex-none"
+          wrapperClassName="block"
+          className="-mx-1 px-1 md:max-h-[45vh] md:overflow-y-auto"
         >
           <div className="grid gap-4">
             {connectError && (

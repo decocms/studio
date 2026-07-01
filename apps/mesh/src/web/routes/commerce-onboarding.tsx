@@ -809,11 +809,11 @@ function CommerceDiscoveryReady({
     // The "connect your tools" screen is the only one that swaps the placeholder
     // visual for the schedule-a-meeting panel (md+); every other setup screen
     // keeps the default AuthSplitLayout placeholder.
-    <AuthSplitLayout visual={<ScheduleMeetingVisual />}>
-      {/* On mobile fill the viewport (minus AuthSplitLayout's p-6 = 3rem) as a flex
-          column so the header pins to the top, the cards fill the middle, and the
-          "See full report" CTA pins to the bottom. On md+ revert to the centered grid. */}
-      <div className="flex h-[calc(100dvh-3rem)] flex-col gap-10 md:grid md:h-auto">
+    <AuthSplitLayout align="top" visual={<ScheduleMeetingVisual />}>
+      {/* Natural top-aligned stack: on mobile the page scrolls (align="top"
+          keeps the header near the top and nothing gets clipped by the browser
+          chrome); on md+ the right panel carries the schedule visual. */}
+      <div className="flex flex-col gap-8">
         <CommerceHeader />
         <CompanionMcpsSection
           org={org}
@@ -822,7 +822,7 @@ function CommerceDiscoveryReady({
           onOpenReport={onOpenReport}
         />
         {/* The right-side ScheduleMeetingVisual is hidden on mobile, so surface the
-            human escape hatch as a collapsed banner pinned below the connect flow. */}
+            human escape hatch as a banner below the connect flow. */}
         <ScheduleMeetingBanner className="md:hidden" />
       </div>
     </AuthSplitLayout>
