@@ -855,3 +855,263 @@ describe("resolveSchema – cyclic Section-picker unions (memory blow-up guard)"
     );
   });
 });
+
+describe("resolveSchema – inline object unions (A | B) render as a choice", () => {
+  // Mirrors deco's real output for `(Location | Map)[]`: an anyOf of two
+  // inlined object branches with titles, no $ref / __resolveType / discriminator.
+  const locationMapItems = {
+    anyOf: [
+      {
+        type: "object",
+        title: "Location",
+        properties: {
+          city: { type: "string", title: "City" },
+          regionCode: { type: "string", title: "Region Code" },
+          country: { type: "string", title: "Country" },
+        },
+      },
+      {
+        type: "object",
+        title: "Map",
+        properties: {
+          coordinates: {
+            type: "string",
+            title: "Area selection",
+            format: "map",
+          },
+        },
+      },
+    ],
+  };
+
+  test("Location | Map array item resolves to an inline-union", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        includeLocations: {
+          type: "array",
+          title: "Include Locations",
+          items: locationMapItems,
+        },
+      },
+    });
+    const items = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.includeLocations?.items;
+    expect(items?.type).toBe("inline-union");
+    const branches = items?.inlineUnionBranches ?? [];
+    expect(branches.map((b) => b.title)).toEqual(["Location", "Map"]);
+    // Map branch keeps its property-level @format (deco drops object-level ones).
+    expect(branches[1]?.schema?.properties?.coordinates?.format).toBe("map");
+    // No const discriminators on either branch.
+    expect(branches[0]?.discriminators).toBeUndefined();
+  });
+
+  test("const-tagged union (name: max-age | stale-while-revalidate) keeps discriminators", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        directive: {
+          anyOf: [
+            {
+              type: "object",
+              title: "MaxAge",
+              properties: {
+                name: { type: "string", const: "max-age" },
+                value: { type: "number" },
+              },
+            },
+            {
+              type: "object",
+              title: "StaleWhileRevalidate",
+              properties: {
+                name: { type: "string", const: "stale-while-revalidate" },
+                value: { type: "number" },
+              },
+            },
+          ],
+        },
+      },
+    });
+    const directive = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.directive;
+    expect(directive?.type).toBe("inline-union");
+    const branches = directive?.inlineUnionBranches ?? [];
+    expect(branches[0]?.discriminators).toEqual({ name: "max-age" });
+    expect(branches[1]?.discriminators).toEqual({
+      name: "stale-while-revalidate",
+    });
+  });
+
+  test("type-discriminated unions still take the block-ref path (unchanged)", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        card: {
+          anyOf: [
+            {
+              type: "object",
+              title: "ImageCard",
+              properties: { type: { type: "string", const: "image" } },
+            },
+            {
+              type: "object",
+              title: "TextCard",
+              properties: { type: { type: "string", const: "text" } },
+            },
+          ],
+        },
+      },
+    });
+    const card = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.card;
+    expect(card?.type).toBe("block-ref");
+    expect(card?.discriminatorKey).toBe("type");
+  });
+});
+
+describe("resolveSchema – inline-union negative cases (paths left untouched)", () => {
+  test("anyOf of $refs stays block-ref, not inline-union", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": {
+              type: "object",
+              properties: {
+                card: {
+                  anyOf: [
+                    { $ref: "#/definitions/ImageCard" },
+                    { $ref: "#/definitions/TextCard" },
+                  ],
+                },
+              },
+            } as unknown as { $ref?: string; namespace?: string },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          ImageCard: {
+            type: "object",
+            title: "ImageCard",
+            properties: { src: { type: "string" } },
+          },
+          TextCard: {
+            type: "object",
+            title: "TextCard",
+            properties: { text: { type: "string" } },
+          },
+        },
+      },
+    };
+    const card = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.card;
+    expect(card?.type).toBe("block-ref");
+    expect(card?.type).not.toBe("inline-union");
+  });
+
+  test("mixed primitive|object union does NOT become inline-union", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        value: {
+          anyOf: [
+            { type: "string" },
+            {
+              type: "object",
+              title: "Obj",
+              properties: { x: { type: "number" } },
+            },
+          ],
+        },
+      },
+    });
+    const value = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.value;
+    expect(value?.type).not.toBe("inline-union");
+  });
+
+  test("single-element enum acts as a const discriminator", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        directive: {
+          anyOf: [
+            {
+              type: "object",
+              title: "MaxAge",
+              properties: {
+                name: { type: "string", enum: ["max-age"] },
+                value: { type: "number" },
+              },
+            },
+            {
+              type: "object",
+              title: "NoStore",
+              properties: { name: { type: "string", enum: ["no-store"] } },
+            },
+          ],
+        },
+      },
+    });
+    const directive = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.directive;
+    expect(directive?.type).toBe("inline-union");
+    expect(directive?.inlineUnionBranches?.[0]?.discriminators).toEqual({
+      name: "max-age",
+    });
+  });
+});
+
+describe("resolveSchema – allOf is an intersection, never an inline-union", () => {
+  test("allOf of inline objects merges (does NOT become a selector)", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        combined: {
+          allOf: [
+            { type: "object", properties: { a: { type: "string" } } },
+            { type: "object", properties: { b: { type: "string" } } },
+          ],
+        },
+      },
+    });
+    const combined = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.combined;
+    expect(combined?.type).not.toBe("inline-union");
+    // merged object exposes both branches' fields
+    expect(combined?.properties?.a).toBeDefined();
+    expect(combined?.properties?.b).toBeDefined();
+  });
+
+  test("boolean const works as a discriminator", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        toggle: {
+          anyOf: [
+            {
+              type: "object",
+              title: "On",
+              properties: {
+                enabled: { const: true },
+                value: { type: "string" },
+              },
+            },
+            {
+              type: "object",
+              title: "Off",
+              properties: { enabled: { const: false } },
+            },
+          ],
+        },
+      },
+    });
+    const toggle = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.toggle;
+    expect(toggle?.type).toBe("inline-union");
+    expect(toggle?.inlineUnionBranches?.[0]?.discriminators).toEqual({
+      enabled: true,
+    });
+  });
+});
