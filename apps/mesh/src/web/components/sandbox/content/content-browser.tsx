@@ -675,7 +675,7 @@ function ContentBrowserReady({
   ) => {
     await saveBlock.mutateAsync({
       blockKey: blockId,
-      data: { __resolveType: resolveType, ...formValue },
+      data: { ...formValue, __resolveType: resolveType },
     });
     toast.success(`Created section "${blockId}"`);
     setSelection({ collection: "sections", key: blockId });
