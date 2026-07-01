@@ -137,6 +137,14 @@ export function useCompanionConfig({
     error,
     save,
     maybeAutoResolve,
-    isLoading: stateQuery.isPending,
+    // Hold the renderer until the MCP-specific data it initializes from (GA
+    // grouped options / GSC verified sites) is ready too — otherwise the GA
+    // card would mount on the manual-fallback branch and miss single-property
+    // auto-select. gaQuery/gscQuery are only consulted for their own binding
+    // (both are `enabled`-gated, so isPending is meaningful there).
+    isLoading:
+      stateQuery.isPending ||
+      (entry.bindingType === "google-analytics" && gaQuery.isPending) ||
+      (entry.bindingType === "google-search-console" && gscQuery.isPending),
   };
 }
