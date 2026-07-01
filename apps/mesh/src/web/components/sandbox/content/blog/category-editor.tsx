@@ -1,9 +1,27 @@
-import { ArrowRight, File02 } from "@untitledui/icons";
+import { useState } from "react";
+import { ArrowRight, File02, Loading01 } from "@untitledui/icons";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@deco/ui/components/alert-dialog.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
 import { Label } from "@deco/ui/components/label.tsx";
 import { type LiveMeta } from "@/web/components/sections-editor/resolve-schema";
-import { buildBlogBlock, getBlogPayload, listPostsWithMeta } from "./blog-data";
+import {
+  buildBlogBlock,
+  getBlogPayload,
+  listBlogPayloads,
+  listPostsWithMeta,
+  renameCategoryOnPost,
+} from "./blog-data";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
@@ -15,6 +33,14 @@ import { InlineText, str } from "./blocks/primitives";
  * Notion-style category editor: large inline name + slug input + inline
  * description + the same block document used by posts. Mirrors PostEditor's
  * layout so authors edit categories with the same affordances.
+ *
+ * Slug renames cascade to posts. Posts reference a category by a denormalized
+ * `{ name, slug }` copy (categories aren't strongly typed on posts), so a
+ * rename must rewrite every post that carried the old slug — otherwise those
+ * posts silently point at a slug that no longer resolves. The cascade is a
+ * deliberate, committed action (fires on blur behind a confirm dialog), NOT on
+ * every keystroke: it matches posts against the last *persisted* slug, so a
+ * half-typed slug never leaks into posts and the match key never drifts.
  */
 export function CategoryEditor({
   orgSlug,
@@ -48,11 +74,92 @@ export function CategoryEditor({
   const setField = (key: string, value: unknown) =>
     setCategory({ ...category, [key]: value });
 
-  const slug = str(category.slug);
-  const postCount = slug
-    ? listPostsWithMeta(decofile).filter((p) => p.categorySlugs.includes(slug))
-        .length
+  // The slug input is a free-text draft, committed only on blur — its
+  // keystrokes must not autosave (each would churn every post via the
+  // cascade and turn a half-typed slug into the match key for the next edit).
+  const committedSlug = str(category.slug);
+  const [slugDraft, setSlugDraft] = useState(committedSlug);
+  const [pendingRename, setPendingRename] = useState<{
+    oldSlug: string;
+    newSlug: string;
+    count: number;
+  } | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+
+  const postCount = committedSlug
+    ? listPostsWithMeta(decofile).filter((p) =>
+        p.categorySlugs.includes(committedSlug),
+      ).length
     : 0;
+
+  /** Persist the new slug on the category block itself (no cascade). */
+  const commitSlug = (newSlug: string) => setField("slug", newSlug);
+
+  /**
+   * Rewrite every post that referenced `oldSlug` to the new slug + name, then
+   * persist the category. Sequential writes: each mutation's optimistic patch
+   * lands on the shared decofile cache key, so parallel writes would lose
+   * updates (same reasoning as the bulk-category apply).
+   */
+  const runRename = async (oldSlug: string, newSlug: string) => {
+    const name = str(category.name);
+    setIsRenaming(true);
+    try {
+      let changed = 0;
+      for (const { key, payload } of listBlogPayloads(decofile, "posts")) {
+        const next = renameCategoryOnPost(payload, oldSlug, {
+          name,
+          slug: newSlug,
+        });
+        if (next === payload) continue;
+        await save.mutateAsync({
+          blockKey: key,
+          data: buildBlogBlock(key, "posts", next),
+        });
+        changed += 1;
+      }
+      // Sync the draft + persist the category block with its new slug.
+      commitSlug(newSlug);
+      toast.success(
+        changed > 0
+          ? `Renamed slug and updated ${changed} ${changed === 1 ? "post" : "posts"}`
+          : "Renamed slug",
+      );
+      setPendingRename(null);
+    } catch (err) {
+      // Posts may be half-migrated. Reset the input to the persisted slug so
+      // the user can retry the rename cleanly.
+      setSlugDraft(oldSlug);
+      setPendingRename(null);
+      toast.error(err instanceof Error ? err.message : "Rename failed");
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  /** Blur handler: decide between a plain slug edit and a cascading rename. */
+  const commitSlugFromDraft = () => {
+    const newSlug = slugDraft.trim();
+    if (newSlug === committedSlug) {
+      if (slugDraft !== newSlug) setSlugDraft(newSlug);
+      return;
+    }
+    // An empty slug would orphan every post — refuse and revert.
+    if (!newSlug) {
+      setSlugDraft(committedSlug);
+      return;
+    }
+    const count = committedSlug
+      ? listPostsWithMeta(decofile).filter((p) =>
+          p.categorySlugs.includes(committedSlug),
+        ).length
+      : 0;
+    if (count === 0) {
+      commitSlug(newSlug);
+      return;
+    }
+    setPendingRename({ oldSlug: committedSlug, newSlug, count });
+  };
 
   return (
     <BlogSandboxProvider
@@ -81,8 +188,9 @@ export function CategoryEditor({
               <Label htmlFor="category-slug">Slug</Label>
               <Input
                 id="category-slug"
-                value={str(category.slug)}
-                onChange={(e) => setField("slug", e.target.value)}
+                value={slugDraft}
+                onChange={(e) => setSlugDraft(e.target.value)}
+                onBlur={commitSlugFromDraft}
                 placeholder="my-category"
                 className="h-10"
               />
@@ -111,13 +219,13 @@ export function CategoryEditor({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={!slug}
+                disabled={!committedSlug}
                 title={
-                  slug
+                  committedSlug
                     ? "Jump to the posts list filtered by this category"
                     : "Set a slug to manage this category's posts"
                 }
-                onClick={() => onManagePosts(slug)}
+                onClick={() => onManagePosts(committedSlug)}
               >
                 Manage posts
                 <ArrowRight size={14} />
@@ -135,6 +243,50 @@ export function CategoryEditor({
           </div>
         </div>
       </div>
+
+      <AlertDialog
+        open={!!pendingRename}
+        onOpenChange={(open) => {
+          if (open || isRenaming) return;
+          // Cancelled: revert the input to the persisted slug.
+          setSlugDraft(committedSlug);
+          setPendingRename(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rename category slug?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingRename
+                ? `Changing the slug from "${pendingRename.oldSlug}" to "${pendingRename.newSlug}" will update ${pendingRename.count} ${
+                    pendingRename.count === 1 ? "post" : "posts"
+                  } that reference this category.`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRenaming}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingRename) {
+                  void runRename(pendingRename.oldSlug, pendingRename.newSlug);
+                }
+              }}
+              disabled={isRenaming}
+            >
+              {isRenaming ? (
+                <>
+                  <Loading01 size={14} className="animate-spin" />
+                  Renaming…
+                </>
+              ) : (
+                "Rename & update posts"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </BlogSandboxProvider>
   );
 }

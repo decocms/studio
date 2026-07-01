@@ -288,6 +288,59 @@ export function replaceCategoryOnPost(
   };
 }
 
+/**
+ * Rewrite a post's reference to `oldSlug` so it points at `category` (its new
+ * slug + name), preserving the post's other categories and their order. If the
+ * post already carried the new slug too, the duplicate is collapsed. Pure:
+ * returns the SAME object when the post doesn't reference `oldSlug`, so callers
+ * skip no-ops by identity. Used by the category slug-rename cascade.
+ */
+export function renameCategoryOnPost(
+  payload: Record<string, unknown>,
+  oldSlug: string,
+  category: CategoryRef,
+): Record<string, unknown> {
+  const categories = toArray(payload.categories);
+  if (!categories.some((c) => categorySlugOf(c) === oldSlug)) {
+    return payload;
+  }
+  const mapped = categories.map((c) =>
+    categorySlugOf(c) === oldSlug
+      ? { name: category.name, slug: category.slug }
+      : c,
+  );
+  // A post that listed both the old and the new slug would now name the new
+  // slug twice — keep the first occurrence. Only dedupe real slugs so we never
+  // silently drop malformed (slug-less) entries.
+  const seen = new Set<string>();
+  const deduped = mapped.filter((c) => {
+    const slug = categorySlugOf(c);
+    if (!slug) return true;
+    if (seen.has(slug)) return false;
+    seen.add(slug);
+    return true;
+  });
+  return { ...payload, categories: deduped };
+}
+
+/**
+ * Drop every reference to `slug` from a post. Pure: returns the SAME object
+ * when the post doesn't reference `slug`. Used by the category delete cascade.
+ */
+export function removeCategoryFromPost(
+  payload: Record<string, unknown>,
+  slug: string,
+): Record<string, unknown> {
+  const categories = toArray(payload.categories);
+  if (!categories.some((c) => categorySlugOf(c) === slug)) {
+    return payload;
+  }
+  return {
+    ...payload,
+    categories: categories.filter((c) => categorySlugOf(c) !== slug),
+  };
+}
+
 function randomHex(length: number): string {
   const bytes = new Uint8Array(Math.ceil(length / 2));
   crypto.getRandomValues(bytes);

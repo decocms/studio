@@ -145,6 +145,7 @@ import {
   isBlogKind,
   listBlogPayloads,
   listPostsWithMeta,
+  removeCategoryFromPost,
   replaceCategoryOnPost,
   scanBlogEntries,
 } from "./blog/blog-data";
@@ -866,6 +867,30 @@ function ContentBrowserReady({
       }
       const { kind, key, label } = deleteTarget;
       if (kind === "blog") {
+        // Deleting a category cascades to posts: they carry a denormalized
+        // copy of the category slug, so drop it everywhere first — otherwise
+        // posts keep a reference to a category that no longer exists. Posts
+        // first, then the category, so a failed cascade leaves it recoverable.
+        if (deleteTarget.blogKind === "categories") {
+          const slugValue = getBlogPayload(
+            decofile[key] as Record<string, unknown> | undefined,
+            "categories",
+          ).slug;
+          const slug = typeof slugValue === "string" ? slugValue : "";
+          if (slug) {
+            for (const { key: postKey, payload } of listBlogPayloads(
+              decofile,
+              "posts",
+            )) {
+              const next = removeCategoryFromPost(payload, slug);
+              if (next === payload) continue;
+              await saveBlogBlock.mutateAsync({
+                blockKey: postKey,
+                data: buildBlogBlock(postKey, "posts", next),
+              });
+            }
+          }
+        }
         await deleteBlogBlock.mutateAsync({ blockKey: key });
       } else {
         await deleteBlock.mutateAsync({ blockKey: key });
