@@ -229,6 +229,7 @@ export function SandboxEventsProvider({
     let reconnectAttempt = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let liveMetaDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let decofileDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let studioEs: EventSource | null = null;
     let directEs: EventSource | null = null;
 
@@ -358,9 +359,21 @@ export function SandboxEventsProvider({
               payload as DaemonEventPayload<"file-changed">;
             const cacheKey = `${org.slug}/${virtualMcpId}/${branch}`;
             if (filePath.startsWith(".deco/")) {
-              void queryClient.invalidateQueries({
-                queryKey: KEYS.decofile(cacheKey),
-              });
+              // Debounce decofile invalidation for the same reason as liveMeta
+              // below: writing a `.deco/` block emits `file-changed`, but the
+              // dev server needs a moment to rebuild before `/.decofile`
+              // reflects the write. Refetching immediately re-reads the stale
+              // pre-rebuild config and clobbers the optimistic cache update from
+              // useSaveBlock — so a freshly added page variant briefly appears,
+              // then vanishes until a manual reload. Waiting lets the rebuild
+              // land first.
+              if (decofileDebounceTimer) clearTimeout(decofileDebounceTimer);
+              decofileDebounceTimer = setTimeout(() => {
+                decofileDebounceTimer = null;
+                void queryClient.invalidateQueries({
+                  queryKey: KEYS.decofile(cacheKey),
+                });
+              }, 1_000);
             } else {
               // Debounce liveMeta invalidation so the dev server has time to
               // rebuild before we hit /live/_meta. Rapid successive
@@ -501,6 +514,7 @@ export function SandboxEventsProvider({
       directEs?.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (liveMetaDebounceTimer) clearTimeout(liveMetaDebounceTimer);
+      if (decofileDebounceTimer) clearTimeout(decofileDebounceTimer);
     };
   }, [
     virtualMcpId,
