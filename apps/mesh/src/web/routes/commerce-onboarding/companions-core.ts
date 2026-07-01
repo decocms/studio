@@ -46,8 +46,6 @@ export interface CompanionCardModel {
   bullets: string[];
   satisfied: boolean;
   candidateConnectionId: string | null;
-  /** Downstream connection id linked into CD (the config_state value), or null. */
-  linkedConnectionId: string | null;
 }
 
 type ComparisonWhere = { field: string[]; operator: "in"; value: string[] };
@@ -205,7 +203,6 @@ export function buildCompanionCards(args: {
             req.bindingType,
             curatedEntry?.registryAppId,
           ),
-      linkedConnectionId: linked ?? null,
     });
   }
   return cards;

@@ -53,12 +53,6 @@ export const KEYS = {
     ["commerce-discovery", "companion-connections", orgId] as const,
   commerceDiscoveryCompanionRegistry: (orgId: string, key: string) =>
     ["commerce-discovery", "companion-registry", orgId, key] as const,
-  commerceDiscoveryCompanionConfig: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "companion-config", orgId, connectionId] as const,
-  commerceDiscoveryGaSummaries: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "ga-summaries", orgId, connectionId] as const,
-  commerceDiscoveryGscSites: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "gsc-sites", orgId, connectionId] as const,
 
   connectionActivity: (
     connectionId: string,
