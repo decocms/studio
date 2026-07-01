@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   buildCompanionCards,
   buildRegistryWhere,
+  getConfigurationSummaryEntries,
+  hasConfigurationValues,
   mergeBindingValue,
   parseBindingRequirements,
   resolveCandidate,
@@ -70,6 +72,36 @@ describe("mergeBindingValue", () => {
     expect(mergeBindingValue(null, "VTEX_STORE", "vtex", "c1")).toEqual({
       VTEX_STORE: { __type: "vtex", value: "c1" },
     });
+  });
+});
+
+describe("hasConfigurationValues", () => {
+  it("treats null, empty objects, and empty scalar values as not configured", () => {
+    expect(hasConfigurationValues(null)).toBe(false);
+    expect(hasConfigurationValues({})).toBe(false);
+    expect(hasConfigurationValues({ propertyId: null })).toBe(false);
+    expect(hasConfigurationValues({ accountName: "" })).toBe(false);
+    expect(hasConfigurationValues({ accountName: "   " })).toBe(false);
+  });
+
+  it("detects nested saved values", () => {
+    expect(hasConfigurationValues({ accountName: "electrolux" })).toBe(true);
+    expect(hasConfigurationValues({ nested: { value: "123" } })).toBe(true);
+  });
+});
+
+describe("getConfigurationSummaryEntries", () => {
+  it("returns displayable non-empty config entries and hides internal fields", () => {
+    expect(
+      getConfigurationSummaryEntries({
+        __type: "vtex",
+        accountName: "electrolux",
+        propertyId: null,
+        currency: "",
+      }),
+    ).toEqual([
+      { key: "accountName", label: "Account Name", value: "electrolux" },
+    ]);
   });
 });
 
@@ -195,12 +227,23 @@ describe("buildCompanionCards", () => {
       requirements: [{ fieldKey: "VTEX_STORE", bindingType: "vtex" }],
       itemsById: { "deco/vtex": item("deco/vtex", "VTEX") },
       itemsByName: {},
-      connections: [{ id: "c_vtex", app_name: "vtex", status: "active" }],
+      connections: [
+        {
+          id: "c_vtex",
+          app_name: "vtex",
+          status: "active",
+          configuration_state: { accountName: "electrolux" },
+        },
+      ],
       configurationState: { VTEX_STORE: { __type: "vtex", value: "c_vtex" } },
       curated,
     });
     expect(cards[0]!.satisfied).toBe(true);
     expect(cards[0]!.candidateConnectionId).toBeNull();
+    expect(cards[0]!.linkedConnectionId).toBe("c_vtex");
+    expect(cards[0]!.configurationState).toEqual({
+      accountName: "electrolux",
+    });
   });
   it("treats configuration_state links to missing org connections as connectable", () => {
     const cards = buildCompanionCards({
