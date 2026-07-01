@@ -104,12 +104,19 @@ describe("COUNTRIES dataset", () => {
     expect(BRAZIL_COUNTRY_CODE).toBe("BR");
   });
 
-  test("codes are unique, uppercase alpha-2", () => {
+  test("codes are unique, two-char cf-ipcountry values", () => {
     const codes = COUNTRIES.map((c) => c.code);
     expect(new Set(codes).size).toBe(codes.length);
     for (const code of codes) {
-      expect(code).toMatch(/^[A-Z]{2}$/);
+      // ISO alpha-2 (letters) plus Cloudflare specials like "T1" (letter+digit).
+      expect(code).toMatch(/^[A-Z][A-Z0-9]$/);
     }
+  });
+
+  test("includes Cloudflare special codes XX (unknown) and T1 (Tor)", () => {
+    const codes = COUNTRIES.map((c) => c.code);
+    expect(codes).toContain("XX");
+    expect(codes).toContain("T1");
   });
 
   test("every country has a non-empty name", () => {

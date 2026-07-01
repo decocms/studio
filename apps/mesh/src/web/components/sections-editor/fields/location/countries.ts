@@ -1,9 +1,11 @@
-// AUTO-GENERATED — ISO 3166-1 alpha-2 country list for the @format location widget.
-// Codes are uppercase and match Cloudflare's cf-ipcountry header. Names are English
-// (Intl.DisplayNames), sorted alphabetically by name.
+// AUTO-GENERATED — country list for the @format location widget.
+// Codes are uppercase and match Cloudflare's cf-ipcountry header: ISO 3166-1
+// alpha-2 (names from Intl.DisplayNames, English) plus Cloudflare's special
+// non-ISO values "XX" (unknown) and "T1" (Tor). Sorted by name. Intl.DisplayNames
+// output can vary by ICU/CLDR version.
 
 export interface Country {
-  /** ISO 3166-1 alpha-2 code, uppercase. Matches cf-ipcountry. */
+  /** ISO 3166-1 alpha-2 code (or a Cloudflare special code), uppercase. Matches cf-ipcountry. */
   code: string;
   /** English display name. */
   name: string;
@@ -911,6 +913,10 @@ export const COUNTRIES: readonly Country[] = [
     name: "Tonga",
   },
   {
+    code: "T1",
+    name: "Tor network (Cloudflare)",
+  },
+  {
     code: "TT",
     name: "Trinidad & Tobago",
   },
@@ -961,6 +967,10 @@ export const COUNTRIES: readonly Country[] = [
   {
     code: "US",
     name: "United States",
+  },
+  {
+    code: "XX",
+    name: "Unknown (Cloudflare could not determine)",
   },
   {
     code: "UY",

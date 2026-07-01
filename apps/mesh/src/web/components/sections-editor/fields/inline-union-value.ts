@@ -1,6 +1,6 @@
 /** Minimal branch description needed to infer the active branch from a value. */
 export interface InlineUnionBranchLike {
-  discriminators?: Record<string, string | number>;
+  discriminators?: Record<string, string | number | boolean>;
   /** All property keys of the branch object schema. */
   propertyKeys: string[];
 }

@@ -54,7 +54,7 @@ export interface SchemaProperty {
   inlineUnionBranches?: Array<{
     title: string;
     schema?: SchemaProperty;
-    discriminators?: Record<string, string | number>;
+    discriminators?: Record<string, string | number | boolean>;
   }>;
   /** When true, the field should not be rendered in the form. */
   hidden?: boolean;
@@ -693,20 +693,37 @@ export function resolveSchema(
         // plain "A or B" data union (e.g. Location | Map, or a const-tagged
         // union like StaleWhileRevalidate | MaxAge). Render as a branch selector
         // instead of merging every branch's fields into a single form.
+        //
+        // Only `anyOf`/`oneOf` are choices — `allOf` is an intersection meant to
+        // MERGE all branches, so it must fall through to the object-merge path.
+        const isChoiceUnion =
+          Array.isArray(resolved.anyOf) || Array.isArray(resolved.oneOf);
         const allInlineObjects = nonNull.every(
           (b) =>
             typeof b.$ref !== "string" &&
             (b.type === "object" || Boolean(b.properties)),
         );
-        if (allInlineObjects && depth < MAX_BUILD_PROPERTY_DEPTH) {
-          const constValue = (p: RawSchema): string | number | undefined => {
-            if (typeof p.const === "string" || typeof p.const === "number") {
+        if (
+          isChoiceUnion &&
+          allInlineObjects &&
+          depth < MAX_BUILD_PROPERTY_DEPTH
+        ) {
+          const constValue = (
+            p: RawSchema,
+          ): string | number | boolean | undefined => {
+            if (
+              typeof p.const === "string" ||
+              typeof p.const === "number" ||
+              typeof p.const === "boolean"
+            ) {
               return p.const;
             }
             if (
               Array.isArray(p.enum) &&
               p.enum.length === 1 &&
-              (typeof p.enum[0] === "string" || typeof p.enum[0] === "number")
+              (typeof p.enum[0] === "string" ||
+                typeof p.enum[0] === "number" ||
+                typeof p.enum[0] === "boolean")
             ) {
               return p.enum[0];
             }
@@ -715,7 +732,8 @@ export function resolveSchema(
           const inlineUnionBranches = nonNull.map((branch, index) => {
             const branchProps =
               (branch.properties as RawSchema | undefined) ?? {};
-            const discriminators: Record<string, string | number> = {};
+            const discriminators: Record<string, string | number | boolean> =
+              {};
             for (const [key, prop] of Object.entries(branchProps)) {
               const cv = constValue(prop as RawSchema);
               if (cv !== undefined) discriminators[key] = cv;

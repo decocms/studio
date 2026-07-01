@@ -104,14 +104,27 @@ export function InlineUnionField(props: FieldProps) {
             {...props}
             schema={activeBranch.schema as SchemaProperty}
             onChange={(loc) =>
-              onChange({ ...preserved, ...(loc as Record<string, unknown>) })
+              // Preserve the other branch's fields and re-assert the active
+              // branch's const discriminators so the branch tag survives edits.
+              onChange({
+                ...preserved,
+                ...(loc as Record<string, unknown>),
+                ...(activeBranch.discriminators ?? {}),
+              })
             }
           />
         ) : formSchema ? (
           <SchemaForm
             schema={formSchema}
             value={value}
-            onChange={onChange}
+            // Const discriminators are stripped from the rendered form, so
+            // re-apply them on every update to keep the branch tag.
+            onChange={(next) =>
+              onChange({
+                ...(next as Record<string, unknown>),
+                ...(activeBranch.discriminators ?? {}),
+              })
+            }
             basePath={path}
             breadcrumbPath={props.breadcrumbPath}
             onBreadcrumbChange={props.onBreadcrumbChange}
@@ -119,6 +132,9 @@ export function InlineUnionField(props: FieldProps) {
             decofile={props.decofile}
             onSaveReferencedBlock={props.onSaveReferencedBlock}
             sandbox={props.sandbox}
+            previewBaseUrl={props.previewBaseUrl}
+            onAddSectionItem={props.onAddSectionItem}
+            onRequestAddSection={props.onRequestAddSection}
           />
         ) : null)}
     </div>

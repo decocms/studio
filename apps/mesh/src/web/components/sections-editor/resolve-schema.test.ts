@@ -956,3 +956,56 @@ describe("resolveSchema – inline-union negative cases (paths left untouched)",
     });
   });
 });
+
+describe("resolveSchema – allOf is an intersection, never an inline-union", () => {
+  test("allOf of inline objects merges (does NOT become a selector)", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        combined: {
+          allOf: [
+            { type: "object", properties: { a: { type: "string" } } },
+            { type: "object", properties: { b: { type: "string" } } },
+          ],
+        },
+      },
+    });
+    const combined = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.combined;
+    expect(combined?.type).not.toBe("inline-union");
+    // merged object exposes both branches' fields
+    expect(combined?.properties?.a).toBeDefined();
+    expect(combined?.properties?.b).toBeDefined();
+  });
+
+  test("boolean const works as a discriminator", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        toggle: {
+          anyOf: [
+            {
+              type: "object",
+              title: "On",
+              properties: {
+                enabled: { const: true },
+                value: { type: "string" },
+              },
+            },
+            {
+              type: "object",
+              title: "Off",
+              properties: { enabled: { const: false } },
+            },
+          ],
+        },
+      },
+    });
+    const toggle = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.toggle;
+    expect(toggle?.type).toBe("inline-union");
+    expect(toggle?.inlineUnionBranches?.[0]?.discriminators).toEqual({
+      enabled: true,
+    });
+  });
+});
