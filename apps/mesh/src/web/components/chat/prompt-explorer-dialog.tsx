@@ -8,7 +8,7 @@ import {
 } from "@deco/ui/components/dialog.tsx";
 import { Textarea } from "@deco/ui/components/textarea.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ArrowUp, Loading01, RefreshCw01, Telescope } from "@untitledui/icons";
+import { ArrowUp, Loading01, RefreshCw01 } from "@untitledui/icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -41,11 +41,11 @@ export function PromptExplorerDialog({
       <DialogContent className="sm:max-w-[1100px] w-[95vw] h-[85svh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="px-5 py-3 border-b border-border shrink-0">
           <DialogTitle className="flex items-center gap-2 text-base">
-            <Telescope size={18} />
-            Explore prompt
+            <RefreshCw01 size={18} />
+            Improve prompt
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Iterate on a rough idea to turn it into a richer, more detailed
+            Improve a rough idea into a richer, more detailed, ready-to-use
             prompt, then send it to the chat.
           </DialogDescription>
         </DialogHeader>
@@ -91,7 +91,7 @@ function PromptExplorerBody({
   // committed version text (which the user can edit directly).
   const mainValue = isStreamingSelected ? enricher.text : selected.text;
   const trimmedLen = selected.text.trim().length;
-  const canIterate = !isStreaming && trimmedLen >= PROMPT_EXPLORER_MIN_CHARS;
+  const canImprove = !isStreaming && trimmedLen >= PROMPT_EXPLORER_MIN_CHARS;
   const canSend = !isStreaming && trimmedLen > 0;
 
   const updateSelected = (text: string) => {
@@ -100,12 +100,12 @@ function PromptExplorerBody({
     );
   };
 
-  const handleIterate = async () => {
-    if (!canIterate) return;
+  const handleImprove = async () => {
+    if (!canImprove) return;
     const source = selected.text;
     const id = nextId.current++;
-    // The new (soon-to-be-enriched) version becomes the latest and is
-    // selected immediately; the source version stays in the sidebar.
+    // The new (soon-to-be-improved) version becomes the latest and is selected
+    // immediately; the source version stays in the sidebar.
     setVersions((vs) => [...vs, { id, text: "" }]);
     setSelectedId(id);
     setStreamingId(id);
@@ -116,7 +116,7 @@ function PromptExplorerBody({
       );
     } catch (e) {
       toast.error(
-        e instanceof Error ? e.message : "Failed to enrich the prompt",
+        e instanceof Error ? e.message : "Failed to improve the prompt",
       );
       // Drop the empty placeholder version and return to the source.
       setVersions((vs) => vs.filter((v) => v.id !== id));
@@ -131,14 +131,14 @@ function PromptExplorerBody({
     onSend(selected.text);
   };
 
-  // Enter → Iterate, Cmd/Ctrl+Enter → Send, Shift+Enter → newline.
+  // Enter → Improve, Cmd/Ctrl+Enter → Send, Shift+Enter → newline.
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault();
     if (e.metaKey || e.ctrlKey) {
       handleSend();
     } else {
-      void handleIterate();
+      void handleImprove();
     }
   };
 
@@ -147,8 +147,8 @@ function PromptExplorerBody({
     onClose();
   };
 
-  // Auto-run the first enrichment on open when the composer draft already has
-  // enough text — opening Explore "just starts iterating". A mount-scoped
+  // Auto-run the first improvement on open when the composer draft already has
+  // enough text — opening Improve "just starts improving". A mount-scoped
   // effect is the natural fit here (mirrors useSubtaskStream in this codebase);
   // the ref guards against StrictMode's double-invoke.
   const didAutoRun = useRef(false);
@@ -158,7 +158,7 @@ function PromptExplorerBody({
     if (didAutoRun.current) return;
     didAutoRun.current = true;
     if ((initialText ?? "").trim().length >= PROMPT_EXPLORER_MIN_CHARS) {
-      void handleIterate();
+      void handleImprove();
     }
   }, []);
   /* oxlint-enable react-hooks/exhaustive-deps */
@@ -168,8 +168,8 @@ function PromptExplorerBody({
     isStreamingSelected && !enricher.text
       ? "Thinking…"
       : versions.length === 1
-        ? "Write a rough idea for your prompt, then click Iterate to enrich it."
-        : "Edit this version, fill in any [blanks], then Iterate again or Send.";
+        ? "Write a rough idea for your prompt, then click Improve to expand it."
+        : "Edit this version, Improve again to expand it further, or Send.";
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -252,12 +252,12 @@ function PromptExplorerBody({
       <div className="border-t border-border px-5 py-3 flex items-center justify-between gap-3 shrink-0">
         <div className="text-xs text-muted-foreground min-w-0 truncate">
           {isStreaming
-            ? "Enriching your prompt…"
+            ? "Improving your prompt…"
             : trimmedLen < PROMPT_EXPLORER_MIN_CHARS
-              ? `Write at least ${PROMPT_EXPLORER_MIN_CHARS} characters, then Iterate.`
+              ? `Write at least ${PROMPT_EXPLORER_MIN_CHARS} characters, then Improve.`
               : versions.length === 1
-                ? "Click Iterate to generate an improved version."
-                : "Edit, Iterate again, or Send when you're happy."}
+                ? "Click Improve to expand it into a complete prompt."
+                : "Edit, Improve again, or Send when you're happy."}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button type="button" variant="ghost" onClick={handleClose}>
@@ -265,15 +265,15 @@ function PromptExplorerBody({
           </Button>
           <Button
             type="button"
-            onClick={handleIterate}
-            disabled={!canIterate}
-            title="Generate an improved version from the current text (Enter)"
+            onClick={handleImprove}
+            disabled={!canImprove}
+            title="Improve and expand this prompt (Enter)"
           >
             <RefreshCw01
               size={16}
               className={cn(isStreaming && "animate-spin")}
             />
-            Iterate
+            Improve
           </Button>
           <Button
             type="button"

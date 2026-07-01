@@ -23,7 +23,7 @@ import {
   Image01,
   Lock01,
   Microphone01,
-  Stars01,
+  RefreshCw01,
   Stop,
   Telescope,
   Upload01,
@@ -721,7 +721,7 @@ export function ChatInput({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
+                        size="sm"
                         disabled={isStreaming}
                         onClick={() => {
                           track("chat_prompt_explorer_opened", {
@@ -729,11 +729,12 @@ export function ChatInput({
                           });
                           setExploreOpen(true);
                         }}
-                        className="size-8 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
-                        title="Explore — turn a rough idea into a detailed prompt"
-                        aria-label="Explore prompt"
+                        className="h-8 gap-1.5 rounded-lg px-2 text-muted-foreground hover:text-foreground transition-colors"
+                        title="Improve — turn a rough idea into a detailed, ready-to-use prompt"
+                        aria-label="Improve prompt"
                       >
-                        <Stars01 size={18} />
+                        <RefreshCw01 size={16} />
+                        Improve
                       </Button>
 
                       <TierTrigger />

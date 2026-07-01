@@ -1,8 +1,7 @@
 import { useProjectContext } from "@decocms/mesh-sdk";
-import { useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
-/** Minimum draft length before the Iterate action is enabled. */
+/** Minimum draft length before the Improve action is enabled. */
 export const PROMPT_EXPLORER_MIN_CHARS = 10;
 
 type Frame =
@@ -61,29 +60,47 @@ export interface PromptEnricher {
 }
 
 /**
- * Imperative prompt enrichment. Unlike a query, nothing runs until the caller
- * invokes `enrich()` (wired to the explicit Iterate button) — there is no
- * debounce or auto-run. Live partials are exposed via `text` / `reasoning`;
- * the promise resolves with the final text so the caller can commit it.
+ * Imperative prompt enrichment. Nothing runs until the caller invokes
+ * `enrich()` (wired to the explicit Improve button) — there is no debounce or
+ * auto-run. Live partials are exposed via `text` / `reasoning`; the promise
+ * resolves with the final text so the caller can commit it.
+ *
+ * State is driven by plain `useState` (NOT react-query): the UI reads `status`
+ * every render, and a value read off a react-query mutation result goes stale
+ * under the React Compiler (the derived value gets memoized against the
+ * referentially-stable result object, so `isPending` never updates and the UI
+ * hangs on "streaming" forever even after the request completes). A `useState`
+ * the compiler can track avoids that entirely.
+ *
+ * The stream terminates on the server's `finish` frame or on connection close
+ * (`done`) — both reliable; no idle/timeout guard is needed.
  */
 export function usePromptEnricher(): PromptEnricher {
   const { org } = useProjectContext();
   const orgSlug = org.slug;
   const abortRef = useRef<AbortController | null>(null);
+  const [status, setStatus] = useState<PromptEnricherStatus>("idle");
+  const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<{ text: string; reasoning: string }>({
     text: "",
     reasoning: "",
   });
 
-  const mutation = useMutation({
-    mutationFn: async (draft: string) => {
-      abortRef.current?.abort();
-      const ac = new AbortController();
-      abortRef.current = ac;
-      setLive({ text: "", reasoning: "" });
+  const enrich = async (draft: string) => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    // Only the most-recent run owns the shared status/live state; a superseded
+    // run must not stomp it when it later unwinds.
+    const isCurrent = () => abortRef.current === ac;
 
-      let text = "";
-      let reasoning = "";
+    setStatus("streaming");
+    setError(null);
+    setLive({ text: "", reasoning: "" });
+
+    let text = "";
+    let reasoning = "";
+    try {
       const resp = await fetch(
         `/api/${encodeURIComponent(orgSlug)}/prompt-explorer/stream`,
         {
@@ -101,70 +118,51 @@ export function usePromptEnricher(): PromptEnricher {
         throw new Error(`Prompt enrichment failed (${resp.status})`);
       }
 
-      // Idle-completion guard: the local dev tunnel sometimes delivers every
-      // token but withholds the trailing `finish` frame + connection close, so
-      // the loop below would otherwise hang forever ("Enriching…" with the full
-      // text already shown). Once tokens stop arriving for IDLE_MS, we stop and
-      // complete with what we have. Armed only after the first frame, so a slow
-      // time-to-first-token doesn't cut us off early.
-      const IDLE_MS = 2000;
-      let idleTimer: ReturnType<typeof setTimeout> | undefined;
-      let idleDone = false;
-      const armIdle = () => {
-        if (idleTimer) clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => {
-          idleDone = true;
-          ac.abort();
-        }, IDLE_MS);
-      };
-
-      try {
-        for await (const frame of readSseFrames(resp.body)) {
-          if (ac.signal.aborted) break;
-          if (frame.type === "text") {
-            text += frame.text;
-            setLive({ text, reasoning });
-            armIdle();
-          } else if (frame.type === "reasoning") {
-            reasoning += frame.text;
-            setLive({ text, reasoning });
-            armIdle();
-          } else if (frame.type === "error") {
-            throw new Error(frame.message);
-          } else if (frame.type === "finish") {
-            break;
-          }
+      for await (const frame of readSseFrames(resp.body)) {
+        if (ac.signal.aborted) break;
+        if (frame.type === "text") {
+          text += frame.text;
+          if (isCurrent()) setLive({ text, reasoning });
+        } else if (frame.type === "reasoning") {
+          reasoning += frame.text;
+          if (isCurrent()) setLive({ text, reasoning });
+        } else if (frame.type === "error") {
+          throw new Error(frame.message);
+        } else if (frame.type === "finish") {
+          break;
         }
-      } catch (e) {
-        // Swallow aborts (idle-completion, user cancel, or a superseding run) —
-        // they're expected stops, not failures. Re-throw only genuine errors
-        // (e.g. an `error` frame or a mid-stream network drop).
-        const isAbort =
-          (e as { name?: string })?.name === "AbortError" || ac.signal.aborted;
-        if (!idleDone && !isAbort) throw e;
-      } finally {
-        if (idleTimer) clearTimeout(idleTimer);
       }
+      if (isCurrent()) setStatus("done");
       return { text, reasoning };
-    },
-  });
+    } catch (e) {
+      // An abort (user cancel or a superseding run) is an expected stop, not a
+      // failure — settle quietly with whatever streamed so far.
+      const isAbort =
+        (e as { name?: string })?.name === "AbortError" || ac.signal.aborted;
+      if (isAbort) {
+        if (isCurrent()) setStatus("idle");
+        return { text, reasoning };
+      }
+      if (isCurrent()) {
+        setStatus("error");
+        setError(e instanceof Error ? e.message : "Failed to enrich prompt");
+      }
+      throw e;
+    }
+  };
 
   return {
-    enrich: (draft: string) => mutation.mutateAsync(draft),
+    enrich,
     cancel: () => {
       abortRef.current?.abort();
-      mutation.reset();
+      abortRef.current = null;
+      setStatus("idle");
+      setError(null);
       setLive({ text: "", reasoning: "" });
     },
-    status: mutation.isPending
-      ? "streaming"
-      : mutation.isError
-        ? "error"
-        : mutation.isSuccess
-          ? "done"
-          : "idle",
+    status,
     text: live.text,
     reasoning: live.reasoning,
-    error: mutation.error instanceof Error ? mutation.error.message : null,
+    error,
   };
 }

@@ -13,10 +13,13 @@ describe("buildPromptExplorerSystem", () => {
     expect(system).toContain('"Analytical Engines"');
   });
 
-  it("instructs the model to add bracketed fill-in placeholders", () => {
+  it("expands into a concrete, ready-to-use prompt with no bracket placeholders", () => {
     const system = buildPromptExplorerSystem({ userName: "X" });
-    expect(system).toContain("[square brackets]");
-    expect(system).toMatch(/fill-in-the-blank/i);
+    // No fill-in blanks: the model makes concrete choices itself.
+    expect(system).toMatch(/no placeholders|never use square brackets/i);
+    expect(system).toMatch(/ready[- ]to[- ]use|as-is|run immediately/i);
+    // Each iteration must grow, not repeat (fixes "v2 identical to v1").
+    expect(system).toMatch(/expand/i);
   });
 
   it("falls back gracefully when identity fields are missing", () => {
