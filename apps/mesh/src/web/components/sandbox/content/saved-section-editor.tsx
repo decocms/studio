@@ -118,6 +118,10 @@ export function SavedSectionEditor({
     if (jsonOpen) {
       setJsonCode(null);
       setJsonError(false);
+      // Remount the form so its fields re-read the (possibly JSON-edited)
+      // formValue — nested field components cache their own state and won't
+      // otherwise reflect an external change.
+      setFormResetKey((key) => key + 1);
     } else {
       setJsonCode(JSON.stringify(formValue, null, 2));
     }
