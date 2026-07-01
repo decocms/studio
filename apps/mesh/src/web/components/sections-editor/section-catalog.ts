@@ -96,6 +96,30 @@ function listManifestSections(meta: LiveMeta): SectionCatalogEntry[] {
   return entries;
 }
 
+/**
+ * Cheap list of insertable manifest sections for the Content "Available
+ * sections" list — labels come from the resolve type, NOT from resolving each
+ * section's schema (that is O(sections) deep `$ref` walks and froze the tab on
+ * sites with many sections). The full schema is resolved lazily, only when a
+ * single section is opened for editing.
+ */
+export function listAvailableSections(
+  meta: LiveMeta,
+): Array<{ resolveType: string; title: string }> {
+  const blocks = meta.manifest?.blocks ?? {};
+  const entries: Array<{ resolveType: string; title: string }> = [];
+
+  for (const [blockType, blockMap] of Object.entries(blocks)) {
+    if (!blockType.includes("sections")) continue;
+    for (const resolveType of Object.keys(blockMap)) {
+      if (shouldSkipSectionResolveType(resolveType)) continue;
+      entries.push({ resolveType, title: labelFromResolveType(resolveType) });
+    }
+  }
+
+  return entries.sort((a, b) => a.title.localeCompare(b.title));
+}
+
 export function listSavedSectionBlocks(
   meta: LiveMeta,
   decofile: Record<string, unknown>,

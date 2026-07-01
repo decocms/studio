@@ -3,6 +3,7 @@ import {
   extractSectionCatalog,
   findLivePageResolveType,
   findSiteThemeBlock,
+  listAvailableSections,
 } from "./section-catalog";
 import {
   buildGlobalSectionPreviewUrl,
@@ -228,6 +229,33 @@ describe("section-catalog", () => {
     expect(catalog.map((entry) => entry.resolveType)).toContain(
       "site/sections/Benefits.tsx",
     );
+  });
+
+  it("listAvailableSections lists manifest sections without resolving schemas", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Theme/Theme.tsx": { $ref: "#/definitions/Theme" },
+            "site/sections/Hero.tsx": { $ref: "#/definitions/Hero" },
+            "site/sections/Header/Header.tsx": {
+              $ref: "#/definitions/HeaderSection",
+            },
+          },
+        },
+      },
+      schema: { definitions: {} },
+    };
+
+    const available = listAvailableSections(meta);
+    const resolveTypes = available.map((entry) => entry.resolveType);
+
+    expect(resolveTypes).toContain("site/sections/Hero.tsx");
+    expect(resolveTypes).toContain("site/sections/Header/Header.tsx");
+    expect(resolveTypes).not.toContain("site/sections/Theme/Theme.tsx");
+    expect(
+      available.find((e) => e.resolveType === "site/sections/Hero.tsx")?.title,
+    ).toBeTruthy();
   });
 
   it("extractSectionCatalog excludes Theme sections", () => {
