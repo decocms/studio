@@ -688,6 +688,7 @@ function CommerceSetupContent({
             onSiteUrlChange={setSiteUrlInput}
             onSubmit={handleSubmit}
           />
+          <ScheduleMeetingBanner className="md:hidden" />
         </div>
       );
     }
@@ -712,6 +713,7 @@ function CommerceSetupContent({
         ) : (
           <LoadingState label="Setting up Commerce Discovery..." />
         )}
+        <ScheduleMeetingBanner className="md:hidden" />
       </div>
     );
   }
@@ -729,6 +731,7 @@ function CommerceSetupContent({
         onSiteUrlChange={setSiteUrlInput}
         onSubmit={handleSubmit}
       />
+      <ScheduleMeetingBanner className="md:hidden" />
     </div>
   );
 }
