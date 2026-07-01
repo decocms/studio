@@ -3,6 +3,7 @@ import {
   selectVmEntry,
   shouldAutoStart,
   shouldSelfHeal,
+  shouldReconcileStaleCache,
   computeDrawerStatus,
   type BranchMapEntryLike,
 } from "./sandbox-lifecycle-context";
@@ -127,6 +128,47 @@ describe("shouldSelfHeal", () => {
 
   test("user stopped → false", () => {
     expect(shouldSelfHeal({ ...base, userStopped: true })).toBe(false);
+  });
+});
+
+describe("shouldReconcileStaleCache", () => {
+  const base = {
+    phase: "running" as string | null,
+    previewUrl: null as string | null,
+    userStopped: false,
+    alreadyReconciled: false,
+  };
+
+  test("running with no previewUrl in cache → true", () => {
+    expect(shouldReconcileStaleCache(base)).toBe(true);
+  });
+
+  test("previewUrl already present → false", () => {
+    expect(
+      shouldReconcileStaleCache({ ...base, previewUrl: "https://x" }),
+    ).toBe(false);
+  });
+
+  test("still booting (not running) → false", () => {
+    expect(shouldReconcileStaleCache({ ...base, phase: "starting" })).toBe(
+      false,
+    );
+  });
+
+  test("no phase yet → false", () => {
+    expect(shouldReconcileStaleCache({ ...base, phase: null })).toBe(false);
+  });
+
+  test("user stopped → false", () => {
+    expect(shouldReconcileStaleCache({ ...base, userStopped: true })).toBe(
+      false,
+    );
+  });
+
+  test("already reconciled for this arrival → false", () => {
+    expect(
+      shouldReconcileStaleCache({ ...base, alreadyReconciled: true }),
+    ).toBe(false);
   });
 });
 

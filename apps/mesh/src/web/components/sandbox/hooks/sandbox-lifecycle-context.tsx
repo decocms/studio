@@ -68,6 +68,35 @@ export function shouldSelfHeal(args: ShouldSelfHealArgs): boolean {
   );
 }
 
+export interface ShouldReconcileStaleCacheArgs {
+  /** Latest LifecycleState phase from the SSE stream. */
+  phase: string | null;
+  /** previewUrl resolved from the cached sandboxMap (null when the cache is stale). */
+  previewUrl: string | null;
+  userStopped: boolean;
+  /** Whether we already invalidated for this sandbox arrival (dedup). */
+  alreadyReconciled: boolean;
+}
+
+/**
+ * The dev server reached `running` (SSE) but the cached VIRTUAL_MCP entity still
+ * has no previewUrl for this user/branch/kind — the sandboxMap row was written by
+ * a path that didn't invalidate React Query (agent-triggered start, another
+ * tab/device, an SSE reconnect onto an already-running pod, or the kind-keyed
+ * entry not yet fetched). Re-fetch once so previewUrl resolves and the preview
+ * unsticks without a manual page refresh.
+ */
+export function shouldReconcileStaleCache(
+  args: ShouldReconcileStaleCacheArgs,
+): boolean {
+  return (
+    args.phase === "running" &&
+    !args.previewUrl &&
+    !args.userStopped &&
+    !args.alreadyReconciled
+  );
+}
+
 export function computeDrawerStatus(state: PreviewState): DrawerStatus {
   switch (state.kind) {
     case "suspended":
@@ -175,6 +204,10 @@ export function SandboxLifecycleProvider({
   // branch-keyed (VmEventsBridge) dedup refs).
   const autoStartAttemptedForBranchRef = useRef<Set<string>>(new Set());
   const reprovisionedForVmIdRef = useRef<string | null>(null);
+  // Dedup for the stale-cache reconcile effect: records the
+  // `${vmId}:${branch}:${kind}` we last invalidated for, so a single `running`
+  // arrival re-fetches once (and a kind switch can reconcile again).
+  const staleReconciledRef = useRef<string | null>(null);
 
   // Derived values, recomputed each render.
   // Cast: parseBranchMap returns SandboxRecord where sandboxProviderKind is
@@ -289,6 +322,36 @@ export function SandboxLifecycleProvider({
     setCurrentTaskBranch,
   ]);
 
+  // Stale-cache reconcile: the dev server is up (SSE `running`) but the cached
+  // VIRTUAL_MCP entity has no previewUrl for this user/branch/kind — the
+  // sandboxMap row landed without a client-side invalidation. Re-fetch once so
+  // previewUrl resolves and the preview (and Sections editor) mount without a
+  // hard refresh. Keyed on provider kind too, since selection is kind-scoped.
+  const reconcileKey =
+    virtualMcpId && branch
+      ? `${virtualMcpId}:${branch}:${sandboxProviderKind ?? ""}`
+      : null;
+  const reconcileStaleCache = shouldReconcileStaleCache({
+    phase: events.lifecycle.phase,
+    previewUrl,
+    userStopped,
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside effect after invalidating
+    alreadyReconciled: staleReconciledRef.current === reconcileKey,
+  });
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- bridges SSE lifecycle into a one-shot query invalidation; no render-time equivalent
+  useEffect(() => {
+    if (previewUrl) {
+      // Cache caught up — clear dedup so a later cold restart can reconcile again.
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- reset dedup once the entry is present
+      staleReconciledRef.current = null;
+      return;
+    }
+    if (!reconcileStaleCache || !reconcileKey) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record arrival to invalidate at most once
+    staleReconciledRef.current = reconcileKey;
+    invalidateVirtualMcpQueries(queryClient);
+  }, [reconcileStaleCache, reconcileKey, previewUrl, queryClient]);
+
   // User-driven actions.
   const start = () => {
     if (!virtualMcpId) return;
@@ -337,6 +400,8 @@ export function SandboxLifecycleProvider({
     autoStartAttemptedForBranchRef.current = new Set();
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- reset dedup so self-heal can fire on next gone
     reprovisionedForVmIdRef.current = null;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- reset dedup so a fresh cold start can reconcile again
+    staleReconciledRef.current = null;
     startVmReset();
     start();
   };
