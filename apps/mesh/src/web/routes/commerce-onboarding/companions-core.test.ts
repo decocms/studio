@@ -5,6 +5,7 @@ import {
   mergeBindingValue,
   parseBindingRequirements,
   resolveCandidate,
+  unwrapToolResult,
 } from "./companions-core.ts";
 
 const bindingSchema = (type: string) => ({
@@ -101,6 +102,33 @@ describe("resolveCandidate", () => {
   });
   it("returns null when nothing matches", () => {
     expect(resolveCandidate(conns, "shopify", "deco/shopify")).toBeNull();
+  });
+});
+
+describe("unwrapToolResult", () => {
+  it("throws with the content text when isError:true", () => {
+    expect(() =>
+      unwrapToolResult({
+        isError: true,
+        content: [{ text: "validateConfiguration failed" }],
+      }),
+    ).toThrow("validateConfiguration failed");
+  });
+  it("throws a default message when isError:true with no text", () => {
+    expect(() => unwrapToolResult({ isError: true, content: [] })).toThrow(
+      "Tool call failed",
+    );
+  });
+  it("returns structuredContent when present and not error", () => {
+    expect(
+      unwrapToolResult<{ item: { id: string } }>({
+        structuredContent: { item: { id: "c1" } },
+      }),
+    ).toEqual({ item: { id: "c1" } });
+  });
+  it("returns the raw result when no structuredContent", () => {
+    const raw = { item: { id: "c1" } };
+    expect(unwrapToolResult<typeof raw>(raw)).toEqual(raw);
   });
 });
 

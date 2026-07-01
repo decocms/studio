@@ -7,17 +7,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   mergeBindingValue,
+  unwrapToolResult,
   type CompanionCardModel,
 } from "./companions-core.ts";
 
 interface CompanionOrg {
   id: string;
   slug: string;
-}
-
-function unwrap<T>(result: unknown): T {
-  return ((result as { structuredContent?: unknown }).structuredContent ??
-    result) as T;
 }
 
 export function useConnectCompanion({
@@ -45,7 +41,7 @@ export function useConnectCompanion({
       name: "COLLECTION_CONNECTIONS_UPDATE",
       arguments: { id, data },
     });
-    return unwrap<{ item: unknown }>(result);
+    return unwrapToolResult<{ item: unknown }>(result);
   };
 
   async function connect(card: CompanionCardModel): Promise<void> {
@@ -65,7 +61,8 @@ export function useConnectCompanion({
           name: "COLLECTION_CONNECTIONS_CREATE",
           arguments: { data },
         });
-        companionId = unwrap<{ item: { id: string } }>(created).item.id;
+        companionId = unwrapToolResult<{ item: { id: string } }>(created).item
+          .id;
       }
       const id = companionId;
 
@@ -90,7 +87,7 @@ export function useConnectCompanion({
         arguments: { id: cdConnectionId },
       });
       const currentState =
-        unwrap<{
+        unwrapToolResult<{
           item: { configuration_state?: Record<string, unknown> | null } | null;
         }>(cdGet).item?.configuration_state ?? null;
       const merged = mergeBindingValue(

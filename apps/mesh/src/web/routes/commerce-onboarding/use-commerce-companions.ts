@@ -8,6 +8,7 @@ import {
   buildCompanionCards,
   buildRegistryWhere,
   parseBindingRequirements,
+  unwrapToolResult,
   type CandidateConnection,
   type CompanionCardModel,
   type RegistryItemLike,
@@ -16,11 +17,6 @@ import {
 interface CompanionOrg {
   id: string;
   slug: string;
-}
-
-function unwrap<T>(result: unknown): T {
-  return ((result as { structuredContent?: unknown }).structuredContent ??
-    result) as T;
 }
 
 export function useCommerceCompanions({
@@ -45,7 +41,9 @@ export function useCommerceCompanions({
         name: "MCP_CONFIGURATION",
         arguments: {},
       });
-      return unwrap<{ stateSchema?: Record<string, unknown> }>(result);
+      return unwrapToolResult<{ stateSchema?: Record<string, unknown> }>(
+        result,
+      );
     },
   });
 
@@ -69,7 +67,7 @@ export function useCommerceCompanions({
         name: "COLLECTION_CONNECTIONS_GET",
         arguments: { id: cdConnectionId },
       });
-      return unwrap<{
+      return unwrapToolResult<{
         item: { configuration_state?: Record<string, unknown> | null } | null;
       }>(result);
     },
@@ -93,7 +91,7 @@ export function useCommerceCompanions({
           limit: 1000,
         },
       });
-      return unwrap<{ items: CandidateConnection[] }>(result);
+      return unwrapToolResult<{ items: CandidateConnection[] }>(result);
     },
   });
 

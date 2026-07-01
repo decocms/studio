@@ -92,6 +92,20 @@ export function buildRegistryWhere(
   return { operator: "or", conditions };
 }
 
+/** Unwrap an MCP tool-call result. Throws with the tool's error text when
+ * the result is a tool-level error (Client.callTool does NOT throw on isError). */
+export function unwrapToolResult<T>(result: unknown): T {
+  const r = result as {
+    structuredContent?: unknown;
+    isError?: boolean;
+    content?: Array<{ text?: string }>;
+  };
+  if (r.isError) {
+    throw new Error(r.content?.find((c) => c.text)?.text ?? "Tool call failed");
+  }
+  return (r.structuredContent ?? result) as T;
+}
+
 /** Full read-modify-write merge: server overwrites configuration_state wholesale,
  * so we must send every existing key plus the new binding value. */
 export function mergeBindingValue(
