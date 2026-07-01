@@ -33,6 +33,7 @@ import type { FormEvent } from "react";
 import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
 import { LoadingIndicator } from "./commerce-onboarding/loading-indicator.tsx";
 import {
+  buildScheduleMeetingUrl,
   ScheduleMeetingBanner,
   ScheduleMeetingVisual,
 } from "./commerce-onboarding/schedule-meeting.tsx";
@@ -666,6 +667,7 @@ function CommerceSetupContent({
         org={org}
         reportApp={reportApp}
         onOpenReport={openReport}
+        siteUrl={initialSiteUrl ?? siteUrlInput}
       />
     );
   }
@@ -793,30 +795,51 @@ function CommerceDiscoveryReady({
   org,
   reportApp,
   onOpenReport,
+  siteUrl,
 }: {
   org: CommerceOrganization;
   reportApp: CommerceDiscoveryReportApp;
   onOpenReport: () => void;
+  siteUrl?: string;
 }) {
+  const { data: session } = authClient.useSession();
+  const meetingUrl = buildScheduleMeetingUrl({
+    siteUrl,
+    email: session?.user?.email,
+  });
   return (
     // The "connect your tools" screen is the only one that swaps the placeholder
     // visual for the schedule-a-meeting panel (md+); every other setup screen
     // keeps the default AuthSplitLayout placeholder.
-    <AuthSplitLayout visual={<ScheduleMeetingVisual />}>
-      {/* On mobile fill the viewport (minus AuthSplitLayout's p-6 = 3rem) as a flex
-          column so the header pins to the top, the cards fill the middle, and the
-          "See full report" CTA pins to the bottom. On md+ revert to the centered grid. */}
-      <div className="flex h-[calc(100dvh-3rem)] flex-col gap-10 md:grid md:h-auto">
+    <AuthSplitLayout
+      align="fill"
+      visual={<ScheduleMeetingVisual href={meetingUrl} />}
+    >
+      {/* align="fill" hands us a flex column sized to the visible viewport, so we
+          just flex-1 into it — header pinned top, cards scroll in the middle, and
+          the footer (report CTA + talk-to-a-human banner) pinned to the bottom.
+          On md+ it collapses back to a natural block (right panel has the card). */}
+      <div className="flex min-h-0 flex-1 flex-col gap-6 md:block">
         <CommerceHeader />
         <CompanionMcpsSection
           org={org}
           cdConnectionId={reportApp.connectionId}
-          reportDisabled={!reportApp.virtualMcpId}
-          onOpenReport={onOpenReport}
         />
-        {/* The right-side ScheduleMeetingVisual is hidden on mobile, so surface the
-            human escape hatch as a collapsed banner pinned below the connect flow. */}
-        <ScheduleMeetingBanner className="md:hidden" />
+        <div className="flex shrink-0 flex-col gap-3 md:mt-8">
+          {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
+              escape hatch rides in the footer above the report CTA. */}
+          <ScheduleMeetingBanner className="md:hidden" href={meetingUrl} />
+          <Button
+            type="button"
+            size="xl"
+            className="w-full rounded-2xl text-base font-medium"
+            onClick={onOpenReport}
+            disabled={!reportApp.virtualMcpId}
+          >
+            See full report
+            <ArrowRight size={18} />
+          </Button>
+        </div>
       </div>
     </AuthSplitLayout>
   );

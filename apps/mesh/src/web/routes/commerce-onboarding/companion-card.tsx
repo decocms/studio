@@ -12,7 +12,7 @@ export function CompanionCardSkeleton() {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
       <div className="flex items-center gap-2">
-        <div className="size-12 shrink-0 animate-pulse rounded-lg bg-muted/60" />
+        <div className="size-9 shrink-0 animate-pulse rounded-lg bg-muted/60" />
         <div className="h-4 w-32 animate-pulse rounded bg-muted/60" />
         <div className="ml-auto h-8 w-20 animate-pulse rounded-lg bg-muted/60" />
       </div>
@@ -54,9 +54,9 @@ export function CompanionCard({
         <IntegrationIcon
           icon={card.icon}
           name={card.title}
-          size="md"
+          size="sm"
           fit="contain"
-          className="p-2"
+          className="p-1.5"
         />
         <p className="flex-1 text-sm text-foreground">{card.title}</p>
         {card.satisfied ? (

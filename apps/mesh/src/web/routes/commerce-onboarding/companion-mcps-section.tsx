@@ -1,8 +1,6 @@
 import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { authClient } from "@/web/lib/auth-client";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
-import { Button } from "@deco/ui/components/button.tsx";
-import { ArrowRight } from "@untitledui/icons";
 import { CompanionCard, CompanionCardSkeleton } from "./companion-card.tsx";
 import { useCommerceCompanions } from "./use-commerce-companions.ts";
 import { useConnectCompanion } from "./use-connect-companion.ts";
@@ -15,13 +13,9 @@ interface CompanionOrg {
 export function CompanionMcpsSection({
   org,
   cdConnectionId,
-  reportDisabled,
-  onOpenReport,
 }: {
   org: CompanionOrg;
   cdConnectionId: string;
-  reportDisabled: boolean;
-  onOpenReport: () => void;
 }) {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
@@ -47,36 +41,19 @@ export function CompanionMcpsSection({
     cdConnectionId,
   });
 
-  const cta = (
-    <Button
-      type="button"
-      size="xl"
-      className="w-full"
-      onClick={onOpenReport}
-      disabled={reportDisabled}
-    >
-      See full report
-      <ArrowRight size={16} />
-    </Button>
-  );
-
-  // Empty: no requirements survive → just the report CTA (section header hidden).
+  // Empty: nothing to connect → render nothing (the parent footer still shows
+  // the report CTA).
   if (!isLoading && !error && cards.length === 0) {
-    // On mobile the parent gives us a full-height flex column, so pin the CTA to
-    // the bottom; on md+ fall back to the natural grid.
-    return (
-      <div className="flex min-h-0 flex-1 flex-col justify-end gap-10 md:grid md:flex-none">
-        {cta}
-      </div>
-    );
+    return null;
   }
 
   const busy = connectingFieldKey !== null;
 
   return (
-    // On mobile this grows to fill the parent's full-height column (header pinned
-    // top, CTA pinned bottom, cards scroll in between); on md+ it's the compact grid.
-    <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:flex-none">
+    // Mobile: fill the parent's remaining height — the header + intro copy stay
+    // pinned while the card list scrolls. md+: natural block with a capped
+    // scroll area so the right panel stays visible.
+    <div className="flex min-h-0 flex-1 flex-col gap-6 md:block md:flex-none">
       <div className="grid gap-1.5">
         <p className="text-2xl font-medium text-foreground">
           Unlock your full diagnostic
@@ -99,7 +76,7 @@ export function CompanionMcpsSection({
           </p>
         </div>
       ) : isLoading ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="grid gap-4">
           {[0, 1, 2].map((i) => (
             <CompanionCardSkeleton key={i} />
           ))}
@@ -127,8 +104,6 @@ export function CompanionMcpsSection({
           </div>
         </ScrollReveal>
       )}
-
-      {cta}
     </div>
   );
 }

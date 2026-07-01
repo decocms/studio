@@ -15,10 +15,30 @@ const HEADLINE = "Rather have us walk you through it?";
 const BODY =
   "Book a 20-minute call and we'll run the diagnostic with you, live.";
 
+/**
+ * Build the scheduling link, prefilling the site under diagnosis and the
+ * signed-in user's email as query params so the booking page arrives with
+ * context (both omitted when unknown).
+ */
+export function buildScheduleMeetingUrl({
+  siteUrl,
+  email,
+}: {
+  siteUrl?: string | null;
+  email?: string | null;
+}): string {
+  const url = new URL(SCHEDULE_MEETING_URL);
+  if (siteUrl) url.searchParams.set("siteUrl", siteUrl);
+  if (email) url.searchParams.set("email", email);
+  return url.toString();
+}
+
 function ScheduleMeetingCta({
+  href = SCHEDULE_MEETING_URL,
   size = "lg",
   className,
 }: {
+  href?: string;
   size?: "lg" | "xl";
   className?: string;
 }) {
@@ -29,7 +49,7 @@ function ScheduleMeetingCta({
       size={size}
       className={cn("w-full", className)}
     >
-      <a href={SCHEDULE_MEETING_URL} target="_blank" rel="noreferrer">
+      <a href={href} target="_blank" rel="noreferrer">
         Schedule a meeting
         <ArrowUpRight size={16} />
       </a>
@@ -92,7 +112,7 @@ function ConnectionAnimation() {
  * in the AuthSplitLayout `visual` slot). The "or" to the connect-your-tools
  * flow on the left: a human escape hatch for people who resist granting access.
  */
-export function ScheduleMeetingVisual() {
+export function ScheduleMeetingVisual({ href }: { href?: string }) {
   return (
     <div className="relative flex h-full w-full items-center justify-center p-10">
       <div className="flex w-full max-w-[380px] flex-col gap-6 rounded-3xl border border-border bg-card p-8 card-shadow">
@@ -103,7 +123,7 @@ export function ScheduleMeetingVisual() {
           </h2>
           <p className="text-base leading-6 text-muted-foreground">{BODY}</p>
         </div>
-        <ScheduleMeetingCta size="xl" />
+        <ScheduleMeetingCta href={href} size="xl" />
       </div>
     </div>
   );
@@ -114,10 +134,16 @@ export function ScheduleMeetingVisual() {
  * split disappears, so this is a compact, tappable banner that opens the
  * scheduling flow directly — quieter than the full card, still inviting.
  */
-export function ScheduleMeetingBanner({ className }: { className?: string }) {
+export function ScheduleMeetingBanner({
+  className,
+  href = SCHEDULE_MEETING_URL,
+}: {
+  className?: string;
+  href?: string;
+}) {
   return (
     <a
-      href={SCHEDULE_MEETING_URL}
+      href={href}
       target="_blank"
       rel="noreferrer"
       className={cn(
