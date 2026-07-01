@@ -92,3 +92,32 @@ describe("preservedOtherBranchFields – legacy combined entries", () => {
     expect(preservedOtherBranchFields(null, ["coordinates"])).toEqual({});
   });
 });
+
+describe("inferInlineUnionIndex – discriminator matching details", () => {
+  test("ALL discriminator fields must match, not just one", () => {
+    const branches = [
+      {
+        discriminators: { name: "max-age", scope: "public" },
+        propertyKeys: ["name", "scope", "value"],
+      },
+      {
+        discriminators: { name: "max-age", scope: "private" },
+        propertyKeys: ["name", "scope", "value"],
+      },
+    ];
+    expect(
+      inferInlineUnionIndex({ name: "max-age", scope: "private" }, branches),
+    ).toBe(1);
+  });
+
+  test("discriminator fields are excluded from the shape score", () => {
+    // Both branches share a non-discriminator `value`; a value with only `value`
+    // set (no matching const) must tie → fall back to the first branch, proving
+    // the const `name` key isn't counted toward the score.
+    const branches = [
+      { discriminators: { name: "a" }, propertyKeys: ["name", "value"] },
+      { discriminators: { name: "b" }, propertyKeys: ["name", "value"] },
+    ];
+    expect(inferInlineUnionIndex({ value: 60 }, branches)).toBe(0);
+  });
+});

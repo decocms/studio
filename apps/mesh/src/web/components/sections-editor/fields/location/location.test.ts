@@ -142,3 +142,14 @@ describe("BRAZIL_STATES dataset", () => {
     }
   });
 });
+
+describe("mergeLocationValue – drops every empty field", () => {
+  test("clearing all fields yields an empty object", () => {
+    expect(
+      mergeLocationValue(
+        { city: "Sao Paulo", regionCode: "SP", country: "BR" },
+        { city: "", regionCode: "", country: "" },
+      ),
+    ).toEqual({});
+  });
+});

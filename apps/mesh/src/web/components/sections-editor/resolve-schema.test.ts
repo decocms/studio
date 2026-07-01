@@ -862,3 +862,97 @@ describe("resolveSchema – inline object unions (A | B) render as a choice", ()
     expect(card?.discriminatorKey).toBe("type");
   });
 });
+
+describe("resolveSchema – inline-union negative cases (paths left untouched)", () => {
+  test("anyOf of $refs stays block-ref, not inline-union", () => {
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": {
+              type: "object",
+              properties: {
+                card: {
+                  anyOf: [
+                    { $ref: "#/definitions/ImageCard" },
+                    { $ref: "#/definitions/TextCard" },
+                  ],
+                },
+              },
+            } as unknown as { $ref?: string; namespace?: string },
+          },
+        },
+      },
+      schema: {
+        definitions: {
+          ImageCard: {
+            type: "object",
+            title: "ImageCard",
+            properties: { src: { type: "string" } },
+          },
+          TextCard: {
+            type: "object",
+            title: "TextCard",
+            properties: { text: { type: "string" } },
+          },
+        },
+      },
+    };
+    const card = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.card;
+    expect(card?.type).toBe("block-ref");
+    expect(card?.type).not.toBe("inline-union");
+  });
+
+  test("mixed primitive|object union does NOT become inline-union", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        value: {
+          anyOf: [
+            { type: "string" },
+            {
+              type: "object",
+              title: "Obj",
+              properties: { x: { type: "number" } },
+            },
+          ],
+        },
+      },
+    });
+    const value = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.value;
+    expect(value?.type).not.toBe("inline-union");
+  });
+
+  test("single-element enum acts as a const discriminator", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        directive: {
+          anyOf: [
+            {
+              type: "object",
+              title: "MaxAge",
+              properties: {
+                name: { type: "string", enum: ["max-age"] },
+                value: { type: "number" },
+              },
+            },
+            {
+              type: "object",
+              title: "NoStore",
+              properties: { name: { type: "string", enum: ["no-store"] } },
+            },
+          ],
+        },
+      },
+    });
+    const directive = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.directive;
+    expect(directive?.type).toBe("inline-union");
+    expect(directive?.inlineUnionBranches?.[0]?.discriminators).toEqual({
+      name: "max-age",
+    });
+  });
+});
