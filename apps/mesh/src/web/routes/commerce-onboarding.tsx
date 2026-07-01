@@ -21,7 +21,7 @@ import {
 } from "@decocms/mesh-sdk";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowRight, Check, Loading01 } from "@untitledui/icons";
+import { ArrowRight, Loading01 } from "@untitledui/icons";
 import { Suspense, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
@@ -742,14 +742,6 @@ function CommerceDiscoveryReady({
         description={`Commerce Discovery is connected for ${org.name}.`}
       />
       <div className="grid gap-3">
-        <SetupStatusCard
-          title="Commerce Discovery MCP"
-          description="Report generation and commerce diagnostics are connected."
-        />
-        <SetupStatusCard
-          title="Commerce Discovery agent"
-          description="The report workspace is ready for this organization."
-        />
         <div className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4">
           <p className="text-sm font-medium">Companion MCPs</p>
           <p className="mt-1 text-sm text-muted-foreground leading-5">
@@ -772,28 +764,6 @@ function CommerceDiscoveryReady({
         See full report
         <ArrowRight size={16} />
       </Button>
-    </div>
-  );
-}
-
-function SetupStatusCard({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4 flex gap-3">
-      <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-success text-success-foreground">
-        <Check size={12} />
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="mt-1 text-sm text-muted-foreground leading-5">
-          {description}
-        </p>
-      </div>
     </div>
   );
 }

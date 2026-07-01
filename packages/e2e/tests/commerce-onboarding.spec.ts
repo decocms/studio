@@ -292,7 +292,7 @@ test.describe("Commerce onboarding route isolation", () => {
       [connectionId],
     );
     expect(concrete.rows[0]).toMatchObject({
-      connection_url: "https://commerce-skills.deco-cx.workers.dev/api/mcp",
+      connection_url: "https://commerce-skills.deco-cx.workers.dev/api/v2/mcp",
       connection_type: "HTTP",
       title: "Commerce Discovery",
     });
@@ -342,6 +342,9 @@ test.describe("Commerce onboarding route isolation", () => {
     ).toBeVisible({
       timeout: 20_000,
     });
+    await expect(page.getByText("Companion MCPs")).toBeVisible();
+    await expect(page.getByText("Commerce Discovery MCP")).toHaveCount(0);
+    await expect(page.getByText("Commerce Discovery agent")).toHaveCount(0);
   });
 
   test("asks for a site URL when none is provided and rejects invalid URLs", async ({
