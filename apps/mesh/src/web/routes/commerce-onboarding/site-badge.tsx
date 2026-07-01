@@ -18,7 +18,7 @@ export function SiteBadge({ host }: { host: string }) {
         alt="Deco"
         className="h-7 w-7 hidden dark:block"
       />
-      <div className="h-6 w-px -rotate-12 bg-border" aria-hidden="true" />
+      <div className="h-6 w-px rotate-12 bg-border" aria-hidden="true" />
       <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
         <img src={faviconUrl} alt="" className="h-5 w-5" loading="lazy" />
       </div>
