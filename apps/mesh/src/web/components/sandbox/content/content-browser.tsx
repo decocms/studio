@@ -4,6 +4,7 @@ import {
   AlertCircle,
   BookOpen01,
   Calendar,
+  CheckSquare,
   ChevronDown,
   Code01,
   Copy01,
@@ -388,6 +389,13 @@ function ContentBrowserReady({
   const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
     () => new Set(),
   );
+  // Multi-select is opt-in: checkboxes and the bulk toolbar only appear once
+  // the user enters selection mode via the "Select" action.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedPostKeys(new Set());
+  };
   // Reset search + post filters/selection when switching collections
   // (derived-state sync pattern).
   const [prevCollection, setPrevCollection] = useState(activeCollection);
@@ -398,6 +406,7 @@ function ContentBrowserReady({
     setPostAuthorFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
+    setSelectionMode(false);
   }
 
   const {
@@ -835,7 +844,7 @@ function ContentBrowserReady({
         `${verb} ${changed} ${changed === 1 ? "post" : "posts"}` +
           (unchanged > 0 ? ` (${unchanged} already set)` : ""),
       );
-      setSelectedPostKeys(new Set());
+      exitSelection();
       setCategoryDialog(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bulk update failed");
@@ -862,7 +871,7 @@ function ContentBrowserReady({
         ) {
           setSelection(null);
         }
-        setSelectedPostKeys(new Set());
+        exitSelection();
         setDeleteTarget(null);
         return;
       }
@@ -933,6 +942,9 @@ function ContentBrowserReady({
             }}
             onPostSortChange={setPostSort}
             selectedPostKeys={selectedPostKeys}
+            selectionMode={selectionMode}
+            onEnterSelectionMode={() => setSelectionMode(true)}
+            onExitSelection={exitSelection}
             onTogglePostSelect={togglePostSelection}
             onSelectAllPosts={(keys) => setSelectedPostKeys(new Set(keys))}
             onClearPostSelection={() => setSelectedPostKeys(new Set())}
@@ -1548,6 +1560,9 @@ function ItemList({
   onPostAuthorFilterChange,
   onPostSortChange,
   selectedPostKeys,
+  selectionMode,
+  onEnterSelectionMode,
+  onExitSelection,
   onTogglePostSelect,
   onSelectAllPosts,
   onClearPostSelection,
@@ -1585,6 +1600,9 @@ function ItemList({
   onPostAuthorFilterChange: (email: string | null) => void;
   onPostSortChange: (sort: PostSort) => void;
   selectedPostKeys: Set<string>;
+  selectionMode: boolean;
+  onEnterSelectionMode: () => void;
+  onExitSelection: () => void;
   onTogglePostSelect: (key: string) => void;
   onSelectAllPosts: (keys: string[]) => void;
   onClearPostSelection: () => void;
@@ -1712,7 +1730,6 @@ function ItemList({
   const allVisibleSelected =
     visiblePostKeys.length > 0 &&
     visiblePostKeys.every((k) => selectedPostKeys.has(k));
-  const selectionActive = selectionCount > 0;
   const toggleSelectAll = () => {
     if (allVisibleSelected) {
       onClearPostSelection();
@@ -1730,7 +1747,7 @@ function ItemList({
     activeCollection !== "apps" && activeCollection !== "sections";
 
   return (
-    <div className="w-[300px] shrink-0 border-r flex flex-col min-h-0">
+    <div className="w-[500px] shrink-0 border-r flex flex-col min-h-0">
       <div className="px-2 h-12 flex items-center gap-1 border-b shrink-0">
         <div className="flex flex-1 items-center gap-2 pl-1">
           <SearchLg
@@ -1764,14 +1781,14 @@ function ItemList({
         )}
       </div>
       {isPostsCollection &&
-        (selectionActive ? (
+        (selectionMode ? (
           <PostSelectionToolbar
             count={selectionCount}
             allSelected={allVisibleSelected}
             onToggleSelectAll={toggleSelectAll}
             onUpdateCategory={onBulkUpdateCategory}
             onDelete={onBulkDeletePosts}
-            onClear={onClearPostSelection}
+            onExit={onExitSelection}
           />
         ) : (
           <PostFilterBar
@@ -1781,8 +1798,7 @@ function ItemList({
             authorFilter={postAuthorFilter}
             sort={postSort}
             hasPosts={postsWithMeta.length > 0}
-            allSelected={allVisibleSelected}
-            onToggleSelectAll={toggleSelectAll}
+            onStartSelection={onEnterSelectionMode}
             onCategoryFilterChange={onPostCategoryFilterChange}
             onAuthorFilterChange={onPostAuthorFilterChange}
             onSortChange={onPostSortChange}
@@ -1996,12 +2012,13 @@ function ItemList({
                       selection.key === post.key
                     }
                     selectable
-                    selectionActive={selectionActive}
-                    alwaysShowCheckbox
+                    selectionActive={selectionMode}
                     selected={selectedPostKeys.has(post.key)}
                     onToggleSelect={() => onTogglePostSelect(post.key)}
                     onClick={() =>
-                      onSelect({ collection: "posts", key: post.key })
+                      selectionMode
+                        ? onTogglePostSelect(post.key)
+                        : onSelect({ collection: "posts", key: post.key })
                     }
                     menu={
                       <ItemActions
@@ -2131,8 +2148,7 @@ function PostFilterBar({
   authorFilter,
   sort,
   hasPosts,
-  allSelected,
-  onToggleSelectAll,
+  onStartSelection,
   onCategoryFilterChange,
   onAuthorFilterChange,
   onSortChange,
@@ -2143,8 +2159,7 @@ function PostFilterBar({
   authorFilter: string | null;
   sort: PostSort;
   hasPosts: boolean;
-  allSelected: boolean;
-  onToggleSelectAll: () => void;
+  onStartSelection: () => void;
   onCategoryFilterChange: (slug: string | null) => void;
   onAuthorFilterChange: (email: string | null) => void;
   onSortChange: (sort: PostSort) => void;
@@ -2153,19 +2168,13 @@ function PostFilterBar({
   const activeAuthor = authors.find((a) => a.email === authorFilter);
 
   return (
-    <div className="flex min-w-0 items-center gap-0.5 overflow-hidden border-b px-2 py-1.5">
-      <SelectAllControl
-        checked={allSelected}
-        disabled={!hasPosts}
-        onToggle={onToggleSelectAll}
-      />
-
+    <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b px-2 py-1.5">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <FilterChipTrigger
             icon={Tag01}
             active={!!categoryFilter}
-            value={activeCategory?.name}
+            value={activeCategory?.name ?? "Category"}
             className="min-w-0 shrink"
           />
         </DropdownMenuTrigger>
@@ -2192,13 +2201,19 @@ function PostFilterBar({
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      {categoryFilter && (
+        <FilterClearButton
+          label="Clear category filter"
+          onClick={() => onCategoryFilterChange(null)}
+        />
+      )}
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <FilterChipTrigger
             icon={Users01}
             active={!!authorFilter}
-            value={activeAuthor?.name}
+            value={activeAuthor?.name ?? "Author"}
             className="min-w-0 shrink"
           />
         </DropdownMenuTrigger>
@@ -2225,30 +2240,70 @@ function PostFilterBar({
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      {authorFilter && (
+        <FilterClearButton
+          label="Clear author filter"
+          onClick={() => onAuthorFilterChange(null)}
+        />
+      )}
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <FilterChipTrigger
-            icon={SwitchVertical01}
-            active
-            value={POST_SORT_SHORT[sort]}
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={sort}
-            onValueChange={(v) => onSortChange(v as PostSort)}
-          >
-            {(Object.keys(POST_SORT_LABELS) as PostSort[]).map((value) => (
-              <DropdownMenuRadioItem key={value} value={value}>
-                {POST_SORT_LABELS[value]}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <FilterChipTrigger
+              icon={SwitchVertical01}
+              active
+              value={POST_SORT_SHORT[sort]}
+            />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={sort}
+              onValueChange={(v) => onSortChange(v as PostSort)}
+            >
+              {(Object.keys(POST_SORT_LABELS) as PostSort[]).map((value) => (
+                <DropdownMenuRadioItem key={value} value={value}>
+                  {POST_SORT_LABELS[value]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 px-2 text-xs"
+          disabled={!hasPosts}
+          onClick={onStartSelection}
+        >
+          <CheckSquare size={14} />
+          Select
+        </Button>
+      </div>
     </div>
+  );
+}
+
+/** Small "×" that clears an active filter chip. */
+function FilterClearButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+    >
+      <X size={12} />
+    </button>
   );
 }
 
@@ -2290,14 +2345,14 @@ function PostSelectionToolbar({
   onToggleSelectAll,
   onUpdateCategory,
   onDelete,
-  onClear,
+  onExit,
 }: {
   count: number;
   allSelected: boolean;
   onToggleSelectAll: () => void;
   onUpdateCategory: () => void;
   onDelete: () => void;
-  onClear: () => void;
+  onExit: () => void;
 }) {
   return (
     <div className="flex items-center gap-0.5 border-b bg-accent/40 px-2 py-1.5">
@@ -2342,13 +2397,13 @@ function PostSelectionToolbar({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={onClear}
-              aria-label="Clear selection"
+              onClick={onExit}
+              aria-label="Exit selection"
             >
               <X size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Clear selection</TooltipContent>
+          <TooltipContent side="bottom">Exit selection</TooltipContent>
         </Tooltip>
       </div>
     </div>
@@ -2497,7 +2552,6 @@ function ItemRow({
   trailing,
   selectable,
   selectionActive,
-  alwaysShowCheckbox,
   selected,
   onToggleSelect,
   onClick,
@@ -2517,9 +2571,8 @@ function ItemRow({
   variantCount?: number;
   trailing?: React.ReactNode;
   selectable?: boolean;
+  /** In selection mode the checkbox is always shown (not just on hover). */
   selectionActive?: boolean;
-  /** Keep the checkbox visible even without hover or an active selection. */
-  alwaysShowCheckbox?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
   onClick: () => void;
@@ -2582,7 +2635,7 @@ function ItemRow({
         <span
           className={cn(
             "flex shrink-0 items-center pl-2.5 transition-opacity",
-            selected || selectionActive || alwaysShowCheckbox
+            selected || selectionActive
               ? "opacity-100"
               : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
           )}
