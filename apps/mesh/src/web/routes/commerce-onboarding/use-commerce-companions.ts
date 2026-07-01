@@ -2,7 +2,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { callRegistryTool } from "@/web/utils/registry-utils";
 import { useMCPClient, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { COMMERCE_COMPANION_MCPS } from "./companions.ts";
 import {
   buildCompanionCards,
@@ -18,6 +18,12 @@ interface CompanionOrg {
   id: string;
   slug: string;
 }
+
+type ConnectionWhereCondition = {
+  field: string[];
+  operator: "in";
+  value: string[];
+};
 
 export function useCommerceCompanions({
   selfClient,
@@ -72,21 +78,38 @@ export function useCommerceCompanions({
       }>(result);
     },
   });
+  const configurationState =
+    cdConnectionQuery.data?.item?.configuration_state ?? null;
+  const linkedConnectionIds = requirements
+    .map(
+      (r) =>
+        (configurationState?.[r.fieldKey] as { value?: unknown } | undefined)
+          ?.value,
+    )
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
 
   // 3) Existing org connections that could satisfy a binding (app identity).
   const connectionsQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryCompanionConnections(org.id),
     enabled: requirements.length > 0,
     queryFn: async () => {
+      const conditions: ConnectionWhereCondition[] = [
+        { field: ["app_name"], operator: "in", value: bindingTypes },
+        { field: ["app_id"], operator: "in", value: registryAppIds },
+      ];
+      if (linkedConnectionIds.length > 0) {
+        conditions.push({
+          field: ["id"],
+          operator: "in",
+          value: linkedConnectionIds,
+        });
+      }
       const result = await selfClient.callTool({
         name: "COLLECTION_CONNECTIONS_LIST",
         arguments: {
           where: {
             operator: "or",
-            conditions: [
-              { field: ["app_name"], operator: "in", value: bindingTypes },
-              { field: ["app_id"], operator: "in", value: registryAppIds },
-            ],
+            conditions,
           },
           limit: 1000,
         },
@@ -94,6 +117,45 @@ export function useCommerceCompanions({
       return unwrapToolResult<{ items: CandidateConnection[] }>(result);
     },
   });
+  const connections = connectionsQuery.data?.items ?? [];
+  const linkedConnectionIdSet = new Set(linkedConnectionIds);
+  const linkedConnections = connections.filter((connection) =>
+    linkedConnectionIdSet.has(connection.id),
+  );
+  const oauthStatusConnections = linkedConnections.filter(
+    (connection) => connection.oauth_config && !connection.connection_token,
+  );
+  const oauthStatusQueries = useQueries({
+    queries: oauthStatusConnections.map((connection) => ({
+      queryKey: KEYS.commerceDiscoveryCompanionOAuthStatus(
+        org.id,
+        connection.id,
+      ),
+      queryFn: async () => {
+        const response = await fetch(
+          `/api/${encodeURIComponent(org.slug)}/connections/${encodeURIComponent(connection.id)}/oauth-token/status`,
+          { credentials: "include" },
+        );
+        if (!response.ok) return { hasToken: false };
+        const data = (await response.json()) as { hasToken?: unknown };
+        return { hasToken: data.hasToken === true };
+      },
+      retry: false,
+    })),
+  });
+  const oauthStatusByConnectionId = new Map(
+    oauthStatusConnections.map((connection, index) => [
+      connection.id,
+      oauthStatusQueries[index]?.data?.hasToken === true,
+    ]),
+  );
+  const connectionReadiness: Record<string, boolean> = {};
+  for (const connection of linkedConnections) {
+    connectionReadiness[connection.id] =
+      !connection.oauth_config ||
+      !!connection.connection_token ||
+      oauthStatusByConnectionId.get(connection.id) === true;
+  }
 
   // 4) Registry batch (one LIST on the Deco store).
   const registryQuery = useQuery({
@@ -125,9 +187,9 @@ export function useCommerceCompanions({
     requirements,
     itemsById,
     itemsByName,
-    connections: connectionsQuery.data?.items ?? [],
-    configurationState:
-      cdConnectionQuery.data?.item?.configuration_state ?? null,
+    connections,
+    connectionReadiness,
+    configurationState,
     curated: COMMERCE_COMPANION_MCPS,
   });
 
@@ -135,7 +197,9 @@ export function useCommerceCompanions({
     schemaQuery.isPending ||
     cdConnectionQuery.isPending ||
     (requirements.length > 0 &&
-      (connectionsQuery.isPending || registryQuery.isPending));
+      (connectionsQuery.isPending ||
+        registryQuery.isPending ||
+        oauthStatusQueries.some((query) => query.isPending)));
   const error =
     schemaQuery.error ??
     cdConnectionQuery.error ??

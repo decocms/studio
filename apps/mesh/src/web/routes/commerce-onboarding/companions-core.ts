@@ -10,6 +10,8 @@ export interface CandidateConnection {
   id: string;
   app_name?: string | null;
   app_id?: string | null;
+  connection_token?: string | null;
+  oauth_config?: unknown | null;
   status?: string | null;
   updated_at?: string | null;
 }
@@ -169,10 +171,12 @@ export function buildCompanionCards(args: {
   itemsById: Record<string, RegistryItemLike>;
   itemsByName: Record<string, RegistryItemLike>;
   connections: CandidateConnection[];
+  connectionReadiness?: Record<string, boolean>;
   configurationState: Record<string, unknown> | null | undefined;
   curated: Record<string, CompanionCopy>;
 }): CompanionCardModel[] {
   const cards: CompanionCardModel[] = [];
+  const connectionsById = new Set(args.connections.map((c) => c.id));
   for (const req of args.requirements) {
     const curatedEntry = args.curated[req.bindingType];
     const item = curatedEntry
@@ -182,7 +186,11 @@ export function buildCompanionCards(args: {
     const linked = (
       args.configurationState?.[req.fieldKey] as { value?: string } | undefined
     )?.value;
-    const satisfied = !!linked;
+    const linkedExists = !!linked && connectionsById.has(linked);
+    const linkedReady = linkedExists
+      ? args.connectionReadiness?.[linked] !== false
+      : false;
+    const satisfied = linkedExists && linkedReady;
     cards.push({
       fieldKey: req.fieldKey,
       bindingType: req.bindingType,
@@ -198,11 +206,13 @@ export function buildCompanionCards(args: {
       satisfied,
       candidateConnectionId: satisfied
         ? null
-        : resolveCandidate(
-            args.connections,
-            req.bindingType,
-            curatedEntry?.registryAppId,
-          ),
+        : linkedExists
+          ? linked
+          : resolveCandidate(
+              args.connections,
+              req.bindingType,
+              curatedEntry?.registryAppId,
+            ),
     });
   }
   return cards;
