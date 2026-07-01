@@ -1,7 +1,6 @@
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ArrowUpRight, ChevronDown, User01 } from "@untitledui/icons";
-import { useState } from "react";
+import { ArrowUpRight, User01 } from "@untitledui/icons";
 
 /**
  * Where "Schedule a meeting" sends people who'd rather have us run the
@@ -112,42 +111,32 @@ export function ScheduleMeetingVisual() {
 
 /**
  * Mobile counterpart of {@link ScheduleMeetingVisual}. On small screens the
- * split disappears and connecting tools is the priority, so this collapses to a
- * quiet row that expands to reveal the call CTA on tap.
+ * split disappears, so this is a compact, tappable banner that opens the
+ * scheduling flow directly — quieter than the full card, still inviting.
  */
 export function ScheduleMeetingBanner({ className }: { className?: string }) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <div className={cn("rounded-2xl border border-border bg-card", className)}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 p-4 text-left"
-      >
-        <span className="flex items-center gap-2.5">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground">
-            <User01 size={14} />
-          </span>
-          <span className="text-sm font-medium text-foreground">
-            Prefer to talk to a human?
-          </span>
-        </span>
-        <ChevronDown
-          size={18}
-          className={cn(
-            "text-muted-foreground transition-transform",
-            open && "rotate-180",
-          )}
-        />
-      </button>
-      {open && (
-        <div className="grid gap-3 px-4 pb-4">
-          <p className="text-sm leading-5 text-muted-foreground">{BODY}</p>
-          <ScheduleMeetingCta />
-        </div>
+    <a
+      href={SCHEDULE_MEETING_URL}
+      target="_blank"
+      rel="noreferrer"
+      className={cn(
+        "flex items-center gap-4 rounded-2xl border border-border bg-card p-5 card-shadow transition-colors hover:bg-accent",
+        className,
       )}
-    </div>
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <User01 size={20} />
+      </span>
+      <span className="flex flex-1 flex-col gap-0.5">
+        <span className="text-base font-medium leading-5 text-foreground">
+          Prefer to talk to a human?
+        </span>
+        <span className="text-sm leading-5 text-muted-foreground">
+          Book a call and we'll run the diagnostic with you.
+        </span>
+      </span>
+      <ArrowUpRight size={18} className="shrink-0 text-muted-foreground" />
+    </a>
   );
 }
