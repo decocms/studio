@@ -10,12 +10,13 @@ import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
-import { str } from "./blocks/primitives";
+import { EditableText, str } from "./blocks/primitives";
 
 /**
- * Category editor: name / slug / description inputs, the same block document
- * canvas used by posts, and the list of posts in this category. Mirrors
- * PostEditor's layout so authors edit categories with the same affordances.
+ * Category editor: an editable name heading, slug / description inputs, the
+ * same block document canvas used by posts, and the list of posts in this
+ * category. Mirrors PostEditor's layout so authors edit categories with the
+ * same affordances.
  */
 export function CategoryEditor({
   orgSlug,
@@ -99,16 +100,12 @@ export function CategoryEditor({
 
         <div className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-8 py-8">
-            <div className="space-y-2">
-              <Label htmlFor="category-name">Name</Label>
-              <Input
-                id="category-name"
-                value={str(category.name)}
-                onChange={(e) => setField("name", e.target.value)}
-                placeholder="Category name"
-                className="h-10"
-              />
-            </div>
+            <EditableText
+              value={str(category.name)}
+              onChange={(v) => setField("name", v)}
+              placeholder="Category name"
+              className="py-1 text-3xl font-bold text-foreground"
+            />
 
             <div className="mt-4 space-y-2">
               <Label htmlFor="category-slug">Slug</Label>
