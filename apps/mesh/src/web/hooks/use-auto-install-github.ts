@@ -114,7 +114,7 @@ export function useAutoInstallGitHub(opts: {
         throw new Error(auth.error ?? "No token received from GitHub");
       }
 
-      // Step 5: Invalidate connection queries so picker re-renders
+      // Step 3: Invalidate connection queries so picker re-renders
       invalidateVirtualMcpQueries(queryClient, org.id);
 
       setConnection(connectionData as ConnectionEntity);
