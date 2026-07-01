@@ -24,6 +24,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight, Loading01 } from "@untitledui/icons";
 import { Suspense, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
 
 interface CommerceOrganization {
   id: string;
@@ -741,29 +742,12 @@ function CommerceDiscoveryReady({
         title="Commerce Discovery"
         description={`Commerce Discovery is connected for ${org.name}.`}
       />
-      <div className="grid gap-3">
-        <div className="rounded-xl card-shadow bg-background dark:bg-input/30 p-4">
-          <p className="text-sm font-medium">Companion MCPs</p>
-          <p className="mt-1 text-sm text-muted-foreground leading-5">
-            Commerce Discovery requires platform integrations such as VTEX.
-            These companion MCP requirements will be available soon.
-          </p>
-          {
-            // TODO: @tlgimenes replace placeholder with dynamic companion MCP requirements
-            // read from Commerce Discovery MCP configuration/binding metadata.
-          }
-        </div>
-      </div>
-      <Button
-        type="button"
-        size="xl"
-        className="w-full"
-        onClick={onOpenReport}
-        disabled={!reportApp.virtualMcpId}
-      >
-        See full report
-        <ArrowRight size={16} />
-      </Button>
+      <CompanionMcpsSection
+        org={org}
+        cdConnectionId={reportApp.connectionId}
+        reportDisabled={!reportApp.virtualMcpId}
+        onOpenReport={onOpenReport}
+      />
     </div>
   );
 }
