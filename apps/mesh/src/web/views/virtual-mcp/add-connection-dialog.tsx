@@ -8,10 +8,7 @@ import type { RegistryItem } from "@/web/components/store/types";
 import { useInfiniteScroll } from "@/web/hooks/use-infinite-scroll";
 import { useLocalStorage } from "@/web/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
-import {
-  authenticateMcp,
-  isConnectionAuthenticated,
-} from "@/web/lib/mcp-oauth";
+import { authenticateAndPersistOAuth } from "@/web/lib/authenticate-and-persist-oauth";
 import { KEYS } from "@/web/lib/query-keys";
 import { authClient } from "@/web/lib/auth-client";
 import {
@@ -682,79 +679,40 @@ export function AddConnectionDialog({
       });
       const id = created.id;
 
-      // Handle OAuth if needed
-      const mcpProxyUrl = new URL(
-        `/api/${org.slug}/mcp/${id}`,
-        window.location.origin,
-      );
-      const authStatus = await isConnectionAuthenticated({
-        url: mcpProxyUrl.href,
-        token: null,
+      // Handle OAuth if needed + persist, via the shared helper.
+      const auth = await authenticateAndPersistOAuth({
+        connectionId: id,
         orgId: org.id,
+        orgSlug: org.slug,
+        persistFallback: (token) =>
+          connectionActions.update
+            .mutateAsync({ id, data: { connection_token: token } })
+            .then(() => undefined),
       });
 
-      if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-        const { token, tokenInfo, error } = await authenticateMcp({
-          connectionId: id,
-          orgSlug: org.slug,
-          scope: "offline_access",
+      if (auth.ran && !auth.ok) {
+        track("connection_oauth_failed", {
+          connection_id: id,
+          flow: "clone",
+          error: auth.error ?? "no_token",
         });
-        if (error || !token) {
-          track("connection_oauth_failed", {
-            connection_id: id,
-            flow: "clone",
-            error: error ?? "no_token",
-          });
-          toast.error(`Authentication failed: ${error ?? "no token received"}`);
-          // Clean up the orphaned connection
-          await connectionActions.delete.mutateAsync(id);
-          return;
-        }
+        toast.error(
+          `Authentication failed: ${auth.error ?? "no token received"}`,
+        );
+        // Clean up the orphaned connection
+        await connectionActions.delete.mutateAsync(id);
+        return;
+      }
+
+      if (auth.ran) {
         track("connection_oauth_succeeded", {
           connection_id: id,
           flow: "clone",
         });
-        if (tokenInfo) {
-          try {
-            const response = await fetch(
-              `/api/${org.slug}/connections/${id}/oauth-token`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                  accessToken: tokenInfo.accessToken,
-                  refreshToken: tokenInfo.refreshToken,
-                  expiresIn: tokenInfo.expiresIn,
-                  scope: tokenInfo.scope,
-                  clientId: tokenInfo.clientId,
-                  clientSecret: tokenInfo.clientSecret,
-                  tokenEndpoint: tokenInfo.tokenEndpoint,
-                }),
-              },
-            );
-            if (!response.ok) {
-              await connectionActions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            } else {
-              await connectionActions.update.mutateAsync({ id, data: {} });
-            }
-          } catch {
-            await connectionActions.update.mutateAsync({
-              id,
-              data: { connection_token: token },
-            });
-          }
-        } else {
-          await connectionActions.update.mutateAsync({
-            id,
-            data: { connection_token: token },
-          });
-        }
+        const mcpProxyUrl = new URL(
+          `/api/${org.slug}/mcp/${id}`,
+          window.location.origin,
+        );
         await queryClient.invalidateQueries({
           queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
         });
@@ -801,83 +759,40 @@ export function AddConnectionDialog({
 
       const { id } = await connectionActions.create.mutateAsync(connectionData);
 
-      // Handle OAuth flow
-      const mcpProxyUrl = new URL(
-        `/api/${org.slug}/mcp/${id}`,
-        window.location.origin,
-      );
-      const authStatus = await isConnectionAuthenticated({
-        url: mcpProxyUrl.href,
-        token: null,
+      // Handle OAuth flow (if needed) + persist, via the shared helper.
+      const auth = await authenticateAndPersistOAuth({
+        connectionId: id,
         orgId: org.id,
+        orgSlug: org.slug,
+        persistFallback: (token) =>
+          connectionActions.update
+            .mutateAsync({ id, data: { connection_token: token } })
+            .then(() => undefined),
       });
 
-      if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-        const { token, tokenInfo, error } = await authenticateMcp({
-          connectionId: id,
-          orgSlug: org.slug,
-          scope: "offline_access",
+      if (auth.ran && !auth.ok) {
+        track("connection_oauth_failed", {
+          connection_id: id,
+          flow: "connect_new",
+          error: auth.error ?? "no_token",
         });
-        if (error || !token) {
-          track("connection_oauth_failed", {
-            connection_id: id,
-            flow: "connect_new",
-            error: error ?? "no_token",
-          });
-          toast.warning("Couldn't sign in to this connection", {
-            description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${error ?? "no token received"})`,
-          });
-          trackAttach(id, connectionData.app_name ?? null, "new");
-          onAdd(id);
-          return;
-        }
+        toast.warning("Couldn't sign in to this connection", {
+          description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${auth.error ?? "no token received"})`,
+        });
+        trackAttach(id, connectionData.app_name ?? null, "new");
+        onAdd(id);
+        return;
+      }
+
+      if (auth.ran) {
         track("connection_oauth_succeeded", {
           connection_id: id,
           flow: "connect_new",
         });
-
-        if (tokenInfo) {
-          try {
-            const response = await fetch(
-              `/api/${org.slug}/connections/${id}/oauth-token`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                  accessToken: tokenInfo.accessToken,
-                  refreshToken: tokenInfo.refreshToken,
-                  expiresIn: tokenInfo.expiresIn,
-                  scope: tokenInfo.scope,
-                  clientId: tokenInfo.clientId,
-                  clientSecret: tokenInfo.clientSecret,
-                  tokenEndpoint: tokenInfo.tokenEndpoint,
-                }),
-              },
-            );
-            if (!response.ok) {
-              await connectionActions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            } else {
-              await connectionActions.update.mutateAsync({ id, data: {} });
-            }
-          } catch {
-            await connectionActions.update.mutateAsync({
-              id,
-              data: { connection_token: token },
-            });
-          }
-        } else {
-          await connectionActions.update.mutateAsync({
-            id,
-            data: { connection_token: token },
-          });
-        }
-
+        const mcpProxyUrl = new URL(
+          `/api/${org.slug}/mcp/${id}`,
+          window.location.origin,
+        );
         await queryClient.invalidateQueries({
           queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
         });
@@ -945,85 +860,41 @@ export function AddConnectionDialog({
         onCreated={async (id) => {
           setCreateOpen(false);
 
-          // Handle OAuth if needed (same flow as handleConnectAndAdd)
-          const mcpProxyUrl = new URL(
-            `/api/${org.slug}/mcp/${id}`,
-            window.location.origin,
-          );
-          const authStatus = await isConnectionAuthenticated({
-            url: mcpProxyUrl.href,
-            token: null,
+          // Handle OAuth if needed + persist, via the shared helper.
+          const auth = await authenticateAndPersistOAuth({
+            connectionId: id,
             orgId: org.id,
+            orgSlug: org.slug,
+            persistFallback: (token) =>
+              connectionActions.update
+                .mutateAsync({ id, data: { connection_token: token } })
+                .then(() => undefined),
           });
 
-          if (authStatus.supportsOAuth && !authStatus.isAuthenticated) {
-            const { token, tokenInfo, error } = await authenticateMcp({
-              connectionId: id,
-              orgSlug: org.slug,
-              scope: "offline_access",
+          if (auth.ran && !auth.ok) {
+            track("connection_oauth_failed", {
+              connection_id: id,
+              flow: "custom_create",
+              error: auth.error ?? "no_token",
             });
-            if (error || !token) {
-              track("connection_oauth_failed", {
-                connection_id: id,
-                flow: "custom_create",
-                error: error ?? "no_token",
-              });
-              toast.warning("Couldn't sign in to this connection", {
-                description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${error ?? "no token received"})`,
-              });
-              trackAttach(id, null, "custom");
-              onAdd(id);
-              onOpenChange(false);
-              return;
-            }
+            toast.warning("Couldn't sign in to this connection", {
+              description: `It was added to your agent, but its sign-in setup looks off. You can try authenticating again later from the connection's settings. (${auth.error ?? "no token received"})`,
+            });
+            trackAttach(id, null, "custom");
+            onAdd(id);
+            onOpenChange(false);
+            return;
+          }
+
+          if (auth.ran) {
             track("connection_oauth_succeeded", {
               connection_id: id,
               flow: "custom_create",
             });
-            if (tokenInfo) {
-              try {
-                const response = await fetch(
-                  `/api/${org.slug}/connections/${id}/oauth-token`,
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    credentials: "include",
-                    body: JSON.stringify({
-                      accessToken: tokenInfo.accessToken,
-                      refreshToken: tokenInfo.refreshToken,
-                      expiresIn: tokenInfo.expiresIn,
-                      scope: tokenInfo.scope,
-                      clientId: tokenInfo.clientId,
-                      clientSecret: tokenInfo.clientSecret,
-                      tokenEndpoint: tokenInfo.tokenEndpoint,
-                    }),
-                  },
-                );
-                if (!response.ok) {
-                  await connectionActions.update.mutateAsync({
-                    id,
-                    data: { connection_token: token },
-                  });
-                } else {
-                  await connectionActions.update.mutateAsync({
-                    id,
-                    data: {},
-                  });
-                }
-              } catch {
-                await connectionActions.update.mutateAsync({
-                  id,
-                  data: { connection_token: token },
-                });
-              }
-            } else {
-              await connectionActions.update.mutateAsync({
-                id,
-                data: { connection_token: token },
-              });
-            }
+            const mcpProxyUrl = new URL(
+              `/api/${org.slug}/mcp/${id}`,
+              window.location.origin,
+            );
             await queryClient.invalidateQueries({
               queryKey: KEYS.isMCPAuthenticated(mcpProxyUrl.href, null),
             });
