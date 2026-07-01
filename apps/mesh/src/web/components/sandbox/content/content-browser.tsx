@@ -11,6 +11,7 @@ import {
   DotsHorizontal,
   Edit01,
   File02,
+  FilterFunnel01,
   Flag01,
   Globe02,
   Grid01,
@@ -1747,7 +1748,7 @@ function ItemList({
     activeCollection !== "apps" && activeCollection !== "sections";
 
   return (
-    <div className="w-[500px] shrink-0 border-r flex flex-col min-h-0">
+    <div className="w-[300px] shrink-0 border-r flex flex-col min-h-0">
       <div className="px-2 h-12 flex items-center gap-1 border-b shrink-0">
         <div className="flex flex-1 items-center gap-2 pl-1">
           <SearchLg
@@ -2166,73 +2167,77 @@ function PostFilterBar({
 }) {
   const activeCategory = categories.find((c) => c.slug === categoryFilter);
   const activeAuthor = authors.find((a) => a.email === authorFilter);
+  const hasFilter = !!(categoryFilter || authorFilter);
+  const activeLabel = activeCategory?.name ?? activeAuthor?.name ?? "Filter";
+  // One filter at a time: encode both dimensions into a single radio value.
+  const activeValue = categoryFilter
+    ? `cat:${categoryFilter}`
+    : authorFilter
+      ? `author:${authorFilter}`
+      : ALL_FILTER;
+  const clearFilter = () => {
+    onCategoryFilterChange(null);
+    onAuthorFilterChange(null);
+  };
+  const handleFilterChange = (v: string) => {
+    if (v.startsWith("cat:")) {
+      onAuthorFilterChange(null);
+      onCategoryFilterChange(v.slice(4));
+    } else if (v.startsWith("author:")) {
+      onCategoryFilterChange(null);
+      onAuthorFilterChange(v.slice(7));
+    } else {
+      clearFilter();
+    }
+  };
 
   return (
     <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b px-2 py-1.5">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <FilterChipTrigger
-            icon={Tag01}
-            active={!!categoryFilter}
-            value={activeCategory?.name ?? "Category"}
+            icon={FilterFunnel01}
+            active={hasFilter}
+            value={activeLabel}
             className="min-w-0 shrink"
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          className="max-h-80 w-56 overflow-y-auto"
+          className="max-h-96 w-60 overflow-y-auto"
         >
-          <DropdownMenuLabel>Filter by category</DropdownMenuLabel>
+          <DropdownMenuLabel>Filter by</DropdownMenuLabel>
           <DropdownMenuRadioGroup
-            value={categoryFilter ?? ALL_FILTER}
-            onValueChange={(v) =>
-              onCategoryFilterChange(v === ALL_FILTER ? null : v)
-            }
+            value={activeValue}
+            onValueChange={handleFilterChange}
           >
             <DropdownMenuRadioItem value={ALL_FILTER}>
-              All categories
+              All posts
             </DropdownMenuRadioItem>
+            {categories.length > 0 && (
+              <DropdownMenuLabel className="text-muted-foreground/70">
+                Category
+              </DropdownMenuLabel>
+            )}
             {categories.map((c) => (
-              <DropdownMenuRadioItem key={c.slug} value={c.slug}>
+              <DropdownMenuRadioItem
+                key={`cat:${c.slug}`}
+                value={`cat:${c.slug}`}
+              >
                 <span className="min-w-0 flex-1 truncate">{c.name}</span>
                 <OptionCount count={c.count} />
               </DropdownMenuRadioItem>
             ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {categoryFilter && (
-        <FilterClearButton
-          label="Clear category filter"
-          onClick={() => onCategoryFilterChange(null)}
-        />
-      )}
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <FilterChipTrigger
-            icon={Users01}
-            active={!!authorFilter}
-            value={activeAuthor?.name ?? "Author"}
-            className="min-w-0 shrink"
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="start"
-          className="max-h-80 w-56 overflow-y-auto"
-        >
-          <DropdownMenuLabel>Filter by author</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={authorFilter ?? ALL_FILTER}
-            onValueChange={(v) =>
-              onAuthorFilterChange(v === ALL_FILTER ? null : v)
-            }
-          >
-            <DropdownMenuRadioItem value={ALL_FILTER}>
-              All authors
-            </DropdownMenuRadioItem>
+            {authors.length > 0 && (
+              <DropdownMenuLabel className="text-muted-foreground/70">
+                Author
+              </DropdownMenuLabel>
+            )}
             {authors.map((a) => (
-              <DropdownMenuRadioItem key={a.email} value={a.email}>
+              <DropdownMenuRadioItem
+                key={`author:${a.email}`}
+                value={`author:${a.email}`}
+              >
                 <span className="min-w-0 flex-1 truncate">{a.name}</span>
                 <OptionCount count={a.count} />
               </DropdownMenuRadioItem>
@@ -2240,11 +2245,8 @@ function PostFilterBar({
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      {authorFilter && (
-        <FilterClearButton
-          label="Clear author filter"
-          onClick={() => onAuthorFilterChange(null)}
-        />
+      {hasFilter && (
+        <FilterClearButton label="Clear filter" onClick={clearFilter} />
       )}
 
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
