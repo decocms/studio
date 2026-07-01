@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Activity, FilterLines, SearchSm, Users01 } from "@untitledui/icons";
+import { Activity, FilterLines, Rows01, SearchSm } from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
@@ -44,35 +44,25 @@ import { SortableCollapsedTaskGroups } from "./sortable-collapsed-task-groups";
 import {
   foldDevGroupsIntoLive,
   groupThreadsByVirtualMcp,
-  groupThreadsByStatus,
   TOOL_CALL_RUNS_GROUP_KEY,
 } from "./group-threads";
 import { getLiveDevAgentMaps } from "@/web/lib/agent-capabilities";
 import { removeGroupFromOrder, syncOrdersOnOrgPinToggle } from "./stable-order";
-import { SortableTaskGroups } from "./sortable-task-groups";
-import { StatusGroup } from "./task-group";
+import { SortableAgentRows } from "./sortable-agent-rows";
+import type { AgentRowProps } from "./agent-row";
+import { TeamThreadsSection } from "./team-threads-section";
+import { MyThreadsSection } from "./my-threads-section";
 import type { SidebarFilters } from "./next-page-offset";
 import { buildGroupThreadCounts } from "./next-page-offset";
 import { useSidebarGroupOrder } from "./use-sidebar-group-order";
 
 type TypeFilter = "all" | "manual" | "automation";
-type MemberFilter = "all" | "mine";
-type GroupBy = "agent" | "status";
+type GroupBy = "flat" | "status";
 
 const TYPE_LABELS: Record<TypeFilter, string> = {
   all: "All tasks",
   manual: "Chats",
   automation: "Automation",
-};
-
-const MEMBER_LABELS: Record<MemberFilter, string> = {
-  all: "All members",
-  mine: "Mine only",
-};
-
-const GROUP_BY_LABELS: Record<GroupBy, string> = {
-  agent: "Agent",
-  status: "Status",
 };
 
 export function TaskGroupsList({
@@ -125,16 +115,24 @@ export function TaskGroupsList({
   })();
   const orgPinnedSet = new Set(orgPinnedIds);
 
-  const { threads: allThreads } = useThreads();
+  const {
+    threads: allThreads,
+    hasMore,
+    isFetchingMore,
+    fetchNextPage,
+  } = useThreads();
   const visibleThreads = allThreads.filter((thread) => !thread.hidden);
   const { hide } = useThreadActions();
 
   const navigate = useNavigate();
+  const navigateToAgent = useNavigateToAgent();
   const { setTaskId, createNewTask } = usePanelActions();
   const params = useParams({ strict: false }) as {
     taskId?: string;
   };
   const activeTaskId = params.taskId ?? null;
+  const activeAgentId =
+    allThreads.find((t) => t.id === activeTaskId)?.virtual_mcp_id ?? null;
   const closeAfterNavigation = () => {
     onNavigate?.();
   };
@@ -144,8 +142,7 @@ export function TaskGroupsList({
   );
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [memberFilter, setMemberFilter] = useState<MemberFilter>("mine");
-  const [groupBy, setGroupBy] = useState<GroupBy>("agent");
+  const [groupBy, setGroupBy] = useState<GroupBy>("flat");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
   const [localOrderRevision, setLocalOrderRevision] = useState(0);
@@ -153,9 +150,11 @@ export function TaskGroupsList({
   const orderRevision = localOrderRevision + contextOrderRevision;
   const orderScope = { orgId: org.id, userId: sidebarUserId };
 
+  // Member scope is now structural (Team vs My sections), so per-group/per-status
+  // server pagination stays scoped to the current user via `member: "mine"`.
   const filters: SidebarFilters = {
     type: typeFilter,
-    member: memberFilter,
+    member: "mine",
     currentUserId: currentUserId ?? null,
   };
 
@@ -167,8 +166,7 @@ export function TaskGroupsList({
 
   // Dev agents are hidden from agent PICKERS (browse popover, @-mention, add
   // to home). Their thread groups are folded into the live counterpart's group
-  // (rendered as a "Develop" sub-section) so dev sessions stay navigable under
-  // one entry instead of a confusing standalone group.
+  // so dev sessions stay under one entry instead of a confusing standalone one.
   const orderedGroups = useSidebarGroupOrder(
     orderScope,
     foldDevGroupsIntoLive(
@@ -194,9 +192,14 @@ export function TaskGroupsList({
       g.virtualMcpId === TOOL_CALL_RUNS_GROUP_KEY ||
       knownAgentIds.has(g.virtualMcpId),
   );
+  // The Agents section lists real agents only — threads without an agent
+  // (tool-call runs) surface in the thread lists, not as an "agent".
+  const agentGroups = groups.filter(
+    (g) => g.virtualMcpId !== TOOL_CALL_RUNS_GROUP_KEY,
+  );
 
-  const memberFiltered = (threads: Task[]) =>
-    memberFilter === "mine" && currentUserId
+  const mineFiltered = (threads: Task[]) =>
+    currentUserId
       ? threads.filter((t) => t.created_by === currentUserId)
       : threads;
 
@@ -210,18 +213,22 @@ export function TaskGroupsList({
     return threads;
   };
 
+  // Mine, in recency order — used both for display and to resolve an agent's
+  // most-recent thread on click (ignores the type filter so the agent always
+  // opens its latest thread).
+  const myThreadsAll = mineFiltered(sortedThreads);
+  const myThreads = typeFiltered(myThreadsAll);
+  const teamThreads = typeFiltered(
+    sortedThreads.filter((t) => t.created_by && t.created_by !== currentUserId),
+  );
+
   const handleArchive = (task: Task) => {
     const wasActive = task.id === activeTaskId;
     hide(task.id);
     if (!wasActive) return;
-    // Land only on the caller's own threads. The panel lists org-wide threads
-    // under the "All members" filter, so an unscoped fallback would teleport
-    // the user into another member's chat.
-    const next = sortedThreads.find(
-      (t) =>
-        t.id !== task.id &&
-        t.virtual_mcp_id === task.virtual_mcp_id &&
-        t.created_by === currentUserId,
+    // Land only on the caller's own threads — never teleport into a teammate's.
+    const next = myThreadsAll.find(
+      (t) => t.id !== task.id && t.virtual_mcp_id === task.virtual_mcp_id,
     );
     closeAfterNavigation();
     if (next) {
@@ -231,13 +238,33 @@ export function TaskGroupsList({
     }
   };
 
+  const handleSelectTask = (t: Task) => {
+    closeAfterNavigation();
+    setTaskId(t.id, t.virtual_mcp_id);
+  };
+
   const handleNewInGroup = (virtualMcpId: string) => {
     track("sidebar_group_new_clicked", { virtual_mcp_id: virtualMcpId });
     closeAfterNavigation();
     createNewTask(virtualMcpId);
   };
 
-  const navigateToAgent = useNavigateToAgent();
+  // Click an agent → open its most recent thread; if it has none, start a new
+  // one (which also adds it to the personal sidebar order).
+  const handleOpenAgent = (virtualMcpId: string) => {
+    const last = myThreadsAll.find((t) => t.virtual_mcp_id === virtualMcpId);
+    track("sidebar_agent_opened", {
+      virtual_mcp_id: virtualMcpId,
+      had_thread: Boolean(last),
+    });
+    closeAfterNavigation();
+    if (last) {
+      setTaskId(last.id, virtualMcpId);
+    } else {
+      navigateToAgent(virtualMcpId);
+    }
+  };
+
   const handleShowSettings = (virtualMcpId: string) => {
     track("sidebar_group_settings_clicked", { virtual_mcp_id: virtualMcpId });
     closeAfterNavigation();
@@ -290,8 +317,23 @@ export function TaskGroupsList({
     };
   };
 
-  const buildAgentGroupRenderProps = (group: (typeof groups)[number]) => {
-    const filtered = typeFiltered(memberFiltered(group.threads));
+  const buildAgentRowProps = (
+    group: (typeof agentGroups)[number],
+  ): AgentRowProps => ({
+    virtualMcpId: group.virtualMcpId,
+    isActive: activeAgentId === group.virtualMcpId,
+    threadCount: agentThreadCounts.get(group.virtualMcpId) ?? 0,
+    onOpen: handleOpenAgent,
+    onNewTask: handleNewInGroup,
+    onShowSettings: handleShowSettings,
+    onHideGroup: handleHideGroup,
+    ...groupContextMenuProps(group.virtualMcpId),
+  });
+
+  // The collapsed rail still renders per-agent thread popovers, so it keeps the
+  // richer group-render props (with nested, mine-scoped threads).
+  const buildCollapsedGroupProps = (group: (typeof groups)[number]) => {
+    const filtered = typeFiltered(mineFiltered(group.threads));
     const devPartnerId = liveToDev.get(group.virtualMcpId) ?? null;
     return {
       virtualMcpId: group.virtualMcpId,
@@ -303,10 +345,7 @@ export function TaskGroupsList({
       activeTaskId,
       filters,
       groupVisibleCount: agentThreadCounts.get(group.virtualMcpId) ?? 0,
-      onSelectTask: (t: Task) => {
-        closeAfterNavigation();
-        setTaskId(t.id, t.virtual_mcp_id);
-      },
+      onSelectTask: handleSelectTask,
       onArchiveTask: handleArchive,
       onNewTaskInGroup: handleNewInGroup,
       onShowSettings: handleShowSettings,
@@ -315,22 +354,20 @@ export function TaskGroupsList({
     };
   };
 
-  const filtersActive = typeFilter !== "all" || memberFilter !== "mine";
+  const filtersActive = typeFilter !== "all";
   const { state: sidebarState, isMobile } = useSidebar();
 
   const isCollapsed = sidebarState === "collapsed" && !isMobile;
 
   if (isCollapsed) {
     const visibleGroups = groups.filter((group) => {
-      const filtered = typeFiltered(memberFiltered(group.threads));
+      const filtered = typeFiltered(mineFiltered(group.threads));
       return !(filtersActive && filtered.length === 0);
     });
 
     return (
       <>
-        <SyncSidebarAgentGroupsEmpty
-          value={groupBy === "agent" && groups.length === 0}
-        />
+        <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
         <SidebarMenu className="min-h-0 gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <SortableCollapsedTaskGroups
             groups={visibleGroups}
@@ -338,7 +375,7 @@ export function TaskGroupsList({
             decopilotId={decopilotId}
             orgPinnedIds={orgPinnedIds}
             onReorder={() => setLocalOrderRevision((n) => n + 1)}
-            renderGroup={(group) => buildAgentGroupRenderProps(group)}
+            renderGroup={(group) => buildCollapsedGroupProps(group)}
           />
         </SidebarMenu>
       </>
@@ -347,9 +384,7 @@ export function TaskGroupsList({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <SyncSidebarAgentGroupsEmpty
-        value={groupBy === "agent" && groups.length === 0}
-      />
+      <SyncSidebarAgentGroupsEmpty value={agentGroups.length === 0} />
       <div className="shrink-0 px-1 h-10 md:h-7 mb-2 flex items-center justify-between">
         <div className="flex items-center gap-0.5">
           <ToolbarIconButton
@@ -363,19 +398,17 @@ export function TaskGroupsList({
             <SearchSm size={16} />
           </ToolbarIconButton>
           <ToolbarIconButton
-            aria-label={`Group by ${GROUP_BY_LABELS[groupBy === "agent" ? "status" : "agent"].toLowerCase()}`}
-            title={`Grouped by ${GROUP_BY_LABELS[groupBy].toLowerCase()}`}
+            aria-label={
+              groupBy === "flat" ? "Group by status" : "Show as flat list"
+            }
+            title={groupBy === "flat" ? "Flat list" : "Grouped by status"}
             onClick={() => {
-              const next: GroupBy = groupBy === "agent" ? "status" : "agent";
+              const next: GroupBy = groupBy === "flat" ? "status" : "flat";
               track("tasks_panel_group_by_changed", { to_value: next });
               setGroupBy(next);
             }}
           >
-            {groupBy === "agent" ? (
-              <Users01 size={16} />
-            ) : (
-              <Activity size={16} />
-            )}
+            {groupBy === "flat" ? <Rows01 size={16} /> : <Activity size={16} />}
           </ToolbarIconButton>
           <Popover>
             <PopoverTrigger asChild>
@@ -393,33 +426,6 @@ export function TaskGroupsList({
               className="w-72 p-3"
             >
               <div className="flex flex-col gap-2">
-                <FilterRow label="Members">
-                  <Select
-                    value={memberFilter}
-                    onValueChange={(v) => {
-                      const next = v as MemberFilter;
-                      if (next !== memberFilter) {
-                        track("tasks_panel_member_filter_changed", {
-                          to_value: next,
-                        });
-                      }
-                      setMemberFilter(next);
-                    }}
-                  >
-                    <SelectTrigger size="sm" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(MEMBER_LABELS) as MemberFilter[]).map(
-                        (opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {MEMBER_LABELS[opt]}
-                          </SelectItem>
-                        ),
-                      )}
-                    </SelectContent>
-                  </Select>
-                </FilterRow>
                 <FilterRow label="Type">
                   <Select
                     value={typeFilter}
@@ -452,41 +458,46 @@ export function TaskGroupsList({
         <BrowseAgentsButton compact />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain flex flex-col gap-0.5 -mr-2 pr-2">
-        {groupBy === "status" ? (
-          <>
-            {groupThreadsByStatus(
-              typeFiltered(memberFiltered(sortedThreads)),
-            ).map((group) => (
-              <StatusGroup
-                key={group.status}
-                status={group.status}
-                threads={group.threads}
-                activeTaskId={activeTaskId}
-                onSelectTask={(t) => {
-                  closeAfterNavigation();
-                  setTaskId(t.id, t.virtual_mcp_id);
-                }}
-                onArchiveTask={handleArchive}
-                filters={filters}
-              />
-            ))}
-          </>
-        ) : (
-          <SortableTaskGroups
-            groups={groups}
-            orderScope={orderScope}
-            decopilotId={decopilotId}
-            orgPinnedIds={orgPinnedIds}
-            onReorder={() => setLocalOrderRevision((n) => n + 1)}
-            renderGroup={(group) => ({
-              ...buildAgentGroupRenderProps(group),
-            })}
-          />
-        )}
+        <TeamThreadsSection
+          threads={teamThreads}
+          activeTaskId={activeTaskId}
+          onSelectTask={handleSelectTask}
+          onNavigate={closeAfterNavigation}
+        />
+        <SectionLabel>My threads</SectionLabel>
+        <MyThreadsSection
+          threads={myThreads}
+          groupBy={groupBy}
+          activeTaskId={activeTaskId}
+          onSelectTask={handleSelectTask}
+          onArchiveTask={handleArchive}
+          filters={filters}
+          hasMore={hasMore}
+          isFetchingMore={isFetchingMore}
+          onLoadMore={() => void fetchNextPage()}
+        />
+        <div className="mx-2 my-2 border-b" />
+        <SectionLabel>Agents</SectionLabel>
+        <SortableAgentRows
+          groups={agentGroups}
+          orderScope={orderScope}
+          decopilotId={decopilotId}
+          orgPinnedIds={orgPinnedIds}
+          onReorder={() => setLocalOrderRevision((n) => n + 1)}
+          renderGroup={buildAgentRowProps}
+        />
       </div>
       {searchEverOpened && (
         <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       )}
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-2 pt-1 pb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80">
+      {children}
     </div>
   );
 }
