@@ -1988,6 +1988,7 @@ function ItemList({
                     }
                     selectable
                     selectionActive={selectionActive}
+                    alwaysShowCheckbox
                     selected={selectedPostKeys.has(post.key)}
                     onToggleSelect={() => onTogglePostSelect(post.key)}
                     onClick={() =>
@@ -2487,6 +2488,7 @@ function ItemRow({
   trailing,
   selectable,
   selectionActive,
+  alwaysShowCheckbox,
   selected,
   onToggleSelect,
   onClick,
@@ -2507,6 +2509,8 @@ function ItemRow({
   trailing?: React.ReactNode;
   selectable?: boolean;
   selectionActive?: boolean;
+  /** Keep the checkbox visible even without hover or an active selection. */
+  alwaysShowCheckbox?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
   onClick: () => void;
@@ -2569,7 +2573,7 @@ function ItemRow({
         <span
           className={cn(
             "flex shrink-0 items-center pl-2.5 transition-opacity",
-            selected || selectionActive
+            selected || selectionActive || alwaysShowCheckbox
               ? "opacity-100"
               : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
           )}
