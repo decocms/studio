@@ -76,6 +76,17 @@ const MAX_COLLECT_PROPS_DEPTH = 12;
 /** Max recursion while building nested field schemas. */
 const MAX_BUILD_PROPERTY_DEPTH = 8;
 
+/**
+ * Above this branch count, a block-ref union (e.g. the `__SECTION_REF__`
+ * "pick any section" selector, which lists every section in the site) is
+ * treated as lazy: we emit the option list but skip materializing each
+ * branch's nested `schema`. The selected branch is resolved on demand via
+ * `resolveSchema()` at selection time, so nothing is lost — and we avoid a
+ * combinatorial blow-up when many of those sections have their own `Section`
+ * field pointing back at the same union.
+ */
+const MAX_ANYOF_EAGER_SCHEMA_BRANCHES = 40;
+
 function isArraySchemaBranch(schema: RawSchema): boolean {
   const t = schema.type;
   return t === "array" || (Array.isArray(t) && t.includes("array"));
@@ -357,16 +368,58 @@ export function resolveSchema(
    * Converts a raw schema entry into a typed SchemaProperty, resolving
    * nested properties for object types (up to depth 3).
    */
-  const buildProperty = (v: RawSchema, depth = 0): SchemaProperty => {
+  const buildProperty = (
+    v: RawSchema,
+    depth = 0,
+    seen: Set<string> = new Set(),
+  ): SchemaProperty => {
     let resolved = v;
+    let vRefKey: string | undefined;
     if (typeof v.$ref === "string") {
       resolved = resolveRef(v.$ref);
       const refKey = v.$ref.split("/").pop() ?? "";
+      vRefKey = refKey;
       if (refKey === VIDEO_WIDGET_REF_KEY && !resolved.format) {
         resolved = { ...resolved, format: "video-uri" };
       }
     }
     resolved = unwrapRefAliases(resolved);
+
+    // Cycle guard for recursive block-ref unions. The `__SECTION_REF__`
+    // "pick any section" selector lists every section, and 20+ of those
+    // sections themselves have a `Section` field pointing back at the same
+    // union. Without this guard, eagerly materializing each branch's nested
+    // `schema` recurses ~exponentially and blows up browser memory (multi-GB).
+    // When we re-enter a union already on the current path, we still emit the
+    // selector's option list but skip the per-branch nested schema — the UI
+    // resolves the selected branch lazily via resolveSchema().
+    const cyclicUnion = vRefKey !== undefined && seen.has(vRefKey);
+    const unionSeen =
+      vRefKey !== undefined ? new Set([...seen, vRefKey]) : seen;
+
+    /**
+     * Build a union branch's nested schema, unless doing so would recurse into
+     * a cycle or expand an oversized selector. Returns `undefined` in those
+     * cases so the branch is resolved lazily on selection.
+     *
+     * The oversized-union skip only applies when branches are `lazilyResolvable`
+     * — i.e. keyed by a module `__resolveType` that `resolveSchema()` can
+     * re-resolve on selection (section/loader selectors). Type-discriminated
+     * unions (keyed by a `type` discriminator, no module resolveType) have no
+     * lazy fallback, so their branch schemas must stay eager regardless of
+     * count; only the cycle/depth guards apply to them.
+     */
+    const eagerBranchSchema = (
+      branch: RawSchema,
+      branchDepth: number,
+      branchCount: number,
+      lazilyResolvable = true,
+    ): SchemaProperty | undefined =>
+      !cyclicUnion &&
+      (!lazilyResolvable || branchCount <= MAX_ANYOF_EAGER_SCHEMA_BRANCHES) &&
+      branchDepth < MAX_BUILD_PROPERTY_DEPTH
+        ? buildProperty(branch, branchDepth, unionSeen)
+        : undefined;
 
     // Extract enum values from anyOf/oneOf const/enum branches
     let enumFromConsts: unknown[] | undefined;
@@ -476,7 +529,7 @@ export function resolveSchema(
             resolveRef,
           );
           if (isConfigArray && nonNull.length > 1) {
-            const built = buildProperty(arrayBranch, depth + 1);
+            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
             return {
               ...built,
               type: "array",
@@ -491,7 +544,7 @@ export function resolveSchema(
             };
           }
           if (hasPageMultivariateLoader) {
-            const built = buildProperty(arrayBranch, depth + 1);
+            const built = buildProperty(arrayBranch, depth + 1, unionSeen);
             return {
               ...built,
               type: "array",
@@ -523,10 +576,7 @@ export function resolveSchema(
                 typeof branch.description === "string"
                   ? branch.description
                   : undefined,
-              schema:
-                depth + 1 < MAX_BUILD_PROPERTY_DEPTH
-                  ? buildProperty(branch, depth + 1)
-                  : undefined,
+              schema: eagerBranchSchema(branch, depth + 1, nonNull.length),
             };
           });
 
@@ -536,9 +586,12 @@ export function resolveSchema(
             (a) => !loaderBranches.includes(a),
           );
           const plainSchema =
-            nonLoaderBranches.length === 1 &&
-            depth + 1 < MAX_BUILD_PROPERTY_DEPTH
-              ? buildProperty(nonLoaderBranches[0]!, depth + 1)
+            nonLoaderBranches.length === 1
+              ? eagerBranchSchema(
+                  nonLoaderBranches[0]!,
+                  depth + 1,
+                  nonNull.length,
+                )
               : undefined;
 
           return {
@@ -576,10 +629,9 @@ export function resolveSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
-              schema:
-                depth + 1 < MAX_BUILD_PROPERTY_DEPTH
-                  ? buildProperty(def, depth + 1)
-                  : undefined,
+              // Type-discriminated branches have no module resolveType to
+              // re-resolve from, so keep them eager regardless of union size.
+              schema: eagerBranchSchema(def, depth + 1, nonNull.length, false),
             };
           });
           return {
@@ -657,10 +709,7 @@ export function resolveSchema(
                   ? def.description
                   : undefined,
               discriminatorValue,
-              schema:
-                depth + 1 < MAX_BUILD_PROPERTY_DEPTH
-                  ? buildProperty(def, depth + 1)
-                  : undefined,
+              schema: eagerBranchSchema(def, depth + 1, nonNull.length),
             });
           }
           return {
@@ -697,7 +746,11 @@ export function resolveSchema(
       if (nestedEntries.length > 0) {
         nestedProperties = {};
         for (const [k, raw] of nestedEntries) {
-          nestedProperties[k] = buildProperty(raw as RawSchema, depth + 1);
+          nestedProperties[k] = buildProperty(
+            raw as RawSchema,
+            depth + 1,
+            unionSeen,
+          );
         }
       }
     }
@@ -713,7 +766,7 @@ export function resolveSchema(
         if (typeof rawItems.$ref === "string") {
           rawItems = resolveRef(rawItems.$ref);
         }
-        itemsSchema = buildProperty(rawItems, depth + 1);
+        itemsSchema = buildProperty(rawItems, depth + 1, unionSeen);
         if (
           typeof rawItems.title === "string" &&
           rawItems.title.includes("{{")
