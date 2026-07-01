@@ -344,7 +344,11 @@ test.describe("Commerce onboarding route isolation", () => {
     ).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByText("Companion MCPs")).toBeVisible();
+    // The old "Companion MCPs" placeholder was replaced by the companion
+    // section, whose header is hidden when no companion requirements resolve
+    // (the case in this e2e env). The ready view is already asserted via the
+    // "See full report" CTA above; here we only guard against leaking raw
+    // connection titles into the onboarding view.
     await expect(page.getByText("Commerce Discovery MCP")).toHaveCount(0);
     await expect(page.getByText("Commerce Discovery agent")).toHaveCount(0);
   });
