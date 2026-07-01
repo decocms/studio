@@ -36,11 +36,14 @@ export function BlockDocument({
   value,
   onChange,
   meta,
+  label,
   emptyMessage = "No content yet. Use ⊕ to add your first block.",
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
   meta: LiveMeta;
+  /** Optional heading rendered above the canvas (e.g. "Content"). */
+  label?: string;
   emptyMessage?: string;
 }) {
   const blockTypes = discoverBlogBlockTypes(meta);
@@ -106,7 +109,12 @@ export function BlockDocument({
   };
 
   return (
-    <div className="mt-2">
+    <section className="rounded-xl border border-dashed bg-muted/40 px-4 py-4 sm:px-6">
+      {label && (
+        <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </div>
+      )}
       {blocks.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground">
           {emptyMessage}
@@ -141,7 +149,7 @@ export function BlockDocument({
           ))}
         </SortableContext>
       </DndContext>
-    </div>
+    </section>
   );
 }
 

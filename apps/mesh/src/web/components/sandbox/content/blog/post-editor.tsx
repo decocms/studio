@@ -127,14 +127,16 @@ export function PostEditor({
             {/* Settings */}
             <PostSettings post={post} decofile={decofile} onChange={setField} />
 
-            <div className="mt-6 border-t" />
-
-            <BlockDocument
-              value={asBlocks(post.sections)}
-              onChange={(next) => setField("sections", next)}
-              meta={meta}
-              emptyMessage="This post has no content yet. Use ⊕ to add your first block."
-            />
+            {/* Body — the writing canvas, visually distinct from settings above */}
+            <div className="mt-6">
+              <BlockDocument
+                value={asBlocks(post.sections)}
+                onChange={(next) => setField("sections", next)}
+                meta={meta}
+                label="Content"
+                emptyMessage="This post has no content yet. Use ⊕ to add your first block."
+              />
+            </div>
           </div>
         </div>
       </div>
