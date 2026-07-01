@@ -38,8 +38,7 @@ export const WellKnownOrgMCPId = {
 export const COMMERCE_DISCOVERY_MCP_URL =
   "https://commerce-skills.deco-cx.workers.dev/api/mcp";
 export const COMMERCE_DISCOVERY_REPORT_TOOL_NAME = "get_my_diagnostic";
-export const COMMERCE_DISCOVERY_ICON =
-  "https://api.iconify.design/lucide:chart-no-axes-combined.svg?color=%23171717";
+export const COMMERCE_DISCOVERY_ICON = "https://github.com/decocms.png";
 
 /**
  * Frontend connection ID for the self/management MCP endpoint.
@@ -346,7 +345,7 @@ export function getWellKnownCommerceDiscoveryConnection(
   return {
     id: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
     title: "Commerce Discovery",
-    description: "Commerce Discovery report and commerce diagnostics.",
+    description: "Commerce report and diagnostics",
     connection_type: "HTTP",
     connection_url: COMMERCE_DISCOVERY_MCP_URL,
     icon: COMMERCE_DISCOVERY_ICON,
@@ -370,7 +369,7 @@ export function getWellKnownCommerceDiscoveryVirtualMCP(
 ): VirtualMCPCreateData {
   return {
     title: "Commerce Discovery",
-    description: "Commerce Discovery report workspace.",
+    description: "Commerce report and diagnostics",
     icon: COMMERCE_DISCOVERY_ICON,
     status: "active",
     pinned: false,
