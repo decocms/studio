@@ -146,7 +146,8 @@ function PostSettings({
   decofile: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  // Open by default so editors see slug/date/categories without an extra click.
+  const [open, setOpen] = useState(true);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="mt-4">
