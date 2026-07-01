@@ -38,7 +38,10 @@ export const resolveOrgFromPath: MiddlewareHandler<{
   const org = await db
     .selectFrom("organization")
     .select(["id", "slug", "name", "metadata"])
-    .where("slug", "=", slug)
+    // Accept either the human slug or the raw org id in the path. Machine callers
+    // (e.g. the vault service lease) hold the org id, not the slug; random 32-char
+    // ids never collide with slugs, so matching both is unambiguous in practice.
+    .where((eb) => eb.or([eb("slug", "=", slug), eb("id", "=", slug)]))
     .executeTakeFirst();
 
   if (!org) {
