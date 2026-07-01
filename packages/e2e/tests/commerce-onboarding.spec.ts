@@ -305,8 +305,9 @@ test.describe("Commerce onboarding route isolation", () => {
       connection_url: string | null;
       connection_type: string;
       title: string;
+      pinned: boolean;
     }>(
-      `SELECT connection_url, connection_type, title
+      `SELECT connection_url, connection_type, title, pinned
        FROM connections
        WHERE id = $1`,
       [virtualMcpId],
@@ -315,6 +316,7 @@ test.describe("Commerce onboarding route isolation", () => {
       connection_url: `virtual://${virtualMcpId}`,
       connection_type: "VIRTUAL",
       title: "Commerce Discovery",
+      pinned: true,
     });
   });
 

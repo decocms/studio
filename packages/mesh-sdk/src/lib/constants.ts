@@ -372,7 +372,7 @@ export function getWellKnownCommerceDiscoveryVirtualMCP(
     description: "Commerce report and diagnostics",
     icon: COMMERCE_DISCOVERY_ICON,
     status: "active",
-    pinned: false,
+    pinned: true,
     metadata: {
       type: "commerce-discovery",
       isDefault: false,

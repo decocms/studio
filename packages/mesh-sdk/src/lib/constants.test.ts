@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { StudioPackAgentId, isStudioPackAgent } from "./constants";
+import {
+  StudioPackAgentId,
+  getWellKnownCommerceDiscoveryVirtualMCP,
+  isStudioPackAgent,
+} from "./constants";
 
 describe("StudioPackAgentId", () => {
   test("generates the Store Manager id with the org suffix", () => {
@@ -22,5 +26,13 @@ describe("isStudioPackAgent", () => {
     expect(isStudioPackAgent(undefined)).toBe(false);
     expect(isStudioPackAgent("vir_abc")).toBe(false);
     expect(isStudioPackAgent("decopilot_org_xyz")).toBe(false);
+  });
+});
+
+describe("getWellKnownCommerceDiscoveryVirtualMCP", () => {
+  test("pins the Commerce Discovery agent to the org sidebar", () => {
+    expect(
+      getWellKnownCommerceDiscoveryVirtualMCP("org_xyz", "conn_xyz").pinned,
+    ).toBe(true);
   });
 });
