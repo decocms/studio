@@ -1,21 +1,24 @@
 import { useState } from "react";
-import { ArrowNarrowRight, ChevronDown, ChevronRight } from "@untitledui/icons";
+import { ArrowNarrowRight } from "@untitledui/icons";
 import { useProjectContext } from "@decocms/mesh-sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { TaskRow } from "@/web/layouts/tasks-panel/task-row";
 import { track } from "@/web/lib/posthog-client";
 import type { Task } from "@/web/components/chat/task/types";
+import { SidebarSectionHeader } from "./sidebar-section-header";
 
 /** How many teammate threads to preview inline before deferring to "See all". */
 const TEAM_PREVIEW_LIMIT = 8;
 
 /**
- * Collapsed-by-default accordion of other members' threads. Expand to peek at
- * recent team activity; "See all" jumps to the monitoring Threads tab (the full,
+ * Other members' threads, presented as a peer of the "My threads" / "Agents"
+ * sections: a small uppercase section label that also toggles the list open.
+ * Collapsed by default. "See all" jumps to the monitoring Threads tab (the full,
  * paginated view) so the sidebar stays a preview, not a second monitor.
  *
- * Rows are read-only (no `onArchive`) — archiving hides a thread org-wide, which
- * must not happen from a glance at a teammate's work.
+ * Rows match "My threads" (non-indented, agent icon) but are read-only — no
+ * `onArchive`, since archiving hides a thread org-wide and must not happen from
+ * a glance at a teammate's work.
  */
 export function TeamThreadsSection({
   threads,
@@ -48,38 +51,20 @@ export function TeamThreadsSection({
   };
 
   return (
-    <div className="flex flex-col gap-0.5">
-      <div className="group/group flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent/60 transition-colors">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="flex flex-1 items-center gap-2 min-w-0 text-sm font-medium text-foreground focus-visible:outline-none"
-        >
-          {open ? (
-            <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight
-              size={14}
-              className="shrink-0 text-muted-foreground"
-            />
-          )}
-          <span className="truncate">Team threads</span>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {threads.length}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={seeAll}
-          className="shrink-0 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground opacity-0 group-hover/group:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none"
-        >
-          See all
-          <ArrowNarrowRight size={12} />
-        </button>
-      </div>
+    <>
+      <SidebarSectionHeader
+        label="Team threads"
+        open={open}
+        onToggle={() => setOpen((v) => !v)}
+        count={threads.length}
+        action={{
+          label: "See all",
+          icon: <ArrowNarrowRight size={11} />,
+          onClick: seeAll,
+        }}
+      />
       {open && (
-        <div className="flex flex-col gap-0.5 pb-1 pl-4">
+        <>
           {preview.map((task) => (
             <TaskRow
               key={task.id}
@@ -88,21 +73,20 @@ export function TeamThreadsSection({
               onClick={() => onSelectTask(task)}
               showAutomationBadge={Boolean(task.trigger_id)}
               showAgentIcon
-              indented
             />
           ))}
           {hasOverflow && (
             <button
               type="button"
               onClick={seeAll}
-              className="flex items-center gap-1 -ml-4 pl-6 pr-2 py-1.5 rounded-md text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-md text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               <span>See all {threads.length} team threads</span>
               <ArrowNarrowRight size={12} />
             </button>
           )}
-        </div>
+        </>
       )}
-    </div>
+    </>
   );
 }

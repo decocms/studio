@@ -52,6 +52,7 @@ import { SortableAgentRows } from "./sortable-agent-rows";
 import type { AgentRowProps } from "./agent-row";
 import { TeamThreadsSection } from "./team-threads-section";
 import { MyThreadsSection } from "./my-threads-section";
+import { SidebarSectionHeader } from "./sidebar-section-header";
 import type { SidebarFilters } from "./next-page-offset";
 import { buildGroupThreadCounts } from "./next-page-offset";
 import { useSidebarGroupOrder } from "./use-sidebar-group-order";
@@ -143,6 +144,8 @@ export function TaskGroupsList({
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("flat");
+  const [myThreadsOpen, setMyThreadsOpen] = useState(true);
+  const [agentsOpen, setAgentsOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchEverOpened, setSearchEverOpened] = useState(false);
   const [localOrderRevision, setLocalOrderRevision] = useState(0);
@@ -464,40 +467,46 @@ export function TaskGroupsList({
           onSelectTask={handleSelectTask}
           onNavigate={closeAfterNavigation}
         />
-        <SectionLabel>My threads</SectionLabel>
-        <MyThreadsSection
-          threads={myThreads}
-          groupBy={groupBy}
-          activeTaskId={activeTaskId}
-          onSelectTask={handleSelectTask}
-          onArchiveTask={handleArchive}
-          filters={filters}
-          hasMore={hasMore}
-          isFetchingMore={isFetchingMore}
-          onLoadMore={() => void fetchNextPage()}
+        <SidebarSectionHeader
+          label="My threads"
+          open={myThreadsOpen}
+          onToggle={() => setMyThreadsOpen((v) => !v)}
+          count={myThreads.length}
         />
+        {myThreadsOpen && (
+          <MyThreadsSection
+            threads={myThreads}
+            groupBy={groupBy}
+            activeTaskId={activeTaskId}
+            onSelectTask={handleSelectTask}
+            onArchiveTask={handleArchive}
+            filters={filters}
+            hasMore={hasMore}
+            isFetchingMore={isFetchingMore}
+            onLoadMore={() => void fetchNextPage()}
+          />
+        )}
         <div className="mx-2 my-2 border-b" />
-        <SectionLabel>Agents</SectionLabel>
-        <SortableAgentRows
-          groups={agentGroups}
-          orderScope={orderScope}
-          decopilotId={decopilotId}
-          orgPinnedIds={orgPinnedIds}
-          onReorder={() => setLocalOrderRevision((n) => n + 1)}
-          renderGroup={buildAgentRowProps}
+        <SidebarSectionHeader
+          label="Agents"
+          open={agentsOpen}
+          onToggle={() => setAgentsOpen((v) => !v)}
+          count={agentGroups.length}
         />
+        {agentsOpen && (
+          <SortableAgentRows
+            groups={agentGroups}
+            orderScope={orderScope}
+            decopilotId={decopilotId}
+            orgPinnedIds={orgPinnedIds}
+            onReorder={() => setLocalOrderRevision((n) => n + 1)}
+            renderGroup={buildAgentRowProps}
+          />
+        )}
       </div>
       {searchEverOpened && (
         <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       )}
-    </div>
-  );
-}
-
-function SectionLabel({ children }: { children: ReactNode }) {
-  return (
-    <div className="px-2 pt-1 pb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80">
-      {children}
     </div>
   );
 }
