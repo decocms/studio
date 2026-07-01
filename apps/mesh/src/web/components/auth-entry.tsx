@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { retry, RetryError } from "@decocms/std";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { UnifiedAuthForm } from "@/web/components/unified-auth-form";
@@ -9,6 +10,12 @@ export interface AuthEntryProps {
   callbackUrl: string;
   redirectUrl?: string | null;
   allowAutoLogin?: boolean;
+  /** Title for the default view of the email/social auth form. */
+  title?: string;
+  /** Subtitle for the default view; `null` hides it. */
+  subtitle?: string | null;
+  /** Brand element rendered above the auth form header. */
+  brand?: ReactNode;
 }
 
 class RetriableAutoLoginResponse {
@@ -124,6 +131,9 @@ export function AuthEntry({
   callbackUrl,
   redirectUrl,
   allowAutoLogin = true,
+  title,
+  subtitle,
+  brand,
 }: AuthEntryProps) {
   const {
     sso,
@@ -152,7 +162,13 @@ export function AuthEntry({
     socialProviders.enabled
   ) {
     return (
-      <UnifiedAuthForm redirectUrl={redirectUrl} callbackUrl={callbackUrl} />
+      <UnifiedAuthForm
+        redirectUrl={redirectUrl}
+        callbackUrl={callbackUrl}
+        title={title}
+        subtitle={subtitle}
+        brand={brand}
+      />
     );
   }
 
