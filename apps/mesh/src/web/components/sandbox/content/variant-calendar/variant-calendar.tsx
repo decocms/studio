@@ -14,7 +14,9 @@ import {
 } from "@untitledui/icons";
 import { Button } from "@deco/ui/components/button.tsx";
 import { cn } from "@deco/ui/lib/utils.js";
+import { Label } from "@deco/ui/components/label.tsx";
 import { ScrollArea } from "@deco/ui/components/scroll-area.tsx";
+import { Switch } from "@deco/ui/components/switch.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -148,8 +150,15 @@ export function VariantCalendar({
 }) {
   const [view, setView] = useState<ViewMode>("calendar");
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
+  // Open-ended ("ongoing") variants fill the grid to the edge everywhere and
+  // add noise, so they're hidden by default behind an opt-in toggle.
+  const [showOngoing, setShowOngoing] = useState(false);
 
-  const variants = extractScheduledVariants(decofile);
+  const allVariants = extractScheduledVariants(decofile);
+  const ongoingCount = allVariants.filter((v) => v.openEnd).length;
+  const variants = showOngoing
+    ? allVariants
+    : allVariants.filter((v) => !v.openEnd);
   const colorMap = buildBlockColorMap(variants.map((v) => v.blockKey));
 
   const goToday = () => setCursor(startOfMonth(new Date()));
@@ -189,26 +198,43 @@ export function VariantCalendar({
             {MONTHS[cursor.getMonth()]} {cursor.getFullYear()}
           </h2>
         </div>
-        <ViewModeToggle<ViewMode>
-          value={view}
-          onValueChange={setView}
-          options={[
-            {
-              value: "calendar",
-              icon: <Calendar />,
-              label: "Calendar",
-            },
-            {
-              value: "timeline",
-              icon: <Activity />,
-              label: "Timeline",
-            },
-          ]}
-        />
+        <div className="flex items-center gap-4">
+          {ongoingCount > 0 && (
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-ongoing"
+                checked={showOngoing}
+                onCheckedChange={setShowOngoing}
+              />
+              <Label
+                htmlFor="show-ongoing"
+                className="text-xs text-muted-foreground cursor-pointer"
+              >
+                Show ongoing ({ongoingCount})
+              </Label>
+            </div>
+          )}
+          <ViewModeToggle<ViewMode>
+            value={view}
+            onValueChange={setView}
+            options={[
+              {
+                value: "calendar",
+                icon: <Calendar />,
+                label: "Calendar",
+              },
+              {
+                value: "timeline",
+                icon: <Activity />,
+                label: "Timeline",
+              },
+            ]}
+          />
+        </div>
       </div>
 
       {variants.length === 0 ? (
-        <EmptyState />
+        <EmptyState hiddenOngoing={showOngoing ? 0 : ongoingCount} />
       ) : view === "calendar" ? (
         <CalendarView
           monthStart={cursor}
@@ -226,14 +252,27 @@ export function VariantCalendar({
   );
 }
 
-function EmptyState() {
+function EmptyState({ hiddenOngoing = 0 }: { hiddenOngoing?: number }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground p-6">
       <Calendar size={24} className="text-muted-foreground/60" />
-      <div>No scheduled variants.</div>
-      <div className="text-xs text-muted-foreground/80">
-        Variants gated by a date matcher appear here.
-      </div>
+      {hiddenOngoing > 0 ? (
+        <>
+          <div>No dated variants in view.</div>
+          <div className="text-xs text-muted-foreground/80">
+            {hiddenOngoing} ongoing{" "}
+            {hiddenOngoing === 1 ? "variant is" : "variants are"} hidden —
+            enable “Show ongoing” to view.
+          </div>
+        </>
+      ) : (
+        <>
+          <div>No scheduled variants.</div>
+          <div className="text-xs text-muted-foreground/80">
+            Variants gated by a date matcher appear here.
+          </div>
+        </>
+      )}
     </div>
   );
 }
