@@ -1095,6 +1095,12 @@ function ContentBrowserReady({
                 decofile={decofile}
                 meta={meta}
                 onManagePosts={handleManagePosts}
+                onOpenPost={(key) => {
+                  setActiveCollection("posts");
+                  setPrevCollection("posts");
+                  setSelection({ collection: "posts", key });
+                  setOpenPageSeoKey(null);
+                }}
                 previewBaseUrl={previewUrl}
               />
             ) : selection.collection === "authors" ? (

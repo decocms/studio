@@ -26,6 +26,7 @@ export function CategoryEditor({
   decofile,
   meta,
   onManagePosts,
+  onOpenPost,
   previewBaseUrl,
 }: {
   orgSlug: string;
@@ -36,6 +37,7 @@ export function CategoryEditor({
   decofile: Record<string, unknown>;
   meta: LiveMeta;
   onManagePosts: (slug: string) => void;
+  onOpenPost: (key: string) => void;
   previewBaseUrl?: string | null;
 }) {
   const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
@@ -60,10 +62,10 @@ export function CategoryEditor({
   });
 
   const slug = str(category.slug);
-  const postCount = slug
+  const posts = slug
     ? listPostsWithMeta(decofile).filter((p) => p.categorySlugs.includes(slug))
-        .length
-    : 0;
+    : [];
+  const postCount = posts.length;
 
   return (
     <BlogSandboxProvider
@@ -126,29 +128,62 @@ export function CategoryEditor({
               />
             </div>
 
-            <div className="mt-6 flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-4 py-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <File02 size={16} className="shrink-0 text-muted-foreground" />
-                <span className="text-sm">
-                  {postCount} {postCount === 1 ? "post" : "posts"} in this
-                  category
-                </span>
+            <div className="mt-6 overflow-hidden rounded-lg border bg-muted/30">
+              <div className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <File02
+                    size={16}
+                    className="shrink-0 text-muted-foreground"
+                  />
+                  <span className="text-sm">
+                    {postCount} {postCount === 1 ? "post" : "posts"} in this
+                    category
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!slug}
+                  title={
+                    slug
+                      ? "Jump to the posts list filtered by this category"
+                      : "Set a slug to manage this category's posts"
+                  }
+                  onClick={() => onManagePosts(slug)}
+                >
+                  Manage posts
+                  <ArrowRight size={14} />
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!slug}
-                title={
-                  slug
-                    ? "Jump to the posts list filtered by this category"
-                    : "Set a slug to manage this category's posts"
-                }
-                onClick={() => onManagePosts(slug)}
-              >
-                Manage posts
-                <ArrowRight size={14} />
-              </Button>
+              {postCount > 0 && (
+                <ul className="divide-y border-t bg-background">
+                  {posts.map((p) => (
+                    <li key={p.key}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenPost(p.key)}
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
+                      >
+                        <File02
+                          size={14}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm">
+                            {p.title || "Untitled post"}
+                          </span>
+                          {p.slug && (
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {p.slug}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="mt-6 border-t" />
