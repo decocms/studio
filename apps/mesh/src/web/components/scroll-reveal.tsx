@@ -66,15 +66,23 @@ export function ScrollReveal({
       <div
         aria-hidden
         className={cn(
-          // `-bottom-px` (not `bottom-0`) so the fully-opaque bottom of the fade
-          // over-covers the scroller's sub-pixel clip edge — otherwise a 1px
-          // sliver of scrolled content leaks out below the gradient.
+          // `-bottom-px` (not `bottom-0`) so the fade over-covers the scroller's
+          // sub-pixel clip edge instead of stopping a fraction of a pixel short.
           "pointer-events-none absolute inset-x-0 -bottom-px h-[213px]",
           // Fade to the sidebar surface these scrollers sit on (AuthSplitLayout)
-          // so the solid end blends into the panel — and the 1px overshoot above
-          // stays invisible — instead of showing a lighter `background` band.
-          "bg-gradient-to-t from-sidebar to-transparent",
-          "backdrop-blur-[2px] [mask-image:linear-gradient(to_top,black,transparent)]",
+          // so the solid end blends into the panel instead of showing a lighter
+          // `background` band.
+          //
+          // The `6px` first stop on BOTH the color gradient and the mask is the
+          // fix for the hairline leak: a CSS gradient holds its first stop's
+          // value for everything before it, so `… 6px, transparent` is fully
+          // opaque from 0–6px, then ramps. Without the plateau the ramp only
+          // reaches 100% at the very bottom edge, leaving the scroller's clip
+          // line (~1px above it) at ~99% coverage — enough for the hard cut edge
+          // of the last card to bleed through as a 1px sliver at any DPR. The
+          // plateau guarantees the clip line sits inside the solid zone.
+          "bg-gradient-to-t from-sidebar from-[6px] to-transparent",
+          "backdrop-blur-[2px] [mask-image:linear-gradient(to_top,black_6px,transparent)]",
           "transition-opacity duration-200",
           atBottom ? "opacity-0" : "opacity-100",
         )}
