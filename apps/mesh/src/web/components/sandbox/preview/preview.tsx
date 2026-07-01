@@ -362,6 +362,19 @@ export function PreviewContent() {
   const previewState = lifecycle.previewState;
   const userStopped = lifecycle.userStopped;
 
+  // The recorded previewUrl flips previewState to "iframe" as soon as the
+  // sandbox handle exists — well before the public preview proxy is routable
+  // and actually serving, so the iframe renders blank during the initial boot.
+  // Keep the booting visual overlaid (absolute, z-30, above the warming iframe)
+  // until the dev server has come up. `progress.status === "doing"` is true for
+  // exactly the forward boot phases (provision → clone → install → starting);
+  // it flips to "done" at `running` and "failed" on a terminal error, so both
+  // the live app and the daemon's auto-reloading status/crash page still fall
+  // through to the iframe unobscured.
+  const showBootingOverlay =
+    previewState.kind === "starting" ||
+    (previewState.kind === "iframe" && progress.status === "doing");
+
   const iframeSrc =
     previewState.kind === "iframe"
       ? withVariantMatcherOverride(
@@ -1183,7 +1196,7 @@ export function PreviewContent() {
               "flex justify-center bg-muted/30",
           )}
         >
-          {previewState.kind === "starting" && (
+          {showBootingOverlay && (
             <div className="absolute inset-0 z-30">
               <SandboxStateCard
                 kind="starting"
