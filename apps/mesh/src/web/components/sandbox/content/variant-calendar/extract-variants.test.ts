@@ -57,6 +57,51 @@ describe("extractScheduledVariants", () => {
     expect(out[1]?.blockKey).toBe("Alerta");
   });
 
+  it("extracts page-level `website/flags/multivariate.ts` variants", () => {
+    // Mirrors a real decofile: the page's `sections` field is a page-level
+    // multivariate flag (no `/section.ts` subpath), and each variant's
+    // `value` is an array of section blocks rather than a single object.
+    const decofile = {
+      "pages-Home-000001": {
+        name: "Home",
+        path: "/",
+        __resolveType: "website/pages/Page.tsx",
+        sections: {
+          __resolveType: "website/flags/multivariate.ts",
+          variants: [
+            {
+              rule: {
+                __resolveType: "website/matchers/date.ts",
+                start: "2026-06-30T23:00:00.000Z",
+                end: "2026-07-03T13:00:00.000Z",
+              },
+              value: [
+                { __resolveType: "Header" },
+                { __resolveType: "site/sections/Landing/Hero.tsx" },
+                { __resolveType: "Footer" },
+              ],
+            },
+            {
+              rule: {
+                __resolveType: "website/matchers/location.ts",
+                includeLocations: [],
+              },
+              value: [{ __resolveType: "Header" }],
+            },
+          ],
+        },
+      },
+    };
+    const out = extractScheduledVariants(decofile);
+    // Only the date-gated variant lands on the calendar.
+    expect(out).toHaveLength(1);
+    expect(out[0]?.blockKey).toBe("pages-Home-000001");
+    expect(out[0]?.blockLabel).toBe("Home");
+    expect(out[0]?.flagResolveType).toBe("website/flags/multivariate.ts");
+    expect(out[0]?.start.toISOString()).toBe("2026-06-30T23:00:00.000Z");
+    expect(out[0]?.end.toISOString()).toBe("2026-07-03T13:00:00.000Z");
+  });
+
   it("finds nested multivariate flags inside arrays/objects", () => {
     const decofile = {
       "Category Banner - 01": {

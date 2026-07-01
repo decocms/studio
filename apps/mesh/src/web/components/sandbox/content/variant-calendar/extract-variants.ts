@@ -24,11 +24,13 @@ const MULTI_MATCHER_TYPES = new Set([
   "$live/matchers/MatchMulti.ts",
 ]);
 
-// Non-anchored on purpose: matches `<scope>/flags/multivariate/<x>.ts` for
-// any scope, so `website/flags/multivariate/section.ts`,
+// Non-anchored on purpose: matches `<scope>/flags/multivariate.ts` (the
+// page-level flag) as well as `<scope>/flags/multivariate/<x>.ts` for any
+// scope, so `website/flags/multivariate.ts`,
+// `website/flags/multivariate/section.ts`,
 // `site/flags/multivariate/etcMediaKitContent.ts`, and the legacy
 // `$live/flags/multivariate/section.ts` all match.
-const MULTIVARIATE_FLAG_PATTERN = /\/flags\/multivariate\/[^/]+\.ts$/;
+const MULTIVARIATE_FLAG_PATTERN = /\/flags\/multivariate(?:\/[^/]+)?\.ts$/;
 
 export interface ScheduledVariant {
   /** Top-level decofile key the variant lives under (used for grouping/color). */

@@ -277,8 +277,10 @@ function CalendarView({
               {segments.map((seg, idx) => {
                 const color = colorFromMap(colorMap, seg.variant.blockKey);
                 const top = HEADER_HEIGHT + seg.lane * (LANE_HEIGHT + LANE_GAP);
-                const leftPct = (seg.startCol / 7) * 100;
-                const widthPct = (seg.span / 7) * 100;
+                // Hour-precise: the bar starts/ends where the variant's
+                // timestamps fall within the day, not at whole-day columns.
+                const leftPct = (seg.leftUnits / 7) * 100;
+                const widthPct = (seg.widthUnits / 7) * 100;
                 return (
                   <VariantBar
                     key={`${wi}-${idx}`}
@@ -288,6 +290,9 @@ function CalendarView({
                       top,
                       left: `calc(${leftPct}% + 2px)`,
                       width: `calc(${widthPct}% - 4px)`,
+                      // Keep a very short campaign visible/clickable even when
+                      // its fractional width would otherwise round to nothing.
+                      minWidth: 6,
                       height: LANE_HEIGHT,
                     }}
                   >
