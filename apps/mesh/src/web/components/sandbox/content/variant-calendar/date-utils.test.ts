@@ -22,6 +22,8 @@ function makeVariant(
     variantIndex: 0,
     start: new Date(start),
     end: new Date(end),
+    openStart: false,
+    openEnd: false,
     label: blockKey,
     flagResolveType: "website/flags/multivariate/section.ts",
   };
@@ -193,5 +195,25 @@ describe("placeWeekSegments", () => {
     ]);
     expect(placed[0]?.leftUnits).toBe(0);
     expect(placed[0]?.widthUnits).toBe(7);
+  });
+
+  it("clamps the left edge but keeps a fractional right edge", () => {
+    // Starts before the week (left clamped to 0), ends 6am on the 9th →
+    // widthUnits 2.25, distinct from the whole-day span of 3.
+    const placed = placeWeekSegments(week, [
+      makeVariant("2026-06-01T00:00:00", "2026-06-09T06:00:00"),
+    ]);
+    expect(placed[0]?.span).toBe(3);
+    expect(placed[0]?.leftUnits).toBe(0);
+    expect(placed[0]?.widthUnits).toBeCloseTo(2.25, 5);
+  });
+
+  it("skips a zero-width segment ending exactly at the week's start", () => {
+    // Campaign already over by Sunday 00:00 — must not render a `minWidth`
+    // sliver on this week (regression guard for the ghost-bar bug).
+    const placed = placeWeekSegments(week, [
+      makeVariant("2026-06-01T00:00:00", "2026-06-07T00:00:00"),
+    ]);
+    expect(placed).toEqual([]);
   });
 });

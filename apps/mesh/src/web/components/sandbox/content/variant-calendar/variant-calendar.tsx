@@ -46,7 +46,9 @@ const RANGE_FORMAT = new Intl.DateTimeFormat("en", {
 });
 
 function formatRangeForTooltip(v: ScheduledVariant): string {
-  return `${RANGE_FORMAT.format(v.start)} → ${RANGE_FORMAT.format(v.end)}`;
+  const startText = v.openStart ? "Always" : RANGE_FORMAT.format(v.start);
+  const endText = v.openEnd ? "Ongoing" : RANGE_FORMAT.format(v.end);
+  return `${startText} → ${endText}`;
 }
 
 /**
@@ -73,22 +75,43 @@ function VariantTooltipBody({ variant }: { variant: ScheduledVariant }) {
   );
 }
 
+// Width of the gradient that fades an open-ended bar's edge into "continues".
+const FADE_WIDTH = 16;
+
+/** CSS mask that fades the given edge(s) of a bar toward transparent. */
+function edgeFadeMask(
+  fadeStart: boolean,
+  fadeEnd: boolean,
+): string | undefined {
+  const start = fadeStart ? "transparent" : `#000 0`;
+  const end = fadeEnd ? "transparent" : `#000 100%`;
+  if (!fadeStart && !fadeEnd) return undefined;
+  return `linear-gradient(to right, ${start}, #000 ${FADE_WIDTH}px, #000 calc(100% - ${FADE_WIDTH}px), ${end})`;
+}
+
 /**
  * One colored bar with its hover tooltip. The caller owns positioning via
  * `style` (top/left/width/height or %-based equivalents) and what shows
- * inside the bar via `children`.
+ * inside the bar via `children`. `fadeStart`/`fadeEnd` render an open-ended
+ * edge as a gradient (and drop that side's rounded corner) to signal the
+ * campaign continues beyond the visible window.
  */
 function VariantBar({
   variant,
   color,
   style,
   children,
+  fadeStart = false,
+  fadeEnd = false,
 }: {
   variant: ScheduledVariant;
   color: BlockColor;
   style: React.CSSProperties;
   children: React.ReactNode;
+  fadeStart?: boolean;
+  fadeEnd?: boolean;
 }) {
+  const mask = edgeFadeMask(fadeStart, fadeEnd);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -98,6 +121,15 @@ function VariantBar({
             background: color.bg,
             color: color.text,
             borderRadius: 4,
+            ...(fadeStart && {
+              borderTopLeftRadius: 0,
+              borderBottomLeftRadius: 0,
+            }),
+            ...(fadeEnd && {
+              borderTopRightRadius: 0,
+              borderBottomRightRadius: 0,
+            }),
+            ...(mask && { maskImage: mask, WebkitMaskImage: mask }),
             ...style,
           }}
         >
@@ -209,6 +241,9 @@ function EmptyState() {
 const LANE_HEIGHT = 20;
 const LANE_GAP = 2;
 const HEADER_HEIGHT = 28;
+// Floor so a very short (sub-hour) campaign stays visible/clickable even when
+// its fractional width would otherwise round to nothing.
+const MIN_BAR_WIDTH = 6;
 
 function CalendarView({
   monthStart,
@@ -281,18 +316,23 @@ function CalendarView({
                 // timestamps fall within the day, not at whole-day columns.
                 const leftPct = (seg.leftUnits / 7) * 100;
                 const widthPct = (seg.widthUnits / 7) * 100;
+                // Fade only where an open-ended variant meets the edge of the
+                // whole visible grid — the first week's left / last week's
+                // right. Mid-grid week wraps are continuations, not open ends.
+                const fadeStart = seg.variant.openStart && wi === 0;
+                const fadeEnd = seg.variant.openEnd && wi === weeks.length - 1;
                 return (
                   <VariantBar
                     key={`${wi}-${idx}`}
                     variant={seg.variant}
                     color={color}
+                    fadeStart={fadeStart}
+                    fadeEnd={fadeEnd}
                     style={{
                       top,
                       left: `calc(${leftPct}% + 2px)`,
                       width: `calc(${widthPct}% - 4px)`,
-                      // Keep a very short campaign visible/clickable even when
-                      // its fractional width would otherwise round to nothing.
-                      minWidth: 6,
+                      minWidth: MIN_BAR_WIDTH,
                       height: LANE_HEIGHT,
                     }}
                   >
@@ -464,6 +504,8 @@ function TimelineView({
                         <VariantBar
                           variant={v}
                           color={color}
+                          fadeStart={v.openStart}
+                          fadeEnd={v.openEnd}
                           style={{
                             top: "50%",
                             transform: "translateY(-50%)",

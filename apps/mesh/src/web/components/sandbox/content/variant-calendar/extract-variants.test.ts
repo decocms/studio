@@ -102,6 +102,89 @@ describe("extractScheduledVariants", () => {
     expect(out[0]?.end.toISOString()).toBe("2026-07-03T13:00:00.000Z");
   });
 
+  it("includes open-ended variants (start-only) and flags them", () => {
+    const decofile = {
+      Promo: {
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          {
+            rule: {
+              __resolveType: "website/matchers/date.ts",
+              start: "2026-06-01T00:00:00.000Z",
+              // no `end` → runs indefinitely
+            },
+            value: { title: "Launch (ongoing)" },
+          },
+        ],
+      },
+    };
+    const out = extractScheduledVariants(decofile);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.label).toBe("Launch (ongoing)");
+    expect(out[0]?.openStart).toBe(false);
+    expect(out[0]?.openEnd).toBe(true);
+    expect(out[0]?.start.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+  });
+
+  it("includes open-ended variants (end-only) and flags them", () => {
+    const decofile = {
+      Sunset: {
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          {
+            rule: {
+              __resolveType: "website/matchers/date.ts",
+              // no `start` → runs since forever
+              end: "2026-07-01T00:00:00.000Z",
+            },
+            value: { title: "Until launch" },
+          },
+        ],
+      },
+    };
+    const out = extractScheduledVariants(decofile);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.openStart).toBe(true);
+    expect(out[0]?.openEnd).toBe(false);
+    expect(out[0]?.end.toISOString()).toBe("2026-07-01T00:00:00.000Z");
+  });
+
+  it("excludes an always-on date matcher with neither start nor end", () => {
+    const decofile = {
+      AlwaysOn: {
+        __resolveType: "website/flags/multivariate/section.ts",
+        variants: [
+          {
+            rule: { __resolveType: "website/matchers/date.ts" },
+            value: { title: "no bounds" },
+          },
+        ],
+      },
+    };
+    expect(extractScheduledVariants(decofile)).toEqual([]);
+  });
+
+  it("does not treat `multivariateFoo.ts` as a variant container", () => {
+    // Regression guard for the widened regex: only `multivariate.ts` or
+    // `multivariate/<kind>.ts` count — not an arbitrary `multivariate*.ts`.
+    const decofile = {
+      NotAFlag: {
+        __resolveType: "website/flags/multivariateFoo.ts",
+        variants: [
+          {
+            rule: {
+              __resolveType: "website/matchers/date.ts",
+              start: "2026-06-01T00:00:00.000Z",
+              end: "2026-06-10T00:00:00.000Z",
+            },
+            value: { title: "should not appear" },
+          },
+        ],
+      },
+    };
+    expect(extractScheduledVariants(decofile)).toEqual([]);
+  });
+
   it("finds nested multivariate flags inside arrays/objects", () => {
     const decofile = {
       "Category Banner - 01": {

@@ -164,6 +164,10 @@ export function placeWeekSegments(
       unitsFromWeekStart(new Date(rightMs), weekStart) - leftUnits,
       0,
     );
+    // A zero-width visual (e.g. a campaign ending exactly at this week's
+    // Sunday 00:00, already over) must not render — otherwise `minWidth`
+    // would paint a stray sliver on a week the variant doesn't cover.
+    if (widthUnits <= 0) continue;
     segments.push({ variant, startCol, span, leftUnits, widthUnits });
   }
   // Sort by start (ascending), then span desc (long bars take low lanes),
