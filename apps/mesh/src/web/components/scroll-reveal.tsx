@@ -1,33 +1,28 @@
 import { cn } from "@deco/ui/lib/utils.ts";
-import { ChevronDown } from "@untitledui/icons";
 import { type ReactNode, useState } from "react";
 
 interface ScrollRevealProps {
   children: ReactNode;
-  /** Classes for the scrollable container (e.g. `max-h-[60vh]`). */
+  /** Classes for the scrollable container (e.g. `max-h-[60vh] overflow-y-auto`). */
   className?: string;
-  /** Label for the reveal affordance. */
-  label?: string;
 }
 
 /**
- * Wraps scrollable content and shows a "Show more" pill whenever the content is
- * not scrolled to the bottom. Without it, an `overflow-y-auto` container silently
- * hides items below the fold — users can't tell there's more to scroll to.
+ * Wraps scrollable content and blurs/fades its bottom edge whenever the content
+ * is not scrolled all the way down. Without it, an `overflow-y-auto` container
+ * silently cuts items off at the fold — users can't tell there's more below.
+ *
+ * The affordance is purely visual (`pointer-events-none`): the blurred fade
+ * hints at more content underneath while scrolling stays on the wheel /
+ * trackpad / keyboard as usual.
  *
  * Detection is wired through a React 19 callback ref (with cleanup) rather than
  * `useEffect`, which is banned in this codebase.
  */
-export function ScrollReveal({
-  children,
-  className,
-  label = "Show more",
-}: ScrollRevealProps) {
-  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+export function ScrollReveal({ children, className }: ScrollRevealProps) {
   const [atBottom, setAtBottom] = useState(true);
 
   const containerRef = (node: HTMLDivElement | null) => {
-    setContainer(node);
     if (!node) {
       return;
     }
@@ -53,42 +48,21 @@ export function ScrollReveal({
     };
   };
 
-  const scrollDown = () => {
-    container?.scrollBy({
-      top: container.clientHeight * 0.8,
-      behavior: "smooth",
-    });
-  };
-
   return (
     <div className="relative">
       <div ref={containerRef} className={className}>
         {children}
       </div>
       <div
-        aria-hidden={atBottom}
+        aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-2 pt-10",
+          "pointer-events-none absolute inset-x-0 bottom-0 h-[213px]",
           "bg-gradient-to-t from-background to-transparent",
+          "backdrop-blur-[2px] [mask-image:linear-gradient(to_top,black,transparent)]",
           "transition-opacity duration-200",
           atBottom ? "opacity-0" : "opacity-100",
         )}
-      >
-        <button
-          type="button"
-          onClick={scrollDown}
-          tabIndex={atBottom ? -1 : 0}
-          className={cn(
-            "flex items-center gap-1 rounded-full border bg-background px-3 py-1",
-            "text-xs font-medium text-muted-foreground shadow-sm",
-            "transition-colors hover:text-foreground",
-            atBottom ? "pointer-events-none" : "pointer-events-auto",
-          )}
-        >
-          {label}
-          <ChevronDown size={14} />
-        </button>
-      </div>
+      />
     </div>
   );
 }
