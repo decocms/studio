@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { computeBranchDivergence } from "../git/branch-divergence";
 import type { Config } from "../types";
-import { spawnClone } from "./clone";
+import { isSafeRefName, spawnClone } from "./clone";
 
 /**
  * Creates a bare "origin" git repo with two branches:
@@ -20,7 +20,12 @@ import { spawnClone } from "./clone";
  *
  * Returned `url` is a `file://` URL safe to use as a clone source.
  */
-function setupBareRepo(): { url: string; root: string; cleanup: () => void } {
+function setupBareRepo(): {
+  url: string;
+  root: string;
+  bare: string;
+  cleanup: () => void;
+} {
   const root = mkdtempSync(join(tmpdir(), "clonetest-"));
   const bare = join(root, "origin.git");
   const seed = join(root, "seed");
@@ -48,6 +53,7 @@ function setupBareRepo(): { url: string; root: string; cleanup: () => void } {
   return {
     url: `file://${bare}`,
     root,
+    bare,
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
 }
@@ -56,6 +62,19 @@ function currentBranch(repoDir: string): string {
   return execSync(`git -C ${repoDir} rev-parse --abbrev-ref HEAD`)
     .toString()
     .trim();
+}
+
+/** Run a git command, returning trimmed stdout or null on non-zero exit. */
+function tryGitOut(repoDir: string, args: string): string | null {
+  try {
+    return execSync(`git -C ${repoDir} ${args}`, {
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    return null;
+  }
 }
 
 function makeConfig(
@@ -71,6 +90,42 @@ function makeConfig(
     repoDir,
   } as unknown as Config;
 }
+
+describe("isSafeRefName", () => {
+  it("accepts real branch names", () => {
+    for (const name of [
+      "main",
+      "master",
+      "feature/x",
+      "release/1.0",
+      "feat-2.0_a",
+      "user/fix.bug",
+    ]) {
+      expect(isSafeRefName(name)).toBe(true);
+    }
+  });
+
+  it("rejects shell metacharacters and ref-format edge cases", () => {
+    for (const name of [
+      "x;whoami",
+      "a$(id)b",
+      "a`id`b",
+      "a|b",
+      "a&b",
+      "a>b",
+      "a b",
+      "-x",
+      "/x",
+      "x/",
+      "a..b",
+      "a//b",
+      "x.lock",
+      "",
+    ]) {
+      expect(isSafeRefName(name)).toBe(false);
+    }
+  });
+});
 
 describe("spawnClone", () => {
   it("clones the target branch directly when it exists on remote", async () => {
@@ -102,9 +157,83 @@ describe("spawnClone", () => {
       // Even though only feature/x was cloned, origin/main must be present with
       // origin/HEAD pointing at it — otherwise computeBranchDivergence can't
       // compute ahead/behind vs base and the header falsely shows "Up to date".
+      // Assert the two artifacts fetchBaseBranch produces directly, so a
+      // regression that drops the fetch or the symbolic-ref step is caught
+      // (aheadOfBase alone would survive it via the "main" default fallback).
+      expect(
+        tryGitOut(
+          repoDir,
+          "rev-parse --verify --quiet refs/remotes/origin/main",
+        ),
+      ).toBeTruthy();
+      expect(
+        tryGitOut(repoDir, "symbolic-ref --short refs/remotes/origin/HEAD"),
+      ).toBe("origin/main");
       const div = computeBranchDivergence(repoDir);
       expect(div.base).toBe("main");
+      // feature/x has a commit that main does not — the button gates on
+      // aheadOfBase > 0. (Exact counts are approximate on shallow clones and
+      // not asserted; they aren't surfaced in the UI.)
       expect(div.aheadOfBase).toBeGreaterThan(0);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("does not re-fetch the base when resuming the default branch itself", async () => {
+    const { url, root, cleanup } = setupBareRepo();
+    try {
+      const repoDir = join(root, "workspace");
+      // Resuming `main` (the default) hits the `base === branchOnRemote` skip:
+      // the base is already the cloned branch, so no second fetch is needed.
+      const code = await spawnClone({
+        config: makeConfig(repoDir, url, "main"),
+        onChunk: () => {},
+      });
+      expect(code).toBe(0);
+      expect(currentBranch(repoDir)).toBe("main");
+      const div = computeBranchDivergence(repoDir);
+      expect(div.base).toBe("main");
+      expect(div.aheadOfBase).toBe(0);
+    } finally {
+      cleanup();
+    }
+  }, 30_000);
+
+  it("refuses a maliciously named default branch instead of running it", async () => {
+    const { url, root, cleanup, bare } = setupBareRepo();
+    try {
+      // Git permits `;`/`$()`/backticks in ref names; the default branch name
+      // flows into `sh -c` git commands, so an unsafe name must be rejected
+      // before interpolation rather than executed.
+      const evil = "x;whoami";
+      const mainSha = execSync(`git -C ${bare} rev-parse refs/heads/main`)
+        .toString()
+        .trim();
+      execSync(`git -C ${bare} branch '${evil}' ${mainSha}`, {
+        stdio: "ignore",
+      });
+      execSync(`git -C ${bare} symbolic-ref HEAD 'refs/heads/${evil}'`, {
+        stdio: "ignore",
+      });
+
+      const repoDir = join(root, "workspace");
+      const code = await spawnClone({
+        config: makeConfig(repoDir, url, "feature/x"),
+        onChunk: () => {},
+      });
+      // Best-effort: the clone still succeeds; it just skips the unsafe base.
+      expect(code).toBe(0);
+      // origin/HEAD must NOT have been pointed at the malicious ref.
+      expect(
+        tryGitOut(repoDir, "symbolic-ref --short refs/remotes/origin/HEAD"),
+      ).not.toBe(`origin/${evil}`);
+      expect(
+        tryGitOut(
+          repoDir,
+          `rev-parse --verify --quiet 'refs/remotes/origin/${evil}'`,
+        ),
+      ).toBeNull();
     } finally {
       cleanup();
     }
