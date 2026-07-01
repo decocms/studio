@@ -463,7 +463,9 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     const denied = await checkPermission(c, ctx, "ORG_FS_READ");
     if (denied) return denied;
     try {
-      return c.json({ skills: await buildSkillCatalog(ctx, ctx.organization.id) });
+      return c.json({
+        skills: await buildSkillCatalog(ctx, ctx.organization.id),
+      });
     } catch (err) {
       return fsErrorResponse(c, err);
     }
