@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
 import type { StudioContext } from "@/core/studio-context";
 import { getValidDownstreamAccessToken } from "@/oauth/token-refresh";
@@ -15,6 +16,25 @@ function bearerToken(value: string | undefined): string | null {
   const match = value?.match(/^Bearer\s+(.+)$/i);
   const token = match?.[1]?.trim();
   return token ? token : null;
+}
+
+/** Constant-time string compare (for the service token). */
+export function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && timingSafeEqual(ab, bb);
+}
+
+/**
+ * A trusted internal service (e.g. commerce-discovery's credential resolver)
+ * presenting this shared token may lease ANY connection in the org resolved from
+ * the path — bypassing the per-connection grant. It's the service-scoped
+ * equivalent of a workload token; the org in the URL still bounds it. Rotate via
+ * env. Absent ⇒ feature off (only workload-token + grant is accepted).
+ */
+export function isVaultServiceToken(token: string): boolean {
+  const svc = process.env.VAULT_SERVICE_TOKEN;
+  return !!svc && safeEqual(token, svc);
 }
 
 function serializeExpiresAt(value: Date | string | null): string | null {
@@ -58,6 +78,13 @@ async function authorizeVaultRequest(
       ok: false,
       response: c.json({ error: "Organization context required" }, 403),
     };
+  }
+
+  // Trusted internal service: skip workload-token + per-connection grant. Still
+  // bounded to the org resolved from the path (the target lookups below filter
+  // by organizationId), so it can't reach another org's connections.
+  if (isVaultServiceToken(token)) {
+    return { ok: true, ctx, organizationId };
   }
 
   const workloadToken =
