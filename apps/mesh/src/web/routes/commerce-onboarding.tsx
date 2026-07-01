@@ -27,10 +27,11 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowRight, Loading01 } from "@untitledui/icons";
+import { ArrowRight } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
+import { LoadingIndicator } from "./commerce-onboarding/loading-indicator.tsx";
 import {
   ScheduleMeetingBanner,
   ScheduleMeetingVisual,
@@ -427,13 +428,8 @@ function CommerceHeader({
 
 function LoadingState({ label }: { label: string }) {
   return (
-    <div
-      className="flex items-center gap-2 py-4"
-      role="status"
-      aria-live="polite"
-    >
-      <Loading01 size={14} className="animate-spin text-muted-foreground" />
-      <span className="text-sm text-muted-foreground">{label}</span>
+    <div className="py-4" role="status" aria-live="polite">
+      <LoadingIndicator label={label} className="text-muted-foreground" />
     </div>
   );
 }
@@ -781,10 +777,7 @@ function SiteUrlForm({
         disabled={isSubmitting}
       >
         {isSubmitting ? (
-          <>
-            <Loading01 size={14} className="animate-spin" />
-            Setting up
-          </>
+          <LoadingIndicator label="Setting up" />
         ) : (
           <>
             Continue
