@@ -38,26 +38,18 @@ function resolveBaseUrl(options: CommerceDiscoveryAuthOptions): string {
   ).replace(/\/+$/, "");
 }
 
-function resolveApiKey(options: CommerceDiscoveryAuthOptions): string | null {
-  return (
+function resolveApiKey(options: CommerceDiscoveryAuthOptions): string {
+  const apiKey =
     options.apiKey ??
-    (options.settings ?? getSettings()).commerceDiscoveryInternalApiKey ??
-    null
-  );
-}
+    (options.settings ?? getSettings()).commerceDiscoveryInternalApiKey;
 
-/**
- * Local-dev escape hatch. When no internal API key is configured and the server
- * runs in development mode, skip the real upgrade call and mint a stub token so
- * onboarding can be exercised without the internal commerce-skills worker.
- * Mirrors the e2e upgrade mock's token shape (`commerce-upgrade-mock.ts`).
- *
- * Only active under `NODE_ENV=development` (what `dev:server` sets). In
- * production the missing key throws; under `bun test` (`NODE_ENV=test`) it also
- * throws, so the required-key contract stays covered.
- */
-function isDevStubEnabled(): boolean {
-  return process.env.NODE_ENV === "development";
+  if (!apiKey) {
+    throw new Error(
+      "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
+    );
+  }
+
+  return apiKey;
 }
 
 function domainFromSiteUrl(siteUrl: string): string {
@@ -87,23 +79,8 @@ export async function fetchCommerceDiscoveryAuth(
   input: CommerceDiscoveryAuthInput,
   options: CommerceDiscoveryAuthOptions = {},
 ) {
-  const apiKey = resolveApiKey(options);
-
-  if (!apiKey) {
-    if (isDevStubEnabled()) {
-      console.warn(
-        "[commerce-discovery] COMMERCE_DISCOVERY_INTERNAL_API_KEY not set — " +
-          "minting a dev stub token. Local development only; setup will not " +
-          "reach the real commerce-skills worker.",
-      );
-      return { authorizationToken: `dgn_dev_${input.orgId}` };
-    }
-    throw new Error(
-      "COMMERCE_DISCOVERY_INTERNAL_API_KEY is required to set up Commerce Discovery.",
-    );
-  }
-
   const baseUrl = resolveBaseUrl(options);
+  const apiKey = resolveApiKey(options);
   const fetchImpl = options.fetchImpl ?? fetch;
   const domain = domainFromSiteUrl(input.siteUrl);
   const url = `${baseUrl}/api/v2/internal/diagnostics/${encodeURIComponent(
