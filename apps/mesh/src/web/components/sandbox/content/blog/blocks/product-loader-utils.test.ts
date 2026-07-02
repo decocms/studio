@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   readProductListIds,
-  toInvokeLoaderBody,
+  toInvokeLoaderBodies,
   writeProductListIds,
 } from "./product-loader-utils";
 
@@ -16,6 +16,39 @@ describe("readProductListIds", () => {
         },
       }),
     ).toEqual(["149524", "151294"]);
+  });
+
+  test("preserves empty entries so just-added rows stay visible", () => {
+    expect(
+      readProductListIds({
+        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+        props: { ids: ["149524", ""] },
+      }),
+    ).toEqual(["149524", ""]);
+  });
+
+  test("reads ids from a ref-array of per-product loaders", () => {
+    expect(
+      readProductListIds([
+        {
+          __resolveType: "site/loaders/customVTEX/productById.ts",
+          productId: "2003481",
+        },
+        {
+          __resolveType: "site/loaders/customVTEX/productById.ts",
+          productId: 2003635,
+        },
+      ]),
+    ).toEqual(["2003481", "2003635"]);
+  });
+
+  test("reads the id from a single per-product loader ref", () => {
+    expect(
+      readProductListIds({
+        __resolveType: "site/loaders/customVTEX/productById.ts",
+        productId: "2003481",
+      }),
+    ).toEqual(["2003481"]);
   });
 
   test("returns empty array for missing loader", () => {
@@ -55,21 +88,127 @@ describe("writeProductListIds", () => {
       },
     });
   });
+
+  test("keeps the ref-array shape, reusing slots and cloning for new ids", () => {
+    expect(
+      writeProductListIds(
+        [
+          {
+            __resolveType: "site/loaders/customVTEX/productById.ts",
+            productId: "2003481",
+          },
+          {
+            __resolveType: "site/loaders/customVTEX/productById.ts",
+            productId: "2003635",
+          },
+        ],
+        ["2003481", "999", ""],
+      ),
+    ).toEqual([
+      {
+        __resolveType: "site/loaders/customVTEX/productById.ts",
+        productId: "2003481",
+      },
+      {
+        __resolveType: "site/loaders/customVTEX/productById.ts",
+        productId: "999",
+      },
+      {
+        __resolveType: "site/loaders/customVTEX/productById.ts",
+        productId: "",
+      },
+    ]);
+  });
+
+  test("keeps a single per-product ref's loader", () => {
+    expect(
+      writeProductListIds(
+        {
+          __resolveType: "site/loaders/customVTEX/productById.ts",
+          productId: "2003481",
+        },
+        ["999"],
+      ),
+    ).toEqual({
+      __resolveType: "site/loaders/customVTEX/productById.ts",
+      productId: "999",
+    });
+  });
+
+  test("falls back to the default list-loader for an empty array", () => {
+    expect(writeProductListIds([], ["151331"])).toEqual({
+      __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+      props: {
+        ids: ["151331"],
+        simulationBehavior: "default",
+      },
+    });
+  });
 });
 
-describe("toInvokeLoaderBody", () => {
+describe("toInvokeLoaderBodies", () => {
   test("strips non-loader props before invoke", () => {
     expect(
-      toInvokeLoaderBody({
+      toInvokeLoaderBodies({
         __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
         props: {
           ids: ["149524", "151294"],
           simulationBehavior: "default",
         },
       }),
-    ).toEqual({
-      __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
-      props: { ids: ["149524", "151294"] },
-    });
+    ).toEqual([
+      {
+        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+        props: { ids: ["149524", "151294"] },
+      },
+    ]);
+  });
+
+  test("drops empty ids from the list-loader body", () => {
+    expect(
+      toInvokeLoaderBodies({
+        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+        props: { ids: ["149524", ""] },
+      }),
+    ).toEqual([
+      {
+        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+        props: { ids: ["149524"] },
+      },
+    ]);
+  });
+
+  test("builds one body per ref-array item, skipping empty ids", () => {
+    expect(
+      toInvokeLoaderBodies([
+        {
+          __resolveType: "site/loaders/customVTEX/productById.ts",
+          productId: "2003481",
+        },
+        {
+          __resolveType: "site/loaders/customVTEX/productById.ts",
+          productId: "",
+        },
+      ]),
+    ).toEqual([
+      {
+        __resolveType: "site/loaders/customVTEX/productById.ts",
+        productId: "2003481",
+      },
+    ]);
+  });
+
+  test("passes a single per-product ref through as-is", () => {
+    expect(
+      toInvokeLoaderBodies({
+        __resolveType: "site/loaders/customVTEX/productById.ts",
+        productId: "2003481",
+      }),
+    ).toEqual([
+      {
+        __resolveType: "site/loaders/customVTEX/productById.ts",
+        productId: "2003481",
+      },
+    ]);
   });
 });

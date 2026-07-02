@@ -3,6 +3,7 @@ import {
   alignProductsToIds,
   parseProductListPreview,
   parseSingleProduct,
+  productListLoaderKey,
 } from "./product-preview-utils";
 
 describe("parseSingleProduct", () => {
@@ -157,5 +158,51 @@ describe("alignProductsToIds", () => {
     expect(
       alignProductsToIds(["149524", "151294", "149526", "150522"], products),
     ).toEqual(products);
+  });
+
+  test("yields null slots for empty ids without shifting positional matches", () => {
+    const productA = {
+      id: "111",
+      sku: "111",
+      groupId: "",
+      name: "A",
+      imageUrl: null,
+    };
+    const productB = {
+      id: "222",
+      sku: "222",
+      groupId: "",
+      name: "B",
+      imageUrl: null,
+    };
+    expect(
+      alignProductsToIds(["2003481", "", "2003635"], [productA, productB]),
+    ).toEqual([productA, null, productB]);
+  });
+});
+
+describe("productListLoaderKey", () => {
+  test("keys a list-loader by resolveType and ids", () => {
+    expect(
+      productListLoaderKey({
+        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
+        props: { ids: ["149524", "151294"] },
+      }),
+    ).toBe("vtex/loaders/intelligentSearch/productList.ts|149524,151294");
+  });
+
+  test("keys a ref-array by its item resolveTypes and ids", () => {
+    expect(
+      productListLoaderKey([
+        {
+          __resolveType: "site/loaders/customVTEX/productById.ts",
+          productId: "2003481",
+        },
+        {
+          __resolveType: "site/loaders/customVTEX/productById.ts",
+          productId: "2003635",
+        },
+      ]),
+    ).toBe("site/loaders/customVTEX/productById.ts|2003481,2003635");
   });
 });

@@ -23,7 +23,11 @@ function numStr(value: unknown): string {
 }
 
 export function productListLoaderKey(loader: unknown): string {
-  const resolveType = str(asRecord(loader)?.__resolveType);
+  const resolveType = Array.isArray(loader)
+    ? [
+        ...new Set(loader.map((item) => str(asRecord(item)?.__resolveType))),
+      ].join("+")
+    : str(asRecord(loader)?.__resolveType);
   const ids = readProductListIds(loader).join(",");
   return `${resolveType}|${ids}`;
 }
@@ -152,12 +156,15 @@ function lookupKeys(product: ResolvedProductPreview): string[] {
   ];
 }
 
-/** Map loader ids to resolved products, preserving VTEX sort order and sparse slots. */
+/**
+ * Map loader ids to resolved products, preserving VTEX sort order and sparse
+ * slots. Empty ids (just-added editor rows) yield `null` slots; the loader is
+ * only invoked for non-empty ids, so the positional fallback skips them.
+ */
 export function alignProductsToIds(
   ids: string[],
   products: (ResolvedProductPreview | null)[],
 ): (ResolvedProductPreview | null)[] {
-  const trimmed = ids.map((id) => id.trim()).filter(Boolean);
   const byKey = new Map<string, ResolvedProductPreview>();
   for (const product of products) {
     if (!product) continue;
@@ -166,5 +173,12 @@ export function alignProductsToIds(
     }
   }
 
-  return trimmed.map((id, index) => byKey.get(id) ?? products[index] ?? null);
+  let cursor = 0;
+  return ids.map((raw) => {
+    const id = raw.trim();
+    if (!id) return null;
+    const positional = products[cursor] ?? null;
+    cursor += 1;
+    return byKey.get(id) ?? positional;
+  });
 }

@@ -3,7 +3,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { useBlogSandbox } from "./blog-sandbox-context";
 import {
   readProductListIds,
-  toInvokeLoaderBody,
+  toInvokeLoaderBodies,
 } from "./blocks/product-loader-utils";
 import {
   alignProductsToIds,
@@ -12,16 +12,16 @@ import {
   type ResolvedProductPreview,
 } from "./blocks/product-preview-utils";
 
-async function invokeProductListLoader(
+async function invokeProductLoader(
   sandbox: { orgSlug: string; virtualMcpId: string; branch: string },
-  loader: unknown,
+  body: Record<string, unknown>,
 ): Promise<unknown> {
   const res = await fetch(
     `/api/${sandbox.orgSlug}/sandbox/${encodeURIComponent(sandbox.virtualMcpId)}/${encodeURIComponent(sandbox.branch)}/preview-invoke`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(toInvokeLoaderBody(loader)),
+      body: JSON.stringify(body),
     },
   );
   if (!res.ok) {
@@ -56,8 +56,13 @@ export function useProductListPreview(loader: unknown): {
   const query = useQuery({
     queryKey: KEYS.sandboxInvoke(sandboxKey, loaderKey),
     queryFn: async () => {
-      const data = await invokeProductListLoader(sandbox!, loader);
-      return parseProductListPreview(data);
+      // Ref-array shapes invoke one loader per product; list-loaders invoke
+      // once. Results keep body order, so flatMap preserves id positions.
+      const bodies = toInvokeLoaderBodies(loader);
+      const results = await Promise.all(
+        bodies.map((body) => invokeProductLoader(sandbox!, body)),
+      );
+      return results.flatMap(parseProductListPreview);
     },
     enabled: !!sandbox && ids.some((id) => id.trim()),
     staleTime: 60_000,
