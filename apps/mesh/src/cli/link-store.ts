@@ -57,6 +57,8 @@ interface LinkState {
   selectedHandle: string | null;
   /** Non-null while a delete confirmation is awaiting y/n. */
   pendingConfirm: PendingConfirm | null;
+  /** Handles whose removal is in flight (rendered as "Removing…"). */
+  removingHandles: Set<string>;
   /** Transient error from the last interactive action (shown in the footer). */
   actionError: string | null;
   /** Daemon actions the TUI invokes; null until the daemon has started. */
@@ -118,6 +120,7 @@ function initialState(): LinkState {
     logPath: null,
     selectedHandle: null,
     pendingConfirm: null,
+    removingHandles: new Set(),
     actionError: null,
     actions: null,
   };
@@ -185,6 +188,15 @@ export function setActionError(message: string | null) {
   emit();
 }
 
+export function setRemoving(handle: string, removing: boolean) {
+  if (state.removingHandles.has(handle) === removing) return;
+  const removingHandles = new Set(state.removingHandles);
+  if (removing) removingHandles.add(handle);
+  else removingHandles.delete(handle);
+  state = { ...state, removingHandles };
+  emit();
+}
+
 export function setLinkActions(actions: LinkActions) {
   state = { ...state, actions };
   emit();
@@ -199,7 +211,15 @@ export function removeSandboxRow(handle: string) {
   );
   const sandboxes = new Map(state.sandboxes);
   sandboxes.delete(handle);
-  state = { ...state, sandboxes, selectedHandle, pendingConfirm: null };
+  const removingHandles = new Set(state.removingHandles);
+  removingHandles.delete(handle);
+  state = {
+    ...state,
+    sandboxes,
+    selectedHandle,
+    pendingConfirm: null,
+    removingHandles,
+  };
   emit();
 }
 
