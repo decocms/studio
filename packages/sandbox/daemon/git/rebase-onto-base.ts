@@ -348,7 +348,13 @@ function rebaseOntoBaseInner(
   commitBeforeRebase(repoDir, operator);
 
   try {
-    runGit(repoDir, ["rebase", "-X", "theirs", upstream]);
+    // --autostash: the sandbox dev server keeps regenerating tracked files
+    // (e.g. src/server/cms/blocks.gen.json, .deco/blocks/*.json). It can dirty
+    // the working tree in the window between commitBeforeRebase and the rebase's
+    // internal checkout, which otherwise aborts with "Your local changes would
+    // be overwritten by checkout / could not detach HEAD". Autostash stashes
+    // that churn, runs the rebase, and restores it afterwards.
+    runGit(repoDir, ["rebase", "--autostash", "-X", "theirs", upstream]);
   } catch (err) {
     if (!isRebaseInProgress(repoDir)) {
       throw err;
