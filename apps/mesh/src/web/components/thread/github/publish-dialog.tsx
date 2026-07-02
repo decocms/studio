@@ -346,6 +346,27 @@ function PublishDialogBody({
         );
       }
 
+      // The rebase onto base drops commits whose changes already landed on
+      // base (git drops empty commits). If that leaves the branch even with
+      // base, GitHub would reject the PR with 422 "No commits between …".
+      // Treat an in-sync branch as already published instead of surfacing a
+      // raw GitHub error.
+      const statusAfterRebase = await fetchGitStatus(
+        orgSlug,
+        virtualMcpId,
+        branch,
+      );
+      if ((statusAfterRebase.aheadOfBase ?? 0) === 0) {
+        toast.success(`Already up to date with ${baseBranch}`);
+        handleOpenChange(false);
+        setGitDiff(null);
+        setPublishTitle("");
+        setPublishBody("");
+        await onPullRequestChanged?.();
+        await onPublished?.();
+        return;
+      }
+
       try {
         openedPr = await openPullRequestForBranch(githubClient, {
           owner,
