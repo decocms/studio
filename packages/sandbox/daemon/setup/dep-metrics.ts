@@ -71,6 +71,14 @@ export interface DepMetricsInput {
 // +2 bytes each), which the per-element cost below accounts for.
 const MAX_LINE_BYTES = 600;
 
+// Bound the context fields so an unusually long branch/repo name can't inflate
+// the per-line envelope past the small cap — that would push even a single-dep
+// line over the limit and get the whole install's data dropped. 80 chars is
+// plenty to identify a repo/branch; the full value is never needed here.
+const MAX_META_BYTES = 80;
+const clipMeta = (s: string | undefined): string | undefined =>
+  s !== undefined && s.length > MAX_META_BYTES ? s.slice(0, MAX_META_BYTES) : s;
+
 /** Greedily pack `name@version` strings into groups so each rendered line
  * (envelope + double-encoded deps) stays under MAX_LINE_BYTES. `envelopeBytes`
  * is the measured line size minus deps content; per element we add its escaped
@@ -116,8 +124,11 @@ export function buildDepLines(
   input: Omit<DepMetricsInput, "installRoot">,
 ): string[] {
   const flat = deps.map((d) => `${d.name}@${d.version}`);
+  const repoName = clipMeta(input.repoName);
+  const branch = clipMeta(input.branch);
   // Measure the line minus dep content once (deps="", 3-digit chunk counts as
-  // headroom) so the chunker can keep the FINAL line under the cap.
+  // headroom) so the chunker can keep the FINAL line under the cap. Uses the
+  // clipped meta so the budget matches what's actually emitted.
   const envelopeBytes = Buffer.byteLength(
     JSON.stringify({
       msg: "sandbox.deps",
@@ -127,8 +138,8 @@ export function buildDepLines(
       deps: "",
       bootId: input.bootId,
       packageManager: input.packageManager,
-      repoName: input.repoName,
-      branch: input.branch,
+      repoName,
+      branch,
     }),
   );
   const groups = chunkByBytes(flat, envelopeBytes);
@@ -142,8 +153,8 @@ export function buildDepLines(
       deps: JSON.stringify(group),
       bootId: input.bootId,
       packageManager: input.packageManager,
-      repoName: input.repoName,
-      branch: input.branch,
+      repoName,
+      branch,
     }),
   );
 }

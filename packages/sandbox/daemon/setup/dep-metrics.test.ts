@@ -91,6 +91,18 @@ describe("buildDepLines", () => {
     assertIntact(lines, deps);
   });
 
+  // A pathologically long branch/repo name must not inflate the envelope past
+  // the small line cap (which would drop the whole install's data).
+  it("keeps lines small even with a very long branch/repo name", () => {
+    const deps = Array.from({ length: 100 }, (_, i) => dep(i));
+    const lines = buildDepLines(deps, {
+      ...input,
+      repoName: "org/".concat("r".repeat(500)),
+      branch: "feature/".concat("b".repeat(500)),
+    });
+    assertIntact(lines, deps);
+  });
+
   it("emits a single countable line for a zero-dep install", () => {
     const lines = buildDepLines([], input);
     expect(lines.length).toBe(1);
