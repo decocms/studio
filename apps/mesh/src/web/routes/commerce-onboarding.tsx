@@ -612,8 +612,9 @@ function CommerceSetupContent({
   });
 
   // Triggers the diagnostic run now that the user has connected their data
-  // sources. Fire-and-forget from the "See full report" click — the report view
-  // polls for the enriched deck as it lands.
+  // sources ("See full report"). We await the TRIGGER so a failure surfaces (a
+  // generic error, no navigation) instead of silently opening an empty report;
+  // the run itself is async — the report view polls for the enriched deck.
   const runMutation = useMutation({
     mutationFn: async (siteUrl: string) => {
       const result = await selfClient.callTool({
@@ -626,6 +627,7 @@ function CommerceSetupContent({
     },
     retry: false,
   });
+  const [runError, setRunError] = useState<string | null>(null);
 
   const setupReady = !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
   // A returning session may arrive with no ?siteUrl param and an empty form while
@@ -679,11 +681,21 @@ function CommerceSetupContent({
     toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
   };
 
-  const openReport = () => {
-    // Kick off the enriching run (fire-and-forget) — the user is done connecting.
+  const openReport = async () => {
+    setRunError(null);
+    // Trigger the enriching run now that the user is done connecting. Await it so a
+    // failure surfaces (generic message, stay put) instead of silently opening an
+    // empty report. No resolvable site (legacy session) ⇒ nothing to trigger, just open.
     const normalized = normalizeCommerceSiteUrl(currentSiteUrl);
     if (normalized.ok) {
-      runMutation.mutate(normalized.value);
+      try {
+        await runMutation.mutateAsync(normalized.value);
+      } catch {
+        setRunError(
+          "Algo deu errado ao gerar seu relatório. Tente novamente em instantes.",
+        );
+        return;
+      }
     }
     localStorage.setItem(
       LOCALSTORAGE_KEYS.sidebarOpen(),
@@ -706,6 +718,8 @@ function CommerceSetupContent({
         org={org}
         reportApp={reportApp}
         onOpenReport={openReport}
+        isSubmitting={runMutation.isPending}
+        error={runError}
         meetingUrl={currentMeetingUrl}
         meetingVisual={currentMeetingVisual}
         siteUrl={currentSiteUrl}
@@ -836,6 +850,8 @@ function CommerceDiscoveryReady({
   org,
   reportApp,
   onOpenReport,
+  isSubmitting,
+  error,
   meetingUrl,
   meetingVisual,
   siteUrl,
@@ -843,6 +859,8 @@ function CommerceDiscoveryReady({
   org: CommerceOrganization;
   reportApp: CommerceDiscoveryReportApp;
   onOpenReport: () => void;
+  isSubmitting?: boolean;
+  error?: string | null;
   meetingUrl: string;
   meetingVisual: ReactNode;
   siteUrl?: string;
@@ -864,15 +882,22 @@ function CommerceDiscoveryReady({
           {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
               escape hatch rides in the footer above the report CTA. */}
           <ScheduleMeetingBanner className="md:hidden" href={meetingUrl} />
+          {error ? <InlineError message={error} /> : null}
           <Button
             type="button"
             size="xl"
             className="w-full rounded-2xl text-base font-medium"
             onClick={onOpenReport}
-            disabled={!reportApp.virtualMcpId}
+            disabled={isSubmitting || !reportApp.virtualMcpId}
           >
-            See full report
-            <ArrowRight size={18} />
+            {isSubmitting ? (
+              <CommerceOnboardingButtonLoading />
+            ) : (
+              <>
+                See full report
+                <ArrowRight size={18} />
+              </>
+            )}
           </Button>
         </div>
       </div>
