@@ -13,16 +13,11 @@ import {
 } from "@deco/ui/components/form.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@deco/ui/components/select.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult, toPropertyOptions } from "../companions-core.ts";
+import { LoadingIndicator } from "../loading-indicator.tsx";
 import { useSaveCompanionConfig } from "./use-save-companion-config.ts";
+import { SelectableList } from "./selectable-list.tsx";
 import type { CompanionFormProps } from "./types.ts";
 
 const schema = z.object({
@@ -77,8 +72,8 @@ export function GoogleAnalyticsConfigForm({
 
   if (propertiesQuery.isLoading) {
     return (
-      <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">Loading properties...</p>
+      <div className="flex min-h-[200px] items-center justify-center">
+        <LoadingIndicator label="Loading properties…" />
       </div>
     );
   }
@@ -117,26 +112,15 @@ export function GoogleAnalyticsConfigForm({
             <FormItem>
               <FormLabel>Google Analytics Property</FormLabel>
               <FormControl>
-                <Select
+                <SelectableList
+                  groups={options.map((group) => ({
+                    label: group.account,
+                    options: group.options,
+                  }))}
                   value={field.value}
-                  onValueChange={field.onChange}
+                  onChange={field.onChange}
                   disabled={isPending}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a property" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {options.map((group) => (
-                      <div key={group.account}>
-                        {group.options.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </div>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
