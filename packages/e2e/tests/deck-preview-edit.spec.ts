@@ -97,8 +97,9 @@ test.describe("deck preview tab", () => {
     );
     await expect(frame.locator(".thumb")).toHaveCount(3);
 
-    // Older builds rendered a floating release card that could overlap the
-    // iframe chrome. Keep this as a harmless cleanup for mixed-version runs.
+    // The floating release-announcement card (parent page, fixed bottom-
+    // right) overlaps the iframe and intercepts clicks aimed at in-iframe
+    // chrome — dismiss it if present.
     const dismissRelease = page.getByRole("button", {
       name: "Dismiss release announcement",
     });

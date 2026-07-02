@@ -65,11 +65,14 @@ async function clearComposer(page: Page): Promise<void> {
 }
 
 /**
- * Dismiss the legacy floating "Release announcement" popover if present.
+ * Dismiss the bottom-right "Release announcement" popover if present.
  *
- * Older builds rendered a one-time release popover on first home-page render.
- * It could sit on top of the send button's z-index when the page was short
- * enough, so keep this cleanup as a no-op for current builds.
+ * Fresh users get a one-time release popover (e.g. "Claude Opus 4.8 is the
+ * new default") on first home-page render. It does NOT visually overlap the
+ * chat input but it *does* sit on top of the send button's z-index when the
+ * page is short enough — Playwright then sees the dialog intercept pointer
+ * events on `.click()`. Closing it is the cleanest neutral fix; users would
+ * either dismiss it or wait for it to fade. No-op if not present.
  */
 async function dismissReleaseAnnouncement(page: Page): Promise<void> {
   const dialog = page.getByRole("dialog", { name: "Release announcement" });
@@ -89,16 +92,19 @@ async function dismissReleaseAnnouncement(page: Page): Promise<void> {
  * Submit the composer.
  *
  * We click the explicit send button rather than pressing Enter because the
- * The button calls the same handler the Tiptap Enter binding does, so the
- * user-facing behavior under test (the draft-clear-on-submit path) is
- * identical either way.
+ * one-time "Now Available" release announcement that appears on first
+ * render can steal key events — leaving the keystroke unhandled and the
+ * form unsubmitted. The button calls the same handler the Tiptap Enter
+ * binding does, so the user-facing behavior under test (the
+ * draft-clear-on-submit path) is identical either way.
  *
  * Title="Send message (Enter)" is set by ChatInput. The composer never
  * shows two enabled send buttons at once (home / per-thread composers are
  * mutually exclusive), so `.first()` keeps the locator safe across flows.
  */
 async function submitComposer(page: Page): Promise<void> {
-  // Dismiss the legacy release popover first if a mixed-version run shows it.
+  // The release-announcement popover sometimes intercepts pointer events on
+  // the send button, so dismiss it first if it's still visible.
   await dismissReleaseAnnouncement(page);
   await page
     .getByTitle("Send message (Enter)", { exact: true })
@@ -196,12 +202,15 @@ test.describe("chat input draft persistence", () => {
   // render the composer instead of `NoAiProviderEmptyState`. Fresh test
   // users have no provider, so without this the chat input never mounts.
   //
-  // Also pre-mark every known release as "seen" in localStorage so release
-  // announcement state cannot affect this chat-input test.
+  // Also pre-mark every known release as "seen" in localStorage so the
+  // bottom-right `FloatingReleaseCard` (`useReleaseSeenState`) never
+  // renders. The card intercepts pointer events on the send button on
+  // viewports where they overlap, and the close-button dismiss path is
+  // animation-racy. Pre-seeding kills the dialog at the source.
   //
   // If a release is added to `apps/mesh/src/web/lib/release-feed.ts`, add
-  // its id here too — otherwise the next id (`RELEASES[0]`) can surface
-  // as a sidebar announcement during desktop runs.
+  // its id here too — otherwise the next id (`RELEASES[0]`) will surface
+  // as a popover and re-introduce the failure.
   test.beforeEach(async ({ authedPage }) => {
     const { page, orgSlug } = authedPage;
     await seedAiProviderKey(page.context().request, orgSlug);
