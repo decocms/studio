@@ -13,7 +13,8 @@ export function buildConfigPayload(args: {
   port?: number;
   repo: NonNullable<EnsureOptions["repo"]> | null;
   tenant?: EnsureOptions["tenant"];
-  denoCachePresignedUrl?: string;
+  s3CacheGetUrl?: string;
+  s3CachePutUrl?: string;
 }): Partial<TenantConfig> | null {
   const repo = args.repo;
   const git = repo
@@ -54,16 +55,19 @@ export function buildConfigPayload(args: {
       }
     : undefined;
 
-  const denoCache = args.denoCachePresignedUrl
-    ? { presignedUrl: args.denoCachePresignedUrl }
+  const s3Cache = args.s3CacheGetUrl
+    ? {
+        getUrl: args.s3CacheGetUrl,
+        ...(args.s3CachePutUrl ? { putUrl: args.s3CachePutUrl } : {}),
+      }
     : undefined;
 
-  if (!git && !application && !operator && !denoCache) return null;
+  if (!git && !application && !operator && !s3Cache) return null;
   return {
     ...(git ? { git } : {}),
     ...(operator ? { operator } : {}),
     ...(application ? { application } : {}),
-    ...(denoCache ? { denoCache } : {}),
+    ...(s3Cache ? { s3Cache } : {}),
   };
 }
 

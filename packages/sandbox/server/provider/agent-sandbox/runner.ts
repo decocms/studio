@@ -1324,7 +1324,8 @@ export class AgentSandboxProvider implements SandboxProvider {
       repo: opts?.repo ?? null,
       port: opts?.workload?.devPort ?? DEFAULT_DEV_PORT,
       tenant: opts?.tenant ?? undefined,
-      denoCachePresignedUrl: opts?.repo?.denoCachePresignedUrl,
+      s3CacheGetUrl: opts?.repo?.s3CacheGetUrl,
+      s3CachePutUrl: opts?.repo?.s3CachePutUrl,
     });
   }
 

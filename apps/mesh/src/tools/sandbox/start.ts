@@ -8,7 +8,11 @@
  * (user, branch) key — no stale-sandbox teardown is needed on kind change.
  */
 
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { AssumeRoleCommand, STSClient } from "@aws-sdk/client-sts";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { z } from "zod";
@@ -69,10 +73,11 @@ const sandboxProviderKindInputSchema = z.enum([
   "cluster",
 ]);
 
-async function tryGenerateDecoCachePresignedUrl(
+async function tryGenerateS3CachePresignedUrls(
   owner: string,
   repo: string,
-): Promise<string | undefined> {
+  packageManager: string,
+): Promise<{ getUrl: string; putUrl: string } | undefined> {
   if (owner !== "deco-sites") return undefined;
   const settings = getSettings();
   const bucket = settings.decoCacheS3Bucket;
@@ -103,14 +108,16 @@ async function tryGenerateDecoCachePresignedUrl(
         sessionToken: creds.SessionToken,
       },
     });
-    return await getSignedUrl(
-      s3,
-      new GetObjectCommand({
-        Bucket: bucket,
-        Key: `${owner}/${repo}/cache.tar.zst`,
+    const key = `${owner}/${repo}/${packageManager}-cache.tar.zst`;
+    const [getUrl, putUrl] = await Promise.all([
+      getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
+        expiresIn: 900,
       }),
-      { expiresIn: 900 },
-    );
+      getSignedUrl(s3, new PutObjectCommand({ Bucket: bucket, Key: key }), {
+        expiresIn: 900,
+      }),
+    ]);
+    return { getUrl, putUrl };
   } catch {
     return undefined;
   }
@@ -349,7 +356,8 @@ async function provisionSandbox(
         displayName: string;
         owner?: string;
         name?: string;
-        denoCachePresignedUrl?: string;
+        s3CacheGetUrl?: string;
+        s3CachePutUrl?: string;
       }
     | undefined;
 
@@ -431,10 +439,17 @@ async function provisionSandbox(
       displayName: `${githubRepo.owner}/${githubRepo.name}`,
       owner: githubRepo.owner,
       name: githubRepo.name,
-      denoCachePresignedUrl: await tryGenerateDecoCachePresignedUrl(
-        githubRepo.owner,
-        githubRepo.name,
-      ),
+      ...(packageManager
+        ? await tryGenerateS3CachePresignedUrls(
+            githubRepo.owner,
+            githubRepo.name,
+            packageManager,
+          ).then((urls) =>
+            urls
+              ? { s3CacheGetUrl: urls.getUrl, s3CachePutUrl: urls.putUrl }
+              : {},
+          )
+        : {}),
     };
   }
 

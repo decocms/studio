@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { createWriteStream } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { createWriteStream, existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -9,30 +8,35 @@ import { resolvePmRoot } from "../paths";
 import type { Config } from "../types";
 import { spawnSetupStep } from "./spawn-step";
 
-/**
- * For Deno projects, tries to pre-populate $DENO_DIR from a pre-signed S3 URL
- * provided by mesh. The URL is scoped to exactly one object (owner/repo/cache.tar.zst)
- * and expires in 15 minutes — no AWS credentials needed in the sandbox pod.
- *
- * Non-fatal: any failure (URL expired, object not found, network error) is logged
- * and the sandbox continues to start normally.
- */
-export function tryWarmDenoCache(deps: InstallDeps): Promise<void> | null {
-  const { config } = deps;
-  if (config.application?.packageManager?.name !== "deno") return null;
+const S3_CACHE_DIRS: Record<
+  string,
+  (env?: Readonly<Record<string, string>>) => string
+> = {
+  deno: (env) => env?.DENO_DIR ?? join(homedir(), ".deno"),
+  bun: () => join(homedir(), ".bun", "install", "cache"),
+  npm: () => join(homedir(), ".npm"),
+  pnpm: () => join(homedir(), ".local", "share", "pnpm", "store", "v3"),
+};
 
-  const presignedUrl = config.denoCache?.presignedUrl;
-  if (!presignedUrl) return null;
+/**
+ * Tries to restore the package manager cache from S3 before install.
+ * Uses a pre-signed GET URL from TenantConfig — no AWS credentials needed.
+ * Non-fatal: any failure is logged and the sandbox continues normally.
+ */
+export function tryRestoreS3Cache(deps: InstallDeps): Promise<void> | null {
+  const { config } = deps;
+  const pm = config.application?.packageManager?.name;
+  if (!pm) return null;
+  const getCacheDir = S3_CACHE_DIRS[pm];
+  if (!getCacheDir) return null;
+  const getUrl = config.s3Cache?.getUrl;
+  if (!getUrl) return null;
 
   return (async () => {
-    deps.onChunk(
-      "setup",
-      "\r\n[deno cache] fetching from pre-signed URL...\r\n",
-    );
-
+    deps.onChunk("setup", `\r\n[s3 cache] restoring ${pm} cache...\r\n`);
     let tmpDir: string | null = null;
     try {
-      const res = await fetch(presignedUrl);
+      const res = await fetch(getUrl);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (!res.body) throw new Error("empty response body");
 
@@ -41,12 +45,11 @@ export function tryWarmDenoCache(deps: InstallDeps): Promise<void> | null {
       const ws = createWriteStream(tmpFile);
       await pipeline(res.body as unknown as NodeJS.ReadableStream, ws);
 
-      const denoDir =
-        deps.env?.DENO_DIR ?? process.env.DENO_DIR ?? join(homedir(), ".deno");
+      const cacheDir = getCacheDir(deps.env);
       const cmd = [
-        `mkdir -p "${denoDir}"`,
-        `zstd -d "${tmpFile}" --stdout | tar xf - -C "${denoDir}" --no-same-permissions --no-same-owner`,
-        `echo "[deno cache] restored from S3"`,
+        `mkdir -p "${cacheDir}"`,
+        `zstd -d "${tmpFile}" --stdout | tar xf - -C "${cacheDir}" --no-same-permissions --no-same-owner`,
+        `echo "[s3 cache] restored ${pm} cache"`,
       ].join(" && ");
 
       await spawnSetupStep(cmd, deps.onChunk, {
@@ -54,9 +57,55 @@ export function tryWarmDenoCache(deps: InstallDeps): Promise<void> | null {
         env: deps.env,
       });
     } catch {
+      deps.onChunk("setup", `[s3 cache] not available — cold start\r\n`);
+    } finally {
+      if (tmpDir)
+        await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  })();
+}
+
+/**
+ * Uploads the package manager cache to S3 after a successful install.
+ * Uses a pre-signed PUT URL from TenantConfig — no AWS credentials needed.
+ * Non-fatal: any failure is logged and does not affect the sandbox.
+ */
+export function tryUploadS3Cache(deps: InstallDeps): Promise<void> | null {
+  const { config } = deps;
+  const pm = config.application?.packageManager?.name;
+  if (!pm) return null;
+  const getCacheDir = S3_CACHE_DIRS[pm];
+  if (!getCacheDir) return null;
+  const putUrl = config.s3Cache?.putUrl;
+  if (!putUrl) return null;
+
+  return (async () => {
+    deps.onChunk("setup", `\r\n[s3 cache] uploading ${pm} cache...\r\n`);
+    let tmpDir: string | null = null;
+    try {
+      const cacheDir = getCacheDir(deps.env);
+      tmpDir = await mkdtemp(join(tmpdir(), "deco-cache-"));
+      const tmpFile = join(tmpDir, "cache.tar.zst");
+
+      const code = await spawnSetupStep(
+        `tar cf - -C "${cacheDir}" . | zstd -o "${tmpFile}"`,
+        deps.onChunk,
+        { dropPrivileges: deps.dropPrivileges, env: deps.env },
+      );
+      if (code !== 0) throw new Error(`tar/zstd exited ${code}`);
+
+      const body = await readFile(tmpFile);
+      const res = await fetch(putUrl, {
+        method: "PUT",
+        body,
+        headers: { "Content-Length": String(body.byteLength) },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      deps.onChunk("setup", `[s3 cache] uploaded ${pm} cache\r\n`);
+    } catch (err) {
       deps.onChunk(
         "setup",
-        "[deno cache] not available — deno will fetch deps on first run\r\n",
+        `[s3 cache] upload failed — ${(err as Error).message}\r\n`,
       );
     } finally {
       if (tmpDir)

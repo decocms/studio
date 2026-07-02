@@ -27,7 +27,7 @@ import type { Application, Config } from "../types";
 import { autodetectApplication } from "./autodetect";
 import { spawnClone } from "./clone";
 import { configureGitIdentity } from "./identity";
-import { spawnInstall, tryWarmDenoCache } from "./install";
+import { spawnInstall, tryRestoreS3Cache, tryUploadS3Cache } from "./install";
 import { spawnSetupStep } from "./spawn-step";
 import { installProtectedBranchHook } from "../git/protect-branch";
 
@@ -311,29 +311,23 @@ export class SetupOrchestrator {
       /* not present */
     }
     const installTee = new LogTee(installLogPath, INSTALL_LOG_MAX_BYTES);
-    const installPromise = spawnInstall({
+    const onChunk = (_src: "setup", data: string) => {
+      this.rawChunk(data);
+      installTee.write(data);
+    };
+
+    const restorePromise = tryRestoreS3Cache({
       config,
       env: config.env,
-      onChunk: (_src, data) => {
-        this.rawChunk(data);
-        installTee.write(data);
-      },
+      onChunk,
     });
+    if (restorePromise) await restorePromise;
+
+    const installPromise = spawnInstall({ config, env: config.env, onChunk });
     // null = no install step needed (e.g. deno auto-fetches; or no manifest
     // present yet). Treat as success so the caller proceeds to start; mark
     // the install fingerprint so resume doesn't retry on every boot.
     if (!installPromise) {
-      // For deno, opportunistically pre-populate the cache from S3.
-      // Non-fatal: failure just means a cold first run.
-      const cachePromise = tryWarmDenoCache({
-        config,
-        env: config.env,
-        onChunk: (_src, data) => {
-          this.rawChunk(data);
-          installTee.write(data);
-        },
-      });
-      if (cachePromise) await cachePromise;
       installTee.close();
       this.markInstallSucceeded(config);
       return true;
@@ -350,6 +344,8 @@ export class SetupOrchestrator {
       this.deps.lifecycle.transition({ phase: "install-failed", error });
       return false;
     }
+    // ponytail: fire-and-forget — upload must not block sandbox startup
+    tryUploadS3Cache({ config, env: config.env, onChunk })?.catch(() => {});
     this.markInstallSucceeded(config);
     return true;
   }
