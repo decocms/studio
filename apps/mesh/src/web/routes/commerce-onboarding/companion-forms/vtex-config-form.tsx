@@ -27,7 +27,6 @@ type FormData = z.infer<typeof schema>;
 
 export function VtexConfigForm({
   card,
-  connectionId,
   companionClient: _companionClient,
   selfClient,
   org,

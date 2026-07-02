@@ -14,7 +14,7 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@decocms/mesh-sdk";
-import { CheckCircle, Edit03 } from "@untitledui/icons";
+import { CheckCircle, Edit03, Loading01 } from "@untitledui/icons";
 import { useState } from "react";
 import type { CompanionCardModel } from "./companions-core.ts";
 import { getConfigurationSummaryEntries } from "./companions-core.ts";
