@@ -32,7 +32,9 @@ export function CommerceOnboardingLoading({
 }) {
   return (
     <AuthSplitLayout>
-      <CommerceOnboardingLoadingIndicator variant={variant} />
+      <div className="flex justify-center">
+        <CommerceOnboardingLoadingIndicator variant={variant} />
+      </div>
     </AuthSplitLayout>
   );
 }
