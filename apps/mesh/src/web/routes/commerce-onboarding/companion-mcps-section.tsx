@@ -1,6 +1,10 @@
+import { ErrorBoundary } from "@/web/components/error-boundary";
 import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { authClient } from "@/web/lib/auth-client";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
+import { Button } from "@deco/ui/components/button.tsx";
+import { QueryErrorResetBoundary } from "@tanstack/react-query";
+import { Suspense } from "react";
 import { CompanionCard, CompanionCardSkeleton } from "./companion-card.tsx";
 import { useCommerceCompanions } from "./use-commerce-companions.ts";
 import { useConnectCompanion } from "./use-connect-companion.ts";
@@ -10,8 +14,9 @@ interface CompanionOrg {
   slug: string;
 }
 
-// Shared between the live section and its Suspense fallback so the layout can't
-// drift between the two — see CompanionMcpsSectionSkeleton.
+// Shared between the live section, its Suspense fallback, and its error fallback
+// so the layout can't drift between the three — see CompanionMcpsSectionSkeleton
+// and CompanionMcpsSectionError.
 const SECTION_CONTAINER_CLASS =
   "flex min-h-0 flex-1 flex-col gap-6 md:grid md:flex-none md:gap-4";
 
@@ -38,7 +43,75 @@ function CompanionCardSkeletons() {
   );
 }
 
-export function CompanionMcpsSection({
+// Suspense fallback for the whole section. `useCommerceCompanions` (and the MCP
+// clients it/the cards open) are Suspense queries, so the card loading state now
+// lives here as a stable boundary fallback instead of an `isLoading` branch that
+// could tear down and re-mount as deeper queries resolve.
+function CompanionMcpsSectionSkeleton() {
+  return (
+    <div className={SECTION_CONTAINER_CLASS}>
+      <SectionIntro />
+      <CompanionCardSkeletons />
+    </div>
+  );
+}
+
+function CompanionMcpsSectionError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className={SECTION_CONTAINER_CLASS}>
+      <SectionIntro />
+      <div
+        role="alert"
+        className="rounded-2xl border border-border bg-card p-4"
+      >
+        <p className="text-sm text-foreground">
+          Couldn't load companion integrations.
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Something went wrong loading your integrations.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          onClick={onRetry}
+        >
+          Try again
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function CompanionMcpsSection(props: {
+  org: CompanionOrg;
+  cdConnectionId: string;
+  siteUrl?: string;
+}) {
+  return (
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ErrorBoundary
+          fallback={({ resetError }) => (
+            <CompanionMcpsSectionError
+              onRetry={() => {
+                reset();
+                resetError();
+              }}
+            />
+          )}
+        >
+          <Suspense fallback={<CompanionMcpsSectionSkeleton />}>
+            <CompanionMcpsSectionContent {...props} />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
+  );
+}
+
+function CompanionMcpsSectionContent({
   org,
   cdConnectionId,
   siteUrl,
@@ -55,7 +128,7 @@ export function CompanionMcpsSection({
     orgSlug: org.slug,
   });
 
-  const { cards, isLoading, error } = useCommerceCompanions({
+  const { cards } = useCommerceCompanions({
     selfClient,
     org,
     cdConnectionId,
@@ -73,7 +146,7 @@ export function CompanionMcpsSection({
 
   // Empty: nothing to connect → render nothing (the parent footer still shows
   // the report CTA).
-  if (!isLoading && !error && cards.length === 0) {
+  if (cards.length === 0) {
     return null;
   }
 
@@ -86,46 +159,30 @@ export function CompanionMcpsSection({
     <div className={SECTION_CONTAINER_CLASS}>
       <SectionIntro />
 
-      {error ? (
-        <div
-          role="alert"
-          className="rounded-2xl border border-border bg-card p-4"
-        >
-          <p className="text-sm text-foreground">
-            Couldn't load companion integrations.
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Reload the page to try again.
-          </p>
+      <ScrollReveal
+        wrapperClassName="flex min-h-0 flex-1 flex-col md:block"
+        className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 md:max-h-[60vh] md:flex-none"
+      >
+        <div className="grid gap-4">
+          {connectError && (
+            <p role="alert" className="text-sm text-destructive">
+              {connectError}
+            </p>
+          )}
+          {cards.map((card) => (
+            <CompanionCard
+              key={card.fieldKey}
+              card={card}
+              connecting={connectingFieldKey === card.fieldKey}
+              disabled={busy && connectingFieldKey !== card.fieldKey}
+              org={org}
+              selfClient={selfClient}
+              siteUrl={siteUrl}
+              onConnect={() => void connect(card)}
+            />
+          ))}
         </div>
-      ) : isLoading ? (
-        <CompanionCardSkeletons />
-      ) : (
-        <ScrollReveal
-          wrapperClassName="flex min-h-0 flex-1 flex-col md:block"
-          className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 md:max-h-[45vh] md:flex-none"
-        >
-          <div className="grid gap-4">
-            {connectError && (
-              <p role="alert" className="text-sm text-destructive">
-                {connectError}
-              </p>
-            )}
-            {cards.map((card) => (
-              <CompanionCard
-                key={card.fieldKey}
-                card={card}
-                connecting={connectingFieldKey === card.fieldKey}
-                disabled={busy && connectingFieldKey !== card.fieldKey}
-                org={org}
-                selfClient={selfClient}
-                siteUrl={siteUrl}
-                onConnect={() => void connect(card)}
-              />
-            ))}
-          </div>
-        </ScrollReveal>
-      )}
+      </ScrollReveal>
     </div>
   );
 }

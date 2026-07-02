@@ -49,7 +49,12 @@ export const KEYS = {
   // candidate connections satisfying a binding, and the registry batch).
   commerceDiscoveryCompanionSchema: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "companion-schema", orgId, connectionId] as const,
-  commerceDiscoveryCompanionConnections: (orgId: string) =>
+  commerceDiscoveryCompanionConnections: (orgId: string, key: string) =>
+    ["commerce-discovery", "companion-connections", orgId, key] as const,
+  // Prefix for every companion-connections query in an org, regardless of the
+  // requirements-signature `key`. Use with invalidateQueries to refetch all
+  // variants after a connection is created/linked/updated.
+  commerceDiscoveryCompanionConnectionsPrefix: (orgId: string) =>
     ["commerce-discovery", "companion-connections", orgId] as const,
   commerceDiscoveryCompanionRegistry: (orgId: string, key: string) =>
     ["commerce-discovery", "companion-registry", orgId, key] as const,
