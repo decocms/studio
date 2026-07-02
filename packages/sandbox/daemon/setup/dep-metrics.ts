@@ -1,17 +1,5 @@
 import { join } from "node:path";
-import { metrics } from "@opentelemetry/api";
 import type { PackageManager } from "../types";
-
-// Same meter name as entry.ts (getMeter is cached by name) so we don't have to
-// plumb an instrument through the orchestrator.
-const meter = metrics.getMeter("link-daemon");
-const installCounter = meter.createCounter("sandbox_install_total", {
-  description: "Successful sandbox dependency installs",
-});
-const depCountHistogram = meter.createHistogram(
-  "sandbox_install_dependency_count",
-  { description: "Installed dependency count per successful install" },
-);
 
 // Guard against a pathological node_modules blowing up the log line.
 const MAX_DEPS = 10_000;
@@ -72,24 +60,19 @@ export interface DepMetricsInput {
 }
 
 /**
- * After a SUCCESSFUL install, emit the installed dependency set for
- * downstream aggregation (VictoriaLogs) so the team can decide which packages
- * to pre-bake into the sandbox image. Package name/version go ONLY in the JSON
- * log line — never as metric labels (per-package cardinality would wreck
- * Prometheus). Best-effort: observability only, never throws.
+ * After a SUCCESSFUL install, emit the installed dependency set as a single
+ * JSON log line for downstream aggregation (VictoriaLogs) so the team can
+ * decide which packages to pre-bake into the sandbox image. Logs, not metrics:
+ * per-package cardinality would wreck Prometheus, and sandbox pods can't reach
+ * an in-cluster OTLP collector anyway (egress is locked to 53/443), so their
+ * stdout scraped out-of-band is the only channel that leaves the pod.
+ * Best-effort: observability only, never throws.
  */
 export async function emitInstalledDeps(input: DepMetricsInput): Promise<void> {
-  // The install already succeeded by the time we're called, so count it before
-  // the fallible dep scan — otherwise a scan failure (e.g. no node_modules for
-  // a dependency-less manifest) would undercount successful installs.
-  installCounter.add(1, { package_manager: input.packageManager });
   try {
     const deps = await readInstalledDeps(
       join(input.installRoot, "node_modules"),
     );
-    depCountHistogram.record(deps.length, {
-      package_manager: input.packageManager,
-    });
     console.log(
       JSON.stringify({
         msg: "sandbox.install.deps",
