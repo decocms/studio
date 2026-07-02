@@ -31,13 +31,17 @@ import { ArrowRight } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
-import { LoadingIndicator } from "./commerce-onboarding/loading-indicator.tsx";
 import {
   buildScheduleMeetingUrl,
   ScheduleMeetingBanner,
   ScheduleMeetingVisual,
 } from "./commerce-onboarding/schedule-meeting.tsx";
 import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
+import {
+  CommerceOnboardingButtonLoading,
+  CommerceOnboardingLoading,
+  CommerceOnboardingLoadingIndicator,
+} from "./commerce-onboarding/loading-state.tsx";
 
 interface CommerceOrganization {
   id: string;
@@ -127,11 +131,7 @@ function CommerceOnboardingScreens({
   const siteHost = useCommerceSiteHost();
 
   if (sessionLoading) {
-    return (
-      <AuthSplitLayout>
-        <LoadingState label="Preparing commerce onboarding..." />
-      </AuthSplitLayout>
-    );
+    return <CommerceOnboardingLoading variant="route" />;
   }
 
   if (!session) {
@@ -210,11 +210,7 @@ function CommerceOnboardingContent({
   });
 
   if (organizationsQuery.isPending) {
-    return (
-      <AuthSplitLayout>
-        <LoadingState label="Preparing commerce onboarding..." />
-      </AuthSplitLayout>
-    );
+    return <CommerceOnboardingLoading variant="route" />;
   }
 
   if (organizationsQuery.error) {
@@ -381,7 +377,7 @@ function EnsureOrganizationRecovery({
   return (
     <AuthSplitLayout>
       <div ref={triggerRecovery}>
-        <LoadingState label="Preparing your commerce workspace..." />
+        <CommerceOnboardingLoadingIndicator variant="workspace" />
       </div>
     </AuthSplitLayout>
   );
@@ -423,14 +419,6 @@ function CommerceHeader({
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function LoadingState({ label }: { label: string }) {
-  return (
-    <div className="py-4" role="status" aria-live="polite">
-      <LoadingIndicator label={label} className="text-muted-foreground" />
     </div>
   );
 }
@@ -501,13 +489,7 @@ function CommerceSetup({
             </AuthSplitLayout>
           )}
         >
-          <Suspense
-            fallback={
-              <AuthSplitLayout>
-                <LoadingState label="Connecting workspace..." />
-              </AuthSplitLayout>
-            }
-          >
+          <Suspense fallback={<CommerceOnboardingLoading variant="connect" />}>
             <CommerceSetupContent
               key={`${org.id}:${initialSiteUrl ?? ""}`}
               org={org}
@@ -715,7 +697,7 @@ function CommerceSetupContent({
               />
             </>
           ) : (
-            <LoadingState label="Setting up Commerce Discovery..." />
+            <CommerceOnboardingLoadingIndicator variant="setup" />
           )}
         </div>
       </AuthSplitLayout>
@@ -779,7 +761,7 @@ function SiteUrlForm({
         disabled={isSubmitting}
       >
         {isSubmitting ? (
-          <LoadingIndicator label="Setting up" />
+          <CommerceOnboardingButtonLoading />
         ) : (
           <>
             Continue
