@@ -271,16 +271,14 @@ function CompanionConfiguration({
       {FormComponent ? (
         <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogContent className="sm:max-w-lg">
-            <DialogHeader className="flex-row items-stretch gap-3 space-y-0 text-left">
-              <div className="aspect-square min-w-0 shrink-0 self-stretch">
-                <IntegrationIcon
-                  icon={card.icon}
-                  name={card.title}
-                  size="md"
-                  fit="contain"
-                  className="h-full w-full min-w-0 p-1.5"
-                />
-              </div>
+            <DialogHeader className="flex-row items-center gap-3 space-y-0 text-left">
+              <IntegrationIcon
+                icon={card.icon}
+                name={card.title}
+                size="md"
+                fit="contain"
+                className="p-1.5"
+              />
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <DialogTitle>{card.title}</DialogTitle>
                 <DialogDescription>
