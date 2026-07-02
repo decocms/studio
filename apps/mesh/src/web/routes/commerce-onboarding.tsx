@@ -611,8 +611,36 @@ function CommerceSetupContent({
     },
   });
 
+  // Triggers the diagnostic run now that the user has connected their data
+  // sources. Fire-and-forget from the "See full report" click — the report view
+  // polls for the enriched deck as it lands.
+  const runMutation = useMutation({
+    mutationFn: async (siteUrl: string) => {
+      const result = await selfClient.callTool({
+        name: "COMMERCE_DISCOVERY_RUN",
+        arguments: { siteUrl },
+      });
+      return parseSelfToolResult<{ triggered: boolean; reason?: string }>(
+        result,
+      );
+    },
+    retry: false,
+  });
+
   const setupReady = !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
-  const currentSiteUrl = initialSiteUrl ?? siteUrlInput;
+  // A returning session may arrive with no ?siteUrl param and an empty form while
+  // the connection already exists (setupReady). Recover the site from the
+  // connection metadata (persisted at setup) so the run can still be triggered.
+  const connectionItem = connectionQuery.data.item as unknown as
+    | { metadata?: Record<string, unknown> | null }
+    | null
+    | undefined;
+  const connectionSiteUrl =
+    typeof connectionItem?.metadata?.siteUrl === "string"
+      ? (connectionItem.metadata.siteUrl as string)
+      : undefined;
+  const currentSiteUrl =
+    initialSiteUrl || siteUrlInput || connectionSiteUrl || "";
   const currentMeetingUrl = buildScheduleMeetingUrl({
     siteUrl: currentSiteUrl,
     email: sessionEmail,
@@ -652,6 +680,11 @@ function CommerceSetupContent({
   };
 
   const openReport = () => {
+    // Kick off the enriching run (fire-and-forget) — the user is done connecting.
+    const normalized = normalizeCommerceSiteUrl(currentSiteUrl);
+    if (normalized.ok) {
+      runMutation.mutate(normalized.value);
+    }
     localStorage.setItem(
       LOCALSTORAGE_KEYS.sidebarOpen(),
       JSON.stringify(false),

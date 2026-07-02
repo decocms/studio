@@ -112,3 +112,40 @@ export async function fetchCommerceDiscoveryAuth(
 
   return { authorizationToken: parsed.data.token };
 }
+
+/**
+ * Trigger the Commerce Discovery diagnostic run for a store — called once the
+ * user has connected their data sources ("See full report"). This is the run
+ * whose private probes resolve creds and whose completion fires the enriched
+ * agent loop. Soft-tolerant: a 409 (diagnostic not upgraded yet) is returned as
+ * { triggered: false } rather than thrown, so the UI can still open the report.
+ */
+export async function triggerCommerceDiscoveryRun(
+  input: { siteUrl: string; orgId: string },
+  options: CommerceDiscoveryAuthOptions = {},
+): Promise<{ triggered: boolean; reason?: string }> {
+  const baseUrl = resolveBaseUrl(options);
+  const apiKey = resolveApiKey(options);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const domain = domainFromSiteUrl(input.siteUrl);
+  const url = `${baseUrl}/api/v2/internal/diagnostics/${encodeURIComponent(
+    domain,
+  )}/run`;
+
+  const response = await fetchImpl(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ org_id: input.orgId }),
+  });
+
+  if (response.status === 409) {
+    return { triggered: false, reason: "not_upgraded" };
+  }
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response));
+  }
+  return { triggered: true };
+}

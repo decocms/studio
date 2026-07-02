@@ -1,1 +1,2 @@
+export { COMMERCE_DISCOVERY_RUN } from "./run";
 export { COMMERCE_DISCOVERY_SETUP } from "./setup";

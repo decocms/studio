@@ -147,11 +147,15 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       });
 
       try {
+        const base = getWellKnownCommerceDiscoveryConnection(
+          organization.id,
+          auth.authorizationToken,
+        );
         connection = await ctx.storage.connections.create({
-          ...getWellKnownCommerceDiscoveryConnection(
-            organization.id,
-            auth.authorizationToken,
-          ),
+          ...base,
+          // Persist the site so a returning session (arriving with no ?siteUrl
+          // param) can still recover it and trigger the run from "See full report".
+          metadata: { ...(base.metadata ?? {}), siteUrl: normalized.value },
           organization_id: organization.id,
           created_by: userId,
         });
