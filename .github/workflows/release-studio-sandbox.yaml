@@ -20,6 +20,11 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      # "true" when the tag was already in GHCR (build skipped) — the bump job
+      # uses this to skip docs/test-only pushes that reuse the existing tag.
+      image-exists: ${{ steps.tag-check.outputs.exists }}
 
     steps:
       - name: Checkout code
@@ -122,3 +127,40 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+  # ---------------------------------------------------------------------------
+  # GitOps: tell deco-apps-cd to bump the sandbox image tag. We fire the generic
+  # `image-bump` repository_dispatch (receiver: deco-apps-cd's bump-image.yml,
+  # which surgically rewrites the `tag:` under the matching `repository:` line
+  # and self-commits with its own GITHUB_TOKEN). No cross-repo write credential
+  # lives here — only a token to trigger the dispatch. Bumps both stg and prod
+  # sandbox values; both are ArgoCD auto-sync, but a SandboxTemplate tag bump
+  # only changes what NEW sandbox claims get — it doesn't disturb running pods.
+  # ---------------------------------------------------------------------------
+  bump-deco-apps-cd:
+    name: Trigger deco-apps-cd bump
+    needs: [build-push]
+    # Only when a NEW image was actually pushed (skip docs/test-only changes to
+    # packages/sandbox that reuse the existing tag).
+    if: needs.build-push.result == 'success' && needs.build-push.outputs.image-exists != 'true'
+    runs-on: ubuntu-latest
+    # Reuses DEPLOY_REPO_TOKEN — the decobot machine-user PAT (admin on
+    # decocms/deco-apps-cd), same token release-mesh uses. The bump is a
+    # convenience and must never red the release: absent token → no-op, job passes.
+    env:
+      DISPATCH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+    steps:
+      - name: Skip notice (dispatch token not configured)
+        if: env.DISPATCH_TOKEN == ''
+        run: echo "::notice::DEPLOY_REPO_TOKEN not set — skipping the deco-apps-cd bump."
+      - name: Dispatch image-bump to deco-apps-cd
+        if: env.DISPATCH_TOKEN != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+          repository: decocms/deco-apps-cd
+          event-type: image-bump
+          client-payload: '{"version": "${{ needs.build-push.outputs.version }}", "repository": "decocms/studio/studio-sandbox", "files": ["apps/studio-sandbox-stg/values.yaml", "apps/studio-sandbox-prod/values.yaml"]}'
+      - name: Summary
+        if: env.DISPATCH_TOKEN != ''
+        run: echo "Dispatched \`image-bump\` (studio-sandbox ${{ needs.build-push.outputs.version }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"
