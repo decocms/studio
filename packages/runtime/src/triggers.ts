@@ -92,6 +92,9 @@ class TriggerStateManager {
     triggerType: string,
     newCredentials?: CallbackCredentials,
   ): Promise<void> {
+    // Ensure state is loaded (may be empty after restart)
+    await this.loadFromStorage(connectionId);
+
     if (newCredentials) {
       this.credentials.set(connectionId, newCredentials);
     }
