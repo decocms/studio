@@ -79,11 +79,14 @@ export interface DepMetricsInput {
  * Prometheus). Best-effort: observability only, never throws.
  */
 export async function emitInstalledDeps(input: DepMetricsInput): Promise<void> {
+  // The install already succeeded by the time we're called, so count it before
+  // the fallible dep scan — otherwise a scan failure (e.g. no node_modules for
+  // a dependency-less manifest) would undercount successful installs.
+  installCounter.add(1, { package_manager: input.packageManager });
   try {
     const deps = await readInstalledDeps(
       join(input.installRoot, "node_modules"),
     );
-    installCounter.add(1, { package_manager: input.packageManager });
     depCountHistogram.record(deps.length, {
       package_manager: input.packageManager,
     });
