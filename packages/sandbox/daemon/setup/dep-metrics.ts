@@ -59,9 +59,33 @@ export interface DepMetricsInput {
   branch?: string;
 }
 
-// ~200 name@version strings ≈ 7KB/line: under the pipeline's 16KB line
-// truncation, and 1-3 lines per install stays under its burst sampler.
-const DEPS_PER_LINE = 200;
+// Cap the serialized `deps` array per line, leaving ~2KB of the pipeline's
+// 16KB line budget for the JSON envelope. Chunk by BYTES, not dep count:
+// count-based chunking can't bound the line when package names run long
+// (npm allows names up to 214 chars), which would re-introduce the 16KB
+// truncation this whole format exists to avoid.
+const MAX_DEPS_BYTES = 14_000;
+
+/** Greedily pack `name@version` strings into groups whose serialized
+ * JSON array stays under MAX_DEPS_BYTES. A single over-long dep still gets
+ * its own group (a lone specifier is ~230 bytes worst case, far under cap). */
+function chunkByBytes(flat: string[]): string[][] {
+  const groups: string[][] = [];
+  let cur: string[] = [];
+  let bytes = 2; // the enclosing []
+  for (const dep of flat) {
+    const entry = Buffer.byteLength(JSON.stringify(dep)) + 1; // element + comma
+    if (cur.length && bytes + entry > MAX_DEPS_BYTES) {
+      groups.push(cur);
+      cur = [];
+      bytes = 2;
+    }
+    cur.push(dep);
+    bytes += entry;
+  }
+  if (cur.length) groups.push(cur);
+  return groups;
+}
 
 /**
  * After a SUCCESSFUL install, emit the installed dependency set as JSON log
@@ -71,7 +95,7 @@ const DEPS_PER_LINE = 200;
  * in-cluster OTLP collector anyway (egress is locked to 53/443), so their
  * stdout scraped out-of-band is the only channel that leaves the pod.
  *
- * Format is CHUNKED lines of ~200 deps because both simpler shapes fail in
+ * Format is byte-bounded CHUNKED lines because both simpler shapes fail in
  * the pipeline (observed in prod, not hypothetical):
  *  - one line with the whole array → truncated at 16KB → unparseable JSON;
  *  - one line per dep → ~350-line burst per install → the collector's rate
@@ -85,16 +109,15 @@ export function buildDepLines(
   input: Omit<DepMetricsInput, "installRoot">,
 ): string[] {
   const flat = deps.map((d) => `${d.name}@${d.version}`);
-  const chunks = Math.max(1, Math.ceil(flat.length / DEPS_PER_LINE));
-  return Array.from({ length: chunks }, (_, i) =>
+  const groups = chunkByBytes(flat);
+  if (groups.length === 0) groups.push([]); // zero-dep install still emits one countable line
+  return groups.map((group, i) =>
     JSON.stringify({
       msg: "sandbox.deps",
       chunk: i + 1,
-      chunks,
+      chunks: groups.length,
       dependencyCount: deps.length,
-      deps: JSON.stringify(
-        flat.slice(i * DEPS_PER_LINE, (i + 1) * DEPS_PER_LINE),
-      ),
+      deps: JSON.stringify(group),
       bootId: input.bootId,
       packageManager: input.packageManager,
       repoName: input.repoName,
