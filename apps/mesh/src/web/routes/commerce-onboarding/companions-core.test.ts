@@ -4,9 +4,11 @@ import {
   buildRegistryWhere,
   getConfigurationSummaryEntries,
   hasConfigurationValues,
+  matchGscSite,
   mergeBindingValue,
   parseBindingRequirements,
   resolveCandidate,
+  toPropertyOptions,
   unwrapToolResult,
 } from "./companions-core.ts";
 
@@ -283,5 +285,87 @@ describe("buildCompanionCards", () => {
     });
     expect(cards[0]!.satisfied).toBe(false);
     expect(cards[0]!.candidateConnectionId).toBe("c_vtex");
+  });
+});
+
+describe("matchGscSite", () => {
+  it("matches normalized domain (context=raw host, site=https://www.host/)", () => {
+    const site = matchGscSite("example.com", [
+      { siteUrl: "https://www.example.com/" },
+      { siteUrl: "https://other.com/" },
+    ]);
+    expect(site).toBe("https://www.example.com/");
+  });
+  it("matches sc-domain: format", () => {
+    const site = matchGscSite("example.com", [
+      { siteUrl: "sc-domain:example.com" },
+      { siteUrl: "https://other.com/" },
+    ]);
+    expect(site).toBe("sc-domain:example.com");
+  });
+  it("returns null when no match found", () => {
+    const site = matchGscSite("nomatch.com", [
+      { siteUrl: "https://example.com/" },
+      { siteUrl: "sc-domain:other.com" },
+    ]);
+    expect(site).toBeNull();
+  });
+  it("returns null when contextSiteUrl is undefined", () => {
+    const site = matchGscSite(undefined, [{ siteUrl: "https://example.com/" }]);
+    expect(site).toBeNull();
+  });
+});
+
+describe("toPropertyOptions", () => {
+  it("flattens GA accountSummaries to grouped options by account", () => {
+    const options = toPropertyOptions({
+      response: {
+        accountSummaries: [
+          {
+            account: "accounts/123",
+            displayName: "Account One",
+            propertySummaries: [
+              { property: "properties/456", displayName: "Property A" },
+              { property: "properties/789", displayName: "Property B" },
+            ],
+          },
+          {
+            account: "accounts/999",
+            displayName: "Account Two",
+            propertySummaries: [
+              { property: "properties/111", displayName: "Property C" },
+            ],
+          },
+        ],
+      },
+    });
+    expect(options).toHaveLength(2);
+    expect(options[0]!.account).toBe("accounts/123");
+    expect(options[0]!.options).toHaveLength(2);
+    expect(options[0]!.options[0]).toEqual({
+      value: "properties/456",
+      label: "Property A",
+    });
+    expect(options[1]!.account).toBe("accounts/999");
+    expect(options[1]!.options).toHaveLength(1);
+  });
+  it("handles missing or empty propertySummaries", () => {
+    const options = toPropertyOptions({
+      response: {
+        accountSummaries: [
+          {
+            account: "accounts/123",
+            displayName: "Account One",
+            propertySummaries: [],
+          },
+        ],
+      },
+    });
+    expect(options).toHaveLength(1);
+    expect(options[0]!.options).toHaveLength(0);
+  });
+  it("returns empty array when response has no accountSummaries", () => {
+    const options = toPropertyOptions({ response: {} });
+    expect(options).toEqual([]);
   });
 });
