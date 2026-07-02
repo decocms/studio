@@ -1,0 +1,135 @@
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useState } from "react";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@deco/ui/components/form.tsx";
+import { Input } from "@deco/ui/components/input.tsx";
+import { PasswordInput } from "@deco/ui/components/password-input.tsx";
+import { Button } from "@deco/ui/components/button.tsx";
+import { DialogFooter } from "@deco/ui/components/dialog.tsx";
+import { useSaveCompanionConfig } from "./use-save-companion-config.ts";
+import type { CompanionFormProps } from "./types.ts";
+
+const schema = z.object({
+  accountName: z.string().min(1, "Account name is required"),
+  appKey: z.string().optional(),
+  appToken: z.string().optional(),
+});
+
+type FormData = z.infer<typeof schema>;
+
+export function VtexConfigForm({
+  card,
+  connectionId,
+  companionClient: _companionClient,
+  selfClient,
+  org,
+  onDone,
+}: CompanionFormProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const form = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      accountName: (card.configurationState?.accountName as string) || "",
+      appKey: (card.configurationState?.appKey as string) || "",
+      appToken: (card.configurationState?.appToken as string) || "",
+    },
+  });
+
+  const { save } = useSaveCompanionConfig({
+    card,
+    selfClient,
+    org,
+    onDone: () => {
+      setIsSubmitting(false);
+      onDone();
+    },
+  });
+
+  const handleSubmit = form.handleSubmit(async (data) => {
+    setIsSubmitting(true);
+    save(data);
+  });
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Form {...form}>
+        <FormField
+          control={form.control}
+          name="accountName"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Account Name</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder="Your VTEX account name"
+                  {...field}
+                  disabled={isSubmitting}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="appKey"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>App Key (optional)</FormLabel>
+              <FormControl>
+                <PasswordInput
+                  placeholder="VTEX app key"
+                  {...field}
+                  disabled={isSubmitting}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="appToken"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>App Token (optional)</FormLabel>
+              <FormControl>
+                <PasswordInput
+                  placeholder="VTEX app token"
+                  {...field}
+                  disabled={isSubmitting}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </Form>
+
+      <DialogFooter className="pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onDone}
+          disabled={isSubmitting}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isSubmitting} onClick={handleSubmit}>
+          {isSubmitting ? "Saving..." : "Save"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
