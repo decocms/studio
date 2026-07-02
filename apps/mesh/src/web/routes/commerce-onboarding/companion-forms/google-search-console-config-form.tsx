@@ -40,8 +40,6 @@ export function GoogleSearchConsoleConfigForm({
   contextSiteUrl,
   onDone,
 }: CompanionFormProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   const sitesQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryCompanionGscSites(org.id, connectionId),
     queryFn: async () => {
@@ -90,18 +88,14 @@ export function GoogleSearchConsoleConfigForm({
     form,
   ]);
 
-  const { save } = useSaveCompanionConfig({
+  const { save, isPending, error } = useSaveCompanionConfig({
     card,
     selfClient,
     org,
-    onDone: () => {
-      setIsSubmitting(false);
-      onDone();
-    },
+    onDone,
   });
 
   const handleSubmit = form.handleSubmit(async (data) => {
-    setIsSubmitting(true);
     save(data);
   });
 
@@ -149,7 +143,7 @@ export function GoogleSearchConsoleConfigForm({
                 <Select
                   value={field.value}
                   onValueChange={field.onChange}
-                  disabled={isSubmitting}
+                  disabled={isPending}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a site" />
@@ -169,17 +163,25 @@ export function GoogleSearchConsoleConfigForm({
         />
       </Form>
 
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error instanceof Error
+            ? error.message
+            : "Failed to save configuration"}
+        </p>
+      )}
+
       <DialogFooter className="pt-4">
         <Button
           type="button"
           variant="outline"
           onClick={onDone}
-          disabled={isSubmitting}
+          disabled={isPending}
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting} onClick={handleSubmit}>
-          {isSubmitting ? "Saving..." : "Save"}
+        <Button type="submit" disabled={isPending}>
+          {isPending ? "Saving..." : "Save"}
         </Button>
       </DialogFooter>
     </form>

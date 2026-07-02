@@ -8,11 +8,13 @@ export function useSaveCompanionConfig({
   selfClient,
   org,
   onDone,
+  onError,
 }: {
   card: CompanionCardModel;
   selfClient: Client;
   org: { id: string };
   onDone: () => void;
+  onError?: (error: Error) => void;
 }) {
   const queryClient = useQueryClient();
 
@@ -26,7 +28,7 @@ export function useSaveCompanionConfig({
         name: "COLLECTION_CONNECTIONS_UPDATE",
         arguments: {
           id: card.linkedConnectionId || card.candidateConnectionId,
-          patch: {
+          data: {
             configuration_state: mergedState,
           },
         },
@@ -37,6 +39,9 @@ export function useSaveCompanionConfig({
         queryKey: KEYS.commerceDiscoveryCompanionConnections(org.id),
       });
       onDone();
+    },
+    onError: (error: Error) => {
+      onError?.(error);
     },
   });
 

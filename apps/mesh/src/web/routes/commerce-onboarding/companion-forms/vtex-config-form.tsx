@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Form,
   FormControl,
@@ -32,8 +32,6 @@ export function VtexConfigForm({
   org,
   onDone,
 }: CompanionFormProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -43,18 +41,23 @@ export function VtexConfigForm({
     },
   });
 
-  const { save } = useSaveCompanionConfig({
+  // Sync form when config changes from server
+  useEffect(() => {
+    form.reset({
+      accountName: (card.configurationState?.accountName as string) || "",
+      appKey: (card.configurationState?.appKey as string) || "",
+      appToken: (card.configurationState?.appToken as string) || "",
+    });
+  }, [card.configurationState, form]);
+
+  const { save, isPending, error } = useSaveCompanionConfig({
     card,
     selfClient,
     org,
-    onDone: () => {
-      setIsSubmitting(false);
-      onDone();
-    },
+    onDone,
   });
 
   const handleSubmit = form.handleSubmit(async (data) => {
-    setIsSubmitting(true);
     save(data);
   });
 
@@ -71,7 +74,7 @@ export function VtexConfigForm({
                 <Input
                   placeholder="Your VTEX account name"
                   {...field}
-                  disabled={isSubmitting}
+                  disabled={isPending}
                 />
               </FormControl>
               <FormMessage />
@@ -89,7 +92,7 @@ export function VtexConfigForm({
                 <PasswordInput
                   placeholder="VTEX app key"
                   {...field}
-                  disabled={isSubmitting}
+                  disabled={isPending}
                 />
               </FormControl>
               <FormMessage />
@@ -107,7 +110,7 @@ export function VtexConfigForm({
                 <PasswordInput
                   placeholder="VTEX app token"
                   {...field}
-                  disabled={isSubmitting}
+                  disabled={isPending}
                 />
               </FormControl>
               <FormMessage />
@@ -116,17 +119,25 @@ export function VtexConfigForm({
         />
       </Form>
 
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error instanceof Error
+            ? error.message
+            : "Failed to save configuration"}
+        </p>
+      )}
+
       <DialogFooter className="pt-4">
         <Button
           type="button"
           variant="outline"
           onClick={onDone}
-          disabled={isSubmitting}
+          disabled={isPending}
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting} onClick={handleSubmit}>
-          {isSubmitting ? "Saving..." : "Save"}
+        <Button type="submit" disabled={isPending}>
+          {isPending ? "Saving..." : "Save"}
         </Button>
       </DialogFooter>
     </form>

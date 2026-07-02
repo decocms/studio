@@ -39,8 +39,6 @@ export function GoogleAnalyticsConfigForm({
   org,
   onDone,
 }: CompanionFormProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   const propertiesQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryCompanionGaProperties(org.id, connectionId),
     queryFn: async () => {
@@ -60,18 +58,14 @@ export function GoogleAnalyticsConfigForm({
     },
   });
 
-  const { save } = useSaveCompanionConfig({
+  const { save, isPending, error } = useSaveCompanionConfig({
     card,
     selfClient,
     org,
-    onDone: () => {
-      setIsSubmitting(false);
-      onDone();
-    },
+    onDone,
   });
 
   const handleSubmit = form.handleSubmit(async (data) => {
-    setIsSubmitting(true);
     save(data);
   });
 
@@ -120,7 +114,7 @@ export function GoogleAnalyticsConfigForm({
                 <Select
                   value={field.value}
                   onValueChange={field.onChange}
-                  disabled={isSubmitting}
+                  disabled={isPending}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a property" />
@@ -144,17 +138,25 @@ export function GoogleAnalyticsConfigForm({
         />
       </Form>
 
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error instanceof Error
+            ? error.message
+            : "Failed to save configuration"}
+        </p>
+      )}
+
       <DialogFooter className="pt-4">
         <Button
           type="button"
           variant="outline"
           onClick={onDone}
-          disabled={isSubmitting}
+          disabled={isPending}
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting} onClick={handleSubmit}>
-          {isSubmitting ? "Saving..." : "Save"}
+        <Button type="submit" disabled={isPending}>
+          {isPending ? "Saving..." : "Save"}
         </Button>
       </DialogFooter>
     </form>
