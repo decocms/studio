@@ -10,6 +10,51 @@ interface CompanionOrg {
   slug: string;
 }
 
+// Shared between the live section and its Suspense fallback so the layout can't
+// drift between the two — see CompanionMcpsSectionSkeleton.
+const SECTION_CONTAINER_CLASS =
+  "flex min-h-0 flex-1 flex-col gap-6 md:grid md:flex-none md:gap-4";
+
+function SectionIntro() {
+  return (
+    <div className="grid gap-1.5">
+      <p className="text-2xl font-medium text-foreground">
+        Unlock your full diagnostic
+      </p>
+      <p className="text-base text-muted-foreground">
+        Connect your tools to unlock 100+ checks across your funnel.
+      </p>
+    </div>
+  );
+}
+
+function CompanionCardSkeletons() {
+  return (
+    <div className="grid gap-4">
+      {[0, 1, 2].map((i) => (
+        <CompanionCardSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Suspense fallback for CompanionMcpsSection. The section's `cdClient`
+ * (useMCPClient → useSuspenseQuery) suspends on first mount while its MCP
+ * connection is established; wrapping the section in its own boundary keeps that
+ * suspense from bubbling to the page-level boundary and unmounting the header +
+ * title + report CTA. This fallback mirrors the section's internal `isLoading`
+ * UI (intro + card skeletons) so the title stays put across both phases.
+ */
+export function CompanionMcpsSectionSkeleton() {
+  return (
+    <div className={SECTION_CONTAINER_CLASS}>
+      <SectionIntro />
+      <CompanionCardSkeletons />
+    </div>
+  );
+}
+
 export function CompanionMcpsSection({
   org,
   cdConnectionId,
@@ -53,15 +98,8 @@ export function CompanionMcpsSection({
     // Mobile: fill the parent's remaining height — the header + intro copy stay
     // pinned while the card list scrolls. md+: natural block with a capped
     // scroll area so the right panel stays visible.
-    <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:flex-none md:gap-4">
-      <div className="grid gap-1.5">
-        <p className="text-2xl font-medium text-foreground">
-          Unlock your full diagnostic
-        </p>
-        <p className="text-base text-muted-foreground">
-          Connect your tools to unlock 100+ checks across your funnel.
-        </p>
-      </div>
+    <div className={SECTION_CONTAINER_CLASS}>
+      <SectionIntro />
 
       {error ? (
         <div
@@ -76,11 +114,7 @@ export function CompanionMcpsSection({
           </p>
         </div>
       ) : isLoading ? (
-        <div className="grid gap-4">
-          {[0, 1, 2].map((i) => (
-            <CompanionCardSkeleton key={i} />
-          ))}
-        </div>
+        <CompanionCardSkeletons />
       ) : (
         <ScrollReveal
           wrapperClassName="flex min-h-0 flex-1 flex-col md:block"
