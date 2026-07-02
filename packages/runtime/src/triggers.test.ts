@@ -370,6 +370,49 @@ describe("createTriggers with storage", () => {
     fetchSpy.mockRestore();
   });
 
+  it("enable after restart preserves other persisted trigger types", async () => {
+    const storage = createMockStorage();
+
+    // Simulate prior session: "github.push" was already active
+    storage.data.set("conn-enable-restart", {
+      credentials: {
+        callbackUrl: "https://mesh.example.com/api/trigger-callback",
+        callbackToken: "prior-token",
+      },
+      activeTriggerTypes: ["github.push"],
+    });
+
+    // New instance (simulates restart) — in-memory cache is empty
+    const t = createTriggers({
+      definitions: [
+        ...defs,
+        {
+          type: "github.pull_request.opened" as const,
+          description: "PR opened",
+          params: z.object({ repo: z.string().describe("Repo") }),
+        },
+      ],
+      storage,
+    });
+    const configureTool = t.tools()[1];
+
+    // Enable a second trigger type without redeclaring credentials
+    await configureTool.execute({
+      context: {
+        type: "github.pull_request.opened",
+        params: {},
+        enabled: true,
+      },
+      runtimeContext: mockCtx("conn-enable-restart"),
+    });
+
+    const stored = storage.data.get("conn-enable-restart") as any;
+    expect(stored.activeTriggerTypes.sort()).toEqual([
+      "github.pull_request.opened",
+      "github.push",
+    ]);
+  });
+
   it("disable after restart clears persisted credentials from storage", async () => {
     const storage = createMockStorage();
 
