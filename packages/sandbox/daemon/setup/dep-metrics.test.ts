@@ -56,11 +56,9 @@ describe("buildDepLines", () => {
     return seen;
   };
 
-  it("chunks a big install into parseable lines under the 16KB pipeline cap", () => {
+  it("emits a typical install intact under the 16KB pipeline cap", () => {
     const deps = Array.from({ length: 391 }, (_, i) => dep(i));
-    const lines = buildDepLines(deps, input);
-    expect(lines.length).toBeGreaterThan(1);
-    const seen = assertIntact(lines, deps);
+    const seen = assertIntact(buildDepLines(deps, input), deps);
     expect(seen[0]).toBe("@scope/package-name-0@10.0.0");
   });
 
@@ -74,6 +72,19 @@ describe("buildDepLines", () => {
     }));
     const lines = buildDepLines(deps, input);
     expect(lines.length).toBeGreaterThan(2);
+    assertIntact(lines, deps);
+  });
+
+  // Regression for the escaping undercount: deps stored as a string get their
+  // quotes escaped in the final line (+2 bytes each). Many short deps must
+  // still yield lines under 16KB, not just few-and-long ones.
+  it("keeps lines under cap with thousands of short deps (escaping counted)", () => {
+    const deps = Array.from({ length: 4000 }, (_, i) => ({
+      name: `p${i}`,
+      version: "1.0.0",
+    }));
+    const lines = buildDepLines(deps, input);
+    expect(lines.length).toBeGreaterThan(1);
     assertIntact(lines, deps);
   });
 

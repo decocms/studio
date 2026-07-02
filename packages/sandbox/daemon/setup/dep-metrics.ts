@@ -59,26 +59,28 @@ export interface DepMetricsInput {
   branch?: string;
 }
 
-// Cap the serialized `deps` array per line, leaving ~2KB of the pipeline's
-// 16KB line budget for the JSON envelope. Chunk by BYTES, not dep count:
-// count-based chunking can't bound the line when package names run long
-// (npm allows names up to 214 chars), which would re-introduce the 16KB
-// truncation this whole format exists to avoid.
-const MAX_DEPS_BYTES = 14_000;
+// Cap the whole serialized line well under the pipeline's 16KB (16384)
+// truncation. We budget the FINAL line, not the raw array: `deps` is stored
+// as a string, so the outer JSON.stringify escapes every element's quotes
+// (`"x"` → `\"x\"`, +2 bytes each) — ignoring that undercounts short-dep-heavy
+// lines by ~2 bytes/dep and would let them cross 16KB.
+const MAX_LINE_BYTES = 15_500;
 
-/** Greedily pack `name@version` strings into groups whose serialized
- * JSON array stays under MAX_DEPS_BYTES. A single over-long dep still gets
- * its own group (a lone specifier is ~230 bytes worst case, far under cap). */
-function chunkByBytes(flat: string[]): string[][] {
+/** Greedily pack `name@version` strings into groups so each rendered line
+ * (envelope + double-encoded deps) stays under MAX_LINE_BYTES. `envelopeBytes`
+ * is the measured line size minus deps content; per element we add its escaped
+ * cost: `\"<dep>\"` = byteLength+4, plus a comma. A single over-long dep still
+ * gets its own group (a lone specifier is ~230 bytes, far under cap). */
+function chunkByBytes(flat: string[], envelopeBytes: number): string[][] {
   const groups: string[][] = [];
   let cur: string[] = [];
-  let bytes = 2; // the enclosing []
+  let bytes = envelopeBytes + 2; // + the enclosing []
   for (const dep of flat) {
-    const entry = Buffer.byteLength(JSON.stringify(dep)) + 1; // element + comma
-    if (cur.length && bytes + entry > MAX_DEPS_BYTES) {
+    const entry = Buffer.byteLength(dep) + 5; // \"…\" (4) + comma (1)
+    if (cur.length && bytes + entry > MAX_LINE_BYTES) {
       groups.push(cur);
       cur = [];
-      bytes = 2;
+      bytes = envelopeBytes + 2;
     }
     cur.push(dep);
     bytes += entry;
@@ -109,7 +111,22 @@ export function buildDepLines(
   input: Omit<DepMetricsInput, "installRoot">,
 ): string[] {
   const flat = deps.map((d) => `${d.name}@${d.version}`);
-  const groups = chunkByBytes(flat);
+  // Measure the line minus dep content once (deps="", 3-digit chunk counts as
+  // headroom) so the chunker can keep the FINAL line under the cap.
+  const envelopeBytes = Buffer.byteLength(
+    JSON.stringify({
+      msg: "sandbox.deps",
+      chunk: 999,
+      chunks: 999,
+      dependencyCount: deps.length,
+      deps: "",
+      bootId: input.bootId,
+      packageManager: input.packageManager,
+      repoName: input.repoName,
+      branch: input.branch,
+    }),
+  );
+  const groups = chunkByBytes(flat, envelopeBytes);
   if (groups.length === 0) groups.push([]); // zero-dep install still emits one countable line
   return groups.map((group, i) =>
     JSON.stringify({
