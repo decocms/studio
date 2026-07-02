@@ -33,7 +33,12 @@ export function makeProxyHandler({ broadcaster, getDevPort }: ProxyDeps) {
     log("proxy", req.method, url.pathname);
     const outHeaders = new Headers(req.headers);
     outHeaders.delete("accept-encoding");
-    outHeaders.delete("host");
+    // Preserve the browser's Host so the upstream dev server sees the external
+    // preview origin (e.g. `<handle>.localhost:5174`) rather than the loopback
+    // socket. Bun's fetch honors an explicit Host header (unlike the WHATWG
+    // "forbidden header" rule), so keeping it here propagates through Vite
+    // (changeOrigin:false) to the app server — which lets mesh advertise the
+    // correct OAuth protected-resource URL instead of `https://[::1]:<port>`.
     outHeaders.delete("transfer-encoding");
     outHeaders.delete("content-length");
     outHeaders.delete("authorization");
