@@ -360,7 +360,9 @@ function CustomObjectFieldTemplate(props: ObjectFieldTemplateProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      {props.properties.map((element) => element.content)}
+      {props.properties.map(
+        (element: (typeof props.properties)[number]) => element.content,
+      )}
     </div>
   );
 }
