@@ -78,6 +78,7 @@ export const CORE_TOOLS = [
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
   CommerceDiscoveryTools.COMMERCE_DISCOVERY_SETUP,
+  CommerceDiscoveryTools.COMMERCE_DISCOVERY_RUN,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,

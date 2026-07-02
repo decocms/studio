@@ -611,6 +611,20 @@ function CommerceSetupContent({
     },
   });
 
+  // Triggers the diagnostic run now that the user has connected their data
+  // sources. Fire-and-forget from the "See full report" click — the report view
+  // polls for the enriched deck as it lands.
+  const runMutation = useMutation({
+    mutationFn: async (siteUrl: string) => {
+      const result = await selfClient.callTool({
+        name: "COMMERCE_DISCOVERY_RUN",
+        arguments: { siteUrl },
+      });
+      return parseSelfToolResult<{ triggered: boolean; reason?: string }>(result);
+    },
+    retry: false,
+  });
+
   const setupReady = !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
   const currentSiteUrl = initialSiteUrl ?? siteUrlInput;
   const currentMeetingUrl = buildScheduleMeetingUrl({
@@ -652,6 +666,11 @@ function CommerceSetupContent({
   };
 
   const openReport = () => {
+    // Kick off the enriching run (fire-and-forget) — the user is done connecting.
+    const normalized = normalizeCommerceSiteUrl(currentSiteUrl);
+    if (normalized.ok) {
+      runMutation.mutate(normalized.value);
+    }
     localStorage.setItem(
       LOCALSTORAGE_KEYS.sidebarOpen(),
       JSON.stringify(false),
