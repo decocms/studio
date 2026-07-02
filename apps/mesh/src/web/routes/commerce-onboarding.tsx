@@ -29,7 +29,7 @@ import {
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { ComponentProps, FormEvent, ReactNode } from "react";
 import {
   CompanionMcpsSection,
   CompanionMcpsSectionSkeleton,
@@ -40,10 +40,7 @@ import {
   ScheduleMeetingVisual,
 } from "./commerce-onboarding/schedule-meeting.tsx";
 import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
-import {
-  CommerceOnboardingLoading,
-  CommerceOnboardingLoadingIndicator,
-} from "./commerce-onboarding/loading-state.tsx";
+import { CommerceOnboardingLoadingIndicator } from "./commerce-onboarding/loading-state.tsx";
 
 interface CommerceOrganization {
   id: string;
@@ -101,6 +98,27 @@ const CommerceSiteHostContext = createContext<string | null>(null);
 
 const useCommerceSiteHost = () => useContext(CommerceSiteHostContext);
 
+type CommerceOnboardingLayoutProps = ComponentProps<typeof AuthSplitLayout>;
+
+function CommerceOnboardingLayout({
+  visual,
+  ...props
+}: CommerceOnboardingLayoutProps) {
+  const search = useSearch({ from: "/commerce-onboarding" });
+  const { data: session } = authClient.useSession();
+  const meetingUrl = buildScheduleMeetingUrl({
+    siteUrl: search.siteUrl,
+    email: session?.user?.email,
+  });
+
+  return (
+    <AuthSplitLayout
+      {...props}
+      visual={visual ?? <ScheduleMeetingVisual href={meetingUrl} />}
+    />
+  );
+}
+
 function siteUrlToHost(siteUrl?: string): string | null {
   if (!siteUrl) return null;
   const normalized = normalizeCommerceSiteUrl(siteUrl);
@@ -133,7 +151,11 @@ function CommerceOnboardingScreens({
   const siteHost = useCommerceSiteHost();
 
   if (sessionLoading) {
-    return <CommerceOnboardingLoading variant="generic" />;
+    return (
+      <CommerceOnboardingLayout>
+        <CommerceOnboardingLoadingIndicator variant="generic" />
+      </CommerceOnboardingLayout>
+    );
   }
 
   if (!session) {
@@ -143,7 +165,7 @@ function CommerceOnboardingScreens({
         : `${window.location.pathname}${window.location.search}`;
 
     return (
-      <AuthSplitLayout>
+      <CommerceOnboardingLayout>
         <AuthEntry
           callbackUrl={callbackUrl}
           allowAutoLogin={false}
@@ -151,7 +173,7 @@ function CommerceOnboardingScreens({
           subtitle={null}
           brand={siteHost ? <SiteBadge host={siteHost} /> : undefined}
         />
-      </AuthSplitLayout>
+      </CommerceOnboardingLayout>
     );
   }
 
@@ -212,7 +234,11 @@ function CommerceOnboardingContent({
   });
 
   if (organizationsQuery.isPending) {
-    return <CommerceOnboardingLoading variant="workspace" />;
+    return (
+      <CommerceOnboardingLayout>
+        <CommerceOnboardingLoadingIndicator variant="workspace" />
+      </CommerceOnboardingLayout>
+    );
   }
 
   if (organizationsQuery.error) {
@@ -257,7 +283,7 @@ function CommerceOnboardingContent({
 
   if (activeOrganizations.length > 1) {
     return (
-      <AuthSplitLayout>
+      <CommerceOnboardingLayout>
         <div className="grid gap-10">
           <CommerceHeader
             title="Choose an organization"
@@ -271,7 +297,7 @@ function CommerceOnboardingContent({
             />
           </ScrollReveal>
         </div>
-      </AuthSplitLayout>
+      </CommerceOnboardingLayout>
     );
   }
 
@@ -307,7 +333,7 @@ function CommerceOnboardingContent({
     ensureResult.organizations.length > 0
   ) {
     return (
-      <AuthSplitLayout>
+      <CommerceOnboardingLayout>
         <div className="grid gap-10">
           <CommerceHeader
             title="Choose an organization"
@@ -328,7 +354,7 @@ function CommerceOnboardingContent({
             />
           </ScrollReveal>
         </div>
-      </AuthSplitLayout>
+      </CommerceOnboardingLayout>
     );
   }
 
@@ -377,11 +403,11 @@ function EnsureOrganizationRecovery({
   }
 
   return (
-    <AuthSplitLayout>
+    <CommerceOnboardingLayout>
       <div ref={triggerRecovery}>
         <CommerceOnboardingLoadingIndicator variant="generic" />
       </div>
-    </AuthSplitLayout>
+    </CommerceOnboardingLayout>
   );
 }
 
@@ -437,14 +463,14 @@ function CommerceErrorState({
   onRetry: () => void;
 }) {
   return (
-    <AuthSplitLayout>
+    <CommerceOnboardingLayout>
       <div className="grid gap-10">
         <CommerceHeader title={title} description={description} />
         <Button type="button" size="xl" className="w-full" onClick={onRetry}>
           {actionLabel}
         </Button>
       </div>
-    </AuthSplitLayout>
+    </CommerceOnboardingLayout>
   );
 }
 
@@ -482,7 +508,7 @@ function CommerceSetup({
       {({ reset }) => (
         <ErrorBoundary
           fallback={({ error, resetError }) => (
-            <AuthSplitLayout visual={meetingVisual}>
+            <CommerceOnboardingLayout visual={meetingVisual}>
               <CommerceSetupErrorState
                 orgName={org.name}
                 message={
@@ -495,7 +521,7 @@ function CommerceSetup({
                   resetError();
                 }}
               />
-            </AuthSplitLayout>
+            </CommerceOnboardingLayout>
           )}
         >
           <Suspense
@@ -516,12 +542,12 @@ function CommerceSetup({
 
 function CommerceDiagnosticLoading({ visual }: { visual?: ReactNode }) {
   return (
-    <AuthSplitLayout align="fill" visual={visual}>
+    <CommerceOnboardingLayout align="fill" visual={visual}>
       <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:gap-4">
         <CommerceHeader />
         <CompanionMcpsSectionSkeleton />
       </div>
-    </AuthSplitLayout>
+    </CommerceOnboardingLayout>
   );
 }
 
@@ -745,7 +771,7 @@ function CommerceSetupContent({
 
     if (!normalized.ok) {
       return (
-        <AuthSplitLayout visual={currentMeetingVisual}>
+        <CommerceOnboardingLayout visual={currentMeetingVisual}>
           <div className="grid gap-10">
             <CommerceHeader
               title="Commerce diagnostics"
@@ -760,12 +786,12 @@ function CommerceSetupContent({
               onSubmit={handleSubmit}
             />
           </div>
-        </AuthSplitLayout>
+        </CommerceOnboardingLayout>
       );
     }
 
     return (
-      <AuthSplitLayout visual={currentMeetingVisual}>
+      <CommerceOnboardingLayout visual={currentMeetingVisual}>
         <div ref={triggerInitialSetup} className="grid gap-10">
           <CommerceHeader
             title="Commerce diagnostics"
@@ -786,12 +812,12 @@ function CommerceSetupContent({
             <CompanionMcpsSectionSkeleton />
           )}
         </div>
-      </AuthSplitLayout>
+      </CommerceOnboardingLayout>
     );
   }
 
   return (
-    <AuthSplitLayout visual={currentMeetingVisual}>
+    <CommerceOnboardingLayout visual={currentMeetingVisual}>
       <div className="grid gap-10">
         <CommerceHeader
           title="Commerce diagnostics"
@@ -805,7 +831,7 @@ function CommerceSetupContent({
           onSubmit={handleSubmit}
         />
       </div>
-    </AuthSplitLayout>
+    </CommerceOnboardingLayout>
   );
 }
 
@@ -873,7 +899,7 @@ function CommerceDiscoveryReady({
   siteUrl?: string;
 }) {
   return (
-    <AuthSplitLayout align="fill" visual={meetingVisual}>
+    <CommerceOnboardingLayout align="fill" visual={meetingVisual}>
       {/* align="fill" hands us a flex column sized to the visible viewport, so we
           just flex-1 into it — header pinned top, cards scroll in the middle, and
           the footer (report CTA + talk-to-a-human banner) pinned to the bottom.
@@ -902,7 +928,7 @@ function CommerceDiscoveryReady({
           </Button>
         </div>
       </div>
-    </AuthSplitLayout>
+    </CommerceOnboardingLayout>
   );
 }
 

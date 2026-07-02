@@ -243,6 +243,11 @@ test.describe("Commerce onboarding route isolation", () => {
       (url) => url.pathname === "/commerce-onboarding",
     );
     await expect(page.getByPlaceholder("you@example.com")).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Rather have us walk you through it?",
+      }),
+    ).toBeVisible();
 
     await signUpOnCurrentLoginPage(page, email);
 
