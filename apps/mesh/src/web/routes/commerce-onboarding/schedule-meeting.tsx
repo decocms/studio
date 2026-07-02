@@ -72,7 +72,13 @@ function ConnectionNode({ children }: { children: React.ReactNode }) {
  */
 function ConnectionAnimation() {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-muted/40 px-7 py-7">
+    <div
+      className="flex items-center justify-between rounded-2xl border border-border/60 px-7 py-7"
+      style={{
+        backgroundColor:
+          "color-mix(in srgb, var(--brand-purple-light) 15%, transparent)",
+      }}
+    >
       <ConnectionNode>
         <User01 size={20} className="text-muted-foreground" />
       </ConnectionNode>
