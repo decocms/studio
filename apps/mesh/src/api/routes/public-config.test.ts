@@ -11,11 +11,13 @@ import publicConfigRoutes from "./public-config";
 describe("GET /api/config", () => {
   let originalKey: string | undefined;
   let originalHost: string | undefined;
+  let originalMapsKey: string | undefined;
   const originalSettings = getSettings();
 
   beforeEach(() => {
     originalKey = process.env.POSTHOG_KEY;
     originalHost = process.env.POSTHOG_HOST;
+    originalMapsKey = process.env.GOOGLE_MAPS_API_KEY;
     setGlobalSettings(originalSettings);
   });
 
@@ -24,6 +26,8 @@ describe("GET /api/config", () => {
     else process.env.POSTHOG_KEY = originalKey;
     if (originalHost === undefined) delete process.env.POSTHOG_HOST;
     else process.env.POSTHOG_HOST = originalHost;
+    if (originalMapsKey === undefined) delete process.env.GOOGLE_MAPS_API_KEY;
+    else process.env.GOOGLE_MAPS_API_KEY = originalMapsKey;
     setGlobalSettings(originalSettings);
   });
 
@@ -61,6 +65,25 @@ describe("GET /api/config", () => {
       key: "phc_test_key",
       host: "https://eu.i.posthog.com",
     });
+  });
+
+  it("returns googleMapsApiKey when GOOGLE_MAPS_API_KEY is set", async () => {
+    process.env.GOOGLE_MAPS_API_KEY = "  maps_test_key  ";
+
+    const res = await publicConfigRoutes.request("/");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Trimmed before exposing.
+    expect(body.config.googleMapsApiKey).toBe("maps_test_key");
+  });
+
+  it("returns googleMapsApiKey: null when GOOGLE_MAPS_API_KEY is unset", async () => {
+    delete process.env.GOOGLE_MAPS_API_KEY;
+
+    const res = await publicConfigRoutes.request("/");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.config.googleMapsApiKey).toBeNull();
   });
 
   it("reports agent-sandbox runtime availability when agent-sandbox provider is configured", async () => {

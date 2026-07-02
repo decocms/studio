@@ -55,6 +55,14 @@ export type PublicConfig = {
    */
   posthog: { key: string; host: string } | null;
   /**
+   * Google Maps JS API key for the `format: map` widget (area selector).
+   * `null` when GOOGLE_MAPS_API_KEY is unset. It's a client-side token by
+   * design (the Maps JS API ships it to the browser); security relies on the
+   * key's HTTP-referrer + API restrictions in Google Cloud, not on secrecy.
+   * Read at runtime so it can be configured per environment (like posthog).
+   */
+  googleMapsApiKey: string | null;
+  /**
    * Server runtime capabilities that affect client-side affordances.
    */
   runtime: {
@@ -91,6 +99,7 @@ app.get("/", (c) => {
     brandExtractEnabled: !!getSettings().firecrawlApiKey,
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),
+    googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY?.trim() || null,
     runtime: {
       // Local/dev mode has no cloud agent-sandbox cluster, so cloud Decopilot
       // can't run there — report it unavailable to drop it from the picker.
