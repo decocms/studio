@@ -31,6 +31,7 @@ export function VtexConfigForm({
   selfClient,
   org,
   onDone,
+  onIsPendingChange,
 }: CompanionFormProps) {
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -56,6 +57,11 @@ export function VtexConfigForm({
     org,
     onDone,
   });
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- notify parent of save pending state
+  useEffect(() => {
+    onIsPendingChange?.(isPending);
+  }, [isPending, onIsPendingChange]);
 
   const handleSubmit = form.handleSubmit(async (data) => {
     save(data);

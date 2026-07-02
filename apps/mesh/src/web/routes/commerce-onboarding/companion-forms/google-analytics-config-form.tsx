@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -37,6 +38,7 @@ export function GoogleAnalyticsConfigForm({
   selfClient,
   org,
   onDone,
+  onIsPendingChange,
 }: CompanionFormProps) {
   const propertiesQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryCompanionGaProperties(org.id, connectionId),
@@ -63,6 +65,11 @@ export function GoogleAnalyticsConfigForm({
     org,
     onDone,
   });
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- notify parent of save pending state
+  useEffect(() => {
+    onIsPendingChange?.(isPending);
+  }, [isPending, onIsPendingChange]);
 
   const handleSubmit = form.handleSubmit(async (data) => {
     save(data);

@@ -39,6 +39,7 @@ export function GoogleSearchConsoleConfigForm({
   org,
   contextSiteUrl,
   onDone,
+  onIsPendingChange,
 }: CompanionFormProps) {
   const sitesQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryCompanionGscSites(org.id, connectionId),
@@ -61,39 +62,17 @@ export function GoogleSearchConsoleConfigForm({
     },
   });
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- context-matched site pre-selection requires effect
-  useEffect(() => {
-    if (sitesQuery.isLoading || sitesQuery.isError || !sitesQuery.data) {
-      return;
-    }
-
-    const sites = sitesQuery.data;
-    const savedSiteUrl = card.configurationState?.siteUrl as string | undefined;
-
-    if (savedSiteUrl) {
-      form.setValue("siteUrl", savedSiteUrl);
-      return;
-    }
-
-    const matchedSite = matchGscSite(contextSiteUrl, sites);
-    if (matchedSite) {
-      form.setValue("siteUrl", matchedSite);
-    }
-  }, [
-    sitesQuery.isLoading,
-    sitesQuery.isError,
-    sitesQuery.data,
-    card.configurationState,
-    contextSiteUrl,
-    form,
-  ]);
-
   const { save, isPending, error } = useSaveCompanionConfig({
     card,
     selfClient,
     org,
     onDone,
   });
+
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- notify parent of save pending state
+  useEffect(() => {
+    onIsPendingChange?.(isPending);
+  }, [isPending, onIsPendingChange]);
 
   const handleSubmit = form.handleSubmit(async (data) => {
     save(data);
@@ -128,6 +107,16 @@ export function GoogleSearchConsoleConfigForm({
         </p>
       </div>
     );
+  }
+
+  const savedSiteUrl = card.configurationState?.siteUrl as string | undefined;
+  if (savedSiteUrl && form.getValues("siteUrl") !== savedSiteUrl) {
+    form.setValue("siteUrl", savedSiteUrl);
+  } else if (!savedSiteUrl && !form.getValues("siteUrl")) {
+    const matchedSite = matchGscSite(contextSiteUrl, sites);
+    if (matchedSite) {
+      form.setValue("siteUrl", matchedSite);
+    }
   }
 
   return (

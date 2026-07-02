@@ -14,6 +14,7 @@ export interface CompanionFormProps {
   org: CompanionOrg;
   contextSiteUrl?: string;
   onDone: () => void;
+  onIsPendingChange?: (isPending: boolean) => void;
 }
 
 export type CompanionFormComponent = React.FC<CompanionFormProps>;

@@ -178,8 +178,16 @@ function CompanionConfiguration({
     orgSlug: org.slug,
   });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isSavePending, setIsSavePending] = useState(false);
 
   const FormComponent = COMPANION_CONFIG_FORMS[card.bindingType];
+
+  const handleDialogOpenChange = (open: boolean) => {
+    if (!open && isSavePending) {
+      return;
+    }
+    setDialogOpen(open);
+  };
 
   return (
     <>
@@ -239,7 +247,7 @@ function CompanionConfiguration({
       </div>
 
       {FormComponent ? (
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Configure {card.title}</DialogTitle>
@@ -255,6 +263,7 @@ function CompanionConfiguration({
               org={org}
               contextSiteUrl={contextSiteUrl}
               onDone={() => setDialogOpen(false)}
+              onIsPendingChange={setIsSavePending}
             />
           </DialogContent>
         </Dialog>
