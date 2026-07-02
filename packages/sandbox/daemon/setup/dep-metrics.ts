@@ -60,28 +60,45 @@ export interface DepMetricsInput {
 }
 
 /**
- * After a SUCCESSFUL install, emit the installed dependency set as a single
- * JSON log line for downstream aggregation (VictoriaLogs) so the team can
- * decide which packages to pre-bake into the sandbox image. Logs, not metrics:
- * per-package cardinality would wreck Prometheus, and sandbox pods can't reach
- * an in-cluster OTLP collector anyway (egress is locked to 53/443), so their
+ * After a SUCCESSFUL install, emit the installed dependency set as JSON log
+ * lines for downstream aggregation (VictoriaLogs) so the team can decide which
+ * packages to pre-bake into the sandbox image. Logs, not metrics: per-package
+ * cardinality would wreck Prometheus, and sandbox pods can't reach an
+ * in-cluster OTLP collector anyway (egress is locked to 53/443), so their
  * stdout scraped out-of-band is the only channel that leaves the pod.
- * Best-effort: observability only, never throws.
+ *
+ * One line PER dependency, not one array line: the pipeline truncates log
+ * lines at 16KB, so a big monorepo's array gets cut mid-JSON and becomes
+ * unparseable — and per-line rows are what let `stats by (name) count()`
+ * aggregate without unrolling a nested array. A trailing summary line carries
+ * the install-level totals. Best-effort: observability only, never throws.
  */
 export async function emitInstalledDeps(input: DepMetricsInput): Promise<void> {
   try {
     const deps = await readInstalledDeps(
       join(input.installRoot, "node_modules"),
     );
+    const base = {
+      bootId: input.bootId,
+      packageManager: input.packageManager,
+      repoName: input.repoName,
+      branch: input.branch,
+    };
+    for (const d of deps) {
+      console.log(
+        JSON.stringify({
+          msg: "sandbox.dep.installed",
+          name: d.name,
+          version: d.version,
+          ...base,
+        }),
+      );
+    }
     console.log(
       JSON.stringify({
         msg: "sandbox.install.deps",
-        bootId: input.bootId,
-        packageManager: input.packageManager,
-        repoName: input.repoName,
-        branch: input.branch,
         dependencyCount: deps.length,
-        dependencies: deps,
+        ...base,
       }),
     );
   } catch (err) {
