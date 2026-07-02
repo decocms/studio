@@ -1,4 +1,4 @@
-import { Plus, Trash01 } from "@untitledui/icons";
+import { Edit02, Plus, Trash01 } from "@untitledui/icons";
 import { cn } from "@deco/ui/lib/utils.js";
 
 /**
@@ -53,6 +53,28 @@ export function InlineText({
 
 export function str(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/**
+ * InlineText with an explicit "this is editable" affordance: a hover/focus
+ * background box plus an always-dimmed pencil icon that brightens on hover.
+ * Used for headings that are really text inputs (post title, category name)
+ * so they don't read as static text the user must click to discover.
+ */
+export function EditableText({
+  className,
+  ...props
+}: React.ComponentProps<typeof InlineText>) {
+  return (
+    <div className="group/editable relative -mx-2 rounded-md px-2 transition-colors hover:bg-muted/50 focus-within:bg-muted/50">
+      <InlineText {...props} className={cn(className, "pr-9")} />
+      <Edit02
+        size={18}
+        aria-hidden
+        className="pointer-events-none absolute right-2 top-3 text-muted-foreground/40 transition-opacity group-hover/editable:text-muted-foreground group-focus-within/editable:text-muted-foreground"
+      />
+    </div>
+  );
 }
 
 /** "Add row" affordance for collection blocks. */

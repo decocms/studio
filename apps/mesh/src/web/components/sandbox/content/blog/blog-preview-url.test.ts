@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import {
+  applyBlogCategorySlug,
   applyBlogPageSlug,
+  buildBlogCategoryPreviewUrl,
   buildBlogPostPreviewUrl,
+  findBlogCategorySlug,
   findBlogPageSlug,
   firstCategorySlug,
 } from "./blog-preview-url";
@@ -33,6 +36,110 @@ describe("findBlogPageSlug", () => {
       blog: { __resolveType: "site/apps/deco/blog.ts", postsPerPage: 10 },
     };
     expect(findBlogPageSlug(decofile)).toBeNull();
+  });
+});
+
+describe("findBlogCategorySlug", () => {
+  it("reads categorySlug from the blog app block", () => {
+    const decofile = {
+      blog: {
+        __resolveType: "site/apps/deco/blog.ts",
+        pageSlug: "/blog/:category/:slug",
+        categorySlug: "/blog/:category",
+      },
+    };
+    expect(findBlogCategorySlug(decofile)).toBe("/blog/:category");
+  });
+
+  it("returns null when categorySlug is not set", () => {
+    const decofile = {
+      blog: {
+        __resolveType: "site/apps/deco/blog.ts",
+        pageSlug: "/blog/:category/:slug",
+      },
+    };
+    expect(findBlogCategorySlug(decofile)).toBeNull();
+  });
+});
+
+describe("applyBlogCategorySlug", () => {
+  it("substitutes the category slug into a :category param", () => {
+    expect(applyBlogCategorySlug("/blog/:category", "news")).toBe("/blog/news");
+  });
+
+  it("substitutes :slug and :categorySlug params too", () => {
+    expect(applyBlogCategorySlug("/blog/cat/:slug", "news")).toBe(
+      "/blog/cat/news",
+    );
+    expect(applyBlogCategorySlug("/blog/:categorySlug?", "news")).toBe(
+      "/blog/news",
+    );
+  });
+
+  it("url-encodes the slug", () => {
+    expect(applyBlogCategorySlug("/blog/:category", "a b")).toBe("/blog/a%20b");
+  });
+
+  it("returns a param-less template unchanged (static listing page)", () => {
+    expect(applyBlogCategorySlug("/blog", "")).toBe("/blog");
+  });
+
+  it("returns null when a param is present but the slug is missing", () => {
+    expect(applyBlogCategorySlug("/blog/:category", "")).toBeNull();
+  });
+});
+
+describe("buildBlogCategoryPreviewUrl", () => {
+  const decofile = {
+    blog: {
+      __resolveType: "site/apps/deco/blog.ts",
+      categorySlug: "/blog/:category",
+    },
+  };
+
+  it("builds an absolute category preview url", () => {
+    expect(
+      buildBlogCategoryPreviewUrl({
+        decofile,
+        category: { slug: "news" },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/news");
+  });
+
+  it("returns null without a preview origin", () => {
+    expect(
+      buildBlogCategoryPreviewUrl({
+        decofile,
+        category: { slug: "news" },
+        previewBaseUrl: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when categorySlug is not configured", () => {
+    expect(
+      buildBlogCategoryPreviewUrl({
+        decofile: {
+          blog: {
+            __resolveType: "site/apps/deco/blog.ts",
+            pageSlug: "/blog/:category/:slug",
+          },
+        },
+        category: { slug: "news" },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when the category has no slug", () => {
+    expect(
+      buildBlogCategoryPreviewUrl({
+        decofile,
+        category: {},
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBeNull();
   });
 });
 

@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { ArrowRight, File02, Loading01 } from "@untitledui/icons";
+import {
+  ArrowRight,
+  File02,
+  LinkExternal01,
+  Loading01,
+  Pilcrow01,
+} from "@untitledui/icons";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -22,17 +28,20 @@ import {
   listPostsWithMeta,
   renameCategoryOnPost,
 } from "./blog-data";
+import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
-import { InlineText, str } from "./blocks/primitives";
+import { CollapsibleSection } from "./editor-section";
+import { EditableText, str } from "./blocks/primitives";
 
 /**
- * Notion-style category editor: large inline name + slug input + inline
- * description + the same block document used by posts. Mirrors PostEditor's
- * layout so authors edit categories with the same affordances.
+ * Category editor: an editable name heading, slug / description inputs, the
+ * block-document content panel, and the list of posts in this category (plus a
+ * "See category preview" action). Mirrors PostEditor's layout so authors edit
+ * categories with the same affordances.
  *
  * Slug renames cascade to posts. Posts reference a category by a denormalized
  * `{ name, slug }` copy (categories aren't strongly typed on posts), so a
@@ -51,6 +60,8 @@ export function CategoryEditor({
   decofile,
   meta,
   onManagePosts,
+  onOpenPost,
+  previewBaseUrl,
 }: {
   orgSlug: string;
   virtualMcpId: string;
@@ -60,6 +71,8 @@ export function CategoryEditor({
   decofile: Record<string, unknown>;
   meta: LiveMeta;
   onManagePosts: (slug: string) => void;
+  onOpenPost: (key: string) => void;
+  previewBaseUrl?: string | null;
 }) {
   const save = useSaveBlogBlock({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
@@ -74,6 +87,14 @@ export function CategoryEditor({
   const setField = (key: string, value: unknown) =>
     setCategory({ ...category, [key]: value });
 
+  // Only offer a preview when the blog app has a `categorySlug` route
+  // template configured — otherwise there is no category page to open.
+  const previewUrl = buildBlogCategoryPreviewUrl({
+    decofile,
+    category,
+    previewBaseUrl,
+  });
+
   // The slug input is a free-text draft, committed only on blur — its
   // keystrokes must not autosave (each would churn every post via the
   // cascade and turn a half-typed slug into the match key for the next edit).
@@ -86,11 +107,12 @@ export function CategoryEditor({
   } | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
 
-  const postCount = committedSlug
+  const posts = committedSlug
     ? listPostsWithMeta(decofile).filter((p) =>
         p.categorySlugs.includes(committedSlug),
-      ).length
-    : 0;
+      )
+    : [];
+  const postCount = posts.length;
 
   /** Persist the new slug on the category block itself (no cascade). */
   const commitSlug = (newSlug: string) => setField("slug", newSlug);
@@ -161,16 +183,11 @@ export function CategoryEditor({
       setSlugDraft(committedSlug);
       return;
     }
-    const count = committedSlug
-      ? listPostsWithMeta(decofile).filter((p) =>
-          p.categorySlugs.includes(committedSlug),
-        ).length
-      : 0;
-    if (count === 0) {
+    if (postCount === 0) {
       commitSlug(newSlug);
       return;
     }
-    setPendingRename({ oldSlug: committedSlug, newSlug, count });
+    setPendingRename({ oldSlug: committedSlug, newSlug, count: postCount });
   };
 
   return (
@@ -184,12 +201,28 @@ export function CategoryEditor({
           <span className="truncate text-sm font-medium">
             {str(category.name) || "Untitled category"}
           </span>
-          <SaveStatus isPending={save.isPending} isError={save.isError} />
+          <div className="flex shrink-0 items-center gap-3">
+            <SaveStatus isPending={save.isPending} isError={save.isError} />
+            {previewUrl && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                title="Open the category preview in a new tab"
+                onClick={() =>
+                  window.open(previewUrl, "_blank", "noopener,noreferrer")
+                }
+              >
+                <LinkExternal01 size={14} />
+                See category preview
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-8 py-8">
-            <InlineText
+          <div className="mx-auto max-w-4xl px-8 py-8">
+            <EditableText
               value={str(category.name)}
               onChange={(v) => setField("name", v)}
               placeholder="Category name"
@@ -219,39 +252,78 @@ export function CategoryEditor({
               />
             </div>
 
-            <div className="mt-6 flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-4 py-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <File02 size={16} className="shrink-0 text-muted-foreground" />
-                <span className="text-sm">
-                  {postCount} {postCount === 1 ? "post" : "posts"} in this
-                  category
-                </span>
+            {/* Category page content — same collapsible panel as the post body */}
+            <CollapsibleSection icon={Pilcrow01} title="Content" defaultOpen>
+              <BlockDocument
+                value={asBlocks(category.sections)}
+                onChange={(next) => setField("sections", next)}
+                meta={meta}
+                emptyMessage="This category has no content yet. Use ⊕ to add your first block."
+              />
+            </CollapsibleSection>
+
+            {/* Posts in this category */}
+            <div className="mt-6 overflow-hidden rounded-lg border bg-muted/30">
+              <div className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <File02
+                    size={16}
+                    className="shrink-0 text-muted-foreground"
+                  />
+                  <span className="text-sm">
+                    {postCount} {postCount === 1 ? "post" : "posts"} in this
+                    category
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!committedSlug}
+                  title={
+                    !committedSlug
+                      ? "Set a slug to manage this category's posts"
+                      : postCount === 0
+                        ? "Go to the posts list to add posts to this category"
+                        : "Jump to the posts list filtered by this category"
+                  }
+                  onClick={() =>
+                    onManagePosts(postCount === 0 ? "" : committedSlug)
+                  }
+                >
+                  {postCount === 0 ? "Add posts" : "Manage posts"}
+                  <ArrowRight size={14} />
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!committedSlug}
-                title={
-                  committedSlug
-                    ? "Jump to the posts list filtered by this category"
-                    : "Set a slug to manage this category's posts"
-                }
-                onClick={() => onManagePosts(committedSlug)}
-              >
-                Manage posts
-                <ArrowRight size={14} />
-              </Button>
+              {postCount > 0 && (
+                <ul className="divide-y border-t bg-background">
+                  {posts.map((p) => (
+                    <li key={p.key}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenPost(p.key)}
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-muted cursor-pointer"
+                      >
+                        <File02
+                          size={14}
+                          className="shrink-0 text-muted-foreground"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm">
+                            {p.title || "Untitled post"}
+                          </span>
+                          {p.slug && (
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {p.slug}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-
-            <div className="mt-6 border-t" />
-
-            <BlockDocument
-              value={asBlocks(category.sections)}
-              onChange={(next) => setField("sections", next)}
-              meta={meta}
-              emptyMessage="This category has no content yet. Use ⊕ to add your first block."
-            />
           </div>
         </div>
       </div>

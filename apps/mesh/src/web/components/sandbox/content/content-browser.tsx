@@ -10,6 +10,7 @@ import {
   DotsHorizontal,
   Edit01,
   File02,
+  FilterFunnel01,
   Flag01,
   Globe02,
   Grid01,
@@ -389,6 +390,9 @@ function ContentBrowserReady({
   const [selectedPostKeys, setSelectedPostKeys] = useState<Set<string>>(
     () => new Set(),
   );
+  // Multi-select is implicit: selecting the first post (via the hover-revealed
+  // checkbox) enters "selection mode" — clearing the selection leaves it.
+  const clearSelection = () => setSelectedPostKeys(new Set());
   // Reset search + post filters/selection when switching collections
   // (derived-state sync pattern).
   const [prevCollection, setPrevCollection] = useState(activeCollection);
@@ -776,16 +780,18 @@ function ContentBrowserReady({
     });
   };
 
-  // Land on the posts list pre-filtered by a category (from the category
-  // editor). Sync `prevCollection` here so the collection-change reset
-  // above doesn't immediately clear the filter we're setting.
+  // Land on the posts list, optionally pre-filtered by a category (from the
+  // category editor). An empty slug lands on the unfiltered list (all
+  // categories) — used by the "Add posts" action for empty categories. Sync
+  // `prevCollection` here so the collection-change reset above doesn't
+  // immediately clear the filter we're setting.
   const handleManagePosts = (slug: string) => {
     setActiveCollection("posts");
     setPrevCollection("posts");
     setSelection(null);
     setOpenPageSeoKey(null);
     setSearchQuery("");
-    setPostCategoryFilter(slug);
+    setPostCategoryFilter(slug || null);
     setPostAuthorFilter(null);
     setPostSort("date-desc");
     setSelectedPostKeys(new Set());
@@ -834,7 +840,7 @@ function ContentBrowserReady({
         `${verb} ${changed} ${changed === 1 ? "post" : "posts"}` +
           (unchanged > 0 ? ` (${unchanged} already set)` : ""),
       );
-      setSelectedPostKeys(new Set());
+      clearSelection();
       setCategoryDialog(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bulk update failed");
@@ -861,7 +867,7 @@ function ContentBrowserReady({
         ) {
           setSelection(null);
         }
-        setSelectedPostKeys(new Set());
+        clearSelection();
         setDeleteTarget(null);
         return;
       }
@@ -1127,6 +1133,13 @@ function ContentBrowserReady({
                 decofile={decofile}
                 meta={meta}
                 onManagePosts={handleManagePosts}
+                onOpenPost={(key) => {
+                  setActiveCollection("posts");
+                  setPrevCollection("posts");
+                  setSelection({ collection: "posts", key });
+                  setOpenPageSeoKey(null);
+                }}
+                previewBaseUrl={previewUrl}
               />
             ) : selection.collection === "authors" ? (
               <RecordEditor
@@ -1454,6 +1467,20 @@ function CollectionsSidebar({
           onSelect={onSelect}
         />
         <CollectionRow
+          id="site"
+          icon={Settings01}
+          label="Site"
+          active={active === "site"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="seo"
+          icon={CreditCardSearch}
+          label="SEO"
+          active={active === "seo"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
           id="calendar"
           icon={Calendar}
           label="Calendar"
@@ -1492,20 +1519,6 @@ function CollectionsSidebar({
             />
           </>
         )}
-        <CollectionRow
-          id="site"
-          icon={Settings01}
-          label="Site"
-          active={active === "site"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="seo"
-          icon={CreditCardSearch}
-          label="SEO"
-          active={active === "seo"}
-          onSelect={onSelect}
-        />
       </nav>
     </div>
   );
@@ -1735,6 +1748,8 @@ function ItemList({
   const allVisibleSelected =
     visiblePostKeys.length > 0 &&
     visiblePostKeys.every((k) => selectedPostKeys.has(k));
+  // Selecting the first post enters "selection mode": the toolbar replaces the
+  // filter bar and every row's checkbox becomes visible.
   const selectionActive = selectionCount > 0;
   const toggleSelectAll = () => {
     if (allVisibleSelected) {
@@ -1794,7 +1809,7 @@ function ItemList({
             onToggleSelectAll={toggleSelectAll}
             onUpdateCategory={onBulkUpdateCategory}
             onDelete={onBulkDeletePosts}
-            onClear={onClearPostSelection}
+            onExit={onClearPostSelection}
           />
         ) : (
           <PostFilterBar
@@ -1803,9 +1818,6 @@ function ItemList({
             categoryFilter={postCategoryFilter}
             authorFilter={postAuthorFilter}
             sort={postSort}
-            hasPosts={postsWithMeta.length > 0}
-            allSelected={allVisibleSelected}
-            onToggleSelectAll={toggleSelectAll}
             onCategoryFilterChange={onPostCategoryFilterChange}
             onAuthorFilterChange={onPostAuthorFilterChange}
             onSortChange={onPostSortChange}
@@ -2023,7 +2035,9 @@ function ItemList({
                     selected={selectedPostKeys.has(post.key)}
                     onToggleSelect={() => onTogglePostSelect(post.key)}
                     onClick={() =>
-                      onSelect({ collection: "posts", key: post.key })
+                      selectionActive
+                        ? onTogglePostSelect(post.key)
+                        : onSelect({ collection: "posts", key: post.key })
                     }
                     menu={
                       <ItemActions
@@ -2152,9 +2166,6 @@ function PostFilterBar({
   categoryFilter,
   authorFilter,
   sort,
-  hasPosts,
-  allSelected,
-  onToggleSelectAll,
   onCategoryFilterChange,
   onAuthorFilterChange,
   onSortChange,
@@ -2164,82 +2175,83 @@ function PostFilterBar({
   categoryFilter: string | null;
   authorFilter: string | null;
   sort: PostSort;
-  hasPosts: boolean;
-  allSelected: boolean;
-  onToggleSelectAll: () => void;
   onCategoryFilterChange: (slug: string | null) => void;
   onAuthorFilterChange: (email: string | null) => void;
   onSortChange: (sort: PostSort) => void;
 }) {
   const activeCategory = categories.find((c) => c.slug === categoryFilter);
   const activeAuthor = authors.find((a) => a.email === authorFilter);
+  const hasFilter = !!(categoryFilter || authorFilter);
+  const activeLabel = activeCategory?.name ?? activeAuthor?.name ?? "Filter";
+  // One filter at a time: encode both dimensions into a single radio value.
+  const activeValue = categoryFilter
+    ? `cat:${categoryFilter}`
+    : authorFilter
+      ? `author:${authorFilter}`
+      : ALL_FILTER;
+  const clearFilter = () => {
+    onCategoryFilterChange(null);
+    onAuthorFilterChange(null);
+  };
+  const handleFilterChange = (v: string) => {
+    if (v.startsWith("cat:")) {
+      onAuthorFilterChange(null);
+      onCategoryFilterChange(v.slice(4));
+    } else if (v.startsWith("author:")) {
+      onCategoryFilterChange(null);
+      onAuthorFilterChange(v.slice(7));
+    } else {
+      clearFilter();
+    }
+  };
 
   return (
-    <div className="flex min-w-0 items-center gap-0.5 overflow-hidden border-b px-2 py-1.5">
-      <SelectAllControl
-        checked={allSelected}
-        disabled={!hasPosts}
-        onToggle={onToggleSelectAll}
-      />
-
+    <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b px-2 py-1.5">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <FilterChipTrigger
-            icon={Tag01}
-            active={!!categoryFilter}
-            value={activeCategory?.name}
+            icon={FilterFunnel01}
+            active={hasFilter}
+            value={activeLabel}
             className="min-w-0 shrink"
           />
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          className="max-h-80 w-56 overflow-y-auto"
+          className="max-h-96 w-60 overflow-y-auto"
         >
-          <DropdownMenuLabel>Filter by category</DropdownMenuLabel>
+          <DropdownMenuLabel>Filter by</DropdownMenuLabel>
           <DropdownMenuRadioGroup
-            value={categoryFilter ?? ALL_FILTER}
-            onValueChange={(v) =>
-              onCategoryFilterChange(v === ALL_FILTER ? null : v)
-            }
+            value={activeValue}
+            onValueChange={handleFilterChange}
           >
             <DropdownMenuRadioItem value={ALL_FILTER}>
-              All categories
+              All posts
             </DropdownMenuRadioItem>
+            {categories.length > 0 && (
+              <DropdownMenuLabel className="text-muted-foreground/70">
+                Category
+              </DropdownMenuLabel>
+            )}
             {categories.map((c) => (
-              <DropdownMenuRadioItem key={c.slug} value={c.slug}>
+              <DropdownMenuRadioItem
+                key={`cat:${c.slug}`}
+                value={`cat:${c.slug}`}
+              >
                 <span className="min-w-0 flex-1 truncate">{c.name}</span>
                 <OptionCount count={c.count} />
               </DropdownMenuRadioItem>
             ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <FilterChipTrigger
-            icon={Users01}
-            active={!!authorFilter}
-            value={activeAuthor?.name}
-            className="min-w-0 shrink"
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="start"
-          className="max-h-80 w-56 overflow-y-auto"
-        >
-          <DropdownMenuLabel>Filter by author</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={authorFilter ?? ALL_FILTER}
-            onValueChange={(v) =>
-              onAuthorFilterChange(v === ALL_FILTER ? null : v)
-            }
-          >
-            <DropdownMenuRadioItem value={ALL_FILTER}>
-              All authors
-            </DropdownMenuRadioItem>
+            {authors.length > 0 && (
+              <DropdownMenuLabel className="text-muted-foreground/70">
+                Author
+              </DropdownMenuLabel>
+            )}
             {authors.map((a) => (
-              <DropdownMenuRadioItem key={a.email} value={a.email}>
+              <DropdownMenuRadioItem
+                key={`author:${a.email}`}
+                value={`author:${a.email}`}
+              >
                 <span className="min-w-0 flex-1 truncate">{a.name}</span>
                 <OptionCount count={a.count} />
               </DropdownMenuRadioItem>
@@ -2247,30 +2259,55 @@ function PostFilterBar({
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      {hasFilter && (
+        <FilterClearButton label="Clear filter" onClick={clearFilter} />
+      )}
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <FilterChipTrigger
-            icon={SwitchVertical01}
-            active
-            value={POST_SORT_SHORT[sort]}
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={sort}
-            onValueChange={(v) => onSortChange(v as PostSort)}
-          >
-            {(Object.keys(POST_SORT_LABELS) as PostSort[]).map((value) => (
-              <DropdownMenuRadioItem key={value} value={value}>
-                {POST_SORT_LABELS[value]}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="ml-auto shrink-0">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <FilterChipTrigger
+              icon={SwitchVertical01}
+              active
+              value={POST_SORT_SHORT[sort]}
+            />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={sort}
+              onValueChange={(v) => onSortChange(v as PostSort)}
+            >
+              {(Object.keys(POST_SORT_LABELS) as PostSort[]).map((value) => (
+                <DropdownMenuRadioItem key={value} value={value}>
+                  {POST_SORT_LABELS[value]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
+  );
+}
+
+/** Small "×" that clears an active filter chip. */
+function FilterClearButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+    >
+      <X size={12} />
+    </button>
   );
 }
 
@@ -2312,14 +2349,14 @@ function PostSelectionToolbar({
   onToggleSelectAll,
   onUpdateCategory,
   onDelete,
-  onClear,
+  onExit,
 }: {
   count: number;
   allSelected: boolean;
   onToggleSelectAll: () => void;
   onUpdateCategory: () => void;
   onDelete: () => void;
-  onClear: () => void;
+  onExit: () => void;
 }) {
   return (
     <div className="flex items-center gap-0.5 border-b bg-accent/40 px-2 py-1.5">
@@ -2330,17 +2367,19 @@ function PostSelectionToolbar({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               className="h-7 gap-1 px-2 text-xs"
               onClick={onUpdateCategory}
-              aria-label="Update category for selected posts"
+              aria-label="Set the category for the selected posts"
             >
               <Tag01 size={14} />
-              Category
+              Set category
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Update category</TooltipContent>
+          <TooltipContent side="bottom">
+            Set the category for the selected posts
+          </TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -2364,13 +2403,13 @@ function PostSelectionToolbar({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={onClear}
-              aria-label="Clear selection"
+              onClick={onExit}
+              aria-label="Exit selection"
             >
               <X size={14} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Clear selection</TooltipContent>
+          <TooltipContent side="bottom">Exit selection</TooltipContent>
         </Tooltip>
       </div>
     </div>
@@ -2538,6 +2577,7 @@ function ItemRow({
   variantCount?: number;
   trailing?: React.ReactNode;
   selectable?: boolean;
+  /** In selection mode the checkbox is always shown (not just on hover). */
   selectionActive?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;

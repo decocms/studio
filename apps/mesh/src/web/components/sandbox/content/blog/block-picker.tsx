@@ -77,9 +77,10 @@ function BlockItem({
 }
 
 /**
- * The WordPress-style "insert here" affordance: a thin hover zone with a
+ * The WordPress-style "insert here" affordance: a thin divider with a
  * centered ⊕ that opens a searchable block-type picker and inserts at
- * this position. Always visible (not just on hover) when `alwaysShow`.
+ * this position. Always visible so authors never have to hover-hunt for it;
+ * `alwaysShow` only enlarges the hit area for the empty-document case.
  *
  * Blocks are grouped by source: built-ins from the `deco-cms/blog` app
  * under "Blocks", and site-defined sections (`site/sections/Blog/Post/*`)
@@ -119,25 +120,13 @@ export function InsertBlockDivider({
         alwaysShow ? "h-10" : "",
       )}
     >
-      <div
-        className={cn(
-          "absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border transition-opacity",
-          open || alwaysShow
-            ? "opacity-100"
-            : "opacity-0 group-hover/insert:opacity-100",
-        )}
-      />
+      <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border" />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
             aria-label="Insert block"
-            className={cn(
-              "relative z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground transition-all hover:border-primary hover:text-primary cursor-pointer",
-              open || alwaysShow
-                ? "opacity-100"
-                : "opacity-0 group-hover/insert:opacity-100",
-            )}
+            className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground transition-all hover:border-primary hover:text-primary cursor-pointer"
           >
             <Plus size={14} />
           </button>
