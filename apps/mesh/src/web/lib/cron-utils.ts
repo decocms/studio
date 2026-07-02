@@ -92,11 +92,7 @@ export function parseCronToInterval(
   const h = e.match(/^0\s+\*\/(\d+)\s+\*\s+\*\s+\*$/);
   if (h) return { count: parseInt(h[1]!), unit: "hours" };
   const d = e.match(/^0\s+0\s+\*\/(\d+)\s+\*\s+\*$/);
-  if (d) {
-    const n = parseInt(d[1]!);
-    if (n % 7 === 0) return { count: n / 7, unit: "weeks" };
-    return { count: n, unit: "days" };
-  }
+  if (d) return { count: parseInt(d[1]!), unit: "days" };
   return null;
 }
 
