@@ -44,7 +44,7 @@ export function useConnectCompanion({
     return unwrapToolResult<{ item: unknown }>(result);
   };
 
-  async function connect(card: CompanionCardModel): Promise<void> {
+  async function connect(card: CompanionCardModel): Promise<boolean> {
     setConnectingFieldKey(card.fieldKey);
     setError(null);
     try {
@@ -74,7 +74,7 @@ export function useConnectCompanion({
           setError(
             `${card.title} cannot be connected: no connection method available`,
           );
-          return;
+          return false;
         }
 
         const created = await selfClient.callTool({
@@ -98,7 +98,7 @@ export function useConnectCompanion({
       });
       if (!auth.ok) {
         setError(`Couldn't sign in to ${card.title}: ${auth.error}`);
-        return; // keep connection, no CD write
+        return false; // keep connection, no CD write
       }
 
       // Step 2: link — full read-modify-write of CD configuration_state.
@@ -125,8 +125,10 @@ export function useConnectCompanion({
       await queryClient.invalidateQueries({
         queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
       });
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
       setConnectingFieldKey(null);
     }

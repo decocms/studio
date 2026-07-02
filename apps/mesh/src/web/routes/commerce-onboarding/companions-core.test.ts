@@ -8,6 +8,7 @@ import {
   mergeBindingValue,
   parseBindingRequirements,
   resolveCandidate,
+  shouldAutoOpenCompanionConfig,
   toPropertyOptions,
   unwrapToolResult,
 } from "./companions-core.ts";
@@ -313,6 +314,47 @@ describe("matchGscSite", () => {
   it("returns null when contextSiteUrl is undefined", () => {
     const site = matchGscSite(undefined, [{ siteUrl: "https://example.com/" }]);
     expect(site).toBeNull();
+  });
+});
+
+describe("shouldAutoOpenCompanionConfig", () => {
+  it("opens only for the just-connected satisfied card", () => {
+    expect(
+      shouldAutoOpenCompanionConfig({
+        autoOpenFieldKey: "VTEX_STORE",
+        card: {
+          fieldKey: "VTEX_STORE",
+          satisfied: true,
+          linkedConnectionId: "c_vtex",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not open for already-connected cards without a transition signal", () => {
+    expect(
+      shouldAutoOpenCompanionConfig({
+        autoOpenFieldKey: null,
+        card: {
+          fieldKey: "VTEX_STORE",
+          satisfied: true,
+          linkedConnectionId: "c_vtex",
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("does not open for a stale signal after the card is no longer connectable", () => {
+    expect(
+      shouldAutoOpenCompanionConfig({
+        autoOpenFieldKey: "VTEX_STORE",
+        card: {
+          fieldKey: "VTEX_STORE",
+          satisfied: false,
+          linkedConnectionId: null,
+        },
+      }),
+    ).toBe(false);
   });
 });
 

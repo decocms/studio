@@ -17,7 +17,10 @@ import { useMCPClient } from "@decocms/mesh-sdk";
 import { CheckCircle, Edit03, Loading01 } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import type { CompanionCardModel } from "./companions-core.ts";
-import { getConfigurationSummaryEntries } from "./companions-core.ts";
+import {
+  getConfigurationSummaryEntries,
+  shouldAutoOpenCompanionConfig,
+} from "./companions-core.ts";
 import { COMPANION_CONFIG_FORMS } from "./companion-forms/registry.ts";
 
 /**
@@ -62,6 +65,8 @@ export function CompanionCard({
   org,
   selfClient,
   siteUrl,
+  autoOpenConfigFieldKey,
+  onAutoOpenConfigHandled,
 }: {
   card: CompanionCardModel;
   connecting: boolean;
@@ -70,6 +75,8 @@ export function CompanionCard({
   org: { id: string; slug: string };
   selfClient: Client;
   siteUrl?: string;
+  autoOpenConfigFieldKey: string | null;
+  onAutoOpenConfigHandled: () => void;
 }) {
   const linkedConnectionId = card.linkedConnectionId;
   const savedConfigEntries = getConfigurationSummaryEntries(
@@ -135,6 +142,11 @@ export function CompanionCard({
             connectionId={linkedConnectionId}
             savedConfigEntries={savedConfigEntries}
             contextSiteUrl={siteUrl}
+            autoOpen={shouldAutoOpenCompanionConfig({
+              autoOpenFieldKey: autoOpenConfigFieldKey,
+              card,
+            })}
+            onAutoOpenHandled={onAutoOpenConfigHandled}
           />
         </Suspense>
       )}
@@ -154,6 +166,8 @@ interface CompanionConfigurationProps {
   connectionId: string;
   savedConfigEntries: Array<{ key: string; label: string; value: string }>;
   contextSiteUrl?: string;
+  autoOpen: boolean;
+  onAutoOpenHandled: () => void;
 }
 
 interface NotAvailableNoteProps {
@@ -193,22 +207,35 @@ function CompanionConfiguration({
   connectionId,
   savedConfigEntries,
   contextSiteUrl,
+  autoOpen,
+  onAutoOpenHandled,
 }: CompanionConfigurationProps) {
   const companionClient = useMCPClient({
     connectionId,
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(autoOpen);
   const [isSavePending, setIsSavePending] = useState(false);
 
   const FormComponent = COMPANION_CONFIG_FORMS[card.bindingType];
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    if (autoOpen) {
+      onAutoOpenHandled();
+    }
+  };
 
   const handleDialogOpenChange = (open: boolean) => {
     if (!open && isSavePending) {
       return;
     }
-    setDialogOpen(open);
+    if (!open) {
+      closeDialog();
+      return;
+    }
+    setDialogOpen(true);
   };
 
   return (
@@ -293,7 +320,7 @@ function CompanionConfiguration({
               selfClient={selfClient}
               org={org}
               contextSiteUrl={contextSiteUrl}
-              onDone={() => setDialogOpen(false)}
+              onDone={closeDialog}
               onIsPendingChange={setIsSavePending}
             />
           </DialogContent>

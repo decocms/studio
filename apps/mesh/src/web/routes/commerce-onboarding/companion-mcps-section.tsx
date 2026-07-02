@@ -4,7 +4,7 @@ import { authClient } from "@/web/lib/auth-client";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
 import { Button } from "@deco/ui/components/button.tsx";
 import { QueryErrorResetBoundary } from "@tanstack/react-query";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { CompanionCard, CompanionCardSkeleton } from "./companion-card.tsx";
 import { useCommerceCompanions } from "./use-commerce-companions.ts";
 import { useConnectCompanion } from "./use-connect-companion.ts";
@@ -143,6 +143,9 @@ function CompanionMcpsSectionContent({
     userId,
     cdConnectionId,
   });
+  const [autoOpenConfigFieldKey, setAutoOpenConfigFieldKey] = useState<
+    string | null
+  >(null);
 
   // Empty: nothing to connect → render nothing (the parent footer still shows
   // the report CTA).
@@ -169,18 +172,33 @@ function CompanionMcpsSectionContent({
               {connectError}
             </p>
           )}
-          {cards.map((card) => (
-            <CompanionCard
-              key={card.fieldKey}
-              card={card}
-              connecting={connectingFieldKey === card.fieldKey}
-              disabled={busy && connectingFieldKey !== card.fieldKey}
-              org={org}
-              selfClient={selfClient}
-              siteUrl={siteUrl}
-              onConnect={() => void connect(card)}
-            />
-          ))}
+          {cards.map((card) => {
+            const handleConnect = async () => {
+              const connected = await connect(card);
+              if (connected) {
+                setAutoOpenConfigFieldKey(card.fieldKey);
+              }
+            };
+
+            return (
+              <CompanionCard
+                key={card.fieldKey}
+                card={card}
+                connecting={connectingFieldKey === card.fieldKey}
+                disabled={busy && connectingFieldKey !== card.fieldKey}
+                org={org}
+                selfClient={selfClient}
+                siteUrl={siteUrl}
+                autoOpenConfigFieldKey={autoOpenConfigFieldKey}
+                onAutoOpenConfigHandled={() =>
+                  setAutoOpenConfigFieldKey((current) =>
+                    current === card.fieldKey ? null : current,
+                  )
+                }
+                onConnect={() => void handleConnect()}
+              />
+            );
+          })}
         </div>
       </ScrollReveal>
     </div>
