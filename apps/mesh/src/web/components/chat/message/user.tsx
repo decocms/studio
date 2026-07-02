@@ -7,6 +7,7 @@ import { FileNode } from "../tiptap/file/node.tsx";
 import { MentionNode } from "../tiptap/mention/node.tsx";
 import type { Metadata } from "../types.ts";
 import { MessageTextPart } from "./parts/text-part.tsx";
+import { MessageTimestamp } from "./timestamp.tsx";
 import {
   type TriggerEventData,
   TriggerEventPart,
@@ -97,62 +98,65 @@ export function MessageUser<T extends Metadata>({
           className,
         )}
       >
-        <div
-          tabIndex={0}
-          onClick={handleClick}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          className="w-full border border-border/60 min-w-0 shadow-xs rounded-lg text-[14px] wrap-break-word overflow-wrap-anywhere bg-background cursor-pointer transition-colors relative flex outline-none"
-        >
-          <div className="absolute inset-0 bg-muted/75 rounded-lg pointer-events-none" />
+        <div className="w-full min-w-0 flex flex-col">
           <div
-            ref={setContentRef}
-            className={cn(
-              "z-10 px-4 py-2 flex-1 transition-[max-height,opacity] duration-300 ease-out",
-              isFocused
-                ? "max-h-[50vh] overflow-auto opacity-100"
-                : cn(
-                    "max-h-[84px] overflow-hidden opacity-99",
-                    isOverflowing && "mask-b-from-1%",
-                  ),
-            )}
+            tabIndex={0}
+            onClick={handleClick}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            className="w-full border border-border/60 min-w-0 shadow-xs rounded-lg text-[14px] wrap-break-word overflow-wrap-anywhere bg-background cursor-pointer transition-colors relative flex outline-none"
           >
-            <div className="flex flex-col gap-2">
-              {/* Trigger-event cards always render from `parts`, even when the
+            <div className="absolute inset-0 bg-muted/75 rounded-lg pointer-events-none" />
+            <div
+              ref={setContentRef}
+              className={cn(
+                "z-10 px-4 py-2 flex-1 transition-[max-height,opacity] duration-300 ease-out",
+                isFocused
+                  ? "max-h-[50vh] overflow-auto opacity-100"
+                  : cn(
+                      "max-h-[84px] overflow-hidden opacity-99",
+                      isOverflowing && "mask-b-from-1%",
+                    ),
+              )}
+            >
+              <div className="flex flex-col gap-2">
+                {/* Trigger-event cards always render from `parts`, even when the
                   message also carries a tiptapDoc (automation runs do). */}
-              {parts.map((part, index) =>
-                part.type === "data-trigger-event" ? (
-                  <TriggerEventPart
-                    key={`${id}-${index}`}
-                    event={(part as { data: TriggerEventData }).data}
-                  />
-                ) : null,
-              )}
-              {hasTiptapDoc ? (
-                <RichMessageContent tiptapDoc={metadata.tiptapDoc} />
-              ) : (
-                parts.map((part, index) => {
-                  if (part.type === "text") {
-                    // The guard-wrapped event text the model reads sits
-                    // directly after its `data-trigger-event` card — render the
-                    // card, not the raw JSON. The automation's own instruction
-                    // text (no card before it) still renders.
-                    if (parts[index - 1]?.type === "data-trigger-event") {
-                      return null;
+                {parts.map((part, index) =>
+                  part.type === "data-trigger-event" ? (
+                    <TriggerEventPart
+                      key={`${id}-${index}`}
+                      event={(part as { data: TriggerEventData }).data}
+                    />
+                  ) : null,
+                )}
+                {hasTiptapDoc ? (
+                  <RichMessageContent tiptapDoc={metadata.tiptapDoc} />
+                ) : (
+                  parts.map((part, index) => {
+                    if (part.type === "text") {
+                      // The guard-wrapped event text the model reads sits
+                      // directly after its `data-trigger-event` card — render the
+                      // card, not the raw JSON. The automation's own instruction
+                      // text (no card before it) still renders.
+                      if (parts[index - 1]?.type === "data-trigger-event") {
+                        return null;
+                      }
+                      return (
+                        <MessageTextPart
+                          key={`${id}-${index}`}
+                          id={id}
+                          part={part}
+                        />
+                      );
                     }
-                    return (
-                      <MessageTextPart
-                        key={`${id}-${index}`}
-                        id={id}
-                        part={part}
-                      />
-                    );
-                  }
-                  return null;
-                })
-              )}
+                    return null;
+                  })
+                )}
+              </div>
             </div>
           </div>
+          <MessageTimestamp message={message} className="mt-1 mr-1 self-end" />
         </div>
       </div>
     </>

@@ -13,6 +13,7 @@ import { ToolCallShell } from "./parts/tool-call-part/common.tsx";
 import type { ChatMessage } from "../types.ts";
 import { MessageStatsBar } from "../usage-stats.tsx";
 import { MessageTextPart } from "./parts/text-part.tsx";
+import { MessageTimestamp } from "./timestamp.tsx";
 import {
   GenericToolCallPart,
   GenerateImagePart,
@@ -884,6 +885,7 @@ export function MessageAssistant({
               {isTerminallyDone && <NextActionChip />}
             </>
           )}
+          {!isLoading && <MessageTimestamp message={message!} />}
         </div>
       ) : isLoading ? (
         <ThinkingState startedAt={startedAt} />
