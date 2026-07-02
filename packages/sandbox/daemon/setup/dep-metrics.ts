@@ -59,6 +59,36 @@ export interface DepMetricsInput {
   branch?: string;
 }
 
+// Cap the whole serialized line well under the pipeline's 16KB (16384)
+// truncation. We budget the FINAL line, not the raw array: `deps` is stored
+// as a string, so the outer JSON.stringify escapes every element's quotes
+// (`"x"` → `\"x\"`, +2 bytes each) — ignoring that undercounts short-dep-heavy
+// lines by ~2 bytes/dep and would let them cross 16KB.
+const MAX_LINE_BYTES = 15_500;
+
+/** Greedily pack `name@version` strings into groups so each rendered line
+ * (envelope + double-encoded deps) stays under MAX_LINE_BYTES. `envelopeBytes`
+ * is the measured line size minus deps content; per element we add its escaped
+ * cost: `\"<dep>\"` = byteLength+4, plus a comma. A single over-long dep still
+ * gets its own group (a lone specifier is ~230 bytes, far under cap). */
+function chunkByBytes(flat: string[], envelopeBytes: number): string[][] {
+  const groups: string[][] = [];
+  let cur: string[] = [];
+  let bytes = envelopeBytes + 2; // + the enclosing []
+  for (const dep of flat) {
+    const entry = Buffer.byteLength(dep) + 5; // \"…\" (4) + comma (1)
+    if (cur.length && bytes + entry > MAX_LINE_BYTES) {
+      groups.push(cur);
+      cur = [];
+      bytes = envelopeBytes + 2;
+    }
+    cur.push(dep);
+    bytes += entry;
+  }
+  if (cur.length) groups.push(cur);
+  return groups;
+}
+
 /**
  * After a SUCCESSFUL install, emit the installed dependency set as JSON log
  * lines for downstream aggregation (VictoriaLogs) so the team can decide which
@@ -67,40 +97,58 @@ export interface DepMetricsInput {
  * in-cluster OTLP collector anyway (egress is locked to 53/443), so their
  * stdout scraped out-of-band is the only channel that leaves the pod.
  *
- * One line PER dependency, not one array line: the pipeline truncates log
- * lines at 16KB, so a big monorepo's array gets cut mid-JSON and becomes
- * unparseable — and per-line rows are what let `stats by (name) count()`
- * aggregate without unrolling a nested array. A trailing summary line carries
- * the install-level totals. Best-effort: observability only, never throws.
+ * Format is byte-bounded CHUNKED lines because both simpler shapes fail in
+ * the pipeline (observed in prod, not hypothetical):
+ *  - one line with the whole array → truncated at 16KB → unparseable JSON;
+ *  - one line per dep → ~350-line burst per install → the collector's rate
+ *    sampler drops ~99% (survivors arrive tagged sample_rate=100).
+ * `deps` is a pre-JSON-encoded string (not a real array) so no pipeline stage
+ * can flatten or re-shape it; VictoriaLogs `unroll (deps)` parses it back
+ * into per-dep rows for `stats by (deps) count()`. Best-effort: never throws.
  */
+export function buildDepLines(
+  deps: { name: string; version: string }[],
+  input: Omit<DepMetricsInput, "installRoot">,
+): string[] {
+  const flat = deps.map((d) => `${d.name}@${d.version}`);
+  // Measure the line minus dep content once (deps="", 3-digit chunk counts as
+  // headroom) so the chunker can keep the FINAL line under the cap.
+  const envelopeBytes = Buffer.byteLength(
+    JSON.stringify({
+      msg: "sandbox.deps",
+      chunk: 999,
+      chunks: 999,
+      dependencyCount: deps.length,
+      deps: "",
+      bootId: input.bootId,
+      packageManager: input.packageManager,
+      repoName: input.repoName,
+      branch: input.branch,
+    }),
+  );
+  const groups = chunkByBytes(flat, envelopeBytes);
+  if (groups.length === 0) groups.push([]); // zero-dep install still emits one countable line
+  return groups.map((group, i) =>
+    JSON.stringify({
+      msg: "sandbox.deps",
+      chunk: i + 1,
+      chunks: groups.length,
+      dependencyCount: deps.length,
+      deps: JSON.stringify(group),
+      bootId: input.bootId,
+      packageManager: input.packageManager,
+      repoName: input.repoName,
+      branch: input.branch,
+    }),
+  );
+}
+
 export async function emitInstalledDeps(input: DepMetricsInput): Promise<void> {
   try {
     const deps = await readInstalledDeps(
       join(input.installRoot, "node_modules"),
     );
-    const base = {
-      bootId: input.bootId,
-      packageManager: input.packageManager,
-      repoName: input.repoName,
-      branch: input.branch,
-    };
-    for (const d of deps) {
-      console.log(
-        JSON.stringify({
-          msg: "sandbox.dep.installed",
-          name: d.name,
-          version: d.version,
-          ...base,
-        }),
-      );
-    }
-    console.log(
-      JSON.stringify({
-        msg: "sandbox.install.deps",
-        dependencyCount: deps.length,
-        ...base,
-      }),
-    );
+    for (const line of buildDepLines(deps, input)) console.log(line);
   } catch (err) {
     console.warn("[install] dep metrics emit failed", err);
   }
