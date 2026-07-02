@@ -99,9 +99,9 @@ describe("SidebarReleaseCard", () => {
       { wrapper },
     );
     expect(getByText("Fresh Release")).toBeInTheDocument();
-    expect(getByRole("region", { name: "Release announcement" })).not.toHaveClass(
-      "fixed",
-    );
+    expect(
+      getByRole("region", { name: "Release announcement" }),
+    ).not.toHaveClass("fixed");
     expect(
       queryByRole("dialog", { name: "Release announcement" }),
     ).not.toBeInTheDocument();

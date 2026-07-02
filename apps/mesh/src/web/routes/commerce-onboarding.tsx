@@ -897,14 +897,8 @@ function CommerceDiscoveryReady({
             onClick={onOpenReport}
             disabled={isSubmitting || !reportApp.virtualMcpId}
           >
-            {isSubmitting ? (
-              <CommerceOnboardingButtonLoading />
-            ) : (
-              <>
-                See full report
-                <ArrowRight size={18} />
-              </>
-            )}
+            {isSubmitting ? "Opening report..." : "See full report"}
+            {!isSubmitting ? <ArrowRight size={18} /> : null}
           </Button>
         </div>
       </div>
