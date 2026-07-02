@@ -11,15 +11,17 @@
  * Uses `node:http` (NOT `Bun.serve`) so it typechecks under the suite's Node
  * types and runs under either node or bun.
  *
- * Mirrors the real contract from
- * `api/v2/internal/diagnostics/:domain/upgrade`:
- *   POST { org_id, name } -> { url, org_id, scope, token, run }
+ * Mirrors the real contract from `api/v2/internal/diagnostics/:domain/*`:
+ *   POST /upgrade { org_id, name } -> { url, org_id, scope, token, run }
+ *   POST /run     { org_id }       -> { url, scope, run }   (triggered on
+ *                                      "See full report"; the flow awaits it)
  */
 
 import { createServer } from "node:http";
 
 const port = Number(process.env.COMMERCE_MOCK_PORT ?? "4100");
 const UPGRADE_RE = /^\/api\/v2\/internal\/diagnostics\/([^/]+)\/upgrade$/;
+const RUN_RE = /^\/api\/v2\/internal\/diagnostics\/([^/]+)\/run$/;
 
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -51,6 +53,23 @@ const server = createServer((req, res) => {
           org_id: orgId,
           scope: "private",
           token: `dgn_e2e_${orgId ?? "unknown"}`,
+          run: { id: "run_e2e", status: "running" },
+        }),
+      );
+    });
+    return;
+  }
+
+  const runMatch = url.pathname.match(RUN_RE);
+  if (req.method === "POST" && runMatch) {
+    const domain = decodeURIComponent(runMatch[1]);
+    req.on("data", () => {}); // drain
+    req.on("end", () => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          url: domain,
+          scope: "private",
           run: { id: "run_e2e", status: "running" },
         }),
       );
