@@ -2,6 +2,8 @@ import { ErrorBoundary } from "@/web/components/error-boundary";
 import { ScrollReveal } from "@/web/components/scroll-reveal";
 import { authClient } from "@/web/lib/auth-client";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@decocms/mesh-sdk";
+import { Button } from "@deco/ui/components/button.tsx";
+import { QueryErrorResetBoundary } from "@tanstack/react-query";
 import { Suspense } from "react";
 import { CompanionCard, CompanionCardSkeleton } from "./companion-card.tsx";
 import { useCommerceCompanions } from "./use-commerce-companions.ts";
@@ -54,7 +56,7 @@ function CompanionMcpsSectionSkeleton() {
   );
 }
 
-function CompanionMcpsSectionError() {
+function CompanionMcpsSectionError({ onRetry }: { onRetry: () => void }) {
   return (
     <div className={SECTION_CONTAINER_CLASS}>
       <SectionIntro />
@@ -66,8 +68,17 @@ function CompanionMcpsSectionError() {
           Couldn't load companion integrations.
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Reload the page to try again.
+          Something went wrong loading your integrations.
         </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          onClick={onRetry}
+        >
+          Try again
+        </Button>
       </div>
     </div>
   );
@@ -79,11 +90,24 @@ export function CompanionMcpsSection(props: {
   siteUrl?: string;
 }) {
   return (
-    <ErrorBoundary fallback={<CompanionMcpsSectionError />}>
-      <Suspense fallback={<CompanionMcpsSectionSkeleton />}>
-        <CompanionMcpsSectionContent {...props} />
-      </Suspense>
-    </ErrorBoundary>
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ErrorBoundary
+          fallback={({ resetError }) => (
+            <CompanionMcpsSectionError
+              onRetry={() => {
+                reset();
+                resetError();
+              }}
+            />
+          )}
+        >
+          <Suspense fallback={<CompanionMcpsSectionSkeleton />}>
+            <CompanionMcpsSectionContent {...props} />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
   );
 }
 

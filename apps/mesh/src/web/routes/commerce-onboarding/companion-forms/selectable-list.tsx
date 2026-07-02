@@ -21,7 +21,9 @@ export function SelectableList({
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
-  ariaLabel?: string;
+  // Required: this is the radiogroup's only accessible-name source, so every
+  // variant must supply one rather than shipping an unlabeled picker.
+  ariaLabel: string;
   searchPlaceholder?: string;
 }): ReactElement {
   const [query, setQuery] = useState("");
@@ -91,7 +93,7 @@ export function SelectableList({
           onChange={(e) => setQuery(e.target.value)}
           disabled={disabled}
           placeholder={searchPlaceholder}
-          aria-label={ariaLabel ? `Search ${ariaLabel}` : "Search"}
+          aria-label={`Search ${ariaLabel}`}
           className="h-8 pl-8"
         />
       </div>

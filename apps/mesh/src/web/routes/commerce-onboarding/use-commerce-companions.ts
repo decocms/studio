@@ -89,8 +89,21 @@ export function useCommerceCompanions({
     .filter((v): v is string => typeof v === "string" && v.length > 0);
 
   // 3) Existing org connections that could satisfy a binding (app identity).
+  // Key includes every input the queryFn reads from the closure so a schema or
+  // config-state change (which alters the short-circuit and the WHERE clause)
+  // triggers a fresh fetch instead of serving a stale empty/partial result.
+  const connectionsKey = [
+    ...bindingTypes,
+    ...registryAppIds,
+    ...[...linkedConnectionIds].sort(),
+  ]
+    .sort()
+    .join(",");
   const connectionsQuery = useSuspenseQuery({
-    queryKey: KEYS.commerceDiscoveryCompanionConnections(org.id),
+    queryKey: KEYS.commerceDiscoveryCompanionConnections(
+      org.id,
+      connectionsKey,
+    ),
     queryFn: async () => {
       // Suspense queries can't be `enabled`-gated; skip the call when there are
       // no binding requirements (schema resolved above, so this is stable).
@@ -136,13 +149,20 @@ export function useCommerceCompanions({
         connection.id,
       ),
       queryFn: async () => {
-        const response = await fetch(
-          `/api/${encodeURIComponent(org.slug)}/connections/${encodeURIComponent(connection.id)}/oauth-token/status`,
-          { credentials: "include" },
-        );
-        if (!response.ok) return { hasToken: false };
-        const data = (await response.json()) as { hasToken?: unknown };
-        return { hasToken: data.hasToken === true };
+        // Optional metadata: a transient failure must not escalate to the
+        // Suspense boundary and blank the whole section. Treat any error
+        // (network, non-ok, parse) as "no token".
+        try {
+          const response = await fetch(
+            `/api/${encodeURIComponent(org.slug)}/connections/${encodeURIComponent(connection.id)}/oauth-token/status`,
+            { credentials: "include" },
+          );
+          if (!response.ok) return { hasToken: false };
+          const data = (await response.json()) as { hasToken?: unknown };
+          return { hasToken: data.hasToken === true };
+        } catch {
+          return { hasToken: false };
+        }
       },
       retry: false,
     })),
