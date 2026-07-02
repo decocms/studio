@@ -55,39 +55,6 @@ export function readProductListIds(loader: unknown): string[] {
   return [];
 }
 
-/** Build the preview-invoke payloads for a product block-ref, one per call. */
-export function toInvokeLoaderBodies(
-  loader: unknown,
-): Record<string, unknown>[] {
-  if (Array.isArray(loader)) {
-    return loader
-      .filter(isProductRef)
-      .filter((item) => idString(item.productId).trim())
-      .map((item) => ({ ...item }));
-  }
-  const existing = asRecord(loader);
-  if (isProductRef(existing) && !asRecord(existing.props)?.ids) {
-    return idString(existing.productId).trim() ? [{ ...existing }] : [];
-  }
-
-  const resolveType = readProductListResolveType(loader);
-  const props = asRecord(existing?.props) ?? {};
-  const ids = readProductListIds(loader).filter((id) => id.trim());
-
-  const loaderProps: Record<string, unknown> = { ids };
-
-  if (typeof props.hideUnavailableItems === "boolean") {
-    loaderProps.hideUnavailableItems = props.hideUnavailableItems;
-  }
-
-  return [
-    {
-      __resolveType: resolveType,
-      props: loaderProps,
-    },
-  ];
-}
-
 /** Resolve type for a productList block-ref. */
 function readProductListResolveType(loader: unknown): string {
   const existing = asRecord(loader) ?? {};

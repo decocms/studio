@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   readProductListIds,
-  toInvokeLoaderBodies,
   writeProductListIds,
 } from "./product-loader-utils";
 
@@ -143,72 +142,5 @@ describe("writeProductListIds", () => {
         simulationBehavior: "default",
       },
     });
-  });
-});
-
-describe("toInvokeLoaderBodies", () => {
-  test("strips non-loader props before invoke", () => {
-    expect(
-      toInvokeLoaderBodies({
-        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
-        props: {
-          ids: ["149524", "151294"],
-          simulationBehavior: "default",
-        },
-      }),
-    ).toEqual([
-      {
-        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
-        props: { ids: ["149524", "151294"] },
-      },
-    ]);
-  });
-
-  test("drops empty ids from the list-loader body", () => {
-    expect(
-      toInvokeLoaderBodies({
-        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
-        props: { ids: ["149524", ""] },
-      }),
-    ).toEqual([
-      {
-        __resolveType: "vtex/loaders/intelligentSearch/productList.ts",
-        props: { ids: ["149524"] },
-      },
-    ]);
-  });
-
-  test("builds one body per ref-array item, skipping empty ids", () => {
-    expect(
-      toInvokeLoaderBodies([
-        {
-          __resolveType: "site/loaders/customVTEX/productById.ts",
-          productId: "2003481",
-        },
-        {
-          __resolveType: "site/loaders/customVTEX/productById.ts",
-          productId: "",
-        },
-      ]),
-    ).toEqual([
-      {
-        __resolveType: "site/loaders/customVTEX/productById.ts",
-        productId: "2003481",
-      },
-    ]);
-  });
-
-  test("passes a single per-product ref through as-is", () => {
-    expect(
-      toInvokeLoaderBodies({
-        __resolveType: "site/loaders/customVTEX/productById.ts",
-        productId: "2003481",
-      }),
-    ).toEqual([
-      {
-        __resolveType: "site/loaders/customVTEX/productById.ts",
-        productId: "2003481",
-      },
-    ]);
   });
 });
