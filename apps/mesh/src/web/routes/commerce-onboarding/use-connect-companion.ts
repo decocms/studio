@@ -123,7 +123,7 @@ export function useConnectCompanion({
         queryKey: KEYS.commerceDiscoveryConnection(org.id, cdConnectionId),
       });
       await queryClient.invalidateQueries({
-        queryKey: KEYS.commerceDiscoveryCompanionConnections(org.id),
+        queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

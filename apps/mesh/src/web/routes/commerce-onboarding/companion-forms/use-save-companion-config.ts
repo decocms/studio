@@ -36,7 +36,7 @@ export function useSaveCompanionConfig({
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: KEYS.commerceDiscoveryCompanionConnections(org.id),
+        queryKey: KEYS.commerceDiscoveryCompanionConnectionsPrefix(org.id),
       });
       onDone();
     },
