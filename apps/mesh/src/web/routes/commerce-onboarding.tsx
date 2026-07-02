@@ -620,13 +620,27 @@ function CommerceSetupContent({
         name: "COMMERCE_DISCOVERY_RUN",
         arguments: { siteUrl },
       });
-      return parseSelfToolResult<{ triggered: boolean; reason?: string }>(result);
+      return parseSelfToolResult<{ triggered: boolean; reason?: string }>(
+        result,
+      );
     },
     retry: false,
   });
 
   const setupReady = !!connectionQuery.data.item && !!virtualMcpQuery.data.item;
-  const currentSiteUrl = initialSiteUrl ?? siteUrlInput;
+  // A returning session may arrive with no ?siteUrl param and an empty form while
+  // the connection already exists (setupReady). Recover the site from the
+  // connection metadata (persisted at setup) so the run can still be triggered.
+  const connectionItem = connectionQuery.data.item as unknown as
+    | { metadata?: Record<string, unknown> | null }
+    | null
+    | undefined;
+  const connectionSiteUrl =
+    typeof connectionItem?.metadata?.siteUrl === "string"
+      ? (connectionItem.metadata.siteUrl as string)
+      : undefined;
+  const currentSiteUrl =
+    initialSiteUrl || siteUrlInput || connectionSiteUrl || "";
   const currentMeetingUrl = buildScheduleMeetingUrl({
     siteUrl: currentSiteUrl,
     email: sessionEmail,

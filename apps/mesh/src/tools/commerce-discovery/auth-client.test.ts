@@ -115,7 +115,11 @@ describe("triggerCommerceDiscoveryRun", () => {
             authorization: request.headers.get("authorization"),
             body: await request.json(),
           });
-          return Response.json({ url: "example.com", scope: "private", run: {} });
+          return Response.json({
+            url: "example.com",
+            scope: "private",
+            run: {},
+          });
         },
       },
     );
@@ -138,7 +142,10 @@ describe("triggerCommerceDiscoveryRun", () => {
         baseUrl: "https://commerce.example.test",
         apiKey: "master-key",
         fetchImpl: async () =>
-          Response.json({ error: "not_upgraded_or_not_owner" }, { status: 409 }),
+          Response.json(
+            { error: "not_upgraded_or_not_owner" },
+            { status: 409 },
+          ),
       },
     );
     expect(out).toEqual({ triggered: false, reason: "not_upgraded" });

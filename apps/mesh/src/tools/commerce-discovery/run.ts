@@ -30,6 +30,10 @@ export const COMMERCE_DISCOVERY_RUN = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     const organization = requireOrganization(ctx);
+    // Enforce the caller's role/permission for this tool (connections:manage),
+    // like every other org-scoped tool — the internal API key gates the wire, not
+    // who in the org may trigger a run.
+    await ctx.access.check();
 
     const normalized = normalizeCommerceSiteUrl(input.siteUrl);
     if (!normalized.ok) {
