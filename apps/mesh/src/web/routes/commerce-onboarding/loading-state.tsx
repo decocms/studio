@@ -32,9 +32,7 @@ export function CommerceOnboardingLoading({
 }) {
   return (
     <AuthSplitLayout>
-      <div className="flex justify-center">
-        <CommerceOnboardingLoadingIndicator variant={variant} />
-      </div>
+      <CommerceOnboardingLoadingIndicator variant={variant} />
     </AuthSplitLayout>
   );
 }
@@ -45,7 +43,7 @@ export function CommerceOnboardingLoadingIndicator({
   variant: CommerceOnboardingLoadingVariant;
 }) {
   return (
-    <div className="py-4" role="status" aria-live="polite">
+    <div className="flex justify-center py-4" role="status" aria-live="polite">
       <LoadingIndicator
         label={getCommerceOnboardingLoadingLabel(variant)}
         className="text-muted-foreground"
