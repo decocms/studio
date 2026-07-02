@@ -271,20 +271,20 @@ function CompanionConfiguration({
       {FormComponent ? (
         <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <IntegrationIcon
-                  icon={card.icon}
-                  name={card.title}
-                  size="sm"
-                  fit="contain"
-                  className="p-1.5"
-                />
-                {card.title}
-              </DialogTitle>
-              <DialogDescription>
-                Configure {card.title} to enrich data
-              </DialogDescription>
+            <DialogHeader className="flex-row items-stretch gap-3 space-y-0 text-left">
+              <IntegrationIcon
+                icon={card.icon}
+                name={card.title}
+                size="md"
+                fit="contain"
+                className="h-auto w-auto min-w-0 self-stretch aspect-square p-1.5"
+              />
+              <div className="flex flex-col gap-1">
+                <DialogTitle>{card.title}</DialogTitle>
+                <DialogDescription>
+                  Configure {card.title} to enrich data
+                </DialogDescription>
+              </div>
             </DialogHeader>
             <FormComponent
               card={card}
