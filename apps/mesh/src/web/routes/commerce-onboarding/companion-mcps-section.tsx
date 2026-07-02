@@ -137,7 +137,7 @@ function CompanionMcpsSectionContent({
 
       <ScrollReveal
         wrapperClassName="flex min-h-0 flex-1 flex-col md:block"
-        className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 md:max-h-[45vh] md:flex-none"
+        className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 md:max-h-[60vh] md:flex-none"
       >
         <div className="grid gap-4">
           {connectError && (
