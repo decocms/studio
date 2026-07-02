@@ -26,6 +26,7 @@ import { discoverScripts } from "../process/script-discovery";
 import type { Application, Config } from "../types";
 import { autodetectApplication } from "./autodetect";
 import { spawnClone } from "./clone";
+import { emitInstalledDeps } from "./dep-metrics";
 import { configureGitIdentity } from "./identity";
 import { spawnInstall } from "./install";
 import { spawnSetupStep } from "./spawn-step";
@@ -296,7 +297,8 @@ export class SetupOrchestrator {
       this.broadcastDiscoveredScripts(config);
       return true;
     }
-    if (!config.application?.packageManager?.name) {
+    const pm = config.application?.packageManager?.name;
+    if (!pm) {
       // Nothing to install — proceed to start, which will diagnose.
       return true;
     }
@@ -340,6 +342,17 @@ export class SetupOrchestrator {
       return false;
     }
     this.markInstallSucceeded(config);
+    // Report the installed dep set for pre-bake analysis (best-effort, async).
+    void emitInstalledDeps({
+      installRoot: resolvePmRoot(
+        config.repoDir,
+        config.application?.packageManager?.path,
+      ),
+      packageManager: pm,
+      bootId: process.env.DAEMON_BOOT_ID ?? "",
+      repoName: config.git?.repository?.repoName,
+      branch: config.git?.repository?.branch,
+    });
     return true;
   }
 
