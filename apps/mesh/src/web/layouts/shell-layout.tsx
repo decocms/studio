@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { OrgAccessGate } from "@/web/components/org-access-gate";
 import { SplashScreen } from "@/web/components/splash-screen";
-import { FloatingReleaseCard } from "@/web/components/release-channel/floating-release-card";
+import { SidebarReleaseCard } from "@/web/components/release-channel/sidebar-release-card";
 import { KeyboardShortcutsDialog } from "@/web/components/keyboard-shortcuts-dialog";
 import { isModKey } from "@/web/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/web/layouts/required-auth-layout";
@@ -354,7 +354,7 @@ function ShellLayoutContent() {
       <PostHogGroupSync activeOrg={activeOrg} />
       <Outlet />
 
-      <FloatingReleaseCard />
+      <SidebarReleaseCard />
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog

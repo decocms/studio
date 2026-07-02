@@ -373,9 +373,7 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding?siteUrl=example.com");
 
-    const loading = page
-      .getByRole("status")
-      .filter({ hasText: "Connecting workspace..." });
+    const loading = page.getByText("Unlock your full diagnostic");
     const meetingHeading = page.getByRole("heading", {
       name: "Rather have us walk you through it?",
     });

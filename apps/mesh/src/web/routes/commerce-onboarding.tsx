@@ -30,7 +30,10 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
+import {
+  CompanionMcpsSection,
+  CompanionMcpsSectionSkeleton,
+} from "./commerce-onboarding/companion-mcps-section.tsx";
 import {
   buildScheduleMeetingUrl,
   ScheduleMeetingBanner,
@@ -38,7 +41,6 @@ import {
 } from "./commerce-onboarding/schedule-meeting.tsx";
 import { SiteBadge } from "./commerce-onboarding/site-badge.tsx";
 import {
-  CommerceOnboardingButtonLoading,
   CommerceOnboardingLoading,
   CommerceOnboardingLoadingIndicator,
 } from "./commerce-onboarding/loading-state.tsx";
@@ -131,7 +133,7 @@ function CommerceOnboardingScreens({
   const siteHost = useCommerceSiteHost();
 
   if (sessionLoading) {
-    return <CommerceOnboardingLoading variant="route" />;
+    return <CommerceOnboardingLoading variant="generic" />;
   }
 
   if (!session) {
@@ -210,7 +212,7 @@ function CommerceOnboardingContent({
   });
 
   if (organizationsQuery.isPending) {
-    return <CommerceOnboardingLoading variant="route" />;
+    return <CommerceOnboardingLoading variant="workspace" />;
   }
 
   if (organizationsQuery.error) {
@@ -377,7 +379,7 @@ function EnsureOrganizationRecovery({
   return (
     <AuthSplitLayout>
       <div ref={triggerRecovery}>
-        <CommerceOnboardingLoadingIndicator variant="workspace" />
+        <CommerceOnboardingLoadingIndicator variant="generic" />
       </div>
     </AuthSplitLayout>
   );
@@ -497,11 +499,7 @@ function CommerceSetup({
           )}
         >
           <Suspense
-            fallback={
-              <AuthSplitLayout visual={meetingVisual}>
-                <CommerceOnboardingLoadingIndicator variant="connect" />
-              </AuthSplitLayout>
-            }
+            fallback={<CommerceDiagnosticLoading visual={meetingVisual} />}
           >
             <CommerceSetupContent
               key={`${org.id}:${initialSiteUrl ?? ""}`}
@@ -513,6 +511,17 @@ function CommerceSetup({
         </ErrorBoundary>
       )}
     </QueryErrorResetBoundary>
+  );
+}
+
+function CommerceDiagnosticLoading({ visual }: { visual?: ReactNode }) {
+  return (
+    <AuthSplitLayout align="fill" visual={visual}>
+      <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:gap-4">
+        <CommerceHeader />
+        <CompanionMcpsSectionSkeleton />
+      </div>
+    </AuthSplitLayout>
   );
 }
 
@@ -727,6 +736,10 @@ function CommerceSetupContent({
     );
   }
 
+  if (setupMutation.isPending) {
+    return <CommerceDiagnosticLoading visual={currentMeetingVisual} />;
+  }
+
   if (initialSiteUrl) {
     const normalized = normalizeCommerceSiteUrl(initialSiteUrl);
 
@@ -770,7 +783,7 @@ function CommerceSetupContent({
               />
             </>
           ) : (
-            <CommerceOnboardingLoadingIndicator variant="setup" />
+            <CompanionMcpsSectionSkeleton />
           )}
         </div>
       </AuthSplitLayout>
@@ -833,14 +846,8 @@ function SiteUrlForm({
         className="w-full"
         disabled={isSubmitting}
       >
-        {isSubmitting ? (
-          <CommerceOnboardingButtonLoading />
-        ) : (
-          <>
-            Continue
-            <ArrowRight size={16} />
-          </>
-        )}
+        Continue
+        <ArrowRight size={16} />
       </Button>
     </form>
   );
@@ -890,14 +897,8 @@ function CommerceDiscoveryReady({
             onClick={onOpenReport}
             disabled={isSubmitting || !reportApp.virtualMcpId}
           >
-            {isSubmitting ? (
-              <CommerceOnboardingButtonLoading />
-            ) : (
-              <>
-                See full report
-                <ArrowRight size={18} />
-              </>
-            )}
+            {isSubmitting ? "Opening report..." : "See full report"}
+            {!isSubmitting ? <ArrowRight size={18} /> : null}
           </Button>
         </div>
       </div>
