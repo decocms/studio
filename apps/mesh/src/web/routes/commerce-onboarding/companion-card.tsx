@@ -15,7 +15,7 @@ import {
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@decocms/mesh-sdk";
 import { CheckCircle, Edit03, Loading01 } from "@untitledui/icons";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import type { CompanionCardModel } from "./companions-core.ts";
 import { getConfigurationSummaryEntries } from "./companions-core.ts";
 import { COMPANION_CONFIG_FORMS } from "./companion-forms/registry.ts";
@@ -123,14 +123,20 @@ export function CompanionCard({
         )}
       </div>
       {card.satisfied && linkedConnectionId && (
-        <CompanionConfiguration
-          card={card}
-          org={org}
-          selfClient={selfClient}
-          connectionId={linkedConnectionId}
-          savedConfigEntries={savedConfigEntries}
-          contextSiteUrl={siteUrl}
-        />
+        // Own Suspense boundary: CompanionConfiguration opens the companion's own
+        // MCP client (useMCPClient → useSuspenseQuery). Isolating it here keeps a
+        // connecting companion from bubbling up and reverting the whole section
+        // to its skeleton — only this card's config area shows a placeholder.
+        <Suspense fallback={<CompanionConfigurationFallback />}>
+          <CompanionConfiguration
+            card={card}
+            org={org}
+            selfClient={selfClient}
+            connectionId={linkedConnectionId}
+            savedConfigEntries={savedConfigEntries}
+            contextSiteUrl={siteUrl}
+          />
+        </Suspense>
       )}
     </div>
   );
@@ -160,6 +166,22 @@ function NotAvailableNote({ title }: NotAvailableNoteProps) {
       <p className="text-xs text-muted-foreground">
         Configuration isn't available here yet for {title}.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Placeholder shown while {@link CompanionConfiguration}'s companion MCP client
+ * connects. Mirrors the config section's box model (top border + header row with
+ * a label and an action) so the card doesn't jump when the real content swaps in.
+ */
+function CompanionConfigurationFallback() {
+  return (
+    <div className="grid gap-3 border-t border-border pt-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="h-5 w-24 animate-pulse rounded bg-muted/60" />
+        <div className="h-8 w-20 animate-pulse rounded-lg bg-muted/60" />
+      </div>
     </div>
   );
 }

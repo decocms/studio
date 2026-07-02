@@ -2,7 +2,7 @@ import { KEYS } from "@/web/lib/query-keys";
 import { callRegistryTool } from "@/web/utils/registry-utils";
 import { useMCPClient, WellKnownOrgMCPId } from "@decocms/mesh-sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { COMMERCE_COMPANION_MCPS } from "./companions.ts";
 import {
   buildCompanionCards,
@@ -33,14 +33,14 @@ export function useCommerceCompanions({
   selfClient: Client;
   org: CompanionOrg;
   cdConnectionId: string;
-}): { cards: CompanionCardModel[]; isLoading: boolean; error: unknown } {
+}): { cards: CompanionCardModel[] } {
   // 1) CD's live config schema (on the CD connection's OWN client).
   const cdClient = useMCPClient({
     connectionId: cdConnectionId,
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const schemaQuery = useQuery({
+  const schemaQuery = useSuspenseQuery({
     queryKey: KEYS.commerceDiscoveryCompanionSchema(org.id, cdConnectionId),
     queryFn: async () => {
       const result = await cdClient.callTool({
@@ -66,7 +66,7 @@ export function useCommerceCompanions({
   const registryKey = [...registryAppIds, ...nameOnly].sort().join(",");
 
   // 2) CD saved state (shared cache key with the parent connection query).
-  const cdConnectionQuery = useQuery({
+  const cdConnectionQuery = useSuspenseQuery({
     queryKey: KEYS.commerceDiscoveryConnection(org.id, cdConnectionId),
     queryFn: async () => {
       const result = await selfClient.callTool({
@@ -89,10 +89,14 @@ export function useCommerceCompanions({
     .filter((v): v is string => typeof v === "string" && v.length > 0);
 
   // 3) Existing org connections that could satisfy a binding (app identity).
-  const connectionsQuery = useQuery({
+  const connectionsQuery = useSuspenseQuery({
     queryKey: KEYS.commerceDiscoveryCompanionConnections(org.id),
-    enabled: requirements.length > 0,
     queryFn: async () => {
+      // Suspense queries can't be `enabled`-gated; skip the call when there are
+      // no binding requirements (schema resolved above, so this is stable).
+      if (requirements.length === 0) {
+        return { items: [] as CandidateConnection[] };
+      }
       const conditions: ConnectionWhereCondition[] = [
         { field: ["app_name"], operator: "in", value: bindingTypes },
         { field: ["app_id"], operator: "in", value: registryAppIds },
@@ -125,7 +129,7 @@ export function useCommerceCompanions({
   const oauthStatusConnections = linkedConnections.filter(
     (connection) => connection.oauth_config && !connection.connection_token,
   );
-  const oauthStatusQueries = useQueries({
+  const oauthStatusQueries = useSuspenseQueries({
     queries: oauthStatusConnections.map((connection) => ({
       queryKey: KEYS.commerceDiscoveryCompanionOAuthStatus(
         org.id,
@@ -158,10 +162,14 @@ export function useCommerceCompanions({
   }
 
   // 4) Registry batch (one LIST on the Deco store).
-  const registryQuery = useQuery({
+  const registryQuery = useSuspenseQuery({
     queryKey: KEYS.commerceDiscoveryCompanionRegistry(org.id, registryKey),
-    enabled: requirements.length > 0,
     queryFn: async () => {
+      // Suspense queries can't be `enabled`-gated; skip the call when there are
+      // no binding requirements (schema resolved above, so this is stable).
+      if (requirements.length === 0) {
+        return { items: [] as RegistryItemLike[] };
+      }
       const where = buildRegistryWhere(registryAppIds, nameOnly);
       const result = await callRegistryTool<{ items: RegistryItemLike[] }>(
         WellKnownOrgMCPId.REGISTRY(org.id),
@@ -193,19 +201,5 @@ export function useCommerceCompanions({
     curated: COMMERCE_COMPANION_MCPS,
   });
 
-  const isLoading =
-    schemaQuery.isPending ||
-    cdConnectionQuery.isPending ||
-    (requirements.length > 0 &&
-      (connectionsQuery.isPending ||
-        registryQuery.isPending ||
-        oauthStatusQueries.some((query) => query.isPending)));
-  const error =
-    schemaQuery.error ??
-    cdConnectionQuery.error ??
-    connectionsQuery.error ??
-    registryQuery.error ??
-    null;
-
-  return { cards, isLoading, error };
+  return { cards };
 }
