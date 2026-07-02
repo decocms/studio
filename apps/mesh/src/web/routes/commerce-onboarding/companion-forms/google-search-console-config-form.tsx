@@ -63,7 +63,7 @@ export function GoogleSearchConsoleConfigForm({
     },
   });
 
-  /* oxlint-disable no-use-effect */
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- context-matched site pre-selection requires effect
   useEffect(() => {
     if (sitesQuery.isLoading || sitesQuery.isError || !sitesQuery.data) {
       return;
@@ -81,8 +81,14 @@ export function GoogleSearchConsoleConfigForm({
     if (matchedSite) {
       form.setValue("siteUrl", matchedSite);
     }
-  }, [sitesQuery.isLoading, sitesQuery.isError, sitesQuery.data]);
-  /* oxlint-enable no-use-effect */
+  }, [
+    sitesQuery.isLoading,
+    sitesQuery.isError,
+    sitesQuery.data,
+    card.configurationState,
+    contextSiteUrl,
+    form,
+  ]);
 
   const { save } = useSaveCompanionConfig({
     card,

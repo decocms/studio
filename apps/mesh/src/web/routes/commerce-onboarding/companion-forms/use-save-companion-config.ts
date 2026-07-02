@@ -1,6 +1,5 @@
 import { KEYS } from "@/web/lib/query-keys";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CompanionCardModel } from "../companions-core.ts";
 
@@ -41,10 +40,7 @@ export function useSaveCompanionConfig({
     },
   });
 
-  const save = useCallback(
-    (values: Record<string, unknown>) => mutation.mutate(values),
-    [mutation],
-  );
+  const save = (values: Record<string, unknown>) => mutation.mutate(values);
 
   return { save, isPending: mutation.isPending, error: mutation.error };
 }
