@@ -1,11 +1,9 @@
 import { IntegrationIcon } from "@/web/components/integration-icon";
-import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@deco/ui/components/dialog.tsx";
@@ -16,18 +14,11 @@ import {
 } from "@deco/ui/components/tooltip.tsx";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@decocms/mesh-sdk";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import RjsfForm from "@rjsf/shadcn";
-import type { FieldTemplateProps } from "@rjsf/utils";
-import validator from "@rjsf/validator-ajv8";
-import { CheckCircle, Edit03, Loading01 } from "@untitledui/icons";
+import { CheckCircle, Edit03 } from "@untitledui/icons";
 import { useState } from "react";
 import type { CompanionCardModel } from "./companions-core.ts";
-import {
-  getConfigurationSummaryEntries,
-  hasConfigurationValues,
-  unwrapToolResult,
-} from "./companions-core.ts";
+import { getConfigurationSummaryEntries } from "./companions-core.ts";
+import { COMPANION_CONFIG_FORMS } from "./companion-forms/registry.ts";
 
 /**
  * Loading placeholder that mirrors {@link CompanionCard}'s box model (same
@@ -70,6 +61,7 @@ export function CompanionCard({
   onConnect,
   org,
   selfClient,
+  siteUrl,
 }: {
   card: CompanionCardModel;
   connecting: boolean;
@@ -77,6 +69,7 @@ export function CompanionCard({
   onConnect: () => void;
   org: { id: string; slug: string };
   selfClient: Client;
+  siteUrl?: string;
 }) {
   const linkedConnectionId = card.linkedConnectionId;
   const savedConfigEntries = getConfigurationSummaryEntries(
@@ -136,10 +129,16 @@ export function CompanionCard({
           selfClient={selfClient}
           connectionId={linkedConnectionId}
           savedConfigEntries={savedConfigEntries}
+          contextSiteUrl={siteUrl}
         />
       )}
     </div>
   );
+}
+
+function maskConfigValue(key: string, value: string) {
+  const isSensitiveKey = /(token|secret|password|appKey|key)$/i.test(key);
+  return isSensitiveKey ? "••••••••" : value;
 }
 
 interface CompanionConfigurationProps {
@@ -148,46 +147,19 @@ interface CompanionConfigurationProps {
   selfClient: Client;
   connectionId: string;
   savedConfigEntries: Array<{ key: string; label: string; value: string }>;
+  contextSiteUrl?: string;
 }
 
-function hasSchemaProperties(stateSchema: Record<string, unknown> | undefined) {
-  const properties = stateSchema?.properties;
+interface NotAvailableNoteProps {
+  title: string;
+}
+
+function NotAvailableNote({ title }: NotAvailableNoteProps) {
   return (
-    !!properties &&
-    typeof properties === "object" &&
-    Object.keys(properties).length > 0
-  );
-}
-
-function isSensitiveConfigKey(key: string) {
-  return /(token|secret|password|appKey|key)$/i.test(key);
-}
-
-function maskConfigValue(key: string, value: string) {
-  return isSensitiveConfigKey(key) ? "••••••••" : value;
-}
-
-function CompactFieldTemplate({
-  id,
-  label,
-  description,
-  children,
-}: FieldTemplateProps) {
-  if (id.includes("__type") || id.includes("__binding")) return null;
-
-  return (
-    <div className="grid gap-1.5">
-      {label && (
-        <label className="text-sm font-medium text-foreground" htmlFor={id}>
-          {label}
-        </label>
-      )}
-      {children}
-      {description && (
-        <div className="text-xs leading-4 text-muted-foreground">
-          {description}
-        </div>
-      )}
+    <div className="grid gap-3 border-t border-border pt-3">
+      <p className="text-xs text-muted-foreground">
+        Configuration isn't available here yet for {title}.
+      </p>
     </div>
   );
 }
@@ -198,103 +170,16 @@ function CompanionConfiguration({
   selfClient,
   connectionId,
   savedConfigEntries,
+  contextSiteUrl,
 }: CompanionConfigurationProps) {
-  const queryClient = useQueryClient();
   const companionClient = useMCPClient({
     connectionId,
     orgId: org.id,
     orgSlug: org.slug,
   });
-  const [formState, setFormState] = useState<Record<string, unknown>>(
-    card.configurationState ?? {},
-  );
-  const [validationError, setValidationError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [prevDialogOpen, setPrevDialogOpen] = useState(dialogOpen);
 
-  if (dialogOpen !== prevDialogOpen) {
-    setPrevDialogOpen(dialogOpen);
-    if (dialogOpen) {
-      setFormState(card.configurationState ?? {});
-      setValidationError(null);
-    }
-  }
-
-  const schemaQuery = useQuery({
-    queryKey: KEYS.commerceDiscoveryCompanionConnectionSchema(
-      org.id,
-      connectionId,
-    ),
-    queryFn: async () => {
-      const result = await companionClient.callTool({
-        name: "MCP_CONFIGURATION",
-        arguments: {},
-      });
-      return unwrapToolResult<{ stateSchema?: Record<string, unknown> }>(
-        result,
-      );
-    },
-    retry: false,
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: async (state: Record<string, unknown>) => {
-      const result = await selfClient.callTool({
-        name: "COLLECTION_CONNECTIONS_UPDATE",
-        arguments: {
-          id: connectionId,
-          data: { configuration_state: state },
-        },
-      });
-      return unwrapToolResult<{ item: unknown }>(result);
-    },
-    onSuccess: async () => {
-      setValidationError(null);
-      await queryClient.invalidateQueries({
-        queryKey: KEYS.commerceDiscoveryCompanionConnections(org.id),
-      });
-      setDialogOpen(false);
-    },
-  });
-
-  const stateSchema = schemaQuery.data?.stateSchema;
-  const shouldRenderConfiguration = hasSchemaProperties(stateSchema);
-
-  if (schemaQuery.isPending) {
-    return (
-      <div className="flex items-center gap-2 border-t border-border pt-3 text-sm text-muted-foreground">
-        <Loading01 size={14} className="animate-spin" />
-        Loading configuration...
-      </div>
-    );
-  }
-
-  if (schemaQuery.error || !shouldRenderConfiguration || !stateSchema) {
-    return null;
-  }
-
-  const handleSave = () => {
-    if (!hasConfigurationValues(formState)) {
-      setValidationError("Enter at least one configuration value.");
-      return;
-    }
-    const result = validator.validateFormData(formState, stateSchema);
-    if (result.errors.length > 0) {
-      setValidationError(result.errors[0]?.stack ?? "Invalid configuration.");
-      return;
-    }
-    setValidationError(null);
-    saveMutation.mutate(formState);
-  };
-
-  const handleDialogOpenChange = (open: boolean) => {
-    if (saveMutation.isPending) return;
-    setDialogOpen(open);
-    if (!open) {
-      setValidationError(null);
-      setFormState(card.configurationState ?? {});
-    }
-  };
+  const FormComponent = COMPANION_CONFIG_FORMS[card.bindingType];
 
   return (
     <>
@@ -317,6 +202,7 @@ function CompanionConfiguration({
                   size="icon-sm"
                   onClick={() => setDialogOpen(true)}
                   aria-label={`Edit ${card.title} configuration`}
+                  disabled={!FormComponent}
                 >
                   <Edit03 size={14} />
                 </Button>
@@ -329,6 +215,7 @@ function CompanionConfiguration({
               variant="outline"
               size="sm"
               onClick={() => setDialogOpen(true)}
+              disabled={!FormComponent}
             >
               Configure
             </Button>
@@ -351,64 +238,29 @@ function CompanionConfiguration({
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Configure {card.title}</DialogTitle>
-            <DialogDescription>
-              Update the values this companion uses for Commerce Discovery.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <RjsfForm
-              key={`${connectionId}:configuration`}
-              schema={stateSchema}
-              validator={validator}
-              formData={formState}
-              onChange={(data) => setFormState(data.formData ?? {})}
-              liveValidate={false}
-              showErrorList={false}
-              templates={{ FieldTemplate: CompactFieldTemplate }}
-            >
-              <></>
-            </RjsfForm>
-            {(validationError || saveMutation.error) && (
-              <p role="alert" className="text-sm text-destructive">
-                {validationError ??
-                  (saveMutation.error instanceof Error
-                    ? saveMutation.error.message
-                    : "Could not save configuration.")}
-              </p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => handleDialogOpenChange(false)}
-              disabled={saveMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleSave}
-              disabled={saveMutation.isPending}
-            >
-              {saveMutation.isPending ? (
-                <>
-                  <Loading01 size={14} className="animate-spin" />
-                  Saving
-                </>
-              ) : (
-                "Save"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {FormComponent ? (
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Configure {card.title}</DialogTitle>
+              <DialogDescription>
+                Update the values this companion uses for Commerce Discovery.
+              </DialogDescription>
+            </DialogHeader>
+            <FormComponent
+              card={card}
+              connectionId={connectionId}
+              companionClient={companionClient}
+              selfClient={selfClient}
+              org={org}
+              contextSiteUrl={contextSiteUrl}
+              onDone={() => setDialogOpen(false)}
+            />
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <NotAvailableNote title={card.title} />
+      )}
     </>
   );
 }

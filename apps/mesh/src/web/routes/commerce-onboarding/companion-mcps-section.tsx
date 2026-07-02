@@ -13,9 +13,11 @@ interface CompanionOrg {
 export function CompanionMcpsSection({
   org,
   cdConnectionId,
+  siteUrl,
 }: {
   org: CompanionOrg;
   cdConnectionId: string;
+  siteUrl?: string;
 }) {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
@@ -100,6 +102,7 @@ export function CompanionMcpsSection({
                 disabled={busy && connectingFieldKey !== card.fieldKey}
                 org={org}
                 selfClient={selfClient}
+                siteUrl={siteUrl}
                 onConnect={() => void connect(card)}
               />
             ))}

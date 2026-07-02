@@ -675,6 +675,7 @@ function CommerceSetupContent({
         onOpenReport={openReport}
         meetingUrl={currentMeetingUrl}
         meetingVisual={currentMeetingVisual}
+        siteUrl={currentSiteUrl}
       />
     );
   }
@@ -804,12 +805,14 @@ function CommerceDiscoveryReady({
   onOpenReport,
   meetingUrl,
   meetingVisual,
+  siteUrl,
 }: {
   org: CommerceOrganization;
   reportApp: CommerceDiscoveryReportApp;
   onOpenReport: () => void;
   meetingUrl: string;
   meetingVisual: ReactNode;
+  siteUrl?: string;
 }) {
   return (
     <AuthSplitLayout align="fill" visual={meetingVisual}>
@@ -822,6 +825,7 @@ function CommerceDiscoveryReady({
         <CompanionMcpsSection
           org={org}
           cdConnectionId={reportApp.connectionId}
+          siteUrl={siteUrl}
         />
         <div className="flex shrink-0 flex-col gap-3 md:mt-8">
           {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
