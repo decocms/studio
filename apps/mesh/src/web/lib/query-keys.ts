@@ -73,6 +73,18 @@ export const KEYS = {
       orgId,
       connectionId,
     ] as const,
+  commerceDiscoveryCompanionGaProperties: (
+    orgId: string,
+    connectionId: string,
+  ) =>
+    [
+      "commerce-discovery",
+      "companion-ga-properties",
+      orgId,
+      connectionId,
+    ] as const,
+  commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
+    ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
 
   connectionActivity: (
     connectionId: string,
