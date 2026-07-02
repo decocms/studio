@@ -7,8 +7,8 @@ const COMMERCE_ONBOARDING_LOADING_LABELS: Record<
   CommerceOnboardingLoadingVariant,
   string
 > = {
-  workspace: "Preparing your commerce workspace...",
-  generic: "Preparing workspace...",
+  workspace: "Preparando seu workspace de commerce...",
+  generic: "Preparando...",
 };
 
 export function getCommerceOnboardingLoadingLabel(

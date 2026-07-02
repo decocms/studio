@@ -14,16 +14,19 @@ export const COMMERCE_COMPANION_MCPS: Record<string, CompanionCopy> = {
   vtex: {
     registryAppId: "deco/vtex",
     checks: 49,
-    headline: "Out-of-stock, thin PDPs & attribute gaps across every SKU",
+    headline:
+      "Rupturas, PDPs incompletas e lacunas de atributos em todos os SKUs",
   },
   "google-analytics": {
     registryAppId: "deco/google-analytics",
     checks: 49,
-    headline: "Where revenue leaks between product view and checkout",
+    headline:
+      "Onde a receita vaza entre a visualização do produto e o checkout",
   },
   "google-search-console": {
     registryAppId: "deco/google-search-console",
     checks: 49,
-    headline: "Search visibility & indexing gaps across your catalog",
+    headline:
+      "Lacunas de visibilidade na busca e indexação em todo o seu catálogo",
   },
 };

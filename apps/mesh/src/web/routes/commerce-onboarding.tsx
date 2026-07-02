@@ -119,10 +119,73 @@ function CommerceOnboardingLayout({
   );
 }
 
+const COMMERCE_AUTH_COPY = {
+  signUpFailed: "Falha ao criar conta",
+  signInFailed: "Falha ao entrar",
+  authenticationFailed: "Falha na autenticação",
+  resetEmailFailed: "Não foi possível enviar o e-mail de redefinição",
+  otpSendFailed: "Não foi possível enviar o código",
+  invalidCode: "Código inválido",
+  invalidEmail: "E-mail inválido",
+  invalidEmailOrPassword: "E-mail ou senha inválidos. Tente novamente.",
+  accountExists:
+    "Já existe uma conta com este e-mail. Tente entrar em vez de criar uma nova conta.",
+  networkError: "Erro de rede. Verifique sua conexão e tente novamente.",
+  tooManyAttempts: "Muitas tentativas. Aguarde um momento e tente novamente.",
+  invalidOrExpiredCode: "Código inválido ou expirado. Tente novamente.",
+  genericError: "Algo deu errado. Tente novamente.",
+  resetPasswordTitle: "Redefinir sua senha",
+  verificationCodeTitle: "Informe o código de verificação",
+  welcomeTitle: "Bem-vindo à deco",
+  resetPasswordSubtitle: "Enviaremos um link de redefinição",
+  codeSentTo: (email: string) => `Código enviado para ${email}`,
+  defaultSubtitle: "Entre ou crie uma nova conta",
+  resetEmailSent: "Verifique seu e-mail para redefinir a senha.",
+  continueWith: (provider: string) => `Continuar com ${provider}`,
+  divider: "ou",
+  emailLabel: "E-mail",
+  emailPlaceholder: "Endereço de e-mail",
+  sending: "Enviando...",
+  sendCode: "Enviar código",
+  verificationCodeLabel: "Código de verificação",
+  enterCodePlaceholder: "Informe o código",
+  verifying: "Verificando...",
+  verify: "Verificar",
+  useDifferentEmail: "Usar outro e-mail",
+  sendResetLink: "Enviar link de redefinição",
+  nameLabel: "Nome",
+  namePlaceholder: "Seu nome",
+  passwordLabel: "Senha",
+  forgotPassword: "Esqueceu a senha?",
+  creatingAccount: "Criando conta...",
+  signingIn: "Entrando...",
+  continue: "Continuar",
+  backToSignIn: "Voltar para entrar",
+  signInWithPassword: "Entrar com senha",
+  alreadyHaveAccount: "Já tem uma conta? ",
+  dontHaveAccount: "Não tem uma conta? ",
+  signIn: "Entrar",
+  signUp: "Criar conta",
+  signInWithEmailCode: "Entrar com código por e-mail",
+};
+
 function siteUrlToHost(siteUrl?: string): string | null {
   if (!siteUrl) return null;
   const normalized = normalizeCommerceSiteUrl(siteUrl);
   return normalized.ok ? new URL(normalized.value).hostname : null;
+}
+
+function commerceSiteUrlErrorPtBr(error: string): string {
+  switch (error) {
+    case "Enter a website URL.":
+      return "Informe a URL de um site.";
+    case "Use an HTTP or HTTPS website URL.":
+      return "Use uma URL de site HTTP ou HTTPS.";
+    case "Enter a valid website URL.":
+      return "Informe uma URL de site válida.";
+    default:
+      return error;
+  }
 }
 
 function CommerceOnboardingPage() {
@@ -169,9 +232,10 @@ function CommerceOnboardingScreens({
         <AuthEntry
           callbackUrl={callbackUrl}
           allowAutoLogin={false}
-          title="Unlock your full diagnostic"
+          title="Desbloqueie seu diagnóstico completo"
           subtitle={null}
           brand={siteHost ? <SiteBadge host={siteHost} /> : undefined}
+          copy={COMMERCE_AUTH_COPY}
         />
       </CommerceOnboardingLayout>
     );
@@ -244,9 +308,9 @@ function CommerceOnboardingContent({
   if (organizationsQuery.error) {
     return (
       <CommerceErrorState
-        title="We could not load your organizations"
-        description="Retry to continue commerce setup from this page."
-        actionLabel="Retry"
+        title="Não foi possível carregar suas organizações"
+        description="Tente novamente para continuar a configuração de commerce nesta página."
+        actionLabel="Tentar novamente"
         onRetry={() => organizationsQuery.refetch()}
       />
     );
@@ -263,9 +327,9 @@ function CommerceOnboardingContent({
   if (requestedOrgSlug) {
     return (
       <CommerceErrorState
-        title="Organization not found"
-        description="We could not find that organization for your account."
-        actionLabel="Retry"
+        title="Organização não encontrada"
+        description="Não conseguimos encontrar essa organização na sua conta."
+        actionLabel="Tentar novamente"
         onRetry={() => organizationsQuery.refetch()}
       />
     );
@@ -286,13 +350,13 @@ function CommerceOnboardingContent({
       <CommerceOnboardingLayout>
         <div className="grid gap-10">
           <CommerceHeader
-            title="Choose an organization"
-            description="Select where commerce diagnostics should continue."
+            title="Escolha uma organização"
+            description="Selecione onde o diagnóstico de commerce deve continuar."
           />
           <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
             <OrganizationChoice
               organizations={activeOrganizations}
-              selectLabel="Continue"
+              selectLabel="Continuar"
               onSelected={(organization) => setSelectedOrg(organization)}
             />
           </ScrollReveal>
@@ -336,8 +400,8 @@ function CommerceOnboardingContent({
       <CommerceOnboardingLayout>
         <div className="grid gap-10">
           <CommerceHeader
-            title="Choose an organization"
-            description="Your email can access more than one organization. Choose where commerce setup should continue."
+            title="Escolha uma organização"
+            description="Seu e-mail pode acessar mais de uma organização. Escolha onde a configuração de commerce deve continuar."
           />
           <ScrollReveal className="-mx-1 max-h-[60vh] overflow-y-auto px-1">
             <OrganizationChoice
@@ -360,12 +424,12 @@ function CommerceOnboardingContent({
 
   return (
     <CommerceErrorState
-      title="Commerce onboarding needs support"
+      title="O onboarding de commerce precisa de suporte"
       description={
         ensureResult?.error ??
-        "We could not determine a commerce organization for this account."
+        "Não conseguimos determinar uma organização de commerce para esta conta."
       }
-      actionLabel="Try again"
+      actionLabel="Tentar novamente"
       onRetry={() => {
         setSettledEnsureResult(null);
         ensureOrganizationMutation.reset();
@@ -394,9 +458,9 @@ function EnsureOrganizationRecovery({
   if (mutation.error) {
     return (
       <CommerceErrorState
-        title="Commerce onboarding is unavailable"
-        description="We could not prepare an organization for commerce setup. Retry from this page or contact support."
-        actionLabel="Retry"
+        title="Onboarding de commerce indisponível"
+        description="Não foi possível preparar uma organização para a configuração de commerce. Tente novamente por esta página ou fale com o suporte."
+        actionLabel="Tentar novamente"
         onRetry={onRetry}
       />
     );
@@ -477,7 +541,7 @@ function CommerceErrorState({
 function getToolErrorMessage(result: SelfToolResult): string {
   return (
     result.content?.find((item) => item.text)?.text ??
-    "Commerce Discovery setup failed."
+    "A configuração do Commerce Discovery falhou."
   );
 }
 
@@ -514,7 +578,7 @@ function CommerceSetup({
                 message={
                   error instanceof Error
                     ? error.message
-                    : "We could not check Commerce Discovery setup."
+                    : "Não foi possível verificar a configuração do Commerce Discovery."
                 }
                 onRetry={() => {
                   reset();
@@ -563,12 +627,12 @@ function CommerceSetupErrorState({
   return (
     <div className="grid gap-10">
       <CommerceHeader
-        title="Commerce diagnostics"
-        description={`Commerce setup will continue for ${orgName}.`}
+        title="Diagnóstico de commerce"
+        description={`A configuração de commerce continuará em ${orgName}.`}
       />
       <InlineError message={message} />
       <Button type="button" size="xl" className="w-full" onClick={onRetry}>
-        Retry
+        Tentar novamente
       </Button>
     </div>
   );
@@ -641,7 +705,7 @@ function CommerceSetupContent({
       setInlineError(
         error instanceof Error
           ? error.message
-          : "Commerce Discovery setup failed.",
+          : "A configuração do Commerce Discovery falhou.",
       );
     },
   });
@@ -689,7 +753,7 @@ function CommerceSetupContent({
   const runSetup = (rawSiteUrl: string) => {
     const normalized = normalizeCommerceSiteUrl(rawSiteUrl);
     if (!normalized.ok) {
-      setInlineError(normalized.error);
+      setInlineError(commerceSiteUrlErrorPtBr(normalized.error));
       return;
     }
     setInlineError(null);
@@ -774,10 +838,10 @@ function CommerceSetupContent({
         <CommerceOnboardingLayout visual={currentMeetingVisual}>
           <div className="grid gap-10">
             <CommerceHeader
-              title="Commerce diagnostics"
-              description={`Commerce setup will continue for ${org.name}.`}
+              title="Diagnóstico de commerce"
+              description={`A configuração de commerce continuará em ${org.name}.`}
             />
-            <InlineError message={normalized.error} />
+            <InlineError message={commerceSiteUrlErrorPtBr(normalized.error)} />
             <SiteUrlForm
               siteUrl={siteUrlInput}
               error={inlineError}
@@ -794,8 +858,8 @@ function CommerceSetupContent({
       <CommerceOnboardingLayout visual={currentMeetingVisual}>
         <div ref={triggerInitialSetup} className="grid gap-10">
           <CommerceHeader
-            title="Commerce diagnostics"
-            description={`Commerce Discovery is being prepared for ${normalized.value}.`}
+            title="Diagnóstico de commerce"
+            description={`O Commerce Discovery está sendo preparado para ${normalized.value}.`}
           />
           {inlineError ? (
             <>
@@ -820,8 +884,8 @@ function CommerceSetupContent({
     <CommerceOnboardingLayout visual={currentMeetingVisual}>
       <div className="grid gap-10">
         <CommerceHeader
-          title="Commerce diagnostics"
-          description={`Commerce setup will continue for ${org.name}.`}
+          title="Diagnóstico de commerce"
+          description={`A configuração de commerce continuará em ${org.name}.`}
         />
         <SiteUrlForm
           siteUrl={siteUrlInput}
@@ -852,7 +916,7 @@ function SiteUrlForm({
     <form className="grid gap-4" onSubmit={onSubmit}>
       <div className="grid gap-2">
         <label className="text-sm font-medium" htmlFor="commerce-site-url">
-          Website URL
+          URL do site
         </label>
         <Input
           id="commerce-site-url"
@@ -872,7 +936,7 @@ function SiteUrlForm({
         className="w-full"
         disabled={isSubmitting}
       >
-        Continue
+        Continuar
         <ArrowRight size={16} />
       </Button>
     </form>
@@ -923,7 +987,7 @@ function CommerceDiscoveryReady({
             onClick={onOpenReport}
             disabled={isSubmitting || !reportApp.virtualMcpId}
           >
-            {isSubmitting ? "Opening report..." : "See full report"}
+            {isSubmitting ? "Abrindo relatório..." : "Ver relatório completo"}
             {!isSubmitting ? <ArrowRight size={18} /> : null}
           </Button>
         </div>

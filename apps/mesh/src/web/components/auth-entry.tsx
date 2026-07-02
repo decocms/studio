@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { retry, RetryError } from "@decocms/std";
 import { SplashScreen } from "@/web/components/splash-screen";
 import { UnifiedAuthForm } from "@/web/components/unified-auth-form";
+import type { UnifiedAuthFormCopy } from "@/web/components/unified-auth-form";
 import { authClient } from "@/web/lib/auth-client";
 import { useAuthConfig } from "@/web/providers/auth-config-provider";
 
@@ -16,6 +17,8 @@ export interface AuthEntryProps {
   subtitle?: string | null;
   /** Brand element rendered above the auth form header. */
   brand?: ReactNode;
+  /** Optional localized copy for the auth form. */
+  copy?: Partial<UnifiedAuthFormCopy>;
 }
 
 class RetriableAutoLoginResponse {
@@ -134,6 +137,7 @@ export function AuthEntry({
   title,
   subtitle,
   brand,
+  copy,
 }: AuthEntryProps) {
   const {
     sso,
@@ -168,6 +172,7 @@ export function AuthEntry({
         title={title}
         subtitle={subtitle}
         brand={brand}
+        copy={copy}
       />
     );
   }

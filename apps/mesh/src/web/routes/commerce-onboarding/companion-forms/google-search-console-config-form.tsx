@@ -20,7 +20,7 @@ import { LoadingIndicator } from "../loading-indicator.tsx";
 import type { CompanionFormProps } from "./types.ts";
 
 const schema = z.object({
-  siteUrl: z.string().min(1, "Site is required"),
+  siteUrl: z.string().min(1, "Selecione um site"),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -75,7 +75,7 @@ export function GoogleSearchConsoleConfigForm({
   if (sitesQuery.isLoading) {
     return (
       <div className="flex min-h-[200px] items-center justify-center">
-        <LoadingIndicator label="Loading sites…" />
+        <LoadingIndicator label="Carregando sites..." />
       </div>
     );
   }
@@ -84,7 +84,7 @@ export function GoogleSearchConsoleConfigForm({
     return (
       <div className="space-y-4">
         <p className="text-sm text-destructive">
-          Failed to load Google Search Console sites.
+          Não foi possível carregar os sites do Google Search Console.
         </p>
       </div>
     );
@@ -96,8 +96,8 @@ export function GoogleSearchConsoleConfigForm({
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          No verified sites found. Please verify a site in Google Search
-          Console.
+          Nenhum site verificado foi encontrado. Verifique um site no Google
+          Search Console.
         </p>
       </div>
     );
@@ -130,7 +130,7 @@ export function GoogleSearchConsoleConfigForm({
                   value={field.value}
                   onChange={field.onChange}
                   disabled={isPending}
-                  ariaLabel="Verified Site"
+                  ariaLabel="Site verificado"
                 />
               </FormControl>
               <FormMessage />
@@ -143,7 +143,7 @@ export function GoogleSearchConsoleConfigForm({
         <p role="alert" className="text-sm text-destructive">
           {error instanceof Error
             ? error.message
-            : "Failed to save configuration"}
+            : "Não foi possível salvar a configuração"}
         </p>
       )}
 
@@ -154,10 +154,10 @@ export function GoogleSearchConsoleConfigForm({
           onClick={onDone}
           disabled={isPending}
         >
-          Cancel
+          Cancelar
         </Button>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving..." : "Save"}
+          {isPending ? "Salvando..." : "Salvar"}
         </Button>
       </DialogFooter>
     </form>

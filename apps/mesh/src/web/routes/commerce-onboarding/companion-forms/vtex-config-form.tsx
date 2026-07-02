@@ -18,7 +18,7 @@ import { useSaveCompanionConfig } from "./use-save-companion-config.ts";
 import type { CompanionFormProps } from "./types.ts";
 
 const schema = z.object({
-  accountName: z.string().min(1, "Account name is required"),
+  accountName: z.string().min(1, "Informe o nome da conta"),
   appKey: z.string().optional(),
   appToken: z.string().optional(),
 });
@@ -75,10 +75,10 @@ export function VtexConfigForm({
           name="accountName"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Account Name</FormLabel>
+              <FormLabel>Nome da conta</FormLabel>
               <FormControl>
                 <Input
-                  placeholder="Your VTEX account name"
+                  placeholder="Nome da sua conta VTEX"
                   {...field}
                   disabled={isPending}
                 />
@@ -93,10 +93,10 @@ export function VtexConfigForm({
           name="appKey"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>App Key (optional)</FormLabel>
+              <FormLabel>App Key (opcional)</FormLabel>
               <FormControl>
                 <PasswordInput
-                  placeholder="VTEX app key"
+                  placeholder="App Key da VTEX"
                   {...field}
                   disabled={isPending}
                 />
@@ -111,10 +111,10 @@ export function VtexConfigForm({
           name="appToken"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>App Token (optional)</FormLabel>
+              <FormLabel>App Token (opcional)</FormLabel>
               <FormControl>
                 <PasswordInput
-                  placeholder="VTEX app token"
+                  placeholder="App Token da VTEX"
                   {...field}
                   disabled={isPending}
                 />
@@ -129,7 +129,7 @@ export function VtexConfigForm({
         <p role="alert" className="text-sm text-destructive">
           {error instanceof Error
             ? error.message
-            : "Failed to save configuration"}
+            : "Não foi possível salvar a configuração"}
         </p>
       )}
 
@@ -140,10 +140,10 @@ export function VtexConfigForm({
           onClick={onDone}
           disabled={isPending}
         >
-          Cancel
+          Cancelar
         </Button>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving..." : "Save"}
+          {isPending ? "Salvando..." : "Salvar"}
         </Button>
       </DialogFooter>
     </form>

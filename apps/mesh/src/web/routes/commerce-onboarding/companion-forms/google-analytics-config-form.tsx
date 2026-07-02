@@ -20,7 +20,7 @@ import { LoadingIndicator } from "../loading-indicator.tsx";
 import type { CompanionFormProps } from "./types.ts";
 
 const schema = z.object({
-  propertyId: z.string().min(1, "Property is required"),
+  propertyId: z.string().min(1, "Selecione uma propriedade"),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -72,7 +72,7 @@ export function GoogleAnalyticsConfigForm({
   if (propertiesQuery.isLoading) {
     return (
       <div className="flex min-h-[200px] items-center justify-center">
-        <LoadingIndicator label="Loading properties…" />
+        <LoadingIndicator label="Carregando propriedades..." />
       </div>
     );
   }
@@ -81,7 +81,7 @@ export function GoogleAnalyticsConfigForm({
     return (
       <div className="space-y-4">
         <p className="text-sm text-destructive">
-          Failed to load Google Analytics properties.
+          Não foi possível carregar as propriedades do Google Analytics.
         </p>
       </div>
     );
@@ -94,8 +94,8 @@ export function GoogleAnalyticsConfigForm({
     return (
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          No Google Analytics properties found. Please connect a Google
-          Analytics account with properties.
+          Nenhuma propriedade do Google Analytics foi encontrada. Conecte uma
+          conta do Google Analytics com propriedades.
         </p>
       </div>
     );
@@ -115,7 +115,7 @@ export function GoogleAnalyticsConfigForm({
                   value={field.value}
                   onChange={field.onChange}
                   disabled={isPending}
-                  ariaLabel="Google Analytics Property"
+                  ariaLabel="Propriedade do Google Analytics"
                 />
               </FormControl>
               <FormMessage />
@@ -128,7 +128,7 @@ export function GoogleAnalyticsConfigForm({
         <p role="alert" className="text-sm text-destructive">
           {error instanceof Error
             ? error.message
-            : "Failed to save configuration"}
+            : "Não foi possível salvar a configuração"}
         </p>
       )}
 
@@ -139,10 +139,10 @@ export function GoogleAnalyticsConfigForm({
           onClick={onDone}
           disabled={isPending}
         >
-          Cancel
+          Cancelar
         </Button>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving..." : "Save"}
+          {isPending ? "Salvando..." : "Salvar"}
         </Button>
       </DialogFooter>
     </form>
