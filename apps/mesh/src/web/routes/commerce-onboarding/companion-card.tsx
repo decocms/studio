@@ -1,6 +1,19 @@
 import { IntegrationIcon } from "@/web/components/integration-icon";
 import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@deco/ui/components/dialog.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@deco/ui/components/tooltip.tsx";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { useMCPClient } from "@decocms/mesh-sdk";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -69,9 +82,6 @@ export function CompanionCard({
   const savedConfigEntries = getConfigurationSummaryEntries(
     card.configurationState,
   );
-  const [isEditingConfiguration, setIsEditingConfiguration] = useState(
-    card.satisfied && !hasConfigurationValues(card.configurationState),
-  );
 
   return (
     <div className="flex flex-col gap-2 rounded-2xl border border-border bg-card p-4">
@@ -126,10 +136,6 @@ export function CompanionCard({
           selfClient={selfClient}
           connectionId={linkedConnectionId}
           savedConfigEntries={savedConfigEntries}
-          isEditing={isEditingConfiguration}
-          onEdit={() => setIsEditingConfiguration(true)}
-          onCancel={() => setIsEditingConfiguration(false)}
-          onSaved={() => setIsEditingConfiguration(false)}
         />
       )}
     </div>
@@ -142,10 +148,6 @@ interface CompanionConfigurationProps {
   selfClient: Client;
   connectionId: string;
   savedConfigEntries: Array<{ key: string; label: string; value: string }>;
-  isEditing: boolean;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSaved: () => void;
 }
 
 function hasSchemaProperties(stateSchema: Record<string, unknown> | undefined) {
@@ -196,10 +198,6 @@ function CompanionConfiguration({
   selfClient,
   connectionId,
   savedConfigEntries,
-  isEditing,
-  onEdit,
-  onCancel,
-  onSaved,
 }: CompanionConfigurationProps) {
   const queryClient = useQueryClient();
   const companionClient = useMCPClient({
@@ -211,6 +209,16 @@ function CompanionConfiguration({
     card.configurationState ?? {},
   );
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [prevDialogOpen, setPrevDialogOpen] = useState(dialogOpen);
+
+  if (dialogOpen !== prevDialogOpen) {
+    setPrevDialogOpen(dialogOpen);
+    if (dialogOpen) {
+      setFormState(card.configurationState ?? {});
+      setValidationError(null);
+    }
+  }
 
   const schemaQuery = useQuery({
     queryKey: KEYS.commerceDiscoveryCompanionConnectionSchema(
@@ -245,14 +253,12 @@ function CompanionConfiguration({
       await queryClient.invalidateQueries({
         queryKey: KEYS.commerceDiscoveryCompanionConnections(org.id),
       });
-      onSaved();
+      setDialogOpen(false);
     },
   });
 
   const stateSchema = schemaQuery.data?.stateSchema;
-  const shouldRenderConfiguration =
-    hasSchemaProperties(stateSchema) &&
-    (isEditing || savedConfigEntries.length > 0);
+  const shouldRenderConfiguration = hasSchemaProperties(stateSchema);
 
   if (schemaQuery.isPending) {
     return (
@@ -265,33 +271,6 @@ function CompanionConfiguration({
 
   if (schemaQuery.error || !shouldRenderConfiguration || !stateSchema) {
     return null;
-  }
-
-  if (!isEditing && savedConfigEntries.length > 0) {
-    return (
-      <div className="grid gap-3 border-t border-border pt-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-foreground">Configuration</p>
-          <Button type="button" variant="ghost" size="sm" onClick={onEdit}>
-            <Edit03 size={14} />
-            Edit
-          </Button>
-        </div>
-        <dl className="grid gap-2">
-          {savedConfigEntries.map((entry) => (
-            <div
-              key={entry.key}
-              className="flex items-center justify-between gap-3 text-sm"
-            >
-              <dt className="text-muted-foreground">{entry.label}</dt>
-              <dd className="truncate text-foreground">
-                {maskConfigValue(entry.key, entry.value)}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    );
   }
 
   const handleSave = () => {
@@ -308,63 +287,128 @@ function CompanionConfiguration({
     saveMutation.mutate(formState);
   };
 
+  const handleDialogOpenChange = (open: boolean) => {
+    if (saveMutation.isPending) return;
+    setDialogOpen(open);
+    if (!open) {
+      setValidationError(null);
+      setFormState(card.configurationState ?? {});
+    }
+  };
+
   return (
-    <div className="grid gap-3 border-t border-border pt-3">
-      <p className="text-sm font-medium text-foreground">
-        Configure {card.title}
-      </p>
-      <RjsfForm
-        key={`${connectionId}:configuration`}
-        schema={stateSchema}
-        validator={validator}
-        formData={formState}
-        onChange={(data) => setFormState(data.formData ?? {})}
-        liveValidate={false}
-        showErrorList={false}
-        templates={{ FieldTemplate: CompactFieldTemplate }}
-      >
-        <></>
-      </RjsfForm>
-      {(validationError || saveMutation.error) && (
-        <p role="alert" className="text-sm text-destructive">
-          {validationError ??
-            (saveMutation.error instanceof Error
-              ? saveMutation.error.message
-              : "Could not save configuration.")}
-        </p>
-      )}
-      <div className="flex justify-end gap-2">
-        {savedConfigEntries.length > 0 && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setFormState(card.configurationState ?? {});
-              setValidationError(null);
-              onCancel();
-            }}
-            disabled={saveMutation.isPending}
-          >
-            Cancel
-          </Button>
-        )}
-        <Button
-          type="button"
-          size="sm"
-          onClick={handleSave}
-          disabled={saveMutation.isPending}
-        >
-          {saveMutation.isPending ? (
-            <>
-              <Loading01 size={14} className="animate-spin" />
-              Saving
-            </>
+    <>
+      <div className="grid gap-3 border-t border-border pt-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="grid gap-1">
+            <p className="text-sm font-medium text-foreground">Configuration</p>
+            {savedConfigEntries.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No configuration values saved yet.
+              </p>
+            )}
+          </div>
+          {savedConfigEntries.length > 0 ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setDialogOpen(true)}
+                  aria-label={`Edit ${card.title} configuration`}
+                >
+                  <Edit03 size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Edit configuration</TooltipContent>
+            </Tooltip>
           ) : (
-            "Save"
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDialogOpen(true)}
+            >
+              Configure
+            </Button>
           )}
-        </Button>
+        </div>
+        {savedConfigEntries.length > 0 && (
+          <dl className="grid gap-2">
+            {savedConfigEntries.map((entry) => (
+              <div
+                key={entry.key}
+                className="flex items-center justify-between gap-3 text-sm"
+              >
+                <dt className="text-muted-foreground">{entry.label}</dt>
+                <dd className="truncate text-foreground">
+                  {maskConfigValue(entry.key, entry.value)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </div>
-    </div>
+
+      <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Configure {card.title}</DialogTitle>
+            <DialogDescription>
+              Update the values this companion uses for Commerce Discovery.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <RjsfForm
+              key={`${connectionId}:configuration`}
+              schema={stateSchema}
+              validator={validator}
+              formData={formState}
+              onChange={(data) => setFormState(data.formData ?? {})}
+              liveValidate={false}
+              showErrorList={false}
+              templates={{ FieldTemplate: CompactFieldTemplate }}
+            >
+              <></>
+            </RjsfForm>
+            {(validationError || saveMutation.error) && (
+              <p role="alert" className="text-sm text-destructive">
+                {validationError ??
+                  (saveMutation.error instanceof Error
+                    ? saveMutation.error.message
+                    : "Could not save configuration.")}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleDialogOpenChange(false)}
+              disabled={saveMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSave}
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending ? (
+                <>
+                  <Loading01 size={14} className="animate-spin" />
+                  Saving
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
