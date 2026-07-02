@@ -55,7 +55,7 @@ export function FloatingReleaseCard() {
 
   return (
     <div
-      role="dialog"
+      role="region"
       aria-label="Release announcement"
       className="fixed bottom-6 right-6 z-50 w-[min(360px,calc(100vw-3rem))] rounded-lg border border-border bg-background p-4 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300"
     >

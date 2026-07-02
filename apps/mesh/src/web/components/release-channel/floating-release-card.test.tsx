@@ -94,8 +94,17 @@ describe("FloatingReleaseCard", () => {
 
   it("renders the card when the newest release is fresh and unseen", () => {
     releasesRef.current = [makeRelease({ id: "fresh" })];
-    const { getByText } = render(<FloatingReleaseCard />, { wrapper });
+    const { getByRole, getByText, queryByRole } = render(
+      <FloatingReleaseCard />,
+      { wrapper },
+    );
     expect(getByText("Fresh Release")).toBeInTheDocument();
+    expect(
+      getByRole("region", { name: "Release announcement" }),
+    ).toBeInTheDocument();
+    expect(
+      queryByRole("dialog", { name: "Release announcement" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders nothing when the current user is less than seven days old", () => {
