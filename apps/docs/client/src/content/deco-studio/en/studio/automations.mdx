@@ -71,6 +71,10 @@ Fires when a connected service publishes a matching event. You specify the conne
 
 Fires when an external system sends an HTTP request to a dedicated URL. When you add a webhook trigger, Studio mints a one-time URL and a secret token (shown once) — POST to that URL to run the automation. You can rotate the token if it's ever exposed.
 
+<Callout type="tip">
+  A webhook payload can include a `run_metadata` object (a flat map of strings). It's stripped from the content the agent's model sees, but forwarded as an `x-mesh-run-metadata` header on every downstream MCP tool call the run makes — useful for passing trusted, run-scoped context (like which tenant a run acts on) to your own MCP servers without the agent handling it as a tool argument.
+</Callout>
+
 ## Limits
 
 - Maximum 10 automation runs across your organization at once

@@ -54,7 +54,10 @@ Existing deco.cx projects continue to work. Migration adds the agent layer; it d
 
 ## Sections editor
 
-The **Content** tab in the agent workspace is the visual editor for the sections and pages that make up your storefront. It shows two groups — **Saved sections** (reusable global blocks) and **Available sections** (every component in the manifest catalog) — searchable from a single input.
+The **Content** tab in the agent workspace is the visual editor for the sections and pages that make up your storefront. It lists two groups — **Saved sections** (reusable global blocks, grouped by their underlying component) and **Available sections** (every component in the manifest catalog) — searchable from a single input.
+
+- Selecting an **available** section opens a form editor for its props. Use **Save as global section** to persist your configuration as a reusable, named block.
+- Selecting a **saved** section opens the same form editor, plus a toggle to switch to a **JSON view** (Monaco-based) for direct editing. Both views stay in sync — edit either one and the other reflects it immediately.
 
 ### Variants
 
@@ -64,11 +67,27 @@ You can:
 
 - **Reorder variants** by dragging them up or down in the list. The order controls evaluation priority when multiple matchers could apply.
 - **Preview a specific variant** by clicking it — the preview pane immediately applies that variant so you see exactly what a visitor matching that condition would see.
+- **Duplicate a variant** from its menu — clones the variant's rule and sections right after it, and selects the clone so you can tweak it immediately.
 - **Save as a global section** to persist a configured variant as a reusable block available across your entire storefront.
 
 <Callout type="tip">
   Scroll position in the preview is preserved when you switch between variants or save changes, so you can stay focused on the section you're editing without losing your place on the page.
 </Callout>
+
+### Matcher field types
+
+Matcher rules (the conditions that control which variant applies) support rich field types beyond plain text:
+
+- **Inline unions** — a field that accepts one of several shapes (for example, "target by location" *or* "target by map area") renders as a branch selector. Pick a branch and only its relevant fields show; switching branches resets to that branch's defaults.
+- **Location** — a cascading country → region → city picker for location-based matchers, including an interactive state map for Brazil.
+- **Map area** — an interactive Google Map with a draggable, resizable circle for picking a center point and radius, used by location matchers that target a radius around a place.
+
+### Variant calendar
+
+The Content tab's **Calendar** view plots your scheduled variants across a month or timeline so you can see what's live, upcoming, or expired at a glance.
+
+- Variants can be **open-ended** — with only a start or only an end date. Open-ended variants are hidden by default (they'd otherwise fill every day) behind a **"Show ongoing (N)"** toggle in the header.
+- Bars are time-of-day accurate — a campaign ending at 10 AM doesn't visually fill its entire last day.
 
 ## Getting started
 
