@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Code01,
   Copy01,
+  Database01,
   DotsHorizontal,
   Edit01,
   File02,
@@ -25,6 +26,7 @@ import {
   Trash01,
   Users01,
   X,
+  Zap,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -155,6 +157,8 @@ import {
   useSaveBlogBlock,
 } from "./blog/use-blog-mutations";
 import { PageJsonDialog } from "@/web/components/sections-editor/page-json-dialog";
+import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
+import { countAvailableRunnables } from "./runnable-catalog";
 
 const AppEditor = lazy(() =>
   import("./app-editor").then((m) => ({ default: m.AppEditor })),
@@ -199,7 +203,21 @@ type CollectionId =
   | "site"
   | "seo"
   | "calendar"
+  | "loaders"
+  | "actions"
   | BlogKind;
+
+type CollectionCounts = Record<
+  | "pages"
+  | "sections"
+  | "apps"
+  | "loaders"
+  | "actions"
+  | "posts"
+  | "authors"
+  | "categories",
+  number
+>;
 
 type Selection =
   | { collection: "pages"; key: string; path: string }
@@ -528,13 +546,12 @@ function ContentBrowserReady({
     );
   }
 
-  const counts: Record<
-    "pages" | "sections" | "apps" | "posts" | "authors" | "categories",
-    number
-  > = {
+  const counts: CollectionCounts = {
     pages: pages.length,
     sections: globalSections.length,
     apps: appCatalog.length,
+    loaders: countAvailableRunnables(meta, "loaders"),
+    actions: countAvailableRunnables(meta, "actions"),
     posts: allBlogEntries.posts.length,
     authors: allBlogEntries.authors.length,
     categories: allBlogEntries.categories.length,
@@ -944,7 +961,9 @@ function ContentBrowserReady({
       />
       {activeCollection !== "seo" &&
         activeCollection !== "site" &&
-        activeCollection !== "calendar" && (
+        activeCollection !== "calendar" &&
+        activeCollection !== "loaders" &&
+        activeCollection !== "actions" && (
           <ItemList
             activeCollection={activeCollection}
             pages={pages}
@@ -1026,178 +1045,192 @@ function ContentBrowserReady({
           />
         )}
       <div className="flex-1 min-w-0">
-        <Suspense
-          fallback={
-            <div className="h-full flex items-center justify-center">
-              <Loading01
-                size={20}
-                className="animate-spin text-muted-foreground"
-              />
-            </div>
-          }
-        >
-          {activeCollection === "calendar" ? (
-            <VariantCalendar decofile={decofile} />
-          ) : activeCollection === "site" ? (
-            siteApp ? (
-              <AppEditor
-                key={`site:${siteApp.key}`}
+        {activeCollection === "loaders" || activeCollection === "actions" ? (
+          <RunnableBlocksBrowser
+            orgSlug={orgSlug}
+            virtualMcpId={virtualMcpId}
+            branch={branch}
+            previewUrl={previewUrl}
+            meta={meta}
+            decofile={decofile}
+            kind={activeCollection}
+          />
+        ) : (
+          <Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center">
+                <Loading01
+                  size={20}
+                  className="animate-spin text-muted-foreground"
+                />
+              </div>
+            }
+          >
+            {activeCollection === "calendar" ? (
+              <VariantCalendar decofile={decofile} />
+            ) : activeCollection === "site" ? (
+              siteApp ? (
+                <AppEditor
+                  key={`site:${siteApp.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={siteApp.key}
+                  block={decofile[siteApp.key] as Record<string, unknown>}
+                  decofile={decofile}
+                  meta={meta}
+                  title="Site"
+                  excludeFields={["seo"]}
+                  schemaPending={isAppSchemaLoading(siteApp.resolveType, [
+                    "seo",
+                  ])}
+                  previewBaseUrl={previewUrl}
+                />
+              ) : (
+                <EmptyMessage
+                  title="Site settings not found"
+                  description="This project doesn't have a site app block (site/apps/site.ts)."
+                />
+              )
+            ) : activeCollection === "seo" ? (
+              <SeoEditor
                 orgSlug={orgSlug}
                 virtualMcpId={virtualMcpId}
                 branch={branch}
-                blockKey={siteApp.key}
-                block={decofile[siteApp.key] as Record<string, unknown>}
                 decofile={decofile}
                 meta={meta}
-                title="Site"
-                excludeFields={["seo"]}
-                schemaPending={isAppSchemaLoading(siteApp.resolveType, ["seo"])}
+                target={{ kind: "site" }}
                 previewBaseUrl={previewUrl}
               />
+            ) : activeCollection === "sections" ? (
+              <SectionsRightPane
+                selection={
+                  selection?.collection === "sections" ||
+                  selection?.collection === "available-section"
+                    ? selection
+                    : null
+                }
+                orgSlug={orgSlug}
+                virtualMcpId={virtualMcpId}
+                branch={branch}
+                previewUrl={previewUrl}
+                meta={meta}
+                decofile={decofile}
+                isCreating={saveBlock.isPending}
+                onCreateAvailable={handleCreateAvailableSection}
+                onSaveReferencedBlock={saveReferencedBlock}
+              />
+            ) : selection && selection.collection !== "available-section" ? (
+              selection.collection === "apps" ? (
+                <AppEditor
+                  key={`app:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                  decofile={decofile}
+                  meta={meta}
+                  previewBaseUrl={previewUrl}
+                  schemaPending={isAppSchemaLoading(
+                    typeof (decofile[selection.key] as Record<string, unknown>)
+                      ?.__resolveType === "string"
+                      ? String(
+                          (decofile[selection.key] as Record<string, unknown>)
+                            .__resolveType,
+                        )
+                      : undefined,
+                  )}
+                />
+              ) : selection.collection === "posts" ? (
+                <PostEditor
+                  key={`post:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                  decofile={decofile}
+                  meta={meta}
+                  previewBaseUrl={previewUrl}
+                />
+              ) : selection.collection === "categories" ? (
+                <CategoryEditor
+                  key={`category:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                  decofile={decofile}
+                  meta={meta}
+                  onManagePosts={handleManagePosts}
+                  onOpenPost={(key) => {
+                    setActiveCollection("posts");
+                    setPrevCollection("posts");
+                    setSelection({ collection: "posts", key });
+                    setOpenPageSeoKey(null);
+                  }}
+                  previewBaseUrl={previewUrl}
+                />
+              ) : selection.collection === "authors" ? (
+                <RecordEditor
+                  key={`authors:${selection.key}`}
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  kind="authors"
+                  blockKey={selection.key}
+                  block={decofile[selection.key] as Record<string, unknown>}
+                />
+              ) : (
+                <SectionsEditor
+                  key={
+                    selection.collection === "pages"
+                      ? `page:${selection.key}`
+                      : `section:${selection.key}`
+                  }
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  previewReady
+                  previewUrl={previewUrl ?? undefined}
+                  currentPath={
+                    selection.collection === "pages" ? selection.path : "/"
+                  }
+                  activePageBlockKey={
+                    selection.collection === "pages" ? selection.key : null
+                  }
+                  activeGlobalBlockKey={
+                    selection.collection === "sections" ? selection.key : null
+                  }
+                  initialEditSeo={
+                    selection.collection === "pages" &&
+                    openPageSeoKey === selection.key
+                  }
+                  onExitSeo={() => setOpenPageSeoKey(null)}
+                />
+              )
             ) : (
               <EmptyMessage
-                title="Site settings not found"
-                description="This project doesn't have a site app block (site/apps/site.ts)."
-              />
-            )
-          ) : activeCollection === "seo" ? (
-            <SeoEditor
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              decofile={decofile}
-              meta={meta}
-              target={{ kind: "site" }}
-              previewBaseUrl={previewUrl}
-            />
-          ) : activeCollection === "sections" ? (
-            <SectionsRightPane
-              selection={
-                selection?.collection === "sections" ||
-                selection?.collection === "available-section"
-                  ? selection
-                  : null
-              }
-              orgSlug={orgSlug}
-              virtualMcpId={virtualMcpId}
-              branch={branch}
-              previewUrl={previewUrl}
-              meta={meta}
-              decofile={decofile}
-              isCreating={saveBlock.isPending}
-              onCreateAvailable={handleCreateAvailableSection}
-              onSaveReferencedBlock={saveReferencedBlock}
-            />
-          ) : selection && selection.collection !== "available-section" ? (
-            selection.collection === "apps" ? (
-              <AppEditor
-                key={`app:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-                decofile={decofile}
-                meta={meta}
-                previewBaseUrl={previewUrl}
-                schemaPending={isAppSchemaLoading(
-                  typeof (decofile[selection.key] as Record<string, unknown>)
-                    ?.__resolveType === "string"
-                    ? String(
-                        (decofile[selection.key] as Record<string, unknown>)
-                          .__resolveType,
-                      )
-                    : undefined,
-                )}
-              />
-            ) : selection.collection === "posts" ? (
-              <PostEditor
-                key={`post:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-                decofile={decofile}
-                meta={meta}
-                previewBaseUrl={previewUrl}
-              />
-            ) : selection.collection === "categories" ? (
-              <CategoryEditor
-                key={`category:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-                decofile={decofile}
-                meta={meta}
-                onManagePosts={handleManagePosts}
-                onOpenPost={(key) => {
-                  setActiveCollection("posts");
-                  setPrevCollection("posts");
-                  setSelection({ collection: "posts", key });
-                  setOpenPageSeoKey(null);
-                }}
-                previewBaseUrl={previewUrl}
-              />
-            ) : selection.collection === "authors" ? (
-              <RecordEditor
-                key={`authors:${selection.key}`}
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                kind="authors"
-                blockKey={selection.key}
-                block={decofile[selection.key] as Record<string, unknown>}
-              />
-            ) : (
-              <SectionsEditor
-                key={
-                  selection.collection === "pages"
-                    ? `page:${selection.key}`
-                    : `section:${selection.key}`
+                title={`Select ${
+                  isBlogKind(activeCollection)
+                    ? `a ${BLOG_SINGULAR[activeCollection]}`
+                    : activeCollection === "pages"
+                      ? "a page"
+                      : activeCollection === "apps"
+                        ? "an app"
+                        : "a section"
+                } to edit`}
+                description={
+                  activeCollection === "apps"
+                    ? "Browse all apps and select an installed one to edit its settings."
+                    : 'Pick an item from the list, or click "+" to create one.'
                 }
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                previewReady
-                previewUrl={previewUrl ?? undefined}
-                currentPath={
-                  selection.collection === "pages" ? selection.path : "/"
-                }
-                activePageBlockKey={
-                  selection.collection === "pages" ? selection.key : null
-                }
-                activeGlobalBlockKey={
-                  selection.collection === "sections" ? selection.key : null
-                }
-                initialEditSeo={
-                  selection.collection === "pages" &&
-                  openPageSeoKey === selection.key
-                }
-                onExitSeo={() => setOpenPageSeoKey(null)}
               />
-            )
-          ) : (
-            <EmptyMessage
-              title={`Select ${
-                isBlogKind(activeCollection)
-                  ? `a ${BLOG_SINGULAR[activeCollection]}`
-                  : activeCollection === "pages"
-                    ? "a page"
-                    : activeCollection === "apps"
-                      ? "an app"
-                      : "a section"
-              } to edit`}
-              description={
-                activeCollection === "apps"
-                  ? "Browse all apps and select an installed one to edit its settings."
-                  : 'Pick an item from the list, or click "+" to create one.'
-              }
-            />
-          )}
-        </Suspense>
+            )}
+          </Suspense>
+        )}
       </div>
 
       {/* Page create/duplicate/rename dialog */}
@@ -1400,7 +1433,7 @@ function SectionsRightPane({
   );
 }
 
-function GroupHeader({
+export function GroupHeader({
   icon: Icon,
   label,
   className,
@@ -1429,10 +1462,7 @@ function CollectionsSidebar({
   onSelect,
 }: {
   active: CollectionId;
-  counts: Record<
-    "pages" | "sections" | "apps" | "posts" | "authors" | "categories",
-    number
-  >;
+  counts: CollectionCounts;
   showBlog: boolean;
   onSelect: (id: CollectionId) => void;
 }) {
@@ -1464,6 +1494,22 @@ function CollectionsSidebar({
           label="Apps"
           count={counts.apps}
           active={active === "apps"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="loaders"
+          icon={Database01}
+          label="Loaders"
+          count={counts.loaders}
+          active={active === "loaders"}
+          onSelect={onSelect}
+        />
+        <CollectionRow
+          id="actions"
+          icon={Zap}
+          label="Actions"
+          count={counts.actions}
+          active={active === "actions"}
           onSelect={onSelect}
         />
         <CollectionRow
@@ -2547,7 +2593,7 @@ function BulkCategoryDialog({
   );
 }
 
-function ItemRow({
+export function ItemRow({
   icon: Icon,
   logoUrl,
   title,
@@ -2768,7 +2814,7 @@ function ItemActions({
   );
 }
 
-function ListEmpty({
+export function ListEmpty({
   hasItems,
   emptyLabel,
   emptyHint,
@@ -2823,7 +2869,7 @@ function SandboxStateRenderer({
   }
 }
 
-function EmptyMessage({
+export function EmptyMessage({
   icon: Icon,
   title,
   description,

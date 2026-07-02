@@ -941,6 +941,8 @@ export interface BlockSchemaMetadata {
   description?: string;
   icon?: string;
   logo?: string;
+  /** Block marked hidden from pickers (deco `@ignore` / `hide` convention). */
+  hidden?: boolean;
 }
 
 /**
@@ -967,6 +969,14 @@ export function resolveBlockSchemaMetadata(
 
   const icon = (resolved as { icon?: string }).icon;
   const logo = (resolved as { logo?: string }).logo;
+  const flags = resolved as {
+    hide?: unknown;
+    ignore?: unknown;
+    unlisted?: unknown;
+  };
+  const truthy = (v: unknown) => v === true || v === "true";
+  const hidden =
+    truthy(flags.hide) || truthy(flags.ignore) || truthy(flags.unlisted);
 
   return {
     title: typeof resolved.title === "string" ? resolved.title : undefined,
@@ -976,5 +986,6 @@ export function resolveBlockSchemaMetadata(
         : undefined,
     icon: typeof icon === "string" ? icon : undefined,
     logo: typeof logo === "string" ? logo : undefined,
+    hidden: hidden || undefined,
   };
 }
