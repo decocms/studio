@@ -30,7 +30,10 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
 import { createContext, Suspense, useContext, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { CompanionMcpsSection } from "./commerce-onboarding/companion-mcps-section.tsx";
+import {
+  CompanionMcpsSection,
+  CompanionMcpsSectionSkeleton,
+} from "./commerce-onboarding/companion-mcps-section.tsx";
 import {
   buildScheduleMeetingUrl,
   ScheduleMeetingBanner,
@@ -819,10 +822,18 @@ function CommerceDiscoveryReady({
           On md+ it collapses back to a natural block (right panel has the card). */}
       <div className="flex min-h-0 flex-1 flex-col gap-6 md:grid md:gap-4">
         <CommerceHeader />
-        <CompanionMcpsSection
-          org={org}
-          cdConnectionId={reportApp.connectionId}
-        />
+        {/* Own Suspense boundary: the section's cdClient (useMCPClient) suspends
+            on first mount while its MCP connection is established. Without this
+            boundary that suspense bubbles to the page-level <Suspense> in
+            CommerceSetup, unmounting the header + title + report CTA and
+            flashing the full-page connect indicator. The fallback mirrors the
+            section's own loading UI so the title stays stable in place. */}
+        <Suspense fallback={<CompanionMcpsSectionSkeleton />}>
+          <CompanionMcpsSection
+            org={org}
+            cdConnectionId={reportApp.connectionId}
+          />
+        </Suspense>
         <div className="flex shrink-0 flex-col gap-3 md:mt-8">
           {/* Right-side ScheduleMeetingVisual is hidden on mobile, so the human
               escape hatch rides in the footer above the report CTA. */}
