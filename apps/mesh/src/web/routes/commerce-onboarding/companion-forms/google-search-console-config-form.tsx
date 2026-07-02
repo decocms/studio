@@ -125,14 +125,10 @@ export function GoogleSearchConsoleConfigForm({
               <FormLabel>Verified Site</FormLabel>
               <FormControl>
                 <SelectableList
-                  groups={[
-                    {
-                      options: sites.map((site) => ({
-                        value: site.siteUrl,
-                        label: site.siteUrl,
-                      })),
-                    },
-                  ]}
+                  options={sites.map((site) => ({
+                    value: site.siteUrl,
+                    label: site.siteUrl,
+                  }))}
                   value={field.value}
                   onChange={field.onChange}
                   disabled={isPending}

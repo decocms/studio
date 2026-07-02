@@ -1,32 +1,37 @@
 import type { ReactElement } from "react";
+import { useState } from "react";
 import { cn } from "@deco/ui/lib/utils.ts";
-import { CheckCircle } from "@untitledui/icons";
+import { Input } from "@deco/ui/components/input.tsx";
+import { CheckCircle, SearchSm } from "@untitledui/icons";
 
 export interface SelectableOption {
   value: string;
   label: string;
 }
 
-export interface SelectableGroup {
-  label?: string;
-  options: SelectableOption[];
-}
-
 export function SelectableList({
-  groups,
+  options,
   value,
   onChange,
   disabled,
   ariaLabel,
+  searchPlaceholder = "Search…",
 }: {
-  groups: SelectableGroup[];
+  options: SelectableOption[];
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
   ariaLabel?: string;
+  searchPlaceholder?: string;
 }): ReactElement {
-  const flatValues = groups.flatMap((g) => g.options.map((o) => o.value));
+  const [query, setQuery] = useState("");
 
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = normalizedQuery
+    ? options.filter((o) => o.label.toLowerCase().includes(normalizedQuery))
+    : options;
+
+  const flatValues = filtered.map((o) => o.value);
   const tabbableValue = flatValues.includes(value)
     ? value
     : (flatValues[0] ?? "");
@@ -74,19 +79,34 @@ export function SelectableList({
   }
 
   return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      className="min-h-[200px] max-h-[280px] overflow-y-auto rounded-md border border-border bg-background p-1"
-    >
-      {groups.map((group, groupIndex) => (
-        <div key={group.label ?? `group-${groupIndex}`}>
-          {group.label ? (
-            <div className="px-2 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {group.label}
-            </div>
-          ) : null}
-          {group.options.map((option) => {
+    <div className="space-y-2">
+      <div className="relative">
+        <SearchSm
+          size={16}
+          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          disabled={disabled}
+          placeholder={searchPlaceholder}
+          aria-label={ariaLabel ? `Search ${ariaLabel}` : "Search"}
+          className="h-8 pl-8"
+        />
+      </div>
+
+      <div
+        role="radiogroup"
+        aria-label={ariaLabel}
+        className="max-h-[280px] overflow-y-auto"
+      >
+        {filtered.length === 0 ? (
+          <div className="px-2 py-2 text-sm text-muted-foreground">
+            No results
+          </div>
+        ) : (
+          filtered.map((option) => {
             const selected = option.value === value;
             return (
               <button
@@ -114,9 +134,9 @@ export function SelectableList({
                 ) : null}
               </button>
             );
-          })}
-        </div>
-      ))}
+          })
+        )}
+      </div>
     </div>
   );
 }

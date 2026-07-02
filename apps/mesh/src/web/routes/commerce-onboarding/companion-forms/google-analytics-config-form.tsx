@@ -113,10 +113,7 @@ export function GoogleAnalyticsConfigForm({
               <FormLabel>Google Analytics Property</FormLabel>
               <FormControl>
                 <SelectableList
-                  groups={options.map((group) => ({
-                    label: group.account,
-                    options: group.options,
-                  }))}
+                  options={options.flatMap((group) => group.options)}
                   value={field.value}
                   onChange={field.onChange}
                   disabled={isPending}
