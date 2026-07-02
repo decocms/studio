@@ -35,9 +35,110 @@ interface UnifiedAuthFormProps {
    * Brand element rendered above the header. Defaults to the deco logo.
    */
   brand?: React.ReactNode;
+  /** Optional localized copy for this auth surface. */
+  copy?: Partial<UnifiedAuthFormCopy>;
 }
 
 type FormView = "signIn" | "signUp" | "forgotPassword" | "emailOtp";
+
+export interface UnifiedAuthFormCopy {
+  signUpFailed: string;
+  signInFailed: string;
+  authenticationFailed: string;
+  resetEmailFailed: string;
+  otpSendFailed: string;
+  invalidCode: string;
+  invalidEmail: string;
+  invalidEmailOrPassword: string;
+  accountExists: string;
+  networkError: string;
+  tooManyAttempts: string;
+  invalidOrExpiredCode: string;
+  genericError: string;
+  resetPasswordTitle: string;
+  verificationCodeTitle: string;
+  welcomeTitle: string;
+  resetPasswordSubtitle: string;
+  codeSentTo: (email: string) => string;
+  defaultSubtitle: string;
+  resetEmailSent: string;
+  continueWith: (provider: string) => string;
+  divider: string;
+  emailLabel: string;
+  emailPlaceholder: string;
+  sending: string;
+  sendCode: string;
+  verificationCodeLabel: string;
+  enterCodePlaceholder: string;
+  verifying: string;
+  verify: string;
+  useDifferentEmail: string;
+  sendResetLink: string;
+  nameLabel: string;
+  namePlaceholder: string;
+  passwordLabel: string;
+  forgotPassword: string;
+  creatingAccount: string;
+  signingIn: string;
+  continue: string;
+  backToSignIn: string;
+  signInWithPassword: string;
+  alreadyHaveAccount: string;
+  dontHaveAccount: string;
+  signIn: string;
+  signUp: string;
+  signInWithEmailCode: string;
+}
+
+const DEFAULT_AUTH_FORM_COPY: UnifiedAuthFormCopy = {
+  signUpFailed: "Sign up failed",
+  signInFailed: "Sign in failed",
+  authenticationFailed: "Authentication failed",
+  resetEmailFailed: "Failed to send reset email",
+  otpSendFailed: "Failed to send code",
+  invalidCode: "Invalid code",
+  invalidEmail: "Invalid email address",
+  invalidEmailOrPassword: "Invalid email or password. Please try again.",
+  accountExists:
+    "An account with this email already exists. Try signing in instead.",
+  networkError: "Network error. Please check your connection and try again.",
+  tooManyAttempts: "Too many attempts. Please wait a moment and try again.",
+  invalidOrExpiredCode: "Invalid or expired code. Please try again.",
+  genericError: "An error occurred. Please try again.",
+  resetPasswordTitle: "Reset your password",
+  verificationCodeTitle: "Enter verification code",
+  welcomeTitle: "Welcome to deco",
+  resetPasswordSubtitle: "We'll send you a reset link",
+  codeSentTo: (email) => `Code sent to ${email}`,
+  defaultSubtitle: "Sign in or create a new account",
+  resetEmailSent: "Check your email for a password reset link.",
+  continueWith: (provider) => `Continue with ${provider}`,
+  divider: "or",
+  emailLabel: "Email",
+  emailPlaceholder: "Email address",
+  sending: "Sending...",
+  sendCode: "Send code",
+  verificationCodeLabel: "Verification code",
+  enterCodePlaceholder: "Enter code",
+  verifying: "Verifying...",
+  verify: "Verify",
+  useDifferentEmail: "Use a different email",
+  sendResetLink: "Send reset link",
+  nameLabel: "Name",
+  namePlaceholder: "Your name",
+  passwordLabel: "Password",
+  forgotPassword: "Forgot password?",
+  creatingAccount: "Creating account...",
+  signingIn: "Signing in...",
+  continue: "Continue",
+  backToSignIn: "Back to sign in",
+  signInWithPassword: "Sign in with password instead",
+  alreadyHaveAccount: "Already have an account? ",
+  dontHaveAccount: "Don't have an account? ",
+  signIn: "Sign in",
+  signUp: "Sign up",
+  signInWithEmailCode: "Sign in with email code",
+};
 
 export function UnifiedAuthForm({
   redirectUrl,
@@ -45,6 +146,7 @@ export function UnifiedAuthForm({
   title,
   subtitle,
   brand,
+  copy: copyOverrides,
 }: UnifiedAuthFormProps) {
   const { emailAndPassword, resetPassword, emailOtp, socialProviders } =
     useAuthConfig();
@@ -62,6 +164,7 @@ export function UnifiedAuthForm({
   });
   const [emailError, setEmailError] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const copy = { ...DEFAULT_AUTH_FORM_COPY, ...copyOverrides };
 
   const isSignUp = view === "signUp";
   const isForgotPassword = view === "forgotPassword";
@@ -85,18 +188,18 @@ export function UnifiedAuthForm({
             name: name || "",
           });
           if (result.error) {
-            throw new Error(result.error.message || "Sign up failed");
+            throw new Error(result.error.message || copy.signUpFailed);
           }
           return result;
         } else {
           const result = await authClient.signIn.email({ email, password });
           if (result.error) {
-            throw new Error(result.error.message || "Sign in failed");
+            throw new Error(result.error.message || copy.signInFailed);
           }
           return result;
         }
       } catch (err) {
-        throw err instanceof Error ? err : new Error("Authentication failed");
+        throw err instanceof Error ? err : new Error(copy.authenticationFailed);
       }
     },
     onSuccess: () => {
@@ -117,7 +220,7 @@ export function UnifiedAuthForm({
         redirectTo: "/reset-password",
       });
       if (result.error) {
-        throw new Error(result.error.message || "Failed to send reset email");
+        throw new Error(result.error.message || copy.resetEmailFailed);
       }
       return result;
     },
@@ -139,7 +242,7 @@ export function UnifiedAuthForm({
         type: "sign-in",
       });
       if (result.error) {
-        throw new Error(result.error.message || "Failed to send code");
+        throw new Error(result.error.message || copy.otpSendFailed);
       }
       return result;
     },
@@ -161,7 +264,7 @@ export function UnifiedAuthForm({
         otp,
       });
       if (result.error) {
-        throw new Error(result.error.message || "Invalid code");
+        throw new Error(result.error.message || copy.invalidCode);
       }
       return result;
     },
@@ -183,7 +286,7 @@ export function UnifiedAuthForm({
 
   const handleEmailBlur = () => {
     if (email.trim() && !validateEmail(email)) {
-      setEmailError("Invalid email address");
+      setEmailError(copy.invalidEmail);
     }
   };
 
@@ -191,7 +294,7 @@ export function UnifiedAuthForm({
     e.preventDefault();
 
     if (!validateEmail(email)) {
-      setEmailError("Invalid email address");
+      setEmailError(copy.invalidEmail);
       return;
     }
 
@@ -202,7 +305,7 @@ export function UnifiedAuthForm({
     e.preventDefault();
 
     if (!validateEmail(email)) {
-      setEmailError("Invalid email address");
+      setEmailError(copy.invalidEmail);
       return;
     }
 
@@ -213,7 +316,7 @@ export function UnifiedAuthForm({
     e.preventDefault();
 
     if (!validateEmail(email)) {
-      setEmailError("Invalid email address");
+      setEmailError(copy.invalidEmail);
       return;
     }
 
@@ -282,45 +385,45 @@ export function UnifiedAuthForm({
     const errorMessage = error.message.toLowerCase();
 
     if (errorMessage.includes("unauthorized") || errorMessage.includes("401")) {
-      return "Invalid email or password. Please try again.";
+      return copy.invalidEmailOrPassword;
     }
 
     if (
       errorMessage.includes("already exists") ||
       errorMessage.includes("409")
     ) {
-      return "An account with this email already exists. Try signing in instead.";
+      return copy.accountExists;
     }
 
     if (errorMessage.includes("network") || errorMessage.includes("fetch")) {
-      return "Network error. Please check your connection and try again.";
+      return copy.networkError;
     }
 
     if (errorMessage.includes("rate limit") || errorMessage.includes("429")) {
-      return "Too many attempts. Please wait a moment and try again.";
+      return copy.tooManyAttempts;
     }
 
     if (errorMessage.includes("invalid") && errorMessage.includes("otp")) {
-      return "Invalid or expired code. Please try again.";
+      return copy.invalidOrExpiredCode;
     }
 
-    return error.message || "An error occurred. Please try again.";
+    return error.message || copy.genericError;
   };
 
   const displayError = error || forgotPasswordError || otpError;
 
   const headerTitle = isForgotPassword
-    ? "Reset your password"
+    ? copy.resetPasswordTitle
     : isEmailOtp && otpSent
-      ? "Enter verification code"
-      : (title ?? "Welcome to deco");
+      ? copy.verificationCodeTitle
+      : (title ?? copy.welcomeTitle);
 
   const headerSubtitle = isForgotPassword
-    ? "We'll send you a reset link"
+    ? copy.resetPasswordSubtitle
     : isEmailOtp && otpSent
-      ? `Code sent to ${email}`
+      ? copy.codeSentTo(email)
       : subtitle === undefined
-        ? "Sign in or create a new account"
+        ? copy.defaultSubtitle
         : subtitle;
 
   return (
@@ -361,7 +464,7 @@ export function UnifiedAuthForm({
       {/* Success message for forgot password */}
       {resetEmailSent && (
         <div className="rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-600 dark:text-emerald-400 text-center">
-          Check your email for a password reset link.
+          {copy.resetEmailSent}
         </div>
       )}
 
@@ -394,8 +497,10 @@ export function UnifiedAuthForm({
                     aria-hidden="true"
                   />
                 )}
-                Continue with{" "}
-                {provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}
+                {copy.continueWith(
+                  provider.name.charAt(0).toUpperCase() +
+                    provider.name.slice(1),
+                )}
               </button>
             ))}
           </div>
@@ -408,7 +513,9 @@ export function UnifiedAuthForm({
         (emailAndPassword.enabled || emailOtp.enabled) && (
           <div className="flex items-center gap-2.5 -my-4">
             <div className="h-px flex-1 bg-border" />
-            <span className="text-base text-muted-foreground">or</span>
+            <span className="text-base text-muted-foreground">
+              {copy.divider}
+            </span>
             <div className="h-px flex-1 bg-border" />
           </div>
         )}
@@ -420,11 +527,11 @@ export function UnifiedAuthForm({
             <form onSubmit={handleSendOtp} className="grid gap-2">
               <div className="grid gap-2">
                 <label className="text-sm font-medium text-foreground">
-                  Email
+                  {copy.emailLabel}
                 </label>
                 <Input
                   type="email"
-                  placeholder="Email address"
+                  placeholder={copy.emailPlaceholder}
                   value={email}
                   onChange={handleInputChange(setEmail)}
                   onBlur={handleEmailBlur}
@@ -443,18 +550,18 @@ export function UnifiedAuthForm({
                 disabled={isLoading || !canSubmit}
                 className="flex h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
               >
-                {isLoading ? "Sending..." : "Send code"}
+                {isLoading ? copy.sending : copy.sendCode}
               </button>
             </form>
           ) : (
             <form onSubmit={handleVerifyOtp} className="grid gap-2">
               <div className="grid gap-2">
                 <label className="text-sm font-medium text-foreground">
-                  Verification code
+                  {copy.verificationCodeLabel}
                 </label>
                 <Input
                   type="text"
-                  placeholder="Enter code"
+                  placeholder={copy.enterCodePlaceholder}
                   value={otp}
                   onChange={handleInputChange(setOtp)}
                   required
@@ -471,7 +578,7 @@ export function UnifiedAuthForm({
                 disabled={isLoading || !canSubmit}
                 className="flex h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:opacity-50 disabled:pointer-events-none"
               >
-                {isLoading ? "Verifying..." : "Verify"}
+                {isLoading ? copy.verifying : copy.verify}
               </button>
 
               <button
@@ -485,7 +592,7 @@ export function UnifiedAuthForm({
                 disabled={isLoading}
                 className="mt-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                Use a different email
+                {copy.useDifferentEmail}
               </button>
             </form>
           )}
@@ -497,7 +604,7 @@ export function UnifiedAuthForm({
         <form onSubmit={handleForgotPassword} className="grid gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
-              Email
+              {copy.emailLabel}
             </label>
             <Input
               type="email"
@@ -521,7 +628,7 @@ export function UnifiedAuthForm({
             className="w-full font-semibold"
             size="xl"
           >
-            {isLoading ? "Sending..." : "Send reset link"}
+            {isLoading ? copy.sending : copy.sendResetLink}
           </Button>
         </form>
       )}
@@ -532,11 +639,11 @@ export function UnifiedAuthForm({
           {isSignUp && (
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Name
+                {copy.nameLabel}
               </label>
               <Input
                 type="text"
-                placeholder="Your name"
+                placeholder={copy.namePlaceholder}
                 value={name}
                 onChange={handleInputChange(setName)}
                 required
@@ -547,7 +654,7 @@ export function UnifiedAuthForm({
           )}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
-              Email
+              {copy.emailLabel}
             </label>
             <Input
               type="email"
@@ -567,7 +674,7 @@ export function UnifiedAuthForm({
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-foreground">
-                Password
+                {copy.passwordLabel}
               </label>
               {!isSignUp && resetPassword.enabled && (
                 <button
@@ -575,7 +682,7 @@ export function UnifiedAuthForm({
                   onClick={() => switchView("forgotPassword")}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Forgot password?
+                  {copy.forgotPassword}
                 </button>
               )}
             </div>
@@ -608,9 +715,9 @@ export function UnifiedAuthForm({
               >
                 {isLoading
                   ? isSignUp
-                    ? "Creating account..."
-                    : "Signing in..."
-                  : "Continue"}
+                    ? copy.creatingAccount
+                    : copy.signingIn
+                  : copy.continue}
               </Button>
             </div>
           </div>
@@ -626,7 +733,7 @@ export function UnifiedAuthForm({
             disabled={isLoading}
             className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
           >
-            Back to sign in
+            {copy.backToSignIn}
           </button>
         ) : isEmailOtp && emailAndPassword.enabled ? (
           <button
@@ -635,18 +742,18 @@ export function UnifiedAuthForm({
             disabled={isLoading}
             className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
           >
-            Sign in with password instead
+            {copy.signInWithPassword}
           </button>
         ) : !isEmailOtp && emailAndPassword.enabled ? (
           <>
-            {isSignUp ? "Already have an account? " : "Don't have an account? "}
+            {isSignUp ? copy.alreadyHaveAccount : copy.dontHaveAccount}
             <button
               type="button"
               onClick={() => switchView(isSignUp ? "signIn" : "signUp")}
               disabled={isLoading}
               className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
             >
-              {isSignUp ? "Sign in" : "Sign up"}
+              {isSignUp ? copy.signIn : copy.signUp}
             </button>
             {emailOtp.enabled && (
               <>
@@ -657,7 +764,7 @@ export function UnifiedAuthForm({
                   disabled={isLoading}
                   className="font-medium text-[#8CAA25] hover:underline disabled:opacity-50"
                 >
-                  Sign in with email code
+                  {copy.signInWithEmailCode}
                 </button>
               </>
             )}

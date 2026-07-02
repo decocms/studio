@@ -103,7 +103,7 @@ describe("getConfigurationSummaryEntries", () => {
         currency: "",
       }),
     ).toEqual([
-      { key: "accountName", label: "Account Name", value: "electrolux" },
+      { key: "accountName", label: "Nome da conta", value: "electrolux" },
     ]);
   });
 });

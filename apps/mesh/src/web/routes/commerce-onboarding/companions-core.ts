@@ -147,6 +147,15 @@ export function hasConfigurationValues(
 }
 
 function formatConfigurationKey(key: string): string {
+  const labels: Record<string, string> = {
+    accountName: "Nome da conta",
+    appKey: "App Key",
+    appToken: "App Token",
+    propertyId: "Propriedade",
+    siteUrl: "Site",
+  };
+  if (labels[key]) return labels[key];
+
   return key
     .replace(/[_-]+/g, " ")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")

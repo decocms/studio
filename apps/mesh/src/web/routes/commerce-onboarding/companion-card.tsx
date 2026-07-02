@@ -96,7 +96,7 @@ export function CompanionCard({
         <p className="flex-1 text-sm text-foreground">{card.title}</p>
         {card.satisfied ? (
           <div className="flex h-8 items-center gap-2 px-3 text-sm text-muted-foreground">
-            <CheckCircle size={16} /> Connected
+            <CheckCircle size={16} /> Conectado
           </div>
         ) : (
           <Button
@@ -105,19 +105,19 @@ export function CompanionCard({
             size="sm"
             disabled={disabled || connecting}
             onClick={onConnect}
-            aria-label={`Connect ${card.title}`}
+            aria-label={`Conectar ${card.title}`}
           >
             {connecting ? (
               <Loading01 size={16} className="animate-spin" />
             ) : (
-              "Connect"
+              "Conectar"
             )}
           </Button>
         )}
       </div>
       <div className="flex flex-col gap-1 px-1 py-2">
         {card.checks !== null && (
-          <UnlockLine>+ {card.checks} checks</UnlockLine>
+          <UnlockLine>+ {card.checks} verificações</UnlockLine>
         )}
         {card.headline && <UnlockLine>{card.headline}</UnlockLine>}
         {card.bullets.map((b) => (
@@ -125,7 +125,7 @@ export function CompanionCard({
         ))}
         {!card.satisfied && card.candidateConnectionId && (
           <p className="px-1 text-xs text-muted-foreground">
-            Using your existing {card.title}
+            Usando sua conexão existente de {card.title}
           </p>
         )}
       </div>
@@ -178,7 +178,7 @@ function NotAvailableNote({ title }: NotAvailableNoteProps) {
   return (
     <div className="grid gap-3 border-t border-border pt-3">
       <p className="text-xs text-muted-foreground">
-        Configuration isn't available here yet for {title}.
+        A configuração ainda não está disponível aqui para {title}.
       </p>
     </div>
   );
@@ -243,10 +243,10 @@ function CompanionConfiguration({
       <div className="grid gap-3 border-t border-border pt-3">
         <div className="flex items-center justify-between gap-3">
           <div className="grid gap-1">
-            <p className="text-sm font-medium text-foreground">Configuration</p>
+            <p className="text-sm font-medium text-foreground">Configuração</p>
             {savedConfigEntries.length === 0 && (
               <p className="text-xs text-muted-foreground">
-                No configuration values saved yet.
+                Nenhum valor de configuração foi salvo ainda.
               </p>
             )}
           </div>
@@ -258,13 +258,13 @@ function CompanionConfiguration({
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => setDialogOpen(true)}
-                  aria-label={`Edit ${card.title} configuration`}
+                  aria-label={`Editar configuração de ${card.title}`}
                   disabled={!FormComponent}
                 >
                   <Edit03 size={14} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Edit configuration</TooltipContent>
+              <TooltipContent>Editar configuração</TooltipContent>
             </Tooltip>
           ) : (
             <Button
@@ -274,7 +274,7 @@ function CompanionConfiguration({
               onClick={() => setDialogOpen(true)}
               disabled={!FormComponent}
             >
-              Configure
+              Configurar
             </Button>
           )}
         </div>
@@ -309,7 +309,7 @@ function CompanionConfiguration({
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <DialogTitle>{card.title}</DialogTitle>
                 <DialogDescription>
-                  Configure {card.title} to enrich data
+                  Configure o {card.title} para enriquecer os dados
                 </DialogDescription>
               </div>
             </DialogHeader>

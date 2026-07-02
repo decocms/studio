@@ -15,7 +15,7 @@ export function SelectableList({
   onChange,
   disabled,
   ariaLabel,
-  searchPlaceholder = "Search…",
+  searchPlaceholder = "Buscar...",
 }: {
   options: SelectableOption[];
   value: string;
@@ -93,7 +93,7 @@ export function SelectableList({
           onChange={(e) => setQuery(e.target.value)}
           disabled={disabled}
           placeholder={searchPlaceholder}
-          aria-label={`Search ${ariaLabel}`}
+          aria-label={`Buscar ${ariaLabel}`}
           className="h-8 pl-8"
         />
       </div>
@@ -105,7 +105,7 @@ export function SelectableList({
       >
         {filtered.length === 0 ? (
           <div className="px-2 py-2 text-sm text-muted-foreground">
-            No results
+            Nenhum resultado
           </div>
         ) : (
           filtered.map((option) => {

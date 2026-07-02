@@ -50,20 +50,20 @@ function commerceDiscoveryVirtualMcpId(orgId: string) {
 }
 
 async function signUpOnCurrentLoginPage(page: Page, email: string) {
-  const nameField = page.getByPlaceholder("Your name");
+  const nameField = page.getByPlaceholder("Seu nome");
   const inSignupMode = await nameField
     .waitFor({ state: "visible", timeout: 2000 })
     .then(() => true)
     .catch(() => false);
   if (!inSignupMode) {
-    await page.getByRole("button", { name: "Sign up" }).click();
+    await page.getByRole("button", { name: /^(Sign up|Criar conta)$/ }).click();
     await nameField.waitFor({ state: "visible" });
   }
 
   await nameField.fill(`Commerce ${Date.now()}`);
   await page.getByPlaceholder("you@example.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(PASSWORD);
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
 }
 
 async function waitForConnection(db: Client, id: string) {
@@ -245,7 +245,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await expect(page.getByPlaceholder("you@example.com")).toBeVisible();
     await expect(
       page.getByRole("heading", {
-        name: "Rather have us walk you through it?",
+        name: "Prefere que a gente acompanhe você?",
       }),
     ).toBeVisible();
 
@@ -255,7 +255,7 @@ test.describe("Commerce onboarding route isolation", () => {
       timeout: 15_000,
     });
     await expect(
-      page.getByRole("button", { name: "See full report" }),
+      page.getByRole("button", { name: "Ver relatório completo" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -278,7 +278,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.goto("/commerce-onboarding?siteUrl=https://example.com/path");
 
     await expect(
-      page.getByRole("button", { name: "See full report" }),
+      page.getByRole("button", { name: "Ver relatório completo" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -337,23 +337,23 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding?siteUrl=example.com");
     await expect(
-      page.getByRole("button", { name: "See full report" }),
+      page.getByRole("button", { name: "Ver relatório completo" }),
     ).toBeVisible({
       timeout: 20_000,
     });
 
     await page.goto("/commerce-onboarding");
 
-    await expect(page.getByLabel("Website URL")).toHaveCount(0);
+    await expect(page.getByLabel("URL do site")).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "See full report" }),
+      page.getByRole("button", { name: "Ver relatório completo" }),
     ).toBeVisible({
       timeout: 20_000,
     });
     // The old "Companion MCPs" placeholder was replaced by the companion
     // section, whose header is hidden when no companion requirements resolve
     // (the case in this e2e env). The ready view is already asserted via the
-    // "See full report" CTA above; here we only guard against leaking raw
+    // "Ver relatório completo" CTA above; here we only guard against leaking raw
     // connection titles into the onboarding view.
     await expect(page.getByText("Commerce Discovery MCP")).toHaveCount(0);
     await expect(page.getByText("Commerce Discovery agent")).toHaveCount(0);
@@ -378,9 +378,9 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding?siteUrl=example.com");
 
-    const loading = page.getByText("Unlock your full diagnostic");
+    const loading = page.getByText("Desbloqueie seu diagnóstico completo");
     const meetingHeading = page.getByRole("heading", {
-      name: "Rather have us walk you through it?",
+      name: "Prefere que a gente acompanhe você?",
     });
 
     await expect(loading).toBeVisible();
@@ -391,7 +391,7 @@ test.describe("Commerce onboarding route isolation", () => {
       timeout: 1_000,
     });
     await expect(
-      page.getByRole("button", { name: "See full report" }),
+      page.getByRole("button", { name: "Ver relatório completo" }),
     ).toBeVisible({ timeout: 20_000 });
   });
 
@@ -406,17 +406,17 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding");
 
-    await expect(page.getByLabel("Website URL")).toBeVisible();
-    await page.getByLabel("Website URL").fill("ftp://example.com");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByLabel("URL do site")).toBeVisible();
+    await page.getByLabel("URL do site").fill("ftp://example.com");
+    await page.getByRole("button", { name: "Continuar" }).click();
     await expect(
-      page.getByText("Use an HTTP or HTTPS website URL."),
+      page.getByText("Use uma URL de site HTTP ou HTTPS."),
     ).toBeVisible();
 
-    await page.getByLabel("Website URL").fill("example.com");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByLabel("URL do site").fill("example.com");
+    await page.getByRole("button", { name: "Continuar" }).click();
     await expect(
-      page.getByRole("button", { name: "See full report" }),
+      page.getByRole("button", { name: "Ver relatório completo" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -434,7 +434,7 @@ test.describe("Commerce onboarding route isolation", () => {
     const virtualMcpId = commerceDiscoveryVirtualMcpId(orgId);
 
     await page.goto("/commerce-onboarding?siteUrl=example.com");
-    await page.getByRole("button", { name: "See full report" }).click();
+    await page.getByRole("button", { name: "Ver relatório completo" }).click();
 
     await page.waitForURL(
       (url) =>
@@ -481,7 +481,7 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding");
 
-    await expect(page.getByLabel("Website URL")).toBeVisible();
+    await expect(page.getByLabel("URL do site")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
 
     const orgId = await orgIdForSlug(db, expectedSlug);
@@ -527,7 +527,7 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding");
 
-    await expect(page.getByLabel("Website URL")).toBeVisible();
+    await expect(page.getByLabel("URL do site")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
 
     const memberRow = await db.query<{ id: string }>(
@@ -597,7 +597,7 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/commerce-onboarding");
 
-    await expect(page.getByLabel("Website URL")).toBeVisible();
+    await expect(page.getByLabel("URL do site")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/commerce-onboarding");
 
     const createdOrgId = await orgIdForSlug(db, expectedSlug);
@@ -658,7 +658,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.goto("/onboarding");
 
     await expect(page).toHaveURL((url) => url.pathname === "/onboarding");
-    await expect(page.getByLabel("Website URL")).toHaveCount(0);
+    await expect(page.getByLabel("URL do site")).toHaveCount(0);
     await expect(page.getByText("Commerce Discovery")).toHaveCount(0);
   });
 });

@@ -13,11 +13,9 @@ import { CompanionMcpsSectionSkeleton } from "./companion-mcps-section";
 describe("commerce onboarding loading state", () => {
   test("centralizes copy for full-page loading variants", () => {
     expect(getCommerceOnboardingLoadingLabel("workspace")).toBe(
-      "Preparing your commerce workspace...",
+      "Preparando seu workspace de commerce...",
     );
-    expect(getCommerceOnboardingLoadingLabel("generic")).toBe(
-      "Preparing workspace...",
-    );
+    expect(getCommerceOnboardingLoadingLabel("generic")).toBe("Preparando...");
   });
 
   test("renders the full-page loading shell", () => {
@@ -27,16 +25,20 @@ describe("commerce onboarding loading state", () => {
 
     expect(getByRole("status")).toBeInTheDocument();
     expect(
-      getByText("Preparing your commerce workspace..."),
+      getByText("Preparando seu workspace de commerce..."),
     ).toBeInTheDocument();
   });
 
   test("renders the diagnostic card skeleton loading state", () => {
     const { getByText, container } = render(<CompanionMcpsSectionSkeleton />);
 
-    expect(getByText("Unlock your full diagnostic")).toBeInTheDocument();
     expect(
-      getByText("Connect your tools to unlock 100+ checks across your funnel."),
+      getByText("Desbloqueie seu diagnóstico completo"),
+    ).toBeInTheDocument();
+    expect(
+      getByText(
+        "Conecte suas ferramentas para liberar mais de 100 verificações no seu funil.",
+      ),
     ).toBeInTheDocument();
     expect(container.querySelectorAll(".animate-pulse")).toHaveLength(15);
   });

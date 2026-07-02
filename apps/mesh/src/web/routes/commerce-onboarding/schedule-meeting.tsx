@@ -11,9 +11,9 @@ import { ArrowUpRight, User01 } from "@untitledui/icons";
 const SCHEDULE_MEETING_URL =
   "https://decocms-tanstack.deco-cx.workers.dev/agendar";
 
-const HEADLINE = "Rather have us walk you through it?";
+const HEADLINE = "Prefere que a gente acompanhe você?";
 const BODY =
-  "Book a 20-minute call and we'll run the diagnostic with you, live.";
+  "Agende uma chamada de 20 minutos e rodamos o diagnóstico com você, ao vivo.";
 
 /**
  * Build the scheduling link, prefilling the site under diagnosis and the
@@ -50,7 +50,7 @@ function ScheduleMeetingCta({
       className={cn("w-full", className)}
     >
       <a href={href} target="_blank" rel="noreferrer">
-        Schedule a meeting
+        Agendar uma reunião
         <ArrowUpRight size={16} />
       </a>
     </Button>
@@ -156,10 +156,10 @@ export function ScheduleMeetingBanner({
       </span>
       <span className="flex flex-1 flex-col gap-0.5">
         <span className="text-base font-medium leading-5 text-foreground">
-          Prefer to talk to a human?
+          Prefere falar com uma pessoa?
         </span>
         <span className="text-sm leading-5 text-muted-foreground">
-          Book a call and we'll run the diagnostic with you.
+          Agende uma chamada e rodamos o diagnóstico com você.
         </span>
       </span>
       <ArrowUpRight size={18} className="shrink-0 text-muted-foreground" />

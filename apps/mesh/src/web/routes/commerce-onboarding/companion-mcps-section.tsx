@@ -24,10 +24,11 @@ function SectionIntro() {
   return (
     <div className="grid gap-1.5">
       <p className="text-2xl font-medium text-foreground">
-        Unlock your full diagnostic
+        Desbloqueie seu diagnóstico completo
       </p>
       <p className="text-base text-muted-foreground">
-        Connect your tools to unlock 100+ checks across your funnel.
+        Conecte suas ferramentas para liberar mais de 100 verificações no seu
+        funil.
       </p>
     </div>
   );
@@ -65,10 +66,10 @@ function CompanionMcpsSectionError({ onRetry }: { onRetry: () => void }) {
         className="rounded-2xl border border-border bg-card p-4"
       >
         <p className="text-sm text-foreground">
-          Couldn't load companion integrations.
+          Não foi possível carregar as integrações complementares.
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Something went wrong loading your integrations.
+          Algo deu errado ao carregar suas integrações.
         </p>
         <Button
           type="button"
@@ -77,7 +78,7 @@ function CompanionMcpsSectionError({ onRetry }: { onRetry: () => void }) {
           className="mt-3"
           onClick={onRetry}
         >
-          Try again
+          Tentar novamente
         </Button>
       </div>
     </div>
