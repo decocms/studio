@@ -15,9 +15,9 @@ import { Button } from "@deco/ui/components/button.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult, toPropertyOptions } from "../companions-core.ts";
-import { LoadingIndicator } from "../loading-indicator.tsx";
 import { useSaveCompanionConfig } from "./use-save-companion-config.ts";
 import { SelectableList } from "./selectable-list.tsx";
+import { LoadingIndicator } from "../loading-indicator.tsx";
 import type { CompanionFormProps } from "./types.ts";
 
 const schema = z.object({
@@ -120,6 +120,7 @@ export function GoogleAnalyticsConfigForm({
                   value={field.value}
                   onChange={field.onChange}
                   disabled={isPending}
+                  ariaLabel="Google Analytics Property"
                 />
               </FormControl>
               <FormMessage />

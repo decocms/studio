@@ -136,6 +136,7 @@ export function GoogleSearchConsoleConfigForm({
                   value={field.value}
                   onChange={field.onChange}
                   disabled={isPending}
+                  ariaLabel="Verified Site"
                 />
               </FormControl>
               <FormMessage />
