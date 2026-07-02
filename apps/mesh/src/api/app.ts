@@ -1862,10 +1862,17 @@ export async function createApp(options: CreateAppOptions = {}) {
     // Require either user or API key authentication
     if (!studioContext.auth.user?.id && !studioContext.auth.apiKey?.id) {
       const url = new URL(c.req.url);
+      // Behind a TLS-terminating reverse proxy (e.g. Caddy/nginx) the request
+      // reaches us over http, so `url.origin` would advertise an http://
+      // resource_metadata URL and OAuth-capable clients that require https
+      // (e.g. Claude) reject it. Honor X-Forwarded-Proto so the advertised
+      // URL matches the public scheme.
+      const fwdProto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim();
+      const origin = fwdProto ? `${fwdProto}://${url.host}` : url.origin;
       return (c.res = new Response(null, {
         status: 401,
         headers: {
-          "WWW-Authenticate": `Bearer realm="mcp",resource_metadata="${url.origin}${url.pathname}/.well-known/oauth-protected-resource"`,
+          "WWW-Authenticate": `Bearer realm="mcp",resource_metadata="${origin}${url.pathname}/.well-known/oauth-protected-resource"`,
         },
       }));
     }

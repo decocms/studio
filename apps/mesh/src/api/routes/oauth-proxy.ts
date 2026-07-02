@@ -13,8 +13,10 @@
  */
 
 import { Hono } from "hono";
+import { oAuthProtectedResourceMetadata } from "better-auth/plugins";
 import { ContextFactory } from "../../core/context-factory";
 import type { StudioContext } from "../../core/studio-context";
+import { auth } from "../../auth";
 import { retry, RetryError } from "@decocms/std";
 import {
   authorizationServerMetadataUrls,
@@ -388,6 +390,20 @@ export const protectedResourceMetadataHandler = async (c: {
   const connectionUrl = await getConnectionUrl(connectionId, ctx, scopedOrgId);
   if (!connectionUrl) {
     return c.json({ error: "Connection not found" }, 404);
+  }
+
+  // Virtual MCPs (`virtual://<id>`) are Studio-native aggregators with no
+  // downstream OAuth server to proxy — trying to fetch protected-resource
+  // metadata from `virtual://` fails ("protocol must be http/https/s3"). Their
+  // OAuth resource is Studio itself: the Better Auth MCP authorization server,
+  // which supports Dynamic Client Registration and therefore accepts an
+  // external MCP client's own `redirect_uri` (e.g. Claude Desktop). The
+  // connection `oauth-proxy` only accepts Studio's own origin, so it can't
+  // serve external clients. Hand back Better Auth's metadata instead.
+  if (connectionUrl.startsWith("virtual://")) {
+    const res = await oAuthProtectedResourceMetadata(auth)(c.req.raw);
+    const data = await res.json();
+    return Response.json(data, res);
   }
 
   const prefix = buildPathPrefix(orgSlug);

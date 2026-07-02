@@ -677,6 +677,21 @@ async function authenticateRequest(
       // ctx.organization on every request that doesn't target their first org.
       const orgIdHint = req.headers.get("x-org-id");
       const orgSlugHint = req.headers.get("x-org-slug");
+      // External MCP clients (Claude Desktop/Code) authenticate via OAuth and
+      // do NOT send x-org-* headers — the org they target is in the request
+      // path (`/api/:org/mcp/...`). Without honoring it, a multi-org member
+      // falls through to the single-membership guard below, resolves to NO
+      // role, and loses the admin/owner bypass (every connection tool call
+      // 403s "Access denied"). Derive the slug from the path as a hint.
+      const pathOrgSlug = (() => {
+        try {
+          const segs = new URL(req.url).pathname.split("/").filter(Boolean);
+          if (segs[0] === "api" && segs[1]) return decodeURIComponent(segs[1]);
+        } catch {
+          // Malformed URL — fall through to header/single-membership logic.
+        }
+        return undefined;
+      })();
 
       const membership = await timings.measure("auth_query_membership", () => {
         const base = db
@@ -700,6 +715,11 @@ async function authenticateRequest(
         if (orgSlugHint) {
           return base
             .where("organization.slug", "=", orgSlugHint)
+            .executeTakeFirst();
+        }
+        if (pathOrgSlug) {
+          return base
+            .where("organization.slug", "=", pathOrgSlug)
             .executeTakeFirst();
         }
         // No org hint — only resolve when the user has exactly one membership.
