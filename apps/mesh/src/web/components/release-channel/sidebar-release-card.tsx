@@ -17,7 +17,7 @@ function parseReleaseDate(date: string): number {
   return new Date(y, m - 1, d).getTime();
 }
 
-function pickFloatingCandidate(now: number) {
+function pickSidebarCandidate(now: number) {
   const latest = RELEASES[0];
   if (!latest) return null;
   const releaseTime = parseReleaseDate(latest.date);
@@ -41,11 +41,11 @@ function isUserOldEnoughForReleaseNotice(createdAt: unknown, now: number) {
   return now - createdAtTime >= MIN_USER_AGE_MS;
 }
 
-export function FloatingReleaseCard() {
+export function SidebarReleaseCard() {
   const { data: session } = authClient.useSession();
   const { isSeen, markSeen } = useReleaseSeenState();
   const now = Date.now();
-  const candidate = pickFloatingCandidate(now);
+  const candidate = pickSidebarCandidate(now);
 
   if (!candidate) return null;
   if (!isUserOldEnoughForReleaseNotice(session?.user?.createdAt, now)) {
@@ -57,13 +57,13 @@ export function FloatingReleaseCard() {
     <div
       role="region"
       aria-label="Release announcement"
-      className="fixed bottom-6 right-6 z-50 w-[min(360px,calc(100vw-3rem))] rounded-lg border border-border bg-background p-4 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className="relative rounded-lg border border-border bg-background p-3 shadow-sm"
     >
       <Button
         size="icon"
         variant="ghost"
         aria-label="Dismiss release announcement"
-        className="absolute right-2 top-2 size-7 text-muted-foreground"
+        className="absolute right-1.5 top-1.5 size-7 text-muted-foreground"
         onClick={() => markSeen(candidate.id)}
       >
         <XClose size={14} />

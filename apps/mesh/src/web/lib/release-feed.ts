@@ -198,7 +198,7 @@ export const RELEASES: Release[] = [
       {
         icon: Stars02,
         title: "Heads-up when features ship",
-        body: "New releases surface in a corner card the first time you see them, then stick around in your inbox.",
+        body: "New releases surface in the desktop sidebar the first time you see them, then stick around in your inbox.",
       },
       {
         icon: Inbox01,

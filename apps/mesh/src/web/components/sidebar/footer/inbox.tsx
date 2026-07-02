@@ -28,6 +28,7 @@ import { InvitationItem } from "@/web/components/sidebar/footer/invitation-item"
 import { JoinRequestItem } from "@/web/components/sidebar/footer/join-request-item";
 import { InboxReleaseItem } from "@/web/components/release-channel/inbox-release-item";
 import { ReleaseCard } from "@/web/components/release-channel/release-card";
+import { SidebarReleaseCard } from "@/web/components/release-channel/sidebar-release-card";
 import { useInboxFeed } from "@/web/hooks/use-inbox-feed";
 import {
   SidebarTopActions,
@@ -308,7 +309,8 @@ export function SidebarInboxFooter() {
   }
 
   return (
-    <SidebarFooter className="px-2 pb-3">
+    <SidebarFooter className="px-2 pb-3 gap-2">
+      <SidebarReleaseCard />
       <div className="flex items-center gap-1">
         <div className="flex-1 min-w-0">
           <SidebarMenu>
