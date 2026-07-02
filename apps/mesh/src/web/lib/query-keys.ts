@@ -49,16 +49,6 @@ export const KEYS = {
   // candidate connections satisfying a binding, and the registry batch).
   commerceDiscoveryCompanionSchema: (orgId: string, connectionId: string) =>
     ["commerce-discovery", "companion-schema", orgId, connectionId] as const,
-  commerceDiscoveryCompanionConnectionSchema: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-connection-schema",
-      orgId,
-      connectionId,
-    ] as const,
   commerceDiscoveryCompanionConnections: (orgId: string) =>
     ["commerce-discovery", "companion-connections", orgId] as const,
   commerceDiscoveryCompanionRegistry: (orgId: string, key: string) =>
@@ -73,6 +63,18 @@ export const KEYS = {
       orgId,
       connectionId,
     ] as const,
+  commerceDiscoveryCompanionGaProperties: (
+    orgId: string,
+    connectionId: string,
+  ) =>
+    [
+      "commerce-discovery",
+      "companion-ga-properties",
+      orgId,
+      connectionId,
+    ] as const,
+  commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
+    ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
 
   connectionActivity: (
     connectionId: string,

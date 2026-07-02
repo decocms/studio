@@ -272,3 +272,70 @@ export function buildCompanionCards(args: {
   }
   return cards;
 }
+
+export interface PropertyOptionGroup {
+  account: string;
+  options: Array<{ value: string; label: string }>;
+}
+
+/** Normalize both contextSiteUrl and GSC registered sites, then find a match.
+ * Handles formats: https://host/, https://www.host/, sc-domain:host, raw domain.
+ * Returns the matching site's siteUrl or null.
+ */
+export function matchGscSite(
+  contextSiteUrl: string | undefined,
+  sites: Array<{ siteUrl: string }>,
+): string | null {
+  if (!contextSiteUrl) return null;
+
+  const normalize = (url: string): string => {
+    // Strip sc-domain: prefix
+    if (url.startsWith("sc-domain:")) return url.substring(10);
+    // Parse URL and extract hostname
+    try {
+      const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
+      let host = parsed.hostname || "";
+      // Remove leading www.
+      if (host.startsWith("www.")) host = host.substring(4);
+      return host;
+    } catch {
+      return url;
+    }
+  };
+
+  const contextNorm = normalize(contextSiteUrl);
+  for (const site of sites) {
+    if (normalize(site.siteUrl) === contextNorm) {
+      return site.siteUrl;
+    }
+  }
+  return null;
+}
+
+/** Flatten GA get-account-summaries response into grouped select options.
+ * Groups properties by account display name. */
+export function toPropertyOptions(response: unknown): PropertyOptionGroup[] {
+  const data = response as
+    | {
+        response?: {
+          accountSummaries?: Array<{
+            account: string;
+            displayName: string;
+            propertySummaries?: Array<{
+              property: string;
+              displayName: string;
+            }>;
+          }>;
+        };
+      }
+    | undefined;
+
+  const summaries = data?.response?.accountSummaries ?? [];
+  return summaries.map((acc) => ({
+    account: acc.account,
+    options: (acc.propertySummaries ?? []).map((prop) => ({
+      value: prop.property,
+      label: prop.displayName,
+    })),
+  }));
+}

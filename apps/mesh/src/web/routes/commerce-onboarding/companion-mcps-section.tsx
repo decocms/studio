@@ -38,29 +38,14 @@ function CompanionCardSkeletons() {
   );
 }
 
-/**
- * Suspense fallback for CompanionMcpsSection. The section's `cdClient`
- * (useMCPClient → useSuspenseQuery) suspends on first mount while its MCP
- * connection is established; wrapping the section in its own boundary keeps that
- * suspense from bubbling to the page-level boundary and unmounting the header +
- * title + report CTA. This fallback mirrors the section's internal `isLoading`
- * UI (intro + card skeletons) so the title stays put across both phases.
- */
-export function CompanionMcpsSectionSkeleton() {
-  return (
-    <div className={SECTION_CONTAINER_CLASS}>
-      <SectionIntro />
-      <CompanionCardSkeletons />
-    </div>
-  );
-}
-
 export function CompanionMcpsSection({
   org,
   cdConnectionId,
+  siteUrl,
 }: {
   org: CompanionOrg;
   cdConnectionId: string;
+  siteUrl?: string;
 }) {
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id ?? "";
@@ -134,6 +119,7 @@ export function CompanionMcpsSection({
                 disabled={busy && connectingFieldKey !== card.fieldKey}
                 org={org}
                 selfClient={selfClient}
+                siteUrl={siteUrl}
                 onConnect={() => void connect(card)}
               />
             ))}
