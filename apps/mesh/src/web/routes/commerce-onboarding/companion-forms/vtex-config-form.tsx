@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import {
   Form,
   FormControl,
@@ -41,7 +41,7 @@ export function VtexConfigForm({
     },
   });
 
-  // Sync form when config changes from server
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- sync form when config changes from server
   useEffect(() => {
     form.reset({
       accountName: (card.configurationState?.accountName as string) || "",
