@@ -59,12 +59,25 @@ export interface DepMetricsInput {
   branch?: string;
 }
 
-// Cap the whole serialized line well under the pipeline's 16KB (16384)
-// truncation. We budget the FINAL line, not the raw array: `deps` is stored
-// as a string, so the outer JSON.stringify escapes every element's quotes
-// (`"x"` → `\"x\"`, +2 bytes each) — ignoring that undercounts short-dep-heavy
-// lines by ~2 bytes/dep and would let them cross 16KB.
-const MAX_LINE_BYTES = 15_500;
+// Cap each emitted line SMALL. Measured in prod: the log pipeline stores only
+// small lines from sandbox pods (observed max ~765 bytes across namespaces;
+// the earlier ~15KB single-line format was rejected outright with
+// "missing _msg field"). ~250-byte lines (the earlier per-dep format) survived
+// reliably, so we keep lines well inside that proven range. This means many
+// small lines per big install, which the collector may burst-sample — the
+// panel sums `sample_rate` to correct for that (unsampled → sample_rate=1).
+// We budget the FINAL line, not the raw array: `deps` is stored as a string,
+// so the outer JSON.stringify escapes every element's quotes (`"x"` → `\"x\"`,
+// +2 bytes each), which the per-element cost below accounts for.
+const MAX_LINE_BYTES = 600;
+
+// Bound the context fields so an unusually long branch/repo name can't inflate
+// the per-line envelope past the small cap — that would push even a single-dep
+// line over the limit and get the whole install's data dropped. 80 chars is
+// plenty to identify a repo/branch; the full value is never needed here.
+const MAX_META_BYTES = 80;
+const clipMeta = (s: string | undefined): string | undefined =>
+  s !== undefined && s.length > MAX_META_BYTES ? s.slice(0, MAX_META_BYTES) : s;
 
 /** Greedily pack `name@version` strings into groups so each rendered line
  * (envelope + double-encoded deps) stays under MAX_LINE_BYTES. `envelopeBytes`
@@ -111,8 +124,11 @@ export function buildDepLines(
   input: Omit<DepMetricsInput, "installRoot">,
 ): string[] {
   const flat = deps.map((d) => `${d.name}@${d.version}`);
+  const repoName = clipMeta(input.repoName);
+  const branch = clipMeta(input.branch);
   // Measure the line minus dep content once (deps="", 3-digit chunk counts as
-  // headroom) so the chunker can keep the FINAL line under the cap.
+  // headroom) so the chunker can keep the FINAL line under the cap. Uses the
+  // clipped meta so the budget matches what's actually emitted.
   const envelopeBytes = Buffer.byteLength(
     JSON.stringify({
       msg: "sandbox.deps",
@@ -122,8 +138,8 @@ export function buildDepLines(
       deps: "",
       bootId: input.bootId,
       packageManager: input.packageManager,
-      repoName: input.repoName,
-      branch: input.branch,
+      repoName,
+      branch,
     }),
   );
   const groups = chunkByBytes(flat, envelopeBytes);
@@ -137,8 +153,8 @@ export function buildDepLines(
       deps: JSON.stringify(group),
       bootId: input.bootId,
       packageManager: input.packageManager,
-      repoName: input.repoName,
-      branch: input.branch,
+      repoName,
+      branch,
     }),
   );
 }
