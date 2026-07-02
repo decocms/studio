@@ -92,10 +92,13 @@ export function useCommerceCompanions({
   // Key includes every input the queryFn reads from the closure so a schema or
   // config-state change (which alters the short-circuit and the WHERE clause)
   // triggers a fresh fetch instead of serving a stale empty/partial result.
+  // Each segment is namespaced (binding/app/linked) so the same string in
+  // different categories can't collapse into one key and cross-contaminate the
+  // cache — these map to distinct WHERE fields (app_name / app_id / id).
   const connectionsKey = [
-    ...bindingTypes,
-    ...registryAppIds,
-    ...[...linkedConnectionIds].sort(),
+    ...bindingTypes.map((t) => `binding:${t}`),
+    ...registryAppIds.map((a) => `app:${a}`),
+    ...linkedConnectionIds.map((id) => `linked:${id}`),
   ]
     .sort()
     .join(",");
