@@ -13,16 +13,11 @@ import {
 } from "@deco/ui/components/form.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
 import { DialogFooter } from "@deco/ui/components/dialog.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@deco/ui/components/select.tsx";
 import { KEYS } from "@/web/lib/query-keys";
 import { unwrapToolResult, matchGscSite } from "../companions-core.ts";
 import { useSaveCompanionConfig } from "./use-save-companion-config.ts";
+import { SelectableList } from "./selectable-list.tsx";
+import { LoadingIndicator } from "../loading-indicator.tsx";
 import type { CompanionFormProps } from "./types.ts";
 
 const schema = z.object({
@@ -80,8 +75,8 @@ export function GoogleSearchConsoleConfigForm({
 
   if (sitesQuery.isLoading) {
     return (
-      <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">Loading sites...</p>
+      <div className="flex min-h-[200px] items-center justify-center">
+        <LoadingIndicator label="Loading sites…" />
       </div>
     );
   }
@@ -129,22 +124,19 @@ export function GoogleSearchConsoleConfigForm({
             <FormItem>
               <FormLabel>Verified Site</FormLabel>
               <FormControl>
-                <Select
+                <SelectableList
+                  groups={[
+                    {
+                      options: sites.map((site) => ({
+                        value: site.siteUrl,
+                        label: site.siteUrl,
+                      })),
+                    },
+                  ]}
                   value={field.value}
-                  onValueChange={field.onChange}
+                  onChange={field.onChange}
                   disabled={isPending}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a site" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sites.map((site) => (
-                      <SelectItem key={site.siteUrl} value={site.siteUrl}>
-                        {site.siteUrl}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
