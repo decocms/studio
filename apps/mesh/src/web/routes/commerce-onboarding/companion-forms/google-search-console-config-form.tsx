@@ -8,7 +8,6 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from "@deco/ui/components/form.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -122,7 +121,6 @@ export function GoogleSearchConsoleConfigForm({
           name="siteUrl"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Verified Site</FormLabel>
               <FormControl>
                 <SelectableList
                   options={sites.map((site) => ({

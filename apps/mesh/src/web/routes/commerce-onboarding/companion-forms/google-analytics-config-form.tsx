@@ -8,7 +8,6 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from "@deco/ui/components/form.tsx";
 import { Button } from "@deco/ui/components/button.tsx";
@@ -110,7 +109,6 @@ export function GoogleAnalyticsConfigForm({
           name="propertyId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Google Analytics Property</FormLabel>
               <FormControl>
                 <SelectableList
                   options={options.flatMap((group) => group.options)}
