@@ -5,6 +5,7 @@
  * refuse), then unmount + rm the branch's files and drop the registry row.
  */
 import { join } from "node:path";
+import { RetryError, retry } from "@decocms/std";
 import type {
   LinkSandboxRegistry,
   SandboxInspection,
@@ -17,7 +18,7 @@ export interface SandboxActionsDeps {
   registry: Pick<LinkSandboxRegistry, "inspect" | "delete">;
   dataDir: string;
   /** Injectable for tests. Defaults to the real unmount-then-rm. */
-  purge?: (sandboxPath: string) => void;
+  purge?: (sandboxPath: string) => void | Promise<void>;
 }
 
 export interface SandboxActions {
@@ -39,22 +40,32 @@ export function createSandboxActions(deps: SandboxActionsDeps): SandboxActions {
       return deps.registry.inspect(handle);
     },
     async removeSandbox(handle) {
-      await deps.provider.deleteSandbox(handle);
-      // On refusal (active dispatch) the provider keeps tracking the handle.
-      if (deps.provider.hasHandle(handle)) {
-        return { ok: false, error: "Can't delete — run in progress" };
-      }
       try {
-        const rec = deps.registry.inspect(handle);
-        const sandboxPath =
-          rec?.sandboxPath ?? join(deps.dataDir, "sandboxes", handle);
-        purge(sandboxPath);
+        // The first attempt often fails transiently — the process may still be
+        // mid-shutdown (provider keeps the handle) or a just-unmounted volume is
+        // briefly busy. Retry the whole stop → verify → purge sequence once
+        // before bailing so the common case self-heals.
+        await retry(
+          async () => {
+            await deps.provider.deleteSandbox(handle);
+            // On refusal (active dispatch) the provider keeps tracking the handle.
+            if (deps.provider.hasHandle(handle)) {
+              throw new Error("Can't delete — run in progress");
+            }
+            const rec = deps.registry.inspect(handle);
+            const sandboxPath =
+              rec?.sandboxPath ?? join(deps.dataDir, "sandboxes", handle);
+            await purge(sandboxPath);
+          },
+          { maxAttempts: 2, minTimeout: 250, jitter: 0 },
+        );
         deps.registry.delete(handle);
         return { ok: true };
       } catch (err) {
+        const cause = err instanceof RetryError ? err.cause : err;
         return {
           ok: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: cause instanceof Error ? cause.message : String(cause),
         };
       }
     },

@@ -13,14 +13,16 @@ function sandboxWithVolumes(volumes: string[]): string {
 }
 
 describe("purgeSandboxFiles", () => {
-  it("detaches each direct child of org/ before removing the sandbox", () => {
+  it("detaches each direct child of org/ before removing the sandbox", async () => {
     const root = sandboxWithVolumes(["vol-a", "vol-b"]);
     const detached: string[] = [];
     const removed: string[] = [];
 
-    purgeSandboxFiles(root, {
+    await purgeSandboxFiles(root, {
       detach: (p) => detached.push(p),
-      rm: (p) => removed.push(p),
+      rm: (p) => {
+        removed.push(p);
+      },
     });
 
     expect(detached.sort()).toEqual(
@@ -29,14 +31,16 @@ describe("purgeSandboxFiles", () => {
     expect(removed).toEqual([root]);
   });
 
-  it("removes the sandbox even when there is no org/ dir", () => {
+  it("removes the sandbox even when there is no org/ dir", async () => {
     const root = mkdtempSync(join(tmpdir(), "deco-purge-"));
     const detached: string[] = [];
     const removed: string[] = [];
 
-    purgeSandboxFiles(root, {
+    await purgeSandboxFiles(root, {
       detach: (p) => detached.push(p),
-      rm: (p) => removed.push(p),
+      rm: (p) => {
+        removed.push(p);
+      },
     });
 
     expect(detached).toEqual([]);

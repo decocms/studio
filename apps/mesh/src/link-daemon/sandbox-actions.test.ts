@@ -30,7 +30,9 @@ describe("createSandboxActions.removeSandbox", () => {
       provider,
       registry: reg,
       dataDir: "/data",
-      purge: (p) => purged.push(p),
+      purge: (p) => {
+        purged.push(p);
+      },
     });
 
     const res = await actions.removeSandbox("h1");
@@ -50,13 +52,59 @@ describe("createSandboxActions.removeSandbox", () => {
       provider,
       registry: reg,
       dataDir: "/data",
-      purge: (p) => purged.push(p),
+      purge: (p) => {
+        purged.push(p);
+      },
     });
 
     const res = await actions.removeSandbox("h1");
 
     expect(res).toEqual({ ok: false, error: "Can't delete — run in progress" });
     expect(purged).toEqual([]);
+    expect(reg.list().map((r) => r.handle)).toEqual(["h1"]);
+  });
+
+  it("retries once when the first purge fails transiently, then succeeds", async () => {
+    const provider = fakeProvider({ hasHandleAfterDelete: false });
+    const reg = memRegistryWithRow("h1", "/data/sandboxes/h1");
+    let attempts = 0;
+
+    const actions = createSandboxActions({
+      provider,
+      registry: reg,
+      dataDir: "/data",
+      purge: () => {
+        attempts++;
+        if (attempts === 1) throw new Error("resource busy");
+      },
+    });
+
+    const res = await actions.removeSandbox("h1");
+
+    expect(res).toEqual({ ok: true });
+    expect(attempts).toBe(2);
+    expect(reg.list()).toEqual([]);
+  });
+
+  it("bails with the last error after two failed attempts", async () => {
+    const provider = fakeProvider({ hasHandleAfterDelete: false });
+    const reg = memRegistryWithRow("h1", "/data/sandboxes/h1");
+    let attempts = 0;
+
+    const actions = createSandboxActions({
+      provider,
+      registry: reg,
+      dataDir: "/data",
+      purge: () => {
+        attempts++;
+        throw new Error("still busy");
+      },
+    });
+
+    const res = await actions.removeSandbox("h1");
+
+    expect(res).toEqual({ ok: false, error: "still busy" });
+    expect(attempts).toBe(2);
     expect(reg.list().map((r) => r.handle)).toEqual(["h1"]);
   });
 
@@ -69,7 +117,9 @@ describe("createSandboxActions.removeSandbox", () => {
       provider,
       registry: reg,
       dataDir: "/data",
-      purge: (p) => purged.push(p),
+      purge: (p) => {
+        purged.push(p);
+      },
     });
 
     const res = await actions.removeSandbox("ghost");

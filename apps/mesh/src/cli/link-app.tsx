@@ -12,7 +12,11 @@ import {
   subscribeLinkState,
 } from "./link-store";
 
-function statusCell(row: SandboxRow): { color: string; text: string } {
+function statusCell(
+  row: SandboxRow,
+  removing: boolean,
+): { color: string; text: string } {
+  if (removing) return { color: "yellow", text: "◌ Removing…" };
   if (row.status === "ready") return { color: "green", text: "● Live" };
   if (row.status === "spawning")
     return { color: "yellow", text: "◌ Starting…" };
@@ -113,7 +117,7 @@ export function LinkApp() {
             </Box>
           </Box>
           {rows.map((row) => {
-            const s = statusCell(row);
+            const s = statusCell(row, state.removingHandles.has(row.handle));
             const isSelected = row.handle === selected;
             return (
               <Box key={row.handle}>

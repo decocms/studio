@@ -113,7 +113,31 @@ describe("dispatchIntent", () => {
     expect([...getLinkState().sandboxes.keys()]).toEqual(["b"]);
   });
 
-  it("confirmYes surfaces the error on failure", async () => {
+  it("confirmYes marks the row as removing while the action is in flight", async () => {
+    rows();
+    setSelectedHandle("a");
+    let resolve: (r: { ok: true }) => void = () => {};
+    setLinkActions(
+      fakeActions({
+        removeSandbox: () =>
+          new Promise<{ ok: true }>((r) => {
+            resolve = r;
+          }),
+      }),
+    );
+    dispatchIntent({ type: "delete" });
+    dispatchIntent({ type: "confirmYes" });
+    // Still in flight: row present and flagged as removing.
+    expect(getLinkState().removingHandles.has("a")).toBe(true);
+    expect([...getLinkState().sandboxes.keys()]).toEqual(["a", "b"]);
+    resolve({ ok: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(getLinkState().removingHandles.has("a")).toBe(false);
+    expect([...getLinkState().sandboxes.keys()]).toEqual(["b"]);
+  });
+
+  it("confirmYes surfaces the error and clears removing on failure", async () => {
     rows();
     setSelectedHandle("a");
     setLinkActions(
@@ -126,6 +150,7 @@ describe("dispatchIntent", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(getLinkState().actionError).toBe("nope");
+    expect(getLinkState().removingHandles.has("a")).toBe(false);
     expect([...getLinkState().sandboxes.keys()]).toEqual(["a", "b"]);
   });
 

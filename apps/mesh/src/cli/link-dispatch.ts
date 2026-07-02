@@ -11,6 +11,7 @@ import {
   removeSandboxRow,
   setActionError,
   setPendingConfirm,
+  setRemoving,
   setSelectedHandle,
 } from "./link-store";
 import { openPreviewUrl } from "./open-url";
@@ -66,9 +67,14 @@ export function dispatchIntent(
       const confirm = state.pendingConfirm;
       setPendingConfirm(null);
       if (confirm === null || !actions) return;
+      setRemoving(confirm.handle, true);
       void actions.removeSandbox(confirm.handle).then((res) => {
-        if (res.ok) removeSandboxRow(confirm.handle);
-        else setActionError(res.error);
+        if (res.ok) {
+          removeSandboxRow(confirm.handle);
+        } else {
+          setRemoving(confirm.handle, false);
+          setActionError(res.error);
+        }
       });
       return;
     }
