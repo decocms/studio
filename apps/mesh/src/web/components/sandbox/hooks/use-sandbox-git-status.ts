@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { exponentialBackoffWithJitter } from "@decocms/std";
 import {
   fetchGitStatus,
   isSandboxUnreachable,
@@ -25,7 +26,13 @@ export function useSandboxGitStatus(args: {
     refetchInterval: (query) => {
       if (!isSandboxUnreachable(query.state.error)) return BASE_INTERVAL_MS;
       const failures = query.state.fetchFailureCount;
-      return Math.min(BASE_INTERVAL_MS * 2 ** failures, MAX_INTERVAL_MS);
+      return exponentialBackoffWithJitter(
+        MAX_INTERVAL_MS,
+        BASE_INTERVAL_MS,
+        failures,
+        2,
+        0,
+      );
     },
     retry: (_count, error) => !isSandboxUnreachable(error),
     staleTime: 1000,

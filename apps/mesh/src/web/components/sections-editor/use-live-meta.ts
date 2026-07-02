@@ -1,4 +1,5 @@
 import { type Query, useQuery } from "@tanstack/react-query";
+import { exponentialBackoffWithJitter } from "@decocms/std";
 import { KEYS } from "@/web/lib/query-keys";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -45,6 +46,7 @@ export function useLiveMeta(
     // a known-down endpoint and spams 5xx logs.
     retry: (failureCount, error) =>
       (error as { status?: number }).status !== 502 && failureCount < 3,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
+    retryDelay: (attempt) =>
+      exponentialBackoffWithJitter(5000, 1000, attempt, 2, 0),
   });
 }
