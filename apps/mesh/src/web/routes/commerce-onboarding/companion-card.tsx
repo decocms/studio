@@ -272,9 +272,18 @@ function CompanionConfiguration({
         <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Configure {card.title}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <IntegrationIcon
+                  icon={card.icon}
+                  name={card.title}
+                  size="sm"
+                  fit="contain"
+                  className="p-1.5"
+                />
+                {card.title}
+              </DialogTitle>
               <DialogDescription>
-                Update the values this companion uses for Commerce Discovery.
+                Configure {card.title} to enrich data
               </DialogDescription>
             </DialogHeader>
             <FormComponent
