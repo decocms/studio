@@ -47,7 +47,7 @@ function CompanionCardSkeletons() {
 // clients it/the cards open) are Suspense queries, so the card loading state now
 // lives here as a stable boundary fallback instead of an `isLoading` branch that
 // could tear down and re-mount as deeper queries resolve.
-function CompanionMcpsSectionSkeleton() {
+export function CompanionMcpsSectionSkeleton() {
   return (
     <div className={SECTION_CONTAINER_CLASS}>
       <SectionIntro />
