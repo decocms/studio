@@ -174,6 +174,23 @@ export function getConfigurationSummaryEntries(
   });
 }
 
+export function shouldAutoOpenCompanionConfig({
+  autoOpenFieldKey,
+  card,
+}: {
+  autoOpenFieldKey: string | null;
+  card: Pick<
+    CompanionCardModel,
+    "fieldKey" | "satisfied" | "linkedConnectionId"
+  >;
+}): boolean {
+  return (
+    autoOpenFieldKey === card.fieldKey &&
+    card.satisfied &&
+    !!card.linkedConnectionId
+  );
+}
+
 /** Pick an existing org connection satisfying a binding by app identity:
  * app_name === bindingType OR app_id === registryAppId. Prefer active, then most recent. */
 export function resolveCandidate(

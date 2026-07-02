@@ -24,6 +24,9 @@ function makeRelease(overrides: Partial<{ id: string; date: string }> = {}) {
 }
 
 const RELEASES_MOCK: ReturnType<typeof makeRelease>[] = [];
+const OLD_USER_CREATED_AT = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+const NEW_USER_CREATED_AT = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+
 const releasesRef = {
   get current() {
     return RELEASES_MOCK;
@@ -34,8 +37,23 @@ const releasesRef = {
   },
 };
 
+const sessionRef = {
+  current: {
+    user: {
+      id: "user-1",
+      createdAt: OLD_USER_CREATED_AT,
+    },
+  },
+};
+
 mock.module("@/web/lib/release-feed", () => ({
   RELEASES: RELEASES_MOCK,
+}));
+
+mock.module("@/web/lib/auth-client", () => ({
+  authClient: {
+    useSession: () => ({ data: sessionRef.current }),
+  },
 }));
 
 import { FloatingReleaseCard } from "./floating-release-card";
@@ -51,6 +69,12 @@ describe("FloatingReleaseCard", () => {
   beforeEach(() => {
     localStorage.clear();
     releasesRef.current = [];
+    sessionRef.current = {
+      user: {
+        id: "user-1",
+        createdAt: OLD_USER_CREATED_AT,
+      },
+    };
   });
   afterEach(() => {
     localStorage.clear();
@@ -70,6 +94,41 @@ describe("FloatingReleaseCard", () => {
 
   it("renders the card when the newest release is fresh and unseen", () => {
     releasesRef.current = [makeRelease({ id: "fresh" })];
+    const { getByRole, getByText, queryByRole } = render(
+      <FloatingReleaseCard />,
+      { wrapper },
+    );
+    expect(getByText("Fresh Release")).toBeInTheDocument();
+    expect(
+      getByRole("region", { name: "Release announcement" }),
+    ).toBeInTheDocument();
+    expect(
+      queryByRole("dialog", { name: "Release announcement" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders nothing when the current user is less than seven days old", () => {
+    releasesRef.current = [makeRelease({ id: "fresh" })];
+    sessionRef.current = {
+      user: {
+        id: "new-user",
+        createdAt: NEW_USER_CREATED_AT,
+      },
+    };
+
+    const { container } = render(<FloatingReleaseCard />, { wrapper });
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("renders the card when the current user is at least seven days old", () => {
+    releasesRef.current = [makeRelease({ id: "fresh" })];
+    sessionRef.current = {
+      user: {
+        id: "old-user",
+        createdAt: OLD_USER_CREATED_AT,
+      },
+    };
+
     const { getByText } = render(<FloatingReleaseCard />, { wrapper });
     expect(getByText("Fresh Release")).toBeInTheDocument();
   });
