@@ -154,7 +154,7 @@ export function CompanionCard({
   );
 }
 
-function maskConfigValue(key: string, value: string) {
+export function maskConfigValue(key: string, value: string) {
   const isSensitiveKey = /(token|secret|password|appKey|key)$/i.test(key);
   return isSensitiveKey ? "••••••••" : value;
 }
