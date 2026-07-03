@@ -32,7 +32,6 @@ import { buildBlogCategoryPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
-import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
 import { CollapsibleSection } from "./editor-section";
 import { EditableText, str } from "./blocks/primitives";
@@ -191,11 +190,7 @@ export function CategoryEditor({
   };
 
   return (
-    <BlogSandboxProvider
-      orgSlug={orgSlug}
-      virtualMcpId={virtualMcpId}
-      branch={branch}
-    >
+    <>
       <div className="flex h-full flex-col">
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
           <span className="truncate text-sm font-medium">
@@ -371,6 +366,6 @@ export function CategoryEditor({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </BlogSandboxProvider>
+    </>
   );
 }

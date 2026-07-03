@@ -18,7 +18,6 @@ import { buildBlogPostPreviewUrl } from "./blog-preview-url";
 import { useSaveBlogBlock } from "./use-blog-mutations";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
-import { BlogSandboxProvider } from "./blog-sandbox-context";
 import { asBlocks, BlockDocument } from "./block-document";
 import {
   AddButton,
@@ -80,88 +79,82 @@ export function PostEditor({
   });
 
   return (
-    <BlogSandboxProvider
-      orgSlug={orgSlug}
-      virtualMcpId={virtualMcpId}
-      branch={branch}
-    >
-      <div className="flex h-full flex-col">
-        <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
-          <span className="truncate text-sm font-medium">
-            {str(post.title) || "Untitled post"}
-          </span>
-          <div className="flex shrink-0 items-center gap-3">
-            <SaveStatus isPending={save.isPending} isError={save.isError} />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!previewUrl}
-              title={
-                previewUrl
-                  ? "Open the post preview in a new tab"
-                  : "Set the post slug (and its category) plus the blog app's pageSlug to preview"
+    <div className="flex h-full flex-col">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
+        <span className="truncate text-sm font-medium">
+          {str(post.title) || "Untitled post"}
+        </span>
+        <div className="flex shrink-0 items-center gap-3">
+          <SaveStatus isPending={save.isPending} isError={save.isError} />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!previewUrl}
+            title={
+              previewUrl
+                ? "Open the post preview in a new tab"
+                : "Set the post slug (and its category) plus the blog app's pageSlug to preview"
+            }
+            onClick={() => {
+              if (previewUrl) {
+                window.open(previewUrl, "_blank", "noopener,noreferrer");
               }
-              onClick={() => {
-                if (previewUrl) {
-                  window.open(previewUrl, "_blank", "noopener,noreferrer");
-                }
-              }}
-            >
-              <LinkExternal01 size={14} />
-              See preview
-            </Button>
-          </div>
-        </div>
-
-        <div className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-4xl px-8 py-8">
-            {/* Title — wraps onto multiple lines instead of truncating */}
-            <EditableText
-              value={str(post.title)}
-              onChange={(v) => setField("title", v)}
-              placeholder="Post title"
-              className="py-1 text-4xl font-bold text-foreground"
-            />
-
-            {/* Content and Settings are sibling tabs; the body is the default */}
-            <Tabs defaultValue="content" className="mt-6 gap-4">
-              <TabsList>
-                <TabsTrigger value="content">
-                  <Pilcrow01 />
-                  Content
-                </TabsTrigger>
-                <TabsTrigger value="settings">
-                  <Settings01 />
-                  Settings
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="content">
-                <div className="rounded-xl border bg-card p-8 shadow-sm">
-                  <BlockDocument
-                    value={asBlocks(post.sections)}
-                    onChange={(next) => setField("sections", next)}
-                    meta={meta}
-                    emptyMessage="This post has no content yet. Use ⊕ to add your first block."
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="settings">
-                <div className="rounded-xl border bg-card p-6 shadow-sm">
-                  <PostSettings
-                    post={post}
-                    decofile={decofile}
-                    onChange={setField}
-                  />
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
+            }}
+          >
+            <LinkExternal01 size={14} />
+            See preview
+          </Button>
         </div>
       </div>
-    </BlogSandboxProvider>
+
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl px-8 py-8">
+          {/* Title — wraps onto multiple lines instead of truncating */}
+          <EditableText
+            value={str(post.title)}
+            onChange={(v) => setField("title", v)}
+            placeholder="Post title"
+            className="py-1 text-4xl font-bold text-foreground"
+          />
+
+          {/* Content and Settings are sibling tabs; the body is the default */}
+          <Tabs defaultValue="content" className="mt-6 gap-4">
+            <TabsList>
+              <TabsTrigger value="content">
+                <Pilcrow01 />
+                Content
+              </TabsTrigger>
+              <TabsTrigger value="settings">
+                <Settings01 />
+                Settings
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="content">
+              <div className="rounded-xl border bg-card p-8 shadow-sm">
+                <BlockDocument
+                  value={asBlocks(post.sections)}
+                  onChange={(next) => setField("sections", next)}
+                  meta={meta}
+                  emptyMessage="This post has no content yet. Use ⊕ to add your first block."
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="settings">
+              <div className="rounded-xl border bg-card p-6 shadow-sm">
+                <PostSettings
+                  post={post}
+                  decofile={decofile}
+                  onChange={setField}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </div>
   );
 }
 
