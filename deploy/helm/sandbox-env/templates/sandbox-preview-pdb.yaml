@@ -1,0 +1,22 @@
+{{- if and .Values.previewGateway.enabled .Values.previewGateway.pdb.enabled }}
+{{- $previewName := include "sandbox-env.previewName" . }}
+# PDB over the pods of the Istio-generated preview gateway Deployment,
+# selected by the `gateway-name` label the controller stamps on them. With
+# minAvailable 1 and a single replica, voluntary evictions (Karpenter
+# consolidation/drift, node drains) are blocked outright — the gateway is
+# the only ingress for every preview URL, so an eviction is a full preview
+# outage. Spot interruptions and node failures are NOT covered by a PDB;
+# raise previewGateway.autoscaling.minReplicas to 2 for that.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $previewName }}-istio
+  namespace: {{ .Values.previewGateway.namespace }}
+  labels:
+    {{- include "sandbox-env.sandboxPreviewLabels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.previewGateway.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: {{ $previewName }}
+{{- end }}

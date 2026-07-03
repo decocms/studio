@@ -1,0 +1,30 @@
+{{- if and .Values.previewGateway.enabled .Values.previewGateway.autoscaling.enabled }}
+{{- $previewName := include "sandbox-env.previewName" . }}
+# HPA over the Deployment that Istio's gateway controller generates for the
+# preview Gateway (`<previewName>-istio`). This is the Istio-documented way
+# to scale an auto-deployed Gateway API gateway: the controller never writes
+# `spec.replicas` after creation, so the HPA owns replica count without
+# conflict. Scoped by namespace + target name — it cannot reach any other
+# gateway (the sites gateway lives in istio-system under a different name).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $previewName }}-istio
+  namespace: {{ .Values.previewGateway.namespace }}
+  labels:
+    {{- include "sandbox-env.sandboxPreviewLabels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $previewName }}-istio
+  minReplicas: {{ .Values.previewGateway.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.previewGateway.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.previewGateway.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
