@@ -359,9 +359,13 @@ export function toPropertyOptions(response: unknown): PropertyOptionGroup[] {
   const summaries = data?.response?.accountSummaries ?? [];
   return summaries.map((acc) => ({
     account: acc.account,
+    // Property names aren't unique across GA accounts (e.g. an agency managing
+    // several client sites, each with a property named after the same domain);
+    // the account name disambiguates them once the caller flattens groups into
+    // a single picker list (SelectableList has no grouped-header rendering).
     options: (acc.propertySummaries ?? []).map((prop) => ({
       value: prop.property,
-      label: prop.displayName,
+      label: `${prop.displayName} (${acc.displayName})`,
     })),
   }));
 }
