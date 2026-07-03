@@ -58,7 +58,7 @@ The **Content** tab in the agent workspace is the visual editor for the sections
 
 ### Variants
 
-Each section or page can have multiple **variants** — alternate configurations with different props or matcher-controlled conditions (A/B tests, audience segments, date windows). Variants appear as a list under their parent section in the editor.
+Each section or page can have multiple **variants** — alternate configurations with different props or matcher-controlled conditions (A/B tests, audience segments, date windows, geographic location). Variants appear as a list under their parent section in the editor.
 
 You can:
 
@@ -68,6 +68,10 @@ You can:
 
 <Callout type="tip">
   Scroll position in the preview is preserved when you switch between variants or save changes, so you can stay focused on the section you're editing without losing your place on the page.
+</Callout>
+
+<Callout type="tip">
+  For **Location matchers**, the target-area field (`includeLocations`/`excludeLocations`) renders as an interactive map — drag to move the center and resize the circle to set the radius, instead of typing coordinates by hand. The map requires a Google Maps API key configured on the server; if it isn't set, the field shows an "unavailable" note and falls back to manual entry.
 </Callout>
 
 ## Getting started
