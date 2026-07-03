@@ -17,10 +17,48 @@ let initialized = false;
 let lastOrgGroupKey: string | null = null;
 let bootstrapTimingSent = false;
 
+const LP_DISTINCT_ID_STASH = "mesh:lp-distinct-id";
+
+/**
+ * Cross-domain identity handoff from the marketing LP: diagnostic-deck CTAs
+ * stamp the visitor's PostHog distinct_id onto the studio URL as `ph_did`.
+ * Bootstrapping init with that id makes this browser continue the LP person,
+ * so the eventual `identify(user.id)` merges the whole anonymous LP journey
+ * (URL submitted → slides viewed → CTA) into the signed-up user.
+ *
+ * Two guards:
+ * - the param is stashed in sessionStorage (survives the auth round-trip)
+ *   and scrubbed from the URL so it can't be copied around;
+ * - it's only honored when PostHog has no persisted state on this domain —
+ *   a returning visitor keeps their own identity even if they open a
+ *   forwarded LP link carrying someone else's id.
+ */
+function lpBootstrapDistinctId(): string | undefined {
+  try {
+    const url = new URL(window.location.href);
+    const fromUrl = url.searchParams.get("ph_did");
+    if (fromUrl) {
+      sessionStorage.setItem(LP_DISTINCT_ID_STASH, fromUrl);
+      url.searchParams.delete("ph_did");
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+    const candidate = fromUrl ?? sessionStorage.getItem(LP_DISTINCT_ID_STASH);
+    if (!candidate) return undefined;
+    const hasOwnState = Object.keys(window.localStorage).some(
+      (k) => k.startsWith("ph_") && k.endsWith("_posthog"),
+    );
+    return hasOwnState ? undefined : candidate;
+  } catch {
+    return undefined;
+  }
+}
+
 export function initPostHog(key: string, host: string) {
   if (initialized || typeof window === "undefined") return;
+  const lpDistinctId = lpBootstrapDistinctId();
   posthog.init(key, {
     api_host: host,
+    ...(lpDistinctId ? { bootstrap: { distinctID: lpDistinctId } } : {}),
     capture_pageview: "history_change",
     capture_pageleave: true,
     autocapture: true,
@@ -66,6 +104,12 @@ export function resetUser() {
 export function track(event: string, properties?: Record<string, unknown>) {
   if (!initialized) return;
   posthog.capture(event, properties);
+}
+
+/** Whether `initPostHog` has run — for render-time one-shot trackers that
+ *  must not burn their "fired" guard while calls would still be dropped. */
+export function isPostHogInitialized() {
+  return initialized;
 }
 
 /**

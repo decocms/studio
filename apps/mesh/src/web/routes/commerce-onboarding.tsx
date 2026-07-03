@@ -11,6 +11,7 @@ import {
   useActiveOrganizations,
 } from "@/web/lib/auth-client";
 import { LOCALSTORAGE_KEYS } from "@/web/lib/localstorage-keys";
+import { isPostHogInitialized, track } from "@/web/lib/posthog-client";
 import { KEYS } from "@/web/lib/query-keys";
 import { Button } from "@deco/ui/components/button.tsx";
 import { Input } from "@deco/ui/components/input.tsx";
@@ -188,10 +189,26 @@ function commerceSiteUrlErrorPtBr(error: string): string {
   }
 }
 
+// One-shot per SPA load, render-time (useEffect is banned in this app; same
+// pattern as PostHogIdentitySync). This is the LP→studio funnel seam: the
+// diagnostic deck's CTAs land here, so this event is funnel step "arrived in
+// studio", joinable to the LP journey via the bootstrapped ph_did identity.
+let onboardingViewTracked = false;
+
 function CommerceOnboardingPage() {
   const search = useSearch({ from: "/commerce-onboarding" });
   const { org: requestedOrgSlug, siteUrl } = search;
   const siteHost = siteUrlToHost(siteUrl);
+
+  if (!onboardingViewTracked && isPostHogInitialized()) {
+    onboardingViewTracked = true;
+    track("commerce_onboarding_viewed", {
+      site_url: siteUrl,
+      domain: siteHost ?? undefined,
+      // Person-level copy so the store follows the user across sessions.
+      ...(siteHost ? { $set: { last_scanned_domain: siteHost } } : {}),
+    });
+  }
 
   return (
     <CommerceSiteHostContext.Provider value={siteHost}>
