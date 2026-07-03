@@ -315,6 +315,16 @@ describe("matchGscSite", () => {
     const site = matchGscSite(undefined, [{ siteUrl: "https://example.com/" }]);
     expect(site).toBeNull();
   });
+  it("returns null when sites is empty", () => {
+    expect(matchGscSite("example.com", [])).toBeNull();
+  });
+  it("falls back to the raw string instead of throwing on an unparseable siteUrl", () => {
+    const site = matchGscSite("not a valid url", [
+      { siteUrl: "not a valid url" },
+      { siteUrl: "https://example.com/" },
+    ]);
+    expect(site).toBe("not a valid url");
+  });
 });
 
 describe("shouldAutoOpenCompanionConfig", () => {
