@@ -47,4 +47,34 @@ describe("buildDecofileFetchUrl", () => {
       "/api/acme/sandbox/vm%2Fone/feature%2Flocal-preview/preview-fetch?path=%2F.decofile",
     );
   });
+
+  test("treats loopback IP hosts as browser-reachable local previews", () => {
+    expect(
+      buildDecofileFetchUrl({
+        ...sandbox,
+        previewUrl: "http://127.0.0.1:7070/some-page",
+      }),
+    ).toBe("http://127.0.0.1:7070/.decofile");
+  });
+
+  test("falls back to the API proxy when the preview URL is malformed", () => {
+    expect(
+      buildDecofileFetchUrl({
+        ...sandbox,
+        previewUrl: "not a url",
+      }),
+    ).toBe(
+      "/api/acme/sandbox/vm%2Fone/feature%2Flocal-preview/preview-fetch?path=%2F.decofile",
+    );
+  });
+
+  test("prefers the explicit preview URL over the fallback getter", () => {
+    expect(
+      buildDecofileFetchUrl({
+        ...sandbox,
+        previewUrl: "http://abc.localhost:7070/some-page",
+        getFallbackPreviewUrl: () => "http://should-not-be-used.localhost",
+      }),
+    ).toBe("http://abc.localhost:7070/.decofile");
+  });
 });
