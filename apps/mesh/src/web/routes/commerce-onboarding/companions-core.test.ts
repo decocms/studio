@@ -386,10 +386,34 @@ describe("toPropertyOptions", () => {
     expect(options[0]!.options).toHaveLength(2);
     expect(options[0]!.options[0]).toEqual({
       value: "properties/456",
-      label: "Property A",
+      label: "Property A (Account One)",
     });
     expect(options[1]!.account).toBe("accounts/999");
     expect(options[1]!.options).toHaveLength(1);
+  });
+  it("disambiguates same-named properties across different accounts", () => {
+    const options = toPropertyOptions({
+      response: {
+        accountSummaries: [
+          {
+            account: "accounts/123",
+            displayName: "Client A",
+            propertySummaries: [
+              { property: "properties/456", displayName: "example.com" },
+            ],
+          },
+          {
+            account: "accounts/999",
+            displayName: "Client B",
+            propertySummaries: [
+              { property: "properties/789", displayName: "example.com" },
+            ],
+          },
+        ],
+      },
+    });
+    const labels = options.flatMap((g) => g.options).map((o) => o.label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
   it("handles missing or empty propertySummaries", () => {
     const options = toPropertyOptions({
