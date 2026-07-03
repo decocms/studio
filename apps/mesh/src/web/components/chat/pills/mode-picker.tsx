@@ -10,7 +10,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@deco/ui/components/drawer.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import { Check, ChevronDown, Cloud01, Monitor01 } from "@untitledui/icons";
 import {
   getWellKnownDecopilotVirtualMCP,
@@ -202,6 +209,7 @@ export function ModePickerPure({
   onSelect,
 }: PureProps) {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
   const { icon, text } = locked
     ? harnessPillLabel(mode)
     : editablePillLabel(mode);
@@ -219,48 +227,107 @@ export function ModePickerPure({
     setOpen(false);
   };
 
+  const triggerButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="default"
+      aria-label={
+        showHarnessLabel && harnessLabel
+          ? `This chat is using ${harnessLabel} on ${runtimeLabel(mode)}. Start a new chat to use a different runtime.`
+          : labelWithRuntime
+      }
+      disabled={locked}
+      data-testid={locked ? "mode-picker-locked" : "mode-picker"}
+      className={cn(
+        baseClasses,
+        isLocal && localPreviewClasses,
+        "shrink min-w-0",
+        locked ? "gap-0" : "gap-0 @[460px]/chat-bottom:gap-1.5",
+        "h-10 md:h-8",
+      )}
+    >
+      {icon}
+      <span
+        className={cn(
+          "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+          !locked &&
+            "@[460px]/chat-bottom:max-w-32 @[460px]/chat-bottom:opacity-100",
+        )}
+      >
+        {text}
+      </span>
+      {!locked && (
+        <ChevronDown
+          size={12}
+          className="opacity-60 hidden @[460px]/chat-bottom:inline-block"
+        />
+      )}
+    </Button>
+  );
+
+  const drawerRows = (
+    <div className="px-2 pt-2 pb-6 flex flex-col gap-0.5">
+      {cloudRows.length > 0 && <Section title="Cloud" />}
+      {cloudRows.map((row) => (
+        <Row
+          key={row.mode}
+          row={row}
+          active={mode === row.mode}
+          onSelect={handleSelect}
+          large
+        />
+      ))}
+      {localRows.length > 0 && (
+        <Section
+          title="Local"
+          variant="success"
+          icon={
+            <Monitor01 size={12} data-testid="local-section-desktop-icon" />
+          }
+          testId="local-section-header"
+        />
+      )}
+      {localRows.map((row) => {
+        const available = row.isAvailable(availability);
+        return (
+          <Row
+            key={row.mode}
+            row={row}
+            active={mode === row.mode}
+            onSelect={handleSelect}
+            large
+            unavailableHint={
+              available
+                ? undefined
+                : availability.userDesktop
+                  ? "Not detected on your desktop"
+                  : "Desktop not detected"
+            }
+          />
+        );
+      })}
+    </div>
+  );
+
+  if (isMobile && !locked) {
+    return (
+      <Drawer open={open} onOpenChange={setOpen}>
+        <DrawerTrigger asChild>{triggerButton}</DrawerTrigger>
+        <DrawerContent className="p-0">
+          <DrawerTitle className="sr-only">Select mode</DrawerTitle>
+          {drawerRows}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
   return (
     <Popover open={open} onOpenChange={locked ? undefined : setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="inline-flex min-w-0 shrink">
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="default"
-                aria-label={
-                  showHarnessLabel && harnessLabel
-                    ? `This chat is using ${harnessLabel} on ${runtimeLabel(mode)}. Start a new chat to use a different runtime.`
-                    : labelWithRuntime
-                }
-                disabled={locked}
-                data-testid={locked ? "mode-picker-locked" : "mode-picker"}
-                className={cn(
-                  baseClasses,
-                  isLocal && localPreviewClasses,
-                  "shrink min-w-0",
-                  locked ? "gap-0" : "gap-0 @[320px]/chat-bottom:gap-1.5",
-                )}
-              >
-                {icon}
-                <span
-                  className={cn(
-                    "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                    !locked &&
-                      "@[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100",
-                  )}
-                >
-                  {text}
-                </span>
-                {!locked && (
-                  <ChevronDown
-                    size={12}
-                    className="opacity-60 hidden @[320px]/chat-bottom:inline-block"
-                  />
-                )}
-              </Button>
-            </PopoverTrigger>
+            <PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
           </span>
         </TooltipTrigger>
         <TooltipContent>
@@ -346,11 +413,13 @@ function Row({
   active,
   onSelect,
   unavailableHint,
+  large,
 }: {
   row: ModeRow;
   active: boolean;
   onSelect: (mode: AgentMode) => void;
   unavailableHint?: string;
+  large?: boolean;
 }) {
   return (
     <button
@@ -358,8 +427,8 @@ function Row({
       role="menuitem"
       onClick={() => onSelect(row.mode)}
       className={cn(
-        "flex items-start gap-2 px-2 py-1.5 rounded-md text-left",
-        "hover:bg-muted",
+        "flex items-start gap-2 rounded-md text-left hover:bg-muted transition-colors",
+        large ? "px-4 py-3 rounded-lg gap-3" : "px-2 py-1.5",
       )}
     >
       <span className="shrink-0 text-muted-foreground mt-0.5">{row.icon}</span>

@@ -303,7 +303,18 @@ export function SimpleModeSection() {
       },
       { keepDirty: true },
     );
-  }, [form, allKeys, models0, models1, models2, key0?.id, key1?.id, key2?.id]);
+    scheduleAutosave();
+  }, [
+    form,
+    allKeys,
+    models0,
+    models1,
+    models2,
+    key0?.id,
+    key1?.id,
+    key2?.id,
+    scheduleAutosave,
+  ]);
 
   return (
     <SettingsSection title="Default models" headerClassName="pl-0">

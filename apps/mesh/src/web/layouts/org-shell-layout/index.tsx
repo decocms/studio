@@ -60,10 +60,12 @@ export default function OrgShellLayout() {
             <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
               {isMobile ? (
                 <Toolbar.Header className="grid-cols-1 px-1 pr-1">
-                  <div className="grid w-full grid-cols-[auto_auto_auto_1fr_auto_auto_auto] items-center gap-2">
-                    <Toolbar.LogoLink />
-                    <SidebarTriggerButton />
-                    <LinkedDesktopIndicator />
+                  <div className="grid w-full grid-cols-[auto_1fr_auto_auto_auto] items-center gap-1">
+                    <div className="flex items-center gap-1">
+                      <Toolbar.LogoLink />
+                      <SidebarTriggerButton />
+                      <LinkedDesktopIndicator />
+                    </div>
                     <div aria-hidden className="min-w-0" />
                     <Toolbar.TogglesSlot />
                     <Toolbar.TabsSlot className="min-w-0 justify-self-end" />

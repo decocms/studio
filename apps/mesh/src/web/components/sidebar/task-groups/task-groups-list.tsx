@@ -335,10 +335,11 @@ export function TaskGroupsList({
       <SyncSidebarAgentGroupsEmpty
         value={groupBy === "agent" && groups.length === 0}
       />
-      <div className="shrink-0 px-1 h-10 md:h-7 mb-2 flex items-center justify-between">
+      <div className="shrink-0 h-10 md:h-7 mb-2 flex items-center justify-between">
         <div className="flex items-center gap-0.5">
           <ToolbarIconButton
             aria-label="Search threads"
+            className="justify-start pl-2 md:pl-1.5"
             onClick={() => {
               track("tasks_panel_search_opened");
               setSearchEverOpened(true);
@@ -350,6 +351,7 @@ export function TaskGroupsList({
           <ToolbarIconButton
             aria-label={`Group by ${GROUP_BY_LABELS[groupBy === "agent" ? "status" : "agent"].toLowerCase()}`}
             title={`Grouped by ${GROUP_BY_LABELS[groupBy].toLowerCase()}`}
+            className="justify-start pl-2 md:pl-1.5"
             onClick={() => {
               const next: GroupBy = groupBy === "agent" ? "status" : "agent";
               track("tasks_panel_group_by_changed", { to_value: next });
@@ -364,7 +366,10 @@ export function TaskGroupsList({
           </ToolbarIconButton>
           <Popover>
             <PopoverTrigger asChild>
-              <ToolbarIconButton aria-label="Filter tasks">
+              <ToolbarIconButton
+                aria-label="Filter tasks"
+                className="justify-start pl-2 md:pl-1.5"
+              >
                 <FilterLines size={16} />
                 {filtersActive && (
                   <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 ring-1 ring-sidebar pointer-events-none" />

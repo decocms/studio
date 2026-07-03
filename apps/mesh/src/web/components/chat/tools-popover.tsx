@@ -26,12 +26,21 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@deco/ui/components/dropdown-menu.tsx";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@deco/ui/components/drawer.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import type { Prompt } from "@modelcontextprotocol/sdk/types.js";
 import { useQuery } from "@tanstack/react-query";
 import { useCurrentEditor } from "@tiptap/react";
 import {
+  ArrowLeft,
   BookOpen01,
+  ChevronRight,
   Globe02,
   Image01,
   Link01,
@@ -113,6 +122,10 @@ export function ToolsPopover({
   const { editor } = useCurrentEditor();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const supportsFiles = modelSupportsFiles(selectedModel);
+  const isMobile = useIsMobile();
+  const [drawerView, setDrawerView] = useState<"main" | "prompts" | "approval">(
+    "main",
+  );
 
   const handleAddFileClick = () => {
     if (!supportsFiles || isStreaming) return;
@@ -172,7 +185,6 @@ export function ToolsPopover({
     const matched = APPROVAL_LEVEL_OPTIONS.find((opt) => opt.value === next);
     if (!matched) return;
     if (matched.value === preferences.toolApprovalLevel) {
-      // No-op: same level re-selected, just close the popover.
       setOpen(false);
       return;
     }
@@ -292,6 +304,35 @@ export function ToolsPopover({
   const isWebSearchActive = chatMode === "web-search";
   const isDeepResearchActive = chatMode === "deep-research";
 
+  const triggerButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="default"
+      disabled={disabled}
+      title="Tools"
+      aria-label="Tools"
+      className={cn(
+        "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
+        "gap-0 @[460px]/chat-bottom:gap-1.5",
+        "h-10 md:h-8",
+      )}
+    >
+      <Settings04 className="size-[18px] md:size-3.5" />
+      <span
+        className={cn(
+          "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+          "@[460px]/chat-bottom:max-w-24 @[460px]/chat-bottom:opacity-100",
+        )}
+      >
+        Tools
+      </span>
+    </Button>
+  );
+
+  const itemCls =
+    "flex items-center gap-3 w-full px-4 py-3 text-sm rounded-lg transition-colors hover:bg-muted text-left";
+
   return (
     <>
       <input
@@ -304,209 +345,436 @@ export function ToolsPopover({
         disabled={isStreaming}
       />
 
-      <DropdownMenu
-        open={open}
-        onOpenChange={(next) => {
-          if (next && !open) {
-            track("chat_tools_popover_opened", {
-              chat_mode: chatMode,
-            });
-          }
-          setOpen(next);
-        }}
-      >
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="default"
-            disabled={disabled}
-            title="Tools"
-            aria-label="Tools"
-            className={cn(
-              "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
-              "gap-0 @[320px]/chat-bottom:gap-1.5",
-            )}
-          >
-            <Settings04 size={14} />
-            <span
-              className={cn(
-                "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
-              )}
-            >
-              Tools
-            </span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-52 p-1.5 space-y-1">
-          {!supportsFiles ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuItem
-                  aria-disabled="true"
-                  className="opacity-50 cursor-not-allowed"
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  <Plus size={16} />
-                  <span className="flex-1">Add file</span>
-                </DropdownMenuItem>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                The selected model does not support reading files or images.
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <DropdownMenuItem
-              onClick={handleAddFileClick}
-              disabled={isStreaming}
-            >
-              <Plus size={16} />
-              <span className="flex-1">Add file</span>
-            </DropdownMenuItem>
-          )}
+      {isMobile ? (
+        <Drawer
+          open={open}
+          onOpenChange={(next) => {
+            if (!next) setDrawerView("main");
+            if (next && !open) {
+              track("chat_tools_popover_opened", { chat_mode: chatMode });
+            }
+            setOpen(next);
+          }}
+        >
+          <DrawerTrigger asChild>{triggerButton}</DrawerTrigger>
+          <DrawerContent className="p-0">
+            <DrawerTitle className="sr-only">Tools</DrawerTitle>
 
-          <DropdownMenuItem
-            onClick={handleTogglePlanMode}
-            className={cn(isPlanMode && "text-violet-600 dark:text-violet-400")}
-          >
-            <BookOpen01
-              size={16}
-              className={cn(isPlanMode && "text-violet-500")}
-            />
-            <span className="flex-1">Plan mode</span>
-            <span
-              className={cn(
-                "text-xs text-muted-foreground",
-                isPlanMode && "text-violet-500 font-medium",
-              )}
-            >
-              {PLAN_MODE_SHORTCUT}
-            </span>
-          </DropdownMenuItem>
-
-          {/* Create image */}
-          <DropdownMenuItem
-            onClick={handleForceImageGeneration}
-            className={cn(isImageActive && "text-pink-600 dark:text-pink-400")}
-          >
-            <Image01
-              size={16}
-              className={cn(isImageActive && "text-pink-500")}
-            />
-            <span className="flex-1">Create image</span>
-            {isImageActive && (
-              <span className="text-xs text-pink-500 font-medium">On</span>
-            )}
-          </DropdownMenuItem>
-
-          {/* Web search */}
-          <DropdownMenuItem
-            onClick={handleForceWebSearch}
-            className={cn(
-              isWebSearchActive && "text-blue-600 dark:text-blue-400",
-            )}
-          >
-            <Globe02
-              size={16}
-              className={cn(isWebSearchActive && "text-blue-500")}
-            />
-            <span className="flex-1">Web search</span>
-            {isWebSearchActive && (
-              <span className="text-xs text-blue-500 font-medium">On</span>
-            )}
-          </DropdownMenuItem>
-
-          {/* Deep research */}
-          <DropdownMenuItem
-            onClick={handleForceDeepResearch}
-            className={cn(
-              isDeepResearchActive && "text-blue-600 dark:text-blue-400",
-            )}
-          >
-            <Telescope
-              size={16}
-              className={cn(isDeepResearchActive && "text-blue-500")}
-            />
-            <span className="flex-1">Deep research</span>
-            {isDeepResearchActive && (
-              <span className="text-xs text-blue-500 font-medium">On</span>
-            )}
-          </DropdownMenuItem>
-
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-2">
-              <span className="flex size-4 items-center justify-center text-base font-medium text-muted-foreground">
-                /
-              </span>
-              <span className="flex-1">Prompts</span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-80 max-h-72 overflow-y-auto p-1.5">
-              {isPromptsLoading ? (
-                <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
-                  <Loading01 size={14} className="animate-spin" />
-                  Loading prompts…
-                </div>
-              ) : prompts.length === 0 ? (
-                <div className="px-2 py-3 text-sm text-muted-foreground">
-                  No prompts available
-                </div>
-              ) : (
-                prompts.map((prompt) => (
-                  <DropdownMenuItem
-                    key={prompt.name}
-                    onClick={() => handlePromptSelect(prompt)}
-                    className="flex flex-col items-start gap-0.5"
-                  >
-                    <span className="font-medium text-sm capitalize">
-                      {prompt.title ||
-                        displayToolName(
-                          prompt.name,
-                          getGatewayClientId(prompt._meta),
-                        )}
+            {/* Main view */}
+            {drawerView === "main" && (
+              <div className="overflow-y-auto px-2 pt-2 pb-6 flex flex-col gap-0.5">
+                {!supportsFiles ? (
+                  <div className={cn(itemCls, "opacity-50 cursor-not-allowed")}>
+                    <Plus size={18} />
+                    <span className="flex-1">Add file</span>
+                    <span className="text-xs text-muted-foreground">
+                      Model unsupported
                     </span>
-                    {prompt.description && (
-                      <span className="text-xs text-muted-foreground line-clamp-2">
-                        {prompt.description}
-                      </span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className={itemCls}
+                    disabled={isStreaming}
+                    onClick={handleAddFileClick}
+                  >
+                    <Plus size={18} />
+                    <span className="flex-1">Add file</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className={cn(
+                    itemCls,
+                    isPlanMode && "text-violet-600 dark:text-violet-400",
+                  )}
+                  onClick={handleTogglePlanMode}
+                >
+                  <BookOpen01
+                    size={18}
+                    className={cn(isPlanMode && "text-violet-500")}
+                  />
+                  <span className="flex-1">Plan mode</span>
+                  <span
+                    className={cn(
+                      "text-xs text-muted-foreground",
+                      isPlanMode && "text-violet-500 font-medium",
                     )}
+                  >
+                    {PLAN_MODE_SHORTCUT}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className={cn(
+                    itemCls,
+                    isImageActive && "text-pink-600 dark:text-pink-400",
+                  )}
+                  onClick={handleForceImageGeneration}
+                >
+                  <Image01
+                    size={18}
+                    className={cn(isImageActive && "text-pink-500")}
+                  />
+                  <span className="flex-1">Create image</span>
+                  {isImageActive && (
+                    <span className="text-xs text-pink-500 font-medium">
+                      On
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  className={cn(
+                    itemCls,
+                    isWebSearchActive && "text-blue-600 dark:text-blue-400",
+                  )}
+                  onClick={handleForceWebSearch}
+                >
+                  <Globe02
+                    size={18}
+                    className={cn(isWebSearchActive && "text-blue-500")}
+                  />
+                  <span className="flex-1">Web search</span>
+                  {isWebSearchActive && (
+                    <span className="text-xs text-blue-500 font-medium">
+                      On
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  className={cn(
+                    itemCls,
+                    isDeepResearchActive && "text-blue-600 dark:text-blue-400",
+                  )}
+                  onClick={handleForceDeepResearch}
+                >
+                  <Telescope
+                    size={18}
+                    className={cn(isDeepResearchActive && "text-blue-500")}
+                  />
+                  <span className="flex-1">Deep research</span>
+                  {isDeepResearchActive && (
+                    <span className="text-xs text-blue-500 font-medium">
+                      On
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  className={itemCls}
+                  onClick={() => setDrawerView("prompts")}
+                >
+                  <span className="flex size-[18px] items-center justify-center text-base font-medium text-muted-foreground">
+                    /
+                  </span>
+                  <span className="flex-1">Prompts</span>
+                  <ChevronRight size={16} className="text-muted-foreground" />
+                </button>
+
+                <button
+                  type="button"
+                  className={itemCls}
+                  onClick={() => setDrawerView("approval")}
+                >
+                  <ShieldTick size={18} />
+                  <span className="flex-1">Approval</span>
+                  <span className="text-xs text-muted-foreground mr-1">
+                    {currentApprovalShort}
+                  </span>
+                  <ChevronRight size={16} className="text-muted-foreground" />
+                </button>
+
+                <button
+                  type="button"
+                  className={itemCls}
+                  onClick={handleConnections}
+                >
+                  <Link01 size={18} />
+                  <span className="flex-1">Connections</span>
+                  <Suspense>
+                    <ConnectionIcons />
+                  </Suspense>
+                </button>
+              </div>
+            )}
+
+            {/* Prompts sub-view */}
+            {drawerView === "prompts" && (
+              <div className="flex flex-col overflow-hidden">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-muted transition-colors"
+                  onClick={() => setDrawerView("main")}
+                >
+                  <ArrowLeft size={16} />
+                  Prompts
+                </button>
+                <div className="overflow-y-auto px-2 pb-6 flex flex-col gap-0.5">
+                  {isPromptsLoading ? (
+                    <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
+                      <Loading01 size={14} className="animate-spin" />
+                      Loading prompts…
+                    </div>
+                  ) : prompts.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-muted-foreground">
+                      No prompts available
+                    </div>
+                  ) : (
+                    prompts.map((prompt) => (
+                      <button
+                        key={prompt.name}
+                        type="button"
+                        className={cn(itemCls, "flex-col items-start gap-0.5")}
+                        onClick={() => handlePromptSelect(prompt)}
+                      >
+                        <span className="font-medium text-sm capitalize">
+                          {prompt.title ||
+                            displayToolName(
+                              prompt.name,
+                              getGatewayClientId(prompt._meta),
+                            )}
+                        </span>
+                        {prompt.description && (
+                          <span className="text-xs text-muted-foreground line-clamp-2">
+                            {prompt.description}
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Approval sub-view */}
+            {drawerView === "approval" && (
+              <div className="flex flex-col overflow-hidden">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-muted transition-colors"
+                  onClick={() => setDrawerView("main")}
+                >
+                  <ArrowLeft size={16} />
+                  Approval
+                </button>
+                <div className="overflow-y-auto px-2 pb-6 flex flex-col gap-0.5">
+                  {APPROVAL_LEVEL_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={cn(
+                        itemCls,
+                        opt.value === preferences.toolApprovalLevel &&
+                          "font-medium",
+                      )}
+                      onClick={() => handleApprovalLevelChange(opt.value)}
+                    >
+                      <span className="flex size-4 items-center justify-center shrink-0">
+                        {opt.value === preferences.toolApprovalLevel && (
+                          <span className="size-2 rounded-full bg-foreground" />
+                        )}
+                      </span>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <DropdownMenu
+          open={open}
+          onOpenChange={(next) => {
+            if (next && !open) {
+              track("chat_tools_popover_opened", {
+                chat_mode: chatMode,
+              });
+            }
+            setOpen(next);
+          }}
+        >
+          <DropdownMenuTrigger asChild>{triggerButton}</DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52 p-1.5 space-y-1">
+            {!supportsFiles ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuItem
+                    aria-disabled="true"
+                    className="opacity-50 cursor-not-allowed"
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <Plus size={16} />
+                    <span className="flex-1">Add file</span>
                   </DropdownMenuItem>
-                ))
-              )}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-2">
-              <ShieldTick size={16} />
-              <span className="flex-1">Approval</span>
-              <span className="text-xs text-muted-foreground">
-                {currentApprovalShort}
-              </span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-48 p-1.5">
-              <DropdownMenuRadioGroup
-                value={preferences.toolApprovalLevel}
-                onValueChange={handleApprovalLevelChange}
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  The selected model does not support reading files or images.
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <DropdownMenuItem
+                onClick={handleAddFileClick}
+                disabled={isStreaming}
               >
-                {APPROVAL_LEVEL_OPTIONS.map((opt) => (
-                  <DropdownMenuRadioItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+                <Plus size={16} />
+                <span className="flex-1">Add file</span>
+              </DropdownMenuItem>
+            )}
 
-          <DropdownMenuItem onClick={handleConnections}>
-            <Link01 size={16} />
-            <span className="flex-1">Connections</span>
-            <Suspense>
-              <ConnectionIcons />
-            </Suspense>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <DropdownMenuItem
+              onClick={handleTogglePlanMode}
+              className={cn(
+                isPlanMode && "text-violet-600 dark:text-violet-400",
+              )}
+            >
+              <BookOpen01
+                size={16}
+                className={cn(isPlanMode && "text-violet-500")}
+              />
+              <span className="flex-1">Plan mode</span>
+              <span
+                className={cn(
+                  "text-xs text-muted-foreground",
+                  isPlanMode && "text-violet-500 font-medium",
+                )}
+              >
+                {PLAN_MODE_SHORTCUT}
+              </span>
+            </DropdownMenuItem>
+
+            {/* Create image */}
+            <DropdownMenuItem
+              onClick={handleForceImageGeneration}
+              className={cn(
+                isImageActive && "text-pink-600 dark:text-pink-400",
+              )}
+            >
+              <Image01
+                size={16}
+                className={cn(isImageActive && "text-pink-500")}
+              />
+              <span className="flex-1">Create image</span>
+              {isImageActive && (
+                <span className="text-xs text-pink-500 font-medium">On</span>
+              )}
+            </DropdownMenuItem>
+
+            {/* Web search */}
+            <DropdownMenuItem
+              onClick={handleForceWebSearch}
+              className={cn(
+                isWebSearchActive && "text-blue-600 dark:text-blue-400",
+              )}
+            >
+              <Globe02
+                size={16}
+                className={cn(isWebSearchActive && "text-blue-500")}
+              />
+              <span className="flex-1">Web search</span>
+              {isWebSearchActive && (
+                <span className="text-xs text-blue-500 font-medium">On</span>
+              )}
+            </DropdownMenuItem>
+
+            {/* Deep research */}
+            <DropdownMenuItem
+              onClick={handleForceDeepResearch}
+              className={cn(
+                isDeepResearchActive && "text-blue-600 dark:text-blue-400",
+              )}
+            >
+              <Telescope
+                size={16}
+                className={cn(isDeepResearchActive && "text-blue-500")}
+              />
+              <span className="flex-1">Deep research</span>
+              {isDeepResearchActive && (
+                <span className="text-xs text-blue-500 font-medium">On</span>
+              )}
+            </DropdownMenuItem>
+
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2">
+                <span className="flex size-4 items-center justify-center text-base font-medium text-muted-foreground">
+                  /
+                </span>
+                <span className="flex-1">Prompts</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-80 max-h-72 overflow-y-auto p-1.5">
+                {isPromptsLoading ? (
+                  <div className="flex items-center gap-2 px-2 py-3 text-sm text-muted-foreground">
+                    <Loading01 size={14} className="animate-spin" />
+                    Loading prompts…
+                  </div>
+                ) : prompts.length === 0 ? (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">
+                    No prompts available
+                  </div>
+                ) : (
+                  prompts.map((prompt) => (
+                    <DropdownMenuItem
+                      key={prompt.name}
+                      onClick={() => handlePromptSelect(prompt)}
+                      className="flex flex-col items-start gap-0.5"
+                    >
+                      <span className="font-medium text-sm capitalize">
+                        {prompt.title ||
+                          displayToolName(
+                            prompt.name,
+                            getGatewayClientId(prompt._meta),
+                          )}
+                      </span>
+                      {prompt.description && (
+                        <span className="text-xs text-muted-foreground line-clamp-2">
+                          {prompt.description}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2">
+                <ShieldTick size={16} />
+                <span className="flex-1">Approval</span>
+                <span className="text-xs text-muted-foreground">
+                  {currentApprovalShort}
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-48 p-1.5">
+                <DropdownMenuRadioGroup
+                  value={preferences.toolApprovalLevel}
+                  onValueChange={handleApprovalLevelChange}
+                >
+                  {APPROVAL_LEVEL_OPTIONS.map((opt) => (
+                    <DropdownMenuRadioItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+
+            <DropdownMenuItem onClick={handleConnections}>
+              <Link01 size={16} />
+              <span className="flex-1">Connections</span>
+              <Suspense>
+                <ConnectionIcons />
+              </Suspense>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <PromptArgsDialog
         prompt={activePrompt}

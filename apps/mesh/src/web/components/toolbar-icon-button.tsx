@@ -19,7 +19,7 @@ export function ToolbarIconButton({
       type={type}
       className={cn(
         "relative flex size-10 md:size-7 shrink-0 items-center justify-center rounded-md transition-colors",
-        "max-md:[&_svg]:size-5",
+        "max-md:[&_svg]:size-[18px]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         active
           ? "bg-sidebar-accent text-sidebar-foreground"

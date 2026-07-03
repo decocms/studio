@@ -62,6 +62,7 @@ import {
   MobileSidebarSheet,
   SidebarTriggerButton,
 } from "@/web/layouts/shell-controls";
+import { SidebarLogoHeader } from "@/web/components/sidebar/sidebar-logo-header";
 
 interface SettingsNavItem {
   key: string;
@@ -340,6 +341,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex flex-col h-full bg-sidebar">
+      <SidebarLogoHeader onToggle={onClose} hideDesktopIndicator />
       <div className="flex flex-col flex-1 overflow-y-auto px-2 py-2 gap-0.5">
         {groups.map((group, i) => (
           <div key={`${group.label}-${i}`} className="flex flex-col gap-0.5">

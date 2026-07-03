@@ -10,15 +10,26 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@deco/ui/components/tooltip.tsx";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@deco/ui/components/drawer.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
+import { useIsMobile } from "@deco/ui/hooks/use-mobile.ts";
 import {
   Atom01,
   ChevronDown,
   Check,
   Lightning01,
+  LinkExternal01,
   Stars01,
 } from "@untitledui/icons";
 import type { ChatTier } from "@/tools/organization/schema";
+import { useNavigate } from "@tanstack/react-router";
+import { useProjectContext } from "@decocms/mesh-sdk";
+import { useSimpleMode } from "@/web/hooks/use-organization-settings";
 import {
   resolveTierSubtitle,
   useAgentMode,
@@ -40,6 +51,10 @@ interface PureProps {
    *  popover row. Omit for a label-only treatment. */
   iconFor?: (tier: ChatTier) => ReactNode;
   onSelect: (tier: ChatTier) => void;
+  /** Optional actual model name for each tier (e.g. "claude-sonnet-4-5"). */
+  modelLabelFor?: (tier: ChatTier) => string | null;
+  /** If provided, renders a settings link at the bottom of the popover. */
+  onSettingsClick?: () => void;
 }
 
 /**
@@ -54,44 +69,122 @@ export function TierTriggerPure({
   subtitleFor,
   iconFor,
   onSelect,
+  modelLabelFor,
+  onSettingsClick,
 }: PureProps) {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
+
   const handleSelect = (t: ChatTier) => {
     onSelect(t);
     setOpen(false);
   };
+
+  const triggerButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="default"
+      aria-label={TIER_LABELS[tier]}
+      className={cn(
+        "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
+        "gap-0 @[460px]/chat-bottom:gap-1.5",
+        "h-10 md:h-8",
+      )}
+    >
+      {iconFor?.(tier)}
+      <span
+        className={cn(
+          "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
+          "@[460px]/chat-bottom:max-w-24 @[460px]/chat-bottom:opacity-100",
+        )}
+      >
+        {TIER_LABELS[tier]}
+      </span>
+      <ChevronDown
+        size={12}
+        className="opacity-60 hidden @[460px]/chat-bottom:inline-block"
+      />
+    </Button>
+  );
+
+  const drawerRows = (
+    <div className="px-2 pt-2 pb-6 flex flex-col gap-0.5">
+      {TIER_ORDER.map((t) => {
+        const subtitle = subtitleFor(t);
+        const modelLabel = modelLabelFor?.(t);
+        const icon = iconFor?.(t);
+        const active = t === tier;
+        return (
+          <button
+            key={t}
+            type="button"
+            onClick={() => handleSelect(t)}
+            className="flex items-start gap-3 px-4 py-3 rounded-lg text-left hover:bg-muted transition-colors"
+          >
+            {icon && (
+              <span className="shrink-0 text-muted-foreground mt-0.5">
+                {icon}
+              </span>
+            )}
+            <div className="flex-1">
+              <div className="text-sm font-medium">{TIER_LABELS[t]}</div>
+              {subtitle && (
+                <div className="text-xs text-muted-foreground">{subtitle}</div>
+              )}
+              {modelLabel && (
+                <div className="text-xs text-muted-foreground/60 font-mono mt-0.5">
+                  {modelLabel}
+                </div>
+              )}
+            </div>
+            {active && (
+              <Check size={16} className="text-foreground mt-0.5 shrink-0" />
+            )}
+          </button>
+        );
+      })}
+      {onSettingsClick && (
+        <button
+          type="button"
+          onClick={() => {
+            onSettingsClick();
+            setOpen(false);
+          }}
+          className="flex items-start gap-3 px-4 py-3 rounded-lg text-left hover:bg-muted transition-colors border-t border-border/40 mt-1"
+        >
+          <span className="shrink-0 text-muted-foreground mt-0.5">
+            <LinkExternal01 size={18} />
+          </span>
+          <div className="flex-1">
+            <div className="text-sm">Model settings</div>
+            <div className="text-xs text-muted-foreground">
+              Configure which model runs each tier
+            </div>
+          </div>
+        </button>
+      )}
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={setOpen}>
+        <DrawerTrigger asChild>{triggerButton}</DrawerTrigger>
+        <DrawerContent className="p-0">
+          <DrawerTitle className="sr-only">Select tier</DrawerTitle>
+          {drawerRows}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="inline-flex min-w-0 shrink">
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="default"
-                aria-label={TIER_LABELS[tier]}
-                className={cn(
-                  "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
-                  "gap-0 @[320px]/chat-bottom:gap-1.5",
-                )}
-              >
-                {iconFor?.(tier)}
-                <span
-                  className={cn(
-                    "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-                    "@[320px]/chat-bottom:max-w-24 @[320px]/chat-bottom:opacity-100",
-                  )}
-                >
-                  {TIER_LABELS[tier]}
-                </span>
-                <ChevronDown
-                  size={12}
-                  className="opacity-60 hidden @[320px]/chat-bottom:inline-block"
-                />
-              </Button>
-            </PopoverTrigger>
+            <PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
           </span>
         </TooltipTrigger>
         <TooltipContent>{TIER_LABELS[tier]}</TooltipContent>
@@ -100,6 +193,7 @@ export function TierTriggerPure({
         <div role="menu" className="flex flex-col">
           {TIER_ORDER.map((t) => {
             const subtitle = subtitleFor(t);
+            const modelLabel = modelLabelFor?.(t);
             const icon = iconFor?.(t);
             const active = t === tier;
             return (
@@ -126,6 +220,11 @@ export function TierTriggerPure({
                       {subtitle}
                     </div>
                   )}
+                  {modelLabel && (
+                    <div className="text-xs text-muted-foreground/60 font-mono mt-0.5">
+                      {modelLabel}
+                    </div>
+                  )}
                 </div>
                 {active && (
                   <Check size={14} className="text-foreground mt-0.5" />
@@ -133,6 +232,29 @@ export function TierTriggerPure({
               </button>
             );
           })}
+          {onSettingsClick && (
+            <button
+              type="button"
+              onClick={() => {
+                onSettingsClick();
+                setOpen(false);
+              }}
+              className={cn(
+                "flex items-start gap-2 px-2 py-1.5 rounded-md text-left",
+                "hover:bg-muted border-t border-border/40 mt-0.5",
+              )}
+            >
+              <span className="shrink-0 text-muted-foreground mt-0.5">
+                <LinkExternal01 size={16} />
+              </span>
+              <div className="flex-1">
+                <div className="text-sm">Model settings</div>
+                <div className="text-xs text-muted-foreground">
+                  Configure which model runs each tier
+                </div>
+              </div>
+            </button>
+          )}
         </div>
       </PopoverContent>
     </Popover>
@@ -147,9 +269,9 @@ export function TierTriggerPure({
  * it without depending on the chat AgentMode concept.
  */
 function tierIconFor(tier: ChatTier): ReactNode {
-  if (tier === "fast") return <Lightning01 size={16} />;
-  if (tier === "thinking") return <Atom01 size={16} />;
-  return <Stars01 size={16} />;
+  if (tier === "fast") return <Lightning01 className="size-[18px] md:size-4" />;
+  if (tier === "thinking") return <Atom01 className="size-[18px] md:size-4" />;
+  return <Stars01 className="size-[18px] md:size-4" />;
 }
 
 /**
@@ -160,9 +282,25 @@ export function TierTrigger() {
   const tier = useChatTier();
   const setTier = useSetChatTier();
   const mode = useAgentMode();
+  const navigate = useNavigate();
+  const { org } = useProjectContext();
+  const simpleMode = useSimpleMode();
 
   const subtitleFor = (t: ChatTier): string | null =>
     resolveTierSubtitle(mode, t);
+
+  const isDecopilot = mode === "cloud-decopilot" || mode === "local-decopilot";
+
+  const modelLabelFor = isDecopilot
+    ? (t: ChatTier): string | null => {
+        const slot = simpleMode.tiers[t];
+        return slot?.title ?? slot?.modelId ?? null;
+      }
+    : undefined;
+
+  const handleSettingsClick = () => {
+    navigate({ to: "/$org/settings/ai-providers", params: { org: org.slug } });
+  };
 
   return (
     <TierTriggerPure
@@ -170,6 +308,8 @@ export function TierTrigger() {
       subtitleFor={subtitleFor}
       iconFor={tierIconFor}
       onSelect={setTier}
+      modelLabelFor={modelLabelFor}
+      onSettingsClick={handleSettingsClick}
     />
   );
 }

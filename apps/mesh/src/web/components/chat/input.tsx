@@ -503,7 +503,7 @@ export function ChatInput({
                       <button
                         type="button"
                         onClick={handleVoiceCancel}
-                        className="flex items-center justify-center size-8 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        className="flex items-center justify-center size-10 md:size-8 [&_svg]:size-[18px] md:[&_svg]:size-4 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                         aria-label="Cancel recording"
                       >
                         <X size={16} />
@@ -511,7 +511,7 @@ export function ChatInput({
                       <button
                         type="button"
                         onClick={handleVoiceConfirm}
-                        className="flex items-center justify-center size-8 rounded-lg bg-foreground text-background hover:opacity-80 transition-opacity"
+                        className="flex items-center justify-center size-10 md:size-8 [&_svg]:size-[18px] md:[&_svg]:size-4 rounded-lg bg-foreground text-background hover:opacity-80 transition-opacity"
                         aria-label="Use transcription"
                       >
                         <Check size={16} />
@@ -553,7 +553,7 @@ export function ChatInput({
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group min-w-0 shrink animate-in fade-in duration-200"
                         >
                           <BookOpen01 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-32 @[320px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[460px]/chat-bottom:max-w-32 @[460px]/chat-bottom:opacity-100">
                             Plan mode
                           </span>
                           <X
@@ -580,7 +580,7 @@ export function ChatInput({
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Image01 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[460px]/chat-bottom:max-w-[120px] @[460px]/chat-bottom:opacity-100">
                             Create image
                           </span>
                           <X
@@ -607,7 +607,7 @@ export function ChatInput({
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Globe02 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[460px]/chat-bottom:max-w-[120px] @[460px]/chat-bottom:opacity-100">
                             Web search
                           </span>
                           <X
@@ -634,7 +634,7 @@ export function ChatInput({
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Telescope size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[320px]/chat-bottom:max-w-[120px] @[320px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[460px]/chat-bottom:max-w-[120px] @[460px]/chat-bottom:opacity-100">
                             Deep research
                           </span>
                           <X
@@ -674,7 +674,7 @@ export function ChatInput({
                           variant="ghost"
                           size="icon"
                           className={cn(
-                            "size-8 rounded-lg transition-colors",
+                            "size-10 md:size-8 rounded-lg transition-colors",
                             voice.status === "permission-denied"
                               ? "text-destructive hover:text-destructive hover:bg-destructive/10"
                               : "text-muted-foreground hover:text-foreground",
@@ -685,7 +685,7 @@ export function ChatInput({
                               : "Voice input"
                           }
                         >
-                          <Microphone01 size={18} />
+                          <Microphone01 className="size-[18px]" />
                         </Button>
                       )}
 
@@ -705,7 +705,7 @@ export function ChatInput({
                         size="icon"
                         disabled={!canSubmit && !showStopOrCancel}
                         className={cn(
-                          "size-8 rounded-lg transition-all",
+                          "size-10 md:size-8 rounded-lg transition-all",
                           !canSubmit &&
                             !showStopOrCancel &&
                             "bg-muted text-muted-foreground hover:bg-muted hover:text-muted-foreground cursor-not-allowed",
@@ -719,9 +719,9 @@ export function ChatInput({
                         }
                       >
                         {showStopOrCancel ? (
-                          <Stop size={20} />
+                          <Stop className="size-[18px]" />
                         ) : (
-                          <ArrowUp size={20} />
+                          <ArrowUp className="size-[18px]" />
                         )}
                       </Button>
                     </div>

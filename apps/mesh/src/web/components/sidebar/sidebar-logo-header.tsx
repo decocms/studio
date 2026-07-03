@@ -4,11 +4,13 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { LayoutLeft } from "@untitledui/icons";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
+import { Link, useParams } from "@tanstack/react-router";
 
 interface SidebarLogoHeaderProps {
   /** Collapse / close the sidebar. */
   onToggle: () => void;
   className?: string;
+  hideDesktopIndicator?: boolean;
 }
 
 /**
@@ -29,16 +31,18 @@ interface SidebarLogoHeaderProps {
 export function SidebarLogoHeader({
   onToggle,
   className,
+  hideDesktopIndicator,
 }: SidebarLogoHeaderProps) {
   const config = usePublicConfig();
   const logo = config.logo ?? DEFAULT_LOGO;
   const lightSrc = typeof logo === "string" ? logo : logo.light;
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
+  const { org } = useParams({ from: "/shell/$org" });
 
   return (
     <SidebarHeader
       className={cn(
-        "flex flex-row items-center gap-2 md:gap-0.5 shrink-0 h-12 pl-1 pr-2 pt-0.25 pb-0",
+        "flex flex-row items-center gap-1 md:gap-0.5 shrink-0 h-12 pl-1 pr-2 pt-0.25 pb-0",
         // The desktop sidebar collapses to a narrow icon rail where a logo +
         // toggle row can't fit; hide it there (the toolbar trigger reopens it).
         // The mobile drawer is always expanded, so it stays visible.
@@ -46,7 +50,12 @@ export function SidebarLogoHeader({
         className,
       )}
     >
-      <span className="flex items-center shrink-0 pl-1">
+      <Link
+        to="/$org"
+        params={{ org }}
+        aria-label="Back to home"
+        className="flex items-center shrink-0 pl-1"
+      >
         <span className="flex items-center shrink-0 px-2">
           <img
             src={lightSrc}
@@ -59,11 +68,11 @@ export function SidebarLogoHeader({
             className="size-6 object-contain hidden dark:block"
           />
         </span>
-      </span>
+      </Link>
       <ToolbarIconButton onClick={onToggle} aria-label="Toggle sidebar">
         <LayoutLeft size={16} />
       </ToolbarIconButton>
-      <LinkedDesktopIndicator />
+      {!hideDesktopIndicator && <LinkedDesktopIndicator />}
     </SidebarHeader>
   );
 }
