@@ -22,6 +22,9 @@ afterAll(() => {
   }
 });
 
+const identifyCalls: unknown[][] = [];
+const aliasCalls: unknown[][] = [];
+
 mock.module("posthog-js", () => ({
   default: {
     init: (...args: unknown[]) => {
@@ -33,14 +36,40 @@ mock.module("posthog-js", () => ({
     reset: () => {
       resetCount += 1;
     },
-    identify: () => {},
+    identify: (...args: unknown[]) => {
+      identifyCalls.push(args);
+    },
+    alias: (...args: unknown[]) => {
+      aliasCalls.push(args);
+    },
     capture: () => {},
     captureException: () => {},
   },
 }));
 
-const { initPostHog, setOrganizationGroup, resetUser, __resetForTest } =
-  await import("./posthog-client");
+const {
+  initPostHog,
+  identifyUser,
+  setOrganizationGroup,
+  resetUser,
+  __resetForTest,
+} = await import("./posthog-client");
+
+/** Minimal localStorage stub — enough for the LP-stash read/write/remove. */
+function stubLocalStorage(seed: Record<string, string> = {}) {
+  const store: Record<string, string> = { ...seed };
+  const stub = {
+    getItem: (k: string) => (k in store ? store[k] : null),
+    setItem: (k: string, v: string) => {
+      store[k] = v;
+    },
+    removeItem: (k: string) => {
+      delete store[k];
+    },
+  };
+  (globalThis.window as { localStorage?: unknown }).localStorage = stub;
+  return store;
+}
 
 describe("posthog-client.setOrganizationGroup", () => {
   beforeEach(() => {
@@ -90,5 +119,66 @@ describe("posthog-client.setOrganizationGroup", () => {
 
     setOrganizationGroup("org_1", { name: "Acme", slug: "acme" });
     expect(groupCalls).toHaveLength(2);
+  });
+});
+
+describe("posthog-client.identifyUser LP merge", () => {
+  beforeEach(() => {
+    identifyCalls.length = 0;
+    aliasCalls.length = 0;
+    __resetForTest();
+    delete (globalThis.window as { localStorage?: unknown }).localStorage;
+  });
+
+  test("aliases the stashed LP distinct_id after identify, then clears it", () => {
+    const store = stubLocalStorage({
+      "mesh:lp-distinct-id": JSON.stringify({
+        id: "lp-anon-1",
+        ts: Date.now(),
+      }),
+    });
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    identifyUser("user_42", { email: "x@y.com" });
+    expect(identifyCalls).toHaveLength(1);
+    expect(aliasCalls).toEqual([["lp-anon-1"]]);
+    expect(store["mesh:lp-distinct-id"]).toBeUndefined(); // one-shot
+  });
+
+  test("second login does not re-alias (stash consumed)", () => {
+    stubLocalStorage({
+      "mesh:lp-distinct-id": JSON.stringify({
+        id: "lp-anon-1",
+        ts: Date.now(),
+      }),
+    });
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    identifyUser("user_42");
+    identifyUser("user_42");
+    expect(aliasCalls).toHaveLength(1);
+  });
+
+  test("ignores an expired stash", () => {
+    stubLocalStorage({
+      "mesh:lp-distinct-id": JSON.stringify({
+        id: "lp-anon-1",
+        ts: Date.now() - 25 * 60 * 60 * 1000,
+      }),
+    });
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    identifyUser("user_42");
+    expect(aliasCalls).toHaveLength(0);
+  });
+
+  test("ignores a corrupt stash and no localStorage at all", () => {
+    stubLocalStorage({ "mesh:lp-distinct-id": "not-json" });
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    identifyUser("user_42");
+    expect(aliasCalls).toHaveLength(0);
+
+    __resetForTest();
+    delete (globalThis.window as { localStorage?: unknown }).localStorage;
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    identifyUser("user_42");
+    expect(aliasCalls).toHaveLength(0);
   });
 });
