@@ -348,7 +348,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
             {group.label && (
               <p
                 className={cn(
-                  "px-3 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60",
+                  "px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60",
                   i > 0 && "mt-3",
                 )}
               >
@@ -362,13 +362,13 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
                 params={{ org }}
                 onClick={onClose}
                 className={cn(
-                  "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm",
+                  "flex items-center gap-2 w-full px-2 h-10 rounded-md transition-colors text-sm",
                   isActive(item.to)
                     ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                 )}
               >
-                <span className="relative shrink-0">
+                <span className="relative [&>svg]:size-5 shrink-0">
                   {item.icon}
                   {item.badge ? (
                     <span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 pointer-events-none" />
@@ -389,10 +389,10 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
               clearPersistedQueryCache();
               authClient.signOut();
             }}
-            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="flex items-center gap-2 w-full px-2 h-10 rounded-md transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
-            <span className="shrink-0">
-              <LogOut01 size={14} />
+            <span className="[&>svg]:size-5 shrink-0">
+              <LogOut01 size={20} />
             </span>
             <span className="truncate">Sign Out</span>
           </button>
