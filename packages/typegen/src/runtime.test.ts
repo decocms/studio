@@ -67,6 +67,25 @@ describe("createMeshClient", () => {
     );
   });
 
+  test("throws a message naming the tool even with no text content", async () => {
+    mockCallTool.mockResolvedValueOnce({
+      isError: true,
+      content: [],
+    });
+
+    type Tools = {
+      FAIL_TOOL: { input: Record<string, never>; output: unknown };
+    };
+    const client = createMeshClient<Tools>(
+      { mcpId: "vmc_test", apiKey: "sk" },
+      deps,
+    );
+
+    await expect(client.FAIL_TOOL({})).rejects.toThrow(
+      'Tool "FAIL_TOOL" failed',
+    );
+  });
+
   test("close() closes the underlying client and allows reconnect", async () => {
     type Tools = { TOOL: { input: Record<string, never>; output: unknown } };
     const client = createMeshClient<Tools>(

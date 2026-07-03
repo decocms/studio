@@ -70,10 +70,15 @@ export function createMeshClient<T extends ToolMap>(
         });
 
         if (result.isError) {
-          const message = Array.isArray(result.content)
-            ? result.content.map((c) => ("text" in c ? c.text : "")).join(" ")
-            : "Tool call failed";
-          throw new Error(message);
+          const text = Array.isArray(result.content)
+            ? result.content
+                .map((c) => ("text" in c ? c.text : ""))
+                .filter(Boolean)
+                .join(" ")
+            : "";
+          throw new Error(
+            `Tool "${toolName}" failed${text ? `: ${text}` : ""}`,
+          );
         }
 
         return result.structuredContent;
