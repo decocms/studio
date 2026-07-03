@@ -304,10 +304,19 @@ function ConnectionInspectorViewWithConnection({
   };
 
   const handleAuthenticateForId = async (connId: string) => {
+    // Only request scopes the connection has explicitly configured. Do NOT
+    // hardcode "offline_access": it's an OIDC-ism many MCP providers don't
+    // advertise, and passing it into Dynamic Client Registration makes strict
+    // servers reject the registration outright (e.g. Pipedrive returns HTTP 400
+    // on /register). Refresh tokens are already requested via grant_types, so
+    // omitting scope lets such servers grant their default scope set.
+    const configuredScopes = connection.configuration_scopes?.length
+      ? connection.configuration_scopes.join(" ")
+      : undefined;
     const { token, tokenInfo, error } = await authenticateMcp({
       connectionId: connId,
       orgSlug: projectOrg.slug,
-      scope: "offline_access",
+      ...(configuredScopes ? { scope: configuredScopes } : {}),
     });
     if (error || !token) {
       toast.error(`Authentication failed: ${error}`);
