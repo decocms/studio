@@ -106,6 +106,16 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(organization.id);
     const virtualMcpId = getCommerceDiscoveryAgentId(organization.id);
 
+    // Claim contact forwarded on /upgrade: Commerce Discovery emails this
+    // address when the run completes (the "generating" screen's promise),
+    // linking back to this workspace's onboarding report.
+    const claimContact = {
+      email: ctx.auth.user?.email,
+      reportUrl: `${ctx.baseUrl}/commerce-onboarding?org=${encodeURIComponent(
+        organization.slug ?? organization.id,
+      )}&siteUrl=${encodeURIComponent(normalized.value)}`,
+    };
+
     let connection = await ctx.storage.connections.findById(
       connectionId,
       organization.id,
@@ -120,6 +130,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
         siteUrl: normalized.value,
         orgId: organization.id,
         orgName: organization.name,
+        ...claimContact,
       });
       if (auth.authorizationToken) {
         console.log("[commerce-discovery] repairing missing auth token", {
@@ -138,6 +149,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
         siteUrl: normalized.value,
         orgId: organization.id,
         orgName: organization.name,
+        ...claimContact,
       });
 
       console.log("[commerce-discovery] creating connection", {

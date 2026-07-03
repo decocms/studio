@@ -18,6 +18,11 @@ export interface CommerceDiscoveryAuthInput {
   siteUrl: string;
   orgId: string;
   orgName?: string;
+  /** Claiming user's email — Commerce Discovery sends the run-completion
+   *  email (the onboarding "generating" screen's promise) to this address. */
+  email?: string;
+  /** Deep link back to this workspace's report, used in that email. */
+  reportUrl?: string;
 }
 
 export interface CommerceDiscoveryAuthOptions {
@@ -96,6 +101,8 @@ export async function fetchCommerceDiscoveryAuth(
     body: JSON.stringify({
       org_id: input.orgId,
       ...(input.orgName ? { name: input.orgName } : {}),
+      ...(input.email ? { email: input.email } : {}),
+      ...(input.reportUrl ? { report_url: input.reportUrl } : {}),
     }),
   });
 
