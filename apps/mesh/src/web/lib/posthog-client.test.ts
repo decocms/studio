@@ -132,7 +132,10 @@ describe("posthog-client.identifyUser LP merge", () => {
 
   test("aliases the stashed LP distinct_id after identify, then clears it", () => {
     const store = stubLocalStorage({
-      "mesh:lp-distinct-id": JSON.stringify({ id: "lp-anon-1", ts: Date.now() }),
+      "mesh:lp-distinct-id": JSON.stringify({
+        id: "lp-anon-1",
+        ts: Date.now(),
+      }),
     });
     initPostHog("phc_test", "https://us.i.posthog.com");
     identifyUser("user_42", { email: "x@y.com" });
@@ -143,7 +146,10 @@ describe("posthog-client.identifyUser LP merge", () => {
 
   test("second login does not re-alias (stash consumed)", () => {
     stubLocalStorage({
-      "mesh:lp-distinct-id": JSON.stringify({ id: "lp-anon-1", ts: Date.now() }),
+      "mesh:lp-distinct-id": JSON.stringify({
+        id: "lp-anon-1",
+        ts: Date.now(),
+      }),
     });
     initPostHog("phc_test", "https://us.i.posthog.com");
     identifyUser("user_42");
