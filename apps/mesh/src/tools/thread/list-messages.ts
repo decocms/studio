@@ -17,7 +17,7 @@ import { ThreadMessageEntitySchema } from "./schema";
 /**
  * Extract threadId from where clause (backward compat)
  */
-function extractThreadIdFromWhere(
+export function extractThreadIdFromWhere(
   where: WhereExpression | undefined,
 ): string | null {
   if (!where) return null;
@@ -28,7 +28,10 @@ function extractThreadIdFromWhere(
   ) {
     return String(where.value);
   }
-  if ("conditions" in where) {
+  if (
+    "conditions" in where &&
+    (where.operator === "and" || where.operator === "or")
+  ) {
     for (const condition of where.conditions) {
       const found = extractThreadIdFromWhere(condition);
       if (found) return found;
