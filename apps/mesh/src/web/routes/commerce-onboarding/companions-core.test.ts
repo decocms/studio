@@ -307,6 +307,33 @@ describe("buildCompanionCards", () => {
     expect(cards[0]!.satisfied).toBe(false);
     expect(cards[0]!.candidateConnectionId).toBe("c_vtex");
   });
+  it("falls back to a GitHub avatar when the registry item has no icons", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "SHOP", bindingType: "shopify" }],
+      itemsById: {},
+      itemsByName: {
+        shopify: {
+          id: "deco/shopify",
+          server: { repository: "https://github.com/deco-cx/shopify" },
+        },
+      },
+      connections: [],
+      configurationState: null,
+      curated,
+    });
+    expect(cards[0]!.icon).toContain("images.weserv.nl");
+  });
+  it("has a null icon when the registry item has neither icons nor a repository", () => {
+    const cards = buildCompanionCards({
+      requirements: [{ fieldKey: "SHOP", bindingType: "shopify" }],
+      itemsById: {},
+      itemsByName: { shopify: { id: "deco/shopify" } },
+      connections: [],
+      configurationState: null,
+      curated,
+    });
+    expect(cards[0]!.icon).toBeNull();
+  });
 });
 
 describe("matchGscSite", () => {
