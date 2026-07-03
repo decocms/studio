@@ -40,7 +40,6 @@ import {
   buildLoaderInvokeUrl,
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
-import { loopbackPreviewTarget } from "../../lib/loopback-preview";
 import {
   GitPushAuthError,
   parseGithubRepoFromMetadata,
@@ -776,12 +775,9 @@ export const createSandboxRoutes = () => {
     }
 
     const base = previewUrl.replace(/\/+$/, "");
-    const loopback = loopbackPreviewTarget(`${base}${path}`);
     let upstream: Response;
     try {
-      upstream = await fetch(loopback?.url ?? `${base}${path}`, {
-        ...(loopback ? { headers: { host: loopback.hostHeader } } : {}),
-      });
+      upstream = await fetch(`${base}${path}`);
     } catch {
       return c.json({ error: "Preview unreachable" }, 502);
     }
@@ -839,19 +835,17 @@ export const createSandboxRoutes = () => {
         return c.json({ error: "Invalid or missing __resolveType" }, 400);
       }
 
-      const invokeUrl = buildLoaderInvokeUrl(previewUrl, invoke.resolveType);
-      const loopback = loopbackPreviewTarget(invokeUrl);
       let upstream: Response;
       try {
-        upstream = await fetch(loopback?.url ?? invokeUrl, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            ...(loopback ? { host: loopback.hostHeader } : {}),
+        upstream = await fetch(
+          buildLoaderInvokeUrl(previewUrl, invoke.resolveType),
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(invoke.payload),
+            signal: AbortSignal.timeout(30_000),
           },
-          body: JSON.stringify(invoke.payload),
-          signal: AbortSignal.timeout(30_000),
-        });
+        );
       } catch {
         return c.json({ error: "Preview unreachable" }, 502);
       }
