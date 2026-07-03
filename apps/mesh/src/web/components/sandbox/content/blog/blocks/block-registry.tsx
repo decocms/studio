@@ -175,13 +175,17 @@ export function BlockEditor({
           />
         );
       case "ProductCard":
-        return isBlogAppBlockResolveType(resolveType)
-          ? <AppProductCardBlock block={block} onChange={onChange} />
-          : <ProductCardBlock block={block} onChange={onChange} />;
+        return isBlogAppBlockResolveType(resolveType) ? (
+          <AppProductCardBlock block={block} onChange={onChange} />
+        ) : (
+          <ProductCardBlock block={block} onChange={onChange} />
+        );
       case "ProductShelf":
-        return isBlogAppBlockResolveType(resolveType)
-          ? <AppProductShelfBlock block={block} onChange={onChange} />
-          : <ProductShelfBlock block={block} onChange={onChange} />;
+        return isBlogAppBlockResolveType(resolveType) ? (
+          <AppProductShelfBlock block={block} onChange={onChange} />
+        ) : (
+          <ProductShelfBlock block={block} onChange={onChange} />
+        );
       default:
         break;
     }

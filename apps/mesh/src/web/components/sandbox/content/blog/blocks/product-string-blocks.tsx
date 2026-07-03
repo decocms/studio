@@ -75,7 +75,8 @@ export function AppProductCardBlock({
             onChange({
               ...block,
               product: e.target.value,
-            })}
+            })
+          }
           placeholder={PRODUCT_REF_PLACEHOLDER}
           className="h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground/50 focus:ring-0"
         />
@@ -139,7 +140,8 @@ export function AppProductShelfBlock({
           onChange({
             ...block,
             products: nextRefs,
-          })}
+          })
+        }
       />
     </div>
   );

@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readProductListIds } from "./product-loader-utils";
-import {
-  readStringRef,
-  readStringRefList,
-} from "./product-string-utils";
+import { readStringRef, readStringRefList } from "./product-string-utils";
 
 const SPIRE_PRODUCT_CARD = {
   __resolveType: "blog/sections/blocks/ProductCard.tsx",
