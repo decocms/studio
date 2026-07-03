@@ -342,7 +342,7 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
   return (
     <div className="flex flex-col h-full bg-sidebar" data-sidebar="sidebar">
       <SidebarLogoHeader onToggle={onClose} hideDesktopIndicator />
-      <SidebarContent className="flex flex-col flex-1 px-2 py-2 gap-0">
+      <SidebarContent className="flex flex-col flex-1 px-2 py-2 gap-0 overflow-y-auto">
         {groups.map((group, i) => (
           <SidebarGroup
             key={`${group.label}-${i}`}
