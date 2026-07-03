@@ -380,6 +380,20 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   let originAuthServer: string | undefined;
   const connUrl = new URL(connection.connection_url);
 
+  // RFC 8707 resource indicator forwarded to the downstream authorization
+  // server on the authorize/token legs. Defaults to the connection's MCP
+  // endpoint URL — what most servers validate against (e.g. Supabase requires
+  // the exact endpoint). Some servers only accept the *origin* and reject a
+  // path-bearing resource (e.g. Pipedream returns "Invalid or unauthorized
+  // resource parameter" for ".../v2"). Allow a per-connection override via
+  // `metadata.oauthResource` for those, falling back to the connection URL.
+  const resourceOverride =
+    typeof connection.metadata?.oauthResource === "string" &&
+    connection.metadata.oauthResource.length > 0
+      ? connection.metadata.oauthResource
+      : undefined;
+  const resourceIndicator = resourceOverride ?? connection.connection_url;
+
   if (resourceRes.ok) {
     // Origin has Protected Resource Metadata - use authorization_servers from it
     const resourceData = (await resourceRes.json()) as {
@@ -475,7 +489,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     // Some auth servers (like Supabase) validate that the resource is their actual endpoint,
     // not our proxy. We keep the proxy URL for redirect_uri since that's where we handle the callback.
     if (targetUrl.searchParams.has("resource")) {
-      targetUrl.searchParams.set("resource", connection.connection_url);
+      targetUrl.searchParams.set("resource", resourceIndicator);
     }
 
     // Add smart OAuth params for deco-hosted MCPs to skip org/project selection
@@ -548,7 +562,7 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       // Parse form body and rewrite resource if present
       const formData = await c.req.formData();
       if (formData.has("resource")) {
-        formData.set("resource", connection.connection_url);
+        formData.set("resource", resourceIndicator);
       }
       const cidRaw = formData.get("client_id");
       const csRaw = formData.get("client_secret");
