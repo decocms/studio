@@ -106,6 +106,26 @@ describe("getConfigurationSummaryEntries", () => {
       { key: "accountName", label: "Nome da conta", value: "electrolux" },
     ]);
   });
+
+  it("humanizes keys with no curated label (camelCase and snake/kebab-case)", () => {
+    expect(
+      getConfigurationSummaryEntries({
+        storeDomain: "electrolux",
+        api_key: "abc",
+        "sales-channel": "1",
+      }),
+    ).toEqual([
+      { key: "storeDomain", label: "Store Domain", value: "electrolux" },
+      { key: "api_key", label: "Api Key", value: "abc" },
+      { key: "sales-channel", label: "Sales Channel", value: "1" },
+    ]);
+  });
+
+  it("stringifies non-scalar values as JSON", () => {
+    expect(
+      getConfigurationSummaryEntries({ scopes: ["read", "write"] }),
+    ).toEqual([{ key: "scopes", label: "Scopes", value: '["read","write"]' }]);
+  });
 });
 
 describe("resolveCandidate", () => {
