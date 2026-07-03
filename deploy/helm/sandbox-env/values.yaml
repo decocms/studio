@@ -310,6 +310,61 @@ previewGateway:
     annotations: {}
     labels: {}
 
+  # ── gateway resilience (all opt-in) ──────────────────────────────────
+  # The Gateway controller (Istio) generates a Deployment named
+  # `agent-sandbox-preview-<envName>-istio` with a single replica and no
+  # autoscaling. The three blocks below harden that generated workload
+  # without owning it: HPA/PDB attach to the generated Deployment/pods by
+  # name/label (the documented pattern for Istio auto-deployed gateways —
+  # the controller does not manage `replicas`, so it never fights the HPA).
+
+  # HorizontalPodAutoscaler targeting the generated gateway Deployment.
+  # minReplicas 1 keeps today's footprint; raise to 2 for HA across node
+  # rotations (the single replica is a full preview-path outage while it
+  # reschedules).
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+  # PodDisruptionBudget over the generated gateway pods. With minAvailable 1
+  # and a single replica this blocks voluntary evictions entirely (Karpenter
+  # consolidation/drift must wait) — which is the point; it does NOT protect
+  # against spot interruptions or node failure. Pair with autoscaling
+  # minReplicas 2 to make those a non-event too.
+  pdb:
+    enabled: false
+    minAvailable: 1
+
+  # Retry policy for the preview data path, applied via an Istio EnvoyFilter
+  # scoped to THIS gateway's pods only (hard-coded workloadSelector on the
+  # `gateway.networking.k8s.io/gateway-name` label — it can never widen to
+  # other gateways). Istio's default retry policy does not retry an upstream
+  # that answered 502, which is exactly what the sandbox daemon returns
+  # while the dev server inside the sandbox is down/restarting. Retries are
+  # gated to GET (no body buffering, no replayed mutations) and spaced with
+  # backoff so a 2-attempt budget bridges a short dev-server restart
+  # (~3-5s); a sandbox that is down for longer still 502s after the budget.
+  # Requires gatewayClassName=istio (EnvoyFilter is an Istio CRD).
+  retries:
+    enabled: false
+    # Total retry attempts after the initial request.
+    attempts: 2
+    # Per-attempt upstream timeout.
+    perTryTimeout: "5s"
+    # Envoy retry_on conditions. `retriable-status-codes` activates
+    # `retriableStatusCodes` below; the rest cover connection-level
+    # failures (reset, refused, connect timeout).
+    retryOn: "connect-failure,refused-stream,reset,retriable-status-codes"
+    # Upstream response codes to retry. 503 is intentionally NOT here: the
+    # daemon's 503 is the auto-refreshing "Connecting…" page — retrying it
+    # would only delay a response the user can already see.
+    retriableStatusCodes: [502]
+    # Exponential backoff between attempts.
+    backoffBaseInterval: "0.5s"
+    backoffMaxInterval: "2s"
+
 # ── mesh cross-references ──────────────────────────────────────────────
 # Tells this chart where the chart-deco-studio release for THIS
 # environment runs so the RBAC RoleBinding, NetworkPolicy ingress

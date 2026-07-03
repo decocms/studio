@@ -9,6 +9,12 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.10.0: preview-gateway resilience knobs, all opt-in and default-off —
+# previewGateway.autoscaling (HPA over the Istio-generated Deployment),
+# previewGateway.pdb (PDB over the generated pods), previewGateway.retries
+# (EnvoyFilter retrying GET-only 502s from the sandbox daemon, hard-scoped
+# to this gateway's workloadSelector). No behavior change for existing
+# consumers.
 # 0.9.0: org-fs is mandatory — removed the `orgFs.enabled` + `hostUsers`
 # toggles (sidecar always deployed, hostUsers fixed true). Minor bump:
 # behavior change for consumers that ran with org-fs disabled / userns
@@ -19,7 +25,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.9.0
+version: 0.10.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "0.5.7"
 kubeVersion: ">=1.30.0-0"

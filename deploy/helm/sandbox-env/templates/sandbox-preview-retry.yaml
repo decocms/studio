@@ -1,0 +1,60 @@
+{{- if and .Values.previewGateway.enabled .Values.previewGateway.retries.enabled }}
+{{- $previewName := include "sandbox-env.previewName" . }}
+{{- $retries := .Values.previewGateway.retries }}
+# Retry policy for the preview data path. Istio's built-in default retry
+# policy covers connection-level failures only — an upstream that ANSWERS
+# 502 is returned to the client as-is. On this path that 502 is the sandbox
+# daemon reporting "dev server (port 3000) not up yet" during boot/restart,
+# so a short, spaced retry budget absorbs the blip instead of surfacing it.
+#
+# Scope: the workloadSelector below is HARD-CODED to this gateway's
+# `gateway-name` label and the resource lands in the gateway's namespace —
+# double barrier (namespace + label), so this filter can never apply to any
+# other Envoy in the mesh. validations.yaml rejects rendering it into
+# istio-system, where root-namespace EnvoyFilter semantics would make the
+# label selector match cluster-wide.
+#
+# Safety properties of the policy:
+#   - GET-only (`retriable_request_headers` on :method): no request-body
+#     buffering, no replayed mutations.
+#   - 503 is intentionally not retried: the daemon's 503 is the
+#     auto-refreshing "Connecting…" page — a response the user should see
+#     immediately, not after a retry budget.
+#
+# EnvoyFilter is v1alpha3 and coupled to Envoy internals — smoke-test on
+# stg after every Istio upgrade (see PR notes / values.yaml).
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: {{ $previewName }}-retry
+  namespace: {{ .Values.previewGateway.namespace }}
+  labels:
+    {{- include "sandbox-env.sandboxPreviewLabels" . | nindent 4 }}
+spec:
+  workloadSelector:
+    labels:
+      gateway.networking.k8s.io/gateway-name: {{ $previewName }}
+  configPatches:
+    - applyTo: HTTP_ROUTE
+      match:
+        context: GATEWAY
+      patch:
+        operation: MERGE
+        value:
+          route:
+            retry_policy:
+              retry_on: {{ $retries.retryOn | quote }}
+              retriable_status_codes:
+                {{- range $retries.retriableStatusCodes }}
+                - {{ . }}
+                {{- end }}
+              num_retries: {{ $retries.attempts }}
+              per_try_timeout: {{ $retries.perTryTimeout }}
+              retry_back_off:
+                base_interval: {{ $retries.backoffBaseInterval }}
+                max_interval: {{ $retries.backoffMaxInterval }}
+              retriable_request_headers:
+                - name: ":method"
+                  string_match:
+                    exact: "GET"
+{{- end }}

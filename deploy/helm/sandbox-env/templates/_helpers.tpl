@@ -143,6 +143,23 @@ atomic and gives a pointer to the right install command.
 {{- fail "sandbox-env: previewGateway.enabled=true with tlsTermination=gateway requires cert-manager (cert-manager.io/v1). Install: helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace --set crds.enabled=true — or set previewGateway.tlsTermination=loadBalancer to terminate TLS at the cloud LB instead." -}}
 {{- end }}
 {{- end }}
+{{- if .Values.previewGateway.retries.enabled }}
+{{/* EnvoyFilter is an Istio CRD; a non-Istio gatewayClassName means the
+     filter would be silently ignored (or worse, rejected at apply). */}}
+{{- if ne .Values.previewGateway.gatewayClassName "istio" }}
+{{- fail (printf "sandbox-env: previewGateway.retries.enabled=true requires gatewayClassName=istio (EnvoyFilter is an Istio CRD; got %q)" .Values.previewGateway.gatewayClassName) -}}
+{{- end }}
+{{- if not (.Capabilities.APIVersions.Has "networking.istio.io/v1alpha3") }}
+{{- fail "sandbox-env: previewGateway.retries.enabled=true requires Istio (networking.istio.io/v1alpha3 EnvoyFilter CRD not found)." -}}
+{{- end }}
+{{/* In Istio's root namespace (istio-system by default) an EnvoyFilter's
+     workloadSelector matches labels across ALL namespaces instead of just
+     its own — the namespace half of the scoping barrier disappears. Run
+     the preview gateway in a dedicated namespace to enable retries. */}}
+{{- if eq .Values.previewGateway.namespace "istio-system" }}
+{{- fail "sandbox-env: previewGateway.retries.enabled=true is not allowed with previewGateway.namespace=istio-system — a root-namespace EnvoyFilter selects workloads cluster-wide. Move the preview gateway to a dedicated namespace (e.g. agent-sandbox-system)." -}}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 
