@@ -1,4 +1,12 @@
-import { describe, expect, test, beforeEach, afterAll, mock } from "bun:test";
+import {
+  describe,
+  expect,
+  test,
+  beforeEach,
+  afterAll,
+  mock,
+  spyOn,
+} from "bun:test";
 
 type GroupCall = [type: string, key: string, props: unknown];
 
@@ -24,6 +32,8 @@ afterAll(() => {
 
 const identifyCalls: unknown[][] = [];
 const aliasCalls: unknown[][] = [];
+const captureCalls: [event: string, properties?: Record<string, unknown>][] =
+  [];
 
 mock.module("posthog-js", () => ({
   default: {
@@ -42,7 +52,9 @@ mock.module("posthog-js", () => ({
     alias: (...args: unknown[]) => {
       aliasCalls.push(args);
     },
-    capture: () => {},
+    capture: (event: string, properties?: Record<string, unknown>) => {
+      captureCalls.push([event, properties]);
+    },
     captureException: () => {},
   },
 }));
@@ -52,6 +64,7 @@ const {
   identifyUser,
   setOrganizationGroup,
   resetUser,
+  flushBootstrapTiming,
   __resetForTest,
 } = await import("./posthog-client");
 
@@ -180,5 +193,89 @@ describe("posthog-client.identifyUser LP merge", () => {
     initPostHog("phc_test", "https://us.i.posthog.com");
     identifyUser("user_42");
     expect(aliasCalls).toHaveLength(0);
+  });
+});
+
+describe("posthog-client.flushBootstrapTiming", () => {
+  beforeEach(() => {
+    captureCalls.length = 0;
+    __resetForTest();
+  });
+
+  test("is a no-op before initPostHog is called", () => {
+    flushBootstrapTiming();
+    expect(captureCalls).toHaveLength(0);
+  });
+
+  test("captures rounded phase durations exactly once", () => {
+    const navEntry = {
+      type: "navigate",
+      responseStart: 12.4,
+      domInteractive: 340.6,
+      domContentLoadedEventEnd: 512.2,
+    };
+    const getEntriesByType = spyOn(
+      performance,
+      "getEntriesByType",
+    ).mockReturnValue([navEntry] as unknown as PerformanceEntryList);
+    const getEntriesByName = spyOn(
+      performance,
+      "getEntriesByName",
+    ).mockImplementation((name) =>
+      name === "mesh:config-fetch"
+        ? ([{ duration: 88.9 }] as unknown as PerformanceEntryList)
+        : ([] as unknown as PerformanceEntryList),
+    );
+    const now = spyOn(performance, "now").mockReturnValue(600);
+
+    try {
+      initPostHog("phc_test", "https://us.i.posthog.com");
+      flushBootstrapTiming();
+      flushBootstrapTiming(); // second call must be a no-op (one-shot latch)
+
+      expect(captureCalls).toHaveLength(1);
+      const [event, properties] = captureCalls[0]!;
+      expect(event).toBe("perf_app_bootstrap");
+      expect(properties).toEqual({
+        nav_type: "navigate",
+        ttfb_ms: 12,
+        dom_interactive_ms: 341,
+        dom_content_loaded_ms: 512,
+        config_fetch_ms: 89,
+        active_org_fetch_ms: undefined,
+        time_to_shell_ms: 600,
+        cache_restored: false,
+        org_cache_restored: false,
+      });
+    } finally {
+      getEntriesByType.mockRestore();
+      getEntriesByName.mockRestore();
+      now.mockRestore();
+    }
+  });
+
+  test("omits nav-derived fields when there is no navigation entry", () => {
+    const getEntriesByType = spyOn(
+      performance,
+      "getEntriesByType",
+    ).mockReturnValue([] as unknown as PerformanceEntryList);
+    const getEntriesByName = spyOn(
+      performance,
+      "getEntriesByName",
+    ).mockReturnValue([] as unknown as PerformanceEntryList);
+
+    try {
+      initPostHog("phc_test", "https://us.i.posthog.com");
+      flushBootstrapTiming();
+
+      const [, properties] = captureCalls[0]!;
+      expect(properties?.nav_type).toBeUndefined();
+      expect(properties?.ttfb_ms).toBeUndefined();
+      expect(properties?.dom_interactive_ms).toBeUndefined();
+      expect(properties?.dom_content_loaded_ms).toBeUndefined();
+    } finally {
+      getEntriesByType.mockRestore();
+      getEntriesByName.mockRestore();
+    }
   });
 });
