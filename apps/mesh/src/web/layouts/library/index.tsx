@@ -133,8 +133,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function CardsGrid({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {children}
+    <div className="@container">
+      <div className="grid grid-cols-1 gap-3 @[440px]:grid-cols-2 @[660px]:grid-cols-3">
+        {children}
+      </div>
     </div>
   );
 }
