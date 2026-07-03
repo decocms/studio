@@ -340,64 +340,68 @@ export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-sidebar">
+    <div className="flex flex-col h-full bg-sidebar" data-sidebar="sidebar">
       <SidebarLogoHeader onToggle={onClose} hideDesktopIndicator />
-      <div className="flex flex-col flex-1 overflow-y-auto px-2 py-2 gap-0.5">
+      <SidebarContent className="flex flex-col flex-1 px-2 py-2 gap-0">
         {groups.map((group, i) => (
-          <div key={`${group.label}-${i}`} className="flex flex-col gap-0.5">
+          <SidebarGroup
+            key={`${group.label}-${i}`}
+            className="pt-0 pr-0 pb-0 pl-0"
+          >
             {group.label && (
               <p
                 className={cn(
-                  "px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground/60",
+                  "px-1 pt-1.5 pb-0.5 text-xs font-medium text-sidebar-foreground/70",
                   i > 0 && "mt-3",
                 )}
               >
                 {group.label}
               </p>
             )}
-            {group.items.map((item) => (
-              <Link
-                key={item.key}
-                to={item.to}
-                params={{ org }}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-2 w-full px-2 h-10 rounded-md transition-colors text-sm",
-                  isActive(item.to)
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
-                )}
-              >
-                <span className="relative [&>svg]:size-5 shrink-0">
-                  {item.icon}
-                  {item.badge ? (
-                    <span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 pointer-events-none" />
-                  ) : null}
-                </span>
-                <span className="truncate">{item.label}</span>
-              </Link>
-            ))}
-          </div>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1.5">
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.key}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive(item.to)}
+                      className="h-10! text-sm!"
+                    >
+                      <Link to={item.to} params={{ org }} onClick={onClose}>
+                        <span className="relative [&>svg]:size-5 shrink-0">
+                          {item.icon}
+                          {item.badge ? (
+                            <span className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 pointer-events-none" />
+                          ) : null}
+                        </span>
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         ))}
 
-        {/* Sign Out */}
-        <div className="flex flex-col gap-0.5">
-          <div className="h-px bg-border/50 my-2" />
-          <button
-            type="button"
-            onClick={() => {
-              clearPersistedQueryCache();
-              authClient.signOut();
-            }}
-            className="flex items-center gap-2 w-full px-2 h-10 rounded-md transition-colors text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-          >
-            <span className="[&>svg]:size-5 shrink-0">
-              <LogOut01 size={20} />
-            </span>
-            <span className="truncate">Sign Out</span>
-          </button>
-        </div>
-      </div>
+        <SidebarGroup className="pt-0 pr-0 pb-0 pl-0 mt-auto">
+          <div className="h-px bg-sidebar-border my-2" />
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                className="h-10! text-sm!"
+                onClick={() => {
+                  clearPersistedQueryCache();
+                  authClient.signOut();
+                }}
+              >
+                <LogOut01 size={16} />
+                <span>Sign Out</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
 
       {/* Version */}
       <div className="px-4 pb-3 pt-1 border-t border-border/50">
