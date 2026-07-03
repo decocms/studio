@@ -58,7 +58,7 @@ A aba **Content** no workspace do agent é o editor visual para as sections e p�
 
 ### Variantes
 
-Cada section ou página pode ter múltiplas **variantes** — configurações alternativas com props diferentes ou condições controladas por matchers (testes A/B, segmentos de audiência, janelas de datas). As variantes aparecem como uma lista abaixo da section pai no editor.
+Cada section ou página pode ter múltiplas **variantes** — configurações alternativas com props diferentes ou condições controladas por matchers (testes A/B, segmentos de audiência, janelas de datas, localização geográfica). As variantes aparecem como uma lista abaixo da section pai no editor.
 
 Você pode:
 
@@ -68,6 +68,10 @@ Você pode:
 
 <Callout type="tip">
   A posição de scroll no preview é preservada ao trocar de variante ou salvar alterações, para que você possa manter o foco na section que está editando sem perder o lugar na página.
+</Callout>
+
+<Callout type="tip">
+  Para **matchers de Location**, o campo de área-alvo (`includeLocations`/`excludeLocations`) é exibido como um mapa interativo — arraste para mover o centro e redimensione o círculo para definir o raio, em vez de digitar coordenadas manualmente. O mapa exige uma chave de API do Google Maps configurada no servidor; se ela não estiver definida, o campo mostra um aviso de "indisponível" e volta para a entrada manual.
 </Callout>
 
 ## Primeiros passos
