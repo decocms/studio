@@ -70,7 +70,10 @@ export type PublicConfig = {
   };
 };
 
-const POSTHOG_DEFAULT_HOST = "https://us.i.posthog.com";
+// First-party reverse proxy (Cloudflare Worker, repo decocms/posthog-proxy) so
+// ad blockers don't drop browser events. Server-side posthog-node (src/posthog.ts)
+// is unaffected and keeps talking to PostHog directly. POSTHOG_HOST still overrides.
+const POSTHOG_DEFAULT_HOST = "https://ph.studio.decocms.com";
 
 function buildPosthogConfig(): PublicConfig["posthog"] {
   const key = process.env.POSTHOG_KEY;

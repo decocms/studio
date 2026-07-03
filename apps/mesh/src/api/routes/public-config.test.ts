@@ -41,7 +41,8 @@ describe("GET /api/config", () => {
     expect(body.success).toBe(true);
     expect(body.config.posthog).toEqual({
       key: "phc_test_key",
-      host: "https://us.i.posthog.com",
+      // First-party reverse proxy default (see public-config.ts).
+      host: "https://ph.studio.decocms.com",
     });
   });
 

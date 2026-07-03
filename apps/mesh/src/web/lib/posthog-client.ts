@@ -110,6 +110,10 @@ export function initPostHog(key: string, host: string) {
   const lpDistinctId = lpBootstrapDistinctId();
   posthog.init(key, {
     api_host: host,
+    // api_host is a first-party reverse proxy so ad blockers (which block
+    // *.posthog.com) don't drop events. ui_host must stay real PostHog so the
+    // toolbar and "open in PostHog" links resolve.
+    ui_host: "https://us.posthog.com",
     ...(lpDistinctId ? { bootstrap: { distinctID: lpDistinctId } } : {}),
     capture_pageview: "history_change",
     capture_pageleave: true,
