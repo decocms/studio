@@ -517,6 +517,11 @@ const KNOWN_BLOG_BLOCK_CATALOG: Record<
     description: "Side-by-side comparison",
     iconName: "Columns03",
   },
+  Table: {
+    title: "Table",
+    description: "Rows and columns of structured data",
+    iconName: "Table",
+  },
   ProductCard: {
     title: "Product card",
     description: "Single product",
