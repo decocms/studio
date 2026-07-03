@@ -182,3 +182,93 @@ describe("posthog-client.identifyUser LP merge", () => {
     expect(aliasCalls).toHaveLength(0);
   });
 });
+
+/** Unlike `stubLocalStorage`, exposes stored keys as own enumerable
+ * properties — required because `lpBootstrapDistinctId` reads
+ * `Object.keys(window.localStorage)` directly (real Storage objects do
+ * this natively; our plain get/set/removeItem stub above does not). */
+function stubLocalStorageExposingKeys(seed: Record<string, string> = {}) {
+  const stub: Record<string, unknown> = { ...seed };
+  stub.getItem = (k: string) => (k in stub ? (stub[k] as string) : null);
+  stub.setItem = (k: string, v: string) => {
+    stub[k] = v;
+  };
+  stub.removeItem = (k: string) => {
+    delete stub[k];
+  };
+  (globalThis.window as { localStorage?: unknown }).localStorage = stub;
+  return stub;
+}
+
+function stubLocationAndHistory(href: string) {
+  const win = globalThis.window as { location?: unknown; history?: unknown };
+  win.location = { href };
+  const replaceStateCalls: unknown[][] = [];
+  win.history = {
+    state: null,
+    replaceState: (...args: unknown[]) => {
+      replaceStateCalls.push(args);
+      (win.location as { href: string }).href = args[2] as string;
+    },
+  };
+  return { replaceStateCalls };
+}
+
+describe("posthog-client.initPostHog LP bootstrap", () => {
+  beforeEach(() => {
+    initCalls.length = 0;
+    __resetForTest();
+    delete (globalThis.window as { location?: unknown }).location;
+    delete (globalThis.window as { history?: unknown }).history;
+    delete (globalThis.window as { localStorage?: unknown }).localStorage;
+  });
+
+  test("bootstraps from a ph_did URL param, stashes it, and strips it from the URL", () => {
+    stubLocalStorageExposingKeys();
+    const { replaceStateCalls } = stubLocationAndHistory(
+      "https://app.deco.cx/orgs/acme?ph_did=lp-anon-9&keep=1",
+    );
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    expect(initCalls[0]![1]).toMatchObject({
+      bootstrap: { distinctID: "lp-anon-9" },
+    });
+    expect(replaceStateCalls).toHaveLength(1);
+    const strippedUrl = replaceStateCalls[0]![2] as string;
+    expect(strippedUrl).not.toContain("ph_did");
+    expect(strippedUrl).toContain("keep=1");
+  });
+
+  test("bootstraps from a previously stashed id when no URL param is present", () => {
+    stubLocalStorageExposingKeys({
+      "mesh:lp-distinct-id": JSON.stringify({
+        id: "lp-anon-1",
+        ts: Date.now(),
+      }),
+    });
+    stubLocationAndHistory("https://app.deco.cx/orgs/acme");
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    expect(initCalls[0]![1]).toMatchObject({
+      bootstrap: { distinctID: "lp-anon-1" },
+    });
+  });
+
+  test("skips bootstrap for a returning visitor who already has PostHog state", () => {
+    stubLocalStorageExposingKeys({
+      "mesh:lp-distinct-id": JSON.stringify({
+        id: "lp-anon-1",
+        ts: Date.now(),
+      }),
+      ph_phc_test_posthog: JSON.stringify({ distinct_id: "existing-user" }),
+    });
+    stubLocationAndHistory("https://app.deco.cx/orgs/acme");
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    expect(initCalls[0]![1]).not.toHaveProperty("bootstrap");
+  });
+
+  test("omits bootstrap entirely when there is no URL param or stash", () => {
+    stubLocalStorageExposingKeys();
+    stubLocationAndHistory("https://app.deco.cx/orgs/acme");
+    initPostHog("phc_test", "https://us.i.posthog.com");
+    expect(initCalls[0]![1]).not.toHaveProperty("bootstrap");
+  });
+});
