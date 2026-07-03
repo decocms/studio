@@ -21,7 +21,15 @@ import {
   StepsBlock,
 } from "./list-blocks";
 import { ProductCardBlock, ProductShelfBlock } from "./product-blocks";
-import { blockComponentName, isBlogPostBlockResolveType } from "../blog-data";
+import {
+  AppProductCardBlock,
+  AppProductShelfBlock,
+} from "./product-string-blocks";
+import {
+  blockComponentName,
+  isBlogAppBlockResolveType,
+  isBlogPostBlockResolveType,
+} from "../blog-data";
 import { str } from "./primitives";
 
 export type RawBlock = { __resolveType?: string } & Record<string, unknown>;
@@ -167,9 +175,13 @@ export function BlockEditor({
           />
         );
       case "ProductCard":
-        return <ProductCardBlock block={block} onChange={onChange} />;
+        return isBlogAppBlockResolveType(resolveType)
+          ? <AppProductCardBlock block={block} onChange={onChange} />
+          : <ProductCardBlock block={block} onChange={onChange} />;
       case "ProductShelf":
-        return <ProductShelfBlock block={block} onChange={onChange} />;
+        return isBlogAppBlockResolveType(resolveType)
+          ? <AppProductShelfBlock block={block} onChange={onChange} />
+          : <ProductShelfBlock block={block} onChange={onChange} />;
       default:
         break;
     }

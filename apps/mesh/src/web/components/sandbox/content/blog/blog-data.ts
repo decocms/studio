@@ -635,3 +635,8 @@ export function isBlogPostBlockResolveType(resolveType: string): boolean {
     resolveType.startsWith(prefix),
   );
 }
+
+/** True for built-in deco-cms/blog app blocks (not site-defined sections). */
+export function isBlogAppBlockResolveType(resolveType: string): boolean {
+  return resolveType.startsWith("blog/sections/blocks/");
+}
