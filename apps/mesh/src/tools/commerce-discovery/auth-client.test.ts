@@ -55,7 +55,8 @@ describe("fetchCommerceDiscoveryAuth", () => {
           org_id: "org_123",
           name: "Acme",
           email: "owner@acme.com",
-          report_url: "https://studio.example.test/commerce-onboarding?org=acme",
+          report_url:
+            "https://studio.example.test/commerce-onboarding?org=acme",
         },
       },
     ]);
