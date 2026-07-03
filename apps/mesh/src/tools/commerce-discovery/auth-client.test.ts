@@ -18,6 +18,8 @@ describe("fetchCommerceDiscoveryAuth", () => {
         siteUrl: "https://example.com/path",
         orgId: "org_123",
         orgName: "Acme",
+        email: "owner@acme.com",
+        reportUrl: "https://studio.example.test/commerce-onboarding?org=acme",
       },
       {
         baseUrl: "https://commerce.example.test",
@@ -49,7 +51,13 @@ describe("fetchCommerceDiscoveryAuth", () => {
         method: "POST",
         pathname: "/api/v2/internal/diagnostics/example.com/upgrade",
         authorization: "Bearer master-key",
-        body: { org_id: "org_123", name: "Acme" },
+        body: {
+          org_id: "org_123",
+          name: "Acme",
+          email: "owner@acme.com",
+          report_url:
+            "https://studio.example.test/commerce-onboarding?org=acme",
+        },
       },
     ]);
   });
