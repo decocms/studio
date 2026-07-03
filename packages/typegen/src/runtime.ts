@@ -47,6 +47,12 @@ export function createMeshClient<T extends ToolMap>(
       return client;
     })();
 
+    // A failed connect must not be cached forever — clear it so the next
+    // call retries instead of replaying the same rejection indefinitely.
+    connectPromise.catch(() => {
+      connectPromise = null;
+    });
+
     return connectPromise;
   }
 
