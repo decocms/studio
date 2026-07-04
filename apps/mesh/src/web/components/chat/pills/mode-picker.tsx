@@ -243,7 +243,7 @@ export function ModePickerPure({
         baseClasses,
         isLocal && localPreviewClasses,
         "shrink min-w-0",
-        locked ? "gap-0" : "gap-0 @[460px]/chat-bottom:gap-1.5",
+        locked ? "gap-0" : "gap-0 @[380px]/chat-bottom:gap-1.5",
         "h-10 md:h-8",
       )}
     >
@@ -252,22 +252,17 @@ export function ModePickerPure({
         className={cn(
           "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
           !locked &&
-            "@[460px]/chat-bottom:max-w-32 @[460px]/chat-bottom:opacity-100",
+            "@[380px]/chat-bottom:max-w-32 @[380px]/chat-bottom:opacity-100",
         )}
       >
         {text}
       </span>
-      {!locked && (
-        <ChevronDown
-          size={12}
-          className="opacity-60 hidden @[460px]/chat-bottom:inline-block"
-        />
-      )}
+      {!locked && <ChevronDown size={12} className="opacity-60" />}
     </Button>
   );
 
   const drawerRows = (
-    <div className="px-2 pt-2 pb-6 flex flex-col gap-0.5">
+    <div role="menu" className="px-2 pt-2 pb-6 flex flex-col gap-0.5">
       {cloudRows.length > 0 && <Section title="Cloud" />}
       {cloudRows.map((row) => (
         <Row
@@ -310,9 +305,12 @@ export function ModePickerPure({
     </div>
   );
 
-  if (isMobile && !locked) {
+  if (isMobile) {
     return (
-      <Drawer open={open} onOpenChange={setOpen}>
+      <Drawer
+        open={locked ? false : open}
+        onOpenChange={locked ? undefined : setOpen}
+      >
         <DrawerTrigger asChild>{triggerButton}</DrawerTrigger>
         <DrawerContent className="p-0">
           <DrawerTitle className="sr-only">Select mode</DrawerTitle>

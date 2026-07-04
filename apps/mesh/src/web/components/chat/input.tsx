@@ -271,6 +271,7 @@ export function ChatInput({
   const { data: session } = authClient.useSession();
   const userId = session?.user?.id;
 
+  const navigate = useNavigate();
   const { org, locator } = useProjectContext();
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const fullVm = useVirtualMCP(selectedVirtualMcp?.id ?? decopilotId);
@@ -553,7 +554,7 @@ export function ChatInput({
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 group min-w-0 shrink animate-in fade-in duration-200"
                         >
                           <BookOpen01 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[460px]/chat-bottom:max-w-32 @[460px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[380px]/chat-bottom:max-w-32 @[380px]/chat-bottom:opacity-100">
                             Plan mode
                           </span>
                           <X
@@ -580,7 +581,7 @@ export function ChatInput({
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Image01 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[460px]/chat-bottom:max-w-[120px] @[460px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[380px]/chat-bottom:max-w-[120px] @[380px]/chat-bottom:opacity-100">
                             Create image
                           </span>
                           <X
@@ -607,7 +608,7 @@ export function ChatInput({
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Globe02 size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[460px]/chat-bottom:max-w-[120px] @[460px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[380px]/chat-bottom:max-w-[120px] @[380px]/chat-bottom:opacity-100">
                             Web search
                           </span>
                           <X
@@ -634,7 +635,7 @@ export function ChatInput({
                           className="flex items-center gap-1.5 h-8 rounded-lg px-2.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 group min-w-0 shrink animate-in fade-in duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                         >
                           <Telescope size={14} className="shrink-0" />
-                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[460px]/chat-bottom:max-w-[120px] @[460px]/chat-bottom:opacity-100">
+                          <span className="min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0 @[380px]/chat-bottom:max-w-[120px] @[380px]/chat-bottom:opacity-100">
                             Deep research
                           </span>
                           <X
@@ -661,7 +662,14 @@ export function ChatInput({
                           currentBranch={taskCtx?.currentBranch ?? null}
                         />
                       )}
-                      <TierTrigger />
+                      <TierTrigger
+                        onSettingsClick={() =>
+                          navigate({
+                            to: "/$org/settings/ai-providers",
+                            params: { org: org.slug },
+                          })
+                        }
+                      />
 
                       {/* Microphone button — kept mounted (and disabled)
                           during streaming/run to avoid layout shift when

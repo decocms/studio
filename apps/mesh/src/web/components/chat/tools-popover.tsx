@@ -314,7 +314,7 @@ export function ToolsPopover({
       aria-label="Tools"
       className={cn(
         "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
-        "gap-0 @[460px]/chat-bottom:gap-1.5",
+        "gap-0 @[380px]/chat-bottom:gap-1.5",
         "h-10 md:h-8",
       )}
     >
@@ -322,7 +322,7 @@ export function ToolsPopover({
       <span
         className={cn(
           "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-          "@[460px]/chat-bottom:max-w-24 @[460px]/chat-bottom:opacity-100",
+          "@[380px]/chat-bottom:max-w-24 @[380px]/chat-bottom:opacity-100",
         )}
       >
         Tools
@@ -349,7 +349,10 @@ export function ToolsPopover({
         <Drawer
           open={open}
           onOpenChange={(next) => {
-            if (!next) setDrawerView("main");
+            if (!next) {
+              setDrawerView("main");
+              setActivePrompt(null);
+            }
             if (next && !open) {
               track("chat_tools_popover_opened", { chat_mode: chatMode });
             }
@@ -574,7 +577,25 @@ export function ToolsPopover({
                         opt.value === preferences.toolApprovalLevel &&
                           "font-medium",
                       )}
-                      onClick={() => handleApprovalLevelChange(opt.value)}
+                      onClick={() => {
+                        const matched = APPROVAL_LEVEL_OPTIONS.find(
+                          (o) => o.value === opt.value,
+                        );
+                        if (!matched) return;
+                        if (matched.value !== preferences.toolApprovalLevel) {
+                          playSwitchSound();
+                          track("chat_approval_level_changed", {
+                            from_level: preferences.toolApprovalLevel,
+                            to_level: matched.value,
+                            source: "tools_popover",
+                          });
+                          setPreferences({
+                            ...preferences,
+                            toolApprovalLevel: matched.value,
+                          });
+                        }
+                        setDrawerView("main");
+                      }}
                     >
                       <span className="flex size-4 items-center justify-center shrink-0">
                         {opt.value === preferences.toolApprovalLevel && (

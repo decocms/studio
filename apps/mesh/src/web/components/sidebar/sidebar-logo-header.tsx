@@ -4,13 +4,16 @@ import { cn } from "@deco/ui/lib/utils.ts";
 import { LayoutLeft } from "@untitledui/icons";
 import { LinkedDesktopIndicator } from "@/web/components/header/linked-desktop-indicator";
 import { ToolbarIconButton } from "@/web/components/toolbar-icon-button";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 
 interface SidebarLogoHeaderProps {
   /** Collapse / close the sidebar. */
   onToggle: () => void;
   className?: string;
-  hideDesktopIndicator?: boolean;
+  /** Whether to show the linked-desktop indicator. Defaults to true. */
+  showDesktopIndicator?: boolean;
+  /** When provided, wraps the logo in a link back to the org home. */
+  orgSlug?: string;
 }
 
 /**
@@ -31,13 +34,28 @@ interface SidebarLogoHeaderProps {
 export function SidebarLogoHeader({
   onToggle,
   className,
-  hideDesktopIndicator,
+  showDesktopIndicator = true,
+  orgSlug,
 }: SidebarLogoHeaderProps) {
   const config = usePublicConfig();
   const logo = config.logo ?? DEFAULT_LOGO;
   const lightSrc = typeof logo === "string" ? logo : logo.light;
   const darkSrc = typeof logo === "string" ? logo : logo.dark;
-  const { org } = useParams({ from: "/shell/$org" });
+
+  const logoImages = (
+    <span className="flex items-center shrink-0 px-2">
+      <img
+        src={lightSrc}
+        alt="Logo"
+        className="size-6 object-contain dark:hidden"
+      />
+      <img
+        src={darkSrc}
+        alt="Logo"
+        className="size-6 object-contain hidden dark:block"
+      />
+    </span>
+  );
 
   return (
     <SidebarHeader
@@ -50,29 +68,22 @@ export function SidebarLogoHeader({
         className,
       )}
     >
-      <Link
-        to="/$org"
-        params={{ org }}
-        aria-label="Back to home"
-        className="flex items-center shrink-0 pl-1"
-      >
-        <span className="flex items-center shrink-0 px-2">
-          <img
-            src={lightSrc}
-            alt="Logo"
-            className="size-6 object-contain dark:hidden"
-          />
-          <img
-            src={darkSrc}
-            alt="Logo"
-            className="size-6 object-contain hidden dark:block"
-          />
-        </span>
-      </Link>
+      {orgSlug ? (
+        <Link
+          to="/$org"
+          params={{ org: orgSlug }}
+          aria-label="Back to home"
+          className="flex items-center shrink-0 pl-1"
+        >
+          {logoImages}
+        </Link>
+      ) : (
+        <span className="flex items-center shrink-0 pl-1">{logoImages}</span>
+      )}
       <ToolbarIconButton onClick={onToggle} aria-label="Toggle sidebar">
         <LayoutLeft size={16} />
       </ToolbarIconButton>
-      {!hideDesktopIndicator && <LinkedDesktopIndicator />}
+      {showDesktopIndicator && <LinkedDesktopIndicator />}
     </SidebarHeader>
   );
 }

@@ -27,8 +27,6 @@ import {
   Stars01,
 } from "@untitledui/icons";
 import type { ChatTier } from "@/tools/organization/schema";
-import { useNavigate } from "@tanstack/react-router";
-import { useProjectContext } from "@decocms/mesh-sdk";
 import { useSimpleMode } from "@/web/hooks/use-organization-settings";
 import {
   resolveTierSubtitle,
@@ -88,7 +86,7 @@ export function TierTriggerPure({
       aria-label={TIER_LABELS[tier]}
       className={cn(
         "text-muted-foreground hover:text-foreground transition-[gap] duration-200 shrink min-w-0",
-        "gap-0 @[460px]/chat-bottom:gap-1.5",
+        "gap-0 @[380px]/chat-bottom:gap-1.5",
         "h-10 md:h-8",
       )}
     >
@@ -96,20 +94,17 @@ export function TierTriggerPure({
       <span
         className={cn(
           "min-w-0 truncate transition-[max-width,opacity] duration-200 ease-out max-w-0 opacity-0",
-          "@[460px]/chat-bottom:max-w-24 @[460px]/chat-bottom:opacity-100",
+          "@[380px]/chat-bottom:max-w-24 @[380px]/chat-bottom:opacity-100",
         )}
       >
         {TIER_LABELS[tier]}
       </span>
-      <ChevronDown
-        size={12}
-        className="opacity-60 hidden @[460px]/chat-bottom:inline-block"
-      />
+      <ChevronDown size={12} className="opacity-60" />
     </Button>
   );
 
   const drawerRows = (
-    <div className="px-2 pt-2 pb-6 flex flex-col gap-0.5">
+    <div role="menu" className="px-2 pt-2 pb-6 flex flex-col gap-0.5">
       {TIER_ORDER.map((t) => {
         const subtitle = subtitleFor(t);
         const modelLabel = modelLabelFor?.(t);
@@ -119,6 +114,8 @@ export function TierTriggerPure({
           <button
             key={t}
             type="button"
+            role="menuitem"
+            aria-label={TIER_LABELS[t]}
             onClick={() => handleSelect(t)}
             className="flex items-start gap-3 px-4 py-3 rounded-lg text-left hover:bg-muted transition-colors"
           >
@@ -278,12 +275,14 @@ function tierIconFor(tier: ChatTier): ReactNode {
  * Smart wrapper used by `Chat.Input`. Reads current tier + mode, builds
  * the per-tier subtitle resolver, and writes through `useSetChatTier`.
  */
-export function TierTrigger() {
+export function TierTrigger({
+  onSettingsClick,
+}: {
+  onSettingsClick?: () => void;
+}) {
   const tier = useChatTier();
   const setTier = useSetChatTier();
   const mode = useAgentMode();
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
   const simpleMode = useSimpleMode();
 
   const subtitleFor = (t: ChatTier): string | null =>
@@ -298,10 +297,6 @@ export function TierTrigger() {
       }
     : undefined;
 
-  const handleSettingsClick = () => {
-    navigate({ to: "/$org/settings/ai-providers", params: { org: org.slug } });
-  };
-
   return (
     <TierTriggerPure
       tier={tier}
@@ -309,7 +304,7 @@ export function TierTrigger() {
       iconFor={tierIconFor}
       onSelect={setTier}
       modelLabelFor={modelLabelFor}
-      onSettingsClick={handleSettingsClick}
+      onSettingsClick={onSettingsClick}
     />
   );
 }

@@ -9,6 +9,7 @@ import {
 } from "@deco/ui/components/sidebar.tsx";
 import { cn } from "@deco/ui/lib/utils.ts";
 import { type ReactNode, Suspense } from "react";
+import { useProjectContext } from "@decocms/mesh-sdk";
 import { SidebarCollapsibleGroup } from "./sidebar-group";
 import { SidebarLogoHeader } from "./sidebar-logo-header";
 import type { NavigationSidebarItem, SidebarSection } from "./types";
@@ -104,13 +105,15 @@ export function MobileNavigationSidebar({
   footer,
   additionalContent,
 }: MobileNavigationSidebarProps) {
+  const { org } = useProjectContext();
+
   return (
     <div
       className="bg-sidebar flex h-full w-full flex-col"
       data-sidebar="sidebar"
     >
       <Suspense fallback={<div className="h-12 shrink-0" />}>
-        <SidebarLogoHeader onToggle={onClose} />
+        <SidebarLogoHeader onToggle={onClose} orgSlug={org.slug} />
       </Suspense>
       <SidebarContent className="flex flex-col flex-1 px-2 py-2 gap-0">
         {sections.map((section, index) => (
