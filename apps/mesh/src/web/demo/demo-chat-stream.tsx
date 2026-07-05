@@ -42,6 +42,7 @@ export function DemoChatStreamProvider({
     isChatEmpty: state.messages.length === 0,
     isWaitingForApprovals: false,
     isRunInProgress: false,
+    runStatusStage: null,
     hasMoreOlder: false,
     isFetchingOlder: false,
     fetchOlderMessages: asyncNoop,
