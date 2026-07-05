@@ -60,6 +60,26 @@ export interface TrackSender {
   tile?: string;
 }
 
+/** Sleep `ms` of UNPAUSED time, in short chunks so Esc-pause takes effect
+ *  within ~150ms. While `isPaused()` is true the clock simply doesn't run. */
+async function pausableSleep(
+  ms: number,
+  signal: AbortSignal,
+  isPaused: () => boolean,
+): Promise<void> {
+  let remaining = ms;
+  while (remaining > 0) {
+    if (signal.aborted) throw new DemoAborted();
+    if (isPaused()) {
+      await sleep(150, { signal });
+      continue;
+    }
+    const chunk = Math.min(remaining, 150);
+    await sleep(chunk, { signal });
+    remaining -= chunk;
+  }
+}
+
 export interface StreamOptions {
   /** characters per second for the typewriter reveal (default 55) */
   cps?: number;
@@ -92,6 +112,7 @@ export class Track {
   constructor(
     private readonly store: Store<DemoChatState>,
     private readonly signal: AbortSignal,
+    private readonly isPaused: () => boolean = () => false,
   ) {}
 
   /** Set this track's speaker identity. Chainable; call once per scenario. */
@@ -101,7 +122,7 @@ export class Track {
   }
 
   wait(ms: number): Promise<void> {
-    return sleep(ms, { signal: this.signal });
+    return pausableSleep(ms, this.signal, this.isPaused);
   }
 
   private throwIfAborted() {
@@ -325,11 +346,14 @@ export class Director {
     private readonly signal: AbortSignal,
   ) {}
 
+  /** True while the viewer has Esc-paused the show. */
+  private readonly isPaused = () => this.stores.ui.get().inputs.paused === "1";
+
   /** Get (or create) the conversation track for `id`. */
   track(id = "main"): Track {
     let track = this.tracks.get(id);
     if (!track) {
-      track = new Track(this.stores.getChat(id), this.signal);
+      track = new Track(this.stores.getChat(id), this.signal, this.isPaused);
       this.tracks.set(id, track);
     }
     return track;
@@ -358,9 +382,9 @@ export class Director {
 
   // ---- timing / staging ---------------------------------------------------
 
-  /** Sleep `ms`, rejecting if the demo is aborted. */
+  /** Sleep `ms` of unpaused time, rejecting if the demo is aborted. */
   wait(ms: number): Promise<void> {
-    return sleep(ms, { signal: this.signal });
+    return pausableSleep(ms, this.signal, this.isPaused);
   }
 
   /** Semantic pause between beats (reads better than bare `wait` in scripts). */
@@ -379,6 +403,25 @@ export class Director {
   markEnded(): void {
     this.stores.ui.update((s) => ({ ...s, ended: true, caption: null }));
     this.stores.cursor.update((c) => ({ ...c, visible: false }));
+  }
+
+  /** Resolve when the viewer presses Play on the start card (`inputs.started`)
+   *  or on abort. The Play click doubles as the browser's audio unlock, so
+   *  the FIRST narration line actually narrates. */
+  awaitStart(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.signal.aborted) return resolve();
+      if (this.stores.ui.get().inputs.started === "1") return resolve();
+      const finish = () => {
+        unsub();
+        this.signal.removeEventListener("abort", finish);
+        resolve();
+      };
+      const unsub = this.stores.ui.subscribe(() => {
+        if (this.stores.ui.get().inputs.started === "1") finish();
+      });
+      this.signal.addEventListener("abort", finish, { once: true });
+    });
   }
 
   /** Resolve when the viewer clicks "Replay" (bumps `replayToken`) or on abort. */

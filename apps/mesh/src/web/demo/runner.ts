@@ -17,6 +17,10 @@ export async function runAutoplay(
   const scenario = scenarios[0];
   if (!scenario) return;
 
+  // Hold the show for the start card — the Play click is the audio unlock,
+  // so the FIRST narration line actually narrates.
+  await director.awaitStart();
+
   while (!signal.aborted) {
     director.reset();
     onEnter(0);

@@ -117,10 +117,15 @@ export class DemoStores {
     for (const store of this.chats.values()) {
       store.set({ messages: [], status: "ready" });
     }
-    // Preserve replayToken (monotonic) so awaitReplay can detect the next bump.
+    // Preserve replayToken (monotonic) so awaitReplay can detect the next
+    // bump, plus the viewer's start/narration choices so a replay doesn't
+    // re-gate behind the start card or unmute against their will.
     this.ui.update((s) => ({
       openDialogs: [],
-      inputs: {},
+      inputs: {
+        ...(s.inputs.started ? { started: s.inputs.started } : {}),
+        ...(s.inputs.vo ? { vo: s.inputs.vo } : {}),
+      },
       caption: null,
       currentOrg: null,
       notified: [],
