@@ -49,6 +49,20 @@ import type { Scenario } from "../types";
 // Cast
 // ============================================================================
 
+/** 12-point series behind each org's sparkline (unitless, scaled to fit). */
+const SPARK = {
+  vela: [42, 45, 44, 48, 52, 50, 55, 58, 56, 62, 66, 71],
+  aurora: [3.4, 3.2, 3.3, 3.0, 2.8, 2.9, 2.6, 2.5, 2.4, 2.3, 2.2, 2.1],
+  atlas: [2, 4, 3, 5, 4, 6, 5, 4, 6, 7, 5, 6],
+} as const;
+
+/**
+ * Each org card is a mini-dashboard: three metric squares — a stat tile with a
+ * delta, a 12-point sparkline, and a watched number (the third slot can be
+ * overridden live via the `metric:<org>` input so the demo can show work
+ * changing a number). Sparkline strokes are the 700 steps of each org's hue —
+ * validated ≥3:1 on the light surface; one hue per plot, labeled by the card.
+ */
 const ORGS = [
   {
     id: "vela",
@@ -56,6 +70,12 @@ const ORGS = [
     glyph: "V",
     tagline: "Fashion storefront",
     tile: "bg-lime-200 text-lime-950",
+    spark: "text-lime-700",
+    metrics: {
+      stat: { label: "Sessions", value: "12.4k", delta: "+8%" },
+      trend: { label: "Revenue · 7d", points: SPARK.vela, value: "$86k" },
+      watch: { label: "LCP", fallback: "1.9s" },
+    },
   },
   {
     id: "aurora",
@@ -63,6 +83,12 @@ const ORGS = [
     glyph: "A",
     tagline: "DTC subscriptions",
     tile: "bg-amber-200 text-amber-950",
+    spark: "text-amber-700",
+    metrics: {
+      stat: { label: "MRR", value: "$24k", delta: "+3%" },
+      trend: { label: "Churn · 7d", points: SPARK.aurora, value: "2.1%" },
+      watch: { label: "Subscribers", fallback: "1,840" },
+    },
   },
   {
     id: "atlas",
@@ -70,6 +96,12 @@ const ORGS = [
     glyph: "L",
     tagline: "B2B SaaS",
     tile: "bg-sky-200 text-sky-950",
+    spark: "text-sky-700",
+    metrics: {
+      stat: { label: "Uptime", value: "99.98%", delta: "" },
+      trend: { label: "Deploys · 7d", points: SPARK.atlas, value: "32" },
+      watch: { label: "Open PRs", fallback: "3" },
+    },
   },
 ] as const;
 
@@ -348,7 +380,7 @@ function DemoSidebar({
             name="Home"
           />
           <SidebarSectionLabel>My threads</SidebarSectionLabel>
-          <SidebarSectionLabel>Agents 1</SidebarSectionLabel>
+          <SidebarSectionLabel>Agents {ORGS.length + 1}</SidebarSectionLabel>
           <SidebarRow
             active={false}
             tile="bg-lime-200 text-lime-950"
@@ -361,6 +393,10 @@ function DemoSidebar({
             }
             name="Decopilot"
           />
+          {/* Your orgs ARE agents in your personal org — they list here too. */}
+          {ORGS.map((o) => (
+            <SidebarOrgRow key={o.id} stores={stores} org={o} />
+          ))}
         </>
       ) : (
         <>
@@ -376,6 +412,21 @@ function DemoSidebar({
         </>
       )}
     </nav>
+  );
+}
+
+function SidebarOrgRow({ stores, org }: { stores: DemoStores; org: Org }) {
+  const busy = useTrackBusy(stores, org.id);
+  const needs = useNotified(stores, org.id);
+  return (
+    <SidebarRow
+      active={false}
+      busy={busy || needs}
+      tile={org.tile}
+      glyph={org.glyph}
+      name={org.name}
+      sub={org.tagline}
+    />
   );
 }
 
@@ -519,19 +570,77 @@ function HomeCorners() {
 // Home level — the real home look, with your orgs as tiles
 // ============================================================================
 
-function OrgTile({ stores, org }: { stores: DemoStores; org: Org }) {
+/** 2px single-hue sparkline, no grid/axes — trend shape only, value beside. */
+function Sparkline({
+  points,
+  className,
+}: {
+  points: readonly number[];
+  className?: string;
+}) {
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const span = max - min || 1;
+  const W = 64;
+  const H = 20;
+  const path = points
+    .map(
+      (v, i) =>
+        `${((i / (points.length - 1)) * W).toFixed(1)},${(H - 2 - ((v - min) / span) * (H - 4)).toFixed(1)}`,
+    )
+    .join(" ");
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className={cn("h-5 w-full", className)}
+      preserveAspectRatio="none"
+      aria-hidden
+    >
+      <polyline
+        points={path}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
+function MetricSquare({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-h-[62px] flex-col justify-between rounded-lg border border-border/70 bg-muted/30 p-2">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function OrgCard({ stores, org }: { stores: DemoStores; org: Org }) {
   const status = useDemoInput(stores, `status:${org.id}`);
   const dot = useDemoInput(stores, `dot:${org.id}`); // "ok" | "busy" | "needs"
   const needs = useNotified(stores, org.id);
+  const watchValue =
+    useDemoInput(stores, `metric:${org.id}`) || org.metrics.watch.fallback;
   return (
     <div
       data-demo-target={`org-card:${org.id}`}
-      className="flex w-full flex-col rounded-2xl bg-card card-shadow px-3 py-2.5 transition-colors hover:bg-accent/40"
+      className="flex w-full flex-col rounded-2xl border border-border bg-card px-3 py-3 transition-colors hover:bg-accent/40"
     >
       <div className="flex items-center gap-3">
         <span
           className={cn(
-            "relative flex size-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold",
+            "relative flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold",
             org.tile,
           )}
         >
@@ -557,10 +666,40 @@ function OrgTile({ stores, org }: { stores: DemoStores; org: Org }) {
           )}
         />
       </div>
+
+      <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+        <MetricSquare label={org.metrics.stat.label}>
+          <span className="flex items-baseline gap-1">
+            <span className="text-sm font-semibold text-foreground">
+              {org.metrics.stat.value}
+            </span>
+            {org.metrics.stat.delta && (
+              <span className="text-[10px] font-medium text-emerald-700">
+                ▲ {org.metrics.stat.delta.replace("+", "")}
+              </span>
+            )}
+          </span>
+        </MetricSquare>
+        <MetricSquare label={org.metrics.trend.label}>
+          <Sparkline points={org.metrics.trend.points} className={org.spark} />
+          <span className="text-[11px] font-semibold text-foreground">
+            {org.metrics.trend.value}
+          </span>
+        </MetricSquare>
+        <MetricSquare label={org.metrics.watch.label}>
+          <span
+            key={watchValue}
+            className="text-sm font-semibold text-foreground animate-in fade-in duration-500"
+          >
+            {watchValue}
+          </span>
+        </MetricSquare>
+      </div>
+
       {status && (
         <div
           key={status}
-          className="mt-2 border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground animate-in fade-in duration-500"
+          className="mt-2.5 border-t border-border pt-2 text-xs leading-relaxed text-muted-foreground animate-in fade-in duration-500"
         >
           {status}
         </div>
@@ -574,9 +713,10 @@ function HomeLevel({ stores }: { stores: DemoStores }) {
 
   return (
     <FloatCard className="flex-1">
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1">
         <HomeCorners />
-        <div className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-10">
+        {/* Center column — hero → thread, composer always present. */}
+        <div className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-8">
           {hasMessages ? (
             <div className="flex min-h-0 w-full max-w-[720px] flex-1 flex-col">
               <DemoChatStreamProvider store={stores.getChat("deco")}>
@@ -586,7 +726,7 @@ function HomeLevel({ stores }: { stores: DemoStores }) {
               </DemoChatStreamProvider>
             </div>
           ) : (
-            // Real home with tiles is TOP-anchored (pt-32) — see DesktopHome.
+            // Real home is TOP-anchored when content follows — see DesktopHome.
             <div className="shrink-0 pb-10 pt-28 text-center">
               <p className="text-3xl font-medium text-foreground">
                 What's on your mind, Gui?
@@ -604,12 +744,20 @@ function HomeLevel({ stores }: { stores: DemoStores }) {
             )}
             <Composer stores={stores} />
           </div>
-          <div className="relative mx-auto mt-6 grid w-full max-w-[900px] shrink-0 grid-cols-3 gap-3 pb-6">
-            {ORGS.map((o) => (
-              <OrgTile key={o.id} stores={stores} org={o} />
-            ))}
-          </div>
           {!hasMessages && <div className="flex-1" aria-hidden />}
+        </div>
+        {/* Org rail — every org you belong to, reporting as an agent. */}
+        <div className="relative flex w-[340px] shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-border/60 p-3">
+          <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            Your orgs
+          </div>
+          {ORGS.map((o) => (
+            <OrgCard key={o.id} stores={stores} org={o} />
+          ))}
+          <div className="px-1 text-[11px] leading-relaxed text-muted-foreground/60">
+            Each org is a connection and an agent in your personal org — it
+            reports here, and you can talk to it.
+          </div>
         </div>
       </div>
     </FloatCard>
@@ -863,6 +1011,7 @@ async function backHome(d: Director) {
 
   d.setInput("status:vela", "Winter Drop live on vela.shop · LCP 1.2s ✓");
   d.setInput("dot:vela", "ok");
+  d.setInput("metric:vela", "1.2s"); // the watched LCP square ticks down live
   await d.beat(1200);
 
   const deco = d.track("deco");
