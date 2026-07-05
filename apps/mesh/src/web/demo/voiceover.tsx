@@ -24,8 +24,7 @@ const VO_FILES: Record<string, string> = {
   "Your deco asks each team's agent — in parallel": "/demo/vo/vo-03.m4a",
   "Your agents handle the routine — you make the calls that matter":
     "/demo/vo/vo-04.m4a",
-  "The card takes you straight into the team context — nothing to rebuild":
-    "/demo/vo/vo-05.m4a",
+  "The card takes you straight into the team context": "/demo/vo/vo-05.m4a",
   "You land on its operations — everything the agent watches, live":
     "/demo/vo/vo-06.m4a",
   "You say ship it — that's the whole job": "/demo/vo/vo-07.m4a",
@@ -43,11 +42,10 @@ const VO_FILES: Record<string, string> = {
     "/demo/vo/vo-13.m4a",
   "No settings screens anywhere — chat and preview, all the way through":
     "/demo/vo/vo-14.m4a",
-  "Setup is one person's job — everyone else just gets invited":
+  "And the logo always takes you back home — to your agents":
     "/demo/vo/vo-15.m4a",
-  "And the logo always takes you back to yourself": "/demo/vo/vo-16.m4a",
   "It's agents all the way down — same intelligence, only the context changes":
-    "/demo/vo/vo-17.m4a",
+    "/demo/vo/vo-16.m4a",
 };
 
 /** Clip length (ms) per file — the Director holds each pill at least this
@@ -59,19 +57,18 @@ export const VO_MS: Record<string, number> = {
   "/demo/vo/vo-02.m4a": 4500,
   "/demo/vo/vo-03.m4a": 3570,
   "/demo/vo/vo-04.m4a": 3730,
-  "/demo/vo/vo-05.m4a": 4430,
+  "/demo/vo/vo-05.m4a": 2630,
   "/demo/vo/vo-06.m4a": 4650,
   "/demo/vo/vo-07.m4a": 2630,
   "/demo/vo/vo-08.m4a": 4770,
-  "/demo/vo/vo-09.m4a": 5580,
+  "/demo/vo/vo-09.m4a": 4120,
   "/demo/vo/vo-10.m4a": 4500,
-  "/demo/vo/vo-11.m4a": 5170,
+  "/demo/vo/vo-11.m4a": 5220,
   "/demo/vo/vo-12.m4a": 5610,
   "/demo/vo/vo-13.m4a": 4610,
   "/demo/vo/vo-14.m4a": 4000,
-  "/demo/vo/vo-15.m4a": 5270,
-  "/demo/vo/vo-16.m4a": 2990,
-  "/demo/vo/vo-17.m4a": 6260,
+  "/demo/vo/vo-15.m4a": 3430,
+  "/demo/vo/vo-16.m4a": 6260,
 };
 
 /** Milliseconds the caption must stay up for its clip (0 if unnarrated). */
