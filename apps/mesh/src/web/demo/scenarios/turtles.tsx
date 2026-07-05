@@ -1318,7 +1318,7 @@ async function goodMorning(d: Director) {
   });
   deco.endTurn();
   d.caption(
-    "One brief, three orgs — exactly one thing needs you, and it's a button",
+    "One brief, three orgs — and exactly one thing that actually needs you",
   );
   await d.beat(7500); // hold: read the table + the card together
 }
@@ -1340,6 +1340,7 @@ async function hopIntoVela(d: Director) {
     tile: "bg-lime-200 text-lime-950",
   });
   d.setInput("thread:vela", "1"); // the thread appears under My threads
+  await d.beat(1500); // let line 5's narration finish over the dashboard
   d.caption("You land on its operations — everything the pilot watches, live");
   await vela.stream(
     "Morning! The Winter Drop hero is ready — assets approved, QA passed. Ship it now?",
@@ -1528,10 +1529,10 @@ async function settingsAsAgent(d: Director) {
   d.caption(
     "No settings screens anywhere — chat and preview, all the way through",
   );
-  await d.beat(3000);
+  await d.beat(3900);
   // Setup is one person's job — everyone else just gets invited.
   d.caption("Setup is one person's job — everyone else just gets invited");
-  await d.beat(2800);
+  await d.beat(3600);
 }
 
 async function backHome(d: Director) {

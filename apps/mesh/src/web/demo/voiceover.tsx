@@ -22,7 +22,7 @@ const VO_FILES: Record<string, string> = {
   "Every morning starts the same — you ask what needs you":
     "/demo/vo/vo-02.m4a",
   "Your deco asks each org's pilot — in parallel": "/demo/vo/vo-03.m4a",
-  "One brief, three orgs — exactly one thing needs you, and it's a button":
+  "One brief, three orgs — and exactly one thing that actually needs you":
     "/demo/vo/vo-04.m4a",
   "The card takes you straight into Vela — no context to rebuild":
     "/demo/vo/vo-05.m4a",
