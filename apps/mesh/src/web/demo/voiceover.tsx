@@ -2,8 +2,8 @@
  * Demo Mode — narration.
  *
  * The captions ARE the script: every pill line has a pre-recorded voice-over
- * clip (macOS `say`, Zoe Premium @186wpm → AAC in public/demo/vo/), keyed by
- * the exact caption text. Narration is ON by default; browsers block audio
+ * clip (Maya1 TTS — Apache 2.0, Indian-English voice design, generated
+ * on-device → AAC in public/demo/vo/), keyed by the exact caption text. Narration is ON by default; browsers block audio
  * until a user gesture, so the player retries the current line on the first
  * pointer/keydown anywhere (the standard unlock pattern). The toggle mutes.
  *
@@ -51,26 +51,27 @@ const VO_FILES: Record<string, string> = {
 };
 
 /** Clip length (ms) per file — the Director holds each pill at least this
- *  long so narration NEVER gets cropped by the next line. Measured with
- *  `afinfo` after generation (Isha Premium @182wpm). */
+ *  long so narration NEVER gets cropped by the next line. Clips generated
+ *  with Maya1 (Apache 2.0, Indian-English voice design) on-device; durations
+ *  are the sample-accurate wav lengths from the generation run. */
 export const VO_MS: Record<string, number> = {
-  "/demo/vo/vo-01.m4a": 3994,
-  "/demo/vo/vo-02.m4a": 4436,
-  "/demo/vo/vo-03.m4a": 2903,
-  "/demo/vo/vo-04.m4a": 3600,
-  "/demo/vo/vo-05.m4a": 3623,
-  "/demo/vo/vo-06.m4a": 4180,
-  "/demo/vo/vo-07.m4a": 2346,
-  "/demo/vo/vo-08.m4a": 4366,
-  "/demo/vo/vo-09.m4a": 3716,
-  "/demo/vo/vo-10.m4a": 4134,
-  "/demo/vo/vo-11.m4a": 4877,
-  "/demo/vo/vo-12.m4a": 4645,
-  "/demo/vo/vo-13.m4a": 3971,
-  "/demo/vo/vo-14.m4a": 4041,
-  "/demo/vo/vo-15.m4a": 4110,
-  "/demo/vo/vo-16.m4a": 2717,
-  "/demo/vo/vo-17.m4a": 4621,
+  "/demo/vo/vo-01.m4a": 4100,
+  "/demo/vo/vo-02.m4a": 4500,
+  "/demo/vo/vo-03.m4a": 3570,
+  "/demo/vo/vo-04.m4a": 3730,
+  "/demo/vo/vo-05.m4a": 4430,
+  "/demo/vo/vo-06.m4a": 4650,
+  "/demo/vo/vo-07.m4a": 2630,
+  "/demo/vo/vo-08.m4a": 4770,
+  "/demo/vo/vo-09.m4a": 5580,
+  "/demo/vo/vo-10.m4a": 4500,
+  "/demo/vo/vo-11.m4a": 5170,
+  "/demo/vo/vo-12.m4a": 5610,
+  "/demo/vo/vo-13.m4a": 4610,
+  "/demo/vo/vo-14.m4a": 4000,
+  "/demo/vo/vo-15.m4a": 5270,
+  "/demo/vo/vo-16.m4a": 2990,
+  "/demo/vo/vo-17.m4a": 6260,
 };
 
 /** Milliseconds the caption must stay up for its clip (0 if unnarrated). */
