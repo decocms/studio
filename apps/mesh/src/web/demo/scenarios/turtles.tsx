@@ -1411,16 +1411,18 @@ async function hopIntoVela(d: Director) {
     tile: "bg-lime-200 text-lime-950",
   });
   d.setInput("thread:vela", "1"); // the thread appears under My threads
-  await d.beat(2400); // let line 5's narration finish over the dashboard
-  await d.caption(
-    "You land on its operations — everything the agent watches, live",
-  );
+  // The greeting streams IMMEDIATELY on landing (over line 5's narration) so
+  // the chat column is never a blank card while the dashboard loads beside it.
+  await d.beat(300);
   await vela.stream(
     "Morning! The Winter Drop hero is ready — assets approved, QA passed. Ship it now?",
     { cps: 60 },
   );
   vela.endTurn();
-  await d.beat(2600); // read the dashboard + the pilot's question
+  await d.caption(
+    "You land on its operations — everything the agent watches, live",
+  );
+  await d.beat(3400); // read the dashboard + the agent's question
 
   // Answer immediately — the urgency is the point. No sidebar detours.
   await d.caption("You say ship it — that's the whole job");
@@ -1562,9 +1564,9 @@ async function shareOpsToWhatsApp(d: Director) {
   d.setInput("share", "open");
   await d.beat(800);
   d.hideCursor();
-  await d.beat(2200); // read the URL + client chips
+  await d.beat(4100); // read the URL + client chips (narration covers this)
   d.setInput("share", "");
-  await d.beat(400);
+  await d.beat(300);
 }
 
 /** Settings is an agent, its screens are MCP apps in the preview — chat +
