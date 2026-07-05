@@ -78,8 +78,16 @@ export function createVoicePlayer(stores: DemoStores): () => void {
     );
   };
 
+  let lastPaused = false;
   const unsub = stores.ui.subscribe(() => {
-    const { caption } = stores.ui.get();
+    const { caption, inputs } = stores.ui.get();
+    // Esc pauses/resumes the clip in flight along with the Director's clock.
+    const paused = inputs.paused === "1";
+    if (paused !== lastPaused) {
+      lastPaused = paused;
+      if (paused) current?.pause();
+      else current?.play().catch(() => {});
+    }
     if (caption === lastCaption) return;
     lastCaption = caption;
     playCaption(caption);

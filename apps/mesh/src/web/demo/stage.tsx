@@ -8,11 +8,13 @@
  * `components/live-timer.tsx`).
  */
 import { useEffect, useState } from "react";
+import { Button } from "@deco/ui/components/button.tsx";
+import { PlayCircle, VolumeX } from "@untitledui/icons";
 import { DemoProviders } from "./demo-providers";
 import { createDemoStores } from "./director-stores";
 import { Director } from "./director";
 import { runAutoplay } from "./runner";
-import { useCaption } from "./use-demo-stores";
+import { useCaption, useDemoInput } from "./use-demo-stores";
 import { GhostCursor } from "./ghost-cursor";
 import { EndCard } from "./end-card";
 import { createVoicePlayer, VoiceToggle } from "./voiceover";
@@ -23,6 +25,67 @@ const DEFAULT_END = {
   title: "Build this on your own data",
   subtitle: "Spin up your first agent in minutes — free to start.",
 };
+
+/** The gate before the show: one click starts the run AND unlocks audio, so
+ *  the first narration line actually narrates. */
+function StartCard({ stores, title }: { stores: DemoStores; title: string }) {
+  const started = useDemoInput(stores, "started") === "1";
+  if (started) return null;
+
+  const start = (vo: "on" | "off") =>
+    stores.ui.update((s) => ({
+      ...s,
+      inputs: { ...s.inputs, started: "1", vo: vo === "off" ? "off" : "" },
+    }));
+
+  return (
+    <div className="absolute inset-0 z-[120] flex items-center justify-center bg-background/70 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-2xl animate-in fade-in zoom-in-95 duration-500">
+        <img
+          src="/logos/deco logo.svg"
+          alt=""
+          className="mx-auto mb-4 size-10 select-none"
+        />
+        <h2 className="text-xl font-semibold text-foreground">{title}</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          A 2-minute guided tour, narrated. Press Esc anytime to pause.
+        </p>
+        <div className="mt-6 flex flex-col gap-2">
+          <Button
+            type="button"
+            onClick={() => start("on")}
+            className="w-full gap-2"
+          >
+            <PlayCircle className="size-4" />
+            Play with narration
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => start("off")}
+            className="w-full gap-2 text-muted-foreground"
+          >
+            <VolumeX className="size-4" />
+            Watch muted
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Esc toggles the Director's clock; this pill says so while paused. */
+function PausedPill({ stores }: { stores: DemoStores }) {
+  const paused = useDemoInput(stores, "paused") === "1";
+  if (!paused) return null;
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-20 z-[115] -translate-x-1/2 animate-in fade-in duration-300">
+      <div className="rounded-full bg-foreground/90 px-4 py-2 text-sm font-medium text-background shadow-xl backdrop-blur">
+        ⏸ Paused — press Esc to resume
+      </div>
+    </div>
+  );
+}
 
 function DemoCaption({ stores }: { stores: DemoStores }) {
   const caption = useCaption(stores);
@@ -79,6 +142,25 @@ export function DemoStage({ scenarios }: { scenarios: Scenario[] }) {
       const director = new Director(stores, controller.signal);
       const stopVoice = createVoicePlayer(stores);
       controller.signal.addEventListener("abort", stopVoice, { once: true });
+      // Esc toggles pause (only mid-show — not on the start/end cards).
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key !== "Escape") return;
+        const { inputs, ended } = stores.ui.get();
+        if (inputs.started !== "1" || ended) return;
+        stores.ui.update((s) => ({
+          ...s,
+          inputs: {
+            ...s.inputs,
+            paused: s.inputs.paused === "1" ? "" : "1",
+          },
+        }));
+      };
+      window.addEventListener("keydown", onKey);
+      controller.signal.addEventListener(
+        "abort",
+        () => window.removeEventListener("keydown", onKey),
+        { once: true },
+      );
       void runAutoplay(
         director,
         pinnedScenarios,
@@ -115,8 +197,10 @@ export function DemoStage({ scenarios }: { scenarios: Scenario[] }) {
       <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-background">
         <ActiveStage stores={stores} />
         <DemoCaption stores={stores} />
+        <PausedPill stores={stores} />
         <VoiceToggle stores={stores} />
         <GhostCursor stores={stores} />
+        <StartCard stores={stores} title={active.title} />
         <EndCard
           stores={stores}
           title={active.endCard?.title ?? DEFAULT_END.title}
